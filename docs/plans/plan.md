@@ -26,61 +26,21 @@ as they stood.
 ---
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-31)*
-**Where we are: 2.56.1.** The releases are the changelog's rows; the
-handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
-last: `jobset migrate` brings an older SIESTA vibration on, its `relax`
-folded into `freq`, and `runpoints` imports first (2.56.1). Before: a point its ended walk never started reads *not run*, never
-*failed*, and every point's start is its `.continued-from` (2.56.0, the
-user's words). Before: the pages, the command line and a run's messages read again headless
-and made plainer, an older index said on its row with the line that
-migrates it (2.55.1). Before: one run of points — a SIESTA vibration's calls and a transport rung's
-points walked, indexed, reported and judged by one framework, its facts in
-the kind table, every folder composed by one door (`calcdirs.RunPlace`) and
-read back by the other (`calcdirs.where`), the same words on the job and in
-`status` (2.55.0, § 1am step 1b, [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md)). Before: the vibration and transport roads reviewed whole — fifteen readers,
-every file beside its chapter — and mended: a displacement sweep launches, a
-point waits on the point it starts from, a point never reached reads failed
-everywhere, a call not done is not finished, the fc call's panel no longer
-cries *deck changed*, Describe no longer writes into a topic (2.54.1). Before: one layout — every stage a folder, every run a folder of its own; a
-description stating another is refused by name, nothing flat is written, and
-the code that served it is gone; a run holds tries, `-run<N>`, only the last
-concluding (2.54.0, § 1am step 1, `execution/project-layout.md` § 1). Before:
-an engine's and a kind's facts asked of their records (2.53.1, 2.53.2); a
-transport sweep reports as one run — one start, a milestone per
-voltage done at every frame, a failed point once per reason, one finish
-(2.53.0, § 1af R-e). Before: a frame set's frames re-averaged after the run
-over another motion —
-a bell curve at another temperature, or a swing — each frame weighted from
-its position along the mode (2.52.0, § 1al F3,
-`science/vibrational-averaging.md` § 5.4, `postprocess.reaveraged`); a
-vibration run's count says how many calls failed, and Task setup's notify
-card says what else a reporting calculation sends (2.51.1). Before: a mode's frame set is stated by a temperature — the junction's, or a
-pumped mode's effective one — with three, five or seven frames, the
-outermost move measured and said, the *Write frame set…* dialog saying what
-the temperature means for the mode (2.51.0, § 1al F1, F2;
-`engines/vibration.md` § 5.10 ③); before it, a SIESTA vibration run reports as one run at its milestones and its
-failed parts — the relaxation's and the force constants' outcomes as each
-phase ends, a call not done said at once and once per reason, the finish
-counting the calls not done — and a step message only for a step that moves
-the geometry (2.50.0, `execution/run-reports.md` § 2.2, § 2.9; § 1af, its
-transport half R-e left). Before: a SIESTA vibration's infrared is the free atoms' — the system the
-person declared by what they freed — shown when the result opens, with no
-choice of atoms anywhere, and the Spectrum page's one bar above the chart
-(light, charges, laser, width) applied by *Update* under the page busy fence
-(2.49.0, `web/spectra.md` § 2.1, § 3.2), with the page's controls never
-reused from an old copy and a chart lane's reason written across its panel
-(2.49.1); a refused transport citation names the frame-set road — a vibration is cited through a mode's frame set, never its own folder (2.49.3, `engines/transport.md` § 3.1); the monitor says where the run is,
-read from its declared structure (2.48.0, § 1af); and
-`engines/vibration.md` § 2.2a, what the force a relaxed structure shows under
-the vibration's own settings does and does not change — measured on the
-user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
-it is, the user's ruling: "the user knows the information … don't do
-extra")*.
+**Where we are: 2.56.2.** The releases are the changelog's rows; the
+history this handover carried, release by release, and the checks each
+release ran are in [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md),
+*The handover's history*. The last: F0a — status, the ready door, the run's
+clock, the ending reader and prep's leftovers each fixed where it is
+decided, the documents that made a person act wrongly corrected, two review
+rounds over whole files (2.56.2). Before it: `jobset migrate` on an older
+SIESTA vibration (2.56.1).
 
-**Last checked**: the fast batch on 2.56.1 (6,907 passed); the SIESTA vibration e2e file on 2.56.1 (14 passed); every molbuilder module imported first in a fresh process (all but Jupyter's own config and `__main__`, as before); `jobset migrate` on the user's nine calculations, each first on a copy without the engines' large files, the three it rewrote read back by `status`; the fast batch on 2.56.0 (6,907 passed); the e2e batch whole on 2.56.0 (568 passed); its rules broken three ways on the real engines and seen to fail (a point the ended walk never reached said *failed* again, an optical call's start left unwritten by the force constants that plan it, a reopened planned point's left unwritten by the walk); `jobset migrate` run on a copy of my real vibration and junction runs, each point given its start's record; the fast batch on 2.55.1 (6,907 passed); the e2e batch whole on 2.55.1 (566 of 568 passed; the vibration warm-relaunch test's start expectation brought to the contract and the notebook tab's Jupyter start, each run again alone, passed); the Results, Spectrum, Task setup and Documents pages loaded headless on my real runs at 1440 and 390 wide, no page error; the fast batch on 2.55.0 (6,907 passed); the vibration and real-junction e2e files on 2.55.0 (218 passed), each point folder of both kinds' real runs read back as its run and point, a run's never-run words and its queued word each broken and seen to fail; a copy of my real 2.54 vibration run read *unreadable* naming `jobset migrate`, migrated, then *finished*; the fast batch on 2.54.1 (6,907 passed); the vibration, real-junction, optimization, stopped-run, wall and PySCF e2e files on 2.54.1 (265 passed), the trial's points rule and the optical call's prepared folder each broken and seen to fail, the Results tab loaded headless on a real result after the page edit; the fast batch on 2.54.0 (6,909 passed); the e2e batch whole on 2.54.0 (562 passed) — a warm retry on real SIESTA concluding only its last try, a relaunch leaving run-0 as it was; its new checks broken and seen to fail (every try concluding, a retry started without `--continue`, the folder's reset keeping the written card, every run folder counted as launched); the fast batch on 2.53.2 (6,948 passed), the kind table's new facts each removed and seen to fail (the root's description, both kinds' science checks, a deck that relaxes; a transmission folder's report on the real-junction e2e, 8 failed) -- the relaxation words, read by no test; the fast batch on 2.53.1 (6,947 passed), its new rules broken three ways and seen to fail (the hand-over's describe hook called bare, a PySCF preset menu of two tiers, the keyword-deck check left unasked); the hand-over's browser e2e on 2.53.1 (7 passed); the fast batch on 2.53.0 (6,944 passed); the real-junction e2e on 2.53.0 (201 passed) with the SIESTA CO₂ vibration and the monitor e2e (29), the run-of-points report broken six ways and seen to fail (the walk's own rule asked as done, the conductance without the energy join, the failed count, the finish's state, the NEGF count, the point's word); a spin-polarized transmission's (T↑+T↓)/2 checked against the record on channel files made from a real point; the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+**Last checked**: the fast batch on 2.56.2's code (6,908 passed); each change's test — the existing next-step test given the missing run's step, the ending reader's usage rows, the badge's total for each answer the server sends, a benchmark's missing trial, the made-neutral prep row, PySCF's wall line in its session-log e2e — broken on purpose once and seen to fail; the e2e files a real run executes the changed interface in (the run script's failure branch and relaxation retry, its one ending check, the reader in the viewer: 37 passed); the changed diagrams rendered; the ending functions run in bash over a real, a missing and an unreadable output.
 
-**What runs next** is **F0**, then the releases in the order of *The one
-plan* — the user's to change. **The user's decisions** are under
+
+**What runs next** is **F0b** — its builders' findings as decided 11 (b)
+— then F0c and the releases in the order of *The one plan* — the user's to
+change. **The user's decisions** are under
 *Decided*; **what only Sol can show** and **new science** are
 under *After the finish line*.
 
@@ -126,31 +86,51 @@ found.
 
 | # | release | the redesign — what becomes true | items | needs |
 |---|---|---|---|---|
-| **F0** | **Wrong answers now** | Each fixed at its owning door, not patched: **a species is a label and an element** — one shape through the structure codec's writer and reader and the file catalogue's pseudopotential field (a structure holding `Au1` is written and then refused, B2-1, B2-2); the composed junction keeps its view fields through `Structure.replace` (extending a junction whose order is unstated answers 500, U1-2); **one *IR asked* reading** of a result, older files included (a PySCF result's IR column hidden, U2-2, U2-4, U2-5); the build route returns the builder's findings (the peptide's aldehyde warning lost, I2-134); the run-ending reader's crash an answer, never *no* (I2-133), and the diagnostics door's (B3-28); prep's writes of a stage leave nothing it no longer writes (a stale Makov–Payne script, I2-199); status's next step from the run door (a missing member said finished, a sequence-sent group said not launched — D1-JSa-1, B3-31); the run's clock read once (U2-3); a SIESTA displacement sweep that relaxes reaches its comparison (SWEEP-RELAX — its design first) and a spin-polarized optical frame keeps its Fermi level (SPIN-EF); what 2.56.0–2.56.1 left — *not run* wherever an ended walk's never-run is said, `.continued-from` bytes from `runrecord` alone, migrate's write into a finished run stated as the rule's exception, the package pyflakes-clean; the documents that make a person act wrongly (installation's commands, the run script started by hand, the restart route's rule, the thread default); and the way out of a refused junction citation (decided 1). | 30 | — |
+| **F0** | **Wrong answers now** | **F0a released as 2.56.2** — 18 of its rows closed and 2 in part (the ledger marks each): status's next step from the run and ready doors, the run's clock read at the reader and from the run's record, the ending reader's crash an answer the wrapper says once, prep's writes leaving nothing it no longer writes, what 2.56.0–2.56.1 left, the documents that made a person act wrongly. **Left — F0b:** the species label, the junction's order, the *IR asked* reading, the refused citation's way out, and the builders' findings as `Issue`s (I2-134, built as decided 11 (b) — 2.56.2 reverted a capture that was not that); **F0c:** SWEEP-RELAX and SPIN-EF, their designs first. The whole row: Each fixed at its owning door, not patched: **a species is a label and an element** — one shape through the structure codec's writer and reader and the file catalogue's pseudopotential field (a structure holding `Au1` is written and then refused, B2-1, B2-2); the composed junction keeps its view fields through `Structure.replace` (extending a junction whose order is unstated answers 500, U1-2); **one *IR asked* reading** of a result, older files included (a PySCF result's IR column hidden, U2-2, U2-4, U2-5); the build route returns the builder's findings (the peptide's aldehyde warning lost, I2-134); the run-ending reader's crash an answer, never *no* (I2-133), and the diagnostics door's (B3-28); prep's writes of a stage leave nothing it no longer writes (a stale Makov–Payne script, I2-199); status's next step from the run door (a missing member said finished, a sequence-sent group said not launched — D1-JSa-1, B3-31); the run's clock read once (U2-3); a SIESTA displacement sweep that relaxes reaches its comparison (SWEEP-RELAX — its design first) and a spin-polarized optical frame keeps its Fermi level (SPIN-EF); what 2.56.0–2.56.1 left — *not run* wherever an ended walk's never-run is said, `.continued-from` bytes from `runrecord` alone, migrate's write into a finished run stated as the rule's exception, the package pyflakes-clean; the documents that make a person act wrongly (installation's commands, the run script started by hand, the restart route's rule, the thread default); and the way out of a refused junction citation (decided 1). | 30, 18 closed 2.56.2 and 2 in part; + 2 (F0a's review) | — |
 | **F1** | **The results views** (§ 1ak S3) | `point_of` (floor 4), `points_view` and `views_of` (floor 6) built; the run door answers its own folder and nothing more; `/api/results/dir` returns the folder answer and the views; **every reader of a run of points' points asks the one point view** — the transport record, its digest and DOS-per-orbital reader, `summarize`, the report page, the ladder. Closes a run-once transmission whose DOS per orbital no road reads (U2-1), the I–V table's missing *not run* row (U2-21), a sweep's run folder that opens nothing (B3-34), the run door reaching floors 3–4 and walking a sweep's points 4N+1 times per answer (B3-1…B3-8, B3-33). Settles the user's open question *"build S3, or state the live road"* — the finish line builds it. | 34 | — |
-| **F2** | **§ 1am step 2 — the run script names no engine** | One skeleton over the engine record — its program, environment and GPU environment, one process or ranks, keyword deck, the step after the engine; the parse layer asked by meaning; the retry budget only on a rung that runs an SCF (`stages = "scf"`), never a diverged one; the cold sweep's exceptions from the gather's own record. Closes the PySCF banner promising a checkpoint, `--cold --force` deleting gathered lead files and stopping on geomeTRIC's folder, two starts sharing a log (B1-1…B1-16). The design set aside on 2026-10-29 is its starting point, re-read against the code first; architecture § 3.3 and job-contracts § 2.6 are rewritten to it. | 34 | — |
-| **F3** | **§ 1am step 3 — the engine record and the kind/pair record whole** | An engine's validator, reading of *the same calculation*, label bound, words and environment are its record's parts; a kind's rung builders live in its own module, and its sharing role, scratch status line, description checks, extension and citation parts, sort key and report-field gate are its record's; § 1ai's two locks of the Structure-optimization tab move into the catalogue; the page's label palette served from the kind table (decided 6). Closes B1-17…B1-52, B3-10. Carries § 1ak's decisions: S2's reach (every branch on a kind's or engine's name judged into the tables, an engine's own modules choosing by kind staying), `describe` explicit, one record per kind and a part per engine. | 47 | — |
-| **F4** | **§ 1am step 4 — the file catalogue and the record doors** | A `ROLE_*` constant for every catalogue row and `compose` refusing a role no row has (131 literal roles in 41 modules today); each record's path formed by its owner — the machine record, the description, the job request, `.copied-from`, a launch group's files, the runtime record, the reports folder; nothing climbs to a root. Closes B2-3…B2-22. | 29 | — |
+| **F2** | **§ 1am step 2 — the run script names no engine** | One skeleton over the engine record — its program, environment and GPU environment, one process or ranks, keyword deck, the step after the engine; the parse layer asked by meaning; the retry budget only on a rung that runs an SCF (`stages = "scf"`), never a diverged one; the cold sweep's exceptions from the gather's own record. Closes the PySCF banner promising a checkpoint, `--cold --force` deleting gathered lead files and stopping on geomeTRIC's folder, two starts sharing a log (B1-1…B1-16). The design set aside on 2026-10-29 is its starting point, re-read against the code first; architecture § 3.3 and job-contracts § 2.6 are rewritten to it. | 34 + 2 (F0a's review) | — |
+| **F3** | **§ 1am step 3 — the engine record and the kind/pair record whole** | An engine's validator, reading of *the same calculation*, label bound, words and environment are its record's parts; a kind's rung builders live in its own module, and its sharing role, scratch status line, description checks, extension and citation parts, sort key and report-field gate are its record's; § 1ai's two locks of the Structure-optimization tab move into the catalogue; the page's label palette served from the kind table (decided 6). Closes B1-17…B1-52, B3-10. Carries § 1ak's decisions: S2's reach (every branch on a kind's or engine's name judged into the tables, an engine's own modules choosing by kind staying), `describe` explicit, one record per kind and a part per engine. | 47 + 1 (F0a's review) | — |
+| **F4** | **§ 1am step 4 — the file catalogue and the record doors** | A `ROLE_*` constant for every catalogue row and `compose` refusing a role no row has (131 literal roles in 41 modules today); each record's path formed by its owner — the machine record, the description, the job request, `.copied-from`, a launch group's files, the runtime record, the reports folder; nothing climbs to a root. Closes B2-3…B2-22. | 29 + 7 (F0a's review) | — |
 | **F5** | **§ 1am step 5 — one codec per format** | Our JSON through `persist`; each of our formats one vocabulary module its writer and reader share — the trajectory log, the monitor's lines, deck blocks, the structure pair's sidecar envelope, a NetCDF file's JSON attributes, the run's index, the pidfile; each foreign format read in `parse/`. Closes B2-23…B2-35. | 25 | — |
-| **F6** | **§ 1am step 6 — one home for each vocabulary, default and rule** | The run states named beside `RUN_STATES` and every set read from there; the count's tallies once in `runpoints`; the job kinds, a request's words, defaults, a kind's and an engine's words, and each sentence composed in one place. Closes B3-17…B3-24, B3-35. | 45 | — |
-| **F7** | **§ 1am step 7 — the floors and the objects** | The 15 upward imports moved down (`selection` reaching the `spectra` package among them); a module holding two floors' parts split; objects passed whole; private names made doors or left alone; rename-only wrappers and dead code deleted; the structure API's rebuilds keep every field (the A1 rows). Closes B3-11…B3-16, B3-25…B3-43, D6-7. | 26 | — |
-| **F8** | **The pages — words and residue** | Every word a person reads plain: no machine token or code id, a code span drawn as code by one shared helper, help no longer than the person needs, one count said one way, a frame numbered from 1 wherever a person reads it (decided 7); the residue gone. Closes U1's and U2's words, 2.55.1's leftovers. | 103 | — |
-| **F9** | **Tests through the road** (§ 1ak S4) | The support helpers make their inputs through the road; the tier-1 spectrum tests read a run's result, never a hand-filled one; no launch record or restart file planted; the tests owed written; the tests of older releases' files retired; the harness cannot report green when it is not; the sent-run pair kept with its reason stated (decided 10). Closes B4-1…B4-26 and the TEST-AUDIT rows. | 62 | — |
-| **F10** | **The documents true** | Each chapter rewritten against the code once — the untrue and stale sentences corrected, every link resolved, history inside a contract removed and each reason it carried kept as a rule; a chapter a release F0–F9 touches is brought true in that release; README R5 says why `--bundle` keeps its name (decided 8). ~300 items over 70 chapters. | 305 | — |
+| **F6** | **§ 1am step 6 — one home for each vocabulary, default and rule** | The run states named beside `RUN_STATES` and every set read from there; the count's tallies once in `runpoints`; the job kinds, a request's words, defaults, a kind's and an engine's words, and each sentence composed in one place. Closes B3-17…B3-24, B3-35. | 45 + 11 (F0a's review) | — |
+| **F7** | **§ 1am step 7 — the floors and the objects** | The 15 upward imports moved down (`selection` reaching the `spectra` package among them); a module holding two floors' parts split; objects passed whole; private names made doors or left alone; rename-only wrappers and dead code deleted; the structure API's rebuilds keep every field (the A1 rows). Closes B3-11…B3-16, B3-25…B3-43, D6-7. | 26 + 10 (F0a's review) | — |
+| **F8** | **The pages — words and residue** | Every word a person reads plain: no machine token or code id, a code span drawn as code by one shared helper, help no longer than the person needs, one count said one way, a frame numbered from 1 wherever a person reads it (decided 7); the residue gone. Closes U1's and U2's words, 2.55.1's leftovers. | 103 + 3 (F0a's review) | — |
+| **F9** | **Tests through the road** (§ 1ak S4) | The support helpers make their inputs through the road; the tier-1 spectrum tests read a run's result, never a hand-filled one; no launch record or restart file planted; the tests owed written; the tests of older releases' files retired; the harness cannot report green when it is not; the sent-run pair kept with its reason stated (decided 10). Closes B4-1…B4-26 and the TEST-AUDIT rows. | 62 + 8 (F0a's review) | — |
+| **F10** | **The documents true** | Each chapter rewritten against the code once — the untrue and stale sentences corrected, every link resolved, history inside a contract removed and each reason it carried kept as a rule; a chapter a release F0–F9 touches is brought true in that release; README R5 says why `--bundle` keeps its name (decided 8). ~300 items over 70 chapters. | 305 + 1 (F0a's review) | — |
 | **F11** | **The documents findable** (§ 7) | § 7's four indexes; `docs/README.md` the one index naming every live chapter (nine have no row today) and each domain overview listing its own; one place for each thing now stated in several. | 2 + § 7 | — |
 | **F12** | **Proven** (§ 1am step 8) | Each road — an optimization, a vibration on SIESTA and on PySCF, a transport calculation — driven start to finish in the browser on real runs; the full batch; two review rounds over F0–F11. | 8 | — |
 
 **How a release closes** *(the user, 2026-09-27: "a consolidated persistent
 plan that get's updated at every milestone and reviewed with agent full code
-text review to validate results")*: its owning contracts read end to end and
-its code whole; the design written into the contract first (a design change
-waits for the user's yes); the code; a test that drives the road, broken on
-purpose once and seen to fail; the targeted tests and the package
-pyflakes-clean; two review rounds reading the full text of the diff and the
-contracts it touches, every finding re-read before it is acted on; its ledger
-rows marked with the release that closed them; the release tagged
-`v<version>` and the tag pushed (conventions § 2; decided 9); then the next
-release.
+text review to validate results")*, in this order:
+
+1. its owning contracts read end to end and its code whole; the design
+   written into the contract first (a design change waits for the user's
+   yes); the code; a test that drives the road, broken on purpose once and
+   seen to fail;
+2. the fast batch and the targeted tests; the package pyflakes-clean;
+3. **two review rounds** — every finding re-read before it is acted on:
+   correctness, by readers of the contracts and the changed code; and
+   **holistic** *(the user, 2026-10-31: "make sure your review on milestones
+   will include holistic code evaluation on api and framework unification,
+   and detect duplicated/redundant/handcrafted code")*, by readers who each
+   take whole files of a coverage table of every touched module — one door
+   and one API per fact, one data shape, and what is duplicated, redundant or
+   handcrafted, in the code and in its tests; a finding this release does not
+   own goes to the release that owns its door;
+4. the reviews' fixes;
+5. **one e2e run, last** *(the user, 2026-10-31: "when e2e tests should be
+   called need careful judgement. we don't want repeated waiting")* — the e2e
+   files whose roads the release's code touches, named with why; the whole
+   e2e batch only for a change every road passes through, said so first;
+   never while a review of the same code is open;
+6. this plan brought current in the release's commit — its row's state, its
+   ledger rows marked with the release that closed them, what it found placed
+   under the release that owns it, nothing archived unchecked *(the user,
+   2026-10-31: "your plan should be persistently updated, and obsolete items
+   should be correctly validated, and archived so you have one unified clean
+   plan")*; the release tagged `v<version>` and the tag pushed (conventions
+   § 2; decided 9); then the next release.
 
 ---
 
@@ -168,6 +148,7 @@ release.
 | 8 | `--bundle` on every `jobset` verb, a word README R5 retired for the calculation folder | the option keeps its name, and R5 says so (a rename would break the user's scripts) | F10 |
 | 9 | Release tags — conventions § 2: every release gets a git tag; the last was `v2.6.0` | each release is tagged again, from the next one | *How a release closes* |
 | 10 | The sent-run test pair (B4-2): two basic tests write a launch record by hand, because the basic suite never submits | kept, their reason stated in them (testing.md § 6) | F9 |
+| 11 | How a builder hands back its findings (I2-134; `validation.md` § 4.1 R5: a finding is an `Issue`, never a Python warning) — (a) each builder returns one answer, structure, backend and findings, its Python API changed; or (b) the builders return the structure as now, and one check after the build says the findings: the structure's own (an aldehyde end, a duplex clash) read off what was built, a backend's limits (a form it cannot enforce, a terminal it ignores) a table of what each backend can do, shown on every builder panel through the one renderer | (b) *(the user, 2026-10-31: "go with b")* | F0b |
 
 **Still the user's words** (no work waits on them): a result written before
 2.49.0 keeps its stored Methods sentence beside the free atoms' sentence;

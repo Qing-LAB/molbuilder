@@ -31,11 +31,12 @@ from .materialize import latest_attempt
 from .naming import job_dir_names, run_names, stage_refs
 from ..runrecord import LaunchRecordError, launch_record
 from .commands import (block, command, launch_lines, launch_pending,
-                       prep_group_lines)
+                       prep_group_lines, rollback)
 from .model import JobSet
 from .continuation import (gathered_lines, point_rows, points_state,
                            stage_run_state, taken_over)
 from .plan import resources_text
+from .ready import MISSING
 
 # Engine-native warm-restart files keyed by the project id (system label),
 # DERIVED from the one rules file (job-contracts § 4.2a; U3/W2).  The carry rows are status's
@@ -279,13 +280,6 @@ def _pending_detail(attempt, detail: str) -> str:
             and opened_by_refused_send(attempt) else detail)
 
 
-#: A PREPARED stage whose run folder is not on disk -- against the design,
-#: said as such (a stage not prepared is the ready door's `described`):
-#: ``(state, detail)``.
-MISSING = ("missing", "the job set names this run's folder; it is not on "
-                      "disk")
-
-
 def run_folders(base, task, stage_dir, stage: str):
     """EVERY RUN OF A STAGE, as folders -- ``(n, folder, point)``: each
     attempt ``run-<n>`` in order and, for a rung of points, each of its
@@ -313,7 +307,7 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     reads a run (`run_state_of`) -- a run of points as the run it is, its
     own row before its points: its state and count as `status` reads it,
     once per run (`continuation.points_state`), and its points' rows: a
-    point its ended walk never reached failed -- with the file it opens,
+    point its ended walk never reached *not run* -- with the file it opens,
     root-relative: the run door's answer (`runs.openable`) -- the root's
     `task.json` for a transmission run, whose result is the report at its
     point (§ 0.1).  ``[]`` for a stage nothing has prepared."""
@@ -718,6 +712,8 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     for g in groups:
         members = [by[m] for m in g.members]
         n = g.number
+        live = next((r for r in members if r.state in _ON_ITS_WAY), None)
+        bad = next((r for r in members if r.state in _ENDED_BADLY), None)
         if g.members_changed:
             # A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a member taken out, or
             # a stage put in, prepared or not: offered by no verb, which stage
@@ -744,8 +740,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
             # since its prep (R-P23 refuses its prep).
             step = ("in a job", f"{g.said} ({g.held[2]})",
                     ["molbuilder jobs status"])
-        elif g.since_prepared and not any(r.state in _ON_ITS_WAY
-                                          for r in members):
+        elif g.since_prepared and live is None:
             # CHANGED SINCE PREPARED (`job-system.md`, *The task*): never
             # launched, prepared again; launched and changed in its run
             # card alone, prepared again for its request, its runs kept
@@ -768,6 +763,13 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                 step = ("changed since prepared", words,
                         said_lines(redo_launched(g.members[0],
                                                  calc=calc))[1:])
+        elif g.missing is not None and live is None and bad is None:
+            # A PREPARED MEMBER WHOSE RUN IS NOT ON DISK -- the ready door's
+            # answer (`GroupAnswer.missing`) -- against the design, said,
+            # launched group or not; its group's prep prepares it again, the
+            # launched members' runs kept (`job-system.md`, *The next step*).
+            step = (MISSING[0], f"{MISSING[0]}: {g.missing} -- {MISSING[1]}",
+                    prep_group_lines([n], base=base))
         elif not g.launched:
             # PREPARED BY ANOTHER MOLBUILDER: said, the launch sending what
             # it wrote (`job-system.md` § 6.0).
@@ -778,9 +780,8 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                     if g.launchable else
                     ("waiting", "waits for: " + reason_of(g.why or ""), []))
         else:
-            live = next((r for r in members if r.state in _ON_ITS_WAY), None)
-            bad = next((r for r in members if r.state in _ENDED_BADLY), None)
             opened = next((r for r in members if r.state == "pending"), None)
+            odd = next((r for r in members if r.state != _DONE), None)
             if live is not None:
                 step = (live.state, f"{live.state}, let it finish",
                         [command("status", base=base)])
@@ -816,8 +817,13 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                 step = ("pending", f"{opened.name}: {opened.detail}",
                         launch_pending(opened.name, n, opened.attempt,
                                        base=base))
-            else:
+            elif odd is None:
+                # FINISHED, AND ONLY THEN: every member's newest run.
                 step = (_DONE, _DONE, [])
+            else:
+                # ANY OTHER STATE, in its row's words -- never *finished*.
+                step = (odd.state,
+                        f"{odd.name}: {_said(odd.state, odd.detail)}", [])
         out.append(GroupStep(group=n, stages=list(g.members), state=step[0],
                              words=step[1], lines=list(step[2])))
     first = next((i for i, s in enumerate(out) if s.state != _DONE), None)
@@ -923,9 +929,20 @@ def _sweep_next(status: JobSetStatus) -> str:
     the calculation (`job-system.md` § 7) -- the trials launch together, the
     ones already launched passed over, and what they measured is read back
     once they have run."""
+    from ..parse.dirs.job import FINAL_STATES
     stage, base = status.bench_of, status.base
     read = block([command("summarize", "bench", stage, base=base)])
     states = {s.state for s in status.stages}
+    # A TRIAL WHOSE RUN IS NOT ON DISK, OR DOES NOT READ, said by name with
+    # its way on (R-L28) -- before any launch, which would refuse it; never
+    # *ended*.
+    odd = [s for s in status.stages
+           if s.state not in FINAL_STATES + ("pending", "queued", "running")]
+    if odd:
+        return ("; ".join(f"{s.name}: {_said(s.state, s.detail)}"
+                          for s in odd)
+                + (" -- " + rollback("the benchmark's prep", base=base)
+                   if any(s.state == MISSING[0] for s in odd) else ""))
     if "pending" in states:
         return ("Trials not launched yet -- launch the sweep (the ones "
                 "launched are passed over):\n"
@@ -1063,60 +1080,87 @@ def _said(state: str, detail: Optional[str]) -> str:
     return state if not detail or detail == state else f"{state} -- {detail}"
 
 
-def job_members(calculation, members: Dict[str, Dict[str, str]]
-                ) -> List[tuple]:
-    """Each member of a job launched from this machine (`job-system.md`
-    § 6.0a): ``(stage, run, said)`` -- the stage, its run as a record names
-    it, and its state in the status door's words.  The run answers through
-    its own launch record, by the run door (`runs.run_of`,
-    `parse.dirs.run_state_of`): that run, never its stage's newest.  A run
-    of points, a container no one run of ours speaks for, is answered of
-    that run by its points (`continuation.stage_run_state`); a run no
-    longer on disk, and a calculation that does not read, are said."""
-    from ..calcdirs import CONTAINER, where
-    from ..runs import run_of, state_of
-    base = Path(calculation)
+@dataclass(frozen=True)
+class JobAnswer:
+    """`molbuilder jobs`' answer for one job launched from this machine
+    (`job-system.md` § 6.0a): each member ``(stage, run, said)`` -- the
+    stage, its run as a record names it, its state in the status door's
+    words -- and, for a sequence, the groups it has not launched yet, as the
+    job names them (``{"number", "stages"}``); ``unread``, why its
+    calculation does not read, when it does not -- which is then all that is
+    known of a group off the job's address."""
+    members: List[tuple]
+    not_reached: List[dict] = field(default_factory=list)
+    unread: Optional[str] = None
+
+
+def job_members(job) -> JobAnswer:
+    """THE STATUS DOOR'S ANSWER FOR A JOB, whole (`job-system.md` § 6.0a):
+    each member on the job's address, and for a sequence each group it
+    launched -- on its address, or by the runs whose launch records name it
+    (`ready.sequence_sent`, the one answer) -- then each group it has not
+    reached.  A run answers through its own launch record, by the run door
+    (`runs.run_of`, `parse.dirs.run_state_of`): that run, never its
+    stage's newest; a run of points, a container no one run of ours speaks
+    for, by its points (`continuation.stage_run_state`).  The calculation
+    is opened once; one that does not read, and a run no longer on disk,
+    are said."""
+    from ..calculation import open as open_calculation
+    from ..runrecord import RunRef, launch_record_path
+    from .ready import sequence_sent
+    base = Path(job.calculation)
     calc = None
     unread: Optional[str] = None
-    out = []
-    for stage, member in members.items():
-        run = member["run"]
-        record = base / member["launch_record"]
-        ran = run_of(record) if record.exists() else None
-        if ran is not None:
-            st = state_of(ran)
-            out.append((stage, run, _said(st.state, st.detail)))
+    try:
+        calc = open_calculation(base)
+    except (OSError, ValueError, KeyError) as exc:
+        unread = f"its calculation does not read: {exc}"
+    members = [(stage, m["run"],
+                _member_said(calc, unread, base, stage,
+                             base / m["launch_record"]))
+               for stage, m in job.members.items()]
+    not_reached: List[dict] = []
+    for g in (job.sequence or {}).get("groups", []):
+        sent = sequence_sent(calc, g["stages"], job)
+        if sent is None:
+            not_reached.append(g)
             continue
-        # WHERE ITS LAUNCH RECORD'S FOLDER IS (`calcdirs.where`): a run of
-        # points' run, a container.
-        if (not record.parent.is_dir()
-                or where(record.parent).role != CONTAINER):
-            out.append((stage, run, "its run is not on disk"
-                        if not record.exists()
-                        else "its launch record names no run of ours"))
-            continue
-        # A RUN OF POINTS: THAT RUN, by the one door for a run's state
-        # whichever kind (`continuation.stage_run_state`) -- never its
-        # stage's newest.
-        if calc is None and unread is None:
-            try:
-                from ..calculation import open as open_calculation
-                calc = open_calculation(base)
-            except (OSError, ValueError, KeyError) as exc:
-                unread = f"its calculation does not read: {exc}"
-        named = (next((s.name for s in calc.task.stages
-                       if stage_key(s.name) == stage_key(stage)), None)
-                 if calc is not None else None)
-        if named is None:
-            out.append((stage, run,
-                        unread or "its description no longer holds it"))
-            continue
-        try:
-            state, detail = stage_run_state(calc, named, record.parent)
-        except LaunchRecordError as exc:
-            state, detail = "unreadable", str(exc)
-        out.append((stage, run, _said(state, detail)))
-    return out
+        # SENT BY THE SEQUENCE, AND NOT ON ITS ADDRESS: listed by its runs
+        # (on its address, ``{}``: listed above).
+        members += [(stage, str(RunRef.at(calc.base, run)),
+                     _member_said(calc, unread, base, stage,
+                                  launch_record_path(run)))
+                    for stage, run in sent.items()]
+    return JobAnswer(members, not_reached, unread)
+
+
+def _member_said(calc, unread: Optional[str], base: Path, stage: str,
+                 record: Path) -> str:
+    """One member's state, in the status door's words -- its run's, read
+    through its launch record ``record`` (:func:`job_members`)."""
+    from ..calcdirs import CONTAINER, where
+    from ..runs import run_of, state_of
+    ran = run_of(record) if record.exists() else None
+    if ran is not None:
+        st = state_of(ran)
+        return _said(st.state, st.detail)
+    # WHERE ITS LAUNCH RECORD'S FOLDER IS (`calcdirs.where`): a run of
+    # points' run, a container.
+    if not record.parent.is_dir() or where(record.parent).role != CONTAINER:
+        return ("its run is not on disk" if not record.exists()
+                else "its launch record names no run of ours")
+    # A RUN OF POINTS: THAT RUN, by the one door for a run's state whichever
+    # kind (`continuation.stage_run_state`) -- never its stage's newest.
+    named = (next((s.name for s in calc.task.stages
+                   if stage_key(s.name) == stage_key(stage)), None)
+             if calc is not None else None)
+    if named is None:
+        return unread or "its description no longer holds it"
+    try:
+        state, detail = stage_run_state(calc, named, record.parent)
+    except LaunchRecordError as exc:
+        state, detail = "unreadable", str(exc)
+    return _said(state, detail)
 
 
 @dataclass(frozen=True)
@@ -1175,7 +1219,8 @@ def scratch_answer(calc) -> ScratchAnswer:
     return ScratchAnswer(found, kept, free)
 
 
-__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "job_members",
+__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "JobAnswer",
+           "job_members",
            "run_folders", "every_run",
            "render_status", "render_stage_status", "ScratchAnswer",
            "scratch_answer"]

@@ -128,8 +128,9 @@ def trajectory_result_to_legacy_dict(
     # Two clocks, never one (parse.md § 2a).  ``wall_clock_s`` is an
     # absolute epoch and is the only one a consumer may render as a
     # date; ``elapsed_s`` counts from the run's start and is the only
-    # one it may render as a duration.  A parser fills whichever its
-    # engine actually reports and leaves the other None.
+    # one it may render as a duration.  A parser fills the epoch where its
+    # file states one; ``elapsed_s`` is derived from that series below --
+    # its one source (P-T3).
     out_wall_clock: List[Any] = []
     out_elapsed:    List[Any] = []
     # Per-frame "this frame is still being written" flag.  Set True

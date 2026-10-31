@@ -96,13 +96,22 @@ def continued_from_marker(where) -> Path:
     return Path(where) / _rf.CONTINUED_FROM_FILE
 
 
+def continued_from_text(source: RunRef) -> str:
+    """THE RECORD'S TEXT, ONE SPELLING for every writer of it -- this
+    module's own (:func:`write_continued_from`) and `jobset migrate`'s, which
+    adds the record an older molbuilder left out among its other writes:
+    ``source`` as :meth:`RunRef.read` reads it back."""
+    return str(source) + "\n"
+
+
 def write_continued_from(where, source: RunRef, *, plan=None) -> Path:
-    """THE ONE WRITER of the run a run continues from -- a hand-over's
-    record beside the run (`materialize.hand_over`, `job-system.md` § 5.4):
-    ``source`` as the run's :func:`continued_from_marker`, through
-    `persist`, or into ``plan`` (`jobset.planned.Plan`)."""
+    """The run a run continues from, written -- a hand-over's record beside
+    the run (`materialize.hand_over`, `job-system.md` § 5.4): ``source`` as
+    the run's :func:`continued_from_marker`, in the record's one text
+    (:func:`continued_from_text`, which `jobset migrate` writes too),
+    through `persist`, or into ``plan`` (`jobset.planned.Plan`)."""
     marker = continued_from_marker(where)
-    data = (str(source) + "\n").encode("utf-8")
+    data = continued_from_text(source).encode("utf-8")
     if plan is not None:
         plan.bytes(marker, data)
         return marker
@@ -648,4 +657,4 @@ def copied_in(stage_dir) -> Optional[str]:
 
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run",
            "newest_output",
-           "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]
+           "continued_from_marker", "continued_from_text", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]

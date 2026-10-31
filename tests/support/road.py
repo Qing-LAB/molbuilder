@@ -18,6 +18,8 @@ from the road it imitates.  The steps live here once.
   (coarse, medium);
 * :func:`ladder_edited` -- a description's ladder edited through Task
   setup's Save, as the page edits it;
+* :func:`set_by_the_person` -- a calculation's template items changed as a
+  person changes them in the file;
 * :func:`a_machine_with_queues` -- a machine record naming queues, and a
   SLURM submit command where the record says it is, off PATH, that writes
   down every call -- where it was made and what it said -- and refuses it:
@@ -347,8 +349,9 @@ def calls_made(calls: Path):
 # row with `bench`: its own `run` alone); `allocation` -- the job request's
 # `allocation`, over the table's `allocation_base` where the
 # machine has a scheduler; `run_unset` / `allocation_unset` -- base keys a row
-# takes away; `template` -- values in the template (SIESTA's over the
-# table's `siesta_template`); `bench` -- the job request's `bench`, then
+# takes away; `template` -- values in the template, the person's
+# (`set_by_the_person`; SIESTA's over the table's `siesta_template`), a
+# run setting among them onto the run card; `bench` -- the job request's `bench`, then
 # `prep bench`; `notify` -- the job request's `notify`, when the calculation
 # speaks up;
 # `machine_config` -- THIS machine's `molbuilder.json`; `prep` / `launch` --
@@ -382,9 +385,10 @@ def calls_made(calls: Path):
 # (`a_machine_with_queues`); `launched` -- the
 # stages then launched, each its newest run's launch record written by its
 # writer, no engine started (`_road_launched`); `changed` -- the records then
-# changed through Task setup's Save: blocks of the job request
-# (`{execution = {...}}`), and `overrides`, `{stage = {name = value}}`, into
-# the description (`_road_changed`); `removed` / `added` -- the
+# changed: `template`, `{name = value}`, in the template's file as a person
+# changes it (no run setting); and through Task setup's Save, blocks of the
+# job request (`{execution = {...}}`), and `overrides`,
+# `{stage = {name = value}}`, into the description (`_road_changed`); `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `regrouped` -- each stage's group set
 # anew, one number a stage, through the same Save, and `regroup_refused` --
@@ -695,16 +699,29 @@ def _road_launched(case, bundle) -> None:
 
 
 def _road_changed(case, bundle) -> bool:
-    """The records changed through Task setup's Save before the row's prep
-    -- ``changed``'s blocks of how it runs into the job request, and its
-    ``overrides``, ``{stage: {name: value}}``, into the description, each
-    name joining `varies` -- taken, or refused (:func:`_saved_or_refused`)."""
+    """The records changed before the row's prep: ``changed``'s
+    ``template``, ``{name: value}``, in the template's file as a person
+    changes it (:func:`set_by_the_person`); then, through Task setup's Save,
+    its blocks of how it runs into the job request, and its ``overrides``,
+    ``{stage: {name: value}}``, into the description, each name joining
+    `varies` -- taken, or refused (:func:`_saved_or_refused`)."""
     if "changed" not in case:
         return True
     import json
+    saved = {k: v for k, v in case["changed"].items() if k != "template"}
+    if "template" in case["changed"]:
+        from molbuilder.template import run_settings
+        on_card = set(case["changed"]["template"]) & set(
+            run_settings(case.get("engine", "siesta")))
+        # A RUN SETTING IS THE RUN CARD'S (`job-request.md` § 2): a row
+        # changes it under ``changed``'s blocks, never the template's.
+        assert not on_card, f"run settings under changed.template: {on_card}"
+        set_by_the_person(bundle, case["changed"]["template"])
+    if not saved:
+        return True
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)
-    for key, value in case["changed"].items():
+    for key, value in saved.items():
         if key == "overrides":
             for stage, values in value.items():
                 st = next(s for s in task["stages"] if s["name"] == stage)
@@ -958,7 +975,6 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     template values stated on the calculation's run card, where it lives
     (`execution/job-request.md` § 2), and a stage's own `restart` in its
     overrides, where what it builds on is said."""
-    import dataclasses
     import json
     engine = case.get("engine", "siesta")
     calculation = case.get("calculation", "optimization")
@@ -974,17 +990,7 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     card_values = {k: v for k, v in values.items() if k in on_card}
     values = {k: v for k, v in values.items() if k not in on_card}
     if values:
-        from molbuilder.config.pyscf import PySCFConfig
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.template import (config_from_template,
-                                         template_with_values)
-        from molbuilder.template_file import template_path
-        cls = SiestaConfig if engine == "siesta" else PySCFConfig
-        path = template_path(bundle, "H2")
-        cfg = dataclasses.replace(
-            config_from_template(path.read_text(), cls), **values)
-        path.write_text(template_with_values(cfg, engine=engine,
-                                             calculation=calculation))
+        set_by_the_person(bundle, values)
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)
     # THE GROUPS THE ROW STATES, one number a stage, in order -- and each
@@ -1364,3 +1370,21 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             assert now == was, sorted(set(now.items()) ^ set(was.items()))
         if "after_launch" in case:
             _road_after_prep(case["after_launch"], bundle)
+
+
+def set_by_the_person(calculation: Path, values: dict) -> None:
+    """Items of ``calculation``'s template changed as a person changes them
+    in the file: each value of ``values``, said to be the person's
+    (`engines/template.md` § 6.6), written by `template.with_values_set` --
+    the template found by its door (`calculation.open`), never named here."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.engine_table import config_class
+    from molbuilder.template import one, read_template, with_values_set
+    calc = open_calculation(calculation)
+    path = calc.template.path
+    path.write_text(with_values_set(
+        calc.template_text, config_class(str(calc.task.engine)),
+        calculation=str(calc.task.calculation), values=values,
+        source="person"))
+    read = read_template(path.read_text())
+    assert all(one(read, k).source == "person" for k in values), values

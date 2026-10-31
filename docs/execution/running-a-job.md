@@ -544,8 +544,9 @@ one; a **diverged** SCF, whose retry resumes from the diverged density and is
 the same run again — the monitor warns instead (`model/parse.md` § 5d.6)
 *(not built — plan § 5t, P4: no divergence verdict or symptom is read yet, so a
 diverged SCF that SIESTA stopped reads as the first row's and is retried)*; and
-anything, when `mb_monitor.pyz` is not beside the job or does not load on the
-job's python (the log says so).
+anything, when the ending cannot be read — `mb_monitor.pyz` not beside the
+job, not loading on the job's python, or not reading the output
+(`job-contracts.md` § 2.6; the log says so, once).
 
 **A run that cannot resume is retried as the budget says, and said to
 re-run.** SIESTA re-runs a force-constant run from its reference (undisplaced)
@@ -869,7 +870,8 @@ A run of points' point asks it with its run's one record, from the run's
 folder, where the record lies and the file it names is named from
 (`rundir.run_state_of`, given the run's folder — the one door every reader
 of a point's state asks) — so a sweep the scheduler stopped reads `failed`
-at every point not done, the ones the walk never reached too.
+at the point it stopped while running, and `not run` at every point its walk
+never began (*The states*, below).
 
 **A point with a step after its engine is not done when its engine is**
 ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 10;
@@ -971,8 +973,8 @@ does for you*, 3).
 
 **Before the first output**, a direct launch reads `queued` (its `run.json` is
 written as the process starts). One stopped before writing anything reads
-`failed` by its scheduler's line or its monitor's closing record — a walk's
-member the job never reached too, its job's line naming it — or `queued`
+`failed` by its scheduler's line or its monitor's closing record — a point
+its walk never began reads `not run` instead (*The states*) — or `queued`
 when nothing says so; an engine that merely died still reaches the wrapper's marker and reads
 `failed`; a job with no python of its env, or one that cannot run its
 finish, stops before its engine and says so in its marker (`no env python`,
@@ -987,6 +989,9 @@ stateDiagram-v2
     queued --> failed: nonzero marker, the scheduler's line or the monitor's closing record, no output
     running --> finished: an end (with a finish, its marker rc 0), else marker rc 0
     running --> failed: a stop, a failed finish, else nonzero marker, else the scheduler's line, else the monitor's closing record
+    pending --> notrun: its run's walk ended before starting it
+    queued --> notrun: its run's walk ended before starting it
+    notrun: not run
     note right of running: no clock moves a run out of here
 ```
 
@@ -995,7 +1000,7 @@ stateDiagram-v2
 | surface | its words | read from |
 |---|---|---|
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
-| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
+| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read; and `not run`, a point of a run of points its ended walk never started, as the run door reads it — *The states*) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
 | a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unreadable` (its launch record is there and does not read); for a prepared stage not launched, the ready door's *ready to launch* — *(prepared by molbuilder X.Y.Z)* when another molbuilder prepared it — / *waits for*; *changed since prepared* and each value that differs ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*); for one not prepared, `described` — or *waits before it can be prepared*, with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |

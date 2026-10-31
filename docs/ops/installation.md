@@ -25,10 +25,10 @@ runs in its backend env, which its run script activates.
 ```mermaid
 flowchart TD
   HOST["molbuilder (host env)<br/>the web UI + CLI + build-time chemistry<br/>python · ase · rdkit · openbabel · flask · sisl · netCDF4"]
-  HOST -->|"conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)<br/>+ numpy · ase · sisl · netCDF4 (what a job's python reads its run and writes its result with)"]
-  HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · numpy · ase · netCDF4 · (gpu4pyscf)"]
-  HOST -->|"conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
-  HOST -->|"conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
+  HOST -->|"installs, probes: conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)<br/>+ numpy · ase · sisl · netCDF4 (what a job's python reads its run and writes its result with)"]
+  HOST -->|"installs, probes: conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · numpy · ase · netCDF4 · (gpu4pyscf)"]
+  HOST -->|"installs, probes: conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
+  HOST -->|"installs, probes: conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
   HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib · ase/sisl/netCDF4<br/>(optional)"]
 ```
 
@@ -477,12 +477,13 @@ activities have no fallback path at all.
 
 ## 4. The `molbuilder` command
 
-After install, `python -m molbuilder <cmd>` gives you the CLI. The top-level
-commands include `serve` (the web UI), `run` (emit a run wrapper), `envs`
-(this doc), `pseudo`, `bench`, `jobset`, `transport`, the structure builders
-(`smiles`/`name`/`dna`/`rna`/`peptide`), and the converters (`fdf`, `pyscf`).
-Each has its own home — see [`execution/`](?doc=execution/overview.md) for the
-run/job commands.
+After install, `python -m molbuilder <cmd>` gives you the CLI, and
+`python -m molbuilder --help` lists every command with what it does — the one
+list, kept by the CLI itself. The ones a person starts with: `serve` (the web
+UI), `describe` and `jobset` (a calculation: describe it, prepare it, launch
+it, read it back), `jobs` (the jobs launched from this machine), `envs` (this
+doc) and `pseudo`. Each has its own home — see
+[`execution/`](?doc=execution/overview.md) for the run and job commands.
 
 ## 5. A worked example
 
@@ -498,9 +499,11 @@ python -m molbuilder envs list      # confirm every env is healthy
 python -m molbuilder serve start    # open http://127.0.0.1:8000
 ```
 
-A SIESTA job you launch from the UI now runs via `conda run -n molbuilder-siesta`;
-a PySCF spectrum via `conda run -n molbuilder-pySCF` — you never activate those
-yourself.
+A SIESTA job's run script enters `molbuilder-siesta`, and a PySCF job's
+`molbuilder-pySCF`, with the activation line of the machine it runs on — the
+`env_init` that machine's record holds
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2) — so you never
+activate those yourself.
 
 ## 6. Appendix — building the GPU SIESTA (optional)
 

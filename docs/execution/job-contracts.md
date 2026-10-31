@@ -1023,8 +1023,11 @@ the wrapper types none of them.
 | `_mb_ending` | the ending in words — *how it ended: …* | printed after a failure |
 | `_mb_ending stopped-by MARKER` | exit 0 when the run's cause is that marker | the `propor` hint; the warm retry after an SCF that SIESTA made fatal (`SCF_NOT_CONV … (required)`) |
 | `_mb_ending relaxation-capped` | exit 0 when a relaxation used its moves without converging | the geometry-cap warm retry |
+| any — **the one ask first** | the wrapper asks ONCE, before its first question, whether the ending can be read here: the ending in words, read by the bundle on the job's python, the words kept for the failure's line (`_mb_ending_able`) *(user, 2026-09-28: "ask the bundle once")*. An output not there, asked beside its stderr as the wrapper always asks, is read as one that states no ending, its stderr read for why | — |
 | any, with no `mb_monitor.pyz` beside the job | exit 2 — cannot read | no hint and no warm retry, said once in the wrapper's log |
-| any, with `mb_monitor.pyz` there but not loadable on the job's python | exit 2 — cannot read. The wrapper asks the bundle ONCE, before its first question (`mb_monitor.pyz loads`, remembered by `_mb_ending_able`), so its load error — one `ERROR` line and the traceback — prints once, to the session log and the job's stderr *(user, 2026-09-28: "ask the bundle once")* | no hint and no warm retry, said once in the wrapper's log; the monitor's own start said why first ([`run-reports.md`](?doc=execution/run-reports.md) § 2.6) |
+| any, with `mb_monitor.pyz` there but not loadable on the job's python | exit 2 — cannot read; its load error — one `ERROR` line and the traceback — printed once, by the one ask, to the session log and the job's stderr | no hint and no warm retry, said once in the wrapper's log; the monitor's own start said why first ([`run-reports.md`](?doc=execution/run-reports.md) § 2.6) |
+| any, with the bundle loading and the output there but not read — a file that does not read, a reader that raises | exit 2 — cannot read, why on stderr, *the ending cannot be read -- …*, printed once, by the one ask | no hint and no warm retry, said once in the wrapper's log |
+| a question that is not one, or asked with other than its arguments | exit 2, said as usage on stderr before anything is read — the wrapper's own rendering at fault, never an ending | — |
 
 **It reads the output and SIESTA's stderr**, which the wrapper's session log
 holds: SIESTA's `die` flushes stdout on node 0 alone

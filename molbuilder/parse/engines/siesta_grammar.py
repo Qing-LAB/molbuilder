@@ -496,11 +496,6 @@ E_KS_LINE = "siesta: E_KS(eV)"
 #: The bare ``siesta: Etot = ...`` of the energy decomposition, never
 #: ``Etot/N`` or ``Etot(eV)``, which are other rows.
 ETOT_LINE = re.compile(r"^\s*siesta:\s+Etot\s*=\s*[-\d]", re.IGNORECASE)
-#: SIESTA's IterSCF timer, CUMULATIVE since the start of the run: ``timer:
-#: Routine,Calls,Time,% = IterSCF  <calls>  <time>  <percent>``.
-ITER_SCF_TIMER = re.compile(
-    r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*IterSCF\s+(.+)$",
-    re.IGNORECASE)
 #: Lines only a SIESTA-family output prints, in lower case, for the format
 #: sniffer (`engines/siesta.py`): the banner, the system type, the blocks
 #: above, and a relaxation's step openers.

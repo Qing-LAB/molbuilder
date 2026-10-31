@@ -192,9 +192,12 @@ instead of raising.
 ## 2a. Time fields name their clock
 
 Engines report time in whatever frame of reference suits them. A `.molwatch.log`
-carries the writer's own `time.time()`; a SIESTA `.out` carries `timer:` lines
-counting from the start of the run, and states the time of day only at its two
-ends. **Both are legitimate; neither is convertible into the other from the file
+carries the writer's own `time.time()`; a SIESTA `.out` states the time of day
+only at its two ends, and its `timer:` lines time its routines, not the run —
+the *IterSCF* line is printed once, after the run's first SCF iteration, with
+that iteration's time (SIESTA's `siesta_forces.F90`, `print_timings`: *"the
+first SCF loop only"*; a TranSIESTA device prints `TS` too, after its first
+NEGF iteration). **Neither is convertible into the other from the file
 alone.**
 
 So the *field name* carries the frame of reference, and there is no neutral
@@ -242,8 +245,8 @@ _fmt_duration`, `4m05s`): a measurement compared across trials.
 
 **P-T2 — `None` means "this engine cannot say", and is a correct final answer.**
 A parser never converts one kind to fill the other's hole, and never substitutes
-a value it did not read. SIESTA's `wall_clock_s` is `None` forever — no step
-carries a clock. The run's two ends are a different reading and have their own
+a value it did not read. SIESTA's `wall_clock_s` and `elapsed_s` are `None`
+forever — no step carries a clock. The run's two ends are a different reading and have their own
 names, `run_start_local` / `run_end_local` in `runtime_info`: naive, because
 SIESTA prints the node's local time with no zone (§ 5d.2). That is
 output, not missing data — and it is what lets a consumer fall back to the
@@ -1482,7 +1485,7 @@ flowchart LR
   RES --> REC["the run record (§ 5d)<br/>→ the Run panel"]
   TP  --> REC
   MP  --> REC
-  MLP --> WATCH["<code>/api/watch</code> → the browser<br/>plot x-axis + Finished badge"]
+  MLP --> WATCH["<code>/api/watch</code> → the browser<br/>the running badge's duration"]
   RM  --> NOTE["the notification card"]
 ```
 
@@ -1492,8 +1495,8 @@ window from its own input:
 | field | window it measures | its ONE source | the API | who reads it |
 |---|---|---|---|---|
 | `wall_clock_s` | an absolute instant | the molwatch emitter's epoch | `MolwatchLogFileParser` | the Finished badge's timestamp |
-| `elapsed_s` | since the **run** began | the frame epoch series, `t[i] − t[0]` | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` — the one home P-T3 allows | the plot's x-axis, the badge's duration |
-| `engine_elapsed_s` | the **engine**, launch to exit | the wrapper's `benchmark: <program> wall <s>s` line | `wrapper_log.read_wrapper_log` | the run record (§ 5d.2) |
+| `elapsed_s` | since the **run** began | the frame epoch series, `t[i] − t[0]` | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` — the one home P-T3 allows | the badge's *total* while a run is going, and a file of no run's (`web/trajectory.md` § 4); `molbuilder watch parse` / `watch tail` |
+| `engine_elapsed_s` | the **engine**, launch to exit | the wrapper's `benchmark: <program> wall <s>s` line | `wrapper_log.read_wrapper_log` | the run record (§ 5d.2): the Run panel's wall, and the badge's *total* once a run has ended (`runs.run_answer`) |
 | `monitored_elapsed_s` | since the **monitor** started | `util.csv` rows, `epochs[-1] − epochs[0]` | `util_csv_metrics` | the bench table's `monitored` column |
 | `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
 | `run_start_local` · `run_end_local` | the run's two ends, as the node's local time of day | the `.out`'s `>> Start of run` / `>> End of run` | `siesta_grammar.read_launch_line` | the run record (§ 5d.2) |
@@ -1872,7 +1875,7 @@ travels beside every job.
 
 | phase | its rows | attached to each cycle |
 |---|---|---|
-| `periodic` | `scf:` — E_KS, dDmax, dHmax, Ef | the IterSCF timer, as cumulative `elapsed_s`; in a device, `ts-Vha:` too |
+| `periodic` | `scf:` — E_KS, dDmax, dHmax, Ef | in a device, `ts-Vha:` |
 | `negf` | `ts-scf:` — the same columns | `ts-q:` — the region charges, `dq`, and `qup_minus_qdn` when polarized — and `ts-Vha:` |
 
 A new phase is not a restart: the periodic cycles stay beside the NEGF loop's,

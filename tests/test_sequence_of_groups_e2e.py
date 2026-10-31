@@ -110,10 +110,10 @@ def road(isolated_projects_root_module, tmp_path_factory):
         # launched the last one -- asked of that group's own runs, after
         # the reads, so a job faster than them is said, not passed over.
         from molbuilder.calculation import open as open_calculation
-        from molbuilder.jobset.materialize import newest_launch
+        from molbuilder.jobset.materialize import ever_launched
         opened = open_calculation(left)
         said["reached_last"] = any(
-            newest_launch(opened, opened.jobset.job(st)) is not None
+            ever_launched(opened, opened.jobset.job(st))
             for st in groups[-1][1])
         from molbuilder.joblist import Job, every, going_here
         job = next(j for j in every()

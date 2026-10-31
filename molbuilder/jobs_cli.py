@@ -4,9 +4,10 @@ job's address and asks, fresh, what it is doing; `stop` stops one.
 
 A surface (`execution/architecture.md` § 2, floor 7): the addresses are
 `joblist`'s, the queue's answers `scheduler.queue`'s -- asked of the
-scheduler the job's calculation's record names -- each member's state
-the status door's (`jobset.runstatus.job_members`); the stop is written in
-the calculation's ledger.
+scheduler the job's calculation's record names -- each member's state and
+a sequence's groups not reached the status door's
+(`jobset.runstatus.job_members`); the stop is written in the calculation's
+ledger.
 """
 from __future__ import annotations
 
@@ -47,17 +48,17 @@ def _shown(job, said: str) -> list:
             f"  {command('status', base=job.calculation)}"]
 
 
-def _not_reached(job) -> list:
-    """A SEQUENCE'S GROUPS NOT LAUNCHED YET -- none of their stages among
-    its members -- each said (`job-system.md` § 6.0a)."""
-    from .identity import stage_key
-    if not job.sequence:
-        return []
-    launched = {stage_key(m) for m in job.members}
-    return [f"    group {g['number']}  {', '.join(g['stages'])}  "
-            f"not launched yet"
-            for g in job.sequence["groups"]
-            if not launched & {stage_key(s) for s in g["stages"]}]
+def _members(job) -> list:
+    """The job's members, each with its state, then a sequence's groups not
+    launched yet -- the status door's answer (`runstatus.job_members`),
+    rendered."""
+    from .jobset.runstatus import job_members
+    got = job_members(job)
+    return ([f"    {stage}  {run}  {state}"
+             for stage, run, state in got.members]
+            + [f"    group {g['number']}  {', '.join(g['stages'])}  "
+               f"{got.unread or 'not launched yet'}"
+               for g in got.not_reached])
 
 
 def _record(job, decision: str, **facts) -> None:
@@ -75,7 +76,6 @@ def cmd_jobs_status() -> None:
     """Every job's address, and what it is doing now -- its process or the
     scheduler, and each member's run as `jobset status` reads it.  A job
     that has ended is shown once, then its file is removed."""
-    from .jobset.runstatus import job_members
     from .joblist import Asked, JobFileError, every, forget, is_going
     jobs = every()
     here = Asked()
@@ -89,10 +89,7 @@ def cmd_jobs_status() -> None:
         going, said = is_going(job, here)
         for line in _shown(job, said):
             click.echo(line)
-        for stage, run, state in job_members(job.calculation,
-                                             job.members):
-            click.echo(f"    {stage}  {run}  {state}")
-        for line in _not_reached(job):
+        for line in _members(job):
             click.echo(line)
         if going is False:
             click.echo("  ended -- said once; its address is removed")
@@ -133,9 +130,7 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
             f"{job.id} is waited on at its terminal: stop it there, with "
             f"Ctrl-C")
     said = confirm("\n".join(
-        ["about to stop:", *_shown(job, saying),
-         *(f"    {stage}  {m['run']}" for stage, m in job.members.items()),
-         *_not_reached(job)]),
+        ["about to stop:", *_shown(job, saying), *_members(job)]),
         auto_yes=yes, question="stop it?", default=False)
     # THE QUESTION AND ITS ANSWER, written down as a launch writes its own
     # -- a no, and nobody to ask, too (`job-system.md` § 6.0, step 5).

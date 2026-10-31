@@ -683,7 +683,8 @@ def gathered_lines(folder) -> List[str]:
 
 def never_reached(pts) -> list:
     """``pts`` of a run of points that has ended, each point still pending
-    or queued -- one its walk never ran -- failed, its why the job's own
+    or queued -- one its walk never ran -- *not run* (`runpoints.NOT_RUN`),
+    never failed, its why the job's own
     (`runpoints.why_not_run`, `execution/runs-of-points.md` § 4.5): *it
     builds on <words>, which failed*, or `runpoints.NEVER_REACHED`."""
     from ..runpoints import NOT_RUN, why_not_run

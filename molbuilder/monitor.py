@@ -3019,9 +3019,9 @@ def _point_main(argv) -> int:
         return back
     event, detail, reason = got
     if event == "finish":
-        # THE WALK IS OVER: a point it never ran said failed, as the status
-        # door says it; the kind's finish step; the run's state by its one
-        # rule (`runpoints.run_state`).
+        # THE WALK IS OVER: a point it never ran said *not run*, as the
+        # status door says it; the kind's finish step; the run's state by its
+        # one rule (`runpoints.run_state`).
         closed = _write(lambda index: _rp.close(index, rows))
         if closed is not None:
             index, rows = closed, _rp.rows_of(closed, run_dir)

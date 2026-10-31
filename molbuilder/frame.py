@@ -113,16 +113,9 @@ class Frame:
                       A cycle may also carry a TIME, and it obeys the
                       same two-clock rule as the frame's own (§ 2a of
                       parse.md): `wall_clock_s` from molwatch (the
-                      emitter's epoch), `elapsed_s` from SIESTA (its
-                      IterSCF timer, cumulative from the run's start),
-                      never both and never interchangeable.  A
-                      consumer must still ask for the one it means:
-                      the browser's per-iteration figure divides by
-                      `cumulative_calls`, which is arithmetic on a
-                      DURATION, so it reads `elapsed_s` alone and
-                      treats an epoch as absent.  The residual keys
-                      stay engine-specific by design; time is not
-                      engine-specific physics.
+                      emitter's epoch); a SIESTA cycle carries none.
+                      The residual keys stay engine-specific by design;
+                      time is not engine-specific physics.
       wall_clock_s -- Absolute Unix epoch seconds when the engine
                       wrote this step.  Answers "at what time?", and
                       is the ONLY field a consumer may render as a
@@ -140,17 +133,14 @@ class Frame:
                       file does not contain the missing addend.
       elapsed_s    -- Seconds since the run began.  Answers "how far
                       in?", and is the ONLY field a consumer may
-                      render as a duration.  SIESTA fills it from its
-                      ``timer: ... IterSCF`` lines.  Parsers whose
-                      engine reports epochs leave it None and let
-                      ``trajectory_result_to_legacy_dict`` derive it from the epoch
-                      series -- one derivation, one home (P-T3).
-                      Both stay None for formats that surface no time
-                      at all (geomeTRIC's _geom_optim.xyz).  Together
-                      these drive the watch UI's "Started 2h 15m ago,
-                      last step 30s ago" -- the latency-of-progress
-                      signal a researcher actually wants when staring
-                      at a long run.
+                      render as a duration.  No parser fills it from a
+                      file: ``trajectory_result_to_legacy_dict``
+                      derives it from the epoch series -- one
+                      derivation, one home (P-T3).  Both stay None for
+                      formats that surface no time at all: a SIESTA
+                      .out (its ``timer:`` lines time its routines, and
+                      no step carries a clock -- P-T2), geomeTRIC's
+                      _geom_optim.xyz.
       in_progress  -- True when this Frame represents a calculation
                       mid-flight rather than a completed geometry step
                       with a real outcoor block.  Set by parsers when

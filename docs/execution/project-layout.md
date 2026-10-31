@@ -495,7 +495,18 @@ which is why there is no migration step and nothing to reindex.
 
 ### 1.5 A run is immutable
 
-**A run directory is written once and never modified.** Launching a stage again
+**What a run computed is never changed.** After its launch has ended, a
+run directory receives only these, and none changes what it computed:
+molbuilder's records of it — its launch record's `ended`, the scheduler's
+answer about a sent job, written once (`runrecord.record_ended`, § 1.6.3),
+and what `jobset migrate` brings on when a person asks it to: an index of
+points an older molbuilder wrote, rewritten and kept beside the new one as
+`<name>.pre-<rule>`; a point's start record (`.continued-from`) an older
+molbuilder left out; a transport lead's files renamed onto its own stem,
+every byte kept (`jobset/migrate.py`, its module's list of what it brings
+on); readings kept beside a file on a person's word (§ 5.3: a data file's
+digest, `runtime-info`'s sidecar, the parse log); and an engine's scratch
+taken away on a person's word (`jobset scratch --empty`, § 6) — scratch is no result. Launching a stage again
 after it stopped makes `run-1`, carrying what it needs from `run-0` and leaving
 `run-0` exactly as it was. A change to a launched stage is not a run: a
 change of how it runs prepares it again, its deck the same calculation
@@ -2940,9 +2951,10 @@ single history live in their own contracts and are cited, not repeated.
    engine's scratch of the run above it, which is neither (§ 1.4a). A run's
    output stays inside it; nothing a run writes appears above it.
 8a. **An attempt is immutable.** Once its launch has ended — warm
-   retries included, which run within it (§ 1.6.1) — it never changes, and once archived
-   it must never differ from its recorded checksum — which is
-   `checkpointing.md`'s I2 applied to a directory instead of a file (§ 11).
+   retries included, which run within it (§ 1.6.1) — what it wrote never
+   changes, and once archived it must never differ from its recorded
+   checksum but for what § 1.5 names — which is `checkpointing.md`'s I2
+   applied to a directory instead of a file (§ 11).
 9. **The description and its job request are the only sources at ③.** No produce and no run modifies it
    (`checkpointing.md`, S4).
 

@@ -388,8 +388,8 @@ ASURITE; add lab members by editing `allowed_users` in
   molbuilder only checks the returned email against `allowed_users`.
 - With auth on, a browser request without a session is redirected to
   `/login`; an `/api/*` request gets a clean `401` JSON naming the
-  login URL. Always open regardless: the login/callback/logout
-  routes, `/api/health`, and static assets.
+  login URL. What answers without a session is
+  [`access-control.md`](?doc=ops/access-control.md) § 3.2's list.
 - The session cookie is signed with the key at `<config dir>/secrets/secret_key`
   — one home, not a configured path (`configuration.md` § 2.1e) —
   auto-generated `0600` on first run, and the cookie is
@@ -404,7 +404,7 @@ ASURITE; add lab members by editing `allowed_users` in
 
 ## 4. Security posture
 
-> **The design of the gates — why there are four, what each refuses and how,
+> **The design of the gates — why each question has its own, what each refuses and how,
 > and the rules underneath — is [`access-control.md`](?doc=ops/access-control.md).**
 > This section is the operational half: the headers, the knobs, and the routes.
 
@@ -492,8 +492,8 @@ revalidation described in
 module-swapping — a new process is the whole mechanism, which is why it can't
 leave half the app running old code.
 
-**`POST /api/admin/reload` does not exist unless two things are true**, and the
-route is **absent (404), not refused (403)**, when either fails — so a
+**`POST /api/admin/reload` restarts the server only when two things are true** — absent
+(404) with no supervisor, refused (403) to a caller who is not an admin — so a
 misconfiguration reads as *the button is missing*, never as *anyone can restart
 the server*:
 
@@ -509,8 +509,8 @@ the server*:
    different privileges. This one decides what the route **answers**.
 
 The button is drawn hidden and revealed only after
-`GET /api/admin/reload/available` says this session may use it, so most people
-never see it. It asks for confirmation first, naming the cost out loud: everyone
+`GET /api/admin/reload/available` says this session may use it, so a session
+the `admin` section leaves out never sees it. It asks for confirmation first, naming the cost out loud: everyone
 using the server is disconnected, and workspace writes still in flight are lost
 (`persist` doesn't wait for the server — [`web/workspace.md`](?doc=web/workspace.md) § 6).
 

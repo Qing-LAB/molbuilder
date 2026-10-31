@@ -2,7 +2,8 @@
 from its one source (`model/parse.md` § 2a P-T2 and P-T4, `web/results.md`
 § 3a): the SCF line's seconds per iteration are the SCF-timing log's, read
 by the reader the run record reads them by; the badge's "ended" time is the
-output's own ``>> End of run``.
+output's own ``>> End of run``, and its "total" the run's own length, the
+engine's wall its record states (`web/trajectory.md` § 4).
 
 The run is the layered H2 relaxation's first `coarse` run, made once in this
 pass on the road (`support/real_runs.py`, run A of plan § 5y), opened in the
@@ -83,10 +84,14 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
         finished, tree, page, flask_server, monkeypatch):
     """The SCF line's rate is the number the run record states -- the
     SCF-timing log, through one reader -- and the badge dates the run by its
-    output's end.
+    output's end and says its total as the record's engine wall, the Run
+    panel's.
 
-    MUTATION THIS MUST FAIL AGAINST: the viewer computing its own rate.
+    THE SILENT FAILURES: the viewer computing its own rate; the badge's
+    total read off a SIESTA timer line that times one SCF iteration, so a
+    24 s run read *total 0s* (2.56.1).
     """
+    from molbuilder.report_fields import span_words
     time, ended = _the_runs_own_times(finished)
     _open(page, flask_server, finished, tree, monkeypatch)
     scf = page.locator("#scf-status").inner_text()
@@ -96,6 +101,8 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
                                                  rel=5e-3), (scf, time)
     detail = page.locator("#run-state-detail").inner_text()
     assert "ended" in detail and ended.strftime(":%M:%S") in detail, detail
+    assert f"total {span_words(time['engine_elapsed_s'])}" in detail, (
+        detail, time)
 
 
 def test_the_scf_plot_draws_both_tests_siesta_requires(

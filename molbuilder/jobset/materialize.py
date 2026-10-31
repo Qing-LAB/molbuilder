@@ -180,7 +180,8 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
     directory, where everything the run writes is created in place, because
     the wrapper is invoked there.  So anything asking *what happened to this
     stage?* asks here (§ 1.5a: every reader asks this one function), and
-    ``None`` -- no run opened -- is said as the stage not prepared.
+    ``None`` -- no run opened -- for a prepared stage is said *missing*
+    (`ready.MISSING`).
 
     This is a layout question, so it is answered in the layout layer rather
     than by each observer working out where to look.
@@ -253,23 +254,26 @@ def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     return attempt_dir(stage_dir, attempt_index(last.name) + 1), True
 
 
+def job_folder(calc, job) -> Path:
+    """``job``'s folder, as its plan names it (`naming.job_dir_names`) --
+    where its runs are, the folder launch's own gate asks (R-L28).  ``calc``
+    is the calculation as the verb read it (A16)."""
+    return Path(calc.base) / job_dir_names(calc.jobset)[job.name]
+
+
+def launched_run(calc, job) -> Optional[Path]:
+    """``job``'s newest launched run (:func:`newest_launched`) -- or
+    ``None`` before its first launch.  ``calc`` is the calculation as the
+    verb read it (A16): its plan.  A record that does not read raises, as
+    the one door does (`runrecord.launch_record`)."""
+    return newest_launched(job_folder(calc, job))
+
+
 def ever_launched(calc, job) -> bool:
     """Whether ``job``'s stage has been launched -- a run of it was
-    (:func:`newest_launched`).  ``calc`` is the calculation as the verb read
-    it (A16): its plan.  A record that does not read raises, as the one
-    door does (`runrecord.launch_record`)."""
-    return newest_launched(
-        Path(calc.base) / job_dir_names(calc.jobset)[job.name]) is not None
+    (:func:`launched_run`)."""
+    return launched_run(calc, job) is not None
 
-
-def newest_launch(calc, job) -> Optional[dict]:
-    """The launch record of ``job``'s newest launched run
-    (:func:`newest_launched`), or ``None`` before its first launch.  A
-    record that does not read raises, as the one door does
-    (`runrecord.launch_record`)."""
-    run = newest_launched(
-        Path(calc.base) / job_dir_names(calc.jobset)[job.name])
-    return runrecord.launch_record(run) if run is not None else None
 
 
 @dataclass(frozen=True)
@@ -790,7 +794,7 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
 __all__ = [
     "Attempt", "CONTINUED", "GATHERED", "HandOver", "hand_over",
     "bench_owner", "bench_stage_of", "scratch_in", "ScratchFile",
-    "materialize", "latest_attempt", "newest_launched", "newest_launch",
+    "materialize", "latest_attempt", "newest_launched", "job_folder", "launched_run",
     "resolve_attempt", "ever_launched", "empty_run",
     "empty_old_points", "prepare_attempt", "open_sweep_run",
     "open_run",

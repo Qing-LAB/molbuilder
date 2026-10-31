@@ -529,6 +529,9 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
     import dataclasses as _dc
     sg_rec = {k: v for k, v in (env_init or {}).items() if v}
     why_none = None
+    # THE DETECTION THAT FAILED IS AN ANSWER: what it would have measured is
+    # said unknown below, never a crash on the way to saying it.
+    caps = None
     try:
         caps = get_capabilities()
         envs_here = sorted(caps.conda_envs or ())
@@ -538,7 +541,7 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
                         if caps.conda_binary is None else
                         f"{caps.conda_binary} lists no environments")
     except Exception as exc:  # pragma: no cover - enumeration is best-effort
-        envs_here, why_none = [], f"listing them failed ({exc})"
+        envs_here, why_none = [], f"asking this machine failed ({exc})"
     env_arch = None
     if envs_here:
         import platform as _pl
@@ -549,7 +552,11 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
     # it, on the probe's own environment (`configuration.md` § 5 M-2).
     manager_run: Dict[str, Any] = {}
     run_unknown = None
-    if caps.conda_binary:
+    if caps is None or not caps.conda_binary:
+        # NOTHING TO MEASURE WITH: the machine could not be asked, or no
+        # environment manager answers here -- the inventory's own why.
+        run_unknown = why_none or "no environment manager answers here"
+    else:
         from .envs.builds import measure_manager_run
         here = os.environ.get("CONDA_PREFIX") or sys.prefix
         works = measure_manager_run(caps.conda_binary, here)

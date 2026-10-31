@@ -1422,8 +1422,8 @@ def _siesta_scf_timing_func() -> str:
     instrument (running-a-job.md § 4.1).
 
     GOAL: SIESTA emits **no usable per-iteration wall time** (the ``scf:``
-    lines carry energies + dDmax but no time; ``timer: IterSCF`` is
-    cumulative). This filter IS the benchmark's measurement instrument:
+    lines carry energies + dDmax but no time; ``timer: IterSCF`` is printed
+    once, with the first SCF iteration's time). This filter IS the benchmark's measurement instrument:
     it tees SIESTA stdout to the ``.out`` AND timestamps every ``scf:``
     iteration line into a per-run ``.scf-timing.log`` as
     ``<epoch.ns> <iter#> <full scf line>``, so per-iteration wall time =
@@ -1480,15 +1480,17 @@ def _ending_question_func() -> str:
 
     ``_mb_ending QUESTION [ARG]`` answers by exit status (0 yes, 1 no, 2 the
     ending cannot be read); ``_mb_ending`` alone prints the ending in words.
-    With the bundle missing, or not loading on the job's python, it answers
-    2 -- no hint and no warm retry.
+    With the bundle missing, not loading on the job's python, or not reading
+    the output, it answers 2 -- no hint and no warm retry.
 
-    ``_mb_ending_able`` ASKS THE BUNDLE ONCE whether it loads here
-    (``mb_monitor.pyz loads``) and remembers the answer, so a bundle that
-    cannot load prints its error once and the one place that asks first says
-    the ending cannot be read (user: "ask the bundle once").  It is asked in THIS shell
-    before any question, because an ask inside ``$( )`` cannot set anything its
-    caller sees.
+    ``_mb_ending_able`` ASKS ONCE whether the ending can be read here -- the
+    ending in words, read by the bundle on the job's python -- and remembers
+    the answer and the words (``_mb_ending_words``), so a bundle that cannot
+    load, or a reading that stops, prints its reason once and the one place
+    that asks first says the ending cannot be read (user: "ask the bundle
+    once").  It is asked in THIS shell before any question: an assignment
+    keeps what its ``$( )`` read, where an ask inside ``$( )`` alone could
+    set nothing its caller sees.
     """
     return (
         "# How the run ended, asked of the framework: `_run_ending`, in\n"
@@ -1498,8 +1500,9 @@ def _ending_question_func() -> str:
         "# 1 no, 2 cannot read; _mb_ending alone: the ending in words.\n"
         "_mb_ending_able() {\n"
         '    if [ -z "${_mb_ending_state:-}" ]; then\n'
-        f'        if [ -f {MONITOR_BUNDLE} ] \\\n'
-        f'           && "$_mb_py" {MONITOR_BUNDLE} loads; then\n'
+        f'        if [ -f {MONITOR_BUNDLE} ] && _mb_ending_words=$("$_mb_py" \\\n'
+        f'               {MONITOR_BUNDLE} ending "$_out_file" \\\n'
+        '               --stderr "$_runwrap_log"); then\n'
         "            _mb_ending_state=able\n"
         "        else\n"
         "            _mb_ending_state=unable\n"
@@ -2472,20 +2475,11 @@ def render_run_wrapper(script_path: Path, *,
     # Pre-command env exports.  Shared anti-oversubscription recipe
     # with PySCF / spectra (see molbuilder/runtime_info.py): BLAS is
     # ALWAYS pinned to 1 thread per rank so OMP * BLAS doesn't
-    # multiply.  OMP defaults differ by engine:
-    #
-    #   * SIESTA: ``OMP_NUM_THREADS = 1`` (mainline SIESTA is not
-    #     reliably OMP-aware; pure MPI is the standard recipe).  User
-    #     overrides via cfg.omp_threads only when running an
-    #     OMP-compiled SIESTA build (hybrid MPI+OMP).
-    #
-    #   * PySCF: the WRAPPER resolves and exports OMP_NUM_THREADS
-    #     (P1b) -- ``-omp`` flag, else OMP_NUM_THREADS, else the
-    #     scheduler's allocation, else the count stated at prep.  No
-    #     division by a rank count: PySCF is OpenMP-only.  Left unset,
-    #     the script's own chain would count the whole NODE -- wrong
-    #     under a scheduler, where a job holding 8 of 128 cores would
-    #     start 128 threads and time-slice them onto its 8.
+    # multiply.  The threads, on every engine, by the one chain
+    # (`running-a-job.md` § 3.2, `THREAD_SOURCES`): the ``-omp`` flag,
+    # else OMP_NUM_THREADS, else the scheduler's allocation, else the
+    # count stated at prep -- never filled in (`engines/tuning.md`
+    # § 2.12).
     env_prefix = ""
     if category == "siesta":
         # GPU mode is the run's own answer (its request, read above).  It
@@ -3577,9 +3571,11 @@ def render_run_wrapper(script_path: Path, *,
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
             f"    echo \"\"\n"
             f'    echo "===== {_prog_label} exited with code $_siesta_exit =====" >&2\n'
-            f'    _mb_ending_able || _log WARN "{_ENDING_UNREADABLE}"\n'
-            f'    _mb_said=$(_mb_ending) || _mb_said=""\n'
-            f'    [ -z "$_mb_said" ] || echo "how it ended: $_mb_said" >&2\n'
+            f'    if _mb_ending_able; then\n'
+            f'        echo "how it ended: $_mb_ending_words" >&2\n'
+            f'    else\n'
+            f'        _log WARN "{_ENDING_UNREADABLE}"\n'
+            f'    fi\n'
             f'    if _mb_ending stopped-by "{_G.PROPOR_MARKER}"; then\n'
             f"        cat <<HINT >&2\n"
             f"\n"
@@ -3619,18 +3615,18 @@ def render_run_wrapper(script_path: Path, *,
             f"    fi\n"
             f'    echo "the output: $_out_file -- this wrapper\'s log: '
             f'$_runwrap_log" >&2\n'
-            + (f'    # SCF_NOT_CONV abort: with SCF.MustConverge (SIESTA\n'
-               f'    # default true) an unconverged SCF stops the run\n'
-               f'    # NON-zero after banking the density matrix, and SIESTA\n'
-               f'    # says so -- "(required)" on its SCF_NOT_CONV line, then\n'
-               f'    # ABNORMAL_TERMINATION (Src/siesta_forces.F90) -- so the\n'
-               f'    # retry asks whether THAT stopped it.  A --continue\n'
-               f'    # restart resumes the SCF from that .DM with a fresh\n'
-               f'    # iteration budget -- unless the run cannot resume: a\n'
-               f'    # force-constant run restarts at its first step, and the\n'
-               f'    # banner and the retry message say so.  Crash classes (propor\n'
-               f'    # IMAX, generic aborts) are NOT retried -- rerunning\n'
-               f'    # cannot fix a defective pseudo or a bad rank count.\n'
+            + ('    # SCF_NOT_CONV abort: with SCF.MustConverge (SIESTA\n'
+               '    # default true) an unconverged SCF stops the run\n'
+               '    # NON-zero after banking the density matrix, and SIESTA\n'
+               '    # says so -- "(required)" on its SCF_NOT_CONV line, then\n'
+               '    # ABNORMAL_TERMINATION (Src/siesta_forces.F90) -- so the\n'
+               '    # retry asks whether THAT stopped it.  A --continue\n'
+               '    # restart resumes the SCF from that .DM with a fresh\n'
+               '    # iteration budget -- unless the run cannot resume: a\n'
+               '    # force-constant run restarts at its first step, and the\n'
+               '    # banner and the retry message say so.  Crash classes (propor\n'
+               '    # IMAX, generic aborts) are NOT retried -- rerunning\n'
+               '    # cannot fix a defective pseudo or a bad rank count.\n'
                if _retries > 0 else "")
             # STOPPED AT ITS WALL (MaxWalltime, running-a-job.md 3.6): its
             # restart state is saved and no time is left, so no retry --
@@ -3670,8 +3666,9 @@ def render_run_wrapper(script_path: Path, *,
                f"# Warm --continue resumes from the banked .XV/.DM/.CG with\n"
                f"# a fresh step budget.  A single point prints neither, so\n"
                f"# it cannot false-trigger.\n"
-               f'_mb_ending_able || _log WARN "{_ENDING_UNREADABLE}"\n'
-               f'if [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
+               f'if ! _mb_ending_able; then\n'
+               f'    _log WARN "{_ENDING_UNREADABLE}"\n'
+               f'elif [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
                f'   && _mb_ending relaxation-capped; then\n'
                f'    _mb_warm_retry "geometry relaxation hit its step cap '
                f'unconverged"\n'
@@ -3711,10 +3708,18 @@ def render_run_wrapper(script_path: Path, *,
                              # script's GPU probe runs on the same value
                              gpu=gpus.uses, member=point is not None)
             # NOT `exec`: the shell has to outlive the engine to conclude.
-            + f"set +e\n"
+            + f"_t_start=$(date +%s.%N)\n"
+            f"set +e\n"
             f"{inner}\n"
             f"_pyscf_exit=$?\n"
             f"set -e\n"
+            # THE ENGINE'S WALL, on the session log's own line -- the run
+            # record's for every engine (`running-a-job.md` § 4.1), read as
+            # the run's length once it has ended (`web/trajectory.md` § 4).
+            f"_t_end=$(date +%s.%N)\n"
+            f'_pyscf_wall=$(awk -v a="$_t_start" -v b="$_t_end" '
+            f"'BEGIN{{printf \"%.1f\", b-a}}')\n"
+            f'_log INFO "{WALL_LINE.format(program="PySCF", seconds="${_pyscf_wall}")}"\n'
             f'    # CONCLUDED -- an error is a conclusion (project-layout.md\n'
             f'    # 1.6, "the other file"): the engine returned and this\n'
             f'    # process gets to say goodbye.  MAIN LINE ONLY, never the\n'
@@ -4031,11 +4036,13 @@ from .report_cards import FILENAME as _CARDS_FILE, SHIPPED as _CARDS_SHIPPED  # 
 MONITOR_DATA: Dict[str, Path] = {_CARDS_FILE: _CARDS_SHIPPED}
 
 #: What the wrapper's log says when the ending cannot be asked: no bundle,
-#: or a bundle that does not load on the job's python -- whose error the
-#: one ask printed just above (`_mb_ending_able`).
+#: a bundle that does not load on the job's python, or a reading of the
+#: output that stops -- the last two's reason printed once, by the one ask
+#: (`_mb_ending_able`).
 _ENDING_UNREADABLE = (f"the ending cannot be read here ({MONITOR_BUNDLE} "
-                      f"is not beside the job, or does not load on its "
-                      f"python): no failure hint, no warm retry")
+                      f"is not beside the job, does not load on its python, "
+                      f"or could not read the output): no failure hint, no "
+                      f"warm retry")
 
 #: The bundle's entry: the monitor, whose exit status is the process's --
 #: `_run_ending`'s questions answer by it.  A bundle this python cannot
@@ -4046,11 +4053,9 @@ _ENDING_UNREADABLE = (f"the ending cannot be read here ({MONITOR_BUNDLE} "
 #: ``monitor: starting ...`` before the import and ``... started`` after it,
 #: so a ``starting`` with no ``started`` is a monitor that died loading -- and
 #: the error follows it, one line and the traceback.  The verbs that are no
-#: monitor print no pair: `ending` and `loads`, whose answers the wrapper
-#: waits on and reads by their exit status -- `loads` answers whether the
-#: bundle loads on this python and nothing else, so the wrapper can ask it
-#: once (`_mb_ending_able`) -- and the run's own steps, `notify` and a
-#: point's report steps, `point` (`execution/runs-of-points.md` § 3).
+#: monitor print no pair: `ending`, whose answer the wrapper waits on and
+#: reads by its exit status, and the run's own steps, `notify` and a point's
+#: report steps, `point` (`execution/runs-of-points.md` § 3).
 #:
 #: WRITTEN IN THE PYTHON EVERY INTERPRETER PARSES -- no f-strings, no print
 #: function -- because its whole job is to report a python that cannot load
@@ -4061,8 +4066,7 @@ _BUNDLE_MAIN = (
     f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
     f"(time.strftime({LOG_CLOCK!r}), level, message))\n"
     "    sys.stderr.flush()\n"
-    "_asked = sys.argv[1:2] in (['ending'], ['loads'], ['notify'], "
-    "['point'])\n"
+    "_asked = sys.argv[1:2] in (['ending'], ['notify'], ['point'])\n"
     "if not _asked:\n"
     f"    _say('INFO', 'monitor: starting {MONITOR_BUNDLE} on python %s (%s)'"
     " % (sys.version.split()[0], sys.executable))\n"
@@ -4074,8 +4078,6 @@ _BUNDLE_MAIN = (
     " % (type(_e).__name__, _e))\n"
     "    traceback.print_exc()\n"
     "    raise SystemExit(2 if _asked else 1)\n"
-    "if sys.argv[1:2] == ['loads']:\n"
-    "    raise SystemExit(0)\n"
     "if not _asked:\n"
     f"    _say('INFO', 'monitor: {MONITOR_BUNDLE} started')\n"
     "raise SystemExit(mb_monitor.main())\n")

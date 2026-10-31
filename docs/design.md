@@ -148,24 +148,26 @@ results back into `Frame` / `Trajectory` and owns persistence at every step.
 
 A laptop tool and a group server are the same program; what differs is who can
 reach it. `serve` reads and writes a real `projects/` tree, so the moment it
-leaves loopback there are four separate questions to answer — *do I know who
+leaves loopback there are separate questions to answer — *do I know who
 this is* (opt-in SSO; molbuilder stores no passwords and learns only an email),
 *does this traffic look like probing* (an always-on per-IP limiter that judges
-behaviour, never identity), *may this person read and clear the block list*, and
-*may this person stop the process everyone shares*.
+behaviour, never identity), *may this person read and clear the block list*,
+*may this person stop the process everyone shares*, *may this person run code
+on this machine* — and, for a run reporting from another machine, *did this
+program sign what it sent*.
 
-They are four gates because they are four questions, and one answer would be
+They are separate gates because they are separate questions, and one answer would be
 wrong for at least one of them. The design rule they share is this project's
 stance applied to access: **the safe state is the one you get by doing
 nothing.** Every default is the restrictive reading, so a forgotten config line
 loses a button and never hands a stranger the files — and where a capability
-cannot be exercised safely, it is **absent rather than refused** (the reload
-route answers 404, not 403, so a misconfiguration reads as *the button is
-missing*, never as *anyone can restart the server*).
+cannot be exercised safely, it is **absent rather than refused** (with no
+supervisor to bring the server back the reload route does not exist — 404 — so
+a misconfiguration reads as *the button is missing*, never as *anyone can
+restart the server*).
 
 The whole framework — the gates, the rules underneath, the known sharp edges
-(TLS is not authentication; one admin list is currently read by two subsystems
-that need opposite readings of its empty default) — is
+(TLS is not authentication; the admin routes need sign-in on) — is
 [`ops/access-control.md`](?doc=ops/access-control.md). How to turn any of it on
 is [`ops/deployment.md`](?doc=ops/deployment.md).
 

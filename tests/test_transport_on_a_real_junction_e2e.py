@@ -60,7 +60,8 @@ from _road import conda_hook, env_available
 from molbuilder.parse.engines import siesta_grammar as _G
 from molbuilder.transport.stages import TRANSPORT_STAGES
 from support.machines import SLURM
-from support.road import _all_written, molbuilder, one_rank
+from support.road import (_all_written, molbuilder, one_rank,
+                          set_by_the_person)
 
 pytestmark = [
     pytest.mark.engine,
@@ -299,27 +300,6 @@ _ANOTHER_INPUT = [
 ]
 
 
-def _set_by_the_person(template: Path, name: str, value) -> None:
-    """One item of a calculation's template changed as a person changes it
-    in the file: its value -- written in, for an item left blank -- and its
-    source `person` (`engines/template.md` § 6.6)."""
-    from molbuilder.template import one, read_template
-    lines = template.read_text().splitlines(keepends=True)
-    at = lines.index(f"[item.{name}]\n")
-    end = next((i for i in range(at + 1, len(lines))
-                if lines[i].startswith("[")), len(lines))
-    said = {"value = ": f"value = {json.dumps(value)}\n",
-            "source = ": 'source = "person"\n'}
-    for i in range(at + 1, end):
-        for key, line in list(said.items()):
-            if lines[i].startswith(key):
-                lines[i] = line
-                del said[key]
-    lines[at + 1:at + 1] = list(said.values())
-    template.write_text("".join(lines))
-    assert one(read_template(template.read_text()), name).value == value
-
-
 @pytest.fixture(scope="module")
 def junction(tmp_path_factory):
     """The relaxation cited and the transport calculation run on it: a
@@ -383,8 +363,8 @@ def junction(tmp_path_factory):
         # THE PERSON'S CHOICE in the calculation's own template: the spin
         # restricted (the module's head says why).  The mixing weight the
         # chain converges at in tens of cycles came with the citation.
-        _set_by_the_person(run.bundle / "T.template.toml", "spin_treatment",
-                           "restricted")
+        set_by_the_person(run.bundle,
+                          {"spin_treatment": "restricted"})
         # ...AND THREE SCF STAGES' OWN MIXING WEIGHTS, on Task setup's stage
         # table -- the page's door, its Save.
         client = create_app(config={}).test_client()
@@ -484,10 +464,9 @@ def junction(tmp_path_factory):
         assert r.exit_code == 0, r.output
         vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
         one_rank(vib.bundle)
-        for name, value in {**RELAXED_WITH,
-                            "pulay_history": _VIBRATED_HISTORY,
-                            "already_relaxed": True}.items():
-            _set_by_the_person(vib.bundle / "V.template.toml", name, value)
+        set_by_the_person(vib.bundle, {**RELAXED_WITH,
+                                       "pulay_history": _VIBRATED_HISTORY,
+                                       "already_relaxed": True})
         _taken(vib, "prep freq", "prep", "task",
                *group_words(vib.bundle, "freq"), "--target", "this")
         _taken(vib, "launch freq", "launch", "task", "--stage", "freq",
@@ -517,8 +496,8 @@ def junction(tmp_path_factory):
         from_pair = RealRun(tree=tree, bundle=tree / "P" / "transport" / "F")
         one_rank(from_pair.bundle)
         run.pair_template = (from_pair.bundle / "F.template.toml").read_text()
-        _set_by_the_person(from_pair.bundle / "F.template.toml",
-                           "spin_treatment", "restricted")
+        set_by_the_person(from_pair.bundle,
+                          {"spin_treatment": "restricted"})
         _taken(from_pair, "prep seed and leads", "prep", "task",
                *seed_and_leads(from_pair), "--target", "this")
         _taken(from_pair, "launch seed and leads", "launch", "task",
@@ -553,8 +532,8 @@ def junction(tmp_path_factory):
         assert r.exit_code == 0, r.output
         single = RealRun(tree=tree, bundle=tree / "P" / "transport" / "S")
         one_rank(single.bundle)
-        _set_by_the_person(single.bundle / "S.template.toml",
-                           "spin_treatment", "restricted")
+        set_by_the_person(single.bundle,
+                          {"spin_treatment": "restricted"})
         _taken(single, "prep seed and leads", "prep", "task",
                *seed_and_leads(single), "--target", "this")
         _taken(single, "launch seed and leads", "launch", "task",
@@ -575,8 +554,8 @@ def junction(tmp_path_factory):
         run.another = {}
         for row in _ANOTHER_INPUT:
             def changed_since(c, row=row):
-                _set_by_the_person(c.bundle / "S.template.toml", row["item"],
-                                   row["value"])
+                set_by_the_person(c.bundle,
+                                  {row["item"]: row["value"]})
                 _taken(c, "prep transmission", "prep", "task",
                        *group_words(c.bundle, "transmission"), "--target",
                        "this")
@@ -636,8 +615,7 @@ def junction(tmp_path_factory):
         from support.replay import output_lines
 
         def stopped_in_its_loop(c):
-            template = c.bundle / "S.template.toml"
-            _set_by_the_person(template, "transmission_n_points", 20001)
+            set_by_the_person(c.bundle, {"transmission_n_points": 20001})
             _taken(c, "prep transmission", "prep", "task",
                    *group_words(c.bundle, "transmission"), "--target",
                    "this")
@@ -765,20 +743,18 @@ def junction(tmp_path_factory):
                 r = molbuilder(*words, input="y\n")
                 assert r.exit_code == 0, r.output
 
-        def changed_from_the_beginning(c, stage, template, changes):
+        def changed_from_the_beginning(c, stage, changes):
             # WHAT A LAUNCHED STAGE COMPUTES, CHANGED in the template, as a
             # person changes it: its group's prep refused naming the way
             # back, the way back taken, the template set again, the group
             # prepared.
-            for name, value in changes:
-                _set_by_the_person(template, name, value)
+            set_by_the_person(c.bundle, dict(changes))
             refused = _typed(c, f"prep {stage} refused", "prep", "task",
                              *group_words(c.bundle, stage), "--target",
                              "this")
             assert refused.exit_code != 0, refused.output
             back_to_before_its_launch(refused.output)
-            for name, value in changes:
-                _set_by_the_person(template, name, value)
+            set_by_the_person(c.bundle, dict(changes))
             _taken(c, f"prep {stage}", "prep", "task",
                    *group_words(c.bundle, stage), "--target", "this")
 
@@ -790,7 +766,6 @@ def junction(tmp_path_factory):
         # on past each point.
         def transmission_refused(c):
             changed_from_the_beginning(c, "transmission",
-                                       c.bundle / "F.template.toml",
                                        [("tbt_k_grid", (3, 3, 1))])
             _typed(c, "launch transmission", "launch", "task", "--stage",
                    "transmission", "--mode", "direct", "--foreground",
@@ -894,8 +869,8 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
     walk = RealRun(tree=tree, bundle=tree / "P" / "transport" / "W")
     one_rank(walk.bundle)
     # THE SPIN RESTRICTED, as the calculation the module runs has it.
-    _set_by_the_person(walk.bundle / "W.template.toml", "spin_treatment",
-                       "restricted")
+    set_by_the_person(walk.bundle,
+                      {"spin_treatment": "restricted"})
     request = read_request(walk.bundle)
     request["allocation"] = {"time": "01:00:00", "mem": "4G"}
     device = request["stages"]["device"]
@@ -1305,8 +1280,8 @@ def _the_decks_a_person_sets(tree, cite: str, client):
     assert r.exit_code == 0, r.output
     probe = RealRun(tree=tree, bundle=tree / "P" / "transport" / "D")
     one_rank(probe.bundle)
-    _set_by_the_person(probe.bundle / "D.template.toml",
-                       "spin_treatment", "restricted")
+    set_by_the_person(probe.bundle,
+                      {"spin_treatment": "restricted"})
     _taken(probe, "prep", "prep", "task",
            *group_words(probe.bundle, *_RUNGS), "--target", "this")
     probe.unset = {rung: [d.read_text()
@@ -1466,7 +1441,7 @@ def _set_in_the_template(probe, unset: str, name: str):
     item = one(catalogue(), name, engine="siesta")
     readers = [r for r in _RUNGS if reads(item, "siesta", "transport", r)]
     _item, was, value = _another_than_runs(probe, readers[0], name, task)
-    _set_by_the_person(template, name, value)
+    set_by_the_person(probe.bundle, {name: value})
     said = _typed(probe, f"shared {name}", "prep", "task",
                   *group_words(probe.bundle, *_RUNGS), "--target", "this")
     return {"was": was, "value": value, "said": said,
@@ -4174,8 +4149,8 @@ def reused(junction, tmp_path_factory):
         once = RealRun(tree=junction.tree,
                        bundle=junction.tree / "P" / "transport" / "O")
         one_rank(once.bundle)
-        _set_by_the_person(once.bundle / "O.template.toml",
-                           "spin_treatment", "restricted")
+        set_by_the_person(once.bundle,
+                          {"spin_treatment": "restricted"})
         leads = group_words(once.bundle, "seed", "electrode_L", "electrode_R")
         _taken(once, "prep seed and leads", "prep", "task", *leads,
                "--target", "this")

@@ -1096,6 +1096,7 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     from ..paths import attempt_dir, attempts_in
     from ..runpoints import (OLDER_SCHEMAS, add_point, empty_index,
                              index_path, older_index)
+    from ..runrecord import continued_from_text
     from .naming import ladder_homes
     from .points import points_of, record_of
     said: List[str] = []
@@ -1152,7 +1153,7 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
             # its run, by the declaration (`PointsOf.start_of`).
             starts = _missing_starts(calc, home.name, run, index, declared)
             for marker, source in starts:
-                writes.add(marker, f"{source}\n", ["2.56.0"])
+                writes.add(marker, continued_from_text(source), ["2.56.0"])
             if starts:
                 said.append(f"{run.relative_to(base)}: {len(starts)} "
                             f"point(s) given their start's record "

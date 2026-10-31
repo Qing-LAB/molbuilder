@@ -201,6 +201,7 @@ that file's own door:
 | | **prepared** | its job's row is in the plan | `job-set.json` — the row; its `members`, the job it is prepared in; a SIESTA vibration's `phases`, the ones its run walks | § 5.1 | `Calculation.job` |
 | | **ready to launch** / **waits for** | what it builds on has finished — the newest run of that stage, by that run's state below | the files of that run | § 5.3 | `ready.first_launch_takes` |
 | | **its job's members changed** | its row's `members` are not its group's now | `job-set.json` against `job-request.json` | § 5.1 | `ready.regrouped` |
+| | **missing** — against the design | its job's row is in the plan, and no `run-<n>` is under the folder the plan names | `job-set.json`; the stage's folder | § 5.2 | `ready.readiness` (`materialize.job_folder`, `latest_attempt`) |
 | | **launched** | a run of it has a launch record | `run.json` | § 5.3 | `materialize.ever_launched` (`runrecord.launch_record`) |
 | a group | **prepared** / **launched** / **its members changed** | every member's row names these members / a member is launched / a row names other members than the group holds | its members' rows and records | § 5.1, § 5.3 | `ready.GroupAnswer` — the one answer every verb and surface reads (below) |
 | | **goes in job N** | prepared, and a sequence still going holds it and has not launched it yet — launched before or not (§ 6.0, *A sequence of groups*) | the job's address (§ 6.0a), asked whether it is going | — | `ready.held_by_sequence` (`joblist.is_going`) |
@@ -249,6 +250,7 @@ stateDiagram-v2
     }
     state "launched" as launched
     state "its launch record does not read" as unreadable
+    state "its run not on disk" as missing
     state "removed" as removed
     [*] --> described : molbuilder describe, or Task setup's Save · describe
     described --> prepared : prep task --group N · prep_task
@@ -262,6 +264,8 @@ stateDiagram-v2
     prepared --> described : restore the state saved before its prep · checkpoint
     prepared --> unreadable : its run.json edited, and not readable · by hand
     launched --> unreadable : its run.json edited, and not readable · by hand
+    prepared --> missing : its run's folder removed · by hand
+    missing --> prepared : prep task --group N, its run opened anew · prep_task
     described --> removed : the description drops it · Save
     prepared --> removed : the description drops it · Save
     launched --> removed : the description drops it · Save
@@ -280,6 +284,7 @@ stateDiagram-v2
 | **prepared, its job's members changed** | its row's `members` lists other stages than its group holds now | *pending* — *its job's members changed:* | prepared again, every group the old job's members are in now named in the one prep (R-P6); its launch is refused, naming that prep |
 | **launched** | a run of it has a `run.json`; its runs' states are the run doors' (*A run*, below) | the newest run's state, and *converged* in its own column; *changed since prepared*, each value that differs, when its records resolve now to other values than its prep's — its runs computed the description as it was — with the three lines that start its group from the beginning (*Changed since prepared*, below) | launched again — alone, or its group whole: warm, `--cold`, `--from` a run, `--gather` anew; prepared again for its job request, what it computes kept — its row then what its next launch sends, its runs' states unchanged ([`job-request.md`](?doc=execution/job-request.md) § 5); a change to what it computes goes back to the state saved before its group's first launch (*How the checkpoint supports you*) |
 | **its launch record does not read** | a `run.json` there that is not one molbuilder wrote | *unreadable* — the record's own words | what the words say; nothing launches it, and no prep prepares it, until it reads (R-L21) |
+| **prepared, its run not on disk** — against the design: its run's folder removed by hand | its row in `job-set.json`, and no `run-<n>` under its folder | *missing* — the job set names its run's folder, and it is not on disk | prepared again — its group's prep opens its run anew, the launched members' runs as they are; launch refuses it meanwhile (R-L28), and no surface says it ready to launch |
 | **removed** | no longer in `task.json`; its folder and runs untouched, its number taken; a launched one keeps its row in `job-set.json`, a never-launched one until the next prep that writes drops it | not listed | described again, it is what its files say — launched, prepared while its row stands, else described |
 
 *Ready to launch* says that what the stage takes is there.
@@ -481,12 +486,14 @@ read top to bottom:
 | prepared in a job whose members changed | **prepared, its members changed** | `prep task --group N` |
 | prepared, and held by a sequence still going that has not launched it yet — launched before or not, changed since its prep or not (§ 6.0, *A sequence of groups*; R-P23 refuses its prep) | **goes in job N** — after group K, the one before it in the job | `molbuilder jobs status` |
 | a member changed since prepared — prepared, or launched with no run queued or running — and held by no sequence | **changed since prepared** — the member and each value that differs, `was → now` | never launched: `prep task --group N`; launched and changed in its run card alone: `prep task --group N`, its runs kept; launched and changed in what it computes: the three lines that start the group from the beginning (*Changed since prepared*) |
+| a member prepared whose run is not on disk (`missing`) — against the design: its folder was removed by hand — and no run of the group queued, running, failed or unreadable | **missing**, naming the stage — the job set names its run, and it is not on disk | `prep task --group N`, which prepares that member's run again and keeps its launched members' runs as they are |
 | prepared, never launched, what each takes there | **ready to launch** — and, for a member another molbuilder prepared (its deck's own record), who did | `launch task --group N`, a line for each mode the machine takes |
 | prepared, never launched, a member waiting | **waits for** the run it takes — that run's stage and group, and where it stands | — |
 | a run queued or running | **running** (or *queued*) | `status` |
 | a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, which continues from its own latest run or starts over as its job says (`relaunch_continues`), `--cold` starting it over; and its way on, the one composer's (`commands.way_back`) — a run out of memory or wall goes on with its job request changed and its group prepared again ([`job-request.md`](?doc=execution/job-request.md) § 5), what it computes changed by the restore; for a record that does not read, its reader's words — and, for an index an older molbuilder wrote (`runpoints.OlderIndexError`), the line `molbuilder jobset migrate` |
-| a run opened and not launched — a send refused (`materialize.opened_by_refused_send`: an unlaunched `run-<n>`, n > 0) | the stage, and *opened by a launch whose send was refused* | the launch that fills it (`commands.launch_pending`): `launch task --stage S` |
-| every member's newest run finished | **finished** | — |
+| a run opened and not launched — a send refused (`materialize.opened_by_refused_send`: an unlaunched `run-<n>`, n > 0), or a member's first run prepared again in a launched group (*missing*, above) | the stage, and *opened by a launch whose send was refused* — or prep's words for its first run | the launch that fills it (`commands.launch_pending`): a refused send's, `launch task --stage S`; a first run's, its group's launch, which sends every member again |
+| every member's newest run finished — and only then | **finished** | — |
+| a member in any other state | that state, naming the stage, in its row's words | — |
 
 **The next step is the first group not finished**, marked *next*, its lines
 under it; the groups after it each say where they stand — a waiting one, the
@@ -592,6 +599,13 @@ checkpoint in full.
 5. **A stage prepared and never launched may be prepared again** — it is still
    the description's: its row replaced, its files rendered again, its first
    run emptied whole and opened anew; **a group is prepared again whole**.
+   **Every file prep lays beside a deck is prep's** (`runfiles.beside_the_deck`,
+   the one list — its bundles, a charged deck's correction script, its run
+   script and header, a call's coordinates file): one an earlier prep wrote
+   that this prep does not —
+   a header for a queue since dropped, a correction script for a charge since
+   made 0 — is taken away, never left to be sent, run or read as this
+   prep's.
    **A launched stage is prepared again only for its job request** — its
    files rendered again, its row replaced, its runs untouched — and only when
    each member's deck is the same calculation as the deck its runs ran
@@ -1673,7 +1687,7 @@ A calculation is described **once**, and prep only ever reads that description.
 | | ***the save*** | | |
 | 5 | **the save** ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9) | the folder's state is saved, always, once the whole plan stands: a new state when anything changed since the one it stands at — its first when it has none — its note led by the time it was taken (`2026-10-03 14:05:12 · before prep task group 1 (coarse), group 2 (medium)`); nothing new when nothing changed, and the state it stands at is named. Both doors say which. A prep whose every group picked has nothing to write (2a) saves nothing and names no state: it writes nothing to come back from | refused when the state cannot be saved: that state is the one a redo restores |
 | | ***the writing — nothing is decided*** | | |
-| 6 | **the plan written** | the one plan, as it was made — nothing is planned again: every file of the plan; each stage's first run opened ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2) with the stage's own files — nothing from another stage's run, which its first launch copies in; a group a transport calculation copies in from a finished one opens no run, its members' runs copied whole, each launch record last ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16); at the calculation's first prep, its copy of the machine's record, naming the machine; the pipeline log; `job-set.json` last — the moment the stage is prepared; each job that walks several members, its one header (a group of several's and a sequence of groups' in the calculation's `launch/` folder, a run of points' walk's in its stage's, a benchmark's shelves' in its own), rendered for its one request (placed at 4b); a header this prep does not write, one a prep before left, taken away | — nothing here refuses. An error writing (a full disk) leaves the stage not prepared, and the state saved at 5 is the way back |
+| 6 | **the plan written** | the one plan, as it was made — nothing is planned again: every file of the plan; each stage's first run opened ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2) with the stage's own files — nothing from another stage's run, which its first launch copies in; a group a transport calculation copies in from a finished one opens no run, its members' runs copied whole, each launch record last ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16); at the calculation's first prep, its copy of the machine's record, naming the machine; the pipeline log; `job-set.json` last — the moment the stage is prepared; each job that walks several members, its one header (a group of several's and a sequence of groups' in the calculation's `launch/` folder, a run of points' walk's in its stage's, a benchmark's shelves' in its own), rendered for its one request (placed at 4b); a file beside a deck this prep does not write, one a prep before left — a header, a correction script — taken away (*The task*, `prep task` 5) | — nothing here refuses. An error writing (a full disk) leaves the stage not prepared, and the state saved at 5 is the way back |
 | 7 | **the record** | the ledger, after the save — so the state saved holds no line of this prep: the question that picked the groups and its answer, the preflight's notes, the save, the groups prepared, *prepared* with which config files answered (as read at 4); with `--one-job`, *sequenced* with the groups and the header; for a transport calculation that reuses a finished one, *copied in* for each run copied ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | — |
 
 **What you get back** is the whole of what was found and decided — the table in
@@ -2876,7 +2890,7 @@ id, or beside a run left in the background, which is then named by its pid,
 | `calculation` | the calculation's folder — printed, as every line names it, by its address from the projects root |
 | `members` | each member's stage → its run, as a record names a run (`runrecord.RunRef`: its folder), and that run's launch record, which its state is asked through — a sequence's, added by each group's launch inside it as it sends its runs |
 | `sequence` | a sequence of groups (§ 6.0): each group it launches, in order, with its stages, and the sequence's name; `null` for every other job |
-| `launched_at` | when it went — UTC, to the second, `…Z`: the run records' one clock (`runrecord.stamp`), so a run's launch record compares with it (a sequence's group read as sent by it, `ready._sent_by`); one written before 2.43.2 says `+00:00`, read alike (`runrecord.stamp_time`) |
+| `launched_at` | when it went — UTC, to the second, `…Z`: the run records' one clock (`runrecord.stamp`), so a run's launch record compares with it (a sequence's group read as sent by it, `ready.sequence_sent`); one written before 2.43.2 says `+00:00`, read alike (`runrecord.stamp_time`) |
 
 **What it is doing is read fresh, each time** — one fact, one source, one
 answer (`joblist.is_going`), which `molbuilder jobs` asks of each job,
@@ -2940,7 +2954,13 @@ qlabsrv-312877  run here on qlabsrv, in the background, pid 312877 -- its proces
 
 **A sequence lists its groups**: under its line, the job's name says so (*a
 sequence of groups 1, 2, 3*), then each member of the groups it has launched
-with its state, then each group it has not reached yet, *not launched yet*. **A job that has ended is shown once — how each member ended — and its file
+with its state, then each group it has not reached yet, *not launched yet* —
+a group launched, on the job's address or by its runs, whose launch records
+name the sequence that sent them (`ready.sequence_sent`, the one answer the
+next step and every launch and prep ask too): a run the sequence sent and
+could not put on its address is listed by that run, with its state. The
+calculation is opened once for the whole answer (`runstatus.job_members`),
+and one that does not read is said on each row that needed it. **A job that has ended is shown once — how each member ended — and its file
 removed**; its run's folder and the calculation's ledger keep its history. A
 run waited on is shown by its own launch, which says how it ended — or,
 stopped at its terminal, its stop — and removes its file then. A run here
@@ -3185,7 +3205,11 @@ a queue on your behalf.
 A trial executes only through `jobset launch bench` — a rider of its resource
 shelf's grouped job on a queue, alone when named, or run here in the
 benchmark's one walk — with its launch recorded in the trial's own
-`run.json`.
+`run.json`. `jobset status` on the sweep lists its trials and its own next
+step: the sweep's launch while a trial is not launched; *let them finish*
+while one is queued or running; `summarize bench` once every trial's run has
+ended — and only then: a trial whose run is not on disk, or whose launch
+record does not read, is said by name first, with its way on (R-L28).
 
 ---
 
@@ -3388,14 +3412,14 @@ the Results tab and Task setup, so no two readers can disagree:
 | door | the question it answers | asked by |
 |---|---|---|
 | `ready.task_state` → `TaskState` | the task read once: every stage's answer and every group's; what `prep task` and `launch task` offer | prep's question, launch's offer, `status`, the folder and commands routes, describe's next line |
-| `ready.readiness` | one stage: described, prepared (ready, or why not — `blocked`: waits, regrouped, unreadable) or launched | `task_state`, the displacement sweep |
+| `ready.readiness` | one stage: described, prepared (ready, or why not — `blocked`: waits, regrouped, unreadable, missing) or launched | `task_state`, the displacement sweep |
 | `Calculation.job` | is a stage prepared — its row in `job-set.json` (`JobSet.job`), none with no plan | prep, the readiness doors, the launch verb |
 | `naming` | a stage's number, folder and token (`stage_home`), a plan's job folders (`job_dir_names`), which stage a job is (`stage_refs`), the names of its files (`run_names`) | every layer from the plan up |
 | `ladder` | what a stage builds on by default — independent or linked, read off the kind's roles in the kind table (`independent`), a linked kind's inputs (`inputs_of`), the stages a stage builds on (`upstream_of`), the stage before (`stage_before`) — and the ladder a new description starts with (`fresh_stages`) | the continuation, the ready door, prep, `molbuilder describe` and the hand-over |
 | `ready.first_launch_takes` | what a stage's first launch takes, every kind's refusal with it | the ready door's answer, `_first_launch` |
 | `continuation` | which run a stage continues from — by default, named, or launched again (`relaunch`) | the ready door, both planners |
 | `gather` | a transport rung's inputs, under three gates | `first_launch_takes`, `_launch_again --gather` |
-| `materialize.newest_launched` (asked by `ever_launched`, `newest_launch`, `resolve_attempt`), `rundir.run_state_of` (`parse.dirs.run_status`), `materialize.latest_attempt`, `runrecord.newest_run` | a stage's newest launched run — the one rule for *launched*; how a run stands; a stage's newest run folder; a run's latest try | every layer |
+| `materialize.newest_launched` (asked by `launched_run` — and through it `ever_launched` and `ready.sequence_sent` — and `resolve_attempt`), `materialize.job_folder` (a job's folder, as its plan names it), `rundir.run_state_of` (`parse.dirs.run_status`), `materialize.latest_attempt`, `runrecord.newest_run` | a stage's newest launched run — the one rule for *launched*; how a run stands; a stage's newest run folder; a run's latest try | every layer |
 | `group` | a stage's group (`JobRequest.group_of`), a job's members (`members_of`), what members share (`envelope`), a job's file names (`names_for`) | both verbs, the ready door |
 | `commands` | every line a person types, and the one way back (`way_back`, `redo_launched`) | every refusal and answer |
 

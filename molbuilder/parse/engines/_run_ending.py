@@ -535,6 +535,7 @@ def main(argv=None) -> int:
     it (:data:`QUESTIONS`); without one, the ending is printed as :func:`say`
     words it.  ``--stderr`` is :func:`ending_of`'s.  2 when the output cannot
     be read or the question is not one."""
+    import inspect
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
     stderr = None
@@ -549,20 +550,32 @@ def main(argv=None) -> int:
         print("usage: mb_monitor.pyz ending OUTPUT [--stderr FILE] "
               "[QUESTION [ARG]]", file=sys.stderr)
         return 2
-    try:
-        end = ending_of(args[0], stderr=stderr)
-    except (OSError, ValueError) as exc:
-        print(f"_run_ending: {exc}", file=sys.stderr)
-        return 2
-    if len(args) == 1:
-        print(say(end))
-        return 0
-    ask = QUESTIONS.get(args[1])
-    if ask is None:
+    if len(args) > 1 and args[1] not in QUESTIONS:
         print(f"_run_ending: not a question: {args[1]!r} "
               f"({', '.join(QUESTIONS)})", file=sys.stderr)
         return 2
-    return 0 if ask(end, *args[2:]) else 1
+    # A QUESTION TAKES WHAT ITS ROW TAKES -- said as usage, before any
+    # reading: a question asked wrong is not an ending that cannot be read.
+    if len(args) > 1:
+        takes = len(inspect.signature(QUESTIONS[args[1]]).parameters) - 1
+        if len(args) - 2 != takes:
+            print(f"_run_ending: {args[1]!r} takes {takes} argument(s), "
+                  f"given {len(args) - 2}", file=sys.stderr)
+            return 2
+    try:
+        end = ending_of(args[0], stderr=stderr)
+        if len(args) == 1:
+            print(say(end))
+            return 0
+        return 0 if QUESTIONS[args[1]](end, *args[2:]) else 1
+    except Exception as exc:                          # noqa: BLE001
+        # THE DOOR HAS THREE ANSWERS, and a reading that stops for any reason
+        # is the third -- the ending cannot be read -- never *no*, which would
+        # drop a warm retry or a wall's line without a word.  Why, on stderr,
+        # which the run's session log keeps.
+        print(f"_run_ending: the ending cannot be read -- "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

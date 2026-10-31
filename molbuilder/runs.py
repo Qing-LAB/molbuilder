@@ -804,20 +804,29 @@ def state_of(run: "Run"):
                      launched_in=run.launched_in)
 
 
+#: THE RUN'S OWN LENGTH in its record (`model/parse.md` § 5d.2): its
+#: engine's wall, launch to exit.
+WALL = "computation.time.engine_elapsed_s"
+
+
 def record_of(run: "Run", *, status=None, fields=None):
     """THE RUN'S RECORD (`model/parse.md` § 5d) -- the one place a run handle
     (:func:`run_of`) is read with its state (:func:`state_of`, or the one a
     caller already holds) and its calculation's engine, kind and stage deck:
     the Results tab's folder answer and the memory a stage needs
     (`jobset.memory`) ask it alike.  ``fields`` -- the record's paths a
-    caller asks for, the rest left unread (`parse.dirs.record.run_record`)."""
+    caller asks for, the rest left unread (`parse.dirs.record.run_record`):
+    whether its deck is the stage's now (:attr:`Run.current`, two decks
+    read) only where the record's ``deck`` is asked."""
     from molbuilder.parse.dirs.record import run_record
     task = run.place.task
+    asks_deck = fields is None or any(f == "deck" or f.startswith("deck.")
+                                      for f in fields)
     return run_record(run.folder, names=run.names, run=run.run,
                       status=status if status is not None else state_of(run),
                       engine=task.engine, calculation=task.calculation,
-                      current=run.current, fields=fields,
-                      launched_in=run.launched_in)
+                      current=run.current if asks_deck else None,
+                      fields=fields, launched_in=run.launched_in)
 
 
 def standing_of(launch, base) -> Optional[Dict[str, Any]]:
@@ -866,29 +875,40 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
 
 
 def run_answer(path) -> Optional[Dict[str, Any]]:
-    """``{state, detail, live}`` -- how the run the file at ``path`` belongs
-    to is doing, the one door's answer (`parse.dirs.run_state_of`, asked
-    with its launch record: one that does not read is ``unreadable``, its
-    file named).  ``live`` -- `job.LIVE_STATES` -- is what a Results viewer follows
-    (`web/results.md` § 4.1).  ``None`` for a file of no run of ours, as
-    for an upload: nothing is asked of a folder no calculation claims
-    (`model/parse.md` § 5)."""
-    from molbuilder.parse.dirs.job import LIVE_STATES
+    """``{state, detail, live, engine_elapsed_s}`` -- how the run the file
+    at ``path`` belongs to is doing, the one door's answer
+    (`parse.dirs.run_state_of`, asked with its launch record: one that does
+    not read is ``unreadable``, its file named).  ``live`` --
+    `job.LIVE_STATES` -- is what a Results viewer follows (`web/results.md`
+    § 4.1); once it has ended (`job.FINAL_STATES`), the run's own length,
+    its engine's wall from launch to exit -- its record's, the one the Run
+    panel shows -- else ``None``, as for a run of points' root, which has no
+    record (`web/trajectory.md` § 4, *total*).  ``None`` for a file of no run of ours, as for an upload:
+    nothing is asked of a folder no calculation claims (`model/parse.md`
+    § 5)."""
+    from molbuilder.parse.dirs.job import FINAL_STATES, LIVE_STATES
     run = run_of(path)
+    took = None
     if run is None:
         # A FILE AT A RUN OF POINTS' ROOT -- the result its own steps wrote
         # there (`engines/vibration.md` § 5.11 § 7): the run's state is its
-        # points'.
+        # points'; the root has no record, so no one engine's wall.
         p = Path(path)
         folder = p if p.is_dir() else p.parent
         got = points_root_state(place_of(folder), folder)
         if got is None:
             return None
-        return {"state": got["state"], "detail": got["detail"],
-                "live": got["state"] in LIVE_STATES}
-    st = _as_its_point(run, state_of(run))
-    return {"state": st.state, "detail": st.detail,
-            "live": st.state in LIVE_STATES}
+        state, detail = got["state"], got["detail"]
+    else:
+        st = _as_its_point(run, state_of(run))
+        state, detail = st.state, st.detail
+        if state in FINAL_STATES:
+            # AN ENDED RUN'S OWN LENGTH -- its record's, the field alone.
+            rec = record_of(run, status=st, fields=(WALL,)) or {}
+            took = ((rec.get("computation") or {}).get("time")
+                    or {}).get("engine_elapsed_s")
+    return {"state": state, "detail": detail,
+            "live": state in LIVE_STATES, "engine_elapsed_s": took}
 
 
 def _as_its_point(run: Run, st):

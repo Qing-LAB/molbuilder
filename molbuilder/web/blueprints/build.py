@@ -2960,7 +2960,7 @@ def api_task_setup_commands():
         # A PREPARED GROUP'S LINES are its launch alone -- unless the lines
         # asked for are a Prep's (`prep`), which prepares it again.
         prepared = (len(groups) == 1 and len(gs) == 1 and gs[0].prepared
-                    and not body.get("prep"))
+                    and gs[0].missing is None and not body.get("prep"))
         # ...AND A PREP NAMES EVERY GROUP IT FORMS (`GroupAnswer.prep_with`).
         if not prepared:
             groups = sorted({n for g in gs for n in g.prep_with})

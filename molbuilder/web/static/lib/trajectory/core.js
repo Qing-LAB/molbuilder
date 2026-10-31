@@ -230,9 +230,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // run said nothing.
             info: null,
             // HOW THE RUN THIS FILE BELONGS TO IS DOING -- `{state, detail,
-            // live}`, the one door's answer, which the server sends with the
-            // file (web/results.md § 4.1).  The viewer follows while `live`,
-            // and the badge reads it.  null = the file belongs to no run (an
+            // live, engine_elapsed_s}`, the one door's answer, which the
+            // server sends with the file (web/results.md § 4.1).  The viewer
+            // follows while `live`, and the badge reads it -- an ended run's
+            // *total* its `engine_elapsed_s`.  null = the file belongs to no run (an
             // upload).  Keep-on-undefined, like the three above: a poll with
             // new content leaves it out.
             run: null,
@@ -1618,16 +1619,20 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * TWO CLOCKS, NEITHER SUBSTITUTING FOR THE OTHER (parse.md § 2a):
      * `wall_clock_s` is an absolute epoch and becomes the "last result at"
      * TIMESTAMP; `elapsed_s` counts from the run's start and becomes the
-     * DURATION.  Fed to the other's formatter, a six-minute SIESTA run
-     * would display as a date.
+     * DURATION.  Fed to the other's formatter, a six-minute run would
+     * display as a date.
      *
-     * The epoch falls back to the file's `mtime` when the run carries no
-     * clock of its own -- a raw SIESTA `.out` without molwatch hooks, whose
-     * parser reports null rather than handing over its elapsed seconds.
-     * There is
-     * NO fallback in the other direction: an elapsed duration cannot be
-     * turned into a date, because the file does not contain the missing
-     * addend (P-T3).
+     * THE TOTAL OF A RUN THAT HAS ENDED IS ITS OWN LENGTH: its engine's
+     * wall, launch to exit, the run record's -- the one the Run panel shows
+     * -- served with the run's state (`runs.run_answer`); one still going,
+     * or a file of no run, how far in its last step was, where the engine
+     * states it (`trajectory.md` § 4).  A SIESTA `.out` states no step's
+     * clock, so its steps' `elapsed_s` are null (P-T2).
+     *
+     * The epoch falls back to the file's `mtime` where no step carries
+     * one -- a SIESTA `.out`.  There is NO fallback in the other direction:
+     * an elapsed duration cannot be turned into a date, because the file
+     * does not contain the missing addend (P-T3).
      *
      * AN ENDED RUN'S "WHEN" IS ITS OWN END, where its output states one:
      * `runtime_info.run_end_local`, SIESTA's `>> End of run` -- the node's
@@ -1636,17 +1641,23 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * source; the mtime stays only where nothing in the file says when.
      */
     function badgeClocks(state) {
-        const lastFinite = (arr) => {
-            for (let i = arr.length - 1; i >= 0; i--) {
-                if (Number.isFinite(arr[i])) return arr[i];
-            }
-            return null;
+        // THE LAST STEP'S OWN VALUE, or none: an earlier step's is not the
+        // last step's, so it is never taken in its place (`trajectory.md`
+        // § 4: a run still going, or a file of no run, says how far in its
+        // last step was).
+        const lastStep = (arr) => {
+            const v = arr.length ? arr[arr.length - 1] : null;
+            return Number.isFinite(v) ? v : null;
         };
         const data = (state && state.data) || {};
+        const run  = (state && state.fileState && state.fileState.run) || null;
         // The server already offsets `elapsed_s` to the run's start, so the
-        // last value IS the total -- no subtraction here.
-        const elapsed  = lastFinite(data.elapsed_s || []);
-        const lastWall = lastFinite(data.wall_clock_s || []);
+        // last step's value IS how far in it was -- no subtraction here.
+        const elapsed  = (run && !run.live)
+            ? (Number.isFinite(run.engine_elapsed_s) ? run.engine_elapsed_s
+                                                     : null)
+            : lastStep(data.elapsed_s || []);
+        const lastWall = lastStep(data.wall_clock_s || []);
         const endedAt  = (data.runtime_info || {}).run_end_local;
         return {
             elapsed: elapsed,

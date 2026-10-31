@@ -97,18 +97,33 @@ class TestBadgeReadsTheRightClock:
         assert got["lastResultEpoch"] == 1761396030, (
             "mtime is a FALLBACK -- it must not override a run's own clock")
 
-    def test_the_last_FINITE_sample_wins_not_the_last(self):
-        """A trailing null or NaN is a frame that reported no time, not a
-        run that ended at zero.  Both series are read the same way."""
-        got = _run_cycle_clock(
-            "badgeClocks({data: {elapsed_s: [10, 245, null],"
-            "                    wall_clock_s: [1761396030, NaN]}})")
-        assert got["elapsed"] == 245
-        assert got["lastResultEpoch"] == 1761396030
-
     def test_a_run_with_no_clocks_at_all_says_nothing(self):
         """Empty is not zero: a badge showing `0s` on a run that reported no
         time is a measurement it never made."""
         got = _run_cycle_clock("badgeClocks({data: {}})")
         assert got == {"elapsed": None, "lastResultEpoch": None,
                        "endedLocal": None}
+
+
+class TestTheTotalIsTheRunsOwnLength:
+    """`web/trajectory.md` § 4, *total*: a run that has ended says its own
+    length, the engine's wall its record states -- served with the run's
+    state, `run.engine_elapsed_s` -- and none where its record states none;
+    a run still going, or a file of no run, how far in its last step was.
+    The inputs are what the server sends: a log's paired series, both stated
+    for every step, and the run's answer (`runs.run_answer`).  THE SILENT
+    FAILURE: an ended SIESTA run read *total 0s* from a timer line that
+    timed one SCF iteration, beside a Run panel saying 24 s (2.56.1)."""
+
+    SERIES = "{elapsed_s: [0, 12.5], wall_clock_s: [1761396017.5, 1761396030]}"
+
+    @pytest.mark.parametrize("run, total", [
+        ("{state: 'finished', live: false, engine_elapsed_s: 23.6}", 23.6),
+        ("{state: 'failed', live: false, engine_elapsed_s: null}", None),
+        ("{state: 'running', live: true, engine_elapsed_s: null}", 12.5),
+        ("null", 12.5),
+    ], ids=["ended-its-wall", "ended-no-wall-stated", "running", "no-run"])
+    def test_the_total_by_the_run(self, run, total):
+        got = _run_cycle_clock(
+            f"badgeClocks({{data: {self.SERIES}, fileState: {{run: {run}}}}})")
+        assert got["elapsed"] == total, got

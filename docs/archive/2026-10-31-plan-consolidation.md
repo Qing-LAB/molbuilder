@@ -863,4 +863,61 @@ homes (`_atom.js`'s `toDisplay`, `atomChannels`, `channelKinds`; `stores.js`'s
 
 ---
 
+<!-- plan.md's handover as it stood at 2.56.1: its release history and its *Last checked* -->
 
+## The handover's history *(moved 2026-10-31; every release it names has its changelog row)*
+
+**Where we are: 2.56.1.** The releases are the changelog's rows; the
+handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
+last: `jobset migrate` brings an older SIESTA vibration on, its `relax`
+folded into `freq`, and `runpoints` imports first (2.56.1). Before: a point its ended walk never started reads *not run*, never
+*failed*, and every point's start is its `.continued-from` (2.56.0, the
+user's words). Before: the pages, the command line and a run's messages read again headless
+and made plainer, an older index said on its row with the line that
+migrates it (2.55.1). Before: one run of points — a SIESTA vibration's calls and a transport rung's
+points walked, indexed, reported and judged by one framework, its facts in
+the kind table, every folder composed by one door (`calcdirs.RunPlace`) and
+read back by the other (`calcdirs.where`), the same words on the job and in
+`status` (2.55.0, § 1am step 1b, [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md)). Before: the vibration and transport roads reviewed whole — fifteen readers,
+every file beside its chapter — and mended: a displacement sweep launches, a
+point waits on the point it starts from, a point never reached reads failed
+everywhere, a call not done is not finished, the fc call's panel no longer
+cries *deck changed*, Describe no longer writes into a topic (2.54.1). Before: one layout — every stage a folder, every run a folder of its own; a
+description stating another is refused by name, nothing flat is written, and
+the code that served it is gone; a run holds tries, `-run<N>`, only the last
+concluding (2.54.0, § 1am step 1, `execution/project-layout.md` § 1). Before:
+an engine's and a kind's facts asked of their records (2.53.1, 2.53.2); a
+transport sweep reports as one run — one start, a milestone per
+voltage done at every frame, a failed point once per reason, one finish
+(2.53.0, § 1af R-e). Before: a frame set's frames re-averaged after the run
+over another motion —
+a bell curve at another temperature, or a swing — each frame weighted from
+its position along the mode (2.52.0, § 1al F3,
+`science/vibrational-averaging.md` § 5.4, `postprocess.reaveraged`); a
+vibration run's count says how many calls failed, and Task setup's notify
+card says what else a reporting calculation sends (2.51.1). Before: a mode's frame set is stated by a temperature — the junction's, or a
+pumped mode's effective one — with three, five or seven frames, the
+outermost move measured and said, the *Write frame set…* dialog saying what
+the temperature means for the mode (2.51.0, § 1al F1, F2;
+`engines/vibration.md` § 5.10 ③); before it, a SIESTA vibration run reports as one run at its milestones and its
+failed parts — the relaxation's and the force constants' outcomes as each
+phase ends, a call not done said at once and once per reason, the finish
+counting the calls not done — and a step message only for a step that moves
+the geometry (2.50.0, `execution/run-reports.md` § 2.2, § 2.9; § 1af, its
+transport half R-e left). Before: a SIESTA vibration's infrared is the free atoms' — the system the
+person declared by what they freed — shown when the result opens, with no
+choice of atoms anywhere, and the Spectrum page's one bar above the chart
+(light, charges, laser, width) applied by *Update* under the page busy fence
+(2.49.0, `web/spectra.md` § 2.1, § 3.2), with the page's controls never
+reused from an old copy and a chart lane's reason written across its panel
+(2.49.1); a refused transport citation names the frame-set road — a vibration is cited through a mode's frame set, never its own folder (2.49.3, `engines/transport.md` § 3.1); the monitor says where the run is,
+read from its declared structure (2.48.0, § 1af); and
+`engines/vibration.md` § 2.2a, what the force a relaxed structure shows under
+the vibration's own settings does and does not change — measured on the
+user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
+it is, the user's ruling: "the user knows the information … don't do
+extra")*.
+
+**Last checked**: the fast batch on 2.56.1 (6,907 passed); the SIESTA vibration e2e file on 2.56.1 (14 passed); every molbuilder module imported first in a fresh process (all but Jupyter's own config and `__main__`, as before); `jobset migrate` on the user's nine calculations, each first on a copy without the engines' large files, the three it rewrote read back by `status`; the fast batch on 2.56.0 (6,907 passed); the e2e batch whole on 2.56.0 (568 passed); its rules broken three ways on the real engines and seen to fail (a point the ended walk never reached said *failed* again, an optical call's start left unwritten by the force constants that plan it, a reopened planned point's left unwritten by the walk); `jobset migrate` run on a copy of my real vibration and junction runs, each point given its start's record; the fast batch on 2.55.1 (6,907 passed); the e2e batch whole on 2.55.1 (566 of 568 passed; the vibration warm-relaunch test's start expectation brought to the contract and the notebook tab's Jupyter start, each run again alone, passed); the Results, Spectrum, Task setup and Documents pages loaded headless on my real runs at 1440 and 390 wide, no page error; the fast batch on 2.55.0 (6,907 passed); the vibration and real-junction e2e files on 2.55.0 (218 passed), each point folder of both kinds' real runs read back as its run and point, a run's never-run words and its queued word each broken and seen to fail; a copy of my real 2.54 vibration run read *unreadable* naming `jobset migrate`, migrated, then *finished*; the fast batch on 2.54.1 (6,907 passed); the vibration, real-junction, optimization, stopped-run, wall and PySCF e2e files on 2.54.1 (265 passed), the trial's points rule and the optical call's prepared folder each broken and seen to fail, the Results tab loaded headless on a real result after the page edit; the fast batch on 2.54.0 (6,909 passed); the e2e batch whole on 2.54.0 (562 passed) — a warm retry on real SIESTA concluding only its last try, a relaunch leaving run-0 as it was; its new checks broken and seen to fail (every try concluding, a retry started without `--continue`, the folder's reset keeping the written card, every run folder counted as launched); the fast batch on 2.53.2 (6,948 passed), the kind table's new facts each removed and seen to fail (the root's description, both kinds' science checks, a deck that relaxes; a transmission folder's report on the real-junction e2e, 8 failed) -- the relaxation words, read by no test; the fast batch on 2.53.1 (6,947 passed), its new rules broken three ways and seen to fail (the hand-over's describe hook called bare, a PySCF preset menu of two tiers, the keyword-deck check left unasked); the hand-over's browser e2e on 2.53.1 (7 passed); the fast batch on 2.53.0 (6,944 passed); the real-junction e2e on 2.53.0 (201 passed) with the SIESTA CO₂ vibration and the monitor e2e (29), the run-of-points report broken six ways and seen to fail (the walk's own rule asked as done, the conductance without the energy join, the failed count, the finish's state, the NEGF count, the point's word); a spin-polarized transmission's (T↑+T↓)/2 checked against the record on channel files made from a real point; the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+
+---

@@ -180,13 +180,15 @@ running.)* It carries a detail line beneath it with two different facts:
 | detail | reads | where it comes from |
 |---|---|---|
 | **when** — "ended 14:32" | a *time of day* | for a run that has stopped moving, the end its output states — SIESTA's `>> End of run`, `run_end_local` — else the run's own per-step clock, else the file's modification time |
-| **total** — "total 2h" | a *duration*, said by the one span rule ([`ui-contract.md`](?doc=web/ui-contract.md) § 4) | how far into the run the last step was |
+| **total** — "total 2h" | a *duration*, said by the one span rule ([`ui-contract.md`](?doc=web/ui-contract.md) § 4) | a run that has ended: its own length, the engine's wall from launch to exit its record states — the Run panel's — served with the run's state (`runs.run_answer`; [`results.md`](?doc=web/results.md) § 4.1), none where its record states none (a PySCF run made before 2.56.2, whose run script wrote no wall); a run still going, or a file of no run: how far into the run its last step was — none where no step states a clock (a SIESTA `.out`) |
 
 **Those are two separate readings and neither substitutes for the other.** A
 PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.
 A SIESTA `.out` states the time of day only at the run's two ends
-(`>> Start of run`, `>> End of run`) and carries no per-step clock — only a
-timer counting from the start. So an ended SIESTA run is dated by its own
+(`>> Start of run`, `>> End of run`) and no step carries a clock: its
+`timer:` lines time its routines — *IterSCF* is printed once, after the
+run's first SCF iteration, with that iteration's time (a TranSIESTA device
+prints `TS` too, after its first NEGF iteration). So an ended SIESTA run is dated by its own
 `>> End of run` — the node's clock, shown as written, since a time with no
 zone cannot be converted — and only a running one falls back to the file's
 mtime, the one evidence there is of its latest line. The mtime is when the
@@ -319,7 +321,8 @@ header. The header's source-path line has the username redacted.
 - `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
 - `test_siesta_run_in_the_viewer_e2e.py` — § 4 on a SIESTA relaxation the road
   makes: the SCF line's rate is the run record's (the timing log, one reader),
-  and the badge dates the run by its `>> End of run`, in its folder; and every
+  and the badge dates the run by its `>> End of run` and says its *total* as
+  the record's engine wall, in its folder; and every
   element the viewer draws into, looked up on the panel the server sends,
   answers — one element, at the moment it is asked, as the run opens and as
   § 1's three force controls are used.
@@ -353,5 +356,6 @@ header. The header's source-path line has the username redacted.
   viewer: the viewer's own `rebuildModel` against MolView's real read-only
   model, four frames then six with the fourth moved.
 - `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
-  reads the timestamp series and its "total" reads the duration series, and
-  that no per-iteration rate is computed from a timestamp.
+  reads the timestamp series and a running run's "total" the duration
+  series, neither standing in for the other; and an ended run's "total" its
+  answer's engine wall, none where it states none.

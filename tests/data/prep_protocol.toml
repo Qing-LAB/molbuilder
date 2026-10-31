@@ -164,6 +164,14 @@ changed = { overrides = { coarse = { max_scf_iter = 200 } } }
 said = ["prepared coarse: 01_coarse/run-0  (reused -- not launched yet)", "prepared again -- differed from what was prepared: 01_coarse/H2_01_coarse.fdf"]
 
 [[case]]
+name = "...and a charged molecule whose charge the person then makes 0 in its template is prepared again with no correction script beside its deck -- every file beside a deck is prep's, and one this prep does not write is taken away (job-system.md, The task, prep task 5): a charged correction left beside a neutral deck for a person to run"
+structure = { elements = ["C", "O", "O", "H"], positions = [[5.0, 5.0, 5.0], [6.26, 5.0, 5.0], [4.37, 6.09, 5.0], [4.45, 4.05, 5.0]], cell = [10.0, 10.0, 10.0] }
+template = { net_charge = -1 }
+before = [["prep", "task", "--group", "1"]]
+changed = { template = { net_charge = 0 } }
+made_lacks = ["01_coarse/makov_payne_correction.py"]
+
+[[case]]
 name = "...and a sequence of groups (--one-job) is one job: nothing to write when every group of it and its one header are as this prep plans them -- no state saved, nothing written again, and still sent as one job"
 before = [["prep", "task", "--group", "1", "--group", "2", "--one-job"]]
 stage = ["coarse", "medium"]

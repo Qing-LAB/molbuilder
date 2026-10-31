@@ -1249,11 +1249,9 @@ created since the save is noticed at all. Never the glob list.
   Then, separately, create a big file that no MANIFEST mentions and assert
   `save` still sees it.
 
-**L8 — a run that ended never differs afterwards, but for its `run.json`'s
-`ended`, written once.** This is I2 pointed at a directory the layout says is
-frozen once its launch has ended (`project-layout.md` § 1.5); the scheduler's
-answer about a sent job is the one key written after it (`runrecord.record_ended`,
-§ 1.6.3 there). A run saved while it still runs — another group's prep saves
+**L8 — a run that ended never differs afterwards, but for what
+`project-layout.md` § 1.5 names.** This is I2 pointed at a directory the
+layout says is frozen once its launch has ended. A run saved while it still runs — another group's prep saves
 the whole folder — is saved mid-run, and its next save records what it then
 wrote.
 
@@ -1654,7 +1652,7 @@ conclude there is nothing to do.
 | **S7** | a file that changes category leaves the store it came from | ✅ tested in both directions — a file that grows leaves git, one that shrinks leaves the archive |
 | **S8** | a folder out of step is never acted on as if whole | ✅ a restore checks content and refuses, naming the files; a save records what is there, which is honest |
 | **S9** | two saves cannot corrupt each other | ✅ unique staging per publisher, one atomic rename, and **every atomic write uses a unique temp name** — a derived one is the same collision one level down; tested with four concurrent publishers and with two concurrent `save`s |
-| **L8** | a saved attempt never differs afterwards | unasserted — § 13.4's waiting table |
+| **L8** | a saved attempt never differs afterwards, but for what `project-layout.md` § 1.5 names | unasserted — § 13.4's waiting table |
 
 ### A lost archive is a fact now, not a suspicion
 
@@ -1845,7 +1843,7 @@ lands.
 | **S3** a run records what it started from | nothing: `run.json`'s `continued_from` and the run's `.continued-from` (`runrecord.write_launch`, `write_continued_from`) — the test is owed (plan § 2, W45) |
 | **S4** the description is never modified | nothing: `task.json` is in every described folder — the test is owed (plan § 2, W45) |
 | **S6** a restored folder explains itself | a door that lays a prep's preview beside the folder it would write, to compare against (plan § 2, W45) |
-| **L8** a run that ended never differs afterwards | the rule as restated above — but for `run.json`'s `ended`, written once: a run folder is saved whole — the test is owed (plan § 2, W45) |
+| **L8** a run that ended never differs afterwards | the rule as stated above, its exceptions `project-layout.md` § 1.5's: a run folder is saved whole — the test is owed (plan § 2, W45) |
 | **S5**, its second half — the *run layer* never rewrites the id | a prep and a run. The half checkpointing owns is asserted today (§ 13.4); this is the one that needs something to run |
 | **S1** — an engine's scratch an earlier save tracked in git leaves git's index at the next save, before anything is added, the file left where it lies | nothing: the save's untracking (`checkpoint._untrack`) exists — unasserted |
 

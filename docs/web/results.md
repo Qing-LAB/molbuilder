@@ -1089,10 +1089,12 @@ run's process ended (`runrecord.ending` —
 [`architecture.md`](?doc=execution/architecture.md) § 3.2), the answer the
 Run panel and `jobset status` give. The server sends it with the file:
 `/api/watch/load`, `/api/watch/data` and `/api/spectra/load` each carry
-`run: {state, detail, live}` for the run the file belongs to — its folder,
-and the run its name reads back to (`runs.run_answer`: the run door's
-state for a run's file, the run of points' view for a file at a run of
-points' root) — or `null` for
+`run: {state, detail, live, engine_elapsed_s}` for the run the file
+belongs to — its folder, and the run its name reads back to
+(`runs.run_answer`: the run door's state for a run's file, the run of
+points' view for a file at a run of points' root; once it is not live, its
+own length, the engine's wall from launch to exit its record states — the
+Run panel's — or `null`) — or `null` for
 a file that belongs to no run, an upload. A run whose launch record does not
 read — or a run of points whose records do not, at its root
 (`runs.points_root_state`) — is `unreadable`, never live, the file named in its `detail` — the

@@ -48,7 +48,7 @@ from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from ..parse.fdf import read_deck
 from .plan import FILENAME as _PLAN_FILE
 from . import prepared_with
-from ..runfiles import RunNames
+from ..runfiles import RunNames, beside_the_deck
 from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
 from .engines import EngineSeam, engine_seam, siesta_provide_pseudos
@@ -218,13 +218,17 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
         with user_error_as_prep():
             for _deck, _x in _decks:
                 _wrap(_deck, _x)
-                # A HEADER THIS PREP DOES NOT WRITE is taken away: one an
-                # earlier prep left -- for a queue since dropped, or a point
-                # -- would otherwise be sent as this one's (`job-system.md`
-                # § 6.0, *every header is prep's*).
-                _left = _deck.parent / _names.name(".sbatch")
-                if not plan.decides(_left) and _left.is_file():
-                    plan.remove(_left)
+                # EVERY FILE BESIDE THE DECK IS PREP'S (`runfiles.
+                # beside_the_deck`, the one list): one this prep does not
+                # write is one an earlier prep left -- a header for a queue
+                # since dropped, a correction script for a charge since made
+                # 0 -- and is taken away, never sent, run or read as this
+                # one's (`job-system.md`, *The task*, `prep task` 5; § 6.0,
+                # *every header is prep's*).
+                for _name in beside_the_deck(_deck.name, job.finish, _names):
+                    _left = _deck.parent / _name
+                    if not plan.decides(_left) and _left.is_file():
+                        plan.remove(_left)
         if log is not None:
             log.received(job.script, _flat_resources(job.resources)
                          + (f", env={env}" if env else ""))

@@ -19,13 +19,21 @@ matched to what is prepared by its members, never its number: prepared as
 described when every member's job holds exactly those members.
 
 Readers: `prep task`'s groups and offer, `launch task`'s gate and offer,
-`status`'s rows and next step, Task setup's Prep and its group tabs.
+`status`'s rows and next step, Task setup's Prep and its group tabs, and
+`molbuilder jobs` (a sequence's groups, :func:`sequence_sent`).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+
+#: A PREPARED stage whose run folder is not on disk -- against the design,
+#: said as such, never *ready to launch* (`job-system.md`, *The task*): the
+#: question launch's own gate asks (R-L28), ``(state, detail)``.
+MISSING = ("missing", "the job set names this run's folder; it is not on "
+                      "disk")
 
 
 @dataclass
@@ -50,8 +58,8 @@ class Readiness:
     #: Which wait ``why`` is, for a stage prepared and not ready to launch
     #: (`job-system.md`, *The task*): ``"waits"`` -- a run it builds on is
     #: not there yet; ``"regrouped"`` -- its job's members changed;
-    #: ``"unreadable"`` -- its launch record does not read.  ``None``
-    #: otherwise.
+    #: ``"unreadable"`` -- its launch record does not read; ``"missing"``
+    #: -- its run is not on disk (:data:`MISSING`).  ``None`` otherwise.
     blocked: Optional[str] = None
     #: The members of the job it is prepared in (`Job.members`, or itself
     #: alone) -- ``None`` when not prepared.
@@ -97,7 +105,8 @@ class Readiness:
         if self.prepared:
             if not self.ready:
                 return {"regrouped": "its job's members changed: ",
-                        "unreadable": "its launch record does not read: "
+                        "unreadable": "its launch record does not read: ",
+                        "missing": f"{MISSING[0]}: ",
                         }.get(self.blocked, "waits for: ") + first
             return ("ready to launch"
                     + (f" (prepared by {self.prepared_by})"
@@ -184,6 +193,14 @@ class GroupAnswer:
                     None)
 
     @property
+    def missing(self) -> Optional[str]:
+        """A member prepared whose run is not on disk (:data:`MISSING`) --
+        its name -- or ``None``: its group's prep opens it anew, and no verb
+        launches the group meanwhile (R-L28)."""
+        return next((a.stage for a in self.answers
+                     if a.blocked == MISSING[0]), None)
+
+    @property
     def launchable(self) -> bool:
         """Its first launch may go now: prepared as described, never
         launched, and what each member takes is there."""
@@ -238,12 +255,10 @@ def held_by_sequence(calc, number: int, *, asked=None
     this machine cannot ask about holds nothing.  ``None`` otherwise.
     Asked by the next step, by every launch and prep of a group, and by the
     bare launch's offer."""
-    from ..identity import stage_key
     from ..joblist import Asked, Job, every, is_going
     from .group import same_members
     base = Path(calc.base)
     stages = calc.request.members(number)
-    keys = {stage_key(s) for s in stages}
     asked = asked if asked is not None else Asked()
     for job in every():
         if (not isinstance(job, Job) or job.sequence is None
@@ -252,9 +267,7 @@ def held_by_sequence(calc, number: int, *, asked=None
         groups = job.sequence["groups"]
         at = next((i for i, g in enumerate(groups)
                    if same_members(g["stages"], stages)), None)
-        if at is None or keys & {stage_key(m) for m in job.members}:
-            continue
-        if _sent_by(calc, stages, job):
+        if at is None or sequence_sent(calc, stages, job) is not None:
             continue
         going, said = is_going(job, asked)
         if going is not True:
@@ -263,31 +276,49 @@ def held_by_sequence(calc, number: int, *, asked=None
     return None
 
 
-def _sent_by(calc, stages, job) -> bool:
-    """Whether a member of ``stages`` has a newest run the sequence job
-    ``job`` sent -- its launch record naming that sequence, and that job by
-    its id (a queue job) or launched after it went (a walk run here)."""
-    from ..runrecord import LaunchRecordError, stamp_time
-    from .materialize import newest_launch
+def sequence_sent(calc, stages, job) -> Optional[Dict[str, Path]]:
+    """THE ONE ANSWER to *has the sequence job ``job`` sent ``stages``*, with
+    its evidence -- asked by :func:`held_by_sequence` and by `molbuilder
+    jobs` (`runstatus.job_members`): ``{}`` on its address (a stage among the
+    job's members); ``{stage: run}`` by the stages' own runs, whose launch
+    records name the sequence that sent them (:func:`_sent_runs`); ``None``
+    not sent.  ``calc`` ``None`` -- the job's calculation moved, gone or not
+    read -- leaves the address the one evidence."""
+    from ..identity import stage_key
+    if {stage_key(s) for s in stages} & {stage_key(m) for m in job.members}:
+        return {}
+    return (_sent_runs(calc, stages, job) or None) if calc is not None \
+        else None
+
+
+def _sent_runs(calc, stages, job) -> Dict[str, Path]:
+    """THE RUNS the sequence job ``job`` sent of ``stages`` -- ``{stage:
+    run}``, each member's newest launched run whose launch record names that
+    sequence, and that job by its id (a queue job) or launched after it went
+    (a walk run here); a record that does not read is no evidence."""
+    from ..runrecord import LaunchRecordError, launch_record, stamp_time
+    from .materialize import launched_run
     went = stamp_time(job.launched_at)
+    out: Dict[str, Path] = {}
     for st in stages:
         row = calc.job(st)
         if row is None:
             continue
         try:
-            rec = newest_launch(calc, row)
+            run = launched_run(calc, row)
+            rec = launch_record(run) if run is not None else None
         except LaunchRecordError:
             continue
         if not rec or rec.get("sequence") != job.sequence["name"]:
             continue
         if job.how == "queue":
-            if str(rec.get("job_id")) == str(job.job_id):
-                return True
+            sent = str(rec.get("job_id")) == str(job.job_id)
         else:
             at = stamp_time(rec.get("launched_at"))
-            if at is not None and went is not None and at >= went:
-                return True
-    return False
+            sent = at is not None and went is not None and at >= went
+        if sent:
+            out[st] = run
+    return out
 
 
 def launched_stage(calc) -> Optional[str]:
@@ -620,6 +651,14 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
         if launched:
             return Readiness(stage, group, prepared=True, launched=True,
                              job_members=members, **since)
+        # ITS RUN NOT ON DISK -- the question launch's gate asks (R-L28), of
+        # the folder its plan names: never ready to launch; its group's prep
+        # opens it anew.
+        from .materialize import job_folder, latest_attempt
+        if latest_attempt(job_folder(calc, job)) is None:
+            return Readiness(stage, group, prepared=True, why=MISSING[1],
+                             blocked=MISSING[0], job_members=members,
+                             **since)
         why = regrouped(calc, stage)
         if why:
             return Readiness(stage, group, prepared=True, why=why,
@@ -796,9 +835,11 @@ def groups(request, answers: List[Readiness]) -> List[GroupAnswer]:
 def prep_offer(gs: List[GroupAnswer]) -> List[int]:
     """The groups `prep task` offers pre-selected (`job-system.md`, *The
     task*): every one not prepared as described, or never launched and
-    changed since prepared, and preparable."""
+    changed since prepared, or with a member whose run is not on disk, and
+    preparable."""
     return [g.number for g in gs
-            if (not g.prepared or (g.since_prepared and not g.launched))
+            if (not g.prepared or g.missing is not None
+                or (g.since_prepared and not g.launched))
             and g.preparable]
 
 
@@ -824,8 +865,9 @@ def groups_text(gs: List[GroupAnswer]) -> str:
     return "\n".join(out)
 
 
-__all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
-           "readiness", "launched_without",
+__all__ = ["MISSING", "Readiness", "GroupAnswer", "TaskState", "task_state",
+           "readiness", "launched_without", "held_by_sequence", "held_why",
+           "sequence_sent",
            "joined_launched", "why_group_fixed", "regrouped",
            "launched_stage",
            "first_launch_takes",

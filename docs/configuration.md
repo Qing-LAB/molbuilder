@@ -1056,7 +1056,7 @@ facts that travel with the record**, `env_init`, `conda_envs`, `env_arch` and
 `manager_run`, which are left out when empty or not measured *(user,
 2026-10-03)*, and the probe says in its notes which it left out and why (no
 environment manager answered, or it listed none; its `run` failed some other
-way than the stub). Left out reads as unknown, and nothing is checked against
+way than the stub; asking the machine failed). Left out reads as unknown, and nothing is checked against
 an unknown inventory. **`manager_run`** *(2026-10-18, the user: "remember the
 measurement in the machine record so it stops repeating")* is
 `{"manager": <the binary the probe found there>, "run_works": true | false}`:

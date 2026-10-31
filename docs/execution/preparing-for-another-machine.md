@@ -19,7 +19,7 @@ needs before it can offer to prepare anything.
     --write --name sol  ─────────────────────────►  jobset prep task --group <N>  
                                                       --target sol
                                                           │
-                                                    rsync the bundle  ───►  ./…run.sh
+                                                    rsync the bundle  ───►  jobset launch task --group <N>
 ```
 
 1. **Probe on the target.** `jobset probe --write --name sol` measures that
@@ -37,7 +37,11 @@ needs before it can offer to prepare anything.
    that record instead of from the machine you are sitting at, snapshots it
    as `environment.json` beside the bundle, and renders decks and wrappers
    against the target's numbers.
-4. **Send the bundle** and run it there.
+4. **Send the bundle** and launch it there — `jobset launch task --group <N>`
+   on the target, the one launch door (`running-a-job.md` § 5.5). The run
+   script refuses to start without its try's number; started without the
+   launch's claim, it asks at a terminal and refuses elsewhere — § 5.5 gives
+   the deliberate manual form.
 
 **Why this shape.** Rendering a deck needs the machine's capability — rank
 counts, memory, whether there is a queue — and a browser or a laptop does

@@ -212,8 +212,7 @@ def test_a_charged_molecule_is_corrected_and_a_charged_cell_is_not(
         return next(dest.glob(f"*_{stage}")) / "makov_payne_correction.py"
 
     def calc(name):
-        # Each its own calculation: a stage folder another prep wrote into
-        # would still hold that prep's files.
+        # Each its own calculation, in a folder of its own.
         (isolated_projects_root / name).mkdir()
         return isolated_projects_root / name
 

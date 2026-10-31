@@ -104,8 +104,8 @@ class SiestaReader:
         self._warn_to = warn
         self.warnings: List[Dict[str, Any]] = []
         #: Committed steps, oldest first: ``{coords, forces, energy,
-        #: max_force, max_force_constrained, charges, scf_history,
-        #: elapsed_s, in_progress}`` -- coordinates as ``[element, x, y,
+        #: max_force, max_force_constrained, charges, stress_voigt_kbar,
+        #: scf_history, in_progress}`` -- coordinates as ``[element, x, y,
         #: z]`` rows; ``charges`` each partition's every-atom charges the
         #: step printed (`siesta_grammar.PARTIAL_CHARGES_BEGIN`), ``None``
         #: where it printed none.
@@ -348,15 +348,6 @@ class SiestaReader:
             energy = next((float(c["energy"]) for c in reversed(negf)
                            if isinstance(c.get("energy"), (int, float))
                            and math.isfinite(c["energy"])), None)
-        # SIESTA's IterSCF timer counts from the START OF THE RUN; the step's
-        # end-of-time is its LAST cycle's.  ``wall_clock_s`` is never set: a
-        # SIESTA .out states the time of day only at its two ends (parse.md
-        # § 2a, P-T2).
-        elapsed_s: Optional[float] = None
-        if self._current_scf:
-            cum = self._current_scf[-1].get("elapsed_s")
-            if isinstance(cum, (int, float)) and math.isfinite(cum):
-                elapsed_s = float(cum)
         # A RUN THAT COMPUTES NO FORCES keeps none -- nor the stress, built
         # from the same energy-density matrix TranSIESTA set to zero.
         computed = self.forces_not_computed is None
@@ -370,7 +361,6 @@ class SiestaReader:
             "charges": dict(self._step_charges) or None,
             "stress_voigt_kbar": self._step_stress if computed else None,
             "scf_history": list(self._current_scf) or None,
-            "elapsed_s": elapsed_s,
             "in_progress": in_progress,
         })
         # The preamble Etot is kept for display: each commit writes its
@@ -708,28 +698,6 @@ class SiestaReader:
         self._pending_cycle.clear()
         self._current_scf.append(cycle)
         self._prev_E_KS = e_ks
-
-    def _on_iter_scf_timer(self, line: str, line_no: int) -> None:
-        """SIESTA's cumulative IterSCF timer onto the most recent cycle:
-        ``Calls`` as ``cumulative_calls``, ``Time`` as ``elapsed_s``.  A timer
-        with no cycle before it is dropped; an overflowed field is left off
-        rather than costing the others."""
-        m = _G.ITER_SCF_TIMER.match(line)
-        if m is None or not self._current_scf:
-            return
-        tokens = m.group(1).split()
-        if not tokens:
-            return
-        last = self._current_scf[-1]
-        if "*" not in tokens[0]:
-            try:
-                last["cumulative_calls"] = int(tokens[0])
-            except (ValueError, TypeError):
-                pass
-        if len(tokens) >= 2:
-            cum = _G.fortran_float(tokens[1])
-            if math.isfinite(cum):
-                last["elapsed_s"] = cum
 
     # Max-force lines (``Src/write_subs.F``: ``Max`` and, with constrained
     # atoms, ``Max ... constrained`` -- what SIESTA compares against
@@ -1187,10 +1155,6 @@ class SiestaReader:
             SectionRule(name="scf_data", aliases=["scf: <iscf> ..."],
                         start=matches_regex_ci(_G.SCF_ROW_ERE),
                         on_start=self._on_scf_data),
-            SectionRule(name="iter_scf_timer",
-                        aliases=["timer: ... IterSCF"],
-                        start=matches_regex_ci(_G.ITER_SCF_TIMER.pattern),
-                        on_start=self._on_iter_scf_timer),
             # TranSIESTA's lines -- each has its own prefix, so none can
             # collide with a rule above.
             SectionRule(name="ts_q", aliases=["ts-q: ..."],
@@ -1557,13 +1521,8 @@ class SiestaReader:
                 if math.isfinite(fv):
                     energy = fv
                     break
-            elapsed_s: Optional[float] = None
-            cum = self._current_scf[-1].get("elapsed_s")
-            if isinstance(cum, (int, float)) and math.isfinite(cum):
-                elapsed_s = float(cum)
             live_scf = {"energy": energy,
-                        "scf_history": list(self._current_scf),
-                        "elapsed_s": elapsed_s}
+                        "scf_history": list(self._current_scf)}
         # NO CONVERGENCE CLAUSE HERE -- `model/parse.md` § 2b, P-S2.  The held
         # `SCF_NOT_CONV:` line is the best cause-of-death sentence when
         # something else proves death, so it fills an empty message only then.

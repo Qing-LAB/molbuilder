@@ -15,7 +15,7 @@ tree. On a laptop that is one person's own files. On a group machine it is
 several people's, over a network, with calculations running.
 
 **This document is the design of the gates between those two situations** —
-what each one asks, why there are four of them and not one, what happens when a
+what each one asks, why each is its own and not one, what happens when a
 gate is misconfigured, and which parts are known to be wrong today. It is not a
 setup guide: how to *turn on* SSO or *tune* the limiter is
 [`deployment.md`](?doc=ops/deployment.md) § 3 and § 4.
@@ -70,12 +70,13 @@ block is an empty `429` with the connection closed — cheap for the server, and
 it tells the scanner nothing about what is behind it.
 
 **A developer who just changed the code.** They press **Reload server**, and a
-fresh interpreter comes up with the new Python. Almost nobody sees that button:
-it exists only under a supervisor **and** only for a named admin (§ 6).
+fresh interpreter comes up with the new Python. The button exists only under
+a supervisor, and only for an admin — anyone who can sign in, unless the
+`admin` section names addresses (§ 5, § 6).
 
 ---
 
-## 2. Five questions, five gates
+## 2. Six questions, six gates
 
 They are separate because they are different questions, and one answer would be
 wrong for at least one of them.
@@ -85,12 +86,14 @@ wrong for at least one of them.
 | **Do I know who this is?** | the auth gate (SSO) | browser → `/login`; `/api/*` → `401` JSON | `web/auth.py` |
 | **Does this traffic look hostile?** | the rate limiter | empty `429`, `Connection: close`, 1 h | `web/rate_limit.py` |
 | **May this person read and clear the block list?** | the `admin` list | `403` | `web/admin.py` |
-| **May this person stop the process everyone shares?** | supervisor **and** the `admin` list | the route **does not exist** — `404` | `web/app.py` |
+| **May this person stop the process everyone shares?** | supervisor **and** the `admin` list | `404` with no supervisor — the route **does not exist** — and `403` with one | `web/app.py` |
 | **May this person run arbitrary code on this machine?** | supervisor **and** the `admin` list — *or*, on a server with no sign-in, loopback asked by a loopback name | `404` with no supervisor to ask, `403` with one | `web/blueprints/jupyter.py` |
+| **May this program write a run report?** | the listener's signature over the exact body — the route registered only where `notify_keys` names a route and holds keys; it takes no session (§ 3.2) | a plain `404`, whatever failed | `web/blueprints/notify.py` ([`execution/run-reports.md`](?doc=execution/run-reports.md) § 4.1) |
 
 Read rows three to five together: **one list answers all of them**, and they
-refuse in different ways — a 403 for the block list, an absent route for the
-restart, and 404-then-403 for the notebook. § 5 and § 6 are why.
+refuse in two ways — a 403 for the block list, and 404-then-403 for the
+restart and the notebook: nothing there with no supervisor to ask, a refusal
+with one. § 5 and § 6 are why.
 
 ### 2.0 The fifth gate — a live kernel *(added 2026-09-15)*
 
@@ -150,8 +153,10 @@ flowchart TB
     L{"does this traffic<br/>look hostile?"}
     B["empty 429 · Connection: close<br/>cooled off for 1 hour"]
     ADM{"an admin-only route?"}
-    A403["403 — the block list"]
-    A404["404 — the restart route<br/><b>does not exist</b> for you;<br/>the notebook's refuses per request"]
+    SUP{"the restart or the notebook:<br/>a supervisor to ask?"}
+    LIST{"on the admin list?"}
+    A403["403 — not an admin"]
+    A404["404 — no supervisor: the restart route<br/><b>does not exist</b>;<br/>the notebook's answers 404"]
     OK(["served"])
 
     R --> A
@@ -160,9 +165,12 @@ flowchart TB
     L -->|"hostile"| B
     L -->|"fine, or allowlisted,<br/>or authenticated"| ADM
     ADM -->|"no"| OK
-    ADM -->|"yes, and you are on the list"| OK
-    ADM -->|"yes, and you are not — block list"| A403
-    ADM -->|"yes, and you are not — restart"| A404
+    ADM -->|"the block list"| LIST
+    ADM -->|"the restart or the notebook"| SUP
+    SUP -->|"no"| A404
+    SUP -->|"yes"| LIST
+    LIST -->|"yes"| OK
+    LIST -->|"no"| A403
 ```
 
 **Two boxes skip the limiter for two different reasons, and the difference
@@ -205,7 +213,11 @@ A short, deliberate list — everything else goes through the gate:
 
 `/login`, `/login/<provider>`, the two callbacks, `/logout`, `/api/health`
 (liveness probes must not need a session), `static` (the browser fetches CSS and
-JS before any session exists), and the vendored Plotly bundle.
+JS before any session exists), the vendored Plotly bundle — and the run-report
+listener (`notify.api_notify`), registered only where its key file carries a
+route: a monitor on a compute node cannot sign in, so it takes no session and
+checks a signature over the exact body instead
+([`execution/run-reports.md`](?doc=execution/run-reports.md) § 4.1).
 
 Adding an endpoint to that list makes it public. It is a decision, not a
 convenience.
@@ -348,7 +360,7 @@ before it exists at all.
 > that still sets it is refused by name, pointing here (since 2026-10-02 — until
 > then it was read as naming nobody).
 
-## 6. Stopping the process — absent, not refused
+## 6. Stopping the process — absent without a supervisor, refused to a non-admin
 
 **Reload server** exits the process with a sentinel its supervisor is waiting
 for, so a fresh child starts with every Python module imported again. The design
@@ -378,8 +390,8 @@ Two smaller decisions follow the same grain:
 
 - **The button is drawn hidden and revealed**, after
   `GET /api/admin/reload/available` says this session may use it. A control that
-  appears and then vanishes reads as a permission being taken away, and almost
-  every session will never see this one.
+  appears and then vanishes reads as a permission being taken away, and a
+  session the `admin` section leaves out never sees this one.
 - **The confirm names the cost out loud**: everyone using the server is
   disconnected, and saves still in flight are lost — `persist` does not wait for
   the server ([`web/workspace.md`](?doc=web/workspace.md) § 6), so *sent* is not
@@ -448,9 +460,9 @@ The transferable part. A new gate should be able to point at one of these.
 
 1. **The safe state is the one you get by doing nothing.** Every default here is
    the restrictive reading, and every misconfiguration removes a capability
-   rather than granting one. The one place that used to violate it —
-   `admin_emails` empty meaning *everybody* — was fixed on 2026-08-03: the list
-   has its own section and one meaning (§ 5).
+   rather than granting one. The admin list's empty default — anyone who can
+   sign in — keeps the rule: a session exists only for someone an operator
+   named in the required allow-list (§ 5).
 2. **Absent beats refused, when existence is itself the answer.** A capability
    that cannot be exercised safely should not appear. `404` is not rudeness; it
    is the honest statement that there is nothing there. **A refusal that looks
@@ -463,7 +475,7 @@ The transferable part. A new gate should be able to point at one of these.
 4. **Judge behaviour, not people.** The limiter never asks who you are, only
    what your traffic looks like — which is why a signed-in user skips it and an
    anonymous scanner does not.
-5. **One question, one gate.** Four checks because there are four questions.
+5. **One question, one gate.** A check for each question, never one for two.
    Merging them is how "may read the block list" quietly becomes "may stop the
    server" — see § 5.
 6. **Name the cost of a destructive action before doing it, in the user's own
@@ -480,7 +492,7 @@ The transferable part. A new gate should be able to point at one of these.
    deployment**, not chosen once and shipped.
 8. **A secret that must reach a second machine is minted only by an explicit
    act.** `serve` may generate a secret that lives here and nowhere else — the
-   session key does exactly that on first run (§ 4), and rotating it only asks
+   session key does exactly that on first run (§ 3.4), and rotating it only asks
    people to sign in again. It may never generate one whose counterpart is held
    by another machine, because nothing here can deliver the replacement: the far
    side keeps presenting the old secret, is refused, and **the failure looks

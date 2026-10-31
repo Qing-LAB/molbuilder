@@ -217,7 +217,6 @@ class SiestaParser:
                 max_force   = step["max_force"],
                 max_force_constrained = step["max_force_constrained"],
                 scf_history = step["scf_history"],
-                elapsed_s   = step["elapsed_s"],
                 in_progress = step["in_progress"],
             ))
         # In-progress SCF visibility: a run still going with SCF cycles and no
@@ -234,7 +233,6 @@ class SiestaParser:
                 step_index  = len(frames),
                 energy      = live["energy"],
                 scf_history = live["scf_history"],
-                elapsed_s   = live["elapsed_s"],
                 in_progress = True,
             ))
 

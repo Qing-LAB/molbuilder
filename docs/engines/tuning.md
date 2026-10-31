@@ -600,15 +600,15 @@ once the GPU's compute units are fully busy, extra processes only wait in
 line on the device. **Threads are not required for GPU sharing** — one
 core per rank is a complete layout; giving each rank more cores (C > 1)
 helps only the CPU phases of the step, and only as far as this SIESTA
-build's OpenMP threading actually scales. **Is one thread per rank the
-standing assumption?** For CPU SIESTA yes — the shipped default, because
-mainline SIESTA's threading is not reliable enough to beat simply using
-more ranks (and the math libraries are pinned to one thread in every
-mode, so threads can never oversubscribe the cores). In GPU mode, no:
-when few ranks run, the wrapper widens each rank's threads to use the
-node's spare cores, unless you state a number. Either way it is an
-assumption you can replace with a measurement — declare `omp_threads` as
-an axis, and the winning C is reported for you to write into `execution`.  One
+build's OpenMP threading actually scales. **How many threads a rank gets
+is yours to state**, on the run card or at prep, on CPU and GPU alike: prep
+refuses a run whose threads are not stated, and nothing fills one in — not a
+thread per rank, not the node's spare cores (`placement.launch_refusal`;
+`execution/architecture.md` § 5.2). The math libraries are pinned to one
+thread in every mode, so the threads you state can never oversubscribe the
+cores. On mainline SIESTA one thread a rank and more ranks is usually the
+faster layout; a measurement tells — declare `omp_threads` as an axis, and
+the winning C is reported for you to write into `execution`.  One
 declaration measures the full-node layouts: `mpi_np: [24, 48]` ×
 `omp_threads: [1, 2]` × `gpu_count: [1, 2, 4]` enumerates each rank count
 over one, two and four GPUs — `G4N48`, `G2N48`, `G1N48` (48 ranks on one
