@@ -718,6 +718,16 @@
           "subtitle": "The whole-codebase review of 2026-10-29, verified"
         },
         {
+          "path": "archive/2026-10-31-finish-line-review.md",
+          "label": "The finish-line review of 2026-10-30, verified",
+          "subtitle": "The finish-line review of 2026-10-30, verified"
+        },
+        {
+          "path": "archive/2026-10-31-plan-consolidation.md",
+          "label": "The plan's lists as they stood on 2026-10-31",
+          "subtitle": "The plan's lists as they stood on 2026-10-31"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"
