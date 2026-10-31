@@ -1,6 +1,15 @@
 """molbuilder -- build 3-D molecules from sequences / SMILES / names.
 
-Public API -- each builder from its own module:
+Public API -- THE BUILD DOOR, what every surface builds through: the
+builder its kind names and the check after it, which says what the build
+found (a peptide's aldehyde end, a steric clash, a form the backend does not
+build) -- each builder called directly returns the structure alone:
+
+    >>> from molbuilder.builders import build
+    >>> made = build("dna", "ATGC", backend="auto")
+    >>> made.structure, made.backend, made.findings
+
+Each builder from its own module:
 
     >>> from molbuilder.peptide import build_peptide
     >>> s = build_peptide("ARNDC")                          # 1-letter
@@ -41,7 +50,7 @@ from .structure import Structure
 #: to what a file says among it -- each version with its line in
 #: `docs/process/changelog.md`; the first with a release the user declares
 #: (`process/conventions.md` § 2, *Versioning*).
-__version__ = "2.56.2"
+__version__ = "2.57.0"
 
 #: THE BUILDERS ARE NOT RE-EXPORTED HERE.  Python loads this module before
 #: any module inside the package, so whatever it imports loads under every

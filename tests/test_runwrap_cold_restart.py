@@ -55,7 +55,7 @@ def test_the_exception_is_anchored_on_the_label_not_widened_to_a_star():
     added to ``OUR_FILE_PATTERNS`` for another reader's sake must not quietly
     re-open it -- no engine file of today's shows it, so the rendered arm is
     read.  One glob is exempt by design and named here -- ``*.psml`` is
-    element-named, not run-named.
+    named for a species label, not for the run.
     """
     from molbuilder.runwrap import _cold_restart_block
 

@@ -744,10 +744,10 @@ the temperature the person states sets (`engines/vibration.md` § 5.10 ③;
 
 | Method | Format | Guarantees |
 |---|---|---|
-| `to_xyz(*, comment="")` | xmol XYZ **text** | one block per frame the structure holds (§ 2.2e): line 1 = `N`; line 2 = comment-or-title, and nothing else; then `El x y z` per atom |
-| `to_pdb()` | PDB ATOM records, as **text** | TITLE if set, continued onto numbered records past seventy characters (§ 2.2c); serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
+| `to_xyz(*, comment="")` | xmol XYZ **text** | one block per frame the structure holds (§ 2.2e): line 1 = `N`; line 2 = comment-or-title, and nothing else; then per atom its species label's name and `x y z` — `Au1` is written `Au` (`chemical_symbols`; `model/chemistry.md` § 3) |
+| `to_pdb()` | PDB ATOM records, as **text** | the element columns 77–78 each label's name, as `to_xyz` writes it; TITLE if set, continued onto numbered records past seventy characters (§ 2.2c); serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
 | `to_pyscf(*, as_string=False)` (`:2007`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
-| `to_ase()` (`:2034`) | `ase.Atoms` | raises `ImportError` with install hint if ASE absent |
+| `to_ase()` (`:2034`) | `ase.Atoms` | each atom by its label's name, as `to_xyz` writes it; raises `ImportError` with install hint if ASE absent |
 | `from_xyz(text, *, title=None)` (`:1646`) | XYZ **text** | every frame of the document, one structure (§ 2.2e); see requirements below |
 | `from_pdb(text, *, title=None)` (`:1741`) | PDB **text** | reads `ATOM`/`HETATM`; first MODEL only; TER handling below |
 
@@ -781,14 +781,15 @@ had to change for it, one of them the package's own front-page example.
 > and a caller holding a path reads the file itself. `os` is no longer imported
 > by this module at all — reading stopped being a filesystem concern here.
 
-**Round-trip guarantees.** XYZ: elements exact, positions to the six
+**Round-trip guarantees.** XYZ: element symbols exact, positions to the six
 decimals `to_xyz` writes (1e-6 Å), every frame; metadata drops to defaults
 (XYZ has no slots — the comment line is not one, below). PDB: elements,
 atom names and residue names exact; positions to the three decimals of the
 ATOM record (1e-3 Å); residue ids up to 9999 and serials up to 99999 (the
 columns' widths, above); chain ids to their first character. The pair
 carries what the geometry cannot: the sidecar holds the real identity
-columns (`structure-molstruct.md` § 1), so a saved pair loses none of them.
+columns and the species labels (`structure-molstruct.md` § 1), so a saved
+pair loses none of them.
 
 **`from_xyz` requirements:** line 1 = non-negative integer N; lines 2..N+2
 read; trailing blank/short lines tolerated; bad header or short atom line →

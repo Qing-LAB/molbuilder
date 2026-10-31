@@ -1908,9 +1908,9 @@ browser's validation and `molbuilder describe --psml-lib` all resolve it through
 that one rule; before 2026-08-21 they had three rules between them, and
 `describe` had a fourth that was simply the working directory.
 
-**An element with no pseudopotential in either place stops `prep`, by name**, before
+**A species with no pseudopotential in either place stops `prep`, by name**, before
 a deck is written: *"this calculation needs S.psml and there is none in the folder
-or in the library."* SIESTA has no search path — it opens `<element>.psml` in the
+or in the library."* SIESTA has no search path — it opens `<label>.psml` in the
 directory it is run from and nowhere else — so a missing file is not a warning
 about a preference, it is a run that cannot start. **And when the library
 itself is not there, the refusal names the folder the spelling asked for** —
@@ -2551,7 +2551,7 @@ and in a remapped pair's sidecar, never a file of its own
 | `prepared-with.json` | what each prepared stage was prepared with — its settings, points and run card, merged per stage — which `status` compares with its records now | prep (`jobset.prepared_with.record`) | `jobset.prepared_with.changes` | record |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
 | `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
-| `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines.pseudo_dir`, `materialize`); `molbuilder describe --psml-lib` | `pseudos.psml_sources` | input |
+| `<species>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines.pseudo_dir`, `materialize`); `molbuilder describe --psml-lib` | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.recorded_junction` | derived |
 | `junction.molstruct.json` *(transport)* | its cell, its region labels and the citation's record | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.recorded_junction` | derived |
 | `junction.cited.fdf` *(transport)* — only: a run is cited | the deck the junction was cited from, as it was | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |

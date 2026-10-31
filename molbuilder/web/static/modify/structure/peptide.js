@@ -82,6 +82,7 @@
         var input  = doc.getElementById("peptide-input");
         var button = doc.getElementById("peptide-generate-btn");
         var status = doc.getElementById("peptide-status");
+        _deps.findingsIn(doc.getElementById("peptide-findings"));
         if (!input || !button) return;
 
         /* The shared `.status` writer (lib/status.js): `.status` is the

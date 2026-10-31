@@ -1388,19 +1388,16 @@
         const r = results.phase_raman;
         const e = results.phase_es;
         if (f !== "complete") return "Computing vibrational frequencies (Hessian)";
-        // `not requested` is terminal (vibration.md § 4.9): nothing is
-        // computing for a phase the description never asked for.
-        const done = (v) => v === "complete" || v === "not requested";
-        if (_ramanAsked(results) && !done(r))
+        // A PHASE STILL TO FINISH, by its own record (`_running`): `not
+        // requested` is terminal (vibration.md § 4.9), and "" -- a file
+        // from before the flag -- no record, not a phase still to come.
+        if (_running(r))
             return _ramanOptical(results)
                 ? "Computing Raman (SIESTA's optical calls at \u00b1\u03b4Q)"
                 : "Computing Raman activities (polarizability derivatives)";
-        // A file from before the flag carries "" -- no record, not a phase
-        // still to come (vibration.md § 4.9).
-        const ir = results.phase_ir;
-        if (_irAsked(results) && !done(ir))
+        if (_running(results.phase_ir))
             return "Computing infrared intensities (dipole derivatives)";
-        if (_asked(results, "es") && !done(e)) {
+        if (_running(e)) {
             const haveES = (results.modes || [])
                 .filter(m => m.electronic_structure).length;
             const planned = (results.selected_mode_idxs_1based || []).length;
@@ -1412,21 +1409,19 @@
     }
 
     function allPhasesComplete(results) {
-        // A run is "complete" when every phase the CONFIG asked for
-        // is complete.  L2 (frequencies) is always required.
+        // A run is "complete" when no phase its record states is still
+        // to finish.  L2 (frequencies) is always required.
         // Relaxation counts only when the deck ran it (v4 files and
         // `already_relaxed` runs carry enabled: false / no block).
         const rx = results.relaxation || {};
         if (rx.enabled && results.phase_relaxation !== "complete")
             return false;
         if (results.phase_frequencies !== "complete") return false;
-        const done = (v) => v === "complete" || v === "not requested";
-        // EACH PHASE THE RUN ASKED FOR, by its own record (vibration.md
-        // § 5.11 § 8) -- "" is a file written before a flag: no record,
-        // and no reason to wait (§ 4.9).
+        // EACH PHASE STILL TO FINISH, by its own record (vibration.md
+        // § 4.9): `not requested` is terminal, and "" -- a file written
+        // before a flag -- no record, and no reason to wait.
         for (const ph of ["raman", "ir", "es"]) {
-            if (_asked(results, ph) && !done(results["phase_" + ph]))
-                return false;
+            if (_running(results["phase_" + ph])) return false;
         }
         return true;
     }
@@ -1560,20 +1555,26 @@
     function _ramanOptical(r) {
         return !!(r && r.raman_route === "optical");
     }
-    /* WHETHER THE RUN ASKED FOR A PHASE, from the result's own record, the
-     * same on both engines (engines/vibration.md § 5.11 § 8): `not
-     * requested` is a run that never asked -- Compute IR, Compute Raman
-     * off, PySCF's probe at skip; "" a file written before the flag, no
-     * record. */
+    /* A PHASE AS ITS OWN RECORD STATES IT, the same on both engines
+     * (engines/vibration.md § 5.11 § 8) -- whether Raman or the probe was
+     * asked, and each phase's dot (web/spectra.md § 3): `not requested` is
+     * a run that never asked -- Compute Raman off, PySCF's probe at skip;
+     * "" a file written before the flag, no record.  Whether the INFRARED
+     * was asked -- for its column, CSV, sentence and summary -- is the
+     * door's one reading (`_irAsked`); its dot shows its phase's record. */
     function _asked(r, phase) {
         const v = r && r["phase_" + phase];
         return !!v && v !== "not requested";
     }
     function _ramanAsked(r) { return _asked(r, "raman"); }
-    /* A result that states its charges asked for its infrared -- they are
-     * what it is made of -- whatever a finish before 2.44.0 left in
-     * `phase_ir` (the analysis's default, *not requested*). */
-    function _irAsked(r) { return _asked(r, "ir") || _irFromCharges(r); }
+    /* WHETHER THE RUN ASKED FOR ITS INFRARED -- the load door's one reading
+     * of the result's own facts, older files included (`infrared_asked`,
+     * engines/vibration.md § 5.11 § 8): the column, the CSV, the sentence
+     * and the summary read it, never `phase_ir`. */
+    function _irAsked(r) { return !!(r && r.infrared_asked); }
+    /* A PHASE STILL TO FINISH, by its own record: `empty` or `running`
+     * (engines/vibration.md § 4.9). */
+    function _running(v) { return v === "empty" || v === "running"; }
     /* RAMAN ASKED AND NONE COMPUTED: the phase ended with no route -- a
      * SIESTA range that kept no mode, no optical call run (engines/
      * vibration.md § 5.11 § 8); the Methods paragraph says which range.
@@ -1680,13 +1681,16 @@
         // page asks -- its infrared from the free atoms' charges
         // (web/spectra.md § 3.2), its Raman from the optical calls at the
         // laser you apply (§ 3.3).
-        if (_irFromCharges(r) || _ramanOptical(r) || _ramanNoneComputed(r)) {
+        // ...and a result asked for one that carries none, its phase
+        // ended: why is the door's, in the bar's place.
+        if (_irFromCharges(r) || _ramanOptical(r) || _ramanNoneComputed(r)
+            || (ir && r.infrared_absent && !_running(r.phase_ir))) {
             const irWords = !ir ? "no infrared was requested in this run"
                 : r.infrared_said
                     ? "the infrared asked of the run's charges could not "
                       + "be given (why: in the bar above the chart)"
                 : r.infrared_absent
-                    ? "the result states no charges (why: above the chart)"
+                    ? "the result carries no infrared (why: above the chart)"
                     : "no real mode has an infrared strength";
             // THE BAR'S LINE'S WORDS (`_ramanWait`); a view
             // shown with no number yet is a run whose picked modes have
@@ -1702,9 +1706,8 @@
                  + irWords + "; " + ramanWords
                  + ".  Click a line to pick its mode.";
         }
-        const running = (v) => v === "empty" || v === "running";
-        if (running(r.phase_frequencies) || running(r.phase_raman)
-            || running(r.phase_ir)) {
+        if (_running(r.phase_frequencies) || _running(r.phase_raman)
+            || _running(r.phase_ir)) {
             return "The intensities are still being computed; until the "
                  + "first ones land each line marks where a mode is.";
         }
@@ -1841,13 +1844,13 @@
             return "from the run's charges — " + _irViewWords(r.infrared);
         if (_irFromCharges(r) && r.infrared_said)
             return "from the run's charges — not given: " + r.infrared_said;
-        // A RUN THAT DID NOT ASK, by its own record, on either engine.
-        if (r.phase_ir === "not requested") return "not requested";
-        // A RESULT STATING NO CHARGES and no record of the phase: why is
-        // the door's, said once in the bar's place (`infrared_absent`).
+        // A RUN THAT DID NOT ASK -- the door's one reading, either engine.
+        if (!_irAsked(r)) return "not requested";
+        // A RESULT CARRYING NONE though asked: why is the door's, said once
+        // in the bar's place (`infrared_absent`).
         if (r.infrared_absent) {
-            return "none in this result — it states no charges (why: above "
-                 + "the chart)";
+            return _running(r.phase_ir) ? "being computed"
+                : "none in this result (why: above the chart)";
         }
         // A HELD MOLECULE'S COLUMN is its stored dipole change along the
         // light (web/spectra.md § 3.2): the summary says which view it is.
@@ -1909,13 +1912,13 @@
         }
     }
     /* THE INFRARED'S COLUMNS (web/spectra.md § 3.2): titled short, the
-     * view in their notes under the table; and, for a SIESTA result that
-     * states no charges, the door's reason in the bar's place. */
+     * view in their notes under the table; and, for a result that carries
+     * no infrared, the door's reason in the bar's place. */
     function _renderInfraredColumns(results) {
         const charges = !!(results && results.infrared_source === "charges");
         if (els.irExplain) els.irExplain.hidden = !charges;
-        // WHY A RESULT OF THIS ROUTE HAS NO CHARGES is the door's sentence
-        // (`spectra.infrared.no_charges_reason`), shown where it says one.
+        // WHY A RESULT CARRIES NO INFRARED is the door's sentence
+        // (`spectra.infrared.infrared_absent`), shown where it says one.
         const absent = (results && results.infrared_absent) || "";
         if (els.irAbsent) {
             els.irAbsent.textContent = absent;
@@ -2941,7 +2944,7 @@
              * with no probe is told what its electronic response will be,
              * never an item it has no way to set. */
             const r = state.results || {};
-            const running = r.phase_es === "empty" || r.phase_es === "running";
+            const running = _running(r.phase_es);
             // The selection is in the file from the first probed mode on, so
             // a mode it left out is told so while the probe still runs.
             const sel = r.selected_mode_idxs_1based || [];

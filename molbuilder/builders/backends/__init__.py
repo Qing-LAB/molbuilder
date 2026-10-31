@@ -40,11 +40,46 @@ backend names itself in its ``missing``.
 
 from __future__ import annotations
 
-from typing import Callable, Dict
+from dataclasses import dataclass
+from typing import Callable, Dict, Optional
 
 from ...chemistry import BackendUnavailable
 
 
+#: THE HELICAL FORM EACH KIND IS BUILT IN when none is asked -- the canonical
+#: one, B for DNA and A for RNA -- and THE TERMINAL STATE, both ends -OH.
+#: Every door that builds reads them here: the builders' own defaults, the
+#: backends', the build route, the command line and the check after a build.
+DEFAULT_FORM = {"dna": "B", "rna": "A"}
+DEFAULT_TERMINAL = "OH"
+
+
+@dataclass(frozen=True)
+class Built:
+    """What a backend builds of an ask *(decided with the user, 2026-10-31,
+    (b))*: the helical ``form`` -- ``None`` where it shapes no helix -- and
+    the ``terminal`` state, each with the words that say why when it is not
+    what was asked.  Each backend answers it (its module's ``built``) beside
+    the table its own build reads, and the check after the build
+    (`validation.builders.check_built`) says what differs."""
+    form: Optional[str]
+    terminal: str
+    form_words: str = ""
+    terminal_words: str = ""
+
+
+def built(backend: str, kind: str, form: str, terminal: str) -> Built:
+    """What ``backend`` builds of a ``kind`` asked in ``form`` with
+    ``terminal`` -- its own module's answer."""
+    return _modules()[backend].built(kind, form, terminal)
+
+
+def resolved_backend(backend: str) -> Optional[str]:
+    """The backend a build with ``backend`` runs: ``auto`` resolved by
+    :func:`auto_backend_name` -- ``None`` when none is installed -- any
+    other name as given.  Asked once, before the build, by every door that
+    builds: the build runs it and the check after it names it."""
+    return auto_backend_name() if backend == "auto" else backend
 
 
 # ---------------------------------------------------------------- #
@@ -52,15 +87,16 @@ from ...chemistry import BackendUnavailable
 # ---------------------------------------------------------------- #
 
 
-def _load_backends() -> Dict[str, Callable]:
-    """Lazy-load each backend module so a missing dep doesn't break
-    the whole package."""
+def _modules():
+    """Each backend's module, by its name -- lazy, so a missing dep doesn't
+    break the whole package."""
     from . import _amber, _rdkit, _threedna
-    return {
-        "threedna": _threedna.build,
-        "amber":    _amber.build,
-        "rdkit":    _rdkit.build,
-    }
+    return {"threedna": _threedna, "amber": _amber, "rdkit": _rdkit}
+
+
+def _load_backends() -> Dict[str, Callable]:
+    """Each backend's ``build``, by its name."""
+    return {name: m.build for name, m in _modules().items()}
 
 
 def available_backends() -> Dict[str, bool]:
@@ -72,12 +108,7 @@ def available_backends() -> Dict[str, bool]:
     'amber' is True if ``tleap`` is on PATH.
     'rdkit' is True if rdkit imports.
     """
-    from . import _amber, _rdkit, _threedna
-    return {
-        "threedna": _threedna.is_available(),
-        "amber":    _amber.is_available(),
-        "rdkit":    _rdkit.is_available(),
-    }
+    return {name: m.is_available() for name, m in _modules().items()}
 
 
 # Auto-detect order: best geometry first.  3DNA produces canonical
@@ -105,8 +136,8 @@ def auto_backend_name() -> str | None:
 
 def dispatch(kind: str, sequence: str, *,
              backend: str = "auto",
-             form: str = "B",
-             terminal: str = "OH",
+             form: Optional[str] = None,
+             terminal: str = DEFAULT_TERMINAL,
              title=None,
              double_strand: bool = False,
              strand2: "str | None" = None):
@@ -118,9 +149,10 @@ def dispatch(kind: str, sequence: str, *,
     X3DNA ``rebuild`` -- threedna-only, B-form; other backends reject it.
     """
     backends = _load_backends()
+    form = form or DEFAULT_FORM.get(kind)
 
     if backend == "auto":
-        chosen = auto_backend_name()
+        chosen = resolved_backend(backend)
         if chosen is None:
             raise BackendUnavailable(
                 "No nucleic-acid backend available.  Either:\n"
@@ -144,6 +176,6 @@ def dispatch(kind: str, sequence: str, *,
 
 
 __all__ = [
-    "auto_backend_name",
-    "available_backends", "dispatch",
+    "DEFAULT_FORM", "DEFAULT_TERMINAL", "Built", "auto_backend_name",
+    "available_backends", "built", "dispatch", "resolved_backend",
 ]

@@ -74,8 +74,8 @@ class Description:
     **data** — no filesystem.
 
     ``task`` is the mission and ``template`` the parameter catalogue;
-    ``request`` how it runs -- with them, floor 2 entire. ``pseudo_species`` names the elements whose
-    ``.psml`` files travel with it — the only *data* files a SIESTA calculation
+    ``request`` how it runs -- with them, floor 2 entire. ``pseudo_species`` names the species labels whose
+    ``<label>.psml`` files travel with it — the only *data* files a SIESTA calculation
     needs beyond the structure.  The structure is a REFERENCE in this object
     (``task.structure.source`` names it; no bytes here) — but
     :func:`write_description` does lay a travelling copy down beside the

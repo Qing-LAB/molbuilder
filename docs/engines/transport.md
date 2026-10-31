@@ -5994,7 +5994,11 @@ as-is, no Bloch expansion in the shipped 2-terminal scope.)
 > `cell.atoms_outside`, the hand-off's own check
 > (`model/structure-periodicity.md` § 6.0, check 3), asked at compose so the
 > refusal names the way out — the origin on the pair's Cell page, or
-> *Automatic* — or, centred, that the atoms span more than the cell along z: the leads' end layers meet through the periodic image, I12's collision, said by its own check with the `c` that closes the boundary to one layer spacing (§ 6.1c).
+> *Automatic*, the pair saved (a frame set, which the Molbuilder tab opens
+> one frame of, written again by what made it, `model/structure.md`
+> § 2.2e); the next prep composes the junction from it again, since a transport description names no structure of its own
+> (§ 3.1) and the folder citing the pair needs nothing else *(decided with
+> the user, 2026-10-31: the refusal stays at prep)* — or, centred, that the atoms span more than the cell along z: the leads' end layers meet through the periodic image, I12's collision, said by its own check with the `c` that closes the boundary to one layer spacing (§ 6.1c).
 
 > **Bias direction.** The bias $V$ is the leads' difference in electron energy,
 > $eV = \mu_L - \mu_R$; the emitter binds `L-electrode` → `chem-pot Left` →

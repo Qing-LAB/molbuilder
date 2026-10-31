@@ -1,9 +1,10 @@
 /* The namespace entry point for `lib/validation-findings.js`.
  *
  * ONE JOB: publish `molbuilder.validationFindings` for the classic scripts
- * that cannot `import` -- `lib/spectra/core.js`, `lib/transport/core.js`
- * and `structure-optimization/viewer.js`, which read it at call time
- * inside a handler.
+ * that cannot `import` -- `lib/spectra/core.js`, `lib/transport/core.js`,
+ * `structure-optimization/viewer.js` and the builder panels'
+ * `modify/structure/panel-deps.js`, which read it at call time inside a
+ * handler.
  *
  * WHY IT IS A SEPARATE FILE.  `lib/molview/ui.js` imports the renderer, and
  * `web/molview.md` § 4 forbids mounting a viewer from publishing a name, so

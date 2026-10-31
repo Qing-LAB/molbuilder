@@ -19,6 +19,7 @@ from typing import Optional
 from pathlib import Path
 
 from ..pseudos import PSEUDO_DIRNAME
+from ..runfiles import PSEUDO_FILE, fixed_name
 from .engines import pseudo_dir, screen_pseudos
 from .errors import PrepError, user_error_as_prep
 from .naming import stage_home
@@ -63,8 +64,9 @@ def provide_pseudos(struct, cfg, base: Path,
         if missing:
             raise PrepError(
                 f"this transport calculation needs "
-                f"{', '.join(f'{m}.psml' for m in missing)} and there is "
-                f"none in {base.name}/pseudos/ or in the cited "
+                f"{', '.join(fixed_name(PSEUDO_FILE, species=m) for m in missing)}"
+                f" and there is none in {base.name}/{PSEUDO_DIRNAME}/ or in "
+                f"the cited "
                 f"directory ({citation}).  The pseudopotentials travel "
                 f"with the citation (engines/transport.md § 3.1): a "
                 f"relaxation run of molbuilder's own holds the .psml it "

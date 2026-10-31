@@ -584,7 +584,9 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     values["scf_cycle"][:] = np.arange(n_cycles)
     values["charge_part"][:] = parts
     if junction is not None:
-        values["element"][:] = [str(e) for e in junction.elements]
+        # The element, never the species label (`Au1` is gold): the
+        # variable says "the atom's element" (`Structure.chemical_symbols`).
+        values["element"][:] = junction.chemical_symbols()
         values["positions_ang"][:] = np.asarray(
             junction.frames if n_frames > 1 else [junction.positions])
 

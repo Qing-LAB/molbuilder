@@ -95,7 +95,12 @@ except ImportError:                  # pragma: no cover - Windows branch
 #:
 #: A version gate that admits a version the code cannot honour is worse than
 #: no gate: it turns a loud failure into a quiet one.
-SCHEMA_VERSION = 15  # 15: + `atom_index_map`, which index the atoms are
+SCHEMA_VERSION = 16  # 16: + the OPTIONAL `species_labels`
+#                      (structure.SPECIES_LABELS), each atom's species
+#                      label where one is not the name its geometry file
+#                      holds (model/chemistry.md § 3) -- additive: a 7-15
+#                      file's symbols are its labels.
+#                   15: + `atom_index_map`, which index the atoms are
 #                   listed by and each atom's indices (model/overview.md
 #                   § 2.2b), an envelope key the codec writes from the door
 #                   that writes the pair.
@@ -174,7 +179,9 @@ SCHEMA_VERSION = 15  # 15: + `atom_index_map`, which index the atoms are
 #: v15 added `atom_index_map`; a 7-14 file states none, and its map is made
 #: from its `atom_order` -- a 7-13 file read as listed by user index, warned
 #: (`model/overview.md` § 2.2b, F4).
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15})
+#: v16 added `species_labels`; a 7-15 file states none, and its geometry
+#: file's symbols are its labels.
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
@@ -193,19 +200,19 @@ RETIRED_ENVELOPE_KEYS = ("structure_hash",)
 
 def known_keys() -> frozenset:
     """EVERY KEY A SIDECAR MAY CARRY -- the structure's metadata fields and
-    identity columns, the envelope, the free-form ``info`` block, and the
+    per-atom columns (`structure.ATOM_COLUMNS`), the envelope, the free-form ``info`` block, and the
     retired keys an older sidecar still opens with (accepted, not applied):
     the one list each gate refuses a stray key against, the read door's
     (`parse.sidecars.molstruct.load_text`) and :func:`apply_to_structure`'s
     alike.  A key nobody reads is metadata the writer thinks it saved."""
     try:                                        # inside molbuilder
-        from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
+        from molbuilder.structure import (ATOM_COLUMNS, FILE_FIELDS,
                                           RETIRED_IDENTITY_KEYS,
                                           RETIRED_METADATA_KEYS)
     except ImportError:                         # beside a job, in a bundle
-        from structure import (FILE_FIELDS, IDENTITY_FIELDS,
+        from structure import (ATOM_COLUMNS, FILE_FIELDS,
                                RETIRED_IDENTITY_KEYS, RETIRED_METADATA_KEYS)
-    return frozenset(set(FILE_FIELDS) | set(IDENTITY_FIELDS)
+    return frozenset(set(FILE_FIELDS) | set(ATOM_COLUMNS)
                      | set(ENVELOPE_KEYS) | {"info"}
                      | set(RETIRED_METADATA_KEYS) | set(RETIRED_IDENTITY_KEYS)
                      | set(RETIRED_ENVELOPE_KEYS))
@@ -392,6 +399,64 @@ def structure_fields_via_dataclass(
             if k in FILE_FIELDS}
 
 
+def atom_columns_via_dataclass(n_atoms_total: int,
+                               columns: Optional[Dict[str, Any]]
+                               ) -> Dict[str, Any]:
+    """Validate + canonicalise the per-atom columns a sidecar carries beside
+    the metadata fields (`structure.ATOM_COLUMNS`: the identity columns and
+    the species labels) through the ONE dataclass authority, as
+    :func:`structure_fields_via_dataclass` does the fields: a scratch
+    Structure of ``n_atoms_total`` atoms carrying them -- the labels as its
+    ``elements`` -- re-runs ``__post_init__``'s own length and type checks,
+    and what comes back is exactly what a reader will reconstruct.  Only
+    the columns handed in come back.  A retired key is not stray (an older
+    sidecar carrying ``title`` still opens, `structure.RETIRED_IDENTITY_KEYS`
+    says why): it is dropped, which is the third gate a retired key gets.
+    Shared by the write validator (:func:`to_dict`) and the read validator
+    (``parse/sidecars/molstruct._normalised_dict``).
+    Raises :class:`MolstructJsonError` on a stray key or an invalid column.
+    """
+    try:                                        # inside molbuilder
+        from molbuilder.structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
+                                          SPECIES_LABELS, Structure)
+    except ImportError:                         # beside a job, in a bundle
+        from structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
+                               SPECIES_LABELS, Structure)
+    columns = dict(columns or {})
+    stray = [k for k in columns
+             if k not in ATOM_COLUMNS and k not in RETIRED_IDENTITY_KEYS]
+    if stray:
+        raise MolstructJsonError(
+            f"identity carries {sorted(stray)!r}; the per-atom columns are "
+            f"{list(ATOM_COLUMNS)!r}")
+    n = int(n_atoms_total)
+    labels = columns.get(SPECIES_LABELS)
+    if labels is not None and not (
+            isinstance(labels, list) and len(labels) == n
+            and all(isinstance(lb, str) and lb.strip() for lb in labels)):
+        raise MolstructJsonError(
+            f"{SPECIES_LABELS} is one species label per atom, {n} of them; "
+            f"got {labels!r}")
+    try:
+        scratch = Structure(
+            elements=(labels if labels is not None else ["X"] * n),
+            positions=[[0.0, 0.0, 0.0]] * n,
+            atom_names=columns.get("atom_names"),
+            residue_ids=columns.get("residue_ids"),
+            residue_names=columns.get("residue_names"),
+            chain_ids=columns.get("chain_ids"),
+        )
+    except (ValueError, TypeError) as exc:
+        raise MolstructJsonError(str(exc)) from exc
+    return {k: v for k, v in {
+        "atom_names":    list(scratch.atom_names),
+        "residue_ids":   [int(v) for v in scratch.residue_ids],
+        "residue_names": list(scratch.residue_names),
+        "chain_ids":     list(scratch.chain_ids),
+        SPECIES_LABELS:  list(scratch.elements),
+    }.items() if k in columns}
+
+
 def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
     """The atoms carrying the reserved ``frozen`` label in a sidecar payload.
 
@@ -500,45 +565,12 @@ def to_dict(
     # the read side + apply_to_structure, so no field can drift between them.
     fields = structure_fields_via_dataclass(n_atoms_total, fields or {},
                                             n_frames_total)
-    # The OPTIONAL identity columns (schema 8): validated the same way --
-    # through the ONE dataclass authority.  A scratch Structure carrying them
-    # re-runs __post_init__'s own length/type checks, and what comes back is
-    # exactly what a reader will reconstruct; only REAL columns are handed in
-    # (Structure.identity_to_dict already skipped the synthesized defaults).
-    identity = dict(identity or {})
-    if identity:
-        from molbuilder.structure import (IDENTITY_FIELDS,
-                                          RETIRED_IDENTITY_KEYS, Structure)
-        # A retired key is not stray: an older sidecar carrying `title` still
-        # OPENS (structure.RETIRED_IDENTITY_KEYS says why), it is simply not
-        # applied and does not survive the rewrite below.
-        stray_id = [k for k in identity
-                    if k not in IDENTITY_FIELDS
-                    and k not in RETIRED_IDENTITY_KEYS]
-        if stray_id:
-            raise MolstructJsonError(
-                f"identity carries {sorted(stray_id)!r}; the identity "
-                f"columns are {list(IDENTITY_FIELDS)!r}")
-        try:
-            scratch = Structure(
-                elements=["X"] * n_atoms_total,
-                positions=[[0.0, 0.0, 0.0]] * n_atoms_total,
-                atom_names=identity.get("atom_names"),
-                residue_ids=identity.get("residue_ids"),
-                residue_names=identity.get("residue_names"),
-                chain_ids=identity.get("chain_ids"),
-            )
-        except (ValueError, TypeError) as exc:
-            raise MolstructJsonError(str(exc)) from exc
-        # `title` is NOT rebuilt here -- the geometry file owns it
-        # (``model/structure.md`` § 2.2c).  An older file's copy is dropped
-        # on this rewrite, which is the third gate a retired key gets.
-        identity = {k: v for k, v in {
-            "atom_names":    list(scratch.atom_names),
-            "residue_ids":   [int(v) for v in scratch.residue_ids],
-            "residue_names": list(scratch.residue_names),
-            "chain_ids":     list(scratch.chain_ids),
-        }.items() if k in identity}
+    # The OPTIONAL per-atom columns (identity, schema 8; species labels,
+    # v16): validated the same way -- through the ONE dataclass authority.
+    # Only REAL columns are handed in (Structure.identity_to_dict already
+    # skipped the synthesized defaults); `title` is NOT rebuilt -- the
+    # geometry file owns it (``model/structure.md`` § 2.2c).
+    identity = atom_columns_via_dataclass(n_atoms_total, identity)
     # selection_rules -- a sidecar-only pass-through (not a Structure field),
     # validated against the normalised region set (one shared validator).
     normed_rules = normalise_selection_rules(
@@ -557,8 +589,9 @@ def to_dict(
         # longer drop or drift one (`model/structure.md` § 2.2: the ONE
         # serialization authority; add a key there and nowhere else).
         **fields,
-        # The identity columns (schema 8) -- absent entirely when nothing is
-        # real, so an xyz-born sidecar carries none.
+        # The per-atom columns (identity, schema 8; species labels, v16) --
+        # absent entirely when nothing is real, so an xyz-born sidecar
+        # carries none.
         **identity,
         # selection_rules -- a sidecar-only pass-through (not a Structure field).
         "selection_rules": normed_rules,
@@ -732,9 +765,11 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"belong to these frames; write the pair again from the frame set "
             f"it describes.")
     try:                                        # inside molbuilder
-        from molbuilder.structure import FILE_FIELDS, IDENTITY_FIELDS
+        from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
+                                          SPECIES_LABELS, split_species_label)
     except ImportError:                         # beside a job, in a bundle
-        from structure import FILE_FIELDS, IDENTITY_FIELDS
+        from structure import (FILE_FIELDS, IDENTITY_FIELDS, SPECIES_LABELS,
+                               split_species_label)
     # A RETIRED KEY IS NOT A STRAY ONE -- the gates ask that question of
     # one list (:func:`known_keys`), so they give the same answer
     # (`structure.RETIRED_METADATA_KEYS` says which and why).
@@ -767,6 +802,24 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             setattr(struct, k, sidecar_data[k])
         else:
             setattr(struct, k, None)
+    # THE SPECIES LABELS (v16) back over the names the geometry file holds
+    # (`model/chemistry.md` § 3) -- each label's name the atom's, or the pair
+    # is refused naming the atom.  Before the apply below, so the atom names
+    # it synthesizes are the labels, as they were when the pair was written.
+    labels = sidecar_data.get(SPECIES_LABELS)
+    if labels is not None:
+        held = struct.chemical_symbols()
+        named = [split_species_label(lb)[0] for lb in labels]
+        wrong = next((i for i, (a, b) in enumerate(zip(named, held))
+                      if a != b), None)
+        if wrong is not None:
+            raise MolstructPairingError(
+                f"the sidecar's species label {labels[wrong]!r} for atom "
+                f"{wrong} names {named[wrong]}, but the geometry file holds "
+                f"{held[wrong]} there.  The labels no longer belong to these "
+                f"atoms; write the pair again from the structure it "
+                f"describes.")
+        struct.elements = list(labels)
     # The info block (schema 9), FULL-REPLACE like everything else here:
     # absent means "nothing recorded", and a stale store must not survive
     # a pair that no longer carries one.

@@ -132,31 +132,6 @@ class TestInputValidation:
 
 class TestHappyPath:
 
-    def test_default_form_is_B(self):
-        out = _run_node('''
-            let capturedBody = null;
-            dna.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, xyz: "20\\ndna\\nC 0 0 0\\n",
-                            n_atoms: 20,
-                        }),
-                    };
-                },
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            await dna.generate("ACGT");
-            console.log(JSON.stringify(capturedBody));
-        ''')
-        assert out == {"kind": "dna", "input": "ACGT",
-                       "form": "B", "backend": "auto",
-                       "relax_clashes": False}
-
     def test_explicit_form_forwarded(self):
         out = _run_node('''
             let capturedBody = null;
@@ -256,23 +231,40 @@ class TestBackendSelection:
     def test_backend_used_propagated_through_envelope(self):
         """If the server resolves auto to a different name, the
         client envelope must surface backend_used so the status
-        text can show which backend actually ran."""
+        text can show which backend actually ran -- and what the build
+        found (its notices: a steric clash) is drawn under the panel
+        through the one renderer, the panel's earlier findings cleared
+        first (`science/validation.md` § 4.1 R5; `web/tabs.md`, *One chain
+        for the five generators*).  Wired as the page wires it
+        (`wirePanel`), the renderer a fake through the test door."""
         out = _run_node('''
+            const list = {id: "dna-findings"};
+            dna.wirePanel({doc: {getElementById: (id) =>
+                id === "dna-findings" ? list
+                    : {addEventListener() {}, value: "", checked: false}}});
+            const drawn = [];
             dna.configure({
                 fetch: async () => ({
                     ok: true,
                     json: async () => ({
-                        ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
-                        n_atoms: 5, backend_used: "threedna",
+                        ok: true, structure: {}, n_atoms: 5,
+                        backend_used: "threedna",
+                        notices: [{severity: "warn", where:
+                                   "build.steric_clash", message: "clash"}],
                     }),
                 }),
                 structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+                findings: {render: (rows, opts) => drawn.push(
+                    {rows: rows.map(r => r.where), under: opts.panel === list})},
             });
             const r = await dna.generate("GCGC", {backend: "auto"});
-            console.log(JSON.stringify(r));
+            console.log(JSON.stringify({r, drawn}));
         ''')
-        assert out["ok"] is True
-        assert out["backend_used"] == "threedna"
+        assert out["r"] == {"ok": True, "n_atoms": 5,
+                            "backend_used": "threedna"}, out["r"]
+        assert out["drawn"] == [
+            {"rows": [], "under": True},
+            {"rows": ["build.steric_clash"], "under": True}], out["drawn"]
 
 
 class TestZFormGuard:

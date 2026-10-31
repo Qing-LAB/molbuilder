@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 15,
+  "schema_version": 16,
   "n_atoms_total": 2,
   "n_frames_total": 2,
   "geometry_hash": "3b7e…(sha256 hex)",
@@ -69,6 +69,14 @@ own comment line, and the sidecar does not carry it (`model/structure.md`
 § 2.2c).  An xyz-born pair carries none
 of them: its sidecar holds the envelope, the metadata fields and
 `selection_rules`, and no identity column.
+
+**The species labels** *(v16, 2026-10-31)* ride beside them on the same
+terms: `species_labels`, each atom's species label, written only when one is
+not the name the geometry file writes for its atom — `Au1`, which the file
+writes `Au` ([`model/chemistry.md`](?doc=model/chemistry.md) § 3;
+`Structure.identity_to_dict` judges it). Read, each label's name must be the
+symbol the geometry file holds for its atom, or the pair is refused naming the
+atom; a sidecar that states none leaves the file's symbols as the labels.
 
 | Envelope key | Meaning |
 |---|---|
@@ -180,12 +188,18 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v15. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14, 15} and nothing else.**
+**Current schema: v16. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14, 15, 16} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 15                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15})
+SCHEMA_VERSION    = 16                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
 ```
+
+*(v16, 2026-10-31, plan F0b.)* **Additive**: the optional
+**`species_labels`** (§ 1), each atom's species label where one is not the
+name its geometry file holds — the file holds an element symbol for every
+atom, which its readers require. A v7–v15 file states none, and its file's
+symbols are its labels.
 
 *(v15, 2026-10-23, plan § 1ab.)* **Additive**: **`atom_index_map`** (§ 1),
 which index the atoms are listed by and each atom's indices
@@ -337,7 +351,8 @@ at any of them is refused, not upgraded.
 | v12 | *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
 | v13 | *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
 | v14 | *(2026-10-14)* — the optional **`atom_order`**, the order record of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file is read as the user order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
-| **v15** | **current** *(2026-10-23)* — **`atom_index_map`**, which index the atoms are listed by and each atom's indices (§ 1; `model/overview.md` § 2.2b), written into every pair. **Additive, readable**: a v14 file's map is made from its `atom_order` as it is read; a v7–v13 file is read as listed by user index, warned (F4)
+| v15 | *(2026-10-23)* — **`atom_index_map`**, which index the atoms are listed by and each atom's indices (§ 1; `model/overview.md` § 2.2b), written into every pair. **Additive, readable**: a v14 file's map is made from its `atom_order` as it is read; a v7–v13 file is read as listed by user index, warned (F4)
+| **v16** | **current** *(2026-10-31)* — the optional **`species_labels`**, each atom's species label where one is not the name the geometry file holds (§ 1; `model/chemistry.md` § 3). **Additive, readable**: a v7–v15 file's symbols are its labels
 
 ### Changing the schema
 

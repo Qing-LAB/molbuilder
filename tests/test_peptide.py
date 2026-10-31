@@ -25,7 +25,8 @@ def test_heavy_atom_count(heavy_only_arndc):
     # the structure kit does not write one and molbuilder does not add it
     # (user ruling 2026-09-20 -- adding H is justified and cross-checked,
     # placing an oxygen is a structural guess).  A free acid would be 39.
-    # `build_peptide` warns; see test_the_c_terminus_limit_is_stated.
+    # The check after the build says so (`build.peptide_aldehyde`,
+    # tests/test_build_findings.py).
     assert s.n_atoms == 38
     assert "H" not in s.elements
 
@@ -70,28 +71,3 @@ def test_modified_residue_phosphoserine():
     s = build_peptide("AR[SEP]C", add_hydrogens=False)
     assert "SEP" in s.residue_names
     assert s.elements.count("P") == 1
-
-
-def test_the_c_terminus_limit_is_stated(recwarn):
-    """The person is told what they got -- molbuilder does not fix it.
-
-    User ruling 2026-09-20: adding hydrogens is a deliberate exception
-    (predictable geometry, two kits cross-checking each other); adding the
-    C-terminal oxygen is a structural guess the tool should not make.  So
-    the limit has to be visible instead.
-
-    This is the ONLY check that can see the defect: the hydrogen count is
-    35 whether the terminus is an aldehyde or a free acid, so every
-    atom-count assertion in this file is blind to it by construction.
-    """
-    import warnings
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        s = build_peptide("ARNDC")
-
-    said = " ".join(str(w.message) for w in caught)
-    assert "ALDEHYDE" in said, f"the C-terminus limit was not stated: {said!r}"
-    assert "OXT" in said, "the warning does not name the missing atom"
-    # And it is DETECTED, not assumed: the day the kit writes OXT it stops.
-    assert "OXT" not in s.atom_names

@@ -10,8 +10,8 @@ bond-length SIESTA run.
 Tests:
   * Synthetic-PSML round-trip: build a minimal valid PSML, parse it,
     assert the canonical metadata.
-  * scan_psml_directory: drop a few synthetic files, scan, get the
-    right per-element mapping.
+  * scan_psml_directory: drop a few synthetic files, scan, get each
+    file by its name.
   * check_coverage: missing element, XC mismatch, relativistic
     mismatch.
   * Tolerance: malformed XML doesn't crash the parser.
@@ -19,6 +19,8 @@ Tests:
 from __future__ import annotations
 
 import re
+
+import pytest
 
 from pathlib import Path
 from tests.spectra._helpers import _spectra_cfg
@@ -171,34 +173,23 @@ class TestParsePsmlHeader:
         assert "parse" in info.parse_warnings[0].lower()
 
 
+def _write_folder(directory, files):
+    """A folder of synthetic pseudopotentials: file name -> the element it
+    declares, or (element, `_make_psml` keywords), or ``None`` for a file
+    whose XML does not parse."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, spec in files.items():
+        if spec is None:
+            (directory / name).write_text("<psml not closed")
+            continue
+        element, kw = spec if isinstance(spec, tuple) else (spec, {})
+        (directory / name).write_text(_make_psml(element, **kw))
+
+
 class TestScanPsmlDirectory:
-    def test_one_file_per_element(self, tmp_path):
-        for el in ("C", "H", "N", "Fe"):
-            (tmp_path / f"{el}.psml").write_text(_make_psml(el))
-        from molbuilder.pseudos import scan_psml_directory
-        m = scan_psml_directory(tmp_path)
-        assert sorted(m.keys()) == ["C", "Fe", "H", "N"]
-        assert m["Fe"].atomic_number == 26
-
-    def test_non_psml_files_ignored(self, tmp_path):
-        (tmp_path / "C.psml").write_text(_make_psml("C"))
-        (tmp_path / "README.txt").write_text("ignore me")
-        (tmp_path / "Fe.psf").write_text("legacy format, not psml")
-        from molbuilder.pseudos import scan_psml_directory
-        assert sorted(scan_psml_directory(tmp_path).keys()) == ["C"]
-
     def test_missing_directory_returns_empty(self):
         from molbuilder.pseudos import scan_psml_directory
         assert scan_psml_directory(Path("/does/not/exist")) == {}
-
-    def test_first_file_wins_on_duplicate_element(self, tmp_path):
-        """Two files claiming the same element: the first one
-        encountered (alphabetical order) wins.  Documented behaviour."""
-        (tmp_path / "A_Fe.psml").write_text(_make_psml("Fe", libxc_id=101))   # PBE
-        (tmp_path / "B_Fe.psml").write_text(_make_psml("Fe", libxc_id=116))   # PBEsol
-        from molbuilder.pseudos import scan_psml_directory
-        m = scan_psml_directory(tmp_path)
-        assert m["Fe"].xc_authors == "PBE"   # A_Fe sorted first
 
 
 class TestCheckCoverage:
@@ -510,78 +501,173 @@ class TestErrorStatusesSharedBySurfaces:
         completes and the physics is wrong -- so it blocks for the same
         reason.
 
-        `misnamed` joined 2026-09-19: the file for an element is present and
-        healthy but is not called `<element>.psml`, so SIESTA -- which has no
-        search path -- never opens it.  A certain start-up failure, and the
-        only one of the five that is about the FOLDER rather than the file's
-        physics.
+        `misnamed` joined 2026-09-19: the file for a species is present but
+        not called `<label>.psml`, so SIESTA -- which has no search path --
+        never opens it; or the file it opens declares another element.  A
+        certain start-up failure or a wrong species, about the file's NAME
+        rather than its physics.
         """
         from molbuilder.pseudos import ERROR_STATUSES
         assert ERROR_STATUSES == frozenset(
             {"missing", "misnamed", "dead_projector", "xc_family_mismatch",
              "semilocal_only"})
 
-    def test_a_healthy_pseudo_under_the_wrong_name_blocks(self, tmp_path):
-        """The check said `ok` for a folder SIESTA cannot start in.
+    #: C1 / C1a as rows (`science/pseudopotentials.md`): the folder's files
+    #: (name -> the element it declares, or (element, `_make_psml`
+    #: keywords)), the species labels the structure holds, and the entries
+    #: in order -- (label, status, words its message must carry).
+    NAMED_FILES = [
+        pytest.param({"gold.psml": "Au", "H.psml": "H"}, ["Au", "H"],
+                     [("Au", "misnamed", ["gold.psml", "Au.psml",
+                                          "never reads"]),
+                      ("H", "ok", [])],
+                     id="a-file-SIESTA-never-opens"),
+        pytest.param({"Au1.psml": "Au", "Au2.psml": "Au"}, ["Au1", "Au2"],
+                     [("Au1", "ok", []), ("Au2", "ok", [])],
+                     id="two-labels-of-one-element-two-files"),
+        pytest.param({"Au.psml": "Au"}, ["Au1"],
+                     [("Au1", "misnamed", ["Au.psml", "Au1.psml"])],
+                     id="a-label-is-not-covered-by-its-element's-file"),
+        pytest.param({"C.psml": "Au"}, ["C"],
+                     [("C", "misnamed", ["C.psml", "declares element Au"])],
+                     id="the-right-name-another-element"),
+        pytest.param({"Au1.psml": "Au"}, ["Au1", "Au2"],
+                     [("Au1", "ok", []), ("Au2", "missing", [])],
+                     id="a-file-another-label-opens-is-that-label's"),
+        pytest.param({"Au1.psml": ("Au", {"creator": "ONCVPSP-3.3.0"}),
+                      "Au2.psml": ("Au", {"creator": "ONCVPSP-4.0.1"}),
+                      "H.psml": ("H", {"creator": "ONCVPSP-3.3.0"})},
+                     ["Au1", "Au2", "H"],
+                     [("Au1", "ok", []), ("Au2", "ok", []), ("H", "ok", []),
+                      ("Au2", "generator_mismatch", ["ONCVPSP-4"])],
+                     id="the-set's-generators-are-the-files-the-labels-open"),
+        pytest.param({"Au1.psml": ("Au", {"creator": "ONCVPSP-3.3.0"}),
+                      "Au2.psml": ("Au", {"creator": "ONCVPSP-3.3.0"}),
+                      "Au_old.psml": ("Au", {"creator": "ONCVPSP-4.0.1"})},
+                     ["Au1", "Au2"],
+                     [("Au1", "ok", []), ("Au2", "ok", [])],
+                     id="a-file-no-label-opens-is-not-in-the-set"),
+        pytest.param({"Au.psml": None}, ["Au"],
+                     [("Au", "parse_warning", ["could not parse"])],
+                     id="a-file-that-does-not-parse-is-C6's-warning"),
+        pytest.param({"H.psml": "H"}, ["Au_1", "H"],
+                     [("Au_1", "missing", ["not a species label"]),
+                      ("H", "ok", [])],
+                     id="a-label-no-file-can-be-named-for-is-said"),
+    ]
 
-        `scan_psml_directory` keys on what each file DECLARES, so a correct
-        gold pseudopotential saved as `gold.psml` arrived as a healthy entry
-        for `Au` and every value check passed it -- while SIESTA opens
-        `Au.psml`, does not find it, and refuses.  Measured 2026-09-19: that
-        folder answered `ok`.
+    @pytest.mark.parametrize("files, labels, expected", NAMED_FILES)
+    def test_the_file_siesta_opens_is_the_one_checked(self, tmp_path, files,
+                                                      labels, expected):
+        """SIESTA opens `<label>.psml` and has no search path, so the file a
+        label opens is the one judged (C1, C1a).
 
-        Verbatim, no case folding: the module's own rule is that SIESTA
-        reads `<label>.psml`, so a species written `Au1` needs `Au1.psml`.
+        A correct gold pseudopotential saved as `gold.psml` answered `ok`
+        (measured 2026-09-19), because the folder was keyed on what each
+        file DECLARES; the same keying reported a species written `Au1`
+        missing beside its own `Au1.psml`, told `Au2` to take `Au1.psml`
+        away from `Au1`, and compared the set's generators by element, so
+        labelled species were never compared.  Verbatim, no case folding.
         """
-        from molbuilder.pseudos import check_coverage, ERROR_STATUSES
-        (tmp_path / "gold.psml").write_text(_make_psml("Au"))
-        (tmp_path / "H.psml").write_text(_make_psml("H"))
-        by = {e.element: e for e in check_coverage(["Au", "H"], tmp_path)}
-        assert by["H"].status == "ok"
-        assert by["Au"].status == "misnamed"
-        assert by["Au"].status in ERROR_STATUSES
-        assert "Au.psml" in by["Au"].message and "gold.psml" in by["Au"].message
+        from molbuilder.pseudos import check_coverage
+        _write_folder(tmp_path, files)
+        got = check_coverage(labels, tmp_path)
+        assert [(e.element, e.status) for e in got] == \
+            [(label, status) for label, status, _ in expected], \
+            [(e.element, e.status, e.message) for e in got]
+        for entry, (label, _, words) in zip(got, expected):
+            for w in words:
+                assert w in entry.message, (label, entry.message)
 
-    def test_cli_exits_nonzero_on_xc_family_mismatch(self, tmp_path):
-        # LDA pseudo on a PBE (GGA) calc -> xc_family_mismatch -> ERROR.
+    #: `molbuilder pseudo check DIR` as rows: the folder (as
+    #: `NAMED_FILES`), the options, the exit code, and lines the output must
+    #: hold (regular expressions, so a bare "C" is a word, not any letter).
+    CLI_ROWS = [
+        pytest.param({"C.psml": ("C", {"libxc_id": 1})}, ["--xc", "PBE"],
+                     1, [r"\[ERROR\] C\b"],
+                     id="an-lda-pseudo-on-a-pbe-calc-blocks"),
+        pytest.param({"C.psml": ("C", {"libxc_id": 101})}, ["--xc", "PBE"],
+                     0, [r"\[OK   \] C\b"],
+                     id="a-matching-set-passes"),
+        pytest.param({"Au1.psml": "Au", "Au2.psml": "Au", "H.psml": "H"}, [],
+                     0, [r"\[OK   \] Au1\b", r"\[OK   \] Au2\b"],
+                     id="a-folder-of-labelled-species-is-screened-by-label"),
+        pytest.param({"gold.psml": "Au", "H.psml": "H"}, [],
+                     1, [r"\[ERROR\] Au\b.*gold\.psml.*Au\.psml"],
+                     id="a-file-named-for-no-label-is-said-misnamed"),
+        pytest.param({"Au.psml": None, "H.psml": "H"}, [],
+                     0, [r"\[WARN \] Au\b.*could not parse"],
+                     id="a-labelled-file-that-does-not-parse-is-screened"),
+    ]
+
+    @pytest.mark.parametrize("files, options, code, lines", CLI_ROWS)
+    def test_cli_screens_a_folder_by_the_files_it_holds(
+            self, tmp_path, files, options, code, lines):
+        """With no `--elements`, the folder's own files say what to check:
+        each file's label, or the element a file under no label's name
+        declares (`pseudos.labels_in_directory`).  Keyed on the declared
+        element, `Au1.psml` + `Au2.psml` exited 1 telling the person to
+        rename them both to `Au.psml`."""
         from click.testing import CliRunner
         from molbuilder.cli import pseudo_group
-        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
+        _write_folder(tmp_path, files)
         res = CliRunner().invoke(
-            pseudo_group, ["check", str(tmp_path), "--xc", "PBE"])
-        assert res.exit_code == 1, res.output
-        # A word-boundary match: the bare substring "C" is satisfied by
-        # almost any output.
-        assert "ERROR" in res.output
-        assert re.search(r"\bC\b", res.output), res.output
+            pseudo_group, ["check", str(tmp_path), *options])
+        assert res.exit_code == code, res.output
+        for line in lines:
+            assert re.search(line, res.output), (line, res.output)
 
-    def test_cli_exits_zero_on_matching_set(self, tmp_path):
-        # PBE (GGA) pseudo on a PBE calc -> ok -> exit 0.
-        from click.testing import CliRunner
-        from molbuilder.cli import pseudo_group
-        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=101))  # PBE
-        res = CliRunner().invoke(
-            pseudo_group, ["check", str(tmp_path), "--xc", "PBE"])
-        assert res.exit_code == 0, res.output
+    #: The settings gate as rows: the library's files, the calculation
+    #: folder's (`pseudos/`, or ``None`` for the library as the folder), the
+    #: labels, and the findings by `where`, each (severity, words).
+    GATE_ROWS = [
+        # The SAME fixture the CLI blocks on is error-severity in the
+        # preflight -- the two surfaces agree.
+        pytest.param({"C.psml": ("C", {"libxc_id": 1})}, None, ["C"],
+                     {"config.psml_lib.C": ("error", ["LDA"])},
+                     id="an-lda-pseudo-on-a-pbe-calc-blocks"),
+        # Labels read from two places -- Au1 and H from the folder, Au2
+        # from the library -- are judged together: the library's Au1.psml
+        # is Au1's, never Au2's to take (measured 2026-10-31: Au2 was told
+        # to save Au's pseudopotential from it).
+        pytest.param({"Au1.psml": "Au"}, {"Au1.psml": "Au", "H.psml": "H"},
+                     ["Au1", "Au2", "H"],
+                     {"config.psml_lib.Au2": ("error",
+                                              ["no .psml file for Au2"])},
+                     id="the-structure's-labels-are-judged-together"),
+    ]
 
-    def test_preflight_maps_xc_family_mismatch_to_error(self, tmp_path):
-        # The SAME fixture the CLI now blocks on must also be error-severity
-        # in the preflight -- proves the two surfaces agree.
+    @pytest.mark.parametrize("library, folder, labels, expected", GATE_ROWS)
+    def test_the_settings_gate_says_each_label_once(self, tmp_path, library,
+                                                    folder, labels,
+                                                    expected):
+        """The SIESTA preflight (`validation.siesta`) maps each label's
+        coverage status to its severity through `ERROR_STATUSES`, reading
+        each label's file where the run will open it -- the calculation's
+        folder first, then the library (`pseudos.psml_sources`)."""
         from molbuilder.validation.siesta import _check_siesta_pseudo_coverage
         lib = tmp_path / "projects" / "psml"
-        lib.mkdir(parents=True)
-        (lib / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
+        _write_folder(lib, library)
+        calc = lib
+        if folder is not None:
+            calc = tmp_path / "projects" / "calc"
+            _write_folder(calc / "pseudos", folder)
 
         class _Cfg:
             psml_lib = str(lib)
             xc_authors = "PBE"
 
         class _Struct:
-            elements = ["C"]
+            elements = labels
         issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(),
-                                               dest_dir=lib)
-        assert any(i.severity == "error" for i in issues), \
-            [(i.severity, i.message) for i in issues]
+                                               dest_dir=calc)
+        assert sorted(i.where for i in issues) == sorted(expected), \
+            [(i.where, i.message) for i in issues]
+        for i in issues:
+            severity, words = expected[i.where]
+            assert i.severity == severity, (i.where, i.message)
+            for w in words:
+                assert w in i.message, (i.where, i.message)
 
 
 def test_a_relative_lib_resolves_through_the_calculations_own_tree(

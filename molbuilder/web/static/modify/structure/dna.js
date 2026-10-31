@@ -56,7 +56,7 @@
 
     /**
      * Parse the DNA-panel notation CLIENT-SIDE (mirrors the server's
-     * nucleic._parse_dna_notation) so the ACGT check runs on the CORE
+     * nucleic.parse_dna_notation) so the ACGT check runs on the CORE
      * sequence(s), not the raw "ds,ATGC" / "5'-ATGC-3'" text:
      *   bare "ATGC"        -> { mode:"ss", core:"ATGC", twoStrand:false }
      *   "ds,ATGC"          -> { mode:"ds", core:"ATGC", twoStrand:false }  (canonical
@@ -89,7 +89,8 @@
      *
      * @param {string} sequence  ACGT, case-insensitive
      * @param {object} [opts]
-     * @param {"B"|"A"|"Z"} [opts.form="B"]  helix form
+     * @param {"B"|"A"|"Z"} [opts.form]  helix form; none sent, the build
+     *        door's own (`backends.DEFAULT_FORM`) is built
      * @param {"auto"|"threedna"|"amber"|"rdkit"} [opts.backend="auto"]
      *        backend selector (default auto = best installed)
      * @returns {Promise<envelope>}
@@ -139,10 +140,10 @@
                      + JSON.stringify(sequence),
             });
         }
-        var form = opts.form || "B";
+        var form = opts.form;
         // Explicit two-strand duplexes are B-form only (rebuild uses the B-DNA
         // template); A/Z apply to the canonical (ds,<seq>) path.
-        if (parsed.twoStrand && form !== "B") {
+        if (parsed.twoStrand && form !== undefined && form !== "B") {
             return Promise.resolve({
                 ok:    false,
                 error: "Two-strand (explicit / mismatched) duplexes are B-form "
@@ -150,7 +151,7 @@
                      + "duplex.",
             });
         }
-        if (VALID_FORMS.indexOf(form) < 0) {
+        if (form !== undefined && VALID_FORMS.indexOf(form) < 0) {
             return Promise.resolve({
                 ok:    false,
                 error: "Helix form must be one of "
@@ -190,7 +191,7 @@
         return _deps.generate(
             { kind:    "dna",
               // Send the RAW notation ("ds,ATGC", "5'-…-3'"): the server
-              // parses it authoritatively (nucleic._parse_dna_notation).
+              // parses it authoritatively (nucleic.parse_dna_notation).
               input:   sequence.trim(),
               form:    form,
               backend: backend,
@@ -215,6 +216,7 @@
         var relaxChk = doc.getElementById("dna-relax-clashes");
         var button = doc.getElementById("dna-generate-btn");
         var status = doc.getElementById("dna-status");
+        _deps.findingsIn(doc.getElementById("dna-findings"));
         if (!input || !button) return;
 
         /* The shared `.status` writer (lib/status.js): `.status` is the
@@ -227,7 +229,7 @@
 
         button.addEventListener("click", function () {
             var echo = input.value.trim().toUpperCase().replace(/\s+/g, "");
-            var formChoice = (formSel && formSel.value) || "B";
+            var formChoice = formSel ? formSel.value : undefined;
             var backendChoice = (backendSel && backendSel.value) || "auto";
             var relaxChoice = !!(relaxChk && relaxChk.checked);
             button.disabled = true;
@@ -242,18 +244,13 @@
                         && r.backend_used !== backendChoice
                         ? " (" + r.backend_used + ")"
                         : "";
-                    // Surface builder warnings (e.g. a mismatched-duplex steric
-                    // clash) after the "Generated N atoms" line, flagged as an error
-                    // style so the user notices before relaxing the geometry.
-                    var warns = (r.warnings || []).filter(Boolean);
-                    var base = "Generated " + (r.n_atoms != null
+                    // What the build found -- a steric clash, a form the
+                    // backend does not build -- is drawn under this line.
+                    setStatus("Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
-                        + " from " + formChoice + "-form " + echo + backendNote;
-                    if (warns.length) {
-                        setStatus(base + " — ⚠ " + warns.join("  "), "error");
-                    } else {
-                        setStatus(base);
-                    }
+                        + " from " + (formChoice ? formChoice + "-form "
+                                                 : "") + echo
+                        + backendNote);
                 } else if (r.cancelled) {
                     setStatus("Kept existing workspace.");
                 } else {

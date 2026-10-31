@@ -112,6 +112,12 @@
           <button id="smiles-generate-btn" class="modify-ghost">Generate</button>
           <span id="smiles-status" class="status" role="status"></span>
         </div>
+        {#- THE BUILD'S NOTICES -- what the build found and what the
+            structure check says of what was built -- drawn by the one
+            findings renderer (`science/validation.md` § 4.1 R5, R3: nothing
+            dropped): cleared at every build. -#}
+        <ul id="smiles-findings" class="issues-panel" hidden
+            aria-label="Findings on the built structure"></ul>
       </div>
     </div>
 
@@ -131,6 +137,12 @@
           <button id="name-generate-btn" class="modify-ghost">Generate</button>
           <span id="name-status" class="status" role="status"></span>
         </div>
+        {#- THE BUILD'S NOTICES -- what the build found and what the
+            structure check says of what was built -- drawn by the one
+            findings renderer (`science/validation.md` § 4.1 R5, R3: nothing
+            dropped): cleared at every build. -#}
+        <ul id="name-findings" class="issues-panel" hidden
+            aria-label="Findings on the built structure"></ul>
       </div>
     </div>
 
@@ -162,9 +174,11 @@
           <select id="dna-form-select"
                 
                   title="B = canonical right-handed, A = wide right-handed (dehydrated), Z = left-handed (alternating-purine only)">
-            <option value="B" selected>B (canonical)</option>
-            <option value="A">A (dehydrated)</option>
-            <option value="Z">Z (left-handed, GCGC… only)</option>
+            {#- The build door's default form shown chosen
+                (`builders.backends.DEFAULT_FORM`). -#}
+            <option value="B"{{ " selected" if default_form.dna == "B" }}>B (canonical)</option>
+            <option value="A"{{ " selected" if default_form.dna == "A" }}>A (dehydrated)</option>
+            <option value="Z"{{ " selected" if default_form.dna == "Z" }}>Z (left-handed, GCGC… only)</option>
           </select>
         </label>
         <label class="modify-source-row">
@@ -187,6 +201,12 @@
           <button id="dna-generate-btn" class="modify-ghost">Generate</button>
           <span id="dna-status" class="status" role="status"></span>
         </div>
+        {#- THE BUILD'S NOTICES -- what the build found and what the
+            structure check says of what was built -- drawn by the one
+            findings renderer (`science/validation.md` § 4.1 R5, R3: nothing
+            dropped): cleared at every build. -#}
+        <ul id="dna-findings" class="issues-panel" hidden
+            aria-label="Findings on the built structure"></ul>
       </div>
     </div>
 
@@ -209,7 +229,7 @@
           <select id="rna-form-select"
                 
                   title="A = canonical RNA helix (3'-endo sugar).  3DNA's fiber only builds A-form RNA; other backends ignore form and produce an extended (Amber) or folded (RDKit) chain.">
-            <option value="A" selected>A (canonical)</option>
+            <option value="A"{{ " selected" if default_form.rna == "A" }}>A (canonical)</option>
           </select>
         </label>
         <label class="modify-source-row">
@@ -227,6 +247,12 @@
           <button id="rna-generate-btn" class="modify-ghost">Generate</button>
           <span id="rna-status" class="status" role="status"></span>
         </div>
+        {#- THE BUILD'S NOTICES -- what the build found and what the
+            structure check says of what was built -- drawn by the one
+            findings renderer (`science/validation.md` § 4.1 R5, R3: nothing
+            dropped): cleared at every build. -#}
+        <ul id="rna-findings" class="issues-panel" hidden
+            aria-label="Findings on the built structure"></ul>
       </div>
     </div>
 
@@ -235,7 +261,7 @@
         <p class="modify-source-hint">
           Build a peptide from a one-letter amino-acid sequence
           (e.g. <code>ACDEF</code>).  Generates an extended
-          conformation via AmberTools' <code>tleap</code>.
+          conformation with PeptideBuilder.
         </p>
         <label class="modify-source-row">
           <span>Sequence</span>
@@ -247,6 +273,12 @@
           <button id="peptide-generate-btn" class="modify-ghost">Generate</button>
           <span id="peptide-status" class="status" role="status"></span>
         </div>
+        {#- THE BUILD'S NOTICES -- what the build found and what the
+            structure check says of what was built -- drawn by the one
+            findings renderer (`science/validation.md` § 4.1 R5, R3: nothing
+            dropped): cleared at every build. -#}
+        <ul id="peptide-findings" class="issues-panel" hidden
+            aria-label="Findings on the built structure"></ul>
       </div>
     </div>
   </section>
@@ -946,6 +978,9 @@
    wire their Generate buttons against structurePage. #}
 <script src="{{ url_for('static', filename='modify/structure/page.js') }}"></script>
 {# The five builder panels share their dependency wiring; it must load first. #}
+{#- THE ONE FINDINGS RENDERER's namespace, read by the builder panels' shared
+    door at call time (`panel-deps.js`, `science/validation.md` § 4.1 R2). -#}
+<script type="module" src="{{ url_for('static', filename='lib/validation-findings-global.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/panel-deps.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/smiles.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/name.js') }}"></script>

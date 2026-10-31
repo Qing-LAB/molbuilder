@@ -20,8 +20,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..runfiles import (PSEUDO_FILE, VIBRATION_BUNDLE, RunNames,
-                        compose as _rf, fixed_name)
+from ..runfiles import VIBRATION_BUNDLE, RunNames, compose as _rf
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
@@ -230,12 +229,12 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
 
     ``plan`` (`jobset.planned.Plan`) receives the copies instead of the
     disk."""
-    from ..pseudos import psml_sources
+    from ..pseudos import file_named_for, psml_sources
     found = psml_sources(species, library=lib)
     missing: List[str] = []
     for s in species:
         key = str(s).strip()
-        name = fixed_name(PSEUDO_FILE, element=key)
+        name = file_named_for(key) or f"{key} (no file can be named for it)"
         if found[key] is None:
             missing.append(s)
             print(f"  WARN: no {name} in {lib}", file=sys.stderr)

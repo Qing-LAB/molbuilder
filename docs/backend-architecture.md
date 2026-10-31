@@ -133,8 +133,9 @@ The construction surfaces are in [`engines/builders.md`](?doc=engines/builders.m
 `molbuilder.Structure`; none persists to the workspace (backends only write
 scratch files into a `TemporaryDirectory` to feed an external tool). Build-time
 chemistry (H-addition, phosphate protonation, backbone-connectivity self-check,
-duplex clash warnings) lives inline **by design** — it is structure *cleanup*,
-not the scientific *gate*, and `modify.py` documents the boundary (it defers
+duplex clash relief) lives inline **by design** — it is structure *cleanup*,
+not the scientific *gate*; what a build finds is said by the one check after it
+(`validation.builders.check_built`, through the build door `builders.build`), and `modify.py` documents the boundary (it defers
 zero-offset enforcement to `validate_geometry`). The nits, all minor:
 
 1. **Duplicate PDB codec.** `builders/backends/_common.py::parse_pdb_to_structure`

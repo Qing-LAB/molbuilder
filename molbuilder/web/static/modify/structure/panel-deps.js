@@ -26,7 +26,23 @@
     var BUILD_URL = "/api/build/molecule";
 
     function make(host) {
-        var deps = { fetch: null, structurePage: null };
+        /* `findings`: the one findings renderer
+         * (`molbuilder.validationFindings`); `panel`: the list under the
+         * panel's status its build's findings are drawn in (`findingsIn`). */
+        var deps = { fetch: null, structurePage: null, findings: null,
+                     panel: null };
+
+        /** THE BUILD'S FINDINGS, drawn under the panel through the one
+         *  renderer (`science/validation.md` § 4.1 R2, R5) -- ``[]`` clears
+         *  the list.  False when there are findings and nowhere to draw
+         *  them: R3, nothing dropped without a word. */
+        function draw(rows) {
+            if (deps.panel && deps.findings) {
+                deps.findings.render(rows, { panel: deps.panel });
+                return true;
+            }
+            return rows.length === 0;
+        }
 
         /** POST ``request`` to the molecule builder, then hand its structure
          *  to the page's load gate (`structurePage.loadIntoCanvas`) with
@@ -34,8 +50,11 @@
          *  made it.  UNDER THE PAGE'S FENCE (`ui-contract.md` § 10): an embed
          *  is real server work, and a tab switch or a sidebar click while it
          *  runs would abandon or retarget the result; Cancel aborts the
-         *  request, and the fence releases on every path.  Resolves the
-         *  panel's envelope: ``{ok: true, n_atoms, backend_used, warnings}``,
+         *  request, and the fence releases on every path.  What the build
+         *  says of what it built -- its notices -- is drawn under the panel
+         *  (`findingsIn`), the panel's earlier findings cleared at every
+         *  build.  Resolves the panel's envelope: ``{ok: true, n_atoms,
+         *  backend_used}``,
          *  ``{ok: false, cancelled: true}`` when the gate declines or Cancel
          *  is pressed, ``{ok: false, error}`` otherwise. */
         function generate(request, generator, reason) {
@@ -50,6 +69,7 @@
                 return Promise.reject(new Error(
                     generator.kind + ": structurePage not configured"));
             }
+            draw([]);
             var ctl = (typeof AbortController === "function")
                 ? new AbortController() : null;
             var chain = function () {
@@ -78,13 +98,18 @@
                         { structure: body.structure }, generator
                     ).then(function (gate) {
                         if (!gate.ok) return { ok: false, cancelled: true };
-                        // ONE ANSWER for every panel: the atoms, the backend
-                        // that built them, and the builder's warnings (a
-                        // mismatched-duplex clash) for the panel's status.
+                        // WHAT THE BUILD FOUND, under the panel; ONE ANSWER
+                        // for every panel: the atoms and the backend that
+                        // built them.
+                        if (!draw(Array.isArray(body.notices)
+                                  ? body.notices : [])) {
+                            return { ok: false, error: generator.kind
+                                + ": built, but its findings have nowhere "
+                                + "to be drawn -- the panel's findings list "
+                                + "or the renderer is missing" };
+                        }
                         return { ok: true, n_atoms: body.n_atoms,
-                                 backend_used: body.backend_used,
-                                 warnings: Array.isArray(body.build_warnings)
-                                     ? body.build_warnings : [] };
+                                 backend_used: body.backend_used };
                     });
                 })
                 .catch(function (err) {
@@ -134,16 +159,23 @@
             if (!deps.structurePage && host.molbuilder.structurePage) {
                 deps.structurePage = host.molbuilder.structurePage;
             }
+            if (!deps.findings && host.molbuilder.validationFindings) {
+                deps.findings = host.molbuilder.validationFindings;
+            }
         }
 
         return {
             generate: generate,
             generateText: generateText,
+            /** The list under the panel's status its builds' findings are
+             *  drawn in, named when the panel is wired. */
+            findingsIn: function (panel) { deps.panel = panel || null; },
             /** The test door: explicit fakes win, and keep winning. */
             configure: function (opts) {
                 opts = opts || {};
                 if (opts.fetch) deps.fetch = opts.fetch;
                 if (opts.structurePage) deps.structurePage = opts.structurePage;
+                if (opts.findings) deps.findings = opts.findings;
             },
             resolve: resolve,
             get fetch() { return deps.fetch; },

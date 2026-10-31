@@ -215,16 +215,18 @@ SETUP_WORDS = {
         "Give the run a name and pick its pseudopotential folder.  The name "
         "begins every file the run writes -- for example water, so its "
         "files are water_01_<stage>.fdf, water.XV and so on.  "
-        "The folder holds one .psml file for each element of the structure "
-        "-- for example pseudopotential/, with O.psml and H.psml for water.  "
+        "The folder holds one .psml file for each species of the structure, "
+        "named for it -- for example pseudopotential/, with O.psml and "
+        "H.psml for water.  "
         "Nothing can be built until the folder is filled in.",
     frozenset({"job_name"}):
         "Give the run a name.  It begins every file the run writes -- for "
         "example water, so its script is water_01_<stage>.py and its log "
         "water_01_<stage>.log.",
     frozenset({"psml_lib"}):
-        "Pick the pseudopotential folder: one .psml file for each element of "
-        "the junction -- for example pseudopotential/, with Au.psml, C.psml, "
+        "Pick the pseudopotential folder: one .psml file for each species of "
+        "the junction, named for it -- for example pseudopotential/, with "
+        "Au.psml, C.psml, "
         "H.psml and S.psml for a gold-benzenedithiol junction.  The structure "
         "pair you cited brings none of its own, so the run takes them from "
         "this folder.  Nothing can be built until it is filled in.",

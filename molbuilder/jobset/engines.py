@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from ..pseudos import PSEUDO_DIRNAME
-from ..runfiles import deck_role
+from ..runfiles import PSEUDO_FILE, deck_role, fixed_name
 from .errors import PrepError
 
 
@@ -132,14 +132,15 @@ def _siesta_describe_findings(struct, cfg, *, calculation: str,
     """SIESTA's describe findings: its pseudopotentials, settled before a
     calculation is written (`web/handover-procedure.md` § 2.2) -- the check
     `prep` makes, asked of the folder the files go into -- and the refusal
-    while an element has none."""
+    while a species has none."""
     from ..validation.siesta import pseudopotential_findings
     found = pseudopotential_findings(struct, cfg, calculation=calculation,
                                      dest_dir=dest_dir)
     if not any(i.severity == "error" for i in found):
         return found, None
     return found, ("the pseudopotentials are not settled: SIESTA needs a "
-                   ".psml file for every element, so this would write a "
+                   ".psml file for every species, named for it, so this "
+                   "would write a "
                    "calculation that cannot start -- the findings are "
                    "beside the pseudopotential field "
                    "(handover-procedure.md 2.2)")
@@ -148,10 +149,10 @@ def _siesta_describe_findings(struct, cfg, *, calculation: str,
 def pseudo_dir(base: Path, plan=None) -> Path:
     """THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
     pseudopotential copies live in ``pseudos/``, one folder, instead of
-    N ``<El>.psml`` entries loose at the root.  Root strays -- put there
+    N ``<label>.psml`` entries loose at the root.  Root strays -- put there
     by `molbuilder describe`, an earlier prep, or a travelled bundle -- are ADOPTED,
     the same move-in the deck adoption uses.  The run directories are
-    untouched by this: each still receives ``<El>.psml`` beside the
+    untouched by this: each still receives ``<label>.psml`` beside the
     deck (that is SIESTA's own contract; it has no search path).
 
     ONE rule, two providers: the SIESTA arm below and the transport
@@ -185,7 +186,7 @@ def pseudo_dir(base: Path, plan=None) -> Path:
 def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     """Put the pseudopotentials this deck needs into the calculation.
 
-    SIESTA opens ``<element>.psml`` in the directory it runs from and has no
+    SIESTA opens ``<label>.psml`` in the directory it runs from and has no
     search path, so a missing file is not a preference — it is a run that
     cannot start, after a queue wait and however long MPI takes to come up.
 
@@ -261,9 +262,10 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     missing = copy_pseudopotentials(want, lib, pdir, plan=plan)
     if missing:
         raise PrepError(
-            f"this calculation needs {', '.join(f'{m}.psml' for m in missing)}"
+            f"this calculation needs "
+            f"{', '.join(fixed_name(PSEUDO_FILE, species=m) for m in missing)}"
             f" and there is none in {base.name}/ or in {lib}.  SIESTA opens "
-            f"<element>.psml in the directory it runs from and has no search "
+            f"<label>.psml in the directory it runs from and has no search "
             f"path, so it would refuse at startup.  Put the file in the "
             f"library, or point `psml_lib` at one that has it.")
     screen_pseudos(species, cfg, pdir)
@@ -279,9 +281,9 @@ def screen_pseudos(species, cfg, base: Path) -> None:
     what blocks.  What differs is only WHICH DIRECTORY is read: this one asks
     about the files the run will open.
 
-    The three blocking statuses are `missing`, `dead_projector` and
-    `xc_family_mismatch` — a file absent, a valence channel physically absent,
-    or the wrong XC family.  The rest are advisory, and the settings gate
+    What blocks is `pseudos.ERROR_STATUSES` — a file absent or under a name
+    SIESTA does not open, a valence channel physically absent or claiming
+    zero strength, or the wrong XC family.  The rest are advisory, and the settings gate
     reports them in the deck's report: it reads these same files
     (`pseudos.psml_sources`), so printing them here too said each one twice.
     While a prep is planned it reads the folder as the plan will leave it

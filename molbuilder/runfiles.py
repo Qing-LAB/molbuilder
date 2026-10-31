@@ -154,12 +154,14 @@ FIELDS: "dict[str, Field]" = {
         example="20260908-120000"),
     # The fields of the catalogue's FIXED-NAME families (B13, 2026-10-04):
     # files molbuilder writes that are not named on the label -- a
-    # pseudopotential is named for its element, a scheduler's output for its
-    # kind and its job.
-    "element": Field(
-        what="the chemical element a pseudopotential is for",
-        shape=r"[A-Z][a-z]?",
-        example="Au"),
+    # pseudopotential is named for its species label, a scheduler's output
+    # for its kind and its job.
+    "species": Field(
+        what="the species label a pseudopotential is for -- an element and "
+             "an optional index, `Au` or `Au1`: SIESTA opens "
+             "`<label>.psml` (model/chemistry.md § 3)",
+        shape=r"[A-Z][a-z]?[0-9]*",
+        example="Au1"),
     "jobid": Field(
         what="the scheduler's id for the job",
         shape=r"[0-9]+",
@@ -219,8 +221,8 @@ RANK_LAUNCHER = ".mb-rank-launch-{pid}.sh"
 #: the SIESTA family's parser (`parse.engines.tbtrans_nc`) from these.
 TBT_DIGEST = ".{tbt}.digest.nc"
 TBT_DIGEST_CLAIM = TBT_DIGEST + ".reading"
-#: A SIESTA pseudopotential, named for its element (`fixed_name`).
-PSEUDO_FILE = "{element}.psml"
+#: A SIESTA pseudopotential, named for its species label (`fixed_name`).
+PSEUDO_FILE = "{species}.psml"
 #: A record `jobset migrate` rewrote, kept beside its rewrite under the
 #: earliest rule it was written before (`migrate._kept_as`).
 KEPT_FILE = "{kept}.pre-{rule}"
@@ -862,7 +864,7 @@ class Artifact:
 
     ``role`` is the suffix :func:`compose` takes, for a file named on the
     label; ``name`` is the whole name of one that is not (`task.json`, a
-    pseudopotential's ``{element}.psml``) -- a row has exactly one of the two.
+    pseudopotential's ``{species}.psml``) -- a row has exactly one of the two.
     ``what`` is one line a person can read -- these are shown in the
     Task-setup card and the Results tab's file card, so it says what the file
     HOLDS; ``writer`` says who writes it, and when.
@@ -2216,13 +2218,10 @@ def manifest(label: str, stage: Optional[str], *,
 def fixed_name(name: str, **fields) -> str:
     """A file of the catalogue's FIXED-NAME family ``name`` -- a
     :data:`WRITTEN` row's name with fields, as :data:`PSEUDO_FILE`
-    (``{element}.psml``) -- composed: every field filled, each checked
+    (``{species}.psml``) -- composed: every field filled, each checked
     against its declared shape (:data:`FIELDS`).  The counterpart of
-    :func:`find_fixed`; a name no row writes is :class:`RunFileError`."""
-    if not any(a.name == name and not a.role for a in WRITTEN):
-        raise RunFileError(
-            f"fixed_name({name!r}): not a fixed name molbuilder's catalogue "
-            f"writes (`runfiles.WRITTEN`).")
+    :func:`fixed_fields`; a name no row writes is :class:`RunFileError`."""
+    _a_fixed_name(name, "fixed_name")
     wanted = _fields_in(name)
     if set(wanted) != set(fields):
         raise RunFileError(
@@ -2237,18 +2236,33 @@ def fixed_name(name: str, **fields) -> str:
     return _FIELD_RE.sub(lambda m: str(fields[m.group(1)]), name)
 
 
+def _a_fixed_name(name: str, door: str) -> None:
+    """Refuse ``name`` unless a :data:`WRITTEN` row writes it as a FIXED
+    name -- the one check every fixed-name door makes first."""
+    if not any(a.name == name and not a.role for a in WRITTEN):
+        raise RunFileError(
+            f"{door}({name!r}): not a fixed name molbuilder's catalogue "
+            f"writes (`runfiles.WRITTEN`).")
+
+
+def fixed_fields(name: str, filename: str) -> "Optional[dict]":
+    """The fields of ``filename`` read back as the catalogue's FIXED-NAME
+    family ``name``, by their declared shapes (:data:`FIELDS`) --
+    ``{"species": "Au1"}`` for ``Au1.psml`` as :data:`PSEUDO_FILE` -- or
+    ``None`` when it is no name of that family.  The counterpart of
+    :func:`fixed_name`; a name no row writes is :class:`RunFileError`."""
+    _a_fixed_name(name, "fixed_fields")
+    m = _role_pattern(name).match(filename)
+    return m.groupdict() if m else None
+
+
 def find_fixed(directory, name: str) -> "list[tuple[Path, dict]]":
     """Every file in ``directory`` of the catalogue's FIXED-NAME family
     ``name`` -- a :data:`WRITTEN` row's name with fields, as
     :data:`SCHEDULER_STDERR` (``{scheduler}.{jobid}.err``) -- each with its
-    fields read back by their declared shapes (:data:`FIELDS`), sorted by
-    name: ``[(path, {"scheduler": "slurm", "jobid": "66027146"})]``.  A name
-    no row of the catalogue writes is :class:`RunFileError`."""
-    if not any(a.name == name and not a.role for a in WRITTEN):
-        raise RunFileError(
-            f"find_fixed({name!r}): not a fixed name molbuilder's catalogue "
-            f"writes (`runfiles.WRITTEN`).")
-    pattern = _role_pattern(name)
+    fields read back (:func:`fixed_fields`), sorted by name:
+    ``[(path, {"scheduler": "slurm", "jobid": "66027146"})]``."""
+    _a_fixed_name(name, "find_fixed")
     d = Path(directory)
     try:
         entries = sorted(d.iterdir())
@@ -2256,9 +2270,9 @@ def find_fixed(directory, name: str) -> "list[tuple[Path, dict]]":
         return []
     out = []
     for p in entries:
-        m = pattern.match(p.name)
-        if m and p.is_file():
-            out.append((p, m.groupdict()))
+        fields = fixed_fields(name, p.name)
+        if fields is not None and p.is_file():
+            out.append((p, fields))
     return out
 
 
@@ -2270,7 +2284,7 @@ def fixed(level: Optional[str] = None,
     at ``level``, with a line each: what the Task-setup card lists for the
     whole run (`job-set.json`, the plan, the machine record, the ledger),
     narrowed like :func:`manifest`.  A family shows its fields by name:
-    ``<element>.psml``."""
+    ``<species>.psml``."""
     rows = []
     for a in WRITTEN:
         if a.role:

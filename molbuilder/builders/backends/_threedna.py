@@ -34,14 +34,15 @@ will hit:
 
   3. **3'-phosphate cannot be added.**  fiber's output has 5'-P / 3'-OH;
      we can strip the 5'-P, but adding a 3'-P would require re-running
-     chemistry from scratch.  ``terminal in ('PP', '3P')`` warn that
-     the request will be served as 5'-P / 3'-OH or 5'-OH / 3'-OH
-     respectively.
+     chemistry from scratch.  ``terminal in ('PP', '3P')`` is built
+     5'-P / 3'-OH or 5'-OH / 3'-OH respectively (``_TERMINAL_BUILT``), which
+     the check after the build says (``backends.built``).
 
   4. **Form constraints.**  fiber's ``-z`` flag (Z-DNA) only works
      for poly-d(GC) sequences; ``-rna`` only produces A-form RNA.
-     ``build()`` warns on an RNA form other than A and refuses a Z-form
-     sequence that is not alternating GC.
+     ``build()`` builds A-form RNA whatever form is asked (the check after
+     the build says so) and refuses a Z-form sequence that is not
+     alternating GC.
 
 Detection chain (first hit wins)
 --------------------------------
@@ -91,6 +92,7 @@ import numpy as np
 
 from ... import repo_root as _repo_root
 from ...structure import Structure
+from . import DEFAULT_FORM, Built
 from ._common import (parse_pdb_to_structure, select_chain,
                       verify_backbone_connectivity)
 
@@ -217,6 +219,29 @@ _FIBER_FLAGS = {
 }
 
 
+#: THE TERMINAL EACH ASK IS BUILT WITH: fiber and rebuild write a
+#: 5'-phosphate and never a 3'-phosphate; the 5'-P is stripped for a 5'-OH end.
+_TERMINAL_BUILT = {"OH": "OH", "5P": "5P", "3P": "OH", "PP": "5P"}
+
+
+def _form_built(kind: str, form: Optional[str]) -> str:
+    """The helical form built of ``form``: RNA is fiber's A-form only
+    (``-rna``); DNA as asked; the kind's own when none is asked."""
+    return "A" if kind == "rna" else (form or DEFAULT_FORM[kind])
+
+
+def built(kind: str, form: str, terminal: str) -> Built:
+    """What this backend builds of the ask (`backends.built`), read off the
+    rules its build follows: :func:`_form_built` and :data:`_TERMINAL_BUILT`."""
+    return Built(
+        form=_form_built(kind, form),
+        terminal=_TERMINAL_BUILT[terminal],
+        form_words="3DNA's fiber builds RNA in its A-form only",
+        terminal_words="3DNA writes a 5'-phosphate and no 3'-phosphate; for a "
+                       "3'-phosphate, post-process the structure with an "
+                       "external tool")
+
+
 def _is_alternating_gc(seq: str) -> bool:
     """True iff ``seq`` is an EVEN-length strict alternation of G
     and C — the only sequence shape fiber's ``-z`` Z-DNA mode can
@@ -263,16 +288,9 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             raise ValueError("Empty sequence")
         return _build_arbitrary_duplex(found, seq, strand2, form, terminal, title)
 
-    # RNA only supports A-form via fiber.
-    if kind == "rna" and form not in ("A", None, ""):
-        import warnings
-        warnings.warn(
-            f"3DNA fiber builds A-form RNA only; ignoring form={form!r}.",
-            RuntimeWarning, stacklevel=4,
-        )
-        form = "A"
-    if form is None or form == "":
-        form = "B" if kind == "dna" else "A"
+    # THE FORM BUILT (:func:`_form_built`): RNA in fiber's A-form whatever
+    # was asked, which the check after the build says (`built`).
+    form = _form_built(kind, form)
 
     flags_key = (kind, form)
     if flags_key not in _FIBER_FLAGS:
@@ -306,16 +324,8 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     # `-single` flag; we post-process below to honour the requested
     # terminal state.  We can strip the 5'-phosphate (turning fiber's
     # 5'-P into the requested 5'-OH) but cannot add a 3'-phosphate
-    # without rerunning chemistry, so PP / 3P warn for the missing 3'.
-    if terminal in ("PP", "3P"):
-        import warnings
-        warnings.warn(
-            f"3DNA backend cannot add a 3'-terminal phosphate "
-            f"(fiber emits 5'-P / 3'-OH).  Requested terminal={terminal!r} "
-            f"will be served as 5'-P / 3'-OH.  For a 3'-phosphate, "
-            f"post-process the structure with an external tool.",
-            RuntimeWarning, stacklevel=4,
-        )
+    # without rerunning chemistry: what each ask is built with is
+    # :data:`_TERMINAL_BUILT`, which the check after the build says (`built`).
 
     # Argument shape depends on the form flag:
     # * ``-b`` / ``-a`` / ``-rna``: take ``-seq=<sequence>`` to lay
@@ -393,11 +403,11 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if not double_strand and len(chains) > 1:
         struct = select_chain(struct, chains[0])
 
-    # Strip the spurious 5'-terminal phosphate when the user asked for
-    # a 5'-OH (terminal in OH / 3P).  Done AFTER select_chain so the
+    # Strip the spurious 5'-terminal phosphate when the end built is a
+    # 5'-OH (:data:`_TERMINAL_BUILT`).  Done AFTER select_chain so the
     # 5'-terminal residue is unambiguous.  See `_PHOSPHATE_ATOM_NAMES`
     # for the exact atom set we remove.
-    if terminal in ("OH", "3P"):
+    if _TERMINAL_BUILT[terminal] == "OH":
         struct = _strip_5prime_phosphate(struct)
 
     err = verify_backbone_connectivity(struct, kind, max_O3_P=1.80)
@@ -569,7 +579,7 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     ``x3dna_utils cp_std BDNA``; A/Z-form arbitrary duplexes aren't offered (use
     ``ds,<sequence>`` for an A/Z *canonical* duplex via fiber).
     """
-    if (form or "B").upper() != "B":
+    if (form or DEFAULT_FORM["dna"]).upper() != "B":
         raise ValueError(
             f"two-strand (arbitrary / mismatched) duplexes are B-form only; got "
             f"form={form!r}.  Use \"ds,<sequence>\" for an A- or Z-form canonical "
@@ -621,7 +631,7 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     # KEEP both chains -- that IS the duplex.  Strip the spurious 5'-terminal
     # phosphate per chain when the user asked for 5'-OH ends (rebuild, like fiber,
     # always emits a 5'-P); H is added downstream by chemistry.add_hydrogens.
-    if terminal in ("OH", "3P"):
+    if _TERMINAL_BUILT[terminal] == "OH":
         struct = _strip_5prime_phosphate(struct)
     err = verify_backbone_connectivity(struct, "dna", max_O3_P=1.80)
     if err is not None:

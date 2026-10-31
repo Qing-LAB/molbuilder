@@ -22,6 +22,7 @@ from molbuilder.parse.types import SidecarResult
 from molbuilder.sidecars.molstruct import (
     READABLE_VERSIONS,
     SCHEMA_VERSION,
+    atom_columns_via_dataclass,
     is_geometry_hash,
     known_keys,
     is_sidecar,
@@ -93,25 +94,11 @@ def _normalised_dict(
     normed_rules = normalise_selection_rules(
         selection_rules, set(fields["regions"]))
 
-    # The identity columns (schema 8) -- validated through the SAME dataclass
-    # authority as everything else: a scratch Structure carrying them re-runs
-    # __post_init__'s own length/type checks, so a hand-edited sidecar whose
-    # residue_ids no longer match the atom count fails HERE, with the file
-    # named, not at engine-load time.
-    identity = dict(identity or {})
-    if identity:
-        from molbuilder.structure import Structure as _Structure
-        try:
-            _Structure(                  # built for its checks alone
-                elements=["X"] * n_atoms_total,
-                positions=[[0.0, 0.0, 0.0]] * n_atoms_total,
-                atom_names=identity.get("atom_names"),
-                residue_ids=identity.get("residue_ids"),
-                residue_names=identity.get("residue_names"),
-                chain_ids=identity.get("chain_ids"),
-            )
-        except (ValueError, TypeError) as exc:
-            raise MolstructJsonError(str(exc)) from exc
+    # The per-atom columns (identity, schema 8; species labels, v16) --
+    # validated through the SAME dataclass authority as the write side, so a
+    # hand-edited sidecar whose residue_ids or labels no longer match the
+    # atom count fails HERE, with the file named, not at engine-load time.
+    identity = atom_columns_via_dataclass(n_atoms_total, identity)
 
     # THE PAIR'S OWN MAP (v15), read by the map's one reader -- checked
     # against `atom_order` where the pair is applied (`apply_to_structure`).
@@ -232,7 +219,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
     # accepted and ignored rather than refused -- a key this project used to
     # write is not a key nobody reads, and the files carrying it are the
     # user's (`structure.RETIRED_METADATA_KEYS`).
-    from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
+    from molbuilder.structure import (ATOM_COLUMNS, FILE_FIELDS,
                                       RETIRED_METADATA_KEYS)
     known = known_keys()
     stray = sorted(k for k in data if k not in known)
@@ -264,7 +251,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
             # the same tuple the writer spreads (`model/structure.md` § 2.2).
             fields          = {k: data.get(k) for k in FILE_FIELDS},
             selection_rules = data.get("selection_rules"),
-            identity        = {k: data[k] for k in IDENTITY_FIELDS
+            identity        = {k: data[k] for k in ATOM_COLUMNS
                                if k in data},
             info            = data.get("info"),
             created_by      = data.get("created_by", "unknown"),

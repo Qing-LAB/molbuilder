@@ -303,12 +303,38 @@ def test_dna_add_hydrogens_false_returns_heavy_skeleton():
     assert n_h <= 5, f"expected heavy-atom skeleton, got {n_h} H"
 
 
+#: THE CANONICAL TAUTOMER of each base, the form in DNA and RNA: the
+#: hydrogens on each of its ring and exocyclic N and O atoms (amino, keto).
+_TAUTOMER_H = {
+    "A": {"N6": 2, "N1": 0, "N3": 0, "N7": 0},
+    "G": {"N1": 1, "N2": 2, "O6": 0, "N3": 0, "N7": 0},
+    "C": {"N4": 2, "N3": 0, "O2": 0},
+    "T": {"N3": 1, "O4": 0, "O2": 0},
+    "U": {"N3": 1, "O4": 0, "O2": 0},
+}
+#: Residue name -> base, the three backends' spellings (3DNA's `DC` / `C`,
+#: tleap's terminal `DC5` / `C3`).
+_BASE = {"DA": "A", "DT": "T", "DG": "G", "DC": "C",
+         "A": "A", "U": "U", "G": "G", "C": "C"}
+
+#: A build as a person asks it, and the anchors of its hydrogens where the
+#: row states them.
+_CHEMISTRY_ROWS = [
+    pytest.param(build_dna, "ATGC", {"O": 5, "C": 37, "N": 8}, id="dna"),
+    pytest.param(build_rna, "ACGU", None, id="rna"),
+    pytest.param(build_dna, "ds,GCGC", None, id="canonical-duplex"),
+]
+
+
+@pytest.mark.parametrize("build, text, anchors", _CHEMISTRY_ROWS)
 @pytest.mark.parametrize("backend", _BACKENDS)
-def test_dna_atgc_protonation_chemistry_matches_across_backends(backend):
-    """Pin that every backend produces the same protonation chemistry for
-    a canonical ATGC chain: 5 O-H (3 phosphate + 5'-OH + 3'-OH), 37 C-H
+def test_protonation_chemistry_matches_across_backends(backend, build, text,
+                                                       anchors):
+    """Pin that every backend produces the same protonation chemistry: for
+    a canonical ATGC chain 5 O-H (3 phosphate + 5'-OH + 3'-OH), 37 C-H
     (sugar CH/CH2 + base CH + thymine methyl), 8 N-H (Watson-Crick base-
-    pairing donors: A.N6-H2, T.N3-H, G.N1-H + G.N2-H2, C.N4-H2).
+    pairing donors: A.N6-H2, T.N3-H, G.N1-H + G.N2-H2, C.N4-H2); every base
+    in its canonical tautomer; each H in the residue of the atom it bonds to.
 
     Pre-fix the X3DNA path went through RDKit's PDB-bond-perception, which
     failed to compute coords for ambiguous-valence base amines; the
@@ -316,29 +342,51 @@ def test_dna_atgc_protonation_chemistry_matches_across_backends(backend):
     atoms and the chain came back missing 3 N-H + 1 C-H -- structurally
     crippled for Watson-Crick H-bonding.  OpenBabel's geometric H-add
     avoids the ghost-coord failure mode, so X3DNA + OpenBabel matches
-    Amber-tleap and RDKit-via-SMILES exactly."""
+    Amber-tleap and RDKit-via-SMILES exactly.  The counts could not see
+    the tautomer: OpenBabel read every cytosine 3DNA built as the imino
+    form -- an H on N3, one on N4, the same two N-H -- and a canonical
+    duplex's C.N3-H met G.N1-H 0.88 A apart, until the bases' bond orders
+    were given it (`residues.NUCLEOBASE_BONDS`, 2026-10-31).  RDKit's
+    hydrogens all read as one residue `MOL` until its `AddHs` was asked for
+    their residues (2026-10-31)."""
     if not available_backends()[backend]:
         pytest.skip(f"backend {backend!r} not installed on this machine")
-    s = build_dna("ATGC", backend=backend)
-    by_anchor = {"O": 0, "C": 0, "N": 0}
+    if text.startswith("ds,") and backend != "threedna":
+        pytest.skip("a duplex is 3DNA's alone")
+    s = build(text, backend=backend)
     pos = s.positions
-    for i in range(s.n_atoms):
-        if s.elements[i] != "H":
+    is_h = np.array([e == "H" for e in s.elements])
+    by_anchor = {"O": 0, "C": 0, "N": 0}
+    elsewhere = []
+    for i in np.flatnonzero(is_h):
+        d = np.linalg.norm(pos - pos[i], axis=1)
+        d[is_h] = 99.0
+        j = int(np.argmin(d))
+        if s.elements[j] in by_anchor:
+            by_anchor[s.elements[j]] += 1
+        if (s.chain_ids[i], s.residue_ids[i]) != (s.chain_ids[j],
+                                                  s.residue_ids[j]):
+            elsewhere.append(f"{s.residue_names[i]}{s.residue_ids[i]}:"
+                             f"{s.atom_names[i]}")
+    if anchors is not None:
+        assert by_anchor == anchors, (
+            f"{backend}: H anchor breakdown is {by_anchor}, expected "
+            f"{anchors} -- Watson-Crick H may be missing")
+    assert not elsewhere, (
+        f"{backend}: {len(elsewhere)} H outside their anchor's residue: "
+        f"{elsewhere[:5]}")
+    wrong = []
+    for k in range(s.n_atoms):
+        base = _BASE.get(s.residue_names[k].rstrip("53"))
+        want = _TAUTOMER_H.get(base, {}).get(s.atom_names[k])
+        if want is None:
             continue
-        # closest non-H neighbour
-        best_d, best_j = 99.0, -1
-        for j in range(s.n_atoms):
-            if i == j or s.elements[j] == "H":
-                continue
-            d = float(np.linalg.norm(pos[i] - pos[j]))
-            if d < best_d:
-                best_d, best_j = d, j
-        if best_j >= 0 and s.elements[best_j] in by_anchor:
-            by_anchor[s.elements[best_j]] += 1
-    assert by_anchor == {"O": 5, "C": 37, "N": 8}, (
-        f"{backend}: H anchor breakdown is {by_anchor}, expected "
-        f"{{'O': 5, 'C': 37, 'N': 8}} -- Watson-Crick H may be missing"
-    )
+        got = int(((np.linalg.norm(pos - pos[k], axis=1) < 1.15)
+                   & is_h).sum())
+        if got != want:
+            wrong.append(f"{s.chain_ids[k]}{s.residue_ids[k]}"
+                         f"{s.residue_names[k]}:{s.atom_names[k]} {got} H")
+    assert not wrong, f"{backend}: not the canonical tautomer: {wrong}"
 
 
 def test_threedna_strips_5prime_phosphate_for_terminal_oh():
@@ -386,7 +434,7 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
 
 
 # --- build_dna 5'/3' directionality now matches parse_dna_sequence -------
-# Regression (2026-07-27): build_dna's _parse_dna_notation used a permissive
+# Regression (2026-07-27): build_dna's parse_dna_notation used a permissive
 # local `_strip_direction` that silently kept one-sided labels and silently
 # reversed "3'-ATGC-3'", so a duplex strand could be built in the wrong 5'->3'
 # order with no error -- while parse_dna_sequence / build_rna already rejected
@@ -395,15 +443,15 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
 
 @pytest.mark.parametrize("bad", ["5'-ATGC", "ATGC-3'", "5'-ATGC-5'", "3'-ATGC-3'"])
 def test_build_dna_notation_rejects_bad_directionality(bad):
-    from molbuilder.nucleic import _parse_dna_notation
+    from molbuilder.nucleic import parse_dna_notation
     with pytest.raises(ValueError):
-        _parse_dna_notation(bad)
+        parse_dna_notation(bad)
 
 
 def test_build_dna_notation_normalises_reverse_direction():
-    from molbuilder.nucleic import _parse_dna_notation
+    from molbuilder.nucleic import parse_dna_notation
     # 3'-CGTA-5' is the same chemical strand as 5'-ATGC-3', normalised 5'->3'.
-    assert _parse_dna_notation("3'-CGTA-5'") == ("ss", "ATGC", None)
-    assert _parse_dna_notation("ATGC") == ("ss", "ATGC", None)
+    assert parse_dna_notation("3'-CGTA-5'") == ("ss", "ATGC", None)
+    assert parse_dna_notation("ATGC") == ("ss", "ATGC", None)
     # per-strand labels in a two-strand duplex are handled too
-    assert _parse_dna_notation("ATGC,3'-CGTA-5'") == ("ds", "ATGC", "ATGC")
+    assert parse_dna_notation("ATGC,3'-CGTA-5'") == ("ds", "ATGC", "ATGC")

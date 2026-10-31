@@ -61,6 +61,7 @@
         var input  = doc.getElementById("name-input");
         var button = doc.getElementById("name-generate-btn");
         var status = doc.getElementById("name-status");
+        _deps.findingsIn(doc.getElementById("name-findings"));
         if (!input || !button) return;
 
         /* The shared `.status` writer (lib/status.js): `.status` is the

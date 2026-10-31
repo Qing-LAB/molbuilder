@@ -2291,7 +2291,7 @@ segment is the token, `01_freq`; the walk's files are a run of points'
               for the phase; the structure's coordinates (§ 4); the progress-log seed; and
               mb_vibration.pyz -- the vibration's own steps: plan, record, finish-run --
               and mb_monitor.pyz -- the monitor, and the report steps every point runs
-    <El>.psml                               the pseudopotentials, brought into every call
+    <label>.psml                            the pseudopotentials, brought into every call
     launch/   <label>_01_freq-sweep.sbatch  the header (prep); the walk script and its log (launch)
   01_freq/run-0/                            THE RUN -- one job; a run of points' container,
     run.json                                  its one launch record
@@ -2700,9 +2700,18 @@ stays hidden there.
 like a PySCF result, and the viewer reads both **by role, never by the
 engine's name** ([`web/spectra.md`](?doc=web/spectra.md) § 3.3, § 9b.3) —
 **from the result's own record**, which both engines write the same way:
-**whether a strength was asked** by its phase — `phase_ir`, `phase_raman`
-*not requested* is a run that never asked (*Compute IR*, *Compute Raman*
-off), on either engine; **which way it was computed** by its route —
+**whether a strength was asked** — Raman's by its phase, `phase_raman`
+*not requested* a run that never asked (*Compute Raman* off), on either
+engine. The infrared's is read once, by the load door
+(`spectra.infrared.asked`, answered as `infrared_asked`), older files
+included: a result that states an infrared asked for it, whatever its
+phase says; a config that states the setting, `compute_ir` (PySCF's),
+says it, a file from before the flag included; otherwise the phase does —
+*not requested* is the run's choice in a result that keeps the charges
+(schema 11 on), and before that the default a SIESTA finish left with no
+setting behind it, and `""` a file written before the flag, no choice:
+the run asked, and why it carries none is the door's (`infrared_absent`);
+**which way it was computed** by its route —
 `ir_route` `charges` and `raman_route` `optical` are SIESTA's, derived at
 load from what the run stored (the free atoms' charges at the light and
 partition applied; the Raman at the laser applied),

@@ -1123,9 +1123,9 @@ def prep_the_group_of(base, stage, **kw):
 def write_pseudos(dest, elements) -> None:
     """Put the ``.psml`` files a SIESTA calculation needs into *dest*.
 
-    `prep` REFUSES by element name when a species has no
+    `prep` REFUSES by species label when a species has no
     pseudopotential in the calculation and none in the library
-    (`project-layout.md` § 2.6): SIESTA opens ``<element>.psml`` in the
+    (`project-layout.md` § 2.6): SIESTA opens ``<label>.psml`` in the
     directory it runs from and has no search path, so a bundle without them is
     one that cannot start, and laying out a tree for it helps nobody.  A test
     that preps therefore supplies them, exactly as a person does.

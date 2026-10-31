@@ -47,13 +47,12 @@ from __future__ import annotations
 
 import fnmatch
 import math
-import re
 from dataclasses import dataclass
 from typing import (Dict, Iterable, List, Optional, Sequence, Tuple)
 
 import numpy as np
 
-from .structure import Structure
+from .structure import Structure, split_species_label
 
 
 class BackendUnavailable(RuntimeError):
@@ -237,11 +236,6 @@ NONMETALS = frozenset({
     "Ge", "As", "Se", "Br", "Kr", "Sb", "Te", "I", "Xe", "At", "Rn",
 })
 
-#: A species label is a name plus an optional trailing index: ``Au1`` is
-#: ``Au`` + 1.  The ONLY thing read off a label -- see
-#: :func:`split_species_label`.
-_TRAILING_INDEX = re.compile(r"^(.*?)(\d+)$")
-
 def resolve_element(label: str) -> str:
     """The element a species LABEL names.
 
@@ -306,23 +300,6 @@ def resolve_element(label: str) -> str:
             f"{name!r}{origin} is ASE's dummy atom (Z = 0), not an element: "
             f"a calculation needs the element behind every atom.")
     raise KeyError(f"unknown element symbol {name!r}{origin}.{hint}")
-
-
-def split_species_label(label: str) -> "tuple[str, Optional[int]]":
-    """``"Au1"`` -> ``("Au", 1)``; ``"Au"`` -> ``("Au", None)``.
-
-    The one rule for reading a species label: a run of digits at the END is
-    an index distinguishing two species of the same element, and everything
-    before it is the name.  Nothing else is interpreted -- no case folding,
-    no separator stripping -- so ``Au_1`` has the name ``Au_`` and is an
-    error rather than a silent success.  Explicit beats clever here: a label
-    is a key, and a key that needs guessing is a question for the user.
-    """
-    raw = str(label).strip()
-    m = _TRAILING_INDEX.match(raw)
-    if not m:
-        return raw, None
-    return m.group(1), int(m.group(2))
 
 
 def is_atom(label: str, symbol: str) -> bool:
@@ -1070,16 +1047,20 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
 #  OpenBabel `OBMol.AddHydrogens()` (preferred):                        #
 #    - Geometric H placement directly from each parent's hybridization  #
 #      and existing neighbours.  No "give up" failure mode.             #
-#    - On standard biomolecules (DA/DT/DG/DC, 20 amino acids) the       #
-#      residue-template chemistry is mature and battle-tested.          #
+#    - The 20 amino acids by OpenBabel's residue templates; a           #
+#      nucleobase's bond orders set first from its chemistry            #
+#      (`residues.NUCLEOBASE_BONDS`): perceived from a 3DNA skeleton's  #
+#      geometry, every cytosine came out imino (measured 2026-10-31).   #
 #    - Doesn't reorder atoms, so PDB indices are preserved.             #
 #    - Verified: X3DNA fiber heavy-skeleton -> AddHydrogens produces    #
 #      the canonical 5 O-H + 37 C-H + 8 N-H breakdown for ATGC,         #
 #      matching Amber-tleap and RDKit-via-SMILES exactly.               #
 #                                                                       #
 #  RDKit `Chem.AddHs(mol, addCoords=True)` (fallback):                  #
-#    - Bond-order perception from PDB residue templates is correct      #
-#      (this is well-tested).                                           #
+#    - Bond orders from RDKit's PDB residue templates: a nucleobase's   #
+#      canonical orders (measured 2026-10-31 on a 3DNA skeleton).  The  #
+#      fallback's limit is the ghost-H drop below -- cytosine N4 and    #
+#      guanine N2 left one H each.  Nucleic acids want OpenBabel.       #
 #    - BUT for sites where the heavy-atom geometry doesn't constrain    #
 #      H placement uniquely -- exocyclic -NH2 on bases (A.N6, G.N2,     #
 #      C.N4), peptide N-terminal -NH3+ -- the addCoords=True flag       #
@@ -1130,7 +1111,8 @@ def add_hydrogens(struct: Structure) -> Structure:
          well for SMILES-constructed molecules; for PDB-parsed inputs
          (heavy-atom only) it can leave exocyclic -NH2 H at parent
          coordinates.  See module-header comment for the full caveat.
-      3. Neither: REFUSED, with ``BackendUnavailable`` -- the door every
+      3. Neither -- or RDKit cannot read the structure, with OpenBabel
+         absent: REFUSED, with ``BackendUnavailable`` -- the door every
          builder already uses for a dependency this install lacks, which the
          Build page answers as advice rather than a server fault.  A
          warning reaches no web user (`science/validation.md` § 4.1 R5), and
@@ -1171,9 +1153,10 @@ def add_hydrogens(struct: Structure) -> Structure:
 def _protonate_openbabel(struct: Structure, ob) -> Structure:
     """Geometric H placement via OBMol.AddHydrogens().
 
-    OpenBabel's path: PDB -> OBMol (with bond perception from residue
-    templates) -> AddHydrogens (geometric placement using sp3/sp2/sp
-    vectors and existing neighbours) -> PDB.  Round-trip preserves
+    OpenBabel's path: PDB -> OBMol (bond orders perceived from the
+    geometry, a nucleobase's then set from its chemistry,
+    :func:`_nucleobase_bond_orders`) -> AddHydrogens (geometric placement
+    using sp3/sp2/sp vectors and existing neighbours) -> PDB.  Round-trip preserves
     atom order; placement is robust on ambiguous-valence amines that
     bite RDKit's PDB-then-AddHs path.
     """
@@ -1181,11 +1164,43 @@ def _protonate_openbabel(struct: Structure, ob) -> Structure:
     obconv.SetInAndOutFormats("pdb", "pdb")
     mol = ob.OBMol()
     obconv.ReadString(mol, struct.to_pdb())
+    _nucleobase_bond_orders(mol, ob)
     mol.AddHydrogens()
     out = obconv.WriteString(mol)
     return _drop_overlapping_hydrogens(
         Structure.from_pdb(out, title=struct.title)
     )
+
+
+def _nucleobase_bond_orders(mol, ob) -> None:
+    """Each nucleobase's bond orders from its chemistry
+    (`residues.NUCLEOBASE_BONDS`), set on an OpenBabel molecule read from a
+    PDB, and its atoms' implicit hydrogens counted again from them -- so
+    ``AddHydrogens`` places the canonical tautomer's.  OpenBabel perceives
+    the orders from the geometry, which a heavy-atom skeleton does not fix
+    (the table's note); no other residue's bonds are touched."""
+    from .residues import NUCLEOBASE_BONDS, nucleobase
+    touched = set()
+    for bond in ob.OBMolBondIter(mol):
+        a, b = bond.GetBeginAtom(), bond.GetEndAtom()
+        res, other = a.GetResidue(), b.GetResidue()
+        if res is None or other is None or res.GetIdx() != other.GetIdx():
+            continue
+        base = nucleobase(res.GetName())
+        if base is None:
+            continue
+        atoms, doubles = NUCLEOBASE_BONDS[base]
+        pair = (res.GetAtomID(a).strip(), res.GetAtomID(b).strip())
+        if pair[0] not in atoms or pair[1] not in atoms:
+            continue
+        bond.SetBondOrder(2 if pair in doubles or pair[::-1] in doubles
+                          else 1)
+        bond.SetAromatic(False)
+        touched.update((a.GetIdx(), b.GetIdx()))
+    for idx in touched:
+        atom = mol.GetAtom(idx)
+        atom.SetAromatic(False)
+        ob.OBAtomAssignTypicalImplicitHydrogens(atom)
 
 
 def _protonate_rdkit(struct: Structure, Chem) -> Structure:
@@ -1202,14 +1217,16 @@ def _protonate_rdkit(struct: Structure, Chem) -> Structure:
     """
     mol = Chem.MolFromPDBBlock(struct.to_pdb(), removeHs=False, sanitize=False)
     if mol is None:
-        # RDKit can choke on partial / unusual PDBs -- return as-is.
-        import warnings
-        warnings.warn(
-            "RDKit failed to parse the heavy-atom PDB; returning "
-            "heavy-atom-only structure.  Try installing OpenBabel.",
-            RuntimeWarning, stacklevel=3,
-        )
-        return struct
+        # RDKit can choke on partial / unusual PDBs, and OpenBabel -- which
+        # does not -- is not installed (it would have run first): no engine
+        # here can place the hydrogens, the third case of `add_hydrogens`,
+        # refused as it is.
+        raise BackendUnavailable(
+            "Cannot add hydrogens: RDKit could not read this structure to "
+            "place them, and OpenBabel -- which can -- is not installed "
+            "(`conda install -c conda-forge openbabel`).  A structure "
+            "without them would give DFT the wrong electron count.",
+            missing="hydrogens")
     mol = Chem.AddHs(mol, addCoords=True)
     pdb_out = Chem.MolToPDBBlock(mol)
     return _drop_overlapping_hydrogens(
@@ -1325,6 +1342,29 @@ def min_nonbonded_contact(struct: Structure, search_radius: float = 2.5):
         if best[0] is None or d < best[0]:
             best = (d, int(i), int(j))
     return best
+
+
+# Two thresholds (Angstrom), keyed to what actually harms a downstream DFT/SIESTA
+# relaxation -- not to reaching an ideal geometry (SIESTA does that):
+#   CLASH_CONTACT_A  -- an inter-residue contact this close is a real steric
+#     overlap (a mismatched base pair at the WC frame).  Below the tightest
+#     legitimate canonical contact (~1.5 A adjacent-residue H-H) and a WC
+#     H-bond (~1.8 A).
+#   NEAR_COINCIDENT_A -- NEAR-COINCIDENT atoms (nuclei almost on top of each
+#     other): THIS is what makes the first SCF step explode.  The opt-in relief
+#     only needs to clear this line; a merely-tight contact above it, SIESTA
+#     relaxes fine (user guidance 2026-07-14).
+CLASH_CONTACT_A   = 1.3
+NEAR_COINCIDENT_A = 1.0
+
+
+def steric_clash(struct: Structure) -> "Optional[Tuple[float, int, int]]":
+    """The closest inter-residue contact (:func:`min_nonbonded_contact`) when
+    it is a steric clash -- below :data:`CLASH_CONTACT_A` -- else ``None``:
+    what the duplex builder relieves on request and the check after the build
+    says (`validation.builders`)."""
+    d, i, j = min_nonbonded_contact(struct)
+    return None if d is None or d >= CLASH_CONTACT_A else (d, i, j)
 
 
 def relieve_clashes(struct: Structure, steps: int = 1000) -> Structure:

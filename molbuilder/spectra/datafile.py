@@ -339,7 +339,9 @@ def write_structure_group(ds, structure, atoms: AtomIndexMap, *,
     held = [int(i) for i in held]
     if structure is not None:
         s = _Structure.from_dict(structure)
-        values["element"][:] = [str(e) for e in s.elements]
+        # The element, never the species label (`Au1` is gold): the
+        # variable says "the atom's element" (`Structure.chemical_symbols`).
+        values["element"][:] = s.chemical_symbols()
         values["position_ang"][:] = np.asarray(s.positions, dtype=float)
         held = [int(i) for i in (s.frozen_atoms or ())]
         if s.cell is not None:

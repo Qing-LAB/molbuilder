@@ -30,6 +30,7 @@ from typing import Iterator, Optional, Sequence
 
 import click
 
+from .builders.backends import DEFAULT_FORM, DEFAULT_TERMINAL
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
@@ -148,8 +149,20 @@ def _emit(struct: Structure, *,
         click.echo(struct.to_pyscf(as_string=True))
         wrote_anything = True
     if not wrote_anything:
-        sys.stdout.write(struct.to_xyz())
+        sys.stdout.write(_struct_to_text(struct, "xyz"))
     click.echo(struct.summary(), err=True)
+
+
+def _build(kind: str, sequence: str, **asked) -> Structure:
+    """``kind`` built from ``sequence`` through the one build door
+    (`builders.build`, as the build route builds), and what the build says
+    of what it built printed as every finding is (`validation.report`;
+    `science/validation.md` § 4.1 R5)."""
+    from .builders import build
+    from .validation import report
+    made = build(kind, sequence, **asked)
+    report(made.findings, raise_on_error=False)
+    return made.structure
 
 
 # --------------------------------------------------------------------- #
@@ -198,8 +211,10 @@ def pseudo_group() -> None:
 @pseudo_group.command("check", short_help="screen a pseudopotential directory")
 @click.argument("directory", type=click.Path(exists=True, file_okay=False))
 @click.option("--elements", default=None,
-              help="comma-separated symbols to require (e.g. Au,C,H,S); "
-                   "default: screen every .psml found in the directory.")
+              help="comma-separated species labels to require (e.g. "
+                   "Au,C,H,S or Au1,Au2) -- SIESTA opens <label>.psml; "
+                   "default: every species the directory's .psml files "
+                   "are for.")
 @click.option("--xc", "xc_authors", default=None,
               help="expected XC authors (e.g. PBE) -- flags pseudos that "
                    "don't match the calc's functional.")
@@ -211,19 +226,19 @@ def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
     match, dead Kleinman-Bylander projectors (ekb=0, a defective
     pseudo), and generator-version consistency across the set.
 
-    Exits non-zero on any ERROR-severity issue -- missing pseudo,
-    dead projector, or XC-family mismatch (the same ``ERROR_STATUSES``
+    Exits non-zero on any ERROR-severity issue -- a missing or misnamed
+    pseudo, a dead projector, or an XC-family mismatch (the same ``ERROR_STATUSES``
     the SIESTA preflight blocks on) -- so it can gate a workflow.
     """
     from pathlib import Path as _P
-    from molbuilder.pseudos import (scan_psml_directory, check_coverage,
+    from molbuilder.pseudos import (labels_in_directory, check_coverage,
                                     ERROR_STATUSES)
 
     d = _P(directory)
     if elements:
         els = [e.strip() for e in elements.split(",") if e.strip()]
     else:
-        els = sorted(scan_psml_directory(d).keys())
+        els = labels_in_directory(d)
         if not els:
             raise click.ClickException(f"no parseable .psml files in {d}")
 
@@ -268,12 +283,14 @@ def _build_options(*, nucleic: bool):
             f = click.option("--no-protonate-phosphates", is_flag=True,
                              help="keep phosphates deprotonated (charge -1 each); "
                                   "default is to add Hs so molecule is neutral")(f)
-            f = click.option("--terminal", default="OH", show_default=True,
+            f = click.option("--terminal", default=DEFAULT_TERMINAL,
+                             show_default=True,
                              type=click.Choice(["OH", "5P", "3P", "PP"]),
                              help="terminal phosphate state")(f)
             f = click.option("--form", default=None,
                              type=click.Choice(["B", "A", "Z"]),
-                             help="helix form (B for DNA, A for RNA by default)")(f)
+                             help=(f"helix form (default: {DEFAULT_FORM['dna']} for DNA, "
+                                   f"{DEFAULT_FORM['rna']} for RNA)"))(f)
             f = click.option("--backend", default="auto", show_default=True,
                              type=click.Choice(["auto", "rdkit", "amber", "threedna"]),
                              help="builder backend (auto-order is "
@@ -295,36 +312,31 @@ def _build_options(*, nucleic: bool):
 @_build_options(nucleic=False)
 def cmd_peptide(sequence, out, pdb, pyscf_atom_block, title):
     """Build a polypeptide from a 1-letter sequence (with [SEP] etc)."""
-    from molbuilder.peptide import build_peptide
-    s = build_peptide(sequence, title=title)
+    s = _build("peptide", sequence, title=title)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
-@cli.command("dna", short_help="build ssDNA from sequence (B-form)")
+@cli.command("dna", short_help="build DNA: a strand or a duplex notation")
 @_build_options(nucleic=True)
 def cmd_dna(sequence, out, pdb, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
-    """Build single-stranded DNA from a sequence."""
-    from molbuilder.nucleic import build_dna
-    kwargs = dict(title=title, backend=backend, terminal=terminal,
-                  protonate_phosphates=not no_protonate_phosphates)
-    if form is not None:
-        kwargs["form"] = form
-    s = build_dna(sequence, **kwargs)
+    """Build DNA from a sequence: a single strand, or a duplex notation --
+    ``ds,<seq>`` for the canonical duplex, ``strand1,strand2`` for an
+    explicit one."""
+    s = _build("dna", sequence, title=title, backend=backend, form=form,
+               terminal=terminal,
+               protonate_phosphates=not no_protonate_phosphates)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
-@cli.command("rna", short_help="build ssRNA from sequence (A-form)")
+@cli.command("rna", short_help="build single-stranded RNA from a sequence")
 @_build_options(nucleic=True)
 def cmd_rna(sequence, out, pdb, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
     """Build single-stranded RNA from a sequence."""
-    from molbuilder.nucleic import build_rna
-    kwargs = dict(title=title, backend=backend, terminal=terminal,
-                  protonate_phosphates=not no_protonate_phosphates)
-    if form is not None:
-        kwargs["form"] = form
-    s = build_rna(sequence, **kwargs)
+    s = _build("rna", sequence, title=title, backend=backend, form=form,
+               terminal=terminal,
+               protonate_phosphates=not no_protonate_phosphates)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
@@ -332,8 +344,7 @@ def cmd_rna(sequence, out, pdb, pyscf_atom_block, title,
 @_build_options(nucleic=False)
 def cmd_smiles(sequence, out, pdb, pyscf_atom_block, title):
     """Build a molecule from a SMILES string (needs rdkit)."""
-    from molbuilder.smiles import build_from_smiles
-    s = build_from_smiles(sequence, title=title)
+    s = _build("smiles", sequence, title=title)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
@@ -341,8 +352,7 @@ def cmd_smiles(sequence, out, pdb, pyscf_atom_block, title):
 @_build_options(nucleic=False)
 def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
     """Build a molecule from a common or IUPAC name (needs pubchempy)."""
-    from molbuilder.pubchem import build_from_name
-    s = build_from_name(sequence, title=title)
+    s = _build("name", sequence, title=title)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
@@ -759,7 +769,18 @@ def _struct_to_text(struct, fmt):
     """Serialise a Structure to a string in the requested format.
     Used for stdout output (output_path == '-').  Both ``Structure.to_xyz``
     and ``Structure.to_pdb`` return the formatted text directly when
-    called without a path; we just pick the right one."""
+    called without a path; we just pick the right one.
+
+    A TEXT ALONE HOLDS AN ELEMENT PER ATOM (`model/chemistry.md` § 3): a
+    species label that is not its element (``Au1``) has no room in it, so
+    that is said, never dropped without a word -- a pair written to a file
+    keeps the labels in its sidecar."""
+    labels = struct.labelled_species()
+    if labels:
+        click.echo(f"note: the species labels {', '.join(labels)} are "
+                   f"written as their elements: a {fmt} text alone has no "
+                   f"room for them.  Write the structure to a file instead "
+                   f"to keep them in its .molstruct.json.", err=True)
     return struct.to_pdb() if fmt == "pdb" else struct.to_xyz()
 
 

@@ -498,6 +498,34 @@ def junction(tmp_path_factory):
         run.pair_template = (from_pair.bundle / "F.template.toml").read_text()
         set_by_the_person(from_pair.bundle,
                           {"spin_treatment": "restricted"})
+
+        # A PAIR WHOSE ASSIGNED ORIGIN PUTS ATOMS OUTSIDE ITS CELL ALONG Z
+        # -- one geometry, which the Molbuilder tab opens and saves -- cited
+        # and described: its prep is refused, naming the way out; the
+        # origin set back to Automatic and the pair saved, the same folder's
+        # next prep composes it (`engines/transport.md` § 4, decided 1).
+        codec = StructureCodec()
+        relaxed = codec.load(tree / pair)
+        outside_pair = tree / "P" / "structure" / "outside.xyz"
+        lift = np.array([0.0, 0.0, 0.5 * float(relaxed.cell[2][2])])
+        codec.write(relaxed.replace(engine_offset=lift, offset_by="person"),
+                    outside_pair)
+        r = molbuilder("describe", "--calculation", "transport", "--engine", "siesta",
+                   "--bundle", "P/transport/outside",
+                   "--slot", "junction=P/structure/outside.xyz",
+                   "--psml-lib", "pseudopotential", "--bias", "0.0")
+        assert r.exit_code == 0, r.output
+        outside = RealRun(tree=tree,
+                          bundle=tree / "P" / "transport" / "outside")
+        one_rank(outside.bundle)
+        set_by_the_person(outside.bundle, {"spin_treatment": "restricted"})
+        _typed(outside, "prep outside its cell", "prep", "task",
+               *seed_and_leads(outside), "--target", "this")
+        codec.write(relaxed.replace(engine_offset=None, offset_by=None),
+                    outside_pair)
+        _typed(outside, "prep with its origin set back", "prep", "task",
+               *seed_and_leads(outside), "--target", "this")
+        run.outside = outside
         _taken(from_pair, "prep seed and leads", "prep", "task",
                *seed_and_leads(from_pair), "--target", "this")
         _taken(from_pair, "launch seed and leads", "launch", "task",
@@ -937,6 +965,25 @@ def test_a_run_that_relaxed_no_geometry_is_not_cited(junction):
     seed = junction.attempt("seed")
     with pytest.raises(ComposeError, match="relaxed no geometry"):
         classify_citation(seed)
+
+
+def test_a_junction_refused_outside_its_cell_is_prepared_once_its_origin_is_set_back(
+        junction):
+    """`engines/transport.md` § 4 *(decided with the user, 2026-10-31)*: a
+    cited pair whose assigned origin leaves atoms outside the cell along z
+    is refused at prep, the refusal naming the way out -- the origin moved
+    or set back to Automatic, the pair saved -- and the same folder's next
+    prep composes the junction from it again: a transport description names
+    no structure of its own (§ 3.1).  The refusal told the person to cite
+    the pair again, which the folder already does, and citing into it is
+    refused (one calculation per folder)."""
+    refused = junction.outside.said["prep outside its cell"]
+    assert refused.exit_code != 0, refused.output
+    assert "outside its cell along z" in refused.output, refused.output
+    assert "the next prep composes the junction from it again" \
+        in refused.output, refused.output
+    again = junction.outside.said["prep with its origin set back"]
+    assert again.exit_code == 0, again.output
 
 
 def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
@@ -2668,7 +2715,7 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
         cited.customized_rows(f) for f in range(_N_FRAMES)]
     masses = cited.annotations[MASS_CHANNEL].data
     assert list(V["atom"]) == list(range(cited.n_atoms))
-    assert list(V["element"]) == list(cited.elements)
+    assert list(V["element"]) == cited.chemical_symbols()
     assert list(V["mass_amu"]) == [masses[i] for i in range(cited.n_atoms)]
     assert np.array_equal(V["positions_ang"],
                           np.asarray(cited.frames, dtype=float))

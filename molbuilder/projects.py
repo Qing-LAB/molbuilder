@@ -344,11 +344,11 @@ _TOPIC_READMES: Mapping[str, str] = {
     ),
     "pseudopotential": (
         "# pseudopotential/\n\n"
-        "SIESTA pseudopotentials for this project.  Drop `.psml` /\n"
-        "`.psf` files here, one per element (`H.psml`, `O.psml`, ...).\n"
-        "When the SIESTA generator emits a run script for this project\n"
-        "it can populate this directory from a local pseudo-dojo install\n"
-        "or download as needed (see `molbuilder.pseudos` -- planned).\n"
+        "SIESTA pseudopotentials for this project.  Drop `.psml`\n"
+        "files here, one per species, named for its label (`H.psml`,\n"
+        "`O.psml`, `Au1.psml`, ...): SIESTA opens `<label>.psml`.\n"
+        "A SIESTA calculation whose `psml_lib` is `pseudopotential`\n"
+        "takes the files it lacks from here at prep.\n"
     ),
     "user": (
         "# user/\n\n"

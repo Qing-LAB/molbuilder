@@ -700,7 +700,7 @@ def _cold_restart_block(label: str) -> str:
     What survives the sweep is § 4.1's exception — *what molbuilder
     wrote* — and the bash case list is DERIVED from
     ``identity.OUR_FILE_PATTERNS`` (E-1), the one Python spelling of that
-    enumeration, plus ``*.psml`` (element-named).  One list, two languages,
+    enumeration, plus ``*.psml`` (named for a species label).  One list, two languages,
     no second copy to drift.
 
     REMOVED, not left for the engine to overwrite: a deck that reads its
@@ -740,7 +740,7 @@ def _cold_restart_block(label: str) -> str:
     # protects exactly one file.
     #
     # `*.psml` is the one glob of its own: a pseudopotential is named for its
-    # element, not for the run.
+    # species label, not for the run.
     from .identity import OUR_FILE_PATTERNS
     _exceptions = "|".join(sorted(
         {p.replace("{label}", '"$_warm_label"') for p in OUR_FILE_PATTERNS}

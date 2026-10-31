@@ -133,32 +133,6 @@ class TestInputValidation:
 
 class TestHappyPath:
 
-    def test_default_form_is_A(self):
-        """A is the canonical RNA helix form — the default must
-        match what tleap / 3DNA expect for an unspecified helix."""
-        out = _run_node('''
-            let capturedBody = null;
-            rna.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, xyz: "20\\nrna\\nC 0 0 0\\n",
-                            n_atoms: 20,
-                        }),
-                    };
-                },
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            await rna.generate("ACGU");
-            console.log(JSON.stringify(capturedBody));
-        ''')
-        assert out == {"kind": "rna", "input": "ACGU",
-                       "form": "A", "backend": "auto"}
-
     def test_explicit_form_forwarded(self):
         out = _run_node('''
             let capturedBody = null;

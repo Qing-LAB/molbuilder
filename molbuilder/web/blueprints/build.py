@@ -71,10 +71,7 @@ from ._shared import (
     struct_from_body as _struct_from_body,
 )
 
-from molbuilder.nucleic import build_dna, build_rna
-from molbuilder.peptide import build_peptide
-from molbuilder.pubchem import build_from_name
-from molbuilder.smiles import build_from_smiles
+from molbuilder.builders import GENERATORS, build
 from molbuilder.engine_table import (EngineTableError, config_class,
                                      engine as _engine)
 from molbuilder.structure import Structure
@@ -83,18 +80,6 @@ from .files import _resolve_within_roots, _PickerError
 
 
 bp = Blueprint("build", __name__)
-
-
-# Map kind -> builder.  Keeps the dispatch tight; per-kind URL paths
-# would be one route each (an internal refactor option for later --
-# the dispatch table here makes that mechanical when wanted).
-_BUILDERS = {
-    "peptide": build_peptide,
-    "dna":     build_dna,
-    "rna":     build_rna,
-    "smiles":  build_from_smiles,
-    "name":    build_from_name,
-}
 
 
 def _sniff_structure_format(text: str) -> str:
@@ -227,76 +212,47 @@ def api_build_molecule():
     body = request.get_json(silent=True) or {}
     kind = (body.get("kind") or "").strip().lower()
     text = (body.get("input") or "").strip()
-    if kind not in _BUILDERS:
+    if kind not in GENERATORS:
         return jsonify({"ok": False,
                         "error": f"Unknown kind {kind!r}; "
-                                 f"valid: {sorted(_BUILDERS)}"}), 400
+                                 f"valid: {sorted(GENERATORS)}"}), 400
     if not text:
         return jsonify({"ok": False, "error": "empty input"}), 400
-    backend_used: str | None = None
+    takes = GENERATORS[kind].asks
     h_mode_used: str | None = None
-    # THE BACKEND ASKED FOR, when a kind lets a person choose one.
-    # Bound here, before any builder runs, because the missing-backend
-    # answer below names it -- and a builder that is not DNA/RNA can
-    # reach that answer too (a peptide whose hydrogens nothing here can
-    # add).
-    requested: str | None = None
-    build_warnings: list[str] = []
-    try:
-        # DNA / RNA accept extra knobs (backend / form / terminal).
-        if kind in ("dna", "rna"):
-            requested = body.get("backend", "auto")
-            # add_hydrogens is tri-state: auto / on / off.  The web
-            # form sends a string ("auto" by default).  We accept
-            # bool too for back-compat with older client code.
-            h_mode_raw = body.get("add_hydrogens", "auto")
-            if isinstance(h_mode_raw, bool):
-                h_mode_used = "auto" if h_mode_raw else "off"
-            else:
-                h_mode_used = str(h_mode_raw).lower()
-                if h_mode_used not in ("auto", "on", "off"):
-                    return jsonify({
-                        "ok": False,
-                        "error": (
-                            f"add_hydrogens must be 'auto'/'on'/'off' "
-                            f"(or bool); got {h_mode_raw!r}"
-                        ),
-                    }), 400
-            kwargs = {
-                "backend":  requested,
-                "form":     body.get("form",     "B" if kind == "dna" else "A"),
-                "terminal": body.get("terminal", "OH"),
-                "add_hydrogens": h_mode_used,
-                "protonate_phosphates":
-                    bool(body.get("protonate_phosphates", True)),
-            }
-            # relax_clashes (DNA explicit-duplex): opt-in force-field relief of a
-            # mismatched pair's steric overlap.  build_dna ignores it for ss / RNA.
-            if kind == "dna":
-                kwargs["relax_clashes"] = bool(body.get("relax_clashes", False))
-            # Resolve "auto" before the build so the UI can display
-            # which backend actually ran -- this matches dispatch()'s
-            # selection logic exactly (see auto_backend_name docstring).
-            if requested == "auto":
-                from molbuilder.builders.backends import auto_backend_name
-                backend_used = auto_backend_name()
-            else:
-                backend_used = requested
-            # Capture builder RuntimeWarnings (e.g. a mismatched-duplex steric
-            # CLASH, or the amber "extended polymer" note) so the UI can surface
-            # them -- otherwise they'd only reach the server log.
-            import warnings as _warnings
-            with _warnings.catch_warnings(record=True) as _caught:
-                _warnings.simplefilter("always")
-                struct = _BUILDERS[kind](text, **kwargs)
-            build_warnings = [str(w.message) for w in _caught]
-        elif kind in ("smiles", "name"):
-            # RDKit-first, OpenBabel-fallback (Name lookup resolves to SMILES then
-            # builds, so it rides the same chain): surface WHICH engine produced
-            # the geometry so the user knows when they're on the lower-fidelity path.
-            struct, backend_used = _BUILDERS[kind](text, return_backend=True)
+    # WHAT THE PERSON ASKED, each a value the kind takes (`builders.
+    # GENERATORS`); one left out keeps the builder's own default.
+    asked: Dict[str, Any] = {name: body[name]
+                             for name in ("backend", "form", "terminal")
+                             if name in takes and body.get(name) is not None}
+    for flag in ("protonate_phosphates", "relax_clashes"):
+        if flag in takes and flag in body:
+            asked[flag] = bool(body[flag])
+    if "add_hydrogens" in takes:
+        # add_hydrogens is tri-state: auto / on / off.  The web form sends a
+        # string ("auto" by default); a bool is read as auto / off.
+        h_mode_raw = body.get("add_hydrogens", "auto")
+        if isinstance(h_mode_raw, bool):
+            h_mode_used = "auto" if h_mode_raw else "off"
         else:
-            struct = _BUILDERS[kind](text)
+            h_mode_used = str(h_mode_raw).lower()
+            if h_mode_used not in ("auto", "on", "off"):
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        f"add_hydrogens must be 'auto'/'on'/'off' "
+                        f"(or bool); got {h_mode_raw!r}"
+                    ),
+                }), 400
+        asked["add_hydrogens"] = h_mode_used
+    # THE BACKEND ASKED FOR, when a kind lets a person choose one -- which
+    # the missing-backend answer below names.
+    requested = asked.get("backend", "auto") if "backend" in takes else None
+    try:
+        # THE ONE BUILD DOOR (`builders.build`): "auto" resolved once, the
+        # builder run, and what the build says of what it built -- its
+        # findings, answered below as notices.
+        made = build(kind, text, **asked)
     except _BackendUnavailable as exc:
         # NOT A SERVER FAULT.  `web-api.md` § 1 defines 5xx as *"an I/O
         # error, an engine that fell over, a bug"* -- a backend the person
@@ -327,6 +283,7 @@ def api_build_molecule():
         # The user's input passed shape validation (kind + input)
         # before reaching here; whatever went wrong is on us.
         return jsonify({"ok": False, "error": str(exc)}), 500
+    struct, backend_used = made.structure, made.backend
 
     # THE GENERATOR SIGNS ITS WORK, AND THE SIGNATURE IS SELECTABLE.
     #
@@ -359,6 +316,11 @@ def api_build_molecule():
     # consumer that reads them off the response root) AND in the
     # canonical ``extra`` sub-dict.  Issues + canonical atoms
     # come from the helper — one validate_geometry pass.
+    # WHAT THE BUILD SAYS OF WHAT IT BUILT -- the structure's own findings
+    # and what the backend does not build (`science/validation.md` § 4.1
+    # R5) -- answered as notices beside the structure.
+    from molbuilder.periodicity_gate import notices_for_report
+    found = notices_for_report(made.findings)
     return ok_structure_response(struct, extra={
         # build/molecule's legacy contract: title defaults to the
         # build kind ("smiles" / "dna" / …) when the Structure
@@ -375,9 +337,7 @@ def api_build_molecule():
         # for non-nucleic builds (peptide/SMILES/name) where the
         # kwarg doesn't apply.
         "add_hydrogens_mode": h_mode_used,
-        # Builder warnings (e.g. a mismatched-duplex steric clash) for the UI to
-        # surface; empty list when the build was clean.
-        "build_warnings":     build_warnings,
+        **({"notices": found} if found else {}),
     })
 
 

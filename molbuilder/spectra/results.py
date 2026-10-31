@@ -127,6 +127,9 @@ SCHEMA_VERSION = 14  # 14: an optical frame's state may be `not run` --
 #: Every version the reader serves as the v9 shape.
 READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
                                       14})
+#: The schema that first carries a SIESTA force-constant run's charges,
+#: ``partial_charges`` (11, above): a file before it cannot state them.
+CHARGES_SCHEMA = 11
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -139,7 +142,9 @@ PHASE_RUNNING  = "running"   # script is mid-way through this phase
                              # (live-watch / atomic-replace JSON updates)
 PHASE_COMPLETE = "complete"  # phase done, data is final for this run
 #: A phase the description never asked for -- written from the first
-#: write and never changed, so *nothing was asked* cannot be read as
+#: write and never changed (a SIESTA finish before 2.44.0 left it as its
+#: analysis's default, which `spectra.infrared.asked` reads), so *nothing
+#: was asked* cannot be read as
 #: *nothing yet* (empty) or *done with nothing behind it* (complete).
 #: Terminal: the viewer counts it finished (`engines/vibration.md` § 4.9).
 PHASE_NOT_REQUESTED = "not requested"
@@ -388,10 +393,10 @@ def _partial_charges_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     block = d.get("partial_charges")
     if block is None:
         return None
-    if int(d.get("schema_version", 0)) < 11:
+    if int(d.get("schema_version", 0)) < CHARGES_SCHEMA:
         raise ValueError(f"SpectraResults: a schema-{d.get('schema_version')} "
-                         f"result states partial_charges, which schema 11 "
-                         f"first carries")
+                         f"result states partial_charges, which schema "
+                         f"{CHARGES_SCHEMA} first carries")
     if not isinstance(block, Mapping):
         raise ValueError(f"SpectraResults.partial_charges is a block "
                          f"{{displacement_ang, steps, charges_e}}, not "

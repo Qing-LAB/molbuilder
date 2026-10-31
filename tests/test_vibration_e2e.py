@@ -163,7 +163,8 @@ def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
     run above asked Raman and not infrared.  THE SILENT FAILURE: the
     refusal blaming the charges the run never printed, or a route of its
     own answering differently from the script's door.  MUTATION THIS MUST
-    FAIL AGAINST: `no_charges_reason` not asking `phase_ir`."""
+    FAIL AGAINST: `no_charges_reason` not asking whether the run asked
+    (`infrared.asked`)."""
     from molbuilder.postprocess import infrared_view
     from molbuilder.projects import PROJECTS_ROOT_ENV, find_projects_root
     from molbuilder.runfiles import ROLE_SPECTRA
@@ -187,6 +188,9 @@ def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
     got = r.get_json()["results"]
     assert "Compute IR was off" in got.get("infrared_absent", ""), got
     assert "infrared" not in got, sorted(got)
+    # ...and whether it was asked, read once for every surface of the page
+    # (`infrared.asked`, `web/spectra.md` § 3): not.
+    assert got["infrared_asked"] is False, got
 
 
 def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):

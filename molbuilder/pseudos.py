@@ -1,8 +1,8 @@
 """Pseudopotential file validation for SIESTA.
 
-SIESTA needs one ``.psml`` file per element in
-the structure.  These files carry metadata in their header that MUST
-match the calculation config:
+SIESTA needs one ``.psml`` file per species label in
+the structure, named for it (``<label>.psml``).  These files carry
+metadata in their header that MUST match the calculation config:
 
   * ``element``         -- which element this pseudo describes
   * XC functional       -- the same family the user picked in
@@ -17,12 +17,15 @@ Functions here:
   * :func:`parse_psml_header` -- read the XML header of a .psml file
     and return a ``PsmlInfo`` dataclass with the canonical fields.
   * :func:`scan_psml_directory` -- walk a directory, return
-    ``{element: PsmlInfo}`` mapping all parseable .psml files.
-  * :func:`check_coverage` -- given a Structure and a directory,
-    return a list of per-element status entries: present / missing
-    / mismatched-XC / mismatched-relativistic.  The SIESTA
+    ``{file name: PsmlInfo}`` for all parseable .psml files.
+  * :func:`labels_in_directory` -- the species labels a whole folder's
+    files are for, as `molbuilder pseudo check DIR` asks them.
+  * :func:`check_coverage` -- given the structure's species labels and
+    the directory their files are read from, or each label's own, return a
+    status entry per label: present / missing / misnamed / defective /
+    mismatched-XC / mismatched-relativistic, and the set's generators.  The SIESTA
     validator (``molbuilder.validation.siesta``) calls this during
-    preflight + render so the user sees a clear "missing Fe.psml"
+    preflight + render so the user sees a clear "no .psml file for Fe"
     or "Fe.psml is for LDA but you picked GGA" Issue message
     before they run SIESTA.
 
@@ -35,15 +38,17 @@ from __future__ import annotations
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Iterable
+from typing import Dict, Iterable, List, Mapping, Optional, Union
 import re
 import xml.etree.ElementTree as ET
 
 
 #: Where a calculation's staged pseudopotentials live, relative to it
-#: (roadmap 7.10 M6: grouped in one folder rather than N loose `<El>.psml`).
+#: (roadmap 7.10 M6: grouped in one folder rather than N loose `<label>.psml`).
 from .runfiles import PSEUDO_DIR as PSEUDO_DIRNAME  # noqa: E402 -- the catalogue's name
-from .runfiles import PSEUDO_FILE, fixed_name  # noqa: E402
+from .runfiles import (PSEUDO_FILE, RunFileError, fixed_fields,  # noqa: E402
+                       fixed_name)
+from .structure import split_species_label  # noqa: E402 -- a label's name
 
 
 #: THE FOLDER AS A PREP WILL LEAVE IT, while one is being planned -- a
@@ -72,9 +77,10 @@ def where_bytes_are(path) -> Path:
     return Path(src) if src is not None else Path(path)
 
 
-def psml_sources(elements, *, dest_dir=None,
+def psml_sources(labels, *, dest_dir=None,
                  library=None) -> "Dict[str, Optional[Path]]":
-    """Which directory each element's `.psml` is read from, or ``None``.
+    """Which directory each species label's `.psml` is read from, or
+    ``None``.
 
     **The calculation's own folder first, then ``library``** -- the rule prep
     applies when it puts the files in place (*the folder wins; only what is
@@ -91,7 +97,7 @@ def psml_sources(elements, *, dest_dir=None,
     where a file is.
 
     In the folder, ``pseudos/`` before the root.  Both are real at different
-    moments -- `molbuilder describe` and a travelled bundle leave `<El>.psml` at the root,
+    moments -- `molbuilder describe` and a travelled bundle leave `<label>.psml` at the root,
     and the first `prep` moves them into ``pseudos/``, keeping what is
     already there.  Asking only the root would refuse a calculation whose
     pseudopotentials are already in place.
@@ -102,13 +108,24 @@ def psml_sources(elements, *, dest_dir=None,
     if library is not None:
         places.append(Path(library))
     out: Dict[str, Optional[Path]] = {}
-    for el in elements:
+    for el in labels:
         key = str(el).strip()
+        name = file_named_for(key)
         if key not in out:
-            out[key] = next((d for d in places
-                             if _is_file(d / fixed_name(PSEUDO_FILE,
-                                                        element=key))), None)
+            out[key] = (None if name is None else
+                        next((d for d in places if _is_file(d / name)), None))
     return out
+
+
+def file_named_for(label: str) -> Optional[str]:
+    """The file SIESTA opens for species ``label`` -- ``<label>.psml``
+    (:data:`runfiles.PSEUDO_FILE`) -- or ``None`` for a label no file can be
+    named for: not an element and an optional index (``au``, ``Au_1``),
+    which `check_coverage` says rather than raising."""
+    try:
+        return fixed_name(PSEUDO_FILE, species=label)
+    except RunFileError:
+        return None
 
 
 #: The library's conventional name: the tree's own ``pseudopotential``
@@ -585,43 +602,69 @@ def parse_psml_header(path: Path) -> PsmlInfo:
 
 
 def scan_psml_directory(directory: Path) -> Dict[str, PsmlInfo]:
-    """Walk ``directory`` (non-recursive) and return ``{element:
-    PsmlInfo}`` for every parseable .psml file -- as a prep will leave it,
-    while one is being planned (:data:`PLANNED`).
+    """Walk ``directory`` (non-recursive) and return ``{file name:
+    PsmlInfo}`` for every .psml file that declares an element -- as a prep
+    will leave it, while one is being planned (:data:`PLANNED`).
 
-    When two files claim the same element (e.g. ``Fe.psml`` AND
-    ``Fe_pbe.psml``), the FIRST one encountered wins.  The
-    additional file is silently dropped from the mapping but the
-    caller can call :func:`parse_psml_header` directly for full
-    enumeration.
+    BY FILE NAME, the name SIESTA opens (`science/pseudopotentials.md`
+    § C1a): two files of one element -- ``Au1.psml`` and ``Au2.psml``, or
+    ``Fe.psml`` and ``Fe_pbe.psml`` -- are two entries, and which one a
+    species reads is its name's answer, never the element's.
     """
-    directory = Path(directory)
     out: Dict[str, PsmlInfo] = {}
+    for p in _psml_paths(directory):
+        info = parse_psml_header(p)
+        if not info.element:
+            continue
+        out[p.name] = info
+    return out
+
+
+def _psml_paths(directory: Path) -> List[Path]:
+    """Every ``.psml`` file in ``directory`` (non-recursive), read or not --
+    as a prep will leave it, while one is being planned (:data:`PLANNED`)."""
+    directory = Path(directory)
     view = PLANNED.get()
     if view is not None:
         listing = view.glob(directory, "*")
     elif directory.is_dir():
         listing = sorted(directory.iterdir())
     else:
-        return out
-    for p in listing:
-        if p.suffix.lower() != ".psml":
-            continue
-        info = parse_psml_header(p)
-        if not info.element:
-            continue
-        out.setdefault(info.element, info)
-    return out
+        return []
+    return [p for p in listing if p.suffix.lower() == ".psml"]
+
+
+def labels_in_directory(directory: Path) -> List[str]:
+    """The species labels a folder's pseudopotentials are for, as a check
+    of the whole folder asks them (`molbuilder pseudo check DIR`): each
+    file's label where it is named for one (``<label>.psml``,
+    :data:`runfiles.PSEUDO_FILE`), read or not -- so one that does not parse
+    is screened (C6) -- and the element it declares where it is not, so a
+    file SIESTA never opens is said misnamed (C1a) where its element has no
+    file of its own; one beside its element's own (``Fe_pbe.psml`` beside
+    ``Fe.psml``) is opened by no species and not screened.  Sorted; ``[]``
+    for a folder with none."""
+    declared = scan_psml_directory(directory)
+    out = set()
+    for p in _psml_paths(directory):
+        named = fixed_fields(PSEUDO_FILE, p.name)
+        if named:
+            out.add(named["species"])
+        elif p.name in declared:
+            out.add(declared[p.name].element)
+    return sorted(out)
 
 
 @dataclass
 class CoverageEntry:
-    """One row of a coverage report: per-element pass / warn / fail."""
+    """One row of a coverage report: a species label's pass / warn / fail
+    (``element`` holds the label, verbatim -- ``Au1``)."""
     element:  str
-    status:   str       # "ok" | "missing" | "dead_projector" |
-                        # "xc_family_mismatch" | "xc_mismatch" |
-                        # "relativistic_mismatch" | "generator_mismatch" |
-                        # "parse_warning" | "semilocal_only" | "misnamed"
+    status:   str       # "ok" | "missing" | "misnamed" |
+                        # "dead_projector" | "semilocal_only" |
+                        # "partial_projectors" | "xc_family_mismatch" |
+                        # "xc_mismatch" | "relativistic_mismatch" |
+                        # "generator_mismatch" | "parse_warning"
     message:  str
     path:     Optional[Path] = None
 
@@ -633,9 +676,10 @@ class CoverageEntry:
 #: strength of ZERO (``semilocal_only`` — the same silently-wrong-energies
 #: case, user ruling 2026-09-03 after PseudoDojo v0.5's sulfur ran with no
 #: p channel).  This is the SINGLE source of truth for "which statuses are
-#: ERROR"; ``misnamed`` is one (the file for an element exists and is healthy
-#: but is not called `<element>.psml`, so SIESTA never opens it -- a certain
-#: start-up failure, said at configuration time).
+#: ERROR"; ``misnamed`` is one (the file for a species exists and is healthy
+#: but is not called `<label>.psml`, so SIESTA never opens it -- a certain
+#: start-up failure, said at configuration time -- or `<label>.psml`
+#: declares another element, which SIESTA would read for it).
 #: The SIESTA preflight
 #: (``validation.siesta._check_siesta_pseudo_coverage``) and the CLI
 #: (``cli.cmd_pseudo_check``) both consume it so the two surfaces cannot
@@ -675,22 +719,32 @@ def expected_xc_family(xc_authors: Optional[str]) -> Optional[str]:
     return None
 
 
-def check_coverage(elements: Iterable[str],
-                    directory: Path,
+def check_coverage(labels: Iterable[str],
+                    directory: Union[Path, Mapping[str, Path]],
                     *,
                     expected_xc_family: Optional[str] = None,
                     expected_xc_authors: Optional[str] = None,
                     expected_relativistic: str = "scalar",
                     ) -> List[CoverageEntry]:
-    """Given a list of element symbols the structure needs (no
-    duplicates required; we de-duplicate) and a directory of
-    pseudopotentials, return per-element status.
+    """Given the species labels the structure needs (no duplicates
+    required; we de-duplicate) and the directory their pseudopotentials are
+    read from -- or each label's own, for a structure whose files come from
+    two places (the calculation's folder first, then the library,
+    :func:`psml_sources`) -- return each label's status, read from the file
+    SIESTA opens for it, ``<label>.psml`` (`science/pseudopotentials.md`
+    § C1, C1a).  THE WHOLE STRUCTURE IN ONE CALL: a file another label of
+    the structure opens is that label's, and the set's generators are
+    compared across every file read.
 
     Status values:
       * ``"ok"`` -- pseudo present, XC + relativistic match (or
         expectations weren't supplied).
-      * ``"missing"`` -- no .psml file for this element.  Hard fail
-        for SIESTA: the run won't start.
+      * ``"missing"`` -- no .psml file for this label, or a label no file
+        can be named for.  Hard fail for SIESTA: the run won't start.
+      * ``"misnamed"`` -- the label's element is in a file no label of
+        the structure opens, which SIESTA never reads for it; or
+        ``<label>.psml`` declares another element, which SIESTA would read
+        for it.
       * ``"xc_family_mismatch"`` -- pseudo's XC FAMILY differs from the
         calc's (e.g. an LDA pseudo in a GGA run).  ERROR-severity: never
         physically correct, energies/forces silently wrong.
@@ -699,50 +753,90 @@ def check_coverage(elements: Iterable[str],
       * ``"relativistic_mismatch"`` -- e.g. user picked an SR pseudo
         for a fully-relativistic run; WARN-severity.
       * ``"parse_warning"`` -- the .psml file is present but missing
-        metadata; assume it's OK and let SIESTA report any issues
+        metadata (C6); assume it's OK and let SIESTA report any issues
         at startup.
     """
-    info_map = scan_psml_directory(directory)
+    from .chemistry import is_atom
+    # BY LABEL, deliberately: SIESTA reads `<label>.psml`, so a species
+    # written `Au1` really does need `Au1.psml` and is not covered by
+    # `Au.psml`.  Verbatim -- no folding (`model/chemistry.md` § 3).  The
+    # file THIS label opens is the one read: two labels of one element are
+    # two files (`science/pseudopotentials.md` § C1, C1a).
+    labels = list(dict.fromkeys(str(el).strip() for el in labels))
+    where = ({k: Path(directory[k]) for k in labels}
+             if isinstance(directory, Mapping)
+             else dict.fromkeys(labels, Path(directory)))
+    opens = {key: file_named_for(key) for key in labels}
+    named = {n for n in opens.values() if n is not None}
+    folders: Dict[Path, Dict[str, PsmlInfo]] = {}     # each folder read once
     out: List[CoverageEntry] = []
-    seen: set = set()
-    for el in elements:
-        # BY LABEL, deliberately: SIESTA reads `<label>.psml`, so a species
-        # written `Au1` really does need `Au1.psml` and is not covered by
-        # `Au.psml`.  Verbatim -- no folding (`model/chemistry.md` § 3).
-        key = str(el).strip()
-        if key in seen:
-            continue
-        seen.add(key)
-        info = info_map.get(key)
-        if info is None:
+    read: Dict[str, PsmlInfo] = {}
+    for key in labels:
+        if opens[key] is None:
             out.append(CoverageEntry(
                 element=key, status="missing",
-                message=(f"no .psml file for {key} in {directory.name!r} -- "
-                         f"SIESTA will refuse to start.  Download from "
-                         f"http://www.pseudo-dojo.org (PSML format, "
-                         f"functional matching cfg.xc_authors)."),
-                path=None,
-            ))
+                message=(f"{key!r} is not a species label a pseudopotential "
+                         f"can be named for -- SIESTA opens <label>.psml, "
+                         f"and a label is an element and an optional index "
+                         f"(Au, Au1; model/chemistry.md 3).  Rename the "
+                         f"species."),
+                path=None))
             continue
-        # THE FILE SIESTA WILL OPEN IS `<label>.psml`, and this map is keyed
-        # on what each file DECLARES -- so a correct gold pseudopotential
-        # saved as `gold.psml` lands here as a perfectly healthy entry for
-        # `Au`, and every check below passes it, while SIESTA opens
-        # `Au.psml`, does not find it, and refuses to start.
-        #
-        # Verbatim, no folding -- the same rule the `key` comment above
-        # states: SIESTA reads `<label>.psml`, so a species written `Au1`
-        # really does need `Au1.psml`.
-        if info.path is not None and info.path.stem != key:
+        name = split_species_label(key)[0]
+        d = where[key]
+        if d not in folders:
+            folders[d] = scan_psml_directory(d)
+        folder = folders[d]
+        opened = d / opens[key]
+        info = folder.get(opened.name) or (
+            parse_psml_header(opened) if _is_file(opened) else None)
+        if info is None:
+            # A FILE NO LABEL OPENS declaring this label's element -- a
+            # correct gold pseudopotential saved as `gold.psml` -- is never
+            # read for it: SIESTA opens `<label>.psml` and has no search
+            # path, so it refuses to start.  A file named for another label
+            # of the structure is that label's, wherever it is read from.
+            others = sorted(f for f, i in folder.items()
+                            if is_atom(key, i.element) and f not in named)
+            if others:
+                out.append(CoverageEntry(
+                    element=key, status="misnamed",
+                    message=(f"{' and '.join(others)} "
+                             f"declare{'s' if len(others) == 1 else ''} "
+                             f"element {name}, but SIESTA opens "
+                             f"{opened.name} for species {key} and has no "
+                             f"search path -- so it never reads "
+                             f"{'that file' if len(others) == 1 else 'them'} "
+                             f"for {key}, and the run will refuse to start.  "
+                             f"Save {name}'s pseudopotential as "
+                             f"{opened.name}."),
+                    path=d / others[0],
+                ))
+            else:
+                out.append(CoverageEntry(
+                    element=key, status="missing",
+                    message=(f"no .psml file for {key} in "
+                             f"{d.name!r} -- SIESTA will refuse to "
+                             f"start.  Download from "
+                             f"http://www.pseudo-dojo.org (PSML format, "
+                             f"functional matching cfg.xc_authors)."),
+                    path=None,
+                ))
+            continue
+        # THE RIGHT NAME, ANOTHER ELEMENT: SIESTA reads it for this species.
+        # A file that declares none is C6's parse warning, below.
+        if info.element and not is_atom(key, info.element):
             out.append(CoverageEntry(
                 element=key, status="misnamed",
-                message=(f"{info.path.name} declares element {key}, but "
-                         f"SIESTA opens {key}.psml and has no search path -- "
-                         f"so this file will never be read and the run will "
-                         f"refuse to start.  Rename it to {key}.psml."),
-                path=info.path,
+                message=(f"{opened.name} declares element "
+                         f"{info.element}, but species {key} is "
+                         f"{name} -- SIESTA opens {opened.name} for {key} "
+                         f"and would read it as {name}'s.  Put {name}'s "
+                         f"pseudopotential under {opened.name}."),
+                path=opened,
             ))
             continue
+        read[key] = info
         # Value validation: a defective pseudo with a dead KB channel.
         # ERROR-severity -- this is the failure that masqueraded as a
         # propor crash; it also silently corrupts the physics for that
@@ -751,7 +845,7 @@ def check_coverage(elements: Iterable[str],
             chans = "/".join(info.null_channels)
             out.append(CoverageEntry(
                 element=key, status="dead_projector",
-                message=(f"{key}.psml has a NULL Kleinman-Bylander "
+                message=(f"{opened.name} has a NULL Kleinman-Bylander "
                          f"projector for the '{chans}' channel (ekb=0): "
                          f"the pseudopotential is defective/incomplete "
                          f"for a valence angular momentum.  It gives "
@@ -782,7 +876,7 @@ def check_coverage(elements: Iterable[str],
             chans = "/".join(info.semilocal_only_channels)
             out.append(CoverageEntry(
                 element=key, status="semilocal_only",
-                message=(f"{key}.psml carries the VALENCE '{chans}' channel "
+                message=(f"{opened.name} carries the VALENCE '{chans}' channel "
                          f"only as a semilocal <slps> block: its "
                          f"Kleinman-Bylander projectors are present and set "
                          f"to ZERO -- not omitted, which is how PSML says "
@@ -812,7 +906,7 @@ def check_coverage(elements: Iterable[str],
             chans = "/".join(info.partial_projector_channels)
             out.append(CoverageEntry(
                 element=key, status="partial_projectors",
-                message=(f"{key}.psml has a ZERO projector on the valence "
+                message=(f"{opened.name} has a ZERO projector on the valence "
                          f"'{chans}' channel while another projector on the "
                          f"same channel is real.  The channel still works, "
                          f"at less than the completeness its own generator "
@@ -835,7 +929,7 @@ def check_coverage(elements: Iterable[str],
             # the same-family author mismatch below (a minor warn).
             out.append(CoverageEntry(
                 element=key, status="xc_family_mismatch",
-                message=(f"{key}.psml was generated for "
+                message=(f"{opened.name} was generated for "
                          f"{info.xc_family} ({info.xc_authors}); calc "
                          f"requests {expected_xc_family} "
                          f"({expected_xc_authors or '?'}) -- XC-FAMILY "
@@ -850,7 +944,7 @@ def check_coverage(elements: Iterable[str],
             # Same family but different authors (PBE vs PBEsol).
             out.append(CoverageEntry(
                 element=key, status="xc_mismatch",
-                message=(f"{key}.psml was generated for "
+                message=(f"{opened.name} was generated for "
                          f"{info.xc_authors}; calc requests "
                          f"{expected_xc_authors} -- minor mismatch; "
                          f"results may differ from publication-grade "
@@ -863,7 +957,7 @@ def check_coverage(elements: Iterable[str],
                 and info.relativistic != expected_relativistic:
             out.append(CoverageEntry(
                 element=key, status="relativistic_mismatch",
-                message=(f"{key}.psml is {info.relativistic}; calc "
+                message=(f"{opened.name} is {info.relativistic}; calc "
                          f"expects {expected_relativistic}.  For "
                          f"most non-spin-orbit work, scalar (SR) is "
                          f"correct.  Fully-relativistic (FR) is needed "
@@ -875,14 +969,14 @@ def check_coverage(elements: Iterable[str],
         if info.parse_warnings:
             out.append(CoverageEntry(
                 element=key, status="parse_warning",
-                message=(f"{key}.psml present but header had issues: "
+                message=(f"{opened.name} present but header had issues: "
                          f"{'; '.join(info.parse_warnings)}"),
                 path=info.path,
             ))
             continue
         out.append(CoverageEntry(
             element=key, status="ok",
-            message=(f"{key}.psml OK ({info.xc_family} / "
+            message=(f"{opened.name} OK ({info.xc_family} / "
                      f"{info.xc_authors}, {info.relativistic})"),
             path=info.path,
         ))
@@ -893,15 +987,16 @@ def check_coverage(elements: Iterable[str],
     # the bad BDT S.psml entered) is a strong smell even when each file
     # individually parses.  WARN-severity: it MIGHT be intentional, but
     # the user should confirm the whole set is from one PseudoDojo
-    # release.  Only compares pseudos that are actually present.
-    # Iterate in a STABLE order: ``seen`` is a set, and a hash-ordered walk
-    # would make both the group-insertion order and the majority tie-break
-    # (``max(..., key=len)`` below) non-deterministic -- the named "stranger"
-    # could flip run to run.  Sorted keys make the C4 warning reproducible.
+    # release.  Compares the files the labels open (``read``), each once.
+    # Iterate in a STABLE order: the labels come in the structure's order,
+    # and the group-insertion order and the majority tie-break
+    # (``max(..., key=len)`` below) would follow it -- the named "stranger"
+    # could change with the atom order.  Sorted labels make the C4 warning
+    # reproducible.
     gen_keys: Dict[str, List[str]] = {}
-    for key in sorted(seen):
-        info = info_map.get(key)
-        if info is None or info.generator in ("", "unknown"):
+    for key in sorted(read):
+        info = read[key]
+        if info.generator in ("", "unknown"):
             continue
         gen_keys.setdefault(_generator_key(info.generator), []).append(key)
     if len(gen_keys) > 1:

@@ -135,6 +135,40 @@ DNA_THREE_TO_ONE = {v: k for k, v in DNA_ONE_TO_THREE.items()}
 RNA_ONE_TO_THREE = {"A": "A",  "U": "U",  "G": "G",  "C": "C"}
 RNA_THREE_TO_ONE = {v: k for k, v in RNA_ONE_TO_THREE.items()}
 
+#: EACH BASE'S BONDS, by PDB atom name: the atoms of its rings and exocyclic
+#: groups, and those of their bonds that are DOUBLE in the canonical (amino,
+#: keto) tautomer -- the base as it is in DNA and RNA; every other bond
+#: between two of the atoms is single.  A base's bond orders are its
+#: chemistry, not its geometry: read off a heavy-atom skeleton they are a
+#: guess -- 3DNA's cytosine has C4-N3 1.34 A and C4-N4 1.33 A, and bond
+#: perception took the imino tautomer, a hydrogen on N3 and one on N4
+#: (measured 2026-10-31, every cytosine 3DNA built).  The hydrogens of a
+#: built structure are placed on these orders (`chemistry.add_hydrogens`).
+#: Thymine's methyl carbon is ``C7``, or ``C5M`` in older files.
+NUCLEOBASE_BONDS = {
+    "A": (("N1", "C2", "N3", "C4", "C5", "C6", "N6", "N7", "C8", "N9"),
+          (("N1", "C6"), ("C2", "N3"), ("C4", "C5"), ("N7", "C8"))),
+    "G": (("N1", "C2", "N2", "N3", "C4", "C5", "C6", "O6", "N7", "C8", "N9"),
+          (("C6", "O6"), ("C2", "N3"), ("C4", "C5"), ("N7", "C8"))),
+    "C": (("N1", "C2", "O2", "N3", "C4", "N4", "C5", "C6"),
+          (("C2", "O2"), ("N3", "C4"), ("C5", "C6"))),
+    "T": (("N1", "C2", "O2", "N3", "C4", "O4", "C5", "C6", "C7", "C5M"),
+          (("C2", "O2"), ("C4", "O4"), ("C5", "C6"))),
+    "U": (("N1", "C2", "O2", "N3", "C4", "O4", "C5", "C6"),
+          (("C2", "O2"), ("C4", "O4"), ("C5", "C6"))),
+}
+
+
+def nucleobase(residue_name: str):
+    """The base of a nucleotide residue named ``residue_name`` -- DNA's
+    ``DC``, RNA's ``C``, with an Amber terminal suffix (``DC5``, ``C3``) --
+    as its one letter (a key of :data:`NUCLEOBASE_BONDS`), or ``None`` for
+    any other residue."""
+    name = residue_name.strip().upper()
+    if name[-1:] in ("5", "3"):
+        name = name[:-1]
+    return DNA_THREE_TO_ONE.get(name) or RNA_THREE_TO_ONE.get(name)
+
 
 # ---------------------------------------------------------------------- #
 #  Sequence parsing                                                      #

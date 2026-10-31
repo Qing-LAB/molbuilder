@@ -918,7 +918,7 @@ def _deck_cited(deck: Path) -> dict:
     params, blocks = read_fdf(read_deck(deck), spelled_out=spelled)
     species = [str(row[2]) for row
                in blocks.get(fdf_key("ChemicalSpeciesLabel")) or ()]
-    pseudos = [(label, fixed_name(PSEUDO_FILE, element=label))
+    pseudos = [(label, fixed_name(PSEUDO_FILE, species=label))
                for label in species]
     return {"name": deck.name, "sha256": sha256_of(deck),
             "keywords": {spelled.get(key, key): " ".join(value)

@@ -650,12 +650,20 @@ def _refuse_outside(struct: Structure) -> None:
             + (said[0] if said else
                "its atoms span more than the cell's length there "
                "(engines/transport.md 6.1c, I12)."))
+    # THE WAY OUT IS THE PAIR'S OWN: a one-geometry pair is saved on the
+    # Molbuilder tab; a frame set, which the tab opens one frame of, is
+    # written again by what made it (`model/structure.md` § 2.2e).
+    how = ("write the frame set again with that origin set back -- the "
+           "Molbuilder tab opens one frame of it, so it saves no set"
+           if struct.n_frames > 1 else
+           "move that origin on the pair's Cell page, or set it back to "
+           "Automatic, and save the pair")
     raise ComposeError(
         f"the cited junction has {where} outside its cell along z, the "
         f"transport direction, where TranSIESTA requires every atom inside "
-        f"-- the origin assigned on the cited pair puts them there.  Move "
-        f"that origin on the pair's Cell page, or set it back to Automatic, "
-        f"and cite it again (engines/transport.md 4).")
+        f"-- the origin assigned on the cited pair puts them there.  "
+        f"{how[0].upper()}{how[1:]}: the next prep composes the junction "
+        f"from it again (engines/transport.md 4).")
 
 
 def refuse_inside_citation(dest, cited, *, what: str = "the cited junction",
@@ -1104,7 +1112,11 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
             return _no(f"{recorded.order_unstated}; composed again from its "
                        f"citation, it is not the junction recorded -- "
                        f"{differs}")
-        dev = dev.replace(atom_order=composed.junction.atom_order)
+        # ITS ORDER IS STATED NOW -- the composition's record, which the prep
+        # that read it writes into the sidecar (§ 1.1): the read's mark that
+        # nothing stated it goes with it.
+        dev = dev.replace(atom_order=composed.junction.atom_order,
+                          order_unstated=False)
         order_found = True
     if tree_root is not None:
         try:

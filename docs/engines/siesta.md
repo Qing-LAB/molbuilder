@@ -53,7 +53,7 @@ flowchart LR
     WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no deck</i>"]
     R["spec_for(struct, config, *, names, cell=None) → DeckSpec<br/>siesta/input.py"]
     P["prepare_deck(spec, …)<br/>script_emit.py<br/><i>validate → render_deck → write → check</i>"]
-    OUT["JOB.fdf<br/>(+ sibling JOB.molwatch.log,<br/> + copied &lt;Element&gt;.psml)"]
+    OUT["JOB.fdf<br/>(+ sibling JOB.molwatch.log,<br/> + copied &lt;label&gt;.psml)"]
     S --> R
     C --> R
     CLI --> R
@@ -178,7 +178,7 @@ class SiestaConfig: ...                                             # config/sie
 spec_for(struct, config=None, *, names, cell=None,
          calculation="optimization", vibration=None,
          part=None, state=None, trial=None) -> DeckSpec             # siesta/input.py
-copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the elements whose <label>.psml was MISSING
+copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the species labels whose <label>.psml was MISSING
 ```
 
 A deck is made on the road: `molbuilder describe` describes the calculation, and `prep`

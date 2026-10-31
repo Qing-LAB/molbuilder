@@ -38,6 +38,7 @@ import numpy as np
 from ...diagnostics import get_capabilities
 from ...envs import run_tool
 from ...structure import Structure
+from . import Built
 from ._common import (parse_pdb_to_structure, select_chain,
                       verify_backbone_connectivity)
 
@@ -73,16 +74,8 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if kind not in ("dna", "rna"):
         raise ValueError(f"AmberTools backend supports kind in 'dna'|'rna'; got {kind!r}")
 
-    if form in ("B", "A", "Z"):
-        import warnings
-        warnings.warn(
-            f"AmberTools backend (tleap) builds an EXTENDED polymer; "
-            f"the requested {form}-form helical shape is not enforced. "
-            f"Bond chemistry is correct (Amber OL15 force field). "
-            f"For canonical helices install 3DNA and use its `fiber` "
-            f"command externally.",
-            RuntimeWarning, stacklevel=4,
-        )
+    # THE FORM IS NOT SHAPED HERE -- tleap builds an extended polymer; the
+    # check after the build says so (`built`).
 
     seq = "".join(c for c in sequence.upper() if c.isalpha())
     if not seq:
@@ -296,16 +289,24 @@ def _fix_methylene_hydrogens(struct):
 # present so for v1 we just emit the standard 5'-OH terminals and the
 # user gets terminal="OH" semantics regardless.
 
+def built(kind: str, form: str, terminal: str) -> Built:
+    """What this backend builds of the ask (`backends.built`): an extended
+    polymer, no helix, and 5'-OH / 3'-OH termini whatever is asked
+    (:func:`_residue_codes_for_sequence`)."""
+    return Built(
+        form=None, terminal="OH",
+        form_words="AmberTools (tleap) builds an extended polymer -- its bond "
+                   "chemistry correct (Amber OL15 / OL3), not a helix; for a "
+                   "canonical helix use the 3DNA backend",
+        terminal_words="AmberTools writes only 5'-OH / 3'-OH termini; for "
+                       "a 5'-phosphate use the 3DNA backend, for an RNA "
+                       "3'-phosphate the RDKit backend, or post-process the "
+                       "structure")
+
+
 def _residue_codes_for_sequence(seq: str, kind: str, terminal: str) -> List[str]:
-    if terminal not in ("OH",):
-        import warnings
-        warnings.warn(
-            f"AmberTools backend currently emits only 5'-OH/3'-OH termini; "
-            f"requested terminal={terminal!r} ignored.  For phosphorylated "
-            f"termini, post-process the .pdb by hand or use a different "
-            f"toolchain (e.g. 3DNA).",
-            RuntimeWarning, stacklevel=5,
-        )
+    # ONLY 5'-OH / 3'-OH TERMINI are written, whatever ``terminal`` asks; the
+    # check after the build says so (`built`).
     n = len(seq)
     out: List[str] = []
     for i, letter in enumerate(seq):

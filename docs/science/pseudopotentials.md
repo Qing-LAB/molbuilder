@@ -48,9 +48,9 @@ flowchart TB
     RD["parse_psml_header → PsmlInfo<br/><b>identity</b>: element · XC · relativity · generator<br/><b>requirements</b>: cutoff_hint low/normal/high"]
 
     subgraph L1["LAYER 1 — file integrity (§ 2) · per FILE"]
-      CC["pseudos.check_coverage(elements, dir, …)<br/>→ List[CoverageEntry(element, status, …)]"]
-      ST["9 statuses: ok · missing · dead_projector · xc_family_mismatch ·<br/>xc_mismatch · relativistic_mismatch · generator_mismatch ·<br/>parse_warning · <b>semilocal_only</b> (§ 2a.2)"]
-      SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR: missing · dead_projector · xc_family_mismatch ·<br/><b>semilocal_only</b><br/>WARN: the rest · ok: silent"]
+      CC["pseudos.check_coverage(labels, each label's dir, …)<br/>→ List[CoverageEntry(element = the label, status, …)]"]
+      ST["11 statuses: ok · missing · misnamed · dead_projector ·<br/>xc_family_mismatch · xc_mismatch · relativistic_mismatch ·<br/>generator_mismatch · parse_warning · <b>semilocal_only</b> ·<br/>partial_projectors (§ 2a.2)"]
+      SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR: missing · misnamed · dead_projector · xc_family_mismatch ·<br/><b>semilocal_only</b><br/>WARN: the rest · ok: silent"]
       CC --> ST --> SEV
     end
 
@@ -77,7 +77,8 @@ flowchart TB
 ```
 
 **Read the two subgraphs by what their verdict is keyed to.** Layer 1 answers
-per **element** — *this file is missing / defective / the wrong XC*. Layer 2
+per **species label** — the file it opens — *this file is missing / misnamed /
+defective / the wrong XC*. Layer 2
 answers per **config field** — *your `mesh_cutoff` is below what these files
 ask for*. A finding in the wrong one sends a person to fix the wrong thing:
 told that something is wrong with sulfur, they re-download a perfectly good
@@ -85,20 +86,21 @@ file; told that `mesh_cutoff` is low, they change the number that is actually
 low.
 
 Both surfaces call the **same** `pseudos.check_coverage`, which parses each PSML
-header once (`parse_psml_header` → `PsmlInfo`, `pseudos.py:168`) and returns
-`CoverageEntry(element, status, message, path)` (`pseudos.py:418`) — the same
-eight statuses. Both then map status → severity through the **one shared
-constant** `pseudos.ERROR_STATUSES` (`pseudos.py:440`), so the preflight (which
-blocks script generation, `validation/siesta.py:125`) and the CLI (which exits
-non-zero, `cli.py:386`) **cannot disagree about what blocks**. And the preflight
+header once (`parse_psml_header` → `PsmlInfo`) and returns
+`CoverageEntry(element, status, message, path)` — the same statuses, the
+`element` field holding the species label. Both then map status → severity
+through the **one shared constant** `pseudos.ERROR_STATUSES`, so the preflight
+(which blocks script generation, `validation.siesta._check_siesta_pseudo_coverage`)
+and the CLI (which exits non-zero, `cli.cmd_pseudo_check`) **cannot disagree
+about what blocks**. And the preflight
 asks about **the files the run will open**: at `prep` it is handed the
 calculation folder, and `pseudos.psml_sources` — the rule `prep` fetches by —
-says per element whether that file comes from the folder or from `psml_lib`
+says per species label whether that file comes from the folder or from `psml_lib`
 ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a):
 
 | Severity | Statuses | Meaning |
 |---|---|---|
-| **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `dead_projector`, **`xc_family_mismatch`**, **`semilocal_only`** | the run **cannot be correct** — a file is absent (SIESTA won't start), a valence channel is physically missing (wrong Hamiltonian), the XC *family* is wrong, or a valence channel is present and **claims a strength of zero** (§ 2a.2). The last three are all *silently* wrong: the run completes and the answer is not right |
+| **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `misnamed`, `dead_projector`, **`xc_family_mismatch`**, **`semilocal_only`** | the run **cannot be correct** — a file is absent or under a name SIESTA does not open (SIESTA won't start), or the file a species opens declares another element (C1a), a valence channel is physically missing (wrong Hamiltonian), the XC *family* is wrong, or a valence channel is present and **claims a strength of zero** (§ 2a.2). The last three are all *silently* wrong: the run completes and the answer is not right |
 | **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
 | `ok` | — | silent pass |
 
@@ -108,11 +110,11 @@ out after the script is generated")*. On the Build and Spectrum tabs' SIESTA
 form the directory is marked required (the item's `required` kinds,
 [`engines/template.md`](?doc=engines/template.md) § 5) and drawn red while it is
 empty. The live check (the web preflight) warns while it is unset — naming the
-tree's `pseudopotential` folder when that folder covers every element of the
-structure, a suggestion and never a fill — and checks each element and its XC
-family once it is set. The Send asks the same check of the folder it writes
+tree's `pseudopotential` folder when that folder covers every species of the
+structure, a suggestion and never a fill — and checks each species' file and its
+XC family once it is set. The Send asks the same check of the folder it writes
 into (`validation.siesta.pseudopotential_findings`: pseudopotentials already
-beside the calculation count, as at `prep`) and refuses until every element is
+beside the calculation count, as at `prep`) and refuses until every species is
 covered — its findings beside the field, the page brought to it. Not PySCF's (it
 reads no pseudopotentials) nor transport's (a cited run's come with it; a cited
 pair's from the directory `molbuilder describe --psml-lib` names, prep's door).
@@ -131,26 +133,31 @@ pair's from the directory `molbuilder describe --psml-lib` names, prep's door).
 ## 2. The checks
 
 ### C1 — Coverage · ERROR · `missing`
-**What:** every element in the structure has exactly one `.psml` in the pseudo
-directory. **Why:** SIESTA refuses to start without a pseudo for every species.
-**How:** `scan_psml_directory` (`pseudos.py:393`) maps `{element: PsmlInfo}`; a
-structure element with no entry → `missing`. **False positives:** none — a
-missing file is unambiguous.
+**What:** every species label in the structure has its `.psml` in the pseudo
+directory — the file SIESTA opens for it, `<label>.psml`. **Why:** SIESTA
+refuses to start without a pseudo for every species. **How:** `check_coverage`
+reads, for each label, the file `runfiles.PSEUDO_FILE` names for it; a label
+with none, and no file under another name declaring its element (C1a) →
+`missing`. **False positives:** none — a missing file is unambiguous.
 
 ### C1a — The file SIESTA will open · ERROR · `misnamed`
-**What:** the pseudopotential for element `E` is the file named `E.psml`.
-**Why:** SIESTA opens `<label>.psml` in the directory it runs from and has
-**no search path**, so a file it cannot name is a file it will never read —
-the run refuses to start. **How:** `scan_psml_directory` keys the map on each
-file's *declared* element, so a correct gold pseudopotential saved as
-`gold.psml` arrived here as a healthy entry for `Au` and every value check
-below passed it; `check_coverage` now also compares the filename. Verbatim, no
-case folding — the same rule the coverage loop already states, since a species
-written `Au1` genuinely needs `Au1.psml`. **False positives:** none — the
-comparison is against the name SIESTA itself constructs. **Measured
-2026-09-19:** such a folder answered `ok`; zero instances across the 105 real
-`.psml` folders in `projects/`, because staged copies are named by
-`copy_pseudopotentials`. This guards the folder a person assembles by hand.
+**What:** the pseudopotential for species label `L` is the file named
+`L.psml`, and it declares `L`'s element. **Why:** SIESTA opens `<label>.psml`
+in the directory it runs from and has **no search path**, so a file it cannot
+name is a file it will never read — the run refuses to start; and a file under
+the right name declaring another element is read for this species. **How:** a
+label with no `<label>.psml` whose element a file no label of the structure
+opens declares (`gold.psml` for `Au`; `scan_psml_directory` reads the folder by
+file name, each file with the element it declares) → `misnamed`, save the
+pseudopotential under the label's name; a `<label>.psml` that declares another
+element → `misnamed`. A file another label opens is that label's: with `Au1`
+and `Au2` and only `Au1.psml`, `Au2` is `missing`. Verbatim, no case folding: a species written `Au1` needs
+`Au1.psml`, declaring gold ([`model/chemistry.md`](?doc=model/chemistry.md)
+§ 3). **False positives:** none — the comparison is against the name SIESTA
+itself constructs. **Measured 2026-09-19:** a folder holding only `gold.psml`
+answered `ok`; zero instances across the 105 real `.psml` folders in
+`projects/`, because staged copies are named by `copy_pseudopotentials`. This
+guards the folder a person assembles by hand.
 
 ### C2 — XC functional consistency · ERROR *(family)* / WARN *(author)*
 **What:** the pseudo's exchange-correlation functional matches the calculation's
@@ -166,7 +173,7 @@ looks physical.
 
 **How:** `PsmlInfo.xc_family` / `xc_authors` are decoded from the `<libxc-info>`
 functional ids (**libxc** = the standard open-source library that assigns each XC
-functional a numeric id) via `_LIBXC_MAP` (`pseudos.py:146`) and compared to the
+functional a numeric id) via `_LIBXC_MAP` and compared to the
 family derived from `cfg.xc_authors`. An unrecognised libxc id stays `"unknown"` and
 does **not** warn — we don't flag what we can't classify. **False positives:**
 low, bounded by the libxc id table.
@@ -188,11 +195,12 @@ pseudopotential library — molbuilder's recommended source.) **Why:** a single 
 that a pseudo was hand-swapped from a different source — exactly how the bad S
 entered. Mixed releases also mean the set was never validated together for
 **transferability** (whether a pseudo stays accurate across different chemical
-environments). **How:** `_generator_key(generator)` (`pseudos.py:612`) reduces
+environments). **How:** `_generator_key(generator)` reduces
 each `creator` string to `name-MAJOR` (e.g. `"ONCVPSP-3"`); a patch difference
 (3.3.0 vs 3.3.1) does **not** warn, a major mix (3.x vs 4.x) does. The minority
-version(s) are named as the likely stranger(s); only pseudos actually present are
-compared. **False positives:** moderate —
+version(s) are named as the likely stranger(s). The set compared is the files
+the structure's labels open, wherever each is read from — the calculation's
+folder and the library as one set; a file no label opens is not in it. **False positives:** moderate —
 mixing *can* be intentional (a curated set drawing the best pseudo per element
 from different releases). Hence WARN, not ERROR; the message says "confirm the
 odd-one-out is intended."
@@ -210,8 +218,8 @@ the local potential only. For an element where that `l` is a valence channel
 (e.g. sulfur's 3p) this is physically wrong — the bonding through that channel is
 undescribed — and it leaves SIESTA's projector table degenerate, which can
 trigger `propor: ERROR: IMAX=0`. **How:** `parse_psml_header` reads every
-`<proj l=… ekb=…>`, groups by `l`, and flags an `l` (→ `PsmlInfo.null_channels`,
-`pseudos.py:376`) only when **all three** hold:
+`<proj l=… ekb=…>`, groups by `l`, and flags an `l` (→ `PsmlInfo.null_channels`)
+only when **all three** hold:
 
 1. the channel is **present** (has `<proj>` entries) — a channel chosen as the
    **local potential** has *no* `<proj>` at all (absent, not zero) and is not flagged;
@@ -252,7 +260,7 @@ channel names):
 ```
 
 The predicate that decides this is exactly the three-way AND above (simplified
-from `pseudos.py:376`; `l` values are the channel letters `s`/`p`/`d`):
+from `parse_psml_header`; `l` values are the channel letters `s`/`p`/`d`):
 
 ```python
 _EKB_NULL = 1e-6
@@ -276,8 +284,9 @@ element, unparseable Z, …).
 ## 2a. Two layers, and why the second one is new *(design, 2026-09-03)*
 
 **Every check in § 2 answers one question: is this FILE sound?** One file in,
-one status out, keyed by element — present, parseable, right XC family, right
-relativity, no dead channel. Eight statuses, all of them properties of a file.
+one status out, keyed by the species label whose file it is — present under
+the name SIESTA opens, parseable, right XC family, right relativity, no dead
+channel. Every status is a property of a file and its name.
 
 A pseudopotential is also something else, and nothing was asking about it:
 
@@ -293,7 +302,7 @@ person must change, rather than on an element.
 |---|---|---|
 | input | one file | every file in the set **+ the config** |
 | asks | *is this file sound, and does it match my XC?* | *does my configuration honour what these files require?* |
-| verdict about | the element | the **config field** |
+| verdict about | the species' file | the **config field** |
 | output | `CoverageEntry(element, status, …)` | `Issue(severity, message, where="config.…")` |
 | the strictest what wins | — | the strictest **element** in the set |
 
@@ -472,7 +481,7 @@ verify:
 > **One item left this list on 2026-09-07: mesh-cutoff adequacy.** It read
 > *"`PsmlInfo.suggested_mesh_ry` is parsed but not yet compared to
 > `cfg.mesh_cutoff`"* — which § 2a.1 of this same document had already
-> contradicted. It IS compared: `validation/siesta.py:157` reads the
+> contradicted. It IS compared: `validation.siesta._declared_cutoff_ry` reads the
 > suggestion out of the PSML header and `_check_siesta_mesh_cutoff` raises
 > *"mesh_cutoff = X Ry is below Y Ry"* against it. A "what is not checked"
 > list that names a check the file itself documents elsewhere is worse than
@@ -501,14 +510,20 @@ its `check` command):
 
 ```bash
 # screen a whole directory (CI gate; exits non-zero on any ERROR-status pseudo:
-# missing / dead-projector / xc_family_mismatch -- the same set the preflight blocks):
+# missing / misnamed / dead-projector / xc_family_mismatch / semilocal_only --
+# the same set the preflight blocks):
 python -m molbuilder pseudo check projects/pseudopotential --xc PBE
 
-# require specific elements + a relativistic level:
-python -m molbuilder pseudo check <dir> --elements Au,C,H,S --xc PBE --relativistic scalar
+# require specific species labels + a relativistic level:
+python -m molbuilder pseudo check <dir> --elements Au1,Au2,C,H,S --xc PBE --relativistic scalar
 ```
 
-It prints one line per element (`[ERROR]` / `[WARN ]` / `[OK   ]`) then a summary,
+With no `--elements` the folder's own files say what to check
+(`pseudos.labels_in_directory`): each file named for a label, and for a file
+under no label's name the element it declares, so it is said `misnamed` where
+its element has no file of its own (one beside its element's own —
+`Fe_pbe.psml` beside `Fe.psml` — is opened by no species and not screened). It
+prints one line per species label (`[ERROR]` / `[WARN ]` / `[OK   ]`) then a summary,
 and exits non-zero when any line is an ERROR — the shape a CI job greps / gates on:
 
 ```text
@@ -543,13 +558,14 @@ check until clean.
 | Check | Severity | `pseudos.py` | Test |
 |---|---|---|---|
 | C1 coverage | ERROR | `check_coverage` → `missing` | `test_pseudos.py` |
+| C1a the file SIESTA opens | ERROR | `check_coverage` → `misnamed` (`file_named_for`, `scan_psml_directory` by file name) | `test_pseudos.py` |
 | C2 XC family | **ERROR** | `check_coverage` → `xc_family_mismatch` | `test_pseudos.py` |
 | C2 XC author | WARN | `check_coverage` → `xc_mismatch` | `test_pseudos.py` |
 | C3 relativistic | WARN | `check_coverage` → `relativistic_mismatch` | `test_pseudos.py` |
 | C4 version | WARN | `check_coverage` + `_generator_key` | `test_pseudos.py` |
 | C5 dead projector | ERROR | `parse_psml_header` → `null_channels`, emitted by `check_coverage` | `test_pseudos.py` |
 | C6 parse | WARN | `parse_psml_header` → `parse_warnings` | `test_pseudos.py` |
-| severity set (shared) | — | `pseudos.ERROR_STATUSES` → `validation/siesta.py:125` (preflight) + `cli.py:386` (CLI exit) | `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces` |
+| severity set (shared) | — | `pseudos.ERROR_STATUSES` → `validation.siesta._check_siesta_pseudo_coverage` (preflight) + `cli.cmd_pseudo_check` (CLI exit) | `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces` |
 
 Any change to a check here REQUIRES the matching code + test change in the same
 commit (the "design doc is the source of truth, update it with the code" rule).

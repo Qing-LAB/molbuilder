@@ -103,11 +103,21 @@ Two related counters:
   structure (correct sp3/sp2/sp geometry). **OpenBabel first**
   (`OBMol.AddHydrogens()`, no ghost-coordinate failure mode), **RDKit fallback**
   (`Chem.AddHs(mol, addCoords=True)`). This is what nucleic/3DNA builds route
-  through (see `engines/builders.md`). **With neither installed it refuses**:
+  through (see `engines/builders.md`). **A nucleobase's bond orders are its
+  chemistry, not its geometry**: OpenBabel perceives bond orders from the
+  coordinates, which a heavy-atom skeleton does not fix — 3DNA's cytosine has
+  C4–N3 1.34 Å and C4–N4 1.33 Å, and every cytosine came out the imino tautomer
+  (an H on N3, measured 2026-10-31) — so each base's are set from
+  `residues.NUCLEOBASE_BONDS` (the canonical amino/keto tautomer, the form in
+  DNA and RNA) before the hydrogens are placed — by OpenBabel. The RDKit
+  fallback, used only where OpenBabel is absent, reads the bases' orders from
+  its own residue templates but drops the hydrogens it cannot place (an amino
+  group left one H short), so nucleic acids want OpenBabel. Pinned by
+  `tests/test_nucleic.py::test_protonation_chemistry_matches_across_backends`. **With neither installed it refuses**:
   `BackendUnavailable` (defined in `chemistry`, `missing="hydrogens"`), naming
   both installs -- a structure without its hydrogens gives DFT the wrong
   electron count, so no heavy-atom structure is returned in its place. The
-  Build page answers it as advice (`web/web-api.md`, `POST /api/build`), the
+  Build page answers it as advice (`web/web-api.md`, `POST /api/build/molecule`), the
   CLI as `Error: ...`.
 
 ---
@@ -130,6 +140,22 @@ One door does it, and it is **explicit, never clever**:
 | `atomic_number(label)` → int | `resolve_element`, then one lookup. The Z an engine input needs beside the label |
 | `atomic_mass(label)` → float | the standard atomic weight, through the same resolution |
 | `is_atom(label, symbol)` → bool | **is this atom that element?** `is_atom("Au1", "Au")` is True. The one way to ask — a bare `el == "P"` says a labelled species is not phosphorus, and writing `el.capitalize() == sym` to fix that makes `CA` calcium again |
+
+**A file holds the name; the pair keeps the label.** A geometry file has one
+column for an atom's species, and every reader of it takes that column as an
+element symbol — ASE's `.xyz` reader refuses `Au1`, and PDB's element field is
+two characters. So the structure codec writes each atom by its label's name
+(`Au1` is written `Au`; `Structure.chemical_symbols`, the label split and the
+name never resolved or folded), and the sidecar carries the labels when one is
+not its name (`species_labels`,
+[`structure-molstruct.md`](?doc=model/structure-molstruct.md) § 1); the codec's
+read puts them back, refusing a label whose name is not the atom its geometry
+file holds. `split_species_label` is `structure.py`'s for this reason: the
+codec travels into a PySCF run, which saves its geometries through it, and
+nothing it imports may reach further. Where an engine is handed the label, it
+is the label — SIESTA's `ChemicalSpeciesLabel`, and the pseudopotential SIESTA
+opens for it, `<label>.psml`
+([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § C1a).
 
 **An element denotes Z ≥ 1.** The table the name is looked up in, ASE's, also
 lists `X`, its dummy atom at Z = 0. `X` is a placeholder, not an element, and
@@ -260,6 +286,7 @@ own element-column rules.
 | Function | Purpose |
 |---|---|
 | `min_nonbonded_contact(struct, search_radius=2.5)` | closest approach between atoms in **different** residues — a steric-clash probe; returns `(distance, i, j)`, or `(None, None, None)` when there are no residue labels (intra-residue contacts are bonds, not clashes) |
+| `steric_clash(struct)` → `(d, i, j)` or `None` | the closest inter-residue contact when it is a steric clash — below `CLASH_CONTACT_A` (1.3 Å); `NEAR_COINCIDENT_A` (1.0 Å) is the explosion risk. What the check after a nucleic build says (`validation.builders`) and `build_dna`'s relief asks |
 | `relieve_clashes(struct, steps=1000)` → Structure | nudge atoms apart to remove steric clashes |
 | `estimate_partial_charges(struct, total_charge=0.0, *, bond_cutoff=1.95, hx_cutoff=1.30)` | heuristic per-atom partial charges from electronegativity gaps (the cutoffs are keyword-only; same values as § 1) |
 | `estimate_dipole_moment_debye(struct, …)` | the molecular dipole moment, in Debye, taken about the centre of mass: an ion's dipole depends on the origin (`science/normal-modes.md` § 4a.5), and the centre of mass makes the number independent of where the molecule sits in its box (plan § 5q D8) |

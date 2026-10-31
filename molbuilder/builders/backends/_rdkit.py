@@ -15,10 +15,10 @@ build with 3DNA externally for a true B-form / A-form helix.
 
 from __future__ import annotations
 
-import warnings
 from typing import Optional
 
 from ...structure import Structure
+from . import Built
 from ._common import rdkit_mol_to_structure
 
 
@@ -37,6 +37,20 @@ _FLAVOR = {
     ("rna", "OH"): 2,  ("rna", "5P"): 3,
     ("rna", "3P"): 4,  ("rna", "PP"): 5,
 }
+#: The terminal state each flavor writes.
+_FLAVOR_TERMINAL = {2: "OH", 3: "5P", 4: "3P", 5: "PP", 6: "OH", 7: "5P"}
+
+
+def built(kind: str, form: str, terminal: str) -> Built:
+    """What this backend builds of the ask (`backends.built`), read off the
+    flavor its build takes (:data:`_FLAVOR`): an embedded conformer, no helix,
+    and the terminal that flavor writes."""
+    return Built(
+        form=None, terminal=_FLAVOR_TERMINAL[_FLAVOR[(kind, terminal)]],
+        form_words="RDKit embeds a conformer (ETKDG), not a helix; use the "
+                   "amber backend for an extended backbone or 3DNA for a "
+                   "canonical helix",
+        terminal_words="RDKit's DNA templates carry no 3'-phosphate")
 
 
 def is_available() -> bool:
@@ -61,14 +75,8 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             "or `conda install -c conda-forge rdkit`", missing="rdkit"
         )
 
-    if form != "B":
-        warnings.warn(
-            f"rdkit backend can't enforce {form}-form geometry; the "
-            f"embedded conformer is whatever ETKDG produces. "
-            f"Use the `amber` backend for proper backbone topology, "
-            f"or 3DNA externally for canonical helical geometry.",
-            RuntimeWarning, stacklevel=3,
-        )
+    # NO FORM IS SHAPED HERE -- the embedded conformer is whatever ETKDG
+    # produces; the check after the build says so (`built`).
 
     if kind not in ("dna", "rna"):
         raise ValueError(f"rdkit backend supports kind in 'dna'|'rna'; got {kind!r}")
@@ -89,7 +97,9 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             f"RDKit could not build a {kind} polymer from sequence "
             f"{one_letter!r} (flavor={flavor})"
         )
-    mol = Chem.AddHs(mol)
+    # Each hydrogen in the residue of the atom it bonds to (RDKit's own
+    # ``addResidueInfo``): left out, all of them read as one residue `MOL`.
+    mol = Chem.AddHs(mol, addResidueInfo=True)
 
     params = AllChem.ETKDGv3()
     params.randomSeed = 0xF00D

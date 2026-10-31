@@ -414,7 +414,8 @@ class TestSpeciesLabel:
         """`Au1` is `Au` plus an index.  That is the WHOLE rule -- the name is
         then looked up verbatim, so nothing is folded, stripped or guessed.
         """
-        from molbuilder.chemistry import resolve_element, split_species_label
+        from molbuilder.chemistry import resolve_element
+        from molbuilder.structure import split_species_label
         assert split_species_label("Au1") == ("Au", 1)
         assert split_species_label("Au12") == ("Au", 12)
         assert split_species_label("Au") == ("Au", None)

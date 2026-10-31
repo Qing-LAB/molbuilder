@@ -203,7 +203,7 @@ The sources, and what each produces (all POST `/api/build/molecule` with
 | **Project file** | — (`/api/build/load`, `{path}`) | the server reads the `.xyz`/`.pdb` and its `.molstruct.json` sidecar (`StructureCodec`) | asks which frame when the file holds several, and add-or-clear when a structure is open (above) |
 | **DNA** | `dna` | 3DNA (X3DNA) / AmberTools / RDKit | B/A/Z forms, single strand or duplex, optional clash relief |
 | **RNA** | `rna` | A-form canonical | |
-| **Peptide** | `peptide` | AmberTools `tleap` | extended chain from a sequence |
+| **Peptide** | `peptide` | PeptideBuilder | extended chain from a sequence; its C-terminus as the kit writes it, which the findings say |
 
 **One chain for the five generators** *(2026-10-13)*. Each source's panel
 checks its own input and names its request — SMILES and name, whose input is
@@ -216,8 +216,13 @@ what made it), **under the page's fence** with a Cancel that aborts the
 request ([`ui-contract.md`](?doc=web/ui-contract.md) § 10 — a build is real
 server work, and a tab or folder taken meanwhile would lose or misplace the
 result), and **one answer for every panel**: `{ok: true, n_atoms,
-backend_used, warnings}` — the backend that built it when the server names it,
-the builder's warnings (a mismatched-duplex clash), `[]` when none —
+backend_used}` — the backend that built it when the server names it — the
+answer's notices drawn under the panel's status through the one renderer, all
+of them ([`science/validation.md`](?doc=science/validation.md) § 4.1 R5, R3:
+what the build found — a peptide's aldehyde end, a nucleic acid's steric clash, a
+form or terminal the backend does not build — and what the structure check says
+of what was built, a defaulted cell's vacuum), the panel's earlier findings
+cleared at every build —
 `{ok: false, cancelled: true}` when the gate declines or the fence's Cancel is
 pressed — nothing was put on the canvas, and no error is said — else `{ok:
 false, error}`.

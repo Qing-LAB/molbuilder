@@ -10,7 +10,7 @@ import pytest
 
 from molbuilder.chemistry import BackendUnavailable
 
-from molbuilder.nucleic import build_dna, _parse_dna_notation
+from molbuilder.nucleic import build_dna, parse_dna_notation
 
 
 # --------------------------------------------------------------------- #
@@ -18,34 +18,34 @@ from molbuilder.nucleic import build_dna, _parse_dna_notation
 # --------------------------------------------------------------------- #
 
 def test_bare_sequence_is_single_strand():
-    assert _parse_dna_notation("ATGC") == ("ss", "ATGC", None)
-    assert _parse_dna_notation("  atgc  ") == ("ss", "ATGC", None)
+    assert parse_dna_notation("ATGC") == ("ss", "ATGC", None)
+    assert parse_dna_notation("  atgc  ") == ("ss", "ATGC", None)
 
 
 def test_ds_prefix_is_double_strand():
-    assert _parse_dna_notation("ds,ATGC") == ("ds", "ATGC", None)
-    assert _parse_dna_notation("DS:ATGC") == ("ds", "ATGC", None)
+    assert parse_dna_notation("ds,ATGC") == ("ds", "ATGC", None)
+    assert parse_dna_notation("DS:ATGC") == ("ds", "ATGC", None)
 
 
 def test_direction_markers_normalise_to_5to3():
-    assert _parse_dna_notation("5'-ATGC-3'") == ("ss", "ATGC", None)
+    assert parse_dna_notation("5'-ATGC-3'") == ("ss", "ATGC", None)
     # 3'->5' input is reversed to internal 5'->3'.
-    assert _parse_dna_notation("3'-ATGC-5'") == ("ss", "CGTA", None)
-    assert _parse_dna_notation("ds,3'-ATGC-5'") == ("ds", "CGTA", None)
+    assert parse_dna_notation("3'-ATGC-5'") == ("ss", "CGTA", None)
+    assert parse_dna_notation("ds,3'-ATGC-5'") == ("ds", "CGTA", None)
 
 
 def test_two_explicit_strands_parse_to_a_duplex():
     # Two comma-separated strands -> an explicit duplex (ds), each 5'->3'.  The
     # ds prefix is optional (two strands already imply a duplex).
-    assert _parse_dna_notation("ATGC,GCAT") == ("ds", "ATGC", "GCAT")
-    assert _parse_dna_notation("ds,ATGC,GCAT") == ("ds", "ATGC", "GCAT")
+    assert parse_dna_notation("ATGC,GCAT") == ("ds", "ATGC", "GCAT")
+    assert parse_dna_notation("ds,ATGC,GCAT") == ("ds", "ATGC", "GCAT")
     # Direction markers apply per strand.
-    assert _parse_dna_notation("3'-ATGC-5',3'-GCAT-5'") == ("ds", "CGTA", "TACG")
+    assert parse_dna_notation("3'-ATGC-5',3'-GCAT-5'") == ("ds", "CGTA", "TACG")
 
 
 def test_more_than_two_strands_rejected():
     with pytest.raises(ValueError, match="exactly two"):
-        _parse_dna_notation("ATGC,GCAT,TTTT")
+        parse_dna_notation("ATGC,GCAT,TTTT")
 
 
 # --------------------------------------------------------------------- #
@@ -187,32 +187,20 @@ def test_arbitrary_duplex_strips_5prime_P_on_both_strands(_x3dna):
 #  Steric-clash handling (mismatched pairs interpenetrate at the frame) #
 # --------------------------------------------------------------------- #
 
-def test_canonical_explicit_duplex_has_no_clash_warning(_x3dna):
-    # A canonical (complementary) explicit duplex is clash-free -> no warning.
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", RuntimeWarning)   # any clash warn -> failure
-        build_dna("ATGC,GCAT")          # GCAT == revcomp(ATGC)
-
-
-def test_mismatched_duplex_warns_by_default(_x3dna):
-    # AAAA/TTTG -> an A.G purine-purine mismatch that interpenetrates; the default
-    # (relax_clashes=False) must WARN (never silently emit the clashing structure).
-    with pytest.warns(RuntimeWarning, match="CLASH"):
-        build_dna("AAAA,TTTG")
-
-
 def test_relax_clashes_clears_near_coincidence_generally(_x3dna):
     # GENERAL (not tuned to one pair): the worst single-pair clash (G.G) AND a
     # dense multi-mismatch run must both come back with NO near-coincident atoms
     # (>= 1.0 A) after relax_clashes -- a SIESTA-relaxable starting geometry.
-    import warnings
+    # And a clash-free duplex is emitted as built, relief asked or not
+    # (`engines/builders.md`: "clash-free -- emit as-is").
+    import numpy as np
     from molbuilder.chemistry import min_nonbonded_contact
+    clean = build_dna("ATGC,GCAT")
+    assert np.allclose(build_dna("ATGC,GCAT", relax_clashes=True).positions,
+                       clean.positions), "a clash-free duplex was moved"
     for notation in ("GCGCG,CGGGC",     # middle G.G mismatch (worst single pair)
                      "AAAA,AAAA"):       # every pair a purine-purine mismatch
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            relaxed = build_dna(notation, relax_clashes=True)
+        relaxed = build_dna(notation, relax_clashes=True)
         d, _, _ = min_nonbonded_contact(relaxed)
         assert d is not None and d >= 1.0, (
             f"{notation}: residual near-coincident contact {d} A after relief")

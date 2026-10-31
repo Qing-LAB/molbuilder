@@ -235,7 +235,7 @@
 .modes-notes p[hidden] { display: none; }
 .modes-notes p { margin: 0 0 var(--space-xs); }
 .ir-explain { margin: 0; }
-/* Why this run has no charges: a line of its own, so none of page-shell's
+/* Why this result carries no infrared: a line of its own, so none of page-shell's
  * left indent (meant for a status trailing a button). */
 .ir-absent { margin: var(--space-sm) 0; }
 

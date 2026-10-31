@@ -238,12 +238,17 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         for mode in payload.get("modes") or []:
             mode["frameset"] = at_temperature(mode, float(set_t))
     # THE FREE ATOMS' INFRARED, where the result states its charges
-    # (`web/spectra.md` § 3.2); and, for a SIESTA result that states none,
-    # why, in its own facts.
+    # (`web/spectra.md` § 3.2); and, for a result that carries none, why,
+    # in its own facts.
     from molbuilder.spectra.infrared import (SOURCE_DIPOLE, ORIENTATION_FREE,
                                              InfraredError, infrared_absent,
                                              infrared_view_of, orientation_of,
                                              read_ask, source_of)
+    from molbuilder.spectra.infrared import asked as infrared_asked
+    # WHETHER THE RUN ASKED FOR ITS INFRARED, read once from the result's
+    # own facts, older files included (`infrared.asked`): the page's
+    # column, CSV, sentence and summary read this, never `phase_ir`.
+    payload["infrared_asked"] = infrared_asked(results)
     from molbuilder.spectra.methods import with_infrared_view
     # WHERE ITS INFRARED COMES FROM, and held or free -- whether the light's
     # direction is asked at all (`web/spectra.md` § 3.2).
@@ -252,8 +257,8 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         payload["infrared_source"] = source
         payload["infrared_orientation"] = orientation_of(results)
     # ...A RESULT THAT CARRIES NONE says why, once, from its own facts
-    # (`infrared.infrared_absent`): written before charges were kept,
-    # Compute IR off, or printed none.
+    # (`infrared.infrared_absent`): not computed yet, Compute IR off,
+    # written before charges were kept, or recorded none.
     absent = infrared_absent(results)
     if absent is not None:
         payload["infrared_absent"] = absent

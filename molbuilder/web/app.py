@@ -564,8 +564,10 @@ def create_app(*, config=None) -> Flask:
     @app.route("/molbuilder")
     def molbuilder_page():
         # Molbuilder tab: build + edit + assemble (modify.html
-        # template).
-        return render_template("modify.html")
+        # template).  The helix form a nucleic panel shows chosen is the
+        # build door's own default, never the page's.
+        from ..builders.backends import DEFAULT_FORM
+        return render_template("modify.html", default_form=DEFAULT_FORM)
 
     @app.route("/molview-demo")
     def molview_demo_page():

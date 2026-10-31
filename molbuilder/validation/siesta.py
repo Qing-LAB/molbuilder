@@ -11,7 +11,6 @@ from typing import List, Optional
 import numpy as np
 
 from ..issues import Issue
-from ..runfiles import PSEUDO_FILE, fixed_name
 from ..structure import Structure
 from .chemistry import check_species_labels
 from .sidecar import _check_frozen_atoms_consumed
@@ -46,16 +45,12 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     caller reads it off the electronic state.
     """
     from ..pseudos import (CONVENTIONAL_LIBRARY, PsmlLibError, check_coverage,
-                           ERROR_STATUSES, expected_xc_family, psml_sources,
-                           resolve_psml_lib)
+                           ERROR_STATUSES, expected_xc_family, file_named_for,
+                           psml_sources, resolve_psml_lib)
     labels = list(dict.fromkeys(str(e).strip() for e in struct.elements))
     found = (psml_sources(labels, dest_dir=dest_dir) if dest_dir is not None
              else dict.fromkeys(labels))
     lacking = [el for el in labels if found[el] is None]
-    read_from: dict = {}                  # directory -> the labels read there
-    for el in labels:
-        if found[el] is not None:
-            read_from.setdefault(found[el], []).append(el)
 
     psml_lib = getattr(cfg, "psml_lib", None)
     if lacking and not psml_lib:
@@ -77,9 +72,9 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
         #     on a guess is the thing this whole path is being cleared of.
         return [Issue(
             "error" if dest_dir is not None else "warn",
-            ("cfg.psml_lib is not set -- SIESTA needs .psml files for "
-             "every element (H, C, N, O, S, Fe, ...) and will refuse "
-             "to start without them."
+            ("cfg.psml_lib is not set -- SIESTA needs a .psml file for "
+             "every species, named for it (H.psml, Au1.psml, ...), and "
+             "will refuse to start without them."
              + _the_convention_covers(lacking, cfg, dest_dir=dest_dir,
                                       relativistic=relativistic)
              + "  Download from "
@@ -90,7 +85,7 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
              "(job-contracts.md 2.5a) -- do NOT write the projects/ "
              "prefix.  Once set, this preflight will check "
              "coverage + XC-family match against your structure's "
-             "elements automatically."
+             "species automatically."
              + ("  Or put the .psml files in the calculation folder itself "
                 "-- pseudos already beside the calculation are used without "
                 "this field." if dest_dir is not None else "")),
@@ -130,33 +125,35 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                   "the directory with the file-picker.",
                 "config.psml_lib",
             )]
-        read_from.setdefault(psml_dir, []).extend(lacking)
+        found = {el: (d if d is not None else psml_dir)
+                 for el, d in found.items()}
     # The expected XC family, from the ONE table (`pseudos.expected_xc_family`).
     xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
     expected_family = expected_xc_family(xc_authors)
     out: List[Issue] = []
-    for directory, els in read_from.items():
-        for entry in check_coverage(
-            els, directory,
+    # THE WHOLE STRUCTURE IN ONE CALL, each label read from where the run
+    # will open it: a file another label opens is that label's, and the
+    # set's generators are compared across every file read.
+    for entry in check_coverage(
+            labels, found,
             expected_xc_family=expected_family,
             expected_xc_authors=xc_authors or None,
-            expected_relativistic=relativistic,
-        ):
-            if entry.status == "ok":
-                continue
-            # ERROR_STATUSES (missing / dead_projector / xc_family_mismatch)
-            # BLOCK: the run cannot be correct.  The rest -- xc_mismatch
-            # (same-family author diff) / relativistic_mismatch /
-            # generator_mismatch / parse_warning -- are advisory (warn).  The
-            # set is shared with the CLI (pseudos.py) so the two surfaces
-            # can't drift.
-            severity = "error" if entry.status in ERROR_STATUSES else "warn"
-            message = entry.message
-            if entry.status == "missing" and dest_dir is not None:
-                message = (f"no .psml file for {entry.element} in the "
-                           f"calculation folder, and {message}")
-            out.append(Issue(severity, message,
-                              f"config.psml_lib.{entry.element}"))
+            expected_relativistic=relativistic):
+        if entry.status == "ok":
+            continue
+        # ERROR_STATUSES BLOCK: the run cannot be correct.  The rest --
+        # xc_mismatch (same-family author diff) / relativistic_mismatch /
+        # generator_mismatch / parse_warning -- are advisory (warn).  The
+        # set is shared with the CLI (pseudos.py) so the two surfaces
+        # can't drift.
+        severity = "error" if entry.status in ERROR_STATUSES else "warn"
+        message = entry.message
+        if (entry.status == "missing" and dest_dir is not None
+                and file_named_for(entry.element) is not None):
+            message = (f"no .psml file for {entry.element} in the "
+                       f"calculation folder, and {message}")
+        out.append(Issue(severity, message,
+                         f"config.psml_lib.{entry.element}"))
     return out
 
 
@@ -164,7 +161,7 @@ def _the_convention_covers(lacking, cfg, *, dest_dir=None,
                            relativistic: str = "scalar") -> str:
     """The sentence an unset directory earns when the tree's own
     ``pseudopotential`` folder would answer it (plan § 5w K20): named only
-    when it holds every element the calculation lacks and the coverage check
+    when it holds every species the calculation lacks and the coverage check
     refuses none of them -- a suggestion, never a fill.  ``""`` otherwise."""
     from ..pseudos import (CONVENTIONAL_LIBRARY, ERROR_STATUSES, PsmlLibError,
                            check_coverage, expected_xc_family,
@@ -183,7 +180,7 @@ def _the_convention_covers(lacking, cfg, *, dest_dir=None,
     if any(e.status in ERROR_STATUSES for e in found):
         return ""
     return (f"  The tree's `{CONVENTIONAL_LIBRARY}` folder covers all "
-            f"{len(lacking)} element(s) this needs ({', '.join(lacking)}): "
+            f"{len(lacking)} species this needs ({', '.join(lacking)}): "
             f"set the field to `{CONVENTIONAL_LIBRARY}`.")
 
 
@@ -216,7 +213,7 @@ def _psml_files(struct, cfg, *, dest_dir=None) -> dict:
     """Each species' `.psml` as the run will open it: the calculation's own
     folder first, then the library (`pseudos.psml_sources`, prep's rule).  A
     species in neither place is absent -- the coverage check reports it."""
-    from ..pseudos import psml_sources, resolve_psml_lib
+    from ..pseudos import file_named_for, psml_sources, resolve_psml_lib
     library = None
     psml_lib = getattr(cfg, "psml_lib", None)
     if psml_lib:
@@ -226,7 +223,7 @@ def _psml_files(struct, cfg, *, dest_dir=None) -> dict:
             library = None     # a spelling the rule refuses: coverage says so
     found = psml_sources(getattr(struct, "elements", []) or [],
                          dest_dir=dest_dir, library=library)
-    return {el: d / fixed_name(PSEUDO_FILE, element=el)
+    return {el: d / file_named_for(el)
             for el, d in found.items() if d is not None}
 
 
@@ -319,9 +316,9 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
         if mc_val >= declared:
             return []
         from ..pseudos import parse_psml_header
+        f = _psml_files(struct, cfg, dest_dir=dest_dir)[el]
         high = None
         try:
-            f = _psml_files(struct, cfg, dest_dir=dest_dir)[el]
             high = parse_psml_header(f).cutoff_hints_ry.get("high")
         except Exception:                                # noqa: BLE001
             pass
@@ -329,10 +326,10 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
             "warn",
             (f"mesh_cutoff = {mc_val:g} Ry is below {declared:g} Ry, which "
              f"is what {el}'s own pseudopotential asks for "
-             f"(PseudoDojo's `normal` hint, read from {el}.psml).  The mesh "
+             f"(PseudoDojo's `normal` hint, read from {f.name}).  The mesh "
              f"is ONE grid for the whole calculation, so the most demanding "
-             f"element sets it"
-             + (f"; {el} is that element here" if el else "")
+             f"species sets it"
+             + (f"; {el} is that species here" if el else "")
              + ".  Below it that element's density is under-resolved, and "
                "the error sits on those atoms rather than averaging away."
              + (f"  For tight or vibrational work the same file suggests "

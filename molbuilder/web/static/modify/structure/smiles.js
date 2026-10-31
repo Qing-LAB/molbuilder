@@ -71,6 +71,7 @@
         var input  = doc.getElementById("smiles-input");
         var button = doc.getElementById("smiles-generate-btn");
         var status = doc.getElementById("smiles-status");
+        _deps.findingsIn(doc.getElementById("smiles-findings"));
         if (!input || !button) return;
 
         /* The shared `.status` writer (lib/status.js): `.status` is the

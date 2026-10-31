@@ -964,7 +964,7 @@ class TestSendToTaskSetup:
                 "    && w.classList.contains('is-empty')"
                 "    && [...w.querySelectorAll('.field-issues .issue-item')]"
                 "       .some(r => r.textContent.includes("
-                "           'folder covers all 2 element(s)')); }",
+                "           'folder covers all 2 species')); }",
                 timeout=10_000)
 
         self._load_and_send(page, flask_server, calc, xyz,

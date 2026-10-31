@@ -96,6 +96,29 @@ def test_the_data_file_names_the_json_it_was_written_with(tmp_path):
     assert said == hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def test_the_element_is_the_atoms_element_never_its_species_label(tmp_path):
+    """`/structure/element` says *the chemical symbol* (`model/chemistry.md`
+    § 3: a species is a label and an element): a result about
+    a labelled gold (`Au1`) states `Au` there, the label kept in the
+    structure the group holds whole.  THE SILENT FAILURE: the variable was
+    filled from the labels, so a reader selecting gold by element missed
+    every labelled gold atom."""
+    import xarray as xr
+    from molbuilder.structure import Structure
+    r = _with_everything()
+    r.equilibrium_elements = ["Au1", "H"]
+    r.structure = Structure(elements=["Au1", "H"],
+                            positions=r.equilibrium_positions_ang).to_dict()
+    r.__post_init__()
+    p = tmp_path / "job.spectra.json"
+    dump_spectra_json(r, p)
+    g = xr.load_dataset(tmp_path / "job.spectra.nc", group="structure")
+    assert [str(e) for e in g.element.values] == ["Au", "H"]
+    back = Structure.from_dict(read_spectra_data(tmp_path / "job.spectra.nc")
+                               ["structure"])
+    assert back.elements == ["Au1", "H"]
+
+
 def test_every_axis_is_a_coordinate_a_reader_selects_by(tmp_path):
     """`model/datafiles.md` § 2a: every axis a coordinate of its own name, so
     a reader selects by value -- a temperature of the thermochemistry's grid,

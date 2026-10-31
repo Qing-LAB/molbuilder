@@ -282,15 +282,22 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
     assert "cell_origin" not in side_out
 
 
+@pytest.mark.parametrize("suffix", [".xyz", ".pdb"])
 def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
-        tmp_path):
+        tmp_path, suffix):
     """The user's 2026-08-20 contract, executed: per-atom information rides
     the atom list and SURVIVES atom edits; system information is stored
-    separately.  A pair carrying real identity columns (schema 8) and a
-    per-atom channel is read back, an atom is deleted through the one edit
-    layer (modify.delete_atoms, whose header promises per-atom metadata
-    preservation), and the re-written pair still says everything -- sliced
-    to the survivors, placeholders nowhere.
+    separately.  A pair carrying real identity columns (schema 8), labelled
+    species (v16) and a per-atom channel is read back, an atom is deleted
+    through the one edit layer (modify.delete_atoms, whose header promises
+    per-atom metadata preservation), and the re-written pair still says
+    everything -- sliced to the survivors, placeholders nowhere.
+
+    A SPECIES IS A LABEL AND AN ELEMENT (`model/chemistry.md` § 3): the
+    geometry file names each atom by its label's name, which every reader of
+    the format reads as an element, and the labels come back from the
+    sidecar.  A structure holding `Au1` was written with `Au1` in its
+    `.xyz`, which its own reader refused.
 
     KILL SITES, verified red at introduction: the sidecar writer dropping
     the identity spread; the reader skipping the identity apply."""
@@ -299,8 +306,9 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
 
+    read_format = {".xyz": Structure.from_xyz, ".pdb": Structure.from_pdb}
     s = Structure(
-        elements=["Au", "S", "C"],
+        elements=["Au1", "S", "C1"],
         positions=[[0, 0, 0], [2.0, 0, 0], [3.5, 0, 0]],
         title="hemeC anchor",
         atom_names=["AU1", "SG", "CA"],
@@ -313,19 +321,43 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
         "annotations": {"charge": {"kind": "value",
                                    "data": {"1": -0.4, "2": 0.1}}},
     })
-    StructureCodec().write(s, tmp_path / "a.xyz")
+    StructureCodec().write(s, tmp_path / f"a{suffix}")
     side = molstruct.load(tmp_path / "a.molstruct.json")
     assert side["residue_names"] == ["AUX", "CYS", "CYS"]
+    # The geometry file, read by its format's own reader, holds elements.
+    alone = read_format[suffix]((tmp_path / f"a{suffix}").read_text())
+    assert alone.elements == ["Au", "S", "C"]
 
-    back = StructureCodec().read(tmp_path / "a.xyz")
+    back = StructureCodec().read(tmp_path / f"a{suffix}")
+    assert back.elements == ["Au1", "S", "C1"]
+    # A record about these coordinates names each atom by its element, so
+    # it matches the pair and the file read alone (`model/parse.md` § 5b.1).
+    assert back.geometry_fingerprint() == alone.geometry_fingerprint()
     assert back.title == "hemeC anchor"
     assert back.atom_names == ["AU1", "SG", "CA"]
 
+    # THE LABELS BELONG TO THEIR ATOMS: the geometry file edited alone --
+    # its first atom made silver by a person's tool -- and opened anyway
+    # (`GEOMETRY_CHANGED` in ``opened``), `Au1` no longer names that atom:
+    # refused, naming it, never put back over silver.
+    from molbuilder.sidecars.molstruct import MolstructPairingError
+    from molbuilder.workingcopy_structure import GEOMETRY_CHANGED
+    edited_alone = read_format[suffix]((tmp_path / f"a{suffix}").read_text())
+    edited_alone.elements[0] = "Ag"
+    write_format = {".xyz": edited_alone.to_xyz, ".pdb": edited_alone.to_pdb}
+    (tmp_path / f"c{suffix}").write_text(write_format[suffix]())
+    (tmp_path / "c.molstruct.json").write_bytes(
+        (tmp_path / "a.molstruct.json").read_bytes())
+    with pytest.raises(MolstructPairingError,
+                       match=r"'Au1' for atom 0 names Au.*holds Ag"):
+        StructureCodec().read(tmp_path / f"c{suffix}",
+                              opened=(GEOMETRY_CHANGED,), said_out=[])
+
     # The edit: drop the Au anchor.  Per-atom facts must follow their atoms.
     edited = delete_atoms(back, [0])
-    StructureCodec().write(edited, tmp_path / "b.xyz")
-    again = StructureCodec().read(tmp_path / "b.xyz")
-    assert again.elements == ["S", "C"]
+    StructureCodec().write(edited, tmp_path / f"b{suffix}")
+    again = StructureCodec().read(tmp_path / f"b{suffix}")
+    assert again.elements == ["S", "C1"]
     assert again.atom_names == ["SG", "CA"]
     assert again.residue_ids == [14, 14]
     assert again.residue_names == ["CYS", "CYS"]

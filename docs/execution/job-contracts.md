@@ -1098,9 +1098,10 @@ stated values, its queue bound on the target's record
 
 ### 2.7 What the layout does not govern
 
-- **Pseudopotential files** (`<Element>.psml`) sit next to the `.fdf`; their
-  names follow the chemical element, not the basename, and the same file serves
-  every stage (a Au pseudo is the same everywhere). The calculation keeps them
+- **Pseudopotential files** (`<label>.psml`, `runfiles.PSEUDO_FILE`) sit next
+  to the `.fdf`; their names follow the species label (`Au`, or `Au1` where the
+  structure labels its gold), not the basename, and the same file serves every
+  stage. The calculation keeps them
   in `pseudos/` — `prep` copies them from the library, or `describe
   --psml-lib` does — and each run gets a real copy beside its deck
   ([`project-layout.md`](?doc=execution/project-layout.md) § 1.5, § 2.6).
@@ -1501,9 +1502,9 @@ block cites that schema rather than duplicating it.
 
 ```
 # === molbuilder atom-metadata BEGIN ===
-# format: molstruct-json/v15
+# format: molstruct-json/v16
 # {
-#   "schema_version": 15,
+#   "schema_version": 16,
 #   "n_atoms_total":  212,
 #   "regions":     { "L-electrode": [11,12,…], "R-electrode": [200,…],
 #                    "bridge": [60,…], "frozen_atoms": [88, 89, …, 211] },

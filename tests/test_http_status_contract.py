@@ -78,20 +78,19 @@ class TestKnownServerFaultSitesAreHTTP500:
         wrong there is on the server.  Answering 400 told the person their
         input was wrong; it was answered 400 until the 1b audit.
 
-        A builder that raises is registered for the route to dispatch to,
-        and the route is POSTed.
+        A known kind's builder raises -- the one build door
+        (`builders.build`) looks its builder up at each build -- and the
+        route is POSTed.
 
         MUTATION THIS MUST FAIL AGAINST: the route's ``except Exception``
         answering ``, 400`` (or no status, Flask's 200).
         """
-        from molbuilder.web.blueprints import build as build_bp
-
-        def _falls_over(_text):
+        def _falls_over(_text, **_asked):
             raise RuntimeError("the builder fell over")
 
-        monkeypatch.setitem(build_bp._BUILDERS, "falls-over", _falls_over)
+        monkeypatch.setattr("molbuilder.peptide.build_peptide", _falls_over)
         r = web_client.post("/api/build/molecule",
-                            json={"kind": "falls-over", "input": "anything"})
+                            json={"kind": "peptide", "input": "ACD"})
         body = r.get_json()
         assert r.status_code == 500, (
             f"a builder that raised was answered {r.status_code}, which "

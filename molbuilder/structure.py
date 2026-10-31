@@ -410,6 +410,46 @@ _EXTXYZ_KEY = _re.compile(r"\b(?:Lattice|Properties|pbc)\s*=")
 IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
                    "chain_ids")
 
+#: THE SPECIES LABELS a geometry file has no room for (``model/chemistry.md``
+#: § 3; ``structure-molstruct.md`` § 1, v16): a file names each atom by its
+#: label's name (:meth:`Structure.chemical_symbols`), so a label that is not
+#: its name -- ``Au1`` -- rides the sidecar, only when one is real
+#: (:meth:`Structure.identity_to_dict`).  Not a field: the labels ARE
+#: ``elements``, and this is the column a sidecar states them in.
+SPECIES_LABELS = "species_labels"
+
+#: Every per-atom column a sidecar carries beside the metadata fields: the
+#: identity fields, and the species labels.
+ATOM_COLUMNS = IDENTITY_FIELDS + (SPECIES_LABELS,)
+
+#: A species label is a name plus an optional trailing index: ``Au1`` is
+#: ``Au`` + 1.  The ONLY thing read off a label -- see
+#: :func:`split_species_label`.
+_TRAILING_INDEX = _re.compile(r"^(.*?)(\d+)$")
+
+
+def split_species_label(label: str) -> "tuple[str, Optional[int]]":
+    """``"Au1"`` -> ``("Au", 1)``; ``"Au"`` -> ``("Au", None)``.
+
+    The one rule for reading a species label (``model/chemistry.md`` § 3): a
+    run of digits at the END is an index distinguishing two species of the
+    same element, and everything before it is the name.  Nothing else is
+    interpreted -- no case folding, no separator stripping -- so ``Au_1`` has
+    the name ``Au_`` and is an error rather than a silent success.  Explicit
+    beats clever here: a label is a key, and a key that needs guessing is a
+    question for the user.
+
+    HERE, beside the structure, because its files name each atom by its
+    label's name (:meth:`Structure.chemical_symbols`) and this module travels
+    into a PySCF run, which saves its geometries through the codec; the
+    element behind a name is ``chemistry.resolve_element``'s.
+    """
+    raw = str(label).strip()
+    m = _TRAILING_INDEX.match(raw)
+    if not m:
+        return raw, None
+    return m.group(1), int(m.group(2))
+
 
 #: The per-side gap a DERIVED box uses on an isolated axis when the user set no
 #: vacuum at all (``model/structure-periodicity.md`` § 6.1).
@@ -1126,16 +1166,39 @@ class Structure:
         return out if view else {k: v for k, v in out.items()
                                  if k not in VIEW_FIELDS}
 
+    def chemical_symbols(self) -> List[str]:
+        """Each atom as a geometry file names it: its species label's name,
+        the index split off (:func:`split_species_label`) -- ``Au1`` is
+        ``Au`` -- verbatim, never resolved or folded (``model/chemistry.md``
+        § 3).  A file has one column for an atom's species and every reader
+        takes it as an element symbol, so the writers write this
+        (:meth:`to_xyz`, :meth:`to_pdb`, :meth:`to_ase`) and the labels ride
+        the sidecar (:data:`SPECIES_LABELS`)."""
+        return [split_species_label(el)[0] for el in self.elements]
+
+    def labelled_species(self) -> List[str]:
+        """The species labels that are not their element's name (``Au1``),
+        sorted -- what a geometry file alone cannot hold, so the pair's
+        sidecar carries them and a text written alone says so; ``[]`` when
+        every atom is named by its element."""
+        return sorted(set(self.elements) - set(self.chemical_symbols()))
+
     def identity_to_dict(self) -> dict:
         """The identity columns that are REAL -- {} when everything is the
         placeholder ``__post_init__`` synthesizes (names = elements, resid 1,
-        residue ``MOL``, chain ``A``, empty title).  The default test lives
-        HERE, beside the synthesis it mirrors, so the two cannot drift: a
-        writer that persisted the placeholders would make every xyz-born
-        sidecar claim an identity nobody stated.  Column-granular -- a format
-        that names residues but not chains persists exactly what it said."""
+        residue ``MOL``, chain ``A``, empty title) and every species label is
+        the name its file writes (:meth:`chemical_symbols`).  The default
+        test lives HERE, beside the synthesis it mirrors, so the two cannot
+        drift: a writer that persisted the placeholders would make every
+        xyz-born sidecar claim an identity nobody stated.  Column-granular --
+        a format that names residues but not chains persists exactly what it
+        said."""
         n = len(self.elements)
         out: dict = {}
+        # THE SPECIES LABELS the geometry file cannot hold (`Au1`, written
+        # `Au`): every atom's, when one is not its name.
+        if self.labelled_species():
+            out[SPECIES_LABELS] = list(self.elements)
         # NO ``title`` HERE.  It belongs to the geometry file -- it IS the
         # `.xyz` comment line and the PDB TITLE record
         # (``model/structure.md`` § 2.2c).  Persisting it here gives one fact
@@ -1933,8 +1996,11 @@ class Structure:
 
     def geometry_lines(self) -> List[str]:
         """One canonical line per atom, in THIS structure's order: the
-        element and the position rounded to a millionth of an ångström,
-        negative zero folded into zero (`model/parse.md` § 5b.1).
+        element (never the species label -- a run's readers name an atom by
+        its element or by its label, and a record must match both:
+        :meth:`chemical_symbols`) and the position rounded to a millionth of
+        an ångström, negative zero folded into zero (`model/parse.md`
+        § 5b.1).
 
         The rounding is what lets the run's parser (SIESTA prints eight
         decimals) and a pair written by the codec (six) agree on every line;
@@ -1946,7 +2012,7 @@ class Structure:
         pos = np.asarray(self.positions, dtype=float).reshape(-1, 3)
         return [f"{str(el)} " + " ".join(f"{round(float(v), 6) + 0.0:.6f}"
                                          for v in xyz)
-                for el, xyz in zip(self.elements, pos)]
+                for el, xyz in zip(self.chemical_symbols(), pos)]
 
     def geometry_fingerprint(self) -> str:
         """``sha256:`` over the SORTED :meth:`geometry_lines` -- what a
@@ -2320,7 +2386,7 @@ class Structure:
         for frame in blocks:
             buf.write(f"{self.n_atoms}\n")
             buf.write(title + "\n")
-            for el, (x, y, z) in zip(self.elements, frame):
+            for el, (x, y, z) in zip(self.chemical_symbols(), frame):
                 buf.write(f"{el:<3s} {x: 12.{XYZ_DECIMALS}f} "
                           f"{y: 12.{XYZ_DECIMALS}f} {z: 12.{XYZ_DECIMALS}f}\n")
         return buf.getvalue()
@@ -2341,8 +2407,9 @@ class Structure:
         if self.title:
             for record in _pdb_title_records(self.title):
                 buf.write(record + "\n")
+        symbols = self.chemical_symbols()
         for i in range(self.n_atoms):
-            el   = self.elements[i]
+            el   = symbols[i]
             name = self.atom_names[i]
             res  = self.residue_names[i]
             chn  = (self.chain_ids[i] or "A")[:1]    # PDB chain id is 1 char
@@ -2413,7 +2480,8 @@ class Structure:
         # would describe a crystal as a gas-phase cluster.  `resolve_cell()` rather than
         # the raw field, so a derived box travels too; `None` stays unset.
         resolved = self.resolve_cell()
-        return Atoms(symbols=self.elements, positions=self.positions,
+        return Atoms(symbols=self.chemical_symbols(),
+                     positions=self.positions,
                      cell=(None if resolved is None
                            else np.asarray(resolved, dtype=float)),
                      pbc=self.pbc())

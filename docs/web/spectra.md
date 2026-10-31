@@ -116,19 +116,26 @@ Two special cases are worth knowing:
   ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 6.2). A click on a line
   picks the mode exactly as on a spectrum. One sentence above the lines says
   which of four cases it is, read from the result's own record on both
-  engines: **the run asked for none** (`phase_ir` and `phase_raman` both
-  *not requested* — *Compute IR* and *Compute Raman* off); **a strength
-  waits for you** (a SIESTA result, whose strengths are derived when the
-  page asks — its infrared, *no infrared was requested in this run* where
-  its phase says so, *the infrared asked of the run's charges could not be
+  engines: **the run asked for none** (its infrared not asked — the load
+  door's `infrared_asked`, one reading of the result's own facts, older
+  files included ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11
+  § 8) — and `phase_raman` *not requested*: *Compute IR* and *Compute
+  Raman* off); **a strength
+  waits for you, or says why it is not there** (a SIESTA result, whose
+  strengths are derived when the page asks, or any result asked for an
+  infrared that carries none, its phase ended — its infrared, *no infrared
+  was requested in this run* where the run asked for none, *the infrared asked of the run's charges could not be
   given (why: in the bar above the chart)* where the door refused it, *the
-  result states no charges (why: above the chart)* where it states none,
+  result carries no infrared (why: above the chart)* where it carries
+  none, the bar's line saying why in the door's words,
   else *no real mode has an infrared strength*; its Raman, where its
   optical calls ran, *type the laser's wavelength — the strength
   depends on it (in the bar above the chart)*, or the door's reason where
   it refused the laser — the bar's line's words — or, with a laser applied
   and no picked mode's sides both done yet, *no picked mode has both of its
-  sides done yet*; each part *not requested* where its phase is); **they are still being
+  sides done yet*; each part *not requested* where the run did not ask
+  for it -- the infrared's by the door's one reading, `infrared_asked`,
+  Raman's by its phase); **they are still being
   computed** (a phase still to finish, § 7 — the spectrum drawn the moment
   a strength lands); or **the run asked and recorded none** (its log says
   why) — where Raman was asked over a range that kept no mode, *no mode lay
@@ -213,7 +220,11 @@ says what the number is, how it was computed, and the view it was computed
 for, in the view's own words; a note shows while its column carries a view's
 numbers. The notes are part of the table — always visible, never a tooltip —
 and the CSV export keeps its full column names (§ 3.2), which scripts read. **The columns follow what the run asked and what its
-route computes, never its data**: a column for a strength the run asked for
+route computes, never its data** — the infrared's asked as the load door
+answers it (`infrared_asked`), for the column, the CSV, the sentence and
+the summary alike (for a result this release writes, a SIESTA run asked
+for its infrared states its charges, § 3.2, § 9b.3). A column for a
+strength the run asked for
 stays in the header and its cells fill in as the numbers land; one the run
 did not ask for (*Compute IR*, *Compute Raman* off, on either engine) or its
 route cannot compute — the four orbital columns on SIESTA, its Raman where
@@ -393,7 +404,9 @@ would refuse never reaches it. A SIESTA result that states no charges
 shows no infrared choice, and one line in the bar's place says why, in the
 door's words from the result's own facts (`infrared_absent`,
 `spectra.infrared.no_charges_reason`): written before 2.36.0, which first
-keeps the charges, and how to run the stage again.
+keeps the charges, and how to run the stage again — or *Compute IR* was
+off. The run summary's infrared line says the same case: *not requested*
+only where the run asked for none.
 
 **A PySCF result's infrared is its own** — the whole system's dipole change,
 every atom's, the held ones' included, computed by PySCF
@@ -1150,7 +1163,7 @@ compute a channel and for a run that did not ask for one:
 | the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked |
 | the modes table | **a column the file's route cannot compute is not shown** — the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them; the IR column and the charge-moved column on SIESTA only where the result states its charges (§ 3.2); the Raman column where the run asked for Raman — not where it was asked and none computed, a SIESTA range that kept no mode (§ 3.3). Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
 | the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names the probe's *Mode selection*, which a SIESTA vibration does not have. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
-| the run summary | *not computed on this route* for every channel the route lacks — the per-mode orbital energies on SIESTA — by the same rule; *not requested* where the run did not ask — its phase says so, on either engine, a SIESTA run with *Compute IR* or *Compute Raman* off among them; a SIESTA result's Raman, where its optical calls ran, the route and $\delta$ with the view at the laser, *not given:* and the door's reason, or the laser asked for (§ 3.3), and where Raman was asked over a range that kept no mode, *none computed — the Methods paragraph says why*; a SIESTA result's infrared, where it states its charges, *from the run's charges* — the view (*the free atoms (20), along z, Hirshfeld*), or *not given:* and the door's reason — and where it states none, *none in this result — it states no charges*, the reason itself said once, in the bar's place (§ 3.2) |
+| the run summary | *not computed on this route* for every channel the route lacks — the per-mode orbital energies on SIESTA — by the same rule; *not requested* where the run did not ask — the load door's one reading for the infrared (`infrared_asked`), its phase for the rest, on either engine, a run with *Compute IR* or *Compute Raman* off among them; a SIESTA result's Raman, where its optical calls ran, the route and $\delta$ with the view at the laser, *not given:* and the door's reason, or the laser asked for (§ 3.3), and where Raman was asked over a range that kept no mode, *none computed — the Methods paragraph says why*; a SIESTA result's infrared, where it states its charges, *from the run's charges* — the view (*the free atoms (20), along z, Hirshfeld*), or *not given:* and the door's reason — and where a result asked for one carries none, *none in this result*, the reason itself said once, in the bar's place (§ 3.2) |
 | the thermochemistry tab | labelled by its regime (§ 3): on SIESTA the vibrational contributions alone, with what they are good for and where they stop ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7) |
 | the write-up | names what was computed — on SIESTA the charges recorded and the Raman route, its optical calls or none requested; at load the infrared and Raman views shown, their citations among the result's keys (§ 3.2, § 3.3); the file and the viewer name what was not, so an absence cannot be read as a zero |
 

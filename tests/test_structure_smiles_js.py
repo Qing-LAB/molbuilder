@@ -130,7 +130,7 @@ class TestLazyResolve:
         ''')
         # Without the lazy-resolve fix this would be
         # {rejected: true, msg: "smiles: fetch not configured"}.
-        assert out == {"ok": True, "n_atoms": 1, "warnings": []}
+        assert out == {"ok": True, "n_atoms": 1}
 
 
 class TestInputValidation:
@@ -238,7 +238,7 @@ class TestHappyPath:
                 loadCalls: loadCalls,
             }));
         ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 3, "warnings": []}
+        assert out["envelope"] == {"ok": True, "n_atoms": 3}
         assert out["url"] == "/api/build/molecule"
         assert out["body"] == {"kind": "smiles", "input": "CCO"}
         # The load door receives the ENVELOPE, and the columns XYZ
@@ -429,7 +429,7 @@ class TestCanvasGate:
             const r = await smiles.generate("C");
             console.log(JSON.stringify({envelope: r, loadCalls}));
         ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 1, "warnings": []}
+        assert out["envelope"] == {"ok": True, "n_atoms": 1}
         assert out["loadCalls"] == 1
 
 

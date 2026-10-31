@@ -168,6 +168,10 @@ def test_build_peptide_routes_to_build_peptide(monkeypatch, capsys, tmp_path):
     assert seq == "ARNDC"
     # title kwarg is always passed (even if None).
     assert "title" in kwargs
+    # WHAT THE BUILD FOUND is printed as every finding is
+    # (`science/validation.md` § 4.1 R5): a peptide's C-terminus with no
+    # OXT, said on stderr.
+    assert "warn [build.peptide_aldehyde]" in capsys.readouterr().err
 
 
 def test_build_dna_passes_backend_and_form(monkeypatch, tmp_path):

@@ -8,8 +8,9 @@
  *
  * Differences from dna.js:
  *   * Alphabet — ACGU (uracil) instead of ACGT (thymine).
- *   * Default form — A (canonical right-handed RNA helix)
- *     instead of B.
+ *   * The form select shows the build door's default chosen — A, the
+ *     canonical RNA helix (`backends.DEFAULT_FORM`); none sent, the
+ *     server builds that.
  *
  * Everything else (flow shape, status messages, cancel
  * semantics) is identical to dna.js / smiles.js / name.js /
@@ -48,8 +49,8 @@
                      + JSON.stringify(sequence),
             });
         }
-        var form = opts.form || "A";
-        if (VALID_FORMS.indexOf(form) < 0) {
+        var form = opts.form;
+        if (form !== undefined && VALID_FORMS.indexOf(form) < 0) {
             return Promise.resolve({
                 ok:    false,
                 error: "Helix form must be one of "
@@ -86,6 +87,7 @@
         var backendSel = doc.getElementById("rna-backend-select");
         var button  = doc.getElementById("rna-generate-btn");
         var status  = doc.getElementById("rna-status");
+        _deps.findingsIn(doc.getElementById("rna-findings"));
         if (!input || !button) return;
 
         /* The shared `.status` writer (lib/status.js): `.status` is the
@@ -98,7 +100,7 @@
 
         button.addEventListener("click", function () {
             var echo = input.value.trim().toUpperCase().replace(/\s+/g, "");
-            var formChoice = (formSel && formSel.value) || "A";
+            var formChoice = formSel ? formSel.value : undefined;
             var backendChoice = (backendSel && backendSel.value) || "auto";
             button.disabled = true;
             setStatus("Generating RNA…", "generating");
@@ -114,7 +116,8 @@
                     setStatus(
                         "Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
-                        + " from " + formChoice + "-form "
+                        + " from " + (formChoice ? formChoice + "-form "
+                                                 : "")
                         + echo + backendNote);
                 } else if (r.cancelled) {
                     setStatus("Kept existing workspace.");
