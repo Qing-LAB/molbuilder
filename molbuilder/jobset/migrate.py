@@ -4,8 +4,7 @@ a reader refuses naming this command.  Every record is read once
 refusal of any step writes nothing.  **Each old file rewritten is kept
 beside its new one, once, as** ``<name>.pre-<rule>`` -- the earliest rule it
 was written before (:func:`_kept_as`): a plan's code (``m6``, ``w57``), a
-day, or a release.  A file renamed keeps every byte, so nothing is kept
-beside it.  Each change is said, with its rule.
+day, or a release.  Each change is said, with its rule.
 
 **The job request** (2.27.0, :func:`_split`): a description written before
 holds how it runs inside `task.json` (`molbuilder/task@1`) -- its
@@ -46,14 +45,15 @@ copy names its scheduler as a block since 2.10.1 (`configuration.md` § 5
 M-2) -- the word it held becomes its kind, each command its kind's own name,
 run from PATH as before.
 
-**The run files**: a transport lead's files on the calculation's label
-rather than its own stem (:func:`_migrate_lead_names`) -- every file before
-2.17.0, its prep's log before 2.23.2 -- renamed, and the plan's deck names
-with them.  A stage whose run script was written for the old names is said
-with its way on.  A run of points' index as 2.42-2.54 wrote it -- a
-vibration's ``.phases.json``, a transport rung's ``.points.json`` of its
-earlier schema -- rewritten into the one index (:func:`_migrate_run_indexes`,
-2.55.0).
+**Run folders are not rewritten**: a run is one start, its files named
+once on its stage's stem, and a run another file grammar named is not read
+and not converted (`execution/project-layout.md` § 1.6.1).  A run setting a
+release retired leaves `job-set.json`'s jobs and the job request's run cards
+as it leaves the template (`template.RETIRED_ITEMS`), by the template's own
+rule -- its engine's, at a value that runs as before; and a job set that
+carried one was prepared by a molbuilder whose run scripts took what this
+one's launch no longer hands them, so each group is named to prepare again
+before its next launch, a benchmark its prep anew (:func:`_prepare_again`).
 
 **The template** (:func:`_decide_template`): the electronic state's items
 (M6, ``science/chemistry-correctness.md`` § 2a) -- PySCF's ``spin`` and the
@@ -83,7 +83,6 @@ from typing import (TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional,
                     Tuple)
 
 if TYPE_CHECKING:                      # annotations only
-    from ..calculation import Calculation
     from ..template_file import TemplateFile
 
 
@@ -91,10 +90,8 @@ if TYPE_CHECKING:                      # annotations only
 #: when a migration finds nothing to rewrite (:func:`migrate_state`).
 CURRENT = ("nothing to migrate: it holds nothing an older molbuilder wrote "
            "-- its records are whole, its record of its machine is this "
-           "molbuilder's, its leads' run files are on their own stem, and "
-           "its template carries no item an older molbuilder meant "
-           "otherwise, renamed or a release retired, and its runs of points "
-           "keep this molbuilder's index")
+           "molbuilder's, and its template carries no item an older "
+           "molbuilder meant otherwise, renamed or a release retired")
 
 
 class MigrateError(ValueError):
@@ -314,8 +311,7 @@ def _kept_as(path: Path, rules) -> Path:
 class _Writes(dict):
     """EVERY FILE THIS MIGRATION REWRITES, once: ``{path: (new text, the
     rules it was written before)}``.  Two steps rewriting one file -- the
-    records step and the lead names a plan, the records step and the
-    template a description -- give one write: the later step's text is
+    records step and the template a description -- give one write: the later step's text is
     built on the body the earlier decided, and the rules gather, so the old
     file is kept once, under the earliest (:func:`_kept_as`)."""
 
@@ -354,9 +350,9 @@ class _Records:
     paths (`task.path_of`, `JobSet.path_of`) and the template's door, and
     decides every rewrite on these bodies; every step reads them here.  The
     machine's record is read once by its own step, which rewrites it
-    (:func:`_migrate_machine_record`); a run's launch record is only read,
-    through its owner (`materialize.newest_launched`) -- no step rewrites
-    one.  The write keeps each old file, byte for byte, beside its new one."""
+    (:func:`_migrate_machine_record`); no step reads or rewrites a run's
+    records.  The write keeps each old file, byte for byte, beside its new
+    one."""
     base: Path
     #: `task.json` as it lies, decided in place by the records step.
     task: dict
@@ -377,7 +373,8 @@ class _Records:
     from_card: Dict[str, Any] = None
 
     #: The job request as the records step decided it -- ``None`` until
-    #: then (:func:`_migrate_records`).
+    #: then (:func:`_migrate_records`); the job-set step names each group's
+    #: prep by it (:func:`_prepare_again`).
     request: Any = None
     #: The stages the records step folded into another (the kind table's
     #: `retired`), each with the release that retired it: what the job
@@ -406,26 +403,6 @@ class _Records:
             if path.is_file():
                 jobsets[folder] = _read_raw(path)
         return cls(base=base, task=obj, jobsets=jobsets, from_card={})
-
-    def calculation(self, task) -> "Calculation":
-        """The calculation as this migration decided it -- its description,
-        its template and its root plan, the decided bodies -- for the steps
-        that compose a way back (`commands.way_back`).  The one place a
-        `Calculation` is composed outside its door: migrate alone reads its
-        records raw (A16)."""
-        from ..calculation import Calculation
-        from .model import JobSet
-        body = self.jobsets.get(self.base)
-        try:
-            js = JobSet.from_dict(body) if body is not None else None
-        except ValueError as exc:
-            raise MigrateError(
-                f"{JobSet.path_of(self.base)} does not read as this "
-                f"molbuilder writes it, and no rule here rewrites it; "
-                f"nothing was written: {exc}") from None
-        return Calculation(base=self.base, task=task,
-                           template=self.template_for(task.label),
-                           jobset=js, request=self.request)
 
     def template_for(self, label: str) -> Optional["TemplateFile"]:
         """The calculation's template, read once (`template_file.of`); a folder
@@ -564,6 +541,65 @@ def _cards_view(obj: dict, task):
                 for i, st in enumerate(task.stages)},
         execution=dict(obj.get("execution") or {}),
         engine=str(task.engine), calculation=str(task.calculation))
+
+
+def _retired_here(name: str, engine: str) -> bool:
+    """Whether ``engine``'s schema retired ``name`` -- an item one engine
+    keeps is another's to retire (`template.Retired.engines`)."""
+    from .. import template as _T
+    return _T.retired(name, engine) is not None
+
+
+def _retired_stuck(said_of: str, name: str) -> "MigrateError":
+    """The refusal of an item a release retired, held at a value that no
+    longer runs: taking it out would change the calculation, and what it
+    was is kept, never rounded (`template.Retired.runs`)."""
+    from .. import template as _T
+    return MigrateError(
+        f"{said_of}, and {name} was retired at a value that no longer "
+        f"runs ({_T.RETIRED_ITEMS[name].why}).  Taking it out would "
+        f"change the calculation, so nothing was written: delete it to "
+        f"accept what runs now, then run the migration again.")
+
+
+def _retired_off(values: dict, engine: str, said_of: str) -> List[str]:
+    """EACH RUN SETTING A RELEASE RETIRED, out of ``values`` (changed in
+    place) -- a run card, or a job's resources -- as the template's retired
+    items leave the template: one ``engine``'s schema retired, its value
+    running as before without it; any other value refused by name
+    (:func:`_retired_stuck`).  The names taken out, in order."""
+    from .. import template as _T
+    gone = [k for k in values if _retired_here(k, engine)]
+    for k in gone:
+        if not _T.RETIRED_ITEMS[k].runs_without(values[k]):
+            raise _retired_stuck(f"{said_of} says {k} = {values[k]!r}", k)
+    for k in gone:
+        values.pop(k)
+    return gone
+
+
+def _cards_off(body: dict, engine: str) -> List[Tuple[Optional[str], str]]:
+    """Each retired run setting off a job request's run cards -- the
+    calculation's and each stage's, ``body`` changed in place
+    (:func:`_retired_off`): ``(stage or None, name)`` each."""
+    off = [(None, k) for k in _retired_off(body.get("execution") or {},
+                                           engine,
+                                           "the calculation's run card")]
+    for n, row in (body.get("stages") or {}).items():
+        own = row.get("execution") if isinstance(row, dict) else None
+        if isinstance(own, dict):
+            off += [(n, k) for k in _retired_off(own, engine,
+                                                 f"stage {n!r}'s run card")]
+    return off
+
+
+def _cards_said(jr_name: str, off) -> List[str]:
+    """What :func:`_cards_off` took out, a line each."""
+    from .. import template as _T
+    return [f"{jr_name}: {k} removed from "
+            + ("the calculation's run card" if n is None
+               else f"stage {n!r}'s run card")
+            + f" ({_T.RETIRED_ITEMS[k].why})" for n, k in off]
 
 
 def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
@@ -851,6 +887,7 @@ def _migrate_records(rec: "_Records"):
                 f"written before it -- which of the two says how the "
                 f"calculation runs is yours to decide: remove one, then run "
                 f"the migration again; nothing was written.")
+        off_cards = _cards_off(request_body, str(task.engine))
         try:
             rec.request = _jr.from_dict(request_body, task)
         except ValueError as exc:
@@ -858,22 +895,29 @@ def _migrate_records(rec: "_Records"):
         writes.add(jr_path, json_text(rec.request.to_dict()), frozenset())
         said.append(f"{jr_path.name}: written -- how the calculation runs, "
                     f"a record of its own ({_SPLIT})")
+        said += _cards_said(jr_path.name, off_cards)
     else:
         # THE JOB REQUEST BESIDE IT, read raw (A16, migrate's exception) --
         # what every later step composes the calculation with -- and the
         # template's run-setting values onto its card, by what the template
         # holds (`execution/job-request.md` § 8).
         from .. import job_request as _jr
+        from .. import template as _T
         jr_path = _jr.path_of(base)
         body = _read_raw(jr_path)
         card = dict(body.get("execution") or {})
         moved = _onto_the_card(rec, task, card)
         # EACH CHANGE UNDER ITS OWN RULE: the run settings' move is 2.28.0's,
-        # a retired stage's row its release's.
+        # a retired stage's row its release's, a retired run setting its.
         rules = ({_RUN_OUT} if card != (body.get("execution") or {})
                  else set())
-        changed = bool(rules)
         body["execution"] = card
+        # A RUN SETTING A RELEASE RETIRED, off every card -- the
+        # calculation's and each stage's -- as the template's retired items
+        # come out of the template (`template.RETIRED_ITEMS`).
+        off_cards = _cards_off(body, str(task.engine))
+        rules |= {_T.RETIRED_ITEMS[k].at for _n, k in off_cards}
+        changed = bool(rules)
         # A STAGE FOLDED INTO ANOTHER (the kind table's `retired`) takes its
         # row with it; the stage it was folded into keeps its own.
         folded = {n: since for n, since in rec.folded_stages.items()
@@ -905,15 +949,27 @@ def _migrate_records(rec: "_Records"):
         said += [f"{ln} ({_RUN_OUT})" for ln in moved]
         said += [f"stage {n!r}'s row dropped with the stage ({since})"
                  for n, since in folded.items()]
+        said += _cards_said(jr_path.name, off_cards)
 
+    from .. import template as _T
+    again: List[Tuple[bool, str]] = []
     for folder, d in rec.jobsets.items():
         js_path = JobSet.path_of(folder)
-        filled, missing, renamed = 0, set(), set()
+        missing, renamed = set(), set()
         split = 0
+        retired_res: set = set()
+        touched = 0
         for job in d.get("jobs") or []:
+            before = json_text(job)
             # THE PROGRAM IS THE JOB'S (`Job.program`, 2.27.0), and a
             # placement's source that was the description, the allocation's.
             res = job.get("resources")
+            # A RUN SETTING A RELEASE RETIRED, out of the job's allocation
+            # (`template.RETIRED_ITEMS`; `Resources.from_dict` refuses it).
+            if isinstance(res, dict):
+                retired_res |= set(_retired_off(
+                    res, str(d.get("engine")),
+                    f"job {job.get('name')!r}'s resources"))
             if isinstance(res, dict) and "program" in res:
                 job["program"] = res.pop("program")
                 split += 1
@@ -934,10 +990,10 @@ def _migrate_records(rec: "_Records"):
                     if k not in job}
             if gaps or old:
                 job.update(gaps)
-                filled += 1
                 missing |= set(gaps)
                 renamed |= set(old)
-        if not filled and not split:
+            touched += json_text(job) != before
+        if not touched:
             continue
         try:
             body = JobSet.from_dict(d).to_dict()
@@ -946,9 +1002,10 @@ def _migrate_records(rec: "_Records"):
         writes.add(js_path, json_text(body),
                    {_JOB_ABSENT[k][1] for k in missing}
                    | {_JOB_RENAMED[o][1] for o in renamed}
-                   | ({_SPLIT} if split else set()))
+                   | ({_SPLIT} if split else set())
+                   | {_T.RETIRED_ITEMS[k].at for k in retired_res})
         said.append(f"{js_path.relative_to(base)}: "
-                    f"{max(filled, 1)} job(s) -- "
+                    f"{touched} job(s) -- "
                     + "; ".join(
                         ([f"given {', '.join(k for k in _JOB_ABSENT if k in missing)}"
                           f" (left out, as their absence meant)"]
@@ -957,8 +1014,63 @@ def _migrate_records(rec: "_Records"):
                            for o in sorted(renamed)]
                         + ([f"the program onto the job, a placement's source "
                             f"`description` said `allocation` ({_SPLIT})"]
-                           if split else [])))
+                           if split else [])
+                        + [f"{k} removed from each job's resources "
+                           f"({_T.RETIRED_ITEMS[k].why})"
+                           for k in sorted(retired_res)]))
+        # PREPARED BY AN OLDER MOLBUILDER, whose run scripts took what this
+        # one's launch no longer hands them: each group is prepared again
+        # before its next launch -- a launched group's runs kept, what it
+        # computes unchanged (`execution/job-request.md` § 8); a
+        # benchmark's trials by their benchmark's prep anew.
+        if retired_res:
+            way = _prepare_again(folder, body, rec, base)
+            if way:
+                again.append((folder == base, way))
+    # A BENCHMARK'S WAY BACK FIRST: the state it restores is older than
+    # the root's prep the last line asks for.
+    said += ([w for root, w in again if not root]
+             + [w for root, w in again if root])
     return said, writes, task
+
+
+def _prepare_again(folder: Path, d: dict, rec: "_Records",
+                   base: Path) -> Optional[str]:
+    """The way on for a job set an older molbuilder prepared (a run setting
+    it carried retired since), ``d`` as this migration rewrites it: its
+    groups prepared again; a benchmark's prep anew where a trial is not yet
+    launched -- a launched one its launch passes over (`submit._plan_trial`,
+    the same test), so nothing for a benchmark measured whole.  The one
+    composer of each (`commands`)."""
+    from ..runrecord import LaunchRecordError
+    from .commands import block, prep_group_lines, rollback
+    from .materialize import latest_attempt, newest_launched
+    from .model import JobSet
+    from .naming import job_dir_names
+    where = JobSet.path_of(folder).relative_to(base)
+    head = (f"{where}: prepared by an older molbuilder, whose run scripts "
+            f"take what this one's launch no longer hands them -- ")
+    if folder != base:
+        js = JobSet.from_dict(d)
+        dirs = job_dir_names(js)
+        try:
+            waiting = any(
+                (run := latest_attempt(base / dirs[j.name])) is not None
+                and newest_launched(base / dirs[j.name]) != run
+                for j in js.jobs)
+        except LaunchRecordError as exc:
+            raise MigrateError(f"{exc}; nothing was written") from None
+        if not waiting:
+            return None
+        return (head + "a trial not yet launched would be refused at its "
+                "start: " + rollback("the benchmark's prep", base=base)
+                + " -- running the migration again after the restore")
+    groups = sorted({g for g in (rec.request.group_of(j.get("name", ""))
+                                 for j in d.get("jobs") or [])
+                     if g is not None})
+    return (head + "prepare each group again before its next launch (a "
+            "launched group keeps its runs):\n"
+            + block(prep_group_lines(groups, base=base)))
 
 
 def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
@@ -996,293 +1108,11 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
              f"from PATH, as before)"], writes)
 
 
-def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
-                                       "_Writes"]:
-    """A transport lead's files named on the calculation's label; a lead's
-    are on its own stem (`job-contracts.md` § 2.1 rule 2;
-    `kind_table.rung_label`), the stem its engine files were always
-    on.  Before 2.17.0 every file of a lead was on the label, and before
-    2.23.2 prep's log of a lead's prep in the calculation's root was
-    (`script-preparation.md` § 4.5: the log's stem is the deck's).  Each
-    such file -- in the calculation's root, the lead's stage folder and its
-    attempts -- is renamed through the run-file door (`runfiles.parse`, its
-    label the lead's), and the root's `job-set.json` naming the old deck is
-    rewritten -- ``calc``'s plan, the set as the records step decided it
-    (:meth:`_Records.calculation`).  A lead whose own folders held such
-    files was prepared for the old names: its way on is said.  Decided,
-    never done here: ``(said, moves, writes)``; nothing for a calculation
-    whose leads' files are on their stems, or that has none."""
-    from ..paths import attempt_dir, attempts_in, bench_container
-    from ..persist import json_text
-    from ..runfiles import find
-    from ..runrecord import LaunchRecordError
-    from .commands import way_back
-    from .materialize import newest_launched
-    from .naming import ladder_homes
-    from .model import FILENAME as JOBSET_FILENAME, JobSet
-    import dataclasses
-    said: List[str] = []
-    moves: List[Tuple[Path, Path]] = []
-    writes = _Writes()
-    renamed_decks: Dict[str, str] = {}
-    base, task = calc.base, calc.task
-    js = calc.jobset
-    for home in ladder_homes(base, task):
-        if home.label == task.label:
-            continue
-        own = ([home.dir] + [attempt_dir(home.dir, n)
-                             for n in attempts_in(home.dir)]
-               if home.dir is not None and home.dir.is_dir() else [])
-        # ITS BENCHMARK'S LOG lies in its bench container, on the stem the
-        # lead's prep named it (`paths.bench_container`).
-        bench = base / bench_container(home.token)
-        logs_at = [base] + ([bench] if bench.is_dir() else [])
-        stage_moves: List[Tuple[Path, Path]] = []
-        for folder in [*logs_at, *own]:
-            for path, rf in find(folder, task.label, stage=home.token):
-                new = folder / dataclasses.replace(rf, label=home.label).name
-                stage_moves.append((path, new))
-                if path.suffix == ".fdf" and folder == home.dir:
-                    renamed_decks[path.name] = new.name
-        if not stage_moves:
-            continue
-        moves += stage_moves
-        said += [f"{old.relative_to(base)} -> {new.name} (a lead's files "
-                 f"are on its own stem, job-contracts.md 2.1 rule 2)"
-                 for old, new in stage_moves]
-        if not any(old.parent in own for old, _new in stage_moves):
-            continue
-        # PREPARED FOR THE OLD NAMES: its run script and header name them.
-        # LAUNCHED, as its runs' launch records say (`materialize.
-        # newest_launched`, the one rule).
-        try:
-            launched = newest_launched(home.dir) is not None
-        except LaunchRecordError as exc:
-            raise MigrateError(f"{exc}; nothing was written") from None
-        said.append(f"{home.name}: its run script and header were written "
-                    f"for the old names -- "
-                    + ("to launch it again, " if launched
-                       else "to launch it, ")
-                    + way_back(home.name, calc=calc, launched=launched))
-    if renamed_decks and js is not None:
-        jobs = [dataclasses.replace(j, script=renamed_decks[j.script])
-                if j.script in renamed_decks else j for j in js.jobs]
-        if jobs != list(js.jobs):
-            writes.add(JobSet.path_of(base),
-                       json_text(dataclasses.replace(js, jobs=jobs).to_dict()),
-                       {"2.17.0"})
-            said.append(f"{JOBSET_FILENAME}: each lead's deck named on its "
-                        f"own stem")
-    return said, moves, writes
-
-
-def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
-                                        "_Writes"]:
-    """A RUN OF POINTS' INDEX as molbuilder 2.42-2.54 wrote it, rewritten
-    into the one index every run of points keeps (`runpoints`,
-    `execution/runs-of-points.md` § 2.3, § 3 op. 18): a SIESTA vibration
-    run's ``.phases.json`` (``vibration-phases@1``) -- its file kept under
-    its old name's ``.pre-2.55.0`` -- and a transport run's ``.points.json``
-    of ``transport-points@1``, kept as every rewritten file is.  Each point
-    keeps what it was and how it ended.  A vibration's call is its kind's
-    declaration's (`vibration_phases.point_entry`): what it needs and must
-    hold, its round and its words -- the same answers launch writes today;
-    a transport point keeps its 2.54 entry's words, needs and must-hold,
-    its round its point's (`stages.Point.round`).  A point taken over keeps no
-    stamps: it did not run in that run.  Decided, never done here:
-    ``(said, moves, writes)``; nothing for a calculation with no such
-    index."""
-    from ..persist import json_text, read_json
-    from ..paths import attempt_dir, attempts_in
-    from ..runpoints import (OLDER_SCHEMAS, add_point, empty_index,
-                             index_path, older_index)
-    from ..runrecord import continued_from_text
-    from .naming import ladder_homes
-    from .points import points_of, record_of
-    said: List[str] = []
-    moves: List[Tuple[Path, Path]] = []
-    writes = _Writes()
-    rule = "2.55.0"
-    base, task = Path(calc.base), calc.task
-    declared, record = points_of(task), record_of(task)
-    if declared is None or calc.jobset is None:
-        return said, moves, writes
-    # EACH STAGE OF THE DESCRIPTION AS THIS MIGRATION DECIDED IT, by its
-    # folder's one door (`naming.ladder_homes`) -- never the plan's jobs:
-    # a stage the records step folded into another (a SIESTA vibration's
-    # `relax`, 2.42.0) is no stage of it, and ran as no run of points.
-    for home in ladder_homes(base, task):
-        if not home.dir.is_dir():
-            continue
-        names = home.names
-        for n in attempts_in(home.dir):
-            run = attempt_dir(home.dir, n)
-            old_path, new_path = older_index(run, names), index_path(run, names)
-            if old_path.is_file():
-                src = old_path
-            elif new_path.is_file():
-                src = new_path
-            else:
-                continue
-            try:
-                old = read_json(src)
-            except (OSError, ValueError) as exc:
-                raise MigrateError(f"{src.relative_to(base)} does not read, "
-                                   f"so nothing was written: {exc}") from None
-            schema = old.get("schema") if isinstance(old, dict) else None
-            if schema in OLDER_SCHEMAS:
-                index = _index_of_2_54(old, schema, calc=calc,
-                                       stage=home.name, declared=declared,
-                                       record=record, add_point=add_point,
-                                       empty_index=empty_index)
-                writes.add(new_path, json_text(index), [rule])
-                kept = _kept_as(old_path, [rule]) if src == old_path else None
-                if kept is not None:
-                    moves.append((old_path, kept))
-                said.append(f"{src.relative_to(base)}: the run's index as "
-                            f"molbuilder 2.54 wrote it, rewritten as "
-                            f"{new_path.name}"
-                            + (f"; {old_path.name} kept as {kept.name}"
-                               if kept is not None else ""))
-            else:
-                index = old
-            # EVERY POINT'S START, recorded as 2.56.0 records it
-            # (`runs-of-points.md` § 1.2): an older molbuilder's planner
-            # opened its points with none, and 2.54 walked a vibration's
-            # force constants with none -- the point each starts from in
-            # its run, by the declaration (`PointsOf.start_of`).
-            starts = _missing_starts(calc, home.name, run, index, declared)
-            for marker, source in starts:
-                writes.add(marker, continued_from_text(source), ["2.56.0"])
-            if starts:
-                said.append(f"{run.relative_to(base)}: {len(starts)} "
-                            f"point(s) given their start's record "
-                            f"(.continued-from)")
-    return said, moves, writes
-
-
-def _missing_starts(calc, stage: str, run: Path, index: dict, declared):
-    """``[(marker, source)]`` for each point of ``run``'s ``index`` that
-    has a start and whose folder holds no `.continued-from` -- planned, or
-    walked in that run, never one taken over (its record names the run
-    that computed it): where its record goes, and the point it starts from
-    in that run (`PointsOf.start_of`); ``[]`` where every one has its
-    record."""
-    from ..calcdirs import RunPlace
-    from ..runrecord import RunRef, continued_from_marker
-    place = RunPlace.of(run)
-    points = [declared.point_of(e) for e in index.get("points") or []]
-    out = []
-    for e, pt in zip(index.get("points") or [], points):
-        folder = place.point(e["rel"])
-        if e.get("taken_from") or not folder.is_dir():
-            continue
-        if not e.get("planned_by") and e.get("started") is None:
-            continue
-        if continued_from_marker(folder).is_file():
-            continue
-        start = declared.start_of(calc, stage, pt, points)
-        if start.source is None:
-            continue
-        out.append((continued_from_marker(folder),
-                    RunRef.at(Path(calc.base),
-                              place.point(start.source.rel))))
-    return out
-
-
-def _index_of_2_54(old: dict, schema: str, *, calc, stage: str, declared,
-                   record, add_point, empty_index) -> dict:
-    """A 2.54 index's points as the one index states them (`runpoints`):
-    a vibration's calls by its phases table, a transport rung's points as
-    its prepared points are -- what each is, what it needs and must hold
-    -- and how each ended, kept."""
-    from ..runpoints import OLDER_SCHEMAS
-    keep = ("started", "ended", "exit", "verdict", "not_run")
-    if schema == OLDER_SCHEMAS[0]:
-        from ..siesta.vibration_phases import Call, phase, point_entry
-        facts = {"phases": list(old.get("phases") or [])}
-        if old.get("selection") is not None:
-            facts["selection"] = old["selection"]
-        index = empty_index(stage=stage, record=record, facts=facts)
-        present = {c["phase"] for c in old.get("calls") or []}
-        own = ("phase", "name", "mode", "side", "frequency_cm1",
-               "dq_amu12_ang", "taken_from", "record_error") + keep
-        # IN THE LISTING ORDER (`runs-of-points.md` § 1.1): the phases in
-        # their table's order, each phase's calls as planned -- 2.54 wrote
-        # the calls a launch took over first.
-        from ..siesta.vibration_phases import PHASES
-        order = [p.name for p in PHASES]
-        calls = sorted(old.get("calls") or [],
-                       key=lambda c: (order.index(c["phase"]),
-                                      str(c.get("name") or "")))
-        for c in calls:
-            call = Call(phase=c["phase"], name=c.get("name"),
-                        mode=c.get("mode"), side=c.get("side"),
-                        frequency_cm1=c.get("frequency_cm1"),
-                        dq_amu12_ang=c.get("dq_amu12_ang"))
-            rule = phase(call.phase)
-            e = point_entry(call, calc.task.label)
-            row = add_point(
-                index, rel=e["rel"], words=e["words"], phase=e["phase"],
-                round=e["round"], must_hold=e["must_hold"],
-                verdict_counts=e["verdict_counts"],
-                needs=[Call(n, n).rel for n in rule.needs if n in present],
-                planned_by=(Call(rule.planned_by, rule.planned_by).rel
-                            if rule.planned else None),
-                taken_from=c.get("taken_from"),
-                facts={**e["facts"], **{k: v for k, v in c.items()
-                                        if k not in own}})
-            _kept_stamps(row, c, keep)
-            if c.get("record_error") and not c.get("taken_from"):
-                what, _sep, error = str(c["record_error"]).partition(": ")
-                row["step_error"] = {"what": what, "error": error or None}
-        index["finish"] = old.get("finish")
-        return index
-    # transport-points@1
-    from ..transport.stages import Point
-    prepared = {pt.rel: pt for pt in declared.rung_points(calc, stage)}
-    by_rel = {p["rel"]: p for p in old.get("points") or []}
-    order = [rel for rel in prepared if rel in by_rel] + [
-        rel for rel in by_rel if rel not in prepared]
-    index = empty_index(stage=stage, record=record,
-                        facts={k: old.get(k) for k in ("computes", "pair",
-                                                       "leads", "spin",
-                                                       "weights")})
-    for rel in order:
-        p = by_rel[rel]
-        pt = prepared.get(rel)
-        facts = (pt.facts() if pt is not None else
-                 {"frame": p.get("frame"), "frame_words": p.get("frame_words"),
-                  "bias_v": p.get("bias_v")})
-        row = add_point(
-            index, rel=rel, words=p.get("words") or rel, phase=stage,
-            round=(pt or Point(frame=p.get("frame"),
-                               volts=p.get("bias_v"))).round,
-            needs=[p["needs"]] if p.get("needs") else [],
-            must_hold=[(m, w) for m, w in p.get("must_hold") or []],
-            verdict_counts=bool(p.get("verdict_counts", True)),
-            taken_from=p.get("taken_from"),
-            facts={**facts, "window": p.get("window")})
-        _kept_stamps(row, p, keep)
-    return index
-
-
-def _kept_stamps(row: dict, old: dict, keep) -> None:
-    """How a point ended, as its 2.54 entry said -- none for a point taken
-    over, which did not run in that run."""
-    if old.get("taken_from"):
-        return
-    for k in keep:
-        if old.get(k) is not None:
-            row[k] = old[k]
-
-
 def migrate_state(base) -> List[str]:
     """Rewrite the calculation in ``base`` -- every step in the module's
     docstring, each decided before any is written -- and return what
     changed, line by line.  Each old file rewritten
-    is kept beside its new one, once (:func:`_kept_as`); a renamed one is
-    its new one.
+    is kept beside its new one, once (:func:`_kept_as`).
 
     No line when there is nothing to migrate -- the calculation is current
     (:data:`CURRENT`); raises :class:`MigrateError` when it cannot be
@@ -1298,15 +1128,6 @@ def migrate_state(base) -> List[str]:
     said += m_said
     for path, (text, rules) in m_writes.items():
         writes.add(path, text, rules)
-    calc = rec.calculation(task)
-    lead_said, moves, lead_writes = _migrate_lead_names(calc)
-    for path, (text, rules) in lead_writes.items():
-        writes.add(path, text, rules)
-    ix_said, ix_moves, ix_writes = _migrate_run_indexes(calc)
-    moves += ix_moves
-    for path, (text, rules) in ix_writes.items():
-        writes.add(path, text, rules)
-    lead_said += ix_said
     try:
         decision = _migrate_template(rec, task)
     except MigrateError:
@@ -1328,17 +1149,9 @@ def migrate_state(base) -> List[str]:
             writes.add(path_of(base),
                        json_text(_edited(task, decision).to_dict()),
                        decision.task_rules)
-    if not writes and not moves:
+    if not writes:
         # NOTHING TO MIGRATE is an answer, not a refusal.
         return []
-    taken = [new for _old, new in moves if new.exists()]
-    if taken:
-        raise MigrateError(
-            f"{', '.join(str(p.relative_to(base)) for p in taken)} already "
-            f"exist -- a file is "
-            f"never renamed over another; nothing was written.  Move "
-            f"{'it' if len(taken) == 1 else 'them'} aside and run the "
-            f"migration again.")
     # A KEPT FILE IS NEVER WRITTEN OVER: it is the only copy of what the
     # file was before an earlier migration.
     # A NEW FILE -- the job request a split writes -- keeps nothing.
@@ -1360,11 +1173,9 @@ def migrate_state(base) -> List[str]:
         if path in kept:
             write_bytes(kept[path], path.read_bytes())
         write_bytes(path, text.encode("utf-8"))
-    for old, new in moves:
-        old.rename(new)
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
              for path in writes if path in kept]
-    said += lead_said + t_said
+    said += t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",
@@ -1516,8 +1327,7 @@ def _decide_template(rec: "_Records", task):
     # ...ON THIS ENGINE: an item one engine keeps is another's to retire
     # (`template.Retired.engines`).
     def _gone(name: str) -> bool:
-        r = _T.RETIRED_ITEMS.get(name)
-        return r is not None and r.retired_on(engine)
+        return _retired_here(name, engine)
 
     retired = [it for it in mine if _gone(it.name)]
     stage_retired = [(st.name, k, v) for st in (task.stages or ())
@@ -1544,12 +1354,7 @@ def _decide_template(rec: "_Records", task):
                 for st, k, v in stage_retired
                 if not _T.RETIRED_ITEMS[k].runs_without(v)])
     if stuck:
-        said_of, name = stuck[0]
-        raise MigrateError(
-            f"{said_of}, and {name} was retired at a value that no longer "
-            f"runs ({_T.RETIRED_ITEMS[name].why}).  Taking it out would "
-            f"change the calculation, so nothing was written: delete it to "
-            f"accept what runs now, then run the migration again.")
+        raise _retired_stuck(*stuck[0])
     if stage_retired or varies_retired:
         task = dataclasses.replace(
             task, varies=tuple(k for k in (task.varies or ())

@@ -280,11 +280,12 @@ If that sentence will not come, the honest answer is *unsure*, not *cut*.
    card showed one arbitrary node's cores`.
 
 ```python
-def test_a_warm_retry_keeps_each_tries_history_apart():
-    """A warm retry must not append its steps to the try before it.
+def test_a_run_script_refuses_a_second_start_in_its_run():
+    """A second start in one run folder must refuse, naming `jobset launch`,
+    rather than run the engine again over the first start's files.
 
-    `job-contracts.md` § 2.2: SIESTA's history is named for the try, so a
-    retry's steps never land in the file the try before it wrote.
+    `project-layout.md` § 1.6.1: a run is one start; to continue is to
+    launch again, which opens the next run.
     """
 ```
 
@@ -520,13 +521,9 @@ a 404 (`test_negative_body_assert_lint.py`), runtime text written into the page
 as markup (`test_xss_audit.py`), the catalogue's facts disagreeing with the config
 classes that carry them through their loaders (`test_catalogue_agreement.py`),
 a catalogue item with no panel to sit in
-(`test_every_catalogue_item_declares_a_panel`), the notebook shepherd's
+(`test_every_catalogue_item_declares_a_panel`), and the notebook shepherd's
 stop grace overrunning the supervisor's
-(`test_the_shepherds_grace_stays_under_the_supervisors`), and the run
-script's `--cold` exception widened from the label to every file of its shape
-(`test_the_exception_is_anchored_on_the_label_not_widened_to_a_star`) — no
-file a run leaves today shows it, since every engine file the sweep removes
-still matches no widened pattern, so the rendered arm is read. Three that read text until 2026-10-16 now ask the outcome or
+(`test_the_shepherds_grace_stays_under_the_supervisors`). Three that read text until 2026-10-16 now ask the outcome or
 went to review: your `projects/` tree touched by the suite is watched while
 every test runs (the guard in `conftest.py`, § 2a); a vendored file shipped
 without its licence is asked of the built wheel

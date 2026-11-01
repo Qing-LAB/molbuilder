@@ -1079,23 +1079,6 @@ def test_a_multi_point_value_entry_is_a_value_axis(calc):
     assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
 
 
-def test_a_value_axis_naming_a_measurement_pin_is_refused(calc):
-    """§ 4.3a: the pins make a trial a MEASUREMENT and win over every
-    declared value, so an AXIS on one would render identical decks under
-    different labels -- one measurement, twice.  ``continue_retries`` is
-    the live case: an *execution* item (it passes the membership
-    preflight) that the bench pins to 0 on every trial.  The non-execution
-    pins (``max_scf_iter``...) are barred upstream by
-    `_bench_names_a_speed_knob`, so they never reach this refusal."""
-    _describe_cpu(calc)
-    _declare_bench(calc, {"continue_retries": [0, 2],
-                          "mpi_np": [4], "omp_threads": [1]})
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(calc), None)
-    assert "continue_retries" in str(e.value)
-    assert "measurement" in str(e.value)
-
-
 def test_a_name_outside_the_execution_category_is_refused(calc):
     """Pinning or sweeping a non-execution item changes the ANSWER, not the
     speed (§ 6.8).  ONE door owns membership -- the preflight's
@@ -1255,7 +1238,7 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
     """PySCF's run card names its cores ``threads``; the launch shape gets
     them as ``cpus_per_task``, as SIESTA's ``omp_threads`` does -- the job's
     record, which a direct launch hands the wrapper as ``-omp``
-    (`jobset/submit.py::_run_sh_args`).
+    (`jobset/submit.py::_counts_of`).
 
     GOAL: ``threads`` had no entry in the catalogue-to-``Resources`` name map,
     so a value typed on Task setup's run card was dropped and the run sized

@@ -87,11 +87,6 @@ class StageStatus:
     state:      str
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
-    #: Whether what does not read, in an ``unreadable`` row, is a run's
-    #: index an older molbuilder wrote -- its reader's refusal's class
-    #: (`runpoints.OlderIndexError`), never its words -- whose way on is
-    #: `jobset migrate` (:func:`_steps`).
-    older_index: bool = False
     #: Which run this status was read from (``run-0``; a run of points', its
     #: points inside it), or ``None`` when no run is opened.
     attempt: Optional[str] = None
@@ -411,7 +406,7 @@ def every_run(calc, st: StageStatus) -> List[Dict[str, Any]]:
                 st.state,
                 pending_words(run_dir) if st.state == "pending"
                 else st.detail,
-                tuple(st.points), st.launch, st.older_index)
+                tuple(st.points), st.launch)
                 if run_dir.name == st.attempt
                 else read_points(calc.base, calc.task, st.ref.name, run_dir))
             place = RunPlace.of(run_dir)
@@ -595,7 +590,6 @@ def _sweep_status(calc, job, *, run: Path, columns: dict
     return StageStatus(
         state=got.state, detail=got.detail, converged=converged,
         attempt=run.name, launch=got.launch, points=pts,
-        older_index=got.older_index,
         gathered=gathered_lines(run), copied_from=_copied(base, run),
         **columns)
 
@@ -635,8 +629,9 @@ def _job_status(calc, job, *, dirs, refs) -> StageStatus:
     if run is None:
         return StageStatus(state=MISSING[0], detail=MISSING[1], **columns)
     # WHICH FILES are this stage's: its stage's names (`naming.
-    # run_names`) -- a run may hold several tries.  THE LABEL IS THIS
-    # JOB'S, NOT THE JOBSET'S: a trial is relabelled with its point.
+    # run_names`), each named once in its run (`project-layout.md`
+    # § 1.6.1).  THE LABEL IS THIS JOB'S, NOT THE JOBSET'S: a trial is
+    # relabelled with its point.
     names = run_names(jobset, job)
     row = (_sweep_status(calc, job, run=run, columns=columns)
            or _one_run_status(base, jobset, run=run, names=names,
@@ -897,12 +892,9 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                 step = (live.state, f"{live.state}, let it finish",
                         [command("status", base=base)])
             elif bad is not None and bad.state == "unreadable":
-                # A RECORD THAT DOES NOT READ, in its reader's words; an
-                # index an older molbuilder wrote has its way on -- told by
-                # its refusal's class (`runpoints.OlderIndexError`).
+                # A RECORD THAT DOES NOT READ, in its reader's words.
                 step = (bad.state, f"{bad.name}: " + reason_of(bad.detail),
-                        [command("migrate", base=base)]
-                        if bad.older_index else [])
+                        [])
             elif bad is not None:
                 # LAUNCHED AGAIN: a run of points takes over every point
                 # done in its latest run (`engines/transport.md` § 2a.11,

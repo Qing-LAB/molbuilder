@@ -948,11 +948,12 @@
 .ts-written-group[open] > summary { margin-bottom: var(--space-xs); }
 /* A RUN FILE NAME IS WIDER THAN THE COLUMN, and it may not be clipped: the
    whole use of this card is reading a name you are about to look for.
-   `<label>_<stage>-run0.scf-timing.log` measures 362px in the 353px column
-   at this card's mono size, and `.ts-file-name` deliberately does not shrink
-   (a filename is ONE token; squeezing it would break it where no separator
-   is).  So here the name takes its own line and the description sits under
-   it -- and a name longer still wraps rather than disappearing off the edge. */
+   `<label>_<stage>.scf-timing.log`, on a long label, is wider than the
+   column at this card's mono size, and `.ts-file-name` deliberately does
+   not shrink (a filename is ONE token; squeezing it would break it where no
+   separator is).  So here the name takes its own line and the description
+   sits under it -- and a name longer still wraps rather than disappearing
+   off the edge. */
 .ts-written-group .ts-file-name {
     flex: 1 1 100%;
     overflow-wrap: anywhere;

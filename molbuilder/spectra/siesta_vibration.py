@@ -95,13 +95,13 @@ try:                                        # inside molbuilder
     from ..jobset.planned import Plan, bring
     from ..persist import sha256_of
     from .optical_data import write_optical_data
-    from ..runfiles import (COORDINATES_FILE, FIRST_TRY,
+    from ..runfiles import (COORDINATES_FILE,
                             PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL, ROLE_SPECTRA,
                             VIBRATION_BUNDLE,
                             RunNames, beside_the_deck, find_fixed,
                             fixed_name, parse)
     from ..paths import frame_token, run_folder_of
-    from ..runrecord import (RunRef, newest_output, read_continued_from,
+    from ..runrecord import (RunRef, read_continued_from, run_output,
                              stamp, write_continued_from)
     from .. import runpoints as _rp
     from ..siesta.deck_lines import coordinates_text
@@ -144,13 +144,13 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     import calcdirs
     from planned import Plan, bring
     from persist import sha256_of  # type: ignore[no-redef]
-    from runfiles import (COORDINATES_FILE, FIRST_TRY,  # type: ignore[no-redef]
+    from runfiles import (COORDINATES_FILE,  # type: ignore[no-redef]
                           PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL,
                           ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck,
                           find_fixed, fixed_name, parse)
     from paths import frame_token, run_folder_of  # type: ignore[no-redef]
     from runrecord import (RunRef,  # type: ignore[no-redef]
-                           newest_output, read_continued_from, stamp,
+                           read_continued_from, run_output, stamp,
                            write_continued_from)
     import runpoints as _rp  # type: ignore[no-redef]
     from deck_lines import coordinates_text
@@ -698,7 +698,7 @@ def plan_call(deck) -> None:
                         f"planned by the {source} call's record step")
     elif source in {c.phase for c in calls_of(index)}:
         source_dir = here.place.point(Call(source, source).rel)
-        out = newest_output(source_dir, here.names)
+        out = run_output(source_dir, here.names)
         if out is None:
             raise FinishError(f"{source_dir.name} left no output in "
                               f"{source_dir}: {call.words()} has no "
@@ -761,22 +761,19 @@ def _relaxation_record(output: Path) -> Optional[dict]:
 
 
 def _relaxation_outcome(record: Optional[Mapping[str, Any]],
-                        retried: bool = False,
                         continued: Optional[str] = None) -> Optional[str]:
     """THE RELAXATION'S OUTCOME, as its milestone says it (`run-reports.md`
     § 2.9): whether it converged, in how many moves, and the largest force
     on the free atoms against its tolerance -- its record's own facts;
     ``None`` for a run that relaxed nothing.  The record is of the call's
-    newest output, so a call the wrapper ``retried`` in place counts the
-    moves of its last try, and a relaxation ``continued`` from an
-    earlier run's geometry the moves since -- each said."""
+    output, so a relaxation ``continued`` from an earlier run's geometry
+    counts the moves since -- said."""
     if not record:
         return None
     n = int(record["n_steps"])
     force = judged_force(record)
     said = "converged" if record["converged"] else "did not converge"
-    since = ((" of its last try" if retried else "")
-             + (f" continuing {continued}" if continued else ""))
+    since = f" continuing {continued}" if continued else ""
     return (f"the relaxation {said} in {n} move{'' if n == 1 else 's'}"
             f"{since}: the largest force "
             f"on the free atoms {float(force):.4g} eV/Ang "
@@ -982,13 +979,13 @@ def _optical_settings(here: _CallHere, index: dict) -> dict:
 
 
 def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
-    """What a call's own files state of it (§ 5.11 § 8): from its newest
-    output, through SIESTA's one reading pass, the geometry it computed at
+    """What a call's own files state of it (§ 5.11 § 8): from its output,
+    through SIESTA's one reading pass, the geometry it computed at
     (the deck's order), its SCF's iterations, total energy and the Fermi
     level of each spin channel in ``spins`` (`siesta_grammar.fermi_levels`),
-    and the build; from that try's session log, the engine's wall time
+    and the build; from its session log, the engine's wall time
     (`wrapper_log`, the one source of it)."""
-    out = newest_output(folder, here.names) if folder.is_dir() else None
+    out = run_output(folder, here.names) if folder.is_dir() else None
     if out is None:
         return {}
     reading = _reading(out)
@@ -1005,13 +1002,12 @@ def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
             total_energy_ev=step.get("energy"),
             fermi_level_ev=(list(fermi_levels(scf[-1], spins)) if scf
                             else None))
-    log = log_of_run(folder, here.label, parse(out.name, here.label).run,
-                     here.names.stage)
+    log = log_of_run(folder, here.label, here.names.stage)
     if log is not None:
-        sections = read_wrapper_log(log.read_text(encoding="utf-8",
-                                                  errors="replace"))
-        if sections:
-            facts["engine_elapsed_s"] = sections[0].get("engine_elapsed_s")
+        start = read_wrapper_log(log.read_text(encoding="utf-8",
+                                               errors="replace"))
+        if start:
+            facts["engine_elapsed_s"] = start.get("engine_elapsed_s")
     return facts
 
 
@@ -1156,7 +1152,7 @@ def _force_constants(here: _CallHere, index: dict
                if r["phase"] == FC):
         return None
     fc_dir = force_constants_call(here.run_dir)
-    fc_out = newest_output(fc_dir, here.names)
+    fc_out = run_output(fc_dir, here.names)
     if fc_out is None:
         return None
     run = read_force_constant_run(fc_dir / here.deck.name, fc_out)
@@ -1234,11 +1230,9 @@ def record_call(deck, output, exit_code: int) -> None:
             # ITS OUTCOME IN WORDS: words that cannot be composed are
             # logged, never the call's failure.
             try:
-                named = parse(output.name, here.label)
                 continued = read_continued_from(here.folder)
                 _rp.note(index, call.rel, outcome=_relaxation_outcome(
-                    relaxation, retried=(named is not None and named.run
-                                         not in (None, FIRST_TRY)),
+                    relaxation,
                     continued=(str(continued) if continued is not None
                                else None)))
                 _rp.write_index(here.index, index)

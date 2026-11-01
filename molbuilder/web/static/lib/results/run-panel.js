@@ -323,9 +323,7 @@ function summary(rec) {
         parts.push(`${threads} thread${Number(threads) === 1 ? "" : "s"}`);
     }
     if (time.engine_elapsed_s !== undefined) parts.push(duration(time.engine_elapsed_s));
-    if (verdict.ended) {
-        parts.push(rec.run !== undefined ? `try ${rec.run} ${verdict.ended}` : verdict.ended);
-    }
+    if (verdict.ended) parts.push(verdict.ended);
     Object.keys(verdict.converged || {}).forEach((p) => {
         parts.push(phaseWords(p, verdict.converged[p]));
     });
@@ -354,7 +352,7 @@ function verdictSection(rec) {
         r.appendChild(el("span", "rp-val" + (cls ? " " + cls : ""), text));
         box.appendChild(r);
     };
-    if (v.ended) line("Latest try", rec.run !== undefined ? `try ${rec.run}: ${v.ended}` : v.ended);
+    if (v.ended) line("Ended", v.ended);
     Object.keys(v.converged || {}).forEach((p) => line("Converged", phaseWords(p, v.converged[p])));
     // THE LAST STEP'S FORCES AND STRESS, or why a TranSIESTA device has
     // none (`model/parse.md` § 5d.6).
@@ -367,9 +365,6 @@ function verdictSection(rec) {
     }
     if (Array.isArray(v.stress_voigt_kbar)) line("Stress in the (x, y) plane", inPlane(v.stress_voigt_kbar));
     (v.findings || []).forEach((f) => line("Finding", f.text || words(f), "rp-finding"));
-    (rec.earlier || []).forEach((e) => line(
-        "Earlier try",
-        `try ${e.run}: ` + (e.ended || "its output states no ending")));
     if (box.childNodes.length) s.appendChild(box);
     return s;
 }
@@ -539,7 +534,7 @@ function render() {
 
     if (open) {
         const body = el("div", "rp-body");
-        if (rec.verdict || rec.earlier) body.appendChild(verdictSection(rec));
+        if (rec.verdict) body.appendChild(verdictSection(rec));
         if (rec.setup) body.appendChild(setupSection(rec));
         if (rec.computation) body.appendChild(computationSection(rec));
         if (rec.deck) body.appendChild(deckSection(rec));

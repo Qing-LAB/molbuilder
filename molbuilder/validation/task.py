@@ -224,7 +224,7 @@ def _run_cards_may_stand(request) -> List[Issue]:
     scheduler asks, `time` and `domain`, are the job request's reader's
     (§ 3.2a)."""
     from ..job_request import LANE_ASKS
-    from ..template import accepts, shown
+    from ..template import accepts, shown, why_not_an_item
     blocks = [("execution", dict(request.execution or {}), None)]
     for name, entry in request.stages.items():
         if entry.execution:
@@ -240,6 +240,14 @@ def _run_cards_may_stand(request) -> List[Issue]:
             if name in LANE_ASKS:
                 continue
             it = items.get(name)
+            gone = (why_not_an_item(name, value=block[name], is_set=True)
+                    if it is None else None)
+            if gone is not None:
+                # A RETIRED OR RENAMED ITEM is named as such, with the way
+                # on (`engines/template.md` § 3) -- as a stage's override is.
+                out.append(Issue("error", f"{where} names {name!r}: {gone}",
+                                 where=f"job_request.{where}.{name}"))
+                continue
             if it is None:
                 out.append(Issue(
                     "error",

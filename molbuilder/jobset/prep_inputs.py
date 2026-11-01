@@ -667,8 +667,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # The axes come from the split above -- the value entries already left
     # as pins or value axes, so what remains is machine-answered by
     # construction, and one of the grid's own (`template.GRID_AXES`: the
-    # checker the split asks refuses a row naming any other, as it refuses
-    # a row naming what every trial fixes, `template.TRIAL_PINS`).
+    # checker the split asks refuses a row naming any other).
     declared = {k: list(v) for k, v in declared_axes.items()}
     sockets = getattr(topo, "sockets", None)
     #: What the target's probed node holds -- what a cell is fit on where
@@ -925,17 +924,9 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # run.  What the run IS -- the GPU, the eigensolver, the block size --
     # is the calculation's run card's, and pinning it here would measure a
     # configuration nobody asked to run.
-    #
-    # ``continue_retries: 0`` is what makes the trial run ONCE.  Without it
-    # the capped SCF above guarantees non-convergence, the wrapper's retry
-    # budget reads that as a failure and re-runs, and `summarize` reads the
-    # HIGHEST run index -- so every trial that retried was timed on its second
-    # run and every trial that did not was timed on its first.  Those are not
-    # comparable, which is the one thing a sweep exists to be.
-    # The declared values ride UNDER the measurement pins: what makes a
-    # trial a measurement (capped SCF, forced cold, run-once) must win
-    # over any declaration -- one-point declarations and value-axis
-    # coordinates alike (the resolver applies pins over a point's
-    # parameters, and the overlap refusal above bars an AXIS on a pin).
+    # The declared values ride beside the measurement pins, and the two
+    # never name one item: a pin says what is computed, no run setting, so
+    # no benchmark row names one (`template.why_not_in`).  A trial runs
+    # once because every run is one start (`project-layout.md` § 1.6.1).
     pins = {**declared_pins, **_T.TRIAL_PINS}
     return points, pins, translation

@@ -59,11 +59,10 @@ def walled(isolated_projects_root_module, tmp_path_factory):
                    "--name", "H2", "--psml-lib", "pseudopotential",
                    "--stage-strategy", "publishable")
         assert r.exit_code == 0, r.output
-        # A RETRY BUDGET, which the wall must not spend (§ 3.5) -- and THE
-        # WALL ITS RUN CARD STATES (`running-a-job.md` § 5.3.1's chain), 20
-        # s, so the engine, told what is left and the 600 s slack, stops at
-        # its first check.
-        one_rank(bundle, continue_retries=1, time="00:00:20")
+        # THE WALL ITS RUN CARD STATES (`running-a-job.md` § 5.3.1's
+        # chain), 20 s, so the engine, told what is left and the 600 s
+        # slack, stops at its first check.
+        one_rank(bundle, time="00:00:20")
         r = jobset("prep", "task", *group_words(bundle, "coarse"),
                    "--bundle", bundle, "--target", "this")
         assert r.exit_code == 0, r.output
@@ -75,7 +74,7 @@ def walled(isolated_projects_root_module, tmp_path_factory):
         # THE GEOMETRY SIESTA SAVED, RE-DATED TO THE JOB'S END SECOND, as a kill mid-write
         # leaves it; the next launch of the stage reads the two times.
         from molbuilder.parse.registry import parse as _parse
-        ended_at = _parse(run.file(".monitor.log", 0)).metrics["ended_at"]
+        ended_at = _parse(run.file(".monitor.log")).metrics["ended_at"]
         from datetime import datetime
         end_s = datetime.fromisoformat(ended_at).timestamp()
         xv = run.on_label(".XV")
@@ -101,12 +100,13 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
     restart state saved -- the launch says FAILED first and exits 1
     (`job-system.md` § 6.0, *A run here, waited on*), the run door reads
     `failed` with the wall as the cause, not the SCF warning printed on the
-    way out, and the wrapper does not retry it in the job.
+    way out, and the run is its one start: nothing in the job starts the
+    engine again -- a launch again continues it (§ 3.5).
 
     MUTATION THIS MUST FAIL AGAINST: the card's wall not exported to a run
     here (`submit._go`; SIESTA relaxes H2 to its end, converged); the wall
-    read as an SCF failure (the
-    grammar without `OUT_OF_TIME`); a warm retry after it, its try 1."""
+    read as an SCF failure (the grammar without `OUT_OF_TIME`)."""
+    from molbuilder.wrapper_log import WRAPPER_LOG_START
     from molbuilder.parse.dirs.rundir import run_state_of
     launched = walled["launched"]
     assert launched.exit_code == 1, launched.output
@@ -117,11 +117,11 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
     assert "Wall          : 20s from the job's start" in wrap, wrap[:3000]
     assert "wall: " in wrap and "SIESTA stops 600s before it" in wrap, wrap[-2000:]
     assert "stopped at its wall (MaxWalltime)" in wrap, wrap[-2000:]
-    # NO WARM RETRY IN THE JOB: a retry would be the run's next try, in its
-    # folder, and the run door names the newest.
+    # ONE START (`project-layout.md` § 1.6.1): the session log holds the
+    # run script's one start, the engine run once.
+    assert wrap.count(WRAPPER_LOG_START) == 1, wrap[-3000:]
     from molbuilder.runs import run_of
     run = run_of(walled["ran_in"])
-    assert run.run == 0, sorted(p.name for p in walled["ran_in"].iterdir())
     text = walled["out"].read_text(errors="replace")
     assert "OUT_OF_TIME: Time is up." in text, text[-3000:]
     assert ">> End of run" not in text

@@ -35,7 +35,7 @@ def cfg() -> SiestaConfig:
                         basis_size="TZP", kgrid=(3, 3, 1),
                         relax_type="Broyden", relax_steps=123,
                         spin_treatment="unrestricted", net_charge=-2,
-                        restart="continue", continue_retries=4,
+                        restart="continue",
                         mpi_np=8, verbose_comments=False)
 
 

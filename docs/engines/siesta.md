@@ -767,10 +767,11 @@ SIESTA subtracts itself
 `tbtrans` launch gets none: the item names no words for it, and it checks no
 clock. The output reads `failed` with the wall as its cause, in SIESTA's own
 line (`siesta_grammar.OUT_OF_TIME_MARKER`; the `SCF_NOT_CONV` warning it
-prints on the way out is not the cause); the wrapper does not warm-retry it,
-and says what a launch again does with the run — a single run continues
-from the files it saved, a point of a run of points as its run's rule starts
-a point not done. Every line a person sees of the wall is
+prints on the way out is not the cause); the wrapper says what a launch
+again does with the run — the next run continues warm from the files this
+one saved, a point of a run of points not done starting again as its run's
+rule says ([`execution/project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.1). Every line a person sees of the wall is
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6's
 table.
 
@@ -795,8 +796,7 @@ one spelling, no second regex.
 
 For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
 script next to every `.fdf` it writes (§ 4); it reads the run's output --
-its newest try's, or a hand run's unnumbered one (`runrecord.newest_run`) --
-its last energy, its cell and SIESTA's own `Emadel` -- with SIESTA's one reading pass,
+`<label>_<NN>_<stage>.out`, the run's one -- its last energy, its cell and SIESTA's own `Emadel` -- with SIESTA's one reading pass,
 from the monitor's bundle beside it in every run (`mb_monitor.pyz`), so it
 runs where molbuilder is not installed and reads the output as every other
 reader does. And each per-stage `.molwatch.log` carries

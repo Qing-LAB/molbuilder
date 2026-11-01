@@ -3974,8 +3974,7 @@ function _showPrepAnswer(wrap, say, r, head) {
         // WHAT IS STATED, and nothing else -- the terminal's line
         // (`_echo_prep_answer`): no launch value is left to a wrapper, and a
         // PySCF run has no rank count at all.
-        const asks = [["mpi_np", rs.mpi_np], ["omp", rs.cpus_per_task],
-                      ["retries", rs.continue_retries]]
+        const asks = [["mpi_np", rs.mpi_np], ["omp", rs.cpus_per_task]]
             .filter(([, v]) => v).map(([k, v]) => k + " " + v);
         if (asks.length) line("resources: " + asks.join(" | "));
     }

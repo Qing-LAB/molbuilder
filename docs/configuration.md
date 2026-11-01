@@ -501,9 +501,9 @@ where every caller gets it.)*
 JOB.** It travels to the machine that runs the job inside `mb_monitor.pyz` and
 is executed by **the job's own python**, in a backend env where molbuilder is
 not installed (`runwrap.MONITOR_BUNDLE`, `execution/running-a-job.md` § 2.0a).
-Its two files — the `-runN.util.csv` it starts with its header and appends a
+Its two files — the `<stem>.util.csv` it starts with its header and appends a
 row to when the sample changes or its keepalive comes due, and the
-`-runN.monitor.log` it appends to
+`<stem>.monitor.log` it appends to
 (`execution/run-reports.md` § 2.5) — are written with `pathlib`.
 
 **The monitor's rule is *stdlib-only AND travels*.** `persist.py` is
@@ -552,8 +552,8 @@ numpy loads.
 | missing | what happens |
 |---|---|
 | `config_dir` | imported only when the channels are read; `load_channels` catches the `ModuleNotFoundError`, logs *reports off*, and the monitor keeps monitoring |
-| any reader the monitor imports at start | the monitor cannot start: the session log holds its `monitor: starting` line and the error, and no `started` (`execution/run-reports.md` § 2.6); and the ending cannot be read either -- no failure hint, no warm retry (`execution/job-contracts.md` § 2.6) |
-| the whole bundle | the wrapper logs *monitor: not started*, and `_mb_ending` answers that the ending cannot be read — no failure hint and no warm retry (`execution/job-contracts.md` § 2.6) |
+| any reader the monitor imports at start | the monitor cannot start: the session log holds its `monitor: starting` line and the error, and no `started` (`execution/run-reports.md` § 2.6); and the ending cannot be read either -- no failure hint (`execution/job-contracts.md` § 2.6) |
+| the whole bundle | the wrapper logs *monitor: not started*, and `_mb_ending` answers that the ending cannot be read — no failure hint (`execution/job-contracts.md` § 2.6) |
 | a member of `mb_pyscf.pyz`, or the whole file | the PySCF script stops on its first lines, before PySCF computes anything: the import error, or the sentence saying the file is not beside it, is in the run's output, and the run reads failed (`engines/pyscf.md` § 3) |
 
 **Do not route these through the one writer.** They are the one place in this

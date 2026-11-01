@@ -94,33 +94,29 @@ def openable_in(directory: str, calculation: Optional[str] = None
     return None, attempts
 
 
-def run_state_of(directory, names, run=None, launched_in=None):
+def run_state_of(directory, names, launched_in=None):
     """The run's state through the one door (`job.run_status`), asked with
     its launch record (`runrecord.launch_record`) as every reader asks it --
-    the run's newest try's, named by its stage's names
-    (`runfiles.RunNames`).  A launch record that does not read is the state
-    ``unreadable``, the file named in its detail -- never read as launched
-    or not launched, and never followed.
-    The run door (`runs`) asks it, with the run's names; ``run`` asks about
-    that try, by default the run's newest.  ``launched_in`` is the folder
+    its files named by its stage's names (`runfiles.RunNames`).  A launch
+    record that does not read is the state ``unreadable``, the file named in
+    its detail -- never read as launched or not launched, and never
+    followed.  The run door (`runs`) asks it, with the run's names.
+    ``launched_in`` is the folder
     the launch record lies in, ``directory`` itself by default: a run of
     points' one record, in the run's folder, answers for each point in it
     (`engines/transport.md` § 2a.11), and the scheduler's file it names is
     named from there (`running-a-job.md` § 4.2) -- settled once here, and
     handed to `run_status` as it is."""
-    from molbuilder.runrecord import LaunchRecordError, launch_record, newest_run
+    from molbuilder.runrecord import LaunchRecordError, launch_record
     from .job import RunStatus, run_status
     if launched_in is None:
         launched_in = directory
     try:
-        # ONE RUN, by the one rule (`runrecord.newest_run`), asked of its
-        # launch record and of its files alike.
-        run = run if run is not None else newest_run(directory, names)
         launch = launch_record(launched_in)
     except LaunchRecordError as e:
         return RunStatus(state="unreadable", detail=str(e))
     try:
-        return run_status(directory, names.stem, launch=launch, run=run,
+        return run_status(directory, names.stem, launch=launch,
                           launched_in=launched_in)
     except LaunchRecordError as e:
         # A RECORD THAT READS, ONE OF WHOSE VALUES DOES NOT -- the wall it

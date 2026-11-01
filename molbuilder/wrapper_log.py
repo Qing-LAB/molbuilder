@@ -1,8 +1,8 @@
-"""The wrapper's session log -- ``<base>.runwrap-<stamp>.log`` -- its lines,
-and ONE reader of them.
+"""The wrapper's session log -- ``<base>.runwrap.log`` -- its lines, and ONE
+reader of them.
 
-`runwrap` writes the log: its own lines -- the section banner, the host and
-environment, the try's number, the launch -- and, tee'd in, everything the
+`runwrap` writes the log: its own lines -- the start's banner, the host and
+environment, the launch -- and, tee'd in, everything the
 engine said on stdout and stderr; the monitor adds its start, *starting* and
 then *started* or the error that stopped it (`run-reports.md` § 2.6).  This module is the one spelling of the
 wrapper's lines, which the writer renders and every reader reads with: the
@@ -15,17 +15,17 @@ finish began (`running-a-job.md` § 4.2).
 MONITOR_COMPANIONS`), so the monitor pairs a run with its log exactly as the
 Results tab does.
 
-ONE LOG PER START.  Each start of the wrapper opens a log of its own, and a
-warm retry hands back the output it was started with before it starts again
-(`running-a-job.md` § 3.5), so a log holds its start alone.  A log is read as
-sections, each opening with the start banner, and the try a log is FOR is its
-first section's (:func:`log_of_run`).
+ONE LOG PER RUN.  A run folder holds one start (`project-layout.md`
+§ 1.6.1), and the start opens the log once the launch-door gate lets it
+through, so the log's being there IS the run's start (:func:`log_of_run`);
+what starts nothing -- a help request, a dry run, a refused start -- writes
+none (`job-contracts.md` § 2.6).
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 try:                                        # inside molbuilder
     from . import runfiles as _rf
@@ -40,7 +40,7 @@ except ImportError:                         # beside a job, as the monitor's
 LOG_LINE = "[%s] [%-5s] %s"
 LOG_CLOCK = "%H:%M:%S%z"
 
-#: The line every section opens with (``_log STAGE`` in ``env_activation``).
+#: The line the run's start opens with (``_log STAGE`` in ``env_activation``).
 WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
 #: The message logged as a point's after-step begins -- the kind's own
 #: step after the engine, which leaves the result the engine alone does not
@@ -97,14 +97,7 @@ _WRAPPER_LOG_LINES = (
     ("binary",         re.compile(r"^\s+(?:SIESTA|TBtrans) "
                                   + re.escape(BINARY_LABEL)
                                   + r"\s*:\s*(\S+)")),
-    ("engine_version", re.compile(r"^\s+(?:SIESTA|TBtrans) "
-                                  + re.escape(VERSION_LABEL)
-                                  + r"\s*:\s*(\S+)")),
 )
-#: ``[molbuilder] run index: <N>  ->  <out>`` -- which try the section is,
-#: written by the run script (`runwrap`).
-RUN_INDEX_LINE = "[molbuilder] run index:"
-_WRAP_RUN_INDEX = re.compile("^" + re.escape(RUN_INDEX_LINE) + r"\s*(\d+)")
 _WRAP_NODE = _pattern(NODE_LINE, phys=r"(\d+)", sockets=r"(\d+)",
                       cps=r"(\d+)")
 _WRAP_RANKS_OMP = _pattern(RANKS_OMP_LINE, ranks=r"(\d+)",
@@ -112,49 +105,35 @@ _WRAP_RANKS_OMP = _pattern(RANKS_OMP_LINE, ranks=r"(\d+)",
 _WRAP_WALL = _pattern(WALL_LINE, program=r"\S+", seconds=r"([0-9.]+)")
 
 
-def read_wrapper_log(text: str) -> List[Dict[str, Any]]:
-    """One dict per run section of a wrapper log, in order -- ``run_index``,
-    the host lines, ``binary`` / ``engine_version``, ``node_phys_cores`` (and
-    its sockets), ``ranks_asked`` / ``threads``, ``engine_elapsed_s``.  A key
-    is absent when its section does not state it."""
-    sections: List[Dict[str, Any]] = []
-    cur: Optional[Dict[str, Any]] = None
+def read_wrapper_log(text: str) -> Dict[str, Any]:
+    """The run's start, as its session log states it -- the host lines,
+    ``binary``, ``node_phys_cores`` (and its sockets), ``ranks_asked`` /
+    ``threads``, ``engine_elapsed_s``.  A key is absent when the log does
+    not state it; ``{}`` for a log that states none of them.  The log holds
+    one start (the module's note), so its lines are read as one."""
+    start: Dict[str, Any] = {}
     for line in (text or "").splitlines():
-        if WRAPPER_LOG_START in line:
-            cur = {}
-            sections.append(cur)
-            continue
-        if cur is None:
-            cur = {}
-            sections.append(cur)
-        m = _WRAP_RUN_INDEX.match(line)
-        if m:
-            cur.setdefault("run_index", int(m.group(1)))
-            continue
         m = _WRAP_NODE.search(line)
         if m:
             for key, g in (("node_phys_cores", 1), ("node_sockets", 2),
                            ("node_cores_per_socket", 3)):
-                cur.setdefault(key, int(m.group(g)))
+                start.setdefault(key, int(m.group(g)))
             continue
         m = _WRAP_RANKS_OMP.search(line)
         if m:
-            cur.setdefault("ranks_asked", int(m.group(1)))
-            cur.setdefault("threads", int(m.group(2)))
+            start.setdefault("ranks_asked", int(m.group(1)))
+            start.setdefault("threads", int(m.group(2)))
             continue
         m = _WRAP_WALL.search(line)
         if m:
-            cur.setdefault("engine_elapsed_s", float(m.group(1)))
+            start.setdefault("engine_elapsed_s", float(m.group(1)))
             continue
         for key, pat in _WRAPPER_LOG_LINES:
             m = pat.search(line)
             if m:
-                cur.setdefault(key, m.group(1))
+                start.setdefault(key, m.group(1))
                 break
-    # A section with nothing in it -- the `launched-by:` line the launcher
-    # writes ahead of the first banner -- is no run.
-    return [sec for sec in sections if sec]
-
+    return start
 
 
 def finish_started(path) -> bool:
@@ -169,41 +148,11 @@ def finish_started(path) -> bool:
         return False
 
 
-def first_run_index(path) -> Optional[int]:
-    """The try a session log is FOR -- its first section's run index -- read
-    from the head down to that line; ``None`` when it states none (a start
-    refused before the try's number was checked)."""
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                m = _WRAP_RUN_INDEX.match(line)
-                if m:
-                    return int(m.group(1))
-    except OSError:
-        return None
+def log_of_run(directory, label: str, stage: str) -> Optional[Path]:
+    """The session log of ``label``'s run at ``stage`` in ``directory`` --
+    every run's files carry its stage -- or ``None`` where the folder holds
+    no start (the module's note)."""
+    for path, got in _rf.find(directory, label, role=".runwrap.log"):
+        if got.stage == stage:
+            return path
     return None
-
-
-def logs_by_run(directory, label: str
-                ) -> Dict[Tuple[Optional[str], int], Path]:
-    """Every session log of ``label`` here, by the try it is FOR --
-    ``(stage, run) -> path``, ``run`` the log's first section's try (the
-    module's note), the newest log where several are that try's.  The stage
-    is the name's: the log and the try's output are named from the same
-    deck, so they carry the same token."""
-    out: Dict[Tuple[Optional[str], int], Path] = {}
-    # `find` orders a counterless name by name, and a stamp's order is the
-    # clock's, so the newest of a run's logs is the one kept.
-    for path, got in _rf.find(directory, label, role=".runwrap-{stamp}.log"):
-        run = first_run_index(path)
-        if run is not None:
-            out[(got.stage, run)] = path
-    return out
-
-
-def log_of_run(directory, label: str, run: int,
-               stage: Optional[str] = None) -> Optional[Path]:
-    """The session log of try ``run`` of ``label`` at ``stage`` (``None``
-    matching only ``None``), or ``None`` when no log is that try's
-    (:func:`logs_by_run`)."""
-    return logs_by_run(directory, label).get((stage, run))

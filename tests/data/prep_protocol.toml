@@ -93,16 +93,27 @@ stage = "freq"
 template = { compute_raman = true }
 # The road's H2 holds atom 0, so one atom is free -- one mode, every mode
 # Raman for's default picks; a vibration's template
-# carries the catalogue's recommended relax_steps, 100, a try -- the
-# retries are the run card's, said beside it.
-said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 × 1 free atom) · optical 3 calls (1 + 2 × 1 mode), each .EPSIMG about 0.8 MB (15,001 photon energies, one spin channel; 0.4 MB more with two)",
+# carries the catalogue's recommended relax_steps, 100.
+said = ["the run: relax up to 100 geometry steps · fc 7 SCFs (1 + 6 × 1 free atom) · optical 3 calls (1 + 2 × 1 mode), each .EPSIMG about 0.8 MB (15,001 photon energies, one spin channel; 0.4 MB more with two)",
         "one job walking its calls -- 2 prepared, the rest planned by the job (one wall for the whole run)"]
+
+# A run is one start, and what a launch again does is the launch's own fact
+# (`running-a-job.md` § 3.5): a kind that does not resume starts over from
+# its deck, nothing of its run copied in.  THE SILENT FAILURE: a failed
+# PySCF vibration told to "continue warm" from files no launch copies.
+[[case]]
+name = "a PySCF vibration's run script says, on a failure, that a launch again starts it over from its deck -- this kind of run does not resume"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+run_sh = ["what a launch again will do: a launch again starts this run over from its deck, nothing of it copied in -- this kind of run does not resume"]
+run_sh_lacks = ["continue warm from the files this run saved"]
 
 [[case]]
 name = "...and one as described -- Compute Raman off, its default, no optical phase -- says its two calls, none planned in the job, on the stage's one wall"
 calculation = "vibration"
 stage = "freq"
-said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 × 1 free atom)",
+said = ["the run: relax up to 100 geometry steps · fc 7 SCFs (1 + 6 × 1 free atom)",
         "one job walking its 2 calls (one wall for the whole run)"]
 said_lacks = ["the rest planned by the job", "1 free atom) · optical"]
 
@@ -111,7 +122,7 @@ name = "...and Raman for a frequency range, at most the modes the run reports: 3
 calculation = "vibration"
 stage = "freq"
 template = { compute_raman = true, raman_modes = "range", raman_freq_min_cm1 = 100.0 }
-said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 × 1 free atom) · optical up to 3 calls (1 + 2 × the modes within the range, at most 1), each .EPSIMG about 0.8 MB"]
+said = ["the run: relax up to 100 geometry steps · fc 7 SCFs (1 + 6 × 1 free atom) · optical up to 3 calls (1 + 2 × the modes within the range, at most 1), each .EPSIMG about 0.8 MB"]
 
 [[case]]
 name = "...and Raman for a range stated nowhere -- neither end given -- is refused at prep, naming the setting and the ways on, before a deck is written (engines/vibration.md 3.1)"
@@ -265,6 +276,14 @@ stage = ["coarse", "medium"]
 said = ["at launch: takes H2.XV, H2.DM"]
 said_lacks = ["H2.CG from `coarse`"]
 
+# A trial measures its point once (`submit._plan_trial`), so its run
+# script's way on after a failure, and its one-start guard, say so -- never
+# "launch the stage again", which its benchmark's launch would skip.
+[[case]]
+name = "a benchmark trial's run script says, on a failure and at a second start, that a trial measures its point once -- its benchmark's launch does not start it again"
+bench = { mpi_np = [2], omp_threads = [1] }
+made_says = { "01_coarse/bench/bench-G0N2C1/run-0/H2-G0N2C1_01_coarse.run.sh" = ["what a launch again will do: a trial measures its point once, and its benchmark's launch does not start it again", "a run is one start; a trial measures its point once"] }
+
 [[case]]
 name = "...a prepared benchmark too"
 bench = { mpi_np = [2], omp_threads = [1] }
@@ -390,20 +409,9 @@ template = { mesh_cutoff = 275.0 }
 deck = ["MeshCutoff 275.0"]
 
 [[case]]
-name = "the template's retry budget reaches the run script"
-template = { continue_retries = 4 }
-run_sh = ["_siesta_retry_max=4"]
-
-[[case]]
-name = "...the run card's beats it"
-template = { continue_retries = 4 }
+name = "a run card naming the warm-retry budget is refused, told it is retired -- a run is one start, and to continue is to launch again (execution/project-layout.md 1.6.1)"
 run = { continue_retries = 2 }
-run_sh = ["_siesta_retry_max=2"]
-
-[[case]]
-name = "...and no budget writes no retry loop"
-template = { continue_retries = 0 }
-run_sh_lacks = ["_siesta_retry_max="]
+refused = ["continue_retries was retired from the schema", "a run is one start", "jobset migrate"]
 
 [[case]]
 name = "the description's reporting policy reaches the run script -- when, how often, and where, by name"

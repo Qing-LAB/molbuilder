@@ -839,9 +839,9 @@ def junction(tmp_path_factory):
                                       {"scf_must_converge": False,
                                        "max_scf_iter": 2}))
         # A DEVICE WHOSE FIRST VOLTAGE DOES NOT FINISH (§ 2a.9): its SCF
-        # given one iteration and SIESTA's own rule, stop unconverged -- the
-        # retry the run card allows too -- so its frame's chain ends there
-        # and the walk never runs the next voltage.
+        # given one iteration and SIESTA's own rule, stop unconverged -- so
+        # its frame's chain ends there and the walk never runs the next
+        # voltage.
         run.aborted = copy_of(run, "device-aborted",
                               the_devices_own_scf({"max_scf_iter": 1}))
     yield run
@@ -2368,7 +2368,7 @@ def test_a_frame_sets_point_says_its_run_and_itself(junction):
     folder = run.attempt("device")
     _index, rows = _run_index(run, "device", 0)
     me = rows[-1]
-    watched = WatchedRun(names=names, run=0,
+    watched = WatchedRun(names=names,
                          directory=RunPlace.of(folder).point(me["rel"]),
                          launched_in=folder)
     now = time.time()

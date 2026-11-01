@@ -1008,14 +1008,14 @@ def test_a_note_that_looks_like_a_trailer_stays_in_the_note(calc):
 
 
 # ------------------------------------------------------------------ #
-#  S5 — identity is calculation-level, the run index is not           #
+#  S5 — identity is calculation-level, the run folder is not          #
 # ------------------------------------------------------------------ #
 
 
 def test_the_calculation_is_named_the_same_however_many_runs_appear(staged):
     """S5, in the half checkpointing owns and can answer today.
 
-    *"Identity is calculation-level; the run index is invocation-level.
+    *"Identity is calculation-level; the run folder is invocation-level.
     Nothing about a run may change the id, or the files it produced would be
     orphaned by the act of producing them."*  Attempts come and go inside the
     folder -- `run-0`, `run-1`, more added later -- and every state must still

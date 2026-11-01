@@ -417,7 +417,9 @@ def calls_made(calls: Path):
 # stage the template alone describes.
 #
 # AFTER PREP, whatever it answered: the folders it left (`made`, paths
-# under the calculation that exist; `made_lacks`, ones that do not), the
+# under the calculation that exist; `made_lacks`, ones that do not;
+# `made_says`, `{path: lines}` -- a file it made and the lines it holds,
+# read as `run_sh`'s are), the
 # files it left as they were (`kept`: paths under the calculation whose
 # bytes and write time are the same before and after the row's prep), every
 # file the Task setup card names for a stage on disk as it names it
@@ -701,7 +703,7 @@ def _road_launched(case, bundle) -> None:
         names = home.names
         where = attempt_dir(home.dir, attempts_in(home.dir)[-1])
         write_launch(where, mode="direct",
-                     command=["bash", names.stem + ".run.sh", "--run", "0"])
+                     command=["bash", names.stem + ".run.sh"])
 
 
 def _road_changed(case, bundle) -> bool:
@@ -841,6 +843,9 @@ def _road_after_prep(case, bundle) -> None:
             f"{where} was not made: {sorted(p.name for p in bundle.iterdir())}"
     for where in case.get("made_lacks", []):
         assert not (bundle / where).exists(), f"{where} was made"
+    for where, lines in case.get("made_says", {}).items():
+        _road_lines({"made_says": lines}, "made_says",
+                    (bundle / where).read_text())
     if "card_written" in case:
         _road_card_written(case["card_written"], bundle)
     if "progress_log_holds" in case:
@@ -912,22 +917,27 @@ def _road_card_written(specs, bundle) -> None:
 
 def history_is_the_runs_own(out: Path, label: str) -> None:
     """A SIESTA run's history is its own (`job-contracts.md` § 2.2): SIESTA's
-    own name for it, ``<label>.MD.nc``, not left in the folder once the engine
-    has exited; and the run's ``<label>_<stage>-run<N>.MD.nc`` beside its
-    output ``out``, which the output's frames are upgraded from, each row a
-    step of that output in its order -- but the last, a move the run stopped
-    before evaluating (`model/parse.md` § 5a: row k is the geometry after
-    move k+1).  A run that made no move -- relaxed at its first step --
-    writes none, and its output is paired with nothing."""
+    ``<label>.MD.nc``, under SIESTA's name in the run's own folder -- the one
+    its output ``out`` lies in -- as the run door finds it
+    (`Run.on_label`), and the one the output's reader pairs the output with
+    and upgrades its frames from (`siesta_mdnc.sibling_md_nc`, by the label
+    the output prints); and it holds this run's steps alone, each row a
+    step of that output in its order -- but the last, a move the run
+    stopped before evaluating (`model/parse.md` § 5a: row k is the geometry
+    after move k+1) -- never an earlier run's, since no hand-over copies a
+    history into a new run.  A run that made no move -- relaxed at its
+    first step -- writes none, and its output is paired with nothing."""
     from molbuilder.parse import parse
     from molbuilder.parse.engines.siesta_mdnc import align_to_reference
-    assert not (out.parent / f"{label}.MD.nc").exists(), (
-        f"SIESTA's own name for the history is still in {out.parent}")
-    own = out.with_name(out.name[:-len(".out")] + ".MD.nc")
+    from molbuilder.runs import run_of
+    own = run_of(out.parent).on_label(".MD.nc")
     got = parse(str(out))
-    if not own.is_file():
+    if own is None:
         assert "mdnc_source" not in got.runtime_info, got.runtime_info
         return
+    assert own == out.parent / f"{label}.MD.nc", (
+        f"the run's history is {own}, not SIESTA's own name in the run's "
+        f"folder")
     assert got.runtime_info.get("mdnc_source") == own.name, got.runtime_info
     rows = parse(str(own)).frames
     matched = [j for j in align_to_reference(got.frames, rows)

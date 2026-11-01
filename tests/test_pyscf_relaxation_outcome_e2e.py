@@ -111,12 +111,11 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     row = next(iter(jobset_status(open_calculation(bundle)).stages))
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import FIRST_TRY
     from molbuilder.runs import run_of
     ran_in = latest_attempt(stage_home(bundle, task, stage.name).dir)
     assert ran_in is not None, sorted(p.name for p in bundle.rglob("*"))
     run = run_of(ran_in)
-    log = run.file(".pyscf.log", FIRST_TRY)
+    log = run.file(".pyscf.log")
     assert log is not None, sorted(p.name for p in ran_in.iterdir())
     return run, row.state, log.read_text(errors="replace")
 

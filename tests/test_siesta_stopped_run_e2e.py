@@ -7,8 +7,9 @@ linear mixing at weight 0.001 against a DM tolerance of 1e-8, set in the
 calculation's template, with ``SCF.MustConverge`` left at SIESTA's default --
 abort.  SIESTA prints
 ``SCF_NOT_CONV: ... (required)`` and ``die``s, and ``die`` writes its own
-cascade after it; the run script retries once, warm, as try 1
-(`running-a-job.md` § 3.5), and try 1 stops the same way.
+cascade after it; the run ends there, failed, and the run script says what a
+launch again will do (`running-a-job.md` § 3.5: to continue is to launch
+again).
 
 What each reader must say (`running-a-job.md` § 4.2, `model/parse.md` § 2b):
 the folder is ``failed``, its detail quoting the line that stopped it -- the
@@ -142,7 +143,7 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         _LAUNCH["coarse"] = _jobset("launch", "task", "--stage", "coarse",
                                     "--bundle", str(bundle),
                                     "--mode", "direct", "--foreground", "--yes")
-        assert run_of(attempt).outputs, \
+        assert run_of(attempt).stdout is not None, \
             sorted(p.name for p in attempt.iterdir())
         yield attempt
     finally:
@@ -164,13 +165,10 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     st = run_status(stopped, "H2_01_coarse")    # the run's stem
     assert st.state == "failed", st
     assert st.detail.startswith("stopped before its end: SCF_NOT_CONV"), st
-    # the latest try speaks -- the warm retry's -- and the one before it
-    # stopped the same way
-    assert st.active_source == "H2_01_coarse-run1.out", st
-    for name in ("H2_01_coarse-run0.out", "H2_01_coarse-run1.out"):
-        end = st.endings[name]
-        assert (end.run_state, end.cause) == ("stopped",
-                                              SCF_NOT_CONV_MARKER), end
+    # the run's one output speaks, stopped on the SCF
+    assert st.active_source == "H2_01_coarse.out", st
+    end = st.endings["H2_01_coarse.out"]
+    assert (end.run_state, end.cause) == ("stopped", SCF_NOT_CONV_MARKER), end
 
     said = _LAUNCH["coarse"]
     assert said.exit_code == 1, said.output
@@ -218,19 +216,6 @@ def test_status_says_what_launching_it_again_does(after_the_stop):
         assert words in r.output, (words, r.output)
 
 
-def test_the_retry_hears_an_scf_stop_and_no_capped_relaxation(stopped):
-    """What the wrapper's two retries ask of a run (`running-a-job.md`
-    § 3.5), answered by the ending reader on this run's own outputs: each
-    stopped on the SCF -- the retriable case on the non-zero branch -- and
-    neither is a relaxation out of moves."""
-    from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
-    from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
-    for name in ("H2_01_coarse-run0.out", "H2_01_coarse-run1.out"):
-        end = ending_of(stopped / name)
-        assert QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER), (name, end)
-        assert not QUESTIONS["relaxation-capped"](end), (name, end)
-
-
 def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
                                                          monkeypatch):
     """The viewer's "Reason:" line is the server's: the file's cause as the
@@ -254,9 +239,8 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
 
     app = create_app(config={})
     diagnostics.set_capabilities(_Root())
-    from molbuilder.runfiles import FIRST_TRY
     from molbuilder.runs import run_of
-    out = run_of(stopped).file(".out", FIRST_TRY)
+    out = run_of(stopped).stdout
     body = app.test_client().post("/api/watch/load",
                                   json={"path": str(out)}).get_json()
     assert body["ok"] is True, body
@@ -264,27 +248,25 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
     assert body["data"]["stop_reason"] == CAUSE_WORDS[SCF_NOT_CONV_MARKER]
 
 
-def test_each_try_is_paired_with_its_own_session_log(stopped):
-    """Each start of the run script -- each try -- writes its own session
-    log, and the warm retry hands back the output it was started with before
-    it starts again, so try 0's log holds try 0 alone and try 1's holds try 1
-    (`running-a-job.md` § 3.5) -- each found as its try's, the pairing the
-    run record and ``run_status`` both use (`wrapper_log.logs_by_run`).
+def test_the_run_is_one_start_that_says_what_a_launch_again_does(stopped):
+    """A run is one start (`project-layout.md` § 1.6.1): its one session
+    log, named on the stage's stem, found as the run's -- the log the run
+    record and ``run_status`` read (`wrapper_log.log_of_run`) -- holds that
+    start alone; and, the SCF having stopped it, the run script ends it
+    saying what a launch again will do: continue warm from the files this
+    run saved (`running-a-job.md` § 3.5).
 
-    MUTATION THIS MUST FAIL AGAINST: the retry re-execs with its output
-    still going to the first log -- try 0's log holds try 1's section too."""
-    from molbuilder.wrapper_log import log_of_run, read_wrapper_log
+    THE SILENT FAILURES: the run script starting the engine a second time
+    in the folder; a failed run that leaves the person no word of how to
+    continue it."""
+    from molbuilder.wrapper_log import WRAPPER_LOG_START, log_of_run
 
-    first = log_of_run(stopped, "H2", 0, "01_coarse")
-    second = log_of_run(stopped, "H2", 1, "01_coarse")
-    assert first is not None and second is not None and first != second, (
+    log = log_of_run(stopped, "H2", "01_coarse")
+    assert log is not None and log.name == "H2_01_coarse.runwrap.log", (
         sorted(p.name for p in stopped.iterdir()))
-    for log, run in ((first, 0), (second, 1)):
-        sections = read_wrapper_log(log.read_text(errors="replace"))
-        assert [s.get("run_index") for s in sections] == [run], (
-            log.name, sections)
-    assert log_of_run(stopped, "H2", 2, "01_coarse") is None
-    assert log_of_run(stopped, "H2", 0, None) is None
+    text = log.read_text(errors="replace")
+    assert text.count(WRAPPER_LOG_START) == 1, text
+    assert "warm from the files this run saved" in text, text
 
 
 def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
@@ -321,10 +303,10 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
                                                          flask_server,
                                                          monkeypatch):
     """The Results tab's Run panel (`web/results.md` § 3a) reads this run's
-    record: closed, one line -- the engine, the ranks, how its latest try
-    ended (a try: one start of the run script in the run's folder, its files
-    numbered `-run<N>`); open, the verdict, the setup's three columns, the computation and
-    the deck, which opens in the sidebar's viewer.  It is hidden for a
+    record: closed, one line -- the engine, the ranks, how it ended (its one
+    ending: a run is one start, `project-layout.md` § 1.6.1); open, the
+    verdict, the setup's three columns, the computation and the deck, which
+    opens in the sidebar's viewer.  It is hidden for a
     container, and from the moment the panel is bound to another folder --
     a scan that fails announces nothing, so the old record must not stay.
 
@@ -353,7 +335,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     line = panel.locator(".rp-summary").inner_text()
     engine = record["computation"]["engine"]
     assert f"{engine['program']} {engine['version']}" in line, line
-    assert "1 rank" in line and "try 1 stopped" in line, line
+    assert "1 rank" in line and "stopped" in line, line
     assert "FAILED" in line.upper(), line
 
     panel.locator(".rp-toggle").click()
@@ -361,7 +343,6 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
                 for s in panel.locator(".rp-section").all()}
     assert list(sections) == ["Verdict", "Setup", "Computation", "Deck"]
     assert "stopped before its end: SCF_NOT_CONV" in sections["Verdict"]
-    assert "try 0: stopped" in sections["Verdict"]
     assert record["computation"]["host"]["hostname"] in sections["Computation"]
 
     # THE SETUP'S THREE COLUMNS, as the run recorded them: the catalogue

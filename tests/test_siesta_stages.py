@@ -169,9 +169,7 @@ def test_no_stage_carries_a_nonconvergence_policy():
                                        for f in dataclasses.fields(SiestaConfig)}
 
 
-def test_continue_retries_is_a_shared_field_not_a_stage_one():
-    """§ 3's other half: it passes both questions, so it is ordinary.
-    What made it look special is only where it lands (the wrapper)."""
-    assert "continue_retries" in {f.name
-                                  for f in dataclasses.fields(SiestaConfig)}
-    assert "continue_retries" not in {f.name for f in dataclasses.fields(Stage)}
+def test_the_siesta_form_has_no_stages_field_to_look_a_policy_up_in():
+    """If a SIESTA stage table is ever reintroduced, this fails and whoever
+    does it has to say what reads it."""
+    assert "stages" not in {f.name for f in dataclasses.fields(SiestaConfig)}

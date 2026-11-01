@@ -989,7 +989,7 @@ on. *(`MaxSCFIterations` read 500 here until 2026-08-16.)*
 | Scenario | SIESTA | PySCF |
 |---|---|---|
 | Resume from the last accepted step | `MD.UseSaveCG .true.` + `MD.UseSaveXV .true.` (keep CG history + geometry; `MD.UseSaveCG` is CG-only) | the geometry each step reached, kept in `_optimized.xyz` (written after every geomeTRIC step, as SIESTA's `.XV`), and `<JOB>.chk`, which a continuing rung reads (geometry and density) — so a rung stopped short, halted or killed, continues from where it got to; geomeTRIC's own step history starts afresh (`pyscf.md` § 3) |
-| Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile, or pass `runwrap`'s `--cold` / `--from-scratch` (resets the engine state too) |
+| Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile, or launch the stage again cold (`jobset launch … --cold`, which copies nothing — it resets the engine state too) |
 | Switch optimizer at a stage boundary | Broyden and FIRE keep no history file; the deck writes `MD.UseSaveCG` for a CG stage only, so the old `.CG` is not read | not applicable — geomeTRIC is the one optimizer |
 
 **Why keep CG history on a resume but reset on a tier switch.** CG's conjugate basis

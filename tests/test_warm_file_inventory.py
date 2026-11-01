@@ -47,7 +47,7 @@ ENGINES = (
 def _wrapper(tmp_path, ext, body, warm=None, **kw):
     """The wrapper of a run that STATES its shape -- one written for an
     unstated one is refused (`architecture.md` § 5.2) -- and carries the run
-    settings every job carries, its wall's slack and its retries
+    settings every job carries, its wall's slack
     (`engines/template.md` § 5.4), handed ``warm``, the restart files in
     effect, as prep hands it."""
     names = RunNames("job", "01_coarse")
@@ -55,15 +55,9 @@ def _wrapper(tmp_path, ext, body, warm=None, **kw):
     p.write_text(body)
     return runwrap.render_run_wrapper(
         p, names=names, env="molbuilder-siesta", warm=warm,
+        resumes=True, relaunch_continues=True, trial=False,
         resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1,
-                               "wall_slack": 600, "continue_retries": 1,
-                               **kw}))
-
-
-#: The generated comments that open the two blocks, in the order the wrapper
-#: emits them: the ``--cold`` mover first, the startup banner after it.
-_MOVER_HEADING = "--- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP"
-_BANNER_HEADING = "--- Runtime status banner"
+                               "wall_slack": 600, **kw}))
 
 
 # PySCF's run script: no basic-tier run starts it, so this lint is what

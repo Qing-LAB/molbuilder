@@ -2,10 +2,9 @@
 script, and survives a job-set file on the way.
 
 **Why the policy rides ``Resources``.**  It is not a scheduler ask and
-becomes no ``sbatch`` directive — like ``continue_retries``, which the class
-docstring keeps there deliberately: *"this is the road every field the deck
-never carries already rides… the alternative was a second, hand-maintained
-road from a job to its wrapper."*  That road has lost a field to a
+becomes no ``sbatch`` directive — like the wall's slack: it is the road
+every field the deck never carries already rides, and the alternative was a
+second, hand-maintained road from a job to its wrapper.  That road has lost a field to a
 hand-copied argument list twice (``max_memory_mb``, then the ranks/cores
 pair), which is the whole argument for not opening a third one.
 

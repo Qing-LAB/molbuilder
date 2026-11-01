@@ -61,15 +61,15 @@ class ResolveError(Exception):
 #: One list, so the split is a lookup rather than a judgement.
 #:
 #: Named for the allocation and **not** "machine axes", because the two are not
-#: the same set: ``continue_retries`` rides on ``Resources`` as the exchange
-#: struct to the wrapper, but it is a retry *policy* and names no machine -- a
-#: run setting the cards state. The split this list drives is *"where does
-#: this value go"*, which is exactly the allocation's shape.
+#: the same set: ``wall_slack`` rides on ``Resources`` as the exchange struct
+#: to the wrapper, but it names no machine -- a run setting the cards state.
+#: The split this list drives is *"where does this value go"*, which is
+#: exactly the allocation's shape.
 #: The riders: fields that travel ON ``Resources`` without being machine
 #: axes (`execution/gpu.md` G7: ``use_gpu`` is also the bench's grid-family
 #: axis, so it must reach the config that renders the deck).
 #:
-#: ``continue_retries`` and ``use_gpu`` land on the VALUES, and `resolve`
+#: ``wall_slack`` and ``use_gpu`` land on the VALUES, and `resolve`
 #: copies them onto the allocation afterwards -- which is how one value
 #: legitimately reaches both the deck and the wrapper without being two facts.
 #: ``notify_*`` ride ``Resources`` to reach the wrapper and name no machine;
@@ -719,20 +719,10 @@ def resolve(template_text: str, task, config_cls, *,
                 if getattr(resources, field_, None) not in (None, "")
                 else "default")
         # § 6.2's translation boundary (job-contracts.md): floor 3 maps
-        # config → exchange HERE, and ``continue_retries`` is the one
-        # rider a run card states (a retry POLICY, not a machine fact —
-        # ALLOCATION_FIELDS' own note).  An
-        # explicitly stated allocation wins; otherwise the resolved
-        # config's answer rides the element, exactly as the § 6.2 row
-        # ("translated at resolve.py") describes.
-        if resources.continue_retries is None:
-            budget = getattr(values, "continue_retries", None)
-            if budget is not None:
-                resources = dataclasses.replace(resources,
-                                                continue_retries=budget)
-        # THE WALL SLACK RIDES THE SAME WAY (`running-a-job.md` § 3.6): the
-        # run card's value, else the catalogue's default, onto the job for
-        # its wrapper.
+        # config → exchange HERE.  THE WALL SLACK (`running-a-job.md` § 3.6),
+        # the rider a run card states: an explicitly stated allocation
+        # wins; otherwise the run card's value, else the catalogue's
+        # default, rides the element for its wrapper.
         if resources.wall_slack is None:
             slack = getattr(values, "wall_slack", None)
             if slack is not None:

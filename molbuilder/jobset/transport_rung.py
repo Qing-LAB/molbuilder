@@ -92,7 +92,7 @@ def resolve_transport(task, stage: str, allocation, *, template_text,
     a pin set it, which is the whole of what the pipeline log had nothing to
     print.
 
-    THE RESOURCES RIDE ON THE ELEMENT: `resolve` folds ``continue_retries``
+    THE RESOURCES RIDE ON THE ELEMENT: `resolve` folds ``wall_slack``
     and ``use_gpu`` onto each element's resources, both config answers that
     the WRAPPER reads.
     """

@@ -551,19 +551,19 @@ def written_as_ended(folder, label: str, files) -> Dict[str, str]:
     at or after the second the run's monitor closed -- the monitor log's
     closing record (`parse/instruments/monitor.py`, ``ended_at``), read
     through the registry -- a file a scheduler's kill may have caught
-    mid-write.  The log is the newest try's of ``label``'s in the folder.
-    Empty where no monitor closed, or every file was written before.  A
+    mid-write.  The log is ``label``'s run's in the folder.  Empty where no
+    monitor closed, or every file was written before.  A
     fact shown, never a veto."""
     from datetime import datetime
     from .. import runfiles as _rf
     from ..parse import detect
     folder = Path(folder)
-    logs = sorted(_rf.find(folder, label, role=".monitor.log"),
-                  key=lambda pr: (pr[1].run is None, pr[1].run or 0))
+    logs = _rf.find(folder, label, role=".monitor.log")
     if not logs:
         return {}
+    log = logs[0][0]
     try:
-        at = detect(str(logs[-1][0])).parse(logs[-1][0]).metrics.get("ended_at")
+        at = detect(str(log)).parse(log).metrics.get("ended_at")
         end_s = datetime.fromisoformat(at).timestamp() if at else None
     except Exception:                       # noqa: BLE001 -- an unreadable
         return {}                           # log says nothing

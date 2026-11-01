@@ -217,7 +217,7 @@ bdt-relax/                           the folder: the user typed this name
 ├── 01_coarse/                       │
 │   ├── BDT_Au_relax_01_coarse.fdf      │
 │   └── run-0/                       │
-│       ├── BDT_Au_relax_01_coarse-run0.out  ┘
+│       ├── BDT_Au_relax_01_coarse.out   ┘
 │       ├── BDT_Au_relax.XV            small → git
 │       ├── run.json                   small → git
 │       └── BDT_Au_relax.DM            large → the archive
@@ -826,17 +826,11 @@ because that launch changes the folder — it copies in what the group takes —
 and its state is the one a redo of the group restores; a launch again opens a
 new run beside the old and saves nothing.
 
-> **The launcher points here; it does not act** *(user, 2026-08-18)*. A run
-> started with `--cold` removes the prior state before the engine starts. The
-> wrapper names those files, tells you to run `molbuilder checkpoint save`,
-> and **exits without changing anything**; `--force` removes them. That is the shape § 9 requires and a queue tolerates: a
-> refusal fails the job immediately with the reason in the log, where a prompt
-> would hang.
->
-> It used to *move* the files into a timestamped folder of its own instead —
-> preserving a state without being asked, under a name this document has never
-> heard of. Two mechanisms for keeping a state is one too many, and the one
-> that keeps it is this one.
+> **A run keeps no state of its own accord, and removes none.** A cold run is
+> a new run folder — `jobset launch --cold` copies nothing into it — and every
+> earlier run stays as it was ([`project-layout.md`](?doc=execution/project-layout.md)
+> § 1.5, § 1.6.1). Keeping a state is this tool's, at the moments above, and
+> never during a run.
 
 **Something already watches the run, and it is not this.** The monitor
 (`mb_monitor.pyz`) sits beside the job, knows the run has ended when its PID goes
@@ -1423,7 +1417,7 @@ launch and no run may edit `task.json` or `job-request.json`.
 
 - **Test:** hash it before and after.
 
-**S5 — identity is calculation-level; the run index is invocation-level.** Nothing
+**S5 — identity is calculation-level; the run folder is invocation-level.** Nothing
 about a run may change the id, or the files it produced would be orphaned by the
 act of producing them.
 

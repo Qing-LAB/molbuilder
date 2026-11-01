@@ -649,7 +649,7 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     from molbuilder.monitor import WatchedRun
     from molbuilder.parse.engines.siesta_grammar import output_part
     from molbuilder.parse.engines.siesta_reader import SiestaReader
-    from molbuilder.runfiles import FIRST_TRY, find
+    from molbuilder.runfiles import find
     from molbuilder.siesta import vibration_phases as vp
     from molbuilder.task import of as task_of
     from molbuilder.runrecord import stamp_time
@@ -684,8 +684,7 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     # THE MEMBER MONITOR, as the call's run script starts it -- the run's
     # folder found by its folder's record -- read once the call has ended.
     names = stage_home(run.bundle, task, "freq").names
-    watched = WatchedRun(names=names, run=FIRST_TRY, directory=call,
-                         launched_in=folder)
+    watched = WatchedRun(names=names, directory=call, launched_in=folder)
     now = time.time()
     st = watched.read(now - 1.0, now)
     text = st.as_text()

@@ -65,12 +65,11 @@ does not restate them; it explains how to *operate* them.
 ## 2. The standalone contract — a wrapper that runs anywhere
 
 > **The wrapper's own files are named by `runfiles` too** — its stdout, its
-> session log, the monitor's pair, the SCF timing log, the conclusion marker.
-> All but the session log, which carries its start's stamp, carry the try's
-> number, and `-run<N>` is not a literal anywhere: it is the one keyword `runfiles.QUALIFIERS` declares, so a
-> second counter is a line there rather than an edit to whatever reads names.
-> See [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a, *"Which
-> door to call"* (rule **A14**).
+> session log, the monitor's pair, the SCF timing log, the conclusion marker —
+> each once, on the stage's stem: a run folder holds one start
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1), so no
+> name carries a counter. See [`job-contracts.md`](?doc=execution/job-contracts.md)
+> § 2.2a, *"Which door to call"* (rule **A14**).
 
 The single most important property of a generated run is that the wrapper is
 **self-contained at runtime**: it reads no config, probes no toolchain, and has
@@ -186,13 +185,6 @@ stating because it is easy to break by accretion.
 > reports on the run it started — its output, its monitor, how it ended. It
 > creates no directory and arranges no file: that is Python's, on the host,
 > before the wrapper is invoked.**
->
-> **Naming the run's output is the one thing it lays down beside the engine**,
-> because only the run knows its number — a warm retry's is decided on the
-> node: its stdout, through the tee, and SIESTA's history, whose name SIESTA
-> takes from its label — the run script points that name at the run's own
-> file while the engine runs and removes the pointer when it exits
-> ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2, § 2.6).
 
 **Why bash at all:**
 
@@ -203,7 +195,8 @@ stating because it is easy to break by accretion.
   inherit the activated environment and sit in the process tree where signals
   and scheduler accounting expect them.
 - **The shell must outlive the engine.** The engine is run, not `exec`'d
-  (§ 2.0a), so the wrapper can read its exit code, decide a warm retry (§ 3.5),
+  (§ 2.0a), so the wrapper can read its exit code, say how the run ended
+  and what a launch again will do (§ 3.5),
   **finish the calculation when the engine alone leaves no result** — each
   point of a run of points runs its report steps with `mb_monitor.pyz` on
   the job's own python, which run the kind's own steps in their place: a
@@ -220,14 +213,13 @@ needs the activated environment. It is Python's.
 
 **The test, when adding to a wrapper:** *does this need the activated shell, or
 this run's own ending?* If it computes, decides or arranges anything else, it
-belongs upstream. Two decisions are made on the node, each because only the
-node can answer it: the warm retry, which only this run's ending can make —
-and the wrapper asks the framework's reader for that ending rather than
-grepping for it (§ 3.5) — and, for a job with a finish, whether the finish
-can run on the job's python, which only the activated environment can say
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5). The finish
-itself passes the same test: it needs the activated environment and this
-run's own output.
+belongs upstream. One question is answered on the node because only the
+node can answer it: for a job with a finish, whether the finish can run on
+the job's python, which only the activated environment can say
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5). How the run
+ended it asks the framework's reader rather than grepping for it (§ 3.5),
+and says; it decides nothing from it. The finish itself passes the same
+test: it needs the activated environment and this run's own output.
 
 > **Nothing arrives at a run directory needing to be resolved.** What a stage
 > continues from is a **real file, copied in at its first launch** from the run it takes
@@ -258,7 +250,7 @@ place for logic:
   site's activation can leave ahead of the env's (`source activate` under a
   mamba 2.x module, Sol) — and logs it (`job python:`). Every python the job
   runs is that one: the monitor, the ending reader, a finish, a PySCF deck.
-  Once the try's number is known, every job checks, before anything starts,
+  Once its arguments are read, every job checks, before anything starts,
   that `CONDA_PREFIX` names its env and that python is there; otherwise it
   stops, saying which, its conclusion `no env python (<path>)`
   (`parse.dirs.job.NO_ENV_PYTHON`). The activation forms are conda's
@@ -312,7 +304,7 @@ The env **names** are overridable per category in `molbuilder.json` (`envs`,
 [`configuration.md`](?doc=configuration.md) § 4's — `diagnostics.DEFAULT_ENV_NAMES`.
 The host env is always `molbuilder` (§ 2.1c there).
 
-> The wrapper file shapes (`.run.sh` inner + `.sbatch` outer), the run-indexed
+> The wrapper file shapes (`.run.sh` inner + `.sbatch` outer), the run's
 > output names, and warm/cold restart are defined in
 > [`execution/job-contracts.md § 2.6, § 4`](?doc=execution/job-contracts.md).
 > The sections below cover the *runtime behaviour* those files carry out.
@@ -490,122 +482,83 @@ sources recommend, and how to design a benchmark matrix around it — is
 
 | Flag | Engines | Effect |
 |---|---|---|
-| `--run N` | both | **the try's number** — `0` from `launch`, which gives every run script it starts one, the next from a warm retry (§ 3.5; [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, § 5.5 below); every file the try writes carries it as `-run<N>`. Without one — missing, or `--run` given no whole number — the script refuses to start, exit 2, naming the launch command; `-h` answers without one |
-| `--continue` / `-c` | both | this start continues the try before it — a warm retry's (§ 3.5) — and the banner says so; whether the engine reads the warm files (`.DM`/`.CG`/`.XV`, `.chk`) is the deck's to say. The try's number is `--run`'s |
-| `--force` / `-f` | both | what says *yes, overwrite* to `--cold`'s refusal |
-| `--cold` / `--from-scratch` | both | start the engine from the deck alone, **removing** the prior state it names first (§ `job-contracts § 4`). Names the files and **refuses**; `--force` removes them — but under `--dry-run`, which changes nothing: it names them and says nothing was removed |
 | `-np` / `--np N` | both | SIESTA: override MPI ranks. PySCF: accepted, and anything but 1 is said to be ignored — PySCF is OpenMP-only |
 | `-omp` / `--omp N` | both | override OMP threads (SIESTA also takes `-t` / `--threads N`) |
 | `--mps` / `--no-mps` | SIESTA (GPU) | allow / forbid MPS; it starts only where the ranks outnumber the GPUs (§ 3.3) |
 | `--dry-run` | both | print the resolved launch command + rank→GPU/NUMA map, then exit 0 |
 | `-h` / `--help` | both | usage |
 
-> **`--cold` refuses before it overwrites, and that is the whole of the safety
-> net.** It prints every file the run would overwrite, tells you to save the
-> state first with `molbuilder checkpoint save`, and exits 1 having changed
-> nothing. Run it again with `--force` and the same list is printed and the run
-> proceeds. It *moved* those files into a timestamped `…-restart-aside-<UTC>/`
-> folder until 2026-08-18; keeping a state is the checkpoint tool's job and it
-> is never automatic ([`checkpointing.md § 2`](?doc=execution/checkpointing.md)).
->
-> It works the same under `sbatch`: a refusal fails the job immediately with the
-> reason in the log, where a prompt would simply hang.
+**The run script takes no run number and starts once** — what it starts from
+is what launch put in its folder: warm, the restart files launch copied in;
+cold, `jobset launch --cold`, none ([`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 4.1). Started in a folder that already holds a start — its session log —
+it refuses, naming `jobset launch`, which opens the next run
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1).
 
 Unrecognised arguments are **rejected** (the wrapper exits 1) — only the flags
 above are accepted, for either engine. The `.sbatch` outer file forwards
 `"$@"`, so a flag on the line that sends it — `jobset launch`'s, or the one
 its own comment prints — still reaches the inner wrapper.
 
-### 3.5 SIESTA auto-retry on non-convergence
+### 3.5 A run that did not finish what it set out to do — how it ends, and how it is continued
 
-A SIESTA wrapper **re-runs itself warm**, in the same run folder, with
-`--continue` and the next try's number (`--run N+1`), when its try ended in
-one of two ways a warm restart can fix. The budget is the run card's
-`continue_retries` (*Warm-retry budget*, 0–5, default 1; a run setting, in
-`job-request.json`, never the template's — `engines/stages.md` § 3), carried on
-`Resources` (`job-contracts.md` § 6.2) and bounded by the exported
-`MB_RETRY_N`; a benchmark trial's is `0`, one try whatever happens. **A
-TBtrans run is never retried**: it runs no SCF and no relaxation, so neither
-ending below can occur, and its script carries no retry and says so on its
-banner's retry line whatever the budget *(F19b: it promised retries on
-non-convergence)*.
+A run is one start ([`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.1): the engine runs once in its folder, and the run concludes once.
+The wrapper **asks how it ended, never greps**: `_mb_ending` runs
+`"$_mb_py" mb_monitor.pyz ending` over the output and SIESTA's stderr
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6,
+`run-reports.md` § 2.3).
 
-| the try ended | SIESTA shows it by | the wrapper asks | the retry resumes from |
-|---|---|---|---|
-| its SCF did not converge, and SIESTA stopped on it | `SCF_NOT_CONV: … (required)`, then a nonzero exit (`SCF.MustConverge`: SIESTA's default, false in a benchmark trial's deck) | `_mb_ending stopped-by scf_not_conv` | the banked `.DM`, with a fresh SCF budget |
-| it stopped at its wall (§ 3.6) | `OUT_OF_TIME: Time is up.`, after saving `.DM`/`.XV` | `_mb_ending stopped-by out_of_time:` — **never retried**: no time is left, and the next launch continues from the saved files | — |
-| a relaxation used all its moves, unconverged | exit 0, and `outcoor: Final (unrelaxed) atomic coordinates` (a converged one prints `Relaxed…`) | `_mb_ending relaxation-capped` | the banked `.XV`/`.DM`/`.CG`, with a fresh step budget |
+| the run | SIESTA shows it by | it ends |
+|---|---|---|
+| its SCF did not converge, and SIESTA stopped on it | `SCF_NOT_CONV: … (required)`, then a nonzero exit (`SCF.MustConverge`: SIESTA's default, false in a benchmark trial's deck) | **failed** |
+| a relaxation used all its steps, unconverged | exit 0, and `outcoor: Final (unrelaxed) atomic coordinates` (a converged one prints `Relaxed…`) | **finished, not converged** — its convergence column says `geometry NO` (§ 4.2) |
+| it stopped at its wall (§ 3.6) | `OUT_OF_TIME: Time is up.`, after saving `.DM`/`.XV` | **failed** (stopped), its restart files saved |
 
-The wrapper **asks, never greps**: `_mb_ending` runs `"$_mb_py" mb_monitor.pyz
-ending` over the output and SIESTA's stderr (`run-reports.md` § 2.3). **Never
-retried**, because running again cannot fix it: a crash — `propor`'s
-`IMAX = 0` (§ 3.1a), any abort, or a tolerated non-convergence followed by
-one; a **diverged** SCF, whose retry resumes from the diverged density and is
-the same run again — the monitor warns instead (`model/parse.md` § 5d.6)
-*(not built — plan § 5t, P4: no divergence verdict or symptom is read yet, so a
-diverged SCF that SIESTA stopped reads as the first row's and is retried)*; and
-anything, when the ending cannot be read — `mb_monitor.pyz` not beside the
-job, not loading on the job's python, or not reading the output
-(`job-contracts.md` § 2.6; the log says so, once).
+**In every case the person continues it by launching the stage again** —
+`jobset launch`, which opens the next `run-<n>/` warm from this run's
+restart files ([`job-system.md`](?doc=execution/job-system.md) § 5.4,
+`Job.relaunch_continues`), or cold with `--cold`. Nothing on the compute
+node starts the engine a second time.
 
-**A run that cannot resume is retried as the budget says, and said to
-re-run.** SIESTA re-runs a force-constant run from its reference (undisplaced)
-step, reading back only the density it saved at that step
-(`save_density_matrix.F90`: every iteration of the reference step, no other;
-`m_new_dm.F90` reloads it before every displacement): an SCF that stopped the
-reference step continues from it with a fresh budget, and one that stopped at a
-displacement meets the same SCF again. The budget still travels — it is the
-person's call (`job-contracts.md` § 6.2), as it is for a stage described
-`clean` — and what changes is what the wrapper SAYS: the kind declares the fact
-(`warm-files.toml`, `resumes = false`,
-[`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a), `prep` bakes it
-into the run script it renders (`Job.resumes`; a SIESTA vibration's, each
-phase's own), and every wrapper text that speaks of a
-retry — the banner's retry line, the retry's message, a retried run's Mode
-line, the `--continue` help, the line after the budget, the line at the
-wall (§ 3.6) — says it from one description (`runwrap._retry_texts`), a point
-of a run of points told what its run's launch again does with it: the points
-done taken over, this one run again as its run's rule starts a point not
-done — a vibration's relaxation continues warm from its own last run, its
-other calls and a transport point start over
+**On a failure the run script prints what a launch again will do**, every
+engine's, from the facts the launch itself decides by, which `prep` bakes
+into it — whether the stage continues (`Job.relaunch_continues`: its kind
+resumes, `warm-files.toml`'s `resumes`, and it takes something from a run;
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) — and the
+deck's own restart answer: a stage that continues goes on warm from the
+files this run saved; a deck that reads no prior state (`restart: clean`)
+starts over from its own coordinates; a kind that does not resume — a
+PySCF vibration — or a stage that carries nothing from one run to the
+next — a transport electrode — starts over from its deck, nothing of this
+run copied in; a point of a run of points: the next launch takes the points
+done over and runs this one as its run's rule says — a vibration's
+relaxation continues warm from its own last run, its other calls and a
+transport point start over
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6,
-[`engines/transport.md`](?doc=engines/transport.md) § 2a.11). *(They called it a resume until
-2026-09-29 — the M11 review, SS-C3; the K6 review, R4/R5.)* *The divergence
-verdict that tells a diverged SCF from a slow one is built by plan § 5t.3's P4;
-until it lands every `SCF_NOT_CONV … (required)` stop is retried.*
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.11); a benchmark
+trial measures its point once, and its benchmark's launch does not start it
+again (`submit._plan_trial`). A stop at the wall says so first (§ 3.6).
+
+**A crash ends the run failed, and the wrapper says how**: `propor`'s
+`IMAX = 0`, with its causes in the order to check them (§ 3.1a), any abort,
+or a tolerated non-convergence followed by one. Launching again starts the
+same input again; what to change first is the person's. When the ending
+cannot be read — `mb_monitor.pyz` not beside the job, not loading on the
+job's python, or not reading the output — the log says so, once, and no
+hint is printed (`job-contracts.md` § 2.6).
 
 ```mermaid
 flowchart LR
     P["a point of a run of points:<br/>point started, its kind's before-step"] --> X["SIESTA exits"]
     P -->|"its before-step failed: no engine"| S
-    X --> Q{"how did it end?"}
-    Q -->|"stopped on SCF_NOT_CONV, not diverged"| B{"budget left?"}
-    Q -->|"a relaxation out of moves"| B2{"budget left?"}
-    Q -->|"a failure"| S["a point of a run of points:<br/>point ended, told the exit"]
-    S --> C["conclude: write -runN.concluded"]
+    X --> Q{"how did it end?<br/>(_mb_ending)"}
+    Q -->|"a failure: its words, the propor hint,<br/>what a launch again will do"| S["a point of a run of points:<br/>point ended, told the exit"]
+    S --> C["conclude: write &lt;stem&gt;.concluded"]
     Q -->|"a clean exit"| F{"a point of a<br/>run of points?"}
     F -->|"no"| C
     F -->|"yes: point ended -- its kind's after-step, the job's on failure;<br/>no point left, the run's finish"| C
-    B -->|"yes"| R["re-exec with --continue --run N+1"]
-    B -->|"no: say so"| S
-    B2 -->|"yes"| R
-    B2 -->|"no: say so, the run's end clean"| F
 ```
-
-**A retry stays in its run**: the wrapper re-execs itself in the same
-process and run folder, with the same `-np`/`--omp` and the next try's
-number (`-run0` → `-run1`,
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1), and only the
-last try writes the conclusion marker. The monitor is stopped with SIGUSR1,
-not an ending (§ 4.1). **Each try keeps its own session log**: the wrapper
-hands back the stdout and stderr it was started with before it re-execs, so
-the retry's output goes to its own log and to where the job's output goes,
-never into the try before it *(F19b, 2026-10-13: a retry's output went on
-into the first try's log, which held both)*.
-
-**A retry writes no record of its own**: the run's `run.json` answers
-for every try in it (`project-layout.md` § 1.6.3). Its line in the log reads
-*… (retry 1/1) as try 1, with --continue*.
 
 ---
 
@@ -635,7 +588,7 @@ channel; the engine stops once less than the slack is left:
 
 | engine | the channel | what the engine does |
 |---|---|---|
-| SIESTA, TranSIESTA | `-fdf MaxWalltime=<left>:s -fdf MaxWalltime.Slack=<slack>:s` on the command line, beside the deck — the words the catalogue's `wall_slack` item gives the program (`launch`, `template.md` § 5), never a line in the deck, which prep wrote before the launch stated the wall ([`engines/siesta.md`](?doc=engines/siesta.md) § 8.9) | checks the clock after every SCF iteration and every geometry step (`siesta_forces.F90`, `siesta_move.F`, 5.4.2) and, once less than the slack is left, saves its density and geometry, warns `SCF_NOT_CONV` or `GEOM_NOT_CONV`, and **dies with `OUT_OF_TIME: Time is up.`** — its own word for the stop (`siesta_grammar.OUT_OF_TIME_MARKER`). The run reads `failed`, the wall its cause in SIESTA's words; the wrapper does not warm-retry it (§ 3.5: no time is left); a launch again continues a single run from the files it saved, and starts a point of a run of points as its run's rule starts a point not done (§ 3.5) |
+| SIESTA, TranSIESTA | `-fdf MaxWalltime=<left>:s -fdf MaxWalltime.Slack=<slack>:s` on the command line, beside the deck — the words the catalogue's `wall_slack` item gives the program (`launch`, `template.md` § 5), never a line in the deck, which prep wrote before the launch stated the wall ([`engines/siesta.md`](?doc=engines/siesta.md) § 8.9) | checks the clock after every SCF iteration and every geometry step (`siesta_forces.F90`, `siesta_move.F`, 5.4.2) and, once less than the slack is left, saves its density and geometry, warns `SCF_NOT_CONV` or `GEOM_NOT_CONV`, and **dies with `OUT_OF_TIME: Time is up.`** — its own word for the stop (`siesta_grammar.OUT_OF_TIME_MARKER`). The run reads `failed`, the wall its cause in SIESTA's words; a launch again continues a single run from the files it saved, and starts a point of a run of points as its run's rule starts a point not done (§ 3.5) |
 | TBtrans | nothing: the item names no words for it, it checks no clock | runs to the wall |
 | PySCF | the deck reads `MB_WALL_S`, `MB_JOB_STARTED` and `MB_WALL_SLACK_S` from its environment and keeps a deadline ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3.9) | a relaxation stops at the first step past the deadline, keeps the geometry it reached (`_optimized.xyz`, as every step does) and ends normally with `# relaxed: no`; a vibration deck past the deadline before its spectrum is written stops with an error naming the wall, so the run reads `failed` with the reason and a launch starts it again |
 
@@ -649,10 +602,10 @@ the default slack:
 
 | where | the line | when |
 |---|---|---|
-| the session log (`<basename>.runwrap-<stamp>.log`, § 4.1), the run script's banner | `Wall          : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — a transmission's: `TBtrans checks no clock and runs to it (running-a-job.md 3.6)`; told no wall: `Wall          : none stated -- runs until done` | every start of SIESTA or TBtrans |
+| the session log (`<stem>.runwrap.log`, § 4.1), the run script's banner | `Wall          : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — a transmission's: `TBtrans checks no clock and runs to it (running-a-job.md 3.6)`; told no wall: `Wall          : none stated -- runs until done` | every run of SIESTA or TBtrans |
 | the session log | `wall: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` — what is left when SIESTA starts | a wall told, the program SIESTA |
 | SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
-| the session log, from the run script | `stopped at its wall (MaxWalltime): the restart state is saved; launch this stage again to continue` — the last clause says what a launch again does with this run, from the one description of it (§ 3.5, `runwrap._retry_texts`): a single run whose kind resumes, as shown; a point of a run of points — a vibration's call, a transport point — that the points done are taken over and this one is run again as its run's rule starts a point not done: a relaxation continues warm from its own last run, the other calls and a transport point start over ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11); a kind whose runs do not resume, that it re-runs from its first step | that stop — in place of a warm retry |
+| the session log, from the run script | `stopped at its wall (MaxWalltime): launch the stage again to continue warm from the files this run saved -- or, to change a setting, …` — in place of the line every other failure prints, `what a launch again will do: …`; the clause after the colon is that line's, from the kind's fact the run script carries (§ 3.5): a single run whose kind resumes, as shown; a point of a run of points — a vibration's call, a transport point — that the points done are taken over and this one is run again as its run's rule starts a point not done: a relaxation continues warm from its own last run, the other calls and a transport point start over ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11); a kind whose runs do not resume, that it re-runs from its first step | that stop |
 | the run's state (`jobset status`, the Results tab) | *failed* — `stopped before its end: OUT_OF_TIME: Time is up.` | that stop |
 | the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped and saved its restart state` (`siesta_grammar.CAUSE_WORDS`) — the cause alone; what a launch again does is the session log's line above | that stop |
 | a PySCF relaxation's output | `WARNING: stopped before the wall (the job's wall less its slack): the geometry reached is kept; launch this stage again to continue from it` — the last clause where launching again reads the geometry back (its `restart` is `continue`); then `# relaxed: no` in its trajectory log | the first step past the deadline |
@@ -718,12 +671,12 @@ as asked, and the person decides.
 | instrument | file | engines | written | read by |
 |---|---|---|---|---|
 | **run banner** — host, cwd, env, engine binary and version, launch mode, threading, GPU resources | the session log | both | before the engine starts | a person; the run record |
-| **session log** — the wrapper's stdout and stderr, SIESTA's stderr included, the engine's wall time on its `benchmark:` line, and the monitor's start — *starting*, then *started* or the error that stopped it ([`run-reports.md`](?doc=execution/run-reports.md) § 2.6) | `<basename>.runwrap-<stamp>.log`, one per start | both | from its first line | the run record; `_mb_ending` (§ 3.5) |
-| **the engine's stdout**, teed | `<basename>-runN.out` · `-runN.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
-| **monitor** — utilisation every 10 s, progress, notifications | `-runN.monitor.log` · `-runN.util.csv` | both | start to end | a person; the run record |
-| **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
+| **session log** — the wrapper's stdout and stderr, SIESTA's stderr included, the engine's wall time on its `benchmark:` line, and the monitor's start — *starting*, then *started* or the error that stopped it ([`run-reports.md`](?doc=execution/run-reports.md) § 2.6) | `<stem>.runwrap.log`, one per run | both | from the moment the launch-door gate lets the start through (§ 5.5) | the run record; `_mb_ending` (§ 3.5) |
+| **the engine's stdout**, teed | `<stem>.out` · `<stem>.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
+| **monitor** — utilisation every 10 s, progress, notifications | `<stem>.monitor.log` · `<stem>.util.csv` | both | start to end | a person; the run record |
+| **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `<stem>.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
 | **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
-| **conclusion marker** — exit code and time, and the words that say why where a step of ours stopped it: the job had no python of its env (`…; no env python (<path>)`), or a point's own step — its kind's step before its engine, or after a clean one ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3) — failed or could not run (`…; finish failed (<bundle> <verb>)`, `…; finish cannot load (<bundle>)`) | `-runN.concluded` | both | the wrapper's last act, main line only — after a point's `point ended`, when it is one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
+| **conclusion marker** — exit code and time, and the words that say why where a step of ours stopped it: the job had no python of its env (`…; no env python (<path>)`), or a point's own step — its kind's step before its engine, or after a clean one ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3) — failed or could not run (`…; finish failed (<bundle> <verb>)`, `…; finish cannot load (<bundle>)`) | `<stem>.concluded` | both | the wrapper's last act, main line only — after a point's `point ended`, when it is one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
 **The monitor** is `mb_monitor.pyz`, one file beside every deck, reading the
 run with the framework's own readers. What it reads, when it speaks (never
@@ -733,8 +686,8 @@ never the node — its lifecycle and its switches are all
 utilisation basis on a `[UTIL-BASIS]` line, to read before comparing two runs.
 
 **It is told *when* the run ended, and never reads that from the output**: the
-watched PID goes, or the wrapper stops it — SIGTERM at the job's end, SIGUSR1
-for a warm retry, which is not an ending (`run-reports.md` § 2.4). *How* it
+watched PID goes, or the wrapper stops it — SIGTERM at the job's end
+(`run-reports.md` § 2.4). *How* it
 ended is `run_status`'s answer. An ending phrase can print before the run is
 over (`siesta: Final energy`); a monitor that stopped on one would stop
 sampling a job still holding its CPUs.
@@ -748,15 +701,14 @@ each surface's words. A file's own ending is
 #### The call
 
 ```python
-run_status(run_dir, basename, *, launch=<not asked>, run=None, launched_in=None) -> RunStatus   # parse/dirs/job.py
+run_status(run_dir, basename, *, launch=<not asked>, launched_in=None) -> RunStatus   # parse/dirs/job.py
 ```
 
 | argument | meaning |
 |---|---|
 | `run_dir` | the attempt (`run-<n>/`) |
-| `basename` | the run's stem, `<label>_<token>` (`runfiles.stem`): a run folder may hold several tries' files |
+| `basename` | the run's stem, `<label>_<token>` (`runfiles.stem`): every file of the run is named on it |
 | `launch` | `launch_record(dir)` (`runrecord.py`) — the `run.json` dict, or `None`; one that does not read is an error naming the file, never an answer; left out, *not asked* |
-| `run` | the try asked about; left out, the run's newest (`runrecord.newest_run`) |
 | `launched_in` | the folder the launch record lies in when it is not `run_dir` — a run of points' one record, in the run's folder, answering for each point (`rundir.run_state_of` passes it; the scheduler's file is named from there) |
 
 | field | holds |
@@ -788,13 +740,14 @@ only once the process started; a progress log (`.molwatch.log`) speaks once its
 footer concludes, because prep seeds it before the engine starts. Each is read
 by its role's scan for ending markers, `_run_ending.ending_of`
 ([`model/parse.md`](?doc=model/parse.md) § 5.4) — not parsed through the
-registry. Of several, the newest try's speaks ([`model/parse.md`](?doc=model/parse.md)
-§ 5.1); a file's time decides nothing, because a copied or
-restored folder reorders times, never tries *(the newest mtime picked the
-file until 2026-10-04, plan B11)*. The try's number picks *which* file, never
-*whether* the run is alive — with the one bound a sent job's own wall gives
-(*Past its wall*, below): its own files' newest write older than that wall
-says the job is over, and nothing else about a time is judged.
+registry; the one that speaks is the run's `active_source`
+([`model/parse.md`](?doc=model/parse.md) § 5.1). A run holds one set of its
+files ([`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.1), so no time picks one — a copied or restored folder reorders
+times — and no time says *whether* the run is alive, with the one bound a
+sent job's own wall gives (*Past its wall*, below): its own files' newest
+write older than that wall says the job is over, and nothing else about a
+time is judged.
 
 #### The order of evidence
 
@@ -828,17 +781,14 @@ flowchart TD
 *Its end* is `>> End of run`, a PySCF deck's end line or a `# concluded:`
 footer; *a stop* is a fatal marker, a Python traceback, an `# error:` footer or
 an out-of-memory line (`model/parse.md` § 2b) — for a SIESTA run, in its output
-or in the stderr its wrapper kept, the session log whose first section is the
-run: a rank other than 0 that dies may say why only there. The detail quotes
+or in the stderr its wrapper kept, the run's session log: a rank other than 0 that dies may say why only there. The detail quotes
 the line.
 
 **Whether the run ended on its own is one door's answer**, `runrecord.ending`
 ([`architecture.md`](?doc=execution/architecture.md) § 3.2), the same for
-status, every hand-over and launch: molbuilder's conclusion marker, counted
-only at the run's newest try, the highest index its files reached
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) — an earlier
-one, beside a newer output, is an earlier try's goodbye. Nothing else
-answers: SIESTA's own `0_NORMAL_EXIT` says the engine ended, not the job
+status, every hand-over and launch: molbuilder's conclusion marker, the
+run's one ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
+Nothing else answers: SIESTA's own `0_NORMAL_EXIT` says the engine ended, not the job
 *(it answered for a run started by hand until 2026-10-03)*. **Finished is a run that ended on its own with exit code 0;
 failed, one that ended with any other** — or whose output states a stop.
 **An output that states its end is not a run that ended**: the job may still
@@ -846,7 +796,7 @@ be on its way out — a finish deriving its result, the wrapper's last lines —
 so it reads `running` until it concludes, and `failed` once its scheduler's
 own line says it ended the job, or the monitor's closing record says the
 process went without concluding. The monitor's closing record —
-`[MONITOR] job ended` in the latest run's `-runN.monitor.log`
+`[MONITOR] job ended` in the run's `<stem>.monitor.log`
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2.5) — speaks wherever
 the conclusion and the scheduler are silent: the process went, and nothing
 recorded an exit. *(Until 2026-10-03 the output's end decided first: a run
@@ -900,7 +850,7 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result — **where the run is**, in the reading pass's words where its output states it (`model/parse.md` § 2b, `doing`): *running · negf SCF iteration 12*, and until a device's first SCF row its set-up, *running · computing the R lead's surface Green's function (estimated 49.170 GB)* — the same words the monitor's status line says; a sent run's bare *running* says too how long since the job itself last wrote, *running · last wrote 2 h 10 min ago*: the one fact a folder gives where its scheduler cannot be asked · *the scheduler lists it: PENDING (Requeue)*, a requeued job past the wall rule's bound, on the machine it was sent to |
 | `finished` | ended, exit 0 · concluded (rc=0 at …) |
 | `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · stopped before its end: the scheduler no longer listed job N (asked on *machine* at *when*); no exit recorded · the scheduler listed job N ended: *its words* (asked on *machine* at *when*) · stopped before its end: nothing was written for longer than its wall (*wall*; last write *when*), so the job is over; how it ended was not recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but its step after the engine failed (*the marker*); the session log says why · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; *its words* — finish cannot load (*bundle*), no env python (*path*)) before any output |
-| `not run` | a point of a run of points its ended walk never started: its own folder, read alone, holds no try of its own and its job is over — read *failed*, its run's end written once (`runs.concluded`), or read *queued* with its walk over as its run's row reads it — no job of this machine's list that holds its run going (`joblist.going_of`) and, where the walk started no point it walks itself (`runpoints.walk_began`), the walk ended before a point (`runs.ended_before_a_point`) — (`runs.state_of`, in the definition's words — *its run's walk ended without starting it*); why the walk passed it by is its run's rows' (`continuation.never_reached`) — *it builds on &lt;words&gt;, which failed* or *the walk ended before it reached this point* — what `status`, the ladder's row and the transport report say ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3, § 4.5) — never `failed`: it did not run |
+| `not run` | a point of a run of points its ended walk never started: its own folder, read alone, holds no start of its own (its session log) and its job is over — read *failed*, its run's end written once (`runs.concluded`), or read *queued* with its walk over as its run's row reads it — no job of this machine's list that holds its run going (`joblist.going_of`) and, where the walk started no point it walks itself (`runpoints.walk_began`), the walk ended before a point (`runs.ended_before_a_point`) — (`runs.state_of`, in the definition's words — *its run's walk ended without starting it*); why the walk passed it by is its run's rows' (`continuation.never_reached`) — *it builds on &lt;words&gt;, which failed* or *the walk ended before it reached this point* — what `status`, the ladder's row and the transport report say ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3, § 4.5) — never `failed`: it did not run |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so
@@ -960,7 +910,9 @@ does not have to be repeated; if not, just check time stamp")*:
   files in the folder. On the machine it was sent to the scheduler is asked
   for such a run too, and a job it still lists reads `running — the
   scheduler lists it: PENDING (…)`; from any other machine the wall rule
-  stands until the job writes again. Before the wall, the run stays
+  stands. When it starts again, its run script finds the folder holds a
+  start and refuses (`project-layout.md` § 1.6.1): the job ends without
+  running, and the stage is launched again — a run is one start. Before the wall, the run stays
   `running`, and its row says how long since the job last wrote — stalled
   or slow is yours to read, molbuilder states the fact. On a server the
   scheduler is asked at most once per ten seconds per job, however many
@@ -1006,9 +958,9 @@ stateDiagram-v2
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
 | the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, asked after it writes its closing record |
 
-The badge reads a **file** and the panel the **run**, so they can differ: a
-`-run0.out` that stopped reads Stopped while its warm retry keeps the attempt
-`running`.
+The badge reads a **file** and the panel the **run**, so they can differ: an
+`.out` that ends `>> End of run` reads Finished while the run, its wrapper's
+last lines or its finish still to come, reads `running`.
 
 #### Worked examples
 
@@ -1020,13 +972,13 @@ run goes:
 |---|---|
 | nothing more | `pending` — prepared, not launched (no run.json) |
 | `run.json`, `"job_id": "481923"` | `queued` — queued as job 481923 |
-| `bdt_01_coarse-run0.out`, no `>> End of run`, quiet for 40 minutes | `running` — running |
-| the `.out` ends `>> End of run`; `-run0.concluded` reads `rc=0 at …` | `finished` — ended, exit 0 |
-| the `.out` stopped on `SCF_NOT_CONV … (required)`; the warm retry's `-run1.out` is printing | `running` — `-run1.out` speaks: same stage, newer |
+| `bdt_01_coarse.out`, no `>> End of run`, quiet for 40 minutes | `running` — running |
+| the `.out` ends `>> End of run`; `bdt_01_coarse.concluded` reads `rc=0 at …` | `finished` — ended, exit 0 |
+| the `.out` stopped on `SCF_NOT_CONV … (required)`; the `.concluded` reads `rc=1 at …` | `failed` — stopped before its end: `SCF_NOT_CONV … (required)`; launching it again, warm or `--cold`, is yours (§ 3.5) |
 | killed at its wall: no ending in the `.out`, no `.concluded`; SLURM's `*** JOB 65999920 ON scc006 CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT ***` in `slurm.65999920.err`, which `run.json`'s `scheduler.stderr` names | `failed` — stopped by the scheduler: CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT (slurm.65999920.err); launching it again, warm or `--cold`, is yours |
 | stopped with no scheduler line, its monitor's closing record there | `failed` — stopped before its end: no ending in its output and no exit recorded |
-| no `.out` (SIESTA died before its first line); `-run0.concluded` reads `rc=1 at …` | `failed` — concluded (rc=1 at …) before any output |
-| `-run0.concluded` is there and does not read (unreadable, or not text) | `failed` — the run concluded, the wrapper wrote it, with an exit code no one can tell: `rc=? (… does not read: …)`, as an empty marker's `rc=?` (`runrecord.ending`) |
+| no `.out` (SIESTA died before its first line); the `.concluded` reads `rc=1 at …` | `failed` — concluded (rc=1 at …) before any output |
+| the `.concluded` is there and does not read (unreadable, or not text) | `failed` — the run concluded, the wrapper wrote it, with an exit code no one can tell: `rc=? (… does not read: …)`, as an empty marker's `rc=?` (`runrecord.ending`) |
 
 #### Which engine ran — `engine_of`
 
@@ -1203,10 +1155,11 @@ again) — then **shows the exact `sbatch` line and every value of the
 header it sends, and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips
 the question, never the output), records the attempt, and launches **one job
 per invocation** — a grouped bench one per resource shelf
-([`job-system.md`](?doc=execution/job-system.md) § 7). **It hands each run
-script its first try's number**, `--run 0`
+([`job-system.md`](?doc=execution/job-system.md) § 7). **It starts each run
+script with its counts alone**, `-np` and `-omp`
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a run
-script refuses to start without one, naming this door. The single-stage door
+script started in a folder that already holds a start refuses, naming this
+door, which opens the next run. The single-stage door
 asks too: `--time` may restate a submitted job's wall after `prep`'s
 printout, so the line as sent is seen only here. **A run here starts in the background**, its question offering the
 foreground, `--foreground` the waited-on run
@@ -1258,12 +1211,16 @@ the line** for a scheduler run — its kind's words, SLURM's `--export
 ALL,MB_LAUNCHED_BY=jobset-launch` ([`scheduler.md`](?doc=execution/scheduler.md)
 § 6a), which beats any site export policy.
 
-**Every `.run.sh` gates on that claim** before doing any work
-(`job-contracts.md` § 2.6, the Launch-door gate row):
+**Every `.run.sh` gates on that claim** before doing any work — once it
+has read its arguments (a help request answers there, an argument that does
+not read is refused) and found its folder holds no start (`job-contracts.md`
+§ 2.6, the Arguments, One start per run and Launch-door gate rows):
 
 ```mermaid
 flowchart TD
-    A[".run.sh starts"] --> B{"MB_LAUNCHED_BY set?"}
+    A0[".run.sh starts: its arguments read<br/>(-h answers · a bad one refused, exit 1)"] --> A1{"its folder holds a start?"}
+    A1 -- yes --> A2["refused, exit 2:<br/>launch the stage again"]
+    A1 -- no --> B{"MB_LAUNCHED_BY set?"}
     B -- "yes (jobset-launch · manual · bench-runner)" --> C["log: launched-by: &lt;value&gt;<br/>proceed"]
     B -- no --> D{"interactive terminal?"}
     D -- yes --> E["warn, ask y/N"]
@@ -1272,24 +1229,23 @@ flowchart TD
     D -- "no (nohup · cron · hand-sbatch)" --> G["log: launched-by: NONE -- refused<br/>exit 2, message names the door<br/>and the override"]
 ```
 
-**The verdict is in the job's own output log AND the runwrap log**: the
-wrapper opens its per-start log (tee) *before* the gate, so every outcome —
-proceed, manual yes, refusal — is a fact on disk even when nothing ran;
-under sbatch the `launched-by:` line also lands in the job's `.out`. Either
-log alone answers *"was this launched properly, run by hand on purpose, or
-refused?"* — and nothing can ever sit waiting on a prompt, because a
-non-interactive shell never prompts, it refuses (EOF at the prompt is a
-refusal too, with the same verdict line). Four edges repaired 2026-08-12
-(U10): the interactive **yes is `export`ed**, so the warm-retry re-exec of
-the same wrapper does not re-prompt mid-retry; EOF falls to the refusal
-instead of dying under `set -e` with no verdict; `-h`/`--help` is scanned
-**before** the gate and runs none of the bootstrap — asking what a script
-does needs neither a claim nor a working activation; and the refusal
-reaches the runwrap log as above. The deliberate manual form
-is `MB_LAUNCHED_BY=manual bash JOB.run.sh --run 0` (backgroundable), started
-in the run's own folder, `run-<n>/`, where launch copied it — the script
-needs its try's number by hand as well — and the value is logged so
-the choice is on record. *(`bench-runner` was the transitional
+**The verdict is in the job's own output**: under a scheduler the
+`launched-by:` line lands in the job's `.out`, by hand on the terminal, and a
+start the gate lets through opens the run's session log after it, so the line
+is there too (job-contracts.md § 2.6) — a refused start writes no session log,
+since it started nothing, and the folder stays free for the start it was
+opened for (`project-layout.md` § 1.6.1). Either place answers *"was this
+launched properly, run by hand on purpose, or refused?"* — and nothing can ever
+sit waiting on a prompt, because a non-interactive shell never prompts, it
+refuses (EOF at the prompt is a refusal too, with the same verdict line). Two
+edges repaired 2026-08-12 (U10): EOF falls to the refusal instead of dying
+under `set -e` with no verdict; and `-h`/`--help` answers with the arguments,
+read **before** the gate, and runs none of the bootstrap — asking what a script
+does needs neither a claim nor a working activation. The deliberate manual form
+is `MB_LAUNCHED_BY=manual bash JOB.run.sh` (backgroundable), started in the
+run's own folder, `run-<n>/`, where launch copied it — once: a folder that
+holds a start refuses another — and the value is logged so the choice is on
+record. *(`bench-runner` was the transitional
 claim of the old bench launchers; they died at step 6 u5, 2026-08-12, and no
 shipped script emits it any more.)*
 

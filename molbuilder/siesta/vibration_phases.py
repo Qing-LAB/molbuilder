@@ -352,8 +352,8 @@ EPSIMG_COLUMN_BYTES = 26
 def run_size_words(cfg, n_free: int, n_modes: int) -> str:
     """THE COUNT AND THE SIZES OF THE RUN the stage's settings make, in
     words -- what prep says beside the wall (`engines/vibration.md` § 5.11
-    § 9): the relaxation up to ``relax_steps`` geometry steps a try (its
-    retries the run card's); the force constants ``1 + 6·n_free`` SCFs;
+    § 9): the relaxation up to ``relax_steps`` geometry steps; the force
+    constants ``1 + 6·n_free`` SCFs;
     Raman ``1 + 2·N`` calls, ``N`` every one of the ``n_modes`` the
     run reports under *Raman for* ``all`` (prep's count, the rank rule,
     `validation.spectra.modes_of`), at most that within a range, which only
@@ -367,8 +367,7 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
     on = {p.name for p in phases_on(cfg)}
     parts = []
     if RELAX in on:
-        parts.append(f"relax up to {int(cfg.relax_steps)} geometry steps a "
-                     f"try")
+        parts.append(f"relax up to {int(cfg.relax_steps)} geometry steps")
     parts.append(f"fc {_n(1 + 6 * n_free, 'SCF')} (1 + 6 × "
                  f"{_n(n_free, 'free atom')})")
     if OPTICAL in on:

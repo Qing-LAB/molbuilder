@@ -63,8 +63,6 @@ def _owned_rules() -> "list[tuple[str, str, str]]":
          "the attempt directory (project-layout.md § 1.5)"),
         (TRIAL_PREFIX, "materialize.trial_dir / paths.trial_point",
          "a trial's directory"),
-        ("-run", "runfiles.compose(run=…) / runfiles.find",
-         "the -run<N> counter (job-contracts.md § 6.3)"),
     ]
     # Every role the catalogue declares, longest first so `.source.xyz` is
     # recognised before `.xyz` -- which is NOT a role of ours and must not be
@@ -193,12 +191,9 @@ GUARDED_UNDECLARED = ()
 # --------------------------------------------------------------------------- #
 #
 # Everything above looks at SEARCHES, and a duplicate COMPOSER is invisible to
-# it.  That is how `runrecord.attempt_concluded` came to spell
-# `f"{basename}-run{newest}.concluded"` on the line AFTER asking `latest_run`
-# for that very counter, and how `submit.py` built the path
-# `f"{names[j]}/run-{n}"` and handed it to `prepare_attempt` as the attempt to
-# continue FROM.  Both measured 2026-09-08 -- by reviewing the search
-# migration's own diff, not by any check.
+# it.  That is how `submit.py` built the path `f"{names[j]}/run-{n}"` and
+# handed it to `prepare_attempt` as the attempt to continue FROM -- measured
+# 2026-09-08 by reviewing the search migration's own diff, not by any check.
 #
 # WHY THIS RULE IS DELIBERATELY NARROW.  Matching "a string that ends in a
 # catalogued role" finds 35 sites of which two are real: `.clone.log`,
@@ -206,23 +201,19 @@ GUARDED_UNDECLARED = ()
 # other grammars entirely.  A check with 33 exemptions is a nag list, not a
 # guard -- and a nag list is how a real finding gets scrolled past.
 #
-# So it matches the two fragments of the grammar that carry RULES rather than
-# just a spelling: the wrapper's `-run<N>` counter (`job-contracts.md` § 6.3 --
-# a hyphen announces a COUNTER, an underscore a NAME) and the attempt
-# directory's `run-<N>` prefix (`project-layout.md` § 1.5).  Both have exactly
-# one composer, both are keyed on a NUMBER, and a hand-built one is how an
-# off-by-one or a renamed prefix reaches disk.  Everything else about a name is
-# the role, and the role is what `WRITTEN` and `find_by_role` already guard.
+# So it matches the fragment of the grammar that carries a RULE rather than
+# just a spelling: the run directory's `run-<N>` prefix (`project-layout.md`
+# § 1.5).  It has exactly one composer, it is keyed on a NUMBER, and a
+# hand-built one is how an off-by-one or a renamed prefix reaches disk.
+# Everything else about a name is the role, and the role is what `WRITTEN`
+# and `find_by_role` already guard.
 #
 # WHAT IT CANNOT SEE, and this is a limit rather than a caveat: a name spelled
-# inside a script molbuilder EMITS.  `siesta/makov_payne.py` carries
-# `glob("*-run*.out")` as template TEXT for a script that ships beside a job --
-# data here, code there, and no AST pass over `molbuilder/` can reach it.  That
-# one is recorded in `plans/plan.md` § 5k: it cannot use `runfiles` until
-# `runfiles` joins `runwrap.MONITOR_COMPANIONS`.
+# inside a script molbuilder EMITS -- data here, code there, and no AST pass
+# over `molbuilder/` can reach it.
 
 #: Grammar fragments with one composer, keyed on a number.
-COUNTER_FRAGMENTS = ("-run", "run-")
+COUNTER_FRAGMENTS = ("run-",)
 
 #: The modules that ARE the grammar; they compose these for a living.
 GRAMMAR_MODULES = ("molbuilder/runfiles.py", "molbuilder/paths.py")
@@ -239,7 +230,7 @@ def compositions(pkg: "pathlib.Path | None" = None,
     An f-string qualifies when a literal piece ENDS with one of
     :data:`COUNTER_FRAGMENTS` and the next piece formats a value -- the number
     interpolated straight after the fragment, which is exactly what
-    `runfiles.compose(run=N)` and `paths.attempt_name(n)` exist to do.
+    `paths.attempt_name(n)` exists to do.
     """
     pkg = PKG if pkg is None else pkg
     root = ROOT if root is None else root
@@ -274,8 +265,7 @@ def compositions(pkg: "pathlib.Path | None" = None,
             rows.append(dict(
                 file=rel, line=node.lineno, func=where, fragment=fragment,
                 text=text,
-                door=("runfiles.compose(run=N)" if fragment.endswith("-run")
-                      else "paths.attempt_name(n)"),
+                door="paths.attempt_name(n)",
                 reason=_COMPOSE_OVERRIDES.get((rel, where, text))))
     return rows
 

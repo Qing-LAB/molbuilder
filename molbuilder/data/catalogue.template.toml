@@ -367,7 +367,7 @@ tier = "advanced"
 help = """
 Inner loop: the most self-consistency cycles SIESTA will run inside one geometry step. A relaxation runs at most relax_steps outer steps, and each of those runs at most this many inner cycles, or until DM.Tolerance is met.
 1000 is SIESTA's own default, and it is the right guard here because this catalogue ships mixing_weight 0.02 against SIESTA's 0.25: the manual says a low weight "may result in high number of SCF steps but is more likely to converge", so a run that is converging normally needs more cycles than a stock one.
-This is a runaway guard, not a budget -- the budget is wall time and continue_retries. The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low kills a converging run at the cap and throws away that whole geometry step, which compounds over 200 outer steps. With a 0.02 mixing weight, several hundred cycles is normal for a metal junction, so do not read this number as a target.
+This is a runaway guard, not a budget -- the budget is wall time. The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low kills a converging run at the cap and throws away that whole geometry step, which compounds over 200 outer steps. With a 0.02 mixing weight, several hundred cycles is normal for a metal junction, so do not read this number as a target.
 """
 
 [item.scf_must_converge]
@@ -619,24 +619,6 @@ Smaller nudges follow the harmonic curvature more closely but push the force dif
 The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the wrapper after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run (engines/vibration.md 5.5).  With Compute IR on, every atom's Hirshfeld and Voronoi charge is recorded at every nudge, from which the spectrum viewer gives the free atoms' infrared (engines/vibration.md 5.10); with Compute Raman on, the Raman of the modes Raman for picks is derived from the run's optical calls at a laser you name (engines/vibration.md 5.11 § 10).
 """
 
-[item.continue_retries]
-kind = "wrapper"
-category = ["execution"]
-engines = ["siesta"]
-engine_key = "(molbuilder: baked into the run wrapper at install time; never an .fdf line and never an sbatch flag)"
-type = "int"
-default = 1
-range = [0, 5]
-group = "staging"
-run_card = true
-label = "Warm-retry budget"
-tier = "advanced"
-help = """
-When a relaxation hits its step cap without converging, the run wrapper can start another batch instead of giving up: it re-enters SIESTA with --continue from the current .XV. This is how many extra batches it may run.
-Total step budget = relax_steps x (1 + continue_retries).
-Set it low and a long relaxation gets cut off mid-descent; set it high and a run that was never going to converge burns the whole wall-clock allocation.
-"""
-
 [item.wall_slack]
 kind = "wrapper"
 category = ["execution"]
@@ -686,11 +668,11 @@ group = "staging"
 label = "Start from"
 tier = "advanced"
 help = """
-Whether this run starts from what is already in the folder.
-  continue  -- read it (the default). Nothing there is not an error: the engine starts from the deck's own coordinates.
-  clean     -- ignore it and start over, overwriting what is there as the run proceeds.
+Whether this run starts from the restart files launch copied into its run folder.
+  continue  -- read them (the default). None there is not an error: the engine starts from the deck's own coordinates.
+  clean     -- read none and start over from the deck's own coordinates; launch copies none into its run folder.
 Which files that means is the engine's own: SIESTA reads .XV / .DM / .CG, PySCF reads <JOB>_optimized.xyz and <JOB>.chk.
-Continuing is the default because a run you start in a folder that already holds a result is a run you started after looking at that result. To keep the old state, save it first with `molbuilder checkpoint save` -- the launcher warns before a clean run overwrites anything and stops unless you pass --force.
+Continuing is the default because a run you launch from an earlier one is a run you started after looking at that result. Every run has a folder of its own, which never holds an earlier run's files: nothing an earlier run wrote is overwritten.
 """
 
 [item.verbose_comments]
@@ -784,7 +766,7 @@ engine_default = { value = false, source = "SIESTA 5.4.2 read_options.F90:1907: 
 group = "output"
 label = "Write MD history (.MD/.MDE)"
 help = """
-Write the trajectory into the run's own <label>_<stage>-run<N>.MD -- positions and velocities (and cell, for a variable cell) at every step -- plus its .MDE, a short per-step line of energy, temperature and the like, and on a build with netCDF (the packaged one) its .MD.nc, the same steps in full precision, which the Results tab reads.  Each run keeps its own: SIESTA appends to the file under its name, and the run script points that name at the run's file while the engine runs, so a run launched again or retried starts a history of its own.
+Write the trajectory into <label>.MD in the run's folder -- positions and velocities (and cell, for a variable cell) at every step -- plus its .MDE, a short per-step line of energy, temperature and the like, and on a build with netCDF (the packaged one) its .MD.nc, the same steps in full precision, which the Results tab reads.  Each run keeps its own: SIESTA writes them under its own names in the run's folder, a run folder holds one start, and nothing copies a history into the next run.
 
 SIESTA ships this off; we ship it on, because it is the only complete record of what the trajectory did.
 
@@ -806,7 +788,7 @@ engine_default = { none = "WriteCoorStep: its opposite", source = "SIESTA 5.4.2 
 group = "output"
 label = "Write XMOL animation (.ANI)"
 help = """
-Write every step's coordinates into the run's own <label>_<stage>-run<N>.ANI, a plain-text multi-frame .xyz in Angstrom that xcrysden, VMD and OVITO open directly as an animation.  Each run keeps its own, as its .MD history does.
+Write every step's coordinates into <label>.ANI in the run's folder, a plain-text multi-frame .xyz in Angstrom that xcrysden, VMD and OVITO open directly as an animation.  Each run keeps its own, as its .MD history does.
 WHY THIS IS A SWITCH AND NOT JUST ON: SIESTA defaults it to `.not. WriteCoorStep` (read_options.F90), so the two keywords are coupled.  This project ships WriteCoorStep on, which resolves that default to OFF -- setting this explicitly is the only way to stop one keyword silently deciding another.
 MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates come from the run's .MD.nc, which carries full double precision rather than text; .ANI is listed among a run's files but never parsed.  So it is purely for opening the trajectory in an external viewer -- turn it off if disk matters and you do not need that, and nothing inside molbuilder changes.
 """
@@ -863,7 +845,7 @@ optional = true
 help = """
 How many MPI processes SIESTA runs on: the N in ``mpirun -np N siesta`` the run script launches.
 Every run states it -- on its run card, or with ``prep --np N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in, not the machine's cores and not the scheduler.  Typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb.
-For a run by hand the run script takes ``bash <stem>.run.sh --run N -np M``, to try another count without a new prep.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: propor is a proportionality check in matel_table's MPI-deduplication of radial tables, which is hard to predict from the rank count. If you hit propor, retry with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
+By hand the run script takes ``bash <stem>.run.sh -np M``; a run folder holds one start, so another count by hand is started in a run folder that holds none -- or prep again at that count.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: propor is a proportionality check in matel_table's MPI-deduplication of radial tables, which is hard to predict from the rank count. If you hit propor, run again with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
 """
 
 [item.gpu_count]
@@ -2304,7 +2286,7 @@ tier = "advanced"
 help = """
 What this deck does when geomeTRIC reports its 5 criteria unmet at max_steps -- the deck asks geomeTRIC, it never assumes convergence:
   proceed  -- keep the geometry reached, say so, and let the next rung start from it; the record's verdict is the force left at that geometry, which can pass while geomeTRIC's other criteria did not.
-  continue -- re-enter from the geometry reached, up to continue_retries more batches of max_steps; still short, stop as halt does.
+  continue -- re-enter from the geometry reached, up to geom_continue_retries more batches of max_steps; still short, stop as halt does.
   halt     -- stop the run before the relaxed geometry is written, rather than hand on a geometry nobody accepted.
 Every step's SCF must converge under all three: a gradient from an unconverged SCF is not a force, so an SCF that fails at a step stops the run whatever this says.
 This is THIS rung's answer: a ladder is N decks and N jobs, so each deck carries its own policy and none of them can see the others.
@@ -2325,8 +2307,8 @@ label = "Continue retries"
 tier = "advanced"
 help = """
 When geomeTRIC reports its criteria unmet at its step cap, this is how many further max_steps batches the job may spend -- each re-entering from the geometry the last one reached -- before it stops as halt does. Only meaningful when on_nonconvergence='continue'.
-Total step budget = max_steps * (1 + continue_retries).
-The geom_ prefix keeps it distinct from Resources.continue_retries, which is the wrapper's warm-restart count and a different thing entirely.
+Total step budget = max_steps * (1 + geom_continue_retries).
+These re-entries are geomeTRIC's own loop inside one start of the job: a run is one start, and a SIESTA relaxation out of steps is continued by launching its stage again.
 """
 
 

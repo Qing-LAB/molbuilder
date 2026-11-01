@@ -3,7 +3,7 @@
 **Two names, and only one of them is ever a filename** (`run-identity.md`
 § 2.0a, decision 26 — 2026-08-09).  :func:`normalise_id` makes the **label**:
 the ``SystemLabel`` / ``JOB`` literal, the stem of every file, and the thing
-:data:`OUR_FILE_PATTERNS` and :data:`MAX_LABEL_BYTES` are about.  :func:`run_id`
+:data:`MAX_LABEL_BYTES` is about.  :func:`run_id`
 attaches the structure's formula to it and makes the **id**, which is a record
 in ``task.json`` and never a name on disk.
 
@@ -44,13 +44,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
-
-try:                                   # inside molbuilder
-    from .runfiles import FIRST_TRY
-    from .runfiles import patterns as _runfile_patterns
-except ImportError:                    # beside a job -- it travels with the
-    from runfiles import FIRST_TRY  # monitor and the vibration finish
-    from runfiles import patterns as _runfile_patterns   # (runwrap.MONITOR_COMPANIONS, VIBRATION_COMPANIONS)
 
 
 @dataclass(frozen=True)
@@ -170,36 +163,6 @@ _STAGE_BUDGET = 32
 #: It bounds what goes in a **filename**, and § 2.0a is that only the label does.
 #: The id is longer and goes in ``task.json``, where nothing bounds it.
 MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
-
-
-#: Glob patterns, keyed on the **label**, for **the files molbuilder itself
-#: writes** into a run directory — from `job-contracts.md § 2.2`'s catalogue.
-#: The label and not the id, because these are filenames and § 2.0a puts only
-#: the label in one.
-#:
-#: **This is the list that can be complete, and that is the whole point.** An
-#: engine's output set depends on its version and on which options are on, so
-#: enumerating *that* is a snapshot pretending to be a rule. What we write is
-#: knowable, because we write it. So every question of the form *"did the
-#: engine leave something here"* is answered by subtraction: anything named
-#: after the label that is **not** on this list came from the run.
-#:
-#: Ordered as § 2.2 lists them — inputs, wrapper, the canonical trajectory,
-#: then the run-indexed logs, which are **history and not state**: they are
-#: what a user goes back to read, and nothing here may treat them as leftovers.
-#:
-#: **DERIVED from `runfiles.WRITTEN`** — the catalogue that says what each of
-#: these files IS, which is what the Task-setup card shows a person; `runfiles`
-#: holds the notes on why each row is there.
-#:
-#: ⚠ **ITS READER IS THE COLD SWEEP.** `runwrap._cold_restart_block`
-#: derives `--cold`'s *"except what molbuilder wrote"* exception from these
-#: patterns, and it runs where an engine's output IS present.  That
-#: exception is anchored on the label, never widened to a star: read as
-#: `*`, a `{label}.xyz` row would make PySCF's `<JOB>_optimized.xyz` — warm
-#: state — look like ours, and `--cold` would walk past the file it exists to
-#: move (`test_the_exception_is_anchored_on_the_label_not_widened_to_a_star`).
-OUR_FILE_PATTERNS: Sequence[str] = _runfile_patterns()
 
 
 # --------------------------------------------------------------------- #
@@ -380,16 +343,15 @@ def checkpoint_words(folder=None) -> str:
 
 
 #: What a deck's hand-run line says beside itself (:func:`hand_run`).
-HAND_RUN_NOTE = ("the same wrapper, by hand, in its run's folder: its "
-                 "try's number, 0 for the run's first")
+HAND_RUN_NOTE = ("the same wrapper, by hand, in its run's folder: once, a "
+                 "run being one start")
 
 
 def hand_run(names) -> str:
     """A deck's run script started by hand in its run's folder -- ``bash
-    <stage>.run.sh --run 0``, the first try's number (`runfiles.FIRST_TRY`):
-    one spelling for every engine's deck header and the run script's own,
-    ``names`` the stage's (`runfiles.RunNames`)."""
-    return f"bash {names.name('.run.sh')} --run {FIRST_TRY}"
+    <stage>.run.sh``: one spelling for every engine's deck header and the
+    run script's own, ``names`` the stage's (`runfiles.RunNames`)."""
+    return f"bash {names.name('.run.sh')}"
 
 
 def deck_launch(stage_token: str,
@@ -700,7 +662,6 @@ __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
            "HAND_RUN_NOTE", "hand_run",
            "LAUNCHED_WAY_BACK", "launched_way_back", "LAUNCH_MODE_NOTE",
            "MAX_LABEL_BYTES",
-           "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",
            "deck_launch", "electrode_hs_stem", "launch_as_typed",

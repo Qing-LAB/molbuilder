@@ -202,14 +202,18 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
                 # (`Job.finish`, `engines/vibration.md` § 5.5): the wrapper
                 # runs it, and its bundle is written beside the deck.
                 finish=job.finish,
-                # WHETHER A RE-RUN CONTINUES (`Job.resumes`): the wrapper
-                # says a retry of a run that cannot resume repeats it
+                # WHETHER A RUN RESUMES (`Job.resumes`), and what a launch
+                # again does with it -- the facts the launch itself decides
+                # by (`Job.relaunch_continues`; a trial is never launched
+                # again): the wrapper says them after a failure
                 # (`running-a-job.md` § 3.5) -- a point's own where the
                 # rung renders each point its own (`Rung.wrapper_at`), and
                 # every point of a run of points its report steps and its
                 # kind's own steps (`PointOfRun`,
                 # `execution/runs-of-points.md` § 1.2).
                 resumes=point_facts.get("resumes", job.resumes),
+                relaunch_continues=job.relaunch_continues,
+                trial=bool(job.point),
                 point=point_facts.get("point"),
                 plan=plan,
                 # WHAT THE RENDERING SAYS (`gpu.md` G6), onto the answer.
@@ -635,7 +639,9 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
 
     def wrapper_at(point):
         # EACH PHASE'S RUN SCRIPT (§ 5.11 § 6): the phase's `resumes` from
-        # its warm-files section -- what a retry in place does.
+        # its warm-files section -- what its Mode line says of the restart
+        # files it finds; what a launch again does with the point is its
+        # declared relaunch (`PointOfRun.relaunch`).
         return {"resumes": warm_list("siesta", phase(point.phase).warm_kind,
                                      base).resumes}
 
@@ -1358,8 +1364,6 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     _points = [(d, {**rung.wrapper_at(pt),
                     "point": PointOfRun(
                         relaunch=_declared.relaunch_of(pset.stage, pt),
-                        verdict_counts=_declared.verdict_counts(pset.stage,
-                                                                pt),
                         steps=dict(_record.steps))})
                for d, pt in rung.points]
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
@@ -1946,7 +1950,7 @@ def _with_notify(flags, declared) -> "Resources":
 
     Not an allocation and not a scheduler flag -- it rides ``Resources``
     because that is the road from a job to its wrapper, the one
-    ``continue_retries`` already rides (`jobset/model.Resources`).  There is
+    ``wall_slack`` already rides (`jobset/model.Resources`).  There is
     no ``--notify-*`` flag today, so in practice the description is the only
     voice.
 
@@ -2570,8 +2574,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         r = job.resources
         out.resources = {"mpi_np": r.mpi_np,
                          "cpus_per_task": r.cpus_per_task,
-                         "max_memory_mb": r.max_memory_mb,
-                         "continue_retries": r.continue_retries}
+                         "max_memory_mb": r.max_memory_mb}
         out.deck = Path(job.script).name
         from ..runfiles import LAUNCH_DIR, GroupNames
         names = run_names(js, job)

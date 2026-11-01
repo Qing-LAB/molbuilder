@@ -1,4 +1,4 @@
-"""A run of points' index, read back — ``<label>_<stage>-run0.points.json``.
+"""A run of points' index, read back — ``<label>_<stage>.points.json``.
 
 Contract: `model/parse.md` § 5.5 (what a person can open is the REGISTRY's
 question); the index's own shape is `runpoints`'s, which writes and reads
@@ -30,7 +30,7 @@ class RunPointsFileParser(FileParser):
 
     name   = "run-points-json"
     label  = "molbuilder .points.json index"
-    hint   = ("a run of points' index -- <label>_<stage>-run<N>.points.json, "
+    hint   = ("a run of points' index -- <label>_<stage>.points.json, "
               "written by launch and the run's report steps")
     output = SidecarResult
 

@@ -102,7 +102,7 @@ _SETTINGS_VARS = (
 
 def _frame_vars(label: str) -> Tuple[Var, ...]:
     epsimg = f"{label}.EPSIMG"
-    out = f"the call's output, {label}_<stage>-run<N>.out"
+    out = f"the call's output, {label}_<stage>.out"
     return (
         Var("frame", ("frame",), "coordinate", "1", "the optical call",
             "from 0: frame 0 the force-constant run's reference geometry, "

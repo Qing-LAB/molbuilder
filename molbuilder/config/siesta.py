@@ -304,23 +304,12 @@ class SiestaConfig:
     optical_energy_max: float = 3.0
     optical_bands: Optional[int] = None
 
-    # ``continue_retries`` -- the warm-retry budget.  engines/stages.md § 3
-    # is why it is a SHARED field rather than a stage one: it passes both of
-    # § 3's questions -- it survives without a scheduler (running-a-job.md
-    # § 3.5: a SINGLE run's wrapper re-enters SIESTA with --continue), and a
-    # single run can mean it.  What made it look like a stage property is only
-    # where it LANDS, which § 3 says is never the test.
-    #
-    # It reaches the wrapper via ``jobset.Resources.continue_retries``
-    # (job-contracts.md § 6.2's translation table, decided 2026-08-07): the
-    # same road ``mpi_np`` and ``omp_threads`` already ride, rather than a
-    # second hand-maintained mapping from a stage to its wrapper.  Unlike
-    # those two it becomes NO sbatch flag -- it is baked in at install time.
-    continue_retries: int = 1
     #: ``wall_slack`` -- how many seconds before its wall the engine stops
     #: itself, saving its restart state whole (`running-a-job.md` § 3.6).
-    #: Rides to the wrapper as ``continue_retries`` does; SIESTA takes it
-    #: on its command line (``MaxWalltime.Slack``), never in the deck.
+    #: It reaches the wrapper via ``jobset.Resources.wall_slack``
+    #: (job-contracts.md § 6.2's translation table): the same road
+    #: ``mpi_np`` and ``omp_threads`` ride, and no sbatch flag; SIESTA takes
+    #: it on its command line (``MaxWalltime.Slack``), never in the deck.
     wall_slack: int = 600
 
     # SCF / MD continuation
@@ -564,7 +553,7 @@ _ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
 #: and the emitter decides which members are meaningful for a given run.
 #: WHICH KEYWORDS -- spelled here, and PROVEN equal to the catalogue.
 #:
-#: This is `identity.OUR_FILE_PATTERNS`' arrangement and for the same reason:
+#: Spelled here for the layering:
 #: this module is **L1** and the catalogue reader is **L2**, so importing it
 #: here is the upward import review refuses (`process/code-audit.md` § 1c (e)).
 #: The fact still has ONE authority -- `[item.restart].expands` --

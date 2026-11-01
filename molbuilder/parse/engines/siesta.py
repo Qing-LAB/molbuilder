@@ -274,10 +274,9 @@ class SiestaOutFileParser(FileParser):
         if not lower.endswith(".fdf"):
             return None
         stem = filename[:-len(".fdf")]
-        # The output a run of this deck writes, as the catalogue spells it,
-        # its number shown as <N>.
-        from ...runfiles import RUN_FIELD, compose
-        out = compose(stem, ".out", run=RUN_FIELD).replace(RUN_FIELD, "<N>")
+        # The output a run of this deck writes, as the catalogue spells it.
+        from ...runfiles import compose
+        out = compose(stem, ".out")
         return (
             f"{filename} is the SIESTA INPUT file, not its output. "
             f"Point molbuilder at the run's output, {out}, or at the "
@@ -294,7 +293,7 @@ class SiestaOutFileParser(FileParser):
         traj = SiestaParser.parse(str(path))
         # THE .out STAYS THE TRAJECTORY; the netCDF only sharpens it.
         #
-        # A run's own history, <label>_<stage>-run<N>.MD.nc, lies beside its
+        # A run's own history, SIESTA's <SystemLabel>.MD.nc, lies beside its
         # .out whenever WriteMDhistory is on and the binary was built with
         # -DCDF (both true for the packaged env; `job-contracts.md` § 2.2).
         # It holds the same geometries and

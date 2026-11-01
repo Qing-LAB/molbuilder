@@ -249,7 +249,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
     # directly being its process tree, a CPU run judged on no GPU (§ 2.1a).
     from molbuilder.runfiles import compose
     log = (bundle / "01_freq" / "run-0"
-           / compose("W", ".monitor.log", "01_freq", run=0)).read_text()
+           / compose("W", ".monitor.log", "01_freq")).read_text()
     closing = [ln for ln in log.splitlines() if "[STATUS]" in ln][-1]
     assert "finished" in closing and "| step " in closing, closing
     # the force beside the stage's own tolerance, from the header the deck
@@ -640,9 +640,11 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     # The run wrapper states the constraint in its own header, read back
     # off the deck: one fact, one spelling across the process boundary.
     attempt = bundle / "01_freq" / "run-0"
-    wrap_logs = sorted(attempt.glob("*.runwrap-*.log"))
-    assert wrap_logs, "the wrapper writes its session log beside the run"
-    header = wrap_logs[-1].read_text(errors="replace")
+    from molbuilder.runs import run_of
+    wrap_log = run_of(attempt).session_log
+    assert wrap_log is not None, (
+        "the wrapper writes its session log beside the run")
+    header = wrap_log.read_text(errors="replace")
     assert "frozen_atoms: 1 listed indices" in header, header[:1500]
     # HELD, SO READ ALONG THE LIGHT (§ 4.6; `web/spectra.md` § 3.2): the
     # load door answers the stored dipole change along each axis, and the

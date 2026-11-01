@@ -72,10 +72,8 @@ def parse_point(label: str, run, engine: str,
                 knobs: Dict, point: Optional[Dict] = None) -> BenchPoint:
     """Parse one point's artifacts -- the files of its ``run``, the run
     door's `Run` (``None``: no run of ours there yet) -- into a
-    :class:`BenchPoint`.  Every file is taken at the run's ONE index, so
-    a point's figures never mix two runs."""
-    def _at_run(role):
-        return run.file(role, run.run) if run is not None else None
+    :class:`BenchPoint`.  Every file is the run's own, so a point's figures
+    never mix two runs."""
     metrics: Dict = {}
     knobs = dict(knobs)
     # What the JOB SET asked for, snapshotted BEFORE the recovery below
@@ -116,11 +114,12 @@ def parse_point(label: str, run, engine: str,
     # whose rows its deck stamps.  The tee's registered parser wraps the same
     # function.
     from molbuilder.parse.instruments.scf_timing_rows import timing_of
-    _timing = (_at_run(".scf-timing.log")
-               or (run.file(".molwatch.log") if run is not None else None))
+    from ..runfiles import ROLE_MOLWATCH
+    _timing = ((run.file(".scf-timing.log") or run.file(ROLE_MOLWATCH))
+               if run is not None else None)
     metrics.update(timing_of(_timing))
 
-    _mon = _metrics(_at_run(".monitor.log"))
+    _mon = _metrics(run.file(".monitor.log") if run is not None else None)
     bound = _mon.get("bound")
     machine: Dict = _mon.get("machine") or {}
 
@@ -128,19 +127,12 @@ def parse_point(label: str, run, engine: str,
     # otherwise -- ONE resolver decides, so the two sources cannot
     # disagree here (`parse/instruments/utilisation.py` owns the why;
     # user ruling 2026-09-03).
-    util = _at_run(".util.csv")
+    util = run.file(".util.csv") if run is not None else None
     if util is not None:
         metrics.update(_utilisation(_mon, _metrics(util)))
 
-    # The .out answers two questions.
-    #
-    #   * HOW IT ENDED -- `ending_of`, the one door (`model/parse.md`
-    #     § 2b, P-S4), which reads the whole file: the SCF-convergence
-    #     markers appear once per cycle rather than at the end.  Frames are
-    #     not built for it -- this needs one string field, on a summary
-    #     that polls every 15 s.
-    #   * THE RANK COUNT -- the "Running on N nodes" launch banner, in
-    #     the first KB.
+    # The .out answers THE RANK COUNT -- the "Running on N nodes" launch
+    # banner, in the first KB; how the trial ended is the run door's.
     out = run.stdout if run is not None else None
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
     # THE TRIAL'S STATE IS THE RUN DOOR'S (`runs.state_of`, the one

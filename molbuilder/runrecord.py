@@ -103,22 +103,14 @@ def continued_from_marker(where) -> Path:
     return Path(where) / _rf.CONTINUED_FROM_FILE
 
 
-def continued_from_text(source: RunRef) -> str:
-    """THE RECORD'S TEXT, ONE SPELLING for every writer of it -- this
-    module's own (:func:`write_continued_from`) and `jobset migrate`'s, which
-    adds the record an older molbuilder left out among its other writes:
-    ``source`` as :meth:`RunRef.read` reads it back."""
-    return str(source) + "\n"
-
-
 def write_continued_from(where, source: RunRef, *, plan=None) -> Path:
     """The run a run continues from, written -- a hand-over's record beside
     the run (`materialize.hand_over`, `job-system.md` § 5.4): ``source`` as
-    the run's :func:`continued_from_marker`, in the record's one text
-    (:func:`continued_from_text`, which `jobset migrate` writes too),
-    through `persist`, or into ``plan`` (`jobset.planned.Plan`)."""
+    the run's :func:`continued_from_marker`, in the text
+    :meth:`RunRef.read` reads back, through `persist`, or into ``plan``
+    (`jobset.planned.Plan`).  The record's one writer."""
     marker = continued_from_marker(where)
-    data = continued_from_text(source).encode("utf-8")
+    data = (str(source) + "\n").encode("utf-8")
     if plan is not None:
         plan.bytes(marker, data)
         return marker
@@ -197,41 +189,35 @@ class Ending:
         return self.code == 0
 
 
-def ending(where, basename: str, run: Optional[int] = None) -> Ending:
+def ending(where, basename: str) -> Ending:
     """THE door for *did this run end on its own, and with what exit code?*
     (`execution/architecture.md` § 3.2; plan W38 F3) -- asked by status,
     whose state is built on it and every hand-over builds on
     (`jobset.continuation.usable`), by launch's re-launch question and the
     transport citation.
 
-    ``where`` is the run's folder; ``basename`` its stem, ``<label>_<token>``
-    -- a run's folder may hold several tries.  ``run`` asks about that
-    try; by default the newest (:func:`newest_run`'s rule,
-    `runfiles.latest_run`, which `runfiles.at_run` asks).
+    ``where`` is the run's folder; ``basename`` its stem, ``<label>_<token>``.
 
-    **Molbuilder's own marker first** -- ``<basename>-run<N>.concluded``,
-    the wrapper's last act on its main path: an engine error still reaches
-    it, a kill never does, and it carries the exit code.  It counts at the
-    newest try any file of the run reached (`runfiles.at_run`): an earlier
-    try's marker beside a newer try's is that earlier try's goodbye.
+    **Molbuilder's own marker first** -- ``<basename>.concluded``, the
+    wrapper's last act on its main path: an engine error still reaches it, a
+    kill never does, and it carries the exit code.  A run folder holds one
+    start (`project-layout.md` § 1.6.1), so it holds at most one.
 
     **Nothing else**: a run molbuilder's wrapper did not run is not a run of
     ours, so it never ended on its own here -- the engine's own end mark
     (SIESTA's ``0_NORMAL_EXIT``) says the ENGINE ended, while the job -- a
     finish after it, the wrapper's own end -- may not have.
     """
-    d = Path(where)
-    marks = [m for m in _rf.find_by_role(d, ".concluded")
-             if _rf.parse(m.name, basename) is not None]
-    latest = _rf.at_run(d, marks, basename, run)
-    if latest:
+    marks = _rf.find(Path(where), basename, role=".concluded")
+    if marks:
+        mark = marks[0][0]
         try:
-            text = latest[0].read_text(encoding="utf-8")
+            text = mark.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             # A MARKER THAT IS THERE AND DOES NOT READ: the run concluded --
             # the wrapper wrote it -- with an exit code no one can tell, as
             # an empty one; said, never read as a run still going.
-            return Ending(f"rc=? ({latest[0].name} does not read: {exc})")
+            return Ending(f"rc=? ({mark.name} does not read: {exc})")
         line = (text.splitlines() or [""])[0].strip() or "rc=?"
         said = read_concluded(line)
         return Ending(line, None if said is None else said["code"])
@@ -240,8 +226,7 @@ def ending(where, basename: str, run: Optional[int] = None) -> Ending:
 
 def launch_record_path(where) -> Path:
     """Where the run in ``where`` records its launch (`project-layout.md`
-    § 1.6.3): the run's folder's ``run.json`` -- an attempt's, a trial's --
-    which answers for every try in it."""
+    § 1.6.3): the run's folder's ``run.json`` -- an attempt's, a trial's."""
     return Path(where) / _rf.LAUNCH_RECORD_FILE
 
 
@@ -341,32 +326,20 @@ def note_notified(where, event: str, at: float,
     return p
 
 
-def newest_run(where, names: "_rf.RunNames") -> Optional[int]:
-    """THE RUN'S NEWEST TRY IN ``where`` -- the one rule every reader of a
-    run asks (`model/parse.md` § 5.1, `project-layout.md` § 1.6.1): the
-    highest try any file named on the run's stem reached
-    (`runfiles.latest_run`); the folder's one launch record answers for
-    every try in it."""
-    return _rf.latest_run(Path(where), names.stem)
+def run_output(where, names: "_rf.RunNames") -> Optional[Path]:
+    """THE SIESTA OUTPUT OF THE RUN in ``where`` -- SIESTA's stdout role
+    (`runfiles.stdout_roles`) -- or ``None`` where it printed none.
+    SIESTA's alone, and asked beside a job as well as here, where the run
+    door is not: by the steps of a SIESTA run of points (a vibration call's
+    coordinates and facts, a transport round's NEGF count) and a charged
+    deck's Makov-Payne script.  Any engine's output, inside molbuilder, is
+    the run door's (`runs.Run.stdout`)."""
+    for role in _rf.stdout_roles("siesta"):
+        out = Path(where) / names.name(role)
+        if out.is_file():
+            return out
+    return None
 
-
-def newest_output(where, names: "_rf.RunNames") -> Optional[Path]:
-    """THE ENGINE OUTPUT OF THE RUN'S NEWEST TRY in ``where``
-    (:func:`newest_run`) -- ``None`` where that try printed none: an engine
-    that died before its first line is never read from the try before it.
-    Asked of a point's folder by a run of points' own steps (a vibration
-    call's coordinates and facts, a transport round's NEGF count)."""
-    n = newest_run(where, names)
-    if n is None:
-        return None
-    out = Path(where) / names.name(".out", run=n)
-    return out if out.is_file() else None
-
-
-# --------------------------------------------------------------------- #
-#  A run of points' index -- what every kind's index shares              #
-#  (`engines/vibration.md` § 5.11 § 7, `engines/transport.md` § 2a.11)   #
-# --------------------------------------------------------------------- #
 
 def write_launch(where: Path, *, mode: str, command: List[str],
                  job_id: Optional[str] = None,
@@ -458,8 +431,7 @@ def launch_record(where) -> Optional[dict]:
     § 3.2; plan W38 F2) -- the launch record of the run in ``where``, or
     ``None`` when there is none: asked by status, the Run panel, prep (an
     unlaunched attempt is reused), every launch gate and the transport
-    citation.  A run's folder -- an attempt, a trial's -- has one record,
-    which answers for every try in it.
+    citation.  A run's folder -- an attempt, a trial's -- has one record.
 
     `project-layout.md` § 1.6: *"Has this been launched? has no honest answer
     from the directory alone"*, so this file is the answer -- and **one that
@@ -662,6 +634,5 @@ def copied_in(stage_dir) -> Optional[str]:
     return read_copied_from(attempt_dir(stage_dir, runs[0])) if runs else None
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run",
-           "newest_output",
-           "continued_from_marker", "continued_from_text", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "run_output",
+           "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]

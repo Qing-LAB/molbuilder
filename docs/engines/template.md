@@ -380,16 +380,24 @@ naming its engine (`Retired.engines`) — `es_mode_selection`,
 `es_explicit_indices`, `freq_min_cm1` and `freq_max_cm1`, which picked
 SIESTA's Raman modes until *Compute Raman* and *Raman for* did; on PySCF
 they stay the orbital probe's ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 3.1) *(the user, 2026-10-27)*. A blank one,
+§ 3.1) *(the user, 2026-10-27)*. A run setting retires the same way, on the
+run card: `continue_retries`, the run script's count of starts — a run is one
+start, and to continue is to launch again
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1;
+[`execution/job-request.md`](?doc=execution/job-request.md) § 2) *(the user,
+2026-10-31)*. A blank one,
 retired or renamed, asks nothing and is read as absent. **An item a release
 renamed** is refused under its old name, naming the new and `jobset migrate`
 (`template.RENAMED_ITEMS`). Every door that
 reads a name — the template reader, the description's check, a stage's
-overrides — says it in one sentence (`template.why_not_an_item`).
+overrides, a run card — says it in one sentence (`template.why_not_an_item`).
 **`molbuilder jobset migrate` takes a retired item out** — of the template,
 of a stage's own values and of `varies`, blank or set — **when its value
 runs as before without it** (each item's `runs`: any value of `copy_psml`
-and of the three dynamics settings, `optimizer = "geometric"`). SIESTA's
+and of the three dynamics settings, `optimizer = "geometric"`). A retired
+run setting it takes off the job request's run cards, the calculation's and
+each stage's, and out of each job's resources in `job-set.json`
+([`execution/job-request.md`](?doc=execution/job-request.md) § 8). SIESTA's
 retired Raman selector it does not take out: it states *Compute IR*,
 *Compute Raman* and *Raman for* from it in the template, and refuses by name
 a stage that overrides it and an explicit list of modes, which has no range
@@ -512,7 +520,7 @@ read against the catalogue at review.
 The items are chosen to show **the three `kind`s a template's items carry** —
 `engine`, `deck`, `produce` — and both value states. The fourth, `wrapper`, is
 carried by run settings alone, which no template holds (§ 2): the catalogue's
-`mpi_np`, `continue_retries`, `wall_slack` (§ 6.4 shows one). (`monitor` is the
+`mpi_np`, `wall_slack` (§ 6.4 shows one). (`monitor` is the
 fifth member of the vocabulary and no item carries it; § 12.1 row 5.)
 
 ```toml
@@ -575,7 +583,7 @@ every coordinate on the wrong atom (run-identity.md § 4)."""
 *unset* is one of its legal answers and there is no default to fall back to:
 unset is *auto*, answered by the electronic-state class
 (`science/chemistry-correctness.md` § 2a). **And no run setting is here** —
-not `use_gpu`, not `block_size`, not `continue_retries`: each is a catalogue
+not `use_gpu`, not `block_size`, not `wall_slack`: each is a catalogue
 item the job request answers (§ 2; [`execution/job-request.md`](?doc=execution/job-request.md) § 2),
 a run card's value or else the item's `default` (`block_size` has none: SIESTA's
 own automatic).
@@ -995,7 +1003,7 @@ added in 2.27.0, the run card, got none of it. The 2.27.0 review measured each
 | **may this value stand here?** | `accepts(item, value, home, *, engine, kind, stage=None)` → the one refusal clause, or none | in order, the first that holds: whether `home` may hold this item at all (`home_of`, below); `null` — *unset* — taken on a run card or an override only by an item whose unset is an answer (`optional`: the launch shape, `block_size`, `parallel_over_k`, an optional parameter of the description) and refused for any other, and **never a benchmark row's point** — a point is a value to try, and a setting left off the row runs at its own; the item's `type`, the **catalogue's** — the config class's annotation judges nothing; then § 5.3's door: a component the kind fixes, a choice the kind does not offer (`offered`), a limit (`above`, `at_least`) |
 | **what is it, spelled?** | `spell(item, value)` → the value in its declared type | lossless only — a whole float for a count is the count, a list of three a triple (`as_declared`); **what a page sends** — a cell's or a card row's text, a form's value — is read by the same door, `read_text(item, text)` → `(value, refusal)`, its type judged, so no page keeps a reader of its own: a number as JSON writes one — decimal, with an exponent if any (`1e3` is 1000), never `0x10` or `1_000` — `true` / `false`, an enum's member by its spelling, a grid as `4,4,1`, `4x4x1`, `4 4 1` or the list `[4, 4, 1]`, a list by commas or spaces; and a refusal quotes a value through `shown(value)` — `null` for unset, `true` / `false`, a triple as the list it is written as |
 | **what does nobody's statement mean?** | `default_of(item, kind)` → the value, or none | the kind's `recommended`, else the item's `default` — **the one default**: `resolve` lays it for a run setting no card states, Task setup shows it in a blank row, migrate asks it whether a value was the default; for an item with neither, its `not_set` line says what applies (§ 6.6, obligation 4). A run setting states no `value` in the catalogue — no template starts from one — which the catalogue's reader checks |
-| **where may a value of it live?** | `home_of(item, kind)` → its homes; `why_not_in(item, home, *, engine, kind, stage=None)` → the clause for a home that may not hold it — `accepts`' first question, and asked alone where a name stands without a value (a `varies` column, a benchmark row's name) | read off the item's own markers: **a stage's overrides** — what is computed (not a run setting, not `role`, not `shared`), on a rung that reads it (`stages`); **a run card** — a run setting (`execution`); **a benchmark row** — a run setting a trial may vary: never one every trial fixes (`TRIAL_PINS` — no retry; [`job-request.md`](?doc=execution/job-request.md) § 3.4), and of the launch shape only the grid's axes (`GRID_AXES` — ranks, cores per rank, devices; [`generator.md`](?doc=execution/generator.md) § 4.3a), a memory cap being no axis it sweeps; **a prep flag** — the launch shape (`allocation = true`). The scheduler's asks — `allocation`'s `domain`, `time`, `mem`, `gpu_binding`, a card's `time` and `domain` — are not catalogue items; the job request's reader judges and spells them, the allocation's and a card's alike ([`job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2a) |
+| **where may a value of it live?** | `home_of(item, kind)` → its homes; `why_not_in(item, home, *, engine, kind, stage=None)` → the clause for a home that may not hold it — `accepts`' first question, and asked alone where a name stands without a value (a `varies` column, a benchmark row's name) | read off the item's own markers: **a stage's overrides** — what is computed (not a run setting, not `role`, not `shared`), on a rung that reads it (`stages`); **a run card** — a run setting (`execution`); **a benchmark row** — a run setting a trial may vary (what every trial fixes, `TRIAL_PINS` — capped SCFs, no geometry step, a clean start, [`job-request.md`](?doc=execution/job-request.md) § 3.4 — says what is computed, so it is no run setting and that clause keeps it off a row), and of the launch shape only the grid's axes (`GRID_AXES` — ranks, cores per rank, devices; [`generator.md`](?doc=execution/generator.md) § 4.3a), a memory cap being no axis it sweeps; **a prep flag** — the launch shape (`allocation = true`). The scheduler's asks — `allocation`'s `domain`, `time`, `mem`, `gpu_binding`, a card's `time` and `domain` — are not catalogue items; the job request's reader judges and spells them, the allocation's and a card's alike ([`job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2a) |
 | **who set it?** | `SAID` — one vocabulary | *the template* with its own source words (*from the junction you cited · you set this · not chosen · not recorded*, § 6.6), *this stage's override*, *the stage's run card*, *the calculation's run card*, *a prep flag*, *the run card* (the launch fold's, which records a card as one — the placement line), *the job request's allocation*, *the catalogue's default · not chosen* (*not chosen* alone, beside who answers it, for an item with no default), *a sweep point*, *a pin*, *the rung* — composed once by `resolve` for every value of a rung (`ResolvedConfig.said`, the deck's table its own items' rows) and read by the deck's PROVENANCE rows, the pipeline log, prep's printed lines and its placement, and the page; none words its own |
 
 **The homes ask; none decides.** Each place a value is written or read asks
@@ -1014,7 +1022,7 @@ its own:
 **And the deck says what it was given.** A deck writer, a run script and the
 scheduler's header write the value the job holds — a run setting's card value
 or the catalogue's default, laid by `resolve` — and fall back to no literal of
-their own: the run script's slack and retry count, and the solver a deck writes
+their own: the run script's slack, and the solver a deck writes
 when none is set, are the job's (§ 6.6, obligation 4).
 
 ## 6. `kind` — which layer owns the item
@@ -1195,7 +1203,7 @@ a new engine declares its own without anyone editing the wrapper writer.
 
 > **✅ Reached 2026-08-23** — by carrying the answer rather than by importing
 > the catalogue into the wrapper. `resolve` puts `use_gpu` on the element's
-> `Resources` (the same ride `continue_retries` takes), and the wrapper asks
+> `Resources` (the same ride `wall_slack` takes), and the wrapper asks
 > that — the job's GPU request. The deck scan stayed as a fallback for a
 > caller that stated nothing until 2026-10-03; every job of ours states it.
 >
@@ -1275,7 +1283,7 @@ is the semantics; how many panels they become is the surface's call.
 | 3 | `accuracy` | *how precisely are the equations solved?* | `mesh_cutoff`, `kgrid`, `dm_tolerance` | `grid_level`, `scf_conv_tol`, `scf_conv_tol_grad` |
 | 4 | `convergence` | *how do I reach it when it fights?* | `max_scf_iter` | `scf_max_cycle`, `level_shift`, `damp`, `diis_space`, `scf_soscf` |
 | 5 | `procedure` | *what does the run carry out, and what does it leave behind?* | `relax_type`, `relax_steps`, `restart`, the `write_*` set | `optimize`, `chkfile`, `save_*` (the old `compute_frequencies` retired with the vibration kind) |
-| 6 | `execution` | *how does it run on this machine?* — the run settings, the job request's ([`execution/job-request.md`](?doc=execution/job-request.md) § 2) | `diag_algorithm`, `block_size`, `use_gpu`, `continue_retries` | `threads`, `use_gpu` |
+| 6 | `execution` | *how does it run on this machine?* — the run settings, the job request's ([`execution/job-request.md`](?doc=execution/job-request.md) § 2) | `diag_algorithm`, `block_size`, `use_gpu`, `wall_slack` | `threads`, `use_gpu` |
 
 **Why `accuracy` and `convergence` are two categories and not one.** Accuracy is
 *what answer you will accept*; convergence is *how to reach it*. A user whose SCF
@@ -2836,7 +2844,7 @@ project ships `WriteCoorStep .true.`. So turning on the per-step coordinate log
 turned the `.ANI` animation file *off*, and until `write_md_xmol` became an
 item of the output section (`siesta/layout.py`; the `.ANI` row of the file
 catalogue names it as its writer) nothing wrote `WriteMDXmol` to say otherwise
-while the run index listed `.ANI` files our decks could not produce. **Three
+while the file catalogue listed `.ANI` files our decks could not produce. **Three
 correct-looking decisions composed into a missing file** — history now, kept
 as the worked example of the rule.
 
@@ -2870,7 +2878,7 @@ sequenceDiagram
     P->>P: step 2 — template values ⊕ coarse's overrides
     P->>D: one config object
     D-->>P: the deck, with its reserved blocks
-    P->>W: the job — its resources (ranks, threads, the GPU request, retries), env and queue
+    P->>W: the job — its resources (ranks, threads, the GPU request, the wall slack), env and queue
     W-->>P: .run.sh, and the header (.sbatch) on a queue
 ```
 

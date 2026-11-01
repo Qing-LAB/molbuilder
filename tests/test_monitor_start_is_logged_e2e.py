@@ -16,8 +16,9 @@ Driven through ``molbuilder describe`` -> ``prep task`` -> ``launch task --mode
 direct``: the pass's H2 PySCF run, as prepared (`support.real_runs.pyscf`);
 an H2 PySCF run with one of the bundle's own member files replaced after prep
 by one that fails at import, as a file the job's python cannot load does; and
-an H2 SIESTA relaxation broken the same way, because only the SIESTA wrapper
-asks how its run ended.
+an H2 SIESTA relaxation broken the same way and stopped at the wall its run
+card states, because only the SIESTA wrapper asks how its run ended, and only
+after a failure (`running-a-job.md` § 3.5).
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ import pytest
 
 from _road import conda_hook, env_available, env_bin
 from support.road import group_words
-from support.road import molbuilder
+from support.road import molbuilder, one_rank
 
 CONDA_SH = conda_hook()
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -54,11 +55,13 @@ def _jobset(*args):
     return CliRunner().invoke(jobset_group, [str(a) for a in args])
 
 
-def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
+def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None,
+              wall=None):
     """An H2 run launched directly -- a PySCF optimisation, or a SIESTA
     relaxation -- with ``broken_member`` of the shipped
-    bundle made to fail at import, when named; the folder the run ran in and
-    its session log text."""
+    bundle made to fail at import, when named, and ``wall`` the wall its run
+    card states, when given; the folder the run ran in and its session log
+    text."""
     from conftest import write_machine_record
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.runwrap import MONITOR_BUNDLE
@@ -88,6 +91,8 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
                 *(("--psml-lib", "pseudopotential") if siesta else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
+    if wall is not None:
+        one_rank(bundle, time=wall)
     # How a shell enters conda HERE is this machine's record's to say.
     from conftest import write_machine_record
     write_machine_record(env_init={
@@ -118,7 +123,7 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
 
     _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
             "--mode", "direct", "--foreground", "--yes")
-    said = _session_logs(ran_in)
+    said = _session_log(ran_in)
     assert said, sorted(p.name for p in ran_in.iterdir())
     assert "monitor: pid=" in said, (
         "the wrapper did not start the monitor, so this run shows nothing "
@@ -126,14 +131,12 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
     return ran_in, said
 
 
-def _session_logs(ran_in) -> str:
-    """Every session log of the run in ``ran_in``, each try's, in its order
-    (`wrapper_log.logs_by_run`)."""
+def _session_log(ran_in) -> str:
+    """The session log of the run in ``ran_in`` -- its one start's
+    (`runs.Run.session_log`) -- or ``""`` where it holds none."""
     from molbuilder.runs import run_of
-    from molbuilder.wrapper_log import logs_by_run
-    logs = logs_by_run(ran_in, run_of(ran_in).label)
-    return "\n".join(logs[k].read_text(errors="replace")
-                     for k in sorted(logs, key=lambda k: k[1]))
+    log = run_of(ran_in).session_log
+    return log.read_text(errors="replace") if log is not None else ""
 
 
 @_needs["molbuilder-pySCF"]
@@ -154,7 +157,7 @@ def test_a_monitor_that_loads_says_so(real_h2_pyscf):
     from molbuilder.runs import folder_answer, run_of
     from molbuilder.runwrap import MONITOR_BUNDLE
     ran_in = real_h2_pyscf.attempt("coarse")
-    said = _session_logs(ran_in)
+    said = _session_log(ran_in)
     starting = said.find(f"[INFO ] monitor: starting {MONITOR_BUNDLE} on python ")
     started = said.find(f"[INFO ] monitor: {MONITOR_BUNDLE} started")
     assert starting != -1 and started != -1, said[-3000:]
@@ -201,11 +204,12 @@ def test_a_monitor_that_dies_loading_says_why(tmp_path, monkeypatch):
 
 @_needs["molbuilder-siesta"]
 def test_an_ending_the_bundle_cannot_read_is_said_once(tmp_path, monkeypatch):
-    """A SIESTA relaxation, the bundle broken after prep: the wrapper asks
-    the bundle once whether it loads, before its first question about how the
-    run ended, so the error appears twice in all -- the monitor's own start,
-    and that one ask -- and the wrapper says once that the ending cannot be
-    read.  (A relaxation asks twice on its way out, with warm retries on.)
+    """A SIESTA relaxation, the bundle broken after prep, stopped at the
+    20 s wall its run card states -- a failure, after which the wrapper asks
+    how the run ended (`running-a-job.md` § 3.5, § 3.6): it asks the bundle
+    once whether it loads, before its first question about the ending, so
+    the error appears twice in all -- the monitor's own start, and that one
+    ask -- and the wrapper says once that the ending cannot be read.
 
     MUTATION THIS MUST FAIL AGAINST: the wrapper asking the bundle at every
     question (`_mb_ending_able` checking only that the files are there,
@@ -214,7 +218,8 @@ def test_an_ending_the_bundle_cannot_read_is_said_once(tmp_path, monkeypatch):
     """
     from molbuilder.runwrap import MONITOR_BUNDLE, _ENDING_UNREADABLE
     _ran_in, said = _launched(tmp_path, monkeypatch, engine="siesta",
-                              broken_member="report_fields.py")
+                              broken_member="report_fields.py",
+                              wall="00:00:20")
     assert "benchmark:" in said, "the engine never ran to its end"
     errors = said.count(f"[ERROR] monitor: {MONITOR_BUNDLE} did not load")
     assert errors == 2, (errors, said[-4000:])

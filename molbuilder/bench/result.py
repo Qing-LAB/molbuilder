@@ -158,8 +158,7 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
     eff: Dict = {}
 
     from molbuilder.wrapper_log import read_wrapper_log
-    sections = read_wrapper_log(wrapper_log or "")
-    wrap = sections[0] if sections else {}
+    wrap = read_wrapper_log(wrapper_log)
     for key in ("node_phys_cores", "node_sockets", "node_cores_per_socket"):
         if key in wrap:
             eff[key] = wrap[key]

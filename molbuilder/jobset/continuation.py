@@ -168,10 +168,9 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     ``None`` when it has not ended on its own), its state through the one
     door (`parse.dirs.run_status`) and its relaxation's verdict
     (`parse.contract.relaxation_of`), read from the run's own files, the
-    run door's (`runs.run_of`): its engine output at the run's newest try,
-    then its progress log -- where a PySCF run writes its steps, which its
-    stdout cannot stand in for.  The try is the newest in ``attempt`` by
-    the one rule (`runrecord.newest_run`).  ``verdict=False``
+    run door's (`runs.run_of`): its engine output, then its progress log --
+    where a PySCF run writes its steps, which its stdout cannot stand in
+    for.  ``verdict=False``
     skips the relaxation's parse -- a list of runs needs each one's
     conclusion, not a parse of each output.  A RUN OF POINTS -- its root a
     container (`calcdirs`) -- holds no conclusion marker of its own: its
@@ -180,7 +179,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     points it carries to a stage continuing from it
     (`points.PointsOf.carried`)."""
     from ..runs import concluded as _concluded
-    from ..runrecord import ending, newest_run
+    from ..runrecord import ending
     from .naming import stage_home
     home = stage_home(base, task, stage)
     names = home.names
@@ -199,13 +198,12 @@ def read_run(base: Path, task, stage: str, attempt: Path,
                     if v is not None]
         return ((detail if state in FINAL_STATES else None), state,
                 (all(said) if said else None), detail)
-    run = newest_run(attempt, names)
-    concluded = ending(attempt, names.stem, run).line
+    concluded = ending(attempt, names.stem).line
     # ITS STATE, through the one door, asked with its launch record -- a
     # record that does not read is the state `unreadable`, said, never taken
     # for a run that stopped (`runs.concluded`, which asks the scheduler
     # once where it can, `running-a-job.md` § 4.2).
-    st = _concluded(attempt, names, base=base, run=run)
+    st = _concluded(attempt, names, base=base)
     state, detail = st.state, st.detail
     return (concluded, state, _relaxed(attempt) if verdict else None,
             detail)
@@ -216,7 +214,7 @@ def _relaxed(folder) -> Optional[bool]:
     relaxation's verdict (`parse.contract.relaxation_of`) -- or ``None``
     where it says none.  The run door's run (`runs.run_of`), read in the
     order the run door reads a run (`runfiles.result_roles`): its engine
-    output at its newest try, then its progress log, which a SIESTA run
+    output, then its progress log, which a SIESTA run
     never writes into and a PySCF run's output no parser reads."""
     from ..parse.contract import relaxation_of
     from ..parse.errors import ParseError
@@ -543,9 +541,9 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
     rung's gather say it alike.  A run that ended with an error, or stopped,
     is LAUNCHED again, never prepared again (`job-system.md` § 5.0, § 5.4)."""
     again = f"Launch it again --\n{launch_block}"
-    # A RECORD THAT DOES NOT READ is said as its reader says it -- which
-    # names the way out (`jobset migrate`) -- never read as an ending.
-    # Its words come last: they end on the command to type.
+    # A RECORD THAT DOES NOT READ is said as its reader says it -- the file
+    # named, and what cannot be told from it -- never read as an ending.
+    # Its words come last, in the place of what to do first.
     if state == "unreadable":
         return "whose records do not read", detail
     # FAILED, IN THE STATUS DOOR'S WORDS -- why, as `status` says it: a
@@ -634,7 +632,8 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
     from ..parse.engines._run_ending import verdict_words
     from ..runpoints import entry_of, index_at
     from ..runs import concluded
-    from ..runrecord import copied_of, newest_run, read_continued_from
+    from ..runrecord import copied_of, read_continued_from
+    from ..wrapper_log import log_of_run
     from .points import points_of
     declared = points_of(task)
     gathered = gathered_lines(run)
@@ -654,11 +653,12 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
               if opened else None)
         state = ("finished" if ok else st.state if st is not None
                  else "pending")
-        if state == "failed" and newest_run(pdir, names) is None:
-            # A POINT ITS WALK NEVER BEGAN -- no try of its own in its
-            # folder -- whatever its run's job came to (a scheduler's stop
-            # read as the point's end): it waits in the walk, and once the
-            # walk is over it is *not run*, never failed
+        if (state == "failed"
+                and log_of_run(pdir, names.label, names.stage) is None):
+            # A POINT ITS WALK NEVER BEGAN -- no start of its own in its
+            # folder, no session log -- whatever its run's job came to (a
+            # scheduler's stop read as the point's end): it waits in the
+            # walk, and once the walk is over it is *not run*, never failed
             # (:func:`never_reached`, `execution/runs-of-points.md` § 1.3).
             state = "queued"
         verdict = st.verdict if st is not None else None
@@ -909,15 +909,12 @@ def pending_words(run, detail: str = "prepared, not launched") -> str:
 class PointsReading:
     """ONE READING OF A RUN OF POINTS (`execution/architecture.md` § 3.2:
     *a run's points are read once per answer*) -- its state and its count
-    in the kind's words, its points' rows (:func:`point_rows`), the launch
-    record it was read with, and whether what did not read is an older
-    molbuilder's index (`runpoints.OlderIndexError`, whose way on is
-    `jobset migrate`)."""
+    in the kind's words, its points' rows (:func:`point_rows`), and the
+    launch record it was read with."""
     state: str
     detail: str
     rows: Tuple[dict, ...] = ()
     launch: Optional[dict] = None
-    older_index: bool = False
 
 
 def read_points(base, task, stage: str, run, names=None) -> PointsReading:
@@ -930,7 +927,6 @@ def read_points(base, task, stage: str, run, names=None) -> PointsReading:
     longer holds, *unreadable*, in its reader's words -- said, never
     raised.  ``names`` its stage's file names, read here when not handed
     in."""
-    from ..runpoints import OlderIndexError
     from ..runrecord import launch_record
     from .naming import stage_home
     from .errors import PrepError
@@ -949,6 +945,5 @@ def read_points(base, task, stage: str, run, names=None) -> PointsReading:
         state, detail, rows = points_state(run, names, task, stage,
                                            launch=launch, base=base)
     except (LaunchRecordError, OSError) as exc:
-        return PointsReading("unreadable", str(exc), launch=launch,
-                             older_index=isinstance(exc, OlderIndexError))
+        return PointsReading("unreadable", str(exc), launch=launch)
     return PointsReading(state, detail, tuple(rows), launch)

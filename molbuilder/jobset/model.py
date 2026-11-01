@@ -80,9 +80,8 @@ class Resources:
     (``"gpu:1"``; no card -- `scheduler.md` R2a) or None.
 
     **One field here becomes no scheduler flag at all, and that is not an
-    oversight.**  ``continue_retries`` is the warm-retry budget baked into
-    the run wrapper at install time (running-a-job.md § 3.5) — it never
-    reaches an ``sbatch`` line.  It rides this class because this is the
+    oversight.**  ``wall_slack`` is baked into the run wrapper at prep
+    (running-a-job.md § 3.6) — it never reaches an ``sbatch`` line.  It rides this class because this is the
     road every *"field the deck never carries"* already rides
     (engines/stages.md § 5, the row that groups it with ``mpi_np`` and
     ``omp_threads``); the alternative was a second, hand-maintained road
@@ -110,12 +109,9 @@ class Resources:
     use_gpu:       Optional[bool] = field(default=None, metadata={"axis": "rider"})
     mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
-    # NOT a SLURM flag -- baked into the wrapper.
-    continue_retries: Optional[int] = field(default=None, metadata={"axis": "rider"})
     #: THE WALL SLACK, seconds -- how long before its wall the engine stops
-    #: itself (`running-a-job.md` § 3.6); the catalogue's `wall_slack`, riding
-    #: the same road as ``continue_retries``: baked into the wrapper, no
-    #: scheduler flag.
+    #: itself (`running-a-job.md` § 3.6); the catalogue's `wall_slack`:
+    #: baked into the wrapper, no scheduler flag.
     wall_slack: Optional[int] = field(default=None, metadata={"axis": "rider"})
     #: WHEN this calculation should say something -- also not a SLURM flag,
     #: and here for the reason the paragraph above gives: this is the road a
@@ -208,6 +204,15 @@ class Resources:
         d = d or {}
         known = {f.name for f in dataclasses.fields(cls)}
         unknown = [k for k in d if k not in known]
+        # A KEY A RELEASE RETIRED is a file written before it, which `jobset
+        # migrate` takes it out of (`template.RETIRED_ITEMS`; `JobSet.of`
+        # names the command).
+        from ..template import retired as _retired
+        gone = {k: r for k in unknown if (r := _retired(k)) is not None}
+        if gone:
+            raise WrittenBefore(
+                "resources: " + ", ".join(f"{k!r} -- {gone[k].why}"
+                                          for k in sorted(gone)))
         if unknown:
             raise ValueError(
                 "resources: unknown key(s) "
@@ -366,9 +371,9 @@ class Job:
     #: WHETHER A RE-RUN OF THIS JOB CONTINUES from what the last one left --
     #: the rung's kind's one section-level fact in its warm-files
     #: (`job-contracts.md` § 4.2a), read by `prep` and baked into the
-    #: wrapper, which says a retry of a run that cannot resume repeats it
-    #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung
-    #: and a PySCF vibration.
+    #: wrapper, which says a launch again of a run that cannot resume
+    #: repeats it from its first step (`running-a-job.md` § 3.5).  False for
+    #: a SIESTA force-constant rung and a PySCF vibration.
     resumes:    bool            = True
     #: THE FOLDER OF THE RUN'S OWN the engine's scratch lives in -- a device
     #: run's ``tsgf/`` (`engines/transport.md` § 2a.11), the vocabulary's
@@ -445,6 +450,8 @@ class Job:
                 f"{', '.join(repr(k) for k in missing)}")
         try:
             res = Resources.from_dict(d["resources"])
+        except WrittenBefore as exc:
+            raise WrittenBefore(f"job {d['name']!r}: {exc}") from None
         except ValueError as exc:
             raise ValueError(f"job {d['name']!r}: {exc}") from None
         return cls(
@@ -548,9 +555,11 @@ JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
 
 
 class WrittenBefore(ValueError):
-    """A `job-set.json` written before every job key was (2026-10-06): read
-    by no fallback -- `molbuilder jobset migrate` rewrites it, every value
-    kept (`JobSet.of` names the calculation)."""
+    """A `job-set.json` an older molbuilder wrote -- before every job key
+    was (2026-10-06), or holding a key a release retired
+    (`template.RETIRED_ITEMS`): read by no fallback -- `molbuilder jobset
+    migrate` rewrites it, every value kept but the retired one
+    (`JobSet.of` names the calculation)."""
 
 
 @dataclass
@@ -621,8 +630,9 @@ class JobSet:
         `persist.check_schema` via ``from_dict``), or ``None`` when the
         folder holds none.  As it lies on disk, or as ``plan``
         (`jobset.planned.Plan`) leaves it: what a prep planned into it
-        before writing.  One written before every job key was is refused
-        naming the command that rewrites it, its calculation by its folder --
+        before writing.  One written before every job key was, or holding a
+        run setting a release retired, is refused naming the command that
+        rewrites it, its calculation by its folder --
         the root, or the one a benchmark's folder lies in
         (`calcdirs.root_of`)."""
         import json
@@ -642,11 +652,12 @@ class JobSet:
             from ..calcdirs import root_of
             calc = root_of(path.parent)
             way = (f"`{command('migrate', base=calc)}` rewrites it, every "
-                   f"value kept and the old file beside the new"
+                   f"value kept but a retired one, the old file beside "
+                   f"the new"
                    if calc is not None else
                    "it lies in no described calculation")
             raise WrittenBefore(
-                f"{path}: {exc} -- written before every job key was; "
+                f"{path}: {exc} -- written by an older molbuilder; "
                 f"{way}.") from None
 
     def job(self, stage: str) -> "Optional[Job]":

@@ -162,8 +162,7 @@ def render_correction_script(
     stage: str,
 ) -> str:
     """Generate a self-contained Python post-process script that
-    reads the run's output -- its newest try's, else a hand run's
-    unnumbered one (``stage`` the run's stage token) -- extracts the
+    reads the run's output (``stage`` the run's stage token), extracts the
     converged total energy, computes the Makov-Payne correction for the
     actual cell SIESTA used, and prints the corrected value.
 
@@ -181,10 +180,9 @@ def render_correction_script(
     """
     # The script runs where molbuilder may not be installed -- beside a
     # finished run -- so it imports nothing from the package.  It FINDS the
-    # output by the one rule every reader of a run asks
-    # (`runrecord.newest_run`, the catalogue's names) and READS it with
-    # SIESTA's one reading pass, both from the monitor's bundle that lies
-    # beside it in every run (`runfiles.MONITOR_BUNDLE`), so the energy, the
+    # output by the catalogue's names (`runrecord.run_output`) and READS it
+    # with SIESTA's one reading pass, both from the monitor's bundle that
+    # lies beside it in every run (`runfiles.MONITOR_BUNDLE`), so the energy, the
     # cell and SIESTA's own term are read as every reader of a run reads
     # them; the physical constants are inlined.
     #
@@ -272,7 +270,7 @@ BOHR_ANGSTROM= {BOHR_ANGSTROM!r}
 
 def _bundle():
     """The monitor's bundle beside this script ({monitor_bundle}, put in
-    every run by its launch) on the path -- the run's names, its newest try
+    every run by its launch) on the path -- the run's names, its output
     and SIESTA's one reading pass are read from it."""
     bundle = Path(__file__).resolve().with_name("{monitor_bundle}")
     if not bundle.is_file():
@@ -317,8 +315,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", default=None,
-        help="SIESTA .out file to read (default: this run's newest try, "
-             "else a hand run's)")
+        help="SIESTA .out file to read (default: this run's)")
     p.add_argument("--epsilon", type=float, default=DEFAULT_EPS,
         help=f"Relative permittivity (default: {{DEFAULT_EPS}}, vacuum)")
     p.add_argument("--madelung", type=float, default=MADELUNG,
@@ -328,18 +325,17 @@ def main():
     if args.out is not None:
         out_path = Path(args.out)
     else:
-        # THIS RUN'S NEWEST TRY, by the one rule every reader of a run asks
-        # (`runrecord.newest_run`) -- never another stage's output, never by
-        # a file's time; with no try, a hand run's unnumbered output.
+        # THIS RUN'S OUTPUT, by the catalogue's names
+        # (`runrecord.run_output`) -- never another stage's output.
         _bundle()
         from runfiles import RunNames
-        from runrecord import newest_run
+        from runrecord import run_output
         names = RunNames(SYSTEM_LABEL, STAGE)
-        out_path = Path(names.name(".out", newest_run(".", names)))
-        if not out_path.is_file():
-            print(f"error: {{out_path}} not found here.  Run SIESTA first, "
-                  "or pass --out to point at the correct file.",
-                  file=sys.stderr)
+        out_path = run_output(".", names)
+        if out_path is None:
+            print(f"error: no SIESTA output of {{names.stem}} here.  Run "
+                  "SIESTA first, or pass --out to point at the correct "
+                  "file.", file=sys.stderr)
             sys.exit(1)
         print(f"note: reading {{out_path}}.")
     if not out_path.is_file():

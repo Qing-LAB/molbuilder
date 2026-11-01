@@ -9,10 +9,10 @@ The road's H2 optimization (`support.real_runs.layered`, ``real_h2_layered``:
 first run in its own folder, ``01_coarse/run-0/``, SIESTA's own files --
 named by ``SystemLabel`` -- among ours, as it ran (its stage launched again
 opens the next run, `project-layout.md` § 1.5).  And a calculation of this
-module's own whose relaxation is allowed one move and one warm retry, so it
-ends out of moves and its run script runs it again in place: its run holds
-two tries, ``-run0`` and ``-run1`` (`running-a-job.md` § 3.5;
-`project-layout.md` § 1.6.1).
+module's own whose relaxation is allowed one move, so its first run ends out
+of moves -- finished, not converged -- and its stage launched again opens
+``run-1/`` warm, continuing from it (`running-a-job.md` § 3.5;
+`project-layout.md` § 1.6.1: to continue is to launch again).
 
 Every expectation is what the run was given -- the structure written here,
 the deck prep wrote, the template, the env's pinned build -- or a rule of the
@@ -24,8 +24,6 @@ every file of ours is asked of the run door (`runs.run_of`).
 from __future__ import annotations
 
 import json
-import os
-import time
 from pathlib import Path
 
 import numpy as np
@@ -51,13 +49,12 @@ _H2 = H2["positions"]
 
 @pytest.fixture(scope="module")
 def capped(isolated_projects_root_module, tmp_path_factory):
-    """The capped calculation's coarse run, in a projects tree of its own:
-    ONE MOVE ALLOWED, AND ONE WARM RETRY -- the relaxation ends out of
-    moves, and the run script runs it again in place as its next try
-    (`running-a-job.md` § 3.5): two tries in one run folder."""
+    """The capped calculation's coarse stage, in a projects tree of its own:
+    ONE MOVE ALLOWED -- its first run, ``run-0``, ends out of moves -- and
+    the stage launched again, which opens ``run-1`` warm from it
+    (`running-a-job.md` § 3.5): ``(run-0, run-1)``."""
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runs import run_of
     from molbuilder.task import of as task_of
     from molbuilder.workingcopy_structure import StructureCodec
     from support.road import group_words, jobset
@@ -72,26 +69,24 @@ def capped(isolated_projects_root_module, tmp_path_factory):
                    "--calculation", "optimization",
                    "--name", "H2", "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
-        # ...its retry budget the run card's, a run setting.
-        one_rank(bundle, continue_retries=1)
+        one_rank(bundle)
         set_template_value(bundle / "H2.template.toml", "relax_steps", "1")
         r = jobset("prep", "task", *group_words(bundle, "coarse"),
                    "--bundle", bundle, "--target", "this")
         assert r.exit_code == 0, r.output
+        home = stage_home(bundle, task_of(bundle), "coarse").dir
         jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "direct", "--foreground", "--yes")
-        folder = latest_attempt(stage_home(bundle, task_of(bundle),
-                                           "coarse").dir)
-        assert folder is not None, sorted(p.name for p in bundle.rglob("*"))
-        outs = run_of(folder).outputs
-        assert [p.name for p in outs] == ["H2_01_coarse-run1.out",
-                                          "H2_01_coarse-run0.out"], \
-            sorted(p.name for p in folder.iterdir())
-        # AN EARLIER TRY'S OUTPUT THE NEWER FILE, as a copy or a restore
-        # leaves a folder's times -- which reorder files, never tries.
-        later = time.time() + 120
-        os.utime(outs[-1], (later, later))
-        yield folder
+        first = latest_attempt(home)
+        assert first is not None and first.name == "run-0", sorted(
+            p.name for p in bundle.rglob("*"))
+        # ...AND LAUNCHED AGAIN: the next run, warm from the one that ran
+        # out of moves.
+        again = jobset("launch", "task", "--stage", "coarse", "--bundle",
+                       bundle, "--mode", "direct", "--foreground", "--yes")
+        second = latest_attempt(home)
+        assert second is not None and second.name == "run-1", again.output
+        yield first, second
 
 
 @pytest.fixture(scope="module")
@@ -144,23 +139,25 @@ def test_the_run_folder_answers_for_its_run(opt):
     """The run's folder is a run (`project-layout.md` § 1.4a), it opens the
     run's own engine output before the progress log prep seeded beside it
     (§ 5.2, § 5.5), and every name is read back with the run's label:
-    SIESTA's files, named by ``SystemLabel``, are the engine's, the deck and
-    the run's history its stage's own (`job-contracts.md` § 2.2a)."""
+    SIESTA's files, named by ``SystemLabel`` -- its history among them --
+    are the engine's, the deck and the output the stage's own, named on its
+    stem (`job-contracts.md` § 2.2, § 2.2a)."""
     from molbuilder.runs import folder_answer
     got = folder_answer(opt)
     assert got["place"]["role"] == "run", got["place"]
-    assert Path(got["openable"]).name == "H2_01_coarse-run0.out", (
+    assert Path(got["openable"]).name == "H2_01_coarse.out", (
         got["attempts"])
     assert got["status"]["state"] == "finished", got["status"]
     assert Path(got["record"]["deck"]["path"]).name == "H2_01_coarse.fdf", (
         got["record"]["deck"])
     files = {f["name"]: f for f in got["files"]}
-    engines = [p.name for p in opt.glob("fdf.*.log")] + ["H2.XV", "H2.xyz"]
+    engines = [p.name for p in opt.glob("fdf.*.log")] + [
+        "H2.XV", "H2.xyz", "H2.MD.nc"]
     for name in engines:
         assert (files[name]["role"], files[name]["about"]) == (
             None, {"ours": False}), files[name]
     for name, role in (("H2_01_coarse.fdf", ".fdf"),
-                       ("H2_01_coarse-run0.MD.nc", ".MD.nc")):
+                       ("H2_01_coarse.out", ".out")):
         assert (files[name]["role"], files[name]["stage"],
                 files[name]["about"]["ours"]) == (role, "01_coarse", True), (
             files[name])
@@ -191,7 +188,7 @@ def test_the_run_reads_its_own_deck(opt, monkeypatch):
     np.testing.assert_allclose(box["cell"], np.eye(3) * _BOX, atol=1e-4)
     # ITS OWN OUTPUT NAMES ITS COMPANIONS AND ITS HELD ATOMS (§ 5.3).
     rt = d["data"]["runtime_info"]
-    assert rt.get("mdnc_source") == "H2_01_coarse-run0.MD.nc", rt
+    assert rt.get("mdnc_source") == "H2.MD.nc", rt
     assert rt.get("frozen_atoms") == [0], rt
     # ITS OWN DECK STATES ITS CONTRACT.
     calc = d["info"]["calculation"]
@@ -382,7 +379,7 @@ def test_a_relaxations_step_boundaries_are_not_iterations(opt):
     MUTATION THIS MUST FAIL AGAINST: keep the deltas into iteration 1."""
     from molbuilder.parse.instruments.scf_timing_rows import \
         scf_timing_metrics
-    text = _run(opt).file(".scf-timing.log", 0).read_text()
+    text = _run(opt).file(".scf-timing.log").read_text()
     rows = [ln.split() for ln in text.splitlines() if ln.strip()]
     starts = sum(1 for r in rows if r[1] == "1")
     assert starts >= 2, "a relaxation of one SCF shows no boundary"
@@ -436,18 +433,22 @@ def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(opt):
 # --------------------------------------------------------------------- #
 
 def _md_nc(folder: Path) -> Path:
-    return _run(folder).file(".MD.nc", 0)
+    """SIESTA's own ``<label>.MD.nc`` in the run's folder, asked of the run
+    door (`Run.on_label`)."""
+    got = _run(folder).on_label(".MD.nc")
+    assert got is not None, sorted(p.name for p in folder.iterdir())
+    return got
 
 
 def test_the_history_is_found_by_the_output_s_own_name(opt):
-    """The output carries the stage and the try's number, ``H2_01_coarse-run0
-    .out``, and the run's history the same, ``H2_01_coarse-run0.MD.nc`` --
-    which is how the output finds its own, read back with the label it prints
-    as the reading pass read it (`siesta_mdnc.sibling_md_nc`, § 4a, § 5.3)
-    -- and the output's frames are upgraded from it.
+    """The output, ``H2_01_coarse.out``, prints the ``SystemLabel`` it ran
+    under, and the run's history is SIESTA's ``H2.MD.nc``, named by that
+    label -- which is how the output finds its own, read back with the label
+    it prints as the reading pass read it (`siesta_mdnc.sibling_md_nc`,
+    § 4a, § 5.3) -- and the output's frames are upgraded from it.
 
-    MUTATION THIS MUST FAIL AGAINST: the run's file not composed from the
-    output's name -- the trajectory keeps the output's four-decimal
+    MUTATION THIS MUST FAIL AGAINST: the history not named from the label
+    the output prints -- the trajectory keeps the output's four-decimal
     coordinates."""
     from molbuilder.parse import parse
     res = parse(str(_out(opt)))
@@ -455,64 +456,6 @@ def test_the_history_is_found_by_the_output_s_own_name(opt):
         res.runtime_info)
     assert res.runtime_info.get("mdnc_coords_upgraded", 0) >= 1, (
         res.runtime_info)
-
-
-def test_every_try_s_history_is_its_own(capped):
-    """Each try writes its steps into a history of its own, whatever came
-    before it in the folder: the capped run's first try, and the warm retry
-    the run script ran in the same folder after it -- each try's rows are
-    its own output's steps, and SIESTA's shared name is not left behind
-    (`job-contracts.md` § 2.2; a stage's runs across folders,
-    `test_the_road_on_real_runs_e2e.py`).
-
-    MUTATION THIS MUST FAIL AGAINST: the run script laying no pointer --
-    SIESTA appends both tries to ``H2.MD.nc`` and neither has a history of
-    its own."""
-    from support.road import history_is_the_runs_own
-    outs = _run(capped).outputs
-    assert [p.name for p in outs] == ["H2_01_coarse-run1.out",
-                                      "H2_01_coarse-run0.out"], outs
-    for out in outs:
-        history_is_the_runs_own(out, "H2")
-
-
-def test_the_run_folder_speaks_for_its_newest_try(capped):
-    """The first try's output is the newer file -- as a copy or a restore
-    leaves a folder's times -- and the run's folder still speaks for its
-    newest try, by the number every file of it carries (`model/parse.md`
-    § 5.1: a file's time decides nothing; `project-layout.md` § 1.6.1)."""
-    from molbuilder.runs import folder_answer
-    got = folder_answer(capped)
-    assert got["status"]["active_source"] == "H2_01_coarse-run1.out", (
-        got["status"])
-    assert Path(got["openable"]).name == "H2_01_coarse-run1.out", (
-        got["attempts"])
-
-
-def test_a_warm_retry_continues_and_only_the_last_try_concludes(capped):
-    """`running-a-job.md` § 3.5: out of moves, the run script runs itself
-    again in the same run folder, with ``--continue`` and the next try's
-    number -- each try with a session log of its own, the first saying it
-    started clean and the retry that it resumes warm, in the banner's own
-    words (`job-contracts.md` § 4.4) -- and only the last try writes the
-    conclusion marker (`project-layout.md` § 1.6.3).  (Each try's output
-    carrying its own number is the fixture's own check.)
-
-    THE SILENT FAILURES: a retry that starts cold, its relaxation begun
-    again from the structure; a first try concluding the run before its
-    retry ran, so a reader takes the run as ended mid-retry.  MUTATION THIS
-    MUST FAIL AGAINST: the retry run again without ``--continue``."""
-    from molbuilder.wrapper_log import log_of_run
-    run = _run(capped)
-    assert run.file(".concluded", 0) is None, sorted(
-        p.name for p in capped.iterdir())
-    assert run.file(".concluded", 1) is not None, sorted(
-        p.name for p in capped.iterdir())
-    logs = [log_of_run(capped, run.label, n, run.stage) for n in (0, 1)]
-    assert None not in logs, logs
-    first, retry = (log.read_text(errors="replace") for log in logs)
-    assert "initial-run (clean state)" in first, logs[0].name
-    assert "WARM-RESUME (--continue; engine will load" in retry, logs[1].name
 
 
 def test_the_history_is_claimed_by_its_reader_and_routed_there(opt):
@@ -594,15 +537,54 @@ def test_the_output_keeps_its_frames_and_the_history_matches_in_order(opt):
 
 
 # --------------------------------------------------------------------- #
-#  How a run ended -- what the wrapper's retries ask (§ 3.5)             #
+#  A run out of moves, and launched again (`running-a-job.md` § 3.5)     #
 # --------------------------------------------------------------------- #
 
-def test_a_relaxation_out_of_moves_is_capped_and_no_scf_stop(capped):
+def test_a_relaxation_out_of_moves_ends_finished_not_converged(capped):
     """One move allowed: SIESTA exits 0 printing ``Final (unrelaxed)``
-    coordinates -- the ending the geometry retry asks for, on the zero-exit
-    path -- and not an SCF stop (`running-a-job.md` § 3.5)."""
-    from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
+    coordinates, and the run reads *finished, not converged* -- its
+    convergence column ``geometry NO`` -- never an SCF stop
+    (`running-a-job.md` § 3.5, § 4.2).
+
+    THE SILENT FAILURES: a relaxation out of moves read as converged, or as
+    failed by an SCF it did not stop on."""
+    from molbuilder.parse.engines._run_ending import ending_of
     from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
-    end = ending_of(_run(capped).file(".out", 0))
-    assert QUESTIONS["relaxation-capped"](end), end
-    assert not QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER), end
+    from molbuilder.runs import state_of
+    first, _ = capped
+    run = _run(first)
+    end = ending_of(run.stdout)
+    assert end.relaxed is False and end.cause != SCF_NOT_CONV_MARKER, end
+    st = state_of(run)
+    assert (st.state, st.converged_words) == ("finished", "geometry NO"), st
+
+
+def test_a_relaxation_out_of_moves_launched_again_continues_warm(capped):
+    """To continue is to launch again (`project-layout.md` § 1.6.1;
+    `running-a-job.md` § 3.5): the run that ran out of moves holds its one
+    start -- its session log, its banner saying it started clean, its
+    conclusion marker -- and the stage launched again opens ``run-1``, which
+    records ``run-0`` as the run it continues from, holds the restart file
+    it saved, and says in its own banner that SIESTA will load it
+    (`job-contracts.md` § 4.4).
+
+    THE SILENT FAILURES: a launch again that starts cold, its relaxation
+    begun again from the structure; a new run that names no run it
+    continues, or another.  MUTATION THIS MUST FAIL AGAINST: launch again
+    copying none of the run's restart files."""
+    from molbuilder.runrecord import RunRef, launch_record, read_continued_from
+    first, again = capped
+    for folder in (first, again):
+        run = _run(folder)
+        assert run.session_log is not None and run.file(".concluded"), (
+            sorted(p.name for p in folder.iterdir()))
+    started = _run(first).session_log.read_text(errors="replace")
+    assert "CLEAN START (no restart file here)" in started, started
+    assert read_continued_from(again) == RunRef.read("01_coarse/run-0")
+    assert launch_record(again)["continued_from"] == "01_coarse/run-0"
+    assert (again / "H2.XV").is_file(), sorted(
+        p.name for p in again.iterdir())
+    mode = next((ln for ln in _run(again).session_log.read_text(
+        errors="replace").splitlines() if "CONTINUES (engine will load" in ln),
+        None)
+    assert mode is not None and "H2.XV" in mode, mode

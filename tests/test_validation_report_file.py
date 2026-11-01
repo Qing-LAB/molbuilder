@@ -18,7 +18,8 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.issues import Issue
-from molbuilder.script_emit import VALIDATION_SUFFIX, write_validation_report
+from molbuilder.runfiles import ROLE_VALIDATION
+from molbuilder.script_emit import write_validation_report
 
 
 def test_a_clean_deck_still_gets_a_report_that_claims_nothing(tmp_path):
@@ -32,7 +33,7 @@ def test_a_clean_deck_still_gets_a_report_that_claims_nothing(tmp_path):
 
 def test_the_report_names_the_deck_it_is_about(tmp_path):
     out = write_validation_report(tmp_path / "JOB_01_coarse.fdf", [])
-    assert out.name == "JOB_01_coarse" + VALIDATION_SUFFIX
+    assert out.name == "JOB_01_coarse" + ROLE_VALIDATION
     assert "JOB_01_coarse.fdf" in out.read_text()
 
 
@@ -47,20 +48,6 @@ def test_every_severity_reaches_the_file(tmp_path):
     for level in ("ERROR", "WARN", "INFO"):
         assert level in body, f"{level} findings never reach the file"
     assert "[chemistry.spin]" in body, "the id a reader needs is dropped"
-
-
-def test_the_report_is_declared_as_a_file_molbuilder_wrote():
-    """Conflict C of the plan.  `identity.OUR_FILE_PATTERNS` has a second
-    reader — `runwrap._cold_restart_block` derives `--cold`'s *"except what
-    molbuilder wrote"* exception from it — so an undeclared file reads as
-    ENGINE OUTPUT, and `prep` greets a fresh calculation with *"already under
-    way, warm files at the root"*.  That trap sprang once already, on the
-    `.source.xyz` pair."""
-    from molbuilder.identity import OUR_FILE_PATTERNS
-    assert "{label}.validation.txt" in OUR_FILE_PATTERNS
-    assert "{label}_*.validation.txt" in OUR_FILE_PATTERNS, (
-        "the per-rung form is missing, so a staged deck's report would read "
-        "as engine output")
 
 
 # --------------------------------------------------------------------- #

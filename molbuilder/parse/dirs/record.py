@@ -1,4 +1,4 @@
-"""`run_record` — one attempt's record: what ran, with what, and how it went.
+"""`run_record` — one run's record: what ran, with what, and how it went.
 
 Contract: `model/parse.md` § 5d — and § 5d.1b for the shape of this module:
 **a declared table, one reader per file.**  :data:`CONTRIBUTORS` names, for
@@ -24,10 +24,9 @@ are organized"); none is composed from this one.
 builds a trajectory.  The Results tab's Run panel shows it
 (`web/results.md` § 3a).
 
-**Which run** (§ 5d.1): the one its caller names (:func:`run_files`), at
-its latest try ``-runN``, with each earlier try and how it ended; the `fdf`
-log paired with the ``.out`` by its stamp; the wrapper log whose FIRST
-section is try N.
+**Which run** (§ 5d.1): the one its caller names (:func:`run_files`) -- its
+one set of files, a run folder holding one start; the `fdf` log paired with
+the ``.out`` by its stamp; the run's session log.
 """
 from __future__ import annotations
 
@@ -55,7 +54,7 @@ _BUILD_HEADER = 4 * 1024
 @dataclass(frozen=True)
 class RunFiles:
     """The files of the run a record describes -- :func:`run_files`' answer.
-    A file the attempt does not hold is ``None``."""
+    A file the run does not hold is ``None``."""
     directory: Path
     engine: str
     #: The folder the run's launch record lies in, the run door's
@@ -67,18 +66,18 @@ class RunFiles:
     #: The names of the run's stage's files (`runfiles.RunNames`), the
     #: caller's -- the run door's.
     names: Any = None
-    run: Optional[int] = None
-    out: Optional[Path] = None             # SIESTA family's stdout, try N
-    pyscf_log: Optional[Path] = None       # PySCF's stdout, try N
+    out: Optional[Path] = None             # SIESTA family's stdout
+    pyscf_log: Optional[Path] = None       # PySCF's stdout
     engine_log: Optional[Path] = None      # PySCF's own logger's file
     fdf_log: Optional[Path] = None         # SIESTA's, paired by stamp
-    wrapper_section: Dict[str, Any] = field(default_factory=dict)
-    wrapper_text: str = ""                 # try N's section, for the fence
-    timing: Optional[Path] = None          # the SIESTA family's tee, try N
+    #: The run's start, as its session log states it
+    #: (`wrapper_log.read_wrapper_log`), and the log's text, for the fence.
+    wrapper_start: Dict[str, Any] = field(default_factory=dict)
+    wrapper_text: str = ""
+    timing: Optional[Path] = None          # the SIESTA family's tee
     progress_log: Optional[Path] = None    # the stage's progress log
     monitor_log: Optional[Path] = None
     util_csv: Optional[Path] = None
-    earlier: Tuple[Tuple[int, Optional[Path]], ...] = ()
     #: The ``.out``'s head, read once here for every row that reads it.
     out_head: str = ""
     #: The calculation's kind, from its description -- the caller's
@@ -106,8 +105,7 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
         return ""
 
 
-def run_files(directory, *, names, launched_in, run: Optional[int] = None,
-              status=None, engine: Optional[str] = None,
+def run_files(directory, *, names, launched_in, status, engine: str,
               calculation: Optional[str] = None,
               current: Optional[bool] = None) -> Optional[RunFiles]:
     """What the run of the stage ``names`` names (`runfiles.RunNames`) left
@@ -116,31 +114,18 @@ def run_files(directory, *, names, launched_in, run: Optional[int] = None,
 
     **The caller says which run** -- the run door (`runs.run_of`,
     `execution/architecture.md` § 3.2), which reads the label from the
-    description and the stage from where the folder is -- and which try,
-    ``run``; with none, the run's newest by the one rule
-    (`runrecord.newest_run`, `model/parse.md` § 5.1).  This floor knows no
+    description and the stage from where the folder is.  This floor knows no
     calculation (§ 2.1).
 
-    ``status`` and ``engine`` are the run's `run_status` and engine, passed
-    by a caller that already has them; asked here otherwise.
+    ``status`` and ``engine`` are the run's `run_status` and engine, which
+    the run door has already read.
     ``launched_in`` is where the run's launch record lies, the run door's
     (`runs.Run.launched_in`).
     """
-    from ..contract import engine_of
-    from ...runfiles import deck_roles, find
-    from .rundir import run_state_of
+    from ...runfiles import ROLE_MOLWATCH, deck_roles, find, stdout_roles
 
-    from ...runrecord import newest_run
     d = Path(directory)
     label, stage = names.label, names.stage
-    # THE TRY IT READS, one for every part: the caller's, else the run's
-    # newest by the one rule (`runrecord.newest_run`).
-    n = run if run is not None else newest_run(d, names)
-    if status is None:
-        # THE ONE DOOR, with the run's launch record, as every reader asks it
-        # (`rundir.run_state_of`).
-        status = run_state_of(d, names, n, launched_in=launched_in)
-    engine = engine or engine_of(str(d))
     # ONE LISTING of this run's files, filtered below -- `find` lists and
     # reads every name in the directory on each call.
     listing = find(d, label, stage=stage)
@@ -149,52 +134,36 @@ def run_files(directory, *, names, launched_in, run: Optional[int] = None,
         return None
     deck = decks[0]
 
-    def one(role: str, run: Optional[int]) -> Optional[Path]:
-        hits = [p for p, rf in listing
-                if rf.role == role and (run is None or rf.run == run)]
-        return hits[-1] if hits else None
-
-    runs = sorted({rf.run for _p, rf in listing if rf.run is not None})
-
     def this_run(role: str) -> Optional[Path]:
-        """Run ``n``'s file in ``role`` -- the folder's own where the
-        stage's names say the name carries no run's number here."""
-        if not names.numbered(role):
-            return one(role, None)
-        return one(role, n) if n is not None else None
+        """The run's file in ``role`` -- the first by name, the run door's
+        rule (`runs.Run.file`) -- or ``None``."""
+        return next((p for p, rf in listing if rf.role == role), None)
 
-    out = this_run(".out")
-    pyscf_log = this_run(".pyscf.log")
+    def first_of(roles) -> Optional[Path]:
+        return next((p for p, rf in listing if rf.role in roles), None)
+
+    out = first_of(stdout_roles("siesta"))
+    pyscf_log = first_of(stdout_roles("pyscf"))
 
     out_head = _read(out, head=_HEAD)
     fdf_log = _fdf_log_of(d, out_head) if out is not None else None
 
-    # THE WRAPPER LOG WHOSE FIRST SECTION IS TRY N: each start writes its
-    # own -- the pairing `run_status` reads SIESTA's stderr by
-    # (`wrapper_log.log_of_run`).
-    from ...wrapper_log import log_of_run, read_wrapper_log
-    section: Dict[str, Any] = {}
-    section_text = ""
-    log = log_of_run(d, label, n, stage) if n is not None else None
-    if log is not None:
-        text = _read(log)
-        sections = read_wrapper_log(text)
-        if sections:
-            section = sections[0]
-            section_text = _first_section_text(text)
+    # THE RUN'S SESSION LOG -- its start, the log `run_status` reads
+    # SIESTA's stderr in (`wrapper_log.log_of_run`) -- from the one
+    # listing, which holds the stage's files alone, as that door matches.
+    from ...wrapper_log import read_wrapper_log
+    log_text = _read(this_run(".runwrap.log"))
 
-    earlier = tuple((k, one(".out", k) or one(".pyscf.log", k))
-                    for k in runs if n is not None and k < n)
     return RunFiles(
         directory=d, engine=engine, status=status,
-        deck=deck, names=names, run=n, out=out, out_head=out_head,
+        deck=deck, names=names, out=out, out_head=out_head,
         pyscf_log=pyscf_log, engine_log=this_run(".log"), fdf_log=fdf_log,
-        wrapper_section=section, wrapper_text=section_text,
+        wrapper_start=read_wrapper_log(log_text), wrapper_text=log_text,
         timing=this_run(".scf-timing.log"),
-        progress_log=this_run(".molwatch.log"),
+        progress_log=this_run(ROLE_MOLWATCH),
         monitor_log=this_run(".monitor.log"),
         util_csv=this_run(".util.csv"),
-        earlier=earlier, calculation=calculation, current=current,
+        calculation=calculation, current=current,
         launched_in=Path(launched_in))
 
 
@@ -215,20 +184,6 @@ def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
         return None
     from ..engines.siesta_fdflog import logs_in, stamp_of as _fdf_stamp
     return next((p for p in logs_in(d) if _fdf_stamp(p) == start), None)
-
-
-def _first_section_text(text: str) -> str:
-    """The first run section of a wrapper log, as text -- where its
-    effective-parameters block sits."""
-    from ...wrapper_log import WRAPPER_LOG_START
-    lines, seen = [], 0
-    for line in text.splitlines():
-        if WRAPPER_LOG_START in line:
-            seen += 1
-            if seen > 1:
-                break
-        lines.append(line)
-    return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- #
@@ -351,41 +306,31 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
 
 
 def _ending(f: RunFiles) -> Dict[str, Any]:
-    """How the newest try is doing, whether each of its phases converged,
-    and how each earlier try ended -- all from the ONE scan `run_status` made
-    to judge the state (``RunStatus.endings``).  Nothing is read a second
-    time."""
+    """How the run is doing and whether each of its phases converged -- from
+    the ONE scan `run_status` made to judge the state
+    (``RunStatus.endings``).  Nothing is read a second time."""
     from ..engines._run_ending import CONCLUDED
     st = f.status
     if st is None:
         return {}
     verdict: Dict[str, Any] = {"state": st.state, "detail": st.detail}
     endings = getattr(st, "endings", {}) or {}
-    main = f.out or f.pyscf_log
-    end = endings.get(main.name) if main is not None else None
+    # THE OUTPUT THAT SPEAKS is the status's own choice (`run_status`'s
+    # `active_source`, § 5.1), never a second rule here.
+    source = getattr(st, "active_source", None)
+    end = endings.get(source) if source else None
     if end is not None:
-        verdict["ended"] = end.run_state
+        # HOW IT ENDED, once its output states an ending (§ 2b): an output
+        # with none yet is running, not ended, and a field is stated only
+        # where a file states it (§ 5d.1a).
+        if end.run_state in CONCLUDED:
+            verdict["ended"] = end.run_state
         # PER PHASE (§ 5d.6): a device's periodic initialization converging
         # does not speak for its NEGF loop, so there is no one flag to give.
         if end.phases:
             verdict["converged"] = dict(end.phases)
         verdict.update(_forces_of(end))
-    # AN EARLIER TRY STATES AN ENDING OR NOTHING.  A later try exists, so
-    # one with no ending marker is not running -- it was cut off, which its
-    # own file cannot say (§ 2b) -- and "running" is what the scan answers
-    # for a file with no marker.  Stated only when the file states it
-    # (§ 5d.1a).
-    earlier = []
-    for k, path in f.earlier:
-        row: Dict[str, Any] = {"run": k}
-        said = endings.get(path.name) if path is not None else None
-        if said is not None and said.run_state in CONCLUDED:
-            row["ended"] = said.run_state
-        earlier.append(row)
-    out: Dict[str, Any] = {"verdict": verdict}
-    if earlier:
-        out["earlier"] = earlier
-    return out
+    return {"verdict": verdict}
 
 
 def _forces_of(end) -> Dict[str, Any]:
@@ -407,8 +352,9 @@ def _forces_of(end) -> Dict[str, Any]:
 
 
 def _wrapper(f: RunFiles) -> Dict[str, Any]:
-    """Try N's section of the wrapper log, through `runwrap`'s own reader."""
-    sec = f.wrapper_section
+    """The run's start, as its session log states it, through the log's
+    one reader (`wrapper_log.read_wrapper_log`)."""
+    sec = f.wrapper_start
     if not sec:
         return {}
     host = {k: sec[k] for k in ("hostname", "user", "cwd", "conda_env",
@@ -478,14 +424,14 @@ def _timing_figures(path: Optional[Path]) -> Dict[str, Any]:
 
 def scf_timing_of(output, timing_log: Optional[Path] = None
                   ) -> Dict[str, Any]:
-    """The SCF-timing figures of the try ``output`` is an output of: a PySCF
-    progress log stamps its own rows; a SIESTA-family ``<base>-runN.out``'s
-    are its try's tee, ``timing_log`` -- the run's `.scf-timing.log` at that
-    try, which the caller finds through the run door (`runs.run_of`).
+    """The SCF-timing figures of the run ``output`` is an output of: a PySCF
+    progress log stamps its own rows; a SIESTA-family ``<base>.out``'s are
+    its run's tee, ``timing_log`` -- the run's `.scf-timing.log`, which the
+    caller finds through the run door (`runs.run_of`).
     Read as the record reads them.  ``{}`` when the run has none."""
-    from ...runfiles import role_of
+    from ...runfiles import ROLE_MOLWATCH, role_of
     p = Path(output)
-    if role_of(p.name) == ".molwatch.log":
+    if role_of(p.name) == ROLE_MOLWATCH:
         return _timing_figures(p)
     return _timing_figures(Path(timing_log)) if timing_log else {}
 
@@ -525,9 +471,8 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
     # before sequences states none, and its launch sent it.
     keys = ["mode", "command", "job_id", "launched_at", "placed_on",
             "sequence"]
-    # `run.json` is its run's and answers for every try in it, a warm
-    # retry's among them (`project-layout.md` § 1.6.3): where the run
-    # continued from is said of each.  Not of a point, which starts from
+    # `run.json` is the run's (`project-layout.md` § 1.6.3): where the run
+    # continued from is said of it.  Not of a point, which starts from
     # the point before it: `started_from`, its own `.continued-from`
     # (`runs-of-points.md` § 1.2 *start*) -- stated only where the marker
     # is, since a planned point's start is copied with no marker.
@@ -543,7 +488,7 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
 
 def _concluded(f: RunFiles) -> Dict[str, Any]:
     """What the run's process said on its way out: the marker `run_status`
-    already found at the newest try (``RunStatus.concluded``), read by its one
+    already found for the run (``RunStatus.concluded``), read by its one
     parser, `runrecord.read_concluded` -- never the file a second time."""
     from ...runrecord import read_concluded
     said = getattr(f.status, "concluded", None)
@@ -620,7 +565,7 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                            "verdict.max_force_free_ev_ang",
                            "verdict.max_force_held_ev_ang",
                            "verdict.stress_voigt_kbar",
-                           "verdict.forces_not_computed", "earlier"),
+                           "verdict.forces_not_computed"),
                 (), _ending),
     Contributor("wrapper-log",
                 ("computation.host.hostname", "computation.host.user",
@@ -705,8 +650,7 @@ def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
             into[key] = val
 
 
-def run_record(directory, *, names, launched_in, run: Optional[int] = None,
-               status=None, engine: Optional[str] = None,
+def run_record(directory, *, names, launched_in, status, engine: str,
                calculation: Optional[str] = None,
                current: Optional[bool] = None,
                fields: Optional[Tuple[str, ...]] = None
@@ -721,7 +665,7 @@ def run_record(directory, *, names, launched_in, run: Optional[int] = None,
     one of them are read, and only those paths kept -- the memory a stage
     needs reads a run's peak and ranks, never its whole record
     (`execution/job-request.md` § 3.1a)."""
-    f = run_files(directory, names=names, run=run, status=status,
+    f = run_files(directory, names=names, status=status,
                   engine=engine, calculation=calculation,
                   current=current, launched_in=launched_in)
     if f is None:
@@ -738,8 +682,6 @@ def run_record(directory, *, names, launched_in, run: Optional[int] = None,
             + [a for a in fields
                if any(a.startswith(fd + ".") for fd in declared)]))
     record: Dict[str, Any] = {}
-    if f.run is not None:
-        record["run"] = f.run
     for row in CONTRIBUTORS:
         if row.engines and f.engine not in row.engines:
             continue

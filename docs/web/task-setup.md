@@ -938,7 +938,7 @@ distinction the names themselves draw (`job-contracts.md` § 2.3):
 |---|---|
 | **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger — the catalogue's calculation-level rows |
 | **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them — one that lands in each run (a vibration's result) says so on its line |
-| **one per rung** | everything stemmed on that rung's token, in the rung's directory and its first run's — the files a try numbers named for the first try, `-run0` — and, for a run of points, its walk in `launch/` (its run script, header and log, `runfiles.GroupNames.of_points`) in place of a header of its own; a rung's file at the root (its prep's pipeline log) says where. A run's own records carry fixed names, `run.json` and `.continued-from`, the same in every run: they are on no rung's card, and listed with the run's files in `project-layout.md` § 5.3 |
+| **one per rung** | everything stemmed on that rung's token, in the rung's directory and its first run's — and, for a run of points, its walk in `launch/` (its run script, header and log, `runfiles.GroupNames.of_points`) in place of a header of its own; a rung's file at the root (its prep's pipeline log) says where. A run's own records carry fixed names, `run.json` and `.continued-from`, the same in every run: they are on no rung's card, and listed with the run's files in `project-layout.md` § 5.3 |
 
 **Each group folds** *(user, 2026-10-13: "the 'what this calculation writes'
 panel should have the organization of the files clear by foldable segments
@@ -969,9 +969,9 @@ doing about geomeTRIC's trajectory until the grammar was written down.
 
 The description says which calculation and which engine, and both narrow the
 list: a SIESTA run is not told about `.py`, and a relaxation is not promised a
-`.spectra.json`. A family — the wrapper's session log, one per launch — is
-shown with its field's name, `<base>.runwrap-<stamp>.log`, rather than with an
-invented timestamp — but the engine, which the description names, filled. A
+`.spectra.json`. A family — a name with a field in it, one file for each
+value — is shown with its field's name rather than with an invented value —
+but the engine, which the description names, filled. A
 file only an opt-in switch writes, or only a machine with a queue, says so on
 its line; a file only an older molbuilder wrote is not listed.
 

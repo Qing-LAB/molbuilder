@@ -1,4 +1,4 @@
-"""``<base>-runN.scf-timing.log`` — seconds per SCF iteration.
+"""``<base>.scf-timing.log`` — seconds per SCF iteration.
 
 The wrapper tees every SCF row of either phase -- SIESTA's ``scf:`` and
 TranSIESTA's ``ts-scf:`` -- into this file with an epoch stamp in front

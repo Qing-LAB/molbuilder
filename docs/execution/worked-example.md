@@ -239,7 +239,7 @@ flowchart TB
       direction TB
       L["deck · pseudopotentials · monitor<br/>(rendered by prep)"]
       subgraph R0["run-0/  — an attempt, immutable once written"]
-        O["the deck, copied in<br/>&lt;label&gt;.XV · &lt;label&gt;.DM · &lt;label&gt;_01_coarse-run0.out<br/>the session log"]
+        O["the deck, copied in<br/>&lt;label&gt;.XV · &lt;label&gt;.DM · &lt;label&gt;_01_coarse.out<br/>the session log"]
       end
     end
     L -.->|"prep copies these in<br/>before the wrapper starts"| O

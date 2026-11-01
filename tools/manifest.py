@@ -50,8 +50,7 @@ def _name(a: Artifact) -> str:
     if a.name:
         return f"`{_shown(a.name)}`"
     head = "<base>" if a.staged else "<label>"
-    run = "" if a.attempt == "never" else "-run<N>"
-    return f"`{head}{run}{_shown(a.role)}`"
+    return f"`{head}{_shown(a.role)}`"
 
 
 def _notes(a: Artifact) -> str:

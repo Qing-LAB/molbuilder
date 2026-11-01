@@ -97,11 +97,11 @@ Seven words are used throughout. Each is ordinary once you know what it points a
 | **wrapper** | The shell script that activates the right environment, works out how many processors to use, launches the engine, and watches it. Named `<label>.run.sh` |
 | **stage** | One step of a multi-step calculation — *coarse*, then *tight*. molbuilder's idea, not the engine's |
 
-Three more you will meet in file names: a **run** — the code says
-**attempt** — is one launch of a stage, a folder of its own (`run-0`, `run-1`);
-a **try** is one start of its wrapper inside that folder, its files marked
-`-run0`, `-run1` (a warm retry is the next try); and a **trial** is one point
-of a benchmark (`bench-G0N16C1`).
+Two more you will meet in names: a **run** — the code says
+**attempt** — is one launch of a stage, a folder of its own (`run-0`, `run-1`)
+where its wrapper starts once, so to continue is to launch again
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1); and a
+**trial** is one point of a benchmark (`bench-G0N16C1`).
 
 ---
 
@@ -291,10 +291,9 @@ flowchart TB
 
 **Why step 4 must come after step 3, and it is not just tidiness.** The wrapper
 says what the deck it ships beside will do, read from the *finished* deck:
-whether it lets the engine read the state a previous run left (what a retry
-and `--continue` will actually do) and, for a SIESTA deck, which history files
-it writes (each pointed at the run's own file) and how many atoms it has (the
-orbitals-per-rank notice, which caps nothing). A wrapper written first
+whether it lets the engine read the state a previous run left (what
+launching the stage again will actually do) and, for a SIESTA deck, how many
+atoms it has (the orbitals-per-rank notice, which caps nothing). A wrapper written first
 would describe a deck it had not seen. The environment it activates is the
 job's GPU request, never the deck's text
 ([`execution/architecture.md § 9.2`](?doc=execution/architecture.md)).
@@ -465,9 +464,8 @@ reader can check, not an arm nobody thought about.
 ### Not yet — and it is a known, named gap
 
 **The WRAPPER writer still carries per-engine facts in its own body.**
-`runwrap.py` branches on which engine it is writing for — what a cold restart
-clears, how the label is read back out of a deck, how the launch line is
-formed. Those facts belong beside the engine's other seam answers, and moving
+`runwrap.py` branches on which engine it is writing for — how the label is
+read back out of a deck, how the launch line is formed. Those facts belong beside the engine's other seam answers, and moving
 them is the recorded seam item **W1**
 ([`backend-architecture.md § 5`](?doc=backend-architecture.md); its measured
 state, [`plans/plan.md`](?doc=plans/plan.md) § 2, **S1**). Until then, adding an

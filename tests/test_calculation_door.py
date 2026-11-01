@@ -5,8 +5,7 @@ not there -- never a probe of a path at a call site.
 
 Silent failure otherwise: nine call sites once wrote out "read the
 description, find and read the template, load the plan if there", each
-wrapping the refusal its own way, and migrate's lead-names step re-read a
-plan the records step had already decided to rewrite (2026-10-19).  The
+wrapping the refusal its own way (2026-10-19).  The
 calculation is described through the designed road (`molbuilder describe`,
 `tests/support/road.py`), never hand-built."""
 from __future__ import annotations

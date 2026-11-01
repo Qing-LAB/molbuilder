@@ -34,10 +34,11 @@ SIESTA 5.4.2 (``Src/md_out.F90``, ``Src/write_md_record.F``) and a live run:
      lag 0 differed by 5e-2.  There is no row for the input geometry.
   3. **SIESTA appends to whatever lies under its name** (manual:
      *"accumulative even for different runs"* — ``md_netcdf`` opens the
-     existing file and appends).  So each run's history is its own: the run
-     script points SIESTA's name at ``<label>_<stage>-run<N>.MD.nc`` while
-     the engine runs (`job-contracts.md` § 2.2), and that is the file
-     :func:`sibling_md_nc` pairs with the run's output.
+     existing file and appends).  Each run's history is its own all the
+     same: a run folder holds one start and no hand-over copies a history
+     into a new run (`job-contracts.md` § 2.2), so SIESTA's own
+     ``<SystemLabel>.MD.nc`` beside the output is that run's, the file
+     :func:`sibling_md_nc` pairs with it.
 
 :func:`align_to_reference` matches on COORDINATES rather than doing index
 arithmetic, because the ``.out`` repeats its final geometry: fact 2's lag
@@ -105,8 +106,8 @@ class SiestaMdNcFileParser(FileParser):
 
     name = "siesta-mdnc"
     label = "SIESTA netCDF MD history (.MD.nc)"
-    hint = ("a run's <label>_<stage>-run<N>.MD.nc, written beside its .out "
-            "when WriteMDhistory is on")
+    hint = ("a run's <SystemLabel>.MD.nc, written beside its .out when "
+            "WriteMDhistory is on")
     output = TrajectoryResult
 
     @classmethod
@@ -337,20 +338,20 @@ def align_to_reference(reference: Sequence, candidate: Sequence, *,
 # --------------------------------------------------------------------- #
 
 def sibling_md_nc(out_path: Path, label: Optional[str]) -> Optional[Path]:
-    """The run's own history beside *out_path*, or None: the output's name
-    with the history's role, ``<label>_<token>-run<N>.MD.nc`` -- the name the
-    run script points SIESTA's at while the engine runs (`job-contracts.md`
-    § 2.2) -- read back with ``label``, the SystemLabel the output states
-    itself, as the reading pass read it (``runtime_info["system_label"]``,
-    `model/parse.md` § 4a), never the lone ``.MD.nc`` of a folder; an
-    output that names no run, or no label, reads only itself (§ 5.3).
+    """The run's own history beside *out_path*, or None: SIESTA's
+    ``<label>.MD.nc`` (`job-contracts.md` § 2.2), ``label`` the SystemLabel
+    the output states itself, as the reading pass read it
+    (``runtime_info["system_label"]``, `model/parse.md` § 4a) -- never the
+    lone ``.MD.nc`` of a folder; an output that names no label, or one no
+    file name can carry, reads only itself (§ 5.3).
     """
-    from molbuilder.runfiles import compose, parse
-    out_path = Path(out_path)
-    own = parse(out_path.name, label) if label else None
-    if own is None or own.run is None:
+    from molbuilder.runfiles import RunFileError, compose
+    if not label:
         return None
-    nc = out_path.parent / compose(label, ".MD.nc", own.stage, own.run)
+    try:
+        nc = Path(out_path).parent / compose(label, ".MD.nc")
+    except RunFileError:
+        return None
     return nc if nc.is_file() else None
 
 

@@ -147,10 +147,9 @@ by the config flag in column 2):
 > it writes the placeholder as `<stage>` rather than the `*` that sweep
 > searched for. Build the name with `runfiles.compose`, never by hand.
 
-**The three per-run files carry no try's number**: a run folder is its run,
-launched once, and a PySCF run is never retried in place
-([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.5a), so
-nothing else writes these names there. geomeTRIC writes no log file of its
+**The three per-run files are named once, on the stage's stem**: a run folder
+is one start ([`execution/project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.1), so nothing else writes these names there. geomeTRIC writes no log file of its
 own: PySCF hands it a logging setup that prints to the screen
 (`pyscf/geomopt/log.ini`, used when geomeTRIC's own is absent), and the deck's
 prefix for it is derived from the trajectory's name. Prep renders each name
@@ -436,7 +435,7 @@ and a person reads each result before starting the next** *(user, 2026-08-18)*.
 The guarantee a last-rung force-halt used to provide was a property of the
 one-process loop, where nobody looked in between.
 
-*Budget example:* a `continue` stage with `max_steps=200` and `continue_retries=2`
+*Budget example:* a `continue` stage with `geom_max_steps=200` and `geom_continue_retries=2`
 runs up to `200 × (1 + 2) = 600` steps before it finally halts.
 
 **Spin / method — the class is composed, never re-ruled.** The electronic state

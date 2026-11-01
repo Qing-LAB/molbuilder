@@ -85,7 +85,7 @@ queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00
 allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
 launch = []
 launch_mode = "submit"
-line = ["-J H2/coarse", "H2_01_coarse.sbatch --run 0"]
+line = ["-J H2/coarse", "H2_01_coarse.sbatch -np 1 -omp 1"]
 
 # ---- ASKED ABOUT WHERE NO SCHEDULER IS (`running-a-job.md` § 5.5: no
 # scheduler here is an answer): a group's one job answers as a stage does.

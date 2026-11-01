@@ -293,12 +293,6 @@ def to_gpu(mf):
             "  and finishing on the CPU would make that announcement false.")
 
 
-#: A TRY'S NUMBER AS ITS RUN SCRIPT IS GIVEN IT (``--run N``): a whole
-#: number with no leading zero -- the one pattern the run script checks
-#: (`runwrap._run_index_block`).
-RUN_NUMBER = "0|[1-9][0-9]*"
-
-
 __all__ = [
     "GPU4PYSCF_MIN_COMPUTE_CAPABILITY",
     "RUNTIME_INFO_KEYS",
@@ -307,7 +301,6 @@ __all__ = [
     "physical_core_count", "NODE_CORES_VAR", "JOB_STARTED_VAR", "WALL_VAR",
     "WALL_SLACK_VAR",
     "probe_gpu",
-    "RUN_NUMBER",
     "runtime_facts",
     "threads_for",
     "to_gpu",

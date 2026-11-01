@@ -237,9 +237,7 @@ def point_averages_of(where, label: str) -> Dict:
                           leads=tuple(LEAD_NAMES))
 
 
-def point_currents(where, spin: str, *,
-                   now: Optional[Dict] = None,
-                   outs: Optional[List[Path]] = None) -> Dict:
+def point_currents(now: Optional[Dict], spin: str) -> Dict:
     """The current TBtrans printed at one point -- its own Landauer integral,
     parsed, never recomputed -- as the record says it
     (:data:`CURRENT_MEANS`): ``current_a_printed``, the first figure it
@@ -247,49 +245,45 @@ def point_currents(where, spin: str, *,
     twice it for a non-polarized run, the two channels' sum for a polarized
     one -- and the run's ``k_points`` / ``k_method`` and its
     ``loop_elapsed_s``, its passes' loops summed as TBtrans measured them
-    (`model/parse.md` § 5c.1).  Read from the point's newest
-    output through the family's one read and its account of TBtrans's loop
-    (`siesta_reader.read_output`, ``now()["tbtrans"]``, `model/parse.md`
-    § 5d.5): each pass's currents beside its channel; ``None`` where the
-    run printed none.  ``now`` is the newest output's reading where the
-    caller holds it already (`collect_record`: one read per point), and
-    ``outs`` its outputs, newest try first; an older output is read only
-    when the newest printed no current."""
-    from ..parse.engines.siesta_reader import read_output
+    (`model/parse.md` § 5c.1).  Read from ``now``, the point's output's
+    reading through the family's one read -- the caller's
+    (`collect_record`: one read per point) -- and its account of TBtrans's
+    loop (`siesta_reader.read_output`, ``now()["tbtrans"]``,
+    `model/parse.md` § 5d.5): each pass's currents beside its channel;
+    ``None`` where the run printed none, and every figure ``None`` for a
+    point with no reading -- no output, or one that does not read."""
     out: Dict = {"current_a": None, "current_a_printed": None}
-    for i, path in enumerate(outs if outs is not None
-                             else _outs_newest_first(where)):
-        reading = now if (i == 0 and now is not None) else read_output(path).now()
-        loop = reading.get("tbtrans") or {}
-        for k in ("k_points", "k_method"):
-            if k in loop:
-                out[k] = loop[k]
-        passes = loop.get("passes") or []
-        took = [p["loop_elapsed_s"] for p in passes if "loop_elapsed_s" in p]
-        if took:
-            out["loop_elapsed_s"] = sum(took)
-        rows = [(p.get("channel"), r) for p in passes
-                for r in p.get("currents") or []]
-        if not rows:
-            continue
-        # ONE ELECTRODE PAIR -- the first printed; a channel per pass.
-        pair = (rows[0][1]["from"], rows[0][1]["to"])
-        mine = [(ch, r) for ch, r in rows if (r["from"], r["to"]) == pair
-                and r.get("current_a") is not None]
-        if not mine:
-            continue
-        out["current_a_printed"] = mine[0][1]["current_a"]
-        if spin == "polarized":
-            by = {ch: r["current_a"] for ch, r in mine}
-            if "up" in by and "down" in by:
-                out["current_a"] = by["up"] + by["down"]
-                # EACH SPIN'S, as TBtrans printed it -- the I-V draws them
-                # beside the total (`web/results.md` § 2.5).
-                out["current_by_spin_a"] = {"up": by["up"],
-                                            "down": by["down"]}
-        else:
-            out["current_a"] = 2.0 * mine[0][1]["current_a"]
-        break
+    if now is None:
+        return out
+    loop = now.get("tbtrans") or {}
+    for k in ("k_points", "k_method"):
+        if k in loop:
+            out[k] = loop[k]
+    passes = loop.get("passes") or []
+    took = [p["loop_elapsed_s"] for p in passes if "loop_elapsed_s" in p]
+    if took:
+        out["loop_elapsed_s"] = sum(took)
+    rows = [(p.get("channel"), r) for p in passes
+            for r in p.get("currents") or []]
+    if not rows:
+        return out
+    # ONE ELECTRODE PAIR -- the first printed; a channel per pass.
+    pair = (rows[0][1]["from"], rows[0][1]["to"])
+    mine = [(ch, r) for ch, r in rows if (r["from"], r["to"]) == pair
+            and r.get("current_a") is not None]
+    if not mine:
+        return out
+    out["current_a_printed"] = mine[0][1]["current_a"]
+    if spin == "polarized":
+        by = {ch: r["current_a"] for ch, r in mine}
+        if "up" in by and "down" in by:
+            out["current_a"] = by["up"] + by["down"]
+            # EACH SPIN'S, as TBtrans printed it -- the I-V draws them
+            # beside the total (`web/results.md` § 2.5).
+            out["current_by_spin_a"] = {"up": by["up"],
+                                        "down": by["down"]}
+    else:
+        out["current_a"] = 2.0 * mine[0][1]["current_a"]
     return out
 
 
@@ -436,14 +430,13 @@ def iv_notes_placed(iv: Dict) -> List[Dict]:
     return out
 
 
-def _outs_newest_first(where: Path) -> List[Path]:
-    """A rung's engine outputs in ``where``, its NEWEST TRY first -- the
-    run door's (`runs.Run.outputs`), by the try's number every one carries,
-    never by file time (plan W38 M4): a copy, a touch or a restored folder
-    reorders the times and not the tries.  ``[]`` where no run of ours is."""
+def _output_of(where: Path) -> Optional[Path]:
+    """A rung's engine output in ``where`` -- the run door's
+    (`runs.Run.stdout`); ``None`` where no run of ours is, or it printed
+    none."""
     from ..runs import run_of
     run = run_of(where)
-    return run.outputs if run is not None else []
+    return run.stdout if run is not None else None
 
 
 def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
@@ -632,12 +625,12 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
                         if first.get("started_from") else None)
             out.append(fact)
             continue
-        outs = (_outs_newest_first(run)
-                if answers != "product" and run is not None else [])
-        if not outs:
+        output = (_output_of(run)
+                  if answers != "product" and run is not None else None)
+        if output is None:
             out.append(fact)
             continue
-        fact.update(_science(outs[0], answers))
+        fact.update(_science(output, answers))
         if name == "device":
             fact["periodic"] = (
                 {**fact["periodic"], "from": fact.get("attempt")}
@@ -659,8 +652,9 @@ def _periodic_shift(base: Path, folder: Path) -> Optional[Dict]:
     seen: set = set()
     while folder is not None and folder.is_dir() and folder not in seen:
         seen.add(folder)
-        outs = _outs_newest_first(folder)
-        shift = _science(outs[0], "scf").get("periodic") if outs else None
+        output = _output_of(folder)
+        shift = (_science(output, "scf").get("periodic")
+                 if output is not None else None)
         if shift:
             return {**shift, "from": str(folder.relative_to(base))}
         try:
@@ -868,9 +862,9 @@ def _rung_points(base: Path, task, name: str, answers: str,
         else:
             st = concluded(where, names, base=base, launched_in=run)
             entry.update(state=st.state, detail=st.detail)
-        outs = _outs_newest_first(where)
-        if outs:
-            entry.update(_science(outs[0], answers))
+        output = _output_of(where)
+        if output is not None:
+            entry.update(_science(output, answers))
         out.append(entry)
     return out
 
@@ -1016,17 +1010,17 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                             "why": rung.get("detail") or ""})
             continue
         rel = str(where.relative_to(base))
-        # THE POINT'S NEWEST OUTPUT, READ ONCE (`model/parse.md` § 5d.5):
-        # its reading serves the run door (`keep_reading`: an output that
-        # stated its own end is not read again), the loop's words and the
-        # currents -- three readers, one read.
-        outs = _outs_newest_first(where)
+        # THE POINT'S OUTPUT, READ ONCE (`model/parse.md` § 5d.5): its
+        # reading serves the run door (`keep_reading`: an output that stated
+        # its own end is not read again), the loop's words and the currents
+        # -- three readers, one read.
+        output = _output_of(where)
         now = None
-        if outs:
+        if output is not None:
             try:
-                reader = read_output(outs[0])
+                reader = read_output(output)
                 now = reader.now()
-                keep_reading(outs[0], version_of(outs[0]), reader.finish())
+                keep_reading(output, version_of(output), reader.finish())
             except OSError:
                 now = None
         # THE POINT'S STATE: the status door's row (``rows``, read once
@@ -1061,9 +1055,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
             # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
-            progress = tbtrans_loop(
-                outs[0] if outs else None,
-                over=state in FINAL_STATES, now=now)
+            progress = tbtrans_loop(output, over=state in FINAL_STATES,
+                                    now=now)
             if progress:
                 entry["progress"] = {
                     "said": progress["progress"],
@@ -1116,7 +1109,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # ITS CURRENT, and which it is (`engines/transport.md` § 2a.16): the
         # printed figures' total, or -- for a point that shares energies --
         # the record's over its joined grid.
-        currents = point_currents(where, spin, now=now, outs=outs)
+        currents = point_currents(now, spin)
         currents.update(
             joined_currents(read, pt.volts or 0.0,
                             BOLTZMANN_EV_K * temperature_k_of(params),

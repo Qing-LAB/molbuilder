@@ -64,8 +64,6 @@ ACCEPTS = [
      ", but a benchmark row's points are values to try"),
     ("mesh_cutoff", "bench", "optimization", None, 300.0,
      ", which siesta does not declare as an `execution` parameter"),
-    ("continue_retries", "bench", "optimization", None, 1,
-     ", which every benchmark trial fixes at 0"),
     ("max_memory_mb", "bench", "optimization", None, 4000,
      ", which a benchmark's grid does not sweep"),
     # A STAGE'S OVERRIDE: what is computed, not shared, not fixed, read by

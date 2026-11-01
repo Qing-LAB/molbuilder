@@ -156,9 +156,9 @@ GROUP_WORDS = {
                "snapshots -- and how much the generated input explains "
                "itself.  Changes what you get back, never the answer."),
     "staging": ("Run card",
-                "How each stage runs -- ranks, threads, memory, GPU, "
-                "retries, restart -- answered on that stage's run card on "
-                "Task setup, never on a parameter form."),
+                "How each stage runs -- its ranks, threads, memory and GPU "
+                "on its run card on Task setup, its restart in the stage "
+                "table -- never on a parameter form."),
 }
 if tuple(GROUP_WORDS) != GROUPS:      # one vocabulary, in one order
     raise RuntimeError("template.GROUP_WORDS must name every group of "
@@ -2520,17 +2520,17 @@ SAID = {
 
 #: WHAT EVERY BENCHMARK TRIAL FIXES -- what makes a trial a MEASUREMENT
 #: rather than a run (`execution/job-request.md` § 3.4): its SCF capped,
-#: no relaxation step, a cold start, no retry, and ``scf_must_converge:
-#: False`` so the cap ends CLEAN.  Laid over every point by the bench's
-#: assembly (`jobset/prep_inputs.py`), and no benchmark row may name one
-#: (:func:`home_of`): its points would be one measurement under many labels.
+#: no relaxation step, a cold start, and ``scf_must_converge: False`` so
+#: the cap ends CLEAN.  Laid over every point by the bench's assembly
+#: (`jobset/prep_inputs.py`); none is a run setting, so no benchmark row
+#: names one (:func:`why_not_in`).
 #: ``max_scf_iter: 3`` (user, 2026-08-21, from measured experience:
 #: iterations 3-5 agree within seconds on a 444-atom junction, and the
 #: bench reads SCALING and DEPENDENCY -- the knee -- not tight rankings):
 #: iteration 1 never forms a timing delta, the iter-2 delta is dropped as
 #: warm-up-adjacent, iteration 3 is the one clean sample (tuning.md § 2.12).
 TRIAL_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
-              "continue_retries": 0, "scf_must_converge": False}
+              "scf_must_converge": False}
 
 #: THE LAUNCH SHAPE A BENCHMARK'S GRID SWEEPS -- ranks, cores per rank,
 #: devices (`execution/generator.md` § 4.3a): the machine-answered items a
@@ -2562,9 +2562,9 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
     item's own markers.  A stage's overrides hold what is computed -- never
     a run setting, never what the rung fixes (`role`), never what every
     stage shares (`shared`); a run card holds a
-    run setting; a benchmark row one a trial may vary -- never what every
-    trial fixes (:data:`TRIAL_PINS`), and of the launch shape only the
-    grid's axes (:data:`GRID_AXES`); a prep flag the launch shape
+    run setting; a benchmark row one a trial may vary -- of the launch
+    shape only the grid's axes (:data:`GRID_AXES`); a prep flag the launch
+    shape
     (`allocation`).  An item the kind does not carry has no home on it, and
     a stage's override or run card holds only what that rung reads (§ 6.4's
     ``stages``, :func:`reads`)."""
@@ -2591,10 +2591,6 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
                 f"parameter -- so sweeping it would measure a different "
                 f"calculation at each point and the comparison would mean "
                 f"nothing (execution/job-request.md 3.4)")
-    if home == "bench" and name in TRIAL_PINS:
-        return (f", which every benchmark trial fixes at "
-                f"{shown(TRIAL_PINS[name])}: a trial is one measurement "
-                f"(execution/job-request.md 3.4)")
     if home == "bench" and item.allocation and name not in GRID_AXES:
         return (f", which a benchmark's grid does not sweep -- its machine "
                 f"axes are {', '.join(GRID_AXES)} (execution/generator.md "
@@ -3117,6 +3113,16 @@ class Retired(NamedTuple):
         return self.runs is None or value in self.runs
 
 
+def retired(name: str, engine: Optional[str] = None) -> Optional[Retired]:
+    """THE ONE DOOR to *did a release retire this item*: its row in
+    :data:`RETIRED_ITEMS`, or ``None`` -- for ``engine`` alone where it is
+    given (an item one engine keeps is another's to retire,
+    :attr:`Retired.engines`), for any engine where it is not."""
+    r = RETIRED_ITEMS.get(name)
+    return r if r is not None and (engine is None or r.retired_on(engine)) \
+        else None
+
+
 #: SIESTA's Raman selector before 2.45.0 -- retired on SIESTA alone, PySCF's
 #: orbital probe keeping it; `jobset migrate` states Compute Raman and Raman
 #: for from it (`engines/vibration.md` § 5.11 § 9).
@@ -3139,6 +3145,10 @@ RETIRED_ITEMS: Dict[str, Retired] = {
         "geomeTRIC is the one PySCF optimizer; berny and with it the choice "
         "were retired 2026-09-29 -- engines/pyscf.md § 3", "2026-09-29",
         runs=("geometric",)),
+    "continue_retries": Retired(
+        "the run script's warm retry, retired at 2.60.0: a run is one "
+        "start, and to continue it is to launch the stage again -- "
+        "execution/project-layout.md § 1.6.1", "2.60.0", runs=None),
     "copy_psml": Retired(
         "the pseudopotential staging switch, retired at 2.10.0: nothing read "
         "it, and prep always copies the calculation's pseudopotentials "
@@ -3196,8 +3206,8 @@ def why_not_an_item(name: str, *, value: Any = None,
     release ever held (`engines/template.md` § 3).  The one sentence the
     template reader, the description's check and a stage's overrides say,
     ``value`` the one the name was given (``is_set``)."""
-    if name in RETIRED_ITEMS:
-        r = RETIRED_ITEMS[name]
+    r = retired(name)
+    if r is not None:
         if is_set and not r.runs_without(value):
             return (f"{name} = {value!r} was retired from the schema "
                     f"({r.why}) at a value that no longer runs -- delete it "
@@ -3227,7 +3237,7 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
-           "as_declared", "why_not", "why_not_an_item",
+           "as_declared", "why_not", "why_not_an_item", "retired",
            "HOMES", "SAID", "TRIAL_PINS", "GRID_AXES", "is_run_setting",
            "home_of", "why_not_in",
            "accepts", "spell", "shown", "read_text", "default_of"]

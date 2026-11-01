@@ -845,7 +845,7 @@ remains.
 
 ```mermaid
 flowchart LR
-    R0["ρ — its start: the seed's,<br/>a converged point's,<br/>or its own last"] --> H["H[ρ]: Hartree + XC,<br/>the bias as a ramp"]
+    R0["ρ — its start: the seed's,<br/>or a converged point's"] --> H["H[ρ]: Hartree + XC,<br/>the bias as a ramp"]
     H --> G["G(z) = [z·S − H − Σ_L − Σ_R]⁻¹"]
     G --> RHO["ρ out: the contour part<br/>+ the bias-window part"]
     RHO --> MIX["mixed with the<br/>earlier iterations"]
@@ -2458,7 +2458,7 @@ when every point *ran*, converged or not, its points' walls *each* the
 card's (the job's their sum), its words, and no steps of its own between
 its points:
 
-- **The run's index**, `<label>_<NN>_<stage>-run0.points.json` at the
+- **The run's index**, `<label>_<NN>_<stage>.points.json` at the
   run's root — every run of points' one index (`runpoints`, which travels
   with the monitor; [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md)
   § 2.3). What the rung puts in it, by its declaration: each point's words,
@@ -3574,7 +3574,6 @@ nearly free — so these *should* differ across stages.
 | `block_size` · `parallel_over_k` · `diag_algorithm` · `use_gpu` | how the diagonaliser is decomposed across ranks |
 | `ts_solution_method` | `TS.SolutionMethod`, the device's: how TranSIESTA inverts the device matrix — speed and memory, never the answer. `BTD` (TranSIESTA's default, which its manual recommends) or `full`; `MUMPS` exists only in a build with that library, which the packaged SIESTA is not, so it is not offered. Set on the device's run card, and written, so the deck says which ran (`m_ts_options.F90:180`) *(2.1.0)* |
 | `ts_elecs_out_of_core` | `TS.Elecs.Out-of-core`, the device's: whether the leads' surface Green's functions are kept as files (true, TranSIESTA's own default) or recomputed in memory at every SCF iteration (false: no `tsgf/` file, more time per iteration) — § 2a.11, *What a run's points share* |
-| `continue_retries` | how many times the wrapper retries — on a transport point, continuing the point's own cycle from its own last density (§ 2a.11) |
 | ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with a cited run, and comes from the person's directory for a cited pair, § 3.1, `template.md` § 5)* |
 
 #### Deferred
@@ -3719,15 +3718,16 @@ means nothing at all.
 |---|---|---|---|
 | `seed` | an ordinary SCF | its own last `<label>.DM` | barely — its whole output *is* a `.DM`; one not converged continues from its own (§ 2a.11) |
 | `electrode_L` / `electrode_R` | an ordinary SCF on a bulk lead | none — a lead declares no restart file | **no** — launched again, a lead runs from its deck alone; a bulk lead is cheap to run again |
-| `device` | **the NEGF SCF — the expensive one** | its own previous `<label>.TSDE`, **and** the seed's `.DM` as a starting density | **answered by the sweep** (§ 2a.11): a point starts from the seed's `.DM` (0 V) or the closest converged point's `.TSDE`, and one not done continues from its own last density |
+| `device` | **the NEGF SCF — the expensive one** | its own previous `<label>.TSDE`, **and** the seed's `.DM` as a starting density | **answered by the sweep** (§ 2a.11): a point starts from the seed's `.DM` (0 V) or the closest converged point's `.TSDE`, and one not done runs again from that start in the next run |
 | `transmission` | **no SCF at all** — `tbtrans` reads a converged Hamiltonian and integrates | nothing | **no. There is no state to continue** |
 
 **So the question is answered per point** *(user, 2026-10-05; the run rule
 2026-10-08, § 2a.11)*: a point starts from a hand-over — the seed's density at
-0 V, the closest converged point's after it. Within one run the wrapper's own
-retry (`continue_retries`) continues a point in place from its last density;
-a point still not done when the run ends is run again in the NEXT run's fresh
-point folder, from its hand-over start — never continued across runs. Once
+0 V, the closest converged point's after it. A point not done when its run
+ends is run again in the NEXT run's fresh point folder, from its hand-over
+start — never continued from its own density, since a run is one start and to
+continue is to launch again
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1). Once
 done it is taken over whole into every later run and never run again, because
 a converged point is a fixed point and running it again only repeats it. (A
 device with no point level has no points to take over: launched again, it is
@@ -3749,9 +3749,8 @@ and the transmission has no iteration to resume.
   TranSIESTA *Description*). The binary's own words, measured
   2026-09-16: *"Attempting to read DM, EDM from TSDE file"*, and
   *"Forcefully requested initialization of the DM, however the DM/TSDE file
-  does not exist!"* A point's own `.TSDE` is the engine's state at that point
-  and the wrapper's retry within the run reads it; across runs it is never
-  taken over for a point not done (§ 2a.11) — the next run's point starts
+  does not exist!"* A point's own `.TSDE` is the engine's state at that point,
+  and it is never taken over for a point not done (§ 2a.11) — the next run's point starts
   from its hand-over, and the walk copies a hand-over only into a point it
   has not begun, so a point's own density is never overwritten by another's.
 
@@ -3773,8 +3772,9 @@ kind's gather, and nothing else (a rung takes no `--from`,
 warm, is given copies of what its own newest run left of the restart files
 the rung declares — the seed's `.DM`, the device's `.TSDE`; the leads declare
 none — the state to continue from, not a stale one (§ 2a.11). Nothing stale
-is there to pick up. The exposure is a hand-run wrapper inside an
-already-used run, which is outside the ladder.
+is there to pick up, and a run script started in a run that already holds a
+start refuses, naming `jobset launch`
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1).
 
 **Does the lead need `TS.DE.Save`? No — the manual says when a lead's density
 is read** (TranSIESTA's electrode options, `TS.Elec.<>.DM-init` and

@@ -197,11 +197,10 @@ def told(run: RealRun, event: str, stage: str, n: int = 0) -> list:
     import re
     from molbuilder.jobset.naming import stage_home
     from molbuilder.monitor import WatchedRun
-    from molbuilder.runfiles import FIRST_TRY
     from molbuilder.task import of as task_of
     task = task_of(run.bundle)
     names = stage_home(run.bundle, task, stage).names
-    log = WatchedRun(names=names, run=FIRST_TRY,
+    log = WatchedRun(names=names,
                      directory=run.attempt(stage, n)).path(".monitor.log")
     said = re.compile(r"\[NOTIFY\] \(stub\) (\w+): (.*)$")
     return [m.group(2) for m in map(said.search,
@@ -355,8 +354,7 @@ def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path,
     script = next(there.glob("*.run.sh"))
     for step, extra in (("script dry run", ()),
                         ("script dry run -np 2", ("-np", "2"))):
-        done = subprocess.run(["bash", str(script), "--run", "0",
-                               "--dry-run", *extra],
+        done = subprocess.run(["bash", str(script), "--dry-run", *extra],
                               cwd=there, capture_output=True, text=True,
                               timeout=120, env=_scrubbed(**given))
         run.said[step] = Said(done.returncode, done.stdout + done.stderr)
@@ -384,7 +382,7 @@ def _scrubbed(**more) -> Dict[str, str]:
 def _header_under_a_slurm_grant(run: RealRun, tree: Path,
                                 scratch: Path) -> None:
     """THE HEADER PREP WRITES FOR A SLURM MACHINE, started as SLURM starts
-    it -- ``bash <its .sbatch> --run 0 --dry-run``, 2 ranks granted
+    it -- ``bash <its .sbatch> --dry-run``, 2 ranks granted
     (``SLURM_NTASKS``, the variable `scheduler.md` § 6a names) -- on a copy
     of a sibling H2 prepared for ``sol``: this machine's record as a SLURM
     machine with one queue, entering its environments the same way, so the
@@ -419,7 +417,7 @@ def _header_under_a_slurm_grant(run: RealRun, tree: Path,
     there = scratch / "on-sol"
     shutil.copytree(on_sol.attempt("coarse"), there)
     header = next(there.glob("*.sbatch"))
-    done = subprocess.run(["bash", header.name, "--run", "0", "--dry-run"],
+    done = subprocess.run(["bash", header.name, "--dry-run"],
                           cwd=there, capture_output=True, text=True,
                           timeout=120, env=_scrubbed(SLURM_NTASKS="2"))
     run.said["header dry run under a SLURM grant of 2 ranks"] = Said(

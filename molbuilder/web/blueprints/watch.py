@@ -338,13 +338,13 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     # § 5c): the SIESTA tee or a PySCF progress log, by the one rule the run
     # record reads them by, re-read with the output.  ``None`` -- not stated
     # -- for a run with none.
-    # The timing log is THE RUN'S, at the output's own run index, found
-    # through the run door (`runs.run_of`) -- read back with the run's label,
-    # never one guessed off the folder's decks (plan B11).
+    # The timing log is THE RUN'S, found through the run door
+    # (`runs.run_of`) -- read back with the run's label, never one guessed
+    # off the folder's decks (plan B11).
     from molbuilder.parse.dirs.record import scf_timing_of
     _run = run_of(path)
     new_data["scf_timing"] = scf_timing_of(
-        path, _run.file(".scf-timing.log", _run.run)
+        path, _run.file(".scf-timing.log")
         if _run is not None else None) or None
 
     # ---- Re-acquire to commit (skip if a concurrent /api/load

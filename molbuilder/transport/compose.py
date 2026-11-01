@@ -258,16 +258,16 @@ def _classify_run(cite_dir: Path) -> CitedRun:
         raise ComposeError(
             f"{cite_dir} holds no run of molbuilder's: {where}.  "
             f"{CITATION_CONDITION}.")
-    # ONE RUN, the one the run door settled (`run.run`), asked of each door:
-    # its launch record -- in the folder the run door says it lies in
+    # ONE RUN, the one the run door settled, asked of each door: its launch
+    # record -- in the folder the run door says it lies in
     # (`Run.launched_in`: a point's is its run's) -- how it ended, its state.
     try:
         launched = launch_record(run.launched_in) is not None
     except LaunchRecordError as e:
         raise ComposeError(str(e)) from e
     # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
-    # `execution/architecture.md` § 3.2) about THIS run's newest try.
-    end = ending(cite_dir, run.names.stem, run.run)
+    # `execution/architecture.md` § 3.2).
+    end = ending(cite_dir, run.names.stem)
     if not launched and not end.concluded:
         raise ComposeError(
             f"{cite_dir} holds the run {run.names.stem}, but nothing launched "
@@ -276,8 +276,7 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     # status verb prints): carried into the provenance and said by the tab,
     # so a geometry that did not converge is cited knowingly.
     from ..parse.dirs.rundir import run_state_of
-    st = run_state_of(cite_dir, run.names, run.run,
-                      launched_in=run.launched_in)
+    st = run_state_of(cite_dir, run.names, launched_in=run.launched_in)
     # A RUN THAT RELAXED NO GEOMETRY is not what transport cites (§ 3.1): a
     # vibration run, whose last geometry is a displacement, or a transport
     # rung -- its output reports an SCF alone.

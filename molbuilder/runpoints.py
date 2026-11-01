@@ -6,9 +6,9 @@ is still to run, what the run's state is and what a point's end says
 MODULE  runpoints (floor 1 + stdlib; travels beside the job in
         ``mb_monitor.pyz`` and in every bundle whose steps write the index,
         `runwrap.MONITOR_COMPANIONS`, `runwrap.VIBRATION_COMPANIONS`)
-ROLE    the run's index -- one per run, at its root, named for its first
-        try (``<label>_<NN>_<stage>-run0.points.json``, :func:`index_path`)
-        -- written by launch (:func:`empty_index`, :func:`add_point`),
+ROLE    the run's index -- one per run, at its root
+        (``<label>_<NN>_<stage>.points.json``, :func:`index_path`) --
+        written by launch (:func:`empty_index`, :func:`add_point`),
         stamped by each point's report steps (:func:`stamp_start`,
         :func:`stamp_end`, :func:`stamp_step_error`, :func:`stamp_finish`)
         and extended by a planner's after-step (:func:`add_point`).  Each
@@ -21,7 +21,7 @@ ROLE    the run's index -- one per run, at its root, named for its first
         names (:func:`part`) are one for every kind: no kind, phase or file
         of one is named here.
 USED-BY `jobset.submit` (launch), `jobset.points`, `jobset.continuation`,
-        `jobset.migrate`, `monitor` (the report steps, a member's line,
+        `monitor` (the report steps, a member's line,
         `notify`), `spectra.siesta_vibration` (the vibration's own steps),
         `parse.sidecars.run_points`
 """
@@ -72,79 +72,37 @@ NEVER_REACHED = "the walk ended before it reached this point"
 #: § 1.3) -- its run's rows say which (:func:`why_not_run`).
 NOT_STARTED = "its run's walk ended without starting it"
 
-#: THE INDEXES AN OLDER MOLBUILDER WROTE (2.42-2.54): a SIESTA vibration's
-#: own file of its phases, and a transport run of points' earlier schema --
-#: each refused by its reader naming `jobset migrate`, which rewrites it
-#: into this one (`runs-of-points.md` § 3, op. 18).
-OLDER_SCHEMAS = ("molbuilder/vibration-phases@1",
-                 "molbuilder/transport-points@1")
-MIGRATE = ("written by molbuilder 2.54 or before -- `molbuilder jobset "
-           "migrate` rewrites it")
-
-
-class OlderIndexError(LaunchRecordError):
-    """A RUN'S INDEX AN OLDER MOLBUILDER WROTE (:data:`OLDER_SCHEMAS`, or
-    its older file, :func:`older_index`), refused by its reader naming
-    `jobset migrate`, which rewrites it -- the class a reader tells that
-    way on by, never the refusal's words (`runstatus`: the next step's
-    line)."""
-
-
-def _older(path) -> OlderIndexError:
-    """The refusal of the older index at ``path``, named by its run's
-    folder and its own name -- where it is said, its stage is said beside
-    it."""
-    p = Path(path)
-    return OlderIndexError(f"{p.parent.name}/{p.name}: {MIGRATE}")
-
-
 # --------------------------------------------------------------------- #
 #  The file -- where it lies, read, written                              #
 # --------------------------------------------------------------------- #
 
 def index_path(run_dir, names) -> Path:
-    """Where the run's index lies: at the run's root, named for its first
-    try, ``<label>_<NN>_<stage>-run0.points.json`` (`runfiles.ROLE_POINTS`)
-    -- launch writes it there, and every try of every point reads it."""
-    return Path(run_dir) / names.name(_rf.ROLE_POINTS, run=_rf.FIRST_TRY)
-
-
-def older_index(run_dir, names) -> Path:
-    """Where a SIESTA vibration's index of molbuilder 2.42-2.54 lies
-    (`runfiles.ROLE_PHASES`) -- what `jobset migrate` rewrites."""
-    return Path(run_dir) / names.name(_rf.ROLE_PHASES, run=_rf.FIRST_TRY)
+    """Where the run's index lies: at the run's root,
+    ``<label>_<NN>_<stage>.points.json`` (`runfiles.ROLE_POINTS`) -- launch
+    writes it there, and every point reads it."""
+    return Path(run_dir) / names.name(_rf.ROLE_POINTS)
 
 
 def index_of(run_dir, names) -> Optional[Path]:
     """THE RUN'S INDEX, where it has one -- ``None`` for a run launch has
     not written one for (a run prep opened and nobody launched, a rung that
-    runs once).  One an older molbuilder wrote is refused by name
-    (:class:`OlderIndexError`)."""
+    runs once)."""
     path = index_path(run_dir, names)
-    if path.is_file():
-        return path
-    older = older_index(run_dir, names)
-    if older.is_file():
-        raise _older(older)
-    return None
+    return path if path.is_file() else None
 
 
 def read_index(path) -> Dict[str, Any]:
     """The index at ``path``, refused by name when it does not read or is
-    not one of this schema -- an older molbuilder's naming `jobset migrate`
-    (:class:`OlderIndexError`) -- as every record of a run is
+    not one of this schema, as every record of a run is
     (`runrecord.LaunchRecordError`, a ``ValueError``): said where the run
     is shown, never the whole status."""
     p = Path(path)
     try:
         d = _persist.read_json(p)
-        said = d.get("schema") if isinstance(d, dict) else None
-        if said not in OLDER_SCHEMAS:
-            _persist.check_schema(said or "", SCHEMA, label=p.name)
+        _persist.check_schema((d.get("schema") if isinstance(d, dict)
+                               else None) or "", SCHEMA, label=p.name)
     except (OSError, ValueError) as exc:
         raise LaunchRecordError(f"{p}: {exc}") from exc
-    if said in OLDER_SCHEMAS:
-        raise _older(p)
     return d
 
 
@@ -248,11 +206,9 @@ def _entry(index: Dict[str, Any], rel: str) -> Dict[str, Any]:
 # --------------------------------------------------------------------- #
 
 def stamp_start(index: Dict[str, Any], rel: str, at: str) -> Dict[str, Any]:
-    """The point's start -- kept where a try before it in the same run
-    stamped one: a point retried in place keeps its first try's start."""
+    """The point's start -- its one start in the run."""
     row = _entry(index, rel)
-    if row.get("started") is None:
-        row["started"] = at
+    row["started"] = at
     return row
 
 
@@ -560,8 +516,7 @@ def part(ref: str) -> Any:
 
 __all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN",
            "NEVER_REACHED", "NOT_STARTED", "walk_began",
-           "OLDER_SCHEMAS", "MIGRATE", "OlderIndexError", "index_path",
-           "older_index",
+           "index_path",
            "index_of", "read_index", "index_at", "write_index",
            "taken_from",
            "empty_index", "add_point", "entry_of", "planned_by", "why_not_run",

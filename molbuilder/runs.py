@@ -113,14 +113,13 @@ def _position(place: Place) -> Tuple[str, Optional[str], bool]:
 @dataclass(frozen=True)
 class Run:
     """One run of ours: the calculation it belongs to (``place``), the
-    ``folder`` its files are in, the ``label`` they are named on, its
-    ``stage`` token and its ``run`` -- the try: the newest its files carry,
-    or the one a file named; ``None`` before it has run."""
+    ``folder`` its files are in, the ``label`` they are named on, and its
+    ``stage`` token.  A run folder holds one start (`project-layout.md`
+    § 1.6.1), so its files are one set."""
     place: Place
     folder: Path
     label: str
     stage: str
-    run: Optional[int] = None
     #: A benchmark trial's run, its deck rendered into its own folder.
     trial: bool = False
 
@@ -143,23 +142,23 @@ class Run:
 
     def files(self):
         """``(path, RunFile)`` -- every file of this run's label and stage
-        here, read back through `runfiles`, sorted by try."""
+        here, read back through `runfiles`, sorted by name."""
         return _rf.find(self.folder, self.label, stage=self.stage)
 
-    def file(self, role: str, run: Optional[int] = None) -> Optional[Path]:
-        """This run's file in ``role`` -- at try ``run``, else the newest
-        try that has one (a file with no try's number when none does)."""
-        hits = [(p, rec) for p, rec in self.files() if rec.role == role
-                and (run is None or rec.run == run)]
-        return hits[-1][0] if hits else None
+    def file(self, role: str) -> Optional[Path]:
+        """This run's file in ``role``, or ``None``.  THE ONE RULE for which
+        of a run's files a role names: the first by name (`runfiles.find`'s
+        order).  A run folder holds one start, so a role names one file of
+        it -- a templated role a family, taken in its names' order."""
+        return next((p for p, rec in self.files() if rec.role == role), None)
 
     def on_label(self, role: str) -> Optional[Path]:
         """This run's file in ``role`` named on its label alone, with no
         stage token -- as an engine names its own (SIESTA's ``<label>.FC``,
         ``.ORB_INDX``) and a run its result (``<label>.spectra.json``) -- in
-        its own folder, or ``None``."""
+        its own folder, or ``None`` -- the first by name, as :meth:`file`."""
         hits = _rf.find_on_label(self.folder, self.label, role)
-        return hits[-1] if hits else None
+        return hits[0] if hits else None
 
     @property
     def deck(self) -> Optional[Path]:
@@ -174,29 +173,19 @@ class Run:
     @property
     def stdout(self) -> Optional[Path]:
         """The engine's own output of this run -- its stdout role
-        (`runfiles.stdout_roles`) at the run's try -- or ``None``."""
+        (`runfiles.stdout_roles`) -- or ``None``."""
         for role in _rf.stdout_roles(self.place.task.engine):
-            got = self.file(role, self.run)
+            got = self.file(role)
             if got is not None:
                 return got
         return None
 
     @property
-    def outputs(self) -> List[Path]:
-        """Every engine output of this run's stage here, newest try first
-        -- by the number each carries, never a file's time."""
-        roles = set(_rf.stdout_roles(self.place.task.engine))
-        return [p for p, rec in reversed(self.files()) if rec.role in roles]
-
-    @property
     def session_log(self) -> Optional[Path]:
-        """The run script's session log of THIS try -- the one whose first
-        section is its try (`wrapper_log.log_of_run`), never the newest by
-        its stamp -- or ``None``."""
-        if self.run is None:
-            return None
+        """The run script's session log (`wrapper_log.log_of_run`) -- the
+        run's start -- or ``None`` where it holds none."""
         from molbuilder.wrapper_log import log_of_run
-        return log_of_run(self.folder, self.label, self.run, self.stage)
+        return log_of_run(self.folder, self.label, self.stage)
 
     @property
     def prepared(self) -> Path:
@@ -268,12 +257,13 @@ class Run:
         `.validation.txt` prep writes beside it, in :attr:`prepared`
         (`runfiles.WRITTEN`) -- or ``None``: also when prep has written
         another calculation's deck there since this run's (a re-prep,
-        :attr:`current`), whose report the file now is."""
+        :attr:`current`), whose report the file now is.  The first by name,
+        as :meth:`file`."""
         if self.deck is None or self.current is False:
             return None
-        hits = _rf.find(self.prepared, self.label, role=".validation.txt",
+        hits = _rf.find(self.prepared, self.label, role=_rf.ROLE_VALIDATION,
                         stage=self.stage)
-        return hits[-1][0] if hits else None
+        return hits[0][0] if hits else None
 
 
 def run_of(path) -> Optional[Run]:
@@ -283,8 +273,7 @@ def run_of(path) -> Optional[Run]:
 
     The label is the description's (a trial's, `paths.trial_label`); the
     stage is the one the folder's path names (`calcdirs.where`) -- a folder
-    stamped a run that lies in no stage's ``run-<n>/`` is no run of ours;
-    the try is the file's own, else the run's newest."""
+    stamped a run that lies in no stage's ``run-<n>/`` is no run of ours."""
     p = Path(path)
     folder = p if p.is_dir() else p.parent
     place = place_of(folder)
@@ -292,17 +281,8 @@ def run_of(path) -> Optional[Run]:
             or place.where.run_folder is None):
         return None
     label, stage, trial = _position(place)
-    run = None
-    if not p.is_dir():
-        rec = _rf.parse(p.name, label)
-        if rec is not None and rec.stage is not None:
-            run = rec.run
-    if run is None:
-        # THE RUN'S NEWEST TRY, by the one rule (`runrecord.newest_run`).
-        from molbuilder.runrecord import newest_run
-        run = newest_run(folder, _rf.RunNames(label, stage))
     return Run(place=place, folder=folder, label=label, stage=stage,
-               run=run, trial=trial)
+               trial=trial)
 
 
 def on_label_at(folder, role: str) -> Optional[Path]:
@@ -311,8 +291,9 @@ def on_label_at(folder, role: str) -> Optional[Path]:
     of points (a container at a stage's attempt, `calcdirs.where`), where
     the run's own steps write its result (`engines/vibration.md` § 5.11
     § 2: the spectrum at the run's root); ``None`` for a folder that is
-    neither, or one that holds no such file.  The one door a reader of a
-    stage's result takes, whether it runs once or per point."""
+    neither, or one that holds no such file -- the first by name, as
+    :meth:`Run.file`.  The one door a reader of a stage's result takes,
+    whether it runs once or per point."""
     folder = Path(folder)
     run = run_of(folder)
     if run is not None:
@@ -323,7 +304,7 @@ def on_label_at(folder, role: str) -> Optional[Path]:
         return None
     label, _stage, _trial = _position(place)
     hits = _rf.find_on_label(folder, label, role)
-    return hits[-1] if hits else None
+    return hits[0] if hits else None
 
 
 # --------------------------------------------------------------------- #
@@ -732,7 +713,7 @@ def _copy_of_its_machine(base):
         return None
 
 
-def concluded(folder, names, *, base, run=None, launched_in=None):
+def concluded(folder, names, *, base, launched_in=None):
     """THE STATE OF A RUN, ASKED ONCE OF ITS SCHEDULER AND WRITTEN ONCE
     (`running-a-job.md` § 4.2, *Asked once, written once*) -- the run
     door's answer (`rundir.run_state_of`), and for a sent run that still
@@ -744,15 +725,14 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
     record (`runrecord.record_ended`) and the state read again, ``failed``
     from then on wherever the folder goes.  Asked only
     while the record holds no answer.  ``base`` is the calculation's
-    folder (the record copy's); ``run`` and ``launched_in`` as
-    `run_state_of` takes them, the folder the record lies in settled once
-    here for both."""
+    folder (the record copy's); ``launched_in`` as `run_state_of` takes
+    it, the folder the record lies in settled once here for both."""
     from molbuilder.parse.dirs.job import LIVE_STATES
     from molbuilder.parse.dirs.rundir import run_state_of
     from molbuilder.runrecord import (LaunchRecordError, launch_record,
                                       record_ended)
     where = launched_in if launched_in is not None else folder
-    st = run_state_of(folder, names, run, launched_in=where)
+    st = run_state_of(folder, names, launched_in=where)
     if st.state not in LIVE_STATES and not st.by_wall:
         return st
     try:
@@ -773,7 +753,9 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
             # REQUEUED (a node lost; SLURM's JobRequeue): the job keeps its
             # id and waits again with its first start's files in the
             # folder, past the wall rule's bound -- the scheduler's word
-            # outranks the folder's here.
+            # outranks the folder's here.  When it starts again its run
+            # script refuses: the folder holds a start (`project-layout.md`
+            # § 1.6.1).
             return replace(
                 st, state="running", by_wall=False,
                 detail=f"the scheduler lists it: {said}" if said
@@ -787,7 +769,7 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
         return replace(st, detail=(
             f"{st.detail} -- the scheduler no longer lists job "
             f"{launch['job_id']}, and that could not be written: {exc}"))
-    return run_state_of(folder, names, run, launched_in=where)
+    return run_state_of(folder, names, launched_in=where)
 
 
 def ended_before_a_point(base, run, names) -> bool:
@@ -819,9 +801,9 @@ def ended_before_a_point(base, run, names) -> bool:
 def _as_a_point(run: "Run", st):
     """A POINT OF A RUN OF POINTS NEVER STARTED IS *NOT RUN*, never failed
     (`execution/runs-of-points.md` § 1.3: its walk ended without starting
-    it -- no try of its own in its folder, whatever its job came to): a
-    point's folder (`calcdirs.where`) with no try of its own
-    (`runrecord.newest_run`) read ``failed`` -- its run's end, the
+    it -- no start of its own in its folder, whatever its job came to): a
+    point's folder (`calcdirs.where`) with no start of its own -- no session
+    log (`Run.session_log`) -- read ``failed`` -- its run's end, the
     scheduler's answer written once (:func:`concluded`) -- or ``queued``
     with its walk over as its run's row reads it
     (`continuation.points_state`): no job launched from this machine that
@@ -833,9 +815,9 @@ def _as_a_point(run: "Run", st):
     state, and where its run's index does not read."""
     if st.state not in ("failed", "queued"):
         return st
-    from molbuilder.runrecord import LaunchRecordError, newest_run
+    from molbuilder.runrecord import LaunchRecordError
     if (run.place.where.what != calcdirs.POINT
-            or newest_run(run.folder, run.names) is not None):
+            or run.session_log is not None):
         return st
     if st.state == "queued":
         from molbuilder.joblist import going_of
@@ -858,7 +840,7 @@ def state_of(run: "Run"):
     read alone as its run's rows read it: one its walk ended without
     starting, *not run* (:func:`_as_a_point`)."""
     return _as_a_point(run, concluded(
-        run.folder, run.names, base=run.place.root, run=run.run,
+        run.folder, run.names, base=run.place.root,
         launched_in=run.launched_in))
 
 
@@ -880,7 +862,7 @@ def record_of(run: "Run", *, status=None, fields=None):
     task = run.place.task
     asks_deck = fields is None or any(f == "deck" or f.startswith("deck.")
                                       for f in fields)
-    return run_record(run.folder, names=run.names, run=run.run,
+    return run_record(run.folder, names=run.names,
                       status=status if status is not None else state_of(run),
                       engine=task.engine, calculation=task.calculation,
                       current=run.current if asks_deck else None,
@@ -972,11 +954,12 @@ def _openable(folder: Path, label: str, stage: Optional[str],
               ) -> Optional[str]:
     """What a viewer opens in a folder of ours: the first role the
     calculation produces (`runfiles.result_roles`) in which the folder's run
-    has a file -- the run it speaks for, at its newest try -- that a parser
+    has a file -- the run it speaks for -- that a parser
     claims (`model/parse.md` § 5.2).  A role named on the label alone -- a
     run's result, ``<label>.spectra.json`` -- is found by the one body every
     reader of such a file asks (`runfiles.find_on_label`, :func:`on_label_at`),
-    so the viewer and the readers of a stage's result find one file."""
+    so the viewer and the readers of a stage's result find one file; a
+    role's files are walked by name, as :meth:`Run.file` takes them."""
     from molbuilder.parse.dirs.rundir import claimed
     staged = {a.role: a.staged for a in _rf.ON_THE_LABEL}
     for role in _rf.result_roles(calculation):
@@ -987,7 +970,7 @@ def _openable(folder: Path, label: str, stage: Optional[str],
         if not hits:
             continue
         attempts.append(f"*{role} -> {len(hits)} of this run's")
-        for cand in reversed(hits):
+        for cand in hits:
             if claimed(str(cand)):
                 attempts.append(f"*{role} -> {cand.name}")
                 return str(cand)
@@ -1150,8 +1133,8 @@ def folder_answer(directory) -> Dict[str, Any]:
     are floor 6's (`runstatus.views_of`), served beside it.
 
     **What the folder IS decides what is asked of it** (`project-layout.md`
-    § 1.4a).  A RUN of ours is asked everything, about its own newest try:
-    its result, its state, its record.  A CONTAINER has
+    § 1.4a).  A RUN of ours is asked everything: the run's result, its
+    state, its record.  A CONTAINER has
     no state and no record, though its calculation's product opens at its
     root.  A folder no calculation claims holds no run of ours: its files
     are listed, the registry says what it can open, and none of them is

@@ -118,8 +118,7 @@ class _ScfSays:
 
     @staticmethod
     def fact(row, run_dir: Path, names, facts) -> Optional[int]:
-        out = _rr.newest_output(RunPlace.of(run_dir).point(row["rel"]),
-                                names)
+        out = _rr.run_output(RunPlace.of(run_dir).point(row["rel"]), names)
         if out is None:
             return None
         try:                               # inside molbuilder

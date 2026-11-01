@@ -691,7 +691,7 @@ UNRELAXED_MARKER = "outcoor: final (unrelaxed) atomic coordinates"
 
 #: ``reinit: System Label: H2`` -- the SystemLabel the run read, which SIESTA
 #: names its own files from (``<label>.MD.nc``, ``<label>.XV``): an output
-#: of ours is named otherwise (``<label>_<token>-run<N>.out``), so its own
+#: of ours is named otherwise (``<label>_<token>.out``), so its own
 #: line is how it names its companions (`model/parse.md` § 5.3).  Measured:
 #: line 36 of both recorded H2 outputs, among the setup lines.
 SYSTEM_LABEL = re.compile(r"^reinit:\s*System Label:\s*(\S+)")

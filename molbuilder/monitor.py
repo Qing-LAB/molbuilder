@@ -41,7 +41,7 @@ channel this machine has, absent or ``""`` for none (`run-reports.md` 3.0).
 CLI (also available as ``molbuilder monitor``)::
 
     nice -n 19 "$_mb_py" mb_monitor.pyz \\
-        --label job --stage 01_coarse --run 0 --util --cores 8 \\
+        --label job --stage 01_coarse --util --cores 8 \\
         --notify-every-hours 6 --watch-pid $$ &
 
 **Where** a name POINTS is never here and never in the description: the
@@ -62,8 +62,7 @@ Design notes:
   timing instrument's own reader.
 - It stops when ``--watch-pid`` goes away (the job wrapper's PID) or when
   the wrapper stops it: SIGTERM at the job's end -- the scheduler's own
-  SIGTERM at a walltime or a cancel reads the same -- and SIGUSR1 when the
-  run is retried in place, as its next try, which is not an ending.  Output markers are
+  SIGTERM at a walltime or a cancel reads the same.  Output markers are
   not consulted: they can appear before a run is actually over, which would
   end the sampling early (`job-contracts.md`, the monitor's section).
 - The seconds per iteration are the timing instrument's, one phase at a
@@ -423,16 +422,13 @@ class _Growth:
 @dataclass
 class WatchedRun:
     """The run this monitor watches, as the wrapper names it -- its stage's
-    names (`runfiles.RunNames`) and its try's number (``--run N``: 0 from
-    launch, the next from a warm retry) -- in the directory the job runs
-    in.
+    names (`runfiles.RunNames`) -- in the directory the job runs in.
 
     Every file is named and found through `runfiles` (`run-reports.md`
     § 2.3), the way `project-layout.md` § 4.5 has every caller ask for our
     names; the wrapper passes no paths.
     """
     names: "_rf.RunNames"
-    run: int
     directory: Path = field(default_factory=lambda: Path("."))
     #: THE RUN'S FOLDER, for a member of a run of points (`run-reports.md`
     #: § 2.1b; `engines/vibration.md` § 5.11 § 7a): where the run's one
@@ -463,17 +459,12 @@ class WatchedRun:
 
     def path(self, role: str) -> Path:
         """This run's file in ``role``, by its stage's names."""
-        return self.directory / self.names.name(role, self.run)
+        return self.directory / self.names.name(role)
 
     def files(self) -> Dict[str, Path]:
-        """This run's files by role: its own try's, and those the folder
-        holds for every try -- a progress log carries no try's number
-        (`runfiles.RunNames`)."""
-        out: Dict[str, Path] = {}
-        for p, rf in _rf.find(self.directory, self.label, stage=self.stage):
-            if rf.run is None or rf.run == self.run:
-                out[rf.role] = p
-        return out
+        """This run's files by role (`runfiles.RunNames`)."""
+        return {rf.role: p for p, rf in _rf.find(self.directory, self.label,
+                                                 stage=self.stage)}
 
     def read(self, start_epoch: float, now_epoch: float) -> JobStatus:
         """Where the run is now, as its files' own parsers read them -- each
@@ -526,8 +517,8 @@ class WatchedRun:
         computed, this point's from this monitor's start; and the pace of
         the phase underway's points, once one has finished.  An index that
         does not read -- being rewritten, or none -- leaves the line
-        without them.  The index is the run's, in its folder and named for
-        its first try, whichever try this point is in."""
+        without them.  The index is the run's, in its folder
+        (``launched_in``), named on its stage's stem."""
         try:
             idx = _rp.index_of(self.launched_in, self.names)
             if idx is None:
@@ -643,14 +634,13 @@ class WatchedRun:
 
     def conclude(self, st: JobStatus) -> JobStatus:
         """How the run ended, as the Results tab reads it: `run_status` over
-        this try's own files (`run-reports.md` § 2.3) -- the try this monitor
-        watches, never one a warm retry started since -- its state and
+        the run's own files (`run-reports.md` § 2.3) -- its state and
         detail, each phase's convergence from the ending of the file that
         speaks, and the process's goodbye.  Asked after the closing record
         is written: a forced stop leaves no other word, and `run_status`
         reads it there."""
         try:
-            rs = run_status(self.directory, self.stem, run=self.run)
+            rs = run_status(self.directory, self.stem)
         except Exception:                               # noqa: BLE001
             return st           # an unreadable directory says nothing
         st.state, st.detail = rs.state, rs.detail
@@ -2057,8 +2047,7 @@ def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
 
     ``run`` is the rung's **stem** -- the label and the stage token, *"the
     stem of every file"* (`run-identity.md`) -- as `runfiles` composes it
-    for the run the wrapper named (`project-layout.md` § 4.5).  The try's
-    number is left out: the stem names the calculation, not the try.
+    for the run the wrapper named (`project-layout.md` § 4.5).
 
     Everything is best-effort: an identity that cannot be gathered must
     never stop a run reporting.  A missing field is simply absent, which a
@@ -2247,7 +2236,7 @@ def run_monitor(watched: "WatchedRun", *,
     ``job_started`` is when the job began -- its header's
     :data:`JOB_STARTED_VAR` -- from which a job sent with a wall counts
     down (`run-reports.md` § 2.1b): for every run in it, a walk's later
-    member and a warm retry too.
+    member too.
 
     **How often it LOOKS and how often it TELLS you are different numbers.**
     It wakes every ``interval`` seconds and writes a ``[STATUS]`` line
@@ -2410,8 +2399,8 @@ def run_monitor(watched: "WatchedRun", *,
         ticks += 1
         now = clock()
         # STOPPED IS OVER -- for this process.  The wrapper stops it when the
-        # job ends (its EXIT trap) and when it retries the run in place,
-        # both while the watched pid is still alive.  Asked BEFORE sampling:
+        # job ends (its EXIT trap), while the watched pid is still alive.
+        # Asked BEFORE sampling:
         # a sample taken after the stop is not the run's.
         alive = _pid_alive(watch_pid) and _STOPPED_BY is None
         if alive:
@@ -2437,21 +2426,11 @@ def run_monitor(watched: "WatchedRun", *,
             # `run_status` reads -- a forced stop leaves no other word
             # (`run-reports.md` § 2.4) -- and HOW IT ENDED, asked next, is
             # the Results tab's own reading of the run's files.
-            retry = _STOPPED_BY == _STOP_RETRY
-            if retry:
-                # NOT AN ENDING: the wrapper re-execs itself in this pid for
-                # the run's next try, which starts its own monitor
-                # (`run-reports.md` § 2 -- "it ended" is the watched pid
-                # going, and across an exec it does not go).
-                _append(log, f"[{_iso(now)}] [MONITOR] stopped: the wrapper "
-                             f"is retrying this run in place; its next "
-                             f"try starts its own monitor")
-            else:
-                _append(log, f"[{_iso(now)}] {MONITOR_ENDED} "
-                             + (f"(stopped by {_STOPPED_BY}); "
-                                if _STOPPED_BY else
-                                f"(watched pid {watch_pid} gone); ")
-                             + "final notify + exit")
+            _append(log, f"[{_iso(now)}] {MONITOR_ENDED} "
+                         + (f"(stopped by {_STOPPED_BY}); "
+                            if _STOPPED_BY else
+                            f"(watched pid {watch_pid} gone); ")
+                         + "final notify + exit")
             st = watched.conclude(st)
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
             if util_path is not None:
@@ -2459,7 +2438,7 @@ def run_monitor(watched: "WatchedRun", *,
                              f"{util_accum.summary()}")
                 _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
                              f"{measurement_provenance(basis)}")
-            if not retry and not member:
+            if not member:
                 _said(st, "finish", now)
             # The series' end, LAST: a GPU sample can take seconds and the
             # wrapper waits for this process only so long, so the closing
@@ -2665,22 +2644,17 @@ def make_log_notifier(log: Path) -> Notifier:
 
 
 #: Why this process was stopped, or None: ``"SIGTERM"`` -- the job ended (the
-#: wrapper's EXIT trap, or the scheduler's walltime or cancel) -- or
-#: :data:`_STOP_RETRY`, SIGUSR1, the wrapper retrying the run in place.
+#: wrapper's EXIT trap, or the scheduler's walltime or cancel).
 #: Set by PLAIN ASSIGNMENT in the handler: a handler that took a lock could
 #: meet the loop holding it and hang the monitor for good.  Only `main`
-#: installs the handlers: a library call of `run_monitor` gets no
-#: process-wide signal behaviour.  SIGUSR1 is chosen because nothing else
-#: sends it to a job's processes; wrong when a scheduler is set to (Slurm's
-#: ``--signal=USR1``), which would close the monitor quietly.
+#: installs the handler: a library call of `run_monitor` gets no
+#: process-wide signal behaviour.
 _STOPPED_BY: Optional[str] = None
-_STOP_RETRY = "the wrapper's retry"
 
 
-def _on_stop_signal(signum, _frame) -> None:
+def _on_stop_signal(_signum, _frame) -> None:
     global _STOPPED_BY
-    _STOPPED_BY = (_STOP_RETRY if signum == getattr(signal, "SIGUSR1", None)
-                   else "SIGTERM")
+    _STOPPED_BY = "SIGTERM"
 
 
 def _sleep_until_stopped(seconds: float) -> None:
@@ -2736,9 +2710,6 @@ def main(argv=None) -> int:
     p.add_argument("--dir", default=".", dest="directory",
                    help="the directory the run is in (default: here, where "
                         "the wrapper starts it)")
-    p.add_argument("--run", type=int, required=True, dest="try_n",
-                   help="the try's number (-runN): 0 from launch, the "
-                        "next from a warm retry")
     p.add_argument("--interval", type=float, default=10.0,
                    help="seconds between wakes (default 10; this is the "
                         "utilization sample rate -- status lines stay "
@@ -2803,12 +2774,10 @@ def main(argv=None) -> int:
                         "run found by this folder's record")
     a = p.parse_args(args)
     watched = WatchedRun(names=_rf.RunNames(a.label, a.stage),
-                         run=a.try_n, directory=Path(a.directory),
+                         directory=Path(a.directory),
                          launched_in=(_run_of(Path(a.directory))
                                       if a.member else None))
     signal.signal(signal.SIGTERM, _on_stop_signal)
-    if hasattr(signal, "SIGUSR1"):
-        signal.signal(signal.SIGUSR1, _on_stop_signal)
     try:
         os.nice(max(0, a.nice_level))
     except (OSError, AttributeError):
@@ -2895,8 +2864,7 @@ def _point_main(argv) -> int:
     (:func:`_run_of`).
 
     ``started``, before the engine: the point's start into the run's index
-    (`runpoints.stamp_start`; a try retried in place keeps the first's);
-    its kind's step before the engine, where it has one (``--before``);
+    (`runpoints.stamp_start`); its kind's step before the engine, where it has one (``--before``);
     the run's `start`, sent once whichever point asks first.  Exits with
     that step's code: **its failure is the point's** -- the run script then
     starts no engine.
@@ -3077,10 +3045,9 @@ def _notify_main(argv) -> int:
                    help="a failed part's why: a part_failed whose reason "
                         "the run has already reported is not sent again")
     a = p.parse_args(argv)
-    # THE RUN'S FOLDER HOLDS NO TRY OF ITS OWN -- its calls' or points'
-    # folders do -- so its log is named for the first.
+    # THE RUN'S FOLDER, its log named on the stage's names as any run's.
     watched = WatchedRun(names=_rf.RunNames(a.label, a.stage),
-                         run=_rf.FIRST_TRY, directory=Path(a.directory))
+                         directory=Path(a.directory))
     log = watched.path(".monitor.log")
     now = time.time()
     try:

@@ -1035,8 +1035,9 @@ values, in memory, differing where the ladder says they differ:
 from, so no shipped ladder sets `restart` at all: both rungs inherit the
 template's, which is `continue`
 ([`run-identity.md § 4`](?doc=execution/run-identity.md) rule 3). A person who
-wants `tight` to recompute from scratch says `clean`, and the launcher then
-names what that would overwrite and refuses until `--force`.*
+wants `tight` to recompute from scratch says `clean`, and its launch then
+copies nothing from a run into it ([`job-system.md`](?doc=execution/job-system.md)
+§ 5.4).*
 
 **Load** reads `bdt-e2e.xyz` and checks it still holds the formula and atom
 count `task.json` witnessed. **Data files** reads the elements — C, H, S — and puts

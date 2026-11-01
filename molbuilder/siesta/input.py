@@ -535,8 +535,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     ``names`` are the stage's (`runfiles.RunNames`) -- a RENDER ARGUMENT, as
     the kind is: its stage token, and the names the deck prints, the deck's
-    own and the unnumbered ``.out`` its by-hand ``mpirun`` line writes among
-    them, are theirs (`job-contracts.md` § 2.2a).
+    own and the ``.out`` its by-hand ``mpirun`` line writes among them, are
+    theirs (`job-contracts.md` § 2.2a).
 
     ``trial`` is the benchmark trial this deck is, by its point's name
     (``G1N4C6``), or ``None`` for the run -- a render argument from `prep`,
@@ -990,9 +990,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # files a run is handed from the run it continues from are the ones
         # this deck reads.
         # THE STAGE'S NAMES NAME THEM (`runfiles.RunNames`): the deck, its
-        # wrapper; the output a person's own `mpirun` writes is the
-        # unnumbered spelling the `.out` row keeps for a run no run script
-        # started (`attempt="maybe"`).
+        # wrapper; and the output a person's own `mpirun` writes, the
+        # stage's `.out`.
         _fdf_name  = names.name(".fdf")
         _out_name  = names.name(".out")
         if cfg.verbose_comments:

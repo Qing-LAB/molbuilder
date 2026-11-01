@@ -333,7 +333,7 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 | **`stage`** | **the settings that typically vary across a sequence** | *(30)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ`, the transport rungs' own, … | *(12)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level`, … |
 | `budget` | what it is allowed to spend | *(3)* `max_scf_iter`, `scf_must_converge`, `relax_steps` | *(1)* `scf_max_cycle` |
 | `output` | what the run writes | *(17)* the `write_*` set, `verbose_comments`, the transmission's `tbt_*` outputs and `tbt_progress`, `ts_hs_save` | *(10)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory`, `verbose_comments`, `write_molwatch_log`, `es_n_*` |
-| `staging` | answered by the staging surface, Task setup, not by a parameter form — every run setting on the run card ([`execution/job-request.md`](?doc=execution/job-request.md) § 2), and what a stage builds on in the stage table | *(13)* `mpi_np`, `omp_threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `wall_slack`, `continue_retries`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `restart` | *(6)* `threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `wall_slack`, `restart` |
+| `staging` | answered by the staging surface, Task setup, not by a parameter form — every run setting on the run card ([`execution/job-request.md`](?doc=execution/job-request.md) § 2), and what a stage builds on in the stage table | *(12)* `mpi_np`, `omp_threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `wall_slack`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `restart` | *(6)* `threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `wall_slack`, `restart` |
 
 The counts are the whole group — an item the engine shares with the other
 counted in both — the names a readable sample where the group is long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
@@ -577,7 +577,7 @@ written twice: every tab already has a schema, so every tab gets this.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: a run is `run-0`, a trial is `bench-G1N4C6`, and a try's stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch task --stage TIGHT` is `tight`) and the role rule (a transport rung named `Device` is the `device` rung); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: a run is `run-0`, a trial is `bench-G1N4C6`, and a run of points' walk is `<label>_<NN>_<name>-sweep.run.sh`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch task --stage TIGHT` is `tight`) and the role rule (a transport rung named `Device` is the `device` rung); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
 | `overrides` | map | schema field name → that stage's value |
 
 **There is no `enabled`** *(W38 F5, agreed 2026-09-27 — user: "remove on/off
@@ -658,11 +658,11 @@ description of something that will still exist.
 | `relax_steps` | yes | yes | the shared schema |
 | `relax_force_tol` | yes | yes | the shared schema |
 | `relax_max_displ` | yes | yes | the shared schema |
-| `continue_retries` | yes — `running-a-job.md § 3.5` | yes | a run setting, on the job request's run card, routed to the **wrapper** (§ 5) |
+| `continue_retries` | — | — | **retired**: a run is one start, and to continue is to launch again ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) |
 | `on_nonconvergence` | **no** — its only effect was the scheduler edge | — | **outside this contract** — and, for SIESTA, **retired with the edges on 2026-08-10** |
 
-Two of those are worth stating explicitly, because both were on the stage type
-and neither belonged there.
+One of those is worth stating explicitly, because it was on the stage type
+and did not belong there.
 
 **`on_nonconvergence` fails question 1.** Its entire effect was the dependency
 edge a JobSet threads (`proceed → afterany`, `halt → afterok`). Without a
@@ -690,15 +690,6 @@ schema** it would be promotable through `overrides` like anything else, and § 2
 of the shared schema at all. It belongs to the JobSet producer's own input, which
 is a different object with a different reader
 ([`execution/job-system.md`](?doc=execution/job-system.md) — `job-system.md § 4.1`).
-
-**`continue_retries` passes both questions and is still not a stage field.**
-`running-a-job.md § 3.5` is explicit: a *single* SIESTA run whose wrapper was
-installed with a retry budget re-runs itself with `--continue` — the same deck
-launched again, warm, as a launch again does — so it is a run setting, stated on
-the run card, per stage or for the calculation ([`execution/job-request.md`](?doc=execution/job-request.md) § 2); what
-made it look special is only where it lands. That is also why
-`job-system.md § 4.1` records that the SIESTA ladder never implemented it — the
-field sat on the stage, and the stage is not what honours it.
 
 **One field arrives.** Whether a stage continues from what is already in the
 folder or starts clean has to be sayable, and by question 2 it is a shared field:
@@ -794,7 +785,7 @@ template and a stage's overrides ([`execution/job-request.md`](?doc=execution/jo
 |---|---|---|
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff`; `diag_algorithm` → `Diag.Algorithm` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `use_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
-| a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at prep (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
+| a field the deck never carries | `mpi_np`, `omp_threads`, `wall_slack` | the **wrapper** — baked at prep (`wall_slack`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 | **what a rung needs from the runs before it** | a transport rung's `.DM`, `.TSHS`, `.TS.HSX` | **not a field**: the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at the rung's first launch (`jobset/gather.py`; `job-contracts.md § 2.1`, *What a stage needs*) |
 
 > **The second row is about where a value *lands*, not about who *chooses* it**
@@ -829,8 +820,8 @@ template and a stage's overrides ([`execution/job-request.md`](?doc=execution/jo
 
 > **Why the fourth row is not the third one wearing a hat** *(added
 > 2026-08-08; brought to what is built, 2026-10-18)*. The third row's fields
-> are **values the wrapper uses**: a rank count becomes an `mpirun -np`, a
-> retry budget becomes a loop. What a rung needs from the runs before it is
+> are **values the wrapper uses**: a rank count becomes an `mpirun -np`, the
+> wall slack the engine's own stop. What a rung needs from the runs before it is
 > not a value at all and not a field: it is the kind's DAG, and the gather at
 > the rung's first launch checks each input (the upstream prepared, its newest
 > run finished, the same engine input, the file there) and copies it into the
@@ -1068,7 +1059,7 @@ override, a pin, or a benchmark axis, so a column the table offers is a column
 
 Concretely, for SIESTA that means the physics settings — `restart` among
 them, what a stage builds on — and **not** the run settings
-(`template.run_settings`): `continue_retries`, `wall_slack`, `use_gpu`,
+(`template.run_settings`): `wall_slack`, `use_gpu`,
 `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method` and
 `ts_elecs_out_of_core`, which a person answers on the run card, nor `mpi_np`,
 `omp_threads`, `gpu_count` or `max_memory_mb`, which the machine answers. A surface that instead borrows the parameter form's list gets

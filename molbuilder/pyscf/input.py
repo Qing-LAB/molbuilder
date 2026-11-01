@@ -64,9 +64,8 @@ GEOMETRIC_APPENDS = "_optim.xyz"
 def run_file_expr(names, role: str) -> str:
     """THE PYTHON EXPRESSION A DECK NAMES ONE OF ITS RUN'S FILES WITH: its
     ``JOB`` and the tail the stage's names give the role
-    (`runfiles.RunNames.tail`) -- a file of the run, the same for every try
-    in it; a role the try numbers is refused there, since only the run
-    script knows the try's number.
+    (`runfiles.RunNames.tail`) -- a file of the run, named once in its
+    run's folder (`project-layout.md` § 1.6.1).
 
     PySCF's own restart files (``.chk``, ``_optimized.xyz`` --
     `pyscf/warm-files.toml`, the one vocabulary) are no row of the
@@ -1487,8 +1486,8 @@ def emit_run_with(names) -> List[str]:
     the managed launch from the calculation's folder, the stage by its name
     through the one printer (`identity.deck_launch`, `job-system.md`
     § 5.3); its run script by hand (`identity.hand_run`); and PySCF driven
-    directly, its stdout under the unnumbered name the stdout row keeps for
-    a run no run script started (`runfiles.RunNames.name`)."""
+    directly, its stdout under the stage's own name for it
+    (`runfiles.RunNames.name`)."""
     from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE, deck_launch,
                             hand_run)
     out = ["Run with -- the managed way, and the usual one, from the "

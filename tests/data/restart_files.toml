@@ -51,7 +51,7 @@ plan_carries = { coarse = [], medium = [] }
 
 [[case]]
 name = "a run script says what its deck does with the state a run leaves, read off the deck as prep writes it -- a stage that continues (`running-a-job.md` § 3.5)"
-run_sh = ["This deck says 'start from: continue'"]
+run_sh = ["this deck says 'start from: continue'"]
 
 # EVERY KEY ITS RUN READS, ANSWERED (`run-identity.md` § 4 rule 2): SIESTA
 # 5.4.2 reads a .DM it finds unless told `.false.`, and an .XV or .CG only
@@ -84,11 +84,27 @@ deck_lacks = ["MD.UseSaveCG"]
 name = "a clean stage's run script says its deck reads no prior state"
 template = { restart = "clean" }
 run_sh = ['_mode="CLEAN (this deck reads no prior state']
-run_sh_lacks = ['_mode="WARM-RESTART (silent; engine will load']
+run_sh_lacks = ['_mode="CONTINUES (engine will load']
 
 [[case]]
 name = "...and a continuing stage's says what the engine will load"
 template = { restart = "continue" }
-run_sh = ['_mode="WARM-RESTART (silent; engine will load']
+run_sh = ['_mode="CONTINUES (engine will load']
 run_sh_lacks = ['_mode="CLEAN (']
 
+
+# A failed run says what a launch again will do (`running-a-job.md` § 3.5),
+# and a stop at its wall says so first (§ 3.6) -- a run is one start, so the
+# way on is the next launch.  THE SILENT FAILURE: a failure that ends with
+# no word on how to go on, or a wall stop read as any other failure.
+[[case]]
+name = "a continuing stage's run script says, on a failure, that a launch again continues warm -- and a stop at its wall says so first"
+template = { restart = "continue" }
+run_sh = ['what a launch again will do: launch the stage again to continue warm from the files this run saved',
+          'stopped at its wall (MaxWalltime): launch the stage again to continue warm from the files this run saved']
+
+[[case]]
+name = "...and a clean stage's, that a launch again starts over from its deck's coordinates"
+template = { restart = "clean" }
+run_sh = ['what a launch again will do: this deck reads no prior state, so a launch again starts over from its own coordinates']
+run_sh_lacks = ['continue warm from the files this run saved']

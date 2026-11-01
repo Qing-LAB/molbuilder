@@ -504,11 +504,9 @@ def _keep(table: "OrderedDict", key, ending: RunEnding) -> None:
 
 #: What a shell may ask, each answered by the exit status (0 yes, 1 no).
 #: ``stopped-by MARKER`` asks for the table's own marker, which the wrapper
-#: renders from `siesta_grammar` -- ``propor: error`` for its hint,
-#: ``scf_not_conv`` for its warm retry.
+#: renders from `siesta_grammar` -- ``propor: error`` for its hint.
 QUESTIONS: Dict[str, Callable[..., bool]] = {
-    "relaxation-capped": lambda e: e.relaxed is False,
-    "stopped-by":        lambda e, marker: e.cause == marker,
+    "stopped-by": lambda e, marker: e.cause == marker,
 }
 
 
@@ -571,7 +569,7 @@ def main(argv=None) -> int:
     except Exception as exc:                          # noqa: BLE001
         # THE DOOR HAS THREE ANSWERS, and a reading that stops for any reason
         # is the third -- the ending cannot be read -- never *no*, which would
-        # drop a warm retry or a wall's line without a word.  Why, on stderr,
+        # drop a hint without a word.  Why, on stderr,
         # which the run's session log keeps.
         print(f"_run_ending: the ending cannot be read -- "
               f"{type(exc).__name__}: {exc}", file=sys.stderr)

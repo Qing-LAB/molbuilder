@@ -31,8 +31,8 @@ from typing import Optional
 
 # ══ THE ATTEMPT ════════════════════════════════════════════════════════════
 #
-# ``run-<n>``, the directory one run of a stage or a trial is -- its tries
-# among it (`project-layout.md` § 1.5, § 1.6.1 — immutable once it has run,
+# ``run-<n>``, the directory one run of a stage or a trial is -- one start
+# of its run script (`project-layout.md` § 1.5, § 1.6.1 — immutable once it has run,
 # which is why a launch again opens the next rather than landing on top of
 # one).
 

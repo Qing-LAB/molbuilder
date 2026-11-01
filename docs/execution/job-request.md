@@ -71,7 +71,7 @@ kinds:
 | | the items | stated nowhere |
 |---|---|---|
 | **the launch shape and the memory cap** — the machine's answers (`allocation = true`) | `mpi_np`, `omp_threads`, PySCF's `threads`, `gpu_count`, `max_memory_mb` | the ranks and the cores per rank are refused at prep, and a GPU run's count; a memory cap left out is no cap ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
-| **the speed settings** | `use_gpu`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `wall_slack`, `continue_retries` | the catalogue's default (§ 4) |
+| **the speed settings** | `use_gpu`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `wall_slack` | the catalogue's default (§ 4) |
 
 **A run setting lives in the job request and nowhere else.** The catalogue
 declares it; no template carries it, valueless or not — a template holding one
@@ -127,10 +127,12 @@ several SCF solutions or several minima, the path decides which one is
 reached. **So is a budget the engine's own run counts** — `relax_steps`,
 `max_scf_iter`, PySCF's `geom_continue_retries`, the deck's own loop: it
 decides where an unconverged run stops, and what a later stage takes from it.
-**A stop that launching again resumes is the run's**: the wall, its slack, and
-SIESTA's `continue_retries`, the run script launching the same deck again,
-warm, as a launch again does
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). **And a
+**A stop that launching again resumes is the run's**: the wall and its slack
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). A run is one
+start, and to continue is to launch again
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1), so no run
+card counts starts: `continue_retries` is retired (`template.RETIRED_ITEMS`),
+and a run card stating it is refused, told it is retired. **And a
 keyword that only shapes what a run writes is the description's** — a
 `write_*` switch, a verbosity: changing one on a launched stage is a change of
 the description, as any other (§ 5).
@@ -659,18 +661,16 @@ already declares sweepable — the `execution` category, which
 [`template.md` § 6.2](?doc=engines/template.md) defines as *"knobs that change
 speed and not the answer"*. Sweeping something outside it means each point
 silently measures a different calculation, and the comparison is meaningless.
-**And a run setting the trials cannot vary is no row**: one every trial fixes
-— `continue_retries`, a trial running once (the pins below) — whose points
-would be one measurement under many labels, and of the machine's answers any
-but the grid's axes — ranks, cores per rank, devices — a memory cap being no
-axis the grid sweeps. Each is refused where the job request is written, by the
+**And a run setting the trials cannot vary is no row**: of the machine's
+answers, any but the grid's axes — ranks, cores per rank, devices — a memory
+cap being no axis the grid sweeps. Each is refused where the job request is written, by the
 setting door ([`template.md`](?doc=engines/template.md) § 5.4, `home_of`),
 never first at `prep bench`; and a point is a value to try, never `null`.
 
 **The bench lane speaks SIESTA today, and `prep bench` says so by name.** A
 trial is a MEASUREMENT, and what makes it one is the pin set applied over
 every point: cap the SCF at three cycles, no relaxation steps, force a cold
-start, no continue-retries, and let an unconverged cap end cleanly rather than
+start, and let an unconverged cap end cleanly rather than
 abort — SIESTA's keywords, which a PySCF script reads none of, so its trials
 would be no measurement at all. So the refusal is explicit,
 raised at `prep bench` before any trial is rendered, and it points at the
@@ -764,7 +764,7 @@ allocation*, *the catalogue's default · not chosen* — beside the description'
 (*this stage's override*, *the template · …*) and a benchmark's (*a pin*, *a
 sweep point*): in the deck's PROVENANCE
 `parameters:` rows for what the deck renders, and in the pipeline log for every
-run setting, the run script's own (`wall_slack`, `continue_retries`) included
+run setting, the run script's own (`wall_slack`) included
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.2;
 [`template.md`](?doc=engines/template.md) § 6.6, obligations 4 and 5). Task
 setup's run card shows each default in its place before anyone fills it. The
@@ -948,6 +948,12 @@ is refused by name, nothing written:
   to measure;
 - rewrites each row of `job-set.json`: the program onto the job
   (`Job.program`), a placement's source `description` as `allocation`;
+- takes a run setting a release retired (`template.RETIRED_ITEMS`:
+  `continue_retries`, § 2) off every run card — the calculation's and each
+  stage's — and out of each job's resources in `job-set.json`, saying why it
+  was retired; a job set that held one was prepared by an older molbuilder,
+  so it names each group's prep — and a benchmark's prep anew, where a trial
+  is not yet launched;
 - leaves a transmission point's digest as it is: a digest of another
   version is out of date, and the next reading of its data file writes it
   whole (`model/parse.md` § 5e). A vibration result is not rewritten: its map is
@@ -960,8 +966,10 @@ is refused by name, nothing written:
 declared run-setting items go, and nothing it computes changes.
 
 **A prepared stage is prepared again before its first launch**: the files prep
-writes now differ from those it wrote before — the run script takes its wall
-slack and retries from the job, with no fallback of its own (§ 4). A launched one keeps its
+writes now differ from those it wrote before — the run script takes its counts
+alone and no start's number, a run being one start
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1), and its
+wall slack from the job, with no fallback of its own (§ 4). A launched one keeps its
 runs; a SIESTA one's group may be prepared again as § 5 says. A PySCF script
 written before holds no run-settings block, so none rendered now is the same
 calculation (§ 6): a launched PySCF stage takes the way back for any change.

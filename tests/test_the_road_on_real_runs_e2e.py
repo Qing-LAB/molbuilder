@@ -234,7 +234,7 @@ def test_a_run_launched_again_is_left_as_it_was(real_h2_layered):
     as it was: no file added, none written, none taken away.
 
     THE SILENT FAILURE: a launch again that writes into the run it
-    continues from -- a try appended there, a record rewritten -- so the
+    continues from -- a second start there, a record rewritten -- so the
     run read later is not the run that ran.  MUTATION THIS MUST FAIL
     AGAINST: launch again sending the stage into its newest run's folder
     rather than opening the next."""
@@ -279,12 +279,14 @@ def test_the_next_stage_builds_on_the_newest_run_of_the_stage_before_it(
 def test_every_run_s_history_is_its_own(real_h2_layered):
     """A run that continues its stage's own run (`coarse`'s run-1, warm) and
     one that continues the stage before it (`medium`'s run-0) take no history
-    from the run they continue: each holds its own steps, as the first run
-    does (`job-contracts.md` § 2.2; `project-layout.md` § 2.3.4).
+    from the run they continue: SIESTA's ``H2.MD.nc`` in each run folder
+    holds that run's own steps, as the first run's does
+    (`job-contracts.md` § 2.2: no hand-over copies a history into a new run;
+    `project-layout.md` § 2.3.4).
 
-    MUTATION THIS MUST FAIL AGAINST: the run script laying no pointer --
-    SIESTA writes ``H2.MD.nc`` in each run folder, and no run has a history
-    of its own."""
+    MUTATION THIS MUST FAIL AGAINST: a launch that copies the history in
+    with the restart files -- SIESTA appends to it, and the run's history
+    holds the steps of the run it continued."""
     from molbuilder.runs import run_of
     from support.road import history_is_the_runs_own
     r = real_h2_layered

@@ -2,7 +2,7 @@
 from the file that stamps them (`model/parse.md` § 5c).
 
 A run's SCF rows are stamped as they are written: the SIESTA family's by the
-wrapper's tee, into ``<base>-runN.scf-timing.log``; PySCF's by its deck, as
+wrapper's tee, into ``<base>.scf-timing.log``; PySCF's by its deck, as
 the last column of each ``scf_history`` row of its progress log,
 ``<label>_<NN>_<stage>.molwatch.log``.  Each file has its row reader here,
 and :func:`timing_figures` times either the same way; :func:`timing_of` reads

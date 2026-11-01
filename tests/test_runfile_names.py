@@ -18,25 +18,17 @@ import itertools
 import pytest
 
 from molbuilder.runfiles import (ON_THE_LABEL, RunFile, RunFileError,
-                                 find, find_by_role, latest_run,
-                                 compose, manifest, parse,
-                                 tail)
+                                 find, find_by_role, compose, manifest,
+                                 parse)
 
 
-def expect(label, stage, role, run=None):
-    """The `RunFile` a name with these segments must read back as.
-
-    Written here rather than spelled at each assertion because the COUNTERS
-    are a declared class (`runfiles.QUALIFIERS`), not a field per keyword
-    -- so a second counter is a line in that tuple and this helper, not an
-    edit to every expectation in the file.
-    """
-    counters = () if run is None else (("run", run),)
-    return RunFile(label, stage, role, counters)
+def expect(label, stage, role):
+    """The `RunFile` a name with these segments must read back as."""
+    return RunFile(label, stage, role)
 
 LABEL = "my-job"
 
-#: The four segments, each with the values that matter.  `compose` is total
+#: The three segments, each with the values that matter.  `compose` is total
 #: over their product, so the product is what gets tested.
 LABELS = ["my-job", "job_2", "A"]
 #: A transport ladder's rungs carry `_` in the NAME
@@ -45,7 +37,6 @@ LABELS = ["my-job", "job_2", "A"]
 #: refused every transport deck (found 2026-09-07 by the suite).
 STAGES = [None, "01_coarse", "02_medium", "02_electrode_L",
           "100_final"]
-RUNS = [None, 0, 2, 17]
 ROLES = [".chk", ".out", ".py", ".run.sh", ".molwatch.log", ".pyscf.log",
          "_optimized.xyz", "_initial.xyz", "_geom_optim.xyz",
          ".XV", ".DM", ".BASIS_ENTHALPY"]
@@ -55,21 +46,21 @@ ROLES = [".chk", ".out", ".py", ".run.sh", ".molwatch.log", ".pyscf.log",
 #  The generator over its whole parameter space                         #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("label,stage,run,role", list(itertools.product(
-    LABELS, STAGES, RUNS, ROLES)))
+@pytest.mark.parametrize("label,stage,role", list(itertools.product(
+    LABELS, STAGES, ROLES)))
 def test_every_name_the_generator_makes_reads_back_to_its_segments(
-        label, stage, run, role):
+        label, stage, role):
     """THE PROPERTY, over the whole product: what `compose` builds, `parse`
-    takes apart into the same four segments.
+    takes apart into the same three segments.
 
     Round-tripping is the only claim that makes a name trustworthy without looking at it —
     a reader that can recover the segments never needs to know how the writer
     spelled them.
     """
-    name = compose(label, role, stage, run)
+    name = compose(label, role, stage)
     got = parse(name, label)
     assert got is not None, f"{name!r} did not parse"
-    assert got == expect(label, stage, role, run)
+    assert got == expect(label, stage, role)
     assert got.name == name
 
 
@@ -78,43 +69,38 @@ def test_a_file_taken_over_from_another_stage_is_named_for_the_stage_it_lies_in(
     taken over into another stage's (`execution/runs-of-points.md` § 3,
     op. 3; a displacement sweep's later stage taking the first stage's
     relaxation, `engines/vibration.md` § 5.9), is named as the stage it now
-    lies in names it -- its role, try and fields kept (the session log's
-    stamp); a file on the label alone, or of a third stage, as it is.
+    lies in names it -- its role and fields kept (a prep log's engine); a
+    file on the label alone, or of a third stage, as it is.
 
     THE SILENT FAILURE: the call taken over keeping the first stage's
     names, so the later stage's readers find no output and no conclusion
     in it and read the call pending.  MUTATION THIS MUST FAIL AGAINST:
     ``restaged`` handing the name back as it is."""
-    from molbuilder.runfiles import RunNames
-    for label, stage, run, role in itertools.product(LABELS, STAGES, RUNS,
-                                                     ROLES):
-        name = compose(label, role, stage, run)
+    from molbuilder.runfiles import ROLE_PIPELINE_LOG, RunNames
+    for label, stage, role in itertools.product(LABELS, STAGES, ROLES):
+        name = compose(label, role, stage)
         here = RunNames(label, "03_freq_half")
         got = here.restaged(name, RunNames(label, stage or "01_freq"))
-        assert got == (compose(label, role, "03_freq_half", run) if stage
+        assert got == (compose(label, role, "03_freq_half") if stage
                        else name), (name, got)
         # A THIRD STAGE'S FILE is not the source's: as it is.
         assert here.restaged(name, RunNames(label, "99_other")) == name
     src, here = RunNames(LABEL, "01_freq"), RunNames(LABEL, "03_freq_half")
-    log = ".runwrap-{stamp}.log"
-    assert here.restaged(src.name(log, stamp="20261027-223506"), src) == \
-        here.name(log, stamp="20261027-223506")
+    assert here.restaged(src.name(ROLE_PIPELINE_LOG, engine="siesta"),
+                         src) == here.name(ROLE_PIPELINE_LOG, engine="siesta")
 
 
-@pytest.mark.parametrize("stage,run,expected", [
-    (None,        None, "my-job.chk"),
-    (None,        2,    "my-job-run2.chk"),
-    ("01_coarse", None, "my-job_01_coarse.chk"),
-    ("01_coarse", 2,    "my-job_01_coarse-run2.chk"),
+@pytest.mark.parametrize("stage,expected", [
+    (None,        "my-job.chk"),
+    ("01_coarse", "my-job_01_coarse.chk"),
 ])
-def test_the_two_separators_say_which_segment_is_which(stage, run, expected):
-    """`job-contracts.md` § 6.3: *"a hyphen announces a counter follows... a
-    stage is not a counter — it is a name"*.
-
-    So `_` introduces the stage and `-run` the try, which is what lets
-    `parse` tell them apart without being told which it is looking at.
-    """
-    assert compose(LABEL, ".chk", stage, run) == expected
+def test_the_stage_follows_the_label_and_nothing_follows_the_stage(
+        stage, expected):
+    """`job-contracts.md` § 2.2a: ``<label>[_<stage>]<role>`` -- `_`
+    introduces the stage, and nothing stands between it and the role: a run
+    folder is one start, and the folder names the run
+    (`project-layout.md` § 1.6.1)."""
+    assert compose(LABEL, ".chk", stage) == expected
 
 
 def test_a_role_with_underscores_is_not_mistaken_for_a_stage():
@@ -143,8 +129,6 @@ def test_carried_is_the_absence_of_a_stage():
     assert parse(compose(LABEL, "_optimized.xyz"), LABEL).stage is None
     assert parse(compose(LABEL, ".molwatch.log", "01_coarse"),
                  LABEL).stage == "01_coarse"
-    # A TRY'S NUMBER is not a stage: `-run2` still names a carried file.
-    assert parse(compose(LABEL, ".chk", None, 2), LABEL).stage is None
 
 
 def test_another_labels_file_is_not_claimed():
@@ -184,44 +168,31 @@ def test_a_stage_POSITION_cannot_become_a_name(bad):
         compose(LABEL, ".molwatch.log", bad)
 
 
-@pytest.mark.parametrize("bad", [-1, "2", 1.5, True])
-def test_a_counter_that_is_not_a_count_is_refused(bad):
-    with pytest.raises(RunFileError, match="non-negative counter"):
-        compose(LABEL, ".out", None, bad)
+@pytest.mark.parametrize("field", [{"run": 0}, {"seg": 2}],
+                         ids=["a-try-number", "an-invented-field"])
+def test_a_field_the_role_does_not_carry_is_refused(field):
+    """A name carries what its role declares and nothing more: a try's
+    number is no part of a run's names (`project-layout.md` § 1.6.1), and
+    a caller inventing a field at the call site would spell a name nothing
+    reads back.  THE SILENT FAILURE: a ``run=`` left at a call site still
+    composing a ``-run0`` name that no reader of the run finds."""
+    with pytest.raises(RunFileError, match="carries no field"):
+        compose(LABEL, ".out", "01_coarse", **field)
 
 
-# --------------------------------------------------------------------- #
-#  The qualifier class -- one declaration, not a hand-written keyword    #
-# --------------------------------------------------------------------- #
-#
-#  § 6.3 gives the hyphen ONE meaning: a counter follows, and a counter is a
-#  keyword plus a number.  A second counter is a line in `QUALIFIERS`.
-
-
-def test_a_keyword_the_grammar_does_not_declare_is_refused():
-    """The refusal names the declaration, because that is where the fix is:
-    a caller inventing `-seg2` at the call site is how the hyphen would come
-    to mean two things."""
-    with pytest.raises(RunFileError, match="QUALIFIERS"):
-        compose(LABEL, ".out", None, None, seg=2)
-
-
-@pytest.mark.parametrize("run", [None, 0, 7])
-def test_the_declared_keyword_round_trips_through_every_door(run):
-    """`compose`, `tail` and `parse` read the counter off ONE declaration, so
-    the three cannot disagree about what a hyphen introduces."""
-    name = compose(LABEL, ".out", "01_coarse", run)
-    assert name.endswith(tail(".out", "01_coarse", run))
-    got = parse(name, LABEL)
-    assert got.run == run
-    assert dict(got.counters).get("run") == run
-    assert got.name == name
-
-
-def test_a_hyphen_that_introduces_no_declared_keyword_is_not_a_counter():
-    """`-v2` is not a counter, so it is part of the LABEL -- which is why a
-    bench trial's `bdt-G1N4C6` reads as a label and not as a qualifier."""
-    assert parse("my-job-v2.out", LABEL) is None
+@pytest.mark.parametrize("name,label", [
+    ("my-job-v2.out", LABEL),
+    ("my-job_01_coarse-run2.out", LABEL),
+    ("my-job_01_coarse-run2.out", "my-job_01_coarse"),
+], ids=["a-longer-label", "a-try-number-on-the-label",
+        "a-try-number-on-the-stem"])
+def test_a_hyphen_after_the_label_or_the_stage_is_no_file_of_it(name, label):
+    """`-v2` after the label is part of a longer LABEL -- which is why a
+    bench trial's `bdt-G1N4C6` reads as a label of its own -- and a name an
+    older molbuilder gave a try (``-run2``) is no file of the run: runs
+    written before one start per run are not read (`project-layout.md`
+    § 1.6.1)."""
+    assert parse(name, label) is None
     assert parse("my-job-v2.out", "my-job-v2") == expect("my-job-v2", None,
                                                          ".out")
 
@@ -230,9 +201,8 @@ def test_a_hyphen_that_introduces_no_declared_keyword_is_not_a_counter():
 #  The catalogue, and the two views of it                               #
 # --------------------------------------------------------------------- #
 #
-#  `WRITTEN` says what molbuilder writes; `patterns()` is the glob family
-#  (`identity.OUR_FILE_PATTERNS`) and `manifest()` the concrete names (the
-#  Task-setup card).
+#  `WRITTEN` says what molbuilder writes; `manifest()` the concrete names
+#  (the Task-setup card).
 
 
 def _fields_for(a):
@@ -275,8 +245,9 @@ def test_a_file_that_carries_no_stage_never_grows_one(art):
     # SIESTA family's rows.  The monitor's two are EVERY engine's -- the
     # wrapper starts it from its shared part
     # (`run-reports.md` § 2.3).
-    ("pyscf", (".fdf", "-run0.out", "-run0.scf-timing.log"),
-     (".py", "-run0.pyscf.log", "-run0.monitor.log", "-run0.util.csv")),
+    ("pyscf", (".fdf", "_01_coarse.out", "_01_coarse.scf-timing.log"),
+     (".py", "_01_coarse.pyscf.log", "_01_coarse.monitor.log",
+      "_01_coarse.util.csv")),
 ])
 def test_the_manifest_tells_a_run_about_its_own_engine_only(
         engine, absent, present):
@@ -291,14 +262,14 @@ def test_the_manifest_tells_a_run_about_its_own_engine_only(
     both = [r["name"] for r in manifest(LABEL, "01_coarse")]
     assert any(n.endswith(".py") for n in both)
     assert any(n.endswith(".fdf") for n in both)
-    assert any(n.endswith("-run0.out") for n in both)
+    assert any(n.endswith("_01_coarse.out") for n in both)
 
 
 def test_the_catalogue_and_the_warm_vocabulary_do_not_overlap():
     """WHAT MAKES THE SUBTRACTION WORK (`job-contracts.md` § 4.2): a file is
     the engine's restart state OR one molbuilder wrote, never both.  A role on
-    both lists would make `--cold` walk past the file it exists to move, which
-    is exactly what a widened `*.xyz` row once did.
+    both lists would make *"did the engine leave something here"* count an
+    engine's restart file as one molbuilder wrote.
     """
     from molbuilder.warmfiles import warm_list
     ours = {a.role for a in ON_THE_LABEL}
@@ -368,10 +339,10 @@ def test_a_relaxation_is_not_promised_a_spectrum():
         r["name"] for r in manifest(LABEL, None, engine="pyscf")}
 
 
-# ══ THE READER — find / latest_run ═════════════════════════════════════════
+# ══ THE READER — find ═══════════════════════════════════════════════════════
 
 class TestTheReader:
-    """`find` and `latest_run` — `compose`'s counterpart (project-layout § 4.5)."""
+    """`find` — `compose`'s counterpart (project-layout § 4.5)."""
 
     @staticmethod
     def _lay(d, names):
@@ -380,56 +351,15 @@ class TestTheReader:
         return d
 
     def test_only_our_files_come_back(self, tmp_path):
-        self._lay(tmp_path, ["JOB-run0.out", "JOB.fdf",
-                             "somebody-elses.log", "OTHER-run1.out"])
+        self._lay(tmp_path, ["JOB.out", "JOB.fdf",
+                             "somebody-elses.log", "OTHER.out"])
         got = [p.name for p, _ in find(tmp_path, "JOB")]
-        assert got == ["JOB.fdf", "JOB-run0.out"], got
+        assert got == ["JOB.fdf", "JOB.out"], got
 
     def test_a_role_narrows_it(self, tmp_path):
-        self._lay(tmp_path, ["JOB-run0.out", "JOB-run1.out",
-                             "JOB-run1.concluded"])
+        self._lay(tmp_path, ["JOB.out", "JOB.concluded", "JOB.fdf"])
         got = [p.name for p, _ in find(tmp_path, "JOB", role=".out")]
-        assert got == ["JOB-run0.out", "JOB-run1.out"], got
-
-    def test_the_counterless_name_sorts_FIRST(self, tmp_path):
-        """The PySCF reader's fallback rule, and why it is the door's job.
-
-        That reader walks its candidates REVERSED and wants the bare log read
-        LAST, so a `-run<N>` always beats it.  Sorted the other way the
-        fallback wins over every real try -- the 2026-08-13 bug, which its
-        comment records and no test caught.  The order lives here now, so it
-        is stated once and checked once.
-        """
-        self._lay(tmp_path, ["JOB-run2.pyscf.log", "JOB.pyscf.log",
-                             "JOB-run10.pyscf.log", "JOB-run3.pyscf.log"])
-        got = [p.name for p, _ in find(tmp_path, "JOB", role=".pyscf.log")]
-        assert got[0] == "JOB.pyscf.log", f"the bare log must lead: {got}"
-        assert got == ["JOB.pyscf.log", "JOB-run2.pyscf.log",
-                       "JOB-run3.pyscf.log", "JOB-run10.pyscf.log"], got
-
-    def test_run_10_is_not_run_1(self, tmp_path):
-        """NUMERIC, not lexicographic -- the other half of the same 2026-08-13
-        fix, which a string sort gets wrong at exactly ten tries."""
-        self._lay(tmp_path, ["JOB-run9.out", "JOB-run10.out"])
-        assert latest_run(tmp_path, "JOB") == 10
-
-    def test_the_latest_run_is_the_HIGHEST_across_every_role(self, tmp_path):
-        """The run's conclusion door asks this to find the newest try's
-        marker (`runrecord.ending`, through `runfiles.at_run`).
-
-        Lowest instead of highest reads an EARLIER try's goodbye as the latest
-        word -- which is what that door's own docstring says must not happen,
-        for a warm-retry chain where only the final process concludes.
-        And it ranges over roles: an engine that dies before printing leaves a
-        `.concluded` and no output at all.
-        """
-        self._lay(tmp_path, ["JOB-run0.out", "JOB-run0.concluded",
-                             "JOB-run1.pyscf.log"])
-        assert latest_run(tmp_path, "JOB") == 1
-
-    def test_no_counter_anywhere_is_None_not_zero(self, tmp_path):
-        self._lay(tmp_path, ["JOB.fdf", "JOB.out"])
-        assert latest_run(tmp_path, "JOB") is None
+        assert got == ["JOB.out"], got
 
     def test_a_directory_that_is_not_there_is_empty_not_an_error(self, tmp_path):
         assert find(tmp_path / "nope", "JOB") == []
@@ -474,8 +404,7 @@ def test_find_returns_files_and_not_directories(tmp_path):
     — which is exactly why nothing caught it, and why the claim was worth
     making true rather than narrowing.
     """
-    (tmp_path / "JOB-run0.out").write_text("")
-    (tmp_path / "JOB-run1.out").mkdir()          # a directory that parses
+    (tmp_path / "JOB.out").write_text("")
+    (tmp_path / "JOB.concluded").mkdir()         # a directory that parses
     got = [p.name for p, _ in find(tmp_path, "JOB")]
-    assert got == ["JOB-run0.out"], got
-    assert latest_run(tmp_path, "JOB") == 0, "a directory is not a try"
+    assert got == ["JOB.out"], got

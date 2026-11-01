@@ -47,7 +47,7 @@ Two failures would follow directly from getting it wrong, and each is refused
 
 - **two different calculations given the same label in one directory** — the
   second would warm-start from the first's geometry, and the banner would say
-  `WARM-RESTART (silent)` because that is exactly what it would be
+  `CONTINUES (engine will load <files>)` because that is exactly what it would be
   (`job-contracts.md § 4.4`);
 - **a label edited between runs** — the warm files no longer match, and a run
   that should have resumed starts cold instead.
@@ -175,10 +175,10 @@ new identity and therefore a cold start. Two generations of the same calculation
 calculation, and its runs continuing one another is the right outcome.
 
 **What tells two invocations apart, then?** The layout does: each launch is a
-run folder of its own, `run-<n>/`, and each try of the wrapper in it carries
-its index (`-run0`, `-run1`, …), never clobbering an earlier one
-(`project-layout.md § 1.6.1`). That is invocation-level bookkeeping; the id is
-calculation-level and does not repeat it.
+run folder of its own, `run-<n>/`, one start of its run script, never
+clobbering an earlier one (`project-layout.md § 1.6.1`). That is
+invocation-level bookkeeping; the id is calculation-level and does not repeat
+it.
 
 ### 2.1 What the identity is tied to — as little as possible
 
@@ -371,7 +371,7 @@ projects/BDT-Au/optimization/bdt-relax/   ← the folder is what the user typed
 └── 01_coarse/
     ├── BDT_Au_relax_01_coarse.fdf        ┐ what MOLBUILDER named
     └── run-0/                            │ carries the stage: <label>_<stage>
-        ├── BDT_Au_relax_01_coarse-run0.out ┘
+        ├── BDT_Au_relax_01_coarse.out    ┘
         ├── BDT_Au_relax.XV               ┐ what the ENGINE named
         └── BDT_Au_relax.DM               ┘ carries the label ALONE
 ```
@@ -416,7 +416,7 @@ the engine wrote them.
 | Named by | Carries the stage? | Why it is not a choice |
 |---|:--:|---|
 | **the engine** — `<label>.XV`, `.DM`, `.CG` | **no** | SIESTA looks for `<SystemLabel>.XV` and nothing else. molbuilder has no say |
-| **molbuilder** — `<label>_<stage>.fdf`, `<label>_<stage>-run0.out` | **yes** | molbuilder chooses, so what the name says is a design decision — and it spends it on a cross-check |
+| **molbuilder** — `<label>_<stage>.fdf`, `<label>_<stage>.out` | **yes** | molbuilder chooses, so what the name says is a design decision — and it spends it on a cross-check |
 
 > **The redundancy is deliberate.** `01_coarse/` already
 > says which stage it is, and the deck inside it says so again. That is not the
@@ -551,10 +551,8 @@ scheduler's business.
    >
    > **Keeping the old state is a separate tool and a separate decision**:
    > `molbuilder checkpoint save` ([`checkpointing.md`](?doc=execution/checkpointing.md)),
-   > which is never automatic. The launcher names what a clean run would
-   > remove and refuses; `--force` removes it. Two mechanisms for preserving a
-   > state would be one too many, which is why `--cold` no longer moves anything
-   > aside.
+   > which is never automatic. A clean run is a new run folder, `jobset launch
+   > --cold` copying nothing into it, so nothing is removed or set aside.
 4. **What `continue` implies is a short fixed set; what a stage needs *beyond*
    it is declared.** `restart: continue` means the geometry, the density and the
    optimizer's history — `.XV`, `.DM`, `.CG` — because that is what continuing a
@@ -590,7 +588,7 @@ and the rest are said, before the launch and as the run starts:
 | **a label edited between runs** — the warm files no longer match, and a run that should resume starts cold | the label is the half of the id that reaches the engine (§ 2.0a) | **refused**: the label is half of the run id, so Save refuses the change in a described folder, and a `task.json` edited by hand whose name and id disagree is refused on every read (`Task._check_id`) |
 | **files left in a run's folder** — an `.XV` from an earlier fill that the engine would find | the id names the files; it cannot say which fill wrote them | **closed by the layout**: each run is its own folder, holding prep's files and what its launch hands over, and nothing else; a run opened and never launched is emptied whole before it is filled again (`materialize.empty_run`, `project-layout.md` § 1.6.3) |
 | **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.3`), so the mismatch is detectable | **refused at prep** (`job-system.md` R-P16, `prep._structure_for`): the structure put back, or the calculation described anew |
-| **prior state that matches** — the next run continues | nothing is wrong; the person should still know before it starts | **said twice**: `launch` shows which run each stage continues from and every file it copies, asks once, and records it (`.continued-from`, `run.json`; `job-system.md` § 5.4); the run script's banner says it again as the run starts — *WARM-RESTART (silent; engine will load existing* the restart files lying there |
+| **prior state that matches** — the next run continues | nothing is wrong; the person should still know before it starts | **said twice**: `launch` shows which run each stage continues from and every file it copies, asks once, and records it (`.continued-from`, `run.json`; `job-system.md` § 5.4); the run script's banner says it again as the run starts — `CONTINUES (engine will load <files>)`, the restart files lying there |
 | **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/structure-periodicity.md § 6.2`; design record `archive/2026-08-20-cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum after a stage ran changes the next stage's deck and changes nothing about its run | **nothing says it.** A changed cell is another calculation, so a launched stage is not prepared again for one (`job-request.md` § 5) and its own runs cannot meet it; the case is a stage continuing from the one before it, prepared after the cell changed — its first launch copies the earlier run's `.XV`, and the cell that runs is that run's |
 
 **Two moments, on purpose.** `launch` says what each run takes before
@@ -602,7 +600,7 @@ one that must never be weakened. This is the shipped doctrine —
 **molbuilder informs, and the person decides to continue** (`job-system.md
 § 2`, decision 5) — and what made it reach the cases above is that a run now
 records which run its files came from (`.continued-from`, `run.json`'s
-`continued_from`), so the banner's *WARM-RESTART* is never the only witness.
+`continued_from`), so the banner's `CONTINUES` is never the only witness.
 
 ---
 
@@ -664,10 +662,10 @@ owns it.*
 
 ## 7. What this contract does not own
 
-- **The warm-file inventory, the `--cold` move-aside glob, the restart banner
-  wording, the run index, the project tree** —
+- **The warm-file inventory, the restart banner wording, the run's file
+  names, the project tree** —
   [`execution/job-contracts.md`](?doc=execution/job-contracts.md) §§ 2 and 4.
-  This document adds no file and changes no glob.
+  This document adds no file.
 - **How a run is launched, which environment it activates, and where activation
   comes from** — [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
   §§ 2, 3 and 5. Unchanged here.

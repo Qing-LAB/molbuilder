@@ -1679,8 +1679,6 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                 if r.get(key)]
         if r.get("max_memory_mb"):
             asks.append(f"memory cap {r['max_memory_mb']} MB")
-        if r.get("continue_retries"):
-            asks.append(f"retries {r['continue_retries']}")
         if asks:
             click.echo(f"  resources: {' | '.join(asks)}")
     _echo_pipeline_log(ans, base)
@@ -2702,18 +2700,19 @@ def _probe_consent_merge(before, probed, *, yes: bool):
 @_bundle_option()
 def migrate_cmd(bundle: str) -> None:
     """Rewrite what an older molbuilder wrote in a calculation -- the road
-    every reader names when it refuses such a file: the description and the
-    plans, the copy of the machine's record, a transport lead's files on
-    its own stem, a run's index of points that molbuilder 2.54 or before
-    wrote, and the
+    every reader names when it refuses such a file: the description, the job
+    request and the plans, the copy of the machine's record, and the
     template's older, renamed and retired items and the run settings it
-    held, a value moved onto the run card.
+    held, a value moved onto the run card -- a retired run setting taken off
+    the run cards and out of each job's resources too, and a plan that held
+    one named with its groups' prep, since an older molbuilder wrote its run
+    scripts.  Run folders are not rewritten.
 
     What the calculation was is KEPT: every value carried, every blank left
     blank, each change printed with the rule it follows; a change that would
     alter the calculation is refused by name, writing nothing.  Each old file
     rewritten stays beside its new one as ``<name>.pre-<rule>``, the earliest
-    rule it was written before; a file renamed keeps every byte."""
+    rule it was written before."""
     from ..calcdirs import described as _described
     from .migrate import CURRENT, MigrateError, migrate_state
     try:

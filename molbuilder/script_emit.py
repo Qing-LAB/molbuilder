@@ -662,7 +662,7 @@ __all__ = [
     "BenchField", "SIESTA_BENCH_FIELDS",
     # Emitters
     "emit_header", "emit_provenance", "emit_bench_marks",
-    "write_validation_report", "VALIDATION_SUFFIX",
+    "write_validation_report",
     "emit_atom_metadata", "emit_user_custom_placeholder",
     "atom_metadata_block", "atom_metadata_has_something",
     # In-body application
@@ -1448,10 +1448,6 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
 # --------------------------------------------------------------------- #
 
 
-#: The companion file's name, beside the deck it is about (the
-#: ``.validation.txt`` row of `runfiles.WRITTEN`).
-VALIDATION_SUFFIX = ".validation.txt"
-
 _VALIDATION_HEADER = """\
 # What the checks said about {deck}
 # ---------------------------------------------------------------------------
@@ -1497,7 +1493,7 @@ def write_validation_report(deck_path, findings, *, plan=None) -> "Path":
     script"* is the two together, not whichever the caller happened to hold.
     """
     deck = Path(deck_path)
-    out = deck.with_name(_rf.compose(deck.stem, VALIDATION_SUFFIX))
+    out = deck.with_name(_rf.compose(deck.stem, _rf.ROLE_VALIDATION))
     text = validation_report_text(deck.name, findings)
     if plan is not None:
         plan.text(out, text)

@@ -19,7 +19,7 @@ from typing import Callable, List, Tuple
 
 def output_lines(run: Path) -> List[str]:
     """The run's own output, line by line, its line ends kept -- the run
-    door's (`runs.run_of`) newest output."""
+    door's (`runs.run_of`) engine output."""
     from molbuilder.runs import run_of
     return run_of(run).stdout.read_text(
         errors="replace").splitlines(keepends=True)
@@ -45,7 +45,7 @@ def replay(run: Path, tmp_path: Path, upto: int
         with out.open("a") as fh:
             fh.write("".join(lines[at["n"]:to]))
         at["n"] = to
-    return there, monitor.WatchedRun(names=ran.names, run=ran.run,
+    return there, monitor.WatchedRun(names=ran.names,
                                      directory=there), grow
 
 

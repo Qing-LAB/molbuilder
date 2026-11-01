@@ -335,7 +335,7 @@ monitor say *geometry yes* or *NO* for it as for a SIESTA run's.
 
 **A file with no ending is `running` — not finished — however long it has been
 quiet** (user, 2026-09-26: *"It shows what it is"*). Nothing in the FILE tells
-running from died quietly. The `-runN.concluded` beside it says the process
+running from died quietly. The `<stem>.concluded` beside it says the process
 ended on its own, and with what code; its absence cannot tell still-running
 from force-stopped. The monitor, which sees the PID go, says `failed — stopped
 before its end`. There is no stale state and no age rule.
@@ -390,9 +390,9 @@ over*.
 
 | door | answers | cost · asked by |
 |---|---|---|
-| `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through `READERS` (§ 5.5): an `.out` through the SIESTA reading pass (§ 4a) — with `stderr`, the file SIESTA's stderr went to, read after the output when the output states no ending, because `die` flushes stdout on node 0 alone; a PySCF stdout through its decks' end lines; a progress log through its footer | one pass, stdlib, no Frames · `run_status`, which passes a SIESTA output's session log — the one whose first section is its run (`wrapper_log.logs_by_run`); the wrapper's door below; the bench summary |
-| `"$_mb_py" mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | `relaxation-capped` or `stopped-by MARKER`, by exit status (0 yes, 1 no, 2 unreadable); with no question, the ending in words | the wrapper's `_mb_ending`: its failure hint and warm retries (`execution/running-a-job.md` § 3.5) |
-| `run_status(run_dir, basename, *, launch=, run=, launched_in=)` | a run's state, from its outputs' endings, how it ended — `runrecord.ending`, the one door — and its `run.json`; each output's ending read once per version of the file (its size and modification time, `_run_ending.ending_of`), and an output that states how it ended takes its own parse's reading (`keep_reading`, through the one read, `siesta_reader.read_output`), so a run asked about again and again — a Results viewer following it — costs a look at its folder, and a load reads its file once | `execution/running-a-job.md` § 4.2 |
+| `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through `READERS` (§ 5.5): an `.out` through the SIESTA reading pass (§ 4a) — with `stderr`, the file SIESTA's stderr went to, read after the output when the output states no ending, because `die` flushes stdout on node 0 alone; a PySCF stdout through its decks' end lines; a progress log through its footer | one pass, stdlib, no Frames · `run_status`, which passes a SIESTA output's session log, its run's `<base>.runwrap.log`; the wrapper's door below; the bench summary |
+| `"$_mb_py" mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | `stopped-by MARKER`, by exit status (0 yes, 1 no, 2 unreadable); with no question, the ending in words | the wrapper's `_mb_ending`: its failure hint (`execution/running-a-job.md` § 3.5) |
+| `run_status(run_dir, basename, *, launch=, launched_in=)` | a run's state, from its outputs' endings, how it ended — `runrecord.ending`, the one door — and its `run.json`; each output's ending read once per version of the file (its size and modification time, `_run_ending.ending_of`), and an output that states how it ended takes its own parse's reading (`keep_reading`, through the one read, `siesta_reader.read_output`), so a run asked about again and again — a Results viewer following it — costs a look at its folder, and a load reads its file once | `execution/running-a-job.md` § 4.2 |
 | the registered parsers (§ 3) | frames, energies, forces — and the same `run_state` and `scf_converged`, from the same grammar | callers that want the arrays |
 
 SIESTA's lines are read one way. The registered parser builds its Frames from
@@ -532,9 +532,9 @@ several parses (`running-a-job.md` § 4.2):
 ```python
 from molbuilder.parse.dirs import run_status        # the package's door (R-RO2)
 
-st = run_status(Path("projects/BDT/optimization/run-0"))
+st = run_status(Path("projects/BDT/optimization/01_relax/run-0"))
 st.state, st.detail          # ("finished", "ended, exit 0") -- a RunStatus
-st.active_source             # "BDT-run0.out"
+st.active_source             # "BDT_01_relax.out"
 ```
 
 **Extract the reserved blocks from a `.fdf` / `.py` body** — **not this
@@ -644,7 +644,7 @@ flowchart LR
     MG -->|"the footer"| RE
     EL --> RE
     SG -->|"row pattern, rendered into awk"| TEE["the wrapper's SCF-timing tee"]
-    TEE -->|"-runN.scf-timing.log"| TR
+    TEE -->|"<stem>.scf-timing.log"| TR
     SR -->|"finish()"| PA["the registered parsers → TrajectoryResult"]
     MR -->|"finish()"| PA
     SR -->|"now(), fed as the file grows"| MON["the monitor"]
@@ -654,7 +654,7 @@ flowchart LR
     RE --> RS["run_status"]
     RS --> MON
     RS --> REC["the run record (§ 5d)"]
-    RE -->|"mb_monitor.pyz ending"| WR["the wrapper: failure hint, warm retry"]
+    RE -->|"mb_monitor.pyz ending"| WR["the wrapper: failure hint"]
 ```
 
 * **The reading pass is the parser, minus the arrays.** It keeps every rule and
@@ -839,7 +839,9 @@ exists to mark.
   status*. Only files that may speak vote: every engine stdout (`.out`,
   `.pyscf.log`), which exists because the process started, plus each
   `*.molwatch.log` **whose footer concludes the run** — a seeded log without a
-  conclusion would otherwise outvote a real result (§ 5.5).
+  conclusion would otherwise outvote a real result (§ 5.5). Of those, the
+  stdout speaks where the run printed one, the progress log where it printed
+  none.
 - **`openable`** is *what should a person see*: the calculation's product, then
   the engine's own output, then the progress log (§ 5.5) — or what the kind's
   record declares a folder of its rung opens: for a transmission run, its
@@ -848,29 +850,14 @@ exists to mark.
 So a directory whose run has written only its seeded log has an `openable` and
 no `active_source`; that is correct in both directions.
 
-**`active_source` is the run the folder speaks for** — the run door's one rule
-(`execution/architecture.md` § 3.2): its own, at its newest try
-(`runrecord.newest_run`), the highest index its files reached — never the
-newest file: a copied or restored folder reorders times, never runs (plan B11,
-2026-10-04).
-
-> **What this paragraph used to claim, and why it was withdrawn.** It named
-> `summarize._latest_run_file`'s highest-`-runN` rule as a *competing* rule
-> that "loses". It was not competing: `_latest_run_file` was handed a basename
-> that **already carries the stage** (`Path(job.script).stem`), so the stage
-> is not a variable there and the run index is the only remaining choice.
-> `plan.md` § 5c withdrew that row on 2026-09-04 as one of two mappings
-> "invented by me and caught by re-reading the code" — **and this paragraph
-> was not swept with it**, so for two weeks the contract told a reader to go
-> change a function the plan had measured as correct. Corrected 2026-09-18.
->
-> A third spelling existed until 2026-10-03: `transport/record.py` picked
-> the newest `.out` by **mtime alone**, twice. It agreed with this rule in
-> practice — each rung has its own directory, so there is only one stage to
-> order — but it was a third place the question was
-> answered, and a copied or restored folder reorders file times and not
-> runs. It reads the newest RUN by its number now, the run door's
-> (`runs.Run.outputs`; plan W38 M4, B11).
+**`active_source` is the folder's own run's** — the run door's one rule
+(`execution/architecture.md` § 3.2): its files, named once on its stage's stem.
+A run folder is one start
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1), so
+it holds one set of them and nothing chooses among runs — never by the newest
+file, which a copied or restored folder reorders. A role names one file of
+the run; a templated role's family is read in its names' order, the first by
+name (`runs.Run.file`).
 
 ### 5.2 `openable` — the CALCULATION decides, and the registry vets
 
@@ -973,11 +960,10 @@ the message cannot drift from it.
 
 **A file parser reads its own file.** It may open a companion only where the
 companion is named from something the file itself states — a SIESTA run's
-history, `<label>_<stage>-run<N>.MD.nc`, the output's own name with the
-history's role, read back with the label the `.out` prints on its `reinit:
-System Label:` line (§ 5a); a geomeTRIC trajectory's run files, named on the
-stem its own name begins with (`<stem>_geom_optim.xyz`: `<stem>.molwatch.log`,
-`<stem>.log`, `<stem>-run<N>.pyscf.log`). A file that names no run reads only
+history, `<SystemLabel>.MD.nc` beside it, named by the label the `.out` prints
+on its `reinit: System Label:` line (§ 5a); a geomeTRIC trajectory's run files,
+named on the stem its own name begins with (`<stem>_geom_optim.xyz`:
+`<stem>.molwatch.log`, `<stem>.log`, `<stem>.pyscf.log`). A file that names no run reads only
 itself. That is reading, not searching, and it stays in the parser:
 a FileParser never depends on the directory composer.
 
@@ -1093,7 +1079,7 @@ gets the other's answer, and `openable` gets no catalogue column.**
 | `<job>.log` | the engine's OWN logger | SCF history, read as a companion |
 | `<job>_geom_optim.xyz` | the trajectory | frames — `PySCFOutFileParser` claims this, **not** the stdout |
 | `<job>.molwatch.log` | molbuilder's progress log, SEEDED at prep | live progress; how it ended *once its footer concludes* |
-| `<job>-runN.pyscf.log` / `.out` | the wrapper's **stdout capture** | **how the run ended** — finished, crashed, killed |
+| `<job>.pyscf.log` / `.out` | the wrapper's **stdout capture** | **how the run ended** — finished, crashed, killed |
 
 #### The vocabulary — one column, three values
 
@@ -1332,7 +1318,7 @@ Two parsers do this today:
 | primary | sibling | what the sibling supplies |
 |---|---|---|
 | `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, run state, the atoms the run holds (§ 5.3) |
-| `engines/siesta.py` | the run's own `<label>_<stage>-run<N>.MD.nc` | coordinates + per-step energy, in full precision |
+| `engines/siesta.py` | the run's own `<SystemLabel>.MD.nc` | coordinates + per-step energy, in full precision |
 
 **The rules, which are what keep this from becoming a second source of truth:**
 
@@ -1353,9 +1339,9 @@ Two parsers do this today:
 
 The history is netCDF, written whenever `WriteMDhistory` is on and the
 binary was built with `-DCDF` (both true for the packaged `molbuilder-siesta`),
-and each run's is its own: SIESTA opens `<SystemLabel>.MD.nc` and the run
-script points that name at `<label>_<stage>-run<N>.MD.nc` while the engine
-runs (`execution/job-contracts.md` § 2.2).
+and each run's is its own: SIESTA writes `<SystemLabel>.MD.nc` in the run's
+folder, which holds one start and into which no hand-over copies a history
+(`execution/job-contracts.md` § 2.2).
 It matters because the `.out` is a Fortran-formatted text file: it prints
 `E_KS(eV) = -30.4405` — **four decimals**, coarser than the step-to-step energy
 change near convergence — and its fixed-width columns collide when values grow
@@ -1385,9 +1371,9 @@ Two more properties shape the reader:
   (`align_to_reference`): the `.out` repeats its final geometry, so index
   arithmetic would pair that repeat with nothing or with the wrong row. Each
   history holds its own run's rows alone — SIESTA appends to whatever lies
-  under its name, which is why a run's history is the run's own *(until
-  2026-10-13 one file held every run in a folder, and a second run's frames
-  were matched to the first run's rows)*.
+  under its name, and a run folder is one start
+  ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1)
+  into which nothing copies a history.
 
 Units come from each variable's own `unit` attribute (`xa` is Bohr while
 `volume` is `Ang**3` *in the same file*), and an unrecognised unit is refused
@@ -1405,10 +1391,10 @@ host's for the data files; `molbuilder-pySCF` since its result's data file,
 
 `parse/engines/` reads what the *engine* produced. The **wrapper** measures the
 run too, and writes files of its own beside the deck (`running-a-job.md` § 4.1),
-each indexed by try so a warm retry neither appends to nor truncates the
-previous try's: the monitor's `<base>-runN.monitor.log` and `<base>-runN.util.csv` for
-every engine, and — for the SIESTA family, whose rows it reads — the SCF-timing
-tee's `<base>-runN.scf-timing.log` (`runfiles.WRITTEN` says so per row). Being
+each named once on the stage's stem, one set per run: the monitor's
+`<stem>.monitor.log` and `<stem>.util.csv` for every engine, and — for the
+SIESTA family, whose rows it reads — the SCF-timing tee's
+`<stem>.scf-timing.log` (`runfiles.WRITTEN` says so per row). Being
 the wrapper's output rather than the engine's is no reason to read them a
 different way, so they are read here. A PySCF deck stamps its own SCF rows —
 each `scf_history` row of its progress log ends with the epoch the cycle
@@ -1464,12 +1450,12 @@ disagree in exactly the case a person most needs to trust it.
 ```mermaid
 flowchart LR
   subgraph W["the WRAPPER measured it — parse/instruments/"]
-    T["<code>&lt;base&gt;-runN.scf-timing.log</code>"] --> TP["<code>scf-timing</code><br/><code>scf_timing_metrics</code>"]
-    M["<code>&lt;base&gt;-runN.monitor.log</code>"]   --> MP["<code>monitor-log</code><br/><code>monitor_metrics</code>"]
-    U["<code>&lt;base&gt;-runN.util.csv</code>"]      --> UP["<code>util-csv</code><br/><code>util_csv_metrics</code>"]
+    T["<code>&lt;stem&gt;.scf-timing.log</code>"] --> TP["<code>scf-timing</code><br/><code>scf_timing_metrics</code>"]
+    M["<code>&lt;stem&gt;.monitor.log</code>"]   --> MP["<code>monitor-log</code><br/><code>monitor_metrics</code>"]
+    U["<code>&lt;stem&gt;.util.csv</code>"]      --> UP["<code>util-csv</code><br/><code>util_csv_metrics</code>"]
   end
   subgraph E["the ENGINE wrote it — parse/engines/"]
-    O["<code>&lt;base&gt;-runN.out</code>"]                        --> OP["<code>siesta</code> / <code>pyscf</code>"]
+    O["<code>&lt;stem&gt;.out</code>"]                        --> OP["<code>siesta</code> / <code>pyscf</code>"]
     ML["<code>&lt;label&gt;_&lt;NN&gt;_&lt;stage&gt;.molwatch.log</code>"] --> MLP["<code>molwatch</code><br/><code>MolwatchLogFileParser</code>"]
   end
   subgraph L["nobody wrote it — it is live"]
@@ -1535,14 +1521,14 @@ prints, because a rename that stops at the field fixes the half nobody reads.
 
 ## 5d. The run record — what ran, with what, and how it went
 
-**One record per attempt, composed from what the run left**, each fact from the
+**One record per run, composed from what the run left**, each fact from the
 file that states it through that file's one reader: a record that repeated the
 deck would hide the defaults nobody chose, and one that read a device's two SCF
 phases as one would hide a loop that diverged.
 
 ### 5d.1 The record, and where it lives
 
-`runs.folder_answer(<attempt directory>)["record"]` (§ 5.0), composed on read
+`runs.folder_answer(<run directory>)["record"]` (§ 5.0), composed on read
 by `parse/dirs/record.py::run_record` for the run the folder speaks for -- its
 label, stage and stage deck named by the run door — never written as a second store,
 so it cannot drift from its sources. **Cheap reads only**: it is composed on
@@ -1553,18 +1539,14 @@ the endings `run_status` already scanned
 (§ 2b), SIESTA's `fdf` log, the wrapper log, the instruments (§ 5c), the deck,
 `run.json`, `.gathered-from` and `.concluded`.
 
-**Which try.** A run folder can hold several tries
-([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a
-warm retry re-runs in place, so one `run-0/` holds `-run0` and `-run1`. The
-record describes the folder's newest try (§ 5.1), and lists each earlier try
-with its ending. Its files are that try's `-runN` artifacts; SIESTA's
-`fdf.<stamp>.log` whose stamp is the `.out`'s `>> Start of run` to the
-second — SIESTA opens the log in that second; and the wrapper log whose first
-section is try N — each start of the wrapper writes its own, a warm retry
-handing back the output it was started with before it starts again
-(`execution/running-a-job.md` § 3.5). `run.json`, `.continued-from`,
-`.gathered-from`, the deck and the pseudopotential files belong to the run,
-not to one try: what the run continued from is said for every try in it.
+**One run, one set of files.** A run folder is one start
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1),
+and the record describes it from its files, each named once on the stage's
+stem; SIESTA's `fdf.<stamp>.log`, whose stamp is the `.out`'s `>> Start of
+run` to the second — SIESTA opens the log in that second; and the session log,
+`<base>.runwrap.log`. `run.json`, `.continued-from`, `.gathered-from`, the deck
+and the pseudopotential files are the run's too; the run it continued from is
+named in those records (§ 1.6.3 there), never in a file's name.
 
 **A run's files are found by molbuilder's names, so the run is ours or it is
 not one.** A SIESTA run made by hand — `input.fdf`, `siesta.out` — or an output
@@ -1586,7 +1568,7 @@ reads the trajectory the viewer loads (`web/trajectory.md`).
 ### 5d.1a The shape
 
 A plain JSON-ready dict, served as it is. **A field is present only when a file
-in the attempt states it**; a missing field is the record saying it could not
+in the run states it**; a missing field is the record saying it could not
 check, and the panel shows nothing for it rather than a guess. **The launch
 part is `run.json`'s keys as written**, its nulls answers, never "could not
 check": no job id and no queue for a run here, nothing continued from — it
@@ -1595,8 +1577,6 @@ them *(they were dropped until 2026-10-06)*.
 
 ```text
 record
-├── run                  the newest try's N
-├── earlier              [{run, ended}]  each earlier try, with its ending when its file states one
 ├── computation
 │   ├── engine           program · version · build{…} · binary · python
 │   ├── solver           algorithm · elpa_gpu · diag_blocksize · distribution · parallel_over_k
@@ -1610,7 +1590,7 @@ record
 │   │                    progress · estimated_at
 │   ├── memory           mem_peak_gb · mem_peak_from · util_basis · cpu_mean_pct ·
 │   │                    gpu_sm_mean_pct · mem_basis · mem_limit_gb
-│   └── exit             code · at · note (what the wrapper added: a failed finish, a finish that cannot load)
+│   └── exit             code · at · note (what the wrapper added: a failed finish, a finish that cannot load) — or, for a marker line that does not read, said (the line as it lies)
 ├── setup
 │   ├── rows             [{item, items, keys, default, asked, used, echo, differs}]
 │   ├── engine_only      [{key, value | readings, in_deck}]
@@ -1622,8 +1602,8 @@ record
 ```
 
 `verdict.state` and `detail` are `run_status`'s words for the directory
-(§ 2b's map); `verdict.ended` is the newest try's `run_state` and `converged`
-its phases'; `earlier[].ended` is the same for each earlier try. **`deck.path`
+(§ 2b's map); `verdict.ended` is its output's `run_state` once it states an
+ending (§ 5d.6) and `converged` its phases'. **`deck.path`
 is whole** — the absolute path the Run panel's **View** opens, joined to
 nothing (`web/results.md` § 0.3); what the run continued from and what its
 deck was gathered from are as the run's records state them, said as words.
@@ -1648,13 +1628,13 @@ wrapper launched and its node, never its output
 
 | row | the file | its reader, beside its format (§ 1a) | engines | answers |
 |---|---|---|---|---|
-| `siesta-out` | `<base>-runN.out`, head and tail; a TBtrans output whole | the grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and `tbtrans.loop_words` | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
-| `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged` · `max_force_free_ev_ang` · `max_force_held_ev_ang` · `stress_voigt_kbar` · `forces_not_computed` (§ 5d.6); `earlier` |
-| `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
+| `siesta-out` | `<base>.out`, head and tail; a TBtrans output whole | the grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and `tbtrans.loop_words` | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
+| `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged` · `max_force_free_ev_ang` · `max_force_held_ev_ang` · `stress_voigt_kbar` · `forces_not_computed` (§ 5d.6) |
+| `wrapper-log` | `<base>.runwrap.log`, the run's session log | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — started_from, a point's own `.continued-from` (`runrecord.read_continued_from`), present only where the marker is — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
-| `concluded` | `<base>-runN.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
+| `concluded` | `<base>.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 
@@ -1914,9 +1894,11 @@ mixing — and its couplings are negative: two symptoms of § 5d.6 at once.
 ### 5d.6 Verdict — how it ended, whether each phase converged, what was not used
 
 * **How it ended** — `verdict.state` and `detail` for the directory, and
-  `verdict.ended` for the newest try's own file (§ 2b); each earlier try's
-  `ended` when its file states one — a try with a later try after it and no
-  ending was cut off, which its own file cannot say.
+  `verdict.ended` for its output (§ 2b): the output's `run_state` once it
+  states an ending — `ended`, `stopped` or `out_of_memory`
+  (`_run_ending.CONCLUDED`). An output with no ending yet is running, not
+  ended, so it states no `ended` (§ 5d.1a: a field is present only when a
+  file states it) — how the run is doing is `verdict.state`'s.
 * **Converged** — `verdict.converged`, per phase (§ 2b, § 4b). A TranSIESTA
   device's convergence is its NEGF phase's.
 * **Forces and stress** *(the user, 2026-10-17; plan F14)* — the run's last
@@ -1943,10 +1925,8 @@ mixing — and its couplings are negative: two symptoms of § 5d.6 at once.
 | near the cap | past 80 % of the iteration limit |
 
 **The monitor reports the live state and warns on the live symptoms, and never
-stops a run** (`execution/run-reports.md` § 5). **The wrapper does not
-warm-retry a run whose verdict is divergence**: a retry that resumes from a
-diverged density is the same run again. *The symptoms and the divergence
-verdict are plan § 5t.3's P4, not yet built.*
+stops a run** (`execution/run-reports.md` § 5). *The symptoms and the
+divergence verdict are plan § 5t.3's P4, not yet built.*
 
 ### 5d.7 Where it is read
 

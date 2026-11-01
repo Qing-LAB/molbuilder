@@ -66,7 +66,7 @@ from .model import (KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources,
                     warm_carry)
 from .continuation import Continuation, relaunch
 from .planned import Plan, found
-from ..runfiles import FIRST_TRY, LAUNCH_DIR, GroupNames, RunNames
+from ..runfiles import LAUNCH_DIR, GroupNames, RunNames
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           hand_over, latest_attempt, newest_launched)
 from .naming import job_dir_names, open_container, run_names
@@ -201,19 +201,12 @@ def _wall_s(r: Resources) -> Optional[int]:
 
 
 def _counts_of(r: Resources) -> List[str]:
-    """A run script's counts, as its line passes them -- ``-np N``, ``-omp
-    M`` -- the ones stated."""
+    """What every ``.run.sh`` is started with: its job's counts, as its line
+    passes them -- ``-np N``, ``-omp M``, the ones stated (the run script's
+    arguments, `runwrap._args_parse`).  Nothing else: a run is one start, and the run script
+    takes no number of its own (`project-layout.md` § 1.6.1)."""
     return ((["-np", str(r.mpi_np)] if r.mpi_np else [])
             + (["-omp", str(r.cpus_per_task)] if r.cpus_per_task else []))
-
-
-def _run_sh_args(r: Resources) -> List[str]:
-    """What every ``.run.sh`` is started with: the number of its run's
-    first try, which launch decides and the script refuses to start
-    without (``--run 0``, `project-layout.md` § 1.6.1: a warm retry's is
-    the next, which the run script hands itself), and its job's ``-np`` /
-    ``-omp`` (runwrap.py § arg-parsing)."""
-    return ["--run", str(FIRST_TRY)] + _counts_of(r)
 
 
 # --------------------------------------------------------------------- #
@@ -353,8 +346,8 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
     (`runwrap.render_sbatch`'s ``where``) -- ``None``, and no line, with no
     queue.
 
-    ``run_args`` are the run script's arguments (`_run_sh_args`: ``--run
-    0``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards
+    ``run_args`` are the run script's arguments (:func:`_counts_of`:
+    ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards
     them (``bash <base>.run.sh "$@"``).  A submission whose script walks
     several members hands each member its own inside that script, and passes
     none here.
@@ -895,7 +888,7 @@ class LaunchPlan:
                                  domain=s.domain, request=s.request()))
             if s.rides:
                 # EACH MEMBER WITH THE COUNTS ITS WALK HANDS IT (`-np`,
-                # `-omp`, :func:`_run_sh_args`) -- what runs it is seen too.
+                # `-omp`, :func:`_counts_of`) -- what runs it is seen too.
                 out += [JobResult(m.name, [], "rides",
                                   said=" ".join([s.rides] + _counts_of(
                                       m.job.resources)))
@@ -2430,7 +2423,7 @@ def _walk_of(members: List[_Member], container: Path) -> list:
     here, a queue's shelf and a group."""
     return [(m.name, str(m.run_dir.relative_to(container)),
              m.names.name(".run.sh"),
-             " ".join(_run_sh_args(m.job.resources)), ())
+             " ".join(_counts_of(m.job.resources)), ())
             for m in members]
 
 
@@ -2839,7 +2832,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         step_of[pt.rel] = len(steps)
         steps.append((f"{stage}@{pt.rel}", place.walked(pt.rel),
                       names.name(".run.sh"),
-                      " ".join(_run_sh_args(job.resources)), before))
+                      " ".join(_counts_of(job.resources)), before))
         said.append(pt.words() + words)
         plan.reads += [_as_found(place.prepared(pt.prepared) / f, base)
                        for f in (job.script, names.name(".run.sh"))]
@@ -2857,7 +2850,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         steps.append((f"{stage}@{c.point.rel}",
                       place.walked_all(c.point.rel),
                       WalkLoop(run_sh=names.name(".run.sh"),
-                               args=" ".join(_run_sh_args(job.resources)),
+                               args=" ".join(_counts_of(job.resources)),
                                skip=tuple(Path(pt.rel).name
                                           for _p, pt in taken
                                           if pt.rel in is_planned
@@ -3460,7 +3453,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             # TOLD ITS CARD'S WALL, as a sent job is told its header's
             # (`running-a-job.md` § 3.6).
             plan.submissions.append(Submission(
-                m.name, ["bash", run_name] + _run_sh_args(job.resources),
+                m.name, ["bash", run_name] + _counts_of(job.resources),
                 m.run_dir, True, [m], ask_in=m.read_from,
                 sent=_Sent(time=job.resources.time or None)))
             continue
@@ -3479,7 +3472,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             placement=_placed_by_prep([job]),
             time_s=time_s, job_name=_scheduler_job_name(jobset, job.name),
             script=sbatch_name,
-            run_args=_run_sh_args(job.resources),
+            run_args=_counts_of(job.resources),
             machine=machine)
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,

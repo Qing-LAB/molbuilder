@@ -4,9 +4,9 @@ Called by ``jobset/prep``, the one route that writes a run's files.
 
 Each generated script (``.fdf`` or ``.py``) gets a sibling run script,
 named by its stage's names (``runfiles.RunNames``), that activates the
-right conda env and runs the engine.  ``jobset launch`` starts it and
-hands it the try's number, ``--run N`` -- 0, a run's first try; it refuses
-to start without one.
+right conda env and runs the engine.  ``jobset launch`` starts it with its
+counts, once in its run's folder: a run is one start
+(`project-layout.md` § 1.6.1).
 
 The wrapper is small and human-readable, so a person can see the command
 a run is about to execute.  It is written once, at the stage's prep, and
@@ -30,27 +30,26 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tupl
 
 from .diagnostics import get_capabilities
 from .envs import hints as _hints
-from .runfiles import (FIRST_TRY, RANK_LAUNCHER, ROLE_SPECTRA, deck_roles,
-                       engine_of_role)
+from .runfiles import RANK_LAUNCHER, ROLE_SPECTRA, deck_roles, engine_of_role
 # The channel-name rule, from the module that owns the file those names
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
 from .config_dir import is_channel_name
 # The way back a refusal names: the checkpoint commands, the folder in them;
 # and the one spelling of a run script started by hand.
-from .identity import hand_run, way_back_words
+from .identity import command_stage, hand_run, launch_as_typed, way_back_words
 from .jobset.errors import WrapperError
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
 from .runpoints import AGAIN, CONTINUE
 from .runrecord import conclude_line
-from .runtime_info import (JOB_STARTED_VAR, NODE_CORES_VAR, RUN_NUMBER,
-                           THREAD_SOURCES, WALL_SLACK_VAR, WALL_VAR)
+from .runtime_info import (JOB_STARTED_VAR, NODE_CORES_VAR, THREAD_SOURCES,
+                           WALL_SLACK_VAR, WALL_VAR)
 # THE SESSION LOG'S LINES are its one module's, which travels beside the
 # job: the wrapper renders them, every reader reads with them.
 from .wrapper_log import (BINARY_LABEL, CONDA_ENV_LABEL, CWD_LABEL,
                           HOSTNAME_LABEL, LOG_CLOCK, LOG_LINE, NODE_LINE,
-                          PYTHON_LABEL, RANKS_OMP_LINE, RUN_INDEX_LINE,
+                          PYTHON_LABEL, RANKS_OMP_LINE,
                           USER_LABEL, VERSION_LABEL, WALL_LINE,
                           WRAPPER_LOG_START)
 
@@ -92,8 +91,7 @@ def _phys_cores_probe_block() -> str:
     ``|| true`` sits INSIDE each substitution on purpose: under
     ``set -e`` an assignment whose command substitution fails aborts the
     script, so without it a box with no ``lscpu`` would die HERE -- before
-    reaching the fallback written for exactly that case, and before
-    ``-h`` could print usage (R9).
+    reaching the fallback written for exactly that case.
 
     Shared by both engines.  SIESTA's GPU rank policy divides the socket
     among MPI ranks; a PySCF script reports the count, exported to it
@@ -150,17 +148,14 @@ def _stdout_role_for(deck_suffix: str) -> str:
 
 
 #: WHAT A NAME TEMPLATE'S PLACEHOLDERS BECOME IN THE RUN SCRIPT, which fills
-#: them as it runs (`runfiles.RunNames.template`): the try's number it was
-#: given (``--run N``), and its own start's stamp, in the shape the
-#: catalogue declares for the field (`runfiles.FIELDS["stamp"]`).
-_BASH_FILLS = {"run": "${_run_n}", "stamp": "$(date +%Y%m%d-%H%M%S)",
-               "pid": "$$"}
+#: them as it runs: the script's own process id (`runfiles.FIELDS["pid"]`).
+_BASH_FILLS = {"pid": "$$"}
 
 
 def _bash_fill(name: str) -> str:
-    """A catalogue template -- a stage's name (`RunNames.template`) or a
-    fixed-name row's (`runfiles.RANK_LAUNCHER`) -- as the run script spells
-    it: each field filled by its run-time value."""
+    """A catalogue template -- a fixed-name row's
+    (`runfiles.RANK_LAUNCHER`) -- as the run script spells it: each field
+    filled by its run-time value."""
     unfilled = set(re.findall(r"\{([a-z_]+)\}", name)) - set(_BASH_FILLS)
     if unfilled:
         raise WrapperError(f"{name!r}: the run script has no value for "
@@ -170,114 +165,23 @@ def _bash_fill(name: str) -> str:
     return name
 
 
-def _bash_name(names, role: str) -> str:
-    """``role``'s name for this run, as the run script spells it: the stage's
-    template (`runfiles.RunNames`), each placeholder filled by its run-time
-    value -- so the script names every file of its run as the catalogue
-    does, and composes none itself."""
-    return _bash_fill(names.template(role))
-
-
-def _history_block(names, deck_text: Optional[str]) -> str:
-    """Bash that points SIESTA's name for each history file this deck writes
-    at the run's own file, just before the engine starts
-    (`job-contracts.md` § 2.2, § 2.6): SIESTA appends every step to
-    ``<SystemLabel><role>``, so the run's history then holds its steps alone.
-    Which of them the deck writes is the deck's to say -- the catalogue item
-    each row names (`runfiles.pointed_roles`), read from the deck as SIESTA
-    reads it, and the name SIESTA uses is the deck's ``SystemLabel``.  A name
-    that already holds a file stops the run before the engine, saying so in
-    its conclusion: the pointer never replaces a file.  ``""`` for a deck
-    that writes no history."""
-    from .parse.fdf import fdf_true
-    from .runfiles import compose, pointed_roles
-    from .script_emit import parameter
-    if deck_text is None:
-        return ""
-
-    def on(item: str) -> bool:
-        said = parameter(item, "siesta", deck_text=deck_text).value
-        return said is not None and fdf_true(str(said).split())
-
-    roles = [role for role, item in pointed_roles("siesta") if on(item)]
-    if not roles:
-        return ""
-    label = parameter("system_label", "siesta", deck_text=deck_text).value
-    if not label or not _SAFE_WRAPPER_NAME_RE.fullmatch(str(label)):
-        raise WrapperError(
-            f"{names.name('.fdf')} writes SIESTA's history and states "
-            f"{'no SystemLabel' if not label else f'SystemLabel {label!r}'}"
-            f" -- SIESTA names its history from it, and the run script "
-            f"points that name at the run's own file.")
-    pairs = [(compose(str(label), role), _bash_name(names, role))
-             for role in roles]
-    return (
-        "# --- SIESTA's history, this run's own -------------------\n"
-        "# SIESTA appends every step to <SystemLabel><role>; each such name\n"
-        "# points at this run's file while the engine runs, and the pointer\n"
-        "# goes when it exits (job-contracts.md 2.2, 2.6).  A name that\n"
-        "# holds a file stops the run here: the pointer never replaces one.\n"
-        "_mb_point() {\n"
-        '    if [ -e "$1" ] && [ ! -L "$1" ]; then\n'
-        '        _log ERROR "$1 is a file, and SIESTA would append this '
-        'run\'s steps to it -- move it aside and launch again '
-        '(job-contracts.md 2.2)"\n'
-        '        echo "ERROR: $1 is a file: SIESTA appends its history to '
-        'it, and this run keeps its own ($2).  The engine was not '
-        'started; move $1 aside and launch again." >&2\n'
-        + "        " + conclude_line(
-            1, "SIESTA's history name holds a file (%s)", '"$1"') + "\n"
-        "        exit 1\n"
-        "    fi\n"
-        '    rm -f "$1"\n'
-        '    ln -s "$2" "$1"\n'
-        '    _mb_pointed="$_mb_pointed $1"\n'
-        "}\n"
-        + "".join(f'_mb_point "{ours}" "{run}"\n' for ours, run in pairs)
-    )
-
-
-def _run_index_block(names, stdout_role: str, target_env: str) -> str:
-    """Bash that takes THIS TRY'S NUMBER -- ``--run N``, parsed by
-    :func:`_continue_force_args_parser` -- and names the try's output with
-    it (`project-layout.md` § 1.6.1).  A start without one -- ``--run``
-    given no number among them -- is refused here, naming the launch door,
-    which gives it.
-
-    **The script never counts its own number** (plan W57 decision 6): a
-    launch gives it 0, and a warm retry hands itself the next -- the run
-    folder's one `run.json` answers for every try in it.
-
-    ``names`` are the stage's (`runfiles.RunNames`); ``stdout_role`` the
+def _env_python_block(names, stdout_role: str, target_env: str) -> str:
+    """Bash that names the run's output and its conclusion marker -- every
+    writer of them below writes these names (`project-layout.md` § 1.6.3);
+    ``names`` are the stage's (`runfiles.RunNames`), ``stdout_role`` the
     engine's stdout role (:func:`_stdout_role_for`).
 
     **Then the one check every job makes before anything runs**
     (`running-a-job.md` § 2): the activation gave this job its env --
     ``CONDA_PREFIX`` names ``target_env`` -- and that env's own python,
     ``$_mb_py``, is there.  Refused otherwise, the conclusion saying why
-    (`parse.dirs.job.NO_ENV_PYTHON`), whatever the engine."""
+    (`parse.dirs.job.NO_ENV_PYTHON`), whatever the engine -- a dry run
+    refused alike, but concluding nothing: it starts nothing."""
     from .parse.dirs.job import NO_ENV_PYTHON
     env_name = str(target_env).rstrip("/").rsplit("/", 1)[-1]
-    out = _bash_name(names, stdout_role)
     return (
-        f"# --- Run index resolution ------------------------------\n"
-        f"# This try's number (--run N): 0 from 'molbuilder jobset\n"
-        f"# launch', the next from a warm retry of this script.  Every\n"
-        f"# file of the try carries it -- its output is\n"
-        f"# {out} (project-layout.md 1.6.1).\n"
-        # A WHOLE NUMBER, NO LEADING ZERO: the one pattern
-        # (`runtime_info.RUN_NUMBER`).
-        f'if ! [[ "$_run_n" =~ ^({RUN_NUMBER})$ ]]; then\n'
-        f'        echo "ERROR: {names.name(".run.sh")} needs its try\'s number, --run N --" >&2\n'
-        f'        echo "  \'molbuilder jobset launch\' gives it ({FIRST_TRY}) to every run" >&2\n'
-        f'        echo "  script it starts.  Launch via \'molbuilder jobset launch\'." >&2\n'
-        f"        exit 2\n"
-        f"fi\n"
-        f'_out_file="{out}"\n'
-        # THE RUN'S CONCLUSION MARKER, named once -- every writer of it
-        # below writes this one name (`project-layout.md` § 1.6.3).
-        f'_concluded="{_bash_name(names, ".concluded")}"\n'
-        f'echo "{RUN_INDEX_LINE} $_run_n  ->  $_out_file"\n'
+        f'_out_file="{names.name(stdout_role)}"\n'
+        f'_concluded="{names.name(".concluded")}"\n'
         f"# --- The job's python: its env's own (running-a-job.md 2) ---\n"
         + env_python_check(env_name)
         + f'    echo "ERROR: this job has no python of its env \'{env_name}\' -- '
@@ -286,7 +190,7 @@ def _run_index_block(names, stdout_role: str, target_env: str) -> str:
         f'take, or the env holds no python of its own: rebuild it on this '
         f'machine ({_hints.fix_cmd("install", env_name)}).  Nothing was '
         f'started." >&2\n'
-        + "    " + conclude_line(
+        + '    [ "$_dry_run" = "1" ] || ' + conclude_line(
             1, f"{NO_ENV_PYTHON} (%s)",
             '"${_mb_py:-${CONDA_PREFIX:-no CONDA_PREFIX}}"') + "\n"
         "    exit 1\n"
@@ -303,8 +207,7 @@ def _monitor_block(names, notify_on_scf: bool,
     engine (`running-a-job.md` § 4.1, `run-reports.md` § 2.3).
 
     It tells the monitor WHICH RUN it watches -- its stage's names
-    (`runfiles.RunNames`) and the try's number it was given -- and never a
-    path: the monitor names its log, its utilisation CSV and every file it
+    (`runfiles.RunNames`) -- and never a path: the monitor names its log, its utilisation CSV and every file it
     reads through `runfiles`, and reads them through the framework's readers
     that travel beside it (:data:`MONITOR_COMPANIONS`).  ``member`` makes it
     a MEMBER of a run of points' monitor (`run-reports.md` § 2.4;
@@ -349,11 +252,8 @@ def _monitor_block(names, notify_on_scf: bool,
         f'&& command -v nice >/dev/null 2>&1 '
         f'&& [ -f {MONITOR_BUNDLE} ]; then\n'
         f'    nice -n 19 "$_mb_py" {MONITOR_BUNDLE} '
-        # INDEXED LIKE THE OUTPUT IS: the try's number, so a retry's
-        # monitor log and util.csv never interleave with or truncate the
-        # try's before it.  The monitor composes both names from it.
         f'--label "{names.label}" --stage "{names.stage}" '
-        + f'--run "$_run_n" --util --cores "{cores}" '
+        + f'--util --cores "{cores}" '
         + ("--gpu " if gpu else "")
         + ("--member " if member else "")
         + '--interval "${MB_MONITOR_INTERVAL:-10}" '
@@ -398,11 +298,9 @@ class PointOfRun:
     of the job's bundle (``finish``) per moment, ``before``, ``after`` and
     ``finish`` (the kind table's record, `kind_table.RunOfPoints.steps`).
     ``relaunch`` is what a launch again does with the point not done --
-    ``again`` or ``continue`` (`PointsOf.relaunch_of`) -- and
-    ``verdict_counts`` whether its verdict counts toward done
-    (`PointsOf.verdict_counts`): what the advice after a stop says."""
+    ``again`` or ``continue`` (`PointsOf.relaunch_of`): what the run
+    script says after a failure (:func:`_launch_again`)."""
     relaunch: str = AGAIN
-    verdict_counts: bool = True
     steps: Optional[Dict[str, str]] = None
 
     def step(self, moment: str) -> Optional[str]:
@@ -498,7 +396,7 @@ def _point_block(names, verb: str, point: Optional[PointOfRun],
 def _finish_check_block(finish: Optional[str]) -> str:
     """Before the engine starts: can the job's finish run here?  Asked with
     the python that will run it (``$_mb_py``, the activated env's, checked
-    once the try's number is, `running-a-job.md` § 2.2a), so a job
+    once the arguments are read, `running-a-job.md` § 2.2a), so a job
     env without what the finish imports stops before the expensive run it
     would otherwise throw away -- and SAYS SO in the conclusion, which reads
     failed (`engines/vibration.md` § 5.5, `running-a-job.md` § 4.2).  A dry
@@ -528,280 +426,113 @@ def _finish_check_block(finish: Optional[str]) -> str:
     )
 
 
-def _continue_force_args_parser() -> str:
-    """Bash snippet declaring + parsing ``--run N``, ``--continue`` /
-    ``-c``, ``--force`` / ``-f`` and ``--cold`` / ``--from-scratch``:
+#: A count refused unless it is a positive integer -- one spelling for every
+#: count a run script reads: ``_mb_positive NAME VALUE`` for an argument,
+#: read before anything is written; ``_mb_positive NAME VALUE SOURCE`` for
+#: the count resolved once the start has begun, which names where the value
+#: came from and concludes the run (a dry run concludes nothing).
+_POSITIVE_FUNCTION = (
+    "_mb_positive() {\n"
+    '    if ! printf %s "$2" | grep -qE \'^[1-9][0-9]*$\'; then\n'
+    '        echo "ERROR: $1 must be a positive integer; got: \'$2\'${3:+ '
+    '(from $3)}" >&2\n'
+    '        if [ -n "${3:-}" ] && [ "$_dry_run" = "0" ]; then\n'
+    "            " + conclude_line(
+        1, "a count that is not a positive integer (%s)", '"$1"') + "\n"
+    "        fi\n"
+    "        exit 1\n"
+    "    fi\n"
+    "}\n")
 
-      * ``--run N``: this try's number -- 0 from `launch`, the next from a
-        warm retry (`project-layout.md` § 1.6.1) -- checked by
-        :func:`_run_index_block`, which refuses a start without one.
-      * ``--continue`` / ``-c``: this start continues the try before it --
-        a warm retry's; the banner says so.  Whether the engine reads the
-        prior state is the deck's to say.
-      * ``--force`` / ``-f``: say yes to ``--cold``'s refusal.
-      * ``--cold`` / ``--from-scratch``: start the engine strictly
-        from the .fdf / .py -- everything named after the run's label
-        REMOVED first, since a deck that reads its restart files reads
-        whatever lies there (`job-contracts.md` § 4.1: a list of
-        extensions is a snapshot of one build, and a file nobody listed
-        is a file --cold walks past, so the sweep is by name).  It
-        NAMES those files and refuses; ``--force`` removes them.
-        Keeping them is `molbuilder checkpoint save`.
 
-    Added 2026-06-14 after the BDT-stage-2 incident where stage 2
-    ran without the user's frozen-atom constraints (contract bug
-    in the form, fixed in the same release); the now-corrupt
-    warm-start files would have contaminated every subsequent run
-    until ``--cold`` was provided.
+def _one_start_usage(trial: bool) -> str:
+    """The run script's usage says what a run is -- one start; a trial's,
+    that it measures its point once (`project-layout.md` § 1.6.1)."""
+    return ("Starts once in its run's folder: a run is one start, and to\n"
+            "continue it is to launch the stage again (project-layout.md\n"
+            "1.6.1).\n\n" if not trial else
+            "Starts once in its run's folder: a run is one start, and a\n"
+            "trial measures its point once (project-layout.md 1.6.1).\n\n")
 
-    Caller is responsible for the eventual ``--help`` text, EXCEPT for the
-    shared entries: each has one writer -- :func:`_run_usage_entry`,
-    :func:`_force_usage_entry`, :func:`_cold_usage_entry` -- because a
-    shared fact is what drifted when each engine wrote its own.
-    """
+
+def _args_parse(*, stated: str, omp_aliases: str, usage: str,
+                inits: str = "", arms: str = "") -> str:
+    """THE RUN SCRIPT'S ARGUMENTS, read once, before anything is written --
+    one parser for every engine (`job-contracts.md` § 2.6, *Arguments*): a
+    help request answers and exits, an argument that does not read is
+    refused, and a dry run is known before the one-start guard.  ``stated``
+    the counts baked at prep; ``omp_aliases`` the thread flag's spellings;
+    ``inits`` and ``arms`` an engine's own flags; ``usage`` the help's
+    text."""
     return (
-        # WHAT THE FLAGS ARE -- which is all this shared
-        # block can honestly say.  It is emitted for BOTH engines and its
-        # whole input is a name, so it cannot know what the deck beside it
-        # instructs.  Whether the ENGINE also picks up prior state is said
-        # where the deck is known -- the usage text in each engine's own
-        # branch.
-        "# --- Continuation flags (shared SIESTA / PySCF) --------\n"
-        "# ``--run N``:             this try's number: 0 from\n"
-        "#                          'molbuilder jobset launch', the\n"
-        "#                          next from a warm retry\n"
-        "#                          (project-layout.md 1.6.1).\n"
-        "# ``--continue`` / ``-c``: this start continues the try\n"
-        "#                          before it -- a warm retry's; whether\n"
-        "#                          the engine resumes is the deck's to\n"
-        "#                          say (see -h).\n"
-        "# ``--force``    / ``-f``: say yes to --cold's refusal.\n"
-        "# ``--cold`` / ``--from-scratch``:\n"
-        "#                          start purely from the .fdf/.py,\n"
-        "#                          REMOVING everything named after\n"
-        "#                          the run's label first -- minus what\n"
-        "#                          molbuilder itself wrote.  Names\n"
-        "#                          them and refuses; --force\n"
-        "#                          removes them.\n"
-        "# Self-identity for the warm-retry re-exec: an ABSOLUTE path to\n"
-        "# this wrapper.  Under ``bash x.run.sh`` $0 is a bare relative\n"
-        "# name -- bash's ``exec`` PATH-searches slash-less words (never\n"
-        "# the cwd), so ``exec \"$0\"`` would die with 127.  readlink -f\n"
-        "# (GNU, cluster-standard) resolves it without cd'ing (the\n"
-        "# wrapper never changes cwd -- that is a tested contract).\n"
-        '_mb_self="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"\n'
-        '_run_n=""\n'
-        "_continue=0\n"
-        "_force=0\n"
-        "_cold=0\n"
-        "# We take --run / --continue / --force / --cold out of $@ here,\n"
-        "# leaving the rest for the engine-specific arg loop below\n"
-        "# (-np for SIESTA; nothing for PySCF).\n"
-        "_argv_remaining=()\n"
+        "# --- Arguments: read once, before anything is written ---\n"
+        "# A help request answers and exits, an argument that does not\n"
+        "# read is refused, and a dry run is known before the one-start\n"
+        "# guard -- none of them writes a file (job-contracts.md 2.6).\n"
+        + stated + _POSITIVE_FUNCTION
+        + '_np_flag=""\n'
+        '_omp_flag=""\n'
+        + inits
+        + '_dry_run=0\n'
         'while [ $# -gt 0 ]; do\n'
         '    case "$1" in\n'
-        # A --run GIVEN NO NUMBER -- nothing after it, or the next flag --
-        # is a start without one, refused by the one check that names the
-        # launch (_run_index_block); the flag after it stays the engine's.
-        '        --run)                case "${2:-}" in\n'
-        '                                  ""|-*) _run_n=""; shift ;;\n'
-        '                                  *)     _run_n="$2"; shift 2 ;;\n'
-        '                              esac ;;\n'
-        "        --continue|-c)        _continue=1; shift ;;\n"
-        "        --force|-f)           _force=1;    shift ;;\n"
-        "        --cold|--from-scratch) _cold=1;    shift ;;\n"
-        '        *)                    _argv_remaining+=("$1"); shift ;;\n'
+        "        -np|--np)\n"
+        '            _mb_positive -np "${2:-}"\n'
+        '            _np_flag="$2"; shift 2 ;;\n'
+        f"        {omp_aliases})\n"
+        '            _mb_positive -omp "${2:-}"\n'
+        '            _omp_flag="$2"; shift 2 ;;\n'
+        "        --dry-run|--dryrun)\n"
+        '            _dry_run=1; shift ;;\n'
+        + arms
+        + "        -h|--help)\n"
+        "            cat <<USAGE\n"
+        + usage
+        + "USAGE\n"
+        "            exit 0 ;;\n"
+        "        *)\n"
+        '            echo "ERROR: unknown argument: $1 (use -h)" >&2\n'
+        "            exit 1 ;;\n"
         "    esac\n"
         "done\n"
-        "# THE ENGINE'S OWN ARGUMENTS, kept for a warm retry, which runs\n"
-        "# this script again with the same -np/--omp and the next try's\n"
-        "# number (running-a-job.md 3.5).\n"
-        '_mb_engine_args=(${_argv_remaining[@]+"${_argv_remaining[@]}"})\n'
-        'set -- "${_argv_remaining[@]+\"${_argv_remaining[@]}\"}"\n'
-        "\n"
-    )
+        "\n")
 
 
-def _run_usage_entry() -> str:
-    """The ``--run N`` entry of a wrapper's ``--help`` -- one writer for
-    both engines, as :func:`_cold_usage_entry` is (plan W57 decision 6)."""
+def _again_line(again: str, said: str = "what a launch again will do") -> str:
+    """The run script's line after a failure: what a launch again will do
+    (`running-a-job.md` § 3.5), ``said`` the cause where it is a stop at the
+    wall (§ 3.6)."""
+    return f'echo "{said}: {again}" >&2\n'
+
+
+def _one_start_block(names, trial: bool) -> str:
+    """Bash that refuses a second start in a run folder, first of all,
+    before anything is written (`project-layout.md` § 1.6.1): a run is one
+    start, and its session log is that start's -- a folder that holds one
+    refuses this start, naming `jobset launch`, which opens the next run.
+    A help request has answered before it, and a dry run starts nothing
+    (``_dry_run``, read with the arguments): it passes, and writes no
+    session log (`job-contracts.md` § 2.6).  The log's name is set here,
+    the one variable every later line writes and reads.  ``trial``: a
+    benchmark trial, which measures its point once."""
+    log = names.name(".runwrap.log")
+    way = (_TRIAL_ONCE if trial else
+           f"to continue it, launch the stage again -- "
+           f"'{launch_as_typed(command_stage(names.stage))}' opens the "
+           f"next run")
     return (
-        "  --run N          this try's number -- required: 0 from\n"
-        "                   'molbuilder jobset launch', the next\n"
-        "                   from a warm retry; every file of the\n"
-        "                   try carries it (-runN)\n"
-        "                   (project-layout.md 1.6.1).\n"
-    )
-
-
-def _continue_usage_lead() -> str:
-    """The first lines of the ``--continue`` entry, the same for both
-    engines; each engine's own lines follow, saying what its deck reads."""
-    return (
-        "  --continue, -c   this start continues the try before it --\n"
-        "                   a warm retry's; the banner says so.\n"
-    )
-
-
-def _force_usage_entry() -> str:
-    """The ``--force`` entry -- one writer for both engines."""
-    return (
-        "  --force, -f      say yes to --cold's refusal (below):\n"
-        "                   the files --cold named are removed and\n"
-        "                   the run proceeds.\n"
-    )
-
-
-def _cold_usage_entry(*, warm_examples: str) -> str:
-    """The ``--cold`` / ``--from-scratch`` entry of a wrapper's ``--help``.
-
-    **ONE writer, because it is ONE fact.**  `job-contracts.md` § 4.1's sweep
-    is engine-independent *by construction*: it reads no list of extensions,
-    so there is nothing in it for an engine to differ about.  An engine
-    contributes only ``warm_examples`` -- what its own runs happen to leave
-    behind -- and the rule itself is written once.
-    """
-    return (
-        "  --cold,\n"
-        "  --from-scratch   start the engine from the deck alone.\n"
-        "                   Everything named after the run's label --\n"
-        "                   minus what molbuilder itself wrote --\n"
-        f"                   is REMOVED first ({warm_examples}),\n"
-        "                   since the deck reads what lies there.\n"
-        "                   --cold NAMES those files and REFUSES;\n"
-        "                   --force removes them.  Keep a state\n"
-        "                   with `molbuilder checkpoint save` before\n"
-        "                   you discard it.\n"
-        "                   Swept BY NAME, never by a list of\n"
-        "                   extensions (job-contracts.md 4.1) -- a\n"
-        "                   file nobody listed is a file --cold\n"
-        "                   walks past.\n"
-    )
-
-
-def _cold_restart_block(label: str) -> str:
-    """Bash snippet that NAMES the prior state a cold run removes.
-
-    **It reports and stops; ``--force`` removes them** *(user, 2026-08-18)*:
-    the launcher does not keep something nobody asked it to keep.  Keeping one
-    is `molbuilder checkpoint save`, it is never automatic
-    (`checkpointing.md` § 2), and this message says so.
-
-    **A NAME SWEEP, not a list** (`job-contracts.md` § 4.1): everything
-    named after the run's label is named, except the files molbuilder
-    itself wrote.  A suffix list is a snapshot of one build's behaviour, and a file
-    nobody listed is a file ``--cold`` walks past, in the one operation whose
-    entire purpose is leaving nothing behind.
-
-    The restart-file list (``warm``, the calculation's own, handed in at
-    render) keeps its OTHER § 4.2 job -- the short hint list the banner
-    tests -- and is not read here.
-
-    What survives the sweep is § 4.1's exception — *what molbuilder
-    wrote* — and the bash case list is DERIVED from
-    ``identity.OUR_FILE_PATTERNS`` (E-1), the one Python spelling of that
-    enumeration, plus ``*.psml`` (named for a species label).  One list, two languages,
-    no second copy to drift.
-
-    REMOVED, not left for the engine to overwrite: a deck that reads its
-    restart files (``DM.UseSaveDM``, ``MD.UseSaveXV``) reads whatever lies
-    there, and the run would not be cold.
-    """
-    # THE LABEL IS BAKED, NOT RE-READ.  `execution/gpu.md` G7 -- *"the value
-    # travels; the deck is not re-read for it"*.
-    #
-    # SIESTA names its warm files from `SystemLabel` and PySCF from `JOB`, and
-    # neither is the wrapper's own basename: the deck label is UNSUFFIXED while
-    # the wrapper is `<label>_<NN>_<stage>`, so the sweep genuinely needs it.
-    #
-    # THE VALUE TRAVELS.  `label` is `task.label` -- the description's own
-    # name for this calculation, which is what the emitter wrote into the deck
-    # in the first place.  Nothing here opens the deck: reading back a file we
-    # just wrote, to recover a value we were holding when we wrote it, is the
-    # defect G7 names, and doing it at prep rather than at launch does not
-    # make it a different one.
-
-    # The label was checked when its names were made (`runfiles.stem`: one
-    # [A-Za-z0-9_-]+ token), so it goes into the bash as it is.
-    label_extract = '_warm_label="' + label + '"\n'
-    # § 4.1's "except what molbuilder wrote", derived from the ONE
-    # enumeration (identity.OUR_FILE_PATTERNS, E-1) rather than hand-spelled
-    # here in a second language -- anchored on the run's OWN label, not
-    # widened to a star: a suffix both molbuilder and an engine write would then
-    # make the engine's file look like ours (widened, `*.xyz` would make
-    # PySCF's `<JOB>_optimized.xyz` -- warm state, the whole reason `--cold`
-    # exists -- look like a file molbuilder had written).
-    #
-    # ONE SPELLING, THE LABEL'S: the stage's own files begin `<label>_`, so
-    # the sweep's `"${_warm_label}"_*` visits them, and every row a stage's
-    # token is in has its `{label}_*` pattern (`runfiles.patterns`), its
-    # star spanning the token and a try's number.  A quoted expansion inside
-    # a `case` pattern is matched literally, so `"$_warm_label".xyz`
-    # protects exactly one file.
-    #
-    # `*.psml` is the one glob of its own: a pseudopotential is named for its
-    # species label, not for the run.
-    from .identity import OUR_FILE_PATTERNS
-    _exceptions = "|".join(sorted(
-        {p.replace("{label}", '"$_warm_label"') for p in OUR_FILE_PATTERNS}
-        | {"*.psml"}))
-    return (
-        "# --- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP ------\n"
-        "# --cold starts the engine from the deck alone, so everything\n"
-        "# named after the run's label is removed first -- the deck reads\n"
-        "# what lies there.  This NAMES those files and refuses; --force\n"
-        "# removes them -- but not in a dry run, which changes nothing\n"
-        "# (job-contracts.md 2.6).\n"
-        "#\n"
-        "# Keeping a state is `molbuilder checkpoint save` and it is\n"
-        "# never automatic (`checkpointing.md` § 2).\n"
-        "#\n"
-        "# No list of engine extensions: a list is a snapshot of one\n"
-        "# build, and a file nobody listed is a file --cold walks past.\n"
-        # THE ONE label assignment (F13): outside the --cold guard, so the
-        # status banner below reads THIS value.
-        + label_extract +
-        f'if [ "$_cold" = "1" ]; then\n'
-        f"    _clobber=0\n"
-        f"    _mb_swept=()\n"
-        f"    shopt -s nullglob 2>/dev/null || true\n"
-        f"    echo \"[molbuilder] --cold: name sweep over "
-        f"\\\"$_warm_label\\\".* and \\\"$_warm_label\\\"_* -- everything "
-        f"named after the label, minus what molbuilder wrote\" >&2\n"
-        f'    for _f in "$_warm_label".* "${{_warm_label}}"_*; do\n'
-        f'        [ -e "$_f" ] || continue\n'
-        f'        case "$_f" in\n'
-        f"            # molbuilder-written, by name shape (4.1's exception;\n"
-        f"            # derived from identity.OUR_FILE_PATTERNS)\n"
-        f"            {_exceptions}) continue ;;\n"
-        f"        esac\n"
-        f'        if [ "$_clobber" = "0" ]; then\n'
-        f'            echo "[molbuilder] --cold would REMOVE prior state:" >&2\n'
-        f"            _clobber=1\n"
-        f"        fi\n"
-        f'        echo "[molbuilder]     $_f" >&2\n'
-        f'        _mb_swept+=("$_f")\n'
-        f"    done\n"
-        f"    shopt -u nullglob 2>/dev/null || true\n"  # D18c: restore
-        f'    if [ "$_clobber" = "1" ]; then\n'
-        f'        if [ "$_force" = "1" ] && [ "${{_dry_run:-0}}" = "1" ]; then\n'
-        f'            echo "[molbuilder] --force given, but this is a dry run: nothing removed." >&2\n'
-        f'        elif [ "$_force" = "1" ]; then\n'
-        f'            echo "[molbuilder] --force given: removing the files above." >&2\n'
-        f'            rm -f -- "${{_mb_swept[@]}}"\n'
-        f"        else\n"
-        f'            echo "[molbuilder] Refusing: nothing has been changed." >&2\n'
-        f'            echo "[molbuilder] To keep this state, save it first:" >&2\n'
-        f"            echo \"[molbuilder]     molbuilder checkpoint save -m "
-        f"'before a clean rerun'\" >&2\n"
-        f'            echo "[molbuilder] Then run again with --force to remove them." >&2\n'
-        f"            exit 1\n"
-        f"        fi\n"
-        f"    else\n"
-        f'        echo "[molbuilder] --cold: nothing under this name; already a clean start" >&2\n'
-        f"    fi\n"
-        f"fi\n"
-        f"\n"
+        "# --- One start per run (project-layout.md 1.6.1) --------\n"
+        "# A run folder holds one start, and its session log says it has\n"
+        "# one.  To continue a run is to launch it again, which opens the\n"
+        "# next run folder.  ABSOLUTE, the log's name: every later line --\n"
+        "# the ending read over it (_mb_ending), for SIESTA's stderr --\n"
+        "# resolves it wherever it runs from.\n"
+        f'_runwrap_log="$PWD/{log}"\n'
+        f'if [ "$_dry_run" = "0" ] && [ -e "$_runwrap_log" ]; then\n'
+        f'    echo "ERROR: this run folder already holds a start ({log}): '
+        f'a run is one start; {way} (project-layout.md 1.6.1)." >&2\n'
+        "    exit 2\n"
+        "fi\n"
     )
 
 
@@ -849,6 +580,7 @@ def _runtime_status_block(
     *,
     engine: str,
     script_name: str,
+    label: str,
     warm: Sequence[str],
     resumes: bool = True,
     reads_prior: Optional[bool] = None,
@@ -857,22 +589,17 @@ def _runtime_status_block(
 
     ``reads_prior`` is the deck's own answer about prior state
     (:func:`_fdf_honours_restart`, :func:`_py_deck_reads_prior`): False, and
-    the Mode line says the deck reads none of what lies on disk.
+    the Mode line says the deck reads none of what lies here.  ``label`` is
+    the one the engine names its restart files on (`run-identity.md`
+    § 3.2) -- ``task.label``, baked, never re-read (`execution/gpu.md`
+    G7).
 
-    Prints, at script launch time, AFTER cold/run-index resolution but
-    BEFORE the engine launches:
+    Prints, at script launch time, BEFORE the engine launches:
 
-      * **Mode** -- one of:
-        - ``COLD`` (``--cold`` was confirmed with ``--force``; the prior
-          state it named is removed)
-        - ``WARM-RESUME`` (``--continue`` with prior state on disk)
-        - ``WARM-RESUME REQUESTED but no prior state`` (``--continue``
-          with nothing to resume from -- the user probably intended
-          this to be a fresh start)
-        - ``WARM-RESTART`` (no ``--continue``, but warm-start files
-          exist on disk; the engine will silently load them, so the
-          banner makes this case loudly visible.)
-        - ``initial-run (clean state)`` (no prior state; no flags).
+      * **Mode** -- what the run starts from, one of `job-contracts.md`
+        § 4.4's lines: a clean start (no restart file here); the restart
+        files launch copied in, which the engine loads; restart files the
+        deck does not read; restart files on a kind that does not resume.
 
       * **Constraints** -- engine-specific:
         - SIESTA: counts ``position`` lines + total listed indices in
@@ -963,8 +690,6 @@ def _runtime_status_block(
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for status block: {engine!r}")
 
-    # ``$_warm_label`` is set once, by the cold-restart block's prefix,
-    # which runs before this banner in both engines.
     # THE RESTART FILES LYING HERE, from the restart list in effect
     # (``warm``), under the label the engine names them on
     # (`run-identity.md` § 3.2) -- so the Mode line names what is there,
@@ -978,10 +703,11 @@ def _runtime_status_block(
         "# Reads the actual on-disk script + state files at run\n"
         "# time and reports the resulting MODE + CONSTRAINTS so\n"
         "# the user can see what's about to happen BEFORE the\n"
-        "# engine starts.  See _runtime_status_block docstring.\n"
+        "# engine starts (job-contracts.md 4.4).\n"
+        f'_warm_label="{label}"\n'
         + '# WARM STATE IS CONTENT, not mere existence: a zero-byte\n'
         + '# restart file is nothing to resume from, and a launch that\n'
-        + '# announced "WARM-RESUME ... engine will load ..." over one\n'
+        + '# announced "CONTINUES (engine will load ...)" over one\n'
         + '# would be telling the person something false.\n'
         + '_mb_has_state() { [ -s "$1" ]; }\n'
         + '_warm_found=""\n'
@@ -989,29 +715,12 @@ def _runtime_status_block(
            f'    if _mb_has_state "$_f"; then '
            f'_warm_found="${{_warm_found:+$_warm_found }}$_f"; fi\n'
            f'done\n' if warm else "")
-        + '_warmstart_present=0\n'
-        + 'if [ -n "$_warm_found" ]; then _warmstart_present=1; fi\n'
-        '_mode="initial-run (clean state)"\n'
-        'if [ "$_cold" = "1" ]; then\n'
-        '    _mode="COLD (--cold --force; prior state removed)"\n'
-        'elif [ "$_continue" = "1" ]; then\n'
-        '    if [ "$_warmstart_present" = "1" ]; then\n'
-        + (f'        _mode="{_retry_texts(False, None)["mode"]}"\n'
-           if not resumes else
-           f'        _mode="{_CLEAN_DECK_MODE}"\n'
-           if reads_prior is False else
-           '        _mode="WARM-RESUME (--continue; engine will load '
-           '$_warm_found)"\n')
-        + "    else\n"
-        + ('        _mode="RE-RUN REQUESTED but no prior state found -- starting from the first step with nothing to read back"\n'
-           if not resumes else
-           '        _mode="WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity"\n')
-        + "    fi\n"
-        'elif [ "$_warmstart_present" = "1" ]; then\n'
-        + (f'    _mode="{_CLEAN_DECK_MODE}"\n' if reads_prior is False else
-           '    _mode="WARM-RESTART (silent; engine will load existing '
-           '$_warm_found.  Pass --cold to discard them.)"\n')
-        + f"fi\n"
+        + f'_mode="{_CLEAN_START_MODE}"\n'
+        'if [ -n "$_warm_found" ]; then\n'
+        + (f'    _mode="{_FIRST_STEP_MODE}"\n' if not resumes else
+           f'    _mode="{_CLEAN_DECK_MODE}"\n' if reads_prior is False else
+           f'    _mode="{_CONTINUES_MODE}"\n')
+        + "fi\n"
         f"{constraint_detection}"
         f"\n"
     )
@@ -1431,7 +1140,7 @@ def _siesta_scf_timing_func() -> str:
     one clean sample under the capped 3-iteration bench trial;
     running-a-job.md § 4.1).
 
-    EXPECTED OUTPUT: `<basename>-runN.scf-timing.log`, one line per SCF
+    EXPECTED OUTPUT: `<basename>.scf-timing.log`, one line per SCF
     iteration; subtracting adjacent epochs gives the steady-state
     per-iteration time — the number the CPU-vs-GPU / K-sweep comparison
     ranks on.
@@ -1481,7 +1190,7 @@ def _ending_question_func() -> str:
     ``_mb_ending QUESTION [ARG]`` answers by exit status (0 yes, 1 no, 2 the
     ending cannot be read); ``_mb_ending`` alone prints the ending in words.
     With the bundle missing, not loading on the job's python, or not reading
-    the output, it answers 2 -- no hint and no warm retry.
+    the output, it answers 2 -- no hint.
 
     ``_mb_ending_able`` ASKS ONCE whether the ending can be read here -- the
     ending in words, read by the bundle on the job's python -- and remembers
@@ -1600,126 +1309,69 @@ def _wrapped(text: str, prefix: str, width: int = 62) -> str:
         text, width=width - len(prefix), break_on_hyphens=False))
 
 
-#: The Mode line of a run whose deck reads no prior state, whatever lies on
-#: disk -- its restart answer is ``clean`` (`run-identity.md` § 4).
-_CLEAN_DECK_MODE = ("CLEAN (this deck reads no prior state; the files on "
-                    "disk are not read)")
+#: THE MODE LINES (`job-contracts.md` § 4.4): what a run starts from --
+#: no restart file here; the restart files launch copied in, which the
+#: engine loads (``$_warm_found`` names them); restart files the deck reads
+#: none of -- its restart answer is ``clean`` (`run-identity.md` § 4); and
+#: restart files on a kind that does not resume (`Job.resumes`).
+_CLEAN_START_MODE = "CLEAN START (no restart file here)"
+_CONTINUES_MODE = "CONTINUES (engine will load $_warm_found)"
+_CLEAN_DECK_MODE = ("CLEAN (this deck reads no prior state; the files here "
+                    "are not read)")
+_FIRST_STEP_MODE = ("FROM THE FIRST STEP (this kind of run does not "
+                    "resume)")
 
 
-def _ending_arms(*arms) -> str:
-    """ONE ``if``/``elif`` CHAIN over the engine's ending, for the run
-    script's failure arm: each of ``arms`` is ``None`` (not rendered) or
-    ``[condition, body]`` -- the bash test on ``_mb_ending`` and the lines
-    run when it holds, already indented one level deeper than the chain.
-    ``""`` with no arm, so a program with no wall and no retry budget
-    says nothing here."""
-    lines = []
-    for arm in (a for a in arms if a is not None):
-        cond, body = arm
-        lines.append(f"    {'if' if not lines else 'elif'} {cond}; then\n"
-                     + body)
-    return "".join(lines) + ("    fi\n" if lines else "")
+#: What a benchmark trial's run script says of a launch again: a trial
+#: measures its point once (`submit._plan_trial`, `project-layout.md`
+#: § 1.5a), so its benchmark's launch does not start it again.
+_TRIAL_ONCE = ("a trial measures its point once, and its benchmark's launch "
+               "does not start it again -- to measure it again, go back to "
+               "the state saved before the benchmark's prep and prep anew")
 
 
-def _retry_texts(resumes: bool,
-                 restart_honoured: Optional[bool],
-                 relaunch: Optional[str] = None,
-                 verdict_counts: bool = True
-                 ) -> Dict[str, Optional[str]]:
-    """What a retry of this run does, in the words every retry text uses --
-    ONE description (`running-a-job.md` § 3.5): a run whose kind cannot
-    resume (`Job.resumes`, the kind's warm-files fact) re-runs from its first
-    step and reads back only what that step saved; a deck that declines
-    prior state re-runs cold; otherwise the retry resumes warm.
-
-    ``does`` is the retry's own message, ``policy`` the banner's retry line;
-    ``mode``, ``usage`` and ``after`` are the non-resuming run's Mode line,
-    ``--continue`` help and after-budget advice (``None``: the warm and cold
-    texts are the deck-restart ones, which already say what happens);
-    ``wall`` what follows a stop at the wall, ``capped`` a relaxation still
-    capped once the budget is spent.
+def _launch_again(resumes: bool, continues: bool,
+                  restart_honoured: Optional[bool],
+                  relaunch: Optional[str] = None,
+                  trial: bool = False) -> str:
+    """WHAT A LAUNCH AGAIN WILL DO, said by the run script after a failure
+    (`running-a-job.md` § 3.5) -- from the facts the launch itself decides
+    by, which prep bakes in: ``continues`` (`Job.relaunch_continues`: the
+    kind resumes and the stage takes something from a run -- the launch
+    copies this run's restart files into the next run) and ``resumes``
+    (`Job.resumes`, the kind's warm-files fact), with the deck's restart
+    answer: a stage that continues goes on warm from the files this run
+    saved; a deck that reads no prior state starts over from its own
+    coordinates; a kind that does not resume, or a stage that carries
+    nothing from one run to the next, starts over from its deck, nothing of
+    this run copied in.  ``trial``: a benchmark trial, never launched
+    again (:data:`_TRIAL_ONCE`).
 
     **A POINT OF A RUN OF POINTS** (``relaunch`` -- its declared relaunch,
-    `execution/runs-of-points.md` § 1.2) is not continued by a launch again
-    as a run of its own is: launch takes the run's points done over and,
-    for this one not done, runs it ``again`` from its start or
-    ``continue``s it from its own last state, its warm files handed over --
-    and a point whose verdict does not count (``verdict_counts``, its
-    declaration's) counts done capped as it stands -- so a point's words
-    say that, never *launch again to continue*."""
-    texts = _run_retry_texts(resumes, restart_honoured)
-    if relaunch is not None:
-        again = ("a launch again takes the run's points done over and "
-                 + ("continues this one from its own last state"
-                    if relaunch == CONTINUE else
-                    "runs this one again from its start"))
-        after = (f"this point stays not done: {again} -- to change a "
-                 f"setting, " + way_back_words(True))
-        texts.update(
-            wall=f"this point is not done -- {again}",
-            after=after,
-            capped=(("this point counts done for its run as it stands -- "
-                     "to relax further, launch the stage with --cold, or "
-                     + way_back_words(True, "give it more steps"))
-                    if not verdict_counts else after))
-    return texts
-
-
-def _run_retry_texts(resumes: bool,
-                     restart_honoured: Optional[bool]
-                     ) -> Dict[str, Optional[str]]:
-    """:func:`_retry_texts` for a run of its own."""
-    if not resumes:
-        return {
-            "does": ("re-running from its first step -- this kind of run "
-                     "does not resume"),
-            "policy": ("each re-runs the run from its first step, reading "
-                       "back only what that step saved: this kind of run "
-                       "does not resume (warm-files: resumes = false), so an "
-                       "SCF that stopped the first step continues and one "
-                       "that stopped later meets the same SCF again"),
-            # what is true of every kind that does not resume: a SIESTA
-            # force-constant run reads back its first step's density, and
-            # the usage and retry lines say so (PySCF's wrapper words its
-            # own, from the deck it ships beside)
-            "mode": ("RE-RUN FROM THE START (--continue; this kind of run "
-                     "does not resume)"),
-            "usage": ("This kind of run does not resume (warm-files:\n"
-                      "                   resumes = false): --continue "
-                      "re-runs it from\n"
-                      "                   its first step, reading back only "
-                      "what\n"
-                      "                   that step saved.\n"),
-            "after": ("revisit mixing/smearing -- a re-run of this run "
-                      "starts again from its first step"),
-            "wall": ("launch this stage again: it runs again from its first "
-                     "step -- this kind of run does not resume"),
-            "capped": ("revisit mixing/smearing -- a re-run of this run "
-                       "starts again from its first step"),
-        }
-    # THE LINE AFTER THE BUDGET, for every case, in molbuilder's own road:
-    # a stage is launched again, never re-run inside its attempt, and a
-    # setting changes by the way back of a launched stage -- this is read
-    # after its run (`identity.way_back_words`).
+    `execution/runs-of-points.md` § 1.2): a launch again takes the run's
+    points done over and, for this one not done, runs it ``again`` from
+    its start or ``continue``s it from its own last state."""
     back = "to change a setting, " + way_back_words(True)
+    if trial:
+        return _TRIAL_ONCE
+    if relaunch is not None:
+        return ("this point is not done: a launch again takes the run's "
+                "points done over and "
+                + ("continues this one from its own last state"
+                   if relaunch == CONTINUE else
+                   "runs this one again from its start")
+                + " -- " + back)
     if restart_honoured is False:
-        after = ("this deck reads no prior state, so a re-run starts again "
-                 "from its own coordinates -- " + back)
-        return {"does": "re-running cold -- this deck declines prior state",
-                "policy": ("COLD, because this deck sets DM.UseSaveDM "
-                           ".false.: a retry re-runs from the deck's "
-                           "coordinates, it does not resume"),
-                "mode": None, "usage": None, "after": after,
-                "wall": ("this deck reads no prior state: a launch again "
-                         "starts it from its own coordinates"),
-                "capped": after}
-    after = "launch the stage again to continue from this run -- or, " + back
-    return {"does": "warm-restarting",
-            "policy": "each resumes warm from what the run banked (--continue)",
-            "mode": None, "usage": None, "after": after,
-            "wall": ("the restart state is saved; launch this stage again to "
-                     "continue"),
-            "capped": after}
+        return ("this deck reads no prior state, so a launch again starts "
+                "over from its own coordinates -- " + back)
+    if not continues:
+        return ("a launch again starts this run over from its deck, nothing "
+                "of it copied in -- "
+                + ("this kind of run does not resume" if not resumes else
+                   "this stage carries nothing from one run to the next")
+                + "; " + back)
+    return ("launch the stage again to continue warm from the files this run "
+            "saved -- or, " + back)
 
 
 def _fdf_honours_restart(text: Optional[str]) -> Optional[bool]:
@@ -1729,8 +1381,9 @@ def _fdf_honours_restart(text: Optional[str]) -> Optional[bool]:
     when it says nothing — a non-SIESTA script, an unreadable one, or one
     that does not state it.
 
-    The wrapper ships beside exactly one deck, so its ``--continue`` help says
-    what that deck says rather than what a continuing deck would.
+    The wrapper ships beside exactly one deck, so what its texts say of
+    restart files -- the header, the Mode line, what a launch again will
+    do -- is what that deck says rather than what a continuing deck would.
 
     First match wins, as libfdf does (`fdf_locate` stops at the first label).
     """
@@ -1794,7 +1447,7 @@ def _py_deck_reads_prior(text: Optional[str]) -> Optional[bool]:
     emitted at all.  ``None``: a vibration deck (it computes its own
     relaxation and reads no prior engine state at start) or an
     unreadable file.  Keying the wrapper's continuation story on the
-    deck text is what keeps the help from claiming reads the deck does
+    deck text is what keeps its texts from claiming reads the deck does
     not contain -- the same doctrine as ``_fdf_honours_restart``.
     """
     if text is None:
@@ -2046,8 +1699,7 @@ LOG_FUNCTION = (
 JOB_PYTHON = '_mb_py="${CONDA_PREFIX:+$CONDA_PREFIX/bin/python3}"\n'
 
 
-def env_bootstrap(machine_record, env_name: str, *,
-                  help_guard: bool = False) -> str:
+def env_bootstrap(machine_record, env_name: str) -> str:
     """THE ENVIRONMENT ENTERED -- the one bootstrap every generated script
     runs before its own logic: a run script into its engine's environment,
     a sequence of groups' walk into molbuilder's own (`job-system.md`
@@ -2057,11 +1709,10 @@ def env_bootstrap(machine_record, env_name: str, *,
     ``$_mb_py`` (:data:`JOB_PYTHON`), and what the activation gave, in the
     log.  It runs under ``set -e``, which the caller holds: a preamble line
     that fails stops the script at that line (`running-a-job.md` § 2.0a).
-    ``help_guard``: a run script's -- a help request runs none of it.  The
-    script defines ``_log`` (:data:`LOG_FUNCTION`)."""
+    A run script's help request never reaches it: it answers with the
+    arguments, first of all.  The script defines ``_log``
+    (:data:`LOG_FUNCTION`)."""
     preamble, activation = env_entry(machine_record, env_name)
-    on, off, ind = (('if [ "$_mb_help" = "0" ]; then\n', "fi\n", "  ")
-                    if help_guard else ("", "", ""))
     return (
         "# The env bootstrap (preamble ``module load``, conda/mamba\n"
         "# ``activate``) sources EXTERNAL scripts not under our control.\n"
@@ -2076,17 +1727,10 @@ def env_bootstrap(machine_record, env_name: str, *,
         "# environment with nobody reading the output -- dying at the\n"
         "# failed line is the cheap outcome (running-a-job.md 2.0a).\n"
         "set +u\n"
-        + ("# A help request runs NONE of the bootstrap: asking what a script\n"
-           "# does must not require a working preamble or activation -- a\n"
-           "# broken module line would kill -h at the activation, three\n"
-           "# screens before the usage text it asked for (U10, 2026-08-12).\n"
-           if help_guard else "")
-        + on
         + preamble
         + "# --- Activation (verbatim from the target's record) ---\n"
         + f'_log STAGE "{activation}"\n'
         + f"{activation}\n"
-        + off
         + "set -u\n"
         + "\n"
         # THE JOB'S PYTHON -- the activated env's own, never the first
@@ -2097,12 +1741,10 @@ def env_bootstrap(machine_record, env_name: str, *,
         # interpreter without the env's packages.  Every python a script
         # runs is this one, checked after (:func:`env_python_check`).
         + JOB_PYTHON
-        + on
-        + f'{ind}_log INFO "{CONDA_ENV_LABEL}${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
-        + f'{ind}_log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
-        + f'{ind}_log INFO "{PYTHON_LABEL} '
+        + f'_log INFO "{CONDA_ENV_LABEL}${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
+        + '_log INFO "CONDA_PREFIX=${CONDA_PREFIX:-<unset>}"\n'
+        + f'_log INFO "{PYTHON_LABEL} '
           f'${{_mb_py:-(none: no CONDA_PREFIX after activation)}}"\n'
-        + off
         + "\n")
 
 
@@ -2132,7 +1774,9 @@ def render_run_wrapper(script_path: Path, *,
                         project_dir: Optional[Path] = None,
                         machine_record=None,
                         finish: Optional[str] = None,
-                        resumes: bool = True,
+                        resumes: bool,
+                        relaunch_continues: bool,
+                        trial: bool,
                         warm: Optional[Sequence[str]] = None,
                         deck_text: Optional[str] = None,
                         notes: Optional[list] = None,
@@ -2163,20 +1807,16 @@ def render_run_wrapper(script_path: Path, *,
     Routing by file extension:
 
     * ``.fdf``  → SIESTA.  Uses ``mpirun -np <N>`` when ``mpi_np`` is
-                  given and ≥ 2; redirects stdout to
-                  ``<basename>-runN.out``, N the try's number the wrapper
-                  is given (``--run N``: 0 from `launch`, the next from a
-                  warm retry).
-    * ``.py``   → PySCF.  Runs ``"$_mb_py" <script>`` with the same
-                  ``-runN`` redirect, but the suffix is
-                  ``.pyscf.log`` instead of ``.out`` so the Results-tab inspector
-                  dispatcher can distinguish PySCF stdout from
-                  SIESTA's.  The script's own progress-log writer
-                  (``MolwatchEmitter``) writes the ``.molwatch.log``.
+                  given and ≥ 2; redirects stdout to ``<basename>.out``.
+    * ``.py``   → PySCF.  Runs ``"$_mb_py" <script>`` with its stdout in
+                  ``<basename>.pyscf.log`` instead of ``.out``, so the
+                  Results-tab inspector dispatcher can distinguish PySCF
+                  stdout from SIESTA's.  The script's own progress-log
+                  writer (``MolwatchEmitter``) writes the ``.molwatch.log``.
 
-    Both wrappers take ``--run N`` -- required -- and accept
-    ``--continue`` / ``-c`` and ``--force`` / ``-f``.  See the wrapper's
-    ``-h`` for the full flag inventory.
+    Each starts once in its run's folder (`project-layout.md` § 1.6.1)
+    and takes its counts; see the wrapper's ``-h`` for the full flag
+    inventory.
 
     Args:
       script_path: the ``.fdf`` or ``.py`` to wrap.
@@ -2204,13 +1844,12 @@ def render_run_wrapper(script_path: Path, *,
             deck_text = None
     r = resources
     mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
-    max_memory_mb, continue_retries = (r.max_memory_mb,
-                                       r.continue_retries)
-    # THE WALL SLACK (`running-a-job.md` § 3.6), baked as the retry budget
-    # is: the job's own (checked below, once the engine is known).
+    max_memory_mb = r.max_memory_mb
+    # THE WALL SLACK (`running-a-job.md` § 3.6): the job's own (checked
+    # below, once the engine is known).
     wall_slack = r.wall_slack
     # WHEN this calculation should speak up -- carried on the allocation
-    # like `continue_retries`, and rendered as monitor flags rather than
+    # like `wall_slack`, and rendered as monitor flags rather than
     # scheduler ones.  Absent means the flags are not emitted at all, so a
     # wrapper for a description that asked for nothing carries none.
     # Read straight off the object, not via getattr-with-a-default: this
@@ -2257,8 +1896,8 @@ def render_run_wrapper(script_path: Path, *,
             f"{', '.join(sorted(deck_roles()))}."
         )
     # THE JOB CARRIES EVERY RUN SETTING THIS SCRIPT READS -- the
-    # engine's wrapper items with no unset (the wall's slack, SIESTA's
-    # retry budget): the run card's, or the catalogue's default `resolve`
+    # engine's wrapper items with no unset (the wall's slack): the run
+    # card's, or the catalogue's default `resolve`
     # lays (`engines/template.md` § 5.4).  The script falls back to no
     # number of its own, so a job without one is refused.
     from .template import catalogue as _catalogue, select as _select
@@ -2410,37 +2049,27 @@ def render_run_wrapper(script_path: Path, *,
             notes.append(_said)
 
     # What this deck instructs about prior state -- read from the deck, so the
-    # wrapper's own help cannot contradict the file it ships beside.
+    # wrapper's own texts cannot contradict the file it ships beside.
     _restart_honoured = (_fdf_honours_restart(deck_text)
                          if suffix == ".fdf" else None)
     # ...and FILE BY FILE, which is what the run's texts name.
     _reads = _fdf_reads(deck_text) if suffix == ".fdf" else {}
-    # WHAT A RETRY OF THIS RUN DOES -- one description (`_retry_texts`), read
-    # by every text that speaks of a retry: the banner's retry line, the
-    # retry's own message, a retry's Mode line, the --continue usage
-    # and the line after the budget is spent (`running-a-job.md` § 3.5).
-    _retry = _retry_texts(resumes, _restart_honoured,
-                          relaunch=(point.relaunch if point is not None
-                                    else None),
-                          verdict_counts=(point.verdict_counts
-                                          if point is not None else True))
     _py_reads_prior = (_py_deck_reads_prior(deck_text)
                        if suffix == ".py" else None)
-
-    # THE BUDGET IS NOT OVERRIDDEN HERE, and that is deliberate: a retry on
-    # a deck that declines prior state repeats a cold run, but the budget is
-    # not this function's call -- `job-contracts.md` § 6.2 says the value
-    # *"rides the element's Resources; prep bakes it into the wrapper"*.
-    #
-    # So the budget travels, and what changes is that the wrapper stops
-    # DESCRIBING a cold re-run as a warm resume: the retry banner and the
-    # comment beside the loop read the deck (`_restart_honoured`) and say what
-    # a retry will actually do on this one.  Say it, do not decide it.
+    # WHAT A LAUNCH AGAIN WILL DO -- one description (`_launch_again`),
+    # said after a failure (`running-a-job.md` § 3.5), from the facts the
+    # launch decides by and the deck's own restart answer.
+    _again = _launch_again(resumes, relaunch_continues,
+                           (_restart_honoured if suffix == ".fdf"
+                            else _py_reads_prior),
+                           relaunch=(point.relaunch if point is not None
+                                     else None),
+                           trial=trial)
 
     # EVERY NAME IS THE STAGE'S NAMES' (`runfiles.RunNames`): the deck it
-    # runs, its own, and each file of its tries, the try's number filled in
-    # when it runs (:func:`_bash_name`).  The deck given is the one they
-    # name, or the wrapper would run one stage's deck under another's names.
+    # runs, its own, and each file of its run.  The deck given is the one
+    # they name, or the wrapper would run one stage's deck under another's
+    # names.
     if script_path.name != names.name(suffix):
         raise WrapperError(
             f"{script_path.name} is not the deck {names.name(suffix)} its "
@@ -2500,40 +2129,21 @@ def render_run_wrapper(script_path: Path, *,
         resolved_omp = int(omp_threads)
 
         # NOTE: the actual launch command is computed at RUN time by
-        # the probe block below, NOT here -- the wrapper picks
-        # ``mpirun -np $_mpi_np siesta`` vs bare ``siesta`` based on
-        # what ``siesta --version`` reports for the currently-installed
-        # binary AND the runtime $_mpi_np value (from -np / MB_NP /
-        # the stated value).  ``inner`` is the post-probe shell
-        # expression; the launch_block at the bottom of this function
-        # wraps it in ``set +e`` + propor-detection.  The
-        # ``description`` string here is for the wrapper file header
-        # only -- the user's actual -np at run time may differ.
-        inner = f"$_launch_cmd {script_name} > $_out_file"
+        # the probe block below -- ``mpirun -np $_mpi_np siesta`` vs bare
+        # ``siesta``, from what ``siesta --version`` reports and the
+        # runtime $_mpi_np.  The ``description`` string here is for the
+        # wrapper file header only -- the actual -np at run time may differ.
         description = f"SIESTA run, -np {resolved_mpi} as stated"
 
-        # ---- Argument-parsing prelude (SIESTA only) ----
-        # The wrapper accepts ``-np N`` (or env var ``MB_NP=N``) so
-        # users can experiment with MPI rank counts WITHOUT
-        # regenerating.  Background: SIESTA can crash with
-        # ``propor: ERROR: IMAX = 0`` at startup for certain
-        # mpi_np / molecule combinations.  The crash is data-
-        # dependent on the ProcessorY x ProcessorX grid SIESTA auto-
-        # picks for that rank count; predicting it from rank count
-        # alone is not robust.  Allowing a runtime override means
-        # the user can try ``./run.sh -np 8`` after a crash with
-        # ``-np 15`` without regenerating the .fdf or the wrapper.
-        # The post-run diagnostic at the bottom of this wrapper
-        # catches the crash and prints retry suggestions.
-        # Two-stage argument parsing:
-        #
-        #   1. Shared --continue / --force consumption (engine-
-        #      agnostic; strips those flags and leaves the rest in $@).
-        #   2. SIESTA-specific -np / -h.
-        #
-        # ORDER matters: --continue/--force are recognised first so
-        # callers can combine them with -np in any order
-        # (``--continue -np 8`` and ``-np 8 --continue`` both work).
+        # ---- Argument parsing (SIESTA) ----
+        # The wrapper accepts ``-np N`` (or env var ``MB_NP=N``): `jobset
+        # launch` hands every run script its counts, and a benchmark's
+        # trials are the stated counts' variations.  Background: SIESTA
+        # can crash with ``propor: ERROR: IMAX = 0`` at startup for
+        # certain mpi_np / molecule combinations -- data-dependent on the
+        # ProcessorY x ProcessorX grid SIESTA picks for that rank count --
+        # and the post-run diagnostic at the bottom of this wrapper
+        # catches the crash and says what to try.
         #
         # THE STATED COUNTS, BAKED -- the same two in GPU and CPU mode.
         _mpi_np_default_assignment = (
@@ -2542,105 +2152,29 @@ def render_run_wrapper(script_path: Path, *,
             f"{_STATED_COUNTS[0]}={resolved_mpi}\n"
             f"{_STATED_COUNTS[1]}={resolved_omp}\n"
         )
-        siesta_args_block = (
-            _continue_force_args_parser()
-            + "# --- SIESTA-specific argument parsing -----------\n"
-            "# Override the stated counts with: ``-np N`` /\n"
-            "# ``-omp N`` flags, or ``MB_NP`` / ``OMP_NUM_THREADS`` env\n"
-            "# vars.  Useful for retrying after a propor crash (see the\n"
-            "# diagnostic at the bottom of this wrapper) or for bench\n"
-            "# sweeps WITHOUT regenerating the .fdf / wrapper.\n"
-            + _mpi_np_default_assignment
-            + "# MPI rank-count precedence (highest first):\n"
-            "#   1. ``-np N`` flag on the wrapper invocation\n"
-            "#   2. ``MB_NP`` env var (manual override)\n"
-            "#   3. ``MB_NTASKS`` (the ranks the scheduler granted, said\n"
-            "#      in molbuilder's name by the job's header)\n"
-            "#   4. the stated value, baked at prep ($_mpi_np_default)\n"
-            "# Per docs/execution/running-a-job.md § 2.1: reading what the\n"
-            "# scheduler granted for launch tuning is part of the wrapper\n"
-            "# contract -- the ranks reserved, the wrapper honors.\n"
-            '_mpi_np="${MB_NP:-${MB_NTASKS:-$_mpi_np_default}}"\n'
-            # OMP precedence: -omp flag > OMP_NUM_THREADS env > the
-            # scheduler's reservation (MB_CPUS_PER_TASK) > the stated value,
-            # baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
-            # standard OMP-toolchain convention (users bench with
-            # ``OMP_NUM_THREADS=8 ./run.sh``).  Under a scheduler it
-            # reserved the cores per rank (the OMP width per the
-            # running-a-job.md § 3.3 sizing) -- honor it so the
-            # allocation drives OMP automatically without a manual
-            # -omp (running-a-job.md § 2.1: reading scheduler env for launch
-            # tuning is part of the wrapper contract).
-            # THE CHAIN FROM THE ONE LIST (`runtime_info.THREAD_SOURCES`,
-            # `running-a-job.md` § 3.2) -- PySCF's reads it too.
-            + f'_omp_threads="{_thread_chain("$_omp_threads_default")}"\n'
-            f'_dry_run=0\n'
-            # Explicit-flag markers, read by the source report below
-            # (`--dry-run` names where each count came from).
-            f'_np_from_flag=0\n'
-            f'_omp_from_flag=0\n'
-            + 'while [ $# -gt 0 ]; do\n'
-            '    case "$1" in\n'
-            "        -np|--np)\n"
-            '            if [ $# -lt 2 ]; then\n'
-            '                echo "ERROR: -np requires a value" >&2\n'
-            "                exit 1\n"
-            "            fi\n"
-            '            _mpi_np="$2"; _np_from_flag=1; shift 2 ;;\n'
-            "        -omp|--omp|-t|--threads)\n"
-            '            if [ $# -lt 2 ]; then\n'
-            '                echo "ERROR: -omp requires a value" >&2\n'
-            "                exit 1\n"
-            "            fi\n"
-            '            _omp_threads="$2"; _omp_from_flag=1; shift 2 ;;\n'
-            "        --dry-run|--dryrun)\n"
-            "            # Resolve + LOG the launch command and the\n"
-            "            # rank<->GPU/NUMA placement, then exit WITHOUT\n"
-            "            # running SIESTA.  Lets you send a preview and\n"
-            "            # read the log to confirm the command matches\n"
-            "            # the allocation (running-a-job.md § 3.3).\n"
-            '            _dry_run=1; shift ;;\n'
+        siesta_args_parse = _args_parse(
+            # ``-np N`` / ``-omp N`` override the stated counts: what
+            # launch hands a run script, and a bench sweep's variations,
+            # without regenerating the .fdf / wrapper.
+            stated=_mpi_np_default_assignment,
+            omp_aliases="-omp|--omp|-t|--threads",
+            inits=('_mps_flag=""\n' if gpu_mode else ""),
             # WHETHER MPS IS ALLOWED.  Unsaid, the MOLBUILDER_USE_MPS env var
             # says, else allowed (the GPU placement block).  These flags
             # ALWAYS win, and they allow or forbid the daemon and nothing
             # else: the rank count is the stated one either way, and the
             # MPS block starts it only where the ranks outnumber the GPUs.
-            + (
-                "        --mps)\n"
-                '            _use_mps_default=1; shift ;;\n'
-                "        --no-mps)\n"
-                '            _use_mps_default=0; shift ;;\n'
-                if gpu_mode else ""
-            ) +
-            "        -h|--help)\n"
-            '            cat <<USAGE\n'
-            'Usage: bash $(basename "$0") --run N [--continue|-c] [--force|-f] '
-            "[--cold] [-np N] [-omp N] [--dry-run]"
+            arms=("        --mps)\n"
+                  '            _mps_flag=1; shift ;;\n'
+                  "        --no-mps)\n"
+                  '            _mps_flag=0; shift ;;\n' if gpu_mode else ""),
+            usage=(
+            'Usage: bash $(basename "$0") '
+            "[-np N] [-omp N] [--dry-run]"
             + (" [--mps|--no-mps]" if gpu_mode else "")
             + " [-h]\n"
             "\n"
-            + _run_usage_entry()
-            + _continue_usage_lead()
-            + (
-                f"                   {_retry['usage']}"
-                if not resumes else
-                _wrapped("This deck " + _fdf_reads_words(_reads),
-                         "                   ")
-                if _restart_honoured else
-                "                   This deck says 'start from: clean'\n"
-                "                   (DM.UseSaveDM .false.), so SIESTA will\n"
-                "                   NOT read prior .DM/.XV/.CG: the\n"
-                "                   calculation starts cold.  To resume:\n"
-                + _wrapped(way_back_words(
-                               None, change="change 'restart' in the "
-                                            "description") + ".",
-                           "                   ")
-                if _restart_honoured is False else
-                "                   Whether the engine also reads prior\n"
-                "                   state is the deck's to say.\n"
-            )
-            + _force_usage_entry()
-            + _cold_usage_entry(warm_examples=".DM/.CG/.XV among them")
+            + _one_start_usage(trial)
             + "  -np N            override the MPI rank count.  Stated\n"
             "                   at prep: $_mpi_np_default.\n"
             "  -omp N,          override OpenMP threads per MPI rank.\n"
@@ -2658,48 +2192,64 @@ def render_run_wrapper(script_path: Path, *,
             "  OMP_NUM_THREADS=N  same as -omp N (standard OMP toolchain\n"
             "                     convention; honored if set in env).\n"
             "\n"
-            "On 'propor: ERROR: IMAX = 0' crashes at startup, retry\n"
-            "with a smaller -np.  See the diagnostic the wrapper prints\n"
-            "on failure for specific suggestions.\n"
-            "USAGE\n"
-            "            exit 0 ;;\n"
-            "        *)\n"
-            '            echo "ERROR: unknown argument: $1 (use -h)" >&2\n'
-            "            exit 1 ;;\n"
-            "    esac\n"
-            "done\n"
-            'if ! printf %s "$_mpi_np" | grep -qE \'^[1-9][0-9]*$\'; then\n'
-            '    echo "ERROR: -np must be a positive integer; got: '
-            '\'$_mpi_np\'" >&2\n'
-            "    exit 1\n"
-            "fi\n"
-            'if ! printf %s "$_omp_threads" | grep -qE \'^[1-9][0-9]*$\'; then\n'
-            '    echo "ERROR: -omp must be a positive integer; got: '
-            '\'$_omp_threads\'" >&2\n'
-            "    exit 1\n"
-            "fi\n"
+            "On 'propor: ERROR: IMAX = 0' crashes at startup, see the\n"
+            "diagnostic the wrapper prints on failure.\n"
+            ))
+        args_parse = siesta_args_parse
+        siesta_args_block = (
+            "# --- The counts, resolved (running-a-job.md § 3.1-3.2) ---\n"
+            "# MPI rank-count precedence (highest first):\n"
+            "#   1. ``-np N`` flag on the wrapper invocation\n"
+            "#   2. ``MB_NP`` env var (manual override)\n"
+            "#   3. ``MB_NTASKS`` (the ranks the scheduler granted, said\n"
+            "#      in molbuilder's name by the job's header)\n"
+            "#   4. the stated value, baked at prep ($_mpi_np_default)\n"
+            "# Per docs/execution/running-a-job.md § 2.1: reading what the\n"
+            "# scheduler granted for launch tuning is part of the wrapper\n"
+            "# contract -- the ranks reserved, the wrapper honors.\n"
+            '_mpi_np="${_np_flag:-${MB_NP:-${MB_NTASKS:-$_mpi_np_default}}}"\n'
+            # OMP precedence: -omp flag > OMP_NUM_THREADS env > the
+            # scheduler's reservation (MB_CPUS_PER_TASK) > the stated value,
+            # baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
+            # standard OMP-toolchain convention (users bench with
+            # ``OMP_NUM_THREADS=8 ./run.sh``).  Under a scheduler it
+            # reserved the cores per rank (the OMP width per the
+            # running-a-job.md § 3.3 sizing) -- honor it so the
+            # allocation drives OMP automatically without a manual
+            # -omp (running-a-job.md § 2.1: reading scheduler env for launch
+            # tuning is part of the wrapper contract).
+            # THE CHAIN FROM THE ONE LIST (`runtime_info.THREAD_SOURCES`,
+            # `running-a-job.md` § 3.2) -- PySCF's reads it too.
+            + f'_omp_threads="${{_omp_flag:-{_thread_chain("$_omp_threads_default")}}}"\n'
+            + ('if [ -n "$_mps_flag" ]; then _use_mps_default="$_mps_flag"; fi\n'
+               if gpu_mode else "")
             +
             # WHERE each number came from, computed once the values are
             # final -- the --dry-run report prints these so a wrong scale
             # is caught BEFORE a queue slot is spent (user design,
             # 2026-08-13: dry-run is the pre-submission inspection).
             '_np_source="stated at prep"\n'
-            'if [ "$_np_from_flag" = "1" ]; then _np_source="-np flag"\n'
+            'if [ -n "$_np_flag" ]; then _np_source="-np flag"\n'
             'elif [ -n "${MB_NP:-}" ]; then _np_source="MB_NP env"\n'
             'elif [ -n "${MB_NTASKS:-}" ]; then '
             '_np_source="MB_NTASKS (the ranks the scheduler granted)"\n'
             'fi\n'
             '_omp_source="stated at prep"\n'
-            'if [ "$_omp_from_flag" = "1" ]; then _omp_source="-omp flag"\n'
+            'if [ -n "$_omp_flag" ]; then _omp_source="-omp flag"\n'
             + "".join(f'elif [ -n "${{{var}:-}}" ]; then '
                       f'_omp_source="{_THREAD_SOURCE_WORDS[var]}"\n'
                       for var in THREAD_SOURCES)
             + 'fi\n'
             "\n"
             # SIESTA's stdout role, asked rather than taken from a default.
-            + _run_index_block(names, _stdout_role_for(".fdf"), target_env)
-            + _cold_restart_block(names.label)
+            + _env_python_block(names, _stdout_role_for(".fdf"), target_env)
+            # THE COUNTS AS RESOLVED, once the start has begun: a value from
+            # the environment that is no count is refused naming where it
+            # came from, and the run concludes.
+            + '_mb_positive -np "$_mpi_np" "$_np_source"\n'
+            '_mb_positive -omp "$_omp_threads" "$_omp_source"\n'
             + _runtime_status_block(engine="siesta",
+                                    label=names.label,
                                     resumes=resumes,
                                     reads_prior=_restart_honoured,
                                     # the files the deck says it reads
@@ -2785,7 +2335,7 @@ def render_run_wrapper(script_path: Path, *,
                 '    _mps_wanted=1\n'
                 'fi\n'
                 'if [ "$_mps_wanted" = "1" ] '
-                '&& [ "${_dry_run:-0}" != "1" ]; then\n'
+                '&& [ "$_dry_run" != "1" ]; then\n'
                 '    export CUDA_MPS_PIPE_DIRECTORY="/tmp/mb-mps-$$"\n'
                 '    export CUDA_MPS_LOG_DIRECTORY="/tmp/mb-mps-$$-log"\n'
                 '    mkdir -p "$CUDA_MPS_PIPE_DIRECTORY" '
@@ -2900,11 +2450,6 @@ def render_run_wrapper(script_path: Path, *,
         _prog = program or "siesta"
         # WHAT THE LOG CALLS IT: a transmission run is TBtrans.
         _prog_label = "TBtrans" if _prog == "tbtrans" else "SIESTA"
-        # A RETRY ANSWERS AN SCF STOP OR A RELAXATION OUT OF MOVES
-        # (`running-a-job.md` § 3.5), and TBtrans ends in neither: its run
-        # script carries no retry whatever the budget, and its banner says
-        # why.
-        _retries = 0 if _prog == "tbtrans" else continue_retries
         # THE WALL'S WORDS FOR THIS PROGRAM -- the catalogue's `launch` for
         # `wall_slack` (template.md § 5), rendered with what the script
         # counts: never a flag spelled here.  A program the item does not
@@ -2927,6 +2472,8 @@ def render_run_wrapper(script_path: Path, *,
             f'if [ -z "$_siesta_bin_path" ]; then\n'
             f"    echo \"ERROR: '{_prog}' not on PATH after activating "
             f"'{target_env}'.  Is SIESTA installed in this env?\" >&2\n"
+            + '    [ "$_dry_run" = "1" ] || '
+            + conclude_line(1, f"{_prog} not on PATH") + "\n"
             f"    exit 1\n"
             f"fi\n"
             # THE PROBE CANNOT BLOCK THE JOB (2026-08-25).  Each of these
@@ -3100,15 +2647,6 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  {_prog_label + " " + VERSION_LABEL:<14}: ${{_siesta_ver:-unknown}}"\n'
             f'echo "  Build paral.  : ${{_siesta_par:-unknown}}"\n'
             f'echo "  Launch mode   : $_launch_note"\n'
-            # WHAT A RETRY WILL ACTUALLY DO ON THIS DECK.  The budget is the user's (it travels; see the note in
-            # `render_run_wrapper`); the description is the deck's.
-            + (f'echo "  Retry policy  : up to {_retries} '
-               f'retry(s) on non-convergence -- {_retry["policy"]}"\n'
-               if _retries > 0 else
-               'echo "  Retry policy  : none -- TBtrans runs no SCF and no '
-               'relaxation, so no ending of it is retried"\n'
-               if _prog == "tbtrans" else
-               'echo "  Retry policy  : none (halt on non-convergence)"\n')
             + 'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
             'OPENBLAS=1, MKL=1"\n'
             # GPU mode: print a brief monitoring hint so the user has
@@ -3139,11 +2677,11 @@ def render_run_wrapper(script_path: Path, *,
                 'echo "                # if sm% bounces 0->100->0 across ranks, MPS may help"\n'
                 'echo "                # (this ELPA build has no NCCL; multi-rank-per-GPU benefits from MPS)"\n'
             ) if gpu_mode else "")
-            # ---- Mode + constraints (post-cold, post-run-index) ----
-            # Surfaces the silent-warm-restart class explicitly so the
-            # user can see whether the engine is starting clean,
-            # resuming from prior state, or being asked to honor
-            # frozen-atom constraints.  Both lines are read from the
+            # ---- Mode + constraints ----
+            # Says what the run starts from, so the user can see whether
+            # the engine is starting clean, loading the restart files
+            # launch copied in, or being asked to honor frozen-atom
+            # constraints.  Both lines are read from the
             # on-disk script + restart files at runtime so a manual
             # .fdf edit shows the EDITED state, not the generation-
             # time snapshot (the "what you see is what runs" rule).
@@ -3173,77 +2711,39 @@ def render_run_wrapper(script_path: Path, *,
         # launch_refusal`).
         resolved_omp = int(omp_threads)
 
-        # Argument parsing: PySCF gets --continue / --force +
-        # a -h.  No engine-specific flags (PySCF doesn't have an
-        # MPI rank knob; its thread count is the stated one).
-        pyscf_args_block = (
-            _continue_force_args_parser()
-            + "# --- PySCF wrapper argument parsing -------------\n"
-            '_dry_run=0\n'
-            '_omp_flag=""\n'
-            'while [ $# -gt 0 ]; do\n'
-            '    case "$1" in\n'
-            "        --dry-run|--dryrun)\n"
-            '            _dry_run=1; shift ;;\n'
-            # -omp / -np are what `jobset launch` hands EVERY .run.sh
-            # (submit._run_sh_args).  -omp is the thread count and is honoured; -np is
-            # accepted and reported, because PySCF is OpenMP-only and a
+        # Argument parsing: -omp, --dry-run and -h.  No MPI rank knob
+        # (PySCF is OpenMP-only; its thread count is the stated one).
+        pyscf_args_parse = _args_parse(
+            # THE STATED COUNT, BY ITS NAME (`_STATED_COUNTS`): what
+            # `stated_counts` reads back for A13 -- the SIESTA script's name
+            # for the same fact.  PySCF runs one process, so it states no
+            # rank count; ``-np`` is accepted and reported below, because a
             # silently swallowed rank count would let a user believe they
-            # had asked for something.
-            "        -omp|--omp)\n"
-            '            _omp_flag="$2"; shift 2 ;;\n'
-            "        -np|--np)\n"
-            '            if [ "${2:-1}" != "1" ]; then\n'
-            '                echo "molbuilder: -np $2 ignored -- PySCF is '
-            'OpenMP-only (no MPI ranks); use -omp for thread count" >&2\n'
-            '            fi\n'
-            '            shift 2 ;;\n'
-            "        -h|--help)\n"
-            '            cat <<USAGE\n'
-            'Usage: bash $(basename "$0") --run N [--continue|-c] [--force|-f] [--cold] [--dry-run] [-h]\n'
+            # had asked for something.  ``-omp`` is what launch hands a
+            # PySCF run script, its stated threads (`submit._counts_of`).
+            stated=f"{_STATED_COUNTS[1]}={resolved_omp}\n",
+            omp_aliases="-omp|--omp",
+            usage=(
+            'Usage: bash $(basename "$0") [-omp N] [--dry-run] [-h]\n'
             "\n"
-            + _run_usage_entry()
-            + _continue_usage_lead()
-            + (
-                "                   This deck reads prior state: its\n"
-                "                   chkfile init-guess and geometry\n"
-                "                   reads are gated on its described\n"
-                "                   ``continue`` (run-identity.md § 4\n"
-                "                   rule 2).\n"
-                if _py_reads_prior else
-                "                   This deck emits NO prior-state\n"
-                "                   read (described ``clean``), so the\n"
-                "                   calculation starts from the deck's\n"
-                "                   own coordinates.\n"
-                if _py_reads_prior is False else
-                "                   This vibration deck reads no prior\n"
-                "                   engine state at start: each run\n"
-                "                   recomputes from its own relaxation\n"
-                "                   (or your already_relaxed\n"
-                "                   assertion).\n"
-            )
-            + _force_usage_entry()
-            + _cold_usage_entry(
-                warm_examples=".chk and _optimized.xyz among them")
-            + f"  -omp N           OpenMP threads.  Highest precedence;\n"
-            f"                   otherwise OMP_NUM_THREADS, else the\n"
-            f"                   scheduler's allocation, else the\n"
-            f"                   {resolved_omp} stated at prep.\n"
-            f"  -np N            accepted and IGNORED -- PySCF is\n"
-            f"                   OpenMP-only.  Present because\n"
-            f"                   `jobset launch` passes it to every\n"
-            f"                   run script; N>1 prints a note.\n"
-            f"  --dry-run        resolve + log the launch command, then\n"
-            f"                   exit WITHOUT running PySCF.\n"
-            f"  -h               this help.\n"
-            f"USAGE\n"
-            f"            exit 0 ;;\n"
-            f"        *)\n"
-            f'            echo "ERROR: unknown argument: $1 (use -h)" >&2\n'
-            f"            exit 1 ;;\n"
-            f"    esac\n"
-            f"done\n"
-            f"\n"
+            + _one_start_usage(trial)
+            + "  -omp N           OpenMP threads.  Highest precedence;\n"
+            "                   otherwise OMP_NUM_THREADS, else the\n"
+            "                   scheduler's allocation, else the\n"
+            "                   $_omp_threads_default stated at prep.\n"
+            "  -np N            accepted and IGNORED -- PySCF is\n"
+            "                   OpenMP-only, one process; N>1 prints\n"
+            "                   a note.\n"
+            "  --dry-run        resolve + log the launch command, then\n"
+            "                   exit WITHOUT running PySCF.\n"
+            "  -h               this help.\n"
+            ))
+        args_parse = pyscf_args_parse
+        pyscf_args_block = (
+            'if [ -n "$_np_flag" ] && [ "$_np_flag" != "1" ]; then\n'
+            '    echo "molbuilder: -np $_np_flag ignored -- PySCF is '
+            'OpenMP-only (no MPI ranks); use -omp for thread count" >&2\n'
+            'fi\n'
             # --- Thread sizing: the WRAPPER decides ------------------
             # Resolved here and EXPORTED, so the deck's own chain sees it
             # and the banner can state the number before Python starts.
@@ -3254,11 +2754,6 @@ def render_run_wrapper(script_path: Path, *,
             # 128-core node.
             + "# --- OpenMP thread sizing (allocation first) ---\n"
             + _phys_cores_probe_block()
-            # THE STATED COUNT, BY ITS NAME (`_STATED_COUNTS`): what
-            # `stated_counts` reads back for A13 -- the SIESTA script's name
-            # for the same fact.  PySCF runs one process, so it states no
-            # rank count.
-            + f"{_STATED_COUNTS[1]}={resolved_omp}\n"
             + 'if [ -n "$_omp_flag" ]; then\n'
               '    _omp_threads="$_omp_flag"; _omp_from="-omp flag"\n'
             # THE SAME RUNGS THE SCRIPT'S OWN CHAIN READS, from the one list
@@ -3278,9 +2773,11 @@ def render_run_wrapper(script_path: Path, *,
             # PySCF's stdout role, from the catalogue -- it is not ``.out``
             # so the Results-tab inspector dispatcher can tell PySCF output
             # apart from SIESTA's.
-            + _run_index_block(names, _stdout_role_for(".py"), target_env)
-            + _cold_restart_block(names.label)
+            + _env_python_block(names, _stdout_role_for(".py"), target_env)
+            + '_mb_positive -omp "$_omp_threads" "$_omp_from"\n'
             + _runtime_status_block(engine="pyscf",
+                                    label=names.label,
+                                    resumes=resumes,
                                     reads_prior=_py_reads_prior,
                                     warm=_warm_in_effect("pyscf", warm),
                                      script_name=script_name)
@@ -3306,7 +2803,7 @@ def render_run_wrapper(script_path: Path, *,
             f'> $_out_file 2>&1"\n'
             f'echo "  Stdout      : $_out_file"\n'
             f'echo "  Logs        : see '
-            f'{_bash_name(names, ".molwatch.log")} (script writes its own)"\n'
+            f'{names.name(".molwatch.log")} (script writes its own)"\n'
             f'echo "========================================"\n'
             f"\n"
         )
@@ -3362,31 +2859,20 @@ def render_run_wrapper(script_path: Path, *,
         f"# No-ops unless the relevant vars were set, so it is safe for\n"
         f"# CPU / PySCF / non-MPS runs.  Cleans (a) the per-rank GPU\n"
         f"# launcher temp file and (b) the MPS daemon + its pipe/log dirs.\n"
-        # STOPPING THE MONITOR, in one place: the signal says why -- TERM at
-        # the job's end, USR1 when the run is retried in place, which is
-        # not an ending (`run-reports.md` § 2) -- and the wait lets it write
-        # its closing [STATUS] / [UTIL-SUMMARY] before this shell exits and a
-        # scheduler reaps the job's processes.  Bounded (~10 s): a monitor
-        # that does not exit by then is left to its own watch-pid exit.
+        # STOPPING THE MONITOR, in one place: TERM at the job's end
+        # (`run-reports.md` § 2) -- and the wait lets it write its closing
+        # [STATUS] / [UTIL-SUMMARY] before this shell exits and a scheduler
+        # reaps the job's processes.  Bounded (~10 s): a monitor that does
+        # not exit by then is left to its own watch-pid exit.
         f"_mb_stop_monitor() {{\n"
         f'    [ -n "${{_monitor_pid:-}}" ] || return 0\n'
-        f'    kill "-$1" "$_monitor_pid" 2>/dev/null || return 0\n'
+        f'    kill -TERM "$_monitor_pid" 2>/dev/null || return 0\n'
         f"    _mb_w=0\n"
         f'    while kill -0 "$_monitor_pid" 2>/dev/null '
         f'&& [ "$_mb_w" -lt 50 ]; do\n'
         f"        sleep 0.2\n"
         f"        _mb_w=$((_mb_w + 1))\n"
         f"    done\n"
-        f"}}\n"
-        # SIESTA'S HISTORY POINTERS, removed when the engine exits and by
-        # this trap (`job-contracts.md` § 2.6) -- a no-op unless a run
-        # script laid one (`_history_block`).
-        f'_mb_pointed=""\n'
-        f"_mb_unpoint() {{\n"
-        f"    for _mb_p in $_mb_pointed; do\n"
-        f'        if [ -L "$_mb_p" ]; then rm -f "$_mb_p"; fi\n'
-        f"    done\n"
-        f'    _mb_pointed=""\n'
         f"}}\n"
         f"_mb_cleanup_ran=0\n"
         f"_mb_cleanup() {{\n"
@@ -3399,8 +2885,7 @@ def render_run_wrapper(script_path: Path, *,
         # a monitor already dead (the COMMON case at cleanup) would kill the
         # trap mid-body and skip the MPS teardown below (R9).  Same for a
         # vanished MPS control daemon under pipefail.
-        f"    _mb_stop_monitor TERM || true\n"
-        f"    _mb_unpoint || true\n"
+        f"    _mb_stop_monitor || true\n"
         f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" '
         f"2>/dev/null || true\n"
         # BOTH conditions (E-3, 2026-08-13): _mps_started says a daemon
@@ -3448,7 +2933,7 @@ def render_run_wrapper(script_path: Path, *,
         f'_log INFO "log file:   $_runwrap_log"\n'
         + _scheduler_context_block()
         + "\n"
-        + env_bootstrap(_rec_sg, target_env, help_guard=True)
+        + env_bootstrap(_rec_sg, target_env)
     )
 
     # Launch + diagnostics.  The command is run, not exec'd, for both
@@ -3456,7 +2941,7 @@ def render_run_wrapper(script_path: Path, *,
     # (`job-contracts.md` § 2.2, `project-layout.md` § 1.6 -- "absent means
     # killed"), and `exec` would replace this shell so nothing could run
     # afterwards.  For SIESTA it also lets us inspect the .out for
-    # ``propor: ERROR: IMAX = 0`` on failure and print a targeted retry
+    # ``propor: ERROR: IMAX = 0`` on failure and print a targeted
     # hint.  Cost: one extra bash process for the wrapper's lifetime; cheap.
     if category == "siesta":
         # Always-on launch-command audit log + the --dry-run preview, both
@@ -3471,14 +2956,14 @@ def render_run_wrapper(script_path: Path, *,
             + _siesta_scf_timing_func()
             + f"# --- Launch SIESTA + capture exit -----------------------\n"
             f"# `set +e` lets us inspect the exit code; on a failure the\n"
-            f"# ending is asked of the framework (_mb_ending) and a stop by\n"
-            f"# propor gets its retry suggestion.  Then we re-exit with\n"
-            f"# SIESTA's code.\n"
+            f"# ending is asked of the framework (_mb_ending), a stop by\n"
+            f"# propor gets its hint, and what a launch again will do is\n"
+            f"# said.  Then we re-exit with SIESTA's code.\n"
             f"# stdout is piped through _mb_scf_tee, which writes the .out\n"
             f"# AND the per-iteration .scf-timing.log (running-a-job.md § 4.1); SIESTA's\n"
             f"# stderr stays on the wrapper's stderr (runwrap log).  We read\n"
             f"# ${{PIPESTATUS[0]}} so awk never masks SIESTA's exit code.\n"
-            f'_scf_timing_log="{_bash_name(names, ".scf-timing.log")}"\n'
+            f'_scf_timing_log="{names.name(".scf-timing.log")}"\n'
             f'_log INFO "scf timing  : per-iteration stamps -> '
             f'$_scf_timing_log"\n'
             + _ending_question_func()
@@ -3499,36 +2984,6 @@ def render_run_wrapper(script_path: Path, *,
             # objects back); SIESTA cannot, so the run script echoes the
             # deck it is about to hand over.
             + _effective_parameters_block(script_path)
-            + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
-               f'_siesta_retry_max={_retries}\n'
-               f'# Retry: re-exec this wrapper as the run\'s NEXT TRY --\n'
-               f'# --run N+1,\n'
-               f'# with --continue; what the engine reads back is the banner\'s\n'
-               f'# retry line -- warm, cold, or from the first step of a run\n'
-               f'# that does not resume.  The engine\'s own arguments go with\n'
-               f'# it, never --force or --cold: --cold would refuse over the\n'
-               f'# very warm-start files the retry needs.  MB_RETRY_N is\n'
-               f'# exported so it survives the exec -> bounded recursion.\n'
-               f'# The monitor is stopped first, as a retry and not an ending\n'
-               f'# (exec skips the EXIT trap; the next try starts its own)\n'
-               f'# (running-a-job.md 3.5).\n'
-               f'_mb_warm_retry() {{\n'
-               f'    _mb_next=$((_siesta_retry + 1))\n'
-               f'    _mb_next_try=$((_run_n + 1))\n'
-               f'    echo "" >&2\n'
-               f'    echo "=== $1; {_retry["does"]} '
-               f'(retry $_mb_next/$_siesta_retry_max) as try $_mb_next_try, '
-               f'with --continue ===" >&2\n'
-               f'    echo "" >&2\n'
-               f'    _mb_stop_monitor USR1 || true\n'
-               f'    export MB_RETRY_N=$_mb_next\n'
-               f'    exec 1>&"$_mb_out" 2>&"$_mb_err" {{_mb_out}}>&- '
-               f'{{_mb_err}}>&-\n'
-               f'    exec bash "$_mb_self" --continue --run "$_mb_next_try" '
-               f'${{_mb_engine_args[@]+"${{_mb_engine_args[@]}}"}}\n'
-               f'}}\n'
-               if _retries > 0 else "")
-            + _history_block(names, deck_text)
             # THE WALL REACHES THE ENGINE (running-a-job.md § 3.6; siesta.md
             # § 8.9): what is left of the job's wall when the program
             # starts, in the words the catalogue's `wall_slack` item gives
@@ -3550,7 +3005,6 @@ def render_run_wrapper(script_path: Path, *,
             f'"$_scf_timing_log"\n'
             f"_siesta_exit=${{PIPESTATUS[0]}}\n"
             f"set -e\n"
-            f"_mb_unpoint\n"
             f"_t_end=$(date +%s.%N)\n"
             f'_siesta_wall=$(awk -v a="$_t_start" -v b="$_t_end" '
             f"'BEGIN{{printf \"%.1f\", b-a}}')\n"
@@ -3615,38 +3069,16 @@ def render_run_wrapper(script_path: Path, *,
             f"    fi\n"
             f'    echo "the output: $_out_file -- this wrapper\'s log: '
             f'$_runwrap_log" >&2\n'
-            + ('    # SCF_NOT_CONV abort: with SCF.MustConverge (SIESTA\n'
-               '    # default true) an unconverged SCF stops the run\n'
-               '    # NON-zero after banking the density matrix, and SIESTA\n'
-               '    # says so -- "(required)" on its SCF_NOT_CONV line, then\n'
-               '    # ABNORMAL_TERMINATION (Src/siesta_forces.F90) -- so the\n'
-               '    # retry asks whether THAT stopped it.  A --continue\n'
-               '    # restart resumes the SCF from that .DM with a fresh\n'
-               '    # iteration budget -- unless the run cannot resume: a\n'
-               '    # force-constant run restarts at its first step, and the\n'
-               '    # banner and the retry message say so.  Crash classes (propor\n'
-               '    # IMAX, generic aborts) are NOT retried -- rerunning\n'
-               '    # cannot fix a defective pseudo or a bad rank count.\n'
-               if _retries > 0 else "")
-            # STOPPED AT ITS WALL (MaxWalltime, running-a-job.md 3.6): its
-            # restart state is saved and no time is left, so no retry --
-            # what a launch again does, said: for every program that takes
-            # the wall, whatever its retry budget.  The SCF-retry arms sit
-            # under the budget, one if/elif chain with it.
-            + _ending_arms(
-                ([f'_mb_ending stopped-by "{_G.OUT_OF_TIME_MARKER}"',
-                  f'        echo "stopped at its wall (MaxWalltime): '
-                  f'{_retry["wall"]}" >&2\n'] if _wall_words else None),
-                ([f'[ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
-                  f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"',
-                  '        _mb_warm_retry "SCF did not converge '
-                  '(SIESTA aborted under SCF.MustConverge)"\n']
-                 if _retries > 0 else None),
-                ([f'[ "$_siesta_retry" -gt 0 ] \\\n'
-                  f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"',
-                  f'        echo "SCF still unconverged after '
-                  f'$_siesta_retry_max retry(s); {_retry["after"]}." >&2\n']
-                 if _retries > 0 else None))
+            # WHAT A LAUNCH AGAIN WILL DO, from the kind's fact
+            # (`running-a-job.md` § 3.5): this run is one start, and it
+            # concludes now.  A stop at the wall says so first, for every
+            # program that takes the wall (§ 3.6).
+            + (f'    if _mb_ending stopped-by "{_G.OUT_OF_TIME_MARKER}"; then\n'
+               f'        {_again_line(_again, "stopped at its wall (MaxWalltime)")}'
+               f'    else\n'
+               f'        {_again_line(_again)}'
+               f'    fi\n'
+               if _wall_words else f'    {_again_line(_again)}')
             + _point_block(names, POINT_ENDED, point, finish, script_name,
                            failed=True)
             + '    # CONCLUDED -- an error is a conclusion (project-\n'
@@ -3657,30 +3089,6 @@ def render_run_wrapper(script_path: Path, *,
             + "    " + conclude_line('"$_siesta_exit"') + "\n"
             + '    exit "$_siesta_exit"\n'
             "fi\n"
-            + (f"\n"
-               f"# --- Geometry-cap check + warm-retry "
-               f"(up to {_retries} retries) ---\n"
-               f"# A relaxation that exhausts its MD step budget UNCONVERGED\n"
-               f"# still exits 0 and prints its final geometry as unrelaxed\n"
-               f"# (a converged one as relaxed; Src/siesta_analysis.F90).\n"
-               f"# Warm --continue resumes from the banked .XV/.DM/.CG with\n"
-               f"# a fresh step budget.  A single point prints neither, so\n"
-               f"# it cannot false-trigger.\n"
-               f'if ! _mb_ending_able; then\n'
-               f'    _log WARN "{_ENDING_UNREADABLE}"\n'
-               f'elif [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
-               f'   && _mb_ending relaxation-capped; then\n'
-               f'    _mb_warm_retry "geometry relaxation hit its step cap '
-               f'unconverged"\n'
-               f'elif _mb_ending relaxation-capped; then\n'
-               f'    echo "WARNING: geometry still unconverged after '
-               f'$_siesta_retry_max retry(s); {_retry["capped"]}." >&2\n'
-               f'elif [ "$_siesta_retry" -gt 0 ]; then\n'
-               f'    echo "SIESTA converged after $_siesta_retry '
-               f'retry(s)."\n'
-               f'fi\n'
-               f'\n'
-               if _retries > 0 else "")
             + f'echo "{_prog_label} completed: $_launch_cmd {script_name} -> '
             + '$_out_file"\n'
             + _point_block(names, POINT_ENDED, point, finish, script_name)
@@ -3720,6 +3128,11 @@ def render_run_wrapper(script_path: Path, *,
             f'_pyscf_wall=$(awk -v a="$_t_start" -v b="$_t_end" '
             f"'BEGIN{{printf \"%.1f\", b-a}}')\n"
             f'_log INFO "{WALL_LINE.format(program="PySCF", seconds="${_pyscf_wall}")}"\n'
+            # WHAT A LAUNCH AGAIN WILL DO, after a failure (`running-a-job.md`
+            # § 3.5): this run is one start, and it concludes now.
+            f'if [ "$_pyscf_exit" -ne 0 ]; then\n'
+            f'    {_again_line(_again)}'
+            f'fi\n'
             f'    # CONCLUDED -- an error is a conclusion (project-layout.md\n'
             f'    # 1.6, "the other file"): the engine returned and this\n'
             f'    # process gets to say goodbye.  MAIN LINE ONLY, never the\n'
@@ -3778,14 +3191,17 @@ def render_run_wrapper(script_path: Path, *,
         f"#\n"
         f"# Generated at prep (`molbuilder jobset prep`).  Edit freely;\n"
         f"# molbuilder will not regenerate this file until the next prep\n"
-        f"# of the same script.  `molbuilder jobset launch` starts it and\n"
-        f"# gives it the try's number (--run N, project-layout.md 1.6.1):\n"
+        f"# of the same script.  `molbuilder jobset launch` starts it,\n"
+        f"# once in its run's folder (project-layout.md 1.6.1):\n"
         f"#\n"
-        f"#     {hand_run(names)}          # try {FIRST_TRY} -> {names.name(_ext, FIRST_TRY)}\n"
-        f"#     {hand_run(names)} -np 8    # override mpi_np (SIESTA only)\n"
-        f"#     MB_NP=8 {hand_run(names)}  # same via env var\n"
-        f"#\n"
-        f"# Continuation contract:\n"
+        f"#     {hand_run(names)}          # -> {names.name(_ext)}\n"
+        + (f"#     {hand_run(names)} -np 8    # override the rank count\n"
+           f"#     MB_NP=8 {hand_run(names)}  # same via env var\n"
+           if suffix == ".fdf" else
+           f"#     {hand_run(names)} -omp 8   # override the thread count\n")
+        + "#\n"
+        "# What the deck reads of the restart files launch copies in\n"
+        "# (job-contracts.md 4.1):\n"
         # THE DECK DECIDES, AND THIS WRAPPER SHIPS BESIDE EXACTLY ONE DECK:
         # every text here that speaks of restart reads `_restart_honoured`.
         # KEYED ON THE SUFFIX FIRST (E-J3): which ENGINE's contract to
@@ -3824,7 +3240,7 @@ def render_run_wrapper(script_path: Path, *,
         + f"#\n"
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"
         f"# docs/execution/running-a-job.md § 2.2a).  Its own files (the\n"
-        f"# runwrap log, -runN.out) land in the CALLER'S current working\n"
+        f"# session log, the output) land in the CALLER'S current working\n"
         f"# directory.  Sent to a scheduler this is the folder it was\n"
         f"# sent from; under direct invocation it's\n"
         f"# wherever you ``cd``'d before running the wrapper.  The\n"
@@ -3845,15 +3261,10 @@ def render_run_wrapper(script_path: Path, *,
         f"#\n"
         f"set -euo pipefail\n"
         f"\n"
-        f"# Help is answerable by ANYONE: -h/--help is scanned before the\n"
-        f"# launch-door gate, so asking what a script does never meets a\n"
-        f"# permission prompt (U10, 2026-08-12).  The flag is only NOTED\n"
-        f"# here -- the engine arg loop below owns the usage text.\n"
-        f"_mb_help=0\n"
-        f'for _mb_a in ${{@:+"$@"}}; do\n'
-        f'    case "$_mb_a" in -h|--help) _mb_help=1 ;; esac\n'
-        f"done\n"
-        f"\n"
+        # HELP IS ANSWERABLE BY ANYONE: the arguments are read first, so
+        # asking what a script does never meets the launch-door gate (U10,
+        # 2026-08-12), and a dry run is known before the one-start guard.
+        f"{args_parse}"
         # THE WALL, counted from the job's start (running-a-job.md § 3.6):
         # a job's header said when it started; a run here says it now.  The
         # slack travels to the engine beside it -- SIESTA on its command
@@ -3865,19 +3276,8 @@ def render_run_wrapper(script_path: Path, *,
         f"export {JOB_STARTED_VAR}\n"
         f"{_slack_export}"
         f"\n"
-        f"# --- Per-try log file (current directory; see docs/execution/running-a-job.md § 2.2a) -\n"
-        f'_runwrap_log="$PWD/{_bash_name(names, ".runwrap-{stamp}.log")}"\n'
-        f"# ABSOLUTE, and it has to be: every later reference -- the\n"
-        f"# ending read over it (_mb_ending), for SIESTA's stderr -- must\n"
-        f"# resolve wherever it runs from.\n"
-        f"# It opens BEFORE the launch-door gate (U10), so a refusal is a\n"
-        f"# fact on disk -- the log alone answers what happened, even when\n"
-        f"# nothing ran.  The output it was started with is kept: a warm\n"
-        f"# retry hands it back before it starts again, so each start's\n"
-        f"# log holds that start alone (running-a-job.md 3.5).\n"
-        f"exec {{_mb_out}}>&1 {{_mb_err}}>&2\n"
-        f'exec > >(tee -a "$_runwrap_log") 2> >(tee -a "$_runwrap_log" >&2)\n'
-        f"\n"
+        + _one_start_block(names, trial)
+        + f"\n"
         f"# --- Launch-door gate (one door: jobset launch) ----------\n"
         f"# `molbuilder jobset launch` sets {LAUNCH_CLAIM_VAR} when it launches\n"
         f"# this script (direct: child env; sent to a scheduler: on the\n"
@@ -3885,9 +3285,9 @@ def render_run_wrapper(script_path: Path, *,
         f"# launch bookkeeping, the check of what prep wrote and the\n"
         f"# mode/config resolution.  {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} is the\n"
         f"# deliberate override, and the value is logged either way\n"
-        f"# (job-contracts.md 2.6).  A help request skips the gate: it\n"
-        f"# launches nothing.\n"
-        f"if [ -z \"${{{LAUNCH_CLAIM_VAR}:-}}\" ] && [ \"$_mb_help\" = \"0\" ]; then\n"
+        f"# (job-contracts.md 2.6).  A help request never reaches it: it\n"
+        f"# answered above.\n"
+        f"if [ -z \"${{{LAUNCH_CLAIM_VAR}:-}}\" ]; then\n"
         f"  echo \"WARNING: {run_sh} was called directly, not via\" >&2\n"
         f"  echo \"  'molbuilder jobset launch'.  Direct calls skip launch\" >&2\n"
         f"  echo \"  bookkeeping and the check of what prep wrote.\" >&2\n"
@@ -3899,10 +3299,7 @@ def render_run_wrapper(script_path: Path, *,
         f"    _mb_answer=\"\"\n"
         f"    read -r _mb_answer || true\n"
         f"    case \"${{_mb_answer}}\" in\n"
-        f"      # EXPORTED, not just set: the warm-retry re-execs this very\n"
-        f"      # wrapper, and an unexported answer would re-prompt (or\n"
-        f"      # refuse, stdin long gone) mid-retry at 3am (U10).  The\n"
-        f"      # submit door already exports; the manual door must too.\n"
+        f"      # EXPORTED, as the claim launch gives is (U10).\n"
         f"      y|Y|yes|YES) export {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} ;;\n"
         f"      *) echo \"  Aborted.  ({LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} skips this prompt.)\" >&2\n"
         f"         echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
@@ -3918,16 +3315,28 @@ def render_run_wrapper(script_path: Path, *,
         f"    exit 2\n"
         f"  fi\n"
         f"fi\n"
+        f"# --- The run's session log (running-a-job.md 2.2a) ------\n"
+        f"# It opens once the gate lets a start through, and only for a\n"
+        f"# start: a help request, a dry run and a refused start write\n"
+        f"# none, so the folder stays free for the start it was opened for\n"
+        f"# (job-contracts.md 2.6).\n"
+        f'if [ "$_dry_run" = "0" ]; then\n'
+        f'    exec > >(tee -a "$_runwrap_log") '
+        f'2> >(tee -a "$_runwrap_log" >&2)\n'
+        f"else\n"
+        f"    _runwrap_log=/dev/null\n"
+        f"fi\n"
+        f"\n"
         f"# The verdict, in the JOB'S OWN OUTPUT: sent to a scheduler this line is in\n"
-        f"# the job's .out, and since the tee above it is ALSO in the runwrap\n"
-        f"# log -- either alone answers \"was this launched properly, run by\n"
+        f"# the job's .out, and for a start it is in the session log too --\n"
+        f"# either alone answers \"was this launched properly, run by\n"
         f"# hand on purpose, or refused?\" -- no terminal needed, and nothing\n"
         f"# can sit waiting on one (no-TTY never prompts).\n"
-        f'echo "launched-by: ${{{LAUNCH_CLAIM_VAR}:-none (help)}}"\n'
+        f'echo "launched-by: ${{{LAUNCH_CLAIM_VAR}}}"\n'
         f"# Per docs/execution/running-a-job.md § 2.2a: the wrapper does NOT change cwd.\n"
         f"# A scheduler lands the job in the folder it was sent from; direct\n"
         f"# callers ``cd`` to the run's folder before invoking.  The\n"
-        f"# caller's cwd is the contract -- outputs (log, -runN.out)\n"
+        f"# caller's cwd is the contract -- outputs (the session log, the output)\n"
         f"# land where the wrapper was invoked.\n"
         f"\n"
         f"{env_activation}"
@@ -4041,8 +3450,7 @@ MONITOR_DATA: Dict[str, Path] = {_CARDS_FILE: _CARDS_SHIPPED}
 #: (`_mb_ending_able`).
 _ENDING_UNREADABLE = (f"the ending cannot be read here ({MONITOR_BUNDLE} "
                       f"is not beside the job, does not load on its python, "
-                      f"or could not read the output): no failure hint, no "
-                      f"warm retry")
+                      f"or could not read the output): no failure hint")
 
 #: The bundle's entry: the monitor, whose exit status is the process's --
 #: `_run_ending`'s questions answer by it.  A bundle this python cannot
@@ -4404,7 +3812,9 @@ def render_wrappers(script_path: Path, *,
                     machine_record=None,
                     domain_pq: Optional[Tuple[str, str]] = None,
                     finish: Optional[str] = None,
-                    resumes: bool = True,
+                    resumes: bool,
+                    relaunch_continues: bool,
+                    trial: bool,
                     warm: Optional[Sequence[str]] = None,
                     deck_text: Optional[str] = None,
                     point: Optional[PointOfRun] = None) -> RenderedWrapper:
@@ -4468,8 +3878,9 @@ def render_wrappers(script_path: Path, *,
         script_path, names=names, resources=r, program=program, env=env,
         n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
-        finish=finish, resumes=resumes, warm=warm, deck_text=deck_text,
-        notes=_notes, point=point)
+        finish=finish, resumes=resumes,
+        relaunch_continues=relaunch_continues, trial=trial, warm=warm,
+        deck_text=deck_text, notes=_notes, point=point)
     _validate_rendered_wrapper(text, script_path)
     # THE STAGE'S NAMES NAME IT (`runfiles.RunNames`), as every file of it.
     files = [(names.name(".run.sh"), text)]
@@ -4527,7 +3938,9 @@ def write_run_wrapper(script_path: Path, *,
                       machine_record=None,
                       domain_pq: Optional[Tuple[str, str]] = None,
                       finish: Optional[str] = None,
-                      resumes: bool = True,
+                      resumes: bool,
+                      relaunch_continues: bool,
+                      trial: bool,
                       warm: Optional[Sequence[str]] = None,
                       plan=None, notes: Optional[list] = None,
                       point: Optional[PointOfRun] = None) -> Path:
@@ -4560,7 +3973,9 @@ def write_run_wrapper(script_path: Path, *,
                                domain_pq=domain_pq,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir, finish=finish,
-                               resumes=resumes, warm=warm,
+                               resumes=resumes,
+                               relaunch_continues=relaunch_continues,
+                               trial=trial, warm=warm,
                                point=point,
                                # THE DECK AS THE PLAN HOLDS IT, a block
                                # read from a file beside it inlined.
@@ -4747,10 +4162,10 @@ def render_sbatch(names, *, scheduler,
     kind = _kind_named(scheduler.kind)
 
     # HOW IT IS SENT (`job-contracts.md` § 2.6): by `jobset launch`, which
-    # numbers each run and records it; a run's header also by hand, past the
-    # run script's launch-door gate, from its own folder, handing its run
-    # script the try's number.  A walk's (``where``) runs a walk script
-    # only launch writes, its members' numbers in it: launch alone sends it.
+    # opens each run and records it; a run's header also by hand, past the
+    # run script's launch-door gate, from its own folder.  A walk's
+    # (``where``) runs a walk script only launch writes, its members'
+    # counts in it: launch alone sends it.
     # THE LINE TO SEND IT BY HAND -- launch's own form (`kinds.Kind.line`),
     # the job named by its header's name, the claim the person's.
     from .scheduler.quantities import parse_walltime
@@ -4761,7 +4176,7 @@ def render_sbatch(names, *, scheduler,
         "#     " + " ".join(kind.line(
             scheduler.commands(), job=basename, restated=[],
             launched_by=MANUAL_CLAIM, header=names.name(".sbatch"),
-            args=["--run", str(FIRST_TRY)],
+            args=[],
             # THE HEADER'S WALL, told to the job as a launch tells it
             # (`running-a-job.md` § 3.6).
             wall_s=parse_walltime(time)))]
@@ -4770,10 +4185,10 @@ def render_sbatch(names, *, scheduler,
         f"# === molbuilder scheduler header (scheduler: {kind.name}) ===",
         "# Generated by prep from the job's own stated values.",
         "# Authoritative design: docs/execution/job-system.md.",
-        "# Sent by `molbuilder jobset launch`, which numbers each run and",
+        "# Sent by `molbuilder jobset launch`, which opens each run and",
         *(by_hand or [
             "# records it, and writes the walk script this header runs --",
-            "# each member's run number in it.  It is not sent by hand."]),
+            "# each member's counts in it.  It is not sent by hand."]),
         "#",
         *kind.directive("name", name=basename),
         *kind.directive("nodes"),
@@ -4809,7 +4224,7 @@ def render_sbatch(names, *, scheduler,
         + "\n"
         # WHEN THE JOB STARTED, said once for everything it runs: each run's
         # monitor counts the job's wall down from it -- a walk's later
-        # member and a warm retry too (`run-reports.md` § 2.1b).
+        # member too (`run-reports.md` § 2.1b).
         "# When this job started, for everything it runs: each run's monitor\n"
         "# counts the job's wall down from it (run-reports.md 2.1b).\n"
         f'export {JOB_STARTED_VAR}="$(date +%s)"\n'
@@ -4818,10 +4233,9 @@ def render_sbatch(names, *, scheduler,
         "# the launcher never cd's (running-a-job.md § 2.2a).  The launcher's\n"
         "# preamble + activation are baked into it, so it needs nothing\n"
         "# from the submitting shell.  \"$@\" forwards what `jobset launch`\n"
-        + ("# hands it -- nothing: each member's try number and counts are\n"
-           "# in the walk.\n" if where else
-           "# hands the run script: its try's number (--run N) and its\n"
-           "# -np / -omp.\n")
+        + ("# hands it -- nothing: each member's counts are in the walk.\n"
+           if where else
+           "# hands the run script: its -np / -omp.\n")
         + f"bash {where}{names.name('.run.sh')} \"$@\"\n"
     )
     return "\n".join(lines) + "\n" + body

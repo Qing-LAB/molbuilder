@@ -1001,7 +1001,7 @@ along a mode; Raman does not wait on it.
 **The reference** is the AuBDTAu vibration run on Sol
 (`spectrum/AuBDTAu_relaxed_vib`, 2026-10-24): 312 atoms, 20 free, 64 MPI
 ranks, at the vibration's settings — a 1×1×1 k-point grid and a 300 Ry mesh.
-Read from the run's own SCF timer log (`…-run0.scf-timing.log`), each step's
+Read from the run's own SCF timer log (its `.scf-timing.log`), each step's
 time its iterations times the run's average iteration:
 
 | measured | value |
