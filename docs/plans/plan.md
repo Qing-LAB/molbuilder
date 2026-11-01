@@ -42,11 +42,9 @@ from, the ways out and the transport describe's checks composed once
 B's review over its diff, each finding checked in the code before it was
 fixed (the ledger's *Found by Release B's review*); each new test seen
 failing on the old code or by a deliberate break of its fix. **No e2e**;
-**untested** is listed in 2.62.0's row. **The user's to decide** (the
-ledger's rows *listed for the user*): a transport rung's prepared points
-recorded by prep (A2); a launch again while the last run runs (A5, A8); a
-warm `--gather` taking over points from the old inputs (A10); a job's
-address matched to its run by more than its folder (R8).
+**untested** is listed in 2.62.0's row. Nothing from the review waits on
+the user: its set-aside rows are closed or parked, each with its reason
+(the ledger).
 
 **What runs next** is **the jobset documents' consolidation** *(the user,
 2026-11-01: "holistically review the jobset module's related document to
