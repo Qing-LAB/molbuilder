@@ -184,13 +184,12 @@ def _read_environment(bundle: Path) -> Dict:
     """The machine a result was measured on, as data for ``bench-result.json``.
 
     Through the one door (N1): it reads the object and asks it for its own
-    dict, so the shape a result records is the shape the record has.
-    """
-    from ..scheduler.record import UnknownTarget, calculation_environment
-    try:
-        env = calculation_environment(bundle)
-    except UnknownTarget:
-        env = None
+    dict, so the shape a result records is the shape the record has.  A
+    copy that does not read is refused by that door, naming it
+    (`scheduler.record.UnknownTarget`): a result is never written as
+    measured on no machine."""
+    from ..scheduler.record import calculation_environment
+    env = calculation_environment(bundle)
     return env.to_dict() if env is not None else {}
 
 

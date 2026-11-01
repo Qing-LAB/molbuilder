@@ -259,6 +259,14 @@ said_lacks = ["the folder's state was"]
 kept = ["01_coarse/H2_01_coarse.fdf", "02_medium/H2_02_medium.fdf", "STAGE-PLAN.md", "jobset-decisions.log"]
 
 [[case]]
+name = "...and a group of that sequence prepared alone takes the sequence's one header away -- it summed the group's request as it was, and is no longer one prep writes; prep ... --one-job writes it again (job-system.md 6.0, A sequence of groups): a stale request sent as the sequence's one job"
+before = [["prep", "task", "--group", "1", "--group", "2", "--one-job"]]
+changed = { overrides = { medium = { max_scf_iter = 200 } } }
+stage = "medium"
+made_lacks = ["launch/H2_sequence-01_coarse-02_medium.sbatch"]
+kept = ["01_coarse/H2_01_coarse.fdf"]
+
+[[case]]
 name = "a later group's prep leaves an earlier stage's files as that stage's own prep wrote them -- its deck, its run script, its monitor"
 before = [["prep", "task", "--group", "1"]]
 stage = "medium"
@@ -313,6 +321,12 @@ name = "a run card changed since a stage's prep is said by status -- changed sin
 saved = { execution = { mpi_np = 4, omp_threads = 1 } }
 launch = []
 after_launch = { status_says = ["changed since prepared: coarse: run card mpi_np: 2 → 4 -- prepare it again", "molbuilder jobset prep task --group 1"] }
+
+[[case]]
+name = "a run card value stated since a stage's prep is a change too -- said not stated → its value, as one changed is (job-system.md, The task, Changed since prepared: the run card holds only what is stated)"
+saved = { execution = { mpi_np = 2, omp_threads = 1, max_memory_mb = 4000 } }
+launch = []
+after_launch = { status_says = ["changed since prepared: coarse: run card max_memory_mb: not stated → 4000 -- prepare it again", "molbuilder jobset prep task --group 1"] }
 
 [[case]]
 name = "a group's first launch saves the folder's state at the send, before anything is written, and says which -- the state a redo of the group restores, named though the scheduler then refuses the send -- empties its run whole and gives prep's own files back as they lie, and records what each stage took: the first stage, nothing"

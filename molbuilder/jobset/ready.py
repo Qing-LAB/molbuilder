@@ -58,8 +58,10 @@ class Readiness:
     #: Which wait ``why`` is, for a stage prepared and not ready to launch
     #: (`job-system.md`, *The task*): ``"waits"`` -- a run it builds on is
     #: not there yet; ``"regrouped"`` -- its job's members changed;
-    #: ``"unreadable"`` -- its launch record does not read; ``"missing"``
-    #: -- its run is not on disk (:data:`MISSING`).  ``None`` otherwise.
+    #: ``"unreadable"`` -- its launch record does not read; ``"record"``
+    #: -- its record of what it was prepared with does not read
+    #: (`prepared_with.read`), launched or not; ``"missing"`` -- its run
+    #: is not on disk (:data:`MISSING`).  ``None`` otherwise.
     blocked: Optional[str] = None
     #: The members of the job it is prepared in (`Job.members`, or itself
     #: alone) -- ``None`` when not prepared.
@@ -90,6 +92,10 @@ class Readiness:
         line of what one waiting waits for."""
         from .commands import reason_of
         from .prepared_with import UNRECORDED_SAID
+        if self.blocked == "record":
+            # ITS RECORD OF WHAT IT WAS PREPARED WITH DOES NOT READ, launched
+            # or not: the reader's words, which name the file and the way.
+            return reason_of(self.why or "")
         if self.launched:
             # A LAUNCHED STAGE SAYS IT TOO (`job-system.md`, *The task*,
             # the launched row): its runs computed the description as it
@@ -234,12 +240,13 @@ def held_why(number: int, held: tuple) -> str:
     """Why group ``number`` is not prepared while the sequence ``held``
     (:func:`held_by_sequence`'s answer) is going, and the way on -- the one
     sentence prep refuses with and the group answer says (R-P23)."""
+    from ..identity import jobs_as_typed
     job, _after, state = held
     return (f"group {number} goes in job {job.id} -- a sequence of groups "
             f"still going ({state}) launches it with the files it was "
             f"prepared with, and preparing it again would rewrite them under "
             f"the job.  Prepare it once that job has ended, or stop the job "
-            f"first: molbuilder jobs stop {job.id}  (job-system.md R-P23)")
+            f"first: {jobs_as_typed('stop', job.id)}  (job-system.md R-P23)")
 
 
 def held_by_sequence(calc, number: int, *, asked=None
@@ -572,14 +579,13 @@ def first_launch_takes(calc, stage: str, *,
         if not took:
             # THE WAYS ON, each typed out: an earlier run of that stage
             # that has them done, or the calculation's structure.
-            from ..paths import attempt_dir, attempts_in
+            from .continuation import earlier_run
             from .naming import stage_home
-            home = stage_home(base, task, cont.stage).dir
-            other = next((str(a.relative_to(base)) for a in (
-                attempt_dir(home, n) for n in reversed(attempts_in(home)))
-                if str(a.relative_to(base)) != cont.source
-                and carried_points(calc, stage, dataclasses.replace(
-                    cont, source=str(a.relative_to(base))))), None)
+            other = earlier_run(
+                base, stage_home(base, task, cont.stage).dir,
+                base / cont.source,
+                lambda a: bool(carried_points(calc, stage, dataclasses.replace(
+                    cont, source=str(a.relative_to(base))))))
             words = ", ".join(pt.words() for pt in carried_of(calc, stage))
             return None, None, (
                 f"`{stage}` takes {words} over from the run it continues "
@@ -700,7 +706,15 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
         # recorded, a read (`prepared_with.changes`; `job-system.md`, *The
         # task*): said, never a refusal.
         from .prepared_with import changes
-        recorded, changed = changes(calc, stage)
+        try:
+            recorded, changed = changes(calc, stage)
+        except ValueError as exc:
+            # ITS RECORD OF WHAT IT WAS PREPARED WITH DOES NOT READ: this
+            # stage's answer, in its reader's words, which name the way back
+            # -- launched as it is.
+            return Readiness(stage, group, prepared=True, launched=launched,
+                             why=str(exc), blocked="record",
+                             job_members=members)
         since = dict(changed=changed, unrecorded=not recorded)
         if launched:
             return Readiness(stage, group, prepared=True, launched=True,
@@ -907,13 +921,15 @@ def groups_text(gs: List[GroupAnswer]) -> str:
     """The groups as `prep task` and `launch task` show them: each group's
     number, then each member, where it stands, and what it takes or waits
     for."""
+    from ..identity import jobs_as_typed
     width = max([len(a.stage) for g in gs for a in g.answers] + [5])
     out = []
     for g in gs:
         # A GROUP A SEQUENCE HOLDS names where to follow it, as `status`'s
         # step does (`job-system.md`, *The next step*).
         out.append(f"  group {g.number}  ({g.said}"
-                   + ("; molbuilder jobs status" if g.held else "") + ")")
+                   + (f"; {jobs_as_typed('status')}" if g.held else "")
+                   + ")")
         for a in g.answers:
             out.append(f"    {a.stage:<{width}}  {a.state:<9}  {a.detail}")
     return "\n".join(out)

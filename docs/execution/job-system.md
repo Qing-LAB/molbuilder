@@ -295,14 +295,22 @@ stateDiagram-v2
 **Changed since prepared** *(the user, 2026-10-25)* says that a stage's records
 no longer give what it was prepared with. Prep records, for each stage it
 prepares, the values it prepared the stage with — every setting as resolved
-for it (the template ⊕ the stage's overrides), its points (a rung of points'
-frames and voltages) and its run card (the job request's values that reach
-it) — in `prepared-with.json` at the calculation's root, merged per stage as
-`job-set.json` is. `status`, Task setup and the Results ladder resolve the
-same values from the records as they read now — a read that renders and
-writes nothing — and name each that differs, `mesh_cutoff: 300 → 400`. Only
-what the person changed is a difference: a deck a newer molbuilder words
-otherwise is none. A stage whose prep recorded none (prepared before 2.41.0)
+for it (the template ⊕ the stage's overrides; a run setting is its run
+card's, never a setting, `template.run_settings`), its points (a rung of
+points' frames and voltages) and its run card (the job request's values
+that reach it) — in `prepared-with.json` at the calculation's root, merged
+per stage as `job-set.json` is. `status`, Task setup and the Results ladder
+resolve the same values from the records as they read now — a read that
+renders and writes nothing — and name each that differs, `mesh_cutoff: 300
+→ 400`. Only what the person changed is a difference: a deck a newer
+molbuilder words otherwise is none, nor an item a newer molbuilder added or
+retired; a run card value the person stated or took away is one — the run
+card holds only what is stated, *run card mpi_np: not stated → 4*. A record of it that does not read — not JSON, or another
+file's schema — is said in its reader's words, naming the file and the
+way back: the state saved before the last prep (`molbuilder checkpoint`),
+or the file removed and every group prepared again. It is the stage's
+answer, launched or not, and its group's next step, *unreadable*, offering
+no line over it; a prep refuses over it in the same words. A stage whose prep recorded none (prepared before 2.41.0)
 says so — *what it was prepared with is not recorded (prepared before
 2.41.0)*, one spelling on every surface (`prepared_with.UNRECORDED_SAID`);
 prepared again, it is recorded — and is compared with nothing. **Launch compares nothing**: it sends what prep
@@ -793,7 +801,7 @@ they are typed, and written down too.
 | **R-L12** | a vibration's stage that continues from none — its first stage, a PySCF vibration's — with `--from` or `--cold` at its first launch: it builds on the calculation's structure, its phases joined inside its run (a displacement sweep's later stage takes them, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | nothing to name: launch it; `--cold` is a launch again's ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6) | `continuation.cannot_be_named` |
 | **R-L13** | `--from` on a transport rung, or `--cold` at its first launch — its inputs are its kind's; but a rung of points of a calculation that reuses a finished one, whose first launch takes that calculation's points over: there `--cold` takes none ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `--gather`, launched again; `--cold` launched again | `continuation.cannot_be_named`, `ready.first_launch_takes` |
 | **R-L14** | `--gather` at a first launch, on a stage that is not a transport rung, on a transport rung that gathers nothing (the seed, a lead), or with `--from`; `--from` with `--cold` | the flag that does it, or none — a rung that gathers nothing, launched again without `--gather` | `submit._plan_member`, `continuation.cannot_be_named` |
-| **R-L17** | launched again warm, and its newest launched run left none of the files it takes | `--cold` | `submit._launch_again` |
+| **R-L17** | launched again warm, and its newest launched run left none of the files it takes — a run of points: no point of it done, and none of the points that would continue from their warm files (relaunch *continue*) left them; points that start over take nothing and are launched | `--cold` | `submit._launch_again`; a run of points, `submit._points_walk` |
 | **R-L18** | a run of points launched again warm, every point done and nothing more needed — a vibration's finish done too; or, at its first launch in a calculation that reuses a finished one, every point one that calculation computed the same — nothing left to walk ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | warm, every point done: `--cold`; at a first launch over a finished calculation: its group prepared again, which copies it in (§ 2a.16, *A narrower question*), or `--cold` | `submit._points_walk` — `_all_done`, which asks what the run needs beyond its points (`PointsOf.also_needs`; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 17; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6) |
 | **R-L21** | a record the plan reads does not read — a run's launch record, `.continued-from`, `.gathered-from` — or a job of the plan no file can be named for: a deck named on no stage, or not on its label; or the calculation's own `warm-files.toml` does not read — not TOML, or not stamped `molbuilder/warm-files@1` (*`<path>` does not read: …*), or another engine's, or a section or row the vocabulary does not take | the record's own words | each reader (`runrecord.LaunchRecordError`; the naming authority, `naming.NamingError`; the warm-file vocabulary, `warmfiles.WarmFilesError`), refused once by `submit.plan_launch` (`_refusal_kinds`) |
 | **R-L22** | at the send, the folder is not what it was when planned — the plan made again from it now (the calculation opened again, a benchmark's set read again) differs, or is refused | launch again, to see the new plan | `submit.send_launch` (`_same_folder`) |
@@ -2676,7 +2684,12 @@ use — a transmission with GPU use off runs on the cores alone), the rest of
 the allocation idle meanwhile. A group named that is launched already is read
 as prepared — the sequence then launches it again (below) — and its request
 is part of the sum. A machine with no scheduler (or `--no-sbatch`) has no
-header to write: a sequence run here needs no `--one-job`.
+header to write: a sequence run here needs no `--one-job`. **A group of it
+prepared again — alone, or in another sequence — takes the sequence's header
+away** (`group.sequence_headers_holding`): that header summed the group's
+request as it was, and is no longer one prep writes; `prep … --one-job`
+writes it again, and until then a launch of the sequence under `submit` or
+`ask` is refused naming that line (R-L45).
 
 **The launch** takes the groups in the ladder's order, whatever order
 they are named in, and refuses before anything is sent: a group not prepared;

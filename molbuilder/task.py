@@ -635,9 +635,10 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # 2.5.0'S CENTRING CHOICE IS RETIRED: a transport junction enters its
     # calculation centred (`model/structure-periodicity.md` § 6.0).
     if "centre_junction" in obj:
+        from .identity import migrate_as_typed
         _refuse("centre_junction is retired (2.6.0): a transport junction "
                 "enters its calculation centred in its cell.  "
-                "`molbuilder jobset migrate` in the calculation's folder "
+                f"`{migrate_as_typed()}` in the calculation's folder "
                 "removes the key", where="centre_junction")
     for key in _JOB_KEYS:
         if key in obj:

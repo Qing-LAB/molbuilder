@@ -2959,18 +2959,27 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         if asked is not None and not preview:
             ledger(base, "prep", "question", **asked)
 
+    #: The description's preflight notes, once it is read -- what every
+    #: refusal after that writes down with it (§ 5.0, checkpoint 7).
+    found: list = []
+
     def _refuse(why: str) -> PrepError:
-        # A REFUSAL IS WRITTEN DOWN; a preview records nothing
-        # (`job-system.md` § 5.0, rule 3 and *a preview*).
+        # A REFUSAL IS WRITTEN DOWN, with the preflight's notes once the
+        # description is read; a preview records nothing (`job-system.md`
+        # § 5.0, rule 3 and *a preview*).
         if not preview and calcdirs.described(base):
             _asked()
+            _record_preflight(base, found, groups=numbers)
             ledger(base, "prep", "refused", kind="task", groups=numbers,
                    reason=why)
-        return PrepError(why)
+        exc = PrepError(why)
+        exc.findings = tuple(found)
+        return exc
 
     # 1 · THE DESCRIPTION, as the verb opened it (A16) -- and THE GROUPS
     #     PICKED, its own.
     description = Described(calc)
+    found = description.findings
     task, request = description.task, calc.request
     described = request.numbers
     if not numbers:
@@ -3163,8 +3172,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         except step_errors() as exc:
             raise as_prep_error(exc) from exc
     except PrepError as exc:
-        if not preview:
-            _record_preflight(base, description.findings, groups=numbers)
         exc.findings = tuple(description.findings)
         _refuse(str(exc))
         raise
@@ -3272,6 +3279,17 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 if (old is not None and old not in headers.values()
                         and old.is_file()):
                     the_plan.remove(old)
+        # A GROUP PREPARED leaves no sequence's header that holds it but
+        # the one this prep writes (`job-system.md` § 6.0, *A sequence of
+        # groups*): such a header summed the group's request as it was, and
+        # is no longer one prep writes -- `prep ... --one-job` writes it
+        # again.  A launched group a sequence reads as prepared is not
+        # prepared here, and keeps its headers.
+        from .group import sequence_headers_holding
+        for held in sequence_headers_holding(
+                base, task, request, [n for n in numbers if n in previews]):
+            if held.is_file() and held != seq_header:
+                the_plan.remove(held)
     except PrepError as exc:
         raise _refuse(str(exc)) from None
     #      THE MEMORY EACH STAGE NEEDS at the ranks it is prepared with, its
@@ -3331,8 +3349,13 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             # ITS RECORD OF WHAT IT WAS PREPARED WITH, as the records give
             # it now (`prepared_with.changes`) -- a group status calls
             # changed since prepared is never one with nothing to write.
-            recorded, since = prepared_with.changes(description.calc,
-                                                    a.stage)
+            try:
+                recorded, since = prepared_with.changes(description.calc,
+                                                        a.stage)
+            except ValueError:
+                # A RECORD THAT DOES NOT READ is never one with nothing to
+                # write -- and its writer refuses it, naming the way back.
+                recorded, since = True, [None]
             if not recorded or since:
                 differs[a.stage].append(
                     f"its record of what it was prepared with "
@@ -3411,8 +3434,11 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     answers = [a for n in numbers for a in previews[n]]
     #      WHAT EACH WAS PREPARED WITH, for `status` to say when its records
     #      give otherwise (`job-system.md`, *Changed since prepared*).
-    prepared_with.record(description.calc.with_plan(js),
-                         [a.stage for a in answers], plan=the_plan)
+    try:
+        prepared_with.record(description.calc.with_plan(js),
+                             [a.stage for a in answers], plan=the_plan)
+    except ValueError as exc:
+        raise _refuse(str(exc)) from None
     if sequence:
         answers[-1].sequence = sequence_said
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,

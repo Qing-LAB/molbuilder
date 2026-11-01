@@ -921,30 +921,21 @@ def api_transport_describe() -> Any:
     # THE DESCRIPTION'S OWN CHECK (gate ③, plan § 5w K3).  The same
     # function the Task-setup save and `molbuilder describe` run: its errors
     # refuse in the save's own words, its warnings ride `notices`.
-    from molbuilder.validation.task import (preflight as _task_preflight,
-                                            config_class_for as _cfg_cls_for)
+    from molbuilder.validation.task import config_class_for as _cfg_cls_for
     # THE CALCULATION'S START, described with its job request: each rung's
     # group by the one numbering rule (`describe.Description`).
     _desc = Description(task=task, template=_tmpl_text,
                         request=(finished.request if finished is not None
                                  else None))
-    _pf = _task_preflight(task, template_text=_tmpl_text,
-                          request=_desc.request)
     # ...AND THE K-POINT MESHES EACH RUNG WILL WRITE, judged by the one
     # check prep's gate runs (`kmesh.check`; `engines/transport.md` § 0.3b)
     # on the junction's own axis kinds -- so one point along a direction
     # the electrodes repeat in is said here, beside its control, and not
-    # first at prep.
-    from molbuilder.transport.compose import (junction_axis_kind,
-                                              recorded_junction)
-    from molbuilder.transport.deck import ladder_mesh_findings
-    try:
-        _kinds = (junction_axis_kind(cited) if cited is not None else
-                  recorded_junction(finished.base).structure.axis_kind)
-    except (ComposeError, AttributeError):
-        _kinds = None              # compose refuses it, by name, at prep
-    if _kinds is not None:
-        _pf = list(_pf) + ladder_mesh_findings(_tmpl_text, task, _kinds)
+    # first at prep (`transport.deck.describe_findings`, both doors').
+    from molbuilder.transport.deck import describe_findings
+    _pf = describe_findings(
+        task, _tmpl_text, _desc.request, cited=cited,
+        base=finished.base if finished is not None else None)
     _pf_errs = [i for i in _pf if i.severity == "error"]
     if _pf_errs:
         return jsonify({

@@ -235,6 +235,26 @@ def test_a_retired_run_setting_comes_out_where_it_lies(calc, where):
     _prep(calc)
 
 
+def test_what_a_stage_was_prepared_with_leaves_run_settings_to_its_card(
+        calc):
+    """What prep records a stage was prepared with (`prepared-with.json`,
+    read through its door) holds the template's settings as resolved for
+    the stage; a run setting is its run card's (`template.run_settings`),
+    recorded there alone (`job-system.md`, *Changed since prepared*).
+    THE SILENT FAILURE: a run setting recorded at its default among the
+    settings -- a newer molbuilder's default then reads as the person's
+    change to what the stage computes, and a launched group is told to
+    start from the beginning."""
+    from molbuilder.jobset.prepared_with import read
+    from molbuilder.template import run_settings
+    _prep(calc)
+    (settings,) = [v["settings"] for k, v in read(calc).items()
+                   if k == "coarse"]
+    assert "mesh_cutoff" in settings, sorted(settings)
+    assert not set(settings) & run_settings("siesta"), sorted(
+        set(settings) & run_settings("siesta"))
+
+
 def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(calc):
     """`jobset migrate` on a calculation this molbuilder described and
     prepared says it is current and rewrites nothing (`migrate.CURRENT`).

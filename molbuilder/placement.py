@@ -28,6 +28,7 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+from .identity import jobs_as_typed
 from .config_dir import (PRIVATE_FILE_MODE, PRIVATE_DIR_MODE, SECRETS_DIRNAME,
                          client_secret, config_dir,
                          jobs_dir, jupyter_lab_home, logs_dir,
@@ -135,7 +136,7 @@ def places() -> Tuple[Place, ...]:
               "with nothing in it to guard"),
         Place("jobs/", jobs_dir, True, PRIVATE_DIR_MODE,
               "each file names a calculation's folder and a process of this "
-              "account, which `molbuilder jobs stop` signals"),
+              f"account, which `{jobs_as_typed('stop')}` signals"),
         Place("a job's address", jobs_dir, False, None,
               "an address, not a secret -- the folder around it is what is "
               "private", "*.json"),

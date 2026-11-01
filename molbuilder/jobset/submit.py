@@ -66,6 +66,7 @@ from .model import (KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources,
                     warm_carry)
 from .continuation import Continuation, relaunch
 from .planned import Plan, found
+from ..identity import jobs_as_typed
 from ..runfiles import LAUNCH_DIR, GroupNames, RunNames
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           hand_over, latest_attempt, newest_launched)
@@ -394,7 +395,7 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
     # records as `placed_on.time` -- in seconds.
     from ..scheduler.quantities import parse_walltime
     cmd = kind.line(machine.scheduler.commands(), job=job_name,
-                    restated=restated, launched_by=LAUNCH_CLAIM,
+                    restated=restated,
                     header=script, args=run_args,
                     wall_s=parse_walltime(sent.time))
     return sent, placement, cmd, os.path.dirname(script)
@@ -1088,11 +1089,7 @@ def _first_launch(calc, job, *, member, container: Path,
                                        got or [], writes)
         return member(job, container, sweep.dir, sweep.dir,
                       label=stage, first=True, cold=cold, continuation=cont,
-                      points=list(sweep.points), took=took,
-                      hands=gathered + _continues_run(
-                          base, sweep.dir,
-                          RunRef.read(cont.source) if cont is not None
-                          else None, writes))
+                      points=list(sweep.points), took=took, hands=gathered)
     try:
         opened = prepare_attempt(
             calc, stage,
@@ -1117,11 +1114,21 @@ def _first_launch(calc, job, *, member, container: Path,
                          "volts": None} for src, fn in inputs])
 
 
+def _warm_impossible(stage: str, source, why, *, base) -> "SubmitError":
+    """A STAGE LAUNCHED AGAIN WARM WHOSE LATEST RUN LEFT NOTHING IT TAKES
+    (`job-system.md` R-L17) -- a run of one or a run of points: said, with
+    the cold launch that is possible."""
+    return SubmitError(
+        f"{stage}: launched again warm, it continues from {source} -- which "
+        f"is impossible here:\n  {why}\n  Launch it again cold instead:\n"
+        + block(launch_lines("task", stage, base=base, flags=("--cold",))))
+
+
 def _continues_run(base: Path, run: Path, source: Optional[RunRef],
                    writes) -> tuple:
     """A RUN OF POINTS CONTINUING FROM ``source`` -- its own newest
-    launched run, or another stage's run it continues from, its points
-    taken over by the walk (:func:`_points_walk`) -- said once at the run,
+    launched run, or another stage's run it continues from, where the walk
+    takes something from it (:func:`_points_walk`) -- said once at the run,
     a hand-over of no file, so its launch record carries it
     (`project-layout.md` § 1.6.3) like every other run's: ``(hand-over,)``,
     or ``()`` where it continues from none."""
@@ -1182,12 +1189,8 @@ def _launch_again(calc, job, *, member, container: Path,
             hands = _carry_sweep_gather(ran, sweep.dir, sweep.points, writes,
                                         base=base, stage=stage)
         # THE RUN CONTINUES FROM A RUN NAMED, or warm from the stage's
-        # newest launched run (rule 3) -- its points taken over by the walk
-        # (:func:`_points_walk`).
-        hands += _continues_run(
-            base, sweep.dir,
-            RunRef.read(cont.source) if cont is not None
-            else None if cold else RunRef.at(base, ran), writes)
+        # newest launched run (rule 3) -- said by the walk, which knows
+        # what it takes from it (:func:`_points_walk`).
         return member(job, container, sweep.dir, ran,
                       label=stage, again=True, cold=cold, continuation=cont,
                       points=list(sweep.points), ran=ran, took=took,
@@ -1224,13 +1227,7 @@ def _launch_again(calc, job, *, member, container: Path,
             raise SubmitError(f"{stage}: {e}") from e
         # WARM IS IMPOSSIBLE -- its latest run left nothing the stage
         # takes.  Said, with the cold launch that is possible.
-        raise SubmitError(
-            f"{stage}: launched again warm, it continues from {source} "
-            f"-- which is impossible here:\n  {e}\n  Launch it again cold "
-            f"instead:\n"
-            + block(launch_lines("task", stage, base=base,
-                                 flags=("--cold",)))
-            ) from e
+        raise _warm_impossible(stage, source, e, base=base) from e
     # WARM, THE STAGE'S OWN FILES STAND: what it carries from its own run
     # is not taken from the gather too (a device's `.DM`).
     own = set(opened.copied)
@@ -1889,7 +1886,7 @@ def _go(s: Submission, record, *, background: bool = False,
             return ([JobResult(s.name, s.command, "started",
                                said="started in the background",
                                detail=f"pid {proc.pid}; to stop it: "
-                                      + (f"molbuilder jobs stop {job.id}"
+                                      + (jobs_as_typed("stop", job.id)
                                          if unkept is None else
                                          f"kill -- -{proc.pid} ({unkept})"))]
                     + ([JobResult(m.name, [], "rides", said=s.rides)
@@ -2725,6 +2722,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     taken = [(pdir, pt) for pdir, pt in calls if done[pt.rel]]
     walked = [(pdir, pt) for pdir, pt in calls if not done[pt.rel]
               and (across is None or point_key(pt) not in over)]
+    #: A run with every point done whose last point the walk runs again,
+    #: its report step finishing the run (:func:`_all_done`).
+    handed_back = False
     if not walked and across is not None:
         # BOTH WAYS ON, each its line (`job-system.md` R-L18): its group
         # prepared again, which copies the stage in, or a cold launch.
@@ -2746,6 +2746,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         if own:
             _all_done(calc, stage, prev, names, record, prev_launch)
         walked.append(taken.pop())
+        handed_back = True
+    # WHETHER THE RUN TAKES A POINT FROM THE RUN IT CONTINUES FROM.
+    takes_points = bool(taken)
     walked_rels = {pt.rel for _p, pt in walked}
     every = [pt for _p, pt in calls]
     # THE POINTS TAKEN OVER, each one hand-over (:func:`_take_over`), its
@@ -2850,6 +2853,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                for _p, pt in walked if pt.rel in is_planned]
     step_of: Dict[str, int] = {}
     needs_of: Dict[str, List[str]] = {}
+    #: Whether a walked point is given its warm files from its last run.
+    warmed = False
     for pdir, pt in order:
         rnd = entries[pt.rel]["round"]
         if scratch_at and rnd not in seen_rounds:
@@ -2864,6 +2869,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
             files = tuple((at, f) for f in warm_carry(job, job)
                           if (last.point(pt.rel) / f).is_file())
             if files:
+                warmed = True
                 h = HandOver(pdir, CONTINUED, source=at, files=files)
                 hand_over(base, h, plan.writes)
                 # A FILE WRITTEN AS ITS RUN ENDED carries the WARNING in
@@ -2966,10 +2972,32 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                f"{'; '.join(across.why)}; "
                if across is not None and across.why else "")
             + f"runs {', '.join(said)}")
+    # WHAT THE RUN CONTINUES FROM -- the run named or carried from, or warm
+    # its own newest launched run -- said once at the run where it takes
+    # something from it: a point taken over, or a walked point's warm
+    # files (`project-layout.md` § 1.6.3).  Warm, a stage that takes files
+    # from a run and would take nothing is refused naming --cold, as a run
+    # of one is (R-L17).
+    source = (RunRef.read(cont.source) if cont is not None
+              else RunRef.at(base, prev) if own else None)
+    takes = takes_points or warmed
+    # A WALKED POINT THAT WOULD TAKE ITS WARM FILES -- one whose relaunch
+    # is *continue*; a point that starts over takes nothing from a run.
+    would_take = job.warm and any(
+        declared.relaunch_of(stage, pt) == CONTINUE
+        for _p, pt in walked if pt.rel not in is_planned)
+    if own and not takes and would_take and not handed_back:
+        raise _warm_impossible(
+            stage, source, f"no {record.unit} of it is done, and none left "
+                           f"a file a {record.unit} takes", base=base)
     read_from = place.prepared(order[0][1].prepared if order
                                else containers[0].point.prepared)
-    member = dataclasses.replace(m, read_from=read_from, walk=walk,
-                                 copied=across.taken if across else ())
+    member = dataclasses.replace(
+        m, read_from=read_from, walk=walk,
+        copied=across.taken if across else (),
+        hands=tuple(m.hands) + (_continues_run(base, run, source,
+                                               plan.writes)
+                                if source is not None and takes else ()))
     gn = GroupNames.of_points(names.stem)
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s run of points, {run.name}",
@@ -3285,7 +3313,7 @@ def _held_by(held, number: int) -> str:
             + (f"after group {after}" if after is not None else "first")
             + "; launch it alone or in another sequence once that job has "
               "ended, or stop the job first:\n"
-            + block([f"molbuilder jobs stop {job.id}"])
+            + block([jobs_as_typed("stop", job.id)])
             + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
 
 

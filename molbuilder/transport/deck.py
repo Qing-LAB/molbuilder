@@ -821,6 +821,38 @@ def rung_meshes(cfg, axis_kind, rung: str):
     return k_mesh, tbt_mesh
 
 
+def describe_findings(task, template_text: str, request, *, cited=None,
+                      base=None) -> list:
+    """WHAT A TRANSPORT CALCULATION'S DESCRIBE CHECKS before anything is
+    written -- the description's own check (`validation.task.preflight`)
+    and each rung's k-point mesh on its junction
+    (:func:`junction_mesh_findings`): the Transport tab's describe and
+    `molbuilder describe` alike."""
+    from ..validation.task import preflight
+    return (list(preflight(task, template_text=template_text,
+                           request=request))
+            + junction_mesh_findings(template_text, task, cited=cited,
+                                     base=base))
+
+
+def junction_mesh_findings(template_text: str, task, *, cited=None,
+                           base=None) -> list:
+    """THE MESH FINDINGS BOTH DESCRIBE DOORS SAY beside the description's
+    own check -- the Transport tab's and `molbuilder describe` -- each
+    rung's judged on the junction's own axis kinds
+    (:func:`ladder_mesh_findings`): the ``cited`` junction's, or, for a calculation that reuses a finished
+    one, the composed junction that one recorded (``base``).  None where
+    its kinds cannot be read yet: compose refuses that junction, by name,
+    at prep."""
+    from .compose import ComposeError, junction_axis_kind, recorded_junction
+    try:
+        kinds = (junction_axis_kind(cited) if cited is not None else
+                 recorded_junction(base).structure.axis_kind)
+    except (ComposeError, AttributeError):
+        return []
+    return ladder_mesh_findings(template_text, task, kinds)
+
+
 def ladder_mesh_findings(template_text: str, task, axis_kind) -> list:
     """The k-point mesh findings of every rung of ``task`` as the description
     resolves it (the template and each rung's own values,

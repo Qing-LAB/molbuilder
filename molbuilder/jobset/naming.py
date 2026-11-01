@@ -178,11 +178,12 @@ def job_dir_names(jobset: JobSet) -> Dict[str, str]:
             # stages' benchmarks can never collide.
             out[j.name] = trial_dir(trial_token, j.name)
             continue
+        from ..identity import migrate_as_typed
         raise NamingError(
             f"job {j.name!r} ({j.script}): its deck names no stage -- not a "
             f"job prep wrote, so it has no folder to name.  A calculation "
             f"prepared before 2.17.0 names a lead's deck on its own label: "
-            f"`molbuilder jobset migrate` in the calculation's folder renames "
+            f"`{migrate_as_typed()}` in the calculation's folder renames "
             f"its files to the lead's stem.")
     return out
 

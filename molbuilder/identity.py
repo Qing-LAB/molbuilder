@@ -232,6 +232,16 @@ def command_stage(token: str) -> str:
 #: composer does (`jobset.commands`).
 JOBSET_PROG = "molbuilder jobset"
 TASK, BENCH = "task", "bench"
+#: ...and the jobs launched from this machine, by their addresses
+#: (`job-system.md` § 6.0a): ``molbuilder jobs status``, ``stop <id>``.
+JOBS_PROG = "molbuilder jobs"
+
+
+def jobs_as_typed(verb: str, *words) -> str:
+    """``molbuilder jobs <verb> <words>`` -- the one spelling of a line on
+    the jobs launched from this machine, which a refusal and a launch's
+    line print (`job-system.md` § 6.0a)."""
+    return " ".join([JOBS_PROG, verb, *(str(w) for w in words)])
 
 
 def words_for(kind: str, *stages, groups=()) -> tuple:

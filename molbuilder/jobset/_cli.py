@@ -479,12 +479,14 @@ def _init_transport(*, out_dir, run_name, engine, slots_opt,
     # notes.
     from ..describe import Description, write_description
     from ..issues import ValidationError
-    from ..validation.task import preflight, refuse_on_error
+    from ..transport.deck import describe_findings
+    from ..validation.task import refuse_on_error
     desc = Description(task=task, template=_tmpl_text)
     try:
-        for issue in refuse_on_error(preflight(task,
-                                               template_text=_tmpl_text,
-                                               request=desc.request)):
+        # ...AND THE K-POINT MESHES EACH RUNG WILL WRITE, as the Transport
+        # tab's describe says them (`engines/transport.md` § 0.3b).
+        for issue in refuse_on_error(describe_findings(
+                task, _tmpl_text, desc.request, cited=cited)):
             click.echo(f"note: {issue.message}", err=True)
     except ValidationError as exc:
         raise click.ClickException(str(exc))
@@ -560,7 +562,7 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
     from ..projects import projects_root
     from ..transport.reuse import ReuseError, reused, write_reusing
     from ..transport.stages import why_no_transport
-    from ..validation.task import preflight, refuse_on_error
+    from ..validation.task import refuse_on_error
     if refused:
         flag, why = next(iter(refused.items()))
         raise click.ClickException(
@@ -625,10 +627,10 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
         click.echo(f"transmission window: {fit.words()}")
     desc = Description(task=task, template=finished.template_text,
                        request=finished.request)
+    from ..transport.deck import describe_findings
     try:
-        for issue in refuse_on_error(preflight(task,
-                                               template_text=desc.template,
-                                               request=desc.request)):
+        for issue in refuse_on_error(describe_findings(
+                task, desc.template, desc.request, base=finished.base)):
             click.echo(f"note: {issue.message}", err=True)
     except ValidationError as exc:
         raise click.ClickException(str(exc))
@@ -1866,9 +1868,13 @@ def summarize_cmd(kind: str, words, bundle: str,
     # SET is the scope and the verdict goes back where they live -- there
     # is no name filter anywhere (U12).
     from ..runfiles import BENCH_RESULT_FILE
-    res, out_path, report = run_summarize_jobset(
-        calc, js, out=container / BENCH_RESULT_FILE,
-        now_iso=stamp(), stage=stage)
+    from ..scheduler.record import UnknownTarget
+    try:
+        res, out_path, report = run_summarize_jobset(
+            calc, js, out=container / BENCH_RESULT_FILE,
+            now_iso=stamp(), stage=stage)
+    except UnknownTarget as exc:
+        raise click.ClickException(str(exc)) from None
     click.echo(summary_text(res, out_path, report=report, stage=stage,
                             base=base))
     _ledger(base, "summarize", "verdict-written", stage=stage,
@@ -2164,7 +2170,7 @@ def _how_runs_ended(results, plan, calc, sweep):
     if not any(r.status == "ran" for r in results):
         return results
     from dataclasses import replace
-    from ..identity import stage_key
+    from ..identity import jobs_as_typed, stage_key
     from ..joblist import forget
     from .runstatus import jobset_status
     try:
@@ -2175,7 +2181,7 @@ def _how_runs_ended(results, plan, calc, sweep):
     except (OSError, ValueError, KeyError) as exc:
         return [replace(r, status="unread", detail="; ".join(
                     [f"the run ended, and how it ended could not be read: "
-                     f"{exc} -- `molbuilder jobs status` says it"]
+                     f"{exc} -- `{jobs_as_typed('status')}` says it"]
                     + ([r.detail] if r.detail else [])))
                 if r.status == "ran" else r for r in results]
     for r in results:

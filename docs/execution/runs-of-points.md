@@ -405,7 +405,15 @@ computation: taken over with it, and planned anew when it runs again.
 Warm, every point done in the newest launched run is taken over (3); the
 rest are walked — a planned point opened again (6), a point whose relaunch
 is *continue* given its warm files (4), every walked point its start (5).
-Cold, nothing is taken over. A first launch of a calculation that reuses a
+Cold, nothing is taken over. **The run continues from** the run its
+points come from — warm, its own newest launched run; the run it carries
+points from — only where it takes something from it: a point taken over,
+or a walked point's warm files; that is the run's `.continued-from`, its
+launch record's `continued_from`. Warm, a run whose points would continue
+from their warm files (relaunch *continue*) and none of which is done or
+left them is refused naming `--cold`, as a run of one is (`job-system.md`
+R-L17); points that start over take nothing — the run is launched, and not
+said to continue from the last. A first launch of a calculation that reuses a
 finished one takes that one's points over by the reuse's own rule
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16). A run that
 **continues from another stage's run** — a first launch's default, or a run

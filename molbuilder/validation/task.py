@@ -40,6 +40,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Dict, List, Optional
 
+from ..identity import migrate_as_typed
 from ..issues import Issue, ValidationError
 
 
@@ -103,7 +104,7 @@ def preflight(task, config_cls=None, *,
                 f"stage {old[0]!r}: since {retired.since}, {retired.why} -- "
                 f"and this description still holds the {retired.role} as a "
                 f"stage of its own.  "
-                f"`molbuilder jobset migrate` in this calculation's folder "
+                f"`{migrate_as_typed()}` in this calculation's folder "
                 f"folds it into the others, keeping its overrides.",
                 where=f"stages.{old[0]}"))
             return out

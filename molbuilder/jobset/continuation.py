@@ -397,8 +397,6 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     """The default for ``stage``, which continues from ``prev``, the stage
     before it: the newest attempt, or the refusal (`continuation_answer`).
     A benchmark is offered no earlier run (it takes no ``--from``)."""
-    from ..paths import attempt_dir as _adir
-    from ..paths import attempts_in
     from .materialize import latest_attempt
     from .naming import stage_home
     base, task = Path(calc.base), calc.task
@@ -459,22 +457,31 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
                         else launch_lines("task", prev, base=base))
     why, first = state_remedy(concluded, state, launch_prev,
                               detail=detail)
-    other = None
-    if not bench and alone:
-        # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
-        # to build on, typed out -- never a placeholder.  Its ending is the
-        # question, not its relaxation.
-        for n in reversed(attempts_in(container)):
-            a = _adir(container, n)
-            if a != attempt and usable(read_run(
-                    base, task, prev, a, verdict=False)[1]):
-                other = str(a.relative_to(base))
-                break
+    # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one to
+    # build on, typed out -- never a placeholder.  Its ending is the
+    # question, not its relaxation.
+    other = (earlier_run(base, container, attempt, lambda a: usable(
+                 read_run(base, task, prev, a, verdict=False)[1]))
+             if not bench and alone else None)
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
            + block(_taking("--from", other)) + "\n"
            if other else "")
     return None, (f"`{stage}` continues from {what} {why}.  {first}\n"
                   f"{alt}{clean}{rule}")
+
+
+def earlier_run(base, home, current, holds) -> Optional[str]:
+    """THE NEWEST EARLIER RUN OF A STAGE THAT CAN STAND IN WHEN ASKED FOR
+    -- of the runs in ``home``, the stage's folder, the newest but
+    ``current`` that ``holds`` answers true for, by its address from the
+    calculation's folder ``base``: what a refusal names with ``--from``;
+    ``None`` for none."""
+    from ..paths import attempt_dir, attempts_in
+    for n in reversed(attempts_in(home) if Path(home).is_dir() else []):
+        a = attempt_dir(home, n)
+        if a != Path(current) and holds(a):
+            return str(a.relative_to(base))
+    return None
 
 
 def _relation(task, stage: str, prev: str) -> str:

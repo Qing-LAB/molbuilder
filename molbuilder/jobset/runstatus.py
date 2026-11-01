@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..calcdirs import where
-from ..identity import StageRef, stage_key
+from ..identity import StageRef, jobs_as_typed, stage_key
 from ..paths import attempts_in
 from .materialize import latest_attempt
 from .naming import job_dir_names, run_names, stage_refs
@@ -801,7 +801,7 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
 
 #: A RUN'S STATES that leave its group needing a launch again
 #: (`running-a-job.md` § 4.2) -- and the ones still on their way.
-_ENDED_BADLY = ("failed", "stopped", "unreadable")
+_ENDED_BADLY = ("failed", "unreadable")
 _ON_ITS_WAY = ("queued", "running")
 
 
@@ -849,7 +849,14 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
             # groups*): that job's to launch, whatever changed
             # since its prep (R-P23 refuses its prep).
             step = ("in a job", f"{g.said} ({g.held[2]})",
-                    ["molbuilder jobs status"])
+                    [jobs_as_typed("status")])
+        elif any(a.blocked == "record" for a in g.answers):
+            # ITS RECORD OF WHAT IT WAS PREPARED WITH DOES NOT READ, in its
+            # reader's words, which name the file and the way back: no step
+            # is offered over it (`job-system.md`, *Changed since prepared*).
+            a = next(a for a in g.answers if a.blocked == "record")
+            step = ("unreadable", f"{a.stage}: " + reason_of(a.why or ""),
+                    [])
         elif g.since_prepared and live is None:
             # CHANGED SINCE PREPARED (`job-system.md`, *The task*): never
             # launched, prepared again; launched and changed in its run

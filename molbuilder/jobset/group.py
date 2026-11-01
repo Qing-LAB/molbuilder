@@ -32,6 +32,7 @@ itself (A17).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Sequence, Set, Tuple
 
 from ..runfiles import GroupNames
@@ -334,6 +335,25 @@ def sequence_names(base, task, request, numbers: Sequence[int]
         for g in sorted(numbers) for n in request.members(g)])
 
 
+def sequence_headers_holding(base, task, request,
+                             numbers: Sequence[int]) -> List[Path]:
+    """THE HEADERS A SEQUENCE OF GROUPS HOLDING ANY OF ``numbers`` IS SENT
+    BY -- for each set of two groups or more of ``request`` with one of
+    them among it, its header in `launch/` as :func:`sequence_names` names
+    it, whether or not one is there: what a prep of the group takes away
+    but the header it writes (`job-system.md` § 6.0, *A sequence of
+    groups*).  Every set of the request's groups is named: a calculation
+    holds a handful."""
+    from itertools import combinations
+    from ..runfiles import LAUNCH_DIR
+    every = sorted(request.numbers)
+    mine = set(numbers)
+    return [Path(base) / LAUNCH_DIR / sequence_names(
+                base, task, request, seq).name(".sbatch")
+            for k in range(2, len(every) + 1)
+            for seq in combinations(every, k) if mine & set(seq)]
+
+
 def named(request, number: int) -> str:
     """Group ``number`` in words, by its members as well as its number --
     ``group 2 (device)`` -- since a group is matched by its members and a
@@ -415,4 +435,5 @@ __all__ = ["GroupError", "SHARED", "card_shares",
            "default_groups", "fresh_groups",
            "check_groups", "envelope", "named", "members_of",
            "same_members", "formed_again", "header_of",
-           "names_for", "own_request", "sequence_names", "sequence_request"]
+           "names_for", "own_request", "sequence_names", "sequence_request",
+           "sequence_headers_holding"]

@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
                     Optional, Sequence, Tuple, Union)
 
-from .identity import stage_key
+from .identity import migrate_as_typed, stage_key
 from . import kind_table as _kinds
 from .persist import check_schema
 
@@ -2965,7 +2965,7 @@ def why_zeros_written_before(tmpl: "Template", where: List[str]) -> str:
             + f": {', '.join(where)} holds 0, which before "
             f"{ZERO_MEANING_CHANGED_AT} meant 'not set' (the program's own "
             f"rule, a tenth of the leads' broadening) and since means no "
-            f"broadening on the device.  `molbuilder jobset migrate` in the "
+            f"broadening on the device.  `{migrate_as_typed()}` in the "
             f"calculation's folder rewrites it as not set, which is what it "
             f"meant (docs/process/changelog.md 2.1.0).")
 
@@ -3074,7 +3074,7 @@ MIGRATED_ITEMS = {
 }
 
 #: The one sentence every refusal of a pre-M6 template ends with.
-MIGRATE_HINT = ("Run `molbuilder jobset migrate` in this calculation's "
+MIGRATE_HINT = (f"Run `{migrate_as_typed()}` in this calculation's "
                 "folder (or name it with `--bundle`): it rewrites the old "
                 "items and values into the electronic state's, keeping what "
                 "the run was.")
@@ -3214,11 +3214,11 @@ def why_not_an_item(name: str, *, value: Any = None,
                     f"to accept what runs now; the calculation it described "
                     f"cannot be run again")
         return (f"{name} was retired from the schema ({r.why}) -- "
-                f"`molbuilder jobset migrate` in this calculation's folder "
+                f"`{migrate_as_typed()}` in this calculation's folder "
                 f"{r.migrate_does}")
     if name in RENAMED_ITEMS:
         new, why, _at = RENAMED_ITEMS[name]
-        return (f"{name} is now {new} ({why}) -- `molbuilder jobset migrate` "
+        return (f"{name} is now {new} ({why}) -- `{migrate_as_typed()}` "
                 f"in this calculation's folder renames it, keeping its value")
     return None
 

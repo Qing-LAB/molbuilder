@@ -33,7 +33,8 @@ def _plain(value: Any) -> Any:
 
 def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     """THE VALUES ``stage`` IS PREPARED WITH, from ``calc``'s records --
-    ``settings``: every field of its configuration as resolved for it;
+    ``settings``: every field of its configuration as resolved for it, but
+    the run settings, which are its run card's (`template.run_settings`);
     ``points``: a rung of points' points, in words, else ``None``;
     ``run_card``: the job request's values that reach it (its run card,
     the calculation's allocation and notification), else ``None``.
@@ -43,14 +44,19 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     Raises ``ValueError`` when the template does not resolve."""
     from ..resolve import resolved_ladder
     from ..identity import stage_key
+    from ..template import run_settings
     from .engines import engine_seam
     from .points import points_of
     task = calc.task
     ladder = resolved_ladder(calc.template_text or "", task,
                              engine_seam(task.engine).config_cls)
     cfg = next(c for name, c in ladder if stage_key(name) == stage_key(stage))
+    # A RUN SETTING IS THE RUN CARD'S: the resolved configuration holds it
+    # at its default, which says nothing the person stated.
+    on_the_card = run_settings(task.engine)
     settings = {f.name: _plain(getattr(cfg, f.name))
-                for f in dataclasses.fields(cfg)}
+                for f in dataclasses.fields(cfg)
+                if f.name not in on_the_card}
     points = None
     declared = points_of(task)
     if declared is not None:
@@ -67,24 +73,44 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     return {"settings": settings, "points": points, "run_card": run_card}
 
 
+def _stages_in(read_text, path: Path) -> Dict[str, Dict[str, Any]]:
+    """The record's stages, by stage name, from its text as ``read_text``
+    reads it -- or ``ValueError`` naming ``path`` when it does not read as
+    this record: not text, not JSON, or another file's schema -- with the
+    way back."""
+    from ..persist import check_schema
+    try:
+        d = json.loads(read_text(path))
+        check_schema(str(d.get("schema", "")), SCHEMA, label=str(path))
+    except (ValueError, AttributeError) as exc:
+        from ..identity import checkpoint_words
+        raise ValueError(
+            f"{path} does not read ({exc}) -- prep's record of what each "
+            f"stage was prepared with: give it back from the state saved "
+            f"before the last prep ({checkpoint_words(path.parent)}), or "
+            f"remove it and prepare every group again") from None
+    return dict(d.get("stages") or {})
+
+
 def read(base) -> Dict[str, Dict[str, Any]]:
     """Every stage's recorded values, by stage name -- ``{}`` before any prep
-    recorded one."""
-    from ..persist import read_json
+    recorded one; ``ValueError`` naming the file when it does not read
+    (:func:`_stages_in`)."""
     path = Path(base) / FILENAME
     if not path.is_file():
         return {}
-    return dict(read_json(path).get("stages") or {})
+    return _stages_in(lambda p: p.read_text(encoding="utf-8"), path)
 
 
 def record(calc, stages, *, plan) -> Path:
     """PREP'S RECORD of ``stages``: each one's values from ``calc``'s records
     as this prep read them, merged over what the file holds, written
-    through ``plan`` (nothing is written until the plan is carried out)."""
+    through ``plan`` (nothing is written until the plan is carried out);
+    ``ValueError`` naming the file when what it holds does not read."""
     from ..persist import json_text
     from ..identity import stage_key
     path = Path(calc.base) / FILENAME
-    held = (json.loads(plan.read_text(path)).get("stages") or {}
+    held = (_stages_in(plan.read_text, path)
             if plan.is_file(path) else {})
     for st in stages:
         held = {k: v for k, v in held.items() if stage_key(k) != stage_key(st)}
@@ -103,6 +129,16 @@ def _words(value: Any) -> str:
 #: § 3: the run card, the allocation, the notification).
 _BLOCK_WORDS = {"execution": "run card", "allocation": "allocation",
                 "notify": "notify"}
+
+#: THE BLOCKS THAT HOLD ONLY WHAT THE PERSON STATED -- the run card, as the
+#: job request holds it (`JobRequest.run_condition`): a key one side lacks
+#: is a value stated, or taken away, and a difference.  The allocation and
+#: the notification are every field of their records, so a key one side
+#: lacks is a field a molbuilder added or retired, and none.
+_STATED = frozenset({"execution"})
+
+#: How a value the person did not state is said in a difference.
+_NOT_STATED = "not stated"
 
 #: The one spelling of a stage whose prep recorded nothing (prepared before
 #: 2.41.0) -- `status`, Task setup and the contract say it with this.
@@ -130,9 +166,12 @@ def differences(was: Dict[str, Any], now: Dict[str, Any]
     """Each value that differs, ``name: was → now`` -- the settings by
     their item's name, the run card's by its block and field, the points
     as their list.  **Only what the person changed is a difference**: a
-    key one side holds and the other does not is the catalogue's or the
-    request's change between two molbuilders -- an item added or retired
-    since -- never the person's, and is not compared."""
+    setting or an allocation field one side holds and the other does not
+    is the catalogue's or the request's change between two molbuilders --
+    an item added or retired since -- never the person's, and is not
+    compared; in a block that holds only what is stated (:data:`_STATED`)
+    a key one side lacks is the person's, *run card mpi_np: not stated →
+    4*."""
     out: List[Difference] = []
     s_was, s_now = was.get("settings") or {}, now.get("settings") or {}
     for name in sorted(set(s_was) & set(s_now)):
@@ -152,11 +191,13 @@ def differences(was: Dict[str, Any], now: Dict[str, Any]
                 out.append(Difference(
                     RUN_CARD, f"{said}: {_words(a)} → {_words(b)}"))
             continue
-        for key in sorted(set(a) & set(b)):
-            if a[key] != b[key]:
+        keys = set(a) | set(b) if block in _STATED else set(a) & set(b)
+        for key in sorted(keys):
+            if a.get(key, _NOT_STATED) != b.get(key, _NOT_STATED):
                 out.append(Difference(
-                    RUN_CARD, f"{said} {key}: {_words(a[key])} → "
-                              f"{_words(b[key])}"))
+                    RUN_CARD, f"{said} {key}: "
+                              f"{_words(a.get(key, _NOT_STATED))} → "
+                              f"{_words(b.get(key, _NOT_STATED))}"))
     return out
 
 
@@ -174,7 +215,9 @@ def changes(calc, stage: str) -> Tuple[bool, List[Difference]]:
     (prepared before 2.41.0), and nothing is compared; else each value that
     differs (:class:`Difference`, ``mesh_cutoff: 300 → 400``), ``[]`` when
     none does.  A template that does not resolve now is said as the one
-    difference, in its reader's words."""
+    difference, in its reader's words; a record that does not read raises
+    ``ValueError`` naming it (:func:`read`) -- the stage's answer is then
+    *unreadable*, never a change with its way on."""
     from ..identity import stage_key
     held = read(calc.base)
     was = next((v for k, v in held.items()

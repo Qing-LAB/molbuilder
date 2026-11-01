@@ -26,34 +26,38 @@ as they stood.
 ---
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-01)*
-**Where we are: 2.61.0.** The releases are the changelog's rows; the
+**Where we are: 2.62.0.** The releases are the changelog's rows; the
 history this handover carried, release by release, and the checks each
 release ran are in [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md),
-*The handover's history*, and the finish-line review's ledger. The last:
-**a run's end is known wherever it runs; older runs are read again; only
-`jobset launch` starts a run** — Release A of the whole-jobset review
-*(the user, 2026-11-01: "Migrate renames single-start runs"; on a start by
-hand, "if this takes too much coding, then we can go with 3")*: a start
-that fails before its engine concludes, a started run reads `running`, a
-run here whose process went is asked and written once, a run whose start
-never began reads *never started*, a requeued walk refuses, a run named
-before 2.60.0 is renamed by `jobset migrate`, and the run script takes no
-start but its launch's (2.61.0). Before it: a run is one start (2.60.0).
+*The handover's history*, and the finish-line review's ledger. The last
+two: the whole-jobset review's **Release A** — a run's end known wherever
+it runs, older runs renamed, only `jobset launch` starts a run (2.61.0) —
+and **Release B** — what a stage was prepared with compared over the run
+card's stated values, a sequence's header taken away by a prep of one of
+its groups, a run of points said to continue only from a run it takes
+from, the ways out and the transport describe's checks composed once
+(2.62.0).
 
-**Last checked**: the fast batch on 2.61.0's code (6,424 passed); three
-review rounds — five readers over the whole jobset, two over the fixes,
-one over the gate change and the second round's fixes — each finding
-checked in the code before it was fixed or left (the ledger's *Found by
-the whole-jobset review*); each new test seen failing on the old code or
-by a deliberate break of its fix. **No e2e** — the e2e files were moved
-onto the shared wait; **untested** is listed in 2.61.0's row.
+**Last checked**: the fast batch on 2.62.0's code (6,428 passed); Release
+B's review over its diff, each finding checked in the code before it was
+fixed (the ledger's *Found by Release B's review*); each new test seen
+failing on the old code or by a deliberate break of its fix. **No e2e**;
+**untested** is listed in 2.62.0's row. **The user's to decide** (the
+ledger's rows *listed for the user*): a transport rung's prepared points
+recorded by prep (A2); a launch again while the last run runs (A5, A8); a
+warm `--gather` taking over points from the old inputs (A10); a job's
+address matched to its run by more than its folder (R8).
 
-**What runs next** is **Release B (2.62.0)** of the whole-jobset review —
-the rest of its defects and the ways out composed once (the ledger's rows
-marked B) — then **F2** — the run script names no engine — then the
-releases in the order of *The one plan* — the user's to change. **The
-user's decisions** are under *Decided*; **what only Sol can show** and
-**new science** are under *After the finish line*.
+**What runs next** is **the jobset documents' consolidation** *(the user,
+2026-11-01: "holistically review the jobset module's related document to
+reduce overlaps, redundancy, inconsistency and duplicated parts …"; "find
+a good balance and create good logical relation between documents instead
+of piling … over …")* — one home per fact, the existing chapters related
+logically, no document piled on top, the review's drifting sentences (R11,
+R13, S13, P8, L9, A-doc) with it — then **F2** — the run script names no
+engine — then the releases in the order of *The one plan* — the user's to
+change. **The user's decisions** are under *Decided*; **what only Sol can
+show** and **new science** are under *After the finish line*.
 
 **Off the plan** (the user, 2026-10-18): every feature the three roads do not
 need; any check, warning or format the contracts do not state. The AuBDTAu

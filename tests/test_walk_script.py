@@ -76,3 +76,30 @@ def test_a_walk_started_again_runs_no_point(tmp_path, monkeypatch):
             f": a run is one start; to continue it, launch the stage again"
             in said), said
     assert (relax / log).read_bytes() == first and not (fc / log).exists()
+
+
+def test_a_warm_launch_with_nothing_to_take_is_refused_naming_cold(
+        tmp_path, monkeypatch):
+    """`job-system.md` R-L17, for a run of points as for a run of one: a
+    stage launched again warm continues from its newest launched run, so a
+    run that left nothing it takes -- no point done, no point's warm files
+    -- is refused before anything is written, naming the cold launch.
+    THE SILENT FAILURE: a new run recorded as continuing from one it took
+    nothing from.  The road: H2's vibration launched here, its relaxation
+    ending in its activation before it wrote anything, then launched again
+    warm."""
+    from support.road import jobset, prepared_here
+    bundle, run, _names = prepared_here(tmp_path, monkeypatch, "false",
+                                        name="H2vib",
+                                        calculation="vibration",
+                                        stage="freq")
+    r = jobset("launch", "task", "--bundle", bundle, "--mode", "direct",
+               "--foreground", "--yes")
+    assert r.exit_code == 1, r.output
+    again = jobset("launch", "task", "--stage", "freq", "--bundle", bundle,
+                   "--mode", "direct", "--foreground", "--yes")
+    assert again.exit_code != 0, again.output
+    assert "which is impossible here" in again.output, again.output
+    assert "--cold" in again.output, again.output
+    assert not (run.parent / "run-1").exists()
+

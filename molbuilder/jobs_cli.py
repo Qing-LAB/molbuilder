@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import click
 
+from .identity import jobs_as_typed
+
 
 @click.group("jobs", short_help="the jobs launched from this machine: "
                                 "what each is doing, and stop one")
@@ -116,7 +118,7 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
         raise click.ClickException(str(exc)) from None
     if job is None:
         raise click.ClickException(
-            f"no job {job_id} is on file -- `molbuilder jobs status` lists "
+            f"no job {job_id} is on file -- `{jobs_as_typed('status')}` lists "
             f"them")
     going, saying = is_going(job, Asked())
     if going is None:
@@ -124,7 +126,7 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
             f"{job.id}: {saying} -- nothing was stopped")
     if going is False:
         raise click.ClickException(
-            f"{job.id} has ended -- `molbuilder jobs status` says how")
+            f"{job.id} has ended -- `{jobs_as_typed('status')}` says how")
     if job.how == "here" and not job.background:
         raise click.ClickException(
             f"{job.id} is waited on at its terminal: stop it there, with "
@@ -154,10 +156,10 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
             how = cancel(scheduler_of(job), job.job_id)
     except NotGoing as exc:
         raise click.ClickException(
-            f"{exc} -- `molbuilder jobs status` says how") from None
+            f"{exc} -- `{jobs_as_typed('status')}` says how") from None
     except (OSError, RuntimeError) as exc:
         raise click.ClickException(f"{job.id} was not stopped: {exc}") \
             from None
     _record(job, "stopped", how=how)
-    click.echo(f"stopped: {how} -- `molbuilder jobs status` says how it "
+    click.echo(f"stopped: {how} -- `{jobs_as_typed('status')}` says how it "
                f"ended")

@@ -117,19 +117,19 @@ class Kind:
     # ----- how a job is sent ------------------------------------------ #
 
     def line(self, where: Mapping[str, Optional[str]], *, job: str,
-             restated: Sequence[str], launched_by: str, header: str,
+             restated: Sequence[str], header: str,
              args: Sequence[str], wall_s: int) -> List[str]:
         """The one line that sends ``header``: ``where`` is the record's
         command locations (`record.Scheduler.commands`), ``restated`` what a
-        launch restates (:meth:`restated`), ``launched_by`` molbuilder's
-        launch claim (`job-contracts.md` § 2.6), ``args`` the run's
-        arguments, ``wall_s`` the wall the job is sent with, in seconds,
-        told to the job as :data:`WALL_VAR` (`running-a-job.md` § 3.6).  A
-        command the line names and the record does not is a
-        :class:`KindError`."""
+        launch restates (:meth:`restated`) -- molbuilder's launch claim
+        filled in beside its variable (`job-contracts.md` § 2.6) --
+        ``args`` the run's arguments, ``wall_s`` the wall the job is sent
+        with, in seconds, told to the job as :data:`WALL_VAR`
+        (`running-a-job.md` § 3.6).  A command the line names and the
+        record does not is a :class:`KindError`."""
         line = _filled(self, self.line_words, where, {
             "job": job, "restated": list(restated),
-            "launched_by": launched_by, "header": header,
+            "launched_by": LAUNCH_CLAIM, "header": header,
             "launch_claim_var": LAUNCH_CLAIM_VAR,
             "wall_var": WALL_VAR, "wall_s": int(wall_s),
             "args": list(args)})
