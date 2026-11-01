@@ -10,6 +10,13 @@
 }
 .results-run-panel[hidden] { display: none; }
 
+/* ---- a run of points' line: its count and the point at work (§ 3a) ---- */
+.rp-lead {
+    margin: 0;
+    padding: var(--space-sm) var(--space-md) 0;
+    color: var(--text-secondary);
+}
+
 /* ---- the closed line: one line, so it never pushes the result down ---- */
 .rp-head {
     display: flex;

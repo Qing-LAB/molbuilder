@@ -53,22 +53,15 @@ class ReadOnce:
         return self._decks[key]
 
     def points_run(self, stage: str, run: Path):
-        """An upstream run of points' ``(launch record, (state, detail,
-        rows))`` -- its state ``None`` for a run never launched -- read once
-        for every point of the rung that takes it (`continuation.
-        points_state`).  A record that does not read raises, as its reader
-        does (`runrecord.LaunchRecordError`)."""
+        """An upstream run of points, read once for every point of the
+        rung that takes it -- its one reading (`continuation.read_points`:
+        pending, unreadable, or its points' state with its rows and launch
+        record)."""
         key = (stage, run)
         if key not in self._runs:
-            from ..runrecord import launch_record
-            from .continuation import points_state
-            base, task = Path(self.calc.base), self.calc.task
-            launch = launch_record(run)
-            self._runs[key] = (launch, None if launch is None else
-                               points_state(run, stage_home(base, task,
-                                                            stage).names,
-                                            task, stage, launch=launch,
-                                            base=base))
+            from .continuation import read_points
+            self._runs[key] = read_points(self.calc.base, self.calc.task,
+                                          stage, run)
         return self._runs[key]
 
 
@@ -141,14 +134,12 @@ def transport_inputs(calc, stage: str, *, point=None,
         from .materialize import latest_attempt
         newest = latest_attempt(up_dir) if up_dir.is_dir() else None
         if up_points and newest is not None:
-            from ..runrecord import LaunchRecordError
-            try:
-                _launch, _state = once.points_run(upstream, newest)
-            except LaunchRecordError as exc:
+            got = once.points_run(upstream, newest)
+            if got.state == "unreadable":
                 # A RECORD THAT DOES NOT READ is said in its reader's
                 # words, as the refusal it is (`job-system.md` R-L21).
-                raise PrepError(str(exc)) from None
-            if _launch is None:
+                raise PrepError(got.detail)
+            if got.launch is None:
                 # NEVER LAUNCHED, whatever its points' files: a run is
                 # launched or it is not (`engines/transport.md` § 2a.11) --
                 # a copy cut short reads so, its launch record written last.
@@ -165,7 +156,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                 # points_state`), read once for every point here: a chain
                 # that stopped is a run that ended with points not done,
                 # never one still queued.
-                st, _d, rows = _state
+                st, rows = got.state, got.rows
                 not_done = [f"{p['point']} ({p['why']})" for p in rows
                             if not p["done"]]
                 if st in ("queued", "running"):

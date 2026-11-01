@@ -302,43 +302,42 @@ def _orbitals_of(firsto: Sequence[int], orb_indx: Path,
 def point_readings(calc) -> List[Dict]:
     """EACH FINISHED TRANSMISSION POINT'S READINGS (`model/parse.md` § 5e):
     the transmission's newest run, as the record reads it
-    (`record.result_folders`) -- per point its run finished, as the status
-    door's rows say it, read once for the run (`continuation.points_state`,
-    `architecture.md` § 3.2), its folder and what is kept of each data
-    file's reading, its own and those in its ``shared/`` (:func:`readings`).
-    A point still running, or stopped, is none: its data file is TBtrans's
-    while it writes, and a partial one after; a run not launched has no
-    row, and no point finished."""
-    from ..calcdirs import RunPlace
-    from ..jobset.continuation import points_state
-    from ..jobset.naming import stage_home
-    from ..runrecord import LaunchRecordError, launch_record
+    (`record.result_folders`) -- per point whose run finished, its folder
+    and what is kept of each data file's reading, its own and those in its
+    ``shared/`` (:func:`readings`).  ONE ANSWER TO *this point finished*: a
+    run of points' rows, read once for the run (`continuation.read_points`,
+    `architecture.md` § 3.2); a transmission run once, its one point, by
+    the run door's state of its run (`runs.state_of`).  A point still
+    running, or stopped, is none: its data file is TBtrans's while it
+    writes, and a partial one after; a run not launched -- a copy cut short
+    before its launch record -- holds no point finished."""
+    from ..calcdirs import RunPlace, where
+    from ..jobset.continuation import read_points as points_reading
+    from ..runs import run_of, state_of
     from .record import result_folders
     base, task = Path(calc.base), calc.task
-    names = stage_home(base, task, "transmission").names
     folders = result_folders(base, task, "transmission")
-    rows: Dict[str, Dict] = {}
+    finished = set()
     for run in {r for _, w, r in folders if w is not None}:
-        try:
-            launch = launch_record(run)
-        except LaunchRecordError:
+        if not where(run).of_points:
+            # RUN ONCE: its one point is the run, by the run door.
+            ran = run_of(run)
+            if ran is not None and state_of(ran).state == "finished":
+                finished.add(Path(run))
             continue
-        if launch is None:
+        # ITS ONE READING (`continuation.read_points`): a run not launched,
+        # or one whose records do not read, holds no point finished -- the
+        # stage's row says why.
+        got = points_reading(base, task, "transmission", run)
+        if got.launch is None:
             continue
-        try:
-            got = points_state(run, names, task, "transmission",
-                               launch=launch, base=base)[2]
-        except LaunchRecordError:
-            # ITS INDEX DOES NOT READ -- an older molbuilder's: no point of
-            # it is read, the stage's row saying why.
-            continue
-        rows.update({p["folder"]: p for p in got})
-    return [{"point": pt, "folder": where,
-             "readings": readings(where, task.label)}
-            for pt, where, run in folders
-            if where is not None
-            and (rows.get(RunPlace.of(run).walked(pt.rel)) or {}).get("state")
-            == "finished"]
+        place = RunPlace.of(run)
+        finished |= {place.point(r["rel"]) for r in got.rows
+                     if r["state"] == "finished"}
+    return [{"point": pt, "folder": folder,
+             "readings": readings(folder, task.label)}
+            for pt, folder, _run in folders
+            if folder is not None and Path(folder) in finished]
 
 
 def read_points(calc, *, fresh: bool = False, take_over: bool = False,

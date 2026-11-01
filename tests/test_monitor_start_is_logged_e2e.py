@@ -150,7 +150,8 @@ def test_a_monitor_that_loads_says_so(real_h2_pyscf):
     PySCF run script writing no wall line, so a finished PySCF run's badge
     said no total (2.56.2's first revision).
     """
-    from molbuilder.runs import folder_answer, run_answer, run_of
+    from molbuilder.jobset.runstatus import run_answer
+    from molbuilder.runs import folder_answer, run_of
     from molbuilder.runwrap import MONITOR_BUNDLE
     ran_in = real_h2_pyscf.attempt("coarse")
     said = _session_logs(ran_in)

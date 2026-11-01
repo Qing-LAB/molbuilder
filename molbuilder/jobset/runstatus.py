@@ -15,6 +15,13 @@ tab + JobMonitor; its schema is pinned by ``execution/running-a-job.md``
 § 4, the composer pattern by ``model/parse.md`` § 5); this module only adds the cross-stage
 view (warm-file inventory + each group's next step).  It is **read-only**:
 it inspects the tree, changes nothing.
+
+THE VIEWS A READER IS SHOWN (floor 6, `execution/architecture.md` § 2.1,
+§ 3.2) are composed here over the run door (floor 2) and a run of points'
+rows (floor 4), each run's points read once per answer: the views a folder
+is read with (:func:`views_of` -- a calculation's ladder, :func:`ladder_view`;
+a run of points, :func:`points_view`; the point a folder is), and how the
+run a file belongs to is doing (:func:`run_answer`).
 """
 
 from __future__ import annotations
@@ -33,8 +40,8 @@ from ..runrecord import LaunchRecordError, launch_record
 from .commands import (block, command, launch_lines, launch_pending,
                        prep_group_lines, rollback)
 from .model import JobSet
-from .continuation import (gathered_lines, point_rows, points_state,
-                           stage_run_state, taken_over)
+from .continuation import (PointsReading, gathered_lines, pending_words,
+                           read_points, stage_run_state, taken_over)
 from .plan import resources_text
 from .ready import MISSING
 
@@ -263,30 +270,13 @@ def _warm_present(run_dir: Path, label: str, engine: str,
     return out
 
 
-#: A RUN A REFUSED SEND OPENED -- the newest folder of a stage launched
-#: before, with no launch record: not a run yet (a refused launch records
-#: nothing), and filled anew by the stage's next launch (`job-system.md`,
-#: *The task*: a run's states).
-REFUSED_OPEN = ("opened by a launch whose send was refused -- not launched; "
-                "its next launch fills it anew")
-
-
-def _pending_detail(attempt, detail: str) -> str:
-    """A run not launched, in words: prep's first run as the run door says
-    it; a later one, opened by a launch whose send was refused
-    (`materialize.opened_by_refused_send`)."""
-    from .materialize import opened_by_refused_send
-    return (REFUSED_OPEN if attempt is not None
-            and opened_by_refused_send(attempt) else detail)
-
-
 def run_folders(base, task, stage_dir, stage: str):
     """EVERY RUN OF A STAGE, as folders -- ``(n, folder, point)``: each
     attempt ``run-<n>`` in order and, for a rung of points, each of its
     points' folders there (`PointsOf.points_in`), ``point`` ``None``
-    for a run with no point level.  The one lister the Results tab's every
-    run (:func:`every_run`) and the memory a stage needs (`jobset.memory`)
-    ask."""
+    for a run with no point level -- the declaration's walk alone, no state
+    asked: the memory a stage needs (`jobset.memory`) asks it; a reader of
+    the runs' states reads each run once (:func:`every_run`)."""
     root = Path(base)
     for n in attempts_in(Path(stage_dir)):
         run_dir = attempt_dir(Path(stage_dir), n)
@@ -300,123 +290,266 @@ def run_folders(base, task, stage_dir, stage: str):
             yield n, folder, pt
 
 
-def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
-    """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
-    (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
-    each attempt's points (`PointsOf.points_in`), read as `status`
-    reads a run (`run_state_of`) -- a run of points as the run it is, its
-    own row before its points: its state and count as `status` reads it,
-    once per run (`continuation.points_state`), and its points' rows: a
-    point its ended walk never reached *not run* -- with the file it opens,
-    root-relative: the run door's answer (`runs.openable`) -- the root's
-    `task.json` for a transmission run, whose result is the report at its
-    point (§ 0.1).  ``[]`` for a stage nothing has prepared."""
-    from ..runs import openable, run_of, state_of, transmission_point
-    from .naming import stage_home
-    if not st.dir:
-        return []
-    root = Path(base)
-    rows: List[Dict[str, Any]] = []
-    by_run: Dict[int, tuple] = {}
-    listed: set = set()
+def _at_work(reading: PointsReading, run: Path):
+    """THE POINT AT WORK of a run of points read once (``reading``) --
+    the point running; else the last, in the listing order, whose run holds
+    an engine output (its row's ``output``); ``None`` before any has
+    (`architecture.md` § 3.2) -- as ``(row, folder)``."""
+    from ..calcdirs import RunPlace
+    rows = reading.rows
+    pick = (next((r for r in rows if r["state"] == "running"), None)
+            or next((r for r in reversed(rows) if r.get("output")), None))
+    return ((pick, RunPlace.of(run).point(pick["rel"]))
+            if pick is not None else (None, None))
 
-    def _read(n: int) -> tuple:
-        # A RUN OF POINTS, READ ONCE: ``(state, detail, {rel: row})`` --
-        # as its stage's row reads its newest run (:func:`_sweep_status`):
-        # pending before it is launched, its points' state once it is, a
-        # record that does not read unreadable, said.  Points with no row
-        # here answer by their own door.
-        if n not in by_run:
-            run_dir = attempt_dir(root / st.dir, n)
-            try:
-                launch = launch_record(run_dir)
-                if launch is None:
-                    got = ("pending", _pending_detail(
-                        run_dir, "prepared, not launched"), {})
-                else:
-                    s_, d_, pts = points_state(
-                        run_dir, stage_home(root, task, st.ref.name).names,
-                        task, st.ref.name, launch=launch, base=root)
-                    got = (s_, d_, {p["rel"]: p for p in pts})
-            except LaunchRecordError as exc:
-                got = ("unreadable", str(exc), {})
-            by_run[n] = got
-        return by_run[n]
 
-    for n, folder, pt in run_folders(root, task, root / st.dir, st.ref.name):
-        if pt is not None and n not in listed:
-            listed.add(n)
-            # THE RUN OF POINTS' OWN ROW, before its first point's: its
-            # state and count, and the file its folder opens -- its own
-            # result where its root holds one (`runs.openable`).
-            run_dir = attempt_dir(root / st.dir, n)
-            state, detail, _pts = _read(n)
-            opens, _trail = openable(run_dir)
-            rows.append({
-                "run": attempt_name(n),
-                **dict.fromkeys(("frame", "of", "bias_v")),
-                "dir": str(run_dir.relative_to(root)),
-                "state": state, "detail": detail, "converged": None,
-                "opens": (str(Path(opens).resolve().relative_to(
-                    root.resolve())) if opens else None),
-                "deck": None, "validation": None,
-                "copied_from": _copied(root, run_dir),
-            })
-        run = run_of(folder)
-        if run is None:
-            continue
-        row = _read(n)[2].get(pt.rel) if pt is not None else None
-        # THE RUN'S ROWS ANSWER ITS POINTS, read once per run; the run
-        # door's own reading only for a run that has none (a single run,
-        # or one not launched).
-        if row is not None:
-            state, detail, converged = (
-                row["state"], row["detail"] if row["done"] else row["why"],
-                row["verdict_words"])
-        else:
-            got = state_of(run)
-            state, detail, converged = (got.state, got.detail,
-                                        got.converged_words)
-        # A TRANSMISSION RUN'S POINT IS THE DOOR'S, the one it opens the
-        # report at -- its one point too, when the rung runs once.
-        pt = transmission_point(folder) or pt
-        # THE FILE THE RUN'S FOLDER OPENS, the run door's answer -- a
-        # transmission run's is its calculation's report, at the root
-        # (`runs.transmission_point`, results.md § 0.1).
-        opens, _trail = openable(folder)
-        opens_rel: Optional[str] = (
-            str(Path(opens).resolve().relative_to(root.resolve()))
-            if opens else None)
-        # WHAT THE RUN READ AND WHAT WAS CHECKED BEFORE IT WAS WRITTEN,
-        # root-relative (`web/results.md` § 2.4): the deck in the run's
-        # folder, and the `.validation.txt` prep wrote beside the deck
-        # it copied -- through the run door, never by a name.
-        deck, report = run.deck, run.report
+def _run_opens(run: Path, at_opens: Optional[str]) -> Optional[str]:
+    """WHAT A RUN OF POINTS OPENS (`web/results.md` § 3a): its own result
+    where its root holds one -- a transmission run's, its calculation's
+    report (`runs.openable`) -- else ``at_opens``, the file its point at
+    work's folder opens; ``None`` with neither."""
+    from ..runs import openable
+    own, _trail = openable(run)
+    return own if own is not None else at_opens
 
-        def _rel(p: Optional[Path]) -> Optional[str]:
-            return (str(p.resolve().relative_to(root.resolve()))
-                    if p is not None else None)
-        rows.append({
-            "run": attempt_name(n),
-            # THE POINT, in its one wire form (`stages.Point.to_wire`):
-            # its frame, how many frames the set holds, its voltage --
-            # what a row is named by on a page (`web/results.md` § 2.5).
-            **(pt.to_wire() if pt is not None
+
+def _report_of(calc) -> Path:
+    """The calculation's description -- through which its report is opened
+    (`calcdirs.description_path`, `web/results.md` § 0.1)."""
+    from ..calcdirs import description_path
+    return description_path(Path(calc.base))
+
+
+def points_view(calc, run, reading: Optional[PointsReading] = None
+                ) -> Dict[str, Any]:
+    """A RUN OF POINTS, AS A READER SEES IT (`architecture.md` § 3.2,
+    `web/results.md` § 3a) -- ``{state, detail, at_work, opens}``: its
+    state and its count in the kind's words; **the point at work**
+    (:func:`_at_work`) -- its point in its one wire form, its folder, its
+    record (the run door's `record_of`) and the row of the file its folder
+    opens; and **what the run opens** (:func:`_run_opens`).  Every path
+    whole.  ``reading`` is the run's one reading where the caller holds it
+    (`continuation.read_points`)."""
+    from ..calcdirs import where
+    from ..identity import parse_token
+    from ..runs import file_row, openable, record_of, run_of
+    run = Path(run)
+    if reading is None:
+        reading = read_points(calc.base, calc.task,
+                              parse_token(where(run).stage)[1], run)
+    row, folder = _at_work(reading, run)
+    at_work, at_opens = None, None
+    if row is not None:
+        ran = run_of(folder)
+        at_opens, _trail = openable(folder)
+        at_work = {"point": row["wire"], "dir": str(folder),
+                   "record": record_of(ran) if ran is not None else None,
+                   "opens": file_row(at_opens) if at_opens else None}
+    return {"state": reading.state, "detail": reading.detail,
+            "at_work": at_work, "opens": _run_opens(run, at_opens)}
+
+
+def _run_row(calc, n: int, folder: Path, point, *, state, detail,
+             converged, opens: Optional[str], copied: Optional[str],
+             opens_at=None, ran=None) -> Dict[str, Any]:
+    """One row of the ladder's every run (`web/results.md` § 2.4): the run,
+    its point in its one wire form (``None``: every field ``null``), its
+    folder, state, detail and verdict, the file it opens (``opens``, the
+    caller's answer), whether that is its calculation's report
+    (``opens_report``) and the point it opens it at (``opens_at``, its own
+    unless the caller names the point at work's), the deck its run read and
+    the check written before it -- through the run door (``ran``, its
+    `Run`), every path whole -- and what it is a copy of (``copied``, the
+    caller's reading, :func:`_copied`)."""
+    deck, report = (ran.deck, ran.report) if ran is not None else (None,
+                                                                   None)
+    report_opened = opens is not None and Path(opens) == _report_of(calc)
+    return {"run": attempt_name(n),
+            **(point if point is not None
                else dict.fromkeys(("frame", "of", "bias_v"))),
-            "dir": str(folder.relative_to(root)),
-            "state": state,
-            "detail": detail,
+            "dir": str(folder), "state": state, "detail": detail,
             "converged": converged,
-            # ROOT-RELATIVE: the file the row opens -- the run's own, or
-            # the root's task.json for a transmission point.
-            "opens": opens_rel,
-            "deck": _rel(deck),
-            "validation": _rel(report),
+            "opens": opens,
+            # A ROW THAT OPENS ITS CALCULATION'S REPORT SAYS SO, and the
+            # point it opens it at (`web/results.md` § 0.3, § 2.4).
+            "opens_report": report_opened,
+            "opens_at": ((opens_at if opens_at is not None else point)
+                         if report_opened else None),
+            "deck": str(deck) if deck is not None else None,
+            "validation": str(report) if report is not None else None,
             # A RUN COPIED IN from the finished calculation this one reuses,
             # named by what it is a copy of (`engines/transport.md` § 2a.16).
-            "copied_from": _copied(root, folder),
-        })
+            "copied_from": copied}
+
+
+def every_run(calc, st: StageStatus) -> List[Dict[str, Any]]:
+    """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
+    (`web/results.md` § 2.4): each attempt in order, read as `status` reads
+    a run -- a run of points (`calcdirs.Where.of_points`) as the run it is,
+    its own row first (its state and count, what it opens and the point it
+    opens a report at, :func:`_run_opens`), then each of its points' folders
+    opened, from the same reading's rows; any other run by the run door
+    (`runs.state_of`), its point where it has one (`points.point_of`: a
+    transmission run once).  **A run's points are read once per answer**
+    (`architecture.md` § 3.2): the stage's newest run is the stage row's
+    own reading (``st``), in the run's own words where it is not launched.
+    ``[]`` for a stage nothing has prepared."""
+    from ..calcdirs import RunPlace, where
+    from ..runs import openable, run_of, state_of
+    from .points import point_of
+    if not st.dir:
+        return []
+    stage_dir = Path(calc.base) / st.dir
+    rows: List[Dict[str, Any]] = []
+    for n in attempts_in(stage_dir):
+        run_dir = attempt_dir(stage_dir, n)
+        if where(run_dir).of_points:
+            # THE STAGE ROW'S OWN READING for its newest run -- its state
+            # whole; its detail the run's own words where the ready door
+            # worded a run not launched for its launch.
+            reading = (PointsReading(
+                st.state,
+                pending_words(run_dir) if st.state == "pending"
+                else st.detail,
+                tuple(st.points), st.launch, st.older_index)
+                if run_dir.name == st.attempt
+                else read_points(calc.base, calc.task, st.ref.name, run_dir))
+            place = RunPlace.of(run_dir)
+            # WHAT EACH POINT'S FOLDER OPENS, asked once a point -- the
+            # point at work's the run's own until its root holds a result.
+            opened = {r["rel"]: openable(place.point(r["rel"]))[0]
+                      for r in reading.rows if r["opened"]}
+            row, _folder = _at_work(reading, run_dir)
+            rows.append(_run_row(
+                calc, n, run_dir, None, state=reading.state,
+                detail=reading.detail, converged=None,
+                opens=_run_opens(run_dir, opened.get(row["rel"])
+                                 if row is not None else None),
+                copied=_copied(calc.base, run_dir),
+                opens_at=row["wire"] if row is not None else None))
+            for r in reading.rows:
+                if not r["opened"]:
+                    continue
+                folder = place.point(r["rel"])
+                rows.append(_run_row(
+                    calc, n, folder, r["wire"], state=r["state"],
+                    detail=r["detail"] if r["done"] else r["why"],
+                    converged=r["verdict_words"], opens=opened[r["rel"]],
+                    copied=r["copied_from"], ran=run_of(folder)))
+            continue
+        ran = run_of(run_dir)
+        if ran is None:
+            continue
+        got = state_of(ran)
+        pt = point_of(run_dir, calc.task)
+        rows.append(_run_row(calc, n, run_dir,
+                             pt.to_wire() if pt is not None else None,
+                             state=got.state, detail=got.detail,
+                             converged=got.converged_words,
+                             opens=openable(run_dir)[0],
+                             copied=_copied(calc.base, run_dir), ran=ran))
     return rows
+
+
+def ladder_view(calc) -> Dict[str, Any]:
+    """A CALCULATION'S LADDER, as a reader sees it (`web/results.md` § 2.4)
+    -- the status door's one wire form (`JobSetStatus.to_dict`), the next
+    step included, and under each stage EVERY RUN of it (:func:`every_run`),
+    each run's points read once; a stage whose runs do not list says why on
+    its row (``runs_unread``), the other stages kept."""
+    status = jobset_status(calc)
+    ladder = status.to_dict()
+    for row, st in zip(ladder["stages"], status.stages):
+        try:
+            row["runs"] = every_run(status.calc, st)
+        except (OSError, ValueError) as exc:
+            row["runs"], row["runs_unread"] = [], str(exc)
+    return ladder
+
+
+def views_of(folder) -> Dict[str, Any]:
+    """THE VIEWS A FOLDER IS READ WITH (`architecture.md` § 3.2,
+    `model/parse.md` § 5.2) -- ``{ladder, points, point}``, what is asked
+    of a folder beyond its own answer (`runs.folder_answer`), by what it is
+    (`calcdirs.where`): at a calculation's root its **ladder**
+    (:func:`ladder_view`); at a run of points' root and each of its points'
+    folders, the **run of points' view** (:func:`points_view`); at a folder
+    of a rung with points, **the point it is** (`points.point_of`), in its
+    one wire form; each ``None`` elsewhere.  The calculation is opened once
+    for the views (`calculation.open`), and a run of points' points are
+    read once per answer; the run door places each folder it is handed by
+    itself.  What does not read is said where the view would be, in its reader's words: a
+    calculation that does not open, or a ladder whose records do not --
+    ``{"unread": ...}`` for the ladder, the view ``unreadable``."""
+    from .. import calcdirs
+    from ..calculation import open as open_calculation
+    from .points import point_of
+    out: Dict[str, Any] = {"ladder": None, "points": None, "point": None}
+    folder = Path(folder)
+    at = calcdirs.where(folder)
+    if at.root is None:
+        return out
+    of_points = (at.run_folder is not None and at.trial is None
+                 and at.what in (calcdirs.ATTEMPT, calcdirs.POINT)
+                 and calcdirs.where(at.run_folder).of_points)
+    try:
+        calc = open_calculation(at.root)
+    except (OSError, ValueError) as exc:
+        if at.what == calcdirs.CALCULATION:
+            out["ladder"] = {"unread": str(exc)}
+        if of_points:
+            out["points"] = {"state": "unreadable", "detail": str(exc),
+                             "at_work": None, "opens": None}
+        return out
+    if at.what == calcdirs.CALCULATION:
+        try:
+            out["ladder"] = ladder_view(calc)
+        except (OSError, ValueError) as exc:
+            out["ladder"] = {"unread": str(exc)}
+    if of_points:
+        out["points"] = points_view(calc, at.run_folder)
+    pt = point_of(folder, calc.task)
+    out["point"] = pt.to_wire() if pt is not None else None
+    return out
+
+
+def run_answer(path) -> Optional[Dict[str, Any]]:
+    """``{state, detail, live, engine_elapsed_s}`` -- HOW THE RUN THE FILE
+    AT ``path`` BELONGS TO IS DOING, for a viewer that follows it
+    (`web/results.md` § 4.1): a run's file by the run door (`runs.state_of`,
+    asked with its launch record: one that does not read is ``unreadable``,
+    its file named), a file at a run of points' root by the run's one
+    reading (`continuation.read_points` -- its state, its points').
+    ``live`` -- `job.LIVE_STATES` -- is what the viewer follows; once ended
+    (`job.FINAL_STATES`), the run's own length, its engine's wall from
+    launch to exit its record states (`runs.WALL`, the Run panel's), else
+    ``None`` -- as for a run of points' root, which has no record.  ``None``
+    for a file of no run of ours, as for an upload: nothing is asked of a
+    folder no calculation claims (`model/parse.md` § 5)."""
+    from ..identity import parse_token
+    from ..parse.dirs.job import FINAL_STATES, LIVE_STATES
+    from ..runs import WALL, place_of, record_of, run_of, state_of
+    run = run_of(path)
+    took = None
+    if run is None:
+        p = Path(path)
+        folder = p if p.is_dir() else p.parent
+        place = place_of(folder)
+        if not place.ours or not place.where.of_points:
+            return None
+        got = read_points(place.root, place.task,
+                          parse_token(place.where.stage)[1], folder)
+        state, detail = got.state, got.detail
+    else:
+        st = state_of(run)
+        state, detail = st.state, st.detail
+        if state in FINAL_STATES:
+            # AN ENDED RUN'S OWN LENGTH -- its record's, the field alone.
+            rec = record_of(run, status=st, fields=(WALL,)) or {}
+            took = ((rec.get("computation") or {}).get("time")
+                    or {}).get("engine_elapsed_s")
+    return {"state": state, "detail": detail,
+            "live": state in LIVE_STATES, "engine_elapsed_s": took}
 
 
 def _copied(base, run: Optional[Path]) -> Optional[str]:
@@ -432,42 +565,22 @@ def _copied(base, run: Optional[Path]) -> Optional[str]:
         return str(exc)
 
 
-def _sweep_status(calc, job, *, run: Path, names, columns: dict
+def _sweep_status(calc, job, *, run: Path, columns: dict
                   ) -> Optional["StageStatus"]:
     """A SWEPT RUNG's row (`engines/transport.md` § 2a.11): its latest run's
-    -- ``run`` -- state: ``pending`` before it is launched; while launched,
-    ``running`` while a point runs, ``finished`` once every point is done,
-    ``queued`` when nothing has run yet, else ``failed`` -- and its points,
-    each done or not done and what it started from; ``columns``, the
-    stage's own (:func:`_job_status`).  ``None`` for a rung that does not
-    sweep."""
+    -- ``run`` -- one reading (`continuation.read_points`): ``pending`` before
+    it is launched; while launched, ``running`` while a point runs,
+    ``finished`` once every point is done, ``queued`` when nothing has run
+    yet, else ``failed`` -- and its points, each done or not done and what
+    it started from; ``columns``, the stage's own (:func:`_job_status`).
+    ``None`` for a rung that does not sweep."""
     from .points import points_of
     base, task = calc.base, calc.task
     declared = points_of(task) if task is not None else None
     if declared is None or not declared.rung_points(calc, job.name):
         return None
-    try:
-        launch = launch_record(run)
-    except LaunchRecordError as e:
-        return StageStatus(state="unreadable", detail=str(e),
-                           attempt=run.name, **columns)
-    try:
-        if launch is None:
-            pts, _running = point_rows(run, names, task, job.name,
-                                       base=base, launch=launch)
-        else:
-            # THE ONE RULE the gather asks too (`continuation.points_state`).
-            state, detail, pts = points_state(run, names, task, job.name,
-                                              launch=launch, base=base)
-    except LaunchRecordError as e:
-        # ITS INDEX DOES NOT READ -- an older molbuilder's, naming `jobset
-        # migrate` (`runpoints.read_index`): said on the stage's row, never
-        # the whole status; which refusal it is, carried for its next step.
-        from ..runpoints import OlderIndexError
-        return StageStatus(state="unreadable", detail=str(e),
-                           attempt=run.name, launch=launch,
-                           older_index=isinstance(e, OlderIndexError),
-                           **columns)
+    got = read_points(base, task, job.name, run)
+    pts = got.rows
     # CONVERGED, in its own column (`job-system.md`, rule 4): the first
     # point whose output says it did not, in that verdict's own words (a
     # relaxation's `geometry NO`, an SCF's `SCF NO`); yes for a rung that
@@ -479,12 +592,10 @@ def _sweep_status(calc, job, *, run: Path, names, columns: dict
                  else "SCF yes" if pts and _computes_scf(task, job.name)
                  and all(p["converged"] is True for p in pts)
                  else None)
-    if launch is None:
-        state, detail = "pending", _pending_detail(run, "prepared, not "
-                                                        "launched")
     return StageStatus(
-        state=state, detail=detail, converged=converged,
-        attempt=run.name, launch=launch, points=pts,
+        state=got.state, detail=got.detail, converged=converged,
+        attempt=run.name, launch=got.launch, points=pts,
+        older_index=got.older_index,
         gathered=gathered_lines(run), copied_from=_copied(base, run),
         **columns)
 
@@ -527,7 +638,7 @@ def _job_status(calc, job, *, dirs, refs) -> StageStatus:
     # run_names`) -- a run may hold several tries.  THE LABEL IS THIS
     # JOB'S, NOT THE JOBSET'S: a trial is relabelled with its point.
     names = run_names(jobset, job)
-    row = (_sweep_status(calc, job, run=run, names=names, columns=columns)
+    row = (_sweep_status(calc, job, run=run, columns=columns)
            or _one_run_status(base, jobset, run=run, names=names,
                               columns=columns))
     row = dataclasses.replace(row, tsgf=_tsgf_line(
@@ -553,7 +664,7 @@ def _one_run_status(base: Path, jobset: JobSet, *, run: Path, names,
     state, detail = st.state, st.detail
     launch = None if state == "unreadable" else launch_record(run)
     if state == "pending":
-        detail = _pending_detail(run, detail)
+        detail = pending_words(run, detail)
     return StageStatus(
         state=state, detail=detail,
         converged=st.converged_words, attempt=run.name,
@@ -1182,9 +1293,9 @@ def scratch_answer(calc) -> ScratchAnswer:
     reads it queued or running (`continuation.read_run`, the door `status`
     reads); a run whose state does not read keeps its scratch too, said.
     Reads names, states and the jobs' files, and removes nothing."""
-    from ..joblist import Asked, is_going
+    from ..joblist import Asked, going_of
     from ..parse.dirs.job import LIVE_STATES
-    from .continuation import jobs_holding, stage_run_state
+    from .continuation import stage_run_state
     from .materialize import scratch_in
     base = Path(calc.base)
     found = scratch_in(calc)
@@ -1196,13 +1307,11 @@ def scratch_answer(calc) -> ScratchAnswer:
         why = None
         # A FILE IN NO RUN is no run's to keep.
         if f.run is not None:
-            # A JOB STILL GOING THAT HOLDS THE RUN
-            # (`continuation.jobs_holding`).
-            for job in jobs_holding(base, f.run):
-                going, said = is_going(job, asked)
-                if going is not False:
-                    why = f"job {job.id} -- {said}"
-                    break
+            # A JOB THAT HOLDS THE RUN STILL GOING, or one this machine
+            # cannot ask (`joblist.going_of`): its scratch kept.
+            going, job, said = going_of(base, f.run, asked)
+            if going is not False:
+                why = f"job {job.id} -- {said}"
             if why is None:
                 try:
                     # THE RUN'S STATE BY ITS KIND'S RULE -- a run of points
@@ -1221,6 +1330,7 @@ def scratch_answer(calc) -> ScratchAnswer:
 
 __all__ = ["StageStatus", "JobSetStatus", "jobset_status", "JobAnswer",
            "job_members",
-           "run_folders", "every_run",
+           "run_folders", "every_run", "points_view", "ladder_view",
+           "views_of", "run_answer",
            "render_status", "render_stage_status", "ScratchAnswer",
            "scratch_answer"]

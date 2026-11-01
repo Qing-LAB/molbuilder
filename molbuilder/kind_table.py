@@ -289,6 +289,14 @@ class CalculationKind:
         name."""
         return next((r for r in self.roles if r.name == name), None)
 
+    def opens_report(self, name: str) -> bool:
+        """Whether a run folder of its rung ``name`` opens its calculation's
+        report -- the role's ``opens`` (:data:`ROLE_OPENS`): a rung whose
+        engine writes no file a viewer reads on its own, its result the
+        report at the point the folder is (`web/results.md` § 0.1)."""
+        role = self.role(name)
+        return role is not None and role.opens == ROLE_OPENS[0]
+
     @property
     def role_names(self) -> Tuple[str, ...]:
         """Its rungs' roles, in order; ``()`` for a kind without roles,

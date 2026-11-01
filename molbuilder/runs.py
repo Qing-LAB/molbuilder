@@ -11,7 +11,12 @@ folder is (`calcdirs.where`), `paths` and `identity` for the names a layout
 gives its folders, `runfiles` for the names a run gives its files, `runrecord` and
 `parse.dirs` for what a run's records and outputs say.  So nothing below it
 knows a calculation, which is what `parse/` and `calcdirs` must not
-(`architecture.md` § 2.1).
+(`architecture.md` § 2.1).  **It answers the one folder it is handed**,
+reading only that folder, the folder its run's launch record lies in, the
+stage's folder prep wrote its deck in and the description: it opens no
+calculation, reads no plan and walks no run of points -- a view over
+several runs or points is floor 6's (`jobset.runstatus.views_of`), the point
+a folder is floor 4's (`jobset.points.point_of`).
 
 WHY ONE DOOR (plan B11, user 2026-10-04: *"agree to your B11"*).  The label a
 run names its files on is the DESCRIPTION's -- a
@@ -22,15 +27,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
 from molbuilder.paths import trial_label
-
-if TYPE_CHECKING:
-    from molbuilder.transport.stages import Point
 
 
 # --------------------------------------------------------------------- #
@@ -200,39 +202,31 @@ class Run:
     def prepared(self) -> Path:
         """THE FOLDER PREP WROTE THIS RUN'S FILES IN -- its deck, the
         `.validation.txt` beside it, its run script (`project-layout.md`
-        § 5.2) -- which launch copies into the run.  A stage's ``run-<n>/``
-        is the stage's folder; a point of a run of points, its prepared
-        folder (the point's ``prepared``, by its kind's declaration,
-        `PointsOf.points_in`): a bias point's ``run-<n>/f001/v0/`` the
-        stage's ``f001/v0/``, a call the job plans,
-        ``run-<n>/optical/f003/``, its phase's ``optical/``
+        § 5.2) -- which launch copies into the run: the nearest folder of
+        the stage, at the run's place with its ``run-<n>`` level taken out,
+        that holds the run's deck (`architecture.md` § 3.2).  A stage's
+        ``run-<n>/``, the stage's folder; a bias point's
+        ``run-<n>/f001/v0/``, the stage's ``f001/v0/``; a call the job
+        plans, ``run-<n>/optical/f003/``, its phase's ``optical/``
         (`engines/vibration.md` § 5.11 § 2) -- each composed by the folder
-        door (`calcdirs.RunPlace`, `execution/runs-of-points.md` § 2.4); a
-        benchmark trial's deck is rendered into its run, ``run-0``, so its
-        run's own folder is it."""
+        door (`calcdirs.RunPlace`, `execution/runs-of-points.md` § 2.4),
+        no declaration walked; a benchmark trial's deck is rendered into its
+        run, ``run-0``, so its run's own folder is it."""
         if self.trial:
             return self.folder
         at = self.place.where
         if at.run_folder is None:
             return self.folder
         place = calcdirs.RunPlace.of(at.run_folder)
-        if at.what != calcdirs.POINT:
+        deck = self.deck
+        if at.what != calcdirs.POINT or deck is None:
             return place.stage_dir
-        from .jobset.points import points_of
-        from .runrecord import LaunchRecordError
-        declared = points_of(self.place.task)
-        try:
-            point = (next((pt for _f, pt in declared.points_in(
-                at.run_folder, self.place.task, parse_token(self.stage)[1],
-                Path(self.place.root)) if pt.rel == at.point), None)
-                if declared is not None else None)
-        except LaunchRecordError:
-            # ITS RUN'S INDEX DOES NOT READ -- an older molbuilder's: the
-            # stage's folder, the run's row saying why
-            # (`runstatus._sweep_status`).
-            point = None
-        return (place.prepared(point.prepared) if point is not None
-                else place.stage_dir)
+        levels = Path(at.point).parts
+        for n in range(len(levels), 0, -1):
+            here = place.prepared("/".join(levels[:n]))
+            if (here / deck.name).is_file():
+                return here
+        return place.stage_dir
 
     @property
     def stage_deck(self) -> Optional[Path]:
@@ -443,8 +437,7 @@ def declared_of_deck(deck: Optional[Path], task, stage: Optional[str], *,
         text = read_deck(deck)
     except OSError as exc:
         raise DeckRecordUnreadable(f"{deck}: does not read ({exc})") from exc
-    from molbuilder.deck_record import (DeckRecordUnreadable,
-                                        extract_atom_metadata,
+    from molbuilder.deck_record import (extract_atom_metadata,
                                         extract_engine_offset)
     # A BLOCK THAT CANNOT BE READ IS REFUSED, naming the deck -- read as a
     # deck that records nothing, the run would be shown with no labels and
@@ -518,7 +511,6 @@ def deck_atom_index_map(said: Declared, task, stage: Optional[str]):
     own = deck_own_structure(task.engine, task.calculation, stage)
     atoms = (AtomIndexMap.of_own_structure(int(n), own) if own
              else AtomIndexMap.of_engine_record(record, int(n)))
-    from dataclasses import replace
     return replace(atoms, stated_by=str(said.deck or ""))
 
 
@@ -798,10 +790,76 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
     return run_state_of(folder, names, run, launched_in=where)
 
 
+def ended_before_a_point(base, run, names) -> bool:
+    """Whether a run of points none of whose points started has ended --
+    asked once of what knows: a run here launched from this machine that
+    holds the run, by its process (`joblist.is_going`); else this door,
+    which asks the scheduler where this machine sent the job and writes its
+    answer into the launch record (:func:`concluded`, `running-a-job.md`
+    § 4.2) -- a queue job's answer written by this very look, so the run
+    reads ended once its address is gone; ``False`` where neither can
+    tell.  Its run's row asks it (`continuation.points_state`), and a
+    point's folder read alone (:func:`_as_a_point`)."""
+    from molbuilder.joblist import Asked, holding, is_going
+    from molbuilder.parse.dirs.job import LIVE_STATES
+    asked = Asked()
+    for job in holding(base, run):
+        if job.how != "here":
+            continue
+        going = is_going(job, asked)[0]
+        if going is not None:
+            return not going
+    try:
+        return concluded(run, names, base=base,
+                         launched_in=run).state not in LIVE_STATES
+    except (OSError, ValueError):
+        return False
+
+
+def _as_a_point(run: "Run", st):
+    """A POINT OF A RUN OF POINTS NEVER STARTED IS *NOT RUN*, never failed
+    (`execution/runs-of-points.md` § 1.3: its walk ended without starting
+    it -- no try of its own in its folder, whatever its job came to): a
+    point's folder (`calcdirs.where`) with no try of its own
+    (`runrecord.newest_run`) read ``failed`` -- its run's end, the
+    scheduler's answer written once (:func:`concluded`) -- or ``queued``
+    with its walk over as its run's row reads it
+    (`continuation.points_state`): no job launched from this machine that
+    holds the run going (`joblist.going_of`), and, where the walk started
+    no point it walks itself (the run's index, `runpoints.walk_began`), the
+    walk ended before a point (:func:`ended_before_a_point`).  Why the walk
+    passed it by -- *it builds on <words>, which failed* -- is its run's
+    rows' (`continuation.never_reached`).  ``st`` for any other folder and
+    state, and where its run's index does not read."""
+    if st.state not in ("failed", "queued"):
+        return st
+    from molbuilder.runrecord import LaunchRecordError, newest_run
+    if (run.place.where.what != calcdirs.POINT
+            or newest_run(run.folder, run.names) is not None):
+        return st
+    if st.state == "queued":
+        from molbuilder.joblist import going_of
+        from molbuilder.runpoints import index_at, walk_began
+        base, walked = run.place.root, run.launched_in
+        if going_of(base, walked)[0] is True:
+            return st
+        try:
+            began = walk_began(index_at(walked, run.names) or {})
+        except LaunchRecordError:
+            return st
+        if not began and not ended_before_a_point(base, walked, run.names):
+            return st
+    from molbuilder.runpoints import NOT_RUN, NOT_STARTED
+    return replace(st, state=NOT_RUN, detail=NOT_STARTED)
+
+
 def state_of(run: "Run"):
-    """:func:`concluded` for a run handle (`run_of`)."""
-    return concluded(run.folder, run.names, base=run.place.root, run=run.run,
-                     launched_in=run.launched_in)
+    """:func:`concluded` for a run handle (`run_of`) -- a point's folder
+    read alone as its run's rows read it: one its walk ended without
+    starting, *not run* (:func:`_as_a_point`)."""
+    return _as_a_point(run, concluded(
+        run.folder, run.names, base=run.place.root, run=run.run,
+        launched_in=run.launched_in))
 
 
 #: THE RUN'S OWN LENGTH in its record (`model/parse.md` § 5d.2): its
@@ -874,116 +932,6 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
             "priority": got.get("priority"), "say": " · ".join(words)}
 
 
-def run_answer(path) -> Optional[Dict[str, Any]]:
-    """``{state, detail, live, engine_elapsed_s}`` -- how the run the file
-    at ``path`` belongs to is doing, the one door's answer
-    (`parse.dirs.run_state_of`, asked with its launch record: one that does
-    not read is ``unreadable``, its file named).  ``live`` --
-    `job.LIVE_STATES` -- is what a Results viewer follows (`web/results.md`
-    § 4.1); once it has ended (`job.FINAL_STATES`), the run's own length,
-    its engine's wall from launch to exit -- its record's, the one the Run
-    panel shows -- else ``None``, as for a run of points' root, which has no
-    record (`web/trajectory.md` § 4, *total*).  ``None`` for a file of no run of ours, as for an upload:
-    nothing is asked of a folder no calculation claims (`model/parse.md`
-    § 5)."""
-    from molbuilder.parse.dirs.job import FINAL_STATES, LIVE_STATES
-    run = run_of(path)
-    took = None
-    if run is None:
-        # A FILE AT A RUN OF POINTS' ROOT -- the result its own steps wrote
-        # there (`engines/vibration.md` § 5.11 § 7): the run's state is its
-        # points'; the root has no record, so no one engine's wall.
-        p = Path(path)
-        folder = p if p.is_dir() else p.parent
-        got = points_root_state(place_of(folder), folder)
-        if got is None:
-            return None
-        state, detail = got["state"], got["detail"]
-    else:
-        st = _as_its_point(run, state_of(run))
-        state, detail = st.state, st.detail
-        if state in FINAL_STATES:
-            # AN ENDED RUN'S OWN LENGTH -- its record's, the field alone.
-            rec = record_of(run, status=st, fields=(WALL,)) or {}
-            took = ((rec.get("computation") or {}).get("time")
-                    or {}).get("engine_elapsed_s")
-    return {"state": state, "detail": detail,
-            "live": state in LIVE_STATES, "engine_elapsed_s": took}
-
-
-def _as_its_point(run: Run, st):
-    """A POINT OF A RUN OF POINTS IS READ AS ITS RUN'S POINTS ARE
-    (`engines/transport.md` § 2a.11; `engines/vibration.md` § 5.11 § 7):
-    one still to come by its own folder -- ``pending`` or ``queued`` -- or
-    ``failed`` by its job's end alone is its row of the run's points
-    (`continuation.points_state`), so a point the ended walk never began
-    reads *not run* (`continuation.never_reached`), never still to come and
-    never failed.
-    ``st``, the run door's own answer, for any other run and any other
-    state."""
-    at = run.place.where
-    if (at.what != calcdirs.POINT
-            or st.state not in ("pending", "queued", "failed")):
-        return st
-    from molbuilder.jobset.continuation import points_state
-    from molbuilder.jobset.points import points_of
-    from molbuilder.runrecord import LaunchRecordError, launch_record
-    if points_of(run.place.task) is None:
-        return st
-    try:
-        launch = launch_record(run.launched_in)
-        if launch is None:
-            # A RUN PREP OPENED AND NOBODY LAUNCHED: its points are still
-            # to come, never reached by a walk that never ran.
-            return st
-        _state, _detail, rows = points_state(
-            run.launched_in, run.names, run.place.task,
-            parse_token(run.stage)[1], launch=launch, base=run.place.root)
-    except LaunchRecordError:
-        # ITS RUN'S RECORDS DO NOT READ: the point answers by its own
-        # folder, the run's row saying why (`runstatus._sweep_status`).
-        return st
-    row = next((r for r in rows if r["rel"] == at.point), None)
-    if row is None or not row.get("not_run"):
-        return st
-    from molbuilder.runpoints import NOT_RUN
-    return replace(st, state=NOT_RUN, detail=row["not_run"])
-
-
-def points_root_state(place: Place, folder) -> Optional[Dict[str, Any]]:
-    """A RUN OF POINTS' ROOT -- a container at a stage's attempt
-    (`calcdirs.where`), of a kind whose rung runs per point
-    (`jobset.points`) -- answers the run's state in the folder answer's
-    shape, by the one rule for a run of points (`continuation.
-    stage_run_state`) -- one whose records do not read is ``unreadable``,
-    its file named; ``None`` for any other place.  The calculation is
-    opened once for it (`calculation.open`, A16)."""
-    if not place.ours or place.role != calcdirs.CONTAINER:
-        return None
-    at = place.where
-    if at.what != calcdirs.ATTEMPT or at.stage is None or at.trial is not None:
-        return None
-    from molbuilder.jobset.points import points_of
-    if points_of(place.task) is None:
-        return None
-    from molbuilder.calculation import open as open_calculation
-    from molbuilder.jobset.continuation import stage_run_state
-    from molbuilder.jobset.points import rung_points_of
-    from molbuilder.runrecord import LaunchRecordError
-    calc = open_calculation(place.root)
-    stage = parse_token(at.stage)[1]
-    if not rung_points_of(calc, stage):
-        return None
-    try:
-        state, detail = stage_run_state(calc, stage, Path(folder))
-    except LaunchRecordError as exc:
-        # ITS RECORDS DO NOT READ: ``unreadable``, the file named
-        # (`running-a-job.md` § 4.2).
-        state, detail = "unreadable", str(exc)
-    return {"state": state, "detail": detail,
-            "last_change_at": None, "active_source": None}
-
-
 # --------------------------------------------------------------------- #
 #  A folder, as a viewer asks about it -- the directory door            #
 # --------------------------------------------------------------------- #
@@ -1025,13 +973,17 @@ def _openable(folder: Path, label: str, stage: Optional[str],
     """What a viewer opens in a folder of ours: the first role the
     calculation produces (`runfiles.result_roles`) in which the folder's run
     has a file -- the run it speaks for, at its newest try -- that a parser
-    claims (`model/parse.md` § 5.2)."""
+    claims (`model/parse.md` § 5.2).  A role named on the label alone -- a
+    run's result, ``<label>.spectra.json`` -- is found by the one body every
+    reader of such a file asks (`runfiles.find_on_label`, :func:`on_label_at`),
+    so the viewer and the readers of a stage's result find one file."""
     from molbuilder.parse.dirs.rundir import claimed
     staged = {a.role: a.staged for a in _rf.ON_THE_LABEL}
     for role in _rf.result_roles(calculation):
-        hits = [p for p, _rec in _rf.find(
-            folder, label, role=role,
-            stage=stage if staged.get(role, True) else None)]
+        hits = ([p for p, _rec in _rf.find(folder, label, role=role,
+                                           stage=stage)]
+                if staged.get(role, True)
+                else _rf.find_on_label(folder, label, role))
         if not hits:
             continue
         attempts.append(f"*{role} -> {len(hits)} of this run's")
@@ -1044,50 +996,20 @@ def _openable(folder: Path, label: str, stage: Optional[str],
     return None
 
 
-def transmission_point(folder) -> Optional["Point"]:
-    """The point a run folder of a rung whose role opens its calculation's
-    report (the kind table's role ``opens`` -- a transport calculation's
-    transmission) runs at -- a frame, a voltage, or the one point of a rung
-    that runs once -- or ``None`` for any other folder.  TBtrans writes no
-    file a viewer reads on its own, so such a folder's result is its
-    calculation's report at that point (`web/results.md` § 0.1, § 2): the
-    one rule :func:`openable` and the ladder's run rows answer by.  Read
-    off where the folder is (`calcdirs.where`) -- a stage's run,
-    ``<NN>_transmission/run-<n>/``, or a point's folder in it
-    (`engines/transport.md` § 2a.11), never a benchmark trial's -- against
-    the points its run holds (`transport.stages.points_in`)."""
+def _opens_the_report(place: Place) -> bool:
+    """Whether ``place`` -- a run of a rung, its points' folders, or a run
+    of points' root -- opens its calculation's report: the kind table's
+    role ``opens`` (`CalculationKind.opens_report`, `architecture.md`
+    § 3.3), a transmission run's.  TBtrans writes no file a viewer reads on
+    its own, so its result is the report at the point the folder is
+    (`web/results.md` § 0.1, § 2) -- which point, the views'
+    (`jobset.points.point_of`, `runstatus.points_view`)."""
     from .kind_table import kind
-    from .transport.stages import Point, points_in
-    place = place_of(folder)
-    if not place.ours:
-        return None
     at = place.where
-    if (at.what not in (calcdirs.ATTEMPT, calcdirs.POINT)
-            or at.run_folder is None or at.trial is not None):
-        return None
-    # A RUNG WHOSE ROLE OPENS THE REPORT (the kind table's role ``opens``):
-    # its stages are its rungs, each its role's name.
-    rung = parse_token(at.stage)[1]
-    role = kind(place.task.calculation).role(rung)
-    if role is None or role.opens != "report":
-        return None
-    rel = Path(at.point).parts if at.what == calcdirs.POINT else ()
-    points = points_in(at.run_folder, place.task, rung,
-                       base=Path(place.root))
-    if not points:
-        return Point() if not rel else None
-    return next((pt for _folder, pt in points
-                 if Path(pt.rel).parts == rel), None)
-
-
-def _the_report(place: Place, attempts: List[str]) -> str:
-    """A transmission run's result: its calculation's report -- the
-    description at the root, the file the root opens
-    (:func:`_container_product`)."""
-    attempts.append("a transmission run's result is its calculation's "
-                    "report at its point -- TBtrans writes no file a viewer "
-                    "reads on its own (web/results.md 0.1)")
-    return str(calcdirs.description_path(place.root))
+    if (at.stage is None or at.trial is not None
+            or not (place.role == calcdirs.RUN or at.of_points)):
+        return False
+    return kind(place.task.calculation).opens_report(parse_token(at.stage)[1])
 
 
 #: What a folder stamped a run that lies in no stage's ``run-<n>/`` is
@@ -1096,28 +1018,40 @@ NOT_IN_A_RUN = ("this folder says it is a run, but it lies in no run-<n>/ of "
                 "a stage: no run of molbuilder's, so only what is in it is "
                 "shown (project-layout.md § 1.4a)")
 
+#: What the engine's scratch of the run above opens -- nothing
+#: (`engines/transport.md` § 2a.11).
+SCRATCH_OPENS = ("the engine's scratch of the run above (its leads' surface "
+                 "Green's function files, one voltage's pair at a time): "
+                 "nothing in it opens (engines/transport.md § 2a.11)")
+
 
 def openable(directory) -> Tuple[Optional[str], List[str]]:
-    """``(path, trail)`` -- the file a viewer should load in ``directory``:
-    the run it speaks for's result in a folder of ours -- a transmission
-    run's, its calculation's report at its point (:func:`transmission_point`,
-    `web/results.md` § 2) -- the calculation's product at a container's root,
-    and in a folder no calculation claims the newest file of a role a run
-    writes that a parser claims (`parse.dirs.openable_in`)."""
+    """``(path, trail)`` -- the file a viewer should load in ``directory``,
+    the one folder it is handed: the run it speaks for's result in a folder
+    of ours -- a transmission run's, its calculation's report
+    (:func:`_opens_the_report`, `web/results.md` § 2) -- the calculation's
+    product at a container's root, nothing in the engine's scratch, what
+    the point it lies in opens for a transmission point's ``shared/``
+    (`model/parse.md` § 5.2: read with the point it lies in), and in a
+    folder no calculation claims the newest file of a role a run writes
+    that a parser claims (`parse.dirs.openable_in`)."""
     d = Path(directory)
     place = place_of(d)
-    return _opens(d, place, transmission_point(d)
-                  if place.ours and place.role == calcdirs.RUN else None)
+    if place.ours and place.role == calcdirs.SHARED:
+        return openable(calcdirs.read_with(d))
+    return _opens(d, place)
 
 
-def _opens(d: Path, place: Place, point) -> Tuple[Optional[str], List[str]]:
-    """:func:`openable` for a folder whose place and transmission point
-    (:func:`transmission_point`, ``None`` for any but a run folder) the
-    caller already holds -- the folder answer reads each once."""
+def _opens(d: Path, place: Place) -> Tuple[Optional[str], List[str]]:
+    """:func:`openable` for a folder whose place the caller already holds
+    -- the folder answer reads it once."""
     from molbuilder.parse.dirs.rundir import openable_in
     if not place.ours:
         return openable_in(str(d))
     attempts: List[str] = [f"calculation: {place.task.calculation}"]
+    if place.role == calcdirs.SCRATCH:
+        attempts.append(SCRATCH_OPENS)
+        return None, attempts
     if place.role == calcdirs.RUN and place.where.run_folder is None:
         # A FOLDER STAMPED A RUN THAT LIES IN NO STAGE'S ``run-<n>/`` is no
         # run of ours (:func:`run_of`) -- said, and read alone
@@ -1126,10 +1060,13 @@ def _opens(d: Path, place: Place, point) -> Tuple[Optional[str], List[str]]:
         chosen, trail = openable_in(str(d))
         return chosen, attempts + trail
     label, stage, _trial = _position(place)
+    if _opens_the_report(place):
+        attempts.append("a transmission run's result is its calculation's "
+                        "report at its point -- TBtrans writes no file a "
+                        "viewer reads on its own (web/results.md 0.1)")
+        return str(calcdirs.description_path(place.root)), attempts
     if place.role == calcdirs.CONTAINER:
         return _container_product(d, place, label, stage, attempts), attempts
-    if place.role == calcdirs.RUN and point is not None:
-        return _the_report(place, attempts), attempts
     return _openable(d, label, stage, place.task.calculation,
                      attempts), attempts
 
@@ -1166,13 +1103,17 @@ def _container_product(folder: Path, place: Place, label: str,
     return _openable(folder, label, stage, place.task.calculation, attempts)
 
 
-def _file_row(entry: Path, place: Place) -> Dict[str, Any]:
-    """What one file IS, for a viewer: its role, label and stage read back
-    with the label it is named on (:func:`_label_of`), the parser that
-    claims it and what it opens as, its size and time, and its catalogue
-    line (`web/results.md` § 3b) -- what :func:`about` answers."""
+def file_row(entry, place: Optional[Place] = None) -> Dict[str, Any]:
+    """What one file IS, for a viewer: its whole ``path``, its role, label
+    and stage read back with the label it is named on (:func:`_label_of`),
+    the parser that claims it and what it opens as, its size and time, and
+    its catalogue line (`web/results.md` § 3b) -- what :func:`about`
+    answers.  ``place`` is its folder's, when the caller holds it."""
     from molbuilder.parse import detect
     from molbuilder.parse.errors import ParseError
+    entry = Path(entry)
+    if place is None:
+        place = place_of(entry.parent)
     # READ BACK WITH ITS LABEL, a declared role or nothing
     # (`job-contracts.md` § 2.2a): a name read without its label is not taken
     # for one of ours -- SIESTA's `fdf.<stamp>.log` is not PySCF's log.
@@ -1187,7 +1128,7 @@ def _file_row(entry: Path, place: Place) -> Dict[str, Any]:
     except (ParseError, OSError, ValueError, LookupError):
         parser, opens = None, None
     st_ = entry.stat()
-    return {"name": entry.name,
+    return {"name": entry.name, "path": str(entry),
             "role": rec.role if rec is not None else None,
             "label": rec.label if rec is not None else None,
             "stage": rec.stage if rec is not None else None,
@@ -1200,10 +1141,13 @@ def folder_answer(directory) -> Dict[str, Any]:
     """WHAT A FOLDER IS AND HOLDS, for a viewer -- the directory door the
     Results tab serves (`/api/results/dir`; `model/parse.md` § 5.0,
     `web/results.md` § 2.3): ``place``, ``engine``, ``openable``,
-    ``attempts``, ``status`` and ``record``, and per file its role, label,
-    stage, whether a parser reads it and what it is (``files``) -- with
-    ``report``, the same row for the file it opens when that lies outside
-    it, and ``point``, the point a transmission run's folder opens it at.
+    ``attempts``, ``status`` and ``record``, and per file its whole path,
+    role, label, stage, whether a parser reads it and what it is
+    (``files``) -- with ``report``, the same row for the file it opens when
+    that lies outside it.  **It answers the one folder** (`architecture.md`
+    § 2.1, row 2): the views a folder is read with -- a calculation's
+    ladder, a run of points as a reader sees it, the point a folder is --
+    are floor 6's (`runstatus.views_of`), served beside it.
 
     **What the folder IS decides what is asked of it** (`project-layout.md`
     § 1.4a).  A RUN of ours is asked everything, about its own newest try:
@@ -1221,8 +1165,7 @@ def folder_answer(directory) -> Dict[str, Any]:
     attempts: List[str] = []
     if place.problem:
         attempts.append(place.problem)
-    status = record = point = None
-    label: Optional[str] = None
+    status = record = None
     if not place.ours:
         engine = engine_of(str(d))
         chosen, trail = openable_in(str(d))
@@ -1235,46 +1178,28 @@ def folder_answer(directory) -> Dict[str, Any]:
                 "what is in it is shown (project-layout.md § 1.4a)")
     else:
         engine = place.task.engine
-        calc = place.task.calculation
-        label, stage, _trial = _position(place)
-        attempts.append(f"calculation: {calc}")
+        # THE ONE RULE for what a folder opens (:func:`openable`), with the
+        # place read once -- a `shared/` folder's, the point's it lies in.
+        chosen, trail = (openable(d) if place.role == calcdirs.SHARED
+                         else _opens(d, place))
+        attempts += trail
         if place.role == calcdirs.RUN:
             run = run_of(d)
-            point = transmission_point(d)
-            # THE ONE RULE for what a folder opens (:func:`openable`), with
-            # the place and the point read once.
-            chosen, trail = _opens(d, place, point)
-            attempts += trail[1:]
             if run is not None:
                 # A LAUNCH RECORD THAT DOES NOT READ is the state
                 # `unreadable`, its file named (`running-a-job.md` § 4.2);
-                # a point is read as its run's points are.
-                st = _as_its_point(run, state_of(run))
+                # a point never started, *not run* (:func:`concluded`).
+                st = state_of(run)
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}
                 record = record_of(run, status=st)
-        elif place.role == calcdirs.SCRATCH:
-            # THE ENGINE'S SCRATCH OF THE RUN ABOVE -- a device run's
-            # `tsgf/` (`engines/transport.md` § 2a.11): read alone, no run
-            # asked of it, nothing in it opens.
-            chosen = None
-            attempts.append(
-                "the engine's scratch of the run above (its leads' surface "
-                "Green's function files, one voltage's pair at a time): "
-                "nothing in it opens (engines/transport.md § 2a.11)")
         elif place.role == calcdirs.SHARED:
             # THE ENERGIES A TRANSMISSION POINT SHARES with a finished
             # calculation's point (`engines/transport.md` § 2a.16): read with
-            # the point they lie in -- past every `shared/` it holds, one in
-            # another -- its calculation's report at that point, which it
-            # opens -- and named by what it is a copy of.
+            # the point they lie in, whose report it opens, and named by
+            # what it is a copy of.
             from molbuilder.runrecord import LaunchRecordError, read_copied_from
-            at = d.parent
-            while calcdirs.where(at).role == calcdirs.SHARED:
-                at = at.parent
-            chosen, _trail = openable(at)
-            point = transmission_point(at)
             try:
                 said = read_copied_from(d)
             except LaunchRecordError as exc:
@@ -1284,41 +1209,36 @@ def folder_answer(directory) -> Dict[str, Any]:
                 + (said or "a point it names nowhere")
                 + ", copied from it: read with that point, whose report "
                   "opens (engines/transport.md § 2a.16)")
-        else:
-            # A CONTAINER: a folder of a calculation of ours is a run, a run's
-            # scratch or a container -- its own record says, the root a
-            # container (`Place.role`); one that says nothing is no
-            # calculation's (`calcdirs.where`).
-            # A RUN OF POINTS' ROOT among them: no state, no record
-            # (`model/parse.md` § 5.2) -- its points are below it.
-            chosen = _container_product(d, place, label, stage, attempts)
+        elif place.role == calcdirs.CONTAINER:
+            # A CONTAINER, a run of points' root among them: no state, no
+            # record (`model/parse.md` § 5.2) -- its runs, or its points,
+            # are the folders below it.
             attempts.append(
                 "this directory is a container, not a run -- it has no "
                 "run state; its runs are the directories below it "
                 "(project-layout.md § 1.4)")
-    files = [_file_row(entry, place)
+    files = [file_row(entry, place)
              for entry in sorted(d.iterdir(), key=lambda e: e.name)
              if entry.is_file()]
     # THE FILE IT OPENS, WHEN IT LIES OUTSIDE IT -- a transmission run's
-    # calculation report (`web/results.md` § 2): its row, with its path, so
-    # the menu lists it first.
-    report = None
-    if chosen is not None and Path(chosen).parent != d:
-        report = dict(_file_row(Path(chosen), place_of(Path(chosen).parent)),
-                      path=chosen)
+    # calculation report (`web/results.md` § 2): its row, so the menu lists
+    # it first.
+    report = (file_row(Path(chosen))
+              if chosen is not None and Path(chosen).parent != d else None)
     # WHERE THE FOLDER IS, whole (`calcdirs.where`): its role, its
     # calculation, what it is, and the stage, run, trial and point it sits in.
     at = place.where
     return {"place": {"role": place.role,
                       "calculation": str(place.root) if place.root else None,
                       "what": at.what, "stage": at.stage, "run": at.run,
-                      "trial": at.trial, "point": at.point},
+                      "trial": at.trial, "point": at.point,
+                      # A RUN OF POINTS' ROOT, its points the folders below
+                      # it (`calcdirs.Where.of_points`) -- read with its
+                      # view (`runstatus.views_of`).
+                      "of_points": at.of_points},
             "engine": engine,
             "openable": chosen,
             "report": report,
-            # THE POINT the opened report is at, for a transmission run's
-            # folder (:func:`transmission_point`); ``None`` elsewhere.
-            "point": point.to_wire() if point is not None else None,
             "attempts": attempts,
             "status": status,
             "record": record,
@@ -1329,6 +1249,7 @@ __all__ = ["Place", "place_of", "Run", "run_of", "Declared",
            "declared", "declared_of_deck", "deck_atom_index_map",
            "OrderUnstated", "atom_index_map_of", "RunView",
            "view_of",
-           "RunSteps", "RunStepsError", "steps_of", "about", "run_answer",
-           "transmission_point", "openable", "folder_answer", "state_of",
-           "record_of"]
+           "RunSteps", "RunStepsError", "steps_of", "about", "file_row",
+           "openable", "folder_answer", "concluded", "ended_before_a_point",
+           "state_of",
+           "record_of", "on_label_at", "WALL"]

@@ -52,7 +52,8 @@ def test_a_run_asked_on_the_gpu_runs_the_gpu_build(real_h2_gpu):
     not taking, so the packaged CPU SIESTA -- first on PATH on the road --
     solves instead.  The deck's keyword and the env's name are the
     description's, pinned by `tests/data/gpu_contract.toml`."""
-    from molbuilder.runs import folder_answer, run_answer
+    from molbuilder.jobset.runstatus import run_answer
+    from molbuilder.runs import folder_answer
     attempt = real_h2_gpu.attempt("coarse")
     said = run_answer(attempt)
     assert (said["state"], said["detail"]) == ("finished",

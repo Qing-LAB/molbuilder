@@ -17,7 +17,7 @@ import dataclasses
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ..calcdirs import RunPlace
+from ..calcdirs import RunPlace, where
 from ..runrecord import LaunchRecordError, RunRef
 from .ladder import independent, inputs_of, stage_before
 
@@ -175,7 +175,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     skips the relaxation's parse -- a list of runs needs each one's
     conclusion, not a parse of each output.  A RUN OF POINTS -- its root a
     container (`calcdirs`) -- holds no conclusion marker of its own: its
-    state is its points' (:func:`points_run_state`), what it concluded the
+    state is its points' (:func:`read_points`), what it concluded the
     words its points ended in, and its relaxation's verdict that of the
     points it carries to a stage continuing from it
     (`points.PointsOf.carried`)."""
@@ -184,10 +184,11 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from .naming import stage_home
     home = stage_home(base, task, stage)
     names = home.names
-    if _of_points(attempt):
+    if where(attempt).of_points:
         from ..parse.dirs.job import FINAL_STATES
         from .points import points_of
-        state, detail = points_run_state(base, task, stage, attempt, names)
+        got = read_points(base, task, stage, attempt, names)
+        state, detail = got.state, got.detail
         said = []
         if verdict:
             declared = points_of(task)
@@ -679,6 +680,9 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
         took = [g for g in gathered_lines(pdir) if g not in gathered]
         entry = entry_of(index, pt.rel) or {}
         pts.append({**pt.to_wire(),
+                    # THE POINT IN ITS ONE WIRE FORM, whole -- what a view
+                    # names a row's point by (`runstatus.points_view`).
+                    "wire": pt.to_wire(),
                     # THE JOB'S SHAPE (`runpoints.rows_of`): which point,
                     # its words, phase, round and needs as launch listed it.
                     "rel": pt.rel, "words": pt.words(),
@@ -692,6 +696,10 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
                     # ITS RUN'S STATE IN THE STATUS DOOR'S WORDS.
                     "detail": st.detail if st is not None else None,
                     "opened": opened, "converged": converged,
+                    # WHETHER ITS RUN HOLDS AN ENGINE OUTPUT -- one that
+                    # speaks (`run_status`'s active source): what a view's
+                    # point at work is chosen by (`architecture.md` § 3.2).
+                    "output": st is not None and st.active_source is not None,
                     # THE VERDICT IN ITS OWN WORDS -- `geometry NO` for a
                     # relaxation, `SCF NO` for an SCF (`job-system.md`,
                     # rule 4).
@@ -802,7 +810,9 @@ def points_state(run, names, task, stage: str, *, launch, base
     A run the job the reader runs inside sent (:func:`_own_job_s`) is read
     by its points alone: its walk has returned, and the job, the reader's
     own, is still going (`job-system.md` § 6.0, *A sequence of groups*)."""
+    from ..joblist import going_of
     from ..runpoints import index_at
+    from ..runs import ended_before_a_point
     from .points import points_of, record_of
     declared, record = points_of(task), record_of(task)
     index = index_at(run, names) or {}
@@ -819,7 +829,7 @@ def points_state(run, names, task, stage: str, *, launch, base
         # unless its job is over: cancelled in the queue, or a process
         # that died before its first point.
         own = _own_job_s(launch)
-        if not own and not _ended_before_a_point(base, run, names):
+        if not own and not ended_before_a_point(base, run, names):
             jid = (launch or {}).get("job_id")
             return "queued", (f"queued as job {jid}" if jid
                               else "launched, nothing run yet"), pts
@@ -832,7 +842,7 @@ def points_state(run, names, task, stage: str, *, launch, base
                                  " -- its job ended before any point "
                                  "started")), pts
     if (any(not p["done"] for p in pts) and not _own_job_s(launch)
-            and _walk_going(base, run)):
+            and going_of(base, run)[0] is True):
         return "running", summary + " (between two points)", pts
     # THE WALK HAS ENDED: a point it never began is *not run*.
     pts = never_reached(pts)
@@ -846,7 +856,7 @@ def points_state(run, names, task, stage: str, *, launch, base
     if state == "finished":
         why = declared.also_needs(run, names, task, stage, base)
         if why:
-            if not _own_job_s(launch) and _walk_going(base, run):
+            if not _own_job_s(launch) and going_of(base, run)[0] is True:
                 return "running", summary + " (after its last point)", pts
             return "failed", f"{detail}; {why}", pts
     return state, detail, pts
@@ -868,89 +878,77 @@ def _own_job_s(launch) -> bool:
             and launch.get("job_id") in (None, job))
 
 
-def _ended_before_a_point(base, run, names) -> bool:
-    """Whether a run of points none of whose points started has ended --
-    asked once of what knows: a run here launched from this machine that
-    holds the run, by its process (`joblist.is_going`); else the run door,
-    which asks the scheduler where this machine sent the job and writes its
-    answer into the launch record (`runs.concluded`, `running-a-job.md`
-    § 4.2) -- a queue job's answer written by this very look, so the run
-    reads ended once its address is gone; ``False`` where neither can
-    tell."""
-    from ..joblist import Asked, is_going
-    from ..parse.dirs.job import LIVE_STATES
-    from ..runs import concluded
-    asked = Asked()
-    for job in jobs_holding(base, run):
-        if job.how != "here":
-            continue
-        going = is_going(job, asked)[0]
-        if going is not None:
-            return not going
-    try:
-        return concluded(run, names, base=base,
-                         launched_in=run).state not in LIVE_STATES
-    except (OSError, ValueError):
-        return False
-
-
 def stage_run_state(calc, stage: str, run) -> "Tuple[str, str]":
     """``(state, detail)`` of one run of ``stage`` of ``calc`` -- THE ONE
     DOOR for a run's state, whichever kind (:func:`read_run`: a run of
-    points by :func:`points_run_state`, any other run by the run door).
+    points by :func:`read_points`, any other run by the run door).
     Asked by `jobset scratch` of each run that holds an engine's scratch."""
     _ended, state, _conv, detail = read_run(calc.base, calc.task, stage, run,
                                             verdict=False)
     return state, detail
 
 
-def _of_points(run) -> bool:
-    """Whether ``run`` is a run of points -- its root a container, its
-    points below it (`execution/runs-of-points.md` § 2.4) -- read off the
-    folder's own record (`calcdirs.read`)."""
-    from .. import calcdirs
-    got = calcdirs.read(run)
-    return got is not None and got.role == calcdirs.CONTAINER
+#: A RUN A REFUSED SEND OPENED -- the newest folder of a stage launched
+#: before, with no launch record: not a run yet (a refused launch records
+#: nothing), and filled anew by the stage's next launch (`job-system.md`,
+#: *The task*: a run's states).
+REFUSED_OPEN = ("opened by a launch whose send was refused -- not launched; "
+                "its next launch fills it anew")
 
 
-def points_run_state(base, task, stage: str, run, names
-                     ) -> "Tuple[str, str]":
-    """``(state, detail)`` of a RUN OF POINTS -- the one rule
-    :func:`read_run` and :func:`stage_run_state` read it by: *pending*
-    before its launch record, *unreadable* where that record does not read,
-    else its points' state (:func:`points_state`)."""
+def pending_words(run, detail: str = "prepared, not launched") -> str:
+    """A run not launched, in words: prep's first run as ``detail`` says
+    it; a later one, opened by a launch whose send was refused
+    (`materialize.opened_by_refused_send`)."""
+    from .materialize import opened_by_refused_send
+    return (REFUSED_OPEN if run is not None
+            and opened_by_refused_send(run) else detail)
+
+
+@dataclasses.dataclass(frozen=True)
+class PointsReading:
+    """ONE READING OF A RUN OF POINTS (`execution/architecture.md` § 3.2:
+    *a run's points are read once per answer*) -- its state and its count
+    in the kind's words, its points' rows (:func:`point_rows`), the launch
+    record it was read with, and whether what did not read is an older
+    molbuilder's index (`runpoints.OlderIndexError`, whose way on is
+    `jobset migrate`)."""
+    state: str
+    detail: str
+    rows: Tuple[dict, ...] = ()
+    launch: Optional[dict] = None
+    older_index: bool = False
+
+
+def read_points(base, task, stage: str, run, names=None) -> PointsReading:
+    """THE RUN OF POINTS IN ``run``, READ ONCE -- the one reading every
+    reader of a run of points asks (`status`, the views, the gather, the
+    transport record and its digest, a reuse): *pending* before its launch
+    record, its points as prepared (:func:`pending_words`); once launched,
+    its points' state (:func:`points_state`); a launch record, an index or
+    a point's folder that does not read, or a stage its description no
+    longer holds, *unreadable*, in its reader's words -- said, never
+    raised.  ``names`` its stage's file names, read here when not handed
+    in."""
+    from ..runpoints import OlderIndexError
     from ..runrecord import launch_record
+    from .naming import stage_home
+    from .errors import PrepError
+    base = Path(base)
     try:
+        if names is None:
+            names = stage_home(base, task, stage).names
         launch = launch_record(run)
-    except LaunchRecordError as exc:
-        return "unreadable", str(exc)
-    if launch is None:
-        return "pending", "prepared, not launched"
-    state, detail, _rows = points_state(run, names, task, stage,
-                                        launch=launch, base=base)
-    return state, detail
-
-
-def _walk_going(base, run) -> bool:
-    """Whether a job launched from this machine that holds ``run`` is
-    going -- its process, or its scheduler's list (`joblist.is_going`, the
-    one answer `molbuilder jobs` asks); ``False`` where none is on file or
-    this machine cannot tell, the points' verdict then said."""
-    from ..joblist import Asked, is_going
-    asked = Asked()
-    return any(is_going(job, asked)[0] is True
-               for job in jobs_holding(base, run))
-
-
-def jobs_holding(base, run):
-    """The jobs launched from this machine (`joblist.every`) that hold
-    ``run`` of the calculation in ``base`` -- a member of each runs in it,
-    or in a point of it (`paths.run_folder_of`)."""
-    from ..joblist import Job, every
-    from ..paths import run_folder_of
-    want, here = str(RunRef.at(base, run)), Path(base).resolve()
-    for job in every():
-        if (isinstance(job, Job) and Path(job.calculation) == here
-                and any(str(run_folder_of(m["run"])) == want
-                        for m in job.members.values())):
-            yield job
+    except (LaunchRecordError, PrepError, OSError) as exc:
+        return PointsReading("unreadable", str(exc))
+    try:
+        if launch is None:
+            rows, _running = point_rows(run, names, task, stage, base=base,
+                                        launch=None)
+            return PointsReading("pending", pending_words(run), tuple(rows))
+        state, detail, rows = points_state(run, names, task, stage,
+                                           launch=launch, base=base)
+    except (LaunchRecordError, OSError) as exc:
+        return PointsReading("unreadable", str(exc), launch=launch,
+                             older_index=isinstance(exc, OlderIndexError))
+    return PointsReading(state, detail, tuple(rows), launch)

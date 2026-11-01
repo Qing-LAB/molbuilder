@@ -62,10 +62,12 @@
     //: it: it says something is mounted, not which file it is showing.
     let mountedFile = "";
     let mountedName = "";
-    //: The point the report was last opened at by an announcement -- a
-    //: re-announce of the same file at the same point (a tab re-entry's
-    //: rescan) leaves the point you picked since in place.
-    let announcedPoint = "";
+    //: The folder whose announcement last opened the report at its point
+    //: -- reading that folder again (a tab re-entry, Reload) leaves the
+    //: point you picked since in place, even where the folder's point moved
+    //: on, a run of points' point at work (results.md § 2); another
+    //: folder's point is a new pick.
+    let pointFolder = null;
 
     //: The scope last announced, so a caller that does not know it cannot
     //: erase it.  See `_renderStatus`.
@@ -78,7 +80,7 @@
     let rootDir = "";
     let rootSel = null;
     let pickedRun = false;
-    let pickedFile = "";        // the file the picked run opened
+    let pickedDir = "";         // the folder of the run picked
     let pickSeq = 0;            // the newest pick; a later answer wins
 
     /* WHAT THE LADDER SAYS under its table -- a pick that failed, or how to
@@ -99,47 +101,62 @@
     }
 
     /* PICK A RUN IN PLACE: ask the run door for that run's folder -- the
-     * same answer the picker builds a folder's menu from -- and announce
-     * its file with the root's ladder kept, so the Run panel reads that
-     * run's record and the ladder stays above it; the sidebar is not
-     * moved. */
-    function _pickRun(file) {
-        const folder = _dirOf(file);
+     * same answer the picker builds a folder's menu from, read through the
+     * picker's one reading of it (`readAnswer`, results.md § 0.2) -- and
+     * announce the file it opens NOW with the root's ladder kept, so the
+     * Run panel reads that run's record and the ladder stays above it; the
+     * sidebar is not moved.  Never the ladder's word for the file, read at
+     * the last scan: a run of points' point at work moves on between the
+     * two (§ 2.4, § 3a).  The row names the folder whole (§ 0.3). */
+    function _pickRun(r) {
         const mine = ++pickSeq;
-        const name = file.split("/").pop();
-        fetch("/api/results/dir?path=" + encodeURIComponent(folder),
+        const shown = _shown(r.dir);
+        const mb = window.molbuilder || {};
+        fetch("/api/results/dir?path=" + encodeURIComponent(r.dir),
               { cache: "no-store" })
-            .then((r) => r.json())
+            .then((res) => res.json())
             .then((body) => {
                 if (mine !== pickSeq) return;
                 if (!body || body.ok !== true) {
-                    _sayOnLadder("Could not open " + name + ": "
+                    _sayOnLadder("Could not open " + shown + ": "
                         + ((body && body.error) || "the folder did not answer")
                         + ".", "error");
                     return;
                 }
-                const hit = (body.files || []).find((f) => f.name === name);
+                const a = mb.resultsFilePicker.readAnswer(
+                    body, mb.inspectors && mb.inspectors.pickResult);
+                if (!a.opens) {
+                    _sayOnLadder(shown + " opens no result now \u2014 click "
+                        + "Reload to read the ladder again.", "warn");
+                    return;
+                }
+                const listed = a.results.find((f) => f.path === a.opens)
+                    || null;
+                const hit = listed
+                    || a.files.find((f) => f.path === a.opens) || null;
                 pickedRun = true;
-                pickedFile = file;
+                pickedDir = r.dir;
                 document.dispatchEvent(new CustomEvent(
-                    window.molbuilder.constants.EVENT_FILE_SELECTED,
+                    mb.constants.EVENT_FILE_SELECTED,
                     { detail: {
-                        file: file,
-                        meta: hit ? { role: hit.role, label: hit.label,
-                                      stage: hit.stage, parser: hit.parser,
-                                      engine: body.engine } : null,
+                        file: a.opens,
+                        name: hit ? hit.name : "",
+                        lies: "picked",
+                        meta: mb.resultsFilePicker.metaOf(listed),
                         place: body.place,
                         dir: rootDir, diverged: false,
                         ladder: rootSel ? rootSel.ladder : null,
-                        record: body.record, files: body.files,
-                        record_dir: folder,
+                        record: body.record,
+                        point: a.opens === a.leadPath ? a.point : null,
+                        points: a.points,
+                        files: a.files,
                         force: true,
                         picked_run: true,
                     } }));
             })
             .catch((e) => {
                 if (mine !== pickSeq) return;
-                _sayOnLadder("Could not open " + name + ": "
+                _sayOnLadder("Could not open " + shown + ": "
                     + (e && e.message ? e.message : e) + ".", "error");
             });
     }
@@ -152,21 +169,17 @@
          * chosen stay (results.md § 2.5) -- and a selection lands on it. */
         const wasPicked = pickedRun;
         pickedRun = false;
-        pickedFile = "";
+        pickedDir = "";
         document.dispatchEvent(new CustomEvent(
             window.molbuilder.constants.EVENT_FILE_SELECTED,
             { detail: Object.assign({}, rootSel, { force: wasPicked }) }));
     }
 
-    function _dirOf(path) {
-        const p = String(path || "");
-        const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-        return cut > 0 ? p.slice(0, cut) : "";
-    }
-
-    function _basename(path) {
-        const u = (window.molbuilder || {}).path;
-        return u ? u.basename(path) : (path || "");
+    /* A PATH AS SHOWN: from the projects folder, as the sidebar names it --
+     * only shown; every path sent stays whole (results.md § 0.3). */
+    function _shown(p) {
+        const proj = window.molbuilder && window.molbuilder.projects;
+        return proj ? proj.relativeToProjects(p) : (p || "");
     }
 
     /**
@@ -183,42 +196,45 @@
          * readout keeps the bound folder rather than "No folder selected". */
         if (scope) _scope = scope;
         const sc = _scope || { dir: "", diverged: false };
+        /* WHERE THE FILE LIES IS THE ANSWER'S, never a path's prefix
+         * (results.md § 0.3): one of the folder's files, the report it
+         * opens, the point at work's file, a run picked off the ladder --
+         * or, its folder's answer not landed yet, elsewhere. */
+        const lies = file ? (sc.lies || "elsewhere") : "";
         if (els.fileReadout) {
             const dir = sc.dir || "";
-            /* A PATH AS SHOWN: from the projects folder, as the sidebar
-             * names it -- only shown; every path sent stays whole
-             * (results.md § 0.3). */
-            const shown = (p) => {
-                const proj = window.molbuilder && window.molbuilder.projects;
-                return (proj && proj.relativeToProjects
-                        && proj.relativeToProjects(p)) || p;
-            };
             let text;
             if (!dir) {
-                text = file ? _basename(file) : "No folder selected";
+                text = file ? (sc.name || _shown(file)) : "No folder selected";
             } else if (!file) {
-                text = shown(dir) + " / (nothing selected)";
-            } else if (_dirOf(file) === dir) {
-                text = shown(dir) + " / " + _basename(file);
-            } else if (sc.point) {
+                text = _shown(dir) + " / (nothing selected)";
+            } else if (lies === "folder") {
+                text = _shown(dir) + " / " + (sc.name || _shown(file));
+            } else if (lies === "report") {
                 /* THE FOLDER'S OWN ANSWER, outside it by design: a
                  * transmission run's result is its calculation's report at
                  * its point (results.md § 2). */
-                text = shown(dir) + "  \u2014 its result is its calculation's "
-                     + "report, " + shown(file);
-            } else if (pickedRun && dir && file.startsWith(dir + "/")) {
+                text = _shown(dir) + "  \u2014 its result is its calculation's "
+                     + "report, " + _shown(file);
+            } else if (lies === "at_work") {
+                /* A RUN OF POINTS' ROOT opens its point at work's file until
+                 * its own result is written (results.md § 3a). */
+                text = _shown(dir) + "  \u2014 the point at work's file, "
+                     + _shown(file);
+            } else if (lies === "picked") {
                 /* A RUN PICKED OFF THE ROOT'S LADDER (results.md § 2.4):
                  * its folder under the calculation, by design -- not the
                  * divergence the readout below warns about. */
-                text = shown(dir) + " / " + file.slice(dir.length + 1);
+                text = _shown(dir) + "  \u2014 a run off its ladder, "
+                     + _shown(file);
             } else {
                 /* THE FILE IS NOT IN THE BOUND FOLDER, so do not write it as
-                 * if it were.  `<bound>/<basename>` is a path that does not
-                 * exist, and printing it would put
-                 * a plausible name over another run's numbers.  It happens
-                 * for one round-trip after every Reload, and permanently
-                 * when that Reload's scan fails. */
-                text = shown(dir) + "  \u2014 showing " + shown(file)
+                 * if it were.  `<bound>/<name>` is a path that does not
+                 * exist, and printing it would put a plausible name over
+                 * another run's numbers.  It happens for one round-trip
+                 * after every Reload, and permanently when that Reload's
+                 * scan fails. */
+                text = _shown(dir) + "  \u2014 showing " + _shown(file)
                      + ", which is not in this folder";
             }
             if (sc.diverged) {
@@ -226,10 +242,7 @@
             }
             els.fileReadout.textContent = text;
             els.fileReadout.classList.toggle(
-                "is-diverged",
-                !!sc.diverged || (!!file && !!dir && _dirOf(file) !== dir
-                                  && !sc.point
-                                  && !(pickedRun && file.startsWith(dir + "/"))));
+                "is-diverged", !!sc.diverged || lies === "elsewhere");
             // the whole line, warning included -- the ellipsis may hide it
             els.fileReadout.title = text;
         }
@@ -259,21 +272,20 @@
     const PLACE_NOTE_UNKNOWN =
         "This directory is not marked as part of a calculation, so only "
         + "what is in it can be shown \u2014 nothing about what it belongs to.";
-    //: A CONTAINER AT A RUN'S PLACE is a run of points' root
-    //: (`project-layout.md` § 1.4a): one run, its points below it
-    //: (`execution/runs-of-points.md` § 1.1).
+    //: A RUN OF POINTS' ROOT -- the announcement carries its view
+    //: (`points`, results.md § 3a): one run, its points below it
+    //: (`execution/runs-of-points.md` § 1.1), nothing at work yet.
     const PLACE_NOTE_POINTS =
         "This is a run of points: one run, each point a folder below it "
         + "\u2014 open a point, or its calculation for every point's state.";
 
-    function _renderPlaceNote(place) {
+    function _renderPlaceNote(place, points) {
         const el = els.fallback
             && els.fallback.querySelector(".results-place-note");
         if (!el) return;
         const role = place && place.role;
         el.textContent = !role ? PLACE_NOTE_UNKNOWN
-            : (role === "container" && place.what === "attempt")
-            ? PLACE_NOTE_POINTS
+            : points ? PLACE_NOTE_POINTS
             : (PLACE_NOTE[role] || "");
         el.hidden = !el.textContent;
     }
@@ -324,6 +336,14 @@
         const host = $("results-ladder");
         if (!host) return;
         host.textContent = "";
+        if (ladder && ladder.unread) {
+            /* A LADDER WHOSE RECORDS DO NOT READ, said in its reader's
+             * words -- never a ladder silently missing. */
+            host.textContent = "This calculation's ladder does not read: "
+                + ladder.unread;
+            host.hidden = false;
+            return;
+        }
         const stages = ladder && Array.isArray(ladder.stages) ? ladder.stages : [];
         if (!stages.length) { host.hidden = true; return; }
         const chip = window.molbuilder.stateChip;
@@ -376,6 +396,17 @@
             tr.appendChild(td(""));
             tr.appendChild(td(""));
             table.appendChild(tr);
+            if (s.runs_unread) {
+                /* A STAGE WHOSE RUNS DO NOT LIST, said on its own row --
+                 * the other stages kept (results.md § 2.4). */
+                const row = document.createElement("tr");
+                row.className = "is-run";
+                const cell = td("Its runs could not be listed: "
+                                + s.runs_unread);
+                cell.setAttribute("colspan", "7");
+                row.appendChild(cell);
+                table.appendChild(row);
+            }
             /* EVERY RUN OF THE RUNG, picked in place (results.md \u00a7 2.4):
              * each attempt and, for a swept rung, each attempt's points,
              * with its own state -- the run door's reading -- and the
@@ -394,20 +425,23 @@
                     + (r.copied_from ? " \u00b7 copied from " + r.copied_from
                        : "")));
                 const result = td("");
-                if (r.opens && rootDir) {
-                    const path = rootDir + "/" + r.opens;
-                    /* THE ROOT'S OWN FILE -- a transmission run, whose result
-                     * is the report at its point (results.md § 0.1) -- is
-                     * shown by re-announcing the calculation with that bias
-                     * selected; any other run is picked in place. */
-                    const atRoot = r.opens.indexOf("/") === -1;
+                if (r.opens) {
+                    /* A ROW THAT OPENS ITS CALCULATION'S REPORT -- a
+                     * transmission run, whose result is the report at its
+                     * point (results.md § 0.1), the row says so
+                     * (`opens_report`) -- is shown by re-announcing the
+                     * calculation with that bias selected; any other run is
+                     * picked in place.  Every path the row names is whole. */
+                    const atRoot = !!r.opens_report;
                     const open = document.createElement("button");
                     open.type = "button";
                     open.className = "results-ladder-open";
                     open.textContent = "open";
+                    const atWords = atRoot && r.opens_at
+                        ? _runPointWords(r.opens_at) : "";
                     open.title = atRoot
-                        ? (words ? "the report at " + words : "the report")
-                        : r.opens + " — shown here; the sidebar "
+                        ? (atWords ? "the report at " + atWords : "the report")
+                        : _shown(r.opens) + " — shown here; the sidebar "
                           + "stays on the calculation.";
                     // N identical "open" buttons name their run, and a picked
                     // run's says it is showing (ui-contract.md § 4.1); the
@@ -416,16 +450,20 @@
                     open.setAttribute("aria-label", "open " + s.name + " " + name);
                     if (!atRoot) {
                         open.setAttribute("aria-pressed",
-                                          pickedRun && pickedFile === path ? "true" : "false");
+                                          pickedRun && pickedDir === r.dir ? "true" : "false");
                     }
                     open.addEventListener("click", () => {
-                        if (!atRoot) { _pickRun(path); return; }
+                        if (!atRoot) { _pickRun(r); return; }
                         _backToRoot();
-                        if (r.bias_v == null) return;
+                        /* AT THE POINT THE ROW OPENS THE REPORT AT -- its
+                         * own, or a run of points' point at work's
+                         * (`opens_at`, results.md § 2.4). */
+                        const at = r.opens_at;
+                        if (!at || at.bias_v == null) return;
                         if (currentHandle
                                 && typeof currentHandle.selectPoint === "function") {
-                            currentHandle.selectPoint({ frame: r.frame,
-                                                        bias: Number(r.bias_v) });
+                            currentHandle.selectPoint({ frame: at.frame,
+                                                        bias: Number(at.bias_v) });
                         } else {
                             // THE REPORT IS NOT ON SCREEN -- another file
                             // of the calculation is -- so say how to get there.
@@ -446,16 +484,16 @@
                 const files = td("");
                 const proj = window.molbuilder.projects;
                 [["input", r.deck], ["check report", r.validation]]
-                    .forEach(([word, rel]) => {
-                        if (!rel || !rootDir || !proj
+                    .forEach(([word, path]) => {
+                        if (!path || !proj
                                 || typeof proj.showPreview !== "function") return;
                         const b = document.createElement("button");
                         b.type = "button";
                         b.className = "results-ladder-open";
                         b.textContent = word;
-                        b.title = rel + " — opens in the sidebar's file viewer.";
+                        b.title = _shown(path) + " — opens in the sidebar's file viewer.";
                         b.setAttribute("aria-label", word + " of " + s.name + " " + name);
-                        b.addEventListener("click", () => proj.showPreview(rootDir + "/" + rel));
+                        b.addEventListener("click", () => proj.showPreview(path));
                         files.appendChild(b);
                     });
                 row.appendChild(files);
@@ -483,7 +521,7 @@
         host.hidden = false;
     }
 
-    function _showFallback(file, place) {
+    function _showFallback(file, place, points) {
         if (currentHandle) {
             try { currentHandle.dispose(); } catch (_) { /* swallow */ }
             currentHandle = null;
@@ -494,7 +532,7 @@
         els.host.innerHTML = "";
         if (els.fallback) {
             els.host.appendChild(els.fallback);
-            _renderPlaceNote(place);
+            _renderPlaceNote(place, points);
         }
         _renderStatus(file, null);
     }
@@ -507,11 +545,10 @@
     // swaps.  Removed on ``molbuilder:inspector:ready`` (first render on screen) or
     // the safety timer.  The overlay is a SIBLING of the host inside a relative
     // wrapper, so it survives the host's innerHTML churn during the async mount.
-    function _showLoading(file) {
+    function _showLoading(name) {
         if (!els.loadingOverlay) return;
-        const base = (file || "").split("/").pop() || file || "";
         const txt = els.loadingOverlay.querySelector(".results-loading-text");
-        if (txt) txt.textContent = base ? ("Loading " + base + " — parsing…") : "Loading…";
+        if (txt) txt.textContent = name ? ("Loading " + name + " — parsing…") : "Loading…";
         els.loadingOverlay.hidden = false;
         if (loadingTimer) clearTimeout(loadingTimer);
         loadingTimer = setTimeout(_hideLoading, LOADING_TIMEOUT_MS);
@@ -538,7 +575,11 @@
         const ladder = (sel && sel.ladder) || null;
         const scope = { dir: (sel && sel.dir) || "",
                         diverged: !!(sel && sel.diverged),
-                        point: (sel && sel.point) || null };
+                        point: (sel && sel.point) || null,
+                        // where the announced file lies, and its name, as
+                        // the folder's answer says them (results.md § 0.3)
+                        lies: (sel && sel.lies) || "",
+                        name: (sel && sel.name) || "" };
         _sayOnLadder("");
         /* THE PICKER'S ANNOUNCEMENT OF A ROOT is remembered whole, so a run
          * picked off the ladder can be left again; a picked run's own
@@ -546,7 +587,7 @@
         if (!(sel && sel.picked_run)) {
             ++pickSeq;              // a pick still in flight is overtaken
             pickedRun = false;
-            pickedFile = "";
+            pickedDir = "";
             if (ladder) { rootSel = sel; rootDir = scope.dir; }
             else { rootSel = null; rootDir = ""; }
         }
@@ -567,7 +608,7 @@
         if (!reg) {
             _hideLoading();
             _clearMounted();
-            _showFallback(file, place);
+            _showFallback(file, place, sel && sel.points);
             _renderStatus("", "", scope);
             return;
         }
@@ -581,7 +622,7 @@
         if (file && file === mountedFile && currentHandle
                  && !(sel && sel.force)) {
             _renderStatus(file, mountedName, scope);
-            _selectPoint(scope.point, true);
+            _selectPoint(scope.point, scope.dir, true);
             // ...and what is on screen IS the answer: say so, or the picker's
             // "Parsing <file>..." line waits out its fallback timer over a
             // view that never went away.
@@ -600,14 +641,14 @@
         if (!inspector) {
             _hideLoading();
             _clearMounted();
-            _showFallback(file, place);
+            _showFallback(file, place, sel && sel.points);
             _renderStatus("", "", scope);
             return;
         }
         // Lock the view down BEFORE disposing the old inspector, so there is no
         // window where the stale scene is live + interactive.  Only for async
         // inspectors (the ready event lifts the cover); sync ones render instantly.
-        if (ASYNC_VIEWER_INSPECTORS[inspector.name]) _showLoading(file);
+        if (ASYNC_VIEWER_INSPECTORS[inspector.name]) _showLoading(scope.name || _shown(file));
         else _hideLoading();
         // Dispose the previous inspector BEFORE handing the host
         // to the next one -- listeners / timers / 3Dmol viewers
@@ -620,17 +661,17 @@
         mountedFile = file;
         mountedName = inspector.displayName;
         _renderStatus(file, inspector.displayName, scope);
-        _selectPoint(scope.point, false);
+        _selectPoint(scope.point, scope.dir, false);
     }
 
-    /* THE POINT A TRANSMISSION RUN'S FOLDER OPENS ITS REPORT AT (results.md
-     * § 2) -- `{frame, of, bias_v}`, the point's wire form -- handed to the
-     * report as its ladder row's *open* hands it (§ 2.4).  `again`: the
-     * report already on screen, where only another point is a new pick. */
-    function _selectPoint(point, again) {
-        const key = point ? JSON.stringify(point) : "";
-        if (again && key === announcedPoint) return;
-        announcedPoint = key;
+    /* THE POINT A FOLDER OPENS ITS CALCULATION'S REPORT AT (results.md
+     * § 0.1, § 2) -- `{frame, of, bias_v}`, the point's wire form -- handed
+     * to the report as its ladder row's *open* hands it (§ 2.4).  `again`:
+     * the report already on screen, where only another folder's point is a
+     * new pick. */
+    function _selectPoint(point, dir, again) {
+        if (again && dir === pointFolder) return;
+        pointFolder = dir;
         if (!point || point.bias_v == null || !currentHandle
                 || typeof currentHandle.selectPoint !== "function") return;
         currentHandle.selectPoint({ frame: point.frame,
@@ -743,12 +784,15 @@
             window.molbuilder.constants.EVENT_SCOPE_CHANGED,
             (evt) => {
                 const d = (evt && evt.detail) || {};
-                // the point stays with its folder: a Reload re-binding
-                // elsewhere leaves the report outside the new one
+                // the point, and where the file lies, stay with its folder:
+                // a Reload re-binding elsewhere leaves the file outside the
+                // new one until its answer lands
                 const same = !!_scope && _scope.dir === (d.dir || "");
                 _renderStatus(mountedFile, mountedName,
                               { dir: d.dir || "", diverged: !!d.diverged,
-                                point: same ? _scope.point : null });
+                                point: same ? _scope.point : null,
+                                lies: same ? _scope.lies : "",
+                                name: same ? _scope.name : "" });
             }
         );
 

@@ -812,7 +812,7 @@ as a reader sees it — is floor 6's, served beside this answer by the route
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
 | `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
 | `files` | per file its whole `path`, its role, label, stage — read back with the run's label — whether a parser reads it, and what it is (`about`, the catalogue's line or *not written by molbuilder*) | the picker; the file card (`web/results.md` § 3b) |
-| `report` | the file the folder opens when it lies outside it — a transmission run's, its calculation's report, `task.json`, as its kind's record declares (`execution/architecture.md` § 3.3) — as a `files` row with its `path`; `null` for every other folder. The point it opens it at is the point the folder is (`point_of`, floor 4), served beside this answer (`views_of`, `execution/architecture.md` § 3.2) | the picker, which lists the report first; the file card (`web/results.md` § 2, § 3b) |
+| `report` | the file the folder opens when it lies outside it — a transmission run's, its calculation's report, `task.json`, as its kind's record declares (`execution/architecture.md` § 3.3) — as a `files` row with its `path`; `null` for every other folder. The point it opens it at is the point the folder is (`point_of`, floor 4) — at a run of points' root, its view's point at work's — served beside this answer (`views_of`, `execution/architecture.md` § 3.2) | the picker, which lists the report first; the file card (`web/results.md` § 2, § 3b) |
 
 **What the directory IS decides what is asked of it** (`project-layout.md`
 § 1.4a). A container is not a run: no `status` and no `record`, though its own
@@ -903,7 +903,7 @@ is read with beside it are floor 6's (`views_of`,
 |---|---|---|---|
 | **a run** — an attempt, a point of a run of points | everything: its state, its record | a point's folder, the run of points' view of its run and the point it is | its run's result (the catalogue's result roles); where its kind's record declares its rung's folder opens otherwise, that — a transmission run's folder, its calculation's report, at the point the folder is (a rung that runs once: its one point) |
 | **a calculation's root** | no state, no record | its ladder — its stages, each stage's every run | what its kind's record says its root opens — a transport calculation's description, through which its report is opened; else a result at the root, where one is |
-| **a run of points' root** — a stage's attempt whose rung runs per point | no state, no record; its own result, or nothing (`openable`) | the run of points' view: its state and count, the point at work and that point's record | the view's: the run's own result once its root holds one, until then the point at work's |
+| **a run of points' root** — a stage's attempt whose rung runs per point | no state, no record; its own result, or nothing — a transmission run's, its calculation's report (`openable`) | the run of points' view: its state and count, the point at work and that point's record | the view's: the run's own result once its root holds one, until then the point at work's |
 | **a benchmark's folder** | no state, no record | — (its trials compared, the bench summary) | its sweep's `job-set.json` |
 | **any other container** — a stage's folder, a trial holding its attempts | no state, no record: its runs are the folders below it | — | a result in it, where one is |
 | **the engine's scratch** — a device run's `tsgf/` | nothing | — | nothing |
@@ -1496,7 +1496,7 @@ window from its own input:
 |---|---|---|---|---|
 | `wall_clock_s` | an absolute instant | the molwatch emitter's epoch | `MolwatchLogFileParser` | the Finished badge's timestamp |
 | `elapsed_s` | since the **run** began | the frame epoch series, `t[i] − t[0]` | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` — the one home P-T3 allows | the badge's *total* while a run is going, and a file of no run's (`web/trajectory.md` § 4); `molbuilder watch parse` / `watch tail` |
-| `engine_elapsed_s` | the **engine**, launch to exit | the wrapper's `benchmark: <program> wall <s>s` line | `wrapper_log.read_wrapper_log` | the run record (§ 5d.2): the Run panel's wall, and the badge's *total* once a run has ended (`runs.run_answer`) |
+| `engine_elapsed_s` | the **engine**, launch to exit | the wrapper's `benchmark: <program> wall <s>s` line | `wrapper_log.read_wrapper_log` | the run record (§ 5d.2): the Run panel's wall, and the badge's *total* once a run has ended (`runstatus.run_answer`) |
 | `monitored_elapsed_s` | since the **monitor** started | `util.csv` rows, `epochs[-1] − epochs[0]` | `util_csv_metrics` | the bench table's `monitored` column |
 | `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
 | `run_start_local` · `run_end_local` | the run's two ends, as the node's local time of day | the `.out`'s `>> Start of run` / `>> End of run` | `siesta_grammar.read_launch_line` | the run record (§ 5d.2) |

@@ -26,30 +26,28 @@ as they stood.
 ---
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-31)*
-**Where we are: 2.58.0.** The releases are the changelog's rows; the
+**Where we are: 2.59.0.** The releases are the changelog's rows; the
 history this handover carried, release by release, and the checks each
 release ran are in [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md),
-*The handover's history*. The last: F0c — a SIESTA displacement sweep
-relaxes once, its later stage continuing from the first and taking its
-relaxation over (`--from` another run, `--cold` none — the protocol's
-words), and an optical frame keeps each spin channel's Fermi level
-(`optical-data@3`), with what its two review rounds found: the rule moved
-to its floor (the kind table's `continues`), one reader of a run of
-points' state, the remedy and the summary's ways out typed true, the
-verdict judged by the tolerance the relaxation ran to (2.58.0). Before it:
-F0b — a species is a label and an
-element, the composed junction's order, one *IR asked* reading, the refused
-citation's way out, the builders' findings as `Issue`s through one build
-door, and what its two review rounds and the checks after them found: the
-pseudopotential folder read by file name, every 3DNA cytosine built as its
-imino tautomer, RDKit's hydrogens in no residue, a data file's `element`
-holding labels, a nucleic acid's steric clash said on every build (decided
-(b)) (2.57.0).
+*The handover's history*. The last: F1 — the results views: the run door
+answers its own folder and asks nothing above floor 2; `/api/results/dir`
+serves beside it the views (`runstatus.views_of`: the ladder, a run of
+points' view, the point a folder is) with every path whole, the page
+composing none and reading an answer one way (`readAnswer`); one reading
+of a run of points (`continuation.read_points`) every reader asks; and
+what its two review rounds found: a point's never-started *not run* read
+on the run handle as its run's rows read the walk, the run's end still
+written once; one answer to *is a job holding this run going*
+(`joblist.going_of`); a pick off the ladder reading its folder fresh; a
+return to the tab keeping the point you picked (2.59.0). Before it: F0c —
+a SIESTA displacement sweep relaxes once, its later stage taking the
+first stage's relaxation over, and an optical frame keeps each spin
+channel's Fermi level (2.58.0).
 
-**Last checked**: the fast batch on 2.58.0's code (6,943 passed); two rounds of review, three and two whole-file readers, each finding checked in the code before it was fixed or left; each topic's test confirmed present and seen failing on the old code -- the prep protocol's sweep rows (the later stage's take-over said at prep, its group refused beside the first stage, its first launch waiting, `--cold` taking nothing, `--from` refused for a run never launched and for one holding no relaxation done), the renaming door over the name generator's product; a later stage's first launch planned by hand on a copy of a finished SIESTA vibration (the relaxation taken over, its files renamed, its index entry naming the computing call). **No e2e** -- none runs before F9; **untested until after F9**: the take-over on a real run, the remedy's and the summary's words, a fixed-spin output's Fermi levels, and `--from` with `--cold` refused at a launch again.
+**Last checked**: the fast batch on 2.59.0's code (6,943 passed); two rounds of review, three and two whole-file readers, and a focused check of the second round's fixes, each finding checked in the code before it was fixed or left; each topic's test seen failing on the old code -- the views through the route on road-made vibration and optimization folders, five rows, and the page's one reading of each answer (the view carried at a point's folder too fails two rows), the picker's surface; headless on real runs: every folder loads without a page error, and each of ten ladder rows of a finished SIESTA vibration opens its run. **No e2e** -- none runs before F9; **untested until after F9**: a direct run's never-started point read *not run*, a transmission run of points' root opening its report at its point at work, picking a run of points' row off the ladder while it runs, the Run panel's lead.
 
 
-**What runs next** is **F1** — the results views — then the releases in
+**What runs next** is **F2** — the run script names no engine — then the releases in
 the order of *The one plan* — the user's to change. **The user's decisions** are under
 *Decided*; **what only Sol can show** and **new science** are
 under *After the finish line*.
@@ -107,7 +105,7 @@ topic's test is confirmed present before the release ships *(the user,
 | # | release | the redesign — what becomes true | items | needs |
 |---|---|---|---|---|
 | **F0** | **Wrong answers now** | **F0a released as 2.56.2** — 18 of its rows closed and 2 in part (the ledger marks each): status's next step from the run and ready doors, the run's clock read at the reader and from the run's record, the ending reader's crash an answer the wrapper says once, prep's writes leaving nothing it no longer writes, what 2.56.0–2.56.1 left, the documents that made a person act wrongly. **F0b released as 2.57.0** — B2-1, B2-2, U1-2, U2-2, U2-4, I2-134 closed, and what its reviews and checks found (the ledger's *Found by F0b*). **F0c released as 2.58.0** — SWEEP-RELAX and SPIN-EF, and what its review rounds found (the ledger's *Found by F0c*). The whole row: Each fixed at its owning door, not patched: **a species is a label and an element** — one shape through the structure codec's writer and reader and the file catalogue's pseudopotential field (a structure holding `Au1` is written and then refused, B2-1, B2-2); the composed junction keeps its view fields through `Structure.replace` (extending a junction whose order is unstated answers 500, U1-2); **one *IR asked* reading** of a result, older files included (a PySCF result's IR column hidden, U2-2, U2-4, U2-5); the build route returns the builder's findings (the peptide's aldehyde warning lost, I2-134); the run-ending reader's crash an answer, never *no* (I2-133), and the diagnostics door's (B3-28); prep's writes of a stage leave nothing it no longer writes (a stale Makov–Payne script, I2-199); status's next step from the run door (a missing member said finished, a sequence-sent group said not launched — D1-JSa-1, B3-31); the run's clock read once (U2-3); a SIESTA displacement sweep that relaxes reaches its comparison (SWEEP-RELAX — its design first) and a spin-polarized optical frame keeps its Fermi level (SPIN-EF); what 2.56.0–2.56.1 left — *not run* wherever an ended walk's never-run is said, `.continued-from` bytes from `runrecord` alone, migrate's write into a finished run stated as the rule's exception, the package pyflakes-clean; the documents that make a person act wrongly (installation's commands, the run script started by hand, the restart route's rule, the thread default); and the way out of a refused junction citation (decided 1). | 30, 18 closed 2.56.2 and 2 in part; + 2 (F0a's review) | — |
-| **F1** | **The results views** (§ 1ak S3) | `point_of` (floor 4), `points_view` and `views_of` (floor 6) built; the run door answers its own folder and nothing more; `/api/results/dir` returns the folder answer and the views; **every reader of a run of points' points asks the one point view** — the transport record, its digest and DOS-per-orbital reader, `summarize`, the report page, the ladder. Closes a run-once transmission whose DOS per orbital no road reads (U2-1), the I–V table's missing *not run* row (U2-21), a sweep's run folder that opens nothing (B3-34), the run door reaching floors 3–4 and walking a sweep's points 4N+1 times per answer (B3-1…B3-8, B3-33). Settles the user's open question *"build S3, or state the live road"* — the finish line builds it. | 34 | — |
+| **F1** | **The results views** (§ 1ak S3) | **F1 released as 2.59.0** — its rows closed (the ledger marks each), B3-11, I1-107 and I1-113 in part, and what its review rounds found (the ledger's *Found by F1*); B3-10 → F3, I2-087 → F9, the ready door's re-reads → F7, the transport report's and Task setup's path joins and Reload's dropped pick → F8. The whole row: `point_of` (floor 4), `points_view` and `views_of` (floor 6) built; the run door answers its own folder and nothing more; `/api/results/dir` returns the folder answer and the views; **every reader of a run of points' points asks the one point view** — the transport record, its digest and DOS-per-orbital reader, `summarize`, the report page, the ladder. Closes a run-once transmission whose DOS per orbital no road reads (U2-1), the I–V table's missing *not run* row (U2-21), a sweep's run folder that opens nothing (B3-34), the run door reaching floors 3–4 and walking a sweep's points 4N+1 times per answer (B3-1…B3-8, B3-33). Settles the user's open question *"build S3, or state the live road"* — the finish line builds it. | 34 | — |
 | **F2** | **§ 1am step 2 — the run script names no engine** | One skeleton over the engine record — its program, environment and GPU environment, one process or ranks, keyword deck, the step after the engine; the parse layer asked by meaning; the retry budget only on a rung that runs an SCF (`stages = "scf"`), never a diverged one; the cold sweep's exceptions from the gather's own record. Closes the PySCF banner promising a checkpoint, `--cold --force` deleting gathered lead files and stopping on geomeTRIC's folder, two starts sharing a log (B1-1…B1-16). The design set aside on 2026-10-29 is its starting point, re-read against the code first; architecture § 3.3 and job-contracts § 2.6 are rewritten to it. | 34 + 2 (F0a's review) | — |
 | **F3** | **§ 1am step 3 — the engine record and the kind/pair record whole** | An engine's validator, reading of *the same calculation*, label bound, words and environment are its record's parts; a kind's rung builders live in its own module, and its sharing role, scratch status line, description checks, extension and citation parts, sort key and report-field gate are its record's; § 1ai's two locks of the Structure-optimization tab move into the catalogue; the page's label palette served from the kind table (decided 6). Closes B1-17…B1-52, B3-10. Carries § 1ak's decisions: S2's reach (every branch on a kind's or engine's name judged into the tables, an engine's own modules choosing by kind staying), `describe` explicit, one record per kind and a part per engine. | 47 + 1 (F0a's review) | — |
 | **F4** | **§ 1am step 4 — the file catalogue and the record doors** | A `ROLE_*` constant for every catalogue row and `compose` refusing a role no row has (131 literal roles in 41 modules today); each record's path formed by its owner — the machine record, the description, the job request, `.copied-from`, a launch group's files, the runtime record, the reports folder; nothing climbs to a root. Closes B2-3…B2-22. | 29 + 7 (F0a's review) | — |

@@ -14,6 +14,11 @@
  * shown); a field the table has no label for shows under its own name, so
  * nothing the record states is hidden, and its label is the whole change.
  *
+ * A RUN OF POINTS' ROOT has no record of its own: the panel shows its point
+ * at work -- the run of points' view the scan carries (`points`, § 3a) --
+ * under the run's count, the point named in the page's one wording
+ * (`lib/results/point-words.js`).
+ *
  * RE-READ WITH THE DIRECTORY, never on a timer: the picker's scan is the one
  * source (§ 2.1).  Hidden where there is no record -- a container, a folder
  * with no run in it -- and from the moment the panel is bound to another
@@ -21,6 +26,8 @@
  * nothing, and the previous folder's record must not stand under the new
  * one.
  */
+
+import { runPointWords } from "/static/lib/results/point-words.js";
 
 const NS = window.molbuilder || {};
 const C = NS.constants || {};
@@ -462,17 +469,16 @@ function computationSection(rec) {
     return s;
 }
 
-function deckSection(rec, recordDir) {
+function deckSection(rec) {
     const s = section("Deck");
     s.appendChild(rows(rec.deck));
     const proj = NS.projects;
+    // THE DECK'S PATH IS WHOLE (results.md § 0.3): opened as it is.
     if (rec.deck.path && proj && typeof proj.showPreview === "function") {
-        const full = rec.deck.path.startsWith("/") ? rec.deck.path
-                   : String(recordDir || "").replace(/\/$/, "") + "/" + rec.deck.path;
         const b = el("button", "rp-view", "View");
         b.type = "button";
         b.title = "Open the deck in the sidebar's text viewer";
-        b.addEventListener("click", () => proj.showPreview(full));
+        b.addEventListener("click", () => proj.showPreview(rec.deck.path));
         s.appendChild(b);
     }
     return s;
@@ -480,12 +486,26 @@ function deckSection(rec, recordDir) {
 
 /* ---- the panel ------------------------------------------------------------ */
 
-/* `dir` is the folder the page is bound to (the scope); `recordDir` the one
- * the record was read from, whose file names the record gives -- a run picked
- * off a calculation's ladder is read in its own folder while the page stays
- * bound to the calculation (results.md § 2.4). */
-const shown = { record: null, dir: "", recordDir: "" };
+/* `dir` is the folder the page is bound to (the scope); `record` the run
+ * the folder's files came from, or -- at a run of points' root -- its point
+ * at work's, `points` that run's view. */
+const shown = { record: null, dir: "", points: null };
 let open = false;
+
+/** A run of points' line: its count, and the point whose record the panel
+ *  shows, named in the page's one wording (results.md § 2.5) -- *at work*
+ *  while the run runs, else the last to run. */
+function leadOf(points) {
+    const at = points.at_work;
+    const proj = NS.projects;
+    const words = at ? (runPointWords(at.point || {})
+                        || (proj ? proj.relativeToProjects(at.dir) : at.dir))
+                     : "";
+    return [points.detail || points.state,
+            at ? (points.state === "running" ? "at work: "
+                  : "the last to run: ") + words : ""]
+        .filter(Boolean).join(" \u00b7 ");
+}
 
 function render() {
     const host = document.getElementById("results-run-panel");
@@ -494,6 +514,8 @@ function render() {
     const rec = shown.record;
     if (!rec) { host.hidden = true; return; }
 
+    if (shown.points) host.appendChild(el("p", "rp-lead",
+                                          leadOf(shown.points)));
     const head = el("div", "rp-head");
     const toggle = el("button", "rp-toggle", "Run");
     toggle.type = "button";
@@ -520,7 +542,7 @@ function render() {
         if (rec.verdict || rec.earlier) body.appendChild(verdictSection(rec));
         if (rec.setup) body.appendChild(setupSection(rec));
         if (rec.computation) body.appendChild(computationSection(rec));
-        if (rec.deck) body.appendChild(deckSection(rec, shown.recordDir));
+        if (rec.deck) body.appendChild(deckSection(rec));
         host.appendChild(body);
     }
     host.hidden = false;
@@ -529,9 +551,12 @@ function render() {
 if (C.EVENT_FILE_SELECTED) {
     document.addEventListener(C.EVENT_FILE_SELECTED, (evt) => {
         const d = (evt && evt.detail) || {};
-        shown.record = d.record || null;
+        // A RUN OF POINTS' ROOT -- its view announced there alone -- its
+        // point at work's record (§ 3a); any other run's folder, its own.
+        shown.points = d.points || null;
+        shown.record = d.record || (shown.points && shown.points.at_work
+                                    && shown.points.at_work.record) || null;
         shown.dir = d.dir || "";
-        shown.recordDir = d.record_dir || "";
         render();
     });
 }
@@ -540,8 +565,8 @@ if (C.EVENT_SCOPE_CHANGED) {
         const dir = ((evt && evt.detail) || {}).dir || "";
         if (shown.record && dir !== shown.dir) {
             shown.record = null;
+            shown.points = null;
             shown.dir = dir;
-            shown.recordDir = "";
             render();
         }
     });

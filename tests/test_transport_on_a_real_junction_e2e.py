@@ -2213,7 +2213,7 @@ def test_every_prep_log_at_the_root_is_said_as_molbuilders(junction):
     SILENT FAILURE (the 2.40 review's BE5): the file card said each lead's
     log was not molbuilder's.  MUTATION THIS MUST FAIL AGAINST: the
     listing's row reading a file with the run's label alone
-    (`runs._file_row`)."""
+    (`runs.file_row`)."""
     from molbuilder.runs import about, folder_answer
     logs = sorted(junction.single.bundle.glob("*.pipeline.log"))
     assert any("electrode" in p.name for p in logs), logs
@@ -2537,11 +2537,15 @@ def test_a_point_the_ended_walk_never_reached_reads_not_run_everywhere(
     device whose first voltage did not finish: its second, never run.  THE
     SILENT FAILURES: the page, the data file and the folder calling the
     point pending, or failed, while `status` counts it not run.  MUTATIONS THIS MUST FAIL
-    AGAINST: the record's point state the run door's own (`concluded`,
-    `record._rung_points`); a point's folder read without its run's rows
-    (`runs._as_its_point` answering ``st``)."""
+    AGAINST: the record's point state the run door's own read as failed
+    (`runs._as_a_point` answering ``st``, `record._rung_points`).  The
+    point's own folder says *not run* in the definition's words -- read off
+    the folder alone (`runs.concluded`); why the walk passed it by is its
+    run's rows' (`continuation.never_reached`)."""
     from molbuilder.calculation import open as open_calculation
-    from molbuilder.runs import folder_answer, run_answer
+    from molbuilder.jobset.runstatus import run_answer
+    from molbuilder.runpoints import NOT_STARTED
+    from molbuilder.runs import folder_answer
     from molbuilder.transport.datafile import read_data_file
     from molbuilder.transport.export import export
     from molbuilder.transport.record import collect_record
@@ -2572,7 +2576,8 @@ def test_a_point_the_ended_walk_never_reached_reads_not_run_everywhere(
     assert [str(s) for s in V["device_detail"][..., k].ravel()] == [
         said], V["device_detail"]
     status = folder_answer(folder)["status"]
-    assert (status["state"], status["detail"]) == ("not run", said), status
+    assert (status["state"], status["detail"]) == ("not run",
+                                                   NOT_STARTED), status
     assert run_answer(folder)["state"] == "not run", run_answer(folder)
 
 
@@ -4575,6 +4580,7 @@ def test_a_question_the_finished_results_answer_is_copied_in(
     # ...AND TASK SETUP NAMES EACH COPY, each by its folder (`web/task-setup.md`
     # § 3, *A group copied in*): every run the Results ladder lists of each
     # stage -- every one of them a copy here -- not the newest alone.
+    from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import every_run
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.web.app import create_app
@@ -4583,7 +4589,7 @@ def test_a_question_the_finished_results_answer_is_copied_in(
         f"/api/task-setup/folder?dir={made.bundle}").get_json()["ladder"]
     tab = {r["stage"]: r["copied"] for r in ladder["stages"]}
     for stage, here in mine.items():
-        runs = every_run(made.bundle, task_of(made.bundle), here)
+        runs = every_run(open_calculation(made.bundle), here)
         assert runs and all(r["copied_from"] for r in runs), (stage, runs)
         assert sorted((c["dir"], c["copied_from"]) for c in tab[stage]) == \
             sorted((r["dir"], r["copied_from"]) for r in runs), (stage, tab)

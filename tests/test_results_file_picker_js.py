@@ -1,8 +1,9 @@
 """Unit tests for ``lib/results/file-picker.js`` driven via node.
 
-These tests cover the tab-level result-file picker's pure helpers (``parseDir``,
-``filterToResultFiles``, ``_labelForResult``) under Node in a
-minimal stub environment -- no Chromium, no network.
+These tests cover the tab-level result-file picker's pure helpers
+(``filterToResultFiles``, ``_labelForResult``) under Node in a minimal stub
+environment -- no Chromium, no network.  The page composes no path
+(`web/results.md` § 0.3): every file's path is the server's, whole.
 
 The DOM-bound mount() path (subscriber wiring, fetch, auto-pick) is
 covered by ``tests/test_results_blueprint.py`` integration smoke
@@ -67,40 +68,6 @@ def _run_node(snippet: str) -> object:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-class TestParseDir:
-
-    def test_posix_path(self):
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker.parseDir("
-            "'/projects/job/out-run0.out');\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == {"dir": "/projects/job", "name": "out-run0.out"}
-
-    def test_windows_path(self):
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker.parseDir("
-            "'C:\\\\projects\\\\job\\\\out.out');\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == {"dir": "C:\\projects\\job", "name": "out.out"}
-
-    def test_no_separator(self):
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker.parseDir("
-            "'bare.out');\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == {"dir": "", "name": "bare.out"}
-
-    def test_empty_string(self):
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker.parseDir('');\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == {"dir": "", "name": ""}
-
-
 class TestFilterToResultFiles:
     """The directory-listing filter is the core of the tab-level
     picker.  It must:
@@ -123,7 +90,7 @@ class TestFilterToResultFiles:
             "  {name: 'c.spectra.json', mtime: 300, parser: 'spectra-json'},\n"
             "];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj');\n"
+            "  entries);\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["c.spectra.json", "a.out"]
@@ -135,7 +102,7 @@ class TestFilterToResultFiles:
             "  {name: 'foo.out',     mtime: 100, parser: 'siesta'},\n"
             "];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj');\n"
+            "  entries);\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["foo.out"]
@@ -148,7 +115,7 @@ class TestFilterToResultFiles:
             "  {name: 'newest.out', parser: 'siesta', mtime: 900},\n"
             "];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj');\n"
+            "  entries);\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["newest.out", "middle.out", "old.out"]
@@ -164,19 +131,21 @@ class TestFilterToResultFiles:
             "  {name: 'mmm.out', parser: 'siesta', mtime: 500},\n"
             "];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj');\n"
+            "  entries);\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         # Alphabetical on tie -- aaa before mmm before zzz.
         assert out == ["aaa.out", "mmm.out", "zzz.out"]
 
-    def test_builds_absolute_path(self):
-        """The picker calls projects.setShared(dir, path), so each
-        entry must carry the FULL path -- not just the basename."""
+    def test_takes_the_whole_path_the_server_sends(self):
+        """Each entry carries the path the server sent, whole -- the page
+        joins no folder to a name (`web/results.md` § 0.3): the menu's value,
+        the mirror to the sidebar and the announcement are that path."""
         out = _run_node(
-            "const entries = [{name: 'foo.out', parser: 'siesta', mtime: 100}];\n"
+            "const entries = [{name: 'foo.out', path: '/projects/myjob/foo.out',"
+            " parser: 'siesta', mtime: 100}];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/projects/myjob');\n"
+            "  entries);\n"
             "console.log(JSON.stringify(r[0]));"
         )
         assert out["name"] == "foo.out"
@@ -192,7 +161,7 @@ class TestFilterToResultFiles:
             "  {name: 'broken.out', parser: 'siesta', mtime: null},\n"
             "];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj');\n"
+            "  entries);\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         # null mtime sorts to end (treated as -Infinity).
@@ -201,7 +170,7 @@ class TestFilterToResultFiles:
     def test_empty_input_returns_empty(self):
         out = _run_node(
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  [], '/proj');\n"
+            "  []);\n"
             "console.log(JSON.stringify(r));"
         )
         assert out == []
@@ -210,7 +179,7 @@ class TestFilterToResultFiles:
         """Defensive: non-array input must not throw."""
         out = _run_node(
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  null, '/proj');\n"
+            "  null);\n"
             "console.log(JSON.stringify(r));"
         )
         assert out == []
@@ -230,31 +199,22 @@ class TestFilterToResultFiles:
         """
         out = _run_node(
             "const entries = [\n"
-            "  {name: 'a.out',       mtime: 300, parser: 'siesta'},\n"
-            "  {name: 'a.util.csv',  mtime: 200, parser: 'util-csv'},\n"
-            "  {name: 'a.monitor.log', mtime: 100, parser: 'monitor-log'},\n"
+            "  {name: 'a.out', path: '/proj/a.out', mtime: 300,"
+            " parser: 'siesta'},\n"
+            "  {name: 'a.util.csv', path: '/proj/a.util.csv', mtime: 200,"
+            " parser: 'util-csv'},\n"
+            "  {name: 'a.monitor.log', path: '/proj/a.monitor.log',"
+            " mtime: 100, parser: 'monitor-log'},\n"
             "];\n"
             "function pickResult(p) {\n"
             "  return p.endsWith('.out')\n"
             "       ? { name: 'trajectory', displayName: 'Traj' } : null;\n"
             "}\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj', 'siesta', pickResult);\n"
+            "  entries, 'siesta', pickResult);\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["a.out"]
-
-    def test_uses_backslash_separator_for_windows_paths(self):
-        """Windows-style dir paths build entries with backslash sep
-        so projects.setShared receives a path that round-trips
-        through parseDir without losing the separator type."""
-        out = _run_node(
-            "const entries = [{name: 'foo.out', parser: 'siesta', mtime: 100}];\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, 'C:\\\\projects\\\\myjob');\n"
-            "console.log(JSON.stringify(r[0].path));"
-        )
-        assert out == "C:\\projects\\myjob\\foo.out"
 
 
 class TestGroupResultFiles:
@@ -415,17 +375,22 @@ class TestAPISurface:
             "const api = window.molbuilder.resultsFilePicker;\n"
             "console.log(JSON.stringify({"
             "  hasMount:               typeof api.mount === 'function',"
-            "  hasParseDir:            typeof api.parseDir === 'function',"
             "  hasFilterToResultFiles: typeof api.filterToResultFiles === 'function',"
             "  hasGroupResultFiles:    typeof api.groupResultFiles === 'function',"
+            "  hasReadAnswer:          typeof api.readAnswer === 'function',"
+            "  hasMetaOf:              typeof api.metaOf === 'function',"
             "  hasLabelForResult:      typeof api._labelForResult === 'function'"
             "}));"
         )
+        # `readAnswer` and `metaOf` are the viewer's too: a run picked off
+        # the ladder reads its folder's answer as the picker does
+        # (`results/viewer.js` `_pickRun`, results.md § 2.4).
         assert out == {
             "hasMount":               True,
-            "hasParseDir":            True,
             "hasFilterToResultFiles": True,
             "hasGroupResultFiles":    True,
+            "hasReadAnswer":          True,
+            "hasMetaOf":              True,
             "hasLabelForResult":      True,
         }
 
@@ -500,7 +465,7 @@ class TestAbsorbSatellites:
             if rec is not None and rec.role not in roles():
                 rec = None
             # ...AND THE PARSER THAT CLAIMS IT, the registry's own name, as
-            # `runs._file_row` asks `parse.registry.detect` of a real file:
+            # `runs.file_row` asks `parse.registry.detect` of a real file:
             # the inspector claims and absorbs by it (`presenters.md` § 2).
             from molbuilder.runfiles import (ROLE_GEOM_TRAJ, ROLE_INITIAL,
                                              ROLE_MOLWATCH, ROLE_OPTIMIZED)

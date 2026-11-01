@@ -512,12 +512,15 @@ class TestTheContractEndpoint:
         # ...and under each rung every run, with what it read and what was
         # checked before it was written (`web/results.md` § 2.4): the deck in
         # the run's folder, the `.validation.txt` beside the deck prep wrote,
-        # in the stage's folder -- the run's with its `run-<n>` level out.
+        # in the stage's folder -- the run's with its `run-<n>` level out --
+        # each path whole, as the server resolves the folder (§ 0.3).
         coarse = next(s for s in body["ladder"]["stages"]
                       if s["name"] == "coarse")
+        whole = bundle.resolve()
         assert [(r["deck"], r["validation"]) for r in coarse["runs"]] == [
-            ("01_coarse/run-0/H2_01_coarse.fdf",
-             "01_coarse/H2_01_coarse.validation.txt")], coarse["runs"]
+            (str(whole / "01_coarse/run-0/H2_01_coarse.fdf"),
+             str(whole / "01_coarse/H2_01_coarse.validation.txt"))], (
+            coarse["runs"])
 
         attempt = bundle / "01_coarse" / "run-0"
         body = client.get("/api/results/dir?path=" + str(attempt)).get_json()

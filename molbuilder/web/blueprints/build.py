@@ -2737,20 +2737,20 @@ def _folder_ladder(calc) -> dict:
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.group import why_not_join
     from molbuilder.jobset.ready import task_state, why_group_fixed
-    from molbuilder.jobset.runstatus import every_run, jobset_status
+    from molbuilder.jobset.runstatus import ladder_view
     try:
         state = task_state(calc)
         task, text = state.task, state.template_text
         answers, gs = state.stages, state.groups
-        # THE STATUS DOOR, once: each group's next step, and each stage's
-        # runs copied in from a finished calculation (`.copied-from`) --
-        # every one, each by its folder, as the root's every run reads them
-        # (`runstatus.every_run`).
-        status = jobset_status(calc)
-        copied = {s.name: [{"dir": r["dir"], "copied_from": r["copied_from"]}
-                           for r in every_run(calc.base, status.calc.task, s)
-                           if r["copied_from"]]
-                  for s in status.stages}
+        # THE LADDER VIEW, once (`runstatus.ladder_view`, the Results tab's):
+        # each group's next step, and each stage's runs copied in from a
+        # finished calculation (`.copied-from`) -- every one, each by its
+        # folder, as the root's every run reads them.
+        ladder = ladder_view(calc)
+        copied = {s["name"]: [{"dir": r["dir"],
+                               "copied_from": r["copied_from"]}
+                              for r in s["runs"] if r["copied_from"]]
+                  for s in ladder["stages"]}
         # EACH STAGE'S ROW; the reader's check (`group.check_groups`)
         # refuses at Save what the rule forbids after edits.
         rows = []
@@ -2788,7 +2788,7 @@ def _folder_ladder(calc) -> dict:
                  # formed anew (`job-system.md`, *The task*, step 3).
                  "matches": not (g.changed or g.members_changed),
                  "preparable": g.preparable, "why": g.why} for g in gs]},
-            "steps": [s.to_dict() for s in status.steps]}
+            "steps": ladder["steps"]}
     except (OSError, ValueError, PrepError) as exc:
         # WHAT ITS READERS REFUSE, said on the card; a defect in this code
         # is not one of them.

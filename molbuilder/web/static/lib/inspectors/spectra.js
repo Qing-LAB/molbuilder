@@ -44,7 +44,7 @@ import { mount as mountVibrationView } from "/static/lib/vibrationview/index.js"
         coreApiKey:     "spectraInspector",
         coreScriptDir:  "spectra",
         partialUrl:     "/partials/spectra-inspector",
-        // THE SERVER'S PARSE ANSWER (`runs._file_row`: `parser`), never a
+        // THE SERVER'S PARSE ANSWER (`runs.file_row`: `parser`), never a
         // suffix spelled here (R-RO1).
         match:          (file, meta) =>
             !!(meta && meta.parser === "spectra-json"),

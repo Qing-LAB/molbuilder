@@ -1624,7 +1624,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      *
      * THE TOTAL OF A RUN THAT HAS ENDED IS ITS OWN LENGTH: its engine's
      * wall, launch to exit, the run record's -- the one the Run panel shows
-     * -- served with the run's state (`runs.run_answer`); one still going,
+     * -- served with the run's state (`runstatus.run_answer`); one still going,
      * or a file of no run, how far in its last step was, where the engine
      * states it (`trajectory.md` § 4).  A SIESTA `.out` states no step's
      * clock, so its steps' `elapsed_s` are null (P-T2).

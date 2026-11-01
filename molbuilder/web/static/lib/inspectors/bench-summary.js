@@ -612,7 +612,7 @@
         pollMs:      POLL_MS,
         resultCategory: () => "Benchmark sweeps",
         /* THE SERVER'S PARSE ANSWER names the job set's record
-         * (`runs._file_row`: `parser`); registered ahead of the .json
+         * (`runs.file_row`: `parser`); registered ahead of the .json
          * catch-all. */
         match:       (file, meta) => !!(meta && meta.parser === "job-set-sweep"),
 

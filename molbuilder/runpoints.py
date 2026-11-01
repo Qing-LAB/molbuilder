@@ -67,6 +67,10 @@ AGAIN, CONTINUE = "again", "continue"
 #: beside the run of points' state rule (`_run_ending.points_state`) --
 #: and its reason where no need up its chain failed: the walk stopped.
 NEVER_REACHED = "the walk ended before it reached this point"
+#: ...and what its own folder says of it, read alone (`runs.concluded`):
+#: the definition's words, true whichever the reason (`runs-of-points.md`
+#: § 1.3) -- its run's rows say which (:func:`why_not_run`).
+NOT_STARTED = "its run's walk ended without starting it"
 
 #: THE INDEXES AN OLDER MOLBUILDER WROTE (2.42-2.54): a SIESTA vibration's
 #: own file of its phases, and a transport run of points' earlier schema --
@@ -364,6 +368,15 @@ def rows_of(index: Dict[str, Any], run_dir) -> List[Dict[str, Any]]:
     return rows
 
 
+def walk_began(index: Dict[str, Any]) -> bool:
+    """Whether the run's walk has started a point it walks itself -- one
+    whose start the index stamps (:func:`stamp_start`), never one taken
+    over from an earlier run (`runs-of-points.md` § 4.5): what tells a
+    walk that ended before any point from one that ended among them."""
+    return any(e.get("started") is not None and e.get("taken_from") is None
+               for e in index.get("points") or [])
+
+
 def _clear(rows) -> Dict[str, bool]:
     """For each point, whether nothing up its needs' chain stops it: a need
     that has ended RAN; one that has not, its own needs clear -- asked in
@@ -546,7 +559,7 @@ def part(ref: str) -> Any:
 
 
 __all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN",
-           "NEVER_REACHED",
+           "NEVER_REACHED", "NOT_STARTED", "walk_began",
            "OLDER_SCHEMAS", "MIGRATE", "OlderIndexError", "index_path",
            "older_index",
            "index_of", "read_index", "index_at", "write_index",

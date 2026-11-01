@@ -120,6 +120,12 @@ class PointsOf:
     #: displacement sweep's later stage, the relaxation
     #: (`engines/vibration.md` § 5.9).
     carried: Callable = lambda point: False
+    #: ``(stage) -> point | None``: the one point a run of ``stage`` is
+    #: when the rung runs once -- a transport rung's, at 0 V and no frame
+    #: (`engines/transport.md` § 2a.10) -- what :func:`point_of` answers
+    #: for the run of a rung whose folder opens its calculation's report at
+    #: a point; ``None`` for a kind with none.
+    one_point: Callable = lambda stage: None
 
 
 def record_of(task):
@@ -159,6 +165,54 @@ def carried_of(calc, stage: str) -> tuple:
             if pts is not None else ())
 
 
+def point_of(folder, task=None):
+    """THE POINT A FOLDER IS (`execution/architecture.md` § 3.2) -- by its
+    kind's declaration, of the folder ``calcdirs.where`` places: a point's
+    folder below a run of points, its point (the declaration's walk of the
+    run, :attr:`PointsOf.points_in`, matched by its folder); a transmission
+    point's ``shared/``, the point it lies in; the run of a rung that runs
+    once whose folder opens its calculation's report at a point (the kind
+    table's role ``opens``), its one point (:attr:`PointsOf.one_point`) --
+    every other run-once rung has none (`web/results.md` § 2.4).  ``None``
+    for any other folder, a benchmark trial's, and a folder no calculation
+    claims.  ``task`` is the description when the caller holds it (an
+    answer reads it once); else it is read through its door (`task.of`).
+    The point object, served by its one wire form (``to_wire()``)."""
+    from .. import calcdirs
+    from ..identity import parse_token
+    from ..kind_table import kind
+    from ..runrecord import LaunchRecordError
+    # A ``shared/`` FOLDER IS READ WITH THE POINT IT LIES IN
+    # (`calcdirs.read_with`, `engines/transport.md` § 2a.16).
+    at = calcdirs.where(calcdirs.read_with(folder))
+    if at.root is None or at.run_folder is None or at.trial is not None:
+        return None
+    if task is None:
+        from ..task import of as task_of
+        try:
+            task = task_of(at.root)
+        except (OSError, ValueError):
+            return None
+    declared = points_of(task)
+    if declared is None:
+        return None
+    stage = parse_token(at.stage)[1]
+    if at.what == calcdirs.POINT:
+        try:
+            return next((pt for _f, pt in declared.points_in(
+                at.run_folder, task, stage, at.root) if pt.rel == at.point),
+                None)
+        except LaunchRecordError:
+            # ITS RUN'S RECORDS DO NOT READ -- an older molbuilder's index:
+            # no point, the run's own row saying why (`continuation.
+            # read_points`), never the whole answer.
+            return None
+    if (at.what == calcdirs.ATTEMPT and at.role == calcdirs.RUN
+            and kind(str(task.calculation)).opens_report(stage)):
+        return declared.one_point(stage)
+    return None
+
+
 def rung_points_of(calc, stage: str) -> tuple:
     """``stage``'s points as prepared, by its kind's declaration -- ``()``
     for a kind with none, or a rung that runs once (:attr:`PointsOf.
@@ -168,4 +222,4 @@ def rung_points_of(calc, stage: str) -> tuple:
 
 
 __all__ = ["Start", "Container", "PointsOf", "record_of", "points_of",
-           "walls_of", "carried_of", "rung_points_of"]
+           "walls_of", "carried_of", "point_of", "rung_points_of"]

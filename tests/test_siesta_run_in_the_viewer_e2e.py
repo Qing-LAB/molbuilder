@@ -33,7 +33,7 @@ def finished(real_h2_layered):
     """The attempt directory of a finished H2 relaxation, made on the road
     (`support/real_runs.RealRun.attempt`) -- finished, by the one status
     door."""
-    from molbuilder.runs import run_answer
+    from molbuilder.jobset.runstatus import run_answer
     attempt = real_h2_layered.attempt("coarse")
     said = run_answer(attempt)
     assert (said["state"], said["detail"]) == ("finished", "ended, exit 0"), said

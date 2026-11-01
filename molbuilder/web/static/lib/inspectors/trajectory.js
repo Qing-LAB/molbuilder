@@ -50,7 +50,7 @@
     }
 
     /* THE SERVER'S ANSWER names what a file is: the PARSER that claims it
-     * (`runs._file_row` asks the registry, `/api/results/dir` carries it per
+     * (`runs.file_row` asks the registry, `/api/results/dir` carries it per
      * file), as every inspector claims since 2.13.3 (`presenters.md` § 2).
      * A file with no answer is claimed by nothing -- never by a suffix or a
      * role spelled here (`parse.md` R-RO1).  The three parsers whose files

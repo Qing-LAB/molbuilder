@@ -546,21 +546,24 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
         gathered = None
         if run is not None and s.attempt and s.dir \
                 and run != base / s.dir / s.attempt and s.points:
-            # ITS POINTS AND ITS STATE BY THE STATUS DOOR'S ONE RULE for a
-            # run of points (`continuation.points_state`), never a second.
-            from ..jobset.continuation import points_state
-            from ..runrecord import launch_record
-            from ..jobset.naming import stage_home
-            _names = stage_home(base, task, name).names
+            # ITS POINTS AND ITS STATE BY THE ONE READING of a run of points
+            # (`continuation.read_points`), never a second; records that do
+            # not read, and any reader's failure, said on the rung -- never
+            # the whole record.
+            from ..jobset.continuation import read_points
             points_run = run
             try:
-                gathered = points_state(
-                    run, _names, task, name, launch=launch_record(run),
-                    base=base)
-                points = gathered[2]
+                got = read_points(base, task, name, run)
             except Exception as exc:              # noqa: BLE001 -- said, never hidden
+                got = None
                 fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
+            if got is not None and got.state == "unreadable":
+                fact["unreadable"] = f"{run.relative_to(base)}: {got.detail}"
+            if got is None or got.state == "unreadable":
                 points = []
+            else:
+                gathered = (got.state, got.detail, list(got.rows))
+                points = gathered[2]
         if points:
             fact["taken"] = [
                 {"frame": p.get("frame"), "of": p.get("of"),
@@ -602,8 +605,8 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
             # are that run's): its points' states, and a detail naming both.
             if run is not None and s.attempt and s.dir \
                     and run != base / s.dir / s.attempt and points:
-                # ITS STATE, as the status door read it for this run
-                # (`continuation.points_state`, above).
+                # ITS STATE, as the one reading said it for this run
+                # (`continuation.read_points`, above).
                 fact["state"], said = gathered[0], gathered[1]
                 fact["detail"] = (f"{said}; the run the transmission "
                                   f"gathered ({fact['attempt']}); the "

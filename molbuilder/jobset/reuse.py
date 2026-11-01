@@ -746,7 +746,7 @@ def _member(calc, finished, stage: str, once, copied: set
     from ..runrecord import launch_record, read_copied_from
     from ..transport.stages import (frames_of, inputs_of, must_hold,
                                     rung_points)
-    from .continuation import done, points_state, read_run, usable
+    from .continuation import done, read_points, read_run, usable
     from .gather import ran_otherwise
     from .naming import stage_home
     # EVERY STAGE IT TAKES INPUTS FROM COPIED IN -- by this decision, or its
@@ -784,14 +784,12 @@ def _member(calc, finished, stage: str, once, copied: set
         # describes held, done, in its newest run -- a rung run once here
         # takes its first frame at 0 V (`point_key`) -- and that run not
         # still going, so what is copied is what it left.
-        launch = launch_record(newest)
-        if launch is None:
+        got = read_points(fbase, ftask, stage, newest, names)
+        launch = got.launch
+        if launch is None and got.state != "unreadable":
             return no(f"{stage}: {shown} was never launched")
-        state, detail, _rows = points_state(
-            newest, names, ftask, stage, launch=launch,
-            base=fbase)
-        if state in ("queued", "running"):
-            return no(f"{stage}: {shown} is {state} -- {detail}")
+        if got.state in ("queued", "running", "unreadable"):
+            return no(f"{stage}: {shown} is {got.state} -- {got.detail}")
         for pt in (points or [None]):
             src = _at(finished, stage, newest, pt)
             if src is None:

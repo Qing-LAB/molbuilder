@@ -49,8 +49,7 @@
  *                         onChange to re-word the header only -- nothing
  *                         in the sidebar moves this panel (results.md
  *                         § 2.1); Reload does.
- *   ``parseDir(file)``            -- pure helper (exported for testing).
- *   ``filterToResultFiles(entries, dir, pickResult)`` -- pure helper.
+ *   ``filterToResultFiles(entries, engine, pickResult)`` -- pure helper.
  *   ``absorbSatellites(entries, pickResult)`` -- pure helper that drops
  *                         the files a run's master subsumes, so one run is
  *                         one entry (results.md § 2.3).
@@ -59,6 +58,11 @@
  *                         inspector ``resultCategory(file)`` into
  *                         ``[{label, entries}]`` for ``<optgroup>``
  *                         rendering (testing).
+ *   ``readAnswer(body, pickResult)`` -- pure: the one reading of a
+ *                         folder's answer -- what the menu lists, what it
+ *                         opens, the point, the run of points' view -- the
+ *                         scan's and a run picked off the ladder's.
+ *   ``metaOf(rec)``    -- pure: a listed file's ``meta`` for presenters.
  *
  * Idempotency note: the picker reacts to onChange events; calling
  * mount() twice on the same root would double-subscribe.  Tests
@@ -70,28 +74,10 @@
     // -------- pure helpers (exported for testing) --------------- //
 
     /**
-     * Split a file path into ``{dir, name}`` parts WITHOUT importing
-     * the global path utility -- the picker needs to be loadable in
-     * test contexts without a full ``molbuilder.path`` mount.
-     */
-    function parseDir(file) {
-        if (!file) return { dir: "", name: "" };
-        const ix = Math.max(
-            file.lastIndexOf("/"),
-            file.lastIndexOf("\\")
-        );
-        if (ix < 0) return { dir: "", name: file };
-        return {
-            dir:  file.slice(0, ix),
-            name: file.slice(ix + 1),
-        };
-    }
-
-    /**
-     * Given ``/api/results/dir``'s ``files`` (each ``{name, role, label,
-     * stage, parser, opens, size, mtime}``), return **the ones this menu
-     * lists** — both halves of that: a parser can read it AND a presenter
-     * claims it as a result.
+     * Given ``/api/results/dir``'s ``files`` (each ``{name, path, role,
+     * label, stage, parser, opens, size, mtime}``, its ``path`` whole),
+     * return **the ones this menu lists** — both halves of that: a parser
+     * can read it AND a presenter claims it as a result.
      *
      * ``parser`` is the REGISTRY's verdict, decided on the server by
      * ``detect()``; ``null`` means nothing can read the file and it is not
@@ -103,17 +89,17 @@
      *
      * Pure (no DOM, no fetch).  Exported for unit tests.
      */
-    function filterToResultFiles(entries, dirPath, engine, pickResult) {
+    function filterToResultFiles(entries, engine, pickResult) {
         if (!Array.isArray(entries)) return [];
-        // Use a forward-slash separator regardless of OS.
-        const sep = dirPath && dirPath.indexOf("\\") >= 0 ? "\\" : "/";
         const out = [];
         for (const entry of entries) {
             if (!entry) continue;
             // THE SERVER SAYS WHETHER A FILE CAN BE OPENED: `parser` is the
             // REGISTRY's answer (`/api/results/dir`).
             if (!entry.parser) continue;
-            const fullPath = dirPath ? (dirPath + sep + entry.name) : entry.name;
+            // ...AND WHERE IT IS: its path, whole -- the page joins none
+            // (`results.md` § 0.3).
+            const fullPath = entry.path;
             const rec = {
                 name:   entry.name,
                 path:   fullPath,
@@ -292,6 +278,63 @@
     }
 
     /**
+     * THE ONE READING OF A FOLDER'S ANSWER (`/api/results/dir`, results.md
+     * § 0.2): what the menu lists -- the file the folder opens outside
+     * itself first, a transmission run's report (§ 2) or a run of points'
+     * point at work's file (§ 3a), then the folder's own result files --
+     * the file it opens (its `openable`; at a run of points' root, the
+     * view's `points.opens`), where that first file lies, the point the
+     * report opens at, the run of points' view where the folder IS one's
+     * root, and every file with what it is (§ 3b).  The picker's scan and
+     * a run picked off the ladder (`results/viewer.js` `_pickRun`, § 2.4)
+     * read an answer through it alike.
+     *
+     * Pure (no DOM, no fetch).  Exported for the viewer and unit tests.
+     */
+    function readAnswer(body, pickResult) {
+        const b = body || {};
+        const here = absorbSatellites(
+            filterToResultFiles(b.files || [], b.engine, pickResult),
+            pickResult);
+        const pts = b.points || null;
+        const ofPoints = !!(pts && b.place && b.place.of_points);
+        const opens = (ofPoints ? pts.opens : b.openable) || null;
+        const atWork = ofPoints && pts.at_work && pts.at_work.opens
+            && pts.at_work.opens.path === opens ? pts.at_work.opens : null;
+        const leadRow = b.report || atWork;
+        const lead = leadRow
+            ? filterToResultFiles([leadRow], b.engine, pickResult) : [];
+        return {
+            here: here,
+            lead: lead,
+            results: lead.concat(here),
+            opens: opens,
+            leadPath: lead.length ? lead[0].path : "",
+            leadRow: lead.length ? leadRow : null,
+            leadLies: !lead.length ? "" : b.report ? "report" : "at_work",
+            // THE POINT THE REPORT OPENS AT: the folder's own (a
+            // transmission point's), else, at a run of points' root, its
+            // point at work's (§ 0.1).
+            point: b.report
+                ? (b.point || (ofPoints && pts.at_work ? pts.at_work.point
+                                                       : null))
+                : null,
+            points: ofPoints ? pts : null,
+            files: (b.files || []).concat(lead.length ? [leadRow] : []),
+        };
+    }
+
+    /** The server's reading of a listed file, as presenters take it --
+     *  `{role, label, stage, parser, engine}` (`presenters.md` § 2) --
+     *  or ``null`` for none. */
+    function metaOf(rec) {
+        if (!rec) return null;
+        return { role:   rec.role,   label:  rec.label,
+                 stage:  rec.stage,  parser: rec.parser,
+                 engine: rec.engine };
+    }
+
+    /**
      * Populate the <select> with one ``<optgroup>`` per inspector
      * category, each wrapping one ``<option>`` per result.  Mark
      * the current selection.  Defensive clear via firstChild loop
@@ -444,10 +487,16 @@
         let lastPlace       = null;
         let lastLadder      = null;   // the root's ladder (results.md § 2.4)
         let lastRecord      = null;   // the run's record (results.md § 3a)
-        let lastFiles       = [];     // every file, with what it is (§ 3b)
-        let lastReport      = "";     // the report it opens outside it (§ 2)
-        let lastReportRow   = null;   // ...the server's row for it (§ 3b)
-        let lastPoint       = null;   // ...and the point it opens it at
+        let lastFiles       = [];     // every file, with what it is, the
+                                      // lead's row with them (§ 3b)
+        //: THE FILE THE FOLDER OPENS OUTSIDE ITSELF, listed first -- a
+        //: transmission run's report (§ 2), or a run of points' point at
+        //: work's file (§ 3a) -- its path, and where it lies by the
+        //: answer: "report" or "at_work".
+        let lastLead        = "";
+        let lastLeadLies    = "";
+        let lastPoint       = null;   // the point the folder opens a report at
+        let lastPoints      = null;   // the run of points' view (§ 3a)
         let lastRunDir      = "";     // the folder the menu's paths are in
         let cachedResults   = [];  // last successful scan -- flat, newest first
         let cachedGroups    = [];  // same data bucketed via groupResultFiles;
@@ -502,17 +551,18 @@
         function _showIdleMeta(file) {
             if (!metaEl) return;
             metaEl.classList.remove("is-busy");
-            /* THE REPORT A TRANSMISSION RUN'S FOLDER OPENS (results.md
-             * § 2) is not one of the folder's files: the "N of M" counts
-             * the folder's own, and the report says only its age. */
-            if (file && file === lastReport) {
+            /* THE FILE THE FOLDER OPENS OUTSIDE ITSELF -- a transmission
+             * run's report (results.md § 2), a run of points' point at
+             * work's file (§ 3a) -- is not one of the folder's files: the
+             * "N of M" counts the folder's own, and it says only its age. */
+            if (file && file === lastLead) {
                 const hit = cachedResults.find(r => r.path === file);
                 metaEl.textContent = (hit && root.molbuilder.timeAgo(hit.mtime))
                     || "";
                 return;
             }
             _renderMeta(metaEl,
-                        cachedResults.filter(r => r.path !== lastReport), file);
+                        cachedResults.filter(r => r.path !== lastLead), file);
         }
 
         function _clearParseTimer() {
@@ -526,9 +576,8 @@
         function _startParseStatus(file) {
             _clearParseTimer();
             if (!file) return;
-            const basename = parseDir(file).name || file;
             parsingFor = file;
-            _showTransientStatus("Parsing " + basename + "…");
+            _showTransientStatus("Parsing " + _nameOf(file) + "…");
             parseTimer = setTimeout(() => {
                 parseTimer = null;
                 if (disposed) return;
@@ -574,9 +623,10 @@
             lastLadder = null;
             lastRecord = null;
             lastFiles = [];
-            lastReport = "";
-            lastReportRow = null;
+            lastLead = "";
+            lastLeadLies = "";
             lastPoint = null;
+            lastPoints = null;
             lastRunDir = "";
             if (!dir) {
                 // No directory selected (sidebar cleared).  Show
@@ -642,39 +692,28 @@
                         _showIdleMeta(null);
                         return;
                     }
-                    // Filter to result-class files, then let a run's master
-                    // absorb its working files so the menu lists the RUN, not
-                    // its parts (results.md § 2.3).
                     lastRunDir = body.run_dir || dir;
-                    const here = absorbSatellites(
-                        filterToResultFiles(body.files || [],
-                                            lastRunDir,
-                                            body.engine,
-                                            inspReg.pickResult),
-                        inspReg.pickResult
-                    );
-                    /* THE FILE THE FOLDER OPENS, WHEN IT LIES OUTSIDE IT --
-                     * a transmission run's calculation report (results.md
-                     * § 2): listed FIRST, under its own heading, and opened
-                     * at the folder's `point`; the folder's own files below
-                     * it.  The server sends its row whole, with its path. */
-                    const report = body.report
-                        ? filterToResultFiles([body.report],
-                                              parseDir(body.report.path).dir,
-                                              body.engine,
-                                              inspReg.pickResult)
-                        : [];
-                    const results = report.concat(here);
-                    lastReport = report.length ? report[0].path : "";
-                    lastReportRow = report.length ? body.report : null;
-                    lastPoint = report.length ? (body.point || null) : null;
+                    /* THE ANSWER, READ ONCE (`readAnswer`, § 0.2): the
+                     * folder's result files -- a run's master absorbing its
+                     * working files, so the menu lists the RUN (§ 2.3) --
+                     * with the file it opens outside itself listed FIRST,
+                     * under its own heading; what it opens; the point the
+                     * report opens at; the run of points' view at its root
+                     * alone (§ 3a). */
+                    const a = readAnswer(body, inspReg.pickResult);
+                    const results = a.results;
+                    const opens = a.opens;
+                    lastLead = a.leadPath;
+                    lastLeadLies = a.leadLies;
+                    lastPoint = a.point;
+                    lastPoints = a.points;
                     lastPlace = body.place || null;
                     lastLadder = body.ladder || null;
                     lastRecord = body.record || null;
-                    lastFiles = body.files || [];
+                    lastFiles = a.files;
                     cachedResults = results;
-                    cachedGroups = groupResultFiles(report, inspReg.pickResult)
-                        .concat(groupResultFiles(here, inspReg.pickResult));
+                    cachedGroups = groupResultFiles(a.lead, inspReg.pickResult)
+                        .concat(groupResultFiles(a.here, inspReg.pickResult));
                     barEl.hidden = false;
 
                     /* ---- ONE DECISION ------------------------------- //
@@ -706,8 +745,8 @@
                      * announced, so the two cannot name different files. */
                     const keepCurrent =
                         currentFile && results.some(r => r.path === currentFile);
-                    const byDoor = body.openable
-                        ? results.find(r => r.path === body.openable)
+                    const byDoor = opens
+                        ? results.find(r => r.path === opens)
                         : null;
                     const chosen = keepCurrent ? currentFile
                                  : (byDoor ? byDoor.path : null);
@@ -785,12 +824,14 @@
          * THIS IS ONE FUNCTION so the automatic pick and the MANUAL one
          * share the guard.  Two call sites, one rule.
          */
-        function _mirrorToSidebar(dir, path) {
+        function _mirrorToSidebar(path) {
             if (_divergedFromSidebar()) return true;
             // A FILE OUTSIDE THE FOLDER -- the report a transmission run's
-            // folder opens (§ 2) -- has no row in it to highlight.
-            if (dir !== lastRunDir) return true;
-            const r = proj.setShared(dir, path);
+            // folder opens (§ 2), a point at work's file (§ 3a) -- has no
+            // row in it to highlight: only one of the folder's own files,
+            // by the answer (`_liesOf`), is mirrored.
+            if (_liesOf(path) !== "folder") return true;
+            const r = proj.setShared(lastRunDir, path);
             if (r && r.ok === false) {
                 console.warn(
                     "[results-file-picker] selection refused:", r.error);
@@ -801,9 +842,24 @@
 
         function _adoptSelection(path) {
             if (!path) return;
-            const parts = parseDir(path);
-            if (!_mirrorToSidebar(parts.dir, path)) return;
+            if (!_mirrorToSidebar(path)) return;
             _emitFileSelected(path);
+        }
+
+        /** The name the server gives a file of the answer -- shown, never
+         *  cut from its path. */
+        function _nameOf(path) {
+            const hit = cachedResults.find(r => r.path === path)
+                || lastFiles.find(f => f.path === path);
+            return hit ? hit.name : path;
+        }
+
+        /** Where ``path`` lies, by the answer (results.md § 0.3): one of
+         *  the folder's files, or the file it opens outside itself. */
+        function _liesOf(path) {
+            if (!path) return "";
+            if (path === lastLead) return lastLeadLies;
+            return lastFiles.some(f => f.path === path) ? "folder" : "";
         }
 
         /**
@@ -825,11 +881,11 @@
              * announcement to correct it and the state is permanent until
              * the next Reload.
              *
-             * The guard is in `_renderStatus`, not here: it compares the
-             * mounted file's own directory against the bound one and says
-             * "showing <full path>, which is not in this folder" when they
-             * disagree.  Binding early is then safe because the header
-             * cannot imply the file came from the new folder. */
+             * The guard is in `_renderStatus`, not here: until the new
+             * folder's answer says where the mounted file lies (`lies`), it
+             * says "showing <path>, which is not in this folder".  Binding
+             * early is then safe because the header cannot imply the file
+             * came from the new folder. */
             boundDir = dir;
             _announceScope();
             _scan(dir, preferredFile || "");
@@ -880,8 +936,8 @@
             const was = selEl.querySelector("option[data-picked-run]");
             if (was) selEl.removeChild(was);
             if (d.picked_run) {
-                _prependUnchosen(selEl, "(showing "
-                    + String(d.file || "").split("/").pop()
+                const shownFile = d.name || proj.relativeToProjects(d.file);
+                _prependUnchosen(selEl, "(showing " + shownFile
                     + ", a run off the ladder)");
                 selEl.options[0].setAttribute("data-picked-run", "");
                 return;
@@ -903,17 +959,10 @@
         //      /results dispatcher mounts the matching inspector.
         //      A custom event (vs. a method call) keeps the picker
         //      decoupled from the dispatcher's module identity.
-        /** The server's answer for one path -- `{role, parser, engine}` --
-         * so the viewer dispatches on it instead of re-reading the name. */
+        /** The server's answer for one path (`metaOf`), so the viewer
+         * dispatches on it instead of re-reading the name. */
         function _metaFor(file) {
-            /* THE WHOLE RECORD.  `presenters.md`
-             * § 2 defines `meta` as `{role, label, stage, parser, engine}`
-             * for `match`, `resultCategory` and `absorbs` alike. */
-            const hit = (cachedResults || []).find(r => r.path === file);
-            if (!hit) return null;
-            return { role:   hit.role,   label:  hit.label,
-                     stage:  hit.stage,  parser: hit.parser,
-                     engine: hit.engine };
+            return metaOf((cachedResults || []).find(r => r.path === file));
         }
 
         function _emitFileSelected(file) {
@@ -943,24 +992,27 @@
                     /* `record` rides along for the Run panel (§ 3a), which
                      * listens to this event and nothing else: the run the
                      * folder's files came from, or null for a container or a
-                     * folder with no run in it -- with `record_dir`, the
-                     * folder it was read from, whose file names it gives.
+                     * folder with no run in it -- and `points`, a run of
+                     * points' view, at its root alone.
                      * `files` -- EVERY file of
                      * the folder, each with what it is (`about`), and the
-                     * report the menu lists first beside them -- rides for
-                     * the file card (§ 3b), which explains a file the menu
-                     * does not list as readily as one it does. */
-                    /* `point` rides with the report a transmission run's
-                     * folder opens (§ 2): the viewer selects it, as the
-                     * ladder row's *open* does. */
+                     * file the menu lists first beside them, the report or
+                     * the point at work's -- rides for the file card
+                     * (§ 3b), which explains a file the menu does not list
+                     * as readily as one it does. */
+                    /* `point` rides with the report the folder opens -- a
+                     * transmission run's, at its point, or at a run of
+                     * points' root at its point at work's (§ 0.1, § 2):
+                     * the viewer selects it, as the ladder row's *open*
+                     * does. */
                     { detail: { file: file || "", meta: _metaFor(file),
-                                point: (file && file === lastReport)
+                                name: file ? _nameOf(file) : "",
+                                lies: _liesOf(file),
+                                point: (file && file === lastLead)
                                     ? lastPoint : null,
                                 place: lastPlace, ladder: lastLadder,
-                                record: lastRecord,
-                                files: lastFiles.concat(lastReportRow
-                                                        ? [lastReportRow] : []),
-                                record_dir: boundDir,
+                                record: lastRecord, points: lastPoints,
+                                files: lastFiles,
                                 dir: boundDir,
                                 diverged: _divergedFromSidebar(),
                                 force: forced } }));
@@ -973,8 +1025,7 @@
         function _onSelectChange() {
             const newPath = selEl.value;
             if (!newPath) return;
-            const parts = parseDir(newPath);
-            if (!_mirrorToSidebar(parts.dir, newPath)) {
+            if (!_mirrorToSidebar(newPath)) {
                 _revertSelectTo(/*last-known good*/ null);
                 return;
             }
@@ -1234,10 +1285,11 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.resultsFilePicker = {
         mount:               mount,
-        parseDir:            parseDir,
         filterToResultFiles: filterToResultFiles,
         groupResultFiles:    groupResultFiles,
         absorbSatellites:    absorbSatellites,
+        readAnswer:          readAnswer,
+        metaOf:              metaOf,
         _labelForResult:     labelForResult,
     };
 })(typeof window !== "undefined" ? window : this);

@@ -111,7 +111,7 @@ class TestTheTotalIsTheRunsOwnLength:
     state, `run.engine_elapsed_s` -- and none where its record states none;
     a run still going, or a file of no run, how far in its last step was.
     The inputs are what the server sends: a log's paired series, both stated
-    for every step, and the run's answer (`runs.run_answer`).  THE SILENT
+    for every step, and the run's answer (`runstatus.run_answer`).  THE SILENT
     FAILURE: an ended SIESTA run read *total 0s* from a timer line that
     timed one SCF iteration, beside a Run panel saying 24 s (2.56.1)."""
 

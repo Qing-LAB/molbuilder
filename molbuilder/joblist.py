@@ -460,6 +460,41 @@ def find(job_id: str) -> Optional[Job]:
         f"cluster that ran it")
 
 
+def holding(base, run) -> List[Job]:
+    """THE JOBS LAUNCHED FROM THIS MACHINE THAT HOLD ``run`` of the
+    calculation in ``base`` (:func:`every`) -- a member of each runs in it,
+    or in a point of it (`paths.run_folder_of`): those :func:`going_of`
+    asks whether a job holding the run is still going."""
+    from .paths import run_folder_of
+    from .runrecord import RunRef
+    want, here = str(RunRef.at(base, run)), Path(base).resolve()
+    return [job for job in every()
+            if isinstance(job, Job) and Path(job.calculation) == here
+            and any(str(run_folder_of(m["run"])) == want
+                    for m in job.members.values())]
+
+
+def going_of(base, run, asked: "Optional[Asked]" = None
+             ) -> "Tuple[Optional[bool], Optional[Job], str]":
+    """``(going, job, said)`` -- WHETHER A JOB THAT HOLDS ``run`` IS GOING,
+    of the jobs launched from this machine (:func:`holding`), each asked
+    the one way (:func:`is_going`): ``True`` with the first going,
+    ``None`` with the first this machine cannot ask where none is going,
+    ``False`` where every one is over -- or none holds it, ``job`` then
+    ``None``.  The run door asks it of a point its walk never started,
+    `status` of a walk between two points, `jobset scratch` of the scratch
+    a run keeps -- each its own reading of the answer."""
+    asked = asked if asked is not None else Asked()
+    unsure = None
+    for job in holding(base, run):
+        going, said = is_going(job, asked)
+        if going is True:
+            return True, job, said
+        if going is None and unsure is None:
+            unsure = (None, job, said)
+    return unsure if unsure is not None else (False, None, "")
+
+
 def forget(job: Job) -> None:
     """A job's address removed -- once its ending was said; its runs and
     the calculation's ledger keep its history."""
@@ -468,7 +503,9 @@ def forget(job: Job) -> None:
 
 __all__ = ["JOB_SCHEMA", "Job", "JobFileError", "NotGoing", "add_members",
            "address_of", "asked_here", "asked_lately", "every", "find",
+           "going_of",
            "inside",
            "inside_job",
-           "forget", "going_here", "queue_job", "read", "run_here",
+           "forget", "going_here", "holding", "queue_job", "read",
+           "run_here",
            "signal_here", "started_of", "this_host", "write"]

@@ -45,7 +45,8 @@ from molbuilder.parse import (
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
-from molbuilder.runs import openable, run_answer, run_of, view_of
+from molbuilder.jobset.runstatus import run_answer
+from molbuilder.runs import openable, run_of, view_of
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
 )
@@ -671,7 +672,7 @@ def _with_the_run(state: Dict[str, Any]
                   ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any],
                              Optional[str]]:
     """``(run, state, error)`` -- how the run the watched file belongs to is
-    doing (`runs.run_answer`, the one door), and, when it is no longer
+    doing (`runstatus.run_answer`, the one door), and, when it is no longer
     live, the file read again if it changed since ``state``: the run's end is
     read before the file's last read, so what a viewer stops on is the
     file's last (`web/results.md` § 4.1)."""

@@ -19,20 +19,11 @@
 const NS = window.molbuilder || {};
 const C = NS.constants || {};
 
-// ``dir`` is the panel's scope, ``recordDir`` the folder whose ``files``
-// the card holds -- one and the same, save for a run picked off the ladder,
-// which keeps the root's scope (the Run panel keeps the two apart alike).
-const shown = { dir: "", recordDir: "", files: [], name: "" };
-
-function baseName(path) {
-    return String(path || "").replace(/\/+$/, "").split("/").pop();
-}
-
-function dirName(path) {
-    const s = String(path || "").replace(/\/+$/, "");
-    const i = s.lastIndexOf("/");
-    return i >= 0 ? s.slice(0, i) : "";
-}
+// ``dir`` is the panel's scope; ``files`` the rows the card holds -- the
+// bound folder's, or a run picked off the ladder's -- each with its whole
+// ``path``; ``path`` the file in hand.  A file is found among them by its
+// path, never by a name cut from it (`web/results.md` § 0.3).
+const shown = { dir: "", files: [], path: "" };
 
 /* The catalogue's text keeps a command in backticks -- `jobset init` --
  * so it reads as one; shown as code, not as a backtick. */
@@ -55,14 +46,14 @@ function render() {
     const host = document.getElementById("results-file-card");
     if (!host) return;
     host.textContent = "";
-    const entry = shown.files.find((f) => f.name === shown.name);
+    const entry = shown.files.find((f) => f.path === shown.path);
     const about = entry && entry.about;
     if (!about) { host.hidden = true; return; }
     const line = document.createElement("p");
     line.className = "fc-line";
     const name = document.createElement("code");
     name.className = "fc-name";
-    name.textContent = shown.name;
+    name.textContent = entry.name;
     line.appendChild(name);
     if (about.ours) {
         line.appendChild(document.createTextNode(" — "));
@@ -89,9 +80,8 @@ if (C.EVENT_FILE_SELECTED) {
     document.addEventListener(C.EVENT_FILE_SELECTED, (evt) => {
         const d = (evt && evt.detail) || {};
         shown.dir = d.dir || "";
-        shown.recordDir = d.record_dir || d.dir || "";
         shown.files = d.files || [];
-        shown.name = baseName(d.file);
+        shown.path = d.file || "";
         render();
     });
 }
@@ -100,17 +90,16 @@ if (C.EVENT_SCOPE_CHANGED) {
         const dir = ((evt && evt.detail) || {}).dir || "";
         if (dir !== shown.dir) {
             shown.dir = dir;
-            shown.recordDir = dir;
             shown.files = [];
-            shown.name = "";
+            shown.path = "";
             render();
         }
     });
 }
 /* The sidebar's single click: a preview, and the card follows it -- only
- * inside the folder whose files the card holds (``recordDir``), which the
- * scan has already answered for: after a run is picked off the ladder, that
- * run's folder, not the root's.
+ * to a file the card holds a row for, which the scan has already answered
+ * for: after a run is picked off the ladder, that run's folder's, not the
+ * root's.
  *
  * SUBSCRIBED AT DOMContentLoaded, reading the namespace then: the sidebar's
  * module comes after this one on the page, so `molbuilder.projects` does not
@@ -121,10 +110,8 @@ function followTheSidebar() {
     if (!projects || typeof projects.onChange !== "function") return;
     projects.onChange((sel) => {
         const file = sel && sel.file;
-        if (!file || !shown.recordDir) return;
-        if (dirName(file).replace(/\/+$/, "")
-                !== shown.recordDir.replace(/\/+$/, "")) return;
-        shown.name = baseName(file);
+        if (!file || !shown.files.some((f) => f.path === file)) return;
+        shown.path = file;
         render();
     });
 }

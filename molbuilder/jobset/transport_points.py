@@ -101,4 +101,7 @@ POINTS = PointsOf(rung_points=_declared_rung_points,
                   point_of=Point.from_entry,
                   must_hold=_must_hold,
                   start_of=_start_of,
-                  run_facts=_run_facts)
+                  run_facts=_run_facts,
+                  # A RUNG THAT RUNS ONCE runs at 0 V and no frame
+                  # (`engines/transport.md` § 2a.10).
+                  one_point=lambda stage: Point())

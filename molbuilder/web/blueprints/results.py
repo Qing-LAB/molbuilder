@@ -142,26 +142,21 @@ def api_results_contract():
 def api_results_dir():
     """**What is in this run directory, and which file should open?**
 
-    The HTTP surface over the run door's directory answer,
+    The HTTP surface over the run door's answer for the one folder,
     `runs.folder_answer` (`execution/architecture.md` § 3.2; `model/parse.md`
-    § 5.0, § 5.5) -- and, for a calculation root, its ladder.
+    § 5.0, § 5.5), served whole, and beside it the views the folder is read
+    with, `runstatus.views_of` -- ``ladder``, ``points``, ``point``.  The
+    route lists no field of either and decides no view, so a field a door
+    adds reaches the page with nothing changed here (`web/results.md`
+    § 0.2).
 
     **WHY THIS EXISTS.**  The browser is the one consumer that cannot import
     Python, so it is served the directory's own answer rather than deciding
     from the filename, in JavaScript, what the backend already owns.
-
-    **PER FILE the server says what the file IS** -- ``role``, ``label`` and
-    ``stage``, read back with its run's label, ``parser`` from the registry
-    (``null`` when nothing claims it — the browser must not offer it), and
-    ``about``: the catalogue's line for a file molbuilder writes, or *not
-    written by molbuilder* (`web/results.md` § 3b).  ``openable`` is the
-    door's own pick, the path of the result of the run the folder speaks for
-    -- for a transmission run its calculation's report, sent whole as
-    ``report`` with the ``point`` it opens at.
     """
     from pathlib import Path
 
-    from molbuilder import calcdirs
+    from molbuilder.jobset.runstatus import views_of
     from molbuilder.runs import folder_answer
     from .files import _PickerError, _resolve_within_roots
 
@@ -176,68 +171,7 @@ def api_results_dir():
     if not directory.is_dir():
         return jsonify({"ok": False,
                         "error": f"{raw}: not a directory"}), 404
-
-    # THE RUN DOOR ANSWERS what this folder is and holds -- its place, the run
-    # it speaks for, that run's result, state and record, and what each file
-    # is (`runs.folder_answer`).
-    got = folder_answer(directory)
-    attempts = list(got["attempts"])
-    place = got["place"]
-    ladder = None
-    # A CALCULATION ROOT HAS A LADDER (`web/results.md` § 2.4; `plan.md`
-    # § 5c.3 c-d): N rungs, each a run directory below it -- `jobset_status`'s
-    # answer, the one the CLI's `status` verb prints, CONSUMED here, never
-    # copied.  Its rows are the description's stages (`job-system.md` § 5.3),
-    # the ones not prepared yet among them: a transport ladder is prepared rung
-    # by rung, so the job-set grows while the description already names all
-    # five.  `null` for a container that is not the root.
-    if (place["what"] == calcdirs.CALCULATION
-            and place["role"] == calcdirs.CONTAINER):
-        from molbuilder.calculation import open as open_calculation
-        from molbuilder.jobset.runstatus import every_run, jobset_status
-        try:
-            got_status = jobset_status(open_calculation(directory))
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            attempts.append(str(exc))
-        else:
-            # THE ONE WIRE FORM (`JobSetStatus.to_dict`), the next prep's
-            # answer included -- and under each rung EVERY RUN of it, each
-            # with its state and the file it opens (`runstatus.every_run`,
-            # `web/results.md` § 2.4), so a run is picked here in place.
-            ladder = got_status.to_dict()
-            task = got_status.calc.task
-            for row, st in zip(ladder["stages"], got_status.stages):
-                try:
-                    row["runs"] = every_run(directory, task, st)
-                except (OSError, ValueError, KeyError, TypeError) as exc:
-                    row["runs"] = []
-                    attempts.append(f"{st.ref.name}: its runs could not be "
-                                    f"listed: {exc}")
-
-    return jsonify({
-        "ok":       True,
-        "run_dir":  str(directory),
-        "engine":   got["engine"],
-        "openable": got["openable"],
-        # THE FILE THE FOLDER OPENS WHEN IT LIES OUTSIDE IT, its row with its
-        # path, and the point it opens at -- a transmission run's
-        # calculation report (§ 2); `null` elsewhere.
-        "report":   got["report"],
-        "point":    got["point"],
-        "attempts": attempts,
-        # WHERE THIS DIRECTORY IS, and what it belongs to -- each field
-        # `null` when it does not say, which the page shows as *read alone*
-        # rather than hiding (§ 1.4a: absence narrows the answer, it does not
-        # refuse the directory).
-        "place":    place,
-        # `null` where there is no run: a container, or a folder holding no
-        # run of ours.
-        "status":   got["status"],
-        # WHAT RAN, WITH WHAT, AND HOW IT WENT (`model/parse.md` § 5d) --
-        # the Run panel's one source (`web/results.md` § 3a); `null` where
-        # `status` is.
-        "record":   got["record"],
-        # THE LADDER, for a calculation root (§ 2.4); `null` elsewhere.
-        "ladder":   ladder,
-        "files":    got["files"],
-    })
+    # `run_dir`: the folder answered, as the server resolves it -- the
+    # picker's spelling of the folder bound (`web-api.md`).
+    return jsonify({"ok": True, "run_dir": str(directory),
+                    **folder_answer(directory), **views_of(directory)})

@@ -210,6 +210,13 @@ class Where:
     point: Optional[str] = None
     run_folder: Optional[Path] = None
 
+    @property
+    def of_points(self) -> bool:
+        """Whether the folder is a run of points' root -- a run's place,
+        ``run-<n>/``, its record calls a container: its points are the
+        folders below it (`execution/runs-of-points.md` § 2.4)."""
+        return self.what == ATTEMPT and self.role == CONTAINER
+
 
 def where(directory) -> Where:
     """WHERE ``directory`` IS in its calculation -- the one answer (§ 1.4a,
@@ -277,6 +284,17 @@ def where(directory) -> Where:
                  trial=trial,
                  point="/".join(below) if what == POINT else None,
                  run_folder=root.joinpath(*parts[:deep]) if deep else None)
+
+
+def read_with(folder) -> Path:
+    """THE FOLDER ``folder`` IS READ WITH -- itself, or, for a transmission
+    point's ``shared/`` (its record's role), the point it lies in, past
+    every ``shared/`` one in another (`engines/transport.md` § 2a.16,
+    `model/parse.md` § 5.2)."""
+    folder = Path(folder)
+    while where(folder).role == SHARED:
+        folder = folder.parent
+    return folder
 
 
 def _levels(rel: str) -> Tuple[str, ...]:

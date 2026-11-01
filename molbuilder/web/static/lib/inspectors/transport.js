@@ -231,7 +231,7 @@ const WORKSPACE_TAG = "results:transport";
         };
         _fillTE(tabs.panels.te, rec, state);
         _fillDOS(tabs.panels.dos, rec, file, state);
-        _fillIV(tabs.panels.iv, rec, pending, failed, state);
+        _fillIV(tabs.panels.iv, rec, pending, notRun, failed, state);
         _frameControl(tabs.panels.te, state, "te");
         _frameControl(tabs.panels.dos, state, "dos");
         _frameControl(tabs.panels.iv, state, "iv");
@@ -523,7 +523,7 @@ const WORKSPACE_TAG = "results:transport";
         });
     }
 
-    function _fillIV(panel, rec, pending, failed, state) {
+    function _fillIV(panel, rec, pending, notRun, failed, state) {
         /* THE TREATMENT, NAMED BESIDE THE I-V (`engines/transport.md`
          * § 2a.10, § 2a.12): the two kinds of I-V look identical on a plot,
          * so the record's own words stand on this tab too. */
@@ -601,9 +601,11 @@ const WORKSPACE_TAG = "results:transport";
                 { frame: _pf(p), bias: p.bias_v }));
         }
         /* A POINT WITHOUT ITS TRANSMISSION, in its run's words: pending is
-         * still to come, never a failure; failed ended without it.  A pick
-         * like every row -- its device run may already speak. */
-        pending.concat(failed).forEach((p) => {
+         * still to come; *not run* its ended walk never started -- the warn
+         * tone, never a failure's (results.md § 0.1, runs-of-points.md
+         * § 1.3); failed ended without it.  A pick like every row -- its
+         * device run may already speak. */
+        pending.concat(notRun, failed).forEach((p) => {
             const st = _el("td");
             st.appendChild(_chip(p.state));
             const why = _el("td", null, [p.why, _loopWords(p.progress)]

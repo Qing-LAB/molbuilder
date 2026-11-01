@@ -777,7 +777,8 @@ def _pair_parts(cited: CitedPair, swap_electrodes: bool):
     if _bad:
         raise ComposeError(
             f"the cited pair {cited.path.name} {_bad} -- a junction needs its "
-            f"lattice (science/junction-cell.md).")
+            f"lattice: state it on the Molbuilder tab's Cell page and save "
+            f"the pair again (science/junction-cell.md).")
     files = {f.name: sha256_of(f) for f in (cited.path, cited.sidecar)}
     return struct, None, None, files, {"frames": cited.n_frames}
 

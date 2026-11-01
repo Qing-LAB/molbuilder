@@ -3115,8 +3115,15 @@ function renderNext(task) {
          * its card is what it is launched again with. */
         const copies = g.members.flatMap(copiesOf);
         if (copies.length) {
+            /* THE RUN'S FOLDER, sent whole, shown from the projects folder
+             * as the sidebar names it (`web/results.md` § 0.3). */
+            const proj = window.molbuilder && window.molbuilder.projects;
+            const shown = (d) => (proj && typeof proj.relativeToProjects
+                                  === "function"
+                                  && proj.relativeToProjects(d)) || d;
             block.appendChild(el("p", { class: "hint" },
-                copies.map((c) => c.dir + " copied in from " + c.copied_from)
+                copies.map((c) => shown(c.dir) + " copied in from "
+                                  + c.copied_from)
                     .join("; ") + "."));
         }
         block.appendChild(runCard(task, g.members));

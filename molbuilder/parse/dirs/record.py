@@ -556,7 +556,8 @@ def _concluded(f: RunFiles) -> Dict[str, Any]:
 
 
 def _deck(f: RunFiles) -> Dict[str, Any]:
-    """The deck as run: its path and hash, whether it is still the stage's
+    """The deck as run: its path, whole (the page opens it as it is,
+    `web/results.md` § 0.3), and hash, whether it is still the stage's
     deck -- the run door's answer (`runs.Run.current`) -- and what it was
     gathered from: its run's gather, at ``run-<n>/`` where the run's points
     share it, then what a point took alone (§ 5d.1; `engines/transport.md`
@@ -566,7 +567,7 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
         return {}
     text = _read(f.deck)
     deck: Dict[str, Any] = {
-        "path": f.deck.name,
+        "path": str(f.deck),
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
     if f.current is not None:
         deck["current"] = f.current

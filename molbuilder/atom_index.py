@@ -24,6 +24,9 @@ from typing import List, Optional
 from .atom_permutation import (FIELD_ENGINE, FIELD_LISTED_BY, FIELD_USER,
                                LISTED_BY_USER, MAP_KEY, AtomIndexError,
                                AtomIndexMap)
+# THE FOLDER A FILE IS READ WITH -- a point's `shared/` folder, at any depth,
+# the point's (F3).
+from .calcdirs import read_with
 
 
 class AtomIndexUnknown(ValueError):
@@ -77,21 +80,12 @@ def _counted(p: Path, atoms: AtomIndexMap) -> AtomIndexMap:
                    else words)
 
 
-def _point_folder(folder: Path) -> Path:
-    """The folder a file is read with: a point's ``shared/`` folder -- at
-    any depth, a share of a share -- is the point's (F3)."""
-    from .transport.energies import SHARED_DIR
-    while folder.name == SHARED_DIR:
-        folder = folder.parent
-    return folder
-
-
 def _of_folder(folder: Path) -> AtomIndexMap:
     """A run folder's map -- its deck's; a folder that is no run is
     refused, naming the run folders it holds; a point's ``shared/`` folder
     is the point's."""
     from .runs import atom_index_map_of, run_of
-    run = run_of(_point_folder(folder))
+    run = run_of(read_with(folder))
     if run is not None:
         return atom_index_map_of(run)
     runs = _runs_under(folder)
@@ -136,20 +130,23 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
     file whose catalogue row lists it by user index -- a result written
     before it said so -- is that map listed by user index."""
     from .kind_table import kind, rung_label
-    from .runfiles import listed_by_of
+    from .runfiles import listed_by_of, parse as read_name
     from .runs import atom_index_map_of, place_of, run_of
-    point = _point_folder(folder)
+    point = read_with(folder)
     run = (run_of(p) if point == folder else None) or run_of(point)
     task = (run.place if run is not None else place_of(point)).task
     if task is not None:
         for stage in kind(task.calculation).leads:
-            if (p.name.startswith(rung_label(task.label, stage) + ".")
+            # A LEAD'S FILE, read back with the lead's own label
+            # (`runfiles.parse`, `kind_table.rung_label`) -- never told by
+            # how its name begins.
+            if (read_name(p.name, rung_label(task.label, stage)) is not None
                     and (run is None or _stage_name(run.stage) != stage)):
                 raise AtomIndexUnknown(
                     f"{p.name} is the {stage} rung's file, gathered here: "
                     f"its electrode cell is a structure of its own "
                     f"(model/overview.md 2.2a, I6) -- its atoms are "
-                    f"answered by {_lead_run_words(point, stage)}")
+                    f"answered by {_lead_run_words(p, point, stage)}")
     if run is None:
         raise AtomIndexUnknown(_no_run_words(p, point, task))
     atoms = atom_index_map_of(run)
@@ -187,21 +184,25 @@ def _no_run_words(p: Path, folder: Path, task) -> str:
                 f"; a run's file or folder answers: {named}" if runs else ""))
 
 
-def _lead_run_words(folder: Path, stage: str) -> str:
-    """The electrode rung's run that answers its own files -- its newest
-    run's folder, relative to the calculation, or its rung's name when it
-    has run nowhere yet."""
-    from .jobset.materialize import latest_attempt
-    from .jobset.naming import stage_home
-    from .runs import place_of
-    place = place_of(folder)
-    try:
-        home = stage_home(place.root, place.task, stage).dir
-        run = latest_attempt(home)
-    except (OSError, ValueError, KeyError):
-        run = None
-    return (f"its run folder, {run.relative_to(place.root)}" if run is not None
-            else f"the {stage} rung's run")
+def _lead_run_words(p: Path, folder: Path, stage: str) -> str:
+    """The electrode rung's run that answers its own file ``p`` -- the run
+    it was gathered from, as the run that holds it records it (its
+    ``.gathered-from``, in the point's folder or its run's,
+    `runrecord.read_gathered_from`), relative to the calculation; its
+    rung's name where no record names it."""
+    from .calcdirs import where
+    from .runrecord import LaunchRecordError, read_gathered_from
+    for here in (folder, where(folder).run_folder):
+        if here is None:
+            continue
+        try:
+            got = next((src for src, fn in read_gathered_from(here)
+                        if fn == p.name), None)
+        except LaunchRecordError:
+            got = None
+        if got is not None:
+            return f"its run folder, {got.run_folder()}"
+    return f"the {stage} rung's run"
 
 
 def _stated(p: Path) -> Optional[AtomIndexMap]:
@@ -244,7 +245,7 @@ def _of_older_result(p: Path, n) -> Optional[AtomIndexMap]:
     from .runs import atom_index_map_of, run_of
     if listed_by_of(p.name) != LISTED_BY_USER or not isinstance(n, int):
         return None
-    run = run_of(_point_folder(p.parent))
+    run = run_of(read_with(p.parent))
     why = ("written before 2.32.0, and no run of ours holds it: its engine "
            "index is not known")
     if run is not None:
@@ -271,7 +272,7 @@ def _of_pair(geometry: Path, sidecar: Path) -> Optional[AtomIndexMap]:
                                         pair_engine_listing,
                                         pair_order_unstated_said)
     if not sidecar.is_file():
-        if run_of(_point_folder(geometry.parent)) is not None:
+        if run_of(read_with(geometry.parent)) is not None:
             return None
         from .structure import Structure
         text = geometry.read_text(encoding="utf-8-sig")

@@ -152,7 +152,7 @@ def test_the_run_folder_answers_for_its_run(opt):
     assert Path(got["openable"]).name == "H2_01_coarse-run0.out", (
         got["attempts"])
     assert got["status"]["state"] == "finished", got["status"]
-    assert got["record"]["deck"]["path"] == "H2_01_coarse.fdf", (
+    assert Path(got["record"]["deck"]["path"]).name == "H2_01_coarse.fdf", (
         got["record"]["deck"])
     files = {f["name"]: f for f in got["files"]}
     engines = [p.name for p in opt.glob("fdf.*.log")] + ["H2.XV", "H2.xyz"]

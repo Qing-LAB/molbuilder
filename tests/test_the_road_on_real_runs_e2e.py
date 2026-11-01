@@ -99,7 +99,8 @@ def test_a_run_here_left_in_the_background_loses_nothing_it_prints(
     nowhere."""
     from molbuilder.jobset.ledger import LEDGER_FILE
     from molbuilder.parse import detect
-    from molbuilder.runs import folder_answer, openable, run_answer
+    from molbuilder.jobset.runstatus import run_answer
+    from molbuilder.runs import folder_answer, openable
     _said(real_h2_layered, "launch naming no stage",
           "about to start here, in the background:", "(--yes)",
           "its output: 02_medium/run-0/", "[started in the background]")
@@ -296,10 +297,10 @@ def test_every_run_s_history_is_its_own(real_h2_layered):
 
 def test_a_run_that_ended_on_its_own_is_not_followed(real_h2_layered):
     """The server's one answer to a viewer about a stage's newest run
-    (`runs.run_answer`, `web/results.md` § 4.1): finished, and not live."""
+    (`runstatus.run_answer`, `web/results.md` § 4.1): finished, and not live."""
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runs import run_answer
+    from molbuilder.jobset.runstatus import run_answer
     from molbuilder.task import of as task_of
     b = real_h2_layered.bundle
     home = stage_home(b, task_of(b), "coarse")

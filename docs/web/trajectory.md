@@ -180,7 +180,7 @@ running.)* It carries a detail line beneath it with two different facts:
 | detail | reads | where it comes from |
 |---|---|---|
 | **when** — "ended 14:32" | a *time of day* | for a run that has stopped moving, the end its output states — SIESTA's `>> End of run`, `run_end_local` — else the run's own per-step clock, else the file's modification time |
-| **total** — "total 2h" | a *duration*, said by the one span rule ([`ui-contract.md`](?doc=web/ui-contract.md) § 4) | a run that has ended: its own length, the engine's wall from launch to exit its record states — the Run panel's — served with the run's state (`runs.run_answer`; [`results.md`](?doc=web/results.md) § 4.1), none where its record states none (a PySCF run made before 2.56.2, whose run script wrote no wall); a run still going, or a file of no run: how far into the run its last step was — none where no step states a clock (a SIESTA `.out`) |
+| **total** — "total 2h" | a *duration*, said by the one span rule ([`ui-contract.md`](?doc=web/ui-contract.md) § 4) | a run that has ended: its own length, the engine's wall from launch to exit its record states — the Run panel's — served with the run's state (`runstatus.run_answer`; [`results.md`](?doc=web/results.md) § 4.1), none where its record states none (a PySCF run made before 2.56.2, whose run script wrote no wall); a run still going, or a file of no run: how far into the run its last step was — none where no step states a clock (a SIESTA `.out`) |
 
 **Those are two separate readings and neither substitutes for the other.** A
 PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.

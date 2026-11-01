@@ -389,7 +389,9 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     panel.locator(".rp-view").click()
     preview = page.locator("#ps-preview-modal")
     preview.wait_for(state="visible", timeout=10000)
-    assert record["deck"]["path"] in preview.inner_text()
+    # THE DECK THE RECORD NAMES, whole, opened as it is (`web/results.md`
+    # § 0.3) -- the viewer shows its name.
+    assert Path(record["deck"]["path"]).name in preview.inner_text()
     page.keyboard.press("Escape")
 
     def rebind(folder):
