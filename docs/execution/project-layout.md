@@ -1654,9 +1654,10 @@ what `--from` and `--cold` change, and when `launch` refuses, is
 [`job-system.md`](?doc=execution/job-system.md), *The task*, *What a stage
 takes, and when* (and § 5.4). That is a ladder of independent stages; a linked stage — transport's
 device and transmission — has its input fixed by the calculation, and its first
-launch takes it from the stage before; a vibration's stage builds on the
-calculation's structure, its run relaxing first
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11).
+launch takes it from the stage before; a vibration's first stage builds on
+the calculation's structure, its run relaxing first, and a displacement
+sweep's later stage takes that relaxation over
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9, § 5.11).
 
 ```
 molbuilder jobset launch task --group 2                            # the stage before it, newest

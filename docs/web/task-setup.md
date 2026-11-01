@@ -1502,9 +1502,11 @@ before it; concluded rc=0 …)* — or, while the launch would refuse it, why,
 whole, with the commands it names. It is the folder's answer
 (`continue_from`), the one the launch acts on, given each time the folder
 is opened and so without the run's relaxation verdict, which that verb
-reads; the command line follows the choice (`--from <run>`, `--cold`). A
-transport rung, a vibration's stage and a rung that starts clean show no
-choice: their first launch takes their input itself, or none — and a choice
+reads; the command line follows the choice (`--from <run>`, `--cold`) —
+a displacement sweep's later stage offered the first stage's runs, whose
+relaxation it takes over ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.9). A transport rung, a vibration's first stage and a rung that starts
+clean show no choice: their first launch takes their input itself, or none — and a choice
 the folder no longer offers (a stage set clean since) is dropped, never
 sent.
 

@@ -81,6 +81,13 @@ class RunRef:
         """It lies inside ``other``'s folder -- a point of that run."""
         return other.folder in self.folder.parents
 
+    @property
+    def stage(self) -> str:
+        """The stage folder it lies in, by its token (``01_coarse``) -- the
+        first part of a run of this calculation as a record names it, read
+        off the record alone, so a run since removed is still named."""
+        return self.folder.parts[0]
+
     def run_folder(self) -> "RunRef":
         """The run it lies in -- itself, or for a point of a run of points
         the run folder above it (`paths.run_folder_of`, the one reading of

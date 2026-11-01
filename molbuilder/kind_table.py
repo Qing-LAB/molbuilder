@@ -70,11 +70,12 @@ _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "relaxes",
               "root_opens", "validator", "export", "on")
 _PART_KEYS = ("words", "stage_roles", "points", "rung",
-              "inputs", "gather", "sum", "retired", "ladder", "relaxation")
+              "inputs", "gather", "continues", "sum", "retired", "ladder",
+              "relaxation")
 
 #: The parts a pair may name, each ``module:NAME`` (:func:`part_of`) --
 #: ``points`` its run of points' declaration (:attr:`RunOfPoints.declaration`).
-PART_REFS = ("points", "rung", "inputs", "gather", "sum")
+PART_REFS = ("points", "rung", "inputs", "gather", "continues", "sum")
 
 #: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): when its
 #: run is finished -- every point DONE, or every point RAN, the words the
@@ -215,6 +216,12 @@ class KindOnEngine:
     #: With ``inputs``: ``module:NAME`` of the gather that takes them at a
     #: rung's first launch (the ready door's, `jobset.ready`).
     gather: Optional[str] = None
+    #: ``module:NAME`` of ``(stages, stage) -> Optional[str]``, the stage a
+    #: stage of a linked kind continues from -- ``stages`` ``[(name,
+    #: resolved config)]`` in ladder order (floor 3, `jobset.ladder`) -- or
+    #: ``None`` where none continues from another (a displacement sweep's
+    #: later stage, the first, `engines/vibration.md` § 5.9).
+    continues: Optional[str] = None
     #: ``module:NAME`` of what ``summarize task`` adds up for it -- a
     #: `jobset.summarize.TaskSum` (floor 6) -- or ``None``: its stages each
     #: write their own result.
@@ -412,6 +419,9 @@ def _part(kind: str, engine: str, body: object,
     if "inputs" in body and not roles:
         _refuse(where, "inputs on a kind without roles -- its stages "
                        "continue from the one before")
+    if "continues" in body and not roles:
+        _refuse(where, "continues on a kind without roles -- its stages "
+                       "continue from the one before")
     retired = body.get("retired")
     if retired is not None:
         if (not isinstance(retired, dict)
@@ -439,6 +449,7 @@ def _part(kind: str, engine: str, body: object,
                                        if points is not None else None),
                         rung=body.get("rung"),
                         inputs=body.get("inputs"), gather=body.get("gather"),
+                        continues=body.get("continues"),
                         sum=body.get("sum"), retired=retired,
                         relaxation=relaxation)
 

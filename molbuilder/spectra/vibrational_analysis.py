@@ -47,6 +47,7 @@ try:                                        # inside molbuilder
                                     map_rows_to_user_order, map_to_user_index)
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
+                            launched_way_back,
                             checkpoint_words, launch_as_typed)
     from .methods import extract_citation_keys
     from .normal_modes import (display_form, frequencies_cm1,
@@ -58,6 +59,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                                   map_rows_to_user_order, map_to_user_index)
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
+                          launched_way_back,
                           checkpoint_words, launch_as_typed)
     from methods import extract_citation_keys
     from normal_modes import (display_form, frequencies_cm1,
@@ -105,7 +107,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     relaxation ran, how many steps it took, carries the record whole
     (``relaxation.record``), and ``phase_relaxation`` is complete; without
     it the phase is `not requested`.  ``relaxation_stage`` names that stage,
-    for the remedy (:func:`nonstationary_remedy`).  ``structure`` is the
+    for the remedy (:func:`nonstationary_remedy`), beside this one, ``config``'s
+    ``stage``.  ``structure`` is the
     equilibrium structure, whole and in the user order --
     ``Structure.to_dict()``, the one serialiser (`engines/vibration.md`
     § 6.10.1) -- which the result states; the reader checks its atom count,
@@ -174,7 +177,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     relaxation = _stationarity(reference_forces_ev_ang, n, free_b,
                                force_criterion_ev_ang, geometry_note,
                                already_relaxed, ladder_relaxation,
-                               relaxation_stage)
+                               relaxation_stage,
+                               (config or {}).get("stage"))
     return SpectraResults(
         schema_version=SCHEMA_VERSION,
         engine=str(engine),
@@ -227,7 +231,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     )
 
 
-def nonstationary_remedy(relaxation_stage: Optional[str]) -> str:
+def nonstationary_remedy(relaxation_stage: Optional[str],
+                         stage: Optional[str] = None) -> str:
     """THE remedy for a reference geometry that is not a stationary point
     (`engines/vibration.md` § 2.2, § 5.5, § 5.8) — one text, written by
     `prep`, by the SIESTA finish into the result, and by the PySCF deck's
@@ -236,7 +241,10 @@ def nonstationary_remedy(relaxation_stage: Optional[str]) -> str:
     ``relaxation_stage`` is the stage whose run relaxed the geometry, or
     ``None`` when the person stated it relaxed: then "relax first" is the
     calculation's own relaxation -- on whichever engine, on when
-    `already_relaxed` is unticked."""
+    `already_relaxed` is unticked.  ``stage`` is the stage whose force
+    constants were judged: where it is not ``relaxation_stage``, it took
+    that relaxation over (a displacement sweep's later stage,
+    `engines/vibration.md` § 5.9), and takes a new one by its own launch."""
     if relaxation_stage:
         # THE RUN RELAXED FIRST and still ended off a stationary point: the
         # relaxation needs more steps, from the state saved before the
@@ -250,6 +258,23 @@ def nonstationary_remedy(relaxation_stage: Optional[str]) -> str:
         # ways: this runs beside the job too, in the finish's
         # `_stationarity`.
         s = str(relaxation_stage)
+        if stage and stage != s:
+            # TAKEN OVER from `s` (a displacement sweep's later stage,
+            # `engines/vibration.md` § 5.9): `s` relaxes again, and this
+            # stage takes the new relaxation -- its next first launch by
+            # default, or launched again naming that run.
+            return (f"`{stage}` took this relaxation over from `{s}`.  If "
+                    f"`{s}` was launched, go back to "
+                    f"{launched_way_back(s)}{_RESTORE} -- every run made "
+                    f"since, `{stage}`'s too, is left behind; then give "
+                    f"`{s}` more relaxation steps (`relax_steps`, Task "
+                    f"setup's stage table or task.json), prepare its group "
+                    f"again and launch it, and `{stage}`'s first launch "
+                    f"takes the new relaxation.  Or launch `{s}` again "
+                    f"cold -- `{launch_as_typed(s)} --cold` "
+                    f"{LAUNCH_MODE_NOTE} -- every call of its run again, "
+                    f"then launch `{stage}` again with `--from` naming that "
+                    f"run of `{s}`.")
         return (f"If this stage was launched, first go back to "
                 f"{LAUNCHED_WAY_BACK}{_RESTORE}; then give `{s}` more "
                 f"relaxation steps (`relax_steps`, Task setup's stage table "
@@ -277,7 +302,8 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
                   criterion_ev_ang: Optional[float], geometry_note: str,
                   already_relaxed: bool,
                   ladder_relaxation: Optional[Mapping[str, Any]],
-                  relaxation_stage: Optional[str]) -> dict:
+                  relaxation_stage: Optional[str],
+                  stage: Optional[str]) -> dict:
     """The result's ``relaxation`` block: the forces at the block's geometry
     judged against the criterion (R5 -- the largest absolute Cartesian
     COMPONENT over the free atoms, the convention the PySCF deck judges its
@@ -322,7 +348,8 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
                            # block refuses one that does not)
                            + nonstationary_remedy(
                                relaxation_stage if isinstance(
-                                   ladder_relaxation, Mapping) else None))
+                                   ladder_relaxation, Mapping) else None,
+                               stage=stage))
     ladder = ladder_relaxation if isinstance(ladder_relaxation, Mapping) else None
     return {"enabled": ladder is not None,
             "already_relaxed": bool(already_relaxed),

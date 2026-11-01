@@ -81,13 +81,6 @@ def _voltage_of(name: str, label: str) -> str:
 
 # ---- the estimate ------------------------------------------------------------
 
-#: How many spin components each spin treatment's Hamiltonian holds -- the
-#: factor of the engine's own file estimate (`m_ts_electrode.F90`) -- keyed
-#: by the deck reader's words (`parse.fdf.FdfParams.spin_treatment`).
-_SPIN_COMPONENTS = {"restricted": 1, "unrestricted": 2, "non-collinear": 4,
-                    "spin-orbit": 8}
-
-
 class _Deck:
     """What the estimate reads off a device deck, through the deck's own
     readers: the electronic temperature, the k-grid and its offset and the
@@ -97,7 +90,8 @@ class _Deck:
     engine_defaults`); one with no default stated there is
     :class:`_Unread`, named."""
     def __init__(self, text: str):
-        from ..parse.fdf import fdf_key, fdf_true, parse_fdf_params, read_fdf
+        from ..parse.fdf import (SPIN_COMPONENTS, fdf_key, fdf_true,
+                                 parse_fdf_params, read_fdf)
         from ..siesta.engine_input import NEQ_LINE, NEQ_LINE_DELTA, \
             engine_defaults
         from ..units import energy_ev, temperature_k
@@ -127,9 +121,11 @@ class _Deck:
                                   what="ElectronicTemperature",
                                   source=where))
         self.cutoff_kt = float(said("TS.Contours.nEq.Fermi.Cutoff")[0])
-        if p.spin_treatment not in _SPIN_COMPONENTS:
+        # HOW MANY SPIN COMPONENTS its Hamiltonian holds -- the factor of
+        # the engine's own file estimate (`m_ts_electrode.F90`).
+        if p.spin_treatment not in SPIN_COMPONENTS:
             raise _Unread(f"{where}'s Spin is no word SIESTA reads")
-        self.spins = _SPIN_COMPONENTS[p.spin_treatment]
+        self.spins = SPIN_COMPONENTS[p.spin_treatment]
         # THE BIAS WINDOW'S SPACING: the deck's line, or the one the engine
         # builds where it writes none (`engine_input.NEQ_LINE_DELTA`).
         row = next((r for r in blocks.get(NEQ_LINE) or []

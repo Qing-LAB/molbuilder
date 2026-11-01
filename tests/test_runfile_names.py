@@ -73,6 +73,34 @@ def test_every_name_the_generator_makes_reads_back_to_its_segments(
     assert got.name == name
 
 
+def test_a_file_taken_over_from_another_stage_is_named_for_the_stage_it_lies_in():
+    """`RunNames.restaged` over the whole product: a file of one stage's run,
+    taken over into another stage's (`execution/runs-of-points.md` § 3,
+    op. 3; a displacement sweep's later stage taking the first stage's
+    relaxation, `engines/vibration.md` § 5.9), is named as the stage it now
+    lies in names it -- its role, try and fields kept (the session log's
+    stamp); a file on the label alone, or of a third stage, as it is.
+
+    THE SILENT FAILURE: the call taken over keeping the first stage's
+    names, so the later stage's readers find no output and no conclusion
+    in it and read the call pending.  MUTATION THIS MUST FAIL AGAINST:
+    ``restaged`` handing the name back as it is."""
+    from molbuilder.runfiles import RunNames
+    for label, stage, run, role in itertools.product(LABELS, STAGES, RUNS,
+                                                     ROLES):
+        name = compose(label, role, stage, run)
+        here = RunNames(label, "03_freq_half")
+        got = here.restaged(name, RunNames(label, stage or "01_freq"))
+        assert got == (compose(label, role, "03_freq_half", run) if stage
+                       else name), (name, got)
+        # A THIRD STAGE'S FILE is not the source's: as it is.
+        assert here.restaged(name, RunNames(label, "99_other")) == name
+    src, here = RunNames(LABEL, "01_freq"), RunNames(LABEL, "03_freq_half")
+    log = ".runwrap-{stamp}.log"
+    assert here.restaged(src.name(log, stamp="20261027-223506"), src) == \
+        here.name(log, stamp="20261027-223506")
+
+
 @pytest.mark.parametrize("stage,run,expected", [
     (None,        None, "my-job.chk"),
     (None,        2,    "my-job-run2.chk"),

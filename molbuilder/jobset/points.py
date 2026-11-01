@@ -114,6 +114,12 @@ class PointsOf:
     #: nothing, else why not: a vibration's finish step, which writes the
     #: result once no call is left (`engines/vibration.md` § 5.11 § 7).
     also_needs: Callable = lambda run, names, task, stage, base: None
+    #: ``(point) -> bool``: whether a stage that continues from another
+    #: (`ladder.stage_before`) takes ``point`` over from that stage's run
+    #: -- never computing it itself -- where that run has it done: a
+    #: displacement sweep's later stage, the relaxation
+    #: (`engines/vibration.md` § 5.9).
+    carried: Callable = lambda point: False
 
 
 def record_of(task):
@@ -143,6 +149,16 @@ def walls_of(task, n: int) -> int:
     return min(n, 1) if rec is not None and rec.wall == WALL_ONE else n
 
 
+def carried_of(calc, stage: str) -> tuple:
+    """The points ``stage``'s run takes over from the run it continues from
+    -- its prepared points its kind carries (:attr:`PointsOf.carried`: a
+    displacement sweep's later stage, the relaxation) -- ``()`` for a kind
+    with none, or a stage not prepared."""
+    pts = points_of(calc.task)
+    return (tuple(pt for pt in pts.rung_points(calc, stage) if pts.carried(pt))
+            if pts is not None else ())
+
+
 def rung_points_of(calc, stage: str) -> tuple:
     """``stage``'s points as prepared, by its kind's declaration -- ``()``
     for a kind with none, or a rung that runs once (:attr:`PointsOf.
@@ -152,4 +168,4 @@ def rung_points_of(calc, stage: str) -> tuple:
 
 
 __all__ = ["Start", "Container", "PointsOf", "record_of", "points_of",
-           "walls_of", "rung_points_of"]
+           "walls_of", "carried_of", "rung_points_of"]

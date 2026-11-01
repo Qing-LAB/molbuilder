@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import functools
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -1910,6 +1910,17 @@ class RunNames:
                 f"try was named to fill it.")
         return compose(self.label, role, self.stage if a.staged else None,
                        run=run if _numbered(a) else None, **fields)
+
+    def restaged(self, name: str, source: "RunNames") -> str:
+        """``name``, a file of ``source``'s stage, named for this stage --
+        its role, try and fields kept: how a point taken over from another
+        stage's run is named in this one, so every reader of this stage's
+        files finds it (`execution/runs-of-points.md` § 3, op. 3).  A file
+        on the label alone, or not of ``source``'s stage, as it is."""
+        f = parse(name, source.label)
+        if f is None or f.stage != source.stage:
+            return name
+        return replace(f, label=self.label, stage=self.stage).name
 
 
 

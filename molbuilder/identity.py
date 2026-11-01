@@ -339,6 +339,13 @@ def migrate_as_typed(folder=None) -> str:
 LAUNCHED_WAY_BACK = "the state saved before its group's first launch"
 
 
+def launched_way_back(stage: str) -> str:
+    """:data:`LAUNCHED_WAY_BACK` for a stage other than the one the text
+    speaks of, by its name -- the state saved before ``stage``'s group's
+    first launch, which leaves every run made since behind."""
+    return f"the state saved before `{stage}`'s group's first launch"
+
+
 def way_back_words(launched: Optional[bool],
                    change: Optional[str] = None) -> str:
     """How a stage is made as its description gives it now, in the words a
@@ -691,7 +698,8 @@ def run_id(label: str, formula: str = "", *,
 
 __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
            "HAND_RUN_NOTE", "hand_run",
-           "LAUNCHED_WAY_BACK", "LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES",
+           "LAUNCHED_WAY_BACK", "launched_way_back", "LAUNCH_MODE_NOTE",
+           "MAX_LABEL_BYTES",
            "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",

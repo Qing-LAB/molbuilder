@@ -596,7 +596,8 @@ class _Member:
                                            warned=self.warned)
                     + (f"; {'would take' if would else 'took'} the inputs "
                        f"its kind gathered: " + _gathered_from(carried)
-                       if carried else ""))
+                       if carried else "")
+                    + (f"; {self.walk}" if self.walk is not None else ""))
         # A SWEEP'S WALK SAYS WHICH POINTS RUN AND FROM WHAT -- what its
         # first launch gathers, or warm or cold what it takes over
         # (`engines/transport.md` § 2a.11: "Launch shows which points it
@@ -1079,14 +1080,21 @@ def _first_launch(calc, job, *, member, container: Path,
         # A RUN OF POINTS: prep's run, each point given its own gather --
         # none for a kind whose run takes nothing (a vibration's calls
         # build on each other inside the run, `engines/vibration.md`
-        # § 5.11).
+        # § 5.11) -- and, continuing from another stage's run, the points
+        # its kind carries taken over from it by the walk (a sweep's later
+        # stage, the first stage's relaxation, § 5.9), the run recording
+        # the run it continues from.
         sweep = open_sweep_run(calc, stage, plan=writes)
         _prep_files_back(sweep.dir, writes)
         took, gathered = _gather_sweep(base, sweep.dir, sweep.points,
                                        got or [], writes)
         return member(job, container, sweep.dir, sweep.dir,
-                      label=stage, first=True, cold=cold,
-                      points=list(sweep.points), took=took, hands=gathered)
+                      label=stage, first=True, cold=cold, continuation=cont,
+                      points=list(sweep.points), took=took,
+                      hands=gathered + _continues_run(
+                          base, sweep.dir,
+                          RunRef.read(cont.source) if cont is not None
+                          else None, writes))
     try:
         opened = prepare_attempt(
             calc, stage,
@@ -1111,6 +1119,21 @@ def _first_launch(calc, job, *, member, container: Path,
                          "volts": None} for src, fn in inputs])
 
 
+def _continues_run(base: Path, run: Path, source: Optional[RunRef],
+                   writes) -> tuple:
+    """A RUN OF POINTS CONTINUING FROM ``source`` -- its own newest
+    launched run, or another stage's run it continues from, its points
+    taken over by the walk (:func:`_points_walk`) -- said once at the run,
+    a hand-over of no file, so its launch record carries it
+    (`project-layout.md` § 1.6.3) like every other run's: ``(hand-over,)``,
+    or ``()`` where it continues from none."""
+    if source is None:
+        return ()
+    h = HandOver(run, CONTINUED, source=source)
+    hand_over(base, h, writes)
+    return (h,)
+
+
 def _launch_again(calc, job, *, member, container: Path,
                   points: bool, writes: Plan, cold: bool, from_attempt,
                   gather) -> "_Member":
@@ -1130,14 +1153,27 @@ def _launch_again(calc, job, *, member, container: Path,
     stage = job.name
     ran = newest_launched(container)
     if points:
-        # A RUN OF POINTS LAUNCHED AGAIN: its inputs its kind's, never named
-        # (`--from` refused); what the newest launched run gathered, or
-        # gathered anew; warm, the run continues from it, read at the point
-        # (the walk takes each point done there over).
+        # A RUN OF POINTS LAUNCHED AGAIN: its inputs its kind's -- what the
+        # newest launched run gathered, or gathered anew; warm, the run
+        # continues from it, read at the point (the walk takes each point
+        # done there over); a run named by `--from`, where the stage
+        # continues from another, the points its kind carries taken over
+        # from it.
         from .continuation import cannot_be_named
-        why = cannot_be_named(base, task, stage, from_attempt, False)
+        why = cannot_be_named(base, task, stage, from_attempt,
+                              cold if from_attempt else False,
+                              template_text=calc.template_text)
         if why:
             raise SubmitError(why)
+        cont = None
+        if from_attempt:
+            # A RUN NAMED: the points its kind carries taken over from it
+            # anew, nothing of the stage's own runs (`job-system.md` § 5.4).
+            from .ready import first_launch_takes
+            cont, _got, why = first_launch_takes(calc, stage,
+                                                 from_attempt=from_attempt)
+            if why:
+                raise SubmitError(why)
         got = _gathered_now(calc, stage) if gather else None
         sweep = open_sweep_run(calc, stage, plan=writes)
         took: List[dict] = []
@@ -1147,18 +1183,15 @@ def _launch_again(calc, job, *, member, container: Path,
         else:
             hands = _carry_sweep_gather(ran, sweep.dir, sweep.points, writes,
                                         base=base, stage=stage)
-        if not cold:
-            # THE RUN CONTINUES FROM THE STAGE'S NEWEST LAUNCHED RUN (rule 3)
-            # -- its points taken over by the walk, each with its own record
-            # (:func:`_points_walk`); said once at the run too, a hand-over
-            # of no file, so its launch record carries it
-            # (`project-layout.md` § 1.6.3) like every other run's.
-            again = HandOver(sweep.dir, CONTINUED,
-                             source=RunRef.at(base, ran))
-            hand_over(base, again, writes)
-            hands += (again,)
+        # THE RUN CONTINUES FROM A RUN NAMED, or warm from the stage's
+        # newest launched run (rule 3) -- its points taken over by the walk
+        # (:func:`_points_walk`).
+        hands += _continues_run(
+            base, sweep.dir,
+            RunRef.read(cont.source) if cont is not None
+            else None if cold else RunRef.at(base, ran), writes)
         return member(job, container, sweep.dir, ran,
-                      label=stage, again=True, cold=cold,
+                      label=stage, again=True, cold=cold, continuation=cont,
                       points=list(sweep.points), ran=ran, took=took,
                       hands=hands)
     took = []
@@ -1708,9 +1741,12 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
     for s in plan.submissions:
         for m in s.members:
             if m.continuation is not None:
+                # WHAT CAME ACROSS: a run's restart files, or the points a
+                # run of points took over from the run it continues from.
                 plan.record("continues", stage=m.name,
                             **m.continuation.ledger_facts(),
-                            copied=list(m.carries),
+                            copied=list(m.carries
+                                        or m.continuation.carries or ()),
                             written_as_ended=dict(m.warned))
             if m.took:
                 plan.record("gathers", stage=m.name,
@@ -2535,7 +2571,13 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     one hand-over recorded now and copied by the walk just before it runs.
     Cold, or at a first launch, nothing is taken over; a first launch of a
     calculation that reuses a finished one takes that one's points over by
-    the reuse's own rule (`engines/transport.md` § 2a.16).  Every point
+    the reuse's own rule (`engines/transport.md` § 2a.16).  A run
+    CONTINUING FROM ANOTHER STAGE'S RUN (``m.continuation``: a first
+    launch's default, or a run named by ``--from``) takes over the points
+    its kind carries, done there, and nothing of the stage's own runs --
+    each named for this stage, its record the point that computed it, its
+    entry what that run knew of it (a sweep's later stage, the first
+    stage's relaxation, `engines/vibration.md` § 5.9).  Every point
     done and nothing more needed: refused, naming ``--cold``
     (:func:`_all_done`).
 
@@ -2558,11 +2600,13 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     from ..runrecord import launch_record
     from .continuation import point_done
     from .materialize import bring_files, open_run
+    from .naming import stage_home
     from .points import points_of, record_of
     from .reuse import carry_shared, point_key
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     job, names, stage = m.job, m.names, m.job.name
     stage_dir, run, prev = m.container, m.run_dir, m.ran
+    cont = m.continuation
     # THE RUN'S PLACES AND ITS NEWEST LAUNCHED RUN'S, composed by the one
     # door (`calcdirs.RunPlace`, `runs-of-points.md` § 2.4).
     place = RunPlace.of(run)
@@ -2570,7 +2614,10 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     declared, record = points_of(task), record_of(task)
     prev_launch = launch_record(prev) if prev is not None else None
     prev_index = None
-    if prev is not None and not m.cold:
+    # WARM FROM ITS OWN NEWEST LAUNCHED RUN -- not cold, and continuing from
+    # no other stage's run, which takes its place.
+    own = prev is not None and not m.cold and cont is None
+    if own:
         # ITS INDEX, read for what a warm launch takes over (§ 3, op. 2);
         # a cold one takes nothing from it.
         try:
@@ -2578,11 +2625,26 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
             prev_index = read_index(got) if got is not None else None
         except ValueError as exc:
             raise SubmitError(f"{stage}: {exc}") from None
+    # THE POINTS CARRIED FROM THE RUN IT CONTINUES FROM, each by its folder
+    # there, and that run's index -- what it knew of each.
+    carried_in: Dict[str, Path] = {}
+    src_index = src_names = src_run = None
+    if cont is not None:
+        from .continuation import carried_points
+        src_run = base / cont.source
+        src_names = stage_home(base, task, cont.stage).names
+        carried_in = {pt.rel: pdir
+                      for pdir, pt in carried_points(calc, stage, cont)}
+        try:
+            got = index_of(src_run, src_names)
+            src_index = read_index(got) if got is not None else None
+        except ValueError as exc:
+            raise SubmitError(f"{stage}: {exc}") from None
 
     def _done(pt) -> bool:
         # DONE IN THE NEWEST LAUNCHED RUN, by the one done door -- what a
         # warm launch takes over (`runs-of-points.md` § 4.2).
-        if prev is None or m.cold or not last.point(pt.rel).is_dir():
+        if not own or not last.point(pt.rel).is_dir():
             return False
         return point_done(declared, prev, last.point(pt.rel), pt, names,
                           task=task, stage=stage, base=base,
@@ -2591,7 +2653,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     # THE RUN'S POINTS (§ 3, op. 2), in the listing order: those its opener
     # opened, then each planned point taken with a planner taken over.
     containers = tuple(declared.containers(calc, stage))
-    done = {pt.rel: _done(pt) for _p, pt in m.points}
+    done = {pt.rel: _done(pt) or pt.rel in carried_in
+            for _p, pt in m.points}
     carried = (planned_by(prev_index, [r for r, d in done.items() if d])
                if prev_index is not None else [])
     planned = [(place.point(e["rel"]), declared.point_of(e))
@@ -2626,8 +2689,10 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     if not walked:
         # EVERY POINT DONE: refused, unless the run needs more than its
         # points -- then its last point runs again, its report step
-        # finishing the run (:func:`_all_done`).
-        _all_done(calc, stage, prev, names, record, prev_launch)
+        # finishing the run (:func:`_all_done`) -- the stage's own run
+        # judged where the points come from it.
+        if own:
+            _all_done(calc, stage, prev, names, record, prev_launch)
         walked.append(taken.pop())
     walked_rels = {pt.rel for _p, pt in walked}
     every = [pt for _p, pt in calls]
@@ -2638,10 +2703,17 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     for pdir, pt in taken:
         if pt.rel not in opened:
             open_run(base, pdir, plan.writes)
-        taken_from[pt.rel] = str(_take_over(base, pdir, last.point(pt.rel),
-                                            prev, plan.writes, names=names,
-                                            pt=pt))
-        carry_shared(last.point(pt.rel), pdir, plan.writes, root=base)
+        # FROM THE RUN IT CONTINUES FROM, named for this stage; else from
+        # its own newest launched run.
+        src = carried_in.get(pt.rel)
+        taken_from[pt.rel] = str(
+            _take_over(base, pdir, src, src_run, plan.writes,
+                       names=src_names, pt=pt, restage=(src_names, names))
+            if src is not None else
+            _take_over(base, pdir, last.point(pt.rel), prev, plan.writes,
+                       names=names, pt=pt))
+        carry_shared(src if src is not None else last.point(pt.rel), pdir,
+                     plan.writes, root=base)
     # THE POINTS TAKEN OVER FROM THE FINISHED CALCULATION, into their folders
     # beside what the gather gave them (`reuse.take_into`).
     if across is not None and across.taken:
@@ -2689,7 +2761,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     rounds: Dict[str, int] = {}
     entries: Dict[str, dict] = {}
     for _p, pt in calls:
-        prior = (entry_of(prev_index, pt.rel)
+        prior = (entry_of(src_index, pt.rel) if pt.rel in carried_in
+                 and src_index is not None
+                 else entry_of(prev_index, pt.rel)
                  if prev_index is not None else None)
         if pt.rel in is_planned:
             # ITS IDENTITY IS ITS PLANNING'S, kept with it.
@@ -2728,8 +2802,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         start = declared.start_of(calc, stage, pt, every)
         before: tuple = ()
         words = ""
-        if (declared.relaunch_of(stage, pt) == CONTINUE and prev is not None
-                and not m.cold and last.point(pt.rel).is_dir()):
+        if (declared.relaunch_of(stage, pt) == CONTINUE and own
+                and last.point(pt.rel).is_dir()):
             at = RunRef.at(base, last.point(pt.rel))
             files = tuple((at, f) for f in warm_carry(job, job)
                           if (last.point(pt.rel) / f).is_file())
@@ -2818,8 +2892,13 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                   outcome=e.get("outcome"))
     plan.writes.text(index_path(run, names), json_text(index))
     walk = ((f"gathers {_gathered_from(m.took)}; " if m.took else "")
-            + (f"takes over {', '.join(pt.words() for _p, pt in taken)} "
-               f"done in {prev.name}; " if taken else "")
+            + (f"takes over "
+               f"{', '.join(pt.words() for _p, pt in taken if pt.rel not in carried_in)} "
+               f"done in {prev.name}; "
+               if any(pt.rel not in carried_in for _p, pt in taken) else "")
+            + (f"takes over "
+               f"{', '.join(pt.words() for _p, pt in taken if pt.rel in carried_in)} "
+               f"from {cont.source}; " if carried_in else "")
             + (f"takes over "
                f"{', '.join(t.point.words() for t in across.taken)} from "
                f"{across.run}; " if across is not None and across.taken
@@ -2872,7 +2951,7 @@ def _send_walk(plan: LaunchPlan, w: _Walk, calc, *, machine,
 
 
 def _take_over(base: Path, pdir: Path, src: Path, prev: Path,
-               writes, *, names, pt) -> RunRef:
+               writes, *, names, pt, restage=None) -> RunRef:
     """A POINT DONE IN ``prev`` -- ``src`` -- TAKEN OVER into ``pdir``, one
     hand-over: its folder whole but what no copy carries
     (`warmfiles.never_carried`), its record the run that COMPUTED it, one
@@ -2880,8 +2959,10 @@ def _take_over(base: Path, pdir: Path, src: Path, prev: Path,
     over itself, as ``prev``'s index says (`runpoints.taken_from`, the door
     `status` asks), names that point's origin; one ``prev`` walked -- its
     start a point of that run, or, a point continued, its own earlier run
-    -- has its origin in ``prev``.  The origin is returned, for the run's
-    index."""
+    -- has its origin in ``prev``.  ``restage``, ``(prev's names, the run's
+    own)`` where ``prev`` is another stage's run: each file named for this
+    stage (`materialize.HandOver.restage`).  The origin is returned, for
+    the run's index."""
     from ..runpoints import taken_from
     from ..runrecord import read_continued_from
     from ..warmfiles import never_carried
@@ -2893,8 +2974,8 @@ def _take_over(base: Path, pdir: Path, src: Path, prev: Path,
     hand_over(base, HandOver(
         pdir, CONTINUED, source=origin,
         files=tuple((at, f.name) for f in sorted(src.iterdir())
-                    if f.is_file() and not never_carried(f.name))),
-        writes)
+                    if f.is_file() and not never_carried(f.name)),
+        restage=restage), writes)
     return origin
 
 

@@ -146,4 +146,5 @@ POINTS = PointsOf(rung_points=_declared_rung_points,
                       point.phase).relaunch,
                   containers=_containers,
                   run_facts=_run_facts,
-                  also_needs=_also_needs)
+                  also_needs=_also_needs,
+                  carried=lambda point: phase(point.phase).carried)

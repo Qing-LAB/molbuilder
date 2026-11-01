@@ -1048,9 +1048,9 @@ internal diagnostic; and, the strongest test, $\omega_\nu(\delta) \approx \omega
 modes that matter. Too small drowns in noise, too large picks up
 anharmonicity. *Tool:* `fc_displacement` carries the range and the help text
 ties the noise floor to `DM.Tolerance`; it is a stage item, so a ladder of
-two stages at $\delta$ and $\delta/2$ is describable, each stage relaxes in its
-own run (two stages at different geometries the summary refuses — the
-take-over of the first stage's relaxation is not built), each stage's job
+two stages at $\delta$ and $\delta/2$ is describable, a later stage taking
+the first stage's relaxation over so both measure at one geometry (two
+stages at different geometries the summary refuses), each stage's job
 derives its own modes, and
 `jobset summarize task` compares them into `<label>.fc-sweep.json` — each
 mode's frequency per stage, matched by shape, and the force constants
@@ -1237,7 +1237,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | a metal-connected molecule has no clean HOMO and LUMO; use the projected density of states and resonances | **the same**; the probe is PySCF's and records the cluster's own window — a molecule-projected quantity is owed, and nothing of this exists on SIESTA (§ 4b.6 G) |
 | on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one $\pm\delta$ pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
-| converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, each stage relaxes in its own run — two stages at different geometries refused — and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
+| converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, a later stage taking the first stage's relaxation over — two stages at different geometries refused — and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
 | mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **built for transport, on both engines**: one mode as one multi-frame pair — frame 0 the Hessian's geometry, then the Gauss–Hermite nodes of a Gaussian along the mode, its spread set by the temperature the person states, the held atoms unmoved (`vibration.md` § 5.10 ③; `mode_frames.frameset_from_mode`, `molbuilder frameset from-mode`, the Spectrum tab's *Write frame set…*); a transport calculation citing it computes $T(E, Q)$ and the device's PDOS at each frame; $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not built (V1.26) |
 | the molecular dipole is undefined for the periodic metal; the metal electrons are signal; $\Delta\rho_\nu(r)$ as the intermediate quantity | **the same reasoning** (§ 4b.7); the Born-charge route recorded, the density-difference maps owed |
 | match PySCF and SIESTA modes by their displacement patterns, then read how adsorption moved them | **not built**; it is the same overlap calculation as the Model A/B/C comparison (§ 4b.9) |

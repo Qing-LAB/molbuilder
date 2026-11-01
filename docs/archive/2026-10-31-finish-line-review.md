@@ -37,12 +37,12 @@ Ids: **I1/I2** the inventory of open items (plan lines 1–639 and the 2.54.1/2.
 | U2-2 | wrong-result | Results › spectra viewer › Modes table, a PySCF result written before `phase_ir` (PDT/spectrum/pySCF_PDT run-0) — the IR intensities the run computed are not in the table (nor its CSV), while the chart draws their lane and the summary says computed | one *IR asked* reading of a result, older files included — **closed 2.57.0** | confirmed |
 | U2-3 | wrong-result | Results › trajectory viewer › run badge, PDT/optimization/PDT_FIX_moleculeonly/03_final/run-0 — "Finished \| ended Sep 27 9:10:01 PM · total 0s" for a run whose engine wall time is 24 s (the Run panel beside it) | the run's clock read once (its engine wall), the badge asking it — **closed 2.56.2** | confirmed |
 | U2-4 | words | Results › spectra viewer, PDT/spectrum/siesta_PDT run-1 — the sentence over the mode lines says intensities "were not requested in this run" while the run summary on the same page says the infrared is missing because the result states no charges | one *IR asked* reading of a result, older files included — **closed 2.57.0** | confirmed |
-| I1-023 | inventory | a displacement sweep's later stage taking the first stage's `relax` call over | OPEN | confirmed |
+| I1-023 | inventory | a displacement sweep's later stage taking the first stage's `relax` call over | **closed 2.58.0** | confirmed |
 | I1-100 | inventory | `status` names no next step for a group member that is missing | status's next step over the run door: a missing member is said — **closed 2.56.2** | confirmed |
 | I2-133 | inventory | a failing `ending` reader exits 1, read by the wrapper as "no" | the run-ending reader's answer: a crash is an answer, never *no* — **closed 2.56.2** | confirmed |
 | I2-134 | inventory | the Build route's peptide branch collects no warnings, so the C-terminus warning never reaches a web user | the build route returns the builder's own findings — **closed 2.57.0** (decided 11 (b): one build door and one check after it) | confirmed |
-| I2-168 | inventory | a SIESTA displacement sweep's later stage does not take the first stage's `relax` call over, so a sweep that relaxes is refused at its summary | OPEN — a road that does not finish | confirmed |
-| I2-169 | inventory | a spin-polarized optical frame's Fermi level is lost | OPEN — a lost value | confirmed |
+| I2-168 | inventory | a SIESTA displacement sweep's later stage does not take the first stage's `relax` call over, so a sweep that relaxes is refused at its summary | **closed 2.58.0** | confirmed |
+| I2-169 | inventory | a spin-polarized optical frame's Fermi level is lost | **closed 2.58.0** (a fixed spin's: SIESTA prints one `Ef` otherwise) | confirmed |
 | I2-199 | inventory | a run prepared again after the charge goes to 0 keeps its old `makov_payne_correction.py` | prep's writes of a stage: what it no longer writes is not left behind — **closed 2.56.2** | confirmed |
 
 ## F1 — The results views (§ 1ak S3): one point view every reader asks (34)
@@ -164,7 +164,7 @@ Ids: **I1/I2** the inventory of open items (plan lines 1–639 and the 2.54.1/2.
 | B2-9 | door | a deck found by spelling `.fdf` in shared and kind code | `runfiles.deck_role(task.engine)` / `deck_roles()` | confirmed |
 | D1-RP-1 | residue | runs-of-points.md § 2 — "nothing in the shared code names a kind, a phase or a file of one": the walk names a transport point's fields | the match asks the point type (`point_key`, already `reuse`'s) and the ledger row carries `pt.to_wire()` — or the sentence names the exception until step 3 | confirmed |
 | I1-018 | inventory | a GPU run with a non-ELPA solver refused only when the deck is written, never at Save | OPEN | confirmed |
-| I1-026 | inventory | a spin-polarized optical call's Fermi level reads none | OPEN | confirmed |
+| I1-026 | inventory | a spin-polarized optical call's Fermi level reads none | **closed 2.58.0** | confirmed |
 | I1-042 | inventory | every engine and kind fact asked of its record | OPEN | confirmed |
 | I1-060 | inventory | which rung runs TBtrans decided by stage name in prep, beside `SHAPE_OF_RUNG` | OPEN | confirmed |
 | I1-062 | inventory | the fit's rung laid onto `Extension.to_wire()` by hand in two doors | OPEN | confirmed |
@@ -1511,3 +1511,25 @@ Two readers on 2.57.0's change: round 1 the change against its contracts (the sp
 | F0b-R4-8 | F6 | a misnamed file in the calculation folder, for a label that falls through to the library, is not said misnamed (the search is the label's own folder); with `psml_lib` unset the person who put it there is told to | the gate's search over every folder the structure reads |
 | F0b-R4-9 | F6 | a label no file can be named for (`Au_1`) is said twice — by the coverage check and `check_species_labels`; a label naming no element (`Xx1`) is told to download a file | the coverage check leaves a label the species check refuses to it |
 | F0b-R4-10 | F5 | a label naming no element (`Xx1`, `Au_1`), written through the Structure API alone, is written into its pair and refused by its own reader | the pair writer refuses what its reader refuses |
+
+## Found by F0c's review rounds (2026-10-31), by the release that owns each
+
+Round 1: three whole-file readers — the launch side (submit, continuation, ready, ladder, points, the runs-of-points chapter), the job side and the tests (siesta_vibration, displacement_sweep, runfiles, the e2e and the protocol rows), the spin change (optical_data, the grammar, fdf, the EPSIMG reader); round 2: two readers over the round-1 fixes and the whole modules again.
+
+| id | release | what | the door |
+|---|---|---|---|
+| F0c-R1-1 | **closed 2.58.0** | the rule *a later stage continues from the first* resolved by the ladder (floor 3) from the run-of-points declaration (floor 4) | a floor-1 part, `vibration_phases.continues_from`, named the kind table's `continues` and resolved as `inputs` is |
+| F0c-R1-2 | **closed 2.58.0** | a run of points' state read two ways (by its index, by its declaration), a refused send's run read *failed*, a failed run said *stopped without its conclusion marker* | `continuation.points_run_state`, the one rule `read_run` and `stage_run_state` read by; a run of points concludes in its points' words |
+| F0c-R1-3 | **closed 2.58.0** | `--from` with `--cold` on a run of points launched again taken, `--cold` ignored | `cannot_be_named` told `--cold` where `--from` is given |
+| F0c-R1-4 | **closed 2.58.0** | the summary's way out printed a `--from` launch refused where the stages differ in `already_relaxed`; chosen from the description, not the results | the two results' `relaxation.enabled` choose between the two refusals |
+| F0c-R1-5 | **closed 2.58.0** | the relaxing stage read off a folder — gone, the force-constant analysis crashed | `runrecord.RunRef.stage`, the record's text |
+| F0c-R1-6 | **closed 2.58.0** | the remedy for a relaxation taken over named the wrong way back and an impossible `--from` | `nonstationary_remedy(relaxation_stage, stage)`: the relaxing stage's own way back, the later stage's first launch taking the new relaxation; the cold branch with `--from` |
+| F0c-R1-7 | **closed 2.58.0** | a later stage judged its reference geometry by its own `relax_force_tol`, not the tolerance the relaxation ran to | the relaxation record's tolerance (`result_of`, § 5.5's one yardstick) |
+| F0c-R1-8 | **closed 2.58.0** | `--from` naming a launched run of points refused *never launched* (the run door names no run at a container) | the launch record read at the run's root |
+| F0c-R1-9 | **closed 2.58.0** | a refusal printed `<that run>`; the ledger's `continues` line recorded nothing copied for a take-over; a stage prepared stated relaxed took a relaxation over by today's description | a typed `--from` line for a run that has the points done; `copied` the points' words; `carried_points` among the stage's own prepared carried points |
+| F0c-R1-10 | **closed 2.58.0** | stale words in nine documents and the module docstrings; the writer took a per-channel value of any length; `SPIN_COMPONENTS` said `nspin` | the words; the writer's refusal by name; `spin%H` |
+| F0c-R1-S | AFTER-SCIENCE | under `Spin.Fix`, SIESTA's optical calculation fills both spin channels against one Fermi level, `ef` — its start value 0, or the up channel's — so a fixed-spin optical frame's ε₂ is likely not the right one (`optical.F:511`, `siesta_analysis.F90:514`, `diagg.F:223`, `m_energies.F90:83`, `save_density_matrix.F90:154`; read, not measured) | a measured check — an H₂O triplet's optical single point, its `.contrib.EPSIMG` band energies against `Ef_up`/`Ef_dn` — the user's |
+| F0c-R1-C | F1 | Task setup's *Continue from* reads every run of the first stage by its points on each folder open — the cost of `points_state` per run | the results views (F1) answer a run of points' state once per answer |
+| F0c-R1-T | untested until after F9 | the take-over on a real run and its renamed files; the remedy's words; the summary's two refusals; a fixed-spin output's Fermi levels; `--from` with `--cold` refused at a launch again — each a real run's | the e2e, from F10 |
+| F0c-R2-L | — | a taken-over relaxation's record names its output as the computing stage wrote it (`…_01_freq-run0.out`) inside the later stage's run — provenance, true of the call that computed it | — |
+| F0c-R2-F | F6 | `commands.launch_lines` takes switches only; `--from <run>` passes as one (works: run folders are shell-safe) | flag-value pairs, as `launch_with` takes them |

@@ -63,15 +63,17 @@ import numpy as np
 try:                                        # inside molbuilder
     from ..atom_permutation import (Permutation, map_rows_to_user_order,
                                     map_to_user_index)
-    from ..parse.engines.siesta_epsimg_reader import read_epsimg
+    from ..parse.engines.siesta_epsimg_reader import CHANNELS, read_epsimg
+    from ..parse.engines.siesta_grammar import fermi_levels
     from ..constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..parse.engines.siesta_fc import (ForceConstantFile,
                                            fc_block_asymmetry,
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
     from ..parse.engines.siesta_reader import SiestaReader
-    from ..parse.fdf import (GEOMETRY_KEYS, deck_atoms, fdf_key, read_deck,
-                             read_fdf, system_label)
+    from ..parse.fdf import (GEOMETRY_KEYS, SPIN_COMPONENTS, deck_atoms,
+                             fdf_key, parse_fdf_params, read_deck, read_fdf,
+                             system_label)
     from ..runfiles import compose
     from ..structure import Structure
     from ..parse.contract import judged_force, relaxation_of_output
@@ -80,6 +82,7 @@ try:                                        # inside molbuilder
                                extract_engine_offset,
                                extract_vibration_record, order_record_of)
     from ..engine_atom_index import convert_from_engine_numbering, siesta_numbering
+    from ..identity import command_stage
     from ..sidecars.spectra import dump_spectra_json
     from ..wrapper_log import (LOG_CLOCK, LOG_LINE, log_of_run,
                                read_wrapper_log)
@@ -109,7 +112,8 @@ try:                                        # inside molbuilder
     from .normal_modes import displaced, mode_over_atoms, q_for_largest_move
     from .selection import select_modes
 except ImportError:                         # beside a job, in mb_vibration.pyz
-    from siesta_epsimg_reader import read_epsimg  # type: ignore[no-redef]
+    from siesta_epsimg_reader import CHANNELS, read_epsimg  # type: ignore[no-redef]
+    from siesta_grammar import fermi_levels  # type: ignore[no-redef]
     from optical_data import write_optical_data  # type: ignore[no-redef]
     from atom_permutation import (Permutation,  # type: ignore[no-redef]
                                   map_rows_to_user_order, map_to_user_index)
@@ -117,8 +121,9 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
     from siesta_reader import SiestaReader
-    from fdf import (GEOMETRY_KEYS, deck_atoms,  # type: ignore[no-redef]
-                     fdf_key, read_deck, read_fdf, system_label)
+    from fdf import (GEOMETRY_KEYS,  # type: ignore[no-redef]
+                     SPIN_COMPONENTS, deck_atoms, fdf_key, parse_fdf_params,
+                     read_deck, read_fdf, system_label)
     from runfiles import compose
     from structure import Structure
     from contract import judged_force, relaxation_of_output  # type: ignore[no-redef]
@@ -127,6 +132,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                              extract_engine_offset, extract_vibration_record,
                              order_record_of)
     from engine_atom_index import convert_from_engine_numbering, siesta_numbering
+    from identity import command_stage  # type: ignore[no-redef]
     from spectra_sidecar import dump_spectra_json
     from wrapper_log import (LOG_CLOCK, LOG_LINE,  # type: ignore[no-redef]
                              log_of_run, read_wrapper_log)
@@ -447,14 +453,17 @@ def partial_charges_of(run: ForceConstantRun) -> Optional[dict]:
 
 
 def result_of(run: ForceConstantRun,
-              relaxation: Optional[Mapping[str, Any]] = None
-              ) -> SpectraResults:
+              relaxation: Optional[Mapping[str, Any]] = None,
+              relaxation_stage: Optional[str] = None) -> SpectraResults:
     """The run's result: its block, masses and geometry through the one
     analysis (`spectra.vibrational_analysis`), with what this route says of
     itself -- the Methods paragraph, the force-constant facts, the stage.
     ``relaxation`` is the run's `relax` call's record, from the run's index
     (`engines/vibration.md` § 5.11 § 3), which the result's `relaxation`
-    block carries whole; ``None`` when the structure was stated relaxed."""
+    block carries whole; ``None`` when the structure was stated relaxed.
+    ``relaxation_stage`` the stage whose run computed it, where not this
+    one: a displacement sweep's later stage took it over from its first
+    (§ 5.9)."""
     n = len(run.elements)
     if run.fc.n_atoms != n:
         raise FinishError(f"{Path(run.fc.path).name} describes "
@@ -463,10 +472,16 @@ def result_of(run: ForceConstantRun,
     rec = dict(run.record)
     if relaxation is not None:
         rec["relaxation"] = dict(relaxation)
-        # THE STAGE WHOSE RUN RELAXED -- this one, its `relax` call (§ 5.11
-        # § 1): the remedy's launch line names it.
-        rec["relaxation_stage"] = rec.get("stage")
+        # THE STAGE WHOSE RUN RELAXED -- this one's `relax` call (§ 5.11
+        # § 1), or the stage it was taken over from (§ 5.9): the remedy's
+        # launch line names it.
+        rec["relaxation_stage"] = relaxation_stage or rec.get("stage")
     criterion = rec.get("force_criterion_ev_ang")
+    if (relaxation_stage and relaxation_stage != rec.get("stage")
+            and (relaxation or {}).get("force_tolerance_ev_ang") is not None):
+        # THE FORCE THE GEOMETRY WAS RELAXED TO -- the tolerance of the stage
+        # it was taken over from, which its record carries (§ 5.5, § 5.9).
+        criterion = float(relaxation["force_tolerance_ev_ang"])
     if rec.get("temperature_K") is None:
         raise FinishError(
             f"{run.deck.name}'s vibration block states no temperature_K -- "
@@ -932,12 +947,18 @@ def _deck_cited(deck: Path) -> dict:
                                  for label, name in pseudos]}
 
 
+def _optical_deck(here: _CallHere) -> Path:
+    """The stage's optical deck -- the one each optical call copies
+    (§ 5.11 § 4)."""
+    return here.place.prepared(Call(OPTICAL).prepared) / here.deck.name
+
+
 def _optical_settings(here: _CallHere, index: dict) -> dict:
-    """``/settings``: every optical keyword as the stage's optical deck --
-    the one each optical call copies -- writes it, the light's direction
-    (its ``Optical.Vector``), the selection as asked and as applied, ``δ``,
-    and the deck's whole text and sha256."""
-    deck = here.place.prepared(Call(OPTICAL).prepared) / here.deck.name
+    """``/settings``: every optical keyword as the stage's optical deck
+    (:func:`_optical_deck`) writes it, the light's direction (its
+    ``Optical.Vector``), the selection as asked and as applied, ``δ``, and
+    the deck's whole text and sha256."""
+    deck = _optical_deck(here)
     spelled: dict = {}
     params, blocks = read_fdf(read_deck(deck), spelled_out=spelled)
     keywords: dict = {}
@@ -960,10 +981,11 @@ def _optical_settings(here: _CallHere, index: dict) -> dict:
             "deck_sha256": sha256_of(deck)}
 
 
-def _call_facts(here: _CallHere, folder: Path) -> dict:
+def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
     """What a call's own files state of it (§ 5.11 § 8): from its newest
     output, through SIESTA's one reading pass, the geometry it computed at
-    (the deck's order), its SCF's iterations, total energy and Fermi level,
+    (the deck's order), its SCF's iterations, total energy and the Fermi
+    level of each spin channel in ``spins`` (`siesta_grammar.fermi_levels`),
     and the build; from that try's session log, the engine's wall time
     (`wrapper_log`, the one source of it)."""
     out = newest_output(folder, here.names) if folder.is_dir() else None
@@ -981,7 +1003,8 @@ def _call_facts(here: _CallHere, folder: Path) -> dict:
             coords=np.asarray([r[1:4] for r in step["coords"]], dtype=float),
             scf_iterations=len(scf) if scf else None,
             total_energy_ev=step.get("energy"),
-            fermi_level_ev=scf[-1].get("ef") if scf else None)
+            fermi_level_ev=(list(fermi_levels(scf[-1], spins)) if scf
+                            else None))
     log = log_of_run(folder, here.label, parse(out.name, here.label).run,
                      here.names.stage)
     if log is not None:
@@ -1001,11 +1024,18 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
     reader) and the result (the reference structure, its atom index map,
     the masses).  ``None`` where the run planned no optical call.  Every
     frame's geometry is put in the user order through the result's map; a
-    frame whose spectrum is on another grid than the others' is refused by
-    name -- the calls share one deck."""
+    frame whose spectrum is on another grid than the others', or on other
+    spin channels than the deck's, is refused by name -- the calls share
+    one deck."""
     calls = [c for c in calls_of(index) if c.phase == OPTICAL]
     if not calls:
         return None
+    # THE SPIN CHANNELS the calls compute, from the deck they share
+    # (`Src/optical.F`: one, or up and down; none for a spin it stops on):
+    # every frame's row is on them, its spectrum among it.
+    deck = _optical_deck(here)
+    spins = CHANNELS.get(SPIN_COMPONENTS.get(parse_fdf_params(
+        read_deck(deck), source=deck.name).spin_treatment), ())
     # EACH FRAME'S STATE by the run's one rule (`runs-of-points.md`
     # § 1.3): finished where the call is DONE -- its spectrum stands --
     # not done where it ran to its end without, failed where it ended
@@ -1018,14 +1048,15 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
               if r["phase"] == OPTICAL}
     atoms = res.atom_index_map_stated()
     run_rel = here.run_dir.relative_to(here.root).as_posix()
-    grid = spins = version = None
+    grid = version = None
     frames = []
     for c in calls:
         row = _rp.entry_of(index, c.rel) or {}
         known = row.get("facts") or {}
         folder = here.place.point(c.rel)
         state = states.get(c.name, "pending")
-        facts = _call_facts(here, folder) if state != "pending" else {}
+        facts = (_call_facts(here, folder, spins) if state != "pending"
+                 else {})
         coords = facts.get("coords")
         version = version or facts.get("siesta_version")
         f = {"call": c.rel, "mode": c.mode,
@@ -1051,14 +1082,18 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
         eps = folder / compose(here.label, phase(OPTICAL).products[0])
         if state == "finished" and eps.is_file():
             e = read_epsimg(eps)
+            if e.spin != spins:
+                raise FinishError(
+                    f"{c.rel}/{eps.name}: its spin channels "
+                    f"{', '.join(e.spin)} are not the ones {deck.name}'s "
+                    f"spin computes ({', '.join(spins) or 'none'})")
             if grid is None:
-                grid, spins = e.energy_ev, e.spin
-            elif (e.spin != spins or e.energy_ev.shape != grid.shape
+                grid = e.energy_ev
+            elif (e.energy_ev.shape != grid.shape
                   or not np.array_equal(e.energy_ev, grid)):
                 raise FinishError(
-                    f"{c.rel}/{eps.name}: its photon energies or spin "
-                    f"channels are not the other calls' -- the calls share "
-                    f"one deck, so one grid")
+                    f"{c.rel}/{eps.name}: its photon energies are not the "
+                    f"other calls' -- the calls share one deck, so one grid")
             f.update(f_sum=list(e.f_sum), drude_wp2_ha2=list(e.drude_wp2_ha2),
                      eps2=e.eps2)
         frames.append(f)
@@ -1072,7 +1107,7 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
             "masses_amu": ([float(m) for m in masses]
                            if masses is not None else None),
             "photon_energy_ev": grid.tolist() if grid is not None else [],
-            "spin": list(spins or ()), "frames": frames}
+            "spin": list(spins), "frames": frames}
 
 
 def _write_optical(here: _CallHere, index: dict, res: SpectraResults
@@ -1125,8 +1160,15 @@ def _force_constants(here: _CallHere, index: dict
     if fc_out is None:
         return None
     run = read_force_constant_run(fc_dir / here.deck.name, fc_out)
-    return run, result_of(run, relaxation=_facts(
-        index, Call(RELAX, RELAX)).get("relaxation"))
+    # ITS RELAXATION, and the run that computed it -- this one, or the run
+    # its `relax` call was taken over from, its stage read off the record
+    # (`runrecord.RunRef.stage`).
+    relax = _rp.entry_of(index, Call(RELAX, RELAX).rel) or {}
+    origin = relax.get("taken_from")
+    return run, result_of(
+        run, relaxation=(relax.get("facts") or {}).get("relaxation"),
+        relaxation_stage=(command_stage(RunRef.read(origin).stage)
+                          if origin else None))
 
 
 def finish_run(deck) -> None:

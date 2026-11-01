@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .. import calcdirs, runrecord
+from .. import calcdirs, runfiles, runrecord
 from ..identity import resolve_stage_ref
 from .model import JobSet, warm_carry
 from .naming import (job_dir_names, ladder_homes, open_container, run_names,
@@ -508,12 +508,16 @@ class HandOver:
     COMPUTED it, one hop, whatever folder its files are copied from) -- or
     :data:`GATHERED`, each file with its run.  ``walk``: copied by the walk
     just before the run starts (a point's start, which the point before it
-    may finish in the same walk), not with the plan."""
+    may finish in the same walk), not with the plan.  ``restage``: the
+    names of the stage the files come from and of the run's own, where
+    they differ -- a point taken over from another stage's run, each file
+    named for the stage it now lies in (`runfiles.RunNames.restaged`)."""
     target: Path
     record: str
     files: Tuple[Tuple["runrecord.RunRef", str], ...] = ()
     source: Optional["runrecord.RunRef"] = None
     walk: bool = False
+    restage: Optional[Tuple["runfiles.RunNames", "runfiles.RunNames"]] = None
 
     def __post_init__(self):
         if self.record not in (CONTINUED, GATHERED):
@@ -586,16 +590,19 @@ def hand_over(base, h: HandOver, plan=None) -> List[str]:
     real files, never linked, since the engine writes to those very names
     (`project-layout.md` § 1.6.5) -- unless the walk copies them
     (``h.walk``), and its record written beside the run
-    (`runrecord.write_continued_from`, `write_gathered_from`).  Into
+    (`runrecord.write_continued_from`, `write_gathered_from`), each file
+    named for the run's own stage where ``h.restage`` says so.  Into
     ``plan`` (`jobset.planned.Plan`); with none, now.  Returns the files
-    copied."""
+    copied, by the names their source holds them under."""
     from .planned import Plan
     own = plan is None
     plan = Plan() if own else plan
     copied: List[str] = []
     if not h.walk:
         for src, name in h.files:
-            plan.copy(src.path(base) / name, Path(h.target) / name)
+            plan.copy(src.path(base) / name, Path(h.target) / (
+                h.restage[1].restaged(name, h.restage[0]) if h.restage
+                else name))
             copied.append(name)
     if h.record == CONTINUED:
         runrecord.write_continued_from(h.target, h.source, plan=plan)

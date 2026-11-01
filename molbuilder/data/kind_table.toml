@@ -121,6 +121,9 @@ stage_roles = "every"
 ladder = ["freq"]
 relaxation = "The run's own relaxation (its `relax` phase)"
 rung = "molbuilder.jobset.prep:siesta_vibration_rung_of"
+# A displacement sweep's later stage continues from the first, whose
+# relaxation it takes over (`engines/vibration.md` § 5.9).
+continues = "molbuilder.siesta.vibration_phases:continues_from"
 # Its stages' force constants compared, where it has two or more
 # (`engines/vibration.md` § 5.9).
 sum = "molbuilder.jobset.vibration_sum:SUM"

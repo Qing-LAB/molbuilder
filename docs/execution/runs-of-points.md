@@ -82,7 +82,7 @@ names each is § 2.4.
 |---|---|---|---|
 | **start** | what a point starts from: another point of the run — its **source** — and the files it takes from it. One hand-over (§ 3, op. 5), its record `.continued-from`: a prepared point's written by launch, a planned point's by its planner's step as it opens the point (launch's, opening it again), and `jobset migrate`'s for a point an older molbuilder left without one; the files copied by the walk just before the point runs. A point with no start begins from what its run gathered, or from what prep wrote | the closest earlier voltage in its frame, its `.TSDE`; a frame's first voltage none (its gathered seed) | `fc` from `relax`'s `.DM`; an optical frame from `fc`'s `.DM`; `relax` none |
 | **need** | a point that must have **ran** (§ 1.3) before this one runs: its start's source, and any whose result it reads. Up the chain, a need that ended without running ends what builds on it | its start's source | `fc` needs `relax`; an optical frame needs `fc` |
-| **taken over** | a point **done** in the stage's newest launched run, copied whole into the new run by a warm launch and not run again — its record naming the run that computed it, one hop | | |
+| **taken over** | a point **done** in the stage's newest launched run, copied whole into the new run by a warm launch and not run again — its record naming the run that computed it, one hop; or, for a stage that **continues from** another, a point its kind **carries**, done in that stage's run, each file named for the stage it now lies in | | the first stage's `relax` call, taken over by a displacement sweep's later stage |
 | **relaunch** | what a launch again does with a point not done: **again** — from its start, as the first walk ran it; or **continue** — from its own last state, its job's warm files handed over from its last run's folder | again | `relax` continue; `fc` and the optical frames again |
 | **wall** | **one** — the run's points share the stage's one wall, counted from the run's start; **each** — every point is told the card's wall, the job's wall their sum | each | one |
 | **the walk** | the job's script that runs the run's points round by round, `launch/<stem>-sweep.run.sh`: a **walk step** for each prepared point it runs, a **loop step** for each container — the planned points there when the step comes | | |
@@ -193,6 +193,7 @@ nothing else.
 | `containers(calc, stage)` | each container: its point (its folder and prepared folder), its planner, and the inputs its planning writes into each planned point | none | `optical/`, planned by `fc`, each frame's `coordinates.fdf` |
 | `run_facts(calc, stage, *, carried, deck)` | the kind's facts about the run, for its index — `carried`, those of the run whose planner this launch took over; `deck`, a prepared point's deck's path | what its points compute, the leads' pair, the spin, the frames' weights | the phases it walks; the selection, carried |
 | `also_needs(run, names, task, stage, base)` | what the run needs beyond its points done to be finished — `None` when nothing; a finish step that exited non-zero is the run's state's own rule (§ 4.4) | nothing | its finish step ended, and its result at the run's root |
+| `carried(point)` | whether a stage that **continues from** another — the stage its pair's rule names, the kind table's `continues` (`ladder.stage_before`; [`job-system.md`](?doc=execution/job-system.md) § 5.4) — takes `point` over from that stage's run rather than computing it | no point | the `relax` call (`PhaseRule.carried`) — a displacement sweep's later stage continuing from the first ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) |
 
 A point is the kind's own type — `transport.stages.Point`,
 `siesta.vibration_phases.Call` — and every one answers `rel` (its folder
@@ -382,7 +383,7 @@ In the order of a run's life. Each is done by one door, on one side.
 | # | operation | where · when | reads | writes | door |
 |---|---|---|---|---|---|
 | 1 | **prepare the points** | this machine · `prep` | the declaration's prepared points; the record's `steps` | each prepared point's deck and run script — its report steps, and the kind's steps where it has them — in its prepared folder; the run's first folder, its points and containers opened | the conductor (`prep`), `materialize.open_sweep_run` |
-| 2 | **plan the walk** | this machine · `launch`, before the question | the stage's newest launched run: each point by the done rule, its index (the points it took over, the points each planner planned) | nothing: the plan — which points are taken over, which are walked, each walked point's start and needs, the rounds' order, the loop steps | `submit._points_walk` |
+| 2 | **plan the walk** | this machine · `launch`, before the question | the stage's newest launched run: each point by the done rule, its index (the points it took over, the points each planner planned); a run continuing from another stage's run, that run and its index instead | nothing: the plan — which points are taken over, which are walked, each walked point's start and needs, the rounds' order, the loop steps | `submit._points_walk` |
 | 3 | **take a point over** | launch · the send | the done point's folder | its copy but the engine's scratch, and its record naming the run that computed it | `submit._take_over` → `materialize.hand_over` |
 | 4 | **continue a point** | launch · the send | its last run's folder | its job's warm files, and its record | `materialize.hand_over` |
 | 5 | **hand a start** | launch records it; the walk copies it | the source's files | the record now; the files just before the point runs — a planned point's by its loop step | `materialize.hand_over` (`walk=True`), the walk |
@@ -409,7 +410,12 @@ rest are walked — a planned point opened again (6), a point whose relaunch
 is *continue* given its warm files (4), every walked point its start (5).
 Cold, nothing is taken over. A first launch of a calculation that reuses a
 finished one takes that one's points over by the reuse's own rule
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.16). The walk
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.16). A run that
+**continues from another stage's run** — a first launch's default, or a run
+named by `--from` — takes over the points its kind carries, done there
+(`continuation.carried_points`), each file named for this stage
+(`runfiles.RunNames.restaged`), its entry what that run knew of it, and
+nothing of its own stage's runs. The walk
 runs round by round — the rounds in the order the listing first meets them,
 each round's points in the listing order — a step for each walked prepared
 point, needing its walked needs, and a loop step for each container whose
@@ -538,7 +544,7 @@ Every file has one reader; every side asks it.
 
 | what | file | reader | who asks |
 |---|---|---|---|
-| the run's index | `<stem>-run0.points.json` | `runpoints.read_index` — another schema refused by name, an index of 2.54 naming `jobset migrate` (`OlderIndexError`, to which `status` answers with the `migrate` line as the next step); the registry parser `run-points-json` | the report steps, the kind's steps, the monitor; launch (the newest launched run's); `status` (taken over, planned points, the finish) |
+| the run's index | `<stem>-run0.points.json` | `runpoints.read_index` — another schema refused by name, an index of 2.54 naming `jobset migrate` (`OlderIndexError`, to which `status` answers with the `migrate` line as the next step); the registry parser `run-points-json` | the report steps, the kind's steps, the monitor; launch (the newest launched run's, and the run another stage's points are taken over from); `status` (taken over, planned points, the finish) |
 | where a point is | `calcdir.json` and the folders' names | `calcdirs.where` (its composing half, `calcdirs.RunPlace`, places every folder this table's readers are handed) | the report steps, the kind's steps, the monitor; the run door |
 | how a point's run ended | its conclusion marker | `parse.dirs.run_status` (with the run's launch record) | `status` (`continuation.point_rows`) |
 | what its output says it converged | its output | `_run_ending.verdict_of` | `point ended` (stamped); `status` (through `run_status`) |
@@ -558,9 +564,9 @@ Every file has one reader; every side asks it.
 | `runpoints` | 1, travels in `mb_monitor.pyz` and every bundle whose steps write the index | the index: `index_path`, `index_of`, `read_index` and its refusal of an older molbuilder's, `OlderIndexError`, `index_at`, `write_index`, `empty_index`, `add_point`, `entry_of`, `planned_by`, `taken_from`; the stamps: `stamp_start`, `stamp_end`, `stamp_step_error`, `stamp_finish`, and a kind's own step's facts and outcome, `note`; the rules: `rows_of`, `still_to_run`, `why_not_run`, `close`, `run_state`, `round_ended`, `said`, `reason`; the words: `count`, `round_outcome`, `outcomes`, `not_done_words`, `NOT_RUN` (spelled beside `_run_ending.points_state`), `NEVER_REACHED`; a part resolved beside the job: `part` |
 | `kind_table` | 1 | `run_of_points(kind, engine)` — the record of § 2.1; a part resolved on this machine, `part` |
 | `calcdirs` | 1, travels | the folders (§ 2.4): `where` reads which run and which point a folder is; `RunPlace` composes them — `point`, `prepared`, `scratch`, `walked`, `walked_all`; `prepared_folder` at prep |
-| `jobset.points` | 4 | `PointsOf`, `points_of(task)`, `record_of(task)`, `rung_points_of`, `walls_of` |
+| `jobset.points` | 4 | `PointsOf`, `points_of(task)`, `record_of(task)`, `rung_points_of`, `carried_of` (the points a stage takes over from the run it continues from), `walls_of` |
 | `jobset.submit` | 4 | `_points_walk` — the one walk; `_take_over`, `_all_done`, `_walk_script` |
-| `jobset.continuation` | 4 | `point_done`, `point_rows`, `points_state`, `points_verdict`, `never_reached` |
+| `jobset.continuation` | 4 | `point_done`, `point_rows`, `points_state`, `points_verdict`, `never_reached`; `carried_points` -- what a run continuing from another stage's takes over |
 | `monitor` | travels | `point started`, `point ended`, `notify`; a member's line |
 | `runwrap` | 3 | each point's run script: its monitor a member, its report steps, the kind's steps as their arguments — rendered by SIESTA's launch block, the engine every run of points runs on |
 

@@ -321,10 +321,10 @@ def scf_floats(
 
 # SCF column-header detection.  Real-world example lines:
 #
-#   v5 spin-polarized:
+#   v5 under Spin.Fix (each spin channel its own Fermi level):
 #       iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax     Ef_up Ef_dn(eV) dHmax(eV)
 #
-#   v5 closed-shell:
+#   v5 otherwise (one Fermi level -- a floating polarized moment's too):
 #       iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax     Ef(eV) dHmax(eV)
 #
 # We detect the line by its leading ``iscf`` token (case-insensitive;
@@ -384,9 +384,9 @@ SCF_COLUMN_KEYS = {
     #
     # They land in `Frame.scf_history` like every other column; the last
     # cycle's value is the converged one.
-    "ef":       "ef",       # closed-shell Fermi level
-    "ef_up":    "ef_up",    # collinear spin-polarized (up)
-    "ef_dn":    "ef_dn",    # collinear spin-polarized (down)
+    "ef":       "ef",       # the one Fermi level every spin channel shares
+    "ef_up":    "ef_up",    # under Spin.Fix: the up channel's own
+    "ef_dn":    "ef_dn",    # under Spin.Fix: the down channel's own
     "ef_x":     None,    # non-collinear (hypothetical future)
     "ef_y":     None,
     "ef_z":     None,
@@ -441,7 +441,7 @@ def cycle_positional(
     vals: List[float],
 ) -> Optional[Dict[str, Any]]:
     """Fallback when no SCF column header was seen yet.  Dispatches
-    on the value count -- 6 = closed-shell, 7 = collinear spin --
+    on the value count -- 6 = one Fermi level, 7 = two under Spin.Fix --
     using the historically-known SIESTA layouts:
 
       6 floats:  Eharris, E_KS, FreeEng, dDmax, Ef, dHmax
@@ -1340,4 +1340,24 @@ def tbt_channel_of(name: str) -> Optional[str]:
     """The channel a TBtrans file's name carries (:data:`TBT_CHANNELS`'
     tags), or ``None``."""
     return next((ch for ch, tag in TBT_CHANNELS if tag in name), None)
+
+
+#: THE FERMI LEVEL A SPIN CHANNEL HAS OF ITS OWN -- an SCF row's column
+#: (:data:`SCF_COLUMN_KEYS`) for each of :data:`TBT_CHANNELS`' two polarized
+#: channels.  SIESTA prints them only under ``Spin.Fix``, which holds each
+#: channel's electron count, so each its own chemical potential; otherwise
+#: one ``Ef`` -- the one every channel shares, a polarized run's floating
+#: moment included (``Src/write_subs.F``).
+_OWN_FERMI = dict(zip((ch for ch, _tag in TBT_CHANNELS[1:]),
+                      ("ef_up", "ef_dn")))
+
+
+def fermi_levels(cycle: Dict[str, Any],
+                 channels: Iterable[str]) -> Tuple[Optional[float], ...]:
+    """The Fermi level of each spin channel in ``channels`` (:data:`TBT_CHANNELS`'
+    names), as the SCF row ``cycle`` states it: a channel's own column where
+    SIESTA prints one per channel, else the one level every channel shares;
+    ``None`` where the row states neither."""
+    return tuple(cycle[own] if (own := _OWN_FERMI.get(ch)) in cycle
+                 else cycle.get("ef") for ch in channels)
 

@@ -1999,20 +1999,22 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "output (submission.md S4).")
 @click.option("--cold", is_flag=True,
               help="ONE stage: at its first launch, it takes nothing from "
-                   "the stage before it -- it starts from the calculation's "
-                   "structure; launched again, nothing from a run of its "
-                   "own.  Without it, a first launch "
-                   "takes the stage "
-                   "before it's newest run, which must have finished, and a "
-                   "launch again continues from its own latest run, however "
-                   "it ended (job-system.md 5.4).")
+                   "the stage it continues from -- it starts from the "
+                   "calculation's structure; launched again, nothing from a "
+                   "run of its own.  Without it, a first launch takes the "
+                   "newest run of the stage it continues from -- the stage "
+                   "before it; a SIESTA displacement sweep's later stage, "
+                   "the first, whose relaxation it takes over -- which must "
+                   "have finished, and a launch again continues from its own "
+                   "latest run, however it ended (job-system.md 5.4).")
 @click.option("--from", "from_attempt", default=None,
               metavar="NN_STAGE/run-N",
               help="ONE stage: the run it continues from, by its folder -- "
                    "e.g. '01_coarse/run-0' -- at its first launch, or "
                    "launched again, taken as said; its restart files are "
-                   "COPIED in.  A transport rung has no run to name "
-                   "(job-system.md 5.4).")
+                   "COPIED in -- a SIESTA displacement sweep's later stage, "
+                   "the run's relaxation.  A transport rung has no run to "
+                   "name (job-system.md 5.4).")
 @click.option("--gather", is_flag=True,
               help="ONE transport rung launched again: take its inputs anew "
                    "-- the newest run of each rung upstream, under the "

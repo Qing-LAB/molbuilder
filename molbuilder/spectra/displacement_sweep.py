@@ -141,7 +141,7 @@ def collect_sweep(calc, *,
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from .results import mass_of
     from ..engine_atom_index import convert_from_engine_numbering
-    from ..jobset.commands import rollback
+    from ..jobset.commands import block, launch_lines, rollback
     from ..jobset.materialize import newest_on_label
     from ..jobset.naming import stage_home
     from ..jobset.continuation import stage_run_state
@@ -257,6 +257,7 @@ def collect_sweep(calc, *,
                         for p in pending + failed))
 
     ref_name, ref, ref_fc_file, ref_meta = loaded[0]
+    attempt_of = {s["name"]: s["attempt"] for s in stages}
     for name, res, _f, _m in loaded[1:]:
         if (list(res.free_atom_idxs) != list(ref.free_atom_idxs)
                 or list(res.equilibrium_elements or [])
@@ -267,11 +268,13 @@ def collect_sweep(calc, *,
                 f"{list(res.free_atom_idxs)}): not one calculation's sweep")
         # ONE GEOMETRY, or the comparison is not a displacement's: each
         # result states the geometry its force constants were taken at
-        # (`engines/vibration.md` § 6.10.3), and each stage relaxes in its
-        # own run (§ 5.11 § 1) -- so two relaxations would be reported as
-        # the displacement's effect.  Every atom within SAME_GEOMETRY_ANG of
-        # the reference's: one geometry agrees exactly, and the tolerance
-        # absorbs the two files' float formatting.
+        # (`engines/vibration.md` § 6.10.3) -- a later stage takes the first
+        # stage's relaxation over (§ 5.9), but one launched cold relaxed on
+        # its own, and one that took it before the first stage relaxed
+        # again holds the older one -- so two relaxations would be reported
+        # as the displacement's effect.  Every atom within SAME_GEOMETRY_ANG
+        # of the reference's: one geometry agrees exactly, and the
+        # tolerance absorbs the two files' float formatting.
         moved = None
         if (res.equilibrium_positions_ang is not None
                 and ref.equilibrium_positions_ang is not None):
@@ -282,18 +285,34 @@ def collect_sweep(calc, *,
         if moved is None or moved > SAME_GEOMETRY_ANG:
             where = (f"an atom moved {moved:.2e} Å between them" if moved
                      is not None else "one of them states no geometry")
+            lead = (f"stages {ref_name!r} and {name!r} were measured at "
+                    f"different geometries ({where}): a displacement sweep "
+                    f"compares one geometry's force constants, and this "
+                    f"would report the geometry's change as the "
+                    f"displacement's.  ")
+            if (bool((ref.relaxation or {}).get("enabled"))
+                    != bool((res.relaxation or {}).get("enabled"))):
+                # THEY DIFFER IN WHETHER THEY RELAXED, as the two results
+                # state it -- one stated relaxed, the other relaxed: neither
+                # took its relaxation from the other (engines/vibration.md
+                # 5.9).
+                raise SweepError(
+                    lead + f"{name!r} takes no relaxation from {ref_name!r}: "
+                    f"one of them is stated relaxed (`already_relaxed`) and "
+                    f"the other relaxes.  State it alike on every stage, "
+                    f"from the state saved before their groups' first "
+                    f"launch: " + rollback("their groups' first launch",
+                                           base=base))
             raise SweepError(
-                f"stages {ref_name!r} and {name!r} were measured at different "
-                f"geometries ({where}): "
-                f"a displacement sweep compares one geometry's force "
-                f"constants, and this would report the geometry's change as "
-                f"the displacement's.  Each stage relaxes in its own run "
-                f"(engines/vibration.md 5.11 1): to measure them at one "
-                f"geometry, state the structure relaxed (`already_relaxed`) "
-                f"-- the relaxed geometry saved from one stage's `relax` "
-                f"call -- and prepare the stages from the state saved "
-                f"before their groups' first launch: "
-                + rollback("their groups' first launch", base=base))
+                lead + f"A later stage takes the first stage's relaxation "
+                f"from its newest run at its first launch "
+                f"(engines/vibration.md 5.9); one launched --cold relaxed on "
+                f"its own, and one that took it before the first stage "
+                f"relaxed again holds the older one.  To measure {name!r} "
+                f"at the geometry {ref_name!r} was measured at, launch it "
+                f"again taking that relaxation --\n"
+                + block(launch_lines("task", name, base=base,
+                                     flags=("--from", attempt_of[ref_name]))))
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.
     masses = [mass_of(i, ref.equilibrium_elements, ref.equilibrium_masses_amu)

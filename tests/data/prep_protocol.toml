@@ -157,6 +157,73 @@ stage = "freq"
 template = { already_relaxed = true }
 plan_carries = { freq = [] }
 
+# ---- A DISPLACEMENT SWEEP: its later stage continues from the first, whose
+# relaxation it takes over (engines/vibration.md 5.9; job-system.md 5.4) --
+# so every stage's force constants are taken at one geometry.  What the take-over
+# copies, renamed for the stage, is read off real runs.
+[[case]]
+name = "a SIESTA displacement sweep's later stage, added in a group of its own, says at prep that its first launch takes the first stage's relaxation over (engines/vibration.md 5.9)"
+calculation = "vibration"
+saved_first = true
+added = [{ name = "freq_half", overrides = { fc_displacement = 0.02 } }]
+stage = ["freq", "freq_half"]
+said = ["at launch: takes the relaxation over from `freq`'s newest run, which must have finished"]
+
+[[case]]
+name = "...and put in one group with the first stage it is refused, naming both and why: it builds on that stage"
+calculation = "vibration"
+saved_first = true
+added = [{ name = "freq_half", overrides = { fc_displacement = 0.02 } }]
+regrouped = [1, 1]
+regroup_refused = ["`freq_half` is in group 1 with `freq`, which it builds on"]
+regroup_status = 400
+
+[[case]]
+name = "...and its first launch waits for the first stage -- refused before anything is sent, in the status door's words, naming the group to launch first"
+calculation = "vibration"
+saved_first = true
+added = [{ name = "freq_half", overrides = { fc_displacement = 0.02 } }]
+stage = ["freq", "freq_half"]
+launch = []
+launch_stage = "freq_half"
+launch_refused = ["`freq_half` continues from the newest attempt of `freq`", "which has not been launched", "molbuilder jobset launch task --group 1"]
+launch_writes_nothing = true
+
+[[case]]
+name = "...and --from names a run of the first stage to take the relaxation from -- one never launched refused, naming why"
+calculation = "vibration"
+saved_first = true
+added = [{ name = "freq_half", overrides = { fc_displacement = 0.02 } }]
+stage = ["freq", "freq_half"]
+launch = ["--from", "01_freq/run-0"]
+launch_stage = "freq_half"
+launch_refused = ["--from '01_freq/run-0': that run was never launched"]
+launch_writes_nothing = true
+
+[[case]]
+name = "...and one launched whose relaxation is not done refused, naming the ways on -- a run that has it, or --cold"
+calculation = "vibration"
+before = [["prep", "task", "--group", "1"]]
+launched = ["freq"]
+added = [{ name = "freq_half", overrides = { fc_displacement = 0.02 } }]
+stage = "freq_half"
+launch = ["--from", "01_freq/run-0"]
+launch_stage = "freq_half"
+launch_refused = ["`freq_half` takes the relaxation over from the run it continues from, and 01_freq/run-0 holds none of it done", "--stage freq_half --cold"]
+launch_writes_nothing = true
+
+[[case]]
+name = "...and launched --cold it takes nothing: it relaxes on its own, its walk running the relaxation"
+calculation = "vibration"
+saved_first = true
+added = [{ name = "freq_half", overrides = { fc_displacement = 0.02 } }]
+stage = ["freq", "freq_half"]
+launch = ["--cold"]
+launch_stage = "freq_half"
+launch_mode = "direct"
+listing = ["runs the relaxation"]
+launch_writes_nothing = true
+
 [[case]]
 name = "...and one whose description changed since is prepared again whole -- its first run reused, and what differed named"
 before = [["prep", "task", "--group", "1"]]

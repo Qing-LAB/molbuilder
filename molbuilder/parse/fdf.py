@@ -44,6 +44,15 @@ SPIN_WORDS = {
                            for tail in ("", "+offsite", "+onsite")),
 }
 
+#: HOW MANY SPIN COMPONENTS each treatment's Hamiltonian holds -- SIESTA's
+#: ``spin%H`` (``spin_subs.F90``), keyed by :data:`SPIN_WORDS`' treatments:
+#: what an engine file's size scales with (`transport.gf_files`), and, for
+#: a collinear spin, the spin channels an optical calculation writes (one,
+#: or up and down); it is handed ``spin%Grid`` -- four for non-collinear
+#: and spin-orbit alike -- and stops on it (``Src/optical.F``).
+SPIN_COMPONENTS = {"restricted": 1, "unrestricted": 2, "non-collinear": 4,
+                   "spin-orbit": 8}
+
 
 def fdf_key(key: str) -> str:
     """A keyword as fdf matches it: case-blind, and blind to ``.``, ``-``

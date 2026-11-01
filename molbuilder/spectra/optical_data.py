@@ -21,8 +21,9 @@ and sha256; ``/structure`` the reference geometry -- the result's own
 layout (`spectra.datafile.write_structure_group`), its atom axis listed by
 user index; ``/frames`` one row per optical call: its mode, frequency, side
 and ``δQ``, the geometry it computed at, its state and the run that computed
-it, its output's SCF facts, its ``.EPSIMG`` header's, and ε₂ over
-``frame × photon_energy_ev × spin``.
+it, its output's SCF facts -- the Fermi level per spin channel -- its
+``.EPSIMG`` header's, and ε₂ over ``frame × photon_energy_ev × spin``; the
+spin channels the optical deck's spin computes.
 
 **A frame not yet run is a row of fills** beside its state: the file is
 rewritten after each call, so it is the Raman phase so far.  Every frame
@@ -56,9 +57,12 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from spectra_datafile import (  # type: ignore[no-redef]
         read_structure_group, write_structure_group)
 
-DATA_SCHEMA = "molbuilder/optical-data@2"
-#: ``@1`` kept ``δ`` as an attribute of ``/settings``, read as it is.
-READABLE_DATA_SCHEMAS = ("molbuilder/optical-data@1", DATA_SCHEMA)
+DATA_SCHEMA = "molbuilder/optical-data@3"
+#: ``@1`` kept ``δ`` as an attribute of ``/settings``, read as it is; ``@1``
+#: and ``@2`` kept one Fermi level a frame, read as the level of each of its
+#: channels -- they were written only where SIESTA printed one ``Ef``.
+READABLE_DATA_SCHEMAS = ("molbuilder/optical-data@1",
+                         "molbuilder/optical-data@2", DATA_SCHEMA)
 
 #: WHAT THE CALCULATION IS, in words -- the file's own title.
 WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
@@ -116,7 +120,8 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "Optical.Broaden / 10 apart (Src/optical.F)",
             source=epsimg),
         Var("spin", ("spin",), "coordinate", "", "spin channel",
-            "unpolarized, or up and down -- the SIESTA family's names",
+            "unpolarized, or up and down -- the channels the optical deck's "
+            "spin computes, in the SIESTA family's names",
             dtype=str),
         Var("call", ("frame",), "given", "", "the call's folder",
             "its folder below the run: optical/f000, optical/f001, ...",
@@ -150,8 +155,11 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             dtype="i4", fill=-1, source=out),
         Var("total_energy_ev", ("frame",), "raw", "eV", "the total energy",
             "E_KS of the call's SCF", source=out),
-        Var("fermi_level_ev", ("frame",), "raw", "eV", "the Fermi level",
-            "Ef of the call's last SCF cycle", source=out),
+        Var("fermi_level_ev", ("frame", "spin"), "raw", "eV",
+            "the Fermi level",
+            "the channel's Fermi level at the call's last SCF cycle: its own "
+            "(Ef_up, Ef_dn) under Spin.Fix, else the one Ef every channel "
+            "shares (Src/write_subs.F)", source=out),
         Var("engine_elapsed_s", ("frame",), "raw", "s",
             "the engine's wall time",
             "SIESTA, launch to exit, as the call's session log measured it",
@@ -197,7 +205,8 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
     them -- written to ``path`` through the one atomic writer
     (`persist.write_bytes`); returns the path.  Refused by name: a key this
     file does not know, and a frame whose spectrum is on another grid of
-    photon energies than the payload states."""
+    photon energies than the payload states, and a frame whose per-channel
+    values are not one per spin channel the payload states."""
     _checked(payload)
     p = Path(path)
     label = str(payload["label"])
@@ -262,12 +271,17 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
                                                        dtype=float)
             if f.get("scf_iterations") is not None:
                 values["scf_iterations"][k] = int(f["scf_iterations"])
-            for name in ("total_energy_ev", "fermi_level_ev",
-                         "engine_elapsed_s"):
+            for name in ("total_energy_ev", "engine_elapsed_s"):
                 values[name][k] = number_attr(f.get(name))
-            for name in ("f_sum", "drude_wp2_ha2"):
+            for name in ("fermi_level_ev", "f_sum", "drude_wp2_ha2"):
                 if f.get(name) is not None:
-                    values[name][k] = np.asarray(f[name], dtype=float)
+                    v = np.asarray(f[name], dtype=float)
+                    if v.shape != (len(spins),):
+                        raise OpticalDataError(
+                            f"frame {f['call']}: {name} holds {v.size} "
+                            f"value(s); the file states {len(spins)} spin "
+                            f"channel(s), one each")
+                    values[name][k] = v
             if f.get("eps2") is not None:
                 e = np.asarray(f["eps2"], dtype=float)
                 if e.shape != (len(spins), grid.size):
@@ -332,6 +346,10 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
             pos = np.asarray(fv["position_ang"]["data"][k], dtype=float)
             eps2 = np.asarray(fv["eps2"]["data"][k], dtype=float).T
             f_sum = np.asarray(fv["f_sum"]["data"][k], dtype=float)
+            # ONE LEVEL A FRAME before @3, each of its channels' (above).
+            fermi = np.broadcast_to(
+                np.asarray(fv["fermi_level_ev"]["data"][k], dtype=float),
+                (len(out["spin"]),))
             drude = np.asarray(fv["drude_wp2_ha2"]["data"][k], dtype=float)
             iters = int(fv["scf_iterations"]["data"][k])
             frames.append({
@@ -346,8 +364,9 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
                 "computed_in": str(fv["computed_in"]["data"][k]),
                 "scf_iterations": None if iters < 0 else iters,
                 **{name: unnumber_attr(fv[name]["data"][k])
-                   for name in ("total_energy_ev", "fermi_level_ev",
-                                "engine_elapsed_s")},
+                   for name in ("total_energy_ev", "engine_elapsed_s")},
+                "fermi_level_ev": (fermi.tolist() if fermi.size
+                                   and np.isfinite(fermi).all() else None),
                 "f_sum": (f_sum.tolist() if f_sum.size
                           and np.isfinite(f_sum).all() else None),
                 "drude_wp2_ha2": (drude.tolist() if drude.size

@@ -397,7 +397,7 @@ classDiagram
 | **`StageHome`** | 3 | *where does this stage live, and what is its number?* — read off the disk: a stage with a folder keeps its number, one without takes the next unused ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | `stage_home` |
 | **the launch record** | 1 | *was this run launched — how, where, from what?* — its `run.json`, read through `persist`, its schema checked, as a mapping | `launch_record` |
 | **`Ending`** | 1 | *did this run end on its own, and how?* — molbuilder's marker for that run (it carries the exit code); a run our wrapper did not run is not a run of ours | `ending` |
-| **`Continuation`** | 4 | *what does this run start from?* — the run it continues from (by default or named) or none (cold), what that run was, **and the files it carries** | `continuation_answer` |
+| **`Continuation`** | 4 | *what does this run start from?* — the run it continues from (by default or named) or none (cold), what that run was, **and what it carries** — its files, or a run of points' points its kind carries (a sweep's later stage: the relaxation) | `continuation_answer` |
 | **`Placement`** | 1 | *where does this job go?* — the queue the job names, bound on the target's record (its partition and QoS), and its fit there: the nodes that hold its whole request and each limit it is over | `scheduler.place.place`; floor 3's `jobset.placement.placed` asks it and records on the job the queue's name, partition and QoS, and where each value came from |
 | **`Attempt`** | 4 | *which run is this, and what was put in it?* | `prepare_attempt`, its folder opened by `open_run` — the one opener of a run folder (a stage's run, a trial's, a bias point's) |
 | **`Plan`** | 1 | *what will this prep — or this launch — write?* — every file's text and every folder, decided with nothing written, then written in order by `Plan.carry_out` after the save | `jobset/planned.py` — made by the prep entry (`prep_task`, `prep_bench`), filled by `prep_calculation` through `plan_stage`; a launch's is its `LaunchPlan.writes`, carried out by `send_launch` |
@@ -473,7 +473,7 @@ calculation's own list *or* the shipped one; a GPU job by its count *or* by
 | **launched** | `launch_record(where)` — the run's `run.json`; one that does not read is an error naming the file, never *launched* or *not launched* | 1 | status, the Run panel, every launch gate, the transport citation |
 | **how a run ended** | `ending(where, basename, run)` — the run's own conclusion marker, which carries the exit code; nothing else answers — the engine's own end mark says the engine ended, not the job | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, a re-launch's plan, the transport record, a benchmark's trials, the viewers through the server |
 | **a run to build on** | `usable(state)` — the one status door says it **finished**: it ended on its own with exit code 0 and nothing in its output says the engine stopped (`parse.dirs.run_status`, the door `status` asks; user, 2026-10-06); the default of every hand-over, while a run named with `--from` is taken as said and a structure can be stated relaxed ([`job-system.md`](?doc=execution/job-system.md) § 5.4) | 4 | every hand-over by default: a continuing stage, the frequency stage's geometry, a transport rung's inputs |
-| **what a run starts from** | `continuation_answer(...)` → `(Continuation, refusal)`, the files it carries included | 4 | a first launch — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
+| **what a run starts from** | `continuation_answer(...)` → `(Continuation, refusal)`, what it carries included (`ready.first_launch_takes`) | 4 | a first launch — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
 | **a stage launched again** | `relaunch(..., cold=)` → `Continuation` or `None` — warm, its own latest run, however it ended, when it continues from a run of its own (`Job.relaunch_continues`: its kind resumes and it takes something from a run); cold, or a stage that takes nothing, `None` | 4 | launch — opened, written and ledgered as prep's hand-over is — and status, which words what launching again will do from the same fact ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
 | **the restart files** | `warm_list(engine, kind, base)` — the calculation's own `warm-files.toml` first, else the shipped one ([`job-contracts.md`](?doc=execution/job-contracts.md)) | 1 | a job's declaration, status's column, the run script's detection and a bias scan's hand-forward — both written at prep from it |
 | **the engine's scratch** | `is_scratch(name)` — whether a file of that name is one of `scratch_families()`: `*<suffix>` for every suffix any engine's shipped vocabulary (`molbuilder/<engine>/warm-files.toml`) names `scratch` — SIESTA's `*.TSGFL`, `*.TSGFR`, `*.contrib.EPSIMG`; PySCF's none — read once a process. It takes no engine: the files are named by what wrote them, and no engine writes another's, so a folder needs no record of its engine for this answer. A calculation's own copy of the vocabulary decides none of it ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) | 1 | the checkpoint — its save, its status, its restore and every read of a MANIFEST (`state_entries`) — which stores it in neither store and whose restore removes it ([`checkpointing.md`](?doc=execution/checkpointing.md) S1); `jobset scratch`, through `materialize.scratch_in(calc)` and `runstatus.scratch_answer(calc)`; a run of points' take-over (`submit._points_walk`), which copies a done point's files but those; the walk's `empty_scratch`, its `ls`, `du` and `rm` globs rendered from `scratch_families()`; the device's line of `jobset status` (`transport.gf_files`) |
@@ -555,8 +555,10 @@ file and the key.
   continuing from the one before (an optimization's); a kind with roles is
   **linked**, the kind deciding what each stage builds on — the inputs its
   rungs take from the rungs its kind names (a transport calculation's, its
-  part naming them), or nothing of another stage, each built on the
-  calculation's structure (a vibration's). **A role may be a lead**, named by
+  part naming them), the stage its rule says a stage continues from (a
+  SIESTA displacement sweep's later stage, the first, whose relaxation it
+  takes over — its part, `continues`), or nothing of another stage, each
+  built on the calculation's structure (a vibration's first). **A role may be a lead**, named by
   the region of the junction it is cut from — a transport calculation's
   `electrode_L` is `L-electrode`'s crystal: its files are on that region's
   name, `<label>_L-electrode` (`kind_table.rung_label`,
@@ -630,6 +632,8 @@ file and the key.
   § 2.2);
 - for a linked kind whose rungs take inputs, which rung hands which file to
   which (a part) and the gather that takes them at a first launch (a part);
+  for one whose stage continues from another, which stage it continues
+  from (a part, `continues`, over the stages as prep resolves them);
 - the builder of its rung, for a pair with steps of its own (a part);
 - what `summarize task` adds up for it, and the options that summary reads
   (a part) — a transport calculation's current against voltage, a
@@ -682,7 +686,8 @@ by the one door, in one sentence naming the engines it runs on.
 **A part that is code is named, and lives on the floor that resolves it.** A
 record names each as `module:NAME`, and the floor that asks resolves it — the
 conductor a rung's builder, the run of points (floor 4) its declaration,
-the ladder (floor 3, `jobset/ladder`) a linked kind's inputs, the ready door
+the ladder (floor 3, `jobset/ladder`) a linked kind's inputs and the stage
+a stage continues from, the ready door
 its gather, `summarize` (floor 6) its sum, the settings gate
 (`validation.validate`) a kind's science checks, `jobset/engines.engine_seam`
 the seam for floor 3 and the surfaces, any floor the config class — and a

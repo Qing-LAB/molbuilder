@@ -95,7 +95,8 @@ def unticked(real_co2_vibration, tmp_path_factory):
     result written; a displacement sweep, `freq_half` at 0.02 Bohr added
     beside `freq` in a group of its own (a launched group is fixed,
     `engines/stages.md` § 2), prepared, the sweep summarized (``early``),
-    `freq_half` launched and summarized (``record``), and summarized again
+    `freq_half` launched -- taking `freq`'s relaxation over,
+    `engines/vibration.md` § 5.9 -- and summarized (``record``), and summarized again
     under a tolerance (``flagged``).  What each step answered is written
     down by its name."""
     from support.real_runs import _road_at, _taken, _typed, copy_of
@@ -252,6 +253,10 @@ def _the_optical_record(run, computed_in, n: int = 0):
     grid = np.asarray(data["photon_energy_ev"])
     ds = xarray.load_dataset(path, group="frames")
     assert ds["eps2"].dims == ("frame", "photon_energy_ev", "spin")
+    # EACH CHANNEL'S FERMI LEVEL, one a channel (§ 5.11 § 8).
+    assert ds["fermi_level_ev"].dims == ("frame", "spin")
+    assert all(len(f["fermi_level_ev"]) == len(data["spin"])
+               for f in frames), frames
     for k, (f, c) in enumerate(zip(frames, calls)):
         row = entry_of(index, c.rel)
         assert f["state"] == "finished", (c.rel, f["state"])
@@ -1425,6 +1430,23 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
 
     half = _deck_of(unticked.call("freq_half", FC))
     assert _said(half, "FC.Displacement")[:1] == ["0.02"]
+    # ONE RELAXATION FOR THE SWEEP (§ 5.9; § 5.11 § 6): `freq_half`'s run
+    # took `freq`'s `relax` call over and ran none of its own -- its index
+    # naming the call that computed it, as its start's record does, and its
+    # files named for `freq_half`, so the run door finds its output.
+    from molbuilder.runrecord import read_continued_from
+    from molbuilder.runs import run_of
+    from molbuilder.siesta.vibration_phases import RELAX
+    (relax,) = [p for p in _index_of(unticked, "freq_half")["points"]
+                if p["phase"] == RELAX]
+    # `freq`'s run-0 computed it.
+    assert relax["taken_from"] == unticked.call("freq", RELAX, 0) \
+        .relative_to(unticked.bundle).as_posix(), relax
+    assert relax["started"] is None, relax
+    called = unticked.call("freq_half", RELAX)
+    assert str(read_continued_from(called)) == relax["taken_from"]
+    assert run_of(called).stdout is not None, sorted(
+        f.name for f in called.iterdir())
     a1, a2 = (_the_result(unticked, "freq"),
               _the_result(unticked, "freq_half"))
     for d in (a1, a2):

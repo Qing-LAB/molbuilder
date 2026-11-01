@@ -508,14 +508,16 @@ def first_launch_takes(calc, stage: str, *,
     one (:func:`gather_of` -- a transport rung's, the three gates,
     `engines/transport.md` § 6.1), each point its own for a rung that runs
     per point -- its inputs its kind's, never named; a SIESTA
-    vibration's run nothing -- its calls build on each other inside the run
-    (`engines/vibration.md` § 5.11), ``cold`` and ``from_attempt`` refused
-    by the one door (`continuation.cannot_be_named`); an independent
-    stage's continuation -- the stage before it's newest run, which must
-    have finished, ``from_attempt`` a run named, ``cold`` none.  The
-    continuation carries the files it would copy (the pair's rule,
-    `materialize.continuation_files`), so a run holding none is refused
-    here, before anything is sent.  ``calc`` is the calculation as the verb
+    vibration's first stage nothing -- its calls build on each other inside
+    the run (`engines/vibration.md` § 5.11), ``cold`` and ``from_attempt``
+    refused by the one door (`continuation.cannot_be_named`); a stage that
+    continues from another -- an independent stage, the stage before it; a
+    displacement sweep's later stage, the first -- that stage's newest run,
+    which must have finished, ``from_attempt`` a run named, ``cold`` none.
+    The continuation carries what it would take: a run's files (the pair's
+    rule, `materialize.continuation_files`); a run of points, the points
+    its kind carries, done there (`continuation.carried_points`) -- so a
+    run holding none is refused here, before anything is sent.  ``calc`` is the calculation as the verb
     read it (A16): every question about another stage -- prepared, its
     newest run, its job -- is its plan's, the whole plan, never a set
     narrowed to what one launch sends."""
@@ -536,7 +538,8 @@ def first_launch_takes(calc, stage: str, *,
         pts = points_of(task)
         why = (None if cold and not from_attempt and task.reuses
                and pts is not None and pts.rung_points(calc, stage)
-               else cannot_be_named(base, task, stage, from_attempt, cold))
+               else cannot_be_named(base, task, stage, from_attempt, cold,
+                                    template_text=calc.template_text))
         if why:
             return None, None, why
         try:
@@ -554,6 +557,45 @@ def first_launch_takes(calc, stage: str, *,
     if cont is None:
         # FROM NOTHING.
         return None, None, None
+    from .points import carried_of, points_of
+    declared = points_of(task)
+    if declared is not None and declared.rung_points(calc, stage):
+        # A RUN OF POINTS CARRIES POINTS -- each its kind takes over, done
+        # in the run it continues from (`runs-of-points.md` § 3, op. 3).
+        from .commands import block, launch_lines
+        from .continuation import carried_points
+        if not carried_of(calc, stage):
+            # PREPARED CARRYING NOTHING (stated relaxed when prepared): it
+            # takes nothing from another run, as prep left it.
+            return None, None, None
+        took = carried_points(calc, stage, cont)
+        if not took:
+            # THE WAYS ON, each typed out: an earlier run of that stage
+            # that has them done, or the calculation's structure.
+            from ..paths import attempt_dir, attempts_in
+            from .naming import stage_home
+            home = stage_home(base, task, cont.stage).dir
+            other = next((str(a.relative_to(base)) for a in (
+                attempt_dir(home, n) for n in reversed(attempts_in(home)))
+                if str(a.relative_to(base)) != cont.source
+                and carried_points(calc, stage, dataclasses.replace(
+                    cont, source=str(a.relative_to(base))))), None)
+            words = ", ".join(pt.words() for pt in carried_of(calc, stage))
+            return None, None, (
+                f"`{stage}` takes {words} over from the run it continues "
+                f"from, and {cont.source} holds none of it done -- "
+                + (f"take it from a run of `{cont.stage}` that has --\n"
+                   + block(launch_lines("task", stage, base=base,
+                                        flags=("--from", other)))
+                   + "\nor " if other else "")
+                + f"start `{stage}` from the calculation's structure, "
+                f"computing it itself --\n"
+                + block(launch_lines("task", stage, base=base,
+                                     flags=("--cold",)))
+                + "\n(job-system.md § 5.4)")
+        # WHAT IT WOULD COPY, in the points' own words (`Continuation.line`).
+        return (dataclasses.replace(cont, carries=tuple(
+            pt.words() for _p, pt in took)), None, None)
     try:
         names = continuation_files(calc, stage, cont.source,
                                    named=not cont.by_default)
@@ -573,7 +615,10 @@ def at_launch(calc, stage: str, *, job=None) -> List[dict]:
     when prepared; ``files`` ``None`` before) from the stage before it, by
     the pair's rule the launch copies by (`model.warm_carry`) against that
     stage's job in the calculation's plan, ``calc`` as the verb read it
-    (A16); ``[]`` for a stage that builds on nothing."""
+    (A16); a run of points that continues from another stage, the points
+    its kind carries (`points.PointsOf.carried`: a displacement sweep's
+    later stage, the first stage's relaxation); ``[]`` for a stage that
+    builds on nothing."""
     from .ladder import inputs_of, stage_before
     task = calc.task
     inputs = inputs_of(task)
@@ -588,6 +633,15 @@ def at_launch(calc, stage: str, *, job=None) -> List[dict]:
     prev = stage_before(task, stage, calc.template_text)
     if prev is None:
         return []
+    from .points import carried_of, points_of
+    if points_of(task) is not None:
+        # A RUN OF POINTS CARRIES POINTS -- named once its prep has listed
+        # them, else said as the run it continues from.
+        took = [pt.words() for pt in carried_of(calc, stage)]
+        return [{"from": prev, "files": took,
+                 "line": (f"at launch: takes {', '.join(took)} over from "
+                          if took else "at launch: continues from ")
+                         + f"`{prev}`'s newest run, which must have finished"}]
     files = (carried_from(calc, job, prev)
              if job is not None and job.warm else None)
     return [{"from": prev, "files": files,

@@ -16,8 +16,10 @@ ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         run; a call's entry in the run's index (:func:`point_entry`), the
         one shape launch and the force constants' step write; and the
         count in the vibration's words (:func:`count_words`, the kind
-        table's ``count`` part).  The index itself, its stamps and its
-        rules are every run of points' (`runpoints`).
+        table's ``count`` part); the stage a displacement sweep's later
+        stage continues from (:func:`continues_from`, the kind table's
+        ``continues``).  The index itself, its stamps and its rules are
+        every run of points' (`runpoints`).
 USED-BY `jobset.prep`, `jobset.vibration_points`, `spectra.siesta_vibration`,
         `siesta.vibration_deck`, `mode_frames`, `spectra.displacement_sweep`,
         `monitor` (the count, through the index's part)
@@ -91,6 +93,12 @@ class PhaseRule:
     #: each in a folder below a container named after the phase (§ 3) --
     #: ``None`` for a phase whose call prep prepares.
     planned_by: Optional[str] = None
+    #: Whether a stage that CONTINUES FROM ANOTHER takes this phase's call
+    #: over from that stage's run rather than computing it -- the
+    #: relaxation a displacement sweep's later stage measures at, so every
+    #: stage's force constants are taken at one geometry (§ 5.9; § 5.11
+    #: § 6).
+    carried: bool = False
 
     @property
     def planned(self) -> bool:
@@ -104,7 +112,7 @@ PHASES: Tuple[PhaseRule, ...] = (
               switch=("already_relaxed", True),
               coordinates="structure", seed=None, products=(),
               verdict_counts=False, warm_kind="optimization", needs=(),
-              relaunch=CONTINUE),
+              relaunch=CONTINUE, carried=True),
     PhaseRule(FC, part="fc", role="force_constants", switch=None,
               coordinates=RELAX, seed=(RELAX, ".DM"), products=(".FC",),
               verdict_counts=True, warm_kind="vibration", needs=(RELAX,)),
@@ -143,6 +151,24 @@ def phases_on(cfg) -> Tuple[PhaseRule, ...]:
     return tuple(p for p in PHASES
                  if p.switch is None
                  or getattr(cfg, p.switch[0], None) != p.switch[1])
+
+
+def continues_from(stages, stage: str) -> Optional[str]:
+    """THE STAGE A DISPLACEMENT SWEEP'S LATER STAGE CONTINUES FROM (§ 5.9;
+    § 5.11 § 6) -- the kind table's ``continues`` part, asked by the ladder
+    (`jobset.ladder.stage_before`) with ``stages``, ``[(name, resolved
+    config)]`` in ladder order: the first, where both run every carried
+    phase -- the relaxation -- so the later stage takes its call over and
+    measures at the first stage's geometry; ``None`` for the first stage,
+    and for a stage that, or whose first stage, runs no carried phase
+    (stated relaxed)."""
+    names = [n for n, _c in stages]
+    carried = {p.name for p in PHASES if p.carried}
+    if stage not in names or names.index(stage) == 0 or not carried:
+        return None
+    runs = [{p.name for p in phases_on(cfg)} for _n, cfg in stages]
+    return (names[0] if carried <= runs[names.index(stage)]
+            and carried <= runs[0] else None)
 
 
 @dataclass(frozen=True)
@@ -375,6 +401,7 @@ def force_constants_call(run_dir) -> Path:
 
 
 __all__ = ["RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES", "phase",
-           "phases_on", "IR_CHARGES", "Call", "calls_of", "must_hold",
+           "phases_on", "continues_from", "IR_CHARGES", "Call", "calls_of",
+           "must_hold",
            "point_entry", "count_words", "run_size_words",
            "force_constants_call"]

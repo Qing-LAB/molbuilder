@@ -6,10 +6,11 @@ Which ladder a kind has is read off its roles in the kind table
 continues from the stage before it, as the description resolves it (an
 override ``restart: clean`` starts it from the structure); a linked kind's
 stage builds on what its kind says -- the inputs its pair names, taken from
-the rungs upstream (a transport rung's), or nothing of another stage (a
-SIESTA vibration's one stage is one run whose calls build on each other
-inside the run, `engines/vibration.md` § 5.11).  Read off the description
-and its template -- which RUN of that stage is taken is the layout's
+the rungs upstream (a transport rung's), or the stage its pair's rule says
+it continues from (the kind table's ``continues``: a SIESTA displacement
+sweep's later stage, the first, whose relaxation it takes over,
+`engines/vibration.md` § 5.9), else nothing of another stage.  Read off the description and its
+template -- which RUN of that stage is taken is the layout's
 (`continuation.continuation_answer`).
 """
 from __future__ import annotations
@@ -29,9 +30,10 @@ def inputs_of(task) -> Optional[Callable]:
 def upstream_of(task, stage: str,
                 template_text: Optional[str] = None) -> Set[str]:
     """The stages ``stage`` builds on, as the description states it: the
-    rungs its inputs come from (:func:`inputs_of`); an independent stage's
-    stage before it (none for one set `restart: clean`, or the first);
-    nothing for any other.  What a job's members may not do to each other
+    rungs its inputs come from (:func:`inputs_of`); else the stage it
+    continues from (:func:`stage_before` -- an independent stage's stage
+    before it, none for one set `restart: clean` or the first; a sweep's
+    later stage's first).  What a job's members may not do to each other
     (`group`) asks it."""
     inputs = inputs_of(task)
     if inputs is not None:
@@ -44,7 +46,8 @@ def independent(task) -> bool:
     """An INDEPENDENT ladder, whose stages continue one from another -- a
     kind without roles in the kind table (`job-system.md` § 5.4).  A linked
     stage, its kind's rungs named by role, builds on what its kind says:
-    its inputs (:func:`inputs_of`), or nothing of another stage."""
+    its inputs (:func:`inputs_of`), the stage its pair's rule says it
+    continues from (:func:`stage_before`), or nothing of another stage."""
     from ..kind_table import kind
     return not kind(task.calculation).roles
 
@@ -73,13 +76,21 @@ def stage_before(task, stage: str,
                   template_text: Optional[str] = None) -> Optional[str]:
     """The stage ``stage`` continues from by default -- the one
     before it in the ladder, resolved as `prep` resolves it (template ⊕
-    stage overrides, so an override's ``restart: clean`` is read) -- or
-    ``None``: a linked kind, the first stage, one that starts clean,
-    one the description does not hold (which prep refuses at its checkpoint
-    2)."""
+    stage overrides, so an override's ``restart: clean`` is read); a
+    linked kind's stage, the one its pair's rule names (the kind table's
+    ``continues``: a displacement sweep's later stage, its first,
+    `engines/vibration.md` § 5.9) -- or ``None``: any other
+    linked stage, the first stage, one that starts clean, one the
+    description does not hold (which prep refuses at its checkpoint 2)."""
     from ..identity import continues
     if not independent(task):
-        return None
+        # THE PAIR'S RULE (its kind-table ``continues``), resolved here as
+        # `inputs_of` resolves its part and asked of the stages as prep
+        # resolves them.
+        from ..kind_table import part_of
+        rule = part_of(str(task.calculation), str(task.engine), "continues")
+        return (rule(resolved_stages(task, template_text), stage)
+                if rule is not None else None)
     ladder = resolved_stages(task, template_text)
     names = [n for n, _c in ladder]
     if stage not in names:

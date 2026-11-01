@@ -13,7 +13,8 @@ This module answers the group's questions, each in one place:
 
 * **does a stage build on another** (`ladder.upstream_of`) -- the one fact
   the description already states, the ladder's: the inputs a linked kind's
-  rungs take, an independent stage's stage before -- and so
+  rungs take, the stage a stage continues from (an independent stage's
+  stage before, a displacement sweep's later stage's first) -- and so
   **the numbers a new calculation takes** (:func:`default_groups`,
   :func:`fresh_groups`) and **whether the stated ones keep it**
   (:func:`check_groups`);

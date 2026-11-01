@@ -392,7 +392,9 @@ def calls_made(calls: Path):
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `regrouped` -- each stage's group set
 # anew, one number a stage, through the same Save, and `regroup_refused` --
-# what Save's refusal of it says, the row ending there; `change_refused` --
+# what Save's refusal of it says, the row ending there, `regroup_status` its
+# status (409 unless the row says: a job request its preflight refuses is
+# 400); `change_refused` --
 # what Save's refusal of the row's `changed` or `removed` says, nothing
 # saved or written, the row ending there (`_saved_or_refused`);
 # `source_edited` --
@@ -659,11 +661,15 @@ def _road_held_edited(held, bundle) -> None:
         src)
 
 
-def _road_regrouped(groups, bundle, refused=None) -> bool:
+def _road_regrouped(groups, bundle, refused=None, status=409) -> bool:
     """Each stage's group set anew -- ``groups``, one number a stage, in
     order -- through Task setup's Save, as the page's Group column writes
     them: taken, or refused saying each of ``refused`` (the row's
-    ``regroup_refused``) -- ``False`` then, the row ending there."""
+    ``regroup_refused``) with ``status`` (its ``regroup_status``: 409 for
+    groups at odds with the folder's runs, `web/task-setup.md` § 8; 400 for
+    a job request its own preflight refuses, `execution/job-request.md`
+    § 3.3, the Save's answer to a record it refuses) -- ``False`` then, the
+    row ending there."""
     import json
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)
@@ -671,7 +677,7 @@ def _road_regrouped(groups, bundle, refused=None) -> bool:
         request["stages"][st["name"]]["group"] = g
     r = save_both(bundle, task, request)
     if refused:
-        assert r.status_code == 409, r.get_json()
+        assert r.status_code == status, r.get_json()
         for words in refused:
             assert words in r.get_json()["error"], r.get_json()["error"]
         return False
@@ -1245,7 +1251,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     if "held_edited" in case:
         _road_held_edited(case["held_edited"], bundle)
     if "regrouped" in case and not _road_regrouped(
-            case["regrouped"], bundle, case.get("regroup_refused")):
+            case["regrouped"], bundle, case.get("regroup_refused"),
+            case.get("regroup_status", 409)):
         return
     kind = "bench" if "bench" in case else "task"
     kept = {where: _as_written(bundle / where)

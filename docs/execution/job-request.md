@@ -572,8 +572,10 @@ sequence of groups*).
 defaults, repeating the number above wherever that is allowed — the stage
 builds on none of that group, and its run card states what theirs do on what a
 job shares (`group.may_join`; else its prep refuses the group, R-P13): a
-transport ladder 1 1 1 2 3, an optimization ladder 1 2 3, stages that build on
-nothing 1 1 1. An entry without one is refused.
+transport ladder 1 1 1 2 3, an optimization ladder 1 2 3, a SIESTA
+displacement sweep 1 2 2 (each later stage builds on the first,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 5.9), stages that build
+on nothing 1 1 1. An entry without one is refused.
 
 **It is the job request's because it says how the calculation runs**: which
 stages one launch sends, and what they share — one allocation
