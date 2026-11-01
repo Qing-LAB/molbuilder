@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
-from support.road import _all_written, molbuilder
+from support.road import _all_written, molbuilder, until
 
 
 @dataclass
@@ -219,16 +219,6 @@ def _launched_here(run: RealRun) -> int:
                 if e["decision"] == "launched" and e.get("background"))
 
 
-def _until(holds, *, within: float, what: str) -> None:
-    """``holds()``, within ``within`` seconds -- a run's own files read as
-    it goes."""
-    import time
-    end = time.monotonic() + within
-    while not holds():
-        assert time.monotonic() < end, f"{what}: not within {within} s"
-        time.sleep(0.5)
-
-
 def _stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
     """A run here a launch left in the background, stopped as that launch
     said to stop it -- its *to stop it:* line, typed at a terminal and its
@@ -237,7 +227,6 @@ def _stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
     the monitor, whose closing record is the stop's last word
     (`job-system.md` § 6.0, § 6.0a)."""
     import shlex
-    import time
     line = next(ln.split("to stop it:", 1)[1].strip()
                 for ln in launched.output.splitlines() if "to stop it:" in ln)
     words = shlex.split(line)
@@ -247,14 +236,14 @@ def _stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
     assert said.exit_code == 0, f"{step}: {said.output}"
     pid = _launched_here(run)
     _left_to_end(run)
-    end = time.monotonic() + 120
-    while True:
+
+    def gone() -> bool:
         try:
             os.killpg(pid, 0)
         except ProcessLookupError:
-            return
-        assert time.monotonic() < end, f"{line}: its processes went on"
-        time.sleep(0.5)
+            return True
+        return False
+    until(gone, within=120, what=f"{line}: its processes ended")
 
 
 def _left_to_end(run: RealRun) -> None:
@@ -373,10 +362,12 @@ _CARRIED = ("OMP_NUM_THREADS", "MB_NP", "MOLBUILDER_USE_MPS", "MB_JOB_ID",
 
 
 def _scrubbed(**more) -> Dict[str, str]:
-    """This process's environment without what :data:`_CARRIED` names, the
-    launch claim made by hand, and ``more``."""
-    env = {k: v for k, v in os.environ.items() if k not in _CARRIED}
-    return {**env, "MB_LAUNCHED_BY": "manual", **more}
+    """This process's environment without what :data:`_CARRIED` names and
+    without a launch's claim -- a dry run is a person's, and starts nothing,
+    so it needs none (`job-contracts.md` § 2.6) -- and ``more``."""
+    from molbuilder.scheduler.kinds import LAUNCH_CLAIM_VAR
+    return {**{k: v for k, v in os.environ.items()
+               if k not in (*_CARRIED, LAUNCH_CLAIM_VAR)}, **more}
 
 
 def _header_under_a_slurm_grant(run: RealRun, tree: Path,

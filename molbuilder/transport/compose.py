@@ -241,7 +241,7 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     from molbuilder.runrecord import (LaunchRecordError, ending,
                                       launch_record)
     from .. import calcdirs
-    from ..runs import place_of, run_of
+    from ..runs import older_run, place_of, run_of
     place = place_of(cite_dir)
     if place.problem:
         raise ComposeError(place.problem)
@@ -258,6 +258,11 @@ def _classify_run(cite_dir: Path) -> CitedRun:
         raise ComposeError(
             f"{cite_dir} holds no run of molbuilder's: {where}.  "
             f"{CITATION_CONDITION}.")
+    # A RUN AN OLDER MOLBUILDER NAMED is not read until it is named anew
+    # (`runs.older_run`, naming the migration).
+    older = older_run(cite_dir, run.names.stage, place.root)
+    if older is not None:
+        raise ComposeError(f"{cite_dir}: {older}.  {CITATION_CONDITION}.")
     # ONE RUN, the one the run door settled, asked of each door: its launch
     # record -- in the folder the run door says it lies in
     # (`Run.launched_in`: a point's is its run's) -- how it ended, its state.

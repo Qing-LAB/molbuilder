@@ -250,3 +250,97 @@ def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(calc):
     assert said == [], said
     after = sorted(p.relative_to(calc) for p in calc.rglob("*") if p.is_file())
     assert after == before, set(after) ^ set(before)
+
+
+#: A RUN AN OLDER MOLBUILDER NAMED, AS IT LEFT IT -- what each row adds to
+#: a run whose env gave it no python, its marker written by its main line
+#: (as 2.59's was) and its two files under 2.59's names: ``(what the
+#: migration does, its reason)``.  A second start is 2.59's run script
+#: started again by hand in the same folder, ``--run 1`` as its refusal
+#: asked, failing alike: its marker and its own stamped session log.  A
+#: calculation reached through a link is the same run, its folder named
+#: by the link -- a projects folder linked into a home.
+_OLDER_RUNS = {
+    "nothing more": ("renamed", None),
+    "a second start": ("left", "started more than once"),
+    "reached through a link": ("renamed", None),
+}
+
+
+@pytest.mark.parametrize("how", list(_OLDER_RUNS))
+def test_a_run_an_older_molbuilder_named_is_named_once(tmp_path,
+                                                        monkeypatch, how):
+    """A run an older molbuilder named -- its files by the try, ``-run0``,
+    its session log stamped with the clock -- reads `unreadable`, naming
+    `jobset migrate`; the migration names a run that started once anew,
+    every byte kept and each old name said, and the run reads as its files
+    say again (`project-layout.md` § 1.6.1).  A run that started more than
+    once is left as it is, said with its reason, and still not read.  THE
+    SILENT FAILURE: an older run read *queued* for ever; a second start's
+    files folded into one run.  The road: H2's coarse run launched here,
+    its env giving it no python -- a marker 2.59's main line wrote alike --
+    its files then named as 2.59 named them."""
+    from molbuilder.jobset.migrate import migrate_state
+    from molbuilder.runs import concluded
+    from support.road import jobset, prepared_here
+    bundle, run, names = prepared_here(tmp_path, monkeypatch, "true")
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
+               "--mode", "direct", "--foreground", "--yes")
+    assert r.exit_code == 1, r.output
+    marker, log = run / names.name(".concluded"), run / names.name(
+        ".runwrap.log")
+    was = {p.name: p.read_bytes() for p in (marker, log)}
+    stem = names.stem
+    older = {f"{stem}-run0.concluded": was[marker.name],
+             f"{stem}.runwrap-20261031-120000.log": was[log.name]}
+    marker.rename(run / f"{stem}-run0.concluded")
+    log.rename(run / f"{stem}.runwrap-20261031-120000.log")
+    if how == "a second start":
+        older[f"{stem}-run1.concluded"] = was[marker.name]
+        older[f"{stem}.runwrap-20261031-120500.log"] = was[log.name]
+    for name, body in older.items():
+        (run / name).write_bytes(body)
+    st = concluded(run, names, base=bundle)
+    assert st.state == "unreadable" and "jobset migrate" in st.detail, st
+    named = bundle
+    if how == "reached through a link":
+        named = tmp_path / "linked"
+        named.symlink_to(bundle, target_is_directory=True)
+    said = migrate_state(named)
+    does, why = _OLDER_RUNS[how]
+    if does == "left":
+        assert any(s.startswith("01_coarse/run-0: left as it is")
+                   and why in s for s in said), said
+        assert all((run / n).read_bytes() == b for n, b in older.items())
+        assert concluded(run, names, base=bundle).state == "unreadable"
+        return
+    assert any(f"{stem}-run0.concluded -> {marker.name}" in s
+               for s in said), said
+    assert marker.read_bytes() == was[marker.name]
+    assert log.read_bytes() == was[log.name]
+    assert not any((run / n).exists() for n in older)
+    st = concluded(run, names, base=bundle)
+    assert st.state == "failed" and "no env python" in st.detail, st
+
+
+def test_an_older_machine_copy_keeps_how_a_shell_enters_its_environment(
+        calc):
+    """A calculation's copy of its machine's record written before 2.10.1,
+    which named how a shell there enters its environment
+    ``script_generation`` (before 2026-10-02): the migration writes it as
+    ``env_init``, its values kept, the old file beside the new
+    (`configuration.md` § 4).  THE SILENT FAILURE: the activation
+    dropped, and every later prep refused for a record carrying none."""
+    import json
+    from molbuilder.jobset.migrate import migrate_state
+    from molbuilder.scheduler.record import calculation_environment
+    _prep(calc)
+    path = calc / "environment.json"
+    rec = json.loads(path.read_text())
+    entered = rec.pop("env_init")
+    rec.update(schema="molbuilder/environment@2", scheduler="workstation",
+               script_generation=entered)
+    path.write_text(json.dumps(rec, indent=2))
+    said = migrate_state(calc)
+    assert any("script_generation -> env_init" in s for s in said), said
+    assert calculation_environment(calc).env_init == entered

@@ -355,9 +355,15 @@ sequenceDiagram
     M-->>C: finish
 ```
 
-A **forced stop** — walltime, `scancel`, a kill — never reaches the main line,
-so no `.concluded` is written. The monitor gets SIGTERM from the wrapper's
-signal trap or the scheduler, or sees the watched PID go; it logs
+A start that ends before its engine for any reason but a signal — an
+activation that failed, a step that failed under `set -e` — never reaches
+the main line's marker; its exit trap writes `<stem>.concluded` with its
+exit code, *stopped before its end*, before it stops the monitor, as the
+main line writes its own first ([`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.3). A **forced stop** — walltime, `scancel`, a kill, a lost
+terminal — writes no `.concluded`: the wrapper's signal handler writes none.
+The monitor gets SIGTERM from that handler or the scheduler, or sees the
+watched PID go; it logs
 `[MONITOR] job ended`, and `run_status`, reading that record, says *failed —
 stopped before its end*. **A signal is not a certainty**: on Sol's job
 65999920 (2026-10-18) the scheduler stopped the job at its wall and neither

@@ -1438,8 +1438,11 @@ quieter.* It has two halves and they are answerable at different times.
 **S3 — a run records what it started from.** `run.json`'s `continued_from` names
 the run directory its files came from, or is `null` when it started from the
 structure: the key is always written *(it was left out until 2026-10-06)*,
-and a `.continued-from` marker that does not read stops the launch rather
-than reading as a start from the structure.
+and a `.continued-from` marker that does not read — or names no run — stops
+the launch rather than reading as a start from the structure; so does a
+`.gathered-from` whose line does not read as `<file> <- <run>`, or that
+names nothing (`runrecord`: every run record's reader refuses one that
+does not read, naming it).
 
 *The record is explicit because the files are copies*
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.5): a copied file

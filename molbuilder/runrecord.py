@@ -122,7 +122,9 @@ def read_continued_from(where) -> Optional[RunRef]:
     """The run :func:`write_continued_from` recorded for the run in
     ``where``, or ``None`` when there is no marker -- the run started from
     the structure, or from what it gathered.  A marker that is there and
-    does not read is a :class:`LaunchRecordError` naming it."""
+    does not read -- or names no run -- is a :class:`LaunchRecordError`
+    naming it (`checkpointing.md` S3: a record that does not read stops
+    what would build on it)."""
     marker = continued_from_marker(where)
     try:
         text = marker.read_text(encoding="utf-8")
@@ -132,7 +134,11 @@ def read_continued_from(where) -> Optional[RunRef]:
         raise LaunchRecordError(
             f"{marker} does not read ({exc}) -- what this run continues "
             f"from cannot be told.") from None
-    return RunRef.read(text) if text.strip() else None
+    if not text.strip():
+        raise LaunchRecordError(
+            f"{marker} names no run -- what this run continues from cannot "
+            f"be told.")
+    return RunRef.read(text)
 
 
 def conclude_line(code, note: str = "", *args: str) -> str:
@@ -152,10 +158,11 @@ def read_concluded(text: Optional[str]) -> Optional[dict]:
     the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
     "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
     when the text is not one.  The note is what the wrapper adds when the
-    job had no python of its env (`parse.dirs.job.NO_ENV_PYTHON`), or its
+    job had no python of its env (`parse.dirs.job.NO_ENV_PYTHON`), when its
     finish -- or a point's own step, before or after its engine -- failed
-    or cannot run (`FINISH_FAILED`, `FINISH_CANNOT_LOAD`).  THE one reader of that
-    line.
+    or cannot run (`FINISH_FAILED`, `FINISH_CANNOT_LOAD`), or when its exit
+    trap concluded a failure of the script's own (`STOPPED`).  THE one
+    reader of that line.
     """
     head = text.splitlines()[0] if text else ""
     m = re.search(r"\brc=(-?\d+)(?:\s+at\s+(.*?))?(?:;\s*(.*?))?\s*$", head)
@@ -177,7 +184,8 @@ class Ending:
 
     @property
     def concluded(self) -> bool:
-        """It ended on its own -- an engine error included, a kill never."""
+        """It ended on its own -- an engine error or a step that failed
+        before it included, a signal never."""
         return self.line is not None
 
     @property
@@ -199,9 +207,11 @@ def ending(where, basename: str) -> Ending:
     ``where`` is the run's folder; ``basename`` its stem, ``<label>_<token>``.
 
     **Molbuilder's own marker first** -- ``<basename>.concluded``, the
-    wrapper's last act on its main path: an engine error still reaches it, a
-    kill never does, and it carries the exit code.  A run folder holds one
-    start (`project-layout.md` § 1.6.1), so it holds at most one.
+    wrapper's last act on its main line, or its exit trap's when the script
+    fails on its own first: an engine error, or a step that failed before
+    it, concludes; a signal never does; it carries the exit code.  A run
+    folder holds one start (`project-layout.md` § 1.6.1), so it holds at
+    most one.
 
     **Nothing else**: a run molbuilder's wrapper did not run is not a run of
     ours, so it never ended on its own here -- the engine's own end mark
@@ -397,26 +407,28 @@ def write_launch(where: Path, *, mode: str, command: List[str],
     body["placed_on"] = dict(placed_on) if placed_on else None
     body["scheduler"] = dict(scheduler) if scheduler else None
     body["sequence"] = sequence
-    # ``ended`` null -- the scheduler has not been found to have forgotten
-    # the job; :func:`record_ended` fills it, once.
+    # ``ended`` null -- nothing has found the job gone with no marker
+    # written (its scheduler's answer, a run here's process); :func:
+    # `record_ended` fills it, once.
     body["ended"] = None
     return _persist().write_json(p, body)
 
 
 def record_ended(where, *, asked_on: str, said: str) -> Path:
-    """THE SCHEDULER'S ANSWER, WRITTEN ONCE (`running-a-job.md` § 4.2,
+    """THE ANSWER ABOUT ITS JOB, WRITTEN ONCE (`running-a-job.md` § 4.2,
     *Asked once, written once*; `project-layout.md` § 1.6.3): the launch
     record of the run in ``where`` gets
-    ``ended = {asked_on, asked_at, listed: False, said}``,
-    ``said`` the scheduler's own words for a job it lists ended, empty for
-    one it has forgotten (`scheduler.queue.listed`).  Written through
-    `persist`, whole; a run with no record cannot be concluded and is
-    refused."""
+    ``ended = {asked_on, asked_at, listed: False, said}`` -- a sent job's
+    scheduler's answer, ``asked_on`` its cluster and ``said`` its own words
+    for a job it lists ended, empty for one it has forgotten
+    (`scheduler.queue.listed`); a run here's process gone, ``asked_on`` its
+    machine and ``said`` empty.  Written through `persist`, whole; a run
+    with no record cannot be concluded and is refused."""
     body = launch_record(where)
     if body is None:
         raise LaunchRecordError(
             f"{launch_record_path(where)} is not there: a run with no launch "
-            f"record cannot be concluded by its scheduler's answer.")
+            f"record cannot be concluded by the answer about its job.")
     body["ended"] = {
         "asked_on": asked_on,
         "asked_at": stamp(),
@@ -509,7 +521,9 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     """``[(the run it came from, filename), ...]`` -- what this run was
     gathered from, in the order it was taken, as :func:`write_gathered_from`
     wrote it; ``[]`` when it gathered nothing.  A record that is there and
-    does not read is a :class:`LaunchRecordError` naming it."""
+    does not read -- a line not ``<file> <- <run>``, or no line -- is a
+    :class:`LaunchRecordError` naming it, as every run record's reader
+    says one."""
     p = Path(attempt_dir) / _rf.GATHERED_FROM_FILE
     try:
         text = p.read_text(encoding="utf-8")
@@ -520,10 +534,17 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
             f"{p} does not read ({exc}) -- what this run gathered cannot be "
             f"told.") from None
     out = []
-    for line in text.splitlines():
+    for n, line in enumerate(text.splitlines(), start=1):
         name, sep, src = line.partition(" <- ")
-        if sep and name.strip() and src.strip():
-            out.append((RunRef.read(src), name.strip()))
+        if not (sep and name.strip() and src.strip()):
+            raise LaunchRecordError(
+                f"{p}: line {n}, {line!r}, does not read as '<file> <- "
+                f"<run>' -- what this run gathered cannot be told.")
+        out.append((RunRef.read(src), name.strip()))
+    if not out:
+        raise LaunchRecordError(
+            f"{p} names nothing gathered -- what this run gathered cannot be "
+            f"told.")
     return out
 
 

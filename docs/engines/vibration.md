@@ -2713,8 +2713,8 @@ report steps of the monitor's own bundle around its engine,
 events; the report never fails a point — the kind's own steps do
 ([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3,
 operations 9 and 10). A call's or a point's run script carries `--member`
-however it is started, so run by hand it still reports as a member of its
-run.
+in its own text, so it reports as a member of its run without the walk
+saying so.
 
 **The walk's own log** (`launch/<label>_01_freq-sweep.log`) counts the
 walk's steps (`start steps=N`) and holds one line per call — start, end,

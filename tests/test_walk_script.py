@@ -40,3 +40,39 @@ def test_a_point_whose_start_cannot_be_copied_is_not_run(tmp_path):
     assert "dev@p1 not run -- its start could not be copied" in log, log
     assert "dev@p2 not run -- what it builds on failed" in log, log
     assert "p0/H2.TSDE" in log and r.stderr == "", (log, r.stderr)
+
+
+def test_a_walk_started_again_runs_no_point(tmp_path, monkeypatch):
+    """`execution/runs-of-points.md` § 3 -- the walk starts once, as every
+    run does (`project-layout.md` § 1.6.1): the walk a launch wrote,
+    started again in its run -- as a job its scheduler requeued starts
+    again -- refuses before it starts a point, since a point it walks holds
+    a start, names the launch that opens the next run, and says so in its
+    log.  THE SILENT FAILURE: a requeued job running, in the same run, the
+    points its first start never reached.
+
+    The road: H2's vibration launched here, its relaxation point ending in
+    its activation, its force constants not run -- then its walk started
+    again from the stage's folder, as its header would."""
+    from support.road import jobset, prepared_here
+    bundle, run, names = prepared_here(tmp_path, monkeypatch, "false",
+                                       name="H2vib", calculation="vibration",
+                                       stage="freq")
+    r = jobset("launch", "task", "--bundle", bundle, "--mode", "direct",
+               "--foreground", "--yes")
+    assert r.exit_code == 1, r.output
+    log = names.name(".runwrap.log")
+    relax, fc = run / "relax", run / "fc"
+    first = (relax / log).read_bytes()
+    assert not (fc / log).exists()
+    home = run.parent
+    (walk,) = (home / "launch").glob("*.run.sh")
+    again = subprocess.run(["bash", str(walk)], cwd=home,
+                           capture_output=True, text=True)
+    said = (home / "launch" / walk.name.replace(".run.sh", ".log")
+            ).read_text()
+    assert again.returncode == 2, said
+    assert (f"refused -- this run already holds a start (run-0/relax/{log})"
+            f": a run is one start; to continue it, launch the stage again"
+            in said), said
+    assert (relax / log).read_bytes() == first and not (fc / log).exists()

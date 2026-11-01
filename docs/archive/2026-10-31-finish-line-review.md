@@ -1588,3 +1588,35 @@ Round 1: three whole-file readers — floors 2 and 4 (the run door, `point_of`, 
 | OS-R2-6 | **closed 2.60.0** | a requeued job's second start refuses, and no contract said so | running-a-job § 4.2, project-layout § 1.6.1 |
 | OS-R2-7 | **closed 2.60.0** | the record's outputs spelled by hand and the speaking output chosen beside `run_status`'s; dead fallbacks; `log_of_run`'s label-only case; `.validation.txt` spelled three times; a dead `engine_version` reader | `ROLE_MOLWATCH` / `stdout_roles`, `active_source`; `status` and `engine` required; `stage` required; `runfiles.ROLE_VALIDATION`; the row gone |
 | OS-R2-8 | left | a renamed or engine-scoped retired item on a run card or in resources promises what migrate does not do | only a handcrafted file reaches it (the user's rule: build for what molbuilder writes) |
+
+## Found by the whole-jobset review (#361, 2026-11-01), by the release that owns each
+
+*(The user, 2026-11-01: "remember code disciplines, and framework/api unification rules for any work"; on older runs, "Migrate renames single-start runs"; on a start by hand in prep's run, "Adopt it as a run", then "if this takes too much coding, then we can go with 3" — and 3, only `jobset launch` starts a run, was taken.)* Five read-only reviewers over the whole jobset after one start per run: prep; a run's life and its states; launch and continuation; structure and duplication; records and truth. Each finding was checked in the code before it was planned; its unit is the door that owns it. Release A (2.61.0) closes what decides how a run's end is known and how an older run is read; Release B (2.62.0) the rest of the defects and the ways out composed once; later F releases what their plan rows already own.
+
+| id | release | what | the door |
+|---|---|---|---|
+| L1 | **closed 2.61.0** | a run here that died before its engine read *queued* for ever, one killed outright *running* for ever; a run waited on lost its address before its launch read how it ended | the run script's one exit trap concludes a failure of its own (`stopped before its end`), the stopping signals caught by one handler; `runs.concluded` asks a run here's process (`joblist.going_of`) and writes its end once (`record_ended`), read by `parse.dirs.job._job_ended` — *never started* for a run whose start never began; the launch removes a waited run's address once it has said how it ended, waiting first for the run script's close when stopped at its terminal (`submit._ended_within`) |
+| L2 | **closed 2.61.0** | a requeued walk ran, in the same run, the points its first start never reached | the walk refuses where a point it runs holds a start (`submit._walk_script`'s `started`, `identity.next_run_words`) |
+| L3 · L4 · L8 | **closed 2.61.0** | a point started and silent read *queued* (its rows, *not run*); the first point's step before its engine read *queued* | `parse.dirs.job._build_status`: a start with no output yet is *running* (*started, no output yet*), read from its session log; the point's start stamp follows its log, so its rows and its folder read alike |
+| L5 | **closed 2.61.0** | past its wall never asked of a run with no output; prep's and launch's files counted as the job's writes | asked once a start began; `_the_jobs_own` by the catalogue's `when` and `output` |
+| S3 | **closed 2.61.0** | the stage row decided a run of points by the description now, every other reader by the run's folder | `runstatus._job_status` by `calcdirs.where(run).of_points` |
+| R1 | **closed 2.61.0** | a run named before 2.60.0 read *queued* for ever, its files invisible | `runfiles.older_named` (the one reading of the older names); the run door reads such a run `unreadable`, naming `jobset migrate` (`runs.older_run`), which names a run that started once anew, every byte kept, and leaves one it cannot with one of five reasons (`migrate._migrate_runs`, `project-layout.md` § 1.6.1) |
+| R2 | **closed 2.61.0** | migrate dropped a pre-2026-10-02 copy's `script_generation` | carried into `env_init`, two values refused by name |
+| R5 | **closed 2.61.0** | the plain-text run records read three ways | each reader refuses a record that does not read; a gather that took nothing writes none |
+| R6 | **closed 2.61.0** | the monitor's closing record read two ways | `job.MONITOR_ENDED_LINE`, the one reading, which the instrument parser imports |
+| OS-R1-11 | **closed 2.61.0** | a start that died in its setup read *queued*; a start by hand in prep's run | L1; A1 |
+| A1 | **closed 2.61.0** | a start by hand in prep's never-launched run — a run no record of molbuilder's placed | only `jobset launch` starts a run: the run script's gate takes the launch's claim alone (`identity.started_by_launch`), the `manual` claim and the terminal's question removed; adopting a hand start was set aside as more code for the same end (the user: "if this takes too much coding, then we can go with 3") |
+| R8 | B | `joblist.holding` matches by run folder only | checked against the launch record |
+| P1, R3, R4, S4 | B | `prepared_with` compares only keys both sides hold; settings at dataclass defaults; schema unchecked | `prepared_with.differences` over the union; a block absent a change; schema checked |
+| A2 | B | launch takes a transport rung's points from the description now | prep's record |
+| A4, A5, A8, A9, A10 | B | the run-of-points and group edges | each at its door |
+| A11, S7, S8 | B | ways out composed by hand | `jobset.commands` |
+| P3, S1, S9–S11, R10, P4, P6 | B | the duplicated assemblies and small defects | each at its door |
+| R11, R13, S13, P8, L9, A-doc | B | document drift | the owning chapters |
+| S2, S5, S6, S12 | F3 | a kind's code in shared modules; two deck renderers; floors | the kind table |
+| R12, R7, R9, R14 | F4/F5 | role literals; records read past unknown keys | as planned |
+| S14 | later | unused parameters, long functions | review |
+| S15 | B | `Kind.line(launched_by=)` has one caller, which passes the constant; `road.until` stands beside two private waits in the test files (the round-3 review) | the line filled from `LAUNCH_CLAIM`, as its variable is; the tests' waits on `road.until` |
+| L6, L7, A6, A7, P5, P2, R-design | listed for the user | design notes, no defect | — |
+
+**Found by Release A's own review rounds**, fixed in it: the exit trap writing an exit code 0 for a hang-up, and stopping the monitor before its marker; a group's stop said as a broken pipe; a never-started run said *stopped*; a Ctrl-C read before the run script had closed; a finished run's launch words never shown; migrate's kept files of a second try, two files taking one name, a calculation reached through a link, and a failed rename written twice in the ledger; a failed write said on the state first read; a dry run a person starts dying on its verdict line; a sequence's runs left unread at a Ctrl-C; the stale words in the run script's comments, the catalogue's help and the chapters that described a start by hand.

@@ -406,11 +406,11 @@ first import, not a status poll of a running job.
 
 | a file's `run_state` | a directory's `run_status` — state · detail | the monitor, once the PID is gone |
 |---|---|---|
-| `ended` | `running` · *the engine's output ended; the job has not concluded* — until the job concludes: `finished` when it exits 0, `failed` when its scheduler's own line or the monitor's record says it was stopped (`running-a-job.md` § 4.2) | `finished` (rc 0) / `failed` |
+| `ended` | `running` · *the engine's output ended; the job has not concluded* — until the job concludes: `finished` when it exits 0, `failed` when its job says it ended (its scheduler's own line, or the answer written once into its launch record) or the monitor's record says it was stopped (`running-a-job.md` § 4.2) | `finished` (rc 0) / `failed` |
 | `stopped` | `failed` · stopped before its end | `failed` |
 | `out_of_memory` | `failed` · out of memory | `failed` |
-| `running`, `unknown` | `finished` or `failed` by the `.concluded` code; without one, `failed` · stopped by the scheduler: *its words*, when its scheduler's line in the job's error file says it ended the job (`execution/scheduler.md` R16), else `failed` · stopped before its end, no exit recorded, when the monitor's closing record says its process went; else `running` | the directory's answer, asked after it writes that record |
-| — no output yet | `pending` (no `run.json`) · `queued` (launched, silent) | — |
+| `running`, `unknown` | `finished` or `failed` by the `.concluded` code; without one, `failed` when its job says it ended — · stopped by the scheduler: *its words*, from its scheduler's line in the job's error file (`execution/scheduler.md` R16), or the answer about its job written once into its launch record, in that answer's words — else `failed` · stopped before its end, no exit recorded, when the monitor's closing record says its process went; else `running` | the directory's answer, asked after it writes that record |
+| — no output yet | `pending` (no `run.json`) · `queued` (launched, its start not begun) · `running` · *started, no output yet* (its session log) — each `failed` as above when its marker, its job or its monitor says it ended: a run whose job ended before its start began, · *never started: …*; one started and silent past its wall, · *stopped before its end: nothing was written for longer than its wall …* (`execution/running-a-job.md` § 4.2) | — |
 
 While the PID lives the monitor says `running` (`execution/run-reports.md` § 2.3).
 

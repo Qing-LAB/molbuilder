@@ -606,7 +606,9 @@ def hand_over(base, h: HandOver, plan=None) -> List[str]:
             copied.append(name)
     if h.record == CONTINUED:
         runrecord.write_continued_from(h.target, h.source, plan=plan)
-    else:
+    elif h.files:
+        # A RECORD NAMES WHAT IT SAYS: a gather that took nothing writes
+        # none (`runrecord.read_gathered_from`).
         runrecord.write_gathered_from(h.target, list(h.files), plan=plan)
     if own:
         plan.carry_out()

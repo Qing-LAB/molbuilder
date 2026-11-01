@@ -25,12 +25,17 @@ from the road it imitates.  The steps live here once.
   down every call -- where it was made and what it said -- and refuses it:
   the basic tests send nothing to a scheduler and assume nothing of its
   answers (user, 2026-10-06);
-* :func:`sbatch_line` -- the `sbatch` line a launch showed, as its words.
+* :func:`sbatch_line` -- the `sbatch` line a launch showed, as its words;
+* :func:`prepared_here` -- a stage prepared for this machine, its run
+  script entering only what the record says (:data:`SHELL_CARRIED`);
+* :func:`left_in_the_background` -- a launch left in the background, its
+  run killed outright whatever the test met.
 """
 from __future__ import annotations
 
 import os
 import shlex
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -192,6 +197,82 @@ def describe_calculation(tmp_path, monkeypatch, *, name: str = "H2",
                        else {"threads": 1})
     write_request(bundle, request)
     return bundle
+
+
+def until(holds, *, within: float, what: str) -> None:
+    """``holds()``, within ``within`` seconds -- a run's own files read as
+    it goes."""
+    import time
+    end = time.monotonic() + within
+    while not holds():
+        assert time.monotonic() < end, f"{what}: not within {within} s"
+        time.sleep(0.5)
+
+
+#: WHAT THE TEST'S OWN SHELL WOULD SLIP INTO A RUN SCRIPT AHEAD OF ITS
+#: RECORD: a script every non-interactive bash reads first (``BASH_ENV``),
+#: and an environment already active (``CONDA_PREFIX``, which the job's
+#: python is looked up under, `runwrap.env_python_check`).  A run script a
+#: test starts runs without them, so it enters only what its record says.
+SHELL_CARRIED = ("BASH_ENV", "CONDA_PREFIX")
+
+
+def prepared_here(tmp_path, monkeypatch, activation: str,
+                  name: str = "H2here", calculation: str = "optimization",
+                  stage: str = "coarse"):
+    """An H2 calculation prepared for this machine
+    (:func:`describe_calculation`), whose record says a shell enters its
+    environment with ``activation`` -- the line its run script runs once
+    its session log is open, before anything else -- its ``stage``'s group
+    prepared: ``(the calculation, the stage's run's folder, the stage's
+    names)``.  No engine runs on this road."""
+    from conftest import write_machine_record
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    for var in SHELL_CARRIED:
+        monkeypatch.delenv(var, raising=False)
+    write_machine_record(env_init={"activation": activation,
+                                   "preamble": "true"})
+    bundle = describe_calculation(tmp_path, monkeypatch, engine="siesta",
+                                  calculation=calculation, name=name)
+    r = jobset("prep", "task", *group_words(bundle, stage),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    home = stage_home(bundle, task_of(bundle), stage)
+    return bundle, latest_attempt(home.dir), home.names
+
+
+@contextmanager
+def left_in_the_background(*words):
+    """`jobset launch <words> --mode direct --yes`, left in the background
+    as a person leaves it: its one job's address, the run's process group
+    killed outright and reaped on the way out, whatever the test met -- no
+    run outlives its test."""
+    import signal
+    from molbuilder.joblist import every
+    r = jobset("launch", *words, "--mode", "direct", "--yes")
+    jobs = every()
+    try:
+        assert r.exit_code == 0 and len(jobs) == 1, (r.output, jobs)
+        yield jobs[0]
+    finally:
+        for job in jobs:
+            try:
+                os.killpg(job.pid, signal.SIGKILL)
+                os.waitpid(job.pid, 0)
+            except (ProcessLookupError, ChildProcessError):
+                pass
+
+
+def killed_outright(job) -> None:
+    """A run here's process group sent SIGKILL -- which no shell can catch
+    -- and the run gone, as `molbuilder jobs` asks it."""
+    import signal
+    from molbuilder.joblist import going_here
+    os.killpg(job.pid, signal.SIGKILL)
+    until(lambda: going_here(job) is False, within=15,
+          what="its process gone")
 
 
 def read_request(bundle: Path) -> dict:

@@ -1224,7 +1224,11 @@ refused by name — *an older molbuilder wrote it* — with the probe that write
 it again: this machine's, here; a named target's, on that machine, copied
 here. A calculation's own copy, which no probe replaces (M-3), is rewritten
 by `jobset migrate`: its scheduler word becomes the kind, each command by the
-name the kind gives it, run from PATH, the old file kept beside the new.
+name the kind gives it, run from PATH; how a shell there enters its
+environment, written `script_generation` before 2026-10-02, is carried under
+its name now, `env_init` (§ 4), with the same values — a copy holding both
+names with different values is refused, naming both; the old file is kept
+beside the new.
 
 The reachable `(name, partition, qos, max_time)` **domains** land in the
 record — the prober's `routing`, minus the preference M-1 removes. The whole

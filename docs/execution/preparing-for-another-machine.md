@@ -38,10 +38,9 @@ needs before it can offer to prepare anything.
    as `environment.json` beside the bundle, and renders decks and wrappers
    against the target's numbers.
 4. **Send the bundle** and launch it there — `jobset launch task --group <N>`
-   on the target, the one launch door (`running-a-job.md` § 5.5). Started
-   without the launch's claim, the run script asks at a terminal and refuses
-   elsewhere — § 5.5 gives the deliberate manual form; it starts once in its
-   run, and to continue is to launch again (`project-layout.md` § 1.6.1).
+   on the target, the one launch door (`running-a-job.md` § 5.5): started
+   any other way, the run script refuses. It starts once in its run, and to
+   continue is to launch again (`project-layout.md` § 1.6.1).
 
 **Why this shape.** Rendering a deck needs the machine's capability — rank
 counts, memory, whether there is a queue — and a browser or a laptop does

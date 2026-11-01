@@ -1512,7 +1512,8 @@ def stopped(real_co2_vibration, tmp_path_factory):
     this one."""
     from molbuilder.siesta.vibration_phases import OPTICAL
     from support.real_runs import (_road_at, _stopped_by_its_line, _taken,
-                                   _until, copy_of, stage_status)
+                                   copy_of, stage_status)
+    from support.road import until
 
     def stop(c):
         with _road_at(c.tree.parent, tmp_path_factory):
@@ -1535,7 +1536,7 @@ def stopped(real_co2_vibration, tmp_path_factory):
                 return any(r["phase"] == OPTICAL and r.get("started")
                            and r["facts"]["name"] not in done
                            for r in index["points"])
-            _until(one_done_and_the_next_started, within=900,
+            until(one_done_and_the_next_started, within=900,
                    what="an optical call of run-1 done, the next started")
             _stopped_by_its_line(c, "stop as its launch said", launched)
             c.stopped = stage_status(c.bundle, "freq")

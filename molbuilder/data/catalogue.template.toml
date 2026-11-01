@@ -845,7 +845,7 @@ optional = true
 help = """
 How many MPI processes SIESTA runs on: the N in ``mpirun -np N siesta`` the run script launches.
 Every run states it -- on its run card, or with ``prep --np N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in, not the machine's cores and not the scheduler.  Typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb.
-By hand the run script takes ``bash <stem>.run.sh -np M``; a run folder holds one start, so another count by hand is started in a run folder that holds none -- or prep again at that count.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: propor is a proportionality check in matel_table's MPI-deduplication of radial tables, which is hard to predict from the rank count. If you hit propor, run again with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
+Another count is a prep again at that count, then a launch, which opens a run of its own: a run folder holds one start, and only ``jobset launch`` starts one.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: propor is a proportionality check in matel_table's MPI-deduplication of radial tables, which is hard to predict from the rank count. If you hit propor, run again with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
 """
 
 [item.gpu_count]
@@ -933,7 +933,7 @@ null_label = "(not stated: prep refuses)"
 optional = true
 help = """
 How many OpenMP threads each MPI process gets -- the cores per rank.
-Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in.  The deck records it (``# runtime.omp_threads_requested``) and the run script exports it as OMP_NUM_THREADS; for a run by hand, ``bash run.sh -omp N`` overrides it.
+Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in.  The deck records it (``# runtime.omp_threads_requested``) and the run script exports it as OMP_NUM_THREADS; another count is a prep again at that count.
 The run script pins BLAS to 1 thread per rank so OMP x BLAS doesn't oversubscribe the node.
 """
 

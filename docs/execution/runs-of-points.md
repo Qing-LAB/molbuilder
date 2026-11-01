@@ -418,7 +418,11 @@ each round's points in the listing order — a step for each walked prepared
 point, needing its walked needs, and a loop step for each container whose
 planned points or planner this walk runs; where the rung keeps the engine's
 scratch in a folder of the run's own, the walk empties it as each round
-begins and when it ends.
+begins and when it ends. **The walk starts once**, as every run does
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a walk
+started again in a run any of whose points it walks already holds a start —
+its session log — refuses before it starts a point, naming the launch that
+opens the next run; a job its scheduler requeued ends so, without running.
 
 **A point started (9), in full.** Stamp its start. Run its before-step, where its kind has one: **its failure is the
 point's** — `step_error` stamped, the verb exiting with its code, the
@@ -508,8 +512,8 @@ run** — never *failed*: the point did not run; the run is failed, its first
 point not done named. **The point's own folder, read alone** — the run
 door, which reads no run of points ([`architecture.md`](?doc=execution/architecture.md)
 § 2.1) — says *not run* too, once it holds no start of its own (its
-session log) and its job is over — its end read *failed* (its scheduler's answer, written once into
-its run's launch record), or its walk over as its run's row reads it: no
+session log) and its job is over — its end read *failed* (the answer about its job, its scheduler's
+or its process gone, written once into its run's launch record), or its walk over as its run's row reads it: no
 job launched from this machine that holds its run going (`joblist.going_of`)
 and, where the walk started no point it walks itself (the index's start
 stamps, `runpoints.walk_began`), the walk ended before a point

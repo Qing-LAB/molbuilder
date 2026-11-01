@@ -212,9 +212,9 @@ header = ["#SBATCH -J H2_01_coarse", "#SBATCH -N 1",
           "#SBATCH -n 2", "#SBATCH -c 1", "#SBATCH -t 0-01:00:00",
           "#SBATCH -p cpu", "#SBATCH -q public", "#SBATCH --mem=8G",
           "#SBATCH -o slurm.%j.out", 'bash H2_01_coarse.run.sh "$@"']
-# NO SITE SETTING AMONG ITS DIRECTIVES -- the comment above them names the
-# line to send it by hand, its `--export ALL,MB_LAUNCHED_BY=manual` among it,
-# which is not one.
+# NO SITE SETTING AMONG ITS DIRECTIVES -- the comment above them says it
+# is sent by `jobset launch` alone, whose line carries the launch's own
+# `--export`, which is not one.
 header_lacks = ["#SBATCH --mail", "#SBATCH --export", "#SBATCH --gres"]
 launch = []
 line = ["H2_01_coarse.sbatch -np 2 -omp 1"]

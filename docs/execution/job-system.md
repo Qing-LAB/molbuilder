@@ -209,14 +209,14 @@ that file's own door:
 | a group | **prepared** / **launched** / **its members changed** | every member's row names these members / a member is launched / a row names other members than the group holds | its members' rows and records | § 5.1, § 5.3 | `ready.GroupAnswer` — the one answer every verb and surface reads (below) |
 | | **goes in job N** | prepared, and a sequence still going holds it and has not launched it yet — launched before or not (§ 6.0, *A sequence of groups*) | the job's address (§ 6.0a), asked whether it is going | — | `ready.held_by_sequence` (`joblist.is_going`) |
 | a run | **opened, not launched** | its `run-<n>` folder is there, stamped a run, and has no launch record | the folder (`calcdir.json`, `role: run`), no `run.json` | § 5.2 | `paths.attempts_in`, `runrecord.launch_record` (`materialize.resolve_attempt`) |
-| | **queued** | launched, nothing written yet | `run.json`, no output | § 5.3 | `rundir.run_state_of` (`parse.dirs.run_status`) |
-| | **running** | its engine is writing, and it has not concluded | `<stem>.out` (PySCF: `<stem>.pyscf.log`) | § 5.3 | the same |
-| | **finished** / **failed** | it concluded with exit code 0 / with another — or with none that can be told, a marker empty or not reading — or its output says the engine stopped; a stop the marker never saw is the scheduler's own line, else the monitor's closing record | `<stem>.concluded` and its `rc=`; the output's ending; the scheduler's error file `run.json` names (`scheduler.stderr`); `<stem>.monitor.log` | § 5.3 | `runrecord.ending`, and the same door |
-| | **unreadable** | its launch record is there and does not read | `run.json` | § 5.3 | `runrecord.launch_record` |
+| | **queued** | launched, its start not begun | `run.json`, no session log | § 5.3 | `rundir.run_state_of` (`parse.dirs.run_status`) |
+| | **running** | its start began and it has not concluded — no output yet (*started, no output yet*), or its engine writing | its session log; `<stem>.out` (PySCF: `<stem>.pyscf.log`) | § 5.3 | the same |
+| | **finished** / **failed** | it concluded with exit code 0 / with another — or with none that can be told, a marker empty or not reading — or its output says the engine stopped; a stop the marker never saw is what its job says (the scheduler's own line, or the answer written once into its launch record — a sent job's scheduler's, a run here's process gone), else the monitor's closing record, else a sent job's wall passed | `<stem>.concluded` and its `rc=`; the output's ending; the scheduler's error file `run.json` names (`scheduler.stderr`); `run.json`'s `ended`; `<stem>.monitor.log` | § 5.3 | `runrecord.ending`, and the same door |
+| | **unreadable** | its launch record is there and does not read; or its files carry the try's number, as molbuilder named them before 2.60.0 — `jobset migrate` names a run that started once anew ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) | `run.json`; its files' names | § 5.3 | `runrecord.launch_record`; `runs.older_run` |
 | | *converged* — its own column, never the state | the engine's own output says so | `<stem>.out` | § 5.3 | the same scan |
 | a point of a run of points | **done** / **not done** | its run finished, converged where its verdict counts, and holds what it must — what the rungs after it take, a call's product — by its kind's declaration (`PointsOf.must_hold`, `verdict_counts`; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.2) | its marker, its output, those files | § 5.3, § 5.4 | `continuation.point_done` |
 | | **not run** | its job ended and its walk never started it — never *failed*: it did not run *(the user, 2026-10-30: "definitely not 'failed'")*; its reason beside it, *it builds on &lt;words&gt;, which failed* or *the walk ended before it reached this point* ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3, § 4.5). *failed* is a point that ran and ended with an error; *queued*, one launched and not started yet | the run's index (`not_run`, stamped as the walk closes); this machine: its folder still to come once the walk has ended — read alone, no start of its own (its session log) and its job over | § 5.3 | `runpoints.rows_of` (the job's); `continuation.never_reached` (`status`, its reason); `runs.concluded` (the run door, of its folder alone, in the definition's words) |
-| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going — never the job a reader runs inside, a sequence's, whose own runs of points it reads by their points (§ 6.0); queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished by its kind's record (the kind table's `finished`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3): every point's run finished, converged or not — a transport rung's — or every point done and what the run needs beyond them, a vibration's: every call done, its finish ended with exit 0 and its result at the run's root; a finish step that exited non-zero, failed (`runpoints.run_state`, the one rule both sides ask) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); failed: a point failed, or is not run — the walk stopped before it (the row above) — or, a vibration's, a call finished without being done, or its finish not done; the first point not done named | its `run.json`, its points' files (the row above), the run's index (the points taken over, the finish's entry), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, else the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
+| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going — never the job a reader runs inside, a sequence's, whose own runs of points it reads by their points (§ 6.0); queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished by its kind's record (the kind table's `finished`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3): every point's run finished, converged or not — a transport rung's — or every point done and what the run needs beyond them, a vibration's: every call done, its finish ended with exit 0 and its result at the run's root; a finish step that exited non-zero, failed (`runpoints.run_state`, the one rule both sides ask) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); failed: a point failed, or is not run — the walk stopped before it (the row above) — or, a vibration's, a call finished without being done, or its finish not done; the first point not done named | its `run.json`, its points' files (the row above), the run's index (the points taken over, the finish's entry), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
 | | **unreadable** | its index is there and does not read, named by its run folder and file name; on the stage's row, never the whole status | the run's index | § 5.3 | `runpoints.read_index` (`runstatus._sweep_status`) |
 
 **What a run started from is a record, not a state**: `.continued-from` —
@@ -1771,7 +1771,7 @@ safe and small:
 - **Wrappers are written from the real input file, beside it.** Each job's
   `script` gets its `.run.sh` / `.sbatch` built in that job's own folder, by
   the *same* single-job wrapper builder — so a batch job's wrapper is
-  byte-identical to a hand-run one (`prep.prep_jobset`).
+  byte-identical to a single job's (`prep.prep_jobset`).
 - **Shared files are copied in, never linked** (user, 2026-08-24): a job's
   folder holds everything it runs from, so a copied tree still runs; the
   price is one copy of the pseudopotentials per folder.
@@ -2321,7 +2321,7 @@ pinned by its description's fingerprint ([`engines/stages.md`](?doc=engines/stag
 user can force a structure still")*. The rule is *The task*'s — by default the
 newest run of what a stage builds on, which must have finished. **Finished**
 is the one status door's answer, as `status` gives it: the run ended on its
-own with exit code 0 (molbuilder's conclusion marker, the wrapper's last act —
+own with exit code 0 (molbuilder's conclusion marker, the wrapper's —
 never the engine's own end mark) and nothing in its output says the engine
 stopped ([`architecture.md`](?doc=execution/architecture.md) § 3.2, `usable`;
 user, 2026-10-06). Otherwise the refusal says why, in that door's words; a
@@ -2747,11 +2747,12 @@ in a queue job, `mode: submit`, that job's id, the line that sent it, where
 its scheduler writes the job's error file (from the run's own folder), the
 queue, wall and memory it was sent with; run here, `mode: direct` and the
 walk's line. So **every reader of a run reads it as a run of that job** — the
-run door, the scheduler's answer written once (`running-a-job.md` § 4.2), a
+run door, the answer about its job written once (`running-a-job.md` § 4.2), a
 run past its wall — and a job cancelled or killed reads its runs failed, as
 any job's do. It writes **no address of its own**: it adds its runs to the
 sequence job's address (§ 6.0a), and leaves that address to the job; runs it
-could not add are said on its line and in the ledger (`not_on_address`). It
+could not add are said on its line and in the ledger (`not_on_address`), as
+any launch's address it could not write is. It
 reads how its runs ended as any launch waited on does (*A run here, waited
 on*) — a run of points by its points alone, its walk having returned while
 the job that holds it is still going.
@@ -2915,12 +2916,11 @@ of points, a container no one run speaks for, by the one door that answers a
 run's state whichever kind it is (`continuation.stage_run_state`), the stage
 matched as every stage name compares (`runstatus.job_members`,
 `identity.stage_key`); a run no longer on
-disk — a restore went back past it — is said so. Where the two
-disagree — the process gone while its run still reads *queued*, stopped
-before its monitor began — both are said, and neither overrules the other;
-a queue job the scheduler no longer lists is written into its run's launch
-record by this very look (`running-a-job.md` § 4.2, *Asked once, written
-once*), so the run reads `failed` from then on and the two agree.
+disk — a restore went back past it — is said so. A job that has ended —
+a queue job the scheduler no longer lists, a run here whose process is gone
+with no marker written — is written into its run's launch record by this
+very look (`running-a-job.md` § 4.2, *Asked once, written once*), so the
+run reads `failed` from then on and the two agree.
 
 **`molbuilder jobs status`** lists every file: its id, how it went, when, the
 calculation, and each member with its state in the status door's words —
@@ -2951,8 +2951,12 @@ could not put on its address is listed by that run, with its state. The
 calculation is opened once for the whole answer (`runstatus.job_members`),
 and one that does not read is said on each row that needed it. **A job that has ended is shown once — how each member ended — and its file
 removed**; its run's folder and the calculation's ledger keep its history. A
-run waited on is shown by its own launch, which says how it ended — or,
-stopped at its terminal, its stop — and removes its file then. A run here
+run waited on is shown by its own launch, which says how it ended and
+removes its file then; stopped at its terminal, the launch waits for the run
+script's own close — twice the ten seconds its exit trap gives its monitor
+(`runwrap.MONITOR_STOP_S`) — reads the run once and removes its file, and a
+run not ended by then, or a second stop pressed meanwhile, keeps its file for
+`jobs status` to ask. A run here
 launched on another host is said so — *on HOST: ask there* — and never
 removed or signalled here; a file that does not read is said, with its
 path, and kept.
@@ -2975,8 +2979,9 @@ how), and the verb says it: *stopped: SIGTERM to its process group, &lt;pid&gt;
 it ran, `/usr/bin/scancel 62039301` on SLURM. The run then
 reads *failed — stopped before its
 end* by its own files ([`running-a-job.md`](?doc=execution/running-a-job.md)
-§ 4.2); one stopped before its monitor began reads *queued*, and `jobs
-status` says its process is gone. A trial under a benchmark's per-trial bound
+§ 4.2); one stopped before its monitor began reads so too once a look on
+this machine has written its process gone (*Asked once, written once*), and
+`jobs status` says its process is gone. A trial under a benchmark's per-trial bound
 ends at its bound.
 
 The address is floor 1's (`molbuilder/joblist.py`, beside `runrecord`: its

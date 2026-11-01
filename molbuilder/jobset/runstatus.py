@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..calcdirs import where
 from ..identity import StageRef, stage_key
 from ..paths import attempts_in
 from .materialize import latest_attempt
@@ -325,7 +326,6 @@ def points_view(calc, run, reading: Optional[PointsReading] = None
     opens; and **what the run opens** (:func:`_run_opens`).  Every path
     whole.  ``reading`` is the run's one reading where the caller holds it
     (`continuation.read_points`)."""
-    from ..calcdirs import where
     from ..identity import parse_token
     from ..runs import file_row, openable, record_of, run_of
     run = Path(run)
@@ -389,7 +389,7 @@ def every_run(calc, st: StageStatus) -> List[Dict[str, Any]]:
     (`architecture.md` § 3.2): the stage's newest run is the stage row's
     own reading (``st``), in the run's own words where it is not launched.
     ``[]`` for a stage nothing has prepared."""
-    from ..calcdirs import RunPlace, where
+    from ..calcdirs import RunPlace
     from ..runs import openable, run_of, state_of
     from .points import point_of
     if not st.dir:
@@ -560,20 +560,15 @@ def _copied(base, run: Optional[Path]) -> Optional[str]:
         return str(exc)
 
 
-def _sweep_status(calc, job, *, run: Path, columns: dict
-                  ) -> Optional["StageStatus"]:
-    """A SWEPT RUNG's row (`engines/transport.md` § 2a.11): its latest run's
-    -- ``run`` -- one reading (`continuation.read_points`): ``pending`` before
-    it is launched; while launched, ``running`` while a point runs,
-    ``finished`` once every point is done, ``queued`` when nothing has run
-    yet, else ``failed`` -- and its points, each done or not done and what
-    it started from; ``columns``, the stage's own (:func:`_job_status`).
-    ``None`` for a rung that does not sweep."""
-    from .points import points_of
+def _sweep_status(calc, job, *, run: Path, columns: dict) -> "StageStatus":
+    """A RUN OF POINTS' row (`engines/transport.md` § 2a.11): its latest
+    run's -- ``run``, a run of points' root -- one reading
+    (`continuation.read_points`): ``pending`` before it is launched; while
+    launched, ``running`` while a point runs, ``finished`` once every point
+    is done, ``queued`` when nothing has run yet, else ``failed`` -- and its
+    points, each done or not done and what it started from; ``columns``,
+    the stage's own (:func:`_job_status`)."""
     base, task = calc.base, calc.task
-    declared = points_of(task) if task is not None else None
-    if declared is None or not declared.rung_points(calc, job.name):
-        return None
     got = read_points(base, task, job.name, run)
     pts = got.rows
     # CONVERGED, in its own column (`job-system.md`, rule 4): the first
@@ -633,9 +628,13 @@ def _job_status(calc, job, *, dirs, refs) -> StageStatus:
     # § 1.6.1).  THE LABEL IS THIS JOB'S, NOT THE JOBSET'S: a trial is
     # relabelled with its point.
     names = run_names(jobset, job)
+    # WHAT THE RUN IS, its folder's answer (`calcdirs.where`): a run of
+    # points' root, or one run -- as every reader of a run asks it
+    # (`continuation.read_run`).
     row = (_sweep_status(calc, job, run=run, columns=columns)
-           or _one_run_status(base, jobset, run=run, names=names,
-                              columns=columns))
+           if where(run).of_points else
+           _one_run_status(base, jobset, run=run, names=names,
+                           columns=columns))
     row = dataclasses.replace(row, tsgf=_tsgf_line(
         base, task, job, d, run if row.launch else None, row.attempts,
         going=row.state in ("queued", "running")))
@@ -657,7 +656,12 @@ def _one_run_status(base: Path, jobset: JobSet, *, run: Path, names,
     from ..runs import concluded
     st = concluded(run, names, base=base)
     state, detail = st.state, st.detail
-    launch = None if state == "unreadable" else launch_record(run)
+    # ITS LAUNCH RECORD, where it reads -- an older molbuilder's run is
+    # unreadable by its files' names, its record whole.
+    try:
+        launch = launch_record(run)
+    except LaunchRecordError:
+        launch = None
     if state == "pending":
         detail = pending_words(run, detail)
     return StageStatus(
@@ -1241,7 +1245,7 @@ def _member_said(calc, unread: Optional[str], base: Path, stage: str,
                  record: Path) -> str:
     """One member's state, in the status door's words -- its run's, read
     through its launch record ``record`` (:func:`job_members`)."""
-    from ..calcdirs import CONTAINER, where
+    from ..calcdirs import CONTAINER
     from ..runs import run_of, state_of
     ran = run_of(record) if record.exists() else None
     if ran is not None:

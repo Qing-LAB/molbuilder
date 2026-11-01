@@ -808,8 +808,9 @@ running stage, and `# frozen_atoms: <i> ...`, the atoms the run holds
 
 A verbose "Run with" header names the managed way first — `molbuilder jobset
 launch task`, its group's first launch, and `launch task --stage <stage>`, the
-stage alone (`identity.deck_launch`); or the wrapper beside the deck by hand — and then the plain
-`mpirun -np N siesta < <deck>.fdf > <deck>.out`, whose names come from
+stage alone (`identity.deck_launch`) — and then the plain
+`mpirun -np N siesta < <deck>.fdf > <deck>.out`, to drive SIESTA yourself,
+whose names come from
 `runfiles` like every name a deck prints. The Results tab opens the run's own
 `.out` before the seeded `.molwatch.log`
 ([`model/parse.md`](?doc=model/parse.md) § 5.5); how the `.out` is read — its

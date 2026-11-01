@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from molbuilder.parse.base import FileParser
+from molbuilder.parse.dirs.job import MONITOR_ENDED_LINE as _ENDED
 from molbuilder.parse.types import InstrumentResult
 
 from ._helpers import build_instrument_result
@@ -35,10 +36,6 @@ _VERDICT = re.compile(r"->\s*(GPU-bound|host/CPU-bound|mixed)")
 _BOUND_MAP = {"GPU-bound": "gpu", "host/CPU-bound": "host", "mixed": "mixed"}
 #: ``cpu mean=NN% (mm-MM); gpu0 sm mean=NN% (mm-MM) -> verdict``
 _SUMMARY_CPU = re.compile(r"cpu mean=(\d+(?:\.\d+)?)%")
-#: The closing record -- ``[<time>] [MONITOR] job ended (<why>); ...`` -- whose
-#: time is the run's end (`run-reports.md` § 2.5), which a launch compares a
-#: warm file's write time with (`running-a-job.md` § 3.6).
-_ENDED = re.compile(r"^\[([^\]]+)\]\s+\[MONITOR\]\s+job ended\s*\(([^)]*)\)")
 _SUMMARY_GPU = re.compile(r"gpu\d+ sm mean=(\d+(?:\.\d+)?)%")
 
 

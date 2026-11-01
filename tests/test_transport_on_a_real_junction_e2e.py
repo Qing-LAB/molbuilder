@@ -639,7 +639,8 @@ def junction(tmp_path_factory):
         # once TBtrans states a share done, the jobs launched from here
         # asked (`job-system.md` § 6.0a), the run stopped with the line its
         # launch printed and let end, and the jobs asked twice more.
-        from support.real_runs import _stopped_by_its_line, _until
+        from support.real_runs import _stopped_by_its_line
+        from support.road import until
         from support.replay import output_lines
 
         def stopped_in_its_loop(c):
@@ -658,7 +659,7 @@ def junction(tmp_path_factory):
                     return False
                 return any((_progress_stated(ln) or (0.0,))[0] > 0
                            for ln in lines)
-            _until(underway, within=600, what="its loop underway")
+            until(underway, within=600, what="its loop underway")
             c.jobs["while it runs"] = molbuilder("jobs", "status")
             _stopped_by_its_line(c, "stop as its launch said", launched)
             c.jobs["after its stop"] = molbuilder("jobs", "status")
@@ -682,7 +683,7 @@ def junction(tmp_path_factory):
                 # ITS 0 V POINT, as `jobset status` reads the new run.
                 s = stage_status(c.bundle, "device")
                 return s.attempts != ran and point_row(s, _BIAS[0])["done"]
-            _until(first_point_done, within=600, what="its first point done")
+            until(first_point_done, within=600, what="its first point done")
             _stopped_by_its_line(c, "stop as its launch said", launched)
             # THE STOPPED RUN AS IT ENDED, as `jobset status` reads it.
             run.walk_ended = stage_status(c.bundle, "device")

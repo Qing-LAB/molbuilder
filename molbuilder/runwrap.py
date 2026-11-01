@@ -19,9 +19,8 @@ Testing hook: tests inject a synthetic Capabilities via
 from __future__ import annotations
 
 #: THE LAUNCH CLAIM is the scheduler protocol's (`scheduler/kinds.py`:
-#: `LAUNCH_CLAIM_VAR`, `LAUNCH_CLAIM`, `MANUAL_CLAIM`), read here by the
-#: wrapper's gate.
-from .scheduler.kinds import LAUNCH_CLAIM_VAR, MANUAL_CLAIM
+#: `LAUNCH_CLAIM_VAR`, `LAUNCH_CLAIM`), read here by the wrapper's gate.
+from .scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
 
 import re
 from dataclasses import dataclass
@@ -36,12 +35,14 @@ from .runfiles import RANK_LAUNCHER, ROLE_SPECTRA, deck_roles, engine_of_role
 # alone -- so it is the end of the exchange that gets to own the rule.
 from .config_dir import is_channel_name
 # The way back a refusal names: the checkpoint commands, the folder in them;
-# and the one spelling of a run script started by hand.
-from .identity import command_stage, hand_run, launch_as_typed, way_back_words
+# and the one door a run script takes a start from.
+from .identity import (command_stage, holds_a_start, next_run_words,
+                       started_by_launch, way_back_words)
 from .jobset.errors import WrapperError
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
 from .runpoints import AGAIN, CONTINUE
+from .parse.dirs.job import STOPPED
 from .runrecord import conclude_line
 from .runtime_info import (JOB_STARTED_VAR, NODE_CORES_VAR, THREAD_SOURCES,
                            WALL_SLACK_VAR, WALL_VAR)
@@ -166,9 +167,10 @@ def _bash_fill(name: str) -> str:
 
 
 def _env_python_block(names, stdout_role: str, target_env: str) -> str:
-    """Bash that names the run's output and its conclusion marker -- every
-    writer of them below writes these names (`project-layout.md` § 1.6.3);
-    ``names`` are the stage's (`runfiles.RunNames`), ``stdout_role`` the
+    """Bash that names the run's output -- every writer of it below writes
+    this name (`project-layout.md` § 1.6.3); the conclusion marker's is
+    named with the session log's (:func:`_one_start_block`); ``names`` are
+    the stage's (`runfiles.RunNames`), ``stdout_role`` the
     engine's stdout role (:func:`_stdout_role_for`).
 
     **Then the one check every job makes before anything runs**
@@ -181,7 +183,6 @@ def _env_python_block(names, stdout_role: str, target_env: str) -> str:
     env_name = str(target_env).rstrip("/").rsplit("/", 1)[-1]
     return (
         f'_out_file="{names.name(stdout_role)}"\n'
-        f'_concluded="{names.name(".concluded")}"\n'
         f"# --- The job's python: its env's own (running-a-job.md 2) ---\n"
         + env_python_check(env_name)
         + f'    echo "ERROR: this job has no python of its env \'{env_name}\' -- '
@@ -505,6 +506,39 @@ def _again_line(again: str, said: str = "what a launch again will do") -> str:
     return f'echo "{said}: {again}" >&2\n'
 
 
+#: HOW LONG THE EXIT TRAP WAITS FOR ITS MONITOR'S CLOSING LINES, in seconds:
+#: a monitor not gone by then is left to its own watch-pid exit.  A launch
+#: waiting on a run here it was stopped over waits past it
+#: (`submit._ended_within`).
+MONITOR_STOP_S = 10
+
+#: The exit trap's conclusion, for a failure of the script's own that
+#: reached no marker (`project-layout.md` § 1.6.3): the script's exit code,
+#: read as the trap began.
+_STOPPED_BEFORE_ITS_END = conclude_line('"$_mb_rc"', STOPPED)
+
+#: THE SIGNALS THAT STOP A RUN, each caught by its one handler
+#: (``_mb_on_signal``), so none reaches the exit trap as an end of the
+#: script's own: a scheduler's stop, Ctrl-C, a lost terminal, a limit
+#: reached.  A pipe its log's tee left and a warning (``USR1``, ``USR2``)
+#: are caught apart -- neither stops the run (:data:`_SIGNALS_APART`).
+_STOPPING_SIGNALS = ("HUP", "INT", "QUIT", "ALRM", "TERM", "XCPU", "XFSZ",
+                     "VTALRM", "PROF")
+
+#: ...AND THE TWO CAUGHT APART.  A PIPE its log's tee left -- the tee gone
+#: with the process group a stop signals -- marks the run stopped by a
+#: signal and is ignored from then on, its write failing instead of ending
+#: the script, so the stop that took the tee is the one said; a USR1 or
+#: USR2 -- a warning a scheduler may be asked to send -- is said in the
+#: session log, and the run goes on.
+_SIGNALS_APART = (
+    "trap '_mb_signalled=1; trap \"\" PIPE' PIPE\n"
+    "for _mb_s in USR1 USR2; do\n"
+    "    trap \"_log WARN 'caught SIG$_mb_s -- a warning, not a stop; the "
+    "run goes on' || true\" \"$_mb_s\"\n"
+    "done\n")
+
+
 def _one_start_block(names, trial: bool) -> str:
     """Bash that refuses a second start in a run folder, first of all,
     before anything is written (`project-layout.md` § 1.6.1): a run is one
@@ -513,13 +547,13 @@ def _one_start_block(names, trial: bool) -> str:
     A help request has answered before it, and a dry run starts nothing
     (``_dry_run``, read with the arguments): it passes, and writes no
     session log (`job-contracts.md` § 2.6).  The log's name is set here,
-    the one variable every later line writes and reads.  ``trial``: a
-    benchmark trial, which measures its point once."""
+    the one variable every later line writes and reads -- and the
+    conclusion marker's (`project-layout.md` § 1.6.3), which the exit trap
+    may write before any later block runs.  ``trial``: a benchmark trial,
+    which measures its point once."""
     log = names.name(".runwrap.log")
     way = (_TRIAL_ONCE if trial else
-           f"to continue it, launch the stage again -- "
-           f"'{launch_as_typed(command_stage(names.stage))}' opens the "
-           f"next run")
+           next_run_words(command_stage(names.stage)))
     return (
         "# --- One start per run (project-layout.md 1.6.1) --------\n"
         "# A run folder holds one start, and its session log says it has\n"
@@ -528,9 +562,9 @@ def _one_start_block(names, trial: bool) -> str:
         "# the ending read over it (_mb_ending), for SIESTA's stderr --\n"
         "# resolves it wherever it runs from.\n"
         f'_runwrap_log="$PWD/{log}"\n'
+        f'_concluded="{names.name(".concluded")}"\n'
         f'if [ "$_dry_run" = "0" ] && [ -e "$_runwrap_log" ]; then\n'
-        f'    echo "ERROR: this run folder already holds a start ({log}): '
-        f'a run is one start; {way} (project-layout.md 1.6.1)." >&2\n'
+        f'    echo "ERROR: {holds_a_start(log, way)}." >&2\n'
         "    exit 2\n"
         "fi\n"
     )
@@ -2211,8 +2245,9 @@ def render_run_wrapper(script_path: Path, *,
             # OMP precedence: -omp flag > OMP_NUM_THREADS env > the
             # scheduler's reservation (MB_CPUS_PER_TASK) > the stated value,
             # baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
-            # standard OMP-toolchain convention (users bench with
-            # ``OMP_NUM_THREADS=8 ./run.sh``).  Under a scheduler it
+            # standard OMP-toolchain convention -- set in the shell
+            # `jobset launch` is typed in, which the run inherits, and read
+            # when launch hands no ``-omp``.  Under a scheduler it
             # reserved the cores per rank (the OMP width per the
             # running-a-job.md § 3.3 sizing) -- honor it so the
             # allocation drives OMP automatically without a manual
@@ -2856,30 +2891,49 @@ def render_run_wrapper(script_path: Path, *,
         + f"\n"
         f"# Single unified EXIT cleanup (one trap -- a second ``trap ...\n"
         f"# EXIT`` would REPLACE the first, so all teardown lives here).\n"
-        f"# No-ops unless the relevant vars were set, so it is safe for\n"
-        f"# CPU / PySCF / non-MPS runs.  Cleans (a) the per-rank GPU\n"
-        f"# launcher temp file and (b) the MPS daemon + its pipe/log dirs.\n"
+        f"# A failure of its own that wrote no conclusion concludes\n"
+        f"# here first (project-layout.md 1.6.3); then it stops the\n"
+        f"# monitor and cleans (a) the per-rank GPU launcher temp file and\n"
+        f"# (b) the MPS daemon + its pipe/log dirs, each a no-op unless\n"
+        f"# its variable was set.\n"
         # STOPPING THE MONITOR, in one place: TERM at the job's end
         # (`run-reports.md` § 2) -- and the wait lets it write its closing
         # [STATUS] / [UTIL-SUMMARY] before this shell exits and a scheduler
-        # reaps the job's processes.  Bounded (~10 s): a monitor that does
-        # not exit by then is left to its own watch-pid exit.
+        # reaps the job's processes.  Bounded (MONITOR_STOP_S): a monitor
+        # that does not exit by then is left to its own watch-pid exit.
         f"_mb_stop_monitor() {{\n"
         f'    [ -n "${{_monitor_pid:-}}" ] || return 0\n'
         f'    kill -TERM "$_monitor_pid" 2>/dev/null || return 0\n'
         f"    _mb_w=0\n"
         f'    while kill -0 "$_monitor_pid" 2>/dev/null '
-        f'&& [ "$_mb_w" -lt 50 ]; do\n'
+        f'&& [ "$_mb_w" -lt {MONITOR_STOP_S * 5} ]; do\n'
         f"        sleep 0.2\n"
         f"        _mb_w=$((_mb_w + 1))\n"
         f"    done\n"
         f"}}\n"
         f"_mb_cleanup_ran=0\n"
+        f"_mb_signalled=0\n"
         f"_mb_cleanup() {{\n"
+        # THE SCRIPT'S EXIT CODE, read before any command here replaces it.
+        f"    _mb_rc=$?\n"
         # Idempotence guard: a caught signal runs cleanup and exits,
         # which fires the EXIT trap and would run it AGAIN (D17).
         f'    [ "${{_mb_cleanup_ran:-0}}" = "1" ] && return 0 || true\n'
         f"    _mb_cleanup_ran=1\n"
+        # A FAILURE OF THE SCRIPT'S OWN CONCLUDES THE RUN (`project-layout.md`
+        # § 1.6.3): an activation or a step that failed under `set -e`, an
+        # exit before the engine -- the main line never reached its marker,
+        # so the marker is written here, with the exit code, and BEFORE the
+        # monitor is stopped, which reads it for its closing status, as the
+        # main line writes its own first.  A signal leaves none: every
+        # signal that would end the script is caught (below), and a forced
+        # stop is told by its scheduler and its monitor, never by a marker
+        # -- nor by a code 0, which no end the main line did not reach can
+        # have.  A dry run starts nothing, and concludes nothing.
+        f'    if [ "$_mb_signalled" = "0" ] && [ "$_dry_run" = "0" ] '
+        f'&& [ "$_mb_rc" -ne 0 ] && [ ! -e "$_concluded" ]; then\n'
+        f"        {_STOPPED_BEFORE_ITS_END} 2>/dev/null || true\n"
+        f"    fi\n"
         # ``|| true`` on every arm: this trap runs UNDER set -e, and bash
         # exits on the failure of the command following the final ``&&`` --
         # a monitor already dead (the COMMON case at cleanup) would kill the
@@ -2906,6 +2960,7 @@ def render_run_wrapper(script_path: Path, *,
         f"}}\n"
         f"trap _mb_cleanup EXIT\n"
         f"_mb_on_signal() {{\n"
+        f"    _mb_signalled=1\n"
         # THE LINE GOES TO THE LOG FILE FIRST, AND PIPE IS IGNORED: `_log`
         # writes through the tee, and a kill of the whole process group
         # takes the tee with it -- a write to the dead pipe then kills bash
@@ -2914,15 +2969,21 @@ def render_run_wrapper(script_path: Path, *,
         # § 5x.7 F11).  The direct append cannot die that way.
         f"    trap '' PIPE\n"
         f"    printf '{LOG_LINE}\\n' \"$(date '+{LOG_CLOCK}')\" WARN "
-        f'"caught SIGTERM/SIGINT -- stopped before its end" '
+        f'"caught SIG$1 -- {STOPPED}" '
         f'>> "$_runwrap_log" 2>/dev/null || true\n'
-        f'    _log WARN "caught SIGTERM/SIGINT (scheduler kill or '
-        f'Ctrl-C) -- cleaning up" 2>/dev/null || true\n'
+        f'    _log WARN "caught SIG$1 (a scheduler\'s stop, Ctrl-C, a lost '
+        f'terminal) -- cleaning up" 2>/dev/null || true\n'
         f"    _mb_cleanup\n"
-        f"    exit 143\n"
+        f'    exit $((128 + $(kill -l "$1" 2>/dev/null || echo 15)))\n'
         f"}}\n"
-        f"trap _mb_on_signal TERM INT\n"
-        f"\n"
+        # EVERY SIGNAL THAT STOPS A RUN, caught: one bash ends on untrapped
+        # runs the EXIT trap with the last command's status, which would
+        # read as an end of its own.
+        f"for _mb_s in {' '.join(_STOPPING_SIGNALS)}; do\n"
+        f'    trap "_mb_on_signal $_mb_s" "$_mb_s"\n'
+        f"done\n"
+        + _SIGNALS_APART
+        + f"\n"
         f"_log STAGE \"{WRAPPER_LOG_START}\"\n"
         f'_log INFO "timestamp:  $(date \'+%Y-%m-%d %H:%M:%S %Z\')"\n'
         f'_log INFO "{HOSTNAME_LABEL:<12}$(hostname)"\n'
@@ -2938,8 +2999,9 @@ def render_run_wrapper(script_path: Path, *,
 
     # Launch + diagnostics.  The command is run, not exec'd, for both
     # engines: the CONCLUSION MARKER is the wrapper's LAST ACT
-    # (`job-contracts.md` § 2.2, `project-layout.md` § 1.6 -- "absent means
-    # killed"), and `exec` would replace this shell so nothing could run
+    # (`job-contracts.md` § 2.2, `project-layout.md` § 1.6.3 -- absent
+    # means still running or force-stopped), and `exec` would replace this
+    # shell so nothing could run
     # afterwards.  For SIESTA it also lets us inspect the .out for
     # ``propor: ERROR: IMAX = 0`` on failure and print a targeted
     # hint.  Cost: one extra bash process for the wrapper's lifetime; cheap.
@@ -3082,10 +3144,9 @@ def render_run_wrapper(script_path: Path, *,
             + _point_block(names, POINT_ENDED, point, finish, script_name,
                            failed=True)
             + '    # CONCLUDED -- an error is a conclusion (project-\n'
-            '    # layout.md 1.6, "the other file"): the engine returned\n'
-            '    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
-            '    # never the cleanup trap: a walltime SIGTERM runs the\n'
-            '    # trap, and a forced stop must leave NO marker.\n'
+            '    # layout.md 1.6.3): the engine returned and this process\n'
+            '    # says goodbye with its code.  A forced stop leaves NO\n'
+            '    # marker: its signal handler writes none.\n'
             + "    " + conclude_line('"$_siesta_exit"') + "\n"
             + '    exit "$_siesta_exit"\n'
             "fi\n"
@@ -3134,10 +3195,9 @@ def render_run_wrapper(script_path: Path, *,
             f'    {_again_line(_again)}'
             f'fi\n'
             f'    # CONCLUDED -- an error is a conclusion (project-layout.md\n'
-            f'    # 1.6, "the other file"): the engine returned and this\n'
-            f'    # process gets to say goodbye.  MAIN LINE ONLY, never the\n'
-            f'    # cleanup trap: a walltime SIGTERM runs the trap, and a\n'
-            f'    # forced stop must leave NO marker.\n'
+            f'    # 1.6.3): the engine returned and this process says\n'
+            f'    # goodbye with its code.  A forced stop leaves NO marker:\n'
+            f'    # its signal handler writes none.\n'
             + conclude_line('"$_pyscf_exit"') + "\n"
             'exit "$_pyscf_exit"\n'
         )
@@ -3192,14 +3252,11 @@ def render_run_wrapper(script_path: Path, *,
         f"# Generated at prep (`molbuilder jobset prep`).  Edit freely;\n"
         f"# molbuilder will not regenerate this file until the next prep\n"
         f"# of the same script.  `molbuilder jobset launch` starts it,\n"
-        f"# once in its run's folder (project-layout.md 1.6.1):\n"
+        f"# once in its run's folder, with its counts, its engine's output\n"
+        f"# going to {names.name(_ext)} (project-layout.md 1.6.1); it takes\n"
+        f"# no other start: "
+        f"{started_by_launch(command_stage(names.stage), trial)}.\n"
         f"#\n"
-        f"#     {hand_run(names)}          # -> {names.name(_ext)}\n"
-        + (f"#     {hand_run(names)} -np 8    # override the rank count\n"
-           f"#     MB_NP=8 {hand_run(names)}  # same via env var\n"
-           if suffix == ".fdf" else
-           f"#     {hand_run(names)} -omp 8   # override the thread count\n")
-        + "#\n"
         "# What the deck reads of the restart files launch copies in\n"
         "# (job-contracts.md 4.1):\n"
         # THE DECK DECIDES, AND THIS WRAPPER SHIPS BESIDE EXACTLY ONE DECK:
@@ -3242,15 +3299,15 @@ def render_run_wrapper(script_path: Path, *,
         f"# docs/execution/running-a-job.md § 2.2a).  Its own files (the\n"
         f"# session log, the output) land in the CALLER'S current working\n"
         f"# directory.  Sent to a scheduler this is the folder it was\n"
-        f"# sent from; under direct invocation it's\n"
-        f"# wherever you ``cd``'d before running the wrapper.  The\n"
+        f"# sent from; run here, the folder `jobset launch` starts it\n"
+        f"# in, its run's own.  The\n"
         f"# engine's files (.chk, trajectory XYZ, .molwatch.log,\n"
         f"# .spectra.json, .DM, ...) land in the same directory:\n"
         f"# SIESTA writes where it runs, and a PySCF deck writes beside\n"
         f"# itself, which this wrapper runs by its bare name from here\n"
         f"# (docs/execution/job-contracts.md § 4.2).\n"
         f"#\n"
-        f"# Convention: invoke it in its run's folder, run-<n>/, where\n"
+        f"# It runs in its run's folder, run-<n>/, where\n"
         f"# launch put it beside its deck and inputs and where the run's\n"
         f"# outputs belong (project-layout.md 1.5).  Do NOT add ``cd``\n"
         f"# lines or modify the cwd from inside the generated .py /\n"
@@ -3279,41 +3336,19 @@ def render_run_wrapper(script_path: Path, *,
         + _one_start_block(names, trial)
         + f"\n"
         f"# --- Launch-door gate (one door: jobset launch) ----------\n"
-        f"# `molbuilder jobset launch` sets {LAUNCH_CLAIM_VAR} when it launches\n"
-        f"# this script (direct: child env; sent to a scheduler: on the\n"
-        f"# line it is sent with).  A bare invocation is usually an accident: it skips the\n"
-        f"# launch bookkeeping, the check of what prep wrote and the\n"
-        f"# mode/config resolution.  {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} is the\n"
-        f"# deliberate override, and the value is logged either way\n"
-        f"# (job-contracts.md 2.6).  A help request never reaches it: it\n"
-        f"# answered above.\n"
-        f"if [ -z \"${{{LAUNCH_CLAIM_VAR}:-}}\" ]; then\n"
-        f"  echo \"WARNING: {run_sh} was called directly, not via\" >&2\n"
-        f"  echo \"  'molbuilder jobset launch'.  Direct calls skip launch\" >&2\n"
-        f"  echo \"  bookkeeping and the check of what prep wrote.\" >&2\n"
-        f"  if [ -t 0 ]; then\n"
-        f"    printf \"  Proceed anyway? [y/N] \" >&2\n"
-        f"    # `|| true`: EOF (Ctrl-D, a closed pty) must fall through to\n"
-        f"    # the refusal below -- under set -e a failed `read` would kill\n"
-        f"    # the script mid-prompt with NO verdict line (U10).\n"
-        f"    _mb_answer=\"\"\n"
-        f"    read -r _mb_answer || true\n"
-        f"    case \"${{_mb_answer}}\" in\n"
-        f"      # EXPORTED, as the claim launch gives is (U10).\n"
-        f"      y|Y|yes|YES) export {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} ;;\n"
-        f"      *) echo \"  Aborted.  ({LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} skips this prompt.)\" >&2\n"
-        f"         echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
-        f"         exit 2 ;;\n"
-        f"    esac\n"
-        f"  else\n"
-        f"    echo \"  Non-interactive shell: refusing.  Launch via\" >&2\n"
-        f"    echo \"  'molbuilder jobset launch', or override deliberately:\" >&2\n"
-        f"    echo \"    {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} {hand_run(names)}   # local, in its run's folder\" >&2\n"
-        f"    echo \"  or send its scheduler header by hand, as the header's own\" >&2\n"
-        f"    echo \"  comment shows -- the claim rides the line it is sent with.\" >&2\n"
-        f"    echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
+        f"# `molbuilder jobset launch` starts this script, and says so in\n"
+        f"# {LAUNCH_CLAIM_VAR} (direct: the child's environment; sent to a\n"
+        f"# scheduler: on the line it is sent with).  It starts nothing\n"
+        f"# else: a run's records are its launch's, and a start without\n"
+        f"# them would be read by nothing (job-contracts.md 2.6).  A help\n"
+        f"# request and a dry run start nothing, and pass.\n"
+        f'if [ "$_dry_run" = "0" ] '
+        f'&& [ "${{{LAUNCH_CLAIM_VAR}:-}}" != "{LAUNCH_CLAIM}" ]; then\n'
+        f'    echo "ERROR: {run_sh} was not started by its launch: '
+        f'{started_by_launch(command_stage(names.stage), trial)}." >&2\n'
+        f'    echo "launched-by: ${{{LAUNCH_CLAIM_VAR}:-NONE}} -- refused at '
+        f'the launch-door gate"\n'
         f"    exit 2\n"
-        f"  fi\n"
         f"fi\n"
         f"# --- The run's session log (running-a-job.md 2.2a) ------\n"
         f"# It opens once the gate lets a start through, and only for a\n"
@@ -3328,14 +3363,12 @@ def render_run_wrapper(script_path: Path, *,
         f"fi\n"
         f"\n"
         f"# The verdict, in the JOB'S OWN OUTPUT: sent to a scheduler this line is in\n"
-        f"# the job's .out, and for a start it is in the session log too --\n"
-        f"# either alone answers \"was this launched properly, run by\n"
-        f"# hand on purpose, or refused?\" -- no terminal needed, and nothing\n"
-        f"# can sit waiting on one (no-TTY never prompts).\n"
-        f'echo "launched-by: ${{{LAUNCH_CLAIM_VAR}}}"\n'
+        f"# the job's .out, and for a start it is in the session log too; a\n"
+        f"# dry run passes the gate with no claim, and says so.\n"
+        f'echo "launched-by: ${{{LAUNCH_CLAIM_VAR}:-NONE}}"\n'
         f"# Per docs/execution/running-a-job.md § 2.2a: the wrapper does NOT change cwd.\n"
-        f"# A scheduler lands the job in the folder it was sent from; direct\n"
-        f"# callers ``cd`` to the run's folder before invoking.  The\n"
+        f"# A scheduler lands the job in the folder it was sent from; run\n"
+        f"# here, `jobset launch` starts it in the run's folder.  The\n"
         f"# caller's cwd is the contract -- outputs (the session log, the output)\n"
         f"# land where the wrapper was invoked.\n"
         f"\n"
@@ -3961,8 +3994,9 @@ def write_run_wrapper(script_path: Path, *,
     a person to put their own lines in it — and an invitation the next prep
     silently revokes is worse than no invitation.
 
-    Modes: the wrapper is 0o755 so a person can ``./my-job.run.sh`` it; the
-    ``.sbatch`` is 0o644 because you ``sbatch`` it rather than run it.
+    Modes: the wrapper is 0o755, a program its launch runs (and a person
+    asks for ``-h`` or ``--dry-run``); the ``.sbatch`` is 0o644, read by
+    its scheduler rather than run.
     Overwrites whatever is there.
     """
     from . import script_emit as _sc_write
@@ -4161,34 +4195,21 @@ def render_sbatch(names, *, scheduler,
     from .scheduler.kinds import kind as _kind_named
     kind = _kind_named(scheduler.kind)
 
-    # HOW IT IS SENT (`job-contracts.md` § 2.6): by `jobset launch`, which
-    # opens each run and records it; a run's header also by hand, past the
-    # run script's launch-door gate, from its own folder.  A walk's
-    # (``where``) runs a walk script only launch writes, its members'
-    # counts in it: launch alone sends it.
-    # THE LINE TO SEND IT BY HAND -- launch's own form (`kinds.Kind.line`),
-    # the job named by its header's name, the claim the person's.
-    from .scheduler.quantities import parse_walltime
-    by_hand = [] if where else [
-        f"# records it.  By hand -- sent to {kind.what}, not run with bash,",
-        f"# which ignores the {kind.header['prefix']} lines -- from this "
-        f"file's folder:",
-        "#     " + " ".join(kind.line(
-            scheduler.commands(), job=basename, restated=[],
-            launched_by=MANUAL_CLAIM, header=names.name(".sbatch"),
-            args=[],
-            # THE HEADER'S WALL, told to the job as a launch tells it
-            # (`running-a-job.md` § 3.6).
-            wall_s=parse_walltime(time)))]
+    # HOW IT IS SENT (`job-contracts.md` § 2.6): by `jobset launch` alone,
+    # which opens each run and records it -- the run script it starts takes
+    # no other start -- and, for a walk (``where``), writes the walk script
+    # this header runs, its members' counts in it.
     lines: List[str] = [
         "#!/bin/bash",
         f"# === molbuilder scheduler header (scheduler: {kind.name}) ===",
         "# Generated by prep from the job's own stated values.",
         "# Authoritative design: docs/execution/job-system.md.",
         "# Sent by `molbuilder jobset launch`, which opens each run and",
-        *(by_hand or [
-            "# records it, and writes the walk script this header runs --",
-            "# each member's counts in it.  It is not sent by hand."]),
+        *(["# records it, and writes the walk script this header runs --",
+           "# each member's counts in it."] if where else
+          ["# records it."]),
+        "# It is not sent by hand: the run script it starts takes no",
+        "# other start (job-contracts.md 2.6).",
         "#",
         *kind.directive("name", name=basename),
         *kind.directive("nodes"),

@@ -1485,16 +1485,14 @@ def emit_run_with(names) -> List[str]:
     """How a PySCF deck's header says to run it -- one block for both decks:
     the managed launch from the calculation's folder, the stage by its name
     through the one printer (`identity.deck_launch`, `job-system.md`
-    § 5.3); its run script by hand (`identity.hand_run`); and PySCF driven
-    directly, its stdout under the stage's own name for it
+    § 5.3), the one that starts its run script; and PySCF driven directly,
+    outside molbuilder, its stdout under the stage's own name for it
     (`runfiles.RunNames.name`)."""
-    from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE, deck_launch,
-                            hand_run)
+    from ..identity import LAUNCH_MODE_NOTE, deck_launch
     out = ["Run with -- the managed way, and the usual one, from the "
            "calculation's folder:"]
     out.extend(f"    {line}" for line in deck_launch(names.stage))
     out.append(f"    {LAUNCH_MODE_NOTE}")
-    out.append(f"    {hand_run(names)}    # {HAND_RUN_NOTE}")
     out.append("")
     out.append("    The wrapper beside this file is self-contained: it runs")
     out.append("    unattended in a shell that inherits nothing, so it bakes")

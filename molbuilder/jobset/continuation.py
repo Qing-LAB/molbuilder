@@ -86,17 +86,21 @@ class Continuation:
         return d
 
 
-def _what_it_is(concluded: Optional[str], state: Optional[str]) -> str:
+def _what_it_is(concluded: Optional[str], state: Optional[str],
+                detail: Optional[str] = None) -> str:
     """A run's conclusion, in words: its marker's line when it concluded --
-    FAILED beside it when its run failed -- else what its state says."""
+    FAILED beside it when its run failed -- else what its state says; a
+    run whose records do not read, in the status door's words
+    (``detail``) where the caller holds them."""
     if concluded is not None:
         return ("concluded " + concluded).strip() + (
             ", FAILED" if state == "failed" else "")
+    if state == "unreadable":
+        return detail or ("its records do not read -- whether it ran "
+                          "cannot be told")
     return {"pending": "NOT launched yet",
             "queued": "NOT concluded -- queued",
-            "running": "NOT concluded -- still running",
-            "unreadable": "its launch record does not read -- whether it "
-                          "ran cannot be told"}.get(
+            "running": "NOT concluded -- still running"}.get(
         state, "NOT concluded -- stopped without its conclusion marker")
 
 
@@ -115,7 +119,8 @@ def usable(state: Optional[str]) -> bool:
 
 
 def done(folder, names, *, launch=None, must_hold=(),
-         launched_in=None, verdict_counts: bool = True) -> Tuple[bool, str]:
+         launched_in=None, verdict_counts: bool = True,
+         st=None) -> Tuple[bool, str]:
     """THE DONE-DOOR (`engines/transport.md` § 2a.11): whether the run, or a
     swept run's point, in ``folder`` is DONE -- ``(True, "done")`` -- or what
     it is instead, in the run door's words.  Done is three facts, all read
@@ -136,14 +141,16 @@ def done(folder, names, *, launch=None, must_hold=(),
     concluded failed, so finished says it (`execution/runs-of-points.md`
     § 4.1).  What a finished point lacks is said in the one rule's words
     (`_run_ending.not_done_why`), which the job's side asks too
-    (`runpoints.rows_of`)."""
+    (`runpoints.rows_of`).  ``st``: the folder's state where the caller
+    read it already, through the run door (`runs.concluded`)."""
     from ..parse.dirs import run_status
     from ..parse.engines._run_ending import holds, not_done_why
     folder = Path(folder)
     if not folder.is_dir():
         return False, "not opened"
-    st = run_status(folder, names.stem, launch=launch,
-                    launched_in=launched_in)
+    if st is None:
+        st = run_status(folder, names.stem, launch=launch,
+                        launched_in=launched_in)
     if st.state in ("pending", "queued"):
         # NOTHING RAN HERE YET: not done, in the run door's word for where
         # it stands -- queued in a launched walk, pending before a launch.
@@ -583,9 +590,9 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     for n in (reversed(attempts_in(container)) if container.is_dir()
               else ()):
         a = _adir(container, n)
-        c, s, _v, _d = read_run(base, task, prev, a, verdict=False)
+        c, s, _v, d = read_run(base, task, prev, a, verdict=False)
         runs.append({"source": str(a.relative_to(base)),
-                     "what": _what_it_is(c, s)})
+                     "what": _what_it_is(c, s, d)})
     return {"from_stage": prev,
             "default": (dict(got.as_dict(), line=got.line())
                         if got is not None else None),
@@ -596,16 +603,17 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
 
 
 def point_done(declared, run, pdir, pt, names, *, task, stage: str, base,
-               launch) -> Tuple[bool, str]:
+               launch, st=None) -> Tuple[bool, str]:
     """Whether the point ``pt`` of a run of points, in ``pdir`` below
     ``run``, is DONE -- the done door (:func:`done`) asked with its kind's
     declaration (`points.PointsOf`): what the point must hold, whether its
     verdict counts (`execution/runs-of-points.md` § 4.2).  The one question
-    status (:func:`point_rows`) and launch's walk ask of a point."""
+    status (:func:`point_rows`) and launch's walk ask of a point; ``st``
+    the point's state where the caller read it already."""
     return done(pdir, names, launch=launch, launched_in=run,
                 must_hold=declared.must_hold(stage, task.label, base, pt,
                                              pdir),
-                verdict_counts=declared.verdict_counts(stage, pt))
+                verdict_counts=declared.verdict_counts(stage, pt), st=st)
 
 
 def point_rows(run, names, task, stage: str, *, launch, base, index=None):
@@ -633,7 +641,6 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
     from ..runpoints import entry_of, index_at
     from ..runs import concluded
     from ..runrecord import copied_of, read_continued_from
-    from ..wrapper_log import log_of_run
     from .points import points_of
     declared = points_of(task)
     gathered = gathered_lines(run)
@@ -641,20 +648,19 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
         index = index_at(run, names) or {}
     pts, running = [], False
     for pdir, pt in declared.points_in(run, task, stage, base):
-        ok, why = point_done(declared, run, pdir, pt, names, task=task,
-                             stage=stage, base=base, launch=launch)
         # ITS RUN'S STATE AND VERDICT, through the one door every reader of
-        # a run's state asks (`runs.concluded`: the run's record, and the
-        # scheduler where this machine sent its job, its answer written
-        # once) -- a point done finished; decided on these, never on the
-        # reason's words.
+        # a run's state asks (`runs.concluded`: the run's record, and its
+        # job where this machine holds it, the answer written once) --
+        # whether it is done read from the same state; a point done
+        # finished; decided on these, never on the reason's words.
         opened = pdir.is_dir()
         st = (concluded(pdir, names, base=base, launched_in=run)
               if opened else None)
+        ok, why = point_done(declared, run, pdir, pt, names, task=task,
+                             stage=stage, base=base, launch=launch, st=st)
         state = ("finished" if ok else st.state if st is not None
                  else "pending")
-        if (state == "failed"
-                and log_of_run(pdir, names.label, names.stage) is None):
+        if state == "failed" and not st.started:
             # A POINT ITS WALK NEVER BEGAN -- no start of its own in its
             # folder, no session log -- whatever its run's job came to (a
             # scheduler's stop read as the point's end): it waits in the
@@ -801,7 +807,7 @@ def points_state(run, names, task, stage: str, *, launch, base
     rule the status door and the gather ask (`engines/transport.md`
     § 2a.11): ``running`` while a point runs, or between two points while a
     job launched from this machine that holds the run is going
-    (`joblist.is_going`); ``queued`` while nothing the run walks itself has
+    (`joblist.going_of`); ``queued`` while nothing the run walks itself has
     started (a run that walks none -- a run copied in whole -- is read by
     its points); else the points' verdict (:func:`points_verdict`) --
     ``finished``, or ``failed`` naming the first point not done, a chain
@@ -923,11 +929,12 @@ def read_points(base, task, stage: str, run, names=None) -> PointsReading:
     transport record and its digest, a reuse): *pending* before its launch
     record, its points as prepared (:func:`pending_words`); once launched,
     its points' state (:func:`points_state`); a launch record, an index or
-    a point's folder that does not read, or a stage its description no
-    longer holds, *unreadable*, in its reader's words -- said, never
-    raised.  ``names`` its stage's file names, read here when not handed
-    in."""
+    a point's folder that does not read, a run an older molbuilder named
+    (`runs.older_run`), or a stage its description no longer holds,
+    *unreadable*, in its reader's words -- said, never raised.  ``names``
+    its stage's file names, read here when not handed in."""
     from ..runrecord import launch_record
+    from ..runs import older_run
     from .naming import stage_home
     from .errors import PrepError
     base = Path(base)
@@ -937,6 +944,10 @@ def read_points(base, task, stage: str, run, names=None) -> PointsReading:
         launch = launch_record(run)
     except (LaunchRecordError, PrepError, OSError) as exc:
         return PointsReading("unreadable", str(exc))
+    # AN OLDER MOLBUILDER'S RUN, its index named by its try: not read.
+    older = older_run(run, names.stage, base)
+    if older is not None:
+        return PointsReading("unreadable", older, launch=launch)
     try:
         if launch is None:
             rows, _running = point_rows(run, names, task, stage, base=base,

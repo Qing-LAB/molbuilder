@@ -267,6 +267,25 @@ def launch_as_typed(stage: str, trial: Optional[str] = None) -> str:
                        else words_for(TASK, stage))))
 
 
+def next_run_words(stage: str) -> str:
+    """How a run that already holds a start is continued, in the words a
+    refusal read LATER says -- a run script's, a run of points' walk's
+    (`project-layout.md` § 1.6.1): the stage launched again, which opens
+    the next run (:func:`launch_as_typed`).  ``stage`` is the stage's
+    NAME."""
+    return (f"to continue it, launch the stage again -- "
+            f"'{launch_as_typed(stage)}' opens the next run")
+
+
+def holds_a_start(log: str, way: str) -> str:
+    """The refusal of a second start in a run that holds one -- its session
+    log ``log`` -- naming ``way``, the way on (:func:`next_run_words`, or a
+    trial's): one sentence for the run script and a run of points' walk
+    (`project-layout.md` § 1.6.1)."""
+    return (f"this run already holds a start ({log}): a run is one start; "
+            f"{way} (project-layout.md 1.6.1)")
+
+
 def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
     """``(list, restore)`` -- the two checkpoint commands a way back names,
     the calculation's folder in each (`checkpoint -p`): ONE spelling, which
@@ -342,16 +361,16 @@ def checkpoint_words(folder=None) -> str:
               f"one you pick")
 
 
-#: What a deck's hand-run line says beside itself (:func:`hand_run`).
-HAND_RUN_NOTE = ("the same wrapper, by hand, in its run's folder: once, a "
-                 "run being one start")
-
-
-def hand_run(names) -> str:
-    """A deck's run script started by hand in its run's folder -- ``bash
-    <stage>.run.sh``: one spelling for every engine's deck header and the
-    run script's own, ``names`` the stage's (`runfiles.RunNames`)."""
-    return f"bash {names.name('.run.sh')}"
+def started_by_launch(stage: str, bench: bool = False) -> str:
+    """THE RUN SCRIPT'S ONE DOOR, in the words a text read LATER says -- a
+    run script's banner, its gate's refusal: a run is started by `jobset
+    launch`, which writes its records, and nothing else starts it
+    (`job-contracts.md` § 2.6); the launch named for ``stage`` -- a
+    benchmark's, for a trial (``bench``)."""
+    launch = (" ".join((JOBSET_PROG, "launch", *words_for(BENCH, stage)))
+              if bench else launch_as_typed(stage))
+    return (f"a run is started by '{launch}', which writes its records; "
+            f"no other start is taken (job-contracts.md 2.6)")
 
 
 def deck_launch(stage_token: str,
@@ -659,12 +678,13 @@ def run_id(label: str, formula: str = "", *,
 
 
 __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
-           "HAND_RUN_NOTE", "hand_run",
+           "started_by_launch",
            "LAUNCHED_WAY_BACK", "launched_way_back", "LAUNCH_MODE_NOTE",
            "MAX_LABEL_BYTES",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",
            "deck_launch", "electrode_hs_stem", "launch_as_typed",
+           "next_run_words", "holds_a_start",
            "normalise_id",
            "render_stage_choices",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",

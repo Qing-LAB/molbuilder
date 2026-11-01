@@ -2157,11 +2157,15 @@ def _how_runs_ended(results, plan, calc, sweep):
     A group's launch inside a sequence's job reads as a reader inside that
     job (`joblist.inside`, set around the whole launch by the verb): its
     runs by their own files, its walk having returned (`job-system.md`
-    § 6.0, *A sequence of groups*)."""
+    § 6.0, *A sequence of groups*).  Each run's address is removed once
+    this is said -- read while it is on the jobs list, a process gone with
+    no marker written is recorded as its run's end (`runs.concluded`); a
+    read that fails keeps it, for `molbuilder jobs status` to say."""
     if not any(r.status == "ran" for r in results):
         return results
     from dataclasses import replace
     from ..identity import stage_key
+    from ..joblist import forget
     from .runstatus import jobset_status
     try:
         # THE ROWS ARE THE DESCRIPTION'S LADDER (A16: the calculation as
@@ -2169,10 +2173,14 @@ def _how_runs_ended(results, plan, calc, sweep):
         rows = {stage_key(s.ref.name): s for s in jobset_status(
             calc, sweep=sweep).stages}
     except (OSError, ValueError, KeyError) as exc:
-        return [replace(r, status="unread",
-                        detail=f"the run ended, and how it ended could not "
-                               f"be read: {exc}")
+        return [replace(r, status="unread", detail="; ".join(
+                    [f"the run ended, and how it ended could not be read: "
+                     f"{exc} -- `molbuilder jobs status` says it"]
+                    + ([r.detail] if r.detail else [])))
                 if r.status == "ran" else r for r in results]
+    for r in results:
+        if r.address is not None:
+            forget(r.address)
     # A SEQUENCE OF GROUPS has no member of its own: every stage of its
     # groups is read, a group it never reached said as its row stands.
     members = {s.name: ([st for g in s.sequence["groups"]
@@ -2192,7 +2200,10 @@ def _how_runs_ended(results, plan, calc, sweep):
             elif row.state != "finished":
                 said.append(f"{name}: {row.state}"
                             + (f" -- {row.detail}" if row.detail else ""))
-        out.append(replace(r, status="failed", detail="; ".join(said))
+        # THE LAUNCH'S OWN WORDS STAY: an address not kept, a record not
+        # written, said after how its runs ended.
+        out.append(replace(r, status="failed", detail="; ".join(
+                       said + ([r.detail] if r.detail else [])))
                    if said else r)
     return out
 
@@ -2476,9 +2487,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
         tail = (f"job {r.job_id}" + (f" -- {r.detail}" if r.detail else "")
                 if r.job_id else
                 (f"rc={r.returncode}"
-                 + (f" -- {r.detail}"
-                    if r.status in ("failed", "unread") and r.detail
-                    else "")
+                 + (f" -- {r.detail}" if r.detail else "")
                  if r.returncode is not None else
                  (r.detail or "") if r.status in ("started", "submitted")
                  else ""))
@@ -2706,7 +2715,10 @@ def migrate_cmd(bundle: str) -> None:
     held, a value moved onto the run card -- a retired run setting taken off
     the run cards and out of each job's resources too, and a plan that held
     one named with its groups' prep, since an older molbuilder wrote its run
-    scripts.  Run folders are not rewritten.
+    scripts.  A run's files an older molbuilder named with its try's number
+    are named once, every byte kept; a run it cannot name so -- one that
+    started more than once among them -- is left as it is, said with its
+    reason (`project-layout.md` § 1.6.1).
 
     What the calculation was is KEPT: every value carried, every blank left
     blank, each change printed with the rule it follows; a change that would
@@ -2714,13 +2726,15 @@ def migrate_cmd(bundle: str) -> None:
     rewritten stays beside its new one as ``<name>.pre-<rule>``, the earliest
     rule it was written before."""
     from ..calcdirs import described as _described
-    from .migrate import CURRENT, MigrateError, migrate_state
+    from .migrate import (CURRENT, MigrateError, MigrationStopped,
+                          migrate_state)
     try:
         said = migrate_state(bundle)
     except MigrateError as exc:
         # A REFUSAL IS WRITTEN DOWN, in a described calculation's own ledger
-        # (`architecture.md` § 2.1, floor 7).
-        if _described(bundle):
+        # (`architecture.md` § 2.1, floor 7) -- a migration stopped partway
+        # wrote its own, with what it had done.
+        if _described(bundle) and not isinstance(exc, MigrationStopped):
             _ledger(bundle, "migrate", "refused", reason=str(exc))
         raise click.ClickException(str(exc)) from None
     if not said:
@@ -2729,7 +2743,9 @@ def migrate_cmd(bundle: str) -> None:
             _ledger(bundle, "migrate", "current", reason=CURRENT)
         click.echo(f"{bundle} is current -- {CURRENT}.")
         return
-    click.echo(f"migrated {bundle}:")
+    # WHAT WAS DONE, AND WHAT WAS LEFT -- a run an older molbuilder named
+    # may be left as it is while nothing else changes (`migrate_state`).
+    click.echo(f"{bundle}:")
     for line in said:
         click.echo(f"  {line}")
 

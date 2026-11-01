@@ -31,7 +31,7 @@ described here, and is documented in `execution/job-system.md`.
 flowchart LR
     P["Prep<br/>(Task setup or the CLI, for its machine)<br/>.fdf or .py + wrapper, activation baked"]
     C["Copy<br/>scp the calculation to that machine,<br/>when it was prepared elsewhere"]
-    R["Launch<br/>(on that machine)<br/>bash .run.sh / sbatch .sbatch"]
+    R["Launch<br/>(on that machine)<br/>jobset launch: the run script,<br/>or its header sent to the queue"]
     W["Watch<br/>the Results tab: viewer + Run panel<br/>or molbuilder watch"]
     P --> C --> R --> W
 ```
@@ -49,7 +49,7 @@ still works. That self-containment is a deliberate contract (§ 2).
 |---|---|
 | Understand why the wrapper is self-contained and what it may read when | **§ 2 — The standalone contract** |
 | Know how many MPI ranks / OMP threads a run actually uses, and how GPUs are pinned | **§ 3 — Runtime resource resolution** |
-| See what flags `bash my-job.run.sh` accepts | **§ 3.4** |
+| See what flags a run script accepts | **§ 3.4** |
 | Watch a running job, read failure hints, or ask how a run is doing | **§ 4 — Watching a run, and reading it back** |
 | Configure envs and how a shell enters them (`env_init`) in `molbuilder.json` | **§ 5 — Configuration** |
 | Snapshot / restore a run directory | **§ 6 — Checkpointing** |
@@ -100,8 +100,8 @@ them *(W36 ⑦, 2026-09-27)*: keep inheriting, guarded — a job's size comes fr
 what prep wrote and `launch`'s flags, molbuilder's own override name (`MB_NP`)
 still works and the wrapper log names it when used, and a bare
 `OMP_NUM_THREADS` no longer sets it. A run `jobset launch` starts already takes
-its size from the `-np` / `-omp` it is handed, which win (§ 3.2). Run by hand,
-the run script honours `MB_NP` and `OMP_NUM_THREADS` ahead of the reservation
+its size from the `-np` / `-omp` it is handed, which win (§ 3.2). Without a
+flag — a dry run a person starts — the run script honours `MB_NP` and `OMP_NUM_THREADS` ahead of the reservation
 (§ 3.2, § 3.3's precedence), and its log names none of them — the person's
 own shell, left as it is (the override log was dropped from the plan on
 2026-10-17: never seen on a real run).
@@ -113,7 +113,7 @@ What follows, and is checked in the rendered script:
 | nothing is on `PATH` before it acts | bakes the preamble and the activation verbatim |
 | `activate.d` hooks read unset variables | `set +u` across the bootstrap **only**, restored immediately after |
 | `--help` must answer without a working env | the whole bootstrap sits inside the help guard |
-| the scheduler kills with `SIGTERM` at the time limit | `trap … TERM INT` → clean up, exit 143 |
+| the scheduler stops it with `SIGTERM` at the time limit — or Ctrl-C, a lost terminal, a limit reached | one handler for each signal that stops a run (`runwrap._STOPPING_SIGNALS`) → the signal logged, clean up, exit 128 + its number (143 for `TERM`) |
 | the engine's exit code must be inspectable | the engine is **run, not `exec`'d**; `set +e` around it, `${PIPESTATUS[0]}` captured |
 | a run must be watchable while it runs | stdout is **teed**, never swallowed |
 | the engine env has no molbuilder in it | the monitor travels as one copied file, `mb_monitor.pyz`, not `python -m molbuilder monitor` — holding it and the framework modules it reads the run through, each a copy of its source (`runwrap.MONITOR_BUNDLE`, `run-reports.md` § 2.3); a PySCF script imports the molbuilder code it calls from `mb_pyscf.pyz` beside it, the same way (`engines/pyscf.md` § 3) |
@@ -414,7 +414,7 @@ notice at all** rather than one built on an invented number.
 
 A run `jobset launch` starts always carries the flag, its own `-np` / `-omp`
 ([`job-system.md` § 6.1](?doc=execution/job-system.md)); the rest of the order
-is for a script run by hand. The two variables are one list,
+is for a dry run started without one. The two variables are one list,
 `runtime_info.THREAD_SOURCES` — `MB_CPUS_PER_TASK` the cores per rank the
 scheduler granted, in molbuilder's name, as the job's header says it — and
 the run script's chain is built from it, as is a PySCF script's own, run
@@ -496,9 +496,10 @@ it refuses, naming `jobset launch`, which opens the next run
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1).
 
 Unrecognised arguments are **rejected** (the wrapper exits 1) — only the flags
-above are accepted, for either engine. The `.sbatch` outer file forwards
-`"$@"`, so a flag on the line that sends it — `jobset launch`'s, or the one
-its own comment prints — still reaches the inner wrapper.
+above are accepted, for either engine. `jobset launch` hands the counts; the
+`.sbatch` outer file forwards `"$@"`, so the flags on the line launch sends it
+with reach the inner wrapper. Run by a person, a run script answers `-h` and
+`--dry-run`, which start nothing; a start is its launch's (§ 5.5).
 
 ### 3.5 A run that did not finish what it set out to do — how it ends, and how it is continued
 
@@ -676,7 +677,7 @@ as asked, and the person decides.
 | **monitor** — utilisation every 10 s, progress, notifications | `<stem>.monitor.log` · `<stem>.util.csv` | both | start to end | a person; the run record |
 | **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `<stem>.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
 | **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
-| **conclusion marker** — exit code and time, and the words that say why where a step of ours stopped it: the job had no python of its env (`…; no env python (<path>)`), or a point's own step — its kind's step before its engine, or after a clean one ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3) — failed or could not run (`…; finish failed (<bundle> <verb>)`, `…; finish cannot load (<bundle>)`) | `<stem>.concluded` | both | the wrapper's last act, main line only — after a point's `point ended`, when it is one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
+| **conclusion marker** — exit code and time, and the words that say why where a step of ours stopped it: the job had no python of its env (`…; no env python (<path>)`), or a point's own step — its kind's step before its engine, or after a clean one ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3) — failed or could not run (`…; finish failed (<bundle> <verb>)`, `…; finish cannot load (<bundle>)`); a start that ended before its engine for a reason other than a signal (`…; stopped before its end`) | `<stem>.concluded` | both | the wrapper's last act on its main line — after a point's `point ended`, when it is one — or its exit trap's, before it stops the monitor; never on a signal | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
 **The monitor** is `mb_monitor.pyz`, one file beside every deck, reading the
 run with the framework's own readers. What it reads, when it speaks (never
@@ -713,7 +714,7 @@ run_status(run_dir, basename, *, launch=<not asked>, launched_in=None) -> RunSta
 
 | field | holds |
 |---|---|
-| `state` | `pending` · `queued` · `running` · `finished` · `failed` · `not run` · `unreadable`, a closed set (`job.RUN_STATES`) — `not run` a point of a run of points its ended walk never started, as the run door reads it (*The states*, below); `unreadable` when the run's launch record does not read: its state cannot be told, the file is named in `detail`, and nothing follows it *(it read as the files alone until 2026-10-06 — `running` where nothing else was written)* |
+| `state` | `pending` · `queued` · `running` · `finished` · `failed` · `not run` · `unreadable`, a closed set (`job.RUN_STATES`) — `not run` a point of a run of points its ended walk never started, as the run door reads it (*The states*, below); `unreadable` when the run's launch record does not read, or its files carry the try's number as a molbuilder before 2.60.0 named them (`runfiles.ONE_START_SINCE`) (`runs.older_run`, naming `jobset migrate`, [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): its state cannot be told, the file is named in `detail`, and nothing follows it *(it read as the files alone until 2026-10-06 — `running` where nothing else was written)* |
 | `detail` | one line for a person (the states, below) |
 | `last_change_at` | the speaking file's mtime, ISO-8601 UTC — shown, never judged |
 | `active_source` | the speaking file's name, or `None` |
@@ -724,7 +725,7 @@ run_status(run_dir, basename, *, launch=<not asked>, launched_in=None) -> RunSta
 
 | caller | `launch` | `match` |
 |---|---|---|
-| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `runs.concluded` (`state_of`: the run door, and the scheduler asked once where it can — § 4.2, *Asked once, written once*) — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), or a trial's | the stage's stem |
+| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `runs.concluded` (`state_of`: the run door, and its job asked once where this machine holds it — § 4.2, *Asked once, written once*) — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), or a trial's | the stage's stem |
 | the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runstatus.run_answer` — the viewers | the run's, through the same door | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
 | the monitor's closing line | not asked | its run's stem |
 
@@ -758,8 +759,8 @@ flowchart TD
     E -->|"its end, or none"| C{"did the run end on its own?"}
     C -->|"exit code 0"| FIN["finished"]
     C -->|"another exit code"| FAIL
-    C -->|"not yet"| K{"did its scheduler end it?"}
-    K -->|"its line for this job, or its recorded answer (ended)"| FAIL
+    C -->|"not yet"| K{"does its job say it ended?"}
+    K -->|"its scheduler's line, or the answer recorded once (ended)"| FAIL
     K -->|"none"| G{"its monitor's closing record?"}
     G -->|"job ended"| FAIL
     G -->|"none"| W{"past its wall?"}
@@ -768,11 +769,15 @@ flowchart TD
     S -->|"no"| C2{"did the run end on its own?"}
     C2 -->|"exit code 0"| FIN
     C2 -->|"another exit code"| FAIL
-    C2 -->|"not yet"| K2{"did its scheduler end it?"}
-    K2 -->|"its line for this job, or its recorded answer (ended)"| FAIL
+    C2 -->|"not yet"| K2{"does its job say it ended?"}
+    K2 -->|"its scheduler's line, or the answer recorded once (ended)"| FAIL
     K2 -->|"none"| G2{"its monitor's closing record?"}
     G2 -->|"job ended"| FAIL
-    G2 -->|"none"| L{"the launch record"}
+    G2 -->|"none"| ST{"its start's session log?"}
+    ST -->|"yes"| W2{"past its wall?"}
+    W2 -->|"its own newest write older than the wall it was sent with"| FAIL
+    W2 -->|"no"| RS["running: started, no output yet"]
+    ST -->|"no"| L{"the launch record"}
     L -->|"no run.json"| PEN["pending"]
     L -->|"run.json"| Q["queued"]
     L -->|"not asked"| RUN
@@ -793,9 +798,11 @@ Nothing else answers: SIESTA's own `0_NORMAL_EXIT` says the engine ended, not th
 failed, one that ended with any other** — or whose output states a stop.
 **An output that states its end is not a run that ended**: the job may still
 be on its way out — a finish deriving its result, the wrapper's last lines —
-so it reads `running` until it concludes, and `failed` once its scheduler's
-own line says it ended the job, or the monitor's closing record says the
-process went without concluding. The monitor's closing record —
+so it reads `running` until it concludes, and `failed` once its job says it
+ended — its scheduler's own line, or the answer about its job written once
+into its launch record, for a sent job or a run here (*Asked once, written
+once*, below) — or the monitor's closing record says the process went
+without concluding. The monitor's closing record —
 `[MONITOR] job ended` in the run's `<stem>.monitor.log`
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2.5) — speaks wherever
 the conclusion and the scheduler are silent: the process went, and nothing
@@ -813,9 +820,11 @@ the scheduler: CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT
 the monitor's closing record because it does not depend on a signal reaching
 anything: on Sol's job 65999920 neither the wrapper's trap nor the monitor
 recorded the SIGTERM at its wall, and only the scheduler's line said the job
-was over. A run here is not asked; a record launched before it named the
-file (2.12.0) is asked where its header put it, the run's own folder under the
-file catalogue's name (`slurm.<id>.err`).
+was over. A run here has no scheduler's file: its process, asked once and
+written once into its launch record, answers in its place (*Asked once,
+written once*, below). A record launched before it named the file (2.12.0)
+is asked where its header put it, the run's own folder under the file
+catalogue's name (`slurm.<id>.err`).
 A run of points' point asks it with its run's one record, from the run's
 folder, where the record lies and the file it names is named from
 (`rundir.run_state_of`, given the run's folder — the one door every reader
@@ -846,20 +855,22 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | state | detail |
 |---|---|
 | `pending` | prepared, not launched (no run.json) |
-| `queued` | queued as job N · launched (direct), no output yet — and, on the Results tab's ladder row, its **standing** where this machine sent the job — its address on this machine's jobs list, the scheduler asked on the cluster the job was sent to as the scheduler names it ([`job-system.md`](?doc=execution/job-system.md) § 6.0a; `joblist.address_of`, `asked_here`: the one rule `molbuilder jobs` asks by): `PENDING (Priority) · expected to start 2026-10-19T14:02:00 · priority 1234`, the start as the scheduler prints it, the kind's `standing` query ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) through the run door (`runs.standing_of`); from any other machine the row says *ask on &lt;machine&gt;* |
-| `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result — **where the run is**, in the reading pass's words where its output states it (`model/parse.md` § 2b, `doing`): *running · negf SCF iteration 12*, and until a device's first SCF row its set-up, *running · computing the R lead's surface Green's function (estimated 49.170 GB)* — the same words the monitor's status line says; a sent run's bare *running* says too how long since the job itself last wrote, *running · last wrote 2 h 10 min ago*: the one fact a folder gives where its scheduler cannot be asked · *the scheduler lists it: PENDING (Requeue)*, a requeued job past the wall rule's bound, on the machine it was sent to |
+| `queued` | queued as job N · launched (direct), not started yet — and, on the Results tab's ladder row, its **standing** where this machine sent the job — its address on this machine's jobs list, the scheduler asked on the cluster the job was sent to as the scheduler names it ([`job-system.md`](?doc=execution/job-system.md) § 6.0a; `joblist.address_of`, `asked_here`: the one rule `molbuilder jobs` asks by): `PENDING (Priority) · expected to start 2026-10-19T14:02:00 · priority 1234`, the start as the scheduler prints it, the kind's `standing` query ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) through the run door (`runs.standing_of`); from any other machine the row says *ask on &lt;machine&gt;* |
+| `running` | running · started, no output yet · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result — **where the run is**, in the reading pass's words where its output states it (`model/parse.md` § 2b, `doing`): *running · negf SCF iteration 12*, and until a device's first SCF row its set-up, *running · computing the R lead's surface Green's function (estimated 49.170 GB)* — the same words the monitor's status line says; a sent run's bare *running* says too how long since the job itself last wrote, *running · last wrote 2 h 10 min ago*: the one fact a folder gives where its scheduler cannot be asked · *the scheduler lists it: PENDING (Requeue)*, a requeued job past the wall rule's bound, on the machine it was sent to |
 | `finished` | ended, exit 0 · concluded (rc=0 at …) |
-| `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · stopped before its end: the scheduler no longer listed job N (asked on *machine* at *when*); no exit recorded · the scheduler listed job N ended: *its words* (asked on *machine* at *when*) · stopped before its end: nothing was written for longer than its wall (*wall*; last write *when*), so the job is over; how it ended was not recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but its step after the engine failed (*the marker*); the session log says why · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; *its words* — finish cannot load (*bundle*), no env python (*path*)) before any output |
+| `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · stopped before its end: the scheduler no longer listed job N (asked on *machine* at *when*); no exit recorded · the scheduler listed job N ended: *its words* (asked on *machine* at *when*) · stopped before its end: its process on *machine* ended without recording how (asked at *when*) · never started: its process on *machine* ended (asked at *when*), or the scheduler no longer listed job N (asked on *machine* at *when*) — a run whose job ended before its start began · stopped before its end: nothing was written for longer than its wall (*wall*; last write *when*), so the job is over; how it ended was not recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but its step after the engine failed (*the marker*); the session log says why · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; *its words* — stopped before its end, finish cannot load (*bundle*), no env python (*path*)) before any output |
 | `not run` | a point of a run of points its ended walk never started: its own folder, read alone, holds no start of its own (its session log) and its job is over — read *failed*, its run's end written once (`runs.concluded`), or read *queued* with its walk over as its run's row reads it — no job of this machine's list that holds its run going (`joblist.going_of`) and, where the walk started no point it walks itself (`runpoints.walk_began`), the walk ended before a point (`runs.ended_before_a_point`) — (`runs.state_of`, in the definition's words — *its run's walk ended without starting it*); why the walk passed it by is its run's rows' (`continuation.never_reached`) — *it builds on &lt;words&gt;, which failed* or *the walk ended before it reached this point* — what `status`, the ladder's row and the transport report say ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3, § 4.5) — never `failed`: it did not run |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so
 a file with no ending is `running` — not finished — however long it has been
 quiet *(user, 2026-09-26: "It shows what it is")*. A forced stop writes no
-marker; what says it is over is the scheduler's own line, where it wrote one
-(R16 there), else the monitor's closing record, written when the monitor saw
-its PID go or got its signal — *failed — stopped before its end: no ending in
-its output and no exit recorded*, here and in its own `finish`
+marker; what says it is over is what its job says — the scheduler's own line,
+where it wrote one (R16 there), or the answer about its job written once into
+its launch record (*Asked once, written once*, below) — else the monitor's
+closing record, written when the monitor saw its PID go or got its signal —
+*failed — stopped before its end: no ending in its output and no exit
+recorded*, here and in its own `finish`
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2.4). A stop neither
 records — a lost node, a disk that filled under every writer at once (Sol's
 job 66108241, 2026-10-19: the engine, the wrapper and the monitor all died
@@ -892,7 +903,23 @@ does not have to be repeated; if not, just check time stamp")*:
   disk — is said on the run's line, never a crash. The question is asked only while
   the record holds no answer, so the folder is concluded once (`runs.concluded`,
   the door every reader of a run's state asks). A job the scheduler still
-  lists is left as it reads; nothing is written for it.
+  lists is left as it reads; nothing is written for it. **A run here** —
+  started by this machine, its process on this machine's jobs list — is
+  asked the same way, its process (`joblist.going_of`: its pid and its
+  start, the one rule `molbuilder jobs` asks by): a process gone with no
+  marker written is recorded once (`ended`, asked on this machine, `said`
+  empty), and the run reads `failed` from then on — *stopped before its
+  end: its process on qlabsrv ended without recording how (asked at …)* —
+  a kill no shell can catch, a machine restarted — or, for a run whose
+  start never began, *never started: its process on qlabsrv ended (asked at
+  …)*: a stage its group's walk never reached. A process still going is
+  left as it reads, and so is a run a look found concluded as its process
+  went. A run waited on is read so by its own launch, whose address is
+  removed only once the launch has said how it ended — stopped at its
+  terminal, the launch waits for the run script's own close and reads each
+  run so before the address goes; a run not ended by then, a second stop
+  meanwhile, or a read that fails keeps it, for `molbuilder jobs status`
+  (`job-system.md` § 6.0a).
 - **Past its wall, wherever it is read.** A sent job cannot run longer than
   the wall it was sent with (`run.json`'s `placed_on.time`), and every file
   it writes is written while it runs — so a run whose **newest own write**
@@ -903,7 +930,14 @@ does not have to be repeated; if not, just check time stamp")*:
   The job's own writes are its outputs, the engine's files, its wrapper's
   and monitor's logs — the files of this run's label and stage
   (`runfiles.parse`, `split_stem`); never molbuilder's own records of it
-  (`run.json`, `.continued-from`, `.gathered-from`) or the ledger. The bound is the
+  (`run.json`, `.continued-from`, `.gathered-from`) or the ledger, nor the
+  files prep and launch put in the run — its deck, its run script and
+  header, its report. The job's own are the catalogue's rows a run writes
+  (`when` *run*), its run outputs — the progress log prep seeds, which the
+  run writes into — and the engine's own files the catalogue has no row
+  for. A run whose start has not
+  begun — no session log — is not asked: a job still waiting in its queue
+  writes nothing. The bound is the
   scheduler's own, so this never calls a running job over — with one case
   the folder cannot tell: a job the scheduler **requeued** (a node lost;
   SLURM's `JobRequeue`) keeps its id and waits again with its first start's
@@ -923,28 +957,39 @@ to decide: `launch task` does it as asked, warm or `--cold`, however the last
 run ended ([`job-system.md`](?doc=execution/job-system.md), *What molbuilder
 does for you*, 3).
 
-**Before the first output**, a direct launch reads `queued` (its `run.json` is
-written as the process starts). One stopped before writing anything reads
-`failed` by its scheduler's line or its monitor's closing record — a point
-its walk never began reads `not run` instead (*The states*) — or `queued`
-when nothing says so; an engine that merely died still reaches the wrapper's marker and reads
-`failed`; a job with no python of its env, or one that cannot run its
-finish, stops before its engine and says so in its marker (`no env python`,
-`finish cannot load`), which reads `failed`.
+**Before the first output**, a launched run reads `queued` until its start
+begins — its session log (`project-layout.md` § 1.6.1) — and `running`
+(*started, no output yet*) from then on. A run that ends before any output
+reads `failed`, told by the first of these that speaks:
+
+1. **its marker** — the run script's exit trap writes one when the script
+   fails on its own, an activation that failed or a step that exited
+   (`stopped before its end`); a job with no python of its env, or one that
+   cannot run its finish, says so in its own (`no env python`, `finish
+   cannot load`);
+2. **the answer about its job** — its scheduler's line or recorded answer;
+   for a run here, its process gone, recorded once — a job that ended
+   before its start began reads *never started*;
+3. **its monitor's closing record**;
+4. **its wall passed** with nothing written.
+
+A point its walk never began reads `not run` instead (*The states*); an
+engine that merely died still reaches the wrapper's marker and reads
+`failed`.
 
 ```mermaid
 stateDiagram-v2
     direction LR
     [*] --> pending: prepared
     pending --> queued: run.json written
-    queued --> running: first output
-    queued --> failed: nonzero marker, the scheduler's line or the monitor's closing record, no output
+    queued --> running: its start (the session log)
+    queued --> failed: its job ended before its start (never started)
     running --> finished: an end (with a finish, its marker rc 0), else marker rc 0
-    running --> failed: a stop, a failed finish, else nonzero marker, else the scheduler's line, else the monitor's closing record
+    running --> failed: a stop in its output, a failed finish, a nonzero marker, the answer about its job, the monitor's closing record, or past its wall
     pending --> notrun: its run's walk ended before starting it
     queued --> notrun: its run's walk ended before starting it
     notrun: not run
-    note right of running: no clock moves a run out of here
+    note right of running: no clock moves a run out of here but a sent job's wall
 ```
 
 #### The words on each surface
@@ -952,7 +997,7 @@ stateDiagram-v2
 | surface | its words | read from |
 |---|---|---|
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
-| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read; and `not run`, a point of a run of points its ended walk never started, as the run door reads it — *The states*) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
+| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read, or for a run an older molbuilder named; and `not run`, a point of a run of points its ended walk never started, as the run door reads it — *The states*) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
 | a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unreadable` (its launch record is there and does not read); for a prepared stage not launched, the ready door's *ready to launch* — *(prepared by molbuilder X.Y.Z)* when another molbuilder prepared it — / *waits for*; *changed since prepared* and each value that differs ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*); for one not prepared, `described` — or *waits before it can be prepared*, with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
@@ -1220,34 +1265,33 @@ not read is refused) and found its folder holds no start (`job-contracts.md`
 flowchart TD
     A0[".run.sh starts: its arguments read<br/>(-h answers · a bad one refused, exit 1)"] --> A1{"its folder holds a start?"}
     A1 -- yes --> A2["refused, exit 2:<br/>launch the stage again"]
-    A1 -- no --> B{"MB_LAUNCHED_BY set?"}
-    B -- "yes (jobset-launch · manual · bench-runner)" --> C["log: launched-by: &lt;value&gt;<br/>proceed"]
-    B -- no --> D{"interactive terminal?"}
-    D -- yes --> E["warn, ask y/N"]
-    E -- y --> C2["log: launched-by: manual<br/>proceed"]
-    E -- "n / EOF" --> F["log: launched-by: NONE -- refused<br/>exit 2"]
-    D -- "no (nohup · cron · hand-sbatch)" --> G["log: launched-by: NONE -- refused<br/>exit 2, message names the door<br/>and the override"]
+    A1 -- no --> B{"MB_LAUNCHED_BY = jobset-launch?"}
+    B -- yes --> C["log: launched-by: jobset-launch<br/>proceed"]
+    B -- "no (by hand · nohup · cron · a header sent by hand)" --> G["log: launched-by: &lt;value or NONE&gt; -- refused<br/>exit 2, the message names the launch"]
 ```
 
-**The verdict is in the job's own output**: under a scheduler the
-`launched-by:` line lands in the job's `.out`, by hand on the terminal, and a
-start the gate lets through opens the run's session log after it, so the line
-is there too (job-contracts.md § 2.6) — a refused start writes no session log,
-since it started nothing, and the folder stays free for the start it was
-opened for (`project-layout.md` § 1.6.1). Either place answers *"was this
-launched properly, run by hand on purpose, or refused?"* — and nothing can ever
-sit waiting on a prompt, because a non-interactive shell never prompts, it
-refuses (EOF at the prompt is a refusal too, with the same verdict line). Two
-edges repaired 2026-08-12 (U10): EOF falls to the refusal instead of dying
-under `set -e` with no verdict; and `-h`/`--help` answers with the arguments,
-read **before** the gate, and runs none of the bootstrap — asking what a script
-does needs neither a claim nor a working activation. The deliberate manual form
-is `MB_LAUNCHED_BY=manual bash JOB.run.sh` (backgroundable), started in the
-run's own folder, `run-<n>/`, where launch copied it — once: a folder that
-holds a start refuses another — and the value is logged so the choice is on
-record. *(`bench-runner` was the transitional
-claim of the old bench launchers; they died at step 6 u5, 2026-08-12, and no
-shipped script emits it any more.)*
+**Only `jobset launch` starts a run.** A run's records — the launch record,
+the folder `run-<n>/` it opens, the address it keeps — are its launch's, and
+every reader of a run (status, the monitor, Results, the next stage's warm
+start) reads them; a start made without them would be one no reader could
+place. So the gate takes the launch's claim and nothing else: no prompt, no
+override value. **The verdict is in the job's own output**: under a scheduler
+the `launched-by:` line lands in the job's `.out`, on the terminal otherwise,
+and a start the gate lets through opens the run's session log after it, so
+the line is there too (job-contracts.md § 2.6) — a refused start writes no
+session log, since it started nothing, and the folder stays free for the
+start it was opened for (`project-layout.md` § 1.6.1). Nothing can ever sit
+waiting on a prompt, because the gate never asks. A help request
+(`-h`/`--help`) answers with the arguments, read **before** the gate, and runs
+none of the bootstrap — asking what a script does needs neither a claim nor a
+working activation; a dry run (`--dry-run`) starts nothing and passes too.
+*Decided 2026-11-01, for the user's reason: a script started by hand has no
+context — no launch record, nothing to read what it leaves — and molbuilder
+cannot assume the state of a folder it did not open; so the deliberate manual
+form (`MB_LAUNCHED_BY=manual`) and the terminal's question are gone.* To drive
+the engine yourself, the deck's own header prints its plain line (`mpirun -np
+… siesta < <label>.fdf`, `python <label>.py`) — perfectly good, and a
+calculation molbuilder neither started nor reads.
 
 ---
 

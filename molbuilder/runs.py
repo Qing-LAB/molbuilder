@@ -713,24 +713,47 @@ def _copy_of_its_machine(base):
         return None
 
 
+def older_run(folder, stage: str, base) -> Optional[str]:
+    """Why a run's folder an older molbuilder named is not read -- its
+    files carry the try's number (`runfiles.older_named`) -- in words
+    naming the migration that names them anew; ``None`` for a run this
+    molbuilder names.  ``stage`` is the run's stage token, ``base`` its
+    calculation's folder."""
+    from molbuilder.identity import migrate_as_typed
+    from molbuilder.runfiles import ONE_START_SINCE, older_named
+    older = older_named(folder, stage)
+    if not older:
+        return None
+    return (f"{older[0].path.name}: its files carry the try's number, as "
+            f"molbuilder named them before {ONE_START_SINCE} -- "
+            f"`{migrate_as_typed(base)}` names a run that started once anew "
+            f"(project-layout.md § 1.6.1)")
+
+
 def concluded(folder, names, *, base, launched_in=None):
-    """THE STATE OF A RUN, ASKED ONCE OF ITS SCHEDULER AND WRITTEN ONCE
+    """THE STATE OF A RUN, ASKED ONCE OF ITS JOB AND WRITTEN ONCE
     (`running-a-job.md` § 4.2, *Asked once, written once*) -- the run
-    door's answer (`rundir.run_state_of`), and for a sent run that still
-    reads live, where this machine sent its job -- its address on the jobs
-    list, asked on the cluster it was sent to (`joblist.address_of`,
-    `asked_here`: the one rule `molbuilder jobs` asks by) -- the scheduler
-    asked whether it still lists the job (the kind's `listed` query): one
-    it no longer lists, or lists ended, is written into the run's launch
-    record (`runrecord.record_ended`) and the state read again, ``failed``
-    from then on wherever the folder goes.  Asked only
-    while the record holds no answer.  ``base`` is the calculation's
-    folder (the record copy's); ``launched_in`` as `run_state_of` takes
-    it, the folder the record lies in settled once here for both."""
-    from molbuilder.parse.dirs.job import LIVE_STATES
+    door's answer (`rundir.run_state_of`), and for a run that still reads
+    live, where this machine holds its job -- its address on the jobs list
+    -- the job asked whether it is still going: a sent job's scheduler, on
+    the cluster it was sent to (`joblist.address_of`, `asked_here`: the
+    one rule `molbuilder jobs` asks by), whether it still lists the job
+    (the kind's `listed` query); a run here, its process
+    (`joblist.going_of`, the one rule a run of points' walk asks by).  A
+    job no longer listed, or listed ended, or a process gone, is written
+    into the run's launch record (`runrecord.record_ended`) and the state
+    read again, ``failed`` from then on wherever the folder goes.  Asked
+    only while the record holds no answer.  A run an older molbuilder named
+    is ``unreadable``, saying so (:func:`older_run`).  ``base`` is the
+    calculation's folder (the record copy's); ``launched_in`` as
+    `run_state_of` takes it, the folder the record lies in settled once
+    here for both."""
+    from molbuilder.parse.dirs.job import LIVE_STATES, RunStatus
+    older = older_run(folder, names.stage, base)
+    if older is not None:
+        return RunStatus(state="unreadable", detail=older)
     from molbuilder.parse.dirs.rundir import run_state_of
-    from molbuilder.runrecord import (LaunchRecordError, launch_record,
-                                      record_ended)
+    from molbuilder.runrecord import LaunchRecordError, launch_record
     where = launched_in if launched_in is not None else folder
     st = run_state_of(folder, names, launched_in=where)
     if st.state not in LIVE_STATES and not st.by_wall:
@@ -739,8 +762,19 @@ def concluded(folder, names, *, base, launched_in=None):
         launch = launch_record(where)
     except LaunchRecordError:
         return st
-    if (not launch or launch.get("mode") != "submit"
-            or not launch.get("job_id") or launch.get("ended")):
+    if not launch or launch.get("ended"):
+        return st
+    if launch.get("mode") != "submit":
+        # A RUN HERE: its process, asked on the machine that holds it --
+        # gone, and no marker written, is a run that will write none.
+        from molbuilder.joblist import going_of
+        going, job, _said = going_of(base, where)
+        if going is not False or job is None:
+            return st
+        return _ended_written(folder, names, st, where, asked_on=job.host,
+                              said="", what=f"its process on {job.host} "
+                                            f"has ended")
+    if not launch.get("job_id"):
         return st
     from molbuilder.joblist import address_of, asked_lately
     job = address_of(launch["job_id"], base)
@@ -761,36 +795,43 @@ def concluded(folder, names, *, base, launched_in=None):
                 detail=f"the scheduler lists it: {said}" if said
                 else "the scheduler lists it")
         return st
+    return _ended_written(folder, names, st, where, asked_on=job.cluster,
+                          said=said, what=f"the scheduler no longer lists "
+                                          f"job {launch['job_id']}")
+
+
+def _ended_written(folder, names, st, where, *, asked_on, said, what):
+    """The answer about a job written once into its run's launch record
+    (`runrecord.record_ended`), and the run's state read again; not
+    written -- a full disk, a folder not ours -- it is said on the state
+    read again, the run read as its folder says until a look can write it
+    (``st`` is the state as first read).  ``what``: the
+    answer, in words.  A run that concluded while its job was asked -- its
+    marker written as its process went -- is read as it ended, and nothing
+    is written."""
+    from molbuilder.parse.dirs.job import LIVE_STATES
+    from molbuilder.parse.dirs.rundir import run_state_of
+    from molbuilder.runrecord import record_ended
+    now = run_state_of(folder, names, launched_in=where)
+    if now.state not in LIVE_STATES and not now.by_wall:
+        return now
     try:
-        record_ended(where, asked_on=job.cluster, said=said)
+        record_ended(where, asked_on=asked_on, said=said)
     except OSError as exc:
-        # NOT WRITTEN -- a full disk, a folder not ours: said, the run read
-        # as its folder says until a look can write it.
-        return replace(st, detail=(
-            f"{st.detail} -- the scheduler no longer lists job "
-            f"{launch['job_id']}, and that could not be written: {exc}"))
+        return replace(now, detail=(
+            f"{now.detail} -- {what}, and that could not be written: {exc}"))
     return run_state_of(folder, names, launched_in=where)
 
 
 def ended_before_a_point(base, run, names) -> bool:
     """Whether a run of points none of whose points started has ended --
-    asked once of what knows: a run here launched from this machine that
-    holds the run, by its process (`joblist.is_going`); else this door,
-    which asks the scheduler where this machine sent the job and writes its
-    answer into the launch record (:func:`concluded`, `running-a-job.md`
-    § 4.2) -- a queue job's answer written by this very look, so the run
-    reads ended once its address is gone; ``False`` where neither can
-    tell.  Its run's row asks it (`continuation.points_state`), and a
-    point's folder read alone (:func:`_as_a_point`)."""
-    from molbuilder.joblist import Asked, holding, is_going
+    this door asked of the run (:func:`concluded`, `running-a-job.md`
+    § 4.2): its job asked where this machine holds it, and the answer
+    written into the launch record by this very look, so the run reads
+    ended once its address is gone; ``False`` where nothing can tell.  Its
+    run's row asks it (`continuation.points_state`), and a point's folder
+    read alone (:func:`_as_a_point`)."""
     from molbuilder.parse.dirs.job import LIVE_STATES
-    asked = Asked()
-    for job in holding(base, run):
-        if job.how != "here":
-            continue
-        going = is_going(job, asked)[0]
-        if going is not None:
-            return not going
     try:
         return concluded(run, names, base=base,
                          launched_in=run).state not in LIVE_STATES
@@ -803,8 +844,9 @@ def _as_a_point(run: "Run", st):
     (`execution/runs-of-points.md` § 1.3: its walk ended without starting
     it -- no start of its own in its folder, whatever its job came to): a
     point's folder (`calcdirs.where`) with no start of its own -- no session
-    log (`Run.session_log`) -- read ``failed`` -- its run's end, the
-    scheduler's answer written once (:func:`concluded`) -- or ``queued``
+    log, as its state read it (`RunStatus.started`) -- read ``failed`` --
+    its run's end, the answer about its job written once
+    (:func:`concluded`) -- or ``queued``
     with its walk over as its run's row reads it
     (`continuation.points_state`): no job launched from this machine that
     holds the run going (`joblist.going_of`), and, where the walk started
@@ -816,8 +858,7 @@ def _as_a_point(run: "Run", st):
     if st.state not in ("failed", "queued"):
         return st
     from molbuilder.runrecord import LaunchRecordError
-    if (run.place.where.what != calcdirs.POINT
-            or run.session_log is not None):
+    if run.place.where.what != calcdirs.POINT or st.started:
         return st
     if st.state == "queued":
         from molbuilder.joblist import going_of
@@ -1233,6 +1274,7 @@ __all__ = ["Place", "place_of", "Run", "run_of", "Declared",
            "OrderUnstated", "atom_index_map_of", "RunView",
            "view_of",
            "RunSteps", "RunStepsError", "steps_of", "about", "file_row",
-           "openable", "folder_answer", "concluded", "ended_before_a_point",
+           "openable", "folder_answer", "concluded", "older_run",
+           "ended_before_a_point",
            "state_of",
            "record_of", "on_label_at", "WALL"]

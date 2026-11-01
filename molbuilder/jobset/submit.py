@@ -144,6 +144,11 @@ class JobResult:
     #: The sentence shown beside the status, when it has one -- what a
     #: member takes, what a member rides, how a trial was passed over.
     said:       Optional[str] = None
+    #: A RUN HERE, WAITED ON: its address on the jobs list
+    #: (`joblist.Job`), removed by the launch verb once it has said how the
+    #: run ended -- so the status door it reads by still asks the process
+    #: (`job-system.md` § 6.0a).
+    address:    Optional[object] = None
 
     def __post_init__(self) -> None:
         if self.status not in JOB_RESULTS:
@@ -1837,7 +1842,7 @@ def _go(s: Submission, record, *, background: bool = False,
     if s.direct:
         # The launch-door claim rides the child ENV here: inheritance
         # survives forks and backgrounding, so a detached local run
-        # launched through this verb never meets the gate's prompt.
+        # launched through this verb passes its gate.
         detached = (dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
                     if background else {})
@@ -1869,8 +1874,7 @@ def _go(s: Submission, record, *, background: bool = False,
                members=names, **_member_facts(s),
                **({"job": job.id} if job is not None and unkept is None
                   else {}),
-               **({"not_on_address": unkept}
-                  if inside is not None and unkept else {}),
+               **({"not_on_address": unkept} if unkept else {}),
                **({"record_unwritten": unsent} if unsent else {}),
                **({"sequence": [g["number"] for g in s.sequence["groups"]]}
                   if s.sequence else {}),
@@ -1892,20 +1896,27 @@ def _go(s: Submission, record, *, background: bool = False,
                         for m in s.members] if s.rides else []))
         try:
             rc = proc.wait()
-        finally:
-            # A RUN WAITED ON is shown by its own launch, which says how it
-            # ended -- or, stopped at its terminal, its stop: its address is
-            # done with (`job-system.md` § 6.0a).  A launch inside a
-            # sequence's job wrote none.
-            if job is not None:
+        except BaseException:
+            # STOPPED AT ITS TERMINAL: the run script got the stop too, and
+            # its trap is still closing; once it has ended, each run is read
+            # once through the run door while its address is on file -- a
+            # process gone with no marker written is its run's end, written
+            # once (`runs.concluded`) -- and its address done with.  One not
+            # ended by then keeps its address, for `jobs status` to ask
+            # (`job-system.md` § 6.0a).  A launch inside a sequence's job
+            # wrote none.
+            if job is not None and _ended_within(proc):
+                _read_once(job)
                 joblist.forget(job)
+            raise
         # IT RAN HERE AND ENDED -- how it ended is the status door's, read
-        # by the launch verb once every submission has gone (`_cli`,
-        # `job-system.md`, *A run here, waited on*).
+        # by the launch verb once every submission has gone, which then
+        # removes its address (`_cli`, `job-system.md`, *A run here, waited
+        # on*).
         return ([JobResult(s.name, s.command, "ran", returncode=rc,
-                           detail="; ".join(w for w in (
-                               unkept if inside is not None else None,
-                               unsent) if w) or None)]
+                           detail="; ".join(w for w in (unkept, unsent)
+                                            if w) or None,
+                           address=job if unkept is None else None)]
                 + ([JobResult(m.name, [], "rides", said=s.rides)
                     for m in s.members] if s.rides else []))
     try:
@@ -1947,6 +1958,7 @@ def _go(s: Submission, record, *, background: bool = False,
         kept = {"job": job.id} if unkept is None else {}
     record("launched", submission=s.name, command=s.command, job_id=jid,
            domain=s.domain, members=names, **_member_facts(s), **kept,
+           **({"not_on_address": unkept} if unkept else {}),
            **({"sequence": [g["number"] for g in s.sequence["groups"]]}
               if s.sequence else {}),
            **({"record_unwritten": unsent} if unsent else {}))
@@ -2014,6 +2026,36 @@ def _job_members(s: "Submission") -> Dict[str, Dict[str, str]]:
         "run": str(RunRef.at(m.base, m.run_dir)),
         "launch_record": _rel(launch_record_path(m.run_dir), m.base)}
         for m in s.members}
+
+
+def _ended_within(proc) -> bool:
+    """Whether a run here a launch was stopped over has ended within twice
+    the time its exit trap gives its monitor (`runwrap.MONITOR_STOP_S`) --
+    the trap's own close, with room.  A second stop at the terminal ends
+    the wait: it is not taken as an end."""
+    from ..runwrap import MONITOR_STOP_S
+    try:
+        proc.wait(timeout=2 * MONITOR_STOP_S)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        return False
+    return True
+
+
+def _read_once(job) -> None:
+    """The job's runs read once by the status door's answer for a job
+    (`runstatus.job_members`, what `molbuilder jobs status` reads before it
+    removes an address) -- a run here whose process went with no marker
+    written has its end written then (`runs.concluded`) -- for a launch
+    stopped at its terminal, before its address goes.  Its file is read
+    again first: a sequence's groups added their runs to it as they went.
+    Read for what it writes alone, and nothing it meets is raised over the
+    stop."""
+    from .. import joblist
+    from .runstatus import job_members
+    try:
+        job_members(joblist.find(job.id) or job)
+    except Exception:                       # noqa: BLE001 -- the stop is
+        pass                                # what is said
 
 
 def _keep(job):
@@ -2186,7 +2228,8 @@ def _walk_script(name: str, steps, *, where: str, log: str,
                  empty_at_end: Optional[str] = None,
                  walls: Optional[Sequence[Optional[int]]] = None,
                  one_start: bool = False, enters: str = "",
-                 tag: str = "group") -> str:
+                 tag: str = "group", started: Sequence[str] = (),
+                 again: str = "") -> str:
     """THE ONE WALK SCRIPT -- what runs several members one after another in
     one submission: a benchmark's trials (a shelf sent to a queue, or its
     unlaunched trials run here, `generator.md` § 4.3a), a group's stages
@@ -2233,9 +2276,16 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     by the one bootstrap every script uses (`runwrap.env_bootstrap`).
     ``tag`` heads every line of its log, ``[<tag>]`` -- ``walk`` for a run
     of points' walk, whose members are its points, not a group's stages.
+    ``started``: the session logs of the points a run of points' walk runs,
+    each by its path from the folder the walk runs in: **the walk starts
+    once**, as every run does (`project-layout.md` § 1.6.1), so a walk that
+    finds any of them refuses before it starts a point -- a job its
+    scheduler requeued ends so, without running -- naming ``again``, the
+    launch that opens the next run (`execution/runs-of-points.md` § 3).
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
+    from ..identity import holds_a_start
     from ..runtime_info import JOB_STARTED_VAR
     when = "$(date '+%Y-%m-%dT%H:%M:%S')"
     head = f"[{tag}]"
@@ -2260,6 +2310,14 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         # that could not be copied among them -- so a walk left in the
         # background loses nothing (`job-system.md` § 6.0).
         'exec 2>> "$LOG"',
+        # THE WALK STARTS ONCE: a point it runs already holds a start.
+        *([f"for _s in {' '.join(started)}; do",
+           '    if [ -e "$_s" ]; then',
+           f'        echo "{head} {when} refused -- '
+           f'{holds_a_start("$_s", again)}" >> "$LOG"',
+           "        exit 2",
+           "    fi",
+           "done"] if started else []),
         f'echo "{head} {when} start {member_word}s={len(steps)} per-{member_word}-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
         'job=${MB_JOB_ID:-none} node=$(hostname) '
@@ -2528,10 +2586,10 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
         where="ONE allocation, this shelf's unlaunched trials",
         log=f"{LAUNCH_DIR}/{names.name('.log')}", bound_s=trial_timeout_s)
     # A SHELF THE SCHEDULER REFUSES keeps its trials pending -- no launch
-    # record -- so launching the benchmark again sends exactly them; a
-    # shelf sent by hand would write no record, and the next launch would
-    # measure its trials twice (the unit 11 review, 2026-10-05).  Sent as
-    # the header its prep wrote for all its trials, ``members``.
+    # record -- so launching the benchmark again sends exactly them, the
+    # record the launch writes as it sends a shelf keeping the next launch
+    # from measuring its trials twice (the unit 11 review, 2026-10-05).
+    # Sent as the header its prep wrote for all its trials, ``members``.
     return _send_as_one_job(
         plan, gn=names, container=container, script=script, members=pending,
         jobs=members, machine=machine, time_s=time_s, told=told,
@@ -2586,6 +2644,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     and where its points share the stage's one wall the run's start is
     stated once (`running-a-job.md` § 3.6)."""
     from ..calcdirs import RunPlace
+    from ..identity import next_run_words
     from ..kind_table import WALL_ONE
     from ..persist import json_text
     from ..runpoints import (CONTINUE, add_point, empty_index, entry_of,
@@ -2785,6 +2844,10 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     empties: Dict[int, str] = {}
     seen_rounds: set = set()
     steps, said, needs = [], [], []
+    # EACH WALKED POINT'S START, its session log -- the walk refuses where
+    # one is there already: a run starts once (`_walk_script`).
+    started = [place.walked(pt.rel, names.name(".runwrap.log"))
+               for _p, pt in walked if pt.rel in is_planned]
     step_of: Dict[str, int] = {}
     needs_of: Dict[str, List[str]] = {}
     for pdir, pt in order:
@@ -2833,6 +2896,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         steps.append((f"{stage}@{pt.rel}", place.walked(pt.rel),
                       names.name(".run.sh"),
                       " ".join(_counts_of(job.resources)), before))
+        started.append(place.walked(pt.rel, names.name(".runwrap.log")))
         said.append(pt.words() + words)
         plan.reads += [_as_found(place.prepared(pt.prepared) / f, base)
                        for f in (job.script, names.name(".run.sh"))]
@@ -2914,7 +2978,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         empties=empties, empty_at_end=scratch_at,
         walls=([_wall_s(job.resources)] * len(steps)
                if _own_walls(mode, inside) else None),
-        one_start=record.wall == WALL_ONE, tag="walk")
+        one_start=record.wall == WALL_ONE, tag="walk", started=started,
+        again=next_run_words(stage))
     return _Walk(member, script, gn, stage_dir)
 
 

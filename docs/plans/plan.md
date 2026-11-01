@@ -25,38 +25,35 @@ as they stood.
 
 ---
 
-## ▶ HANDOVER — where we are, and where to start *(2026-10-31)*
-**Where we are: 2.60.0.** The releases are the changelog's rows; the
+## ▶ HANDOVER — where we are, and where to start *(2026-11-01)*
+**Where we are: 2.61.0.** The releases are the changelog's rows; the
 history this handover carried, release by release, and the checks each
 release ran are in [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md),
-*The handover's history*. The last: **a run is one start** *(the user,
-2026-10-31: "automatic retry is a residue of flat dir design. explicitly
-remove this. retry need re-run. period.")* — a run folder holds one start of
-its run script, every file molbuilder names in it named once on its stage's
-stem, the session log one per run; to continue is to launch again; the run
-script reads its arguments first, refuses a second start, and after a
-failure says what a launch again will do from the launch's own facts;
-`continue_retries` retired, `jobset migrate` taking it out wherever it lies
-and naming each group an older molbuilder prepared (2.60.0). Before it: F1
-— the results views (2.59.0).
+*The handover's history*, and the finish-line review's ledger. The last:
+**a run's end is known wherever it runs; older runs are read again; only
+`jobset launch` starts a run** — Release A of the whole-jobset review
+*(the user, 2026-11-01: "Migrate renames single-start runs"; on a start by
+hand, "if this takes too much coding, then we can go with 3")*: a start
+that fails before its engine concludes, a started run reads `running`, a
+run here whose process went is asked and written once, a run whose start
+never began reads *never started*, a requeued walk refuses, a run named
+before 2.60.0 is renamed by `jobset migrate`, and the run script takes no
+start but its launch's (2.61.0). Before it: a run is one start (2.60.0).
 
-**Last checked**: the fast batch on 2.60.0's code (6,396 passed); two
-review rounds over whole modules — four readers, then three over the fixes
-and a residue sweep of the contracts — each finding checked in the code
-before it was fixed or left (the ledger's *Found by one start per run*);
-each new test seen failing on the old code or by a deliberate break of its
-fix; a real H2 SIESTA run here through `jobset launch` — a start that died
-in the machine's own setup step, then launched again cold into `run-1/`,
-every file named once; headless: the Run panel and Task setup on it, no
-page error. **No e2e** — the e2e files were moved onto the new names;
-**untested until after F9**: a capped relaxation launched again warm, the
-wall line on a real wall, a requeued job's refusal, a count from the
-environment refused once the start began (verified by hand on a copy).
+**Last checked**: the fast batch on 2.61.0's code (6,424 passed); three
+review rounds — five readers over the whole jobset, two over the fixes,
+one over the gate change and the second round's fixes — each finding
+checked in the code before it was fixed or left (the ledger's *Found by
+the whole-jobset review*); each new test seen failing on the old code or
+by a deliberate break of its fix. **No e2e** — the e2e files were moved
+onto the shared wait; **untested** is listed in 2.61.0's row.
 
-**What runs next** is the whole jobset design review the user asked for (2026-10-31: "check consistency and logic of the over all jobset design and structure, detect potential issues"), then **F2** — the run script names no engine — then the releases in
-the order of *The one plan* — the user's to change. **The user's decisions** are under
-*Decided*; **what only Sol can show** and **new science** are
-under *After the finish line*.
+**What runs next** is **Release B (2.62.0)** of the whole-jobset review —
+the rest of its defects and the ways out composed once (the ledger's rows
+marked B) — then **F2** — the run script names no engine — then the
+releases in the order of *The one plan* — the user's to change. **The
+user's decisions** are under *Decided*; **what only Sol can show** and
+**new science** are under *After the finish line*.
 
 **Off the plan** (the user, 2026-10-18): every feature the three roads do not
 need; any check, warning or format the contracts do not state. The AuBDTAu
@@ -112,7 +109,7 @@ topic's test is confirmed present before the release ships *(the user,
 |---|---|---|---|---|
 | **F0** | **Wrong answers now** | **F0a released as 2.56.2** — 18 of its rows closed and 2 in part (the ledger marks each): status's next step from the run and ready doors, the run's clock read at the reader and from the run's record, the ending reader's crash an answer the wrapper says once, prep's writes leaving nothing it no longer writes, what 2.56.0–2.56.1 left, the documents that made a person act wrongly. **F0b released as 2.57.0** — B2-1, B2-2, U1-2, U2-2, U2-4, I2-134 closed, and what its reviews and checks found (the ledger's *Found by F0b*). **F0c released as 2.58.0** — SWEEP-RELAX and SPIN-EF, and what its review rounds found (the ledger's *Found by F0c*). The whole row: Each fixed at its owning door, not patched: **a species is a label and an element** — one shape through the structure codec's writer and reader and the file catalogue's pseudopotential field (a structure holding `Au1` is written and then refused, B2-1, B2-2); the composed junction keeps its view fields through `Structure.replace` (extending a junction whose order is unstated answers 500, U1-2); **one *IR asked* reading** of a result, older files included (a PySCF result's IR column hidden, U2-2, U2-4, U2-5); the build route returns the builder's findings (the peptide's aldehyde warning lost, I2-134); the run-ending reader's crash an answer, never *no* (I2-133), and the diagnostics door's (B3-28); prep's writes of a stage leave nothing it no longer writes (a stale Makov–Payne script, I2-199); status's next step from the run door (a missing member said finished, a sequence-sent group said not launched — D1-JSa-1, B3-31); the run's clock read once (U2-3); a SIESTA displacement sweep that relaxes reaches its comparison (SWEEP-RELAX — its design first) and a spin-polarized optical frame keeps its Fermi level (SPIN-EF); what 2.56.0–2.56.1 left — *not run* wherever an ended walk's never-run is said, `.continued-from` bytes from `runrecord` alone, migrate's write into a finished run stated as the rule's exception, the package pyflakes-clean; the documents that make a person act wrongly (installation's commands, the run script started by hand, the restart route's rule, the thread default); and the way out of a refused junction citation (decided 1). | 30, 18 closed 2.56.2 and 2 in part; + 2 (F0a's review) | — |
 | **F1** | **The results views** (§ 1ak S3) | **F1 released as 2.59.0** — its rows closed (the ledger marks each), B3-11, I1-107 and I1-113 in part, and what its review rounds found (the ledger's *Found by F1*); B3-10 → F3, I2-087 → F9, the ready door's re-reads → F7, the transport report's and Task setup's path joins and Reload's dropped pick → F8. The whole row: `point_of` (floor 4), `points_view` and `views_of` (floor 6) built; the run door answers its own folder and nothing more; `/api/results/dir` returns the folder answer and the views; **every reader of a run of points' points asks the one point view** — the transport record, its digest and DOS-per-orbital reader, `summarize`, the report page, the ladder. Closes a run-once transmission whose DOS per orbital no road reads (U2-1), the I–V table's missing *not run* row (U2-21), a sweep's run folder that opens nothing (B3-34), the run door reaching floors 3–4 and walking a sweep's points 4N+1 times per answer (B3-1…B3-8, B3-33). Settles the user's open question *"build S3, or state the live road"* — the finish line builds it. | 34 | — |
-| **F2** | **§ 1am step 2 — the run script names no engine** | One skeleton over the engine record — its program, environment and GPU environment, one process or ranks, keyword deck, the step after the engine; the parse layer asked by meaning. Closes the PySCF banner promising a checkpoint and the rest of B1-1…B1-16. **Before it, 2.60.0 — a run is one start** *(the user, 2026-10-31)*: the in-place warm retry, the try counter, the run script's `--run`/`--cold`/`--force` and its folder sweep removed, which closed B1-2, B1-3, B1-4, B1-5, B1-10 and B1-16 by removal (the ledger's *Found by one start per run*). The design set aside on 2026-10-29 is its starting point, re-read against the code first; architecture § 3.3 and job-contracts § 2.6 are rewritten to it. | 34 + 2 (F0a's review) | — |
+| **F2** | **§ 1am step 2 — the run script names no engine** | One skeleton over the engine record — its program, environment and GPU environment, one process or ranks, keyword deck, the step after the engine; the parse layer asked by meaning. Closes the PySCF banner promising a checkpoint and the rest of B1-1…B1-16. **Before it, 2.60.0 — a run is one start** *(the user, 2026-10-31)*: the in-place warm retry, the try counter, the run script's `--run`/`--cold`/`--force` and its folder sweep removed, which closed B1-2, B1-3, B1-4, B1-5, B1-10 and B1-16 by removal (the ledger's *Found by one start per run*). **Then the whole-jobset review** *(the user, 2026-10-31)*: Release A, 2.61.0 — a run's end known wherever it runs, older runs renamed, only `jobset launch` starts a run — and Release B, 2.62.0, the rest of its rows (the ledger's *Found by the whole-jobset review*). The design set aside on 2026-10-29 is its starting point, re-read against the code first; architecture § 3.3 and job-contracts § 2.6 are rewritten to it. | 34 + 2 (F0a's review) | — |
 | **F3** | **§ 1am step 3 — the engine record and the kind/pair record whole** | An engine's validator, reading of *the same calculation*, label bound, words and environment are its record's parts; a kind's rung builders live in its own module, and its sharing role, scratch status line, description checks, extension and citation parts, sort key and report-field gate are its record's; § 1ai's two locks of the Structure-optimization tab move into the catalogue; the page's label palette served from the kind table (decided 6). Closes B1-17…B1-52, B3-10. Carries § 1ak's decisions: S2's reach (every branch on a kind's or engine's name judged into the tables, an engine's own modules choosing by kind staying), `describe` explicit, one record per kind and a part per engine. | 47 + 1 (F0a's review) | — |
 | **F4** | **§ 1am step 4 — the file catalogue and the record doors** | A `ROLE_*` constant for every catalogue row and `compose` refusing a role no row has (131 literal roles in 41 modules today); each record's path formed by its owner — the machine record, the description, the job request, `.copied-from`, a launch group's files, the runtime record, the reports folder; nothing climbs to a root. Closes B2-3…B2-22. | 29 + 7 (F0a's review) | — |
 | **F5** | **§ 1am step 5 — one codec per format** | Our JSON through `persist`; each of our formats one vocabulary module its writer and reader share — the trajectory log, the monitor's lines, deck blocks, the structure pair's sidecar envelope, a NetCDF file's JSON attributes, the run's index, the pidfile; each foreign format read in `parse/`. Closes B2-23…B2-35. | 25 | — |

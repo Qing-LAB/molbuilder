@@ -43,11 +43,20 @@ with the meaning its absence had; the program it runs, onto the job
 **The machine's record** (:func:`_migrate_machine_record`): a calculation's
 copy names its scheduler as a block since 2.10.1 (`configuration.md` § 5
 M-2) -- the word it held becomes its kind, each command its kind's own name,
-run from PATH as before.
+run from PATH as before -- and how a shell there enters its environment,
+written ``script_generation`` before 2026-10-02, under its name now,
+``env_init``.
 
-**Run folders are not rewritten**: a run is one start, its files named
-once on its stage's stem, and a run another file grammar named is not read
-and not converted (`execution/project-layout.md` § 1.6.1).  A run setting a
+**A run's files, named once** (2.60.0, :func:`_migrate_runs`): a run is
+one start, its files named once on its stage's stem
+(`execution/project-layout.md` § 1.6.1); a run an older molbuilder named
+by the try -- ``<stem>-run0<role>``, its session log stamped with the
+clock -- has each file renamed, every byte kept and its old name said.  A
+run it cannot name so is left as it is, said with its reason, and not read
+-- the five reasons of `project-layout.md` § 1.6.1, decided in
+:func:`_migrate_runs`.
+
+**A retired run setting.**  A run setting a
 release retired leaves `job-set.json`'s jobs and the job request's run cards
 as it leaves the template (`template.RETIRED_ITEMS`), by the template's own
 rule -- its engine's, at a value that runs as before; and a job set that
@@ -90,13 +99,20 @@ if TYPE_CHECKING:                      # annotations only
 #: when a migration finds nothing to rewrite (:func:`migrate_state`).
 CURRENT = ("nothing to migrate: it holds nothing an older molbuilder wrote "
            "-- its records are whole, its record of its machine is this "
-           "molbuilder's, and its template carries no item an older "
-           "molbuilder meant otherwise, renamed or a release retired")
+           "molbuilder's, its runs' files are named as this molbuilder names "
+           "them, and its template carries no item an older molbuilder "
+           "meant otherwise, renamed or a release retired")
 
 
 class MigrateError(ValueError):
     """The calculation cannot be migrated as it stands -- the message says
     why and what to do."""
+
+
+class MigrationStopped(MigrateError):
+    """A migration stopped partway, at a rename that failed -- written in
+    the calculation's ledger by the migration itself, with what it had
+    done, so its caller writes nothing more."""
 
 
 #: PySCF's old ``method`` was the SCF class: (method, spin treatment).
@@ -116,12 +132,16 @@ _SIESTA_TREATMENT = {
 }
 
 def _renamed_conflict(old: str, old_value: Any, new: str, new_value: Any,
-                      where: str = "the template") -> MigrateError:
+                      where: str = "the template",
+                      renamed: str = "`template.RENAMED_ITEMS`"
+                      ) -> MigrateError:
+    """One item under its old name and its new, at two values -- ``where``
+    the file, ``renamed`` when or by what rule it was renamed."""
     return MigrateError(
         f"{where} says {old} = {old_value!r} and {new} = {new_value!r}: one "
-        f"item, renamed (`template.RENAMED_ITEMS`), at two values.  Decide "
-        f"which the calculation carries, delete the other, and run the "
-        f"migration again; nothing was written.")
+        f"item, renamed ({renamed}), at two values.  Decide which the "
+        f"calculation carries, delete the other, and run the migration "
+        f"again; nothing was written.")
 
 
 def _conflict(old: str, old_value: Any, new: str, new_value: Any) -> MigrateError:
@@ -351,8 +371,9 @@ class _Records:
     decides every rewrite on these bodies; every step reads them here.  The
     machine's record is read once by its own step, which rewrites it
     (:func:`_migrate_machine_record`); no step reads or rewrites a run's
-    records.  The write keeps each old file, byte for byte, beside its new
-    one."""
+    records -- a run's files an older grammar named are renamed by their own
+    step, by name alone (:func:`_migrate_runs`).  The write keeps each old
+    file, byte for byte, beside its new one."""
     base: Path
     #: `task.json` as it lies, decided in place by the records step.
     task: dict
@@ -1077,8 +1098,11 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
     """The calculation's copy of its machine's record, when an older
     molbuilder wrote it (`record.older_record`): its scheduler word as the
     block -- the kind, and each command by the name the kind gives it, run
-    from PATH as before (`scheduler/kinds.toml`).  Returns what changed and
-    the file to write; nothing for a copy that reads, or none."""
+    from PATH as before (`scheduler/kinds.toml`); and how a shell there
+    enters its environment, written ``script_generation`` before
+    2026-10-02, under its name now, ``env_init`` -- one block at two values
+    refused by name.  Returns what changed and the file to write; nothing
+    for a copy that reads, or none."""
     from ..persist import json_text
     from ..scheduler.kinds import KindError, kind
     from ..scheduler.record import (SCHEMA, Environment, calculation_record,
@@ -1098,14 +1122,145 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
                            f"nothing was written") from None
     raw["scheduler"] = {"kind": k.name, **dict(k.commands)}
     raw["schema"] = SCHEMA
+    rules, renamed = {"2.10.1"}, []
+    if "script_generation" in raw:
+        old, new = raw.pop("script_generation"), raw.get("env_init")
+        if new not in (None, {}) and new != old:
+            raise _renamed_conflict("script_generation", old, "env_init",
+                                    new, where=path.name,
+                                    renamed="2026-10-02")
+        raw["env_init"] = old
+        rules.add("2026-10-02")
+        renamed.append(f"{path.name}: script_generation -> env_init "
+                       f"(2026-10-02: how a shell there enters its "
+                       f"environment, under its name now; its values "
+                       f"kept)")
     try:
         env = Environment.from_dict(raw)
     except (ValueError, TypeError, KeyError) as exc:
         raise _refused_rewrite(path, exc) from None
-    writes.add(path, json_text(env.to_dict()), {"2.10.1"})
+    writes.add(path, json_text(env.to_dict()), rules)
     return ([f"{path.name}: scheduler {word!r} -> {env.scheduler.said()} "
              f"(2.10.1: the kind and where its commands are; each run "
-             f"from PATH, as before)"], writes)
+             f"from PATH, as before)"] + renamed, writes)
+
+
+@dataclass(frozen=True)
+class _Rename:
+    """One run's file renamed: ``old`` to ``new`` in its folder, every byte
+    kept."""
+    old: Path
+    new: Path
+
+
+def _runs_with_folders(base: Path) -> "Dict[Path, list]":
+    """Every run of the calculation in ``base`` -- a stage's or a trial's
+    attempt, a run of points with its root and each point's folder below
+    it -- by its run's folder (`calcdirs.Where.run_folder`), each folder
+    with its stage token, as its record places it (`calcdirs.where`);
+    hidden folders are not walked."""
+    import os
+    from .. import calcdirs
+    runs: Dict[Path, list] = {}
+    for d, dirs, _files in os.walk(base):
+        dirs[:] = sorted(x for x in dirs if not x.startswith("."))
+        w = calcdirs.where(d)
+        if w.stage and (w.what == calcdirs.ATTEMPT
+                        or (w.what == calcdirs.POINT
+                            and w.role == calcdirs.RUN)):
+            runs.setdefault(w.run_folder or Path(d), []).append(
+                (Path(d), w.stage))
+    return runs
+
+
+def _migrate_runs(base: Path) -> Tuple[List[str], List["_Rename"]]:
+    """THE RUNS AN OLDER MOLBUILDER NAMED BY THE TRY (`runfiles.older_named`,
+    before `runfiles.ONE_START_SINCE`), each file named once: ``<stem>-run0
+    <role>`` as ``<stem><role>`` -- SIESTA's history as SIESTA names it, on
+    the label alone, the name that run script pointed at the numbered file
+    -- the start's session log ``<stem>.runwrap-<stamp>.log`` as
+    ``<stem>.runwrap.log``, and a file an earlier migration kept beside its
+    rewrite under the same rule: every byte kept, the old name said.
+    Decided once per run, its root and its points' folders together: a run
+    any folder of which started more than once (a ``-run1``, a second
+    session log), whose job this machine holds and is going or cannot ask,
+    any folder of which is not writable here, a new name a file already
+    holds or two of its files would take, or a role this molbuilder does
+    not name, is LEFT AS IT IS, whole, and said: it is not read
+    (`project-layout.md` § 1.6.1, its five reasons).  A run no job of this
+    machine's holds is read as the copy it is.  Returns what is said and
+    the renames, decided before any is made."""
+    import os
+    from .. import runfiles as _rf
+    from ..joblist import going_of
+    said: List[str] = []
+    moves: List[_Rename] = []
+    known = set(_rf.roles())
+    for run, folders in _runs_with_folders(base).items():
+        found = [(folder, stage, _rf.older_named(folder, stage))
+                 for folder, stage in folders]
+        found = [f for f in found if f[2]]
+        if not found:
+            continue
+        rel = run.relative_to(base)
+        stuck: List[str] = []
+        for folder, _stage, older in found:
+            # A KEPT FILE COUNTS: a copy an earlier migration kept of a
+            # second try's file is a second start all the same.
+            tries = sorted({o.tried for o in older if o.tried is not None})
+            logs = [o for o in older if o.tried is None and o.kept is None]
+            if tries not in ([], [0]) or len(logs) > 1:
+                stuck.append(f"{folder.relative_to(base)} started more than "
+                             f"once (tries {', '.join(map(str, tries)) or '0'}"
+                             f", {len(logs)} session logs), and a run is one "
+                             f"start since {_rf.ONE_START_SINCE}")
+            elif not os.access(folder, os.W_OK):
+                stuck.append(f"{folder.relative_to(base)} cannot be written "
+                             f"here")
+        going, _job, how = going_of(base, run)
+        if going is not False:
+            stuck.append(f"its job {'is still going' if going else how}; "
+                         f"run the migration again once it has ended")
+        run_moves: List[_Rename] = []
+        lines: List[str] = []
+        taken: set = set()
+        for folder, stage, older in found if not stuck else ():
+            names = []
+            for o in older:
+                new = o.path.with_name(o.anew(stage))
+                got = _rf.parse(new.name, o.label)
+                if (o.staged and o.kept is None
+                        and (got is None or got.role not in known)):
+                    stuck.append(f"{o.path.name} names no file this "
+                                 f"molbuilder writes")
+                    continue
+                # SIESTA'S NAME FOR ITS HISTORY, still pointing at the
+                # numbered file where its run script stopped before its
+                # exit: the rename takes its place.
+                pointer = (new.is_symlink()
+                           and new.resolve() == o.path.resolve())
+                if (new.exists() or new.is_symlink()) and not pointer:
+                    stuck.append(f"{new.name} is there beside "
+                                 f"{o.path.name}")
+                    continue
+                if new in taken:
+                    stuck.append(f"two of its files would be named "
+                                 f"{new.name}")
+                    continue
+                taken.add(new)
+                run_moves.append(_Rename(o.path, new))
+                names.append(f"{o.path.name} -> {new.name}")
+            lines.append(f"  {folder.relative_to(base)}: {', '.join(names)}")
+        if stuck:
+            said.append(f"{rel}: left as it is, and not read -- "
+                        + "; ".join(stuck))
+            continue
+        moves += run_moves
+        said += [f"{rel}: its files named anew ({_rf.ONE_START_SINCE}: a run "
+                 f"is one start, its files named once -- on its stage's "
+                 f"stem, SIESTA's history under SIESTA's own name; every "
+                 f"byte kept):"] + lines
+    return said, moves
 
 
 def migrate_state(base) -> List[str]:
@@ -1118,7 +1273,9 @@ def migrate_state(base) -> List[str]:
     (:data:`CURRENT`); raises :class:`MigrateError` when it cannot be
     migrated as it stands.
     """
-    base = Path(base)
+    # RESOLVED ONCE: the runs' folders are placed as their records place
+    # them (`calcdirs.where`), and every path said is said from here.
+    base = Path(base).resolve()
     # EVERY RECORD READ ONCE, then EVERY DECISION BEFORE ANY WRITE: a
     # refusal of any step leaves the calculation as it was, never half
     # rewritten (`architecture.md` A16, migrate's rule).
@@ -1137,6 +1294,7 @@ def migrate_state(base) -> List[str]:
         # the migration's, in the reader's words.
         raise MigrateError(f"the template's rewrite cannot be decided, so "
                            f"nothing was written: {exc}") from None
+    r_said, moves = _migrate_runs(base)
     t_said: List[str] = []
     if decision is not None:
         t_said = list(decision.said)
@@ -1149,9 +1307,14 @@ def migrate_state(base) -> List[str]:
             writes.add(path_of(base),
                        json_text(_edited(task, decision).to_dict()),
                        decision.task_rules)
-    if not writes:
-        # NOTHING TO MIGRATE is an answer, not a refusal.
-        return []
+    if not writes and not moves:
+        # NOTHING TO MIGRATE is an answer, not a refusal -- a run left as it
+        # is said all the same, and written down.
+        if r_said:
+            from . import ledger
+            ledger.record(base, "migrate", "runs an older molbuilder named, "
+                          "left as they are", changes=r_said)
+        return r_said
     # A KEPT FILE IS NEVER WRITTEN OVER: it is the only copy of what the
     # file was before an earlier migration.
     # A NEW FILE -- the job request a split writes -- keeps nothing.
@@ -1173,9 +1336,28 @@ def migrate_state(base) -> List[str]:
         if path in kept:
             write_bytes(kept[path], path.read_bytes())
         write_bytes(path, text.encode("utf-8"))
+    # EACH RUN'S FILE RENAMED, after every record is written: a rename
+    # rewrites no byte, so nothing is kept beside it -- its old name is
+    # said, and the ledger keeps it.
+    import os
+    done: List[str] = []
+    for m in moves:
+        try:
+            os.replace(m.old, m.new)
+        except OSError as exc:
+            from . import ledger
+            ledger.record(base, "migrate", "a calculation an older "
+                          "molbuilder wrote, rewritten -- stopped at a "
+                          "rename that failed", changes=said + done,
+                          failed=f"{m.old} -> {m.new.name}: {exc}")
+            raise MigrationStopped(
+                f"{m.old} could not be named {m.new.name} ({exc}); the "
+                f"records were rewritten and {len(done)} file(s) named "
+                f"anew before it -- each written in the ledger") from None
+        done.append(f"{m.old.relative_to(base)} -> {m.new.name}")
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
              for path in writes if path in kept]
-    said += t_said
+    said += t_said + r_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",

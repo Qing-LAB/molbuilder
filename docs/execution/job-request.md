@@ -959,8 +959,15 @@ is refused by name, nothing written:
   whole (`model/parse.md` § 5e). A vibration result is not rewritten: its map is
   made as it is read, and its JSON's hash stays the one its data file and
   the frame sets made from it name;
+- names anew each run an older molbuilder named by the try (`-run0`, a
+  session log stamped with the clock), every byte kept and each old name
+  said and in the ledger; a run it cannot name so — one that started more
+  than once among them — is left as it is and said with its reason
+  ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, the
+  five reasons);
 - keeps each file it rewrites beside its new one, `<name>.pre-<rule>`, as every
-  migration does.
+  migration does — a file it only names anew keeps every byte, and nothing
+  beside it.
 
 **A calculation described by 2.27.x is migrated once more**: its template's
 declared run-setting items go, and nothing it computes changes.

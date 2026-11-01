@@ -59,7 +59,7 @@ the manifest, § 5.*
 | **portable floor** | the calculation folder never names a machine — copy it anywhere | § 1 |
 | **one layout** | a folder per stage, a folder per run in it (`run-<n>/`); a description stating any other is refused by name | § 1 |
 | **a run is one start** | every run is its own numbered dir, `run-<n>/`, one start of its run script; to continue is to launch again — warm files COPIED from the run you name | § 1.5, § 1.6 |
-| **the conclusion marker** | the wrapper's last act writes `<basename>.concluded` with the rc; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6.3 |
+| **the conclusion marker** | the wrapper writes `<basename>.concluded` with the rc, its last act — or its exit trap, when the script fails on its own first; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6.3 |
 | **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `job-request.json`'s `execution` | § 2.3.2 |
 | **who writes where** | `molbuilder describe` → the portable floor; prep → stage dirs **and the attempt in them**; launch → `run.json`; the run → its output, the monitor's files and the wrapper's conclusion marker; a person → anything, said aloud | § 2, § 1.6.3 |
 | **invariants** | the cross-level rules, each with its reason | § 7 |
@@ -494,8 +494,10 @@ which is why there is no migration step and nothing to reindex.
 
 **What a run computed is never changed.** After its launch has ended, a
 run directory receives only these, and none changes what it computed:
-molbuilder's records of it — its launch record's `ended`, the scheduler's
-answer about a sent job, written once (`runrecord.record_ended`, § 1.6.3),
+molbuilder's records of it — its launch record's `ended`, the answer
+about its job, written once (`runrecord.record_ended`, § 1.6.3), and an
+older molbuilder's names for its files, named anew once by `jobset migrate`
+with every byte kept (§ 1.6.1),
 readings kept beside a file on a person's word (§ 5.3: a data file's
 digest, `runtime-info`'s sidecar, the parse log); and an engine's scratch
 taken away on a person's word (`jobset scratch --empty`, § 6) — scratch is no result. Launching a stage again
@@ -620,10 +622,12 @@ writes them, so a link would reach back and destroy the result you built on.
 **Everything is *reachable from inside the run*, including the wrapper and
 the monitor.** That is the point of copying them in rather than invoking them
 from a level up: once the directory is prepared it needs **nothing but the
-engine's environment and a shell**, so `cd`ing into it and running the wrapper
-by hand is an ordinary thing to do — on a laptop, on a login node, or inside a
-scheduler's job script. A directory that only worked when launched from
-elsewhere would be one you could not debug.
+engine's environment and a shell** — `jobset launch` starts the run script in
+it, on a laptop, on a login node or inside a scheduler's job, the only start
+it takes ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5), and
+everything it ran from is in the folder to read when something goes wrong. A
+directory that only worked when invoked from elsewhere would be one you could
+not debug.
 
 #### 1.5b Two levels, two reasons — the directory says what happened
 
@@ -765,8 +769,27 @@ when it starts again, and ends without running
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2). Which run folder is a stage's newest is the
 layout's (`materialize.latest_attempt`).
 
-**Runs written before this rule** — their files named `-run<N>` — are not read
-and not converted *(the user, 2026-10-31: "ignore the migration")*.
+**Runs written before this rule** — their files named by the try,
+`<stem>-run<N><role>`, and a session log per start stamped with the clock —
+are not read: the run door reads such a run `unreadable`, naming `jobset
+migrate` (`runs.older_run`). **`jobset migrate` names a run that started
+once anew** *(the user, 2026-11-01: "Migrate renames single-start runs")*:
+its `-run0` files and its one session log take the names above — SIESTA's
+history the name SIESTA gives it, on the label alone, which that run script
+pointed at the numbered file — and a file an earlier migration kept beside
+its rewrite keeps its rule: every byte kept, each old name said and written
+in the ledger (`runfiles.older_named`, `migrate._migrate_runs`). A run is
+decided whole — a run of points with every point of it — and **left as it
+is, said with its reason, and not read**, when:
+
+1. any folder of it started more than once — a `-run1`, a copy an earlier
+   migration kept of one, or a second session log;
+2. its job is one this machine holds, and is still going or cannot be asked;
+3. a folder of it cannot be written here;
+4. a new name is one a file already holds, or two of its files would take;
+5. a file of it names a role this molbuilder does not write.
+
+A run no job of this machine's holds is read as the copy it is.
 
 #### 1.6.2 Who makes the run directory
 
@@ -844,7 +867,7 @@ Two small files answer the two questions *(the second decided by the user,
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
 | `run.json` (`molbuilder/run-launch@1`) | `launch`, into the run | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, and for a run a sequence of groups' job sent **the sequence** — its mode, command, job id and placement then the job's ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | not launched: `launch` runs in this run |
-| `<basename>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle> <verb>)`** (`parse/dirs/job.FINISH_FAILED`); when the job had no python of its env, `no env python (<path>)` (`NO_ENV_PYTHON`) | still running, or force-stopped: the files cannot tell which |
+| `<basename>.concluded` | the wrapper, on its main line; or its one exit trap, when the script fails on its own before its marker — never for a stop signal | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor; the exit trap's, as the script ends: an activation or a step that failed under `set -e`, an exit before the engine | *the process ended on its own* — the exit code and the time; the exit trap's, `stopped before its end`; **when the finish failed, its exit code and the words `finish failed (<bundle> <verb>)`** (`parse/dirs/job.FINISH_FAILED`); when the job had no python of its env, `no env python (<path>)` (`NO_ENV_PYTHON`) | still running, or force-stopped: the files cannot tell which |
 | `.continued-from` | `launch`, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`); a planned point's, its planner's step in the job (`spectra.siesta_vibration`, through the same writer) | with the files it takes — a stage's run continuing from another, a run of points continuing, a point continued from its own last run, a point taken over (the run that computed it, one hop); a point's start with the launch's plan, its files copied by the walk just before the point runs; a planned point's start as its planner opens the point, and with the launch's plan when a launch opens it again ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.2) | which run, as every record names one (`runrecord.RunRef`): its folder from the calculation's | the run starts from the structure, or from what it gathered |
 
 - **`run.json` is written at launch, never at completion** — written when the
@@ -857,11 +880,13 @@ Two small files answer the two questions *(the second decided by the user,
   benchmark trial keeps runs as a stage does (§ 1.5a), and each run
   gets the same file — which is how `launch bench <stage>` passes over the
   trials already launched (`job-contracts.md` § 6.1).
-  **`ended`** is the scheduler's answer about a sent job, written once by
-  the first reader where this machine sent the job (its address on the
-  jobs list, [`job-system.md`](?doc=execution/job-system.md) § 6.0a) that
-  found the scheduler no longer listing it, or listing it ended —
-  `asked_on` the cluster as the scheduler names it,
+  **`ended`** is the answer about how the job went, written once by the
+  first reader on the machine that holds the job (its address on the jobs
+  list, [`job-system.md`](?doc=execution/job-system.md) § 6.0a): for a sent
+  job, the scheduler no longer listing it, or listing it ended — `asked_on`
+  the cluster as the scheduler names it; for a run here, its process gone
+  with no marker written — `asked_on` this machine, `listed` false as for
+  every answer, `said` empty —
   `{asked_on, asked_at, listed: false, said}`, `said` the scheduler's words
   or empty — and `null` at launch, as every key is written every time
   (`runrecord.record_ended`, [`running-a-job.md`](?doc=execution/running-a-job.md)
@@ -883,9 +908,15 @@ Two small files answer the two questions *(the second decided by the user,
   `.XV` the engine would find and warm-start from — reaches the run.
 - **An error is a conclusion**: an engine returning nonzero still reaches the
   wrapper's main line, so the marker carries that code — *"because of error or
-  whatever — but the process is done."* **A forced stop leaves no marker, by
-  construction**: it is never written from the cleanup trap, which does run on
-  a walltime SIGTERM. Both engines' wrappers write it, since each runs its
+  whatever — but the process is done."* So does a script that stopped before
+  its engine — an activation that failed, a step that exited: its one exit
+  trap writes the marker with the exit code, `stopped before its end`,
+  before it stops the monitor, as the main line does.
+  **A forced stop leaves no marker, by construction**: every signal that
+  would end the script — a walltime SIGTERM, a Ctrl-C, a lost terminal's
+  hang-up — is caught by its one handler, which writes none, and the exit
+  trap writes none after it, nor ever a code 0; a kill no process can catch
+  leaves nothing. Both engines' wrappers write it, since each runs its
   engine as a child (`running-a-job.md` § 2.2a); a run concludes once, as it
   starts once (§ 1.6.1).
 - **`.continued-from` carries the provenance because `run.json` cannot exist
@@ -900,9 +931,10 @@ What a run holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 | prepared | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials; the job's finish bundle when it has one (`mb_vibration.pyz`); beside a PySCF deck, the code it imports (`mb_pyscf.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed — every one with its writer and door in § 5.3 | `pending` |
 | launched — its send | + what it takes, copied in: the warm files and `.continued-from` if it continues, a transport rung's inputs and `.gathered-from` | `pending` until the record is written |
 | launched | + `run.json` | `queued` |
-| running | + `<basename>.out` (PySCF: `<basename>.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
+| started | + the session log, as its run script's start goes ahead (§ 1.6.1) | `running` — *started, no output yet* |
+| running | + `<basename>.out` (PySCF: `<basename>.pyscf.log`), the monitor's pair | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
 | concluded | + `<basename>.concluded` | `finished` with exit code 0, `failed` with any other — the one door's answer (`runrecord.ending`, [`architecture.md`](?doc=execution/architecture.md) § 3.2) — or when its output states a stop. A marker naming a failed finish: the engine ended and the job did not, so `failed`. A job that cannot run its finish stops before its engine with a marker saying so and no output: `failed` |
-| force-stopped | as *running*; no marker comes — the scheduler's own line in the job's error file (`slurm.<id>.err`, which `run.json`'s `scheduler.stderr` names), and the monitor's closing record `[MONITOR] job ended` when the monitor outlived the stop | `failed` by the scheduler's line, else by the monitor's record — also when the stop landed after the engine's output ended, inside a job's finish or the wrapper's last lines; `running` when neither says it (a lost node, no scheduler line): no file then tells it from a live run |
+| force-stopped | as *running*; no marker comes — the scheduler's own line in the job's error file (`slurm.<id>.err`, which `run.json`'s `scheduler.stderr` names), the answer about the job written once into `run.json` (`ended`: the scheduler's for a sent job, its process gone for a run here), and the monitor's closing record `[MONITOR] job ended` when the monitor outlived the stop | `failed` by the scheduler's line or the recorded answer, else by the monitor's record, else once nothing was written for longer than its wall — also when the stop landed after the engine's output ended, inside a job's finish or the wrapper's last lines; `running` when none says it and its wall has not passed (a lost node, read where its job cannot be asked): no file then tells it from a live run |
 
 #### 1.6.4 What reads them
 
@@ -1028,7 +1060,7 @@ is launched after you have looked at the one it builds on — or, named with it
 at one launch, after it has finished, inside one job (a sequence of groups,
 [`job-system.md`](?doc=execution/job-system.md) § 6.0).
 
-#### 1.6.7 `--cold`, and running a stage by hand
+#### 1.6.7 `--cold`, said at launch
 
 `--cold` means *start this run clean*. With a directory per run that is
 simply *skip the copy* — a fresh run is empty unless something is copied
@@ -1038,8 +1070,8 @@ cold when you say so ([`job-system.md`](?doc=execution/job-system.md),
 *What molbuilder does for you*, 3; for a bias sweep, cold means every point
 runs) — a first launch too, when the copy from the stage before is skipped
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you type). The
-run script takes no `--cold`: it starts once in its run folder, launched or
-by hand, and holds only what prep and launch put there (§ 1.6.1).
+run script takes no `--cold`: it starts once in its run folder, by its launch,
+and holds only what prep and launch put there (§ 1.6.1).
 
 ---
 
@@ -2598,7 +2630,7 @@ with a copy of each stage file it reads.
 | `<base>.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | molbuilder's log of reading the run's output | molbuilder's parser, reading the output (`parse._log.ParseLogger`) | none | record |
 | `<base>.molwatch.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
 | `<label>.<tbt>.digest.nc` *(transport)* — only: its data file read | a transmission point's data file, read once: its device DOS per orbital averaged over the k-points, what the file states of its geometry and electrodes, and TBtrans's own k-averaged quantities -- every variable with its units (NetCDF-4) | the SIESTA family's parser (`parse.engines.tbtrans_nc`), on the person's word: the Results tab's DOS tab, `jobset summarize task` | `parse.engines.tbtrans_nc.kept` | derived |
-| `<base>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
+| `<base>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act; or its exit trap, when the script fails on its own before it | `runrecord.ending` | record |
 | `<base>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
 | `run.json` | the launch record: how, where and when the run was sent, and what it continued from | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
 | `notified.json` | the run's notification record: every event sent for the run -- start, a step, the periodic report, its wall near, a milestone, a failed part and its reason, finish -- and when | `mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps, `runrecord.note_notified`); a member monitor, for every event it sends (`monitor`) | `runrecord.read_notified` | record |

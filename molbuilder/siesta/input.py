@@ -971,8 +971,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         """
         out: List[str] = []
 
-        # HOW TO RUN IT: the managed launch, the run script by hand
-        # (`identity.hand_run`), and SIESTA driven directly, its stdout
+        # HOW TO RUN IT: the managed launch -- the one that starts its run
+        # script -- and SIESTA driven directly, outside molbuilder, its stdout
         # redirected to the output's name (docs/execution/job-contracts.md
         # § 2.2).
         #
@@ -1000,8 +1000,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # (`02_freq`) is a legal name of another stage (`job-system.md`
             # § 5.3).  A trial's deck names its own
             # launch -- `launch task` would launch the stage's run.
-            from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE,
-                                    deck_launch, hand_run)
+            from ..identity import LAUNCH_MODE_NOTE, deck_launch
             if trial:
                 out.append("# The managed way -- this trial alone, from the "
                            "calculation's folder (`launch bench "
@@ -1013,7 +1012,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.extend(f"#     {line}"
                        for line in deck_launch(stage_token, trial))
             out.append(f"#     {LAUNCH_MODE_NOTE}")
-            out.append(f"#     {hand_run(names)}    # {HAND_RUN_NOTE}")
             out.append(
                 "# The wrapper beside this deck is self-contained: it runs "
                 "unattended in a shell")

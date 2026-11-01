@@ -480,19 +480,22 @@ def going_of(base, run, asked: "Optional[Asked]" = None
     of the jobs launched from this machine (:func:`holding`), each asked
     the one way (:func:`is_going`): ``True`` with the first going,
     ``None`` with the first this machine cannot ask where none is going,
-    ``False`` where every one is over -- or none holds it, ``job`` then
-    ``None``.  The run door asks it of a point its walk never started,
+    ``False`` with the last where every one is over -- or none holds it,
+    ``job`` then ``None``.  The run door asks it of a run here that reads
+    live (`runs.concluded`) and of a point its walk never started,
     `status` of a walk between two points, `jobset scratch` of the scratch
     a run keeps -- each its own reading of the answer."""
     asked = asked if asked is not None else Asked()
-    unsure = None
+    unsure = over = None
     for job in holding(base, run):
         going, said = is_going(job, asked)
         if going is True:
             return True, job, said
         if going is None and unsure is None:
             unsure = (None, job, said)
-    return unsure if unsure is not None else (False, None, "")
+        if going is False:
+            over = (False, job, said)
+    return unsure or over or (False, None, "")
 
 
 def forget(job: Job) -> None:

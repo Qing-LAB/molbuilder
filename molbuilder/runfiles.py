@@ -605,6 +605,86 @@ def find_on_label(directory, label: str, role: str) -> "list[Path]":
             if rec.stage is None]
 
 
+#: THE RELEASE SINCE WHICH A RUN IS ONE START, its files named once on its
+#: stage's stem (`project-layout.md` § 1.6.1): a run named before it carries
+#: the try's number (:func:`older_named`).
+ONE_START_SINCE = "2.60.0"
+
+#: WHAT WAS NAMED BY THE TRY AND ITS ENGINE NAMES SINCE 2.60.0:
+#: SIESTA's history, appended to ``<SystemLabel><role>`` -- the label alone
+#: -- which those run scripts pointed at the run's numbered file while the
+#: engine ran (2.59's ``pointed_roles``).
+_ENGINE_NAMED_SINCE = (".MD.nc", ".MD", ".MDE", ".ANI")
+
+
+@dataclass(frozen=True)
+class OlderName:
+    """A run's file as molbuilder named it before :data:`ONE_START_SINCE`
+    (:func:`older_named`): its ``path``; the try's number its name carried
+    (``-run<N>``), ``None`` for a start's session log, which carried the
+    clock; the ``label`` it is named on; the ``role`` it is now; and, for
+    an older file an earlier migration kept beside its rewrite
+    (:data:`KEPT_FILE`), the rule it was kept under (``kept``)."""
+    path: Path
+    tried: Optional[int]
+    label: str
+    role: str
+    kept: Optional[str] = None
+
+    @property
+    def staged(self) -> bool:
+        """Whether its name now carries the stage -- not for a file its
+        engine names (SIESTA's history)."""
+        return self.role not in _ENGINE_NAMED_SINCE
+
+    def anew(self, stage: str) -> str:
+        """Its name now, by the one composer (:func:`compose`), on the
+        label it carries and the stage token ``stage`` -- a kept file's
+        under its rule."""
+        name = compose(self.label, self.role, stage if self.staged else None)
+        return (fixed_name(KEPT_FILE, kept=name, rule=self.kept)
+                if self.kept else name)
+
+
+def older_named(directory, stage: str) -> "list[OlderName]":
+    """THE FILES OF ``directory`` AN OLDER GRAMMAR NAMED -- molbuilder's
+    before :data:`ONE_START_SINCE`, when a run could start more than once
+    (`project-layout.md` § 1.6.1): the try's number after the stage token
+    ``stage`` (``<label>_<stage>-run<N><role>``) and a session log per
+    start stamped with the clock (``<label>_<stage>.runwrap-<YYYYMMDD-
+    HHMMSS>.log``) -- each also kept beside a rewrite by an earlier
+    migration (:data:`KEPT_FILE`) -- sorted by name; ``[]`` for a folder
+    that cannot be listed.  Read by `jobset migrate`, which names them once,
+    and by the run door, which says a run holding them is not read until
+    then."""
+    label = _LABEL.pattern
+    tried = re.compile(rf"^(?P<label>{label})_" + re.escape(stage)
+                       + r"-run(?P<n>[0-9]+)(?P<role>\..+)$")
+    # THE CLOCK THOSE RUN SCRIPTS STAMPED, `date +%Y%m%d-%H%M%S`.
+    logged = re.compile(rf"^(?P<label>{label})_" + re.escape(stage)
+                        + r"\.runwrap-[0-9]{8}-[0-9]{6}\.log$")
+    try:
+        entries = sorted(Path(directory).iterdir())
+    except OSError:
+        return []
+    out = []
+    for f in entries:
+        if not f.is_file() or f.is_symlink():
+            continue
+        kept = fixed_fields(KEPT_FILE, f.name)
+        name = kept["kept"] if kept else f.name
+        rule = kept["rule"] if kept else None
+        m = tried.match(name)
+        if m:
+            out.append(OlderName(f, int(m["n"]), m["label"], m["role"],
+                                 rule))
+            continue
+        m = logged.match(name)
+        if m:
+            out.append(OlderName(f, None, m["label"], ".runwrap.log", rule))
+    return out
+
+
 def longest_tail(engine_names: "tuple[str, ...]") -> str:
     """The longest text the catalogue appends to ``<label>_<stage>`` -- every
     role, a templated one filled with the longest value its field takes:
@@ -1208,11 +1288,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`spectra.displacement_sweep.write_sweep`)",
              door="parse.sidecars.fc_sweep.FcSweepRecordFileParser",
              only="two or more force-constant stages"),
-    # THE CONCLUSION MARKER -- the wrapper's last act on its main path
-    # (`project-layout.md` § 1.6, "the other file", 2026-08-28).
+    # THE CONCLUSION MARKER -- the wrapper's last act on its main line, or
+    # its exit trap's when the script fails on its own first
+    # (`project-layout.md` § 1.6.3).
     Artifact(".concluded", "the marker the wrapper writes when the job ends",
              kind="record",
-             writer="the run script, its last act",
+             writer="the run script, its last act; or its exit trap, when "
+                    "the script fails on its own before it",
              door="runrecord.ending"),
     # ---- written on the label, beside any file of ours ---------------------
     Artifact(".runtime_info.json", "what a file of the run says about the "
