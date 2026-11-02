@@ -11,6 +11,7 @@ recipe-shape-driven, so an in-test recipe is the honest fixture.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,6 +38,13 @@ _ALL_PHASES_RECIPE = Recipe(
 )
 
 
+#: WHERE THE FAKE ENVS LIVE: the suite's sandbox home (testing.md § 2b).  An
+#: install makes its temp and cache folders under an env's prefix
+#: (`builds.env_for_step`), so a prefix a test names is a folder a test may
+#: write -- never a path at the machine's root.
+ENVS = Path.home() / "envs"
+
+
 def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
     """Bind a synthetic snapshot.
 
@@ -45,7 +53,7 @@ def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
     only ask whether an env exists.
     """
     envs_arg = (dict(conda_envs) if isinstance(conda_envs, dict)
-                else {name: f"/prefix/{name}" for name in conda_envs})
+                else {name: f"{ENVS}/{name}" for name in conda_envs})
     set_capabilities(Capabilities(
         runtime_config={},
         conda_binary=conda_binary,
@@ -138,7 +146,7 @@ def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
     # ``_env_prefix`` to return a fake prefix once the env has been
     # "created".
     monkeypatch.setattr(install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
+                        lambda env_name, conda_binary: f"{ENVS}/{env_name}")
     # run_streaming carries the step execution: create + the conda set +
     # verify.  The prefix above does not exist, so the audit gate finds every
     # declared package absent and the set is dispatched.
@@ -516,7 +524,7 @@ def test_optional_package_failure_degrades_without_stopping(monkeypatch):
     monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
+                        lambda env_name, conda_binary: f"{ENVS}/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory(
                             (0, "solving..."),          # conda create
@@ -548,7 +556,7 @@ def test_launch_failure_of_optional_step_also_degrades(monkeypatch):
     monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
+                        lambda env_name, conda_binary: f"{ENVS}/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory(
                             (0, "solving..."),          # conda create
@@ -660,7 +668,7 @@ def test_build_phases_carry_the_verdict_builds_gave_them(monkeypatch):
     monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
-                        lambda env_name, conda_binary: "/fake/envs/x")
+                        lambda env_name, conda_binary: f"{ENVS}/x")
     monkeypatch.setattr(install._builds, "run_streaming",
                         lambda *a, **kw: (0, "ok"))
 
@@ -673,7 +681,7 @@ def test_build_phases_carry_the_verdict_builds_gave_them(monkeypatch):
     monkeypatch.setattr(install._builds, "run_build_spec",
                         lambda *a, **kw: B.BuildResult(
                             spec=recipe.build_spec,
-                            env_prefix="/fake/envs/x",
+                            env_prefix=f"{ENVS}/x",
                             activate_hook_written=False,
                             deactivate_hook_written=False,
                             succeeded=False,
@@ -711,7 +719,7 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
     monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
+                        lambda env_name, conda_binary: f"{ENVS}/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory((0, "solving..."),
                                              (0, "solving..."),
@@ -1035,7 +1043,7 @@ def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(monkeypatch):
         lambda name, binary: install.EnvState(
             name=name, listed_in_registry=False,     # the registry does not
             dir_exists=True, has_conda_meta=True,    # know this directory
-            prefix=f"/prefix/{name}", manager=binary))
+            prefix=f"{ENVS}/{name}", manager=binary))
     monkeypatch.setattr(_cli._doctor, "report_all", lambda caps, **kw: [])
     monkeypatch.setattr(_cli, "_render_doctor", lambda reports: 0)
     monkeypatch.setattr(_cli, "_seed_config", lambda *a, **k: None)
@@ -1105,7 +1113,7 @@ def test_the_clean_plan_removes_the_env_before_it_creates_one():
     wipe was still gated on `build_spec` -- accepted, wiped nothing, printed
     "install OK".
     """
-    _bind(conda_envs={"molbuilder-pySCF": "/prefix/molbuilder-pySCF"})
+    _bind(conda_envs={"molbuilder-pySCF": f"{ENVS}/molbuilder-pySCF"})
     recipe = recipe_by_name("molbuilder-pySCF")
 
     _name, plain = install.plan_install(recipe)
@@ -1134,7 +1142,7 @@ def test_the_clean_run_removes_a_PRESENT_env_and_installs_into_the_new_one(
     which the startup snapshot still lists until the installer voids it.
     """
     from molbuilder import diagnostics as _diag
-    old, new = "/prefix/old-pySCF", "/prefix/new-pySCF"
+    old, new = f"{ENVS}/old-pySCF", f"{ENVS}/new-pySCF"
     _bind(conda_envs={"molbuilder-pySCF": old}, conda_binary="/fake/conda")
     recipe = recipe_by_name("molbuilder-pySCF")
     seen: list = []
@@ -1195,7 +1203,7 @@ def test_the_clean_run_on_a_fresh_machine_skips_the_removal_and_creates(
     conda 26.7.1, 2026-09-14) -- so `--clean` on a fresh machine, or the
     re-run after a `--clean` whose create then failed, died at step 1.  The
     removal is SKIPPED when nothing is on disk, and the create runs."""
-    new = "/prefix/new-pySCF"
+    new = f"{ENVS}/new-pySCF"
     _bind(conda_envs={}, conda_binary="/fake/conda")
     recipe = recipe_by_name("molbuilder-pySCF")
     seen: list = []
@@ -1362,7 +1370,7 @@ def test_an_advisory_probe_is_one_word_and_out_of_the_count(capsys):
     from molbuilder.envs.validate import ProbeResult, ValidationReport
 
     report = ValidationReport(
-        recipe_name="molbuilder-siesta-gpu", env_prefix="/prefix",
+        recipe_name="molbuilder-siesta-gpu", env_prefix=str(ENVS),
         probes=(
             ProbeResult(name="ctest", passed=True, detail="12 passed"),
             ProbeResult(name="elpa", passed=True, detail="ok"),

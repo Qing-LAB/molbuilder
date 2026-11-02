@@ -196,7 +196,7 @@ Nothing is cached: `file_picker_roots()` calls `projects_root()` at CALL
 time, so pointing the door is enough and the live server serves the tmp tree.
 
 **Your shell's `$MOLBUILDER_PROJECTS` never reaches a test**: `conftest.py`
-clears it for the session, and a test that sets it sets it through
+clears it before anything is collected (§ 2b), and a test that sets it sets it through
 `monkeypatch`, which puts back what was there *(found 2026-10-18: a test that
 set it by hand and deleted it after made two tests of the resolution pass or
 fail by the worker count)*.
@@ -208,7 +208,8 @@ under the real `projects/` tree, by any spelling: a literal, a relative path,
 or the code under test falling back to `projects_root()`'s default. The touch
 raises `TouchedYourProjectsTree` (a `BaseException`, which `except Exception`
 cannot swallow) and fails the test at report time even if something swallowed
-it. The shared input library `projects/pseudopotential/` may be read.
+it. The shared input library `projects/pseudopotential/` may be read, never
+written (§ 2b).
 *(Until 2026-10-16 an AST scan of the test files looked for the repository
 root joined to `projects`; it found thirteen sites in seven files, converted
 2026-09-06, and could not see the commoner road — a default reached through
@@ -218,6 +219,53 @@ the code.)*
 machine scope out from under `conftest`'s.** If the test then preps, call
 `conftest.write_machine_record()` at the end of that fixture — prep refuses
 without a probed record (`running-a-job.md` § 3.1).
+
+### 2b. A test never reaches the person's machine
+
+**What a test may touch is decided once, for the whole run, before anything is
+collected — never per test, and never by the helper that writes.** *(2026-11-02: a
+helper of this suite, run by hand from a script, wrote its test machine record
+into the person's real `~/.config/molbuilder/environment.json`, and every real
+run on that machine failed until it was probed again; the audit that followed
+found module fixtures, collection-time checks and child processes running outside
+the per-test isolation, and tests posting to Slack and solving against
+conda-forge — [`archive/audits/2026-11-02-test-audit`](?doc=archive/audits/2026-11-02-test-audit/README.md).)*
+
+`conftest.py` sets it up while it is imported:
+
+- **Test code loads only under pytest.** `tests/support/` — and so
+  `conftest.py` and `_road.py`, which import it — refuses to import unless
+  `PYTEST_VERSION` is set; pytest sets it for a run, its workers included, and
+  importing pytest does not. To see what a road makes, run its test
+  (`tools/testrun.py run <file>`); never call a helper from a script.
+- **The process lives in a sandbox of its own.** `HOME`, `XDG_CONFIG_HOME`,
+  `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME` and `XDG_RUNTIME_DIR` point
+  into one temp folder per test process, removed when it ends;
+  `MOLBUILDER_CONFIG_DIR`, `$MOLBUILDER_PROJECTS` and the notify variables
+  (`MB_NOTIFY_*`) are cleared. Collection, session, module and function
+  fixtures, every test and every child process start inside it. The person's
+  real home and config folder are recorded first, by the run's first process
+  (`MOLBUILDER_SUITE_REAL_HOME`, `MOLBUILDER_SUITE_REAL_CONFIG`), for the
+  canaries; Playwright's browsers are read where they are installed.
+- **Nothing leaves this machine.** A Python connection to anything but loopback
+  raises `ReachedOutOfTheSandbox`, and the HTTP(S) proxy variables name the
+  discard port on loopback (`127.0.0.1:9`), so a child process's request —
+  conda, pip, git, urllib — is refused at once.
+- **One write guard, for the whole run** (an audit hook): a write, delete,
+  rename or mode change anywhere but the temp folder, the checkout's caches and
+  logs (`.pytest_cache`, `.test-progress`, `test-artifacts`) and `/dev` raises
+  `ReachedOutOfTheSandbox` — a `BaseException`, which `except Exception` cannot
+  swallow — and fails the phase at report time even if something swallowed it.
+  The checkout's own files, `projects/` and its input library included, are
+  never written by a test. Python's `__pycache__` folders are let through. A
+  child process is not watched by the hook; it starts inside the sandbox's
+  variables instead.
+
+A path a test hands the product — an env prefix, a calculation folder — lives
+under `tmp_path` or the sandbox home, never at the machine's root, because the
+product may create folders under it. `tests/test_the_suite_stays_in_its_sandbox.py`
+pins each part. A test that needs a machine's real answers is a **field** test
+(`tests/field/`, tier 2), run on purpose against a record the person names.
 
 ## 3. Design tests *around* the envs, never the reverse
 

@@ -741,6 +741,71 @@
           "label": "audits",
           "children": [
             {
+              "label": "2026-11-02-test-audit",
+              "children": [
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/A1.md",
+                  "label": "Test audit — group A1 (51 files)",
+                  "subtitle": "Test audit — group A1 (51 files)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/A2.md",
+                  "label": "Test audit, group A2 (51 files): read only",
+                  "subtitle": "Test audit, group A2 (51 files): read only"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/A3.md",
+                  "label": "Test audit — group A3 (51 files)",
+                  "subtitle": "Test audit — group A3 (51 files)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/A4.md",
+                  "label": "Test audit, group A4 (52 files)",
+                  "subtitle": "Test audit, group A4 (52 files)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/A5.md",
+                  "label": "Test audit — group A5 (53 files)",
+                  "subtitle": "Test audit — group A5 (53 files)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/A6.md",
+                  "label": "Test audit — group A6 (52 files)",
+                  "subtitle": "Test audit — group A6 (52 files)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/A7.md",
+                  "label": "A7 — test audit (52 files)",
+                  "subtitle": "A7 — test audit (52 files)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/brief.md",
+                  "label": "Test-suite audit brief — rogue tests, handcrafted tests, and whether each test earns its place",
+                  "subtitle": "Test-suite audit brief — rogue tests, handcrafted tests, and whether each test earns its place"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/E1.md",
+                  "label": "E1: the end-to-end group (18 files)",
+                  "subtitle": "E1: the end-to-end group (18 files)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/E2.md",
+                  "label": "E2 — end-to-end tests (22 files): rogue, handcrafted, and whether each earns its place",
+                  "subtitle": "E2 — end-to-end tests (22 files): rogue, handcrafted, and whether each earns its place"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/H_harness.md",
+                  "label": "H_harness: the test harness (`tests/conftest.py`, `tests/support/*.py`)",
+                  "subtitle": "H_harness: the test harness (`tests/conftest.py`, `tests/support/*.py`)"
+                },
+                {
+                  "path": "archive/audits/2026-11-02-test-audit/README.md",
+                  "label": "Test-suite audit, 2026-11-02 — rogue tests, handcrafted inputs, and what each test is for",
+                  "subtitle": "Test-suite audit, 2026-11-02 — rogue tests, handcrafted inputs, and what each test is for"
+                }
+              ]
+            },
+            {
               "label": "audit-2026-06-26",
               "children": [
                 {

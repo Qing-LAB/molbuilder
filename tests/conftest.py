@@ -16,6 +16,134 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+# ===================================================================== #
+#  THE SUITE NEVER REACHES THE PERSON'S MACHINE  (testing.md § 2b)      #
+# ===================================================================== #
+#
+# Set up HERE, while this file is imported -- before any test module is
+# collected, any module- or session-scoped fixture runs, or any child
+# process starts -- so every one of them is inside it:
+#
+#   * test code loads only under pytest (`support/__init__.py`);
+#   * the process lives in a sandbox of its own: its own home, config,
+#     state, cache, data and runtime folders, no notify address and no
+#     projects tree from the shell, and no way off this machine;
+#   * one write guard refuses any write or delete outside the temp folder
+#     and the checkout -- never the checkout's projects/ (further below).
+#
+# WHY (the 2026-11-02 audit, `docs/archive/audits/2026-11-02-test-audit/`):
+# a helper run by hand outside pytest wrote this suite's machine record into
+# the person's real config, breaking every real run on their machine; and
+# module fixtures, collection-time checks and child processes all ran before
+# or outside the per-test isolation further below.
+import sys as _sys  # noqa: E402
+# `support` is found beside this file's real place: a suite that links this
+# conftest in (tools/testrun.py's own tests do) has no `support` of its own.
+_sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import support  # noqa: E402 -- refuses to load outside a pytest run
+del support
+
+import atexit as _atexit  # noqa: E402
+import ipaddress as _ipaddress  # noqa: E402
+import socket as _socket  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+
+from molbuilder.config_dir import config_dir as _config_dir  # noqa: E402
+from molbuilder.monitor import (NOTIFY_CHANNELS_VAR, NOTIFY_KEY_VAR,  # noqa: E402
+                                NOTIFY_REPORT_VAR, NOTIFY_URL_VAR)
+from molbuilder.projects import PROJECTS_ROOT_ENV  # noqa: E402
+
+#: The person's own folders -- what the guards protect and the canaries
+#: fingerprint -- recorded by the run's first process before its sandbox
+#: moves the variables that name them, and handed to its workers, which start
+#: inside that sandbox: asked there, they would answer with the sandbox's.
+if "MOLBUILDER_SUITE_REAL_HOME" not in os.environ:
+    os.environ["MOLBUILDER_SUITE_REAL_HOME"] = str(pathlib.Path.home().resolve())
+    os.environ["MOLBUILDER_SUITE_REAL_CONFIG"] = str(_config_dir())
+_REAL_HOME = pathlib.Path(os.environ["MOLBUILDER_SUITE_REAL_HOME"])
+_REAL_CONFIG_DIR = pathlib.Path(os.environ["MOLBUILDER_SUITE_REAL_CONFIG"])
+#: The repository this suite lives in.
+_REPO = pathlib.Path(__file__).resolve().parent.parent
+
+# A FIELD RECORD the person names is theirs: placed against their home before
+# the sandbox moves it (`tests/field/`, testing.md § 0).
+if os.environ.get("MOLBUILDER_FIELD_RECORD"):
+    os.environ["MOLBUILDER_FIELD_RECORD"] = os.path.expanduser(
+        os.environ["MOLBUILDER_FIELD_RECORD"])
+# THE BROWSERS Playwright installed are read where they are, as the engines'
+# environments are.
+_BROWSERS = _REAL_HOME / ".cache" / "ms-playwright"
+if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ and _BROWSERS.is_dir():
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_BROWSERS)
+
+#: THE SANDBOX: one temp folder per test process, removed when it ends.
+_SANDBOX = pathlib.Path(_tempfile.mkdtemp(prefix="molbuilder-suite-"))
+_atexit.register(shutil.rmtree, _SANDBOX, True)
+for _var, _sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                   ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache"),
+                   ("XDG_DATA_HOME", "data"), ("XDG_RUNTIME_DIR", "run")):
+    (_SANDBOX / _sub).mkdir(mode=0o700)
+    os.environ[_var] = str(_SANDBOX / _sub)
+# What the shell names outranks those folders, or sends reports out:
+# cleared.  ``$MOLBUILDER_PROJECTS`` outranks every step of `projects_root()`
+# (testing.md § 2a): left in place, a test of the default resolved to the
+# person's tree, and passed or failed by the worker count (2026-10-18).  A
+# test that needs a config root or a projects tree makes its own
+# (`config_root`, `isolated_projects_root`).
+for _var in ("MOLBUILDER_CONFIG_DIR", PROJECTS_ROOT_ENV, NOTIFY_URL_VAR,
+             NOTIFY_KEY_VAR, NOTIFY_CHANNELS_VAR, NOTIFY_REPORT_VAR):
+    os.environ.pop(_var, None)
+#: NOWHERE: the discard port on this machine, where nothing listens.  Every
+#: HTTP(S) request through a proxy is refused at once -- a child process's
+#: too (conda, pip, git and urllib honour these); this machine stays direct.
+_NOWHERE = "http://127.0.0.1:9"
+for _var in ("http_proxy", "https_proxy", "all_proxy"):
+    os.environ[_var] = os.environ[_var.upper()] = _NOWHERE
+os.environ["no_proxy"] = os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
+
+
+class ReachedOutOfTheSandbox(BaseException):
+    """A test reached past the suite's sandbox: a write outside its temp
+    folders and the checkout, or a connection off this machine.  A
+    BaseException, so code that catches ``OSError`` or ``Exception`` cannot
+    swallow it -- and the report fails the test even if something does."""
+
+
+#: What reached out while a phase ran (its report fails it).
+_REACHED: list = []
+
+
+def _reached(said: str) -> None:
+    _REACHED.append(said)
+    raise ReachedOutOfTheSandbox(
+        f"{said} -- a test writes only in its temp folders and the "
+        f"checkout, and connects only to this machine "
+        f"(docs/process/testing.md § 2b)")
+
+
+def _this_machine(address) -> bool:
+    """Whether a socket address is this machine's own (loopback)."""
+    host = address[0] if isinstance(address, tuple) else address
+    if host in ("", "localhost"):
+        return True
+    try:
+        return _ipaddress.ip_address(str(host).split("%")[0]).is_loopback
+    except ValueError:
+        return False
+
+
+def _only_this_machine(connect):
+    def _connect(self, address):
+        if (self.family in (_socket.AF_INET, _socket.AF_INET6)
+                and not _this_machine(address)):
+            _reached(f"connect {address!r}")
+        return connect(self, address)
+    return _connect
+
+
+_socket.socket.connect = _only_this_machine(_socket.socket.connect)
+_socket.socket.connect_ex = _only_this_machine(_socket.socket.connect_ex)
+
 #: THE FIELD TESTS (`tests/field/`) read a record probed on a target machine
 #: and run only when one is named (`docs/process/testing.md` § 0, tier 2):
 #: never in the basic suite, which holds no machine's answers.
@@ -237,15 +365,6 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
     return d
 
 
-#: The developer's REAL config directory, resolved once at import -- before
-#: any fixture redirects anything -- by the rule's one home.  `config_dir()`
-#: reads the variables at CALL time, so asked here it answers for the shell
-#: the suite was started from; the redirects move it only later
-#: (`configuration.md` § 2.1c: no other module reads the variables itself).
-from molbuilder.config_dir import config_dir as _config_dir  # noqa: E402
-_REAL_CONFIG_DIR = pathlib.Path(_config_dir())
-
-
 def _config_fingerprint():
     """Every file under the real config dir, by path and content hash."""
     import hashlib
@@ -260,11 +379,6 @@ def _config_fingerprint():
             except OSError:
                 out[str(f.relative_to(_REAL_CONFIG_DIR))] = "unreadable"
     return out
-
-
-#: The repository this suite lives in -- resolved once, before any fixture
-#: moves a working directory.
-_REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _worktree_fingerprint():
@@ -442,31 +556,6 @@ def the_suite_leaves_your_environments_alone():
             "`Capabilities` where the code re-detects.  Record the fake as "
             "`envs.manager` in an isolated config dir instead; see "
             "`tests/test_envs_install._recording_manager`.")
-
-
-@pytest.fixture(scope="session", autouse=True)
-def the_suite_takes_no_projects_tree_from_your_shell():
-    """**Your shell's ``$MOLBUILDER_PROJECTS`` never reaches a test.**
-
-    It outranks every other step of `projects_root()` (`testing.md` § 2a).
-    Left in place, a test of the config's ``paths.projects``, or of the
-    default, resolves to your tree instead -- and passed or failed by
-    whether an earlier test in its worker had deleted it (found 2026-10-18:
-    `test_describe.py` popped it, and the two `test_seeding_a_fresh_machine`
-    tests of the resolution passed or failed by the worker count).  And a
-    test that falls back to the default would work in your real tree,
-    which the guard below cannot see: it watches the repository's
-    ``projects/``.  Cleared for the session; a test that needs a tree points
-    the one door itself (`isolated_projects_root`).
-    """
-    from _pytest.monkeypatch import MonkeyPatch
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    mp = MonkeyPatch()
-    mp.delenv(PROJECTS_ROOT_ENV, raising=False)
-    try:
-        yield
-    finally:
-        mp.undo()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -747,7 +836,8 @@ def web_client():
 #: user's scientific record (`process/testing.md` § 2a; user, 2026-08-03:
 #: *"Don't use a data file without confirming if it is relevant"*).  A test
 #: builds the tree it needs (`isolated_projects_root`).  Its shared input
-#: library, `pseudopotential/`, is an input and may be read.
+#: library, `pseudopotential/`, is an input and may be read -- never written
+#: (the write guard below).
 _REAL_PROJECTS = os.path.join(str(_REPO), "projects")
 _REAL_PROJECTS_RESOLVED = os.path.realpath(_REAL_PROJECTS)
 _INPUT_LIBRARY = ("pseudopotential",)
@@ -842,8 +932,91 @@ def _guard_your_projects_tree(event, args):
                 f"tree the test needs (`isolated_projects_root`)")
 
 
-import sys as _sys  # noqa: E402
 _sys.addaudithook(_guard_your_projects_tree)
+
+
+# --------------------------------------------------------------------- #
+#  No test writes outside its temp folders and the checkout             #
+# --------------------------------------------------------------------- #
+
+#: WHERE A TEST MAY WRITE: the temp folder (the sandbox at the top of this
+#: file and pytest's own folders are both in it), the checkout's caches,
+#: progress logs and failure artifacts -- never its own files, its projects/
+#: and input library included (a docs test once rebuilt `docs/toc.json` in
+#: place, 2026-11-02) -- and devices.  Everything else -- the person's home,
+#: config, state, their engines' environments, a cluster's /scratch -- is
+#: refused, for the whole run: collection, module and session fixtures and
+#: every test.  A child process is not watched here; it starts inside the
+#: sandbox's variables instead.
+_WRITABLE = (os.path.realpath(_tempfile.gettempdir()), "/dev") + tuple(
+    os.path.realpath(str(_REPO / name))
+    for name in (".pytest_cache", ".test-progress", "test-artifacts"))
+
+#: The audit events that change a place, and which arguments name it (the
+#: places' descriptors are `_TOUCHES`'s).  ``open`` changes one when it opens
+#: to write.
+_CHANGES = {
+    "os.mkdir": (0,), "os.rmdir": (0,), "os.remove": (0,),
+    "os.rename": (0, 1), "os.replace": (0, 1), "os.link": (1,),
+    "os.symlink": (1,), "os.truncate": (0,), "os.chmod": (0,),
+    "os.chown": (0,), "os.utime": (0,), "shutil.copyfile": (1,),
+    "shutil.copytree": (1,), "shutil.rmtree": (0,), "shutil.move": (0, 1),
+}
+_OPENS_TO_WRITE = (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC
+                   | os.O_APPEND)
+
+
+def _changes_a_place(event, args) -> bool:
+    if event == "open":
+        mode = args[1] if len(args) > 1 else None
+        flags = args[2] if len(args) > 2 else None
+        if isinstance(mode, str):
+            return any(c in mode for c in "wax+")
+        return isinstance(flags, int) and bool(flags & _OPENS_TO_WRITE)
+    return event in _CHANGES
+
+
+#: pytest's own folder for building its cache, beside the checkout's cache
+#: (`cacheprovider._make_cachedir`, a fresh checkout's first run).
+_PYTEST_CACHE_BUILD = "pytest-cache-files-"
+
+
+def _may_write(path: str) -> bool:
+    if "__pycache__" in path.split(os.sep):
+        return True     # Python's own byte-code cache, beside any module
+    repo = os.path.realpath(str(_REPO))
+    if path.startswith(repo + os.sep) and path[len(repo) + 1:].startswith(
+            _PYTEST_CACHE_BUILD):
+        return True
+    return any(path == root or path.startswith(root + os.sep)
+               for root in _WRITABLE)
+
+
+def _guard_the_machine(event, args):
+    if (event != "open" and event not in _CHANGES) \
+            or not _changes_a_place(event, args):
+        return
+    if event == "os.mkdir" and args and isinstance(args[0], (str, bytes,
+                                                         os.PathLike)) \
+            and os.path.isdir(args[0]):
+        return          # a folder that is there already: nothing changes
+    where = (0,) if event == "open" else _CHANGES[event]
+    fd_at = _TOUCHES.get(event, ((), None))[1]
+    dir_fd = args[fd_at] if fd_at is not None and fd_at < len(args) else None
+    for i in where:
+        if i >= len(args):
+            continue
+        path = _placed(args[i], dir_fd, event)
+        if path is None and event == "open" and isinstance(
+                args[i], (str, bytes, os.PathLike)):
+            # A relative name opened to write lands in the working folder.
+            path = os.path.abspath(os.fsdecode(args[i]))
+        if path is not None and not (_may_write(path) or _may_write(
+                os.path.realpath(path))):
+            _reached(f"{event} {path}")
+
+
+_sys.addaudithook(_guard_the_machine)
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -878,6 +1051,14 @@ def pytest_runtest_makereport(item, call):
                         + "\nbuild the tree the test needs "
                           "(`isolated_projects_root`)")
     _TOUCHED.clear()
+    # ...and one that reached past the sandbox (the top of this file).
+    if _REACHED and rep.passed:
+        rep.outcome = "failed"
+        rep.longrepr = ("a test reached past the suite's sandbox:\n  "
+                        + "\n  ".join(dict.fromkeys(_REACHED))
+                        + "\nwrite under tmp_path and connect only to this "
+                          "machine (docs/process/testing.md § 2b)")
+    _REACHED.clear()
     setattr(item, "rep_" + rep.when, rep)
 
 

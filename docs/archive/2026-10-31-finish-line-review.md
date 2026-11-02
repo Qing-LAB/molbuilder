@@ -1649,3 +1649,20 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | D-BANNER | F2 | the run script's banner, header comment and failure line still say *wrapper* (`runwrap.py`; `running-a-job.md` quotes the banner) while the deck's text says *the run script* | the run script F2 rewrites to name no engine |
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
+
+## Found by the test audit (2026-11-02), by the release that owns each
+
+*(The user, 2026-11-02, after a test helper run by hand wrote the suite's machine record into their real
+config: "detect those shit and rogue tests", "give me a review of test design and detection of rogue tests";
+then "keep the plans order on the conditions that (1) this would not happen in current/new tests (2) clean up is
+scheduled".)* The audit, every file read whole, with a row per file:
+[`audits/2026-11-02-test-audit`](?doc=archive/audits/2026-11-02-test-audit/README.md).
+
+| id | release | what | the door |
+|---|---|---|---|
+| TA-GUARD | **closed (tests, before 2.63.0)** | test code ran outside pytest; module, session and collection-time code and child processes ran outside the per-test isolation; tests reached the network; the harness's writers took any folder they were handed | `testing.md` § 2b: test code loads only under pytest; one sandbox for the whole process, set before anything is collected; nothing leaves the machine; one write guard for the whole run; `test_the_suite_stays_in_its_sandbox.py` |
+| TA-PREFIX | **closed (tests, before 2.63.0)** | eleven env tests handed the product fake prefixes at the machine's root (`/fake`, `/prefix`, `/scratch/me`), under which it creates folders | the prefixes under the sandbox home |
+| TA-DOCS | F9 | a page test asked the docs route for its index over the real `docs/`, and the route rebuilt `docs/toc.json` in the checkout; the write guard refuses it now, so the next new document fails the test until it is mended | the page tests pointed at a copy of `docs/` |
+| TA-RETIRE | F9 | the 22 files the audit retires, and the single tests and rows each group table names | the group tables |
+| TA-REWRITE | F9 | the 50 files whose inputs are handcrafted (the audit's § 4: machine records, records of runs that never happened, calculation records typed instead of `describe`, older releases' files, typed engine and tool output, typed server replies, invented results) | through the road, or a recorded real run |
+| TA-ISOLATE | F9 | the 56 "fix isolation" files: what the guards close by construction is closed; what is left — the validation tests' reads of the real `projects/pseudopotential/`, the `--clean` test's real prefix behind a recording door, a stand-in server with no projects tree of its own, collection-time engine checks — is F9's | per file, the group tables |

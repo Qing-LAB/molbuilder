@@ -7,6 +7,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 
+import support  # refuses to load outside a pytest run (testing.md § 2b)
+del support
+
 
 def conda_hook() -> Path:
     """The ``conda.sh`` the wrapper's preamble sources, beside the conda the

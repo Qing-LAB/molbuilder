@@ -12,6 +12,7 @@ is one way in and nothing per-manager to simulate.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -377,7 +378,9 @@ def test_a_package_install_into_an_env_is_addressed_at_its_directory(
         return (0, "done")
 
     monkeypatch.setattr(B, "run_streaming", fake_stream)
-    prefix = "/scratch/me/molbuilder-pySCF"
+    # Under the suite's sandbox home (testing.md § 2b): the step makes its
+    # temp and cache folders under the prefix it is given.
+    prefix = str(Path.home() / "scratch" / "molbuilder-pySCF")
     step = I.conda_step_for(["numpy"], recipe_by_name("molbuilder-pySCF"),
                             "/opt/mgr/bin/conda", "molbuilder-pySCF")
     done = I.run_step(step, prefix=prefix)
