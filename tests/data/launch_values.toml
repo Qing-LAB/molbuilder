@@ -229,7 +229,7 @@ run = { threads = 6 }
 header = ["#SBATCH -n 1", "#SBATCH -c 6"]
 deck = ["THREADS = 6", "_mb_cap_threads(THREADS)"]
 run_sh = ["_omp_threads_default=6",
-          '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
+          '_omp_threads="${_omp_flag:-${OMP_NUM_THREADS:-${MB_CPUS_PER_TASK:-$_omp_threads_default}}}"']
 
 # job-contracts.md § 6.2: a stated max_memory_mb is the wrapper's `ulimit -v`, in KiB.
 [[case]]
@@ -241,6 +241,18 @@ said = ["memory cap 2048 MB"]
 # job-contracts.md § 6.2: none stated is no cap -- no ulimit line.
 [[case]]
 name = "...and none stated writes no ulimit line"
+run_sh_lacks = ["\nulimit -v"]
+
+# engines/template.md § 5 (`deck_applies`): an engine whose deck applies a
+# setting itself is given none of it by its run script -- PySCF's deck passes
+# the cap to `mol.max_memory` and keeps the wall's deadline from its
+# environment.  THE SILENT FAILURE: a PySCF run capped twice, or told a wall
+# its deck already keeps, and a banner that says the wrong thing of it.
+[[case]]
+name = "...and a PySCF run's cap and wall are its deck's: its run script sets no ulimit, and its banner says the deck stops before the wall"
+engine = "pyscf"
+run = { max_memory_mb = 2048 }
+run_sh = ["PySCF stops ${MB_WALL_SLACK_S}s before it"]
 run_sh_lacks = ["\nulimit -v"]
 
 # running-a-job.md § 3.2: BLAS is pinned to one thread per rank.

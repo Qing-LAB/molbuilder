@@ -3,7 +3,9 @@
 
 **What differs between engines is a field here, never a branch** (A18):
 its name as a person reads it, the setting that names its files, its config
-class and seam, what it computes the atoms in and how its runs run.  A fact
+class and seam, what it computes the atoms in and how its runs run -- the
+environment they enter and the programs they start, which the one run
+script reads (`runwrap`, `running-a-job.md` § 1).  A fact
 another declaration holds stays there -- an engine's files are the file
 catalogue's (`runfiles`), the settings it offers the parameter catalogue's
 (`template`) -- and the engines those declarations name are checked against
@@ -32,9 +34,10 @@ COMPUTES_IN = ("cell", "free space")
 
 #: The keys an engine's table states, each required ...
 _KEYS = ("words", "identity_field", "config", "seam", "computes_in",
-         "one_process", "benchmark", "presets", "keyword_deck")
+         "one_process", "benchmark", "presets", "keyword_deck",
+         "environment")
 #: ... and those it states where it has one.
-_OPTIONAL = ("method",)
+_OPTIONAL = ("method", "gpu_environment", "programs")
 
 
 class EngineTableError(ValueError):
@@ -70,9 +73,41 @@ class Engine:
     #: SIESTA's fdf, not PySCF's script -- which a run's setup rows read back
     #: from the deck (`parse.dirs.setup`).
     keyword_deck: bool
+    #: THE ENVIRONMENT ITS RUNS ENTER -- a category of `configuration.md`
+    #: § 4 (`diagnostics.Capabilities.env_for_category`).
+    environment: str = ""
+    #: The category a run that uses a GPU enters, where its GPU capability
+    #: is a build of its own -- SIESTA's -- else ``None``: its deck uses
+    #: the device in its own environment (`execution/gpu.md` G8).
+    gpu_environment: Optional[str] = None
+    #: THE PROGRAMS ITS RUNS START, ``{program: its name as a run's log
+    #: says it}``, the first the engine's own -- empty where its deck is a
+    #: script the job's own python runs (PySCF).
+    programs: Tuple[Tuple[str, str], ...] = ()
     #: Its method, where its catalogue offers no choice -- SIESTA's DFT --
     #: else ``None``: the config states it.
     method: Optional[str] = None
+
+    @property
+    def program(self) -> Optional[str]:
+        """The program a run of it starts unless its job names another --
+        the first of :attr:`programs` -- or ``None``: its deck is a script
+        the job's python runs."""
+        return self.programs[0][0] if self.programs else None
+
+    def program_words(self, program: Optional[str]) -> str:
+        """``program`` as a run's log names it -- or, for a deck that is a
+        script (``None``), the engine's own words.  A program the record
+        does not name is refused: a run script starts only what its engine
+        runs."""
+        if program is None and not self.programs:
+            return self.words
+        named = dict(self.programs)
+        if program not in named:
+            raise EngineTableError(
+                f"engine {self.name!r} runs no program {program!r} -- its "
+                f"programs are {', '.join(named) or 'none'} ({TABLE_FILE.name})")
+        return named[program]
 
     @property
     def free_space(self) -> bool:
@@ -101,6 +136,19 @@ def _engine(name: str, body: object) -> Engine:
     for key in ("one_process", "benchmark", "keyword_deck"):
         if not isinstance(body[key], bool):
             raise EngineTableError(f"{where}: {key} is true or false")
+    programs = body.get("programs", {})
+    if not (isinstance(programs, dict) and all(
+            isinstance(k, str) and isinstance(v, str) and v
+            for k, v in programs.items())):
+        raise EngineTableError(
+            f"{where}: programs is a table of program = its name in words")
+    # RANKS START A PROGRAM: a run script launches each rank on one, and a
+    # deck that is a script runs once, on the job's python (`runwrap`).
+    if not body["one_process"] and not programs:
+        raise EngineTableError(
+            f"{where}: one_process = false names the programs its ranks "
+            f"start (programs) -- a deck that is a script runs as one "
+            f"process")
     return Engine(name=name, words=str(body["words"]),
                   identity_field=str(body["identity_field"]),
                   config=str(body["config"]), seam=str(body["seam"]),
@@ -109,6 +157,9 @@ def _engine(name: str, body: object) -> Engine:
                   benchmark=bool(body["benchmark"]),
                   presets=str(body["presets"]),
                   keyword_deck=bool(body["keyword_deck"]),
+                  environment=str(body["environment"]),
+                  gpu_environment=body.get("gpu_environment"),
+                  programs=tuple(programs.items()),
                   method=body.get("method"))
 
 

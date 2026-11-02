@@ -49,7 +49,7 @@ sequenceDiagram
     R->>E: run as a child, told the wall that is left
     E-->>R: exit code
     opt the engine failed
-        R->>R: how it ended, the propor hint, what a launch again will do
+        R->>R: how it ended, the advice for its cause, what a launch again will do
     end
     opt a point of a run of points
         R->>R: point ended, its kind's step after the engine
@@ -73,26 +73,29 @@ section named in the last column.
 | 7 | the environment | checks each file the preamble sources, then runs the target record's preamble and activation verbatim, with `set +u` around them; sets the job's python, `$_mb_py`, and logs it; logs the node's physical cores and sockets | § 2.0a, § 2.2, § 5.2 |
 | 8 | the job's python | checks that `CONDA_PREFIX` names its environment and `$_mb_py` is there; otherwise it concludes `no env python (<path>)` | § 2.2a |
 | 9 | the counts | resolves the rank and thread counts (flag, then environment, then the stated value); one that is not a positive integer stops the start, concluding `a count that is not a positive integer (<flag>)` | § 3.1, § 3.2 |
-| 10 | threads, GPUs, memory | exports the thread count and pins BLAS to one thread; for a job that uses a GPU, balances ranks over the GPUs and starts MPS where ranks share one; *(SIESTA)* prints the occupancy notice and sets the memory cap the run states | § 3.1a, § 3.2, § 3.3 |
-| 11 | the banner | *(SIESTA)* asks the program what it was built with and picks `mpirun` or the program alone; prints the banner (§ 4.1) | § 2.3, § 4.1 |
+| 10 | threads, GPUs, memory | exports the thread count; where the engine runs ranks, pins BLAS to one thread, balances the ranks over the GPUs of a job that uses one, starting MPS where ranks share a GPU, and prints the occupancy notice; sets the memory cap the run states, unless its engine's deck applies it | § 3.1a, § 3.2, § 3.3 |
+| 11 | the banner | where the engine runs a program, asks it what it was built with and picks `mpirun` or the program alone — a deck that is a script runs on the job's python; prints the banner (§ 4.1), its held atoms as prep read them from the deck's own record | § 2.3, § 4.1 |
 | 12 | the resolved launch, and a dry run | logs the resolved command, the launch mode and the counts (`resolved launch :`); `--dry-run` then prints them with each count's source and exits 0, nothing started | § 3.4 |
 | 13 | the monitor | starts `mb_monitor.pyz` at `nice 19`, watching the run script's own PID (`MB_MONITOR=0`: none) | [`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6 |
 | 14 | can the job finish itself | *(a job with a finish)* checks that the finish bundle loads on the job's python; otherwise it concludes `finish cannot load (<bundle>)` | § 2.2a |
 | 15 | point started | *(a point of a run of points)* stamps its start and runs its kind's step before the engine | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, op. 9 |
-| 16 | what the engine will read | *(SIESTA)* echoes the deck into the log as libfdf will read it, then the catalogue items it leaves to their defaults | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6 |
+| 16 | what the engine will read | where the deck states keywords the engine reads, writes into the log a row for each catalogue item that writes a keyword into its deck, with its default, then the deck as the engine will read it, read by the bundle beside it (`mb_monitor.pyz deck`) | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6 |
 | 17 | the wall | counts what is left of the job's wall and tells the engine on its own channel | § 3.6 |
-| 18 | the engine | runs it as a child, its stdout teed into the output — a SIESTA run's SCF rows stamped into `<stem>.scf-timing.log` too — its exit code captured; logs the engine's wall time (`benchmark:`) | § 2.0a, § 4.1 |
-| 19 | after a failure | says how it ended, the `propor` hint where that was the cause, and what a launch again will do | § 3.5 |
+| 18 | the engine | runs it as a child, its stdout written to the output — where the output's family names a stamp (`scf_timing_rows.STAMPED_BY_RUN_SCRIPT`: a SIESTA output's), its SCF rows stamped and teed into `<stem>.scf-timing.log` too — its exit code captured; logs the engine's wall time (`benchmark:`) | § 2.0a, § 4.1 |
+| 19 | after a failure | says how it ended, the advice for its cause where the output's family keeps some (SIESTA's `propor` hint), and what a launch again will do | § 3.5 |
 | 20 | point ended | *(a point of a run of points)* stamps its end, runs its kind's step after the engine, and — no point left — the run's finish | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, op. 10 |
 | 21 | the conclusion | writes `<stem>.concluded`, `rc=<code> at <date>`, its last act on the main line, and exits with the engine's code | § 4.2 |
 | 22 | the exit trap runs | a failure of the script's own that wrote no marker concludes here, `stopped before its end`; then it stops the monitor (waiting up to 10 s), removes the rank helper and stops the MPS daemon it started | § 2.0a |
 
-A PySCF run script runs the same steps without step 10, the build probe and steps 14 to 17 and 20: it exports
-its thread count with the counts, and its deck caps BLAS and sizes its threads itself
-([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3); it runs no finish and no run of points; its deck prints what
-it reads and reads the wall itself (§ 3.6). Its banner says where its thread count came from, its dry run prints
-the command and the environment, and after a failure it says only what a launch again will do. A dry
-run passes steps 3 to 5 without writing anything and stops at step 12. A job that runs several members — a
+**One run script, every engine.** Which of these steps a run takes is a fact of its engine's record
+([`architecture.md`](?doc=execution/architecture.md) § 3.3), of a catalogue item's declaration (`launch`,
+`deck_applies`; [`engines/template.md`](?doc=engines/template.md) § 5), of the parse layer's tables for its
+output's role (`_run_ending.STOPS` and `STDERR_APART`, `scf_timing_rows.STAMPED_BY_RUN_SCRIPT`) and of its job —
+never the engine's name: an engine that runs one process has no ranks to place (steps 9 and 10 resolve its
+threads alone); one whose deck is a script — PySCF's — has no program to probe and runs `"$_mb_py" <deck>`, its
+deck sizing its own BLAS and threads ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3); a setting the deck applies
+itself — PySCF's memory cap and wall — is its catalogue item's `deck_applies` (§ 3.2, § 3.6); one whose deck states no keywords echoes none (step 16); a job with no finish skips step 14, and a run
+that is no point steps 15 and 20. A dry run passes steps 3 to 5 without writing anything and stops at step 12. A job that runs several members — a
 group, a run of points, a benchmark's shelf — sends or starts a walk script, which starts each member's run
 script in turn, with that member's counts ([`job-system.md`](?doc=execution/job-system.md) § 6.0); each run
 script then runs these steps in its own folder.
@@ -101,24 +104,41 @@ A real start, from the session log of a SIESTA run started here (shortened):
 
 ```text
 launched-by: jobset-launch
-[21:19:56-0700] [STAGE] ===== molbuilder wrapper start =====
-[21:19:56-0700] [INFO ] argv:       h2_siesta_01_coarse.run.sh -np 1 -omp 1
-[21:19:56-0700] [STAGE] running baked preamble
-[21:19:56-0700] [STAGE] conda activate molbuilder-siesta
-[21:19:57-0700] [INFO ] job python: /home/qqing/miniconda3/envs/molbuilder-siesta/bin/python3
-===== molbuilder SIESTA run-wrapper =====
+[09:58:41-0700] [STAGE] ===== molbuilder run script start =====
+[09:58:41-0700] [INFO ] argv:       H2_01_coarse.run.sh -np 1 -omp 1
+[09:58:41-0700] [STAGE] running baked preamble
+[09:58:41-0700] [STAGE] conda activate molbuilder-siesta
+[09:58:41-0700] [INFO ] job python: /home/qqing/miniconda3/envs/molbuilder-siesta/bin/python3
+molbuilder: detected phys_cores=20, n_sockets=2, cores_per_socket=10
+===== molbuilder run script: SIESTA =====
+  SIESTA binary : /home/qqing/miniconda3/envs/molbuilder-siesta/bin/siesta
+  SIESTA version: 5.4.2
   Build paral.  : MPI
   Launch mode   : pure MPI (1 ranks; OMP setting irrelevant to this binary)
+  Ranks         : 1 (from -np flag)
+  Threading     : OMP_NUM_THREADS=1 (from -omp flag), OPENBLAS=1, MKL=1
   Mode          : CLEAN START (no restart file here)
-  Command       :  mpirun -np 1  siesta h2_siesta_01_coarse.fdf > h2_siesta_01_coarse.out
-  Wall          : 3600s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
-[21:19:59-0700] [INFO ] wall: 3597s left of 3600s; SIESTA stops 600s before it (running-a-job.md 3.6)
-[21:19:59-0700] [INFO ] monitor: mb_monitor.pyz started
-[21:20:13-0700] [INFO ] benchmark: SIESTA wall 14.3s, 30 SCF rows in h2_siesta_01_coarse.scf-timing.log
-SIESTA completed:  mpirun -np 1  siesta h2_siesta_01_coarse.fdf -> h2_siesta_01_coarse.out
+  Held atoms    : none held -- every atom free
+  Command       :  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
+  Wall          : 1800s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
+[09:58:43-0700] [INFO ] monitor: mb_monitor.pyz started
+[09:58:43-0700] [INFO ] wall: 1798s left of 1800s; SIESTA stops 600s before it (running-a-job.md 3.6)
+[09:59:08-0700] [INFO ] benchmark: SIESTA wall 24.9s, 54 SCF rows in H2_01_coarse.scf-timing.log
+SIESTA completed:  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
 ```
 
-and its `h2_siesta_01_coarse.concluded`: `rc=0 at Sat Oct 31 09:20:13 PM MST 2026`.
+and its `H2_01_coarse.concluded`: `rc=0 at Mon Nov  2 09:59:08 AM MST 2026`. A PySCF run's banner, from the same
+road (shortened) — one process, a script deck on its environment's python:
+
+```text
+===== molbuilder run script: PySCF =====
+  Launch mode   : a script deck on the job's python (2 OpenMP threads)
+  Threading     : OMP_NUM_THREADS=2 (from -omp flag)
+  Mode          : CLEAN START (no restart file here)
+  Held atoms    : none held -- every atom free
+  Command       : /home/qqing/miniconda3/envs/molbuilder-pySCF/bin/python3 H2_01_coarse.py > H2_01_coarse.pyscf.log 2>&1
+  Wall          : 1800s from the job's start; PySCF stops 600s before it (running-a-job.md 3.6)
+```
 
 ---
 
@@ -146,8 +166,8 @@ launch` starts it with `bash`. Nobody is watching either way.
 `--export ALL,…` on the send line ([`scheduler.md`](?doc=execution/scheduler.md) § 6a). A job's size comes from
 what prep wrote and from the counts `jobset launch` hands it, `-np` and `-omp`, which win. Without a flag — a
 dry run a person starts — the run script honours `MB_NP` and a bare `OMP_NUM_THREADS` ahead of the scheduler's
-grant (§ 3.1, § 3.2). A SIESTA run's log does not name where a count came from — a PySCF run's banner names
-its thread count's — and `--dry-run` does, and so does the refusal of a count that is not a positive integer.
+grant (§ 3.1, § 3.2). The banner and `--dry-run` name where each count came from, and so does the refusal of a
+count that is not a positive integer.
 
 What follows, each checked in the rendered script:
 
@@ -160,7 +180,7 @@ What follows, each checked in the rendered script:
 | the scheduler stops it with `SIGTERM` at the wall — or Ctrl-C, a lost terminal, a limit reached | one handler for every signal that stops a run (below) |
 | one cleanup, whatever ended the script | one EXIT trap (below) |
 | the engine's exit code must be inspectable | the engine is **run as a child, not `exec`'d**; `set +e` around it, `${PIPESTATUS[0]}` captured |
-| a run must be watchable while it runs | stdout is **teed**, never swallowed |
+| a run must be watchable while it runs | the engine's stdout reaches its output as it prints, never swallowed; the script's own stdout and stderr are teed into the session log |
 | the engine's environment has no molbuilder in it | the monitor travels as one file, `mb_monitor.pyz`, run on the job's python (§ 2.2a; [`run-reports.md`](?doc=execution/run-reports.md) § 2.3) |
 
 **The signals and the exit trap:**
@@ -208,8 +228,10 @@ The rule, at the two moments that matter:
 
 So at run time the script never runs `which conda`, never reads `molbuilder.json` and never uses `conda run`.
 It runs the activation **verbatim** (`conda activate <env>` or `source activate <env>`), then launches the
-engine. The one question it answers on the node about its own environment — whether the activation gave it
-its environment's python — is a check of what it was given, not a choice (§ 2.2a).
+engine. What it asks on the node about its own environment — whether the activation gave it its environment's
+python (§ 2.2a) and its program (§ 2.2) — is a check of what it was given, not a choice; and its program's build
+is asked what it was compiled with only to choose `mpirun` or the program alone (§ 2.3;
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1).
 
 ### 2.2 What prep bakes in, and what it says
 
@@ -224,6 +246,11 @@ its environment's python — is a check of what it was given, not a choice (§ 2
   ([`gpu.md`](?doc=execution/gpu.md) G6); the run script then stops at its activation. On the node, the run
   script checks what only the node can check: its environment's python (§ 2.2a), and that its program is on
   `PATH` (otherwise it concludes `<program> not on PATH`).
+- **What does not hold together is refused, naming the way out** — an engine record that runs ranks and names
+  no program (when the table loads), a job's program its engine's record does not name, an environment category
+  no environment is registered for (`diagnostics.DEFAULT_ENV_NAMES`, overridable in `molbuilder.json`'s `envs`,
+  or `--env`), a deck that is not its engine's (`runfiles.deck_role`), and a deck whose atom record does not
+  read.
 
 ### 2.2a What the run script may do — bash is a bootstrap, not a program
 
@@ -280,7 +307,8 @@ run script starts. There is nothing for bash to dereference, localise or wait fo
 
   Logic that runs there is shell, or a shipped bundle run on `$_mb_py`, or broken. Three bundles ship beside a
   job (`runfiles.MONITOR_BUNDLE`, `VIBRATION_BUNDLE`, `PYSCF_BUNDLE`): `mb_monitor.pyz`, beside every job — the
-  monitor, the reader the run script asks how the run ended (§ 3.5) and a point's report steps;
+  monitor, the reader the run script asks how the run ended (§ 3.5), the deck as its engine reads it (§ 1 step
+  16) and a point's report steps;
   `mb_vibration.pyz`, beside a SIESTA vibration's points; and `mb_pyscf.pyz`, which a PySCF deck imports. What
   each carries, and the rule for joining one (*stdlib-only AND travels*), is
   [`configuration.md`](?doc=configuration.md) § 2.3. None is a pattern to copy for anything that could run on the
@@ -293,18 +321,25 @@ in the folder it was sent from; run here, `jobset launch` starts it in the run's
 
 ### 2.3 Env routing
 
-The run script enters a conda environment chosen by the deck's extension, at prep
-(`molbuilder/diagnostics.py`, `molbuilder/runwrap.py`):
+The run script enters the environment its **engine's record** names, chosen at prep from the engine prep hands
+it — never from the deck's name ([`architecture.md`](?doc=execution/architecture.md) § 3.3; `runwrap`,
+`diagnostics.Capabilities.env_for_category`):
 
-- **`.fdf` → `molbuilder-siesta`.** How SIESTA (or TBtrans) is launched is decided on the node by what the
-  build says it was compiled with (`siesta --version`'s `Parallelisations` line): an MPI build runs under
-  `mpirun -np N`; an OpenMP-only build and a serial build run alone; a probe that says nothing runs under
-  `mpirun`, the safe default for an MPI-compiled binary. The banner says which (`Launch mode`).
-- **`.py` → `molbuilder-pySCF`**, run as `"$_mb_py" <deck>.py`, on the environment's own python (§ 2.2a).
-- **A SIESTA job that uses a GPU → `molbuilder-siesta-gpu`.** The route follows the job's GPU request — its run
-  card's `use_gpu`, read through the one door `jobset.model.gpu_request` — never the deck: the deck renders
-  `Diag.ELPA.GPU` from the same value and is not read again for it ([`gpu.md`](?doc=execution/gpu.md) G7).
-  **CPU-ELPA does not re-route**: the packaged SIESTA carries ELPA through ELSI and runs both stages on CPU
+- **The record's `environment`** — SIESTA's `siesta` category, `molbuilder-siesta`; PySCF's `pyscf`,
+  `molbuilder-pySCF`.
+- **The program, where the record names one** — SIESTA's `siesta`, or the job's own (`Job.program`: a
+  transmission's `tbtrans`). How it is launched is decided on the node by what the build says it was compiled
+  with (`<program> --version`'s `Parallelisations` line): an MPI build runs under `mpirun -np N`; an
+  OpenMP-only build and a serial build run alone; a probe that says nothing runs under `mpirun`, the safe
+  default for an MPI-compiled binary. The banner says which (`Launch mode`). **A record that names no program**
+  — PySCF's, whose deck is a script — runs the deck as `"$_mb_py" <deck>`, on the environment's own python
+  (§ 2.2a).
+- **A job that uses a GPU → the record's `gpu_environment`**, where it names one: SIESTA's `siesta-gpu`,
+  `molbuilder-siesta-gpu`. The route follows the job's GPU request — its run card's `use_gpu`, read through the
+  one door `jobset.model.gpu_request` — never the deck: the deck renders `Diag.ELPA.GPU` from the same value and
+  is not read again for it ([`gpu.md`](?doc=execution/gpu.md) G7). A record that names none stays in its
+  `environment`: PySCF's GPU is a device its deck checks at its start (G8). **CPU-ELPA does not re-route**: the
+  packaged SIESTA carries ELPA through ELSI and runs both stages on CPU
   ([`engines/siesta.md`](?doc=engines/siesta.md) § 7.2). The two environments differ by **provenance** — one
   installs from packages anywhere, the other is built from source — so routing CPU-ELPA to the source build
   would refuse a runnable calculation wherever compiling is not allowed. A job that uses a GPU on a target whose
@@ -323,7 +358,7 @@ Only the **launch** is put together at run time, from the scheduler's grant and 
 Everything else is baked — the rank and thread counts included, as the run stated them. The flags `jobset
 launch` hands a run script win; the environment is read only where no flag is given.
 
-### 3.1 MPI ranks (SIESTA)
+### 3.1 MPI ranks (an engine that runs ranks)
 
 The rank count `N` is resolved by precedence, **highest wins**:
 
@@ -346,8 +381,9 @@ The rank count `N` is resolved by precedence, **highest wins**:
   so every number in a run script traces to a file you can look at. The record checks a stated count (does
   it fit, [`scheduler.md`](?doc=execution/scheduler.md) R6); it never supplies one.
 
-A PySCF run states no rank count: prep refuses one (`placement.launch_refusal`), and its run script accepts
-`-np`, says that anything but 1 is ignored, and runs OpenMP alone.
+An engine that runs one process — PySCF, its record's `one_process` — states no rank count: prep refuses one
+(`placement.launch_refusal`), and its run script accepts `-np`, says that anything but 1 is ignored, and runs
+OpenMP alone.
 
 ### 3.1a What the run script says instead — occupancy, as a notice
 
@@ -369,12 +405,12 @@ molbuilder: NOTE -- 200 ranks for ~100 orbitals is <= 1 orbital per rank.
 Both numbers are shown so the claim can be checked rather than taken as a verdict, and **nothing is refused or
 lowered**.
 
-The orbital count is an **estimate and says so**: `10 × n_atoms`, the same rough double-zeta-polarised figure
-the `BlockSize` bound uses and the deck's BENCH-MARKS block publishes as `n_orbitals_est`
-([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3). One estimate in one place, or the deck and the
-notice would disagree. The true count needs every species' basis and is known only once SIESTA starts. A deck
-with no `NumberOfAtoms` — optional in SIESTA — gets **no notice at all** rather than one built on an invented
-number.
+The orbital count is an **estimate and says so**: the deck's own, its BENCH-MARKS block's `n_orbitals_est`
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3) — `10 × n_atoms`, the rough double-zeta-polarised
+figure the `BlockSize` bound uses — read at prep by the block's reader (`script_emit.read_bench_marks_block`).
+One estimate in one place, or the deck and the notice would disagree. The true count needs every species' basis
+and is known only once SIESTA starts. A deck whose block states none gets **no notice at all** rather than one
+built on an invented number.
 
 > #### What `propor: IMAX = 0` depends on — and why no rank count is refused
 >
@@ -409,20 +445,24 @@ number.
   prep's `--cpus-per-task`; a run that states none is **refused at prep**, like a rank count. *(Mainline
   SIESTA is not reliably OpenMP-aware, so `omp_threads = 1` is the usual statement for a CPU build — a
   statement, made on the run card.)*
-- The resolved count is exported as `OMP_NUM_THREADS`, so the run script and the engine cannot disagree; a
-  PySCF run's banner says where it came from (`OMP threads : N (from …)`).
-- **BLAS is always pinned to one thread** (`MKL_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`) so MPI ranks ×
-  BLAS threads never oversubscribe the cores. A job that uses a GPU also binds the OpenMP threads
-  (`OMP_PROC_BIND=close`, `OMP_PLACES=cores`), which `mpirun --bind-to core` alone does not.
+- The resolved count is exported as `OMP_NUM_THREADS`, so the run script and the engine cannot disagree; the
+  banner says where it came from (`Threading : OMP_NUM_THREADS=N (from …)`).
+- **BLAS is pinned to one thread where the engine runs ranks** (`MKL_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`), so MPI ranks ×
+  BLAS threads never oversubscribe the cores; a script deck of one process sizes its own. A job whose ranks are
+  placed on GPUs also binds the OpenMP threads (`OMP_PROC_BIND=close`, `OMP_PLACES=cores`), which `mpirun
+  --bind-to core` alone does not.
 
-**A memory cap per rank**, where the run states `max_memory_mb` (prep's `--max-memory-mb`): a SIESTA run script
-sets `ulimit -v` to it — a soft guard against a runaway memory allocation, ignored where the shell cannot set it — and a
-PySCF deck reads it as `mol.max_memory`. It is not the memory the job asks the scheduler for (§ 5.3.1).
+**A memory cap per rank**, where the run states `max_memory_mb` (prep's `--max-memory-mb`): before the program
+it starts — SIESTA's, TBtrans — the run script sets `ulimit -v` to it, a soft guard against a runaway memory
+allocation, ignored where the shell cannot set it; an engine whose deck applies it itself — the item's
+`deck_applies` ([`engines/template.md`](?doc=engines/template.md) § 5): PySCF's, as `mol.max_memory` — gets
+none. It is not the memory the job asks the scheduler for (§ 5.3.1).
 
 ### 3.3 GPU mode: load balance, MPS and placement
 
-When the job uses a GPU — its run card's `use_gpu`, which its deck renders as ELPA on the GPU — the run script
-does more at launch (all in `molbuilder/runwrap.py`).
+When the job uses a GPU — its run card's `use_gpu` (a SIESTA deck renders it as ELPA on the GPU) — and its
+engine runs ranks, the run script does more at launch (all in `molbuilder/runwrap.py`); an engine that runs one process
+has no ranks to place, and its deck uses the device itself.
 *This section is the mechanics; what offloads, why ranks share a device, what the sources recommend and how to
 design a benchmark around it is [`engines/tuning.md`](?doc=engines/tuning.md) § 2.12.*
 
@@ -452,13 +492,13 @@ design a benchmark around it is [`engines/tuning.md`](?doc=engines/tuning.md) §
 
 ### 3.4 The flags a run script takes
 
-| flag | engines | effect |
+| flag | taken by | effect |
 |---|---|---|
-| `-np` / `--np N` | both | SIESTA: the rank count. PySCF: accepted; anything but 1 is said to be ignored — PySCF is OpenMP-only |
-| `-omp` / `--omp N` | both | the thread count (SIESTA also takes `-t` / `--threads N`) |
-| `--mps` / `--no-mps` | SIESTA (GPU) | allow or forbid MPS; it starts only where ranks outnumber GPUs (§ 3.3) |
-| `--dry-run` | both | print, then exit 0: SIESTA — the resolved launch command, each count's source and the rank → GPU / NUMA map; PySCF — the command and the environment |
-| `-h` / `--help` | both | usage |
+| `-np` / `--np N` | every run script | the rank count, where the engine runs ranks; an engine that runs one process accepts it and says anything but 1 is ignored |
+| `-omp` / `--omp N`, `-t` / `--threads N` | every run script | the thread count |
+| `--mps` / `--no-mps` | a job that uses a GPU, its engine running ranks | allow or forbid MPS; it starts only where ranks outnumber GPUs (§ 3.3) |
+| `--dry-run` | every run script | print, then exit 0: the resolved launch command, each count's source, the environment and — where ranks are placed on GPUs — the rank → GPU / NUMA map |
+| `-h` / `--help` | every run script | usage |
 
 - **Any other argument is refused** (exit 1), and so is a count that is not a positive integer, before
   anything is written.
@@ -493,12 +533,15 @@ starts the engine a second time.
 
 **After a failure the run script says three things**, on its stderr and in the session log:
 
-1. **How it ended**, asked of the framework's reader, never grepped: `_mb_ending` runs `"$_mb_py" mb_monitor.pyz
-   ending` over the output and SIESTA's stderr (which the session log holds — SIESTA's `die` flushes stdout on
-   node 0 alone, so another rank may say why it died only there). The cause is the first fatal line; the
-   markers are the SIESTA family's table (`parse/engines/siesta_grammar.py`), and the run script types none.
-2. **The `propor` hint**, where `propor: IMAX = 0` stopped it: the two causes in the order to check them
-   (§ 3.1a), and how to prepare the stage again at another rank count.
+1. **How it ended**, asked of the framework's reader, never grepped, whatever the engine: `_mb_ending` runs
+   `"$_mb_py" mb_monitor.pyz ending` over the output — read by the reader its role names — and the session log,
+   which holds the engine's stderr where it is kept apart from the output (SIESTA's: its `die` flushes stdout
+   on node 0 alone, so another rank may say why it died only there). The cause is the first fatal line; the
+   markers are the engine family's table (SIESTA's `parse/engines/siesta_grammar.py`), and the run script
+   types none.
+2. **The advice for that cause**, asked only of an output whose family keeps advice (`_mb_ending advice`;
+   `_run_ending.STOPS`): for SIESTA's `propor: IMAX = 0`, the two causes in the order to check them (§ 3.1a) and how to prepare the stage again at another rank
+   count — words the family's table keeps beside its marker (`siesta_grammar.ADVICE`).
 3. **What a launch again will do**, from the facts the launch itself decides by, which prep bakes in — whether
    the stage continues (`Job.relaunch_continues`: its kind resumes, `warm-files.toml`'s `resumes`, and it takes
    something from a run; [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) and the deck's own
@@ -513,8 +556,9 @@ starts the engine a second time.
    | a point of a run of points | *this point failed: a launch again takes the run's points done over and* continues this one from its own last state, or runs it again from its start — its relaunch ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.2) |
    | a benchmark trial | a trial measures its point once, and its benchmark's launch does not start it again (`submit._plan_trial`) |
 
-   A stop at the wall says *stopped at its wall (MaxWalltime)* in place of *what a launch again will do*
-   (§ 3.6). A PySCF run script says this line after a failure too.
+   A stop at the wall — asked as such, `_mb_ending out-of-time`, never by the engine's own words for it, and
+   only of an output whose family names one (`_run_ending.STOPS`: a SIESTA output's) — says *stopped at its
+   wall* in place of *what a launch again will do* (§ 3.6).
 
 **When the ending cannot be read**, no hint is printed and the log says so once. **The one ask**: the run script
 asks the bundle once, before its first question, whether the ending can be read here (`_mb_ending_able`), and
@@ -529,10 +573,10 @@ keeps the words for the failure's line *(user, 2026-09-28: "ask the bundle once"
 
 ```mermaid
 flowchart LR
-    P["a point of a run of points:<br/>point started, its kind's before-step"] --> X["SIESTA exits"]
+    P["a point of a run of points:<br/>point started, its kind's before-step"] --> X["the engine exits"]
     P -->|"its before-step failed: no engine"| S
     X --> Q{"how did it end?<br/>(_mb_ending)"}
-    Q -->|"a failure: its words, the propor hint,<br/>what a launch again will do"| S["a point of a run of points:<br/>point ended, told the exit"]
+    Q -->|"a failure: its words, the advice for its cause,<br/>what a launch again will do"| S["a point of a run of points:<br/>point ended, told the exit"]
     S --> C["conclude: write &lt;stem&gt;.concluded"]
     Q -->|"a clean exit"| F{"a point of a<br/>run of points?"}
     F -->|"no"| C
@@ -595,18 +639,20 @@ slack.
 
 | where | the line | when |
 |---|---|---|
-| the run script's banner, in the session log | `Wall          : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` | every run of SIESTA or TBtrans |
-| the session log | `wall: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` | a wall told, as SIESTA starts |
+| the run script's banner, in the session log | `Wall          : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` | every run |
+| the session log | `wall: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` | a wall told, to an engine that stops before it, as the engine starts |
 | SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
-| the session log | `stopped at its wall (MaxWalltime): …` and what a launch again will do (§ 3.5) | that stop |
+| the session log | `stopped at its wall: …` and what a launch again will do (§ 3.5) | that stop |
 | the run's state (`jobset status`, the Results tab) | *failed* — `stopped before its end: OUT_OF_TIME: Time is up.` | that stop |
 | the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped and saved its restart state` (`siesta_grammar.CAUSE_WORDS`) | that stop |
 | a PySCF relaxation's output | `WARNING: stopped before the wall (the job's wall less its slack): the geometry reached is kept; launch this stage again to continue from it`, then `# relaxed: no` in its trajectory log | the first step past the deadline |
 | a PySCF vibration's output | `RuntimeError: stopped before the wall (the job's wall less its slack) before the spectrum was written: launch this stage again` | a displaced SCF due past the deadline |
 | the monitor log | `[WALL] 21m left; the longest of 3 steps so far took 46m -- the step underway may not finish before the wall` | once, in a job sent to a queue |
 
-A TBtrans banner says `… TBtrans checks no clock and runs to it (running-a-job.md 3.6)`; a run told no wall,
-`Wall          : none stated -- runs until done`. The clause after *stopped at its wall (MaxWalltime):* is § 3.5's
+A program the item gives no words reads no wall: a TBtrans banner says `… TBtrans checks no clock and runs to it
+(running-a-job.md 3.6)`. A deck that is a script reads it from its environment, and its banner says the engine
+stops before it — `… PySCF stops 600s before it …`. A run told no wall says
+`Wall          : none stated -- runs until done`. The clause after *stopped at its wall:* is § 3.5's
 line for that run: a single run whose kind
 resumes continues warm from the files it saved; a point of a run of points — a vibration's call, a transport
 point — is run again as its run's relaunch says (a vibration's relaxation continues warm from its own last run;
@@ -662,15 +708,16 @@ decide.
 |---|---|---|---|---|
 | **session log** — the run script's stdout and stderr | `<stem>.runwrap.log` | both | once the launch-door gate lets a start through (§ 5.5) | a person; the run record; `_mb_ending` (§ 3.5) |
 | **banner** — what the run is about to do (below) | the session log | both | before the engine starts | a person; the run record |
-| **the engine's stdout**, teed | `<stem>.out` · `<stem>.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
+| **the engine's stdout** | `<stem>.out` · `<stem>.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
 | **monitor** — utilisation every 10 s, progress, notifications | `<stem>.monitor.log` · `<stem>.util.csv` | both | start to end | a person; the run record; `run_status` (its closing record) — [`run-reports.md`](?doc=execution/run-reports.md) § 2.5 |
-| **SCF timing** — every SCF row of both phases (`scf:`, `ts-scf:`), stamped | `<stem>.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
-| **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
+| **SCF timing** — every SCF row of both phases (`scf:`, `ts-scf:`), stamped | `<stem>.scf-timing.log` | where the output's family names a stamp (`scf_timing_rows.STAMPED_BY_RUN_SCRIPT`): SIESTA's (a PySCF deck stamps its own, in its progress log) | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
+| **failure hint** — how the run ended, where its output and log are, and the reader's advice for its cause (SIESTA's `propor`: the causes, § 3.1a) | the session log | both | on a nonzero exit | a person |
 | **conclusion marker** — the exit code and the time | `<stem>.concluded` | both | the run script's last act, or its exit trap's; never on a signal | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
 The banner names the host, the folder, the environment, the program and its version, the launch mode, threading,
-what the run starts from (the restart files launch copied in, and whether its deck reads them), the command and
-the wall; for a job that uses a GPU, its GPU resources. The session log holds SIESTA's stderr, the start lines, the banner, the engine's wall time on its `benchmark:`
+what the run starts from (the restart files launch copied in, and whether its deck reads them), the atoms its deck
+holds (as prep read them from the deck's own record, [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.4), the command and the wall; for a job whose ranks are placed on GPUs, its GPU resources. The session log holds the engine's stderr
+where it is kept apart from the output (SIESTA's), the start lines, the banner, the engine's wall time on its `benchmark:`
 line and the monitor's start (*starting*, then *started* or the error that stopped it). The conclusion marker is
 written on the main line after a point's `point ended`, when the run is a point; it reads `rc=<code> at <date>`,
 and adds why where a step of ours, not the engine, ended the run: `no env python (<path>)` (§ 2.2a);

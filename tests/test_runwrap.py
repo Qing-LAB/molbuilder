@@ -18,14 +18,14 @@ def test_the_notice_that_replaced_it_is_about_ORBITALS_and_only_advises():
     user is told *"your CPUs are not going to be fully used"* -- and the run
     proceeds.
 
-    The orbital count is the ``10 x n_atoms`` DZP estimate the BlockSize
-    bound and the deck's BENCH-MARKS block already use, so the deck and the
-    notice cannot disagree.
+    The orbital count is the deck's own estimate, its BENCH-MARKS block's
+    ``n_orbitals_est`` (the ``10 x n_atoms`` DZP figure the BlockSize bound
+    uses), so the deck and the notice cannot disagree.
     """
     import subprocess
     from molbuilder.runwrap import _orbitals_per_rank_notice
 
-    notice = _orbitals_per_rank_notice(10)          # ~100 orbitals
+    notice = _orbitals_per_rank_notice(100)         # ~100 orbitals
 
     def _say(ranks):
         r = subprocess.run(["bash", "-c", f"_mpi_np={ranks}\n" + notice],
@@ -42,6 +42,6 @@ def test_the_notice_that_replaced_it_is_about_ORBITALS_and_only_advises():
         assert "not a limit" in out
 
     assert _orbitals_per_rank_notice(None) == "", (
-        "a deck with no NumberOfAtoms gets no notice -- inventing the number "
-        "is what the ruling removed")
+        "a deck that states no orbital estimate gets no notice -- inventing "
+        "the number is what the ruling removed")
 

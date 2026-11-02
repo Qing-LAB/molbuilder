@@ -24,7 +24,7 @@ it, never hidden by it.
 (`running-a-job.md` § 2).  Every recipe pins ``_PYTHON_SPEC``, so the
 version parsing this file is one the registry names.
 
-The run-wrapper backgrounds it at low OS priority (``nice -n 19``) so it
+The run script backgrounds it at low OS priority (``nice -n 19``) so it
 never competes with the compute ranks on the same node: it sleeps almost
 all of the time and does a few ms of tail-reads per wake (default 10 s),
 far below any benchmark's measurement noise.
@@ -125,6 +125,7 @@ try:                                        # inside molbuilder
     from . import runpoints as _rp
     from .trajectory_log import keys as _K
     from .wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
+    from .parse import fdf as _fdf
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_cards as _cards
@@ -141,6 +142,7 @@ except ImportError:                         # beside the job
     import runpoints as _rp
     import keys as _K
     from wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
+    import fdf as _fdf
 
 
 @dataclass
@@ -2638,7 +2640,7 @@ def make_log_notifier(log: Path) -> Notifier:
 # CRITICAL: shipped, this module needs ONLY the stdlib (os/re/signal/time/
 # urllib/dataclasses/pathlib/typing) and the framework modules that travel
 # with it (`runwrap.MONITOR_COMPANIONS`) -- no molbuilder package, no numpy.
-# That is what lets the run-wrapper SHIP this file -- as ``mb_monitor.py``
+# That is what lets the run script SHIP this file -- as ``mb_monitor.py``
 # inside ``mb_monitor.pyz`` -- next to the job and run it with the JOB's own
 # python, from the working directory, with no install and no repo on PATH,
 # whatever else that env's packages can or cannot import.
@@ -2695,6 +2697,10 @@ def main(argv=None) -> int:
         # verb (`execution/runs-of-points.md` § 4.6; `run-reports.md`
         # § 2.4, § 2.9).
         return _notify_main(args[1:])
+    if args[:1] == ["deck"]:
+        # THE DECK AS ITS ENGINE READS IT, for its run script's record of
+        # what the engine will read (`running-a-job.md` § 1, step 16).
+        return _deck_main(args[1:])
     import argparse
     p = argparse.ArgumentParser(
         prog="mb_monitor",
@@ -2809,10 +2815,37 @@ NOTIFY_CHANNELS_VAR = "MB_NOTIFY_CHANNELS"
 NOTIFY_REPORT_VAR = "MB_NOTIFY_REPORT"
 
 
+def _deck_main(args) -> int:
+    """``deck DECK`` -- the deck as its engine reads it: a block read from a
+    file beside it inlined (`parse.fdf.read_deck`), each line the engine
+    parses, no blank or comment line -- the run script's record of what the
+    engine will read (`job-contracts.md` § 2.6).  1, saying why on stderr,
+    for a deck that does not read."""
+    import sys
+    if len(args) != 1:
+        print("usage: mb_monitor.pyz deck DECK", file=sys.stderr)
+        return 2
+    try:
+        text = _fdf.read_deck(args[0])
+    except (OSError, ValueError) as exc:
+        print(f"deck: {args[0]} does not read -- {exc}", file=sys.stderr)
+        return 1
+    for line in text.splitlines():
+        if line.strip() and not line.lstrip().startswith("#"):
+            print(line)
+    return 0
+
+
 #: A POINT'S TWO REPORT STEPS (`execution/runs-of-points.md` § 3,
 #: operations 9 and 10): the verb and its two words, as every point's run
 #: script renders them (`runwrap._point_block`).
 POINT_VERB, POINT_STARTED, POINT_ENDED = "point", "started", "ended"
+
+#: THE BUNDLE'S VERBS THAT ARE NO MONITOR (:func:`main`): a question or a
+#: step the run script asks of the framework's readers.  The bundle's entry
+#: prints no load pair for them, and a bundle that does not load answers
+#: them 2, *cannot read* (`runwrap._BUNDLE_MAIN`).
+BUNDLE_VERBS = ("ending", POINT_VERB, "notify", "deck")
 
 
 def _point_say(level: str, message: str) -> None:

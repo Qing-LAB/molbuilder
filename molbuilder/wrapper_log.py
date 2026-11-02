@@ -41,7 +41,7 @@ LOG_LINE = "[%s] [%-5s] %s"
 LOG_CLOCK = "%H:%M:%S%z"
 
 #: The line the run's start opens with (``_log STAGE`` in ``env_activation``).
-WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
+WRAPPER_LOG_START = "===== molbuilder run script start ====="
 #: The message logged as a point's after-step begins -- the kind's own
 #: step after the engine, which leaves the result the engine alone does not
 #: (`monitor._point_main`, `execution/runs-of-points.md` § 3, op. 10;
@@ -57,7 +57,9 @@ USER_LABEL = "user:"
 CWD_LABEL = "cwd:"
 CONDA_ENV_LABEL = "CONDA_DEFAULT_ENV="
 PYTHON_LABEL = "job python:"
-#: The run-script banner's program lines -- ``<Program> binary  : <path>``.
+#: The run-script banner's program lines -- ``<Program> binary  : <path>``,
+#: the program named in its engine record's words (`engine_table`,
+#: ``programs``), whichever it is.
 BINARY_LABEL = "binary"
 VERSION_LABEL = "version"
 #: ``molbuilder: detected phys_cores=48, n_sockets=2, cores_per_socket=24`` --
@@ -94,8 +96,7 @@ _WRAPPER_LOG_LINES = (
                                   + r"(\S+)")),
     ("python",         re.compile(r"\] " + re.escape(PYTHON_LABEL)
                                   + r"\s+(\S+)")),
-    ("binary",         re.compile(r"^\s+(?:SIESTA|TBtrans) "
-                                  + re.escape(BINARY_LABEL)
+    ("binary",         re.compile(r"^\s+\S+ " + re.escape(BINARY_LABEL)
                                   + r"\s*:\s*(\S+)")),
 )
 _WRAP_NODE = _pattern(NODE_LINE, phys=r"(\d+)", sockets=r"(\d+)",

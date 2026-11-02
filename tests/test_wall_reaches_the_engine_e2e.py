@@ -116,7 +116,7 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
     wrap = walled["wrap"].read_text(errors="replace")
     assert "Wall          : 20s from the job's start" in wrap, wrap[:3000]
     assert "wall: " in wrap and "SIESTA stops 600s before it" in wrap, wrap[-2000:]
-    assert "stopped at its wall (MaxWalltime)" in wrap, wrap[-2000:]
+    assert "stopped at its wall:" in wrap, wrap[-2000:]
     # ONE START (`project-layout.md` § 1.6.1): the session log holds the
     # run script's one start, the engine run once.
     assert wrap.count(WRAPPER_LOG_START) == 1, wrap[-3000:]

@@ -55,7 +55,14 @@ def test_siesta_s_fence_states_every_item_s_default_and_the_deck_as_launched(
     import molbuilder.template as T
     from molbuilder.script_emit import _catalogue, read_parameters_fence
 
-    block = _effective_parameters_block(deck)
+    import sys
+    from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
+    # AS A RUN HAS IT: the monitor bundle beside the deck, read with the
+    # job's python (`mb_monitor.pyz deck`), and the run script's log helper.
+    (deck.parent / MONITOR_BUNDLE).write_bytes(monitor_bundle())
+    block = (f'_mb_py="{sys.executable}"\n_runwrap_log=/dev/null\n'
+             '_log() { echo "$2" >&2; }\n'
+             + _effective_parameters_block(deck.name, "siesta"))
 
     def run():
         return subprocess.run(["bash", "-c", block], cwd=deck.parent,

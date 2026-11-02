@@ -871,7 +871,7 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     # `pseudos/`, the engine seam's rule (`jobset.engines`): SIESTA opens
     # `<label>.psml` in the folder it runs from and no other.
     files = [here.deck.name,
-             *beside_the_deck(here.deck.name, VIBRATION_BUNDLE, here.names)]
+             *beside_the_deck("siesta", VIBRATION_BUNDLE, here.names)]
     shared = sorted(f"{PSEUDO_DIR}/{p.name}" for p, _fields
                     in find_fixed(here.root / PSEUDO_DIR, PSEUDO_FILE))
     # EACH CALL'S START, recorded as every point's is (`runs-of-points.md`

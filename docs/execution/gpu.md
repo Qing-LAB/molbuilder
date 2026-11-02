@@ -195,8 +195,9 @@ CPU build, and a CPU deck never on the GPU one.
 `read_by = ["wrapper"]` so the run script can be *handed* the value. `resolve`
 carries it from the job's own values — what its deck renders — onto the job's
 resources, and the GPU request is read off them (G5's one door). *A scan of the
-rendered SIESTA deck for `Diag.ELPA.GPU` could not route a PySCF GPU run at all:
-its deck carries no SIESTA keyword.*
+rendered SIESTA deck for `Diag.ELPA.GPU` could not tell a PySCF run's script that it
+uses a GPU at all — its monitor samples the device by it — since its deck carries
+no SIESTA keyword.*
 
 **G8 — Capability is checked where it can be seen.** SIESTA's GPU capability is
 an **environment** — visible in the target's record, so read at prep and said

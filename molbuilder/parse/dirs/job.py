@@ -122,7 +122,7 @@ NEVER_STARTED = "never started"
 #: writes ``rc=<N> at <date>; finish failed (<bundle> <verb>)`` and this
 #: reader reads the job as failed although the engine's output ended: the
 #: engine ended, the job did not.  Declared here, where it is read; the
-#: wrapper imports it (`runwrap._finish_block`).
+#: run script's writer imports it (`runwrap._point_block`).
 FINISH_FAILED = "finish failed"
 #: What a conclusion marker says when the job STOPPED BEFORE ITS ENGINE because
 #: its finish cannot run on the job's python -- the check the wrapper makes
@@ -375,15 +375,16 @@ def _finish_started(run_dir: Path, path: Path, basename: str) -> bool:
 
 
 def _stderr_of(run_dir: Path, path: Path, basename: str) -> Optional[Path]:
-    """Where the run that wrote ``path`` sent its stderr, when it kept it
-    apart: a SIESTA-family output's session log (`wrapper_log.log_of_run`),
-    the one the wrapper's own ending question reads (`_mb_ending
-    --stderr`).  SIESTA's ``die`` flushes stdout on node 0 alone, so a rank
-    other than 0 that dies may say why only there.  ``None`` for any other
-    output -- a PySCF log takes its stderr in -- and for a run with no log.
-    ``basename`` is the run's stem."""
+    """Where the run that wrote ``path`` sent its stderr, when its output
+    keeps it apart (`_run_ending.stderr_apart`: a SIESTA-family output's):
+    the run's session log (`wrapper_log.log_of_run`), the one the run
+    script's own ending question reads (`_mb_ending --stderr`).  SIESTA's
+    ``die`` flushes stdout on node 0 alone, so a rank other than 0 that dies
+    may say why only there.  ``None`` for any other output -- a PySCF log
+    takes its stderr in -- and for a run with no log.  ``basename`` is the
+    run's stem."""
     got = _rf.parse(path.name, basename)
-    if got is None or got.role not in _rf.stdout_roles("siesta"):
+    if got is None or not _re.stderr_apart(got.role):
         return None
     return _wl.log_of_run(run_dir, *_rf.split_stem(basename))
 

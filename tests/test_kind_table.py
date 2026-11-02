@@ -37,10 +37,16 @@ def test_every_part_a_pair_names_resolves(calculation, engine):
 @pytest.mark.parametrize("engine", engine_table.engines())
 def test_every_part_an_engine_names_resolves(engine):
     """Its config class and its seam: the seam's factory builds a seam
-    whose config class is the record's."""
+    whose config class is the record's -- and the environments its runs
+    enter are categories an environment is registered for
+    (`configuration.md` § 4), so its prep finds one."""
+    from molbuilder.diagnostics import DEFAULT_ENV_NAMES
     from molbuilder.jobset.engines import engine_seam
     cls = engine_table.config_class(engine)
     assert engine_seam(engine).config_cls is cls
+    eng = engine_table.engine(engine)
+    for category in filter(None, (eng.environment, eng.gpu_environment)):
+        assert category in DEFAULT_ENV_NAMES, category
 
 
 # A record, broken one way each -- the refusal names the record and the key.
@@ -121,14 +127,29 @@ def test_a_part_that_does_not_resolve_is_refused_naming_record_and_key():
     assert "vibration on siesta's rung" in str(got.value)
 
 
-def test_the_engine_table_is_the_file_catalogue_s_list(tmp_path, monkeypatch):
-    """An engine the engine table holds whose files the file catalogue does
-    not name -- or the reverse -- is refused where the two lists meet."""
+#: An engine record added to the shipped table, broken one way each -- the
+#: refusal names what is wrong.
+_ENGINE_ROWS = [
+    # An engine the engine table holds whose files the file catalogue does
+    # not name -- or the reverse -- is refused where the two lists meet.
+    ("an engine whose files the file catalogue does not name",
+     "one_process = true", "file catalogue"),
+    # Ranks start a program: a record that runs ranks and names none would
+    # give its run script nothing to launch on each rank.
+    ("an engine running ranks that names no program",
+     "one_process = false", "one_process = false names the programs"),
+]
+
+
+@pytest.mark.parametrize("what, one_process, words", _ENGINE_ROWS,
+                         ids=[r[0] for r in _ENGINE_ROWS])
+def test_an_engine_record_that_does_not_hold_together_is_refused(
+        tmp_path, monkeypatch, what, one_process, words):
     text = engine_table.TABLE_FILE.read_text() + (
         '\n[orca]\nwords = "ORCA"\nidentity_field = "x"\n'
         'config = "m:C"\nseam = "m:s"\ncomputes_in = "cell"\n'
-        'one_process = true\nbenchmark = false\npresets = "m:P"\n'
-        'keyword_deck = false\n')
+        f'{one_process}\nbenchmark = false\npresets = "m:P"\n'
+        'keyword_deck = false\nenvironment = "pyscf"\n')
     table = tmp_path / "engine_table.toml"
     table.write_text(text)
     monkeypatch.setattr(engine_table, "TABLE_FILE", table)
@@ -136,6 +157,6 @@ def test_the_engine_table_is_the_file_catalogue_s_list(tmp_path, monkeypatch):
     try:
         with pytest.raises(engine_table.EngineTableError) as got:
             engine_table.engines()
-        assert "file catalogue" in str(got.value)
+        assert words in str(got.value)
     finally:
         engine_table._table.cache_clear()

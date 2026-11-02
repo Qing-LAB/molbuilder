@@ -632,6 +632,44 @@ CAUSE_WORDS = {
     "abnormal_termination": "abnormal termination",
     SCF_NOT_CONV_MARKER: "SCF non-convergence (required to converge)",
 }
+#: THE CAUSES THAT ARE THE JOB'S WALL -- the engine stopped itself before the
+#: wall it was told (`running-a-job.md` § 3.6), its restart state saved: what
+#: the run script asks as ``out-of-time`` (`_run_ending.QUESTIONS`), whatever
+#: the engine's words for it.
+WALL_CAUSES: Tuple[str, ...] = (OUT_OF_TIME_MARKER,)
+
+#: WHAT TO DO ABOUT A CAUSE, where there is more to say than its words -- the
+#: run script prints it after a failure (``mb_monitor.pyz ending OUTPUT
+#: advice``, `running-a-job.md` § 3.5); ``{output}`` is the run's output.
+#: propor's two causes, in the order to check them, the more fundamental
+#: first (`running-a-job.md` § 3.1a; the user's ruling, 2026-09-03: "we had
+#: that problem because of a psml related issue, not a size issue").
+ADVICE = {
+    PROPOR_MARKER: (
+        "SIESTA stopped with 'propor: ERROR: IMAX = 0' as it started: one of\n"
+        "its per-orbital or per-rank tables came out EMPTY.  It has two\n"
+        "common causes -- check them in this order, the more fundamental\n"
+        "first.  Do NOT lower the rank count by reflex: that hides a\n"
+        "defective pseudopotential and gives silently wrong physics.\n"
+        "\n"
+        "1) A DEFECTIVE OR MISMATCHED PSEUDOPOTENTIAL (check this FIRST).\n"
+        "   A pseudopotential with a null Kleinman-Bylander projector (Ekb=0\n"
+        "   on a whole l-channel) trips IMAX=0.  In {output} find each\n"
+        "   species' 'PSML: Kleinman-Bylander projectors' table and look for\n"
+        "   'rc=  0.000010   Ekb=  0.000000' rows -- a valence element\n"
+        "   missing its p or d channel is broken.  Replace that .psml with a\n"
+        "   vetted one (PseudoDojo; the generator version and XC of the rest\n"
+        "   of your set).  Screen the whole set:\n"
+        "     python -m molbuilder pseudo check <pseudo-dir>\n"
+        "\n"
+        "2) THE MPI RANK COUNT (a legitimate tunable here).\n"
+        "   With clean pseudopotentials, some rank counts leave trailing\n"
+        "   ranks empty in the orbital or projector distribution, and the\n"
+        "   same deck can fail at one count and pass at another: prepare the\n"
+        "   stage again at another count (lower; powers of 2 are safest) --\n"
+        "   the way to change a setting is the line below."),
+}
+
 #: WHAT AN ENGINE'S STOP MESSAGE MAY MEAN, for the person reading the result
 #: (`engines/transport.md` § 6.3): ``(the message's words, lower case; the
 #: hint)``.  Said beside the engine's own words, never in their place: the

@@ -350,9 +350,17 @@ class Item:
     #: (``Job.program``; the engine's own by default): ``{program:
     #: [word, ...]}``, each word with the placeholders the script fills
     #: (``{left}``, ``{slack}`` for `wall_slack`).  A program not named takes
-    #: the item some other way -- a PySCF deck from its environment -- or not
-    #: at all (`running-a-job.md` § 3.6).
+    #: the item some other way -- its engine's deck, where
+    #: :attr:`deck_applies` names it -- or not at all (`running-a-job.md`
+    #: § 3.6).
     launch: Mapping[str, Tuple[str, ...]] = field(default_factory=dict)
+    #: ``kind = "wrapper"`` -- THE ENGINES WHOSE DECK APPLIES THIS ITEM ITSELF,
+    #: from the value the run script exports or the deck states: PySCF's
+    #: deck keeps the wall's deadline and caps its memory (`mol.max_memory`).
+    #: An engine not named is given the item by its run script -- the
+    #: program's ``launch`` words, the memory cap's ``ulimit -v`` -- or not at
+    #: all (`running-a-job.md` § 3.2, § 3.6).
+    deck_applies: Tuple[str, ...] = ()
 
     #: **How the engine SPELLS this**, in full — and a different fact from
     #: :attr:`anchor`, which is the bare leading keyword the deck writer
@@ -886,7 +894,7 @@ def _toml_key(k: Any) -> str:
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
-                   "manual", "expands", "launch", "type",
+                   "manual", "expands", "launch", "deck_applies", "type",
                    "choices", "value", "source", "default", "engine_default", "recommended", "offered", "not_offered", "result", "active_when", "choice_labels", "optional", "required",
                    "allocation", "run_card",
                    "citation", "shared", "role", "role_values", "stages",
@@ -923,6 +931,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["expands"] = list(it.expands)
     if it.launch:
         out["launch"] = {p: list(w) for p, w in it.launch.items()}
+    if it.deck_applies:
+        out["deck_applies"] = list(it.deck_applies)
     if it.choices:
         out["choices"] = list(it.choices)
     # An absent ``value`` is the encoding of *explicitly unset* (§ 3).
@@ -1043,6 +1053,14 @@ def catalogue() -> "Template":
                 f"holds {', '.join(_engines())} -- one list of engines, the "
                 f"engine table's")
     for it in parsed.items:
+        # AN ENGINE WHOSE DECK APPLIES AN ITEM IS ONE IT IS OFFERED ON -- an
+        # item that names no engines serves every one.
+        serves = it.engines or _engines()
+        stray = [e for e in it.deck_applies if e not in serves]
+        if stray:
+            _refuse(f"deck_applies names {', '.join(map(repr, stray))}, "
+                    f"which the item does not serve ({', '.join(serves)})",
+                    where=it.name)
         for key in ("calculations", "citation", "role", "shared",
                     "required"):
             stray = [k for k in getattr(it, key) if k not in _kinds.kinds()]
@@ -1923,6 +1941,7 @@ def _item_from(name: str, body: Any) -> Item:
                    _engine_default_from(name, body, type_, choices))),
         expands=tuple(body.get("expands", ()) or ()),
         launch=_launch_from(name, body.get("launch")),
+        deck_applies=tuple(body.get("deck_applies", ()) or ()),
         optional=bool(body.get("optional", False)),
         tier=str(body.get("tier", "") or ""),
         pattern=str(body.get("pattern", "") or ""),

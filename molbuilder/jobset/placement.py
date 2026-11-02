@@ -172,18 +172,9 @@ def request_of(resources, *, one_process: bool):
 def one_process(engine) -> bool:
     """Whether ``engine`` runs ONE process -- PySCF, a Python script with
     OpenMP threads -- so its request asks one task: its record's word
-    (`engine_table`, ``one_process``).  The one rule, asked by an engine's
-    name or by its deck (:func:`deck_runs_one_process`)."""
+    (`engine_table`, ``one_process``)."""
     from ..engine_table import engine as _engine, engines
     return str(engine) in engines() and _engine(str(engine)).one_process
-
-
-def deck_runs_one_process(suffix: str) -> bool:
-    """:func:`one_process` for the engine whose deck ``suffix`` is -- the
-    catalogue's answer (`runfiles.engine_of_role`); a suffix no engine's
-    deck has runs more than one (`runwrap`)."""
-    from ..runfiles import engine_of_role
-    return one_process(engine_of_role(str(suffix).lower()))
 
 
 #: The values a run's placement records the source of -- its queue, wall

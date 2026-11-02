@@ -49,12 +49,14 @@ try:                                        # inside molbuilder
                                     as PYSCF_SPECTRUM_END_MARKER)
     from ... import runfiles as _rf
     from . import molwatch_grammar as _MG
+    from . import siesta_grammar as _G
     from .siesta_reader import SiestaReader, read_output
 except ImportError:                         # beside a job, as the monitor's
     from end_lines import (END_MARKER as PYSCF_END_MARKER,
                            SPECTRUM_END_MARKER as PYSCF_SPECTRUM_END_MARKER)
     import runfiles as _rf
     import molwatch_grammar as _MG
+    import siesta_grammar as _G
     from siesta_reader import SiestaReader, read_output
 
 #: The run is over and will produce nothing more -- § 2b P-S1's vocabulary
@@ -283,6 +285,45 @@ READERS: "Dict[str, Callable[[Path], RunEnding]]" = {
 }
 
 
+#: THE OUTPUTS THAT LEAVE THEIR ENGINE'S STDERR APART -- the SIESTA
+#: family's: its run script keeps the engine's stderr in the session log, as
+#: ``die`` flushes stdout on node 0 alone and another rank may say why it
+#: died only there (`running-a-job.md` § 3.5).  Every other output takes its
+#: stderr in (``2>&1``).  The run script asks it to route the stream and to
+#: hand the session log to :func:`ending_of`.
+STDERR_APART: Tuple[str, ...] = (".out",)
+
+
+def stderr_apart(role: str) -> bool:
+    """Whether the output in ``role`` leaves its engine's stderr apart
+    (:data:`STDERR_APART`)."""
+    return role in STDERR_APART
+
+
+#: WHAT AN OUTPUT'S FAMILY TABLE SAYS OF A STOP, by the output's role:
+#: ``(the causes that are the job's wall, {cause: the advice for it}``) --
+#: the SIESTA family's (`siesta_grammar.WALL_CAUSES`, ``ADVICE``).  A role not
+#: here names neither: a PySCF deck stopped at its wall raises an error its
+#: run reads as any other failure (`running-a-job.md` § 3.6).  The run script
+#: asks ``out-of-time`` and ``advice`` only of an output whose role names
+#: them (`running-a-job.md` § 3.5).
+STOPS: Dict[str, Tuple[Tuple[str, ...], Dict[str, str]]] = {
+    ".out": (_G.WALL_CAUSES, _G.ADVICE),
+}
+
+
+def wall_causes(role: str) -> Tuple[str, ...]:
+    """The causes that are the job's wall, for an output in ``role``
+    (:data:`STOPS`) -- empty where its family names none."""
+    return STOPS.get(role, ((), {}))[0]
+
+
+def advice_of(role: str) -> Dict[str, str]:
+    """``{cause: advice}`` for an output in ``role`` (:data:`STOPS`) --
+    empty where its family keeps none."""
+    return STOPS.get(role, ((), {}))[1]
+
+
 def _one_reader_per_role(readers) -> None:
     """Refuse a table that leaves a run-output role unread, or reads a file
     the catalogue does not call run output.  At import, so the gap stops the
@@ -290,6 +331,8 @@ def _one_reader_per_role(readers) -> None:
     nothing can read, asked while its run is going."""
     roles = set(_rf.run_output_roles())
     unread, extra = sorted(roles - set(readers)), sorted(set(readers) - roles)
+    # THE ROLE TABLES BESIDE IT name run output, or they name nothing.
+    extra += sorted((set(STDERR_APART) | set(STOPS)) - roles)
     if unread or extra:
         raise ValueError(
             "_run_ending.READERS: "
@@ -392,7 +435,7 @@ def ending_of(path, *, stderr=None) -> RunEnding:
     """How the run that wrote *path* ended -- dispatched on the file's ROLE.
 
     ``stderr`` names the file the engine's stderr went to when its output
-    does not carry it -- SIESTA's, whose wrapper keeps it in the session log
+    does not carry it -- SIESTA's, whose run script keeps it in the session log
     (a PySCF log takes its stderr in, ``2>&1``).
 
     The one door for *"how did this end"* over a run-output file.  The role
@@ -414,10 +457,11 @@ def ending_of(path, *, stderr=None) -> RunEnding:
             f"{role!r}, and the run-output roles are "
             f"{', '.join(_rf.run_output_roles())} (`runfiles.WRITTEN`'s `output` "
             f"column, `model/parse.md` § 5.5).")
-    if stderr is not None and reader is not _siesta_ending:
+    if stderr is not None and not stderr_apart(role):
         raise ValueError(
-            f"{Path(path).name!r} carries its engine's stderr itself; only a "
-            f"SIESTA-family output is read beside a separate one.")
+            f"{Path(path).name!r} carries its engine's stderr itself; only "
+            f"{', '.join(STDERR_APART)} is read beside a separate one "
+            f"(`STDERR_APART`).")
     # ONCE PER VERSION (:data:`_KEPT`): a file that has not changed is not
     # read again, and an output that stated its own end is kept by its own
     # version whatever the stderr (:data:`_FINAL`).
@@ -502,11 +546,28 @@ def _keep(table: "OrderedDict", key, ending: RunEnding) -> None:
 # This module travels beside every job, so the wrapper runs it with the
 # job's own python and the markers keep their one home.
 
-#: What a shell may ask, each answered by the exit status (0 yes, 1 no).
-#: ``stopped-by MARKER`` asks for the table's own marker, which the wrapper
-#: renders from `siesta_grammar` -- ``propor: error`` for its hint.
-QUESTIONS: Dict[str, Callable[..., bool]] = {
-    "stopped-by": lambda e, marker: e.cause == marker,
+def _family(output: str) -> str:
+    """The role of the output asked about -- whose family's :data:`STOPS`
+    answer for it."""
+    return _rf.role_of(Path(output).name)
+
+
+#: What a shell may ask, by what it MEANS, never by an engine's marker --
+#: each answered by the exit status (0 yes, 1 no), from the asked output's
+#: own family.  ``out-of-time``: the engine stopped itself at the job's wall
+#: (:data:`STOPS`).
+QUESTIONS: Dict[str, Callable[[RunEnding, str], bool]] = {
+    "out-of-time": lambda e, output: e.cause in wall_causes(_family(output)),
+}
+
+#: What a shell may have SAID, printed, exit 0 where there are words and 1
+#: where there are none.  ``advice``: what to do about the cause, where its
+#: family's table gives more than its words (:data:`STOPS`), the output
+#: named.
+SAYS: Dict[str, Callable[[RunEnding, str], Optional[str]]] = {
+    "advice": lambda e, output: (
+        advice_of(_family(output))[e.cause].format(output=output)
+        if e.cause in advice_of(_family(output)) else None),
 }
 
 
@@ -527,13 +588,13 @@ def say(end: RunEnding) -> str:
 
 
 def main(argv=None) -> int:
-    """``OUTPUT [--stderr FILE] [QUESTION [ARG]]`` -- beside a job,
+    """``OUTPUT [--stderr FILE] [QUESTION]`` -- beside a job,
     ``"$_mb_py" mb_monitor.pyz ending ...`` (the bundle's entry hands ``ending``
     here; `runwrap.MONITOR_BUNDLE`): with a question, the exit status answers
-    it (:data:`QUESTIONS`); without one, the ending is printed as :func:`say`
+    it (:data:`QUESTIONS`), or the words are printed, exit 0 where there are
+    any (:data:`SAYS`); without one, the ending is printed as :func:`say`
     words it.  ``--stderr`` is :func:`ending_of`'s.  2 when the output cannot
     be read or the question is not one."""
-    import inspect
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
     stderr = None
@@ -546,26 +607,30 @@ def main(argv=None) -> int:
         del args[at:at + 2]
     if not args:
         print("usage: mb_monitor.pyz ending OUTPUT [--stderr FILE] "
-              "[QUESTION [ARG]]", file=sys.stderr)
+              "[QUESTION]", file=sys.stderr)
         return 2
-    if len(args) > 1 and args[1] not in QUESTIONS:
+    if len(args) > 1 and args[1] not in QUESTIONS and args[1] not in SAYS:
         print(f"_run_ending: not a question: {args[1]!r} "
-              f"({', '.join(QUESTIONS)})", file=sys.stderr)
+              f"({', '.join([*QUESTIONS, *SAYS])})", file=sys.stderr)
         return 2
-    # A QUESTION TAKES WHAT ITS ROW TAKES -- said as usage, before any
-    # reading: a question asked wrong is not an ending that cannot be read.
-    if len(args) > 1:
-        takes = len(inspect.signature(QUESTIONS[args[1]]).parameters) - 1
-        if len(args) - 2 != takes:
-            print(f"_run_ending: {args[1]!r} takes {takes} argument(s), "
-                  f"given {len(args) - 2}", file=sys.stderr)
-            return 2
+    # A QUESTION TAKES NOTHING BEYOND THE OUTPUT -- said as usage, before
+    # any reading: a question asked wrong is not an ending that cannot be
+    # read.
+    if len(args) > 2:
+        print(f"_run_ending: {args[1]!r} takes no argument, given "
+              f"{len(args) - 2}", file=sys.stderr)
+        return 2
     try:
         end = ending_of(args[0], stderr=stderr)
         if len(args) == 1:
             print(say(end))
             return 0
-        return 0 if QUESTIONS[args[1]](end, *args[2:]) else 1
+        if args[1] in SAYS:
+            words = SAYS[args[1]](end, args[0])
+            if words:
+                print(words)
+            return 0 if words else 1
+        return 0 if QUESTIONS[args[1]](end, args[0]) else 1
     except Exception as exc:                          # noqa: BLE001
         # THE DOOR HAS THREE ANSWERS, and a reading that stops for any reason
         # is the third -- the ending cannot be read -- never *no*, which would

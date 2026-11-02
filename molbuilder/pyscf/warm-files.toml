@@ -70,8 +70,7 @@ carry  = "when-continuing"      # WHAT A RUNG HANDS THE NEXT ONE.  Under one
 
 # ---- vibration: a re-run starts over ----------------------------------
 # The vibration deck writes its checkpoint and reads none back: each run
-# relaxes and computes its Hessian from the start (the wrapper's own
-# reading of the deck, `runwrap._py_deck_reads_prior`; vibration.md
+# relaxes and computes its Hessian from the start (vibration.md
 # § 3.1).  So nothing a stopped run left is a state to continue from,
 # and a stage of it is not launched again -- its redo is the rollback
 # (job-system.md § 5.4).  *(This section was empty until 2026-10-05, so

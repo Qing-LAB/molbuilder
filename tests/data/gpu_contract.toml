@@ -242,7 +242,7 @@ name = "a GPU run binds its ranks to cores and to its GPU's socket, and says so"
 run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
 run_sh = ['_mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"',
           "MOLBUILDER_GPU_NUMA",
-          "GPU resources : GPU mode (ELPA-CUDA, no NCCL) -- chosen $_mpi_np ranks × $_omp_threads threads",
+          "GPU resources : $_mpi_np ranks x $_omp_threads threads",
           "(or measure it: prep bench, for this stage)"]
 
 # run-reports.md § 2.1a, § 2.6: the monitor samples GPUs (--gpu) exactly when the run uses one.

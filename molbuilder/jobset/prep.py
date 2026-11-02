@@ -174,6 +174,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
                 # stage -- so the wrapper is TOLD every name it writes, and
                 # composes none.
                 names=_names,
+                # THE ENGINE, the calculation's: its record decides every
+                # block of the run script (`running-a-job.md` § 1) -- never
+                # the deck's suffix.
+                engine=jobset.engine,
                 resources=job.resources,
                 program=job.program,
                 env=env,
@@ -229,7 +233,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
                 # 0 -- and is taken away, never sent, run or read as this
                 # one's (`job-system.md` § 5.0, checkpoint 6;
                 # `scheduler.md` § 5.1, *every header is prep's*).
-                for _name in beside_the_deck(_deck.name, job.finish, _names):
+                for _name in beside_the_deck(jobset.engine, job.finish,
+                                             _names):
                     _left = _deck.parent / _name
                     if not plan.decides(_left) and _left.is_file():
                         plan.remove(_left)

@@ -145,7 +145,7 @@ def conclude_line(code, note: str = "", *args: str) -> str:
     """The run script's command that writes its conclusion marker
     (``$_concluded``) -- ``rc=<N> at <date>[; <note>]``, the line
     :func:`read_concluded` reads: ``code`` the exit code, a number or a
-    shell word (``"$_siesta_exit"``); ``note`` what the job adds, its own
+    shell word (``"$_engine_exit"``); ``note`` what the job adds, its own
     ``%s`` filled by ``args``, shell words.  ONE spelling for every writer
     of the line, beside its one reader."""
     fmt = "rc=%s at %s" + (f"; {note}" if note else "") + "\\n"

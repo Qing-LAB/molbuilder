@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:                                        # inside molbuilder
     from ..engines import molwatch_grammar as _MG
@@ -28,6 +28,23 @@ except ImportError:                         # beside a job, as the monitor's
 
 #: One stamped SCF row: ``(epoch, phase, begins an SCF)``.
 Row = Tuple[float, str, bool]
+
+#: THE OUTPUTS WHOSE SCF ROWS THE RUN SCRIPT STAMPS as they print, into
+#: ``<base>.scf-timing.log`` -- ``{role: (a row's ERE, its prefix's ERE)}``,
+#: the SIESTA family's table's: its engine prints no time per row.  A role
+#: not here is stamped by no run script -- a PySCF deck stamps its own rows
+#: in its progress log.  The run script asks it by its output's role
+#: (`running-a-job.md` § 4.1).
+STAMPED_BY_RUN_SCRIPT: Dict[str, Tuple[str, str]] = {
+    ".out": (_G.SCF_ROW_ERE, _G.SCF_PREFIX_ERE),
+}
+
+
+def stamped_rows(role: str) -> Optional[Tuple[str, str]]:
+    """The patterns the run script stamps an output in ``role`` by --
+    ``(a row's ERE, its prefix's ERE)`` -- or ``None``: no run script stamps
+    it (:data:`STAMPED_BY_RUN_SCRIPT`)."""
+    return STAMPED_BY_RUN_SCRIPT.get(role)
 
 
 def scf_timing_metrics(text: str) -> Dict[str, Any]:

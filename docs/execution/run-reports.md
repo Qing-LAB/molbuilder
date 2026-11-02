@@ -277,6 +277,7 @@ own file unchanged, run by the job's own python, `$_mb_py`
 | a run of points' report steps: a point's verdict, a round's outcome | the status door's verdict reader (`_run_ending.verdict_of`), and the round's outcome the index names (§ 2.9) | `_run_ending.py` · `run_words.py` · `conductance.py` · `energies.py` · `deck_record.py` |
 | the run's notification record | `runrecord.read_notified`, `note_notified`, written through the one JSON writer | `runrecord.py` · `persist.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
+| the deck as its engine reads it, for the run script's record of what the engine will read ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1, step 16) | the deck's one reader, `parse.fdf.read_deck` — a block read from a file beside the deck inlined | `fdf.py` · `units.py` |
 | the wall it was sent with (§ 2.1b) | the launch record (`runrecord.launch_record`), its `placed_on.time` read by `runrecord.sent_wall_s` through the wall's one parser, `scheduler.quantities.parse_walltime` | `runrecord.py` · `quantities.py` |
 | when the job started (§ 2.1b) | the header's `MB_JOB_STARTED`, its name `runtime_info.JOB_STARTED_VAR` — the job's clock's names, `MB_WALL_S` and `MB_WALL_SLACK_S` beside it | `runtime_info.py` |
 
@@ -309,7 +310,8 @@ the monitor, which carries no scheduler, does not ask: there its `finish` says *
 Results tab *stopped by the scheduler: &lt;its words&gt;*.
 
 **The run script asks the same framework**: how a failed run ended is `_run_ending`, asked through `mb_monitor.pyz
-ending` (§ 2.6; [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5).
+ending`, and what the engine will read is the deck's reader, asked through `mb_monitor.pyz deck` (§ 2.6;
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5, § 1 step 16).
 
 ### 2.4 One monitor per run — the lifecycle
 
@@ -514,11 +516,13 @@ it. Nothing else reaches stderr in a healthy run.
 | `--notify-channels` | `notify.channels` | absent (no `notify` block): nothing is sent; `*`: every channel on this machine; `""`: none; `a,b`: those (§ 3.0) |
 | `--notify-report` | `notify.report` | the fields a chat card shows; absent: all; `""`: none ([`job-request.md`](?doc=execution/job-request.md) § 3.5). A name that is not a field is dropped, not fatal |
 
-**The bundle's other verbs** print no start pair, because their caller waits on their answer:
+**The bundle's other verbs** print no start pair, because their caller waits on their answer
+(`monitor.BUNDLE_VERBS`):
 
 | verb | for | |
 |---|---|---|
-| `mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | the run script, asking how a failed run ended — `_run_ending`'s door | answers 2, *cannot read*, for a bundle that does not load; the run script asks it once, before its first question, so that error prints once ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) |
+| `mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION]` | the run script, asking how a failed run ended — `_run_ending`'s door: the ending in words, `out-of-time` (exit 0 yes, 1 no) or `advice` (words, exit 1 for none) | answers 2, *cannot read*, for a bundle that does not load; the run script asks it once, before its first question, so that error prints once ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) |
+| `mb_monitor.pyz deck DECK` | the run script's record of what the engine will read — the deck's lines as the engine parses them | 1, saying why, for a deck that does not read ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1 step 16) |
 | `point started\|ended --label --stage --deck [--exit --output] [--bundle --before --after --finish]` | a point's report steps | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, ops 9 and 10 |
 | `notify <event> --label --stage --dir <run> [--state --detail --reason]` | one event for a run of points | § 2.4 |
 

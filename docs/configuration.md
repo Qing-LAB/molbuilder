@@ -585,7 +585,7 @@ moment:
 
 | part | read when | by |
 |---|---|---|
-| `envs.<category>` | at prep, as each run script is written: the environment the script enters, chosen by the job's GPU request ([`gpu.md`](?doc=execution/gpu.md)) | `runwrap` |
+| `envs.<category>` | at prep, as each run script is written: the environment the script enters — the category its engine's record names (`environment`, or `gpu_environment` for a job whose GPU request uses one; [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3, [`gpu.md`](?doc=execution/gpu.md)) | `runwrap` |
 | `env_init` | never from this file at prep: the probe copies it into the record, and prep reads the target's record (M-1) | `jobset probe` |
 | `launch.mode` | at launch, when no `--mode` is given | `jobset launch` |
 

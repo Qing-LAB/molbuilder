@@ -51,7 +51,7 @@ from .end_lines import END_MARKER   # noqa: E402
 
 #: THE ROLE A PySCF RUN'S STDOUT HAS.  Imported, not spelled: the wrapper
 #: derives the same answer from the same catalogue row
-#: (`runwrap._stdout_role_for`), and the banner this module prints is the one
+#: (`runwrap._stdout_role_of`), and the banner this module prints is the one
 #: place a PERSON is told the filename.
 PYSCF_STDOUT_ROLE = _stdout_roles("pyscf")[0]
 

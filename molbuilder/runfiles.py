@@ -944,13 +944,13 @@ def written_by(a: "Artifact", calculation: str, *, any_: bool = False) -> bool:
     return str(calculation) in a.calculations
 
 
-def bundle_names(deck: str, finish: Optional[str]) -> "tuple[str, ...]":
+def bundle_names(engine: str, finish: Optional[str]) -> "tuple[str, ...]":
     """THE BUNDLES BESIDE A DECK, by name: the catalogue's bundles
-    (:attr:`Artifact.bundle`) for every job and for the deck's engine -- the
-    monitor's; beside a PySCF script, the molbuilder code it imports
+    (:attr:`Artifact.bundle`) for every job and for the job's ``engine`` --
+    the monitor's; beside a PySCF script, the molbuilder code it imports
     (`engines/pyscf.md` § 3) -- then the job's finish when it has one
-    (`Job.finish`).  `runwrap.bundles_for` pairs each with its builder."""
-    engine = engine_of_role(Path(deck).suffix.lower())
+    (`Job.finish`).  The engine is the job's, handed in, never read off the
+    deck's name.  `runwrap.bundles_for` pairs each with its builder."""
     out = [a.name for a in WRITTEN
            if a.bundle and a.engine in (None, engine)]
     if finish is not None:
@@ -958,7 +958,7 @@ def bundle_names(deck: str, finish: Optional[str]) -> "tuple[str, ...]":
     return tuple(out)
 
 
-def beside_the_deck(deck: str, finish: Optional[str], names: "RunNames"
+def beside_the_deck(engine: str, finish: Optional[str], names: "RunNames"
                     ) -> "tuple[str, ...]":
     """THE FILES THAT TRAVEL BESIDE A DECK into every folder it runs in --
     the one list: its bundles (:func:`bundle_names`), the post-run script a
@@ -969,7 +969,7 @@ def beside_the_deck(deck: str, finish: Optional[str], names: "RunNames"
     (`materialize.bring_files`), and what a run's own plan step brings into
     a call it opens (`spectra.siesta_vibration`); the calculation's shared
     package (`JobSet.shared`, the pseudopotentials) comes beside them."""
-    return (*bundle_names(deck, finish), MAKOV_PAYNE_SCRIPT,
+    return (*bundle_names(engine, finish), MAKOV_PAYNE_SCRIPT,
             names.name(".run.sh"), names.name(".sbatch"), COORDINATES_FILE)
 
 
@@ -1929,13 +1929,12 @@ def prepared_roles() -> "tuple[str, ...]":
 
 
 def engine_of_role(role: str) -> Optional[str]:
-    """Which engine writes this role, or None when any of them may.
+    """Which engine writes this role -- its catalogue row's ``engine`` --
+    or None when any of them may.
 
-    The mirror of :func:`stdout_roles`, and what a WRITER asks: the wrapper
-    holds a deck suffix (`.py`, `.fdf`) and needs the role its run will write
-    its stdout to.  Composing the two is the whole derivation
-    (`model/parse.md` § 5.5, R-RO1: the vocabulary binds writers as well as
-    readers).
+    The mirror of :func:`stdout_roles`, asked by a READER holding a file: a
+    writer is handed its engine by the job it writes for, never reads it
+    off a name (`model/parse.md` § 5.5, R-RO1).
     """
     for a in WRITTEN:
         if a.role == role:

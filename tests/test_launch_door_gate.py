@@ -57,7 +57,7 @@ def _wrapper(tmp_path, engine="siesta", activation="conda activate"):
              env_init={"activation": activation,
                        "preamble": "true"}).to_json()
         + "\n")
-    return write_run_wrapper(deck, env="e", names=names,
+    return write_run_wrapper(deck, env="e", names=names, engine=engine,
                              resources=Resources(
                                  mpi_np=2 if engine == "siesta" else None,
                                  cpus_per_task=1, wall_slack=600),

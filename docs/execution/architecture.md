@@ -672,6 +672,14 @@ the one door, naming the engines it runs on.
 - whether a run is one process with threads (PySCF) or ranks (`one_process`);
 - whether its deck states its settings as keywords the engine reads — SIESTA's
   fdf, not PySCF's script (`keyword_deck`);
+- the environment its runs enter — a category of
+  [`configuration.md`](?doc=configuration.md) § 4 (`environment`) — and, where
+  a run that uses a GPU needs another build, that one's category
+  (`gpu_environment`: SIESTA's GPU capability is an environment; PySCF's is a
+  device its deck checks, [`gpu.md`](?doc=execution/gpu.md) G8);
+- the programs its runs start, each with its name as the run's log says it —
+  `siesta` (*SIESTA*), the engine's own, and `tbtrans` (*TBtrans*) — or none,
+  where its deck is a script the job's own python runs (`programs`);
 - its stage presets (`presets`, read by the one ladder rule,
   `jobset.ladder.engine_ladder`), and whether it has a benchmark lane
   (`benchmark`).
@@ -707,7 +715,10 @@ it asks the record. **So a new kind is** a record in the kind table, its own
 modules, its catalogue items, its file catalogue rows and its warm-file
 sections; **a new engine** is a record in the engine table, its config class and
 seam, its catalogue items, its file catalogue rows and warm-file vocabulary,
-and the environment its runs activate. A new folder is its creator's record
+and the recipe of the environment its record names. Its run script is the one
+every engine's run script is: the record decides each block, beside its catalogue
+items' declarations and the parse layer's tables for its outputs' roles
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 1). A new folder is its creator's record
 (`calcdir.json`), a new file a catalogue row.
 
 ---

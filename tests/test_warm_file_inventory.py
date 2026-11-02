@@ -44,7 +44,7 @@ ENGINES = (
 )
 
 
-def _wrapper(tmp_path, ext, body, warm=None, **kw):
+def _wrapper(tmp_path, engine, ext, body, warm=None, **kw):
     """The wrapper of a run that STATES its shape -- one written for an
     unstated one is refused (`architecture.md` § 5.2) -- and carries the run
     settings every job carries, its wall's slack
@@ -54,7 +54,8 @@ def _wrapper(tmp_path, ext, body, warm=None, **kw):
     p = tmp_path / names.name(ext)
     p.write_text(body)
     return runwrap.render_run_wrapper(
-        p, names=names, env="molbuilder-siesta", warm=warm,
+        p, names=names, engine=engine, env="molbuilder-siesta",
+        warm=warm,
         resumes=True, relaunch_continues=True, trial=False,
         resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1,
                                "wall_slack": 600, **kw}))
@@ -69,6 +70,6 @@ def test_no_generated_wrapper_changes_directory(tmp_path, engine, ext, body):
     contract** — both launchers establish it, and neither the wrapper nor the
     engine ever navigates.
     """
-    text = _wrapper(tmp_path, ext, body)
+    text = _wrapper(tmp_path, engine, ext, body)
     cds = re.findall(r"(?m)^\s*cd\s+\S+", text)
     assert cds == [], f"{engine} wrapper navigates: {cds}"

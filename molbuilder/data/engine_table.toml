@@ -41,6 +41,17 @@ presets = "molbuilder.config.siesta:SIESTA_STAGE_PRESETS"
 # Whether its deck states its settings as keywords the engine reads -- the
 # fdf -- which a run's setup rows read back from the deck.
 keyword_deck = true
+# The environment its runs enter: a category of configuration.md § 4
+# (`diagnostics.DEFAULT_ENV_NAMES`, overridable in `envs`) ...
+environment = "siesta"
+# ... and the one a run that uses a GPU enters: SIESTA's GPU capability is a
+# build of its own, an environment (execution/gpu.md G3, G8).
+gpu_environment = "siesta-gpu"
+# THE PROGRAMS ITS RUNS START, each with its name as a run's log says it --
+# the first its own; a job names another (`Job.program`: a transmission's
+# `tbtrans`, engines/transport.md § 6.1b).  The run script launches the
+# program, probes its build and caps its memory (running-a-job.md § 1).
+programs = { siesta = "SIESTA", tbtrans = "TBtrans" }
 
 [pyscf]
 words = "PySCF"
@@ -59,3 +70,7 @@ benchmark = false
 presets = "molbuilder.config.pyscf:PYSCF_STAGE_PRESETS"
 # A Python script, its settings the script's own values, not keywords.
 keyword_deck = false
+environment = "pyscf"
+# No GPU environment: PySCF's GPU is a device its deck checks at its start
+# (execution/gpu.md G8).  No program: the deck is a script the job's own
+# python runs, and it applies the memory cap and reads the wall itself.

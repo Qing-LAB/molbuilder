@@ -55,8 +55,8 @@ def test_every_tool_routes_to_a_known_category():
 
 
 def test_every_engine_the_catalogue_names_has_an_env():
-    """A deck's engine is the catalogue's answer (`runfiles.engine_of_role`),
-    and the run script needs an env for it."""
+    """Every engine the file catalogue names has an environment category
+    registered: the run script enters one for each."""
     from molbuilder.runfiles import engines
     assert set(engines()) <= set(DEFAULT_ENV_NAMES)
 

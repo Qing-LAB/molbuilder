@@ -506,12 +506,19 @@ walk script written at its launch from the members still to run
 `molbuilder run`: `prep` makes the folder and its script, and `jobset launch`
 starts it *(user, 2026-08-11)*.
 
-**The engine's environment is chosen at prep**: `molbuilder-siesta`, or
-`molbuilder-siesta-gpu` when the job's GPU request says it uses a GPU
+**The engine's environment is chosen at prep, from its engine's record**
+([`architecture.md`](?doc=execution/architecture.md) § 3.3): its `environment`
+category — `siesta`, `pyscf`, whose environments are `molbuilder-siesta`,
+`molbuilder-pySCF` — or its `gpu_environment`, `siesta-gpu`
+(`molbuilder-siesta-gpu`), when the job's GPU request says it uses a GPU
 (`jobset.model.gpu_request(resources).uses` — never a keyword read out of the
-deck); `molbuilder-pySCF`, on that env's own python; an env you name always
-wins. SIESTA's launcher is chosen on the node by the build probe (§ 2.1). Both
-are [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.3.
+deck); an env you name always wins. **One run script serves every engine**: the
+record, the job, a catalogue item's declaration (`launch`, `deck_applies`) and the
+parse layer's tables for the output's role decide each block below, and nothing
+in it is chosen by the engine's name or the deck's suffix. A program's launcher is chosen on the node
+by the build probe (§ 2.1); a deck that is a script runs on its environment's
+own python. Both are [`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 2.3.
 
 #### What a run script is made of
 
@@ -534,32 +541,39 @@ arranges files belongs to Python on the host.
 | **The one exit trap** | the script's one EXIT trap, and one handler for every signal that stops a run (`runwrap._STOPPING_SIGNALS`); it writes the conclusion marker of a script that failed on its own ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 | **Baked preamble** | the target machine's own lines, verbatim from its record |
 | **Activation** | the record's one activation statement, verbatim |
-| **The counts, resolved** | *(SIESTA)* the rank and thread counts the run uses |
-| **OpenMP thread sizing** | *(PySCF)* the thread count the run uses, exported |
+| the node's shape | the node's physical cores and sockets (`lscpu`), logged |
+| **GPU mode: placement** | *(a job that uses a GPU, its engine running ranks)* whether MPS is on the machine, and GPU 0's NUMA node |
+| **The counts, resolved** | the thread count the run uses, and its rank count where its engine runs ranks |
 | **The job's python** | `$_mb_py`, the activated env's own python |
-| **Can the job finish itself?** | *(a job with a finish)* the check that the finish bundle loads on the job's python ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
-| **Runtime status banner** | the MODE line (§ 4.4), the restart files the run holds, its constraints and ranks |
-| **Thread / BLAS pinning** | the OpenMP, MKL and OpenBLAS thread exports |
-| **GPU mode: placement** | *(a job that uses a GPU)* whether MPS is on the machine, and GPU 0's NUMA node |
-| **GPU load-balance** | *(a job that uses a GPU)* each MPI rank matched to a visible GPU |
-| **MPS daemon** | *(a job that uses a GPU)* the per-job daemon when ranks share a GPU |
-| **GPU<->CPU socket co-location** | *(a job that uses a GPU)* ranks pinned beside the GPU's NUMA node |
-| **Probe SIESTA build at runtime** | the build's parallelisations, which choose the launcher (§ 2.1) |
+| **Runtime status banner** | what the run holds of the restart files, read at run time, and the atoms its deck holds, stated at prep from its ATOM-METADATA record (§ 3.4); printed, with the program and its build, its counts and its wall, once the launch is chosen |
+| **GPU load-balance** | *(the same)* each MPI rank matched to a visible GPU |
+| the occupancy notice | *(an engine that runs ranks)* the rank count set against the deck's own orbital estimate ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.1a) |
+| **Thread / BLAS pinning** | the OpenMP thread export; where the engine runs ranks, MKL and OpenBLAS pinned to one thread; where ranks are placed on GPUs, the threads bound (`OMP_PROC_BIND`, `OMP_PLACES`) |
+| **MPS daemon** | *(a job that uses a GPU, its engine running ranks)* the per-job daemon when ranks share a GPU |
+| the memory cap | *(the run states `max_memory_mb`, and its engine's deck does not apply it — the item's `deck_applies`, [`engines/template.md`](?doc=engines/template.md) § 5)* `ulimit -v` before the program |
+| **Probe the program's build** | *(an engine that runs a program)* the build's parallelisations, which choose the launcher (§ 2.1) |
+| **The deck is a script** | *(an engine whose deck is a script)* the launch on the job's python, one process |
+| **GPU<->CPU socket co-location** | *(a job that uses a GPU, its engine running ranks)* ranks pinned beside the GPU's NUMA node, each rank starting the job's program |
 | **Record resolved launch command + placement** | the command about to run, logged |
 | **Dry-run preview** | `--dry-run`: the resolved command and each value's source, nothing started |
-| **SCF per-iteration timing instrument** | the per-iteration timing log a benchmark reads |
+| **SCF per-iteration timing instrument** | *(where the output's family names a stamp, `scf_timing_rows.STAMPED_BY_RUN_SCRIPT`)* the per-iteration timing log a benchmark reads |
+| **How a run ended** | `_mb_ending`, the script's question to the framework's reader of endings, and the one ask `_mb_ending_able` — see below |
 | **Background job monitor** | `mb_monitor.pyz` at `nice 19`, watching the script's process ([`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6) |
-| **What the engine will read** | *(SIESTA)* the `effective-parameters` record: the deck as libfdf parses it, and each catalogue item the deck leaves to its default |
+| **Can the job finish itself?** | *(a job with a finish)* the check that the finish bundle loads on the job's python ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
 | **The run's report step: point started** | *(a point of a run of points)* [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 9 |
-| **Launch the engine + capture exit** | the engine, run as a child, never `exec`'d; after a failure, `_mb_ending` — see below — and the conclusion marker |
+| **What the engine will read** | *(a deck that states keywords)* the `effective-parameters` record: a row for each catalogue item that writes a keyword into its deck, with its default, then the deck as the engine parses it, read by the bundle beside it (`mb_monitor.pyz deck`) |
+| **Launch the engine + capture exit** | the wall left, told to the engine; the engine, run as a child, never `exec`'d; after a failure, `_mb_ending` — see below — and the conclusion marker |
 | **The run's report step: point ended** | *(a point of a run of points)* [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 10 |
 | USER-CUSTOM | your own zone (§ 3.5) |
 
 **`_mb_ending` is the script's question to the framework's reader of endings**
-in `mb_monitor.pyz`: `ending OUTPUT --stderr LOG [QUESTION [ARG]]`, exit 0 for
-yes, 1 for no, 2 when the ending cannot be read — asked once first, *the one
-ask*. What it answers and what the script then prints is
-[`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5.
+in `mb_monitor.pyz`: `ending OUTPUT [--stderr LOG] [QUESTION]` — `--stderr` where
+the output's role keeps the engine's stderr apart, in the session log. With no
+question it prints the ending in words; `out-of-time` answers by exit status, 0
+for yes, 1 for no; `advice` prints the advice for the cause, exit 0 where there is
+some and 1 where there is none; 2, for any of them, when the ending cannot be read
+— asked once first, *the one ask*. What it answers and what the script then prints
+is [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5.
 
 #### Plain, readable bash
 
@@ -567,8 +581,9 @@ ask*. What it answers and what the script then prints is
   activate <env>` or `source activate <env>`, after the record's preamble
   ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2). The job's
   python is the env's own, found through `CONDA_PREFIX`.
-- **A run's outputs are its own and never overwritten.** stdout goes to
-  `<label>_<NN>_<stage>.out` (SIESTA) or `<label>_<NN>_<stage>.pyscf.log` (PySCF) in the
+- **A run's outputs are its own and never overwritten.** stdout goes to its
+  engine's stdout role in the file catalogue (`runfiles.stdout_roles`) —
+  `<label>_<NN>_<stage>.out` (SIESTA), `<label>_<NN>_<stage>.pyscf.log` (PySCF) — in the
   run's folder, and a run holds one start, so a launch again is a new folder.
 - **`run-` is a reserved folder prefix, and its members are numbers.** A run
   folder is made in Python — the first when the stage is prepared, each next
@@ -867,7 +882,8 @@ it. The payload is the sidecar's schema
   the writer `script_emit.emit_atom_metadata`).
 - **One reader**, `deck_record.extract_atom_metadata` with the order record's
   `deck_record.order_record_of`, used by `apply_atom_metadata`,
-  `runs.declared` and the vibration finish beside the job. **It applies no
+  `runs.declared`, the vibration finish beside the job and prep's run script,
+  which states the atoms the deck holds on its banner (`runwrap._held_words`). **It applies no
   version gate**: a block is read as written, nothing retired is translated.
   Each piece refuses what it owns — the block reader a block that does not
   read (`DeckRecordUnreadable`), the order-record reader a record that is not
@@ -1471,7 +1487,7 @@ persisted files (`job-set.json`) and the scheduler flags they become, and
 | OpenMP cores per rank | `omp_threads` (SIESTA), `threads` (PySCF) | `cpus_per_task` → `-c` | `resolve.py`, at prep; a sweep's `C` axis through `MachineTranslation` |
 | wall time | `time` (`allocation`, the run card) | `time` → `-t` | `scheduler.quantities.canonical_time` at every human edge, and `Resources.__post_init__` |
 | memory | `mem` (`allocation`) | `mem` → `--mem` | `scheduler.quantities.canonical_mem`, the same way |
-| per-rank memory cap | `max_memory_mb` | `max_memory_mb` — no scheduler flag | the run script's `ulimit -v` |
+| per-rank memory cap | `max_memory_mb` | `max_memory_mb` — no scheduler flag | the run script's `ulimit -v` before a program, or the deck where its engine applies the cap itself (PySCF's `mol.max_memory`) |
 | whole node | — no config name sets it | `exclusive` → `--exclusive --mem=0` (the kind's `whole_node`, written instead of `--mem`) | — |
 | GPU binding | `allocation.gpu_binding` | `gpu_binding` → `--gres-flags=enforce-binding` beside a GPU ask, unless `false` | prep's fold of the job request ([`gpu.md`](?doc=execution/gpu.md) G9) |
 | GPU request | `use_gpu`, `gpu_count` | `gres` → `--gres=gpu:<count>`; `use_gpu` rides `Resources` | a count, stated and never defaulted, naming no card ([`gpu.md`](?doc=execution/gpu.md) G5); carried, never read back out of the deck (G7) |
@@ -1482,7 +1498,9 @@ persisted files (`job-set.json`) and the scheduler flags they become, and
 - **Wall time** on the exchange side is SLURM's spelling and nothing else
   ([`job-request.md`](?doc=execution/job-request.md) § 3.1).
 - **Memory and the per-rank cap are different questions**: `mem` asks the
-  scheduler; `max_memory_mb` is a guard the run script applies.
+  scheduler; `max_memory_mb` is a guard applied on the node — by the run
+  script, or by a deck its catalogue item says applies it (`deck_applies`,
+  [`engines/template.md`](?doc=engines/template.md) § 5).
 - **`partition` and `qos` are not `Resources` fields**: they are the target
   record's, resolved from `domain`.
 
@@ -1512,9 +1530,9 @@ lost fields on that road before.
 | field | read by | carries |
 |---|---|---|
 | `domain` · `time` · `exclusive` · `mem` · `gres` · `gpu_binding` · `mpi_np` · `cpus_per_task` | the sender | the ask the scheduler reads (the table above) |
-| `max_memory_mb` | the run script | its `ulimit -v` cap |
+| `max_memory_mb` | the run script, or the deck that applies it | the per-rank memory cap |
 | `wall_slack` | the run script | how much of the wall the engine keeps to stop cleanly, its files saved ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
-| `use_gpu` | the run script | whether the run uses a GPU — carried, so a PySCF GPU run routes too ([`gpu.md`](?doc=execution/gpu.md) G7) |
+| `use_gpu` | the run script | whether the run uses a GPU — carried, never read back out of the deck ([`gpu.md`](?doc=execution/gpu.md) G7): the environment it enters where its engine has a GPU build of its own (SIESTA's), the GPU placement where its engine runs ranks, the monitor's GPU sampling |
 | `notify_on_scf` · `notify_every_hours` | the monitor's command line | when the calculation speaks ([`run-reports.md`](?doc=execution/run-reports.md) § 2) |
 | `notify_channels` | the monitor's command line | which of the running machine's channels, by name: unset renders no flag and nothing is sent; `*` is every channel; an empty list is none ([`run-reports.md`](?doc=execution/run-reports.md) § 3.0) |
 | `notify_report` | the monitor's command line | which report fields a chat card shows, the name always sent: unset is every field, an empty list the summary line alone ([`job-request.md`](?doc=execution/job-request.md) § 3.5) |

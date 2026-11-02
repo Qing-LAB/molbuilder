@@ -350,7 +350,7 @@ def bring_files(jobset: JobSet, job, base, src_dir, run, names, plan
     # coordinates file -- a folder holding none of one brings none), and the
     # calculation's shared package.
     names_ = ([job.script] + list(jobset.shared)
-              + list(beside_the_deck(job.script, job.finish, names)))
+              + list(beside_the_deck(jobset.engine, job.finish, names)))
     # THE ONE COPY STEP (`planned.bring`): from where prep rendered them,
     # else the calculation's root.
     return bring(plan, names_, into=run, from_dir=src_dir, also=(base,))

@@ -113,11 +113,14 @@ structure = { elements = ["H", "H", "H", "H", "H", "H"], positions = [[3.0, 7.0,
 deck = ['"frozen_atoms":[0,5]', '"left_lead":[0,1]', '"molecule":[2,3]', '"right_lead":[4,5]']
 
 # What the engine will read is recorded in the run's output, inside one
-# fence either engine's reader reads (`script-preparation.md` § 4.2b): a
-# SIESTA run's script echoes it, a PySCF deck prints it.
+# fence either engine's reader reads (`script-preparation.md` § 4.2b): the
+# run script of a deck that states keywords echoes it -- the deck read by the
+# framework's one deck reader, beside the job (`mb_monitor.pyz deck`,
+# `running-a-job.md` § 1 step 16) -- and a script deck prints it itself.
 [[case]]
-name = "a SIESTA run script records its effective parameters in the fence either engine's reader reads"
-run_sh = ["# === molbuilder effective-parameters BEGIN ===", "# === molbuilder effective-parameters END ==="]
+name = "a SIESTA run script records its effective parameters in the fence either engine's reader reads, the deck read by the bundle's one deck reader"
+run_sh = ["# === molbuilder effective-parameters BEGIN ===", "# === molbuilder effective-parameters END ===",
+          'mb_monitor.pyz deck "']
 
 # BlockSize has two states: a number set or benchmarked, written verbatim,
 # or unset -- no line, and SIESTA uses its own automatic (`siesta.md` § 1.1,
@@ -161,9 +164,10 @@ deck_says = { "SolutionMethod" = "OMM", "Spin.Fix" = ".true." }
 # ===================================================================== #
 
 [[case]]
-name = "...a PySCF deck in the same fence"
+name = "...a PySCF deck in the same fence, its run script echoing none"
 engine = "pyscf"
 deck = ["# === molbuilder effective-parameters BEGIN ===", "# === molbuilder effective-parameters END ==="]
+run_sh_lacks = ["mb_monitor.pyz deck"]
 
 # A deck is one rung (`stages.md` § 1.1a), so it relaxes through one call,
 # `relax`, which returns geomeTRIC's converged flag, carrying the rung's six
