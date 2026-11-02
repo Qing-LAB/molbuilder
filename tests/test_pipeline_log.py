@@ -390,37 +390,22 @@ def test_a_describe_hook_that_raises_says_whose_it_was(
 def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     """The boundary must not bury a refusal an engine raised ON PURPOSE.
 
-    SIESTA refuses GPU without an ELPA diagonaliser from inside `spec_for`,
-    in a sentence written for a person.  A wrapper CLASS would have turned
-    that into ``HookError`` and broken every caller matching ``ValueError``
-    -- which is why the boundary annotates instead of replacing.
-
-    **Driven THROUGH the boundary**, both ways.
+    A hook's ``ValueError`` in a sentence written for a person stays a
+    ``ValueError`` with that sentence.  A wrapper CLASS would have turned
+    it into ``HookError`` and broken every caller matching ``ValueError``
+    -- which is why the boundary annotates instead of replacing.  (The
+    road half this row once had -- a GPU run on ScaLAPACK refused inside
+    `spec_for` -- is gone: since 2.64.0 the settings check says it first,
+    and since 2.64.1 as a warning, `execution/gpu.md` G11.)
     """
     from molbuilder.issues import calling
-    from molbuilder.jobset.errors import PrepError
 
-    # 1. the unit: an engine's ValueError through the boundary is still a
-    #    ValueError, with its own message.
     with pytest.raises(ValueError) as caught:
         with calling("spec_for", engine="siesta", where="BDT.fdf"):
-            raise ValueError("use_gpu requires an ELPA diagonalizer")
-    assert str(caught.value) == "use_gpu requires an ELPA diagonalizer"
+            raise ValueError("a refusal written for a person")
+    assert str(caught.value) == "a refusal written for a person"
     assert any("siesta.spec_for" in n
                for n in getattr(caught.value, "__notes__", [])), caught.value
-
-    # 2. the real one: a prep of a GPU-without-ELPA calculation refuses with
-    #    SIESTA's own sentence, through every layer between.
-    dest, stages = _calculation(tmp_path, "siesta")
-    # THE GPU ON, AND THE DIAGONALIZER STATED ScaLAPACK -- not ELPA, the
-    # default (`engines/siesta.md` § 7) -- on the run card.
-    from support.road import read_request, write_request
-    request = read_request(dest)
-    request["execution"] = {"use_gpu": True, "diag_algorithm": "ScaLAPACK"}
-    write_request(dest, request)
-    with pytest.raises((ValueError, PrepError)) as real:
-        _prep(dest, stages[0], gres="gpu:1")    # a GPU run states its GPUs
-    assert "ELPA" in str(real.value), real.value
 
 
 def test_the_attribution_reaches_the_person_running_the_command(tmp_path):

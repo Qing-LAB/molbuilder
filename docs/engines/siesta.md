@@ -519,7 +519,7 @@ flowchart TD
     A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"use_gpu?"}
     G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu<br/><i>the only ask needing a source build</i>"]
     G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta<br/><i>CPU-ELPA runs in the packaged env</i>"]
-    A -.->|"ScaLAPACK + use_gpu"| ERR["refused by SIESTA's settings check<br/>on the page and at prep<br/>(validation/siesta.py)"]
+    A -.->|"ScaLAPACK + use_gpu"| SAID["emit NOTHING, the GPUs asked as stated<br/>env → molbuilder-siesta-gpu<br/><i>said by SIESTA's settings check: the solve stays on the CPU</i>"]
 ```
 
 Two **orthogonal** decisions (contract rewritten 2026-06-29):
@@ -534,11 +534,13 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
 2. **`cfg.use_gpu` — an accelerator on top of an ELPA choice.** On → the ELPA
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
-   Meaningful only with an ELPA algorithm — GPU with any other solver is
-   refused by **SIESTA's settings check** (`validation.siesta`, an error on
-   `use_gpu` naming the two ELPA choices), which the page's live check and
-   every deck's render ask alike, a transport rung's included — so the page
-   says it before Save, never first when prep writes the deck.
+   Read by an ELPA solve alone: with any other solver the deck carries no GPU
+   switch, and the run is prepared as asked — its GPUs asked, its environment
+   the GPU build ([`gpu.md`](?doc=execution/gpu.md) G3) — while its solve
+   stays on the CPU. **SIESTA's settings check says so** (`validation.siesta`,
+   a warning on `use_gpu` naming the two ELPA choices), which the page's live
+   check and prep hear alike: a library's own GPU limit is said, never refused
+   ([`gpu.md`](?doc=execution/gpu.md) G11).
 
 **Emission:**
 - `ScaLAPACK` → emit **nothing** (SIESTA's built-in default).

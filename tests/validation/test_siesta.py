@@ -99,10 +99,11 @@ def test_every_range_warning_names_the_engine_keyword(water_structure):
                           "not have:\n  " + "\n  ".join(invented))
 
 
-#: A GPU RUN SOLVES ON ELPA (`engines/siesta.md` § 7): the GPU with a
-#: solver that has no GPU path is an error of the settings check, which the
-#: page's check hears -- until 2.64.0 it was said first when prep wrote the
-#: deck.  ``(use_gpu, diag_algorithm, refused)``.
+#: THE DECK'S GPU SWITCH IS ELPA'S (`engines/siesta.md` § 7): the GPU with
+#: a solver that has none is a warning of the settings check, which the
+#: page's check hears -- a library's own GPU limit is said, never refused
+#: (`execution/gpu.md` G11); 2.64.0 refused it.
+#: ``(use_gpu, diag_algorithm, warned)``.
 GPU_SOLVER_ROWS = [
     pytest.param(True, "ScaLAPACK", True, id="gpu-with-scalapack"),
     pytest.param(True, "ELPA-2STAGE", False, id="gpu-with-elpa"),
@@ -110,14 +111,14 @@ GPU_SOLVER_ROWS = [
 ]
 
 
-@pytest.mark.parametrize("use_gpu, algorithm, refused", GPU_SOLVER_ROWS)
-def test_a_gpu_run_with_a_solver_that_has_no_gpu_path_is_an_error(
-        water_structure, use_gpu, algorithm, refused):
+@pytest.mark.parametrize("use_gpu, algorithm, warned", GPU_SOLVER_ROWS)
+def test_a_gpu_run_on_a_solver_the_gpu_switch_skips_is_said(
+        water_structure, use_gpu, algorithm, warned):
     cfg = SiestaConfig(use_gpu=use_gpu, diag_algorithm=algorithm)
     issues = validate(water_structure, cfg, calculation="optimization")
     said = [i for i in issues if i.where == "config.use_gpu"]
-    if refused:
-        assert [i.severity for i in said] == ["error"], said
+    if warned:
+        assert [i.severity for i in said] == ["warn"], said
         assert algorithm in said[0].message and "ELPA" in said[0].message
     else:
         assert said == [], said

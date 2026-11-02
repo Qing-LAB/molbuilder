@@ -29,7 +29,8 @@ as they stood.
 **Where we are: 2.64.0** — **F3's engine side**: an engine's facts are its
 record's — its settings check, its reading of the same calculation, the
 longest label it keeps whole, its deck's keyword reader — and a run's files
-are read by what they are, not by engine name (the changelog's 2.64.0 row).
+are read by what they are, not by engine name (the changelog's 2.64.0 row);
+2.64.1 says a SIESTA GPU run on ScaLAPACK rather than refusing it (G11).
 **Next: 2.65.0**, F3's kind side and pages: a kind's and a pair's facts
 asked of their records — the atom order a pair's decks list atoms in, a
 transport run's scratch status line, the description's checks, the kind a

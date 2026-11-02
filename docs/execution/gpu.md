@@ -235,7 +235,10 @@ engine's GPU path keeps:
   the same calculation while that build is the same SIESTA release as the packaged
   one. The recipes build both from one release (5.4.2) unless
   `MOLBUILDER_SIESTA_TAG` names another for the source build
-  ([`ops/env-framework.md`](?doc=ops/env-framework.md)).
+  ([`ops/env-framework.md`](?doc=ops/env-framework.md)). Its deck's GPU switch,
+  `Diag.ELPA.GPU`, is read by an ELPA solve alone: a GPU run on ScaLAPACK asks
+  its GPUs and runs in that build, and its solve stays on the CPU
+  ([`engines/siesta.md`](?doc=engines/siesta.md) § 7).
 - **PySCF** runs the mean field in gpu4pyscf, which differs from PySCF in two
   places that touch an answer: it has **no stability analysis**, so an
   unrestricted reference's check (UHF, UKS) is not made on the GPU and the run
@@ -247,7 +250,9 @@ Choosing the GPU knowing that is the person's. The run card's GPU switch says it
 beside the switch for a PySCF calculation
 ([`task-setup.md`](?doc=web/task-setup.md) § 6.2), and prep says it among each
 deck's own findings — the PySCF settings gate's, a `warn`, never an `error` — for
-a run on the GPU whose reference is unrestricted or that carries a solvent model.
+a run on the GPU whose reference is unrestricted or that carries a solvent model —
+and SIESTA's, likewise a `warn`, for a run on the GPU whose solver is not ELPA
+*(2.64.1; 2.64.0 refused it)*.
 
 ---
 
@@ -271,7 +276,7 @@ flowchart TB
     Q1 -->|true| Q2{"engine?"}
 
     Q2 -->|SIESTA| Q3{"diag_algorithm<br/>is ELPA?"}
-    Q3 -->|no| REFUSE1["<b>refused</b><br/>GPU + ScaLAPACK<br/><i>SIESTA's settings check: the page and prep alike</i>"]
+    Q3 -->|no| SAID1["deck: no GPU switch<br/>GPU + ScaLAPACK: the solve on the CPU<br/><i>said by SIESTA's settings check (G11)</i>"]
     Q3 -->|yes| DECK["deck: Diag.ELPA.GPU .true."]
     ENV{"the GPU request → molbuilder-siesta-gpu<br/>in the target's record? (G3)"}
     Q2 -->|SIESTA| ENV
@@ -292,10 +297,8 @@ flowchart TB
 
     CPU --> OUT
     DECK --> OUT
+    SAID1 --> OUT
     PYDECK --> OUT
-
-    classDef refuse fill:#7f1d1d,stroke:#ef4444,color:#fff
-    class REFUSE1 refuse
 ```
 
 ### 3.1 The bench walks the same graph, once per family
