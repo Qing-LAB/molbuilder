@@ -76,14 +76,14 @@ def test_nothing_shipped_beside_a_job_is_claimed_as_its_output(tmp_path):
     """
     from molbuilder.parse import detect
     from molbuilder.parse.errors import UnknownFormatError
-    from molbuilder.runwrap import (MONITOR_BUNDLE, MONITOR_COMPANIONS,
-                                    companion_source, monitor_bundle)
+    from molbuilder.runwrap import (MONITOR_BUNDLE, companion_source,
+                                    monitor_bundle, monitor_companions)
 
     (tmp_path / MONITOR_BUNDLE).write_bytes(monitor_bundle())
     with pytest.raises(UnknownFormatError):
         detect(str(tmp_path / MONITOR_BUNDLE))
     claimed = {}
-    for name in MONITOR_COMPANIONS:
+    for name in monitor_companions():
         (tmp_path / name).write_text(companion_source(name), encoding="utf-8")
         try:
             claimed[name] = detect(str(tmp_path / name)).name

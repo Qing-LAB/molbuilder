@@ -331,7 +331,7 @@ def main():
         from runfiles import RunNames
         from runrecord import run_output
         names = RunNames(SYSTEM_LABEL, STAGE)
-        out_path = run_output(".", names)
+        out_path = run_output(".", names, "siesta")
         if out_path is None:
             print(f"error: no SIESTA output of {{names.stem}} here.  Run "
                   "SIESTA first, or pass --out to point at the correct "

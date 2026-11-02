@@ -44,16 +44,16 @@ from ..identity import migrate_as_typed
 from ..issues import Issue, ValidationError
 
 
-def preflight(task, config_cls=None, *,
+def preflight(task, *,
               generators: Optional[Dict[str, Any]] = None,
               template_text: Optional[str] = None,
               request=None) -> List[Issue]:
     """§ 6.6's schema-dependent half, in the order the contract lists them.
 
     ``task`` is a parsed :class:`molbuilder.task.Task` — the codec's own four
-    checks have already passed, or there would be no object. ``config_cls`` is
-    the engine's config dataclass; when omitted it is resolved from
-    ``task.engine``, and *that resolution failing is itself the first check*.
+    checks have already passed, or there would be no object.  The engine's
+    config class is resolved from ``task.engine`` (the engine record's
+    ``config``), and *that resolution failing is itself the first check*.
 
     ``generators`` maps engine name → config class, and defaults to what this
     backend actually ships. It is an argument so a test can ask "what happens
@@ -85,7 +85,7 @@ def preflight(task, config_cls=None, *,
             f"engine {task.engine!r} has no generator in this backend. "
             f"Available: {', '.join(sorted(known)) or '(none)'}",
             where="task.engine")]
-    cls = config_cls if config_cls is not None else known[task.engine]
+    cls = known[task.engine]
 
     # -- 1a. a stage older versions wrote that the pair no longer holds
     # beside its others (the kind table's `retired`,
@@ -146,10 +146,10 @@ def preflight(task, config_cls=None, *,
     _engine, _kind = str(task.engine), _kind_of(task)
     ladder: list = []
     if template_text is not None and task.stages:
-        from ..resolve import resolved_ladder
+        from ..resolve import ResolveError, resolved_ladder
         try:
-            ladder = resolved_ladder(template_text, task, cls)
-        except Exception:
+            ladder = resolved_ladder(template_text, task)
+        except (ResolveError, ValueError):
             # An unresolvable template earns prep's OWN refusal moments
             # later, with its own wording (a template it cannot rebuild
             # from) -- a sequence WARNING must not preempt it as a crash.

@@ -253,7 +253,7 @@ to decide the run is over is not.
 
 **The monitor has no reader of its own.** Every fact it reports is read by the reader the rest of molbuilder
 reads that file with, and those readers travel with the job in **one file**, `mb_monitor.pyz`
-(`runfiles.MONITOR_BUNDLE`) — a Python zip application of the modules `runwrap.MONITOR_COMPANIONS` names, each its
+(`runfiles.MONITOR_BUNDLE`) — a Python zip application of the modules `runwrap.monitor_companions` names, each its
 own file unchanged, run by the job's own python, `$_mb_py`
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
 
@@ -277,7 +277,7 @@ own file unchanged, run by the job's own python, `$_mb_py`
 | a run of points' report steps: a point's verdict, a round's outcome | the status door's verdict reader (`_run_ending.verdict_of`), and the round's outcome the index names (§ 2.9) | `_run_ending.py` · `run_words.py` · `conductance.py` · `energies.py` · `deck_record.py` |
 | the run's notification record | `runrecord.read_notified`, `note_notified`, written through the one JSON writer | `runrecord.py` · `persist.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
-| the deck as its engine reads it, for the run script's record of what the engine will read ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1, step 16) | the deck's one reader, `parse.fdf.read_deck` — a block read from a file beside the deck inlined | `fdf.py` · `units.py` |
+| the deck as its engine reads it, for the run script's record of what the engine will read ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1, step 16) | the keyword reader the engine's record names (`keyword_reader` — SIESTA's `parse.fdf:KEYWORDS`), its `read_deck` — a block read from a file beside the deck inlined | `fdf.py` · `units.py` |
 | the wall it was sent with (§ 2.1b) | the launch record (`runrecord.launch_record`), its `placed_on.time` read by `runrecord.sent_wall_s` through the wall's one parser, `scheduler.quantities.parse_walltime` | `runrecord.py` · `quantities.py` |
 | when the job started (§ 2.1b) | the header's `MB_JOB_STARTED`, its name `runtime_info.JOB_STARTED_VAR` — the job's clock's names, `MB_WALL_S` and `MB_WALL_SLACK_S` beside it | `runtime_info.py` |
 
@@ -522,7 +522,7 @@ it. Nothing else reaches stderr in a healthy run.
 | verb | for | |
 |---|---|---|
 | `mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION]` | the run script, asking how a failed run ended — `_run_ending`'s door: the ending in words, `out-of-time` (exit 0 yes, 1 no) or `advice` (words, exit 1 for none) | answers 2, *cannot read*, for a bundle that does not load; the run script asks it once, before its first question, so that error prints once ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) |
-| `mb_monitor.pyz deck DECK` | the run script's record of what the engine will read — the deck's lines as the engine parses them | 1, saying why, for a deck that does not read ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1 step 16) |
+| `mb_monitor.pyz deck READER DECK` | the run script's record of what the engine will read — the deck's lines as the engine parses them, by `READER`, the keyword reader the engine's record names (`keyword_reader`) | 1, saying why, for a deck that does not read ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1 step 16) |
 | `point started\|ended --label --stage --deck [--exit --output] [--bundle --before --after --finish]` | a point's report steps | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, ops 9 and 10 |
 | `notify <event> --label --stage --dir <run> [--state --detail --reason]` | one event for a run of points | § 2.4 |
 
@@ -1160,10 +1160,12 @@ This is the rule, and its one home; every reader, sender and writer in this chap
 
 A notification is a message about a run, never an input to one. Nothing in this path can start, stop, retry or
 alter a job — which also bounds the damage if a destination is ever compromised: the worst it buys is noise. The
-bundle the monitor travels in carries other verbs, which are not the monitor: `ending`, a reader the run script
-asks how a run ended, what the run script then does being its own
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5); and a point's report steps, which are the run
-script's own steps ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, ops 9 and 10).
+bundle the monitor travels in carries other verbs, which are not the monitor (`monitor.BUNDLE_VERBS`): `ending`, a
+reader the run script asks how a run ended, what the run script then does being its own
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5); `deck`, the deck as its engine reads it, for the run
+script's record of what the engine will read; and a run of points' own steps — a point's report steps (`point`) and
+the run's events they send (`notify`) ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, ops 9 and 10,
+§ 4.6).
 
 ---
 
@@ -1175,7 +1177,7 @@ script's own steps ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3
 | how it reaches the run script | `jobset.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2) |
 | how it reaches the monitor | the flags on the `mb_monitor.pyz` line (§ 2.6), rendered by `runwrap._monitor_block` |
 | which run it watches | `--label` / `--stage`; every file named through `runfiles` (§ 2.3) |
-| what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.MONITOR_COMPANIONS` (§ 2.3) |
+| what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.monitor_companions` (§ 2.3) |
 | when to fire | `monitor.run_monitor` (§ 2); for a run of points, its start, milestones, failed parts and finish by its points' report steps (`monitor._point_main`: `mb_monitor.pyz point started`, `point ended`) through `mb_monitor.pyz notify` (§ 2.4, § 2.9) |
 | a run of points' index, and the rule each event is judged by | `runpoints` ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3, § 4) — `rows_of`, `still_to_run`, `close`, `run_state`, `said`, `reason` |
 | what the summary line says | `monitor.JobStatus.as_text` (§ 4.1a), from the run's declared structure (§ 2.8) |

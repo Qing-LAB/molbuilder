@@ -275,6 +275,13 @@ sanitiser for a calculation's or a stage's name.
      nothing; a 300-character name exceeds what `<label>_<NN>_<stage><role>` may
      occupy. A truncated label would be a different calculation wearing the
      same name.
+   - **an engine would cut it.** An engine that cuts the names of the files it
+     writes states the longest label it keeps whole (the engine table's
+     `longest_label`, [`architecture.md`](?doc=execution/architecture.md)
+     § 3.3): SIESTA's 48 — two benchmark trials whose labels differed only
+     past its cut were written to one stem (2026-08-24). A label, or a trial's
+     label, past it is refused at prep in that engine's words; an engine that
+     states none cuts nothing, and only the cap above binds it.
 
 Each refusal says what failed — the letter or digit, nothing left, or the
 length against the cap — and cites § 3; a description whose name, formula and

@@ -206,7 +206,7 @@ assumed is that reach.
   - `joblist` — each launch's address and whether that job is going (`write`, `every`, `going_here`, `signal_here`, `is_going`, `holding`, `inside`, `Asked`, `scheduler_of`; [`job-system.md`](?doc=execution/job-system.md) § 6.0a).
   - `jobset/ledger` (`record`) · `jobset/errors` (`PrepError`) · `jobset/machine` (`machine_record`, `set_machine`, `require_activation`) · `jobset/planned` (a plan's writes as values, `Plan`) · `jobset/sequence` (a sequence of groups' launch record: `write_record`, `read_record`, `sent`).
 - **Floor 2 — description.** `task` (`of`, `from_text`, `write_task`) · `job_request` (`of`) · `template_file` (`of`) · `runs`, the run door (`run_of`, `place_of`, `state_of`, `record_of`, `on_label_at`, `about`, `openable`, `declared`, `view_of`, `folder_answer`) · `task_reader` (the Results tab's reader of a transport calculation's description).
-- **Floor 3 — plan & render.** `calculation` (`open`, `at`, `Calculation.job`) · `resolve` · `jobset/model` (`JobSet.of`, `write`, `validate`, `gpu_request`) · `jobset/naming` (`stage_home`, `job_dir_names`, `stage_refs`, `run_names`, `open_container`) · `jobset/ladder` (`independent`, `inputs_of`, `upstream_of`, `stage_before`, `fresh_stages`) · `jobset/engines` (`engine_seam`) · `jobset/placement` (`placed`, `queue_table`, `launch_refusal`) · `jobset/group` · `jobset/shelves` · `jobset/transport_rung` · `jobset/plan` · `jobset/commands` · `jobset/sweep_reader` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `script_emit` (`render_deck`, `prepare_deck`) · `runwrap` (`render_wrappers`, `write_run_wrapper`, `render_sbatch`).
+- **Floor 3 — plan & render.** `calculation` (`open`, `at`, `Calculation.job`) · `resolve` · `jobset/model` (`JobSet.of`, `write`, `validate`, `gpu_request`) · `jobset/naming` (`stage_home`, `job_dir_names`, `stage_refs`, `run_names`, `open_container`) · `jobset/ladder` (`independent`, `inputs_of`, `upstream_of`, `stage_before`, `fresh_stages`) · `jobset/engines` (`engine_seam`) and each engine's seam (`siesta/seam`, `pyscf/seam`) · `jobset/placement` (`placed`, `queue_table`, `launch_refusal`) · `jobset/group` · `jobset/shelves` · `jobset/transport_rung` · `jobset/plan` · `jobset/commands` · `jobset/sweep_reader` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `script_emit` (`render_deck`, `prepare_deck`) · `runwrap` (`render_wrappers`, `write_run_wrapper`, `render_sbatch`).
 - **Floor 4 — layout.** `jobset/materialize` (`open_run`, `prepare_attempt`, `hand_over`, `latest_attempt`, `newest_launched`, `ever_launched`, `job_folder`, `scratch_in`) · `jobset/continuation` (`continuation_answer`, `usable`, `relaunch`, `point_rows`, `points_state`) · `jobset/gather` (`gather_sources`, `composed_for_prep`) · `jobset/ready` (`task_state`, `readiness`, `first_launch_takes`, `launched_without`, `regrouped`, `held_by_sequence`) · `jobset/reuse` (`decide`, `copy_in`, `takes_over`, `take_into`, `shared_into`) · `jobset/points` (`points_of`, `point_of`) and each kind's declaration (`jobset/transport_points`, `jobset/vibration_points`) · `jobset/prepared_with` (what a stage was prepared with, and what changed since: `values_of`, `changes`).
 - **Floor 5 — launch.** `jobset/submit` (the one sender, `_go`; launch's entry, `plan_launch` and `send_launch`, lives in this module and is a conductor, § 2.2) · `jobset/agreement` (`check_trial_starts_cold`) · `jobset/ask`.
 - **Floor 6 — observe.** `jobset/runstatus` (`jobset_status`, `every_run`, `points_view`, `views_of`, `run_answer`, `render_status`, `render_stage_status`, `job_members`, `run_folders`, `scratch_answer`) · `jobset/summarize` (`run_summarize_jobset`) · `jobset/memory` (`need`, `largest`) · each kind's sum (`jobset/transport_sum`, `jobset/vibration_sum`).
@@ -660,18 +660,34 @@ the one door, naming the engines it runs on.
 - the setting that names a calculation's files — `system_label`, `job_name`
   (`identity_field`);
 - its config class (`config`, a part) — which also says what the engine does
-  with two electronic-state settings together: a count of unpaired electrons it
-  cannot hold under a spin treatment (`count_must_float`), and an odd electron
+  with the electronic state: a count of unpaired electrons it
+  cannot hold under a spin treatment (`count_must_float`), an odd electron
   count under restricted spin, run anyway and said or refused
-  (`odd_count_restricted`);
-- its seam (`seam`, a part, floor 3, `jobset/engines.py`'s `EngineSeam`,
+  (`odd_count_restricted`), and a setting of its own that cannot run a spin
+  state — SIESTA's OMM solver with a spin it does not hold (`spin_refusal`).
+  **A config's engine is the engine whose `config` names its class**
+  (`engine_table.engine_of_config`), and a caller holding the task asks the
+  task's;
+- its own settings checks (`validator`, a part, resolved by the settings gate,
+  [`science/validation.md`](?doc=science/validation.md) § 7);
+- how it tells that two decks are the same calculation (`same_calculation`, a
+  part on floor 1, resolved by `deck_record.same_calculation`);
+- the longest label it keeps whole in the names of the files it writes, where
+  it cuts longer ones (`longest_label`: SIESTA's 48) — a longer label is
+  refused at prep in its words, never cut;
+- its seam (`seam`, a part, floor 3, its own package's — `siesta/seam.py`,
+  `pyscf/seam.py` — building `jobset/engines.py`'s `EngineSeam`,
   [`script-preparation.md`](?doc=execution/script-preparation.md) § 4);
 - what it computes in — a molecule in free space whatever the structure's cell
   (PySCF), or the structure's cell (`computes_in`);
 - its method, where its catalogue offers no choice (`method`);
-- whether a run is one process with threads (PySCF) or ranks (`one_process`);
-- whether its deck states its settings as keywords the engine reads — SIESTA's
-  fdf, not PySCF's script (`keyword_deck`);
+- whether a run is one process with threads (PySCF) or ranks (`one_process`)
+  — the one answer: the parameter catalogue offers a rank count only to an
+  engine that runs ranks, checked when it loads;
+- where its deck states its settings as keywords the engine reads, the reader
+  of them — SIESTA's fdf, `parse.fdf:KEYWORDS`; none for PySCF's script
+  (`keyword_reader`, `module:NAME` naming an object on floor 1 that travels
+  beside a job: its key rule, its switch reading and its deck reader);
 - the environment its runs enter — a category of
   [`configuration.md`](?doc=configuration.md) § 4 (`environment`) — and, where
   a run that uses a GPU needs another build, that one's category
@@ -682,14 +698,17 @@ the one door, naming the engines it runs on.
   where its deck is a script the job's own python runs (`programs`);
 - its stage presets (`presets`, read by the one ladder rule,
   `jobset.ladder.engine_ladder`), and whether it has a benchmark lane
-  (`benchmark`).
+  (`benchmark`) — only an engine whose deck states keywords has one, since a
+  trial's cold start is read from its deck's restart keywords (a record with a
+  benchmark lane and no `keyword_reader` is refused as the table loads).
 
 **A part that is code is named, and lives on the floor that resolves it.** A
 record names each as `module:NAME`, and the floor that asks resolves it — the
 conductor a rung's builder; the run of points (floor 4) its declaration; the
 ladder (floor 3) a linked kind's inputs and the stage a stage continues from;
 the ready door its gather; `summarize` (floor 6) its sum; the settings gate
-(`validation.validate`) a kind's science checks; `jobset/engines.engine_seam`
+(`validation.validate`) an engine's and a kind's checks; `deck_record` an
+engine's reading of the same calculation; `jobset/engines.engine_seam`
 the seam; any floor the config class; and a run of points' `count` and
 `outcome` words beside the job by `runpoints.part`, and for `status` by
 `kind_table.part`. The part's module uses its floor and those below, never one
@@ -697,6 +716,17 @@ above; a module holding parts of two floors is two modules. **Each door says
 what it cannot answer**: a table's door refuses a kind, an engine or a key its
 file does not hold, naming the file and the key; the floor that resolves a part
 refuses a name that does not resolve, naming the record and the key.
+
+**A part read beside a job travels by its record.** The bundle beside every
+job (`mb_monitor.pyz`) carries each run of points' `count` and `outcome` words
+and each engine's keyword reader, each with the modules it says it needs
+beside it (its own `TRAVELS_WITH`), gathered from the two tables when the
+bundle is built (`runwrap.monitor_companions`) — so a new kind's parts and a
+new engine's keyword reader travel by their records, with no edit of the
+bundle's member list. The reader of an output's role — its live reading pass
+and its loop's words — is the monitor's own table (`monitor.LIVE_READERS`,
+`LOOP_WORDS`) and travels in the bundle's own list: a new engine's output is a
+row in each.
 
 **What stays code, deliberately**, by package, so it can be reviewed:
 
@@ -713,9 +743,12 @@ refuses a name that does not resolve, naming the record and the key.
 Shared code — every other module — compares no kind's or engine's name (A18):
 it asks the record. **So a new kind is** a record in the kind table, its own
 modules, its catalogue items, its file catalogue rows and its warm-file
-sections; **a new engine** is a record in the engine table, its config class and
-seam, its catalogue items, its file catalogue rows and warm-file vocabulary,
-and the recipe of the environment its record names. Its run script is the one
+sections; **a new engine** is a record in the engine table, its config class,
+validator, reading of the same calculation and seam, its keyword reader where
+its deck states keywords, its catalogue items, its file catalogue rows and
+warm-file vocabulary, its outputs' rows in the parse layer's and the monitor's
+tables by role (with their modules in the bundle's own list), and the recipe of
+the environment its record names. Its run script is the one
 every engine's run script is: the record decides each block, beside its catalogue
 items' declarations and the parse layer's tables for its outputs' roles
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1). A new folder is its creator's record

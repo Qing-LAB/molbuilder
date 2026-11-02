@@ -1,11 +1,12 @@
 """Chemistry-rule validators (engine-agnostic, callable from any engine).
 
 The home for every check that asks a chemistry question of a structure and
-a calculation: whether each species label names an element, THE ELECTRONIC
-STATE'S ONE FAMILY (:func:`check_electronic_state` -- charge, parity, the
-open-shell guard, what an engine cannot run; `science/chemistry-
-correctness.md` § 2a), the peptide-protonation advisory, and whether a
-metal's basis and pseudopotential are adequate.  The facts come from
+a calculation, whichever engine runs it: whether each species label names an
+element, THE ELECTRONIC STATE'S ONE FAMILY (:func:`check_electronic_state`
+-- charge, parity, the open-shell guard, what an engine cannot run;
+`science/chemistry-correctness.md` § 2a) and the peptide-protonation
+advisory.  An engine's own chemistry -- a basis's coverage, a core
+potential -- is its validator's (`validation/pyscf.py`).  The facts come from
 ``chemistry.analyze_structure`` and the state from
 ``electronic_state.electronic_state`` -- the same two the chemistry card and
 the deck writers read -- so no surface keeps its own parallel logic.
@@ -19,7 +20,7 @@ from ..issues import Issue
 from ..structure import Structure
 
 
-def check_species_labels(struct: Structure, *, engine_label: str = "the engine"
+def check_species_labels(struct: Structure, *, engine: str = ""
                           ) -> List[Issue]:
     """Every species label must NAME an element -- it need not BE one.
 
@@ -37,9 +38,15 @@ def check_species_labels(struct: Structure, *, engine_label: str = "the engine"
         nags every run of a deliberate setup.
 
     Contract: ``chemistry.resolve_element``, which is the only place that
-    turns a label into an element.
+    turns a label into an element.  ``engine`` names who would run them,
+    said in its record's words; none, *the engine*.
     """
     from ..chemistry import resolve_element
+    if engine:
+        from ..engine_table import engine as _engine
+        engine_label = _engine(engine).words
+    else:
+        engine_label = "the engine"
 
     issues: List[Issue] = []
     unresolved: List[str] = []
@@ -112,127 +119,8 @@ def _check_peptide_protonation(struct: Structure, charge) -> List[Issue]:
     )]
 
 
-#: The row-5 boundary (Kr, Z=36).  It is NOT a definition of "heavy" and
-#: decides nothing on its own -- it only bounds WHOM THE HINT BELOW NAMES,
-#: and the hint prints the criterion so a reader can disagree with it.
-#:
-#: The user's ruling (2026-08-13): *"there is no point to limit matching
-#: to heavy -- who defines heavy? there is no clear reasoning or standard
-#: ... explicit is better than implicit."*  So it is the threshold of a
-#: question, never of an action.
-_ECP_HINT_Z = 36
-
-
-def _check_ecp_declared_for_the_atoms_that_usually_want_one(
-        struct: Structure, *, ecp: str, ecp_atoms, basis: str,
-        engine_label: str) -> List[Issue]:
-    """WARN when a structure carries post-Kr elements and no ECP covers them.
-
-    **This hint asks; it never chooses.**  It speaks because of the other
-    half of the user's ruling: *"you can still have the validation
-    function to give hints -- that should be confirmed."*
-
-    An element is covered by an ``ecp`` name whose ``ecp_atoms`` patterns
-    select it -- and by nothing else.  **A def2 basis does NOT cover it by
-    itself**: PySCF's def2 files
-    carry the core potential (``def2-svp.dat``: *Au nelec 60*), but
-    ``gto.M`` applies one only when ``ecp`` is given (PySCF 2.14
-    ``gto/mole.py``, ``build``; ``check_sanity`` merely warns), and the deck
-    gives one only when the person declares it.  So on a def2 basis the hint
-    names that basis's own core potential -- the one it was built for.
-    """
-    from ..chemistry import atomic_number, resolve_pyscf_ecp
-
-    covered = resolve_pyscf_ecp(struct, ecp, ecp_atoms) or {}
-    uncovered: List[str] = []
-    for el in struct.elements:
-        sym = str(el).strip()
-        try:
-            z = atomic_number(sym)
-        except KeyError:
-            # A label naming no element -- `check_species_labels` already
-            # reports it as an error.  Skipping keeps THIS check about ECPs.
-            continue
-        if z > _ECP_HINT_Z and sym not in covered and sym not in uncovered:
-            uncovered.append(sym)
-    if not uncovered:
-        return []
-
-    named = ", ".join(uncovered)
-    them = "them" if len(uncovered) > 1 else "it"
-    if (basis or "").lower().replace("_", "").replace("-", "").startswith("def2"):
-        # THE BASIS'S OWN CORE POTENTIAL, named: a def2 basis for these
-        # elements is a valence basis built for it, so all-electron on it is
-        # not a cheaper answer but a broken one.
-        message = (
-            f"No effective core potential covers {named}, so "
-            f"{engine_label} will put every electron of {them} into basis "
-            f"'{basis}' -- a valence basis, built for its own core potential "
-            f"({'these elements' if len(uncovered) > 1 else 'this element'} "
-            f"past Kr).  {engine_label} applies that core potential only when "
-            f"the script names it, and nothing names it for you.  To use it: "
-            f"ecp = '{basis}' with ecp_atoms = {uncovered!r}.")
-    else:
-        message = (
-            f"No effective core potential covers {named}, so {engine_label} "
-            f"will treat {them} ALL-ELECTRON on basis '{basis}'.  For "
-            f"elements past Kr that is usually wrong twice over: the cost is "
-            f"large (Pt alone carries 78 electrons), and without a "
-            f"scalar-relativistic ECP the bond lengths and orbital energies "
-            f"are off -- Pt-Pt by ~0.1 A, Au gaps by ~1 eV.  To use one, name "
-            f"it and say which atoms get it: ecp = 'lanl2dz' with ecp_atoms = "
-            f"{uncovered!r} (or ['*'] for every element present); a def2 "
-            f"basis's own is named the same way, ecp = the basis.  If you "
-            f"meant all-electron, this is the confirmation: nothing is added "
-            f"for you.  (Named here because Z > {_ECP_HINT_Z}; that bound "
-            f"decides what gets mentioned, nothing else.)")
-    return [Issue("warn", message, "config.ecp")]
-
-
-def _check_metal_basis_adequacy(struct: Structure, *,
-                                  basis: str, engine_label: str
-                                  ) -> List[Issue]:
-    """Shared chemistry rule: basis sets like STO-3G / 6-31G / 6-31G(d)
-    have poor or no coverage of transition-metal d-orbitals.  Pair with
-    Fe / Mn / Co / Ni / Cu / Mo etc. and the SCF converges to a
-    distorted electronic structure with the wrong d-orbital ordering.
-
-    Recommendations encoded here: def2-SVP is the production minimum;
-    def2-TZVP is publication-quality.  Anything smaller for a
-    transition-metal-containing structure -> WARN.
-    """
-    # ALL transition metals, not just open-shell: d-orbital basis coverage is
-    # equally needed for closed-shell d10 metals (Zn/Cd/Hg/Pd/Pt) -- the
-    # concern is orbital coverage, orthogonal to spin state.
-    from ..chemistry import detect_transition_metals
-    metals = detect_transition_metals(struct)
-    if not metals:
-        return []
-    b = (basis or "").lower().strip()
-    # Bases known to be inadequate for transition metals (no d set
-    # for first-row TMs, or no functions at all for second/third row).
-    INADEQUATE = ("sto-3g", "sto-6g", "3-21g", "6-31g",
-                  "6-31g(d)", "6-31g*", "6-31g**", "6-31gd", "6-311g")
-    if any(b == bad or b.startswith(bad + "/") for bad in INADEQUATE):
-        return [Issue(
-            "warn",
-            (f"Basis '{basis}' has inadequate coverage of transition-"
-             f"metal d-orbitals.  {engine_label} requested for "
-             f"structure containing {', '.join(metals)}.  Bases like "
-             f"STO-3G / 6-31G(d) lack the polarisation/diffuse "
-             f"functions needed to describe metal-ligand bonds + spin "
-             f"states; the SCF often converges to a distorted "
-             f"electronic structure (wrong d-orbital occupations, "
-             f"wrong spin-gap energies).  Recommended minimum for "
-             f"transition metals: def2-SVP.  Publication quality: "
-             f"def2-TZVP or cc-pVTZ-DK."),
-            "config.basis",
-        )]
-    return []
-
-
-def check_electronic_state(struct: Structure, cfg, *,
-                           calculation: str) -> List[Issue]:
+def check_electronic_state(struct: Structure, cfg, *, calculation: str,
+                           engine: str, state) -> List[Issue]:
     """The electronic state's findings -- ONE family, for every engine and
     every kind (`science/chemistry-correctness.md` § 2a, ES3-ES9).
 
@@ -246,8 +134,9 @@ def check_electronic_state(struct: Structure, cfg, *,
       `offered` -- a floating moment on PySCF, unrestricted on a PySCF
       vibration, non-collinear on transport), unpaired electrons beside
       restricted, a fixed count where SIESTA cannot hold one (non-collinear,
-      spin-orbit, unrestricted on transport), and SIESTA's OMM solver with
-      a spin it cannot hold (:func:`_omm_spin`);
+      spin-orbit, unrestricted on transport), and a setting of the engine's
+      own that cannot run the spin (its config class's ``spin_refusal`` --
+      SIESTA's OMM solver with a spin it does not hold);
     * **ES3 -- parity**, for a finite system and a pinned count: an error
       where the engine refuses it or a fixed count contradicts it, a warning
       where SIESTA runs a restricted radical half-filled;
@@ -260,59 +149,37 @@ def check_electronic_state(struct: Structure, cfg, *,
       makes the junction neutral, so a stated charge would otherwise be
       dropped without a word.
 
-    The spin's findings stand down on a label naming no element: the state
-    is an electron count, and ``check_species_labels`` owns that finding.
+    ``state`` is the one the settings gate worked out (``validate``); the
+    spin's findings stand down where it is ``None`` -- a label naming no
+    element: the state is an electron count, and ``check_species_labels``
+    owns that finding.
     """
-    from ..chemistry import every_label_resolves
-    from ..electronic_state import electronic_state
-    from ..kind_table import kind as _kind, kinds as _kinds
-    from ..template import engine_name
+    from ..kind_table import kind as _kind
 
-    # Whose schema this config is -- the one answer (`template.engine_name`),
-    # never an isinstance ladder here.  An engine that does not run the kind
-    # has no electronic state to judge.
-    engine = engine_name(type(cfg))
-    if (calculation not in _kinds()
-            or engine not in _kind(calculation).engines):
-        return []
     fixed = _kind(calculation).charge
     out = _charge_fixed(cfg, _kind(calculation)) if fixed is not None else []
-    if not every_label_resolves(struct):
+    if state is None:
         return out
-    st = electronic_state(struct, cfg, kind=calculation)
     # The charge's own advisory is a separate fact from the spin's, so it
     # rides beside whichever spin finding holds -- except on a kind that
     # fixes its charge, refused when stated (ES7): advice to state one
     # there would be advice this family refuses.
-    return (out + _spin_findings(struct, st, engine, calculation)
-            + _omm_spin(cfg, st)
-            + (_check_peptide_protonation(struct, st.net_charge)
+    return (out + _spin_findings(struct, state, engine, calculation)
+            + _spin_refusal(cfg, state)
+            + (_check_peptide_protonation(struct, state.net_charge)
                if fixed is None else []))
 
 
-def _omm_spin(cfg, st) -> List[Issue]:
-    """SIESTA's OMM solver runs a spin-polarized density only with the spin
-    held: SIESTA 5.4.2 stops a polarized OMM run with no ``Spin.Fix`` at
-    startup (`Src/m_dminim.F90`: *"OMM for spin unpolarized calculations
-    only supports fixed spin!"*).  So OMM takes restricted, or unrestricted
-    with a stated count -- refused here, before the run, never at the
-    engine's start.  Only a SIESTA config holds a solution method."""
-    from ..electronic_state import FREE
-    if (str(getattr(cfg, "solution_method", "") or "") != "OMM"
-            or st.spin_treatment.value == "restricted"
-            or (st.spin_treatment.value == "unrestricted"
-                and st.pinned is not None)):
+def _spin_refusal(cfg, st) -> List[Issue]:
+    """A setting of the engine's own that cannot run this spin -- its
+    config's ``spin_refusal`` (SIESTA's OMM solver with a spin it does not
+    hold, `config/siesta.py`), refused here, before the run, never at the
+    engine's start."""
+    refused = cfg.spin_refusal(st)
+    if refused is None:
         return []
-    held = ("a floating moment" if st.unpaired_electrons.value == FREE
-            else f"spin_treatment = {st.spin_treatment.value}")
-    return [Issue(
-        "error",
-        f"solution_method = OMM with {held} ({st.spin_treatment.said}): "
-        f"SIESTA's OMM runs a spin-polarized density only with the spin "
-        f"held, and stops at startup otherwise (Src/m_dminim.F90).  State "
-        f"unpaired_electrons with spin_treatment = unrestricted, state "
-        f"restricted, or use solution_method = diagon.",
-        "config.solution_method")]
+    item, why = refused
+    return [Issue("error", why, f"config.{item}")]
 
 
 def _charge_fixed(cfg, kind) -> List[Issue]:
@@ -343,10 +210,12 @@ def _spin_findings(struct: Structure, st, engine: str,
     :func:`check_electronic_state`)."""
     from ..chemistry import check_spin_charge_parity
     from ..electronic_state import FREE, count_must_float
+    from ..engine_table import engine as _engine
     from ..kind_table import kind as _kind
     from ..template import (catalogue, is_member, offered, one,
                             why_not_offered)
 
+    words = _engine(engine).words
     t, c, q = st.spin_treatment, st.unpaired_electrons, st.net_charge
     _cat = catalogue()
     treatments = offered(one(_cat, "spin_treatment", engine=engine), engine,
@@ -356,7 +225,7 @@ def _spin_findings(struct: Structure, st, engine: str,
         return [Issue(
             "error",
             f"{item} = {r.value} ({r.said}) cannot run here: "
-            f"{_kind(calculation).with_article} on {engine} does not offer it -- "
+            f"{_kind(calculation).with_article} on {words} does not offer it -- "
             f"{why_not_offered(item, r.value, engine, calculation)}.  "
             f"It offers {', '.join(map(str, can))}.",
             f"config.{item}")]
@@ -383,7 +252,7 @@ def _spin_findings(struct: Structure, st, engine: str,
                            else "") + ")")
         way = (f"State {' or '.join(ways)}." if ways else
                f"{_kind(calculation).with_article[:1].upper()}{_kind(calculation).with_article[1:]} "
-               f"on {engine} offers restricted alone -- "
+               f"on {words} offers restricted alone -- "
                f"{why_not_offered('spin_treatment', 'unrestricted', engine, calculation)}"
                f" -- so the count is 0.")
         return [Issue(

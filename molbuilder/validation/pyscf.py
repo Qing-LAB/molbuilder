@@ -1,7 +1,10 @@
-"""PySCF-specific validators + the PySCFConfig aggregator.
+"""PySCF's own settings checks.
 
-The aggregator ``_validate_pyscf`` is what gets registered against
-``PySCFConfig`` in the engine-validator registry.
+:func:`validate_pyscf` is the part PySCF's record in the engine table names
+(``validator``), asked by the settings gate (`validation.validate`) with what
+the gate works out once: the engine, the box, the electronic state.  A
+Gaussian basis's coverage of a metal and the core potentials PySCF applies
+are PySCF's chemistry, so they live here.
 """
 
 from __future__ import annotations
@@ -12,10 +15,127 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .chemistry import (check_species_labels,
-                        _check_ecp_declared_for_the_atoms_that_usually_want_one,
-                        _check_metal_basis_adequacy)
 from .sidecar import _check_frozen_atoms_consumed
+
+
+#: The row-5 boundary (Kr, Z=36).  It is NOT a definition of "heavy" and
+#: decides nothing on its own -- it only bounds WHOM THE HINT BELOW NAMES,
+#: and the hint prints the criterion so a reader can disagree with it.
+#:
+#: The user's ruling (2026-08-13): *"there is no point to limit matching
+#: to heavy -- who defines heavy? there is no clear reasoning or standard
+#: ... explicit is better than implicit."*  So it is the threshold of a
+#: question, never of an action.
+_ECP_HINT_Z = 36
+
+
+def _check_ecp_declared_for_the_atoms_that_usually_want_one(
+        struct: Structure, *, ecp: str, ecp_atoms, basis: str,
+        engine_label: str) -> List[Issue]:
+    """WARN when a structure carries post-Kr elements and no ECP covers them.
+
+    **This hint asks; it never chooses.**  It speaks because of the other
+    half of the user's ruling: *"you can still have the validation
+    function to give hints -- that should be confirmed."*
+
+    An element is covered by an ``ecp`` name whose ``ecp_atoms`` patterns
+    select it -- and by nothing else.  **A def2 basis does NOT cover it by
+    itself**: PySCF's def2 files
+    carry the core potential (``def2-svp.dat``: *Au nelec 60*), but
+    ``gto.M`` applies one only when ``ecp`` is given (PySCF 2.14
+    ``gto/mole.py``, ``build``; ``check_sanity`` merely warns), and the deck
+    gives one only when the person declares it.  So on a def2 basis the hint
+    names that basis's own core potential -- the one it was built for.
+    """
+    from ..chemistry import atomic_number
+    from ..pyscf.ecp import resolve_ecp
+
+    covered = resolve_ecp(struct, ecp, ecp_atoms) or {}
+    uncovered: List[str] = []
+    for el in struct.elements:
+        sym = str(el).strip()
+        try:
+            z = atomic_number(sym)
+        except KeyError:
+            # A label naming no element -- `check_species_labels` already
+            # reports it as an error.  Skipping keeps THIS check about ECPs.
+            continue
+        if z > _ECP_HINT_Z and sym not in covered and sym not in uncovered:
+            uncovered.append(sym)
+    if not uncovered:
+        return []
+
+    named = ", ".join(uncovered)
+    them = "them" if len(uncovered) > 1 else "it"
+    if (basis or "").lower().replace("_", "").replace("-", "").startswith("def2"):
+        # THE BASIS'S OWN CORE POTENTIAL, named: a def2 basis for these
+        # elements is a valence basis built for it, so all-electron on it is
+        # not a cheaper answer but a broken one.
+        message = (
+            f"No effective core potential covers {named}, so "
+            f"{engine_label} will put every electron of {them} into basis "
+            f"'{basis}' -- a valence basis, built for its own core potential "
+            f"({'these elements' if len(uncovered) > 1 else 'this element'} "
+            f"past Kr).  {engine_label} applies that core potential only when "
+            f"the script names it, and nothing names it for you.  To use it: "
+            f"ecp = '{basis}' with ecp_atoms = {uncovered!r}.")
+    else:
+        message = (
+            f"No effective core potential covers {named}, so {engine_label} "
+            f"will treat {them} ALL-ELECTRON on basis '{basis}'.  For "
+            f"elements past Kr that is usually wrong twice over: the cost is "
+            f"large (Pt alone carries 78 electrons), and without a "
+            f"scalar-relativistic ECP the bond lengths and orbital energies "
+            f"are off -- Pt-Pt by ~0.1 A, Au gaps by ~1 eV.  To use one, name "
+            f"it and say which atoms get it: ecp = 'lanl2dz' with ecp_atoms = "
+            f"{uncovered!r} (or ['*'] for every element present); a def2 "
+            f"basis's own is named the same way, ecp = the basis.  If you "
+            f"meant all-electron, this is the confirmation: nothing is added "
+            f"for you.  (Named here because Z > {_ECP_HINT_Z}; that bound "
+            f"decides what gets mentioned, nothing else.)")
+    return [Issue("warn", message, "config.ecp")]
+
+
+def _check_metal_basis_adequacy(struct: Structure, *,
+                                  basis: str, engine_label: str
+                                  ) -> List[Issue]:
+    """PySCF's Gaussian basis sets: ones like STO-3G / 6-31G / 6-31G(d)
+    have poor or no coverage of transition-metal d-orbitals.  Pair with
+    Fe / Mn / Co / Ni / Cu / Mo etc. and the SCF converges to a
+    distorted electronic structure with the wrong d-orbital ordering.
+
+    Recommendations encoded here: def2-SVP is the production minimum;
+    def2-TZVP is publication-quality.  Anything smaller for a
+    transition-metal-containing structure -> WARN.
+    """
+    # ALL transition metals, not just open-shell: d-orbital basis coverage is
+    # equally needed for closed-shell d10 metals (Zn/Cd/Hg/Pd/Pt) -- the
+    # concern is orbital coverage, orthogonal to spin state.
+    from ..chemistry import detect_transition_metals
+    metals = detect_transition_metals(struct)
+    if not metals:
+        return []
+    b = (basis or "").lower().strip()
+    # Bases known to be inadequate for transition metals (no d set
+    # for first-row TMs, or no functions at all for second/third row).
+    INADEQUATE = ("sto-3g", "sto-6g", "3-21g", "6-31g",
+                  "6-31g(d)", "6-31g*", "6-31g**", "6-31gd", "6-311g")
+    if any(b == bad or b.startswith(bad + "/") for bad in INADEQUATE):
+        return [Issue(
+            "warn",
+            (f"Basis '{basis}' has inadequate coverage of transition-"
+             f"metal d-orbitals.  {engine_label} requested for "
+             f"structure containing {', '.join(metals)}.  Bases like "
+             f"STO-3G / 6-31G(d) lack the polarisation/diffuse "
+             f"functions needed to describe metal-ligand bonds + spin "
+             f"states; the SCF often converges to a distorted "
+             f"electronic structure (wrong d-orbital occupations, "
+             f"wrong spin-gap energies).  Recommended minimum for "
+             f"transition metals: def2-SVP.  Publication quality: "
+             f"def2-TZVP or cc-pVTZ-DK."),
+            "config.basis",
+        )]
+    return []
 
 
 # --------------------------------------------------------------------- #
@@ -26,7 +146,7 @@ from .sidecar import _check_frozen_atoms_consumed
 #  the DFT grid), so pure hybrid-GGAs are grid-robust.  Below grid      #
 #  level 4 a meta-GGA's oscillatory integrand picks up grid noise that  #
 #  dominates forces / frequencies.  The SAME gate serves two call       #
-#  sites: geometry-opt FORCES (_validate_pyscf) and the vibration       #
+#  sites: geometry-opt FORCES (validate_pyscf) and the vibration        #
 #  kind's HESSIAN frequencies (validation/spectra.py).  One             #
 #  detector-pair + one gate; message context-selected.                  #
 # --------------------------------------------------------------------- #
@@ -161,8 +281,7 @@ def _check_periodic_structure_in_a_gas_phase_script(
     )]
 
 
-def _gpu_library_limits(struct: Structure, cfg,
-                        calculation: str) -> List[Issue]:
+def _gpu_library_limits(struct: Structure, cfg, state) -> List[Issue]:
     """What gpu4pyscf does not do that PySCF does, where this run asks for
     the GPU -- each a ``warn``, never an ``error``: choosing the GPU
     knowing it is the person's (`execution/gpu.md` G11,
@@ -171,12 +290,7 @@ def _gpu_library_limits(struct: Structure, cfg,
     unchecked.  A solvent model: gpu4pyscf's has not been compared with
     PySCF's here."""
     out: List[Issue] = []
-    from ..chemistry import every_label_resolves
-    from ..electronic_state import electronic_state
-    if every_label_resolves(struct):
-        kind = calculation if calculation in ("optimization",
-                                              "vibration") else "optimization"
-        state = electronic_state(struct, cfg, kind=kind)
+    if state is not None:
         if state.spin_treatment.value == "unrestricted":
             out.append(Issue(
                 "warn",
@@ -196,16 +310,18 @@ def _gpu_library_limits(struct: Structure, cfg,
     return out
 
 
-def _validate_pyscf(struct: Structure, cfg,
-                    cell: Optional[np.ndarray] = None, *,
-                    calculation: str = "optimization", **_) -> List[Issue]:
-    """PySCF-specific checks.
+def validate_pyscf(struct: Structure, cfg,
+                   cell: Optional[np.ndarray] = None, *,
+                   calculation: str, engine: str, state, **_) -> List[Issue]:
+    """PySCF's own checks -- the part its engine record names
+    (``validator``).  ``state`` is the electronic state the gate worked out
+    (``None`` where a species label names no element).
 
     ``cell`` is not used to BUILD anything -- this emitter is gas-phase -- but
     the structure's own periodicity is checked, because a periodic structure
     reaching a gas-phase emitter is a silent change of calculation
     (``_check_periodic_structure_in_a_gas_phase_script``).  The argument is
-    accepted for signature uniformity with the engine-validator registry.
+    taken as every engine's validator takes it.
 
     ``calculation`` is the described kind (the double-fire dedup, ruled
     2026-08-21): on a VIBRATION deck the kind's science
@@ -218,6 +334,8 @@ def _validate_pyscf(struct: Structure, cfg,
     electronic state's one family runs from `validate` for every kind.
     """
     vibration = calculation == "vibration"
+    from ..engine_table import engine as _engine
+    words = _engine(engine).words
     issues: List[Issue] = []
 
     # Periodicity vs what this emitter can express.  FIRST, because it changes
@@ -248,22 +366,10 @@ def _validate_pyscf(struct: Structure, cfg,
                         "no relaxation)")
         issues += _check_frozen_atoms_consumed(
             struct,
-            engine="PySCF",
+            engine=words,
             honored=_relaxes,
             reason_when_dropped=_drop_reason,
         )
-    # THE FIRST VALIDATION OF A JUNCTION: the labels say which atoms are
-    # leads, and a lead must come through the relaxation unmoved.  Asked
-    # HERE, where it is cheap -- the compose-time gate that refuses a
-    # MOVED lead is correct and runs after the relaxation is paid for.
-    # The vibration kind states its held atoms itself, so it is deferred.
-    if not vibration:
-        from .sidecar import (check_electrode_labels_are_frozen,
-                              check_junction_boundary)
-        issues += check_electrode_labels_are_frozen(struct)
-        if calculation != "transport":
-            issues += check_junction_boundary(struct, vacuum=False)
-
     # Solvation, engine-side: these are facts about the BUILD and the
     # vocabulary, not about the vibration -- both decks emit the same
     # solvent lines (scf_setup.emit_solvent_lines).
@@ -294,12 +400,12 @@ def _validate_pyscf(struct: Structure, cfg,
     # gpu4pyscf'S OWN LIMITS, SAID -- every kind (`execution/gpu.md` G11;
     # the user, 2026-10-21: "a hint and information is enough").
     if bool(getattr(cfg, "use_gpu", False)):
-        issues += _gpu_library_limits(struct, cfg, calculation)
+        issues += _gpu_library_limits(struct, cfg, state)
 
     # Basis adequacy for transition metals.
     issues += _check_metal_basis_adequacy(
         struct, basis=getattr(cfg, "basis", ""),
-        engine_label=f"PySCF method={cfg.method}",
+        engine_label=f"{words} method={cfg.method}",
     )
 
     # The ECP hint -- directly after basis adequacy, because the two are the
@@ -311,7 +417,7 @@ def _validate_pyscf(struct: Structure, cfg,
         ecp=getattr(cfg, "ecp", "") or "",
         ecp_atoms=getattr(cfg, "ecp_atoms", ()) or (),
         basis=getattr(cfg, "basis", ""),
-        engine_label=f"PySCF method={cfg.method}",
+        engine_label=f"{words} method={cfg.method}",
     )
 
     # NO LADDER CHECK HERE, and that is not a gap.  A ladder is declared in
@@ -322,10 +428,6 @@ def _validate_pyscf(struct: Structure, cfg,
     # override against the ``range`` / ``choices`` the schema declares.  This
     # validator sees ONE
     # rung's resolved config and cannot see the ladder at all.
-
-    # The species labels -- asked here because the gate reports a bad label
-    # once; the peptide's charge advisory is the electronic state's.
-    issues += check_species_labels(struct, engine_label="PySCF")
 
     # A SETTING THAT ENTERS NOTHING IS NOT LEFT SILENT (engines/pyscf.md
     # § 7a, engines/vibration.md § 3.1, § 4.10): Hartree-Fock has no

@@ -75,7 +75,7 @@ flowchart LR
 >
 > A deck is written by `jobset prep` from a description — `spec_for` →
 > `prepare_deck`, the same three steps with the description in front of them
-> instead of a command line; `jobset/engines.py::engine_seam` builds a full
+> instead of a command line; `pyscf/seam.py::pyscf_seam` builds a full
 > `EngineSeam` for PySCF, so nothing had to be built to replace the verb.
 
 - **Backend.** `spec_for(struct, config, *, names, calculation=…)` returns the
@@ -475,7 +475,7 @@ patterns:
 | `["A*"]` | every symbol beginning with `A` |
 | `["Au", "Pt"]` | both |
 
-`_resolve_ecp` (`input.py` → `chemistry.resolve_pyscf_ecp`) matches the
+`pyscf.ecp.resolve_ecp` — PySCF's own rule, asked by both PySCF decks and PySCF's validator — matches the
 patterns against the structure's own elements and returns `{element: ecp}`, or
 `None` when either half is empty. **Empty means empty** — it never means *pick
 one for me*.

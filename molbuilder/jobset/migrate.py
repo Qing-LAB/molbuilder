@@ -1434,7 +1434,7 @@ def _decide_template(rec: "_Records", task):
     import dataclasses
 
     from .. import template as _T
-    from .engines import engine_seam
+    from ..engine_table import config_class
 
     engine = task.engine
     kind = task.calculation
@@ -1592,7 +1592,7 @@ def _decide_template(rec: "_Records", task):
     # AN ITEM NO RELEASE HELD is refused by name, as the reader refuses it
     # (`template.config_from_template`): a misspelling -- carried by no
     # item, it would be dropped unsaid.
-    config_cls = engine_seam(engine).config_cls
+    config_cls = config_class(engine)
     known = _T.template_fields(config_cls)
     # A RUN SETTING, valueless or not, is taken out: the template holds
     # none (`engines/template.md` § 2) -- what it holds decides, never its

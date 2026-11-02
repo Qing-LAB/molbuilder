@@ -16,7 +16,7 @@ Scope:
     its own hand-rolled scanner (no win from the abstraction
     given its JSON-like log format).
   * **Stdlib only, and it travels beside every job** with the two
-    reading passes that run on it (`runwrap.MONITOR_COMPANIONS`).
+    reading passes that run on it (`runwrap.monitor_companions`).
 
 Module layout:
 

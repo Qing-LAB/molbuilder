@@ -19,8 +19,8 @@ Public surface
   and the ENGINE-OFFSET / VIBRATION readers — is :mod:`molbuilder.deck_record`'s,
   which this module imports; it sits below this one so a job can read a
   block beside itself (2026-09-28).
-* Bench declarations — :class:`BenchField`,
-  :data:`SIESTA_BENCH_FIELDS`.
+* Bench declarations — :class:`BenchField`; each engine's fields are its
+  own deck writer's (SIESTA's ``siesta.input.BENCH_FIELDS``).
 * Block emitters — :func:`emit_header`, :func:`emit_provenance`,
   :func:`emit_bench_marks`, :func:`emit_atom_metadata`,
   :func:`emit_user_custom_placeholder`.
@@ -207,37 +207,12 @@ class BenchField:
                 "whose type has no name cannot be read back, so the type is "
                 "added to the grammar rather than left off the declaration.")
         # NOT checked here: ``type=enum`` with no ``choices`` --
-        # ``SIESTA_BENCH_FIELDS``' own ``Diag.Algorithm`` is exactly that
+        # SIESTA's own ``Diag.Algorithm`` (`siesta.input.BENCH_FIELDS`) is
+        # exactly that
         # case, and refusing it would refuse a block that ships today.
         #
         # ⚠ That shipped block IS thin: a bench tool reading it learns the
         # field is an enum and not which values are legal.
-
-
-# Static field list for SIESTA .fdf.  PySCF and future engines get
-# their own list when their bench subcommands land.
-#
-# Anchor: ONE step-count keyword, ``MD.Steps``, bounds CG / Broyden / FIRE
-# alike (SIESTA 5.4.2 manual, Docs/tex/sections/Relaxation_phonons_md/
-# Structural_relaxation.tex), so a trial's deck -- rendered by
-# ``jobset prep bench`` -- needs no per-type dispatch.
-SIESTA_BENCH_FIELDS: List[BenchField] = [
-    # NO range here, and that is the declaration.  BlockSize is the one field
-    # in this list derived from a LAUNCH quantity (``engines/stages.md``
-    # § 5.2), so its legal window is a fact about one deck's rank count, not
-    # about the engine -- ``siesta/input.py`` supplies it per deck through
-    # ``_block_size_bounds``.  Leaving it None means a renderer that forgets emits NO
-    # range rather than a wrong one.
-    BenchField("BlockSize",        "BlockSize",        "pow2"),
-    BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
-    BenchField("MD.Steps",         "MD.Steps",         "int"),
-    BenchField("MeshCutoff",       "MeshCutoff",       "float", None, "Ry"),
-    # ELPA solver variant.  ELPA-1STAGE: direct dense.
-    # ELPA-2STAGE: tridiagonalises through a banded form; typically
-    # wins on N>1000 orbital problems and on GPU because the band
-    # step parallelises well.  Bench sweeps both.
-    BenchField("Diag.Algorithm",   "Diag.Algorithm",   "enum"),
-]
 
 
 # --------------------------------------------------------------------- #
@@ -659,7 +634,7 @@ def generated_at_now() -> str:
 __all__ = [
     "benchmark_declarable_types", "decl_line", "deck_note",
     # Bench declarations
-    "BenchField", "SIESTA_BENCH_FIELDS",
+    "BenchField",
     # Emitters
     "emit_header", "emit_provenance", "emit_bench_marks",
     "write_validation_report",
@@ -839,9 +814,12 @@ def declarations(engine: str = None, *, calculation: str = None,
                  stage: str = None):
     """Every item the catalogue declares, for one engine — the LIST door.
 
-    ``calculation`` and ``stage`` narrow it to the items a run of that kind and
-    rung can carry — what a record of that run lists (`model/parse.md`
-    § 5d.3) — through the catalogue's own axes (`template.select`).
+    ``calculation`` narrows it to the items a run of that kind can carry, and
+    ``stage`` — the rung's stage token, ``05_transmission`` — to those the
+    rung reads, by the one rule (`template.reads`): what the run script's
+    record of what the engine will read lists, and what its reader reads
+    back (`model/parse.md` § 5d.3).  A token that names no stage is refused:
+    a record listing every item would say the rung reads what it does not.
 
     :func:`parameter` answers about one item by name; this answers *which items
     are there*, which is the question a record of the whole configuration asks.
@@ -851,8 +829,19 @@ def declarations(engine: str = None, *, calculation: str = None,
     offer, and that is how a second way of reading a declaration starts.
     """
     from . import template as _T
-    return list(_T.select(_catalogue(), engine=engine,
-                          calculation=calculation, stages=stage))
+    items = _T.select(_catalogue(), engine=engine, calculation=calculation)
+    if stage is None:
+        return list(items)
+    from .identity import parse_token
+    token = parse_token(stage)
+    if token is None or calculation is None:
+        # A CALLER'S MISTAKE, never a file's: a TypeError, so no reader that
+        # reads ValueError as "unreadable" absorbs it.
+        raise TypeError(
+            f"which items rung {stage!r} reads is asked with its stage token "
+            f"(<NN>_<name>) and its calculation's kind (template.reads)")
+    return [it for it in items
+            if _T.reads(it, engine, calculation, token[1])]
 
 
 def parameter(name: str, engine: str, *, config=None,
@@ -888,7 +877,7 @@ def parameter(name: str, engine: str, *, config=None,
     if decl is not None and config is not None:
         resolved = getattr(config, name, None)
     elif decl is not None and deck_text is not None:
-        resolved = _deck_answer(decl, deck_text)
+        resolved = _deck_answer(decl, deck_text, engine)
     return Parameter(name=name, engine=engine, declaration=decl, value=resolved)
 
 
@@ -912,7 +901,7 @@ def not_set_line(param: "Parameter", keyword: str = "") -> str:
     return f"# {key} not written: {said}"
 
 
-def _deck_answer(decl, deck_text: str):
+def _deck_answer(decl, deck_text: str, engine: str):
     """What a RENDERED deck says for this item, or ``None`` -- its first
     keyword's answer (:func:`_deck_answers`).
 
@@ -922,17 +911,19 @@ def _deck_answer(decl, deck_text: str):
     reader that needs each -- the run record's asked column (`model/parse.md`
     § 5d.3) -- asks :func:`deck_values`.
     """
-    answers = _deck_answers(decl, deck_text)
+    answers = _deck_answers(decl, deck_text, engine)
     return next(iter(answers.values()), None) if answers else None
 
 
-def _deck_answers(decl, deck_text: str) -> Dict[str, Any]:
+def _deck_answers(decl, deck_text: str, engine: str) -> Dict[str, Any]:
     """``{keyword: value}`` for each keyword this item writes that the deck
-    carries, in the item's order.
+    carries, in the item's order -- ``{}`` for an engine whose deck states no
+    keywords (a script's values are its own).
 
-    Read through ``parse/fdf.py``, the one fdf reader: it splits ``%block``
-    from the block's name, applies fdf's keyword rule (case and ``.`` / ``-``
-    / ``_`` insignificant) to that name alone, and keeps a block's BODY as its
+    Read through the engine's keyword reader, the one its record names
+    (``keyword_reader`` -- SIESTA's fdf): it splits ``%block`` from the
+    block's name, applies the keyword rule (fdf's: case and ``.`` / ``-`` /
+    ``_`` insignificant) to that name alone, and keeps a block's BODY as its
     value.  First occurrence wins, as ``fdf_locate`` does.  **A scalar's value
     is the whole line after the keyword, unit included** -- ``200.0 Ry``, not
     ``200.0``.
@@ -943,19 +934,23 @@ def _deck_answers(decl, deck_text: str) -> Dict[str, Any]:
         return {}
     # `parse` imports THIS module (`parse/contract.py`), so the import is
     # function-level -- the same move that module makes in the other direction.
-    from .parse.fdf import fdf_key, read_fdf
-    scalars, blocks = read_fdf(deck_text)
+    from .engine_table import keywords
+    kw = keywords(engine)
+    if kw is None:
+        return {}
+    key_of = kw.key
+    scalars, blocks = kw.read(deck_text)
     out: Dict[str, Any] = {}
     for key in keys:
         if key.lower().startswith("%block"):
             # A BLOCK'S VALUE IS ITS BODY.  There is no `key value` line to
             # take a second token from: on `%block kgrid_Monkhorst_Pack` that
             # token is the block's own NAME.
-            body = blocks.get(fdf_key(key[len("%block"):].strip()))
+            body = blocks.get(key_of(key[len("%block"):].strip()))
             if body:
                 out[key] = body
             continue
-        toks = scalars.get(fdf_key(key))
+        toks = scalars.get(key_of(key))
         if toks is None:
             continue
         # A keyword present with no value is `.true.` to `fdf_boolean`.
@@ -971,7 +966,26 @@ def deck_values(name: str, engine: str, deck_text: str) -> Dict[str, Any]:
         decl = _T.one(_catalogue(), name, engine=engine)
     except KeyError:
         decl = None
-    return _deck_answers(decl, deck_text) if decl is not None else {}
+    return (_deck_answers(decl, deck_text, engine) if decl is not None
+            else {})
+
+
+def restart_group(engine: str, deck_text: Optional[str]
+                  ) -> Optional[Dict[str, bool]]:
+    """A deck's RESTART GROUP -- ``{keyword: reads}`` for each keyword the
+    catalogue's ``restart`` item writes (its ``expands``) that the deck
+    states, spelled as the catalogue spells it and read as the deck's
+    keywords read a switch (its engine's keyword reader's ``true``, `engine_table`);
+    ``None`` for a script deck, or no text.  The ONE reader of whether a
+    deck reads the state a run before it left: the run script's Mode line
+    (`runwrap`) and a benchmark trial's cold check (`jobset.agreement`).
+    First match wins, as the engine's reader does."""
+    from .engine_table import keywords
+    kw = keywords(engine)
+    if deck_text is None or kw is None:
+        return None
+    return {k: kw.true(str(v).split())
+            for k, v in deck_values("restart", engine, deck_text).items()}
 
 
 # --------------------------------------------------------------------- #
@@ -1138,6 +1152,16 @@ class DeckSpec:
     #: leaves the result.  A fact about this deck's run, read by `prep` onto
     #: the stage's job (`Job.finish`) and by nothing else.
     finish: Optional[str] = None
+    #: THE PROGRAM THIS DECK IS READ BY, where it is not its engine's own --
+    #: TBtrans, for a transport calculation's transmission deck
+    #: (`engines/transport.md` § 6.1b) -- or ``None``.  Read by `prep` onto
+    #: the stage's job (`Job.program`), as :attr:`finish` is.
+    program: Optional[str] = None
+    #: THE SCRATCH FOLDER THIS DECK'S RUN KEEPS, by its vocabulary's name --
+    #: a transport device's, the leads' surface Green's functions
+    #: (`engines/transport.md` § 2a.11) -- or ``None``.  Read by `prep` onto
+    #: the stage's job (`Job.scratch_dir`).
+    scratch_dir: Optional[str] = None
 
 
 class RenderedDeck(str):
@@ -1657,12 +1681,13 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log,
                            dest_dir=dest_dir, sources=sources)
     written = write_script(path, rendered.text, plan=plan)     # 3.10 write
-    # THE DECK AS THE ENGINE WILL READ IT: a block read from a file beside
-    # it inlined (`parse.fdf.read_deck`, `engines/vibration.md` § 5.11 § 4)
-    # -- the file the rung wrote before this deck, in the same plan.
-    from .parse.fdf import read_deck
-    text = read_deck(written, read=(plan.read_text if plan is not None
-                                    else None))
+    # THE DECK AS THE ENGINE WILL READ IT: where its settings are keywords,
+    # a block read from a file beside it inlined (`engine_table.read_deck`,
+    # `engines/vibration.md` § 5.11 § 4) -- the file the rung wrote before
+    # this deck, in the same plan.
+    from .engine_table import read_deck
+    text = read_deck(spec.engine, written,
+                     read=(plan.read_text if plan is not None else None))
     if log is not None:
         log.step("STEP 3.10 · WRITE")
         log.produced(written.name,

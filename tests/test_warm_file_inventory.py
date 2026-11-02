@@ -44,17 +44,19 @@ ENGINES = (
 )
 
 
-def _wrapper(tmp_path, engine, ext, body, warm=None, **kw):
+def _wrapper(tmp_path, engine, ext, body, warm=None, *,
+             names=RunNames("job", "01_coarse"), calculation="optimization",
+             program=None, **kw):
     """The wrapper of a run that STATES its shape -- one written for an
     unstated one is refused (`architecture.md` § 5.2) -- and carries the run
     settings every job carries, its wall's slack
     (`engines/template.md` § 5.4), handed ``warm``, the restart files in
-    effect, as prep hands it."""
-    names = RunNames("job", "01_coarse")
+    effect, and ``program``, the one its deck states, as prep hands them."""
     p = tmp_path / names.name(ext)
     p.write_text(body)
     return runwrap.render_run_wrapper(
-        p, names=names, engine=engine, env="molbuilder-siesta",
+        p, names=names, engine=engine, calculation=calculation,
+        program=program, env="molbuilder-siesta",
         warm=warm,
         resumes=True, relaunch_continues=True, trial=False,
         resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1,
@@ -73,3 +75,30 @@ def test_no_generated_wrapper_changes_directory(tmp_path, engine, ext, body):
     text = _wrapper(tmp_path, engine, ext, body)
     cds = re.findall(r"(?m)^\s*cd\s+\S+", text)
     assert cds == [], f"{engine} wrapper navigates: {cds}"
+
+
+def test_a_tbtrans_step_s_run_script_starts_tbtrans_its_banner_lined_up(
+        tmp_path):
+    """A transport calculation's transmission step: its deck states TBtrans
+    as the program that reads it (`transport.deck.transport_spec`), and the
+    run script starts TBtrans and names it in its banner -- whose labels
+    line up on the longest one it prints, ``TBtrans version``
+    (`running-a-job.md` § 1).  API-level: a transmission step is prepared
+    only on a finished relaxation, which the road makes only with a real
+    engine (F9).
+
+    Until 2.64.0 prep picked TBtrans by the step's name, and the banner's
+    ``TBtrans version`` stood one column past its other labels."""
+    text = _wrapper(tmp_path, "siesta", ".fdf", "SystemLabel T\n",
+                    names=RunNames("T", "05_transmission"),
+                    calculation="transport", program="tbtrans")
+    assert '_program_bin="$(command -v tbtrans ' in text, \
+        "the run script does not start tbtrans"
+    assert "command -v siesta " not in text
+    head = text[text.index("===== molbuilder run script"):]
+    head = head[:head.index('echo "========')]
+    rows = re.findall(r'echo "  (\S[^"]*?) : ', head)
+    assert "TBtrans version" in [r.rstrip() for r in rows], rows
+    colons = {len(r) for r in rows}
+    assert len(colons) == 1, f"the banner's labels do not line up: {rows}"
+

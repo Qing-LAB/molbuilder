@@ -70,11 +70,12 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
             field = AS_RESOURCE.get(item.name, item.name)
             if getattr(allocation, field, None) in (None, ""):
                 missing.append((field, item.name))
-        # A RANK COUNT FOR AN ENGINE THAT RUNS ONE PROCESS names nothing it
-        # runs: its header asks one task, and launch would have sent the
-        # count (`submit._sbatch_request`).
+        # A RANK COUNT FOR AN ENGINE THAT RUNS ONE PROCESS (its record's
+        # ``one_process``) names nothing it runs: its header asks one task,
+        # and launch would have sent the count (`submit._sbatch_request`).
+        from ..engine_table import engine as _engine
         if (getattr(allocation, "mpi_np", None) not in (None, "")
-                and "mpi_np" not in {i.name for i in items}):
+                and _engine(engine).one_process):
             return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states "
                     f"a rank count (--np) for {engine}, which runs one "
                     f"process -- a rank count names nothing it runs; the "
@@ -144,8 +145,9 @@ def no_queues_said(base, target, *, who: str = "",
 def _the_queues(asked, rows, engine: str) -> str:
     """The target's queues, their machines, and the work's fit on each --
     what of its wall, memory, cores and GPUs it states (:func:`queue_table`)."""
-    return queue_table(rows, request_of(asked,
-                                        one_process=one_process(engine)))
+    from ..engine_table import engine as _engine
+    return queue_table(rows, request_of(
+        asked, one_process=_engine(engine).one_process))
 
 
 def request_of(resources, *, one_process: bool):
@@ -167,14 +169,6 @@ def request_of(resources, *, one_process: bool):
                    mem_gb=parse_mem_gb(r.mem) if r.mem else None,
                    walltime_s=(parse_walltime(str(r.time)) if r.time
                                else None))
-
-
-def one_process(engine) -> bool:
-    """Whether ``engine`` runs ONE process -- PySCF, a Python script with
-    OpenMP threads -- so its request asks one task: its record's word
-    (`engine_table`, ``one_process``)."""
-    from ..engine_table import engine as _engine, engines
-    return str(engine) in engines() and _engine(str(engine)).one_process
 
 
 #: The values a run's placement records the source of -- its queue, wall
@@ -334,5 +328,5 @@ def _machine_lines(row) -> List[str]:
     return out
 
 
-__all__ = ["placed", "launch_refusal", "no_queues_said", "one_process",
+__all__ = ["placed", "launch_refusal", "no_queues_said",
            "placement_line", "queue_table", "request_of", "stated_line"]

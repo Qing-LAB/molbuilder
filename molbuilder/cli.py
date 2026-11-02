@@ -36,6 +36,7 @@ from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .atom_permutation import MAP_KEY
 from .engine_table import engines as _engines
+from .kind_table import kinds as _kinds
 from .structure import Structure, atom_words
 
 
@@ -369,13 +370,18 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
               help="run engine-specific config checks too (default: "
                    "the structure's own checks, its box's and its "
                    "geometry's)")
+@click.option("--calculation", default=None,
+              type=click.Choice(_kinds()),
+              help="the kind of calculation the engine's checks are for -- "
+                   "asked with --engine, since an engine's checks are "
+                   "always a kind's too")
 @click.option("--exit-on-error", is_flag=True,
               help="exit 2 when any error-severity Issue is found "
                    "(useful in CI / shell preflight loops)")
 @click.option("--pretty", is_flag=True,
               help="indent the JSON output (default is one-issue-per-line "
                    "compact form, easier to grep in shell pipelines)")
-def cmd_validate(input_path, engine, exit_on_error, pretty):
+def cmd_validate(input_path, engine, calculation, exit_on_error, pretty):
     """Run molbuilder's validation suite on a structure file.
 
     Reads an XYZ or PDB (or `-` for stdin), runs the structure's own
@@ -392,7 +398,8 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
 
         molbuilder dna ATGC | molbuilder validate -
 
-        molbuilder validate run.xyz --engine siesta --exit-on-error \\
+        molbuilder validate run.xyz --engine siesta \\
+            --calculation optimization --exit-on-error \\
             && molbuilder describe --structure P/structure/run.xyz --bundle P/optimization/calc --engine siesta --calculation optimization
     """
     from .validation import structure_findings, validate
@@ -400,13 +407,25 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
     with _resolve_input_path(input_path) as resolved:
         struct, _cell, _said = _struct_for_validate(resolved)
 
+    if (engine is None) != (calculation is None):
+        raise click.UsageError(
+            "--engine and --calculation go together: an engine's checks are "
+            "a kind's too, and the structure's own checks take neither")
     if engine:
+        # A KIND THE ENGINE DOES NOT RUN is refused as the flags are, by the
+        # kind table's one door, which names the engines it runs on.
+        from .kind_table import KindTableError, kind as _kind
+        try:
+            _kind(calculation).on(engine)
+        except KindTableError as exc:
+            raise click.UsageError(str(exc)) from exc
         # THE ENGINE'S CONFIG CHECKS on its config class's defaults, the
         # file's box handed over where the engine computes in the
         # structure's cell (the engine table's ``computes_in``); one
         # computing in free space is judged on the structure's own.
         from .engine_table import config_class, engine as _engine
         issues = validate(struct, config_class(engine)(),
+                          calculation=calculation,
                           cell=(_cell if _engine(engine).computes_in == "cell"
                                 else None))
     else:
@@ -418,6 +437,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
     payload = {
         "input": input_path,
         "engine": engine,
+        "calculation": calculation,
         "n_issues": len(issues),
         "n_errors": sum(1 for i in issues if i.severity == "error"),
         "n_warnings": sum(1 for i in issues if i.severity == "warn"),

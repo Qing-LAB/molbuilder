@@ -269,6 +269,20 @@ def test_validate_clean_water_returns_no_errors(capsys, tmp_path):
 
 
 
+def test_validate_refuses_a_kind_its_engine_does_not_run(capsys, tmp_path):
+    """`molbuilder validate --engine pyscf --calculation transport`: refused
+    as its flags are, naming the engines the kind runs on (the kind table's
+    one door), never a traceback -- until 2.64.0 the gate's refusal escaped
+    the command line as one."""
+    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["validate", _write_xyz(tmp_path / "h2o.xyz", xyz),
+                  "--engine", "pyscf", "--calculation", "transport"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "transport" in err and "siesta" in err, err
+
+
 def test_validate_exit_on_error_returns_2(monkeypatch, capsys, tmp_path):
     """--exit-on-error makes the command non-zero when any error-severity
     issue fires.  Synthesise a structure with two atoms < 0.3 A apart,
@@ -737,7 +751,8 @@ def test_validate_refuses_a_mirrored_cell_with_or_without_an_engine(
                   cell=mirrored), tmp_path / "h2.xyz")
     with pytest.raises(SystemExit) as exc:
         cli.main(["validate", str(path), "--exit-on-error",
-                  *(["--engine", engine] if engine else [])])
+                  *(["--engine", engine, "--calculation", "optimization"]
+                    if engine else [])])
     assert exc.value.code == 2
     body = json.loads(capsys.readouterr().out)
     assert [i["where"] for i in body["issues"]

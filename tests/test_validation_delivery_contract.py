@@ -174,7 +174,8 @@ class TestF4GateDerivesWhatChecksNeed:
     def test_cell_dependent_checks_run_without_a_cell_argument(self):
         """THE bug: every web caller omitted ``cell``, so the volume /
         determinant / image-distance checks silently never ran."""
-        issues = validate(_thin_box_molecule(), SiestaConfig())
+        issues = validate(_thin_box_molecule(), SiestaConfig(),
+                          calculation="optimization")
         wheres = {i.where for i in issues}
         assert "cell.image_distance" in wheres, (
             "the image-distance check did not run -- a caller must not be able "
@@ -185,7 +186,8 @@ class TestF4GateDerivesWhatChecksNeed:
         must still be able to say so."""
         s = _thin_box_molecule()
         roomy = np.eye(3) * 60.0
-        wheres = {i.where for i in validate(s, SiestaConfig(), cell=roomy)}
+        wheres = {i.where for i in validate(s, SiestaConfig(), cell=roomy,
+                                                calculation="optimization")}
         assert "cell.image_distance" not in wheres
 
     def test_an_unresolvable_cell_is_reported_not_skipped_silently(self):
@@ -195,7 +197,7 @@ class TestF4GateDerivesWhatChecksNeed:
                       positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.8]]))
         s.axis_kind = ("periodic", "isolated", "isolated")   # no lattice
         s.__post_init__()
-        issues = validate(s, SiestaConfig())
+        issues = validate(s, SiestaConfig(), calculation="optimization")
         assert any(i.where == "cell.unresolved" and i.severity == "info"
                    for i in issues), [i.where for i in issues]
 
@@ -279,7 +281,8 @@ class TestF4DerivesOnlyABoxTheStructureAskedFor:
             positions=np.array([[0.0, 0.0, 0.0],
                                 [0.757, 0.586, 0.0],
                                 [-0.757, 0.586, 0.0]]))
-        wheres = {i.where for i in validate(water, PySCFConfig())}
+        wheres = {i.where for i in validate(water, PySCFConfig(),
+                                                calculation="optimization")}
         # ANY cell finding means a box was invented -- the least it would say
         # is `cell.vacuum_defaulted`.
         assert not any(w.startswith("cell.") for w in wheres), (
@@ -290,14 +293,14 @@ class TestF4DerivesOnlyABoxTheStructureAskedFor:
         """The hemeC case: asking for vacuum IS asking for a box."""
         s = _thin_box_molecule()
         assert {"cell.image_distance", "cell.vacuum_thin"} <= {
-            i.where for i in validate(s, SiestaConfig())}
+            i.where for i in validate(s, SiestaConfig(), calculation="optimization")}
 
     def test_an_explicit_cell_declares_a_box_even_with_no_vacuum(self):
         s = Structure(elements=["C"] * 2,
                       positions=np.array([[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]]))
         s.cell = np.eye(3) * 3.0
         s.__post_init__()
-        wheres = {i.where for i in validate(s, SiestaConfig())}
+        wheres = {i.where for i in validate(s, SiestaConfig(), calculation="optimization")}
         assert "cell.image_distance" in wheres
 
 
@@ -323,7 +326,7 @@ class TestSpatialAdequacyIsAdvisoryNotBlocking:
 
     def test_every_adequacy_finding_is_a_warning(self):
         s = _thin_box_molecule()          # 2.5 Å/side: trips all three
-        found = {i.where: i.severity for i in validate(s, SiestaConfig())
+        found = {i.where: i.severity for i in validate(s, SiestaConfig(), calculation="optimization")
                  if i.where in self._ADEQUACY}
         assert found, "expected at least one adequacy finding for a 2.5 Å box"
         for where, severity in found.items():

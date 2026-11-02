@@ -7,7 +7,7 @@ package declares it, both emitters print it from here, and the reader
 applied to a line.
 
 **Stdlib only, and nothing of ours**: this module travels beside every job
-(`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3), so the
+(`runwrap.monitor_companions`, `execution/run-reports.md` § 2.3), so the
 monitor reads how a PySCF run ended with the reader the Results tab uses.
 The progress log's footer lines are the log's own vocabulary
 (`trajectory_log.keys`).

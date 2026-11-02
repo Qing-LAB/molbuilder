@@ -449,7 +449,7 @@ def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
                 f"{SAID[src]} sets {it.name} = {shown(have)}{clause}.")
 
 
-def resolve(template_text: str, task, config_cls, *,
+def resolve(template_text: str, task, *,
             allocation: Resources,
             stage: Optional[str] = None,
             sweep: Union[Mapping[str, Sequence[Any]],
@@ -462,7 +462,8 @@ def resolve(template_text: str, task, config_cls, *,
     """Turn the description and this machine's allocation into a `ParameterSet`.
 
     ``template_text`` is the calculation's ``<label>.template.toml``; ``task``
-    its parsed description; ``config_cls`` the engine's config dataclass.
+    its parsed description, whose engine's record names the config class it
+    rebuilds into (`engine_table.config_class`).
     ``stage`` names which rung of the ladder to resolve — required when the
     description has one, refused when it does not.
 
@@ -496,7 +497,9 @@ def resolve(template_text: str, task, config_cls, *,
     point exceeds this prep's ask, when an axis names nothing, or when a pin
     names something the schema does not have.
     """
+    from .engine_table import config_class
     from .template import config_from_template
+    config_cls = config_class(str(task.engine))
 
     # THE TEMPLATE'S OWN REFUSALS ARE RESOLVE'S -- an item the schema does
     # not know, a value that is not one of today's choices, a pre-M6 item
@@ -525,9 +528,9 @@ def resolve(template_text: str, task, config_cls, *,
     # Asked ONCE: every door below that could set one refuses, and the
     # answers are laid on each element last, so the gate, the record and
     # the deck read one value.
-    from .template import (accepts, catalogue, engine_name, fixed_by_role,
+    from .template import (accepts, catalogue, fixed_by_role,
                            role_answers, select, shown, why_role)
-    _engine = engine_name(config_cls)
+    _engine = task.engine
     _kind = task.calculation
     _items = {it.name: it for it in select(catalogue(), engine=_engine)}
     fixed = fixed_by_role(_engine, _kind)
@@ -754,7 +757,7 @@ def resolve(template_text: str, task, config_cls, *,
             values=values,
             resources=resources,
             point=dict(point),
-            label=_label_for(task.label, point, stage),
+            label=_label_for(task.label, point, stage, engine=task.engine),
             provenance=prov,
         )
         # WHO SET EACH VALUE, composed ONCE for every field, on the values
@@ -788,7 +791,7 @@ def resolve(template_text: str, task, config_cls, *,
                         stage=stage_obj.name)
 
 
-def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any]]:
+def resolved_ladder(template_text: str, task) -> List[Tuple[str, Any]]:
     """``[(stage name, resolved config)]`` for every stage of the ladder, in
     ladder order — the sequence checks' input (`engines/stages.md` § 6.4 /
     § 6.6a), resolved by the SAME primitives as `prep task` step 2 (template
@@ -801,9 +804,10 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
     the resolution with primitives of its own — a surface collects and
     renders, and composes nothing (`architecture.md` A12).
     """
-    from .template import config_from_template, engine_name, role_answers
-    base = config_from_template(template_text, config_cls)
-    engine = engine_name(config_cls)
+    from .engine_table import config_class
+    from .template import config_from_template, role_answers
+    base = config_from_template(template_text, config_class(str(task.engine)))
+    engine = task.engine
     kind = task.calculation
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
@@ -942,8 +946,9 @@ def effective_config(template, overrides: Mapping[str, Any], *,
 
 
 def _label_for(base: str, point: Mapping[str, Any],
-               stage: Optional[str] = None) -> str:
-    """The ``SystemLabel`` in force for this element.
+               stage: Optional[str] = None, *, engine: str) -> str:
+    """The label in force for this element -- the one ``engine`` names its
+    files by.
 
     A production run keeps the calculation's own label -- **a transport
     lead's is its own stem** (`kind_table.rung_label`, the one door;
@@ -953,33 +958,30 @@ def _label_for(base: str, point: Mapping[str, Any],
     or overwrite — the real run's ``.DM`` and ``.XV`` (`project-layout.md`
     § 2.3.2).
     """
+    from .engine_table import engine as _engine
     from .paths import trial_label
     from .kind_table import rung_label
     base = rung_label(base, stage)
     label = base if not point else trial_label(base, point_token(point))
-    if len(label) > _SIESTA_LABEL_MAX:
-        # REFUSED, never truncated (roadmap 7.10 M2, user 2026-08-24).
-        # SIESTA silently cuts label-derived filenames at ~50 characters
-        # and writes on: the Au-BDT-Au sweep's 58-char trial labels all
-        # truncated to one identical 50-char stem -- ELPA1STAGE and
-        # ELPA2STAGE trials differ only past the cut, so the two
-        # identities COLLIDED, and only their separate directories kept
-        # the runs apart.  A label that keys warm files must survive the
-        # engine whole, or be refused where changing it is still free.
+    rec = _engine(engine)
+    if rec.longest_label is not None and len(label) > rec.longest_label:
+        # REFUSED, never truncated (roadmap 7.10 M2, user 2026-08-24): an
+        # engine that cuts the names of the files it writes states the
+        # longest label it keeps whole (`execution/run-identity.md` § 3).
+        # SIESTA cut the Au-BDT-Au sweep's 58-char trial labels to one
+        # identical 50-char stem -- ELPA1STAGE and ELPA2STAGE trials differ
+        # only past the cut, so the two identities COLLIDED, and only their
+        # separate directories kept the runs apart.  A label that keys warm
+        # files must survive the engine whole, or be refused where changing
+        # it is still free.
         raise ResolveError(
-            f"the label {label!r} is {len(label)} characters; SIESTA "
-            f"silently truncates label-derived filenames at about "
-            f"{_SIESTA_LABEL_MAX}, which merges trial identities (two "
-            f"Au-BDT-Au trials differing only in ELPA1STAGE/ELPA2STAGE "
-            f"truncated to one stem, 2026-08-24).  Shorten the "
-            f"calculation's label, or the sweep's axis values.")
+            f"the label {label!r} is {len(label)} characters; {rec.words} "
+            f"keeps a label whole in its file names only up to "
+            f"{rec.longest_label} and cuts a longer one, which merges trial "
+            f"identities (two Au-BDT-Au trials differing only in "
+            f"ELPA1STAGE/ELPA2STAGE were cut to one stem, 2026-08-24).  "
+            f"Shorten the calculation's label, or the sweep's axis values.")
     return label
-
-
-#: SIESTA's practical bound on SystemLabel-derived filenames, observed on
-#: 5.4.2: a 58-char label produced files cut at 50 characters.  Held a few
-#: below the observed cut so suffixes like ``.DM`` stay unambiguous.
-_SIESTA_LABEL_MAX = 48
 
 
 #: The machine axes of a benchmark trial's point, in the order they are

@@ -243,7 +243,7 @@ said = ["memory cap 2048 MB"]
 name = "...and none stated writes no ulimit line"
 run_sh_lacks = ["\nulimit -v"]
 
-# engines/template.md § 5 (`deck_applies`): an engine whose deck applies a
+# engines/template.md § 5 (`limit_applied_by`): an engine whose deck applies a
 # setting itself is given none of it by its run script -- PySCF's deck passes
 # the cap to `mol.max_memory` and keeps the wall's deadline from its
 # environment.  THE SILENT FAILURE: a PySCF run capped twice, or told a wall

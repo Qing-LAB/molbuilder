@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import List, Optional, Tuple
 
-# IT TRAVELS BESIDE EVERY JOB (`runwrap.MONITOR_COMPANIONS`): the monitor
+# IT TRAVELS BESIDE EVERY JOB (`runwrap.monitor_companions`): the monitor
 # reports how a run ended with `parse.dirs.job.run_status`, whose state is
 # built on :func:`ending` -- so this module is imported two ways, from the
 # package or from beside the job, as `wrapper_log` is.
@@ -28,7 +28,7 @@ def _persist():
     read or written -- from the package, or beside a job, where the
     monitor's `notify` verb writes the run's notification record
     (:func:`note_notified`), so it travels too
-    (`runwrap.MONITOR_COMPANIONS`)."""
+    (`runwrap.monitor_companions`)."""
     try:                                    # inside molbuilder
         from . import persist
     except ImportError:                     # beside a job, as the monitor's
@@ -336,15 +336,16 @@ def note_notified(where, event: str, at: float,
     return p
 
 
-def run_output(where, names: "_rf.RunNames") -> Optional[Path]:
-    """THE SIESTA OUTPUT OF THE RUN in ``where`` -- SIESTA's stdout role
-    (`runfiles.stdout_roles`) -- or ``None`` where it printed none.
-    SIESTA's alone, and asked beside a job as well as here, where the run
-    door is not: by the steps of a SIESTA run of points (a vibration call's
-    coordinates and facts, a transport round's NEGF count) and a charged
-    deck's Makov-Payne script.  Any engine's output, inside molbuilder, is
-    the run door's (`runs.Run.stdout`)."""
-    for role in _rf.stdout_roles("siesta"):
+def run_output(where, names: "_rf.RunNames", engine: str
+               ) -> Optional[Path]:
+    """THE OUTPUT OF THE RUN in ``where`` -- ``engine``'s stdout role
+    (`runfiles.stdout_roles`) -- or ``None`` where it printed none.  Asked
+    beside a job as well as here, where the run door is not: by the steps
+    of a run of points (a vibration call's coordinates and facts, a
+    transport round's NEGF count) and a charged deck's Makov-Payne script,
+    each naming its engine.  Inside molbuilder a run's output is the run
+    door's (`runs.Run.stdout`)."""
+    for role in _rf.stdout_roles(engine):
         out = Path(where) / names.name(role)
         if out.is_file():
             return out
@@ -475,7 +476,7 @@ def sent_wall_s(record: Optional[dict]) -> Optional[int]:
     ``placed_on.time``, in the record dialect (`scheduler.quantities.
     slurm_time` wrote it), read by that dialect's one reader,
     `scheduler.quantities.parse_walltime`, which travels beside the job with
-    this module (`runwrap.MONITOR_COMPANIONS`) -- or ``None`` where it
+    this module (`runwrap.monitor_companions`) -- or ``None`` where it
     states none: a run here, which no queue placed.  A wall that is there
     and does not read is a :class:`LaunchRecordError`, never read as no
     wall."""

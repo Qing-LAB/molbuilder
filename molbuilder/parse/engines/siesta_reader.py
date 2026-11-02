@@ -8,7 +8,7 @@ output grows (`execution/run-reports.md` § 2.3) -- one reader, so the Results
 tab and the report a person gets at 3am cannot say different things about one
 file.
 
-**Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`):
+**Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`):
 its imports -- the SIESTA family's table, the rule engine, the runtime-header
 reader -- are imported from the package here and from their copies there.
 
@@ -1419,7 +1419,10 @@ class SiestaReader:
         if targets:
             out["targets"] = targets
         if self.tbtrans:
-            out["tbtrans"] = copy.deepcopy(self.tbtrans)
+            # THE PROGRAM'S OWN LOOP beside the SCF -- TBtrans's k-point x
+            # energy loop -- under the neutral name every reader asks for it
+            # by (`model/parse.md` § 4a, ``loop``).
+            out["loop"] = copy.deepcopy(self.tbtrans)
             # THE PASS UNDERWAY'S estimate -- a completed pass states none.
             passes = self.tbtrans.get("passes") or []
             if passes:

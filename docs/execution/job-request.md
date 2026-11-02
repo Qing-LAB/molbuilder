@@ -800,8 +800,9 @@ from both, the run settings aside.** One door,
 when they are the same. It sits with the grammar of a deck's blocks, below every
 reader that asks it (floor 1,
 [`architecture.md`](?doc=execution/architecture.md) § 2.1), and imports no
-engine: each engine's reading is that engine's own module, registered with the
-door as a surface starts (`calculation.register_readers`):
+engine: each engine's reading is that engine's own module, the part its engine
+record names (`same_calculation`, [`architecture.md`](?doc=execution/architecture.md)
+§ 3.3), which the door resolves:
 
 - **SIESTA** — `siesta.engine_input`: both decks read as SIESTA reads them
   ([`engines/transport.md`](?doc=engines/transport.md) § 6.1, *the same engine
@@ -828,7 +829,9 @@ rendered with, and nothing reads them as a launch: prep writes a deck and its
 launch together, once ([`architecture.md`](?doc=execution/architecture.md) A3).
 What `jobset/agreement` checks at a launch is a benchmark trial's cold start
 (`check_trial_starts_cold`, `job-system.md` R-L29), read from the deck's own
-restart keywords.
+restart keywords by the one reader of a deck's restart group, which the run
+script's Mode line reads through too (`script_emit.restart_group`, the engine
+handed in).
 
 ## 7. Who writes it, and who reads it
 

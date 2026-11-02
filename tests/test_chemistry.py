@@ -325,7 +325,7 @@ class TestResolvePyscfEcp:
 
     def test_a_name_and_a_selector_produce_a_per_element_map(self):
         """The only output shape: ``{element: ecp}`` for what matched."""
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Pt"]) == {
             "Pt": "lanl2dz"}
 
@@ -333,19 +333,19 @@ class TestResolvePyscfEcp:
         """``["*"]`` is ALL atoms.  No Z threshold survives -- the point
         of the ruling is that nothing in the code decides what "heavy"
         means, so Cl and H are selected exactly as readily as Pt."""
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["*"]) == {
             "Pt": "lanl2dz", "Cl": "lanl2dz"}
         assert resolve_pyscf_ecp(self._organic(), "lanl2dz", ["*"]) == {
             "C": "lanl2dz", "H": "lanl2dz"}
 
     def test_a_prefix_pattern_selects_by_symbol(self):
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["C*"]) == {
             "Cl": "lanl2dz"}          # Cl, and Pt is not a C-something
 
     def test_several_patterns_union(self):
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Pt", "Cl"]) == {
             "Pt": "lanl2dz", "Cl": "lanl2dz"}
 
@@ -358,7 +358,7 @@ class TestResolvePyscfEcp:
         is exactly the implicit behaviour this function's own docstring
         rejects.
         """
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["pt"]) is None
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Pt"]) == {
             "Pt": "lanl2dz"}
@@ -372,7 +372,7 @@ class TestResolvePyscfEcp:
 
     def test_empty_means_empty_on_either_side(self):
         """No ECP, and never "pick one for me"."""
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", [])      is None
         assert resolve_pyscf_ecp(self._pt(), "",        ["*"])   is None
         assert resolve_pyscf_ecp(self._pt(), "",        [])      is None
@@ -383,13 +383,13 @@ class TestResolvePyscfEcp:
         """Declaring Xe in a structure with no Xe emits no ECP -- the
         deck says what is there.  ``validation`` is where a selector
         that matched nothing gets pointed out."""
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Xe"]) is None
 
     def test_nothing_is_added_for_a_structure_that_declared_none(self):
         """No Z threshold adds an ECP: the user gets what they asked for,
         which is nothing."""
-        from molbuilder.chemistry import resolve_pyscf_ecp
+        from molbuilder.pyscf.ecp import resolve_ecp as resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "", []) is None
 
 
@@ -524,7 +524,7 @@ class TestSpeciesLabel:
         `Au1` must still get the warning that all-electron gold is wrong twice
         over -- cost and missing scalar relativity.
         """
-        from molbuilder.validation.chemistry import (
+        from molbuilder.validation.pyscf import (
             _check_ecp_declared_for_the_atoms_that_usually_want_one as _ecp)
         issues = _ecp(self._two_golds(), basis="sto-3g", ecp=None,
                       ecp_atoms=None, engine_label="PySCF")

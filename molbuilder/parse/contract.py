@@ -6,15 +6,10 @@ catalogue's own names (:data:`RECORDED_FIELDS`) — the structure's provenance,
 read by the Metadata pane, the vibration's `already_relaxed` check and the
 electronic-state resolution (`web/molview.md` § 8.4a, plan F28).
 
-Per-engine, behind one door:
-
-* **SIESTA** — the ``.fdf`` through the shipped parameter parser
-  (``parse_fdf_params``): basis, energy shift, XC spelling, mesh
-  cutoff, k-grid, electronic temperature, the electronic state, and how
-  its SCF converged (:data:`SCF_RECORD_KEYS`).
-* **PySCF** — no deck-parameter extractor exists yet; a ``.py`` deck
-  answers ``None`` for now (recorded on the plan's board — the
-  interface is the point, the second engine drops in behind it).
+Per engine, behind one door: the reader is the deck's role's
+(:data:`CONTRACT_READERS`), each in its family's module -- SIESTA's
+``.fdf`` read by `parse.engines.siesta_contract`, which says what it reads.
+A role that names no reader -- a PySCF ``.py`` deck -- answers ``None``.
 
 The deck is the run's own, handed by its caller (`runs.declared(run).deck`,
 `model/parse.md` § 5b), and this reads it and nothing else.
@@ -27,8 +22,8 @@ from typing import Any, Dict, List, Mapping, Optional
 
 def contract_of(deck) -> Optional[Dict[str, Any]]:
     """The recorded-contract block of a run's own ``deck``, or ``None``:
-    no deck, a deck that states nothing, or a PySCF deck, which has no
-    extractor yet.
+    no deck, a deck that states nothing, or a deck whose role has no reader
+    (:data:`CONTRACT_READERS` -- a PySCF script).
 
     Shape (the ``info.calculation`` block):
     ``{"engine", "contract": {catalogue name -> value},
@@ -38,12 +33,27 @@ def contract_of(deck) -> Optional[Dict[str, Any]]:
     if deck is None:
         return None
     deck = Path(deck)
-    # THE ROLE COMES FROM THE CATALOGUE: SIESTA's deck role, not a
-    # suffix spelled here (`project-layout.md` § 4.5).
-    from ..runfiles import deck_roles, role_of
-    if not deck.is_file() or role_of(deck.name) not in deck_roles("siesta"):
+    # THE ROLE COMES FROM THE CATALOGUE, and so does its engine
+    # (`project-layout.md` § 4.5): the reader is the role's
+    # (:data:`CONTRACT_READERS`), never a suffix spelled here.
+    from ..runfiles import engine_of_role, role_of
+    role = role_of(deck.name) if deck.is_file() else None
+    contract = _read_contract(role, deck) if role else None
+    if not contract:
         return None
-    return _siesta_contract(deck)
+    # THE STATE AND THE SCF SETTINGS RIDE WITH A CONTRACT; THEY DO NOT MAKE
+    # ONE.  An engine's defaults answer the state for every deck, so it is
+    # always known -- and a deck that states no level of theory has nothing
+    # to cite, whatever its state or its mixer.
+    if not set(contract) - set(STATE_RECORD_KEYS) - set(SCF_RECORD_KEYS):
+        return None
+    from ..persist import sha256_of
+    return {
+        "engine": engine_of_role(role),
+        "contract": contract,
+        "source": deck.name,
+        "source_sha256": sha256_of(deck),
+    }
 
 
 #: The settings the recorded contract carries, by their CATALOGUE names --
@@ -103,11 +113,11 @@ def _every_cited_item_is_read_back() -> None:
 
 
 
-def contract_fields_of(cfg, *, state=None, axis_kind=None,
-                       kind: str = "optimization") -> Dict[str, Any]:
+def contract_fields_of(cfg, *, kind: str, state=None,
+                       axis_kind=None) -> Dict[str, Any]:
     """The level of theory a config is ABOUT TO RUN, in the names the
     recorded contract uses -- the catalogue's (:data:`RECORDED_FIELDS`), the
-    other half of :func:`_siesta_contract`.  A consumer comparing a
+    other half of a deck's reader (:data:`CONTRACT_READERS`).  A consumer comparing a
     structure's ``info.calculation`` against the calculation it is being
     handed to compares this dict field by field.  Only fields the config
     class has appear; an engine with no recorded contract (PySCF today)
@@ -159,7 +169,8 @@ def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
     return float(v) if isinstance(v, (int, float)) else None
 
 
-def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:
+def relaxation_of(output, *, traj: Any = None,
+                  engine: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """The relaxation record -- what the run did to the geometry it left --
     read from ``output``, the run output a viewer has open, or ``None``
     (`model/parse.md` § 5b.1).
@@ -192,8 +203,10 @@ def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:
     frame's :meth:`Structure.geometry_fingerprint` and ``held_atom_keys``
     the held atoms' :meth:`Structure.geometry_lines`, so a consumer can tell
     whether the coordinates in front of it are the ones this record is
-    about, whatever order it lists them in.  ``engine`` is the output's
-    folder's (`engine_of`), ``None`` when it declares none.
+    about, whatever order it lists them in.  ``engine`` is the run's, its
+    description's, where the caller holds the run (`running-a-job.md`
+    § 4.2); else the output's folder's (`engine_of`), ``None`` when it
+    declares none.
     """
     path = Path(output)
     if not path.is_file():
@@ -207,7 +220,9 @@ def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:
         # AN OUTPUT THAT DOES NOT READ says no relaxation; a defect in a
         # reader is not caught.
         return None
-    return relaxation_of_output(path, traj, engine=engine_of(path.parent))
+    return relaxation_of_output(
+        path, traj, engine=engine if engine is not None
+        else engine_of(path.parent))
 
 
 def held_atoms_of(struct, rec) -> Optional[List[int]]:
@@ -296,65 +311,21 @@ def judged_force(rec: Mapping[str, Any]) -> Optional[float]:
     return free if free is not None else rec.get("max_force_ev_ang")
 
 
-def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
-    from .fdf import parse_fdf_params, read_deck
-    try:
-        # THE DECK AS THE ENGINE READS IT (`read_deck`): a block read from
-        # a file beside it -- a vibration call's coordinates -- inlined.
-        text = read_deck(deck)
-    except OSError:
+#: WHICH READER A DECK'S STATED SETTINGS ARE READ BY is the deck's role --
+#: what the file IS (`runfiles.WRITTEN`), as `_run_ending.READERS`
+#: dispatches: a SIESTA deck's, its family's (`siesta_contract`).  A role
+#: with none -- a PySCF script -- records no contract.
+CONTRACT_READERS = {
+    ".fdf": "molbuilder.parse.engines.siesta_contract:contract_fields"}
+
+
+def _read_contract(role: str, deck: Path) -> Optional[Dict[str, Any]]:
+    """The settings ``deck`` states, by the reader its ``role`` names."""
+    ref = CONTRACT_READERS.get(role)
+    if ref is None:
         return None
-    from ..units import UnknownUnit
-    try:
-        p = parse_fdf_params(text)
-    except UnknownUnit:
-        # No contract rather than a wrong one: recording a number this
-        # build could not convert would put a value in the record that
-        # the deck does not state.
-        return None
-    contract = {k: v for k, v in {
-        # The catalogue's names (`RECORDED_FIELDS`) in the catalogue's
-        # units -- the parse converts each to it on the way in.
-        "basis_size":               p.basis_size,
-        "pao_energy_shift":         p.energy_shift_ry,
-        "xc_functional":            p.xc_functional,
-        "xc_authors":               p.xc_authors,
-        "mesh_cutoff":              p.mesh_cutoff_ry,
-        # THE K-POINT MESH (`K_MESH_RECORD_KEYS`): the run's counts, all
-        # three, and its offset (`engines/siesta.md` § 6.1).
-        "kgrid":                    (list(p.kgrid) if p.kgrid else None),
-        "kgrid_displacement":       (list(p.kgrid_displacement)
-                                     if p.kgrid_displacement else None),
-        "electronic_temperature":   p.electronic_temperature_k,
-        # What the run carried -- SIESTA's defaults answer what the deck
-        # leaves out, so these are always known (ES7's hand-over reads them).
-        "net_charge":               p.net_charge,
-        "spin_treatment":           p.spin_treatment,
-        "unpaired_electrons":       p.unpaired_electrons,
-        # How its SCF converged (`SCF_RECORD_KEYS`).
-        "mixing_weight":            p.mixing_weight,
-        "pulay_history":            p.pulay_history,
-        "dm_tolerance":             p.dm_tolerance,
-        "h_tolerance":              p.h_tolerance_ev,
-        "dm_energy_tolerance":      p.dm_energy_tolerance_ev,
-        "scf_energy_converge":      p.scf_energy_converge,
-    }.items() if v is not None}
-    # THE STATE AND THE SCF SETTINGS RIDE WITH A CONTRACT; THEY DO NOT MAKE
-    # ONE.  SIESTA's defaults answer the state for every deck, so it is
-    # always known -- and a deck that states no level of theory has nothing
-    # to cite, whatever its state or its mixer.
-    if not set(contract) - set(STATE_RECORD_KEYS) - set(SCF_RECORD_KEYS):
-        return None
-    try:                                    # inside molbuilder
-        from ..persist import sha256_of
-    except ImportError:                     # beside the job (mb_vibration.pyz)
-        from persist import sha256_of
-    return {
-        "engine": "siesta",
-        "contract": contract,
-        "source": deck.name,
-        "source_sha256": sha256_of(deck),
-    }
+    from ..kind_table import part
+    return part(ref, record="the contract readers", key=role)(deck)
 
 
 # --------------------------------------------------------------------- #
@@ -494,26 +465,19 @@ def _from_cluster(directory: Path) -> set:
     engine's own file, every section, *"a HINT about a directory, safe to
     over-include"* -- which is exactly this question.
 
-    Two facts are NOT warm files and stay here: the deck suffix (the
-    seam's ``EngineSeam.suffix``, which `parse` may not import -- it
-    lives a layer up in ``jobset``) and the wrapper's stdout name.  A
-    bare ``.py`` is deliberately not a signal either: "there is a python
-    file here" says nothing about the engine -- a person's own script.
+    The run's outputs are not warm files and are asked of the catalogue
+    (`runfiles.stdout_roles`).  A deck is no signal at all: a deck beside
+    nothing that ran says nothing of a run, and "there is a python file
+    here" says nothing about the engine -- a person's own script.
     """
     from molbuilder.warmfiles import WarmFilesError, warm_list
     from ..runfiles import find_by_role
     names = [f.name for f in directory.iterdir() if f.is_file()]
     out = set()
-    # Declared roles ask the catalogue.  The warm suffixes below cannot:
-    # they are the engine's names, in no `runfiles.WRITTEN` row.
-    # THE DECK STAYS A LITERAL.  The catalogue does carry `.fdf -> siesta`, but deriving from it would equally give
-    # `.py -> pyscf` -- and the docstring above records why that is wrong:
-    # a python file beside a run says nothing about its engine, so
-    # `find_by_role(d, ".py")` can answer for a SIESTA directory.  The asymmetry
-    # is that one extension is generic and the other is not, which is not a
-    # fact the catalogue holds and does not earn a column for one case.
-    if find_by_role(directory, ".fdf"):
-        out.add("siesta")               # the deck: EngineSeam.suffix
+    # WHAT RAN votes, never a deck (`running-a-job.md` § 4.2): a run's
+    # outputs, by the catalogue's roles, and its warm files, by the engine's
+    # names (in no `runfiles.WRITTEN` row).  A deck alone says nothing of a
+    # run -- a folder holding only a hand-made deck answers "unknown".
     for engine in _ENGINES:
         if any(find_by_role(directory, r) for r in _stdout_roles(engine)):
             out.add(engine)

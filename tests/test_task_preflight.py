@@ -5,16 +5,14 @@ of it before anything is written"*, each naming what it refused) ·
 ``docs/science/validation.md`` § 4.1.
 
 The structural rows are ``task.py``'s and are tested in
-``test_task_description.py``.  That the codec imports no engine config -- the
-reason ``preflight`` takes ``config_cls`` as a parameter -- is `stages.md`
-§ 6's rule and review's to hold; what runs here is the preflight answering
-for either engine's class.
+``test_task_description.py``.  That the codec imports no engine config is
+`stages.md` § 6's rule and review's to hold; what runs here is the preflight
+answering for either engine's class, the one its record names.
 """
 from __future__ import annotations
 
 import pytest
 
-from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.issues import ValidationError
 from molbuilder.task import Stage, StructureRef, Task, derive_run
@@ -207,8 +205,7 @@ def test_pyscf_gets_the_same_treatment_as_siesta():
     ship one.  A check that only ever ran for SIESTA would be a third place
     the two engines diverge."""
     issues = preflight(_task(engine="pyscf", varies=("not_a_pyscf_field",),
-                             stages=(Stage(name="a"),)),
-                       config_cls=PySCFConfig)
+                             stages=(Stage(name="a"),)))
     assert _wheres(issues) == ["task.varies"]
 
 

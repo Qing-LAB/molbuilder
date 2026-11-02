@@ -40,16 +40,16 @@ def _calculation_of(job_dir):
     return root_of(job_dir)
 
 
-def check_trial_starts_cold(job_dir, job) -> None:
+def check_trial_starts_cold(job_dir, job, *, engine: str) -> None:
     """A TRIAL measures from scratch, and SUBMISSION verifies it.
 
     User-settled 2026-08-21: prep bakes the INTENT (the measurement pin
     resolves ``restart = clean`` into the deck), but the submission is
     what determines the run's actual starting state -- so the door checks
     the artifact it is about to launch.  The clean restart group is
-    written out, never omitted (`siesta/input.py`, 2026-08-18: ``clean``
-    writes ``.false.``), so a cold deck PROVABLY carries ``UseSave`` keys
-    reading false; a deck where any reads true would warm-start -- a
+    written out, never omitted (``clean`` writes each of its keywords
+    false), so a cold deck PROVABLY carries its restart keywords reading
+    false; a deck where any reads true would warm-start -- a
     continued run wearing a trial's label -- and one carrying none at all
     cannot be vouched for (hand-stripped, or rendered before the pin).
     A warm or group-stripped deck refuses by name (remedy: the benchmark
@@ -66,20 +66,18 @@ def check_trial_starts_cold(job_dir, job) -> None:
         # its deck fails loudly on its own; this gate's question is only
         # whether an EXISTING deck would warm-start.
         return
-    from ..parse.fdf import read_deck
-    text = read_deck(deck)
     # THE RESTART GROUP, as the catalogue spells it (`[item.restart]
-    # .expands`), read off the deck by the one door (`script_emit.
-    # deck_values`) and each switch as fdf reads one (`parse.fdf.fdf_true`).
-    from ..parse.fdf import fdf_true
-    from ..script_emit import deck_values
-    saves = deck_values("restart", "siesta", text)
+    # .expands`), read off the deck as ``engine`` reads it by the one reader
+    # of a deck's restart group (`script_emit.restart_group`).
+    from ..engine_table import read_deck
+    from ..script_emit import restart_group
+    saves = restart_group(engine, read_deck(engine, deck))
     if not saves:
         raise TrialNotCold(
             f"trial {job.name!r}: {deck.name} carries no restart group at "
             f"all, so its cold start cannot be vouched for (prep always "
             f"writes the clean group).  " + _bench_anew(_calculation_of(job_dir)))
-    warm = [k for k, v in saves.items() if fdf_true(str(v).split())]
+    warm = [k for k, reads in saves.items() if reads]
     if warm:
         raise TrialNotCold(
             f"trial {job.name!r}: {deck.name} would WARM-start "

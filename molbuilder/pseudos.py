@@ -91,7 +91,7 @@ def psml_sources(labels, *, dest_dir=None,
     (`check_coverage`).
 
     **No side effects** -- which is why this is here and not
-    `jobset.engines.pseudo_dir`, whose job is to CREATE the folder and migrate
+    `siesta.seam.pseudo_dir`, whose job is to CREATE the folder and migrate
     root strays into it.  A read-only check cannot call a function that
     writes, and copying its rule instead would let the two disagree about
     where a file is.

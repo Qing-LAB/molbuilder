@@ -11,7 +11,7 @@ and the monitor all ask :func:`timing_of`, so every surface states one number
 for one run.
 
 **Stdlib only, and it travels beside every job**
-(`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3).
+(`runwrap.monitor_companions`, `execution/run-reports.md` § 2.3).
 """
 from __future__ import annotations
 
@@ -20,31 +20,39 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:                                        # inside molbuilder
+    from ... import runfiles as _rf
     from ..engines import molwatch_grammar as _MG
     from ..engines import siesta_grammar as _G
 except ImportError:                         # beside a job, as the monitor's
+    import runfiles as _rf
     import molwatch_grammar as _MG
     import siesta_grammar as _G
 
 #: One stamped SCF row: ``(epoch, phase, begins an SCF)``.
 Row = Tuple[float, str, bool]
 
-#: THE OUTPUTS WHOSE SCF ROWS THE RUN SCRIPT STAMPS as they print, into
-#: ``<base>.scf-timing.log`` -- ``{role: (a row's ERE, its prefix's ERE)}``,
-#: the SIESTA family's table's: its engine prints no time per row.  A role
-#: not here is stamped by no run script -- a PySCF deck stamps its own rows
-#: in its progress log.  The run script asks it by its output's role
-#: (`running-a-job.md` § 4.1).
-STAMPED_BY_RUN_SCRIPT: Dict[str, Tuple[str, str]] = {
+#: EVERY PHASE A RUN'S STAMPED ROWS CAN CARRY, in each row reader's family's
+#: words -- a SIESTA-family device's periodic initialization and its NEGF
+#: loop, a PySCF run's one SCF -- under which a run with several states each
+#: phase's own figures (:func:`timing_figures`).
+PHASES: Tuple[str, ...] = (_G.PHASE_PERIODIC, _G.PHASE_NEGF, _MG.SCF_PHASE)
+
+#: HOW AN OUTPUT PRINTS ITS SCF ROWS, by its role -- ``{role: (a row's ERE,
+#: its prefix's ERE)}``, the SIESTA family's grammar's: its engine prints no
+#: time per row, so the run script stamps them as they print.  WHICH output
+#: it stamps is the file catalogue's to say -- the timing file's row names
+#: the output it is cut from (`runfiles.cut_from_output`); these are the
+#: patterns it stamps that output's rows by (`running-a-job.md` § 4.1).
+SCF_ROW_PATTERNS: Dict[str, Tuple[str, str]] = {
     ".out": (_G.SCF_ROW_ERE, _G.SCF_PREFIX_ERE),
 }
 
 
-def stamped_rows(role: str) -> Optional[Tuple[str, str]]:
-    """The patterns the run script stamps an output in ``role`` by --
-    ``(a row's ERE, its prefix's ERE)`` -- or ``None``: no run script stamps
-    it (:data:`STAMPED_BY_RUN_SCRIPT`)."""
-    return STAMPED_BY_RUN_SCRIPT.get(role)
+def scf_row_patterns(role: str) -> Optional[Tuple[str, str]]:
+    """How an output in ``role`` prints an SCF row -- ``(a row's ERE, its
+    prefix's ERE)`` -- or ``None``: its grammar names none
+    (:data:`SCF_ROW_PATTERNS`)."""
+    return SCF_ROW_PATTERNS.get(role)
 
 
 def scf_timing_metrics(text: str) -> Dict[str, Any]:
@@ -132,6 +140,34 @@ TIMING_READERS: Dict[str, Callable[[str], Dict[str, Any]]] = {
     ".scf-timing.log": scf_timing_metrics,
     ".molwatch.log":   progress_log_timing_metrics,
 }
+
+
+def timing_roles() -> Tuple[str, ...]:
+    """The roles :func:`timing_file` chooses among: the timing files' own
+    (:data:`TIMING_READERS`) and every output the run script cuts a tee from
+    (`runfiles.cut_from_output`) -- what a caller holding a run hands it."""
+    return tuple(TIMING_READERS) + tuple(
+        r for r in _rf.stdout_roles() if _rf.cut_from_output(r))
+
+
+def timing_file(files) -> Optional[Path]:
+    """THE RUN'S TIMING FILE, out of its files ``{role: path}``
+    (:func:`timing_roles` the ones it reads) -- or ``None``.  A run whose
+    files hold an output the run script cuts a tee from
+    (`runfiles.cut_from_output` -- a SIESTA-family ``.out``) is timed by
+    that tee alone, ``None`` before its first row: its progress log is
+    prep's seed, which SIESTA never writes.  Any other run is timed by the
+    progress log its deck stamps (a PySCF run's) -- a SIESTA run that has
+    not written its ``.out`` yet included, whose seed holds no row.  The one choice the run record, the monitor, the Results
+    load and the benchmark summary ask (`model/parse.md` § 5c)."""
+    for role, path in files.items():
+        tee = _rf.cut_from_output(role) if path is not None else None
+        if tee is not None:
+            return files.get(tee)
+    return next((files[r] for r in TIMING_READERS
+                 if files.get(r) is not None
+                 and r not in {_rf.cut_from_output(o)
+                               for o in _rf.stdout_roles()}), None)
 
 
 def timing_of(path) -> Dict[str, Any]:

@@ -159,10 +159,8 @@ FIELDS: "dict[str, Field]" = {
         what="a temporary file's random part",
         shape=r"[A-Za-z0-9_.-]+",
         example="k3j9x_2a"),
-    "engine": Field(
-        what="the engine a prep rendered for",
-        shape=r"siesta|pyscf",
-        example="siesta"),
+    # "engine": the catalogue's own engines, set once its rows are declared
+    # (below WRITTEN) -- never a second list typed here.
     "kept": Field(
         what="the name of a record `jobset migrate` rewrote",
         shape=r"[A-Za-z0-9_.-]+",
@@ -798,8 +796,14 @@ class Artifact:
     #: label alone -- the calculation's own (the template, the source pair)
     #: and a run's result (`.spectra.json`, `.transport.json`, ...).
     staged: bool = True
-    #: Which engine writes it, or None for both.
+    #: Which engine writes it, or None for both.  A row cut from an output
+    #: (:attr:`cut_from`) takes that output's.
     engine: Optional[str] = None
+    #: THE OUTPUT THIS FILE IS CUT FROM, by its role, as the run writes it --
+    #: the SCF-timing tee's, a SIESTA-family ``.out`` -- or ``""``.  The one
+    #: statement of which output the run script cuts it from
+    #: (:func:`cut_from_output`); the row's engine is that output's.
+    cut_from: str = ""
     #: WHEN it appears -- "setup" (the description hand-over), "prep" (the
     #: deck and its wrapper), "launch" (what a launch writes as it sends a
     #: run: its launch record, the hand-over's records, a launch group's
@@ -1192,10 +1196,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "start through",
              door="wrapper_log.log_of_run"),
     # EVERY ENGINE'S, the monitor's two: the wrapper starts it from its shared
-    # part (`run-reports.md` § 2.3).  The timing tee is
-    # SIESTA's alone -- it reads the SIESTA family's rows -- so its row names
-    # the engine: a PySCF rung's card must not promise a file no PySCF run
-    # writes.
+    # part (`run-reports.md` § 2.3).  The timing tee is cut from a
+    # SIESTA-family ``.out`` (its row's ``cut_from``), and its engine is the
+    # output's, worked out below -- so a PySCF rung's card never promises a
+    # file no PySCF run writes.
     Artifact(".monitor.log", "the monitor's rolling status",
              kind="record", writer="the monitor",
              door="parse.instruments.monitor.MonitorLogFileParser"),
@@ -1205,7 +1209,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".scf-timing.log", "wall time per SCF iteration — on a "
                                 "TranSIESTA device, both its SCF loops "
                                 "(SIESTA's, then TranSIESTA's)",
-             engine="siesta", kind="record",
+             cut_from=".out", kind="record",
              writer="the run script's tee of the output's SCF lines",
              door="parse.instruments.scf_timing_rows.timing_of",
              # THE TEE OPENS IT AT THE FIRST SCF ROW (`runwrap._mb_scf_tee`):
@@ -1379,7 +1383,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              engine="siesta", when="prep", level="calculation", kind="input",
              writer="`molbuilder describe --psml-lib`, loose at the "
                     "calculation root; the first prep moves them into "
-                    "`pseudos/` (`jobset.engines.pseudo_dir`), and "
+                    "`pseudos/` (`siesta.seam.pseudo_dir`), and "
                     "`materialize` copies one beside each deck",
              door="pseudos.psml_sources"),
     Artifact(name=JUNCTION_FILE, what="the composed junction",
@@ -1631,6 +1635,22 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="run", level="transient", kind="transient",
              writer="`sidecars.molstruct.with_lock`"),
 )
+
+# A ROW CUT FROM AN OUTPUT IS THAT OUTPUT'S ENGINE'S: said once, by the
+# output it names (`cut_from`), never typed beside it.
+WRITTEN = tuple(
+    replace(a, engine=next(b.engine for b in WRITTEN if b.role == a.cut_from))
+    if a.cut_from else a for a in WRITTEN)
+
+#: THE ENGINE A PREP RENDERED FOR, as a name carries it: one of the engines
+#: the rows above name (:func:`engines` -- the list the engine table checks
+#: itself against), so a new engine is its rows, never a second list here.
+_ENGINES: "tuple[str, ...]" = tuple(sorted({a.engine for a in WRITTEN
+                                             if a.engine}))
+FIELDS["engine"] = Field(
+    what="the engine a prep rendered for",
+    shape="|".join(re.escape(e) for e in _ENGINES),
+    example=_ENGINES[0])
 
 #: The rows NAMED ON THE LABEL -- the role rows every reader of the run-file
 #: grammar walks; the fixed names are the rest of :data:`WRITTEN`.
@@ -1942,6 +1962,13 @@ def engine_of_role(role: str) -> Optional[str]:
     return None
 
 
+def cut_from_output(role: str) -> Optional[str]:
+    """The role of the file the run cuts from an output in ``role`` -- the
+    SCF-timing tee's from a SIESTA-family ``.out`` -- or ``None``: the run
+    script cuts nothing from it (the row's :attr:`Artifact.cut_from`)."""
+    return next((a.role for a in WRITTEN if a.cut_from == role), None)
+
+
 def engines() -> "tuple[str, ...]":
     """Every engine the catalogue names, sorted.
 
@@ -1949,7 +1976,7 @@ def engines() -> "tuple[str, ...]":
     row with ``engine=``), so this is what a caller iterating engines asks
     rather than restating the pair -- § 5.5's *adding an engine is two edits*.
     """
-    return tuple(sorted({a.engine for a in WRITTEN if a.engine}))
+    return _ENGINES
 
 
 def manifest(label: str, stage: Optional[str], *,

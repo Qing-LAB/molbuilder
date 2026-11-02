@@ -304,7 +304,6 @@ science wave), not the data model:
 | `check_spin_charge_parity(struct, charge, unpaired)` | is the (charge, 2S) pair electron-count-consistent? | `science/chemistry-correctness.md` |
 | `detect_transition_metals` | which transition metals are present (the basis-adequacy check) | `science/validation.md` |
 | `explain_metal_spin` | what a count means for a metal centre, in words | `science/chemistry-correctness.md` |
-| `resolve_pyscf_ecp(struct, …)` | which atoms need an effective core potential | `engines/pyscf.md` |
 | `analyze_structure(struct)` → `ChemistryAnalysis` | the structure's facts — the metals that bear on its spin and their usual spins — that the electronic state decides from | `science/validation.md` · `science/chemistry-correctness.md` § 2a |
 
 Keeping the correctness half in `science/` means a reviewer checking whether a

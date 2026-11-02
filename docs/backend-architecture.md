@@ -233,7 +233,7 @@ uniformly"), catalogued here so a future refactor knows where the seams are:
 
 | # | Seam | Where |
 |---|---|---|
-| W1 | ~~**`runwrap.py` is the coupling hotspot.**~~ **CLOSED (2.63.0):** one run script for every engine, each block decided by the engine's record (`engine_table`: `one_process`, `keyword_deck`, `environment`, `programs`) or asked of the parse layer by the output's role ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 1); what a deck says of restart files is read through the catalogue (`script_emit.parameter`, `deck_values`) and the warm-file rules, its orbital estimate through its BENCH-MARKS reader. What stays: a deck whose settings are keywords is read with the fdf reader's key and switch rules (`parse.fdf.fdf_key`, `fdf_true`) — a keyword deck is an fdf today | `runwrap.py` (`_deck_restart`) |
+| W1 | ~~**`runwrap.py` is the coupling hotspot.**~~ **CLOSED (2.63.0):** one run script for every engine, each block decided by the engine's record (`engine_table`: `one_process`, `keyword_reader`, `environment`, `programs`) or asked of the parse layer by the output's role ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 1); what a deck says of restart files is read through the catalogue's one reader of a deck's restart group (`script_emit.restart_group`, which a benchmark trial's cold check reads through too) and the warm-file rules, its orbital estimate through its BENCH-MARKS reader. | `runwrap.py` (`_deck_restart`) |
 | W2 | ~~**The one leak inside the "agnostic" core.**~~ **CLOSED (U3, 2026-08-13):** `jobset/runstatus.py`'s hardcoded warm-file table now derives from the engines' `warm-files.toml` rules files through the one loader (`job-contracts.md` § 4.2a) — the row stays so the seam's history is findable | `jobset/runstatus.py` |
 | W3 | **`runtime_config` leaks scheduler schema as untyped dicts** into `jobset/submit.py` and `runwrap.py` (`d["partition"]`, `d["qos"]`, …), and the module also bundles web-auth/TLS config with scheduler config — two concerns in one reader. | `runtime_config.py`; consumers `jobset/submit.py`, `runwrap.py` |
 | W4 | **CLOSED (2026-08-29)** — transport stayed its own kind exactly as decided (2026-08-11, user), and the composite is that kind built properly: `--calculation transport` cites a finished junction, derives its five stages, and runs them through the ordinary jobset verbs — no edges, no chained ladder, the hand-rolled bash driver deleted (`archive/2026-09-01-transport-design.md`) | *(orchestrate.py deleted)* |
@@ -309,7 +309,7 @@ When adding backend code, place it by concern **and** layer:
   reaches it. Never inline a new `preflight` outside the registry.
 - **A new execution verb** stays engine-agnostic if it is post-producer; engine
   knowledge belongs in a *producer* — `prep`, through the engine seam
-  (`jobset/engines.py`). Never parse a
+  (`jobset/engines.engine_seam`, each engine's in its own package). Never parse a
   `.fdf` in the `jobset` core.
 - **A new data codec** routes through the `Structure` authority
   (`to_dict` / `from_dict` / `to_wire`) and `persist.check_schema`; never

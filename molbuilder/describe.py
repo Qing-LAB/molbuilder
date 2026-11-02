@@ -217,7 +217,7 @@ def _check(task: Task, cfg, *, generators=None) -> None:
     order and already names what it refused.
     """
     from .validation.task import preflight, refuse_on_error
-    issues = preflight(task, type(cfg),
+    issues = preflight(task,
                        **({"generators": generators} if generators else {}))
     try:
         refuse_on_error(issues)

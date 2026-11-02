@@ -44,7 +44,7 @@ from pathlib import Path
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-# IT TRAVELS BESIDE EVERY JOB (`runwrap.MONITOR_COMPANIONS`,
+# IT TRAVELS BESIDE EVERY JOB (`runwrap.monitor_companions`,
 # `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
 # `run_status` itself.  So what it reads with is stdlib-only and travels too,
 # imported two ways -- from the package, or from beside the job.

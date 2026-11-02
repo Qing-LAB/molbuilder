@@ -244,11 +244,15 @@ class Run:
                 or prepared.resolve() == deck.resolve()):
             return None
         from molbuilder.deck_record import same_calculation
-        from molbuilder.parse.fdf import inline_includes, read_deck
-        stage_text = inline_includes(
-            prepared.read_text(encoding="utf-8-sig", errors="replace"),
-            beside=deck.parent)
-        return not same_calculation(self.place.task.engine, read_deck(deck),
+        from molbuilder.engine_table import read_deck
+        engine = self.place.task.engine
+        # THE STAGE'S DECK READ BESIDE THIS RUN'S: a block it reads from a
+        # file beside it is the run's file (`engine_table.read_deck`).
+        stage_text = read_deck(
+            engine, deck,
+            read=lambda p: (prepared if p == deck else p).read_text(
+                encoding="utf-8-sig", errors="replace"))
+        return not same_calculation(engine, read_deck(engine, deck),
                                     stage_text)
 
     @property
@@ -413,9 +417,9 @@ def declared_of_deck(deck: Optional[Path], task, stage: Optional[str], *,
     from molbuilder.deck_record import DeckRecordUnreadable
     if deck is None:
         return Declared()
-    from molbuilder.parse.fdf import read_deck
+    from molbuilder.engine_table import read_deck
     try:
-        text = read_deck(deck)
+        text = read_deck(task.engine, deck)
     except OSError as exc:
         raise DeckRecordUnreadable(f"{deck}: does not read ({exc})") from exc
     from molbuilder.deck_record import (extract_atom_metadata,
@@ -582,7 +586,9 @@ def view_of(run: Optional[Run], *, output=None, traj: Any = None,
     said = declared(run) if run is not None else Declared()
     return RunView(atom_metadata=said.atom_metadata_for(n_atoms),
                    periodicity=said.frame(lattice),
-                   info=run_info(deck=said.deck, output=output, traj=traj),
+                   info=run_info(deck=said.deck, output=output, traj=traj,
+                                 engine=(run.place.task.engine
+                                         if run is not None else None)),
                    declared=said)
 
 

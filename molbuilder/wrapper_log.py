@@ -12,7 +12,7 @@ SIESTA run's stderr here (`model/parse.md` § 2b) and whether the job's
 finish began (`running-a-job.md` § 4.2).
 
 **Stdlib only, and it travels beside every job** (`runwrap.
-MONITOR_COMPANIONS`), so the monitor pairs a run with its log exactly as the
+monitor_companions`), so the monitor pairs a run with its log exactly as the
 Results tab does.
 
 ONE LOG PER RUN.  A run folder holds one start (`project-layout.md`

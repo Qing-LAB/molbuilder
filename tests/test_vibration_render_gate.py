@@ -268,19 +268,23 @@ def test_the_level_of_theory_has_one_spelling_per_deck():
 
 def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():
     """A check is never skipped in silence (science/validation.md F4).
-    The vibration kind's science is written for PySCFConfig; a
-    SiestaConfig described as a vibration must not come back with an
-    EMPTY verdict, which every surface reads as 'checked, nothing
-    found'.  It is refused by name -- and the same config through the
-    same door is an ordinary optimization gate."""
+    A config no engine's record names is refused at the gate on every
+    kind -- it would otherwise come back with an EMPTY verdict, which every
+    surface reads as 'checked, nothing found' -- and the vibration kind's
+    own science refuses an engine it has no checks for by name."""
     import dataclasses
 
+    from molbuilder.engine_table import EngineTableError
     from molbuilder.validation import validate
+    from molbuilder.validation.spectra import validate_vibration_kind
 
     @dataclasses.dataclass
     class OtherEngineConfig:
         basis: str = "x"
 
+    for kind in ("vibration", "optimization"):
+        with pytest.raises(EngineTableError, match="no engine's config"):
+            validate(_water(), OtherEngineConfig(), calculation=kind)
     with pytest.raises(TypeError, match="vibration kind has no science"):
-        validate(_water(), OtherEngineConfig(), calculation="vibration")
-    assert isinstance(validate(_water(), OtherEngineConfig()), list)
+        validate_vibration_kind(_water(), OtherEngineConfig(), None,
+                                engine="orca", state=None)

@@ -200,7 +200,7 @@ A pair without the table runs each rung once. The door refuses a key it does not
 and a part not named `module:NAME`, naming the file and the key. A part is resolved where it is asked
 ([`architecture.md`](?doc=execution/architecture.md) § 3.3), and a part that does not resolve is refused there,
 naming it: on this machine by `kind_table.part`; beside the job by `runpoints.part`, among the modules that travel
-beside it — the module's last name, as the bundle holds it (`runwrap.MONITOR_COMPANIONS`).
+beside it — the module's last name, as the bundle holds it (`runwrap.monitor_companions`).
 
 ### 2.2 The declaration — what a kind's points are
 

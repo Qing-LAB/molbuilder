@@ -62,7 +62,7 @@ def _validate_config_metadata(cfg, refused=frozenset(),
     (`engines/template.md` § 5.3) -- ``foreign``, the catalogue items this
     calculation does not carry: the kind narrows the catalogue (§ 6.3), so
     their values are not this calculation's to warn about
-    (:func:`not_carried`) -- and ``inactive``, the settings that enter
+    (:func:`not_carried_by`) -- and ``inactive``, the settings that enter
     nothing here (:func:`_inactive`), whose one line says so."""
     issues: List[Issue] = []
     if not is_dataclass(cfg):
@@ -166,19 +166,12 @@ def _validate_config_metadata(cfg, refused=frozenset(),
     return issues
 
 
-def not_carried(cfg, calculation: str) -> frozenset:
-    """The catalogue items of ``cfg``'s engine that a ``calculation`` does
-    not carry -- a lead's ``electrode_kz`` on an optimization -- whose field
-    a config class holds all the same.  Empty for a config the catalogue
-    does not describe."""
-    from ..template import engine_name
-    return not_carried_by(engine_name(type(cfg)), calculation)
-
-
 def not_carried_by(engine: str, calculation: str) -> frozenset:
-    """:func:`not_carried` by the engine's NAME -- what the description's
-    own check has, before any config exists.  The kind narrows the
-    catalogue (`engines/template.md` § 6.3), so neither door judges a value
+    """The catalogue items of ``engine`` that a ``calculation`` does not
+    carry -- a lead's ``electrode_kz`` on an optimization -- whose field a
+    config class holds all the same; asked by the settings gate and the
+    description's own check, before any config exists.  The kind narrows
+    the catalogue (`engines/template.md` § 6.3), so neither judges a value
     of an item the calculation does not carry."""
     from ..template import catalogue, select
     cat = catalogue()
@@ -190,7 +183,8 @@ def not_carried_by(engine: str, calculation: str) -> frozenset:
                      if it.name not in carried)
 
 
-def _check_fixed_on_every_rung(cfg, calculation: str) -> List[Issue]:
+def _check_fixed_on_every_rung(cfg, calculation: str,
+                               engine: str) -> List[Issue]:
     """A config holding another value for what every rung fixes alike
     (`engines/template.md` § 6.4) -- SIESTA's per-step forces and
     coordinates -- is refused, naming the item and why.
@@ -202,11 +196,7 @@ def _check_fixed_on_every_rung(cfg, calculation: str) -> List[Issue]:
     rung's solver, the leads' ``TS.HS.Save``, the bias point) have no one
     answer this check could hold a config to; `resolve` is their door.
     """
-    from ..template import (catalogue, engine_name, fixed_on_every_rung,
-                            why_role)
-    engine = engine_name(type(cfg))
-    if engine not in catalogue().engines:
-        return []
+    from ..template import fixed_on_every_rung, why_role
     issues: List[Issue] = []
     for name, answer in fixed_on_every_rung(engine, calculation).items():
         have = getattr(cfg, name, answer)
@@ -221,7 +211,7 @@ def _check_fixed_on_every_rung(cfg, calculation: str) -> List[Issue]:
     return issues
 
 
-def _check_values(cfg, calculation: str) -> List[Issue]:
+def _check_values(cfg, calculation: str, engine: str) -> List[Issue]:
     """A value that cannot stand for its item on this kind is refused, with
     the ONE clause the per-value door gives (`engines/template.md` § 5.3,
     ``template.why_not``): a component the kind fixes, a choice it does not
@@ -233,11 +223,8 @@ def _check_values(cfg, calculation: str) -> List[Issue]:
     render that skipped `resolve` -- a library call or a test.  One pass, so
     one value draws one refusal.
     """
-    from ..template import catalogue, engine_name, select, why_not
-    engine = engine_name(type(cfg))
+    from ..template import catalogue, select, why_not
     cat = catalogue()
-    if engine not in cat.engines:
-        return []
     issues: List[Issue] = []
     for it in select(cat, engine=engine, calculation=calculation):
         have = getattr(cfg, it.name, None)
@@ -249,18 +236,15 @@ def _check_values(cfg, calculation: str) -> List[Issue]:
     return issues
 
 
-def _inactive(cfg, calculation: str) -> Dict[str, str]:
+def _inactive(cfg, calculation: str, engine: str) -> Dict[str, str]:
     """The settings that enter nothing here, each with why -- the items
     whose ``active_when`` the other settings do not meet (`engines/
     template.md` § 5), whatever they hold.  Asked once by ``validate``: the
     gate's one line about each (:func:`_check_inactive`), and the advice
     that stands aside for them -- a recommended range, the probe's
     displacement -- since nothing they hold is run."""
-    from ..template import catalogue, engine_name, inactive_why, select
-    engine = engine_name(type(cfg))
+    from ..template import catalogue, inactive_why, select
     cat = catalogue()
-    if engine not in cat.engines:
-        return {}
     values = {f.name: getattr(cfg, f.name) for f in fields(cfg)}
     out: Dict[str, str] = {}
     for it in select(cat, engine=engine, calculation=calculation):

@@ -36,14 +36,13 @@ def test_every_part_a_pair_names_resolves(calculation, engine):
 
 @pytest.mark.parametrize("engine", engine_table.engines())
 def test_every_part_an_engine_names_resolves(engine):
-    """Its config class and its seam: the seam's factory builds a seam
-    whose config class is the record's -- and the environments its runs
-    enter are categories an environment is registered for
+    """Its config class and its seam resolve -- and the environments its
+    runs enter are categories an environment is registered for
     (`configuration.md` § 4), so its prep finds one."""
     from molbuilder.diagnostics import DEFAULT_ENV_NAMES
-    from molbuilder.jobset.engines import engine_seam
-    cls = engine_table.config_class(engine)
-    assert engine_seam(engine).config_cls is cls
+    from molbuilder.jobset.engines import EngineSeam, engine_seam
+    assert isinstance(engine_table.config_class(engine), type)
+    assert isinstance(engine_seam(engine), EngineSeam)
     eng = engine_table.engine(engine)
     for category in filter(None, (eng.environment, eng.gpu_environment)):
         assert category in DEFAULT_ENV_NAMES, category
@@ -138,18 +137,30 @@ _ENGINE_ROWS = [
     # give its run script nothing to launch on each rank.
     ("an engine running ranks that names no program",
      "one_process = false", "one_process = false names the programs"),
+    # Every engine's config is checked: a record that names no validator
+    # would let a deck of that engine pass a gate that asked nothing.
+    ("an engine that names no validator",
+     "one_process = true\n# names no validator", "missing validator"),
+    # A benchmark trial's cold start is read from its deck's restart
+    # keywords: a lane for an engine whose deck states none would refuse
+    # every trial as carrying no restart group.
+    ("an engine with a benchmark lane and no keyword reader",
+     "one_process = true\nbenchmark = true", "needs a keyword_reader"),
 ]
 
 
-@pytest.mark.parametrize("what, one_process, words", _ENGINE_ROWS,
+@pytest.mark.parametrize("what, lines, words", _ENGINE_ROWS,
                          ids=[r[0] for r in _ENGINE_ROWS])
 def test_an_engine_record_that_does_not_hold_together_is_refused(
-        tmp_path, monkeypatch, what, one_process, words):
+        tmp_path, monkeypatch, what, lines, words):
     text = engine_table.TABLE_FILE.read_text() + (
         '\n[orca]\nwords = "ORCA"\nidentity_field = "x"\n'
-        'config = "m:C"\nseam = "m:s"\ncomputes_in = "cell"\n'
-        f'{one_process}\nbenchmark = false\npresets = "m:P"\n'
-        'keyword_deck = false\nenvironment = "pyscf"\n')
+        'config = "m:C"\nsame_calculation = "m:d"\nseam = "m:s"\n'
+        'computes_in = "cell"\n'
+        + (lines if "no validator" in lines
+           else lines + '\nvalidator = "m:v"')
+        + ("" if "benchmark" in lines else "\nbenchmark = false")
+        + '\npresets = "m:P"\nenvironment = "pyscf"\n')
     table = tmp_path / "engine_table.toml"
     table.write_text(text)
     monkeypatch.setattr(engine_table, "TABLE_FILE", table)

@@ -85,7 +85,7 @@ flowchart LR
   `jobset prep`, which calls `spec_for` → `script_emit.prepare_deck` (validate
   → render → write → check) on the machine that will run it, and writes the
   siblings the deck's own text promises
-  (`jobset/engines.py::_siesta_sibling_artifacts`).
+  (`siesta/seam.py::_siesta_sibling_artifacts`).
 
   > **The `molbuilder fdf` CLI verb is deleted** *(2026-08-11, user — obsolete residue from the flat-dir
   > design; [`process/conventions.md § 3`](?doc=process/conventions.md))*. It let
@@ -113,8 +113,8 @@ flowchart LR
 
 *Stated 2026-08-11 (user). **✅ It is code**: `jobset/prep.py` takes the
 description plus its template and emits one deck per element of the resolved
-`ParameterSet`, through `EngineSeam(config_cls=SiestaConfig,
-spec_for=spec_for)`: the seam hands back the deck's **form**, a `DeckSpec`, and
+`ParameterSet`, rebuilt into the class SIESTA's record names
+(`SiestaConfig`), through its seam's `spec_for`: the seam hands back the deck's **form**, a `DeckSpec`, and
 the framework renders, writes and checks it
 ([`script-preparation.md § 4.3`](?doc=execution/script-preparation.md)).*
 
@@ -519,7 +519,7 @@ flowchart TD
     A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"use_gpu?"}
     G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu<br/><i>the only ask needing a source build</i>"]
     G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta<br/><i>CPU-ELPA runs in the packaged env</i>"]
-    A -.->|"ScaLAPACK + use_gpu"| ERR["spec_for raises ValueError<br/>(siesta/input.py::_parallel_facts)"]
+    A -.->|"ScaLAPACK + use_gpu"| ERR["refused by SIESTA's settings check<br/>on the page and at prep<br/>(validation/siesta.py)"]
 ```
 
 Two **orthogonal** decisions (contract rewritten 2026-06-29):
@@ -534,10 +534,11 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
 2. **`cfg.use_gpu` — an accelerator on top of an ELPA choice.** On → the ELPA
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
-   Meaningful only with an ELPA algorithm — GPU + ScaLAPACK is rejected by the
-   **emitter itself** (`siesta/input.py::_parallel_facts` raises `ValueError`,
-   reached through `spec_for` on every SIESTA deck, a transport rung's
-   included), not just the UI.
+   Meaningful only with an ELPA algorithm — GPU with any other solver is
+   refused by **SIESTA's settings check** (`validation.siesta`, an error on
+   `use_gpu` naming the two ELPA choices), which the page's live check and
+   every deck's render ask alike, a transport rung's included — so the page
+   says it before Save, never first when prep writes the deck.
 
 **Emission:**
 - `ScaLAPACK` → emit **nothing** (SIESTA's built-in default).

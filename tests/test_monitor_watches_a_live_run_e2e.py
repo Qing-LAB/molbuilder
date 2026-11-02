@@ -463,7 +463,7 @@ def test_a_monitor_missing_its_companion_still_monitors(run, tmp_path,
 
 def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         run, tmp_path):
-    """`runwrap.MONITOR_COMPANIONS` travels to the machine that runs the job
+    """`runwrap.monitor_companions` travels to the machine that runs the job
     and executes under the job's own python, where molbuilder is not
     installed: staged into a copy of the run with the bundle beside it, the
     shipped monitor imports, reads the run through the SHIPPED readers, and

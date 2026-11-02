@@ -748,7 +748,7 @@ Six decisions shape everything below.
 
 **1. Describe work as data; keep the engine out of the verbs.** A `JobSet` is
 a plain data object (a JSON file), not code. Prep derives it from the
-description through each engine's **seam** (`jobset/engines.py`), and the
+description through each engine's **seam** (its own package's, `siesta/seam.py` and `pyscf/seam.py`, each an `EngineSeam` of `jobset/engines.py`), and the
 verbs (`prep` / `launch` / `status`) act on it **without knowing which engine
 it targets**. So one small set of verbs drives SIESTA ladders, PySCF ladders
 and benchmark sweeps alike, and a new engine is one engine seam, not a new
@@ -916,7 +916,7 @@ looking between the rungs ([`engines/stages.md`](?doc=engines/stages.md)
 § 1.1a). The ladder lives in `task.json`, never in an engine config
 ([`engines/stages.md`](?doc=engines/stages.md) § 1.1). Prep makes one job per
 stage of the description, its deck `<label>_<NN>_<stage>.<ext>`, through the
-engine seam (`jobset/engines.py`; SIESTA's stage knowledge,
+engine seam (`jobset/engines.engine_seam`, SIESTA's `siesta/seam.py`; SIESTA's stage knowledge,
 `siesta/stages.py`). Three things are derived, each a design decision:
 
 - **A stage that runs out of steps without converging simply stops**, and you

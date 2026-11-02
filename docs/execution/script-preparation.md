@@ -338,13 +338,13 @@ shared file ([`engines/template.md`](?doc=engines/template.md); an item's
 `engines` key says which engine it is for) — its record in the engine table,
 and its rows in the file catalogue. Its seam is **an answer to each question
 below** — the code half, stated as data rather than as a branch
-(`jobset/engines.py`, `EngineSeam`, named by the engine record's `seam`). Indexed by *when it is asked*, a gap is a
+(`jobset/engines.py`'s `EngineSeam`, built in the engine's own package — `siesta/seam.py`, `pyscf/seam.py` — and named by the engine record's `seam`). Indexed by *when it is asked*, a gap is a
 blank row: this table is an engine author's checklist.
 
 | step | the question | the member | may it answer "nothing"? |
 |:--:|---|---|:--:|
 | **describe** | what must be settled before a calculation is written — the findings the hand-over shows beside their fields, and the sentence it refuses in while one is an error: SIESTA's pseudopotentials, the files already in the folder counted as at 3.2 ([`web/handover-procedure.md`](?doc=web/handover-procedure.md) § 2.2) | `describe_findings` | **yes** |
-| **2** | the class the values rebuild into | `config_cls` | no |
+| **2** | the class the values rebuild into | *the engine record's* — `config` (`engine_table.config_class`) | no |
 | **3.2** data files | what the engine cannot start without | `provide_data` | **yes** |
 | **3.2** data files | which of those are the shared package every job copies | `shared_package` | **yes** |
 | **3.4** identity | the deck's type suffix | `suffix` | no |
@@ -580,12 +580,14 @@ honestly.** PySCF's script fills the columns from what it asked and what it
 read back.
 SIESTA is a separate process that has not started when its run script writes
 the block, so *what the engine holds* is not knowable there: its rows carry
-each catalogue item that writes a keyword with its catalogue default only, and
-then the deck as libfdf will read it — comments and blank lines stripped, a
+each catalogue item the rung reads that writes a keyword
+(`script_emit.declarations`, by `template.reads`) with its catalogue default
+only, and then the deck as the engine's keyword reader reads it — comments and
+blank lines stripped, a
 block read from a file beside it inlined, read at launch so a hand-edited deck
 is recorded as the engine will see it (`runwrap._effective_parameters_block`).
 
-> **W8 · The record covers every parameter, and it is generated.** Values a
+> **W8 · The record covers every parameter the rung reads, and it is generated.** Values a
 > person changed, values left at the default, and values that never reach the
 > engine. The item list comes from the catalogue and each read-back path from
 > that item's own `anchor`, so a new parameter joins the record with no edit

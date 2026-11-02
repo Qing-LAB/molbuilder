@@ -148,17 +148,6 @@ def _atoms_block(struct: Structure, positions, indent: str = "    ") -> str:
     return "\n".join(lines)
 
 
-def _resolve_ecp(struct: Structure, cfg: PySCFConfig):
-    """Thin shim onto :func:`molbuilder.chemistry.resolve_pyscf_ecp`.
-
-    The rule is shared with the vibration deck, so the two generators
-    can't drift: *which declared elements are present* -- no basis is
-    consulted and no ECP is added that the user did not name.
-    """
-    from ..chemistry import resolve_pyscf_ecp
-    return resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
-
-
 def spec_for(struct: Structure,
                   config: Optional[PySCFConfig] = None,
                   *,
@@ -203,10 +192,10 @@ def spec_for(struct: Structure,
         # learning a second calculation (spectra-migration plan § 2).
         from .vibration_deck import vibration_spec
         return vibration_spec(struct, config or PySCFConfig(), names=names)
-    if calculation != "optimization":
-        raise ValueError(
-            f"PySCF has no {calculation!r} deck; it renders "
-            f"'optimization' and 'vibration'.")
+    # WHICH KINDS PySCF RUNS is the kind table's (`kind(...).on`), which
+    # refuses another naming the engines it runs on.
+    from ..kind_table import kind as _kind
+    _kind(calculation).on("pyscf")
     # THE ELECTRONIC STATE, resolved once (`science/chemistry-correctness.md`
     # § 2a): the charge, the count and the SCF class all come from it, each
     # written with where it came from.  What PySCF cannot run -- a floating
@@ -386,7 +375,8 @@ def spec_for(struct: Structure,
         # not a rule this generator applies.  The deck states what was
         # asked for; ``validation`` is where a structure that looks like it
         # wants an ECP gets said out loud, for a person to confirm.
-        ecp_chosen = _resolve_ecp(struct, cfg)
+        from .ecp import resolve_ecp
+        ecp_chosen = resolve_ecp(struct, cfg.ecp, cfg.ecp_atoms)
         if ecp_chosen and v:
             _named = ", ".join(sorted(ecp_chosen))
             out += [
@@ -426,7 +416,7 @@ def spec_for(struct: Structure,
         out.append("    atom       = _atom_block,")
         out.append(f'    basis      = "{cfg.basis}",')
         if ecp_chosen:
-            # ONE shape: ``resolve_pyscf_ecp`` returns ``{element: name}`` or
+            # ONE shape: ``ecp.resolve_ecp`` returns ``{element: name}`` or
             # None, so this is a Python dict-literal every time.  It must NOT
             # be quoted -- a string-with-braces is what PySCF rejects as an
             # unknown ECP name.

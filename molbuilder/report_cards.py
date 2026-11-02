@@ -6,7 +6,7 @@ receiver -- Slack, Discord, the This machine tab: whether the fields sit side
 by side, how many at most, whether the summary line shows, and which fields a
 card shows for each event, in what order.  The title stays the code's.
 
-**Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`,
+**Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`,
 with the data file as the bundle's one data member, `runwrap.MONITOR_DATA`):
 the monitor reads it there, as `config_dir` and `report_fields` travel.  The
 reader finds the file by the import's two ways: inside the package in

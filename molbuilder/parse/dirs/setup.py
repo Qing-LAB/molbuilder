@@ -102,30 +102,17 @@ def differs(asked: Any, used: Any) -> Optional[bool]:
     return None if same is None else not same
 
 
-def _stage_roles(f: "RunFiles"):
-    """The ROLES the run's rung plays (`template.stage_roles`) -- what the
-    catalogue's `stages` axis names, so the items a rung reads are the
-    ones its deck was written with.  Its stage's name comes out of the token
-    in the run's names, which the run door gave the record
-    (`RunFiles.names`): the run's stage is known before any file of it is
-    read."""
-    from ...identity import parse_token
-    from ...template import stage_roles
-    got = parse_token(f.names.stage)
-    return stage_roles(f.engine, f.calculation, got[1] if got else None)
-
-
-def _used_from_fdf_log(keys, params, blocks) -> Any:
-    """What SIESTA's log says it read for an item's keywords: the entry of
-    the first keyword it read, or the block's rows."""
-    from ..fdf import fdf_key
+def _used_of(keys, params, blocks, key_of) -> Any:
+    """What the engine's record of what it read (its used log) says for an
+    item's keywords, matched by its keyword reader's rule ``key_of``: the
+    entry of the first keyword it read, or the block's rows."""
     for key in keys:
         if key.lower().startswith("%block"):
-            name = fdf_key(key[len("%block"):].strip())
+            name = key_of(key[len("%block"):].strip())
             if name in blocks:
                 return blocks[name]
             continue
-        entry = params.get(fdf_key(key))
+        entry = params.get(key_of(key))
         if entry is not None:
             return entry
     return None
@@ -149,45 +136,50 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     """``{"setup": {"rows", "engine_only"}, "verdict": {"findings"}}`` for the
     run ``f`` describes -- each part present only when a file states it."""
     from ... import script_emit as _sc
-    from ...engine_table import engine as _engine, engines as _engines
-    from ..fdf import fdf_key, read_deck
+    from ...engine_table import engines as _engines, keywords
     from ..registry import parse as _parse
     from .record import _read
 
     if f.engine not in _engines():
         return {}
-    # A DECK OF KEYWORDS the engine reads (the engine record's
-    # ``keyword_deck`` -- SIESTA's fdf) is read back for what the run asked;
-    # an item writing no keyword there is the launch's, not the deck's.
-    keyword_deck = _engine(f.engine).keyword_deck
+    # A DECK OF KEYWORDS the engine reads is read back for what the run
+    # asked, by the reader its record names (``keyword_reader`` -- SIESTA's
+    # fdf); an item writing no keyword there is the launch's, not the deck's.
+    kw = keywords(f.engine)
+    # THE FENCE, where the run wrote one: its run script's for a deck of
+    # keywords, the deck's own in the engine's output for a script deck,
+    # which writes it from inside itself (`model/parse.md` § 5d.3a).
     block = {r["item"]: r for r in
              _sc.read_parameters_fence(f.wrapper_text)
-             + _sc.read_parameters_fence(_read(f.pyscf_log))}
-    # THE DECK WHOLE, its coordinates file inlined (`parse.fdf.read_deck`).
-    deck_text = (read_deck(f.deck)
-                 if keyword_deck and f.deck is not None else "")
+             + (_sc.read_parameters_fence(_read(f.stdout)) if kw is None
+                else [])}
+    # THE DECK WHOLE, its coordinates file inlined (the reader's
+    # ``read_deck``).
+    deck_text = (kw.read_deck(f.deck)
+                 if kw is not None and f.deck is not None else "")
     params: Dict[str, Any] = {}
     blocks: Dict[str, Any] = {}
-    if f.fdf_log is not None:
+    if f.used_log is not None:
         try:
-            res = _parse(f.fdf_log)
+            res = _parse(f.used_log)
             params, blocks = dict(res.params), dict(res.blocks)
         except Exception:                                  # noqa: BLE001
             pass
 
     items = _sc.declarations(engine=f.engine, calculation=f.calculation,
-                             stage=_stage_roles(f))
+                             stage=f.names.stage)
     rows: List[Dict[str, Any]] = []
     by_keys: Dict[tuple, Dict[str, Any]] = {}
     written: set = set()
     for it in items:
         p = _sc.parameter(it.name, f.engine, deck_text=deck_text or None)
         keys = tuple(p.writes)
-        if keyword_deck and not keys:
+        if kw is not None and not keys:
             continue                   # no keyword: the launch's, not the deck's
-        written.update(fdf_key(k[len("%block"):].strip())
-                       if k.lower().startswith("%block") else fdf_key(k)
-                       for k in keys)
+        if kw is not None:
+            written.update(kw.key(k[len("%block"):].strip())
+                           if k.lower().startswith("%block") else kw.key(k)
+                           for k in keys)
         if keys and keys in by_keys:           # items sharing one block
             by_keys[keys]["items"].append(it.name)
             continue
@@ -209,10 +201,10 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
         if used is None and (params or blocks):
             if isinstance(asked, dict):
                 used = {k: v for k in asked
-                        for v in [_used_from_fdf_log((k,), params, blocks)]
+                        for v in [_used_of((k,), params, blocks, kw.key)]
                         if v is not None} or None
             else:
-                used = _used_from_fdf_log(keys, params, blocks)
+                used = _used_of(keys, params, blocks, kw.key)
         if used is not None:
             row["used"] = used
         if isinstance(asked, dict):

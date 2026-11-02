@@ -248,8 +248,9 @@ def ran_otherwise(once: ReadOnce, stage: str, where: Path, *,
     ran = run.deck if run is not None else None
     if ran is None:
         return ["it holds no deck"]
-    from ..parse.fdf import read_deck
-    return same_calculation(once.calc.task.engine, read_deck(ran), now)
+    from ..engine_table import read_deck
+    engine = once.calc.task.engine
+    return same_calculation(engine, read_deck(engine, ran), now)
 
 
 def gather_sources(calc, stage: str

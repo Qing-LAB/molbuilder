@@ -163,10 +163,10 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
     diverge for the canonical `.molwatch.log`, read by the parser called
     `molwatch` whatever wrote it.
 
-    NOTHING IS COMPUTED HERE.  The engine is a property of the RUN
-    DIRECTORY, declared when its deck was generated, and
-    `running-a-job.md` § 4.2 owns the resolution order;
-    `parse.contract.engine_of` is its one implementation.
+    NOTHING IS COMPUTED HERE.  `running-a-job.md` § 4.2 owns the
+    resolution order: a run of a calculation is its description's engine
+    (the run door, `runs.run_of`); a folder no run of ours is, read on its
+    own, the engine its files declare (`parse.contract.engine_of`).
 
     **`source_format` is the fallback, reached whenever the engine is not
     declared** -- an upload, which has no run directory, and a run
@@ -181,6 +181,9 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
     and it is the bug this signature exists to make impossible.
     """
     if search_dir:
+        run = run_of(search_dir)
+        if run is not None:
+            return run.place.task.engine
         declared = engine_of(search_dir)
         if declared != "unknown":
             return declared
@@ -333,7 +336,7 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         new_data = trajectory_to_legacy_dict(traj)
     except Exception as exc:  # pragma: no cover - defensive
         return None, f"Parse error: {exc}"
-    new_data["stop_reason"] = _stop_reason(traj)
+    new_data["stop_reason"] = _stop_reason(traj, path)
     # THE RATE IS THE RUN'S STAMPED SCF ROWS' (`model/parse.md` § 2a P-T4,
     # § 5c): the SIESTA tee or a PySCF progress log, by the one rule the run
     # record reads them by, re-read with the output.  ``None`` -- not stated
@@ -343,9 +346,8 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     # off the folder's decks (plan B11).
     from molbuilder.parse.dirs.record import scf_timing_of
     _run = run_of(path)
-    new_data["scf_timing"] = scf_timing_of(
-        path, _run.file(".scf-timing.log")
-        if _run is not None else None) or None
+    new_data["scf_timing"] = (scf_timing_of(_run) if _run is not None
+                              else None) or None
 
     # ---- Re-acquire to commit (skip if a concurrent /api/load
     #      already swapped to a different file under us) ---------
@@ -365,17 +367,19 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         return out, None
 
 
-def _stop_reason(traj) -> Optional[str]:
+def _stop_reason(traj, path) -> Optional[str]:
     """Why a stopped run stopped, in words: the cause the file's own parse
     carries -- the ending reader's (`model/parse.md` § 2b), so the file is
-    not read a second time for it -- worded by the SIESTA family's table
-    (`siesta_grammar.CAUSE_WORDS`).  ``None`` for a run that did not stop,
-    or a format that names no cause."""
+    not read a second time for it -- worded by the file's family's table,
+    asked by its role (`_run_ending.cause_words`).  ``None`` for a run that
+    did not stop, or a format that names no cause."""
     if getattr(traj, "run_state", None) not in ("stopped", "out_of_memory"):
         return None
-    from molbuilder.parse.engines.siesta_grammar import CAUSE_WORDS
+    from molbuilder.parse.engines._run_ending import cause_words
+    from molbuilder.runfiles import role_of
     cause = getattr(traj, "cause", None)
-    return CAUSE_WORDS.get(cause) if cause else None
+    return (cause_words(role_of(os.path.basename(path)) or "").get(cause)
+            if cause else None)
 
 
 def _targets_of(data) -> Optional[Dict[str, Any]]:

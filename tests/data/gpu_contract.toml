@@ -25,7 +25,7 @@ mem = "8G"
 
 # What every SIESTA case's template carries, under the case's own
 # `template`: the ELPA solver, because a SIESTA GPU run needs one -- GPU with
-# ScaLAPACK is refused where the deck is written (`gpu.md` G3, G6).  A CPU
+# ScaLAPACK is refused by the settings check (`gpu.md` G3, G6).  A CPU
 # case therefore runs CPU-ELPA, and its deck says `.false.` out loud.
 [siesta_template]
 diag_algorithm = "ELPA-1STAGE"
@@ -176,14 +176,19 @@ header = ["#SBATCH -n 1", "#SBATCH -c 4", "#SBATCH -p gpu",
           "#SBATCH --gres=gpu:2"]
 deck_says = { USE_GPU = true }
 said = ["gpu share  one process on 2 GPU(s)"]
+# ONE PROCESS HAS NO RANKS TO PLACE, and its deck uses the device itself
+# (`running-a-job.md` § 3.3): no rank binding, no shared-GPU service.
+run_sh_lacks = ["_mpirun_bind=", "_have_mps=", "socket co-location"]
 
 # GPU acceleration is ELPA's: ScaLAPACK with a GPU is refused rather than
-# written (`engines/siesta.md` § 7).
+# written, by the settings check the page's check hears too
+# (`engines/siesta.md` § 7, `science/validation.md` § 7).
 [[case]]
 name = "a GPU run on ScaLAPACK is refused"
 template = { diag_algorithm = "ScaLAPACK" }
 run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
-refused = "requires an ELPA diagonalizer"
+refused = "ScaLAPACK has no GPU path"
+made_lacks = ["01_coarse"]
 
 [[case]]
 name = "the run card's use_gpu, given among the template values, and the count on the card"

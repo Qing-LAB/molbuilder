@@ -51,12 +51,12 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
     `job-contracts.md` § 3.3: *"BENCH-MARKS and the template are emitted from
     ONE source, and that is a rule rather than a convenience … two
     hand-maintained copies of ``default=`` would drift, and the drift would be
-    silent."*  ``SIESTA_BENCH_FIELDS`` **is** hand-maintained, so the rule is
+    silent."*  SIESTA's ``BENCH_FIELDS`` **is** hand-maintained, so the rule is
     an intention there rather than a mechanism -- this test is the mechanism.
     Matched by ANCHOR, which is what a BENCH-MARKS line and a template item
     have in common.
     """
-    from molbuilder.script_emit import SIESTA_BENCH_FIELDS
+    from molbuilder.siesta.input import BENCH_FIELDS
     # A keyword reaches the deck two ways: an ``engine`` item's ``anchor``, or
     # a ``deck`` item's ``expands`` -- ``MD.Steps`` is the second, one of
     # the two keywords ``relax_steps`` becomes depending on ``relax_type``.
@@ -65,7 +65,7 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
     for d in _cat().values():
         for kw in ((d.anchor,) if d.anchor else ()) + tuple(d.expands or ()):
             by_keyword.setdefault(kw, d)
-    for bf in SIESTA_BENCH_FIELDS:
+    for bf in BENCH_FIELDS:
         item = by_keyword.get(bf.anchor)
         assert item is not None, (
             f"BENCH-MARKS declares {bf.anchor!r}, which no config field "
@@ -309,26 +309,53 @@ def test_the_catalogue_starts_no_calculation_past_a_limit(start, what):
         "a VALUE past the limit is the per-value door's, not the parser's")
 
 
-def test_a_keyword_of_a_deck_of_keywords_states_the_engines_own_value(
-        monkeypatch):
-    """`engines/template.md` § 5: an item whose anchor is a keyword of a
-    deck its engine reads as keywords (the engine record's
-    ``keyword_deck`` -- SIESTA's fdf) states ``engine_default``, or the
-    catalogue refuses it by name.  The other direction loads with the
-    shipped file: PySCF's anchored items state none, its script holding no
-    keywords.  API-level: the catalogue is authored, not described.
+#: AN ITEM THAT DOES NOT HOLD TOGETHER WITH THE ENGINE TABLE, refused when
+#: the catalogue loads, by name (`engines/template.md` § 5,
+#: `execution/architecture.md` § 3.3): the item, the edit of its block, and
+#: the words the refusal says.  API-level: the catalogue is authored, not
+#: described.
+_REFUSED_AT_LOAD = [
+    # A keyword of a deck its engine reads as keywords (the engine record's
+    # ``keyword_reader`` -- SIESTA's fdf) states the engine's own value.
+    pytest.param("mesh_cutoff", r"^engine_default = .*\n", "",
+                 "engine_default", id="keyword-without-engine-default"),
+    # WHO APPLIES A LIMIT is said for every engine it serves: one left out
+    # meant "the run script" without anyone saying so, until 2.64.0.
+    pytest.param("wall_slack", r'^limit_applied_by = .*$',
+                 'limit_applied_by = { siesta = "run_script" }',
+                 "who applies the limit is said for each",
+                 id="limit-applier-left-out"),
+    pytest.param("max_memory_mb", r'pyscf = "deck"', 'pyscf = "scheduler"',
+                 "the limit is applied by one of",
+                 id="limit-applier-unknown"),
+    # A RANK COUNT is offered only to an engine that runs ranks (the engine
+    # record's ``one_process``); until 2.64.0 the run script asked a second
+    # list.
+    pytest.param("mpi_np", r'^engines = \["siesta"\]$',
+                 'engines = ["siesta", "pyscf"]', "one_process",
+                 id="rank-count-for-one-process"),
+]
 
-    MUTATION THIS MUST FAIL AGAINST: the engine record's ``keyword_deck``
-    left unasked (the item loads)."""
+
+@pytest.mark.parametrize("item, pattern, replacement, words",
+                         _REFUSED_AT_LOAD)
+def test_an_item_that_disagrees_with_its_engines_record_is_refused_at_load(
+        monkeypatch, item, pattern, replacement, words):
+    """Each row's edit of one item's block in the shipped catalogue is
+    refused when the catalogue loads, naming the item; the shipped file
+    loads (every other test).
+
+    MUTATION THIS MUST FAIL AGAINST: the row's check left out of
+    `template.catalogue` (the edited item loads)."""
     import re
     from molbuilder import template as T
     shipped = T.load_catalogue()
-    block = re.search(r"\[item\.mesh_cutoff\]\n(?:(?!\[item\.).*\n)*",
+    block = re.search(r"\[item\.%s\]\n(?:(?!\[item\.).*\n)*" % item,
                       shipped).group(0)
-    assert "engine_default" in block
-    planted = shipped.replace(
-        block, re.sub(r"^engine_default = .*\n", "", block, flags=re.M))
-    monkeypatch.setattr(T, "load_catalogue", lambda: planted)
-    with pytest.raises(ValueError, match="engine_default") as refused:
+    edited = re.sub(pattern, replacement, block, flags=re.M)
+    assert edited != block, f"the row's edit does not apply to {item}"
+    monkeypatch.setattr(T, "load_catalogue",
+                        lambda: shipped.replace(block, edited))
+    with pytest.raises(ValueError, match=words) as refused:
         T.catalogue.__wrapped__()
-    assert "mesh_cutoff" in str(refused.value), str(refused.value)
+    assert item in str(refused.value), str(refused.value)

@@ -22,6 +22,7 @@ from __future__ import annotations
 #: `LAUNCH_CLAIM_VAR`, `LAUNCH_CLAIM`), read here by the wrapper's gate.
 from .scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
 
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -207,7 +208,7 @@ def _monitor_block(names, notify_on_scf: bool,
     It tells the monitor WHICH RUN it watches -- its stage's names
     (`runfiles.RunNames`) -- and never a path: the monitor names its log, its utilisation CSV and every file it
     reads through `runfiles`, and reads them through the framework's readers
-    that travel beside it (:data:`MONITOR_COMPANIONS`).  ``member`` makes it
+    that travel beside it (:func:`monitor_companions`).  ``member`` makes it
     a MEMBER of a run of points' monitor (`run-reports.md` § 2.4;
     `execution/runs-of-points.md` § 1.4): it finds its run by its folder's
     record (`calcdirs.where`), counts the wall from the run's launch record
@@ -1099,10 +1100,10 @@ def _dry_run_block(launch_line: str, gpu_ranks: bool, words: str) -> str:
 
 def _scf_tee_func(row_ere: str, prefix_ere: str) -> str:
     """Bash defining ``_mb_scf_tee`` -- the SCF per-iteration timing
-    instrument (running-a-job.md § 4.1), for an output whose reader says
-    its rows are the run script's to stamp
-    (`scf_timing_rows.stamped_rows`): ``row_ere`` a row, ``prefix_ere`` the
-    prefix before its iteration number, the parse layer's own patterns.
+    instrument (running-a-job.md § 4.1), for an output the file catalogue
+    cuts a timing file from (`runfiles.cut_from_output`):
+    ``row_ere`` a row, ``prefix_ere`` the prefix before its iteration
+    number, the grammar's own patterns (`scf_timing_rows.scf_row_patterns`).
 
     GOAL: an engine that prints **no usable per-iteration wall time** --
     SIESTA's ``scf:`` lines carry energies + dDmax but no time.  This filter
@@ -1145,7 +1146,7 @@ def _ending_question_func(stderr_apart: bool) -> str:
     run ended (`execution/run-reports.md` § 2.3).
 
     THE RUN SCRIPT ASKS, IT DOES NOT GREP.  ``_run_ending.py`` travels beside
-    every job (:data:`MONITOR_COMPANIONS`), so the run script runs it with
+    every job (:func:`monitor_companions`), so the run script runs it with
     the job's own python over the output -- read by the reader its role
     names -- and, where the output keeps its engine's stderr apart
     (``stderr_apart``, `_run_ending.stderr_apart`: SIESTA's), over the
@@ -1343,13 +1344,14 @@ def _launch_again(resumes: bool, continues: bool,
 def _deck_restart(engine: str, text: Optional[str]
                   ) -> Tuple[Optional[bool], Dict[str, Tuple[str, bool]]]:
     """What a deck whose settings are KEYWORDS (`engine_table`'s
-    ``keyword_deck``) says of the state a previous run left -- read from its
-    text, because the deck is what the engine obeys: ``(honoured, reads)``.
+    ``keyword_reader``) says of the state a previous run left -- read from
+    its text by that reader, because the deck is what the engine obeys:
+    ``(honoured, reads)``; ``(None, {})`` for a script deck.
 
     ``honoured``: its ``restart`` item's answer (the catalogue's
-    ``expands``, `script_emit.parameter`), read as the deck's keywords read
-    a switch (`parse.fdf.fdf_true`) -- ``None`` where the deck states none or
-    cannot be read.  ``reads``: FILE BY FILE, ``{suffix: (keyword, reads)}``
+    ``expands``, `script_emit.parameter`), read by the one reader of a
+    deck's restart group (`script_emit.restart_group`) -- ``None`` where the
+    deck states none or cannot be read.  ``reads``: FILE BY FILE, ``{suffix: (keyword, reads)}``
     for each restart file whose deck keyword (`warm-files.toml`'s
     ``honoured_by``) the deck states.  One restart group may say yes to one
     file and no to another: a force-constant call reads the relaxed density,
@@ -1357,22 +1359,23 @@ def _deck_restart(engine: str, text: Optional[str]
 
     The run script ships beside exactly one deck, so what its texts say of
     restart files -- the header, the Mode line, what a launch again will do
-    -- is what that deck says.  First match wins, as libfdf does.
+    -- is what that deck says.  First match wins, as the engine's keyword
+    reader reads its deck.
     """
-    from .parse.fdf import fdf_key, fdf_true
-    from .script_emit import deck_values, parameter
+    from .engine_table import keywords
+    from .script_emit import restart_group
     from .warmfiles import warm_list
-    if text is None:
+    group = restart_group(engine, text)
+    if group is None:
         return None, {}
-    answer = parameter("restart", engine, deck_text=text).value
-    honoured = None if answer is None else fdf_true(answer.split())
-    said = {fdf_key(k): str(v)
-            for k, v in deck_values("restart", engine, text).items()}
+    key = keywords(engine).key
+    said = {key(k): reads for k, reads in group.items()}
+    # The item's answer is its first keyword's (`script_emit.parameter`).
+    honoured = next(iter(group.values()), None)
     return honoured, {
-        r.suffix: (r.honoured_by,
-                   fdf_true(said[fdf_key(r.honoured_by)].split()))
+        r.suffix: (r.honoured_by, said[key(r.honoured_by)])
         for r in warm_list(engine).rules
-        if r.honoured_by and fdf_key(r.honoured_by) in said}
+        if r.honoured_by and key(r.honoured_by) in said}
 
 
 def _reads_words(words: str, reads: Dict[str, Tuple[str, bool]]) -> str:
@@ -1417,14 +1420,21 @@ def _n_orbitals_est(text: Optional[str]) -> Optional[int]:
         return None
 
 
-def _effective_parameters_block(script_name: str, engine: str) -> str:
+def _effective_parameters_block(script_name: str, engine: str,
+                                 calculation: str, stage: str) -> str:
     """What the engine will be given, echoed into the run log at launch --
-    for a deck whose settings are KEYWORDS the engine reads (`engine_table`'s
-    ``keyword_deck``); a script deck writes its own record from inside
-    itself, where it can read its objects back.
+    for a deck whose settings are KEYWORDS the engine reads, by the keyword
+    reader its record names (`engine_table`'s ``keyword_reader``); a script
+    deck writes its own record from inside itself, where it can read its
+    objects back.
 
     **The one block both engines write** (`model/parse.md` § 5d.3a): a row per
-    catalogue item of ``engine`` -- ``[item, default, asked, used]``,
+    catalogue item THIS RUNG READS -- of ``engine``, carried by a
+    ``calculation`` and read by the rung its ``stage`` token names
+    (`script_emit.declarations`, by the one rule `template.reads`, which
+    the record's reader asks too): a transmission deck lists TBtrans's
+    settings, never a relaxation's --
+    ``[item, default, asked, used]``,
     `script_emit`'s format and its reader -- then the deck as the engine
     will read it.  The engine is a separate process that has not started
     when this runs, so the rows carry the item's catalogue DEFAULT only:
@@ -1434,8 +1444,8 @@ def _effective_parameters_block(script_name: str, engine: str) -> str:
     the catalogue this run script was rendered from -- the run's own record
     of it, never today's catalogue read later.
 
-    **The deck is read at LAUNCH** by the framework's one deck reader,
-    beside the job (``mb_monitor.pyz deck``: `parse.fdf.read_deck`), each
+    **The deck is read at LAUNCH** by the engine's keyword reader, beside
+    the job (``mb_monitor.pyz deck READER DECK``: its ``read_deck``), each
     line the engine parses -- so a deck somebody hand-edited after `prep` is
     recorded as the engine will see it, and a block read from a file beside
     the deck (``%block Label < Filename``) is echoed with that file's rows.
@@ -1450,14 +1460,17 @@ def _effective_parameters_block(script_name: str, engine: str) -> str:
         f'echo "{begin_marker(BLOCK_PARAMETERS)}"',
         "echo " + _shlex.quote(_sc.PARAMETER_COLUMNS_LINE),
     ]
-    for item in _sc.declarations(engine=engine):
+    from .engine_table import engine as _engine_rec
+    reader = _engine_rec(engine).keyword_reader
+    for item in _sc.declarations(engine=engine, calculation=calculation,
+                                 stage=stage):
         param = _sc.parameter(item.name, engine)
         if param.writes:
             lines.append("echo " + _shlex.quote(
                 _sc.parameter_row(item.name, param.default)))
     lines += [
         f'if [ -f {MONITOR_BUNDLE} ]; then',
-        f'    "$_mb_py" {MONITOR_BUNDLE} deck "{script_name}" '
+        f'    "$_mb_py" {MONITOR_BUNDLE} deck "{reader}" "{script_name}" '
         f'2>>"$_runwrap_log" | sed "s/^/#   /" \\',
         f'        || _log WARN "what the engine will read: {script_name} did '
         f'not read -- the record holds none of its lines"',
@@ -2035,7 +2048,7 @@ def _prior_state_words(eng, resumes: bool, continues: bool,
     whether its stage takes something from a run
     (`Job.relaunch_continues`)."""
     head = f"* {eng.words}: this deck "
-    if eng.keyword_deck:
+    if eng.keyword_reader is not None:
         if honoured is None:
             text = (head + "states no restart keyword that could be read; "
                     "whether the restart files are read is the deck's to "
@@ -2063,6 +2076,7 @@ def _prior_state_words(eng, resumes: bool, continues: bool,
 def render_run_wrapper(script_path: Path, *,
                        names,
                        engine: str,
+                       calculation: str,
                        resources: "Resources",
                        program: Optional[str] = None,
                        env: Optional[str] = None,
@@ -2089,14 +2103,16 @@ def render_run_wrapper(script_path: Path, *,
       * ``programs``: a program to probe, launch and cap the memory of
         (``program``, the job's, else the engine's own) -- or none, a deck
         that is a script the job's python runs;
-      * ``keyword_deck``: a deck whose lines the log records as the engine
-        will read them, and whose restart keywords say file by file what it
-        reads of the restart files;
+      * ``keyword_reader``: a deck of keywords, whose lines the log records
+        as the engine will read them (that reader, beside the job), and whose
+        restart keywords say file by file what it reads of the restart
+        files;
       * ``environment`` / ``gpu_environment``: the environment it enters;
 
-    and of the parse layer, asked by the output's role: whether the run
-    script stamps its SCF rows (`scf_timing_rows.stamped_rows`) and whether
-    the engine's stderr is kept apart from it (`_run_ending.stderr_apart`).
+    and asked by the output's role: whether the run script cuts a timing
+    file from it (the file catalogue's `cut_from_output`), its SCF rows'
+    patterns (`scf_timing_rows.scf_row_patterns`), and whether the engine's
+    stderr is kept apart from it (`_run_ending.stderr_apart`).
 
     ``engine`` is prep's -- the calculation's (`JobSet.engine`); the deck is
     one of its decks.  ``notes`` receives what the rendering has to say and
@@ -2118,15 +2134,16 @@ def render_run_wrapper(script_path: Path, *,
     from .parse.engines._run_ending import (advice_of as _advice_of,
                                             stderr_apart as _stderr_apart,
                                             wall_causes as _wall_causes)
-    from .parse.instruments.scf_timing_rows import stamped_rows
+    from .parse.instruments.scf_timing_rows import scf_row_patterns
+    from .runfiles import cut_from_output
     try:
         eng = _engine(engine)
     except EngineTableError as exc:
         raise WrapperError(f"`{Path(script_path).name}`: {exc}") from None
     if deck_text is None:
-        from molbuilder.parse.fdf import read_deck
+        from .engine_table import read_deck
         try:
-            deck_text = read_deck(script_path)
+            deck_text = read_deck(engine, script_path)
         except (OSError, ValueError):
             deck_text = None
     r = resources
@@ -2306,10 +2323,7 @@ def render_run_wrapper(script_path: Path, *,
     # contradict the file it ships beside; a script deck reads what launch
     # copies in, and a stage set to start clean takes nothing
     # (`Job.relaunch_continues`).
-    if eng.keyword_deck:
-        _restart_honoured, _reads = _deck_restart(engine, deck_text)
-    else:
-        _restart_honoured, _reads = None, {}
+    _restart_honoured, _reads = _deck_restart(engine, deck_text)
     # WHAT A LAUNCH AGAIN WILL DO -- one description (`_launch_again`),
     # said after a failure (`running-a-job.md` § 3.5), from the facts the
     # launch decides by and the deck's own restart answer.
@@ -2341,7 +2355,11 @@ def render_run_wrapper(script_path: Path, *,
 
     # ---- WHAT THE PARSE LAYER SAYS OF THE OUTPUT, asked by its role ----
     stdout_role = _stdout_role_of(engine)
-    stamp = stamped_rows(stdout_role)
+    # THE TIMING FILE CUT FROM THE OUTPUT, where the file catalogue names
+    # one, its rows stamped by the grammar's patterns for that output.
+    timing_role = cut_from_output(stdout_role)
+    stamp = (scf_row_patterns(stdout_role) if timing_role is not None
+             else None)
     stderr_apart = _stderr_apart(stdout_role)
     # THE COMMAND, as it runs and as the banner shows it: a program its
     # launcher starts, or a script deck on the job's own python.
@@ -2364,18 +2382,19 @@ def render_run_wrapper(script_path: Path, *,
     _wall_words = (tuple(_wall_decl.launch.get(prog, ()))
                    if _wall_decl is not None and prog is not None else ())
     takes_wall = bool(_wall_words) or (
-        _wall_decl is not None and engine in _wall_decl.deck_applies)
+        _wall_decl is not None
+        and _wall_decl.limit_applied_by[engine] == "deck")
     # ASKED ONLY OF AN OUTPUT WHOSE FAMILY NAMES A STOP AT THE WALL, and its
     # advice for a cause (`_run_ending.STOPS`; `running-a-job.md` § 3.5).
     asks_wall = takes_wall and bool(_wall_causes(stdout_role))
     asks_advice = bool(_advice_of(stdout_role))
     # THE MEMORY CAP, by its item's declaration alone: the run script's
     # `ulimit -v` before the engine starts, unless its deck applies the cap
-    # itself (`deck_applies`).
+    # itself (`limit_applied_by`).
     _mem_decl = _parameter("max_memory_mb", engine).declaration
     caps_memory = (max_memory_mb is not None and int(max_memory_mb) > 0
                    and (_mem_decl is None
-                        or engine not in _mem_decl.deck_applies))
+                        or _mem_decl.limit_applied_by[engine] != "deck"))
     _wall_array = " ".join(
         '"' + w.replace("{left}", "${_mb_wall_left}")
                .replace("{slack}", "${" + WALL_SLACK_VAR + "}")
@@ -2521,7 +2540,7 @@ def render_run_wrapper(script_path: Path, *,
         + (_mps_block() if gpu_ranks else "")
         # THE MEMORY CAP, before the engine starts: a soft guard against a
         # runaway allocation -- unless the engine's deck applies it itself
-        # (`deck_applies`; `running-a-job.md` § 3.2).
+        # (`limit_applied_by`; `running-a-job.md` § 3.2).
         + (f"# Memory cap (max_memory_mb): {max_memory_mb} MB\n"
            f"ulimit -v {int(max_memory_mb) * 1024} || true  "
            f"# soft cap; ignored if the shell can't set it\n"
@@ -2539,57 +2558,73 @@ def render_run_wrapper(script_path: Path, *,
 
     # THE BANNER, printed at run time so the user sees what the run is
     # about to do -- counts, threading, what it starts from, the command --
-    # before the engine spends its first seconds reading the deck.
+    # before the engine spends its first seconds reading the deck.  Its
+    # labels line up on the longest one it prints, which is the program's
+    # where it names one (``TBtrans version``).
+    labels = (("Date", "Host", "Cwd", "Conda env")
+              + ((f"{words} {BINARY_LABEL}", f"{words} {VERSION_LABEL}",
+                  "Build paral.") if prog is not None else ())
+              + ("Launch mode",) + (("Ranks",) if ranks else ())
+              + ("Threading",)
+              + (("GPU resources", "GPU monitor") if gpu_ranks else ())
+              + ("Mode", "Held atoms", "Command", "Wall", "Stdout"))
+    width = max(map(len, labels))
+
+    def lead(label: str) -> str:
+        return f"  {label:<{width}} : "
+
+    under = " " * len(lead(""))
     env_prefix += (
         f'echo "===== molbuilder run script: {words} ====="\n'
-        'echo "  Date          : $(date -Iseconds)"\n'
-        'echo "  Host          : $(hostname)"\n'
-        'echo "  Cwd           : $(pwd)"\n'
-        'echo "  Conda env     : ${CONDA_DEFAULT_ENV:-?}"\n'
-        + (f'echo "  {words + " " + BINARY_LABEL:<14}: $_program_bin"\n'
-           f'echo "  {words + " " + VERSION_LABEL:<14}: '
+        f'echo "{lead("Date")}$(date -Iseconds)"\n'
+        f'echo "{lead("Host")}$(hostname)"\n'
+        f'echo "{lead("Cwd")}$(pwd)"\n'
+        f'echo "{lead("Conda env")}${{CONDA_DEFAULT_ENV:-?}}"\n'
+        + (f'echo "{lead(words + " " + BINARY_LABEL)}$_program_bin"\n'
+           f'echo "{lead(words + " " + VERSION_LABEL)}'
            '${_program_ver:-unknown}"\n'
-           'echo "  Build paral.  : ${_program_par:-unknown}"\n'
+           f'echo "{lead("Build paral.")}${{_program_par:-unknown}}"\n'
            if prog is not None else "")
-        + 'echo "  Launch mode   : $_launch_note"\n'
-        + ('echo "  Ranks         : $_mpi_np (from $_np_source)"\n'
+        + f'echo "{lead("Launch mode")}$_launch_note"\n'
+        + (f'echo "{lead("Ranks")}$_mpi_np (from $_np_source)"\n'
            if ranks else "")
-        + 'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads '
+        + f'echo "{lead("Threading")}OMP_NUM_THREADS=$_omp_threads '
         '(from $_omp_source)' + (", OPENBLAS=1, MKL=1" if ranks else "")
         + '"\n'
         + ((
             # THE single authoritative GPU-resource summary, printed with
             # the RESOLVED launch values so it always matches what runs;
             # $_gpu_numa is GPU 0's NUMA node, looked up at run time.
-            'echo "  GPU resources : $_mpi_np ranks x $_omp_threads threads '
-            '($(( _mpi_np * _omp_threads )) cores); mps=$_use_mps_str; '
-            'ranks/GPU=${_ranks_per_gpu:-?}; GPU0 NUMA=$_gpu_numa"\n'
+            f'echo "{lead("GPU resources")}$_mpi_np ranks x $_omp_threads '
+            'threads ($(( _mpi_np * _omp_threads )) cores); '
+            'mps=$_use_mps_str; ranks/GPU=${_ranks_per_gpu:-?}; '
+            'GPU0 NUMA=$_gpu_numa"\n'
             # TUNE BY MEASURING, not by asking for a guess.
-            'echo "                # tune: -np / -omp / --mps / --no-mps "'
+            f'echo "{under}# tune: -np / -omp / --mps / --no-mps "'
             '"(or measure it: prep bench, for this stage)"\n'
             # The command on its own line, so it pastes into a shell; the
             # annotation on the next, a comment.
-            'echo "  GPU monitor   : nvidia-smi dmon -s pucvmet -d 1"\n'
-            'echo "                # columns: sm%, mem%, clk, temp, power"\n'
-            'echo "                # if sm% bounces 0->100->0 across ranks, '
+            f'echo "{lead("GPU monitor")}nvidia-smi dmon -s pucvmet -d 1"\n'
+            f'echo "{under}# columns: sm%, mem%, clk, temp, power"\n'
+            f'echo "{under}# if sm% bounces 0->100->0 across ranks, '
             'MPS may help"\n'
         ) if gpu_ranks else "")
         # What the run starts from -- read at run time from the files beside
         # the script -- and the atoms its deck holds, stated at prep (the
         # status block).
-        + 'echo "  Mode          : $_mode"\n'
-        + 'echo "  Held atoms    : $_held"\n'
-        + f'echo "  Command       : {launch_line}"\n'
+        + f'echo "{lead("Mode")}$_mode"\n'
+        + f'echo "{lead("Held atoms")}$_held"\n'
+        + f'echo "{lead("Command")}{launch_line}"\n'
         # WHAT THE ENGINE DOES WITH THE WALL: stops before it -- told on its
         # command line, or a script deck from its environment -- or checks
         # no clock and runs to it (`running-a-job.md` § 3.6).
         + f'if [ -n "${{{WALL_VAR}:-}}" ]; then '
-          f'echo "  Wall          : ${{{WALL_VAR}}}s from the job\'s start; '
+          f'echo "{lead("Wall")}${{{WALL_VAR}}}s from the job\'s start; '
         + (f'{words} stops ${{{WALL_SLACK_VAR}}}s before it ' if takes_wall
            else f'{words} checks no clock and runs to it ')
         + '(running-a-job.md 3.6)"; '
-          'else echo "  Wall          : none stated -- runs until done"; fi\n'
-        + 'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
+          f'else echo "{lead("Wall")}none stated -- runs until done"; fi\n'
+        + f'echo "{lead("Stdout")}$_out_file (live; tail -f to follow)"\n'
         + 'echo "========================================="\n'
         "\n"
     )
@@ -2775,8 +2810,9 @@ def render_run_wrapper(script_path: Path, *,
         # coordinates (`engines/vibration.md` § 5.11 § 4) -- for a deck
         # whose settings are keywords; a script deck writes its own from
         # inside itself, where it can read its objects back.
-        + (_effective_parameters_block(script_name, engine)
-           if eng.keyword_deck else "")
+        + (_effective_parameters_block(script_name, engine, calculation,
+                                       names.stage)
+           if eng.keyword_reader is not None else "")
         # THE WALL REACHES THE ENGINE (running-a-job.md § 3.6; siesta.md
         # § 8.9): what is left of the job's wall when the program starts,
         # in the words the catalogue's `wall_slack` item gives this program
@@ -2788,7 +2824,7 @@ def render_run_wrapper(script_path: Path, *,
         "# is asked of the framework (_mb_ending), with the advice for its\n"
         "# cause, and what a launch again will do is said.  Then we re-exit\n"
         "# with the engine's code.\n"
-        + (f'_scf_timing_log="{names.name(".scf-timing.log")}"\n'
+        + (f'_scf_timing_log="{names.name(timing_role)}"\n'
            f'_log INFO "scf timing  : per-iteration stamps -> '
            f'$_scf_timing_log"\n' if stamp is not None else "")
         + ("_mb_wall_args=()\n" if prog is not None else "")
@@ -3024,7 +3060,7 @@ def render_run_wrapper(script_path: Path, *,
 #:
 #: They travel as ONE file, :data:`MONITOR_BUNDLE`, which `render_wrappers`
 #: writes next to the wrapper and `materialize` brings into every attempt.
-MONITOR_COMPANIONS: Dict[str, str] = {
+_MONITOR_BASE: Dict[str, str] = {
     "mb_monitor.py":       "molbuilder.monitor",
     "config_dir.py":       "molbuilder.config_dir",
     "constants.py":        "molbuilder.constants",
@@ -3064,29 +3100,58 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "runpoints.py":        "molbuilder.runpoints",
     "calcdirs.py":         "molbuilder.calcdirs",
     "paths.py":            "molbuilder.paths",
-    # ...AND EACH KIND'S WORDS, the parts its kind table record names: a
-    # vibration's count (`siesta.vibration_phases`); a transport rung's count
-    # and a round's outcome -- the conductance at E_F by the record's own
-    # rule (`transport.run_words`, `transport.conductance`; `run-reports.md`
-    # § 2.8, § 2.9).
-    "vibration_phases.py": "molbuilder.siesta.vibration_phases",
-    "run_words.py":        "molbuilder.transport.run_words",
-    "conductance.py":      "molbuilder.transport.conductance",
-    # ...AND A TRANSMISSION POINT'S ENERGIES JOINED by the record's own rule
-    # (`transport.energies.joined`), its sharing record's block named by the
-    # deck record (`deck_record`).
-    "energies.py":         "molbuilder.transport.energies",
-    "deck_record.py":      "molbuilder.deck_record",
-    # ...AND THE DECK, READ FOR ITS RUN SCRIPT: as its engine reads it, a
-    # block from a file beside it inlined (`parse.fdf`, with the `units` a
-    # value converts in) -- `mb_monitor.pyz deck` (`running-a-job.md` § 1).
-    "fdf.py":              "molbuilder.parse.fdf",
-    "units.py":            "molbuilder.units",
 }
 
 
+def _members_the_records_name() -> Dict[str, str]:
+    """THE MEMBERS THE RECORDS NAME (`execution/architecture.md` § 3.3):
+    each kind's words, the run-of-points parts its pair names (the kind
+    table's ``points.count`` and ``points.outcome`` -- a vibration's count, a
+    transport rung's count and a round's outcome), and each engine's
+    keyword reader, which reads its deck for its run script (the engine
+    table's ``keyword_reader``, `mb_monitor.pyz deck`) -- each with every
+    module it says it needs beside it (its own ``TRAVELS_WITH``).  So a new
+    kind or engine travels by its record, never an edit of this module."""
+    import importlib
+    from .engine_table import engine as _engine, engines
+    from .kind_table import kind as _kind, kinds, run_of_points
+    refs = [ref for k in kinds() for e in _kind(k).engines
+            for points in [run_of_points(k, e)] if points is not None
+            for ref in (points.count, points.outcome)]
+    refs += [_engine(e).keyword_reader for e in engines()
+             if _engine(e).keyword_reader]
+    todo = [str(ref).partition(":")[0] for ref in refs]
+    out: Dict[str, str] = {}
+    while todo:
+        module = todo.pop()
+        name = module.rsplit(".", 1)[-1] + ".py"
+        held = out.get(name) or _MONITOR_BASE.get(name)
+        if held == module:
+            continue
+        if held is not None:
+            # TWO MODULES, ONE NAME BESIDE THE JOB: the bundle holds one
+            # file of each name, so the second would be the first's copy.
+            raise WrapperError(
+                f"{module} and {held} both travel as {name} in "
+                f"{MONITOR_BUNDLE}; a module the records name travels "
+                f"under its own name, which another already holds.")
+        out[name] = module
+        todo += list(getattr(importlib.import_module(module),
+                             "TRAVELS_WITH", ()))
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def monitor_companions() -> Dict[str, str]:
+    """EVERY MODULE THAT TRAVELS IN :data:`MONITOR_BUNDLE`, ``{name beside
+    the job: the module whose source it is}`` -- the monitor and the
+    framework's readers it imports, and the members the records name
+    (:func:`_members_the_records_name`)."""
+    return {**_MONITOR_BASE, **_members_the_records_name()}
+
+
 #: THE ONE FILE that travels beside every job for its monitor: a Python zip
-#: application (PEP 441) holding every module of :data:`MONITOR_COMPANIONS`,
+#: application (PEP 441) holding every module of :func:`monitor_companions`,
 #: each its own file verbatim under its shipped name, and a ``__main__`` that
 #: runs the monitor.  ``"$_mb_py" mb_monitor.pyz ...`` is the monitor;
 #: ``"$_mb_py" mb_monitor.pyz ending OUTPUT ...`` is `_run_ending`'s door, which
@@ -3094,7 +3159,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
 #: put it in one single Python file?"*): still the package's own files, so still no second copy of any
 #: reader.
 from .runfiles import MONITOR_BUNDLE  # noqa: E402 -- the catalogue's name
-from .monitor import BUNDLE_VERBS  # noqa: E402 -- the bundle's own list
+from .monitor import BUNDLE_VERBS  # noqa: E402 -- the bundle's own verbs
 from .report_cards import FILENAME as _CARDS_FILE, SHIPPED as _CARDS_SHIPPED  # noqa: E402
 
 #: The bundle's ONE DATA MEMBER (`run-reports.md` § 4.1c): the chat card's
@@ -3156,7 +3221,7 @@ def monitor_bundle() -> bytes:
     (:func:`companion_source`), zipped beside the entry.  The same sources
     give the same bytes (fixed member times), so a re-prep writes the file it
     found."""
-    return _zip_bundle(_BUNDLE_MAIN, MONITOR_COMPANIONS, MONITOR_DATA)
+    return _zip_bundle(_BUNDLE_MAIN, monitor_companions(), MONITOR_DATA)
 
 
 def _zip_bundle(main: str, companions: Dict[str, str],
@@ -3199,7 +3264,7 @@ def companion_source(name: str,
     W7).
     """
     import importlib
-    table = MONITOR_COMPANIONS if companions is None else companions
+    table = monitor_companions() if companions is None else companions
     try:
         module = importlib.import_module(table[name])
         return Path(module.__file__).read_text(encoding="utf-8")
@@ -3464,6 +3529,7 @@ class RenderedWrapper:
 def render_wrappers(script_path: Path, *,
                     names,
                     engine: str,
+                    calculation: str,
                     resources: "Resources",
                     program: Optional[str] = None,
                     env: Optional[str] = None,
@@ -3519,14 +3585,16 @@ def render_wrappers(script_path: Path, *,
     if deck_text is None:
         if not script_path.is_file():
             raise WrapperError(f"script not found: {script_path}")
-        # THE DECK WHOLE, a block read from a file beside it inlined
-        # (`parse.fdf.read_deck`).
-        from .parse.fdf import read_deck
-        deck_text = read_deck(script_path)
+        # THE DECK AS ITS ENGINE READS IT, a block read from a file beside
+        # it inlined where its settings are keywords
+        # (`engine_table.read_deck`).
+        from .engine_table import read_deck
+        deck_text = read_deck(engine, script_path)
     r = resources
     _notes: list = []
     text = render_run_wrapper(
-        script_path, names=names, engine=engine, resources=r,
+        script_path, names=names, engine=engine, calculation=calculation,
+        resources=r,
         program=program, env=env,
         project_dir=project_dir, machine_record=machine_record,
         finish=finish, resumes=resumes,
@@ -3581,6 +3649,7 @@ def _warm_in_effect(engine: str, warm: Optional[Sequence[str]]
 def write_run_wrapper(script_path: Path, *,
                       names,
                       engine: str,
+                      calculation: str,
                       resources: "Resources",
                       program: Optional[str] = None,
                       env: Optional[str] = None,
@@ -3618,8 +3687,9 @@ def write_run_wrapper(script_path: Path, *,
     Overwrites whatever is there.
     """
     from . import script_emit as _sc_write
-    from .parse.fdf import read_deck
+    from .engine_table import read_deck
     rendered = render_wrappers(script_path, names=names, engine=engine,
+                               calculation=calculation,
                                resources=resources, program=program,
                                machine_record=machine_record,
                                domain_pq=domain_pq,
@@ -3629,9 +3699,9 @@ def write_run_wrapper(script_path: Path, *,
                                relaunch_continues=relaunch_continues,
                                trial=trial, warm=warm,
                                point=point,
-                               # THE DECK AS THE PLAN HOLDS IT, a block
-                               # read from a file beside it inlined.
-                               deck_text=(read_deck(script_path,
+                               # THE DECK AS THE PLAN HOLDS IT, as its
+                               # engine reads it.
+                               deck_text=(read_deck(engine, script_path,
                                                     read=plan.read_text)
                                           if plan is not None else None))
     if notes is not None:
@@ -3664,9 +3734,10 @@ def _render_sbatch_for(script_path: Path, *, names,
     **Every value in it is one the job stated** (`architecture.md` § 5.2):
     the queue prep placed it on (``domain_pq``, its job's placement,
     `placement.placed`), its wall, its memory, its cores per rank, its GPU
-    count and -- for SIESTA -- its rank count.  ``one_process`` (PySCF, with
-    OpenMP threads) asks for one task: that is what the engine is, not a
-    value anyone picks -- the caller's answer, `placement.one_process`.
+    count and -- for an engine that runs ranks -- its rank count.
+    ``one_process`` (PySCF, with OpenMP threads) asks for one task: that is
+    what the engine is, not a value anyone picks -- its engine record's
+    ``one_process``, as the caller read it.
     ``where`` is the folder, from the one the job is submitted in, that its
     run script and the scheduler's own output are in (a walk's, `launch/`).
     The header is written in the target's scheduler kind's language, and

@@ -57,13 +57,13 @@ def test_a_run_is_a_parameter_set_of_length_one(template):
     """**The idea the module exists for.**  If a run were anything other than
     a one-element list, every step below would need to know which it was in —
     which is the branch `architecture.md` § 0 forbids."""
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC, stage=STAGE)
+    ps = resolve(template, _task(), allocation=ALLOC, stage=STAGE)
     assert isinstance(ps, ParameterSet) and len(ps) == 1
     assert not ps.is_sweep and ps[0].point == {}
 
 
 def test_a_sweep_of_n_gives_n_elements_through_the_same_call(template):
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep={"mpi_np": [8, 16, 32], "block_size": [16, 32]}, stage=STAGE)
     assert len(ps) == 6
     assert ps.axes == ("mpi_np", "block_size")
@@ -75,7 +75,7 @@ def test_a_sweep_of_n_gives_n_elements_through_the_same_call(template):
 
 def test_the_stage_overrides_the_template(template):
     stages = (Stage(name="tight", overrides={"mesh_cutoff": 500.0}),)
-    ps = resolve(template, _task(stages), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(stages), allocation=ALLOC,
                  stage="tight")
     assert ps[0].values.mesh_cutoff == 500.0
     assert ps[0].values.basis_size == "DZP"        # untouched by the stage
@@ -83,14 +83,14 @@ def test_the_stage_overrides_the_template(template):
 
 def test_a_sweep_point_overrides_the_stage(template):
     stages = (Stage(name="tight", overrides={"mesh_cutoff": 500.0}),)
-    ps = resolve(template, _task(stages), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(stages), allocation=ALLOC,
                  stage="tight", sweep={"mesh_cutoff": [700.0]})
     assert ps[0].values.mesh_cutoff == 700.0
 
 
 def test_a_pin_wins_over_everything(template):
     stages = (Stage(name="tight", overrides={"mesh_cutoff": 500.0}),)
-    ps = resolve(template, _task(stages), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(stages), allocation=ALLOC,
                  stage="tight", sweep={"mesh_cutoff": [700.0]},
                  pins={"mesh_cutoff": 900.0})
     assert ps[0].values.mesh_cutoff == 900.0
@@ -100,7 +100,7 @@ def test_provenance_says_which_source_set_each_value(template):
     """M3: *"the numbers were wrong"* is unanswerable if you cannot tell where
     a value came from."""
     stages = (Stage(name="tight", overrides={"mesh_cutoff": 500.0}),)
-    ps = resolve(template, _task(stages), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(stages), allocation=ALLOC,
                  stage="tight", sweep={"pao_energy_shift": [0.02]},
                  pins={"block_size": 16})
     p = ps[0].provenance
@@ -115,7 +115,7 @@ def test_provenance_says_which_source_set_each_value(template):
 # --------------------------------------------------------------------- #
 
 def test_a_machine_axis_lands_on_the_resources_not_the_values(template):
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep={"mpi_np": [8, 16]}, stage=STAGE)
     assert [e.resources.mpi_np for e in ps] == [8, 16]
     # ...and the allocation's other fields ride along untouched
@@ -123,7 +123,7 @@ def test_a_machine_axis_lands_on_the_resources_not_the_values(template):
 
 
 def test_a_parameter_axis_lands_on_the_values_not_the_resources(template):
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep={"block_size": [16, 32]}, stage=STAGE)
     assert [e.values.block_size for e in ps] == [16, 32]
     assert all(e.resources.mpi_np == 64 for e in ps)
@@ -144,7 +144,7 @@ def test_a_rider_axis_is_not_swallowed_as_a_machine_axis(template):
     from molbuilder.resolve import _RIDERS
     assert "use_gpu" in _RIDERS, (
         "use_gpu must carry metadata={'axis': 'rider'} on Resources")
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep={"use_gpu": [True, False]}, stage=STAGE)
     assert [e.values.use_gpu for e in ps] == [True, False], (
         "a rider axis must land on the VALUES -- on the allocation it never "
@@ -165,7 +165,7 @@ def test_a_sweep_point_over_the_allocation_is_refused_not_clamped(template):
     """**The rule, and the reason it is a refusal.**  A clamped trial measures
     something you did not ask for, and reports it as though you had."""
     with pytest.raises(ResolveError, match=r"exceeds this prep's ask"):
-        resolve(template, _task(), SiestaConfig,
+        resolve(template, _task(),
                 allocation=Resources(mpi_np=16), sweep={"mpi_np": [8, 32]}, stage=STAGE)
 
 
@@ -173,7 +173,7 @@ def test_the_bound_is_the_allocation_not_the_machine(template):
     """A point inside the allocation is fine however large the machine is —
     and one outside it is refused however small.  The allocation is a
     *decision*, which is what asking for less buys you in queue priority."""
-    ps = resolve(template, _task(), SiestaConfig,
+    ps = resolve(template, _task(),
                  allocation=Resources(mpi_np=128), sweep={"mpi_np": [128]}, stage=STAGE)
     assert ps[0].resources.mpi_np == 128
 
@@ -185,7 +185,7 @@ def test_the_bound_is_the_allocation_not_the_machine(template):
 def test_every_element_carries_its_own_allocation(template):
     """§ 5.  The deck writer needs the rank count and the wrapper writer needs
     the whole of it; **both read one object**, so neither re-derives."""
-    ps = resolve(template, _task(), SiestaConfig,
+    ps = resolve(template, _task(),
                  allocation=Resources(mpi_np=32, max_memory_mb=4096), stage=STAGE)
     assert ps[0].resources.mpi_np == 32
     assert ps[0].resources.max_memory_mb == 4096
@@ -199,7 +199,7 @@ def test_the_description_no_longer_carries_the_rank_count(template):
     import tomllib
     raw = tomllib.loads(template)
     assert "mpi_np" not in raw["item"]
-    ps = resolve(template, _task(), SiestaConfig, allocation=Resources(mpi_np=8), stage=STAGE)
+    ps = resolve(template, _task(), allocation=Resources(mpi_np=8), stage=STAGE)
     assert ps[0].resources.mpi_np == 8
 
 
@@ -210,13 +210,13 @@ def test_the_description_no_longer_carries_the_rank_count(template):
 def test_a_trial_is_relabelled_so_it_cannot_read_the_real_run(template):
     """SIESTA finds warm files by ``SystemLabel``.  A trial carrying the real
     run's label could read — or overwrite — its ``.DM`` and ``.XV``."""
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep={"mpi_np": [8]}, stage=STAGE)
     assert ps[0].label != "relax" and ps[0].label.startswith("relax")
 
 
 def test_a_run_keeps_the_calculations_own_label(template):
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC, stage=STAGE)
+    ps = resolve(template, _task(), allocation=ALLOC, stage=STAGE)
     assert ps[0].label == "relax"
 
 
@@ -244,7 +244,7 @@ _GNC = MachineTranslation(
 def test_explicit_points_are_taken_verbatim_in_order(template):
     """A dependent enumeration is not a cross product: the caller hands the
     points themselves, and the set preserves them as given."""
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep=[{"G": 1, "N": 4, "C": 4}, {"G": 1, "N": 8, "C": 2}],
                  translation=_GNC, stage=STAGE)
     assert len(ps) == 2 and ps.is_sweep
@@ -256,7 +256,7 @@ def test_explicit_points_are_taken_verbatim_in_order(template):
 def test_the_translation_reaches_the_elements_resources(template):
     """The trial's rank count comes from the translated coordinate — the field
     that makes `Job.resources` copyable rather than re-derived (§ 5)."""
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep=[{"G": 1, "N": 4, "C": 2}], translation=_GNC, stage=STAGE)
     assert ps[0].resources.mpi_np == 4
     assert ps[0].resources.cpus_per_task == 2
@@ -276,7 +276,7 @@ def test_the_environment_reaches_the_translation(template):
     tr = MachineTranslation(axes=("G",), to_resources=_reads_the_machine)
     # A GPU TRIAL: one on the CPU asks no GPU, whatever it is handed
     # (§ 4.1a, `resolve`'s ceiling rule).
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  sweep=[{"G": 2, "use_gpu": True}], translation=tr,
                  environment={"gpus_per_node": 4}, stage=STAGE)
     assert seen["env"] == {"gpus_per_node": 4}
@@ -287,14 +287,14 @@ def test_a_translated_ask_is_bounded_by_the_allocation_too(template):
     """§ 4.1 does not care how the ask was spelled: a derived rank count over
     the allocation is the same refusal as naming ``mpi_np`` directly."""
     with pytest.raises(ResolveError, match=r"exceeds this prep's ask"):
-        resolve(template, _task(), SiestaConfig,
+        resolve(template, _task(),
                 allocation=Resources(mpi_np=16),
                 sweep=[{"G": 1, "N": 32, "C": 1}], translation=_GNC, stage=STAGE)
 
 
 def test_an_axis_that_names_nothing_is_refused_without_a_translation(template):
     with pytest.raises(ResolveError, match=r"name\s+neither"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 sweep=[{"G": 1, "N": 4, "C": 6}], stage=STAGE)
 
 
@@ -303,7 +303,7 @@ def test_an_orphan_axis_is_refused_even_with_a_translation(template):
     silently swallowed — an axis consumed by nothing would name the trial
     directory while affecting nothing, the *present but not honoured* shape."""
     with pytest.raises(ResolveError, match=r"'mesh_cutof'"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 sweep=[{"G": 1, "N": 4, "C": 2, "mesh_cutof": 150}],
                 translation=_GNC, stage=STAGE)
 
@@ -312,14 +312,14 @@ def test_a_partial_coordinate_is_refused_by_name(template):
     """A translation's axes travel together: a point carrying G without N and
     C would make the machine ask a guess."""
     with pytest.raises(ResolveError, match=r"'N'"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 sweep=[{"G": 1}], translation=_GNC, stage=STAGE)
 
 
 def test_a_run_with_a_translation_supplied_is_still_a_run(template):
     """No sweep + a translation on hand (the bench entry always passes its
     coupling) must not call it on the empty point — a run has no coordinate."""
-    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+    ps = resolve(template, _task(), allocation=ALLOC,
                  translation=_GNC, stage=STAGE)
     assert len(ps) == 1 and ps[0].point == {}
     assert ps[0].resources.mpi_np == ALLOC.mpi_np
@@ -327,7 +327,7 @@ def test_a_run_with_a_translation_supplied_is_still_a_run(template):
 
 def test_a_translation_may_only_answer_with_allocation_fields(template):
     with pytest.raises(ResolveError, match=r"nothing on Resources"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 stage=STAGE, sweep=[{"G": 1}],
                 translation=MachineTranslation(
                     axes=("G",),
@@ -355,7 +355,7 @@ def test_two_points_rendering_one_label_refuse_the_sweep(template):
     point would overwrite the first's warm files and results.  Refused by
     point, not deduped: both were declared."""
     with pytest.raises(ResolveError, match=r"same label"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 sweep=[{"diag_algorithm": "ELPA-1STAGE"},
                        {"diag_algorithm": "ELPA1STAGE"}], stage=STAGE)
 
@@ -363,18 +363,18 @@ def test_two_points_rendering_one_label_refuse_the_sweep(template):
 def test_a_ladder_needs_a_stage_named(template):
     with pytest.raises(ResolveError, match=r"a stage has to be named"):
         resolve(template, _task(engine_ladder("siesta", "publishable")),
-                SiestaConfig, allocation=ALLOC)
+                allocation=ALLOC)
 
 
 def test_naming_a_stage_that_is_not_there_is_refused_with_the_options(template):
     with pytest.raises(ResolveError, match=r"coarse"):
         resolve(template, _task(engine_ladder("siesta", "publishable")),
-                SiestaConfig, allocation=ALLOC, stage="nonesuch")
+                allocation=ALLOC, stage="nonesuch")
 
 
 def test_a_pin_naming_nothing_in_the_schema_is_refused(template):
     with pytest.raises(ResolveError, match=r"nothing in the"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 pins={"blocksize": 16}, stage=STAGE)
 
 
@@ -389,7 +389,7 @@ def test_a_pin_naming_a_machine_fact_is_refused_with_its_story(template):
     passed every gate and the deck rendered for a rank count the
     allocation never granted."""
     with pytest.raises(ResolveError, match=r"machine fact"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 pins={"mpi_np": 8}, stage=STAGE)
 
 
@@ -404,7 +404,7 @@ def test_a_stage_override_naming_a_run_setting_is_refused(template):
                                     atoms=6),
              varies=("use_gpu",), stages=ladder)
     with pytest.raises(ResolveError, match=r"run card"):
-        resolve(template, t, SiestaConfig, allocation=ALLOC, stage="a")
+        resolve(template, t, allocation=ALLOC, stage="a")
 
 
 def test_a_sweep_axis_spelling_a_machine_fact_names_the_road(template):
@@ -413,5 +413,5 @@ def test_a_sweep_axis_spelling_a_machine_fact_names_the_road(template):
     fix it slipped through the params split and landed on the VALUES, so
     the deck varied while the allocation stood still."""
     with pytest.raises(ResolveError, match=r"machine fact"):
-        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+        resolve(template, _task(), allocation=ALLOC,
                 sweep={"omp_threads": [1, 2]}, stage=STAGE)

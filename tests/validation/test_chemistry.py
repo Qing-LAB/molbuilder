@@ -25,7 +25,7 @@ def test_peptide_with_asp_glu_warns_on_zero_charge():
     (default) should warn."""
     s = _peptide_struct(["ALA","ARG","ASN","ASP","CYS","GLU","GLN","GLY","HIS","ILE"])
     cfg = PySCFConfig()  # net_charge default = None -> auto-detect -> 0 for non-nucleic
-    issues = validate(s, cfg)
+    issues = validate(s, cfg, calculation="optimization")
     msgs = [i for i in issues if i.where == "config.net_charge"]
     assert len(msgs) == 1
     assert "-1" in msgs[0].message
@@ -37,7 +37,7 @@ def test_peptide_with_explicit_charge_no_warn():
     treats them as having opted in and stays silent."""
     s = _peptide_struct(["ALA","ARG","ASP","GLU","GLY"])
     cfg = PySCFConfig(net_charge=-1)
-    issues = validate(s, cfg)
+    issues = validate(s, cfg, calculation="optimization")
     assert [i for i in issues if i.where == "config.net_charge"] == []
 
 
@@ -46,7 +46,7 @@ def test_peptide_neutral_residues_no_warn():
     estimated pH-7 charge = 0.  No warning."""
     s = _peptide_struct(["GLY","ALA","VAL","LEU","ILE"])
     cfg = PySCFConfig()
-    issues = validate(s, cfg)
+    issues = validate(s, cfg, calculation="optimization")
     assert [i for i in issues if i.where == "config.net_charge"] == []
 
 
@@ -60,7 +60,7 @@ def test_non_peptide_skips_protonation_check():
                   residue_names=["DA","DT","DG","DC","DA"],
                   residue_ids=list(range(1, n + 1)))
     cfg = PySCFConfig()
-    issues = validate(s, cfg)
+    issues = validate(s, cfg, calculation="optimization")
     assert [i for i in issues if i.where == "config.net_charge"] == []
 
 
@@ -84,7 +84,7 @@ def _pt_complex():
 
 def _ecp_findings(struct, **kw):
     cfg = PySCFConfig(job_name="pt", **kw)
-    return [i for i in validate(struct, cfg)
+    return [i for i in validate(struct, cfg, calculation="optimization")
             if getattr(i, "where", "") == "config.ecp"]
 
 

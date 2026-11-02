@@ -660,9 +660,13 @@ column.
 **Adding an engine adds records and a seam; no shared code branches on its
 name** ([`architecture.md`](?doc=execution/architecture.md) A18). It adds rows
 to the catalogue, a record to the engine table (`data/engine_table.toml`: its
-config class, its seam, whether it has a benchmark lane), and the seam's
-answers — its own modules, joined by a seam constructor in
-`jobset/engines.py`.
+config class, its settings check (`validator`), its reading of the same
+calculation (`same_calculation`), its seam, its deck's keyword reader where its
+deck states keywords, whether it has a benchmark lane — every field,
+[`architecture.md`](?doc=execution/architecture.md) § 3.3), and the seam's
+answers — its own modules, joined by a seam constructor in its own package
+(`siesta/seam.py`, `pyscf/seam.py`) that builds `jobset/engines.py`'s
+`EngineSeam`.
 
 **This chapter owns the catalogue half**: every parameter the engine models,
 each with the item keys [`template.md`](?doc=engines/template.md) § 5 defines

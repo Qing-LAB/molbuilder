@@ -9,7 +9,7 @@ stretch it spends computing or reading the leads' surface Green's functions
 in ``runtime_info["transiesta"]``.  Which speaks is the reader's one rule
 (`siesta_reader.SiestaReader._where_words`), read by its `now()` for the
 monitor and its `finish()` for the ending.  Travels beside the job with the
-monitor (`runwrap.MONITOR_COMPANIONS`): the standard library alone.
+monitor (`runwrap.monitor_companions`): the standard library alone.
 """
 from __future__ import annotations
 

@@ -42,9 +42,6 @@ from ..errors import ParseError
 _HEAD = 512 * 1024
 #: The tail, for ``>> End of run``.
 _TAIL = 16 * 1024
-#: The build header opens every output of the family
-#: (``version-info-template.inc``): which program wrote it.
-_BUILD_HEADER = 4 * 1024
 
 
 # --------------------------------------------------------------------------- #
@@ -66,20 +63,26 @@ class RunFiles:
     #: The names of the run's stage's files (`runfiles.RunNames`), the
     #: caller's -- the run door's.
     names: Any = None
-    out: Optional[Path] = None             # SIESTA family's stdout
-    pyscf_log: Optional[Path] = None       # PySCF's stdout
-    engine_log: Optional[Path] = None      # PySCF's own logger's file
-    fdf_log: Optional[Path] = None         # SIESTA's, paired by stamp
+    #: THE ENGINE'S OUTPUT -- its stdout, the role its record's engine
+    #: writes it in (`runfiles.stdout_roles`).
+    stdout: Optional[Path] = None
+    #: The engine's own logger's file (`.log`), where it writes one.
+    engine_log: Optional[Path] = None
+    #: THE ENGINE'S LOG OF THE SETTINGS IT READ, where it writes one --
+    #: SIESTA's ``fdf.<stamp>.log``, paired by its output's start: found by
+    #: the output's family (:data:`USED_LOGS`, by the output's role).
+    used_log: Optional[Path] = None
     #: The run's start, as its session log states it
     #: (`wrapper_log.read_wrapper_log`), and the log's text, for the fence.
     wrapper_start: Dict[str, Any] = field(default_factory=dict)
     wrapper_text: str = ""
-    timing: Optional[Path] = None          # the SIESTA family's tee
-    progress_log: Optional[Path] = None    # the stage's progress log
+    #: THE RUN'S TIMING FILE -- its run script's tee, else a PySCF progress
+    #: log (`scf_timing_rows.timing_file`, the one choice).
+    timing: Optional[Path] = None
     monitor_log: Optional[Path] = None
     util_csv: Optional[Path] = None
-    #: The ``.out``'s head, read once here for every row that reads it.
-    out_head: str = ""
+    #: The output's head, read once here for every row that reads it.
+    stdout_head: str = ""
     #: The calculation's kind, from its description -- the caller's
     #: (`runs.run_of`), never read here: this floor knows no calculation.
     calculation: Optional[str] = None
@@ -122,7 +125,8 @@ def run_files(directory, *, names, launched_in, status, engine: str,
     ``launched_in`` is where the run's launch record lies, the run door's
     (`runs.Run.launched_in`).
     """
-    from ...runfiles import ROLE_MOLWATCH, deck_roles, find, stdout_roles
+    from ...runfiles import deck_roles, find, role_of, stdout_roles
+    from ..instruments.scf_timing_rows import timing_file
 
     d = Path(directory)
     label, stage = names.label, names.stage
@@ -142,11 +146,11 @@ def run_files(directory, *, names, launched_in, status, engine: str,
     def first_of(roles) -> Optional[Path]:
         return next((p for p, rf in listing if rf.role in roles), None)
 
-    out = first_of(stdout_roles("siesta"))
-    pyscf_log = first_of(stdout_roles("pyscf"))
-
+    out = first_of(stdout_roles(engine))
     out_head = _read(out, head=_HEAD)
-    fdf_log = _fdf_log_of(d, out_head) if out is not None else None
+    # THE ENGINE'S LOG OF WHAT IT READ, by its output's family.
+    find_used = USED_LOGS.get(role_of(out.name)) if out is not None else None
+    used_log = find_used(d, out_head) if find_used is not None else None
 
     # THE RUN'S SESSION LOG -- its start, the log `run_status` reads
     # SIESTA's stderr in (`wrapper_log.log_of_run`) -- from the one
@@ -156,11 +160,10 @@ def run_files(directory, *, names, launched_in, status, engine: str,
 
     return RunFiles(
         directory=d, engine=engine, status=status,
-        deck=deck, names=names, out=out, out_head=out_head,
-        pyscf_log=pyscf_log, engine_log=this_run(".log"), fdf_log=fdf_log,
+        deck=deck, names=names, stdout=out, stdout_head=out_head,
+        engine_log=this_run(".log"), used_log=used_log,
         wrapper_start=read_wrapper_log(log_text), wrapper_text=log_text,
-        timing=this_run(".scf-timing.log"),
-        progress_log=this_run(ROLE_MOLWATCH),
+        timing=timing_file({rf.role: p for p, rf in reversed(listing)}),
         monitor_log=this_run(".monitor.log"),
         util_csv=this_run(".util.csv"),
         calculation=calculation, current=current,
@@ -186,71 +189,46 @@ def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
     return next((p for p in logs_in(d) if _fdf_stamp(p) == start), None)
 
 
+#: THE ENGINE'S LOG OF THE SETTINGS IT READ, found from its output -- by the
+#: output's role, as `_run_ending.READERS` dispatches on what a file IS:
+#: a SIESTA-family ``.out``'s ``fdf.<stamp>.log``, paired by its start.
+USED_LOGS: Dict[str, Callable[[Path, str], Optional[Path]]] = {
+    ".out": _fdf_log_of,
+}
+
+
 # --------------------------------------------------------------------------- #
 #  The contributors -- one row per file, each asking the reader that owns it  #
 # --------------------------------------------------------------------------- #
 
 @dataclass(frozen=True)
 class Contributor:
-    """One row of :data:`CONTRIBUTORS`: the record fields it answers, which
-    engines' runs have its file (``()`` = any), and the read."""
+    """One row of :data:`CONTRIBUTORS`: the record fields it answers, the
+    file it reads by its role (``None``: a file every run has), and the
+    read.  The engines whose runs have its file are that role's
+    (:attr:`engines`) -- never typed."""
     name: str
     fields: Tuple[str, ...]
-    engines: Tuple[str, ...]
+    role: Optional[str]
     read: Callable[[RunFiles], Dict[str, Any]]
 
-
-def tbtrans_loop(out: Optional[Path], *, over: bool,
-                    head: Optional[str] = None,
-                    now: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """TBtrans's account of its loop, as its output states it --
-    ``{progress, estimated_at}`` (`model/parse.md` § 5d.1b, § 5d.5): the loop
-    in its one sentence (`tbtrans.loop_words`), said as over or not by the
-    run's state, ``over``; and, while a pass's estimate stands, when the
-    output last changed -- TBtrans writes a progress line, then nothing until
-    the next.  ``{}`` for an output that is not TBtrans's
-    (`siesta_grammar.program_of`, over ``head``, its head -- the caller's
-    when it holds it) or that states none of it.
-
-    Read whole, through the family's one read (`siesta_reader.read_output`):
-    a TBtrans output is its loop's own account, a line every
-    ``TBT.Progress`` per cent, and a tail could miss a pass's start or its
-    end.  A caller that has read the output already hands its reading over
-    as ``now`` (`SiestaReader.now`), and it is not read again."""
-    from ..engines.siesta_reader import read_output
-    from ..engines.tbtrans import is_tbtrans_output, loop_words
-    from .job import _iso_z
-    if out is None:
-        return {}
-    if now is None:
-        if head is None:
-            head = _read(out, head=_BUILD_HEADER)
-        if not is_tbtrans_output(head.splitlines()):
-            return {}
-        try:
-            now = read_output(out).now()
-        except OSError:
-            return {}
-    said = loop_words(now.get("tbtrans"), over=over)
-    if not said:
-        return {}
-    got: Dict[str, Any] = {"progress": said}
-    if not over and "done_pct" in now:
-        try:
-            got["estimated_at"] = _iso_z(Path(out).stat().st_mtime)
-        except OSError:
-            pass
-    return got
+    @property
+    def engines(self) -> Tuple[str, ...]:
+        """The engines whose runs have this row's file -- its role's engine
+        (`runfiles.engine_of_role`) -- or ``()``: every run's."""
+        from ...runfiles import engine_of_role
+        engine = engine_of_role(self.role) if self.role else None
+        return (engine,) if engine else ()
 
 
-def _siesta_out(f: RunFiles) -> Dict[str, Any]:
+def _out_fields(f: RunFiles) -> Dict[str, Any]:
     """The ``.out``'s build, launch, solver and pseudopotential lines, through
-    the SIESTA family's table (`siesta_grammar`), and TBtrans's loop through
-    its reading pass (:func:`tbtrans_loop`), said with the run's state --
-    over once it is no longer live (`job.LIVE_STATES`)."""
+    its family's table (`siesta_grammar`), and a program's loop through its
+    reading pass (`tbtrans.loop_record`), said with the run's state -- over
+    once the run is in a final state (`job.FINAL_STATES`)."""
     from .job import FINAL_STATES
     from ..engines import siesta_grammar as _G
-    head = f.out_head
+    head = f.stdout_head
     if not head:
         return {}
     build: Dict[str, Any] = {}
@@ -260,7 +238,7 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
     for line in lines:
         (_G.read_build_line(line, build) or _G.read_launch_line(line, launch)
          or _G.read_diag_line(line, solver))
-    tail = _read(f.out, tail=_TAIL)
+    tail = _read(f.stdout, tail=_TAIL)
     for line in tail.splitlines():
         _G.read_launch_line(line, launch)
     out: Dict[str, Any] = {"computation": {}}
@@ -278,8 +256,9 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
         comp["launch"] = {"ranks": launch["n_mpi_processes"]}
     time = {k: launch[k] for k in ("run_start_local", "run_end_local")
             if k in launch}
-    time.update(tbtrans_loop(
-        f.out, head=head,
+    from ..engines.tbtrans import loop_record
+    time.update(loop_record(
+        f.stdout, head=head,
         # OVER only when the run's state is final: an `unreadable` run's
         # loop is not said stopped -- its state cannot be told.
         over=f.status is not None and f.status.state in FINAL_STATES))
@@ -390,10 +369,9 @@ def _instruments(f: RunFiles) -> Dict[str, Any]:
     mon = metrics(f.monitor_log)
     util = utilisation(mon, metrics(f.util_csv)) if f.util_csv else {}
     comp: Dict[str, Any] = {}
-    # THE RUN'S STAMPED SCF ROWS (§ 5c): the SIESTA family's tee, PySCF's
-    # progress log -- the one a run has, read by the one rule.
-    time = _timing_figures(f.timing if f.timing is not None
-                           else f.progress_log)
+    # THE RUN'S STAMPED SCF ROWS (§ 5c): its timing file, the one choice
+    # (`scf_timing_rows.timing_file`), read by the one rule.
+    time = _timing_figures(f.timing)
     if time:
         comp["time"] = time
     memory = {k: util[k] for k in ("mem_peak_gb", "mem_peak_from",
@@ -422,27 +400,23 @@ def _timing_figures(path: Optional[Path]) -> Dict[str, Any]:
             and v is not None}
 
 
-def scf_timing_of(output, timing_log: Optional[Path] = None
-                  ) -> Dict[str, Any]:
-    """The SCF-timing figures of the run ``output`` is an output of: a PySCF
-    progress log stamps its own rows; a SIESTA-family ``<base>.out``'s are
-    its run's tee, ``timing_log`` -- the run's `.scf-timing.log`, which the
-    caller finds through the run door (`runs.run_of`).
-    Read as the record reads them.  ``{}`` when the run has none."""
-    from ...runfiles import ROLE_MOLWATCH, role_of
-    p = Path(output)
-    if role_of(p.name) == ROLE_MOLWATCH:
-        return _timing_figures(p)
-    return _timing_figures(Path(timing_log)) if timing_log else {}
+def scf_timing_of(run) -> Dict[str, Any]:
+    """The SCF-timing figures of ``run``, the run door's `Run`: its timing
+    file, by the one choice (`scf_timing_rows.timing_file`), read as the
+    record reads it.  ``{}`` when the run has none."""
+    from ..instruments.scf_timing_rows import timing_file, timing_roles
+    path = timing_file({r: run.file(r) for r in timing_roles()})
+    return _timing_figures(path) if path is not None else {}
 
 
-def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
-    """PySCF's own report of itself, from its logger's file."""
+def _log_fields(f: RunFiles) -> Dict[str, Any]:
+    """The engine's own report of itself, from its logger's file (`.log`),
+    through that file's family's reader (`parse.engines.pyscf`)."""
     from ..engines.pyscf import read_pyscf_sys_info
     info = read_pyscf_sys_info(_read(f.engine_log, head=_HEAD))
     if not info:
         return {}
-    engine = {"program": "pyscf"}
+    engine = {"program": f.engine}
     for key in ("version", "python"):
         if key in info:
             engine[key] = info[key]
@@ -535,8 +509,7 @@ def _setup(f: RunFiles) -> Dict[str, Any]:
 
 
 from ...engine_table import engines as _engines  # noqa: E402
-from ..engines.siesta_grammar import (PHASE_NEGF as _PHASE_NEGF,  # noqa: E402
-                                      PHASE_PERIODIC as _PHASE_PERIODIC)
+from ..instruments.scf_timing_rows import PHASES as _PHASES  # noqa: E402
 
 #: The timing instrument's figures (§ 5c): the headline phase's, and each
 #: phase's own under its name.
@@ -544,7 +517,7 @@ _TIMING = tuple(f"computation.time.{k}" for k in ("s_per_iter",
                                                   "iters_measured")) + tuple(
     f"computation.time.{k}_{phase}"
     for k in ("s_per_iter", "iters_measured", "rows")
-    for phase in (_PHASE_PERIODIC, _PHASE_NEGF))
+    for phase in _PHASES)
 
 #: THE TABLE (§ 5d.1b).  ``fields`` are the record paths a row answers, and
 #: the declaration is the mechanism: a row contributes those fields and no
@@ -552,21 +525,21 @@ _TIMING = tuple(f"computation.time.{k}" for k in ("s_per_iter",
 #: answer one field for one engine (:func:`_one_source`) -- § 5c.1's "one
 #: source per quantity".
 CONTRIBUTORS: Tuple[Contributor, ...] = (
-    Contributor("siesta-out",
+    Contributor("out",
                 ("computation.engine.program", "computation.engine.version",
                  "computation.engine.build", "computation.solver",
                  "computation.launch.ranks", "computation.time.run_start_local",
                  "computation.time.run_end_local", "computation.time.progress",
                  "computation.time.estimated_at",
                  "setup.pseudopotentials"),
-                ("siesta",), _siesta_out),
+                ".out", _out_fields),
     Contributor("ending", ("verdict.ended", "verdict.state",
                            "verdict.detail", "verdict.converged",
                            "verdict.max_force_free_ev_ang",
                            "verdict.max_force_held_ev_ang",
                            "verdict.stress_voigt_kbar",
                            "verdict.forces_not_computed"),
-                (), _ending),
+                None, _ending),
     Contributor("wrapper-log",
                 ("computation.host.hostname", "computation.host.user",
                  "computation.host.cwd", "computation.host.conda_env",
@@ -576,15 +549,15 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                  "computation.launch.ranks_asked", "computation.launch.threads",
                  "computation.engine.binary",
                  "computation.time.engine_elapsed_s"),
-                (), _wrapper),
+                None, _wrapper),
     Contributor("instruments",
                 _TIMING + ("computation.memory", "computation.host.machine"),
-                (), _instruments),
-    Contributor("pyscf-log",
+                None, _instruments),
+    Contributor("log",
                 ("computation.engine.program", "computation.engine.version",
                  "computation.engine.python",
                  "computation.launch.threads_engine"),
-                ("pyscf",), _pyscf_sys),
+                ".log", _log_fields),
     Contributor("run-json",
                 ("computation.launch.mode", "computation.launch.command",
                  "computation.launch.job_id", "computation.launch.launched_at",
@@ -592,11 +565,11 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                  "computation.launch.sequence",
                  "computation.launch.continued_from",
                  "computation.launch.started_from"),
-                (), _launch_record),
-    Contributor("concluded", ("computation.exit",), (), _concluded),
-    Contributor("deck", ("deck",), (), _deck),
+                None, _launch_record),
+    Contributor("concluded", ("computation.exit",), None, _concluded),
+    Contributor("deck", ("deck",), None, _deck),
     Contributor("setup", ("setup.rows", "setup.engine_only",
-                          "verdict.findings"), (), _setup),
+                          "verdict.findings"), None, _setup),
 )
 
 
@@ -605,7 +578,7 @@ def _one_source(rows: Tuple[Contributor, ...]) -> None:
     field inside another's -- for an engine both serve."""
     owner: Dict[Tuple[str, str], str] = {}
     for row in rows:
-        # A row whose ``engines`` is ``()`` answers for every engine the
+        # A row whose file every run has answers for every engine the
         # engine table holds (`execution/architecture.md` § 3.3).
         for engine in (row.engines or _engines()):
             for field_ in row.fields:

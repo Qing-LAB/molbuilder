@@ -45,13 +45,13 @@ from .naming import (job_dir_names, ladder_homes, open_container,
 from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
-from ..parse.fdf import read_deck
+from ..engine_table import read_deck
 from .plan import FILENAME as _PLAN_FILE
 from . import prepared_with
 from ..runfiles import RunNames, beside_the_deck
 from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
-from .engines import EngineSeam, engine_seam, siesta_provide_pseudos
+from .engines import EngineSeam, engine_seam
 from .gather import composed_for_prep
 from .transport_rung import (at_frame, at_point, scratch_dir_of,
                              provide_pseudos, transport_parts,
@@ -64,8 +64,8 @@ if TYPE_CHECKING:                      # annotations only
     from ..task import Task
 
 
-def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
-                machine_record, env: str = None,
+def prep_jobset(jobset: JobSet, base_dir, *, calculation: str, plan,
+                provenance, machine_record, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, render=None, points=None,
                 notes: Optional[list] = None) -> List[Path]:
@@ -178,6 +178,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
                 # block of the run script (`running-a-job.md` § 1) -- never
                 # the deck's suffix.
                 engine=jobset.engine,
+                # THE KIND, the calculation's: which settings each rung's
+                # run script says the engine will read (`running-a-job.md`
+                # § 1, step 16).
+                calculation=calculation,
                 resources=job.resources,
                 program=job.program,
                 env=env,
@@ -674,9 +678,8 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
     # THE COUNT AND THE SIZES, beside the wall (§ 5.11 § 9): the free atoms
     # are those the held label leaves; the modes the run reports, the rank
     # rule's -- the one count prep's check states too.
-    from ..template import engine_name
     from ..validation.spectra import modes_of
-    n_free, _n_rigid, n_modes = modes_of(struct, engine_name(type(cfg0)))
+    n_free, _n_rigid, n_modes = modes_of(struct, task.engine)
 
     def job_facts(job):
         # THE RUN'S PHASES, on its job (`Job.phases`): what launch opens and
@@ -742,8 +745,7 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
         # functional the run will ask for.
         cfg = configure(pset[0].render_config())
         if composed.provenance["kind"] == "pair":
-            siesta_provide_pseudos(composed.junction, cfg, base,
-                                    plan=plan)
+            seam.provide_data(composed.junction, cfg, base, plan=plan)
         else:
             provide_pseudos(composed.junction, cfg, base,
                                        citation, plan=plan)
@@ -751,15 +753,11 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
     def job_facts(job):
         # The rung's own restart files (`transport.stages.warm_declaration`:
         # the seed's and the device's; the leads and the transmission carry
-        # none) -- and TBtrans post-processes the device run from its own
-        # deck, its binary riding the allocation road into the wrapper
-        # (`model.Job.program`, `engines/transport.md` § 6.1b).
+        # none).  The program its deck is read by and the scratch folder its
+        # run keeps are the deck's own statement (`DeckSpec.program`,
+        # ``scratch_dir``), taken onto the job by `_job_for`.
         return dataclasses.replace(
-            job, warm=warm_declaration(stage, task.label, base),
-            # THE RUN'S SCRATCH FOLDER (`engines/transport.md` § 2a.11): the
-            # device's, the vocabulary's name.
-            scratch_dir=scratch_dir_of(base) if stage == "device" else None,
-            program=("tbtrans" if stage == "transmission" else None))
+            job, warm=warm_declaration(stage, task.label, base))
     return Rung(struct=struct, render_kind="transport", configure=configure,
                 sources=transport_sources,
                 # THE DECK'S POINT reaches the spec: the device names its
@@ -876,7 +874,7 @@ def _resolve_stage(stage, *, task, request, template, template_text,
     # precedence against a CLI flag, and notify has no flag to lose to.
     allocation = _with_notify(allocation, request.notify)
     try:
-        pset = resolve(template_text, task, engine_seam(task.engine).config_cls,
+        pset = resolve(template_text, task,
                        allocation=(allocation or Resources()), stage=stage,
                        sweep=sweep, pins=pins, run_settings=run_settings,
                        launch_from=sources, translation=translation,
@@ -1270,6 +1268,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             jobs.append(rung.job_facts(_job_for(
                 element, script, task, pset.stage, seam, base,
                 finish=(None if element.is_trial else spec.finish),
+                program=spec.program, scratch_dir=spec.scratch_dir,
                 # WHERE IT WAS PLACED (`job-system.md` § 6.0): a run's
                 # queue, and a benchmark's one queue on each trial, recorded
                 # on its job -- what launch sends to.
@@ -1371,7 +1370,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                         relaunch=_declared.relaunch_of(pset.stage, pt),
                         steps=dict(_record.steps))})
                for d, pt in rung.points]
-    dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+    dirs = prep_jobset(js, base, calculation=str(task.calculation),
+                       env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment,
                        render=(None if kind == KIND_SWEEP
@@ -1545,8 +1545,8 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
                 differ.append(rel)
         elif p.name == deck:
             if not p.is_file() or same_calculation(
-                    str(task.engine), read_deck(p),
-                    read_deck(p, read=plan.read_text)):
+                    str(task.engine), read_deck(str(task.engine), p),
+                    read_deck(str(task.engine), p, read=plan.read_text)):
                 differ.append(rel)
         elif not as_written(p, plan.read_bytes(p)):
             differ.append(rel)
@@ -1596,8 +1596,9 @@ def _computes_else(base, engine: str, plan, answer) -> Optional[str]:
     for path in plan.writes():
         if path.name != answer.deck or not path.is_file():
             continue
-        diffs = same_calculation(engine, read_deck(path),
-                                 read_deck(path, read=plan.read_text))
+        diffs = same_calculation(engine, read_deck(engine, path),
+                                 read_deck(engine, path,
+                                           read=plan.read_text))
         if diffs:
             said.append(f"{Path(path).parent.relative_to(base)}: "
                         + "; ".join(diffs))
@@ -1919,7 +1920,9 @@ def _deck_atoms(struct, engine: str, kind: str, stage):
 def _job_for(element, script: str, task, stage_name: Optional[str],
              seam: EngineSeam, base_dir=None,
              finish: Optional[str] = None,
-             placement: Optional[dict] = None) -> Job:
+             placement: Optional[dict] = None,
+             program: Optional[str] = None,
+             scratch_dir: Optional[str] = None) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -1942,12 +1945,15 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     resumes = warm_list(str(task.engine), kind, base_dir).resumes
     with _calling("traits_for", engine=task.engine, where=name):
         traits = seam.traits_for(element.values)
-    # ``finish`` is the deck's own statement (`DeckSpec.finish`): the bundle
-    # its run is finished by, when the engine alone leaves no result
-    # (`engines/vibration.md` § 5.5).
+    # ``finish``, ``program`` and ``scratch_dir`` are the deck's own
+    # statements (`DeckSpec`): the bundle its run is finished by, when the
+    # engine alone leaves no result (`engines/vibration.md` § 5.5); the
+    # program that reads it, where not its engine's own; the scratch folder
+    # its run keeps (`engines/transport.md` § 2a.11).
     return Job(name=name, script=script, resources=element.resources,
                warm=warm, traits=traits, point=dict(element.point),
-               finish=finish, resumes=resumes, placement=placement)
+               finish=finish, resumes=resumes, placement=placement,
+               program=program, scratch_dir=scratch_dir)
 
 
 def _with_notify(flags, declared) -> "Resources":
@@ -2357,7 +2363,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     prep's reuse decision, or a launched stage's decks
     (`reuse.launched_contours`)."""
     from .prep_inputs import bench_inputs, prep_run_inputs
-    from .placement import launch_refusal, one_process, placed
+    from .placement import launch_refusal, placed
+    from ..engine_table import engine as _engine_rec
     from ..runtime_config import routing_of
     base = Path(base).resolve()
     task, environment = described.task, described.environment
@@ -2445,7 +2452,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     #     fit there is said; a benchmark's shelves say their own.
     if header:
         placed_on, fit, why = placed(
-            asked, environment, one_process=one_process(task.engine),
+            asked, environment,
+            one_process=_engine_rec(task.engine).one_process,
             what=f"stage {stage!r}", sources=resolved.sources)
         if why:
             raise PrepError(why)
@@ -2463,7 +2471,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         if _g.uses:
             notes.extend(line.strip() for line in gpu_share_notes(
                 _g.count, _r.mpi_np or 1,
-                one_process=one_process(task.engine)))
+                one_process=_engine_rec(task.engine).one_process))
 
     # 4a · EVERY STAGE'S HAND-OVER IS FILES, taken at its first launch
     #      (`job-system.md` § 5.0): prep reads no other stage's run.
@@ -2835,20 +2843,22 @@ def walk_header_of(where, names, request, environment, *, engine: str,
     from ..runfiles import LAUNCH_DIR
     if not (emit_sbatch and environment.kind.queue):
         return None
-    from .placement import one_process, placed
+    from ..engine_table import engine as _engine_rec
+    from .placement import placed
+    one_process = _engine_rec(engine).one_process
     sources: dict = {}
     for j in jobs:
         for field, source in ((j.placement or {}).get("from") or {}).items():
             if source not in sources.setdefault(field, ()):
                 sources[field] += (source,)
     placed_on, fit, why = placed(request, environment,
-                                 one_process=one_process(engine), what=what,
+                                 one_process=one_process, what=what,
                                  sources=sources)
     if why:
         raise PrepError(why)
     from ..runwrap import walk_header
     text = walk_header(
-        where, names, resources=request, one_process=one_process(engine),
+        where, names, resources=request, one_process=one_process,
         machine_record=environment,
         domain_pq=(placed_on["partition"], placed_on["qos"]))
     return Walk(Path(where) / LAUNCH_DIR / names.name(".sbatch"), text, fit)

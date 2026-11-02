@@ -6,7 +6,7 @@ MODULE  trajectory_log.keys (L1; stdlib)
 ROLE    the keys, named once; every producer and reader imports them
         (`pyscf/input.py`, `jobset/prep.py`, `siesta_grammar.TARGET_LINES`,
         `parse/contract.py`, the Results tab's rows)
-TRAVELS beside every job's monitor (`runwrap.MONITOR_COMPANIONS`: the
+TRAVELS beside every job's monitor (`runwrap.monitor_companions`: the
         SIESTA grammar reads its echo of these targets with it), beside a
         PySCF deck and a vibration finish (the emitter imports it there) --
         so nothing but the standard library, on any python 3

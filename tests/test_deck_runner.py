@@ -42,11 +42,13 @@ def _struct() -> Structure:
                                          [-0.24, 0.927, 0.]]))
 
 
-class _Cfg:
-    """The two catalogue fields the stub layout asks for."""
-    mesh_cutoff = 250.0
-    max_scf_iter = 40
-    relax_steps = None          # declines to emit -- see `line` below
+def _cfg():
+    """A SIESTA configuration -- the engine the stub names, whose record
+    names its config class (`engine_table.engine_of_config`) -- holding the
+    two values the stub layout writes; ``scf_must_converge`` left unset, so
+    its section declines (`_line`)."""
+    from molbuilder.config.siesta import SiestaConfig
+    return SiestaConfig(system_label="t", mesh_cutoff=250.0, max_scf_iter=40)
 
 
 def _line(p):
@@ -65,7 +67,7 @@ def _spec(**over) -> se.DeckSpec:
                          lambda s, c: "# --- Atoms ---\nNumberOfAtoms 3"),
                 se.Section("Grid", ("mesh_cutoff",)),
                 se.Section("SCF", ("max_scf_iter",)),
-                se.Section("Relaxation", ("relax_steps",))),
+                se.Section("Convergence", ("scf_must_converge",))),
         line=_line,
         created_by="stub",
         # EVERY spec builder places its atoms and hands the frame over, the
@@ -89,7 +91,7 @@ def test_the_engine_never_sees_a_bare_value_so_the_reason_travels_with_it():
     through it -- so the catalogue's note is written above the value by the
     framework, and an engine cannot emit one without the other.
     """
-    out = se.render_deck(_spec(), _struct(), _Cfg())
+    out = se.render_deck(_spec(), _struct(), _cfg())
     assert "MeshCutoff 250.0" in out.text
     note = se.parameter("mesh_cutoff", "siesta").note()
     assert note, "the catalogue declares a note for mesh_cutoff"
@@ -99,9 +101,9 @@ def test_the_engine_never_sees_a_bare_value_so_the_reason_travels_with_it():
 
 def test_a_section_whose_parameters_all_decline_gets_no_heading():
     """A heading over nothing is the block lying — the BENCH-MARKS rule."""
-    out = se.render_deck(_spec(), _struct(), _Cfg())
+    out = se.render_deck(_spec(), _struct(), _cfg())
     assert "--- Grid ---" in out.text
-    assert "--- Relaxation ---" not in out.text
+    assert "--- Convergence ---" not in out.text
     assert not any("MD.Steps" in l for l in out.emitted)
 
 
@@ -111,7 +113,7 @@ def test_the_runner_reports_what_it_emitted_so_check_can_close_the_loop():
     A keyword cannot tell a setting from a READ of that setting; a line is the
     assignment itself (`script-preparation.md` § 4.3).
     """
-    out = se.render_deck(_spec(), _struct(), _Cfg())
+    out = se.render_deck(_spec(), _struct(), _cfg())
     assert any(l.startswith("MeshCutoff") for l in out.emitted)
     assert any(l.startswith("MaxSCFIterations") for l in out.emitted)
     assert all(l in out.text for l in out.emitted), (
@@ -119,14 +121,14 @@ def test_the_runner_reports_what_it_emitted_so_check_can_close_the_loop():
 
 
 def test_the_record_sits_below_the_banner_and_the_science_above_it():
-    out = se.render_deck(_spec(), _struct(), _Cfg())
+    out = se.render_deck(_spec(), _struct(), _cfg())
     banner = out.text.index("MOLBUILDER RECORD")
     assert out.text.index("MeshCutoff 250.0") < banner
     assert banner < out.text.index(dr.begin_marker(dr.BLOCK_PROVENANCE))
 
 
 def test_verbose_false_drops_the_notes_and_keeps_the_values():
-    out = se.render_deck(_spec(), _struct(), _Cfg(), verbose=False)
+    out = se.render_deck(_spec(), _struct(), _cfg(), verbose=False)
     assert "MeshCutoff 250.0" in out.text
     assert se.parameter("mesh_cutoff", "siesta").note()[1] not in out.text
 
@@ -145,7 +147,7 @@ def test_rendering_touches_no_disk(tmp_path, monkeypatch):
     """
     monkeypatch.chdir(tmp_path)
     before = set(tmp_path.rglob("*"))
-    out = se.render_deck(_spec(), _struct(), _Cfg())
+    out = se.render_deck(_spec(), _struct(), _cfg())
     assert isinstance(out, str) and out.strip(), "no text came back"
     assert set(tmp_path.rglob("*")) == before, (
         f"rendering wrote to disk: "
@@ -153,7 +155,7 @@ def test_rendering_touches_no_disk(tmp_path, monkeypatch):
 
 
 def test_check_passes_a_deck_the_runner_itself_wrote(tmp_path):
-    spec, struct, cfg = _spec(), _struct(), _Cfg()
+    spec, struct, cfg = _spec(), _struct(), _cfg()
     out = se.render_deck(spec, struct, cfg)
     p = se.write_script(tmp_path / "ok.fdf", out.text)
     assert se.check_deck(p, spec, out, struct, cfg) == []
@@ -165,7 +167,7 @@ def test_check_catches_a_value_that_never_reached_the_file(tmp_path):
     `validate` runs on ``(struct, cfg)`` and would pass this deck happily: the
     configuration is sound.  What is wrong is the FILE.
     """
-    spec, struct, cfg = _spec(), _struct(), _Cfg()
+    spec, struct, cfg = _spec(), _struct(), _cfg()
     out = se.render_deck(spec, struct, cfg)
     broken = out.text.replace("MeshCutoff 250.0", "")
     p = se.write_script(tmp_path / "lost.fdf", broken)
@@ -191,8 +193,8 @@ def test_a_parameter_that_writes_a_PAIR_still_closes_the_loop(tmp_path):
     """
     spec = _spec(line=lambda p: ("Spin.Fix          .true.\n"
                                  "Spin.Total        2.0")
-                 if p.name == "relax_steps" else _line(p))
-    struct, cfg = _struct(), _Cfg()
+                 if p.name == "scf_must_converge" else _line(p))
+    struct, cfg = _struct(), _cfg()
     out = se.render_deck(spec, struct, cfg)
     good = se.write_script(tmp_path / "pair.fdf", out.text)
     assert se.check_deck(good, spec, out, struct, cfg) == [], \
@@ -207,7 +209,7 @@ def test_a_parameter_that_writes_a_PAIR_still_closes_the_loop(tmp_path):
 
 
 def test_check_catches_a_missing_reader_section(tmp_path):
-    spec, struct, cfg = _spec(), _struct(), _Cfg()
+    spec, struct, cfg = _spec(), _struct(), _cfg()
     out = se.render_deck(spec, struct, cfg)
     broken = out.text.replace(dr.begin_marker(dr.BLOCK_USER_CUSTOM), "")
     p = tmp_path / "nouser.fdf"
@@ -226,7 +228,7 @@ def test_check_runs_the_engines_own_rules_too(tmp_path):
 
     spec = _spec(check_rules=rules,
                  layout=(se.Block("Atoms", lambda s, c: "# nothing"),))
-    struct, cfg = _struct(), _Cfg()
+    struct, cfg = _struct(), _cfg()
     out = se.render_deck(spec, struct, cfg)
     p = se.write_script(tmp_path / "noatoms.fdf", out.text)
     assert [i.message for i in se.check_deck(p, spec, out, struct, cfg)] == \
@@ -239,7 +241,7 @@ def test_check_reads_the_file_and_not_the_string_it_was_handed(tmp_path):
     Here the file on disk is made to disagree with the rendered string.  A gate
     that trusted the string would pass it; this one opens the file.
     """
-    spec, struct, cfg = _spec(), _struct(), _Cfg()
+    spec, struct, cfg = _spec(), _struct(), _cfg()
     out = se.render_deck(spec, struct, cfg)
     p = tmp_path / "edited.fdf"
     p.write_text(out.text.replace("MaxSCFIterations 40", "# gone"),
@@ -251,7 +253,7 @@ def test_check_reads_the_file_and_not_the_string_it_was_handed(tmp_path):
 # ----------------------------------------------------------- the spine ---
 
 def test_prepare_deck_runs_the_sub_steps_in_order(tmp_path):
-    p = se.prepare_deck(_spec(), _struct(), _Cfg(), tmp_path / "run.fdf")
+    p = se.prepare_deck(_spec(), _struct(), _cfg(), tmp_path / "run.fdf")
     text = p.read_text(encoding="utf-8")
     assert text.index("NumberOfAtoms 3") < text.index("MeshCutoff 250.0")
     assert text.index("MeshCutoff 250.0") < text.index("MOLBUILDER RECORD")
@@ -264,19 +266,19 @@ def test_prepare_deck_refuses_a_broken_engine_rather_than_shipping_it(tmp_path):
     spec = _spec(check_rules=lambda t, s, c: [
         Issue("error", "this deck is wrong", where="deck.stub")])
     with pytest.raises(ValidationError):
-        se.prepare_deck(spec, _struct(), _Cfg(), tmp_path / "bad.fdf")
+        se.prepare_deck(spec, _struct(), _cfg(), tmp_path / "bad.fdf")
 
 
 def test_prepare_deck_keeps_what_a_reader_put_in_their_own_section(tmp_path):
     """**W4** — one deck is written by one writer, and the writer keeps what
     the reader put in their own section (`script-preparation.md` § 3.2)."""
     path = tmp_path / "keep.fdf"
-    se.prepare_deck(_spec(), _struct(), _Cfg(), path)
+    se.prepare_deck(_spec(), _struct(), _cfg(), path)
     edited = path.read_text(encoding="utf-8").replace(
         dr.end_marker(dr.BLOCK_USER_CUSTOM),
         "MyOwnKeyword 7\n" + dr.end_marker(dr.BLOCK_USER_CUSTOM))
     path.write_text(edited, encoding="utf-8")
-    se.prepare_deck(_spec(), _struct(), _Cfg(), path)
+    se.prepare_deck(_spec(), _struct(), _cfg(), path)
     assert "MyOwnKeyword 7" in path.read_text(encoding="utf-8")
 
 
@@ -299,12 +301,13 @@ def _real(engine, **over):
     """A seam, a config and a structure for one engine — through `prep`'s own
     door, so this asks what the production route asks."""
     import dataclasses
+    from molbuilder.engine_table import config_class
     from molbuilder.jobset.engines import engine_seam
     from molbuilder.structure import Structure
 
     seam = engine_seam(engine)
     label = {"siesta": {"system_label": "t"}, "pyscf": {"job_name": "t"}}[engine]
-    cfg = dataclasses.replace(seam.config_cls(**label), **over)
+    cfg = dataclasses.replace(config_class(engine)(**label), **over)
     struct = Structure(elements=["O", "H", "H"],
                        positions=np.array([[0., 0., 0.], [0.957, 0., 0.],
                                            [-0.24, 0.927, 0.]]),

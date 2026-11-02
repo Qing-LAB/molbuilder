@@ -44,7 +44,8 @@ def test_d3_charged_system_warns_on_thin_vacuum(deprotonated_diester):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.validation import validate
     s = dataclasses.replace(deprotonated_diester, vacuum=(10.0, 10.0, 10.0))
-    findings = [i for i in validate(s, SiestaConfig(verbose_comments=False))
+    findings = [i for i in validate(s, SiestaConfig(verbose_comments=False),
+                                         calculation="optimization")
                 if i.where == "cell.vacuum_thin"]
     assert findings, "no cell.vacuum_thin finding for a charged 10 A/side box"
     msg = findings[0].message

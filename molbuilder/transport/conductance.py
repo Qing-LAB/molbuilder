@@ -2,7 +2,7 @@
 transmission on energies measured from E_F (`engines/transport.md` § 2a.4).
 
 MODULE  transport.conductance (stdlib only; travels in ``mb_monitor.pyz``,
-        `runwrap.MONITOR_COMPANIONS`)
+        `runwrap.monitor_companions`)
 ROLE    the one rule, and the one rule of the transmission it is read on --
         per spin channel (:func:`per_spin_channel`) -- asked by the record
         for every point (`transport.record`) and by a transmission run's

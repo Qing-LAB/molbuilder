@@ -26,7 +26,7 @@ def test_pyscf_grid_level_above_range_warns(water_structure):
     meaningful in PySCF; warn the user before they generate a script
     that PySCF will reject."""
     cfg = PySCFConfig(grid_level=20)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     msgs = [i for i in issues if i.where == "config.grid_level"]
     assert len(msgs) == 1
 
@@ -40,7 +40,7 @@ def test_pyscf_grid_level_3_with_hybrid_warns(water_structure):
     """Hybrid functionals (B3LYP / PBE0 / M06-2X / wB97X) at grid_level
     < 4 give noisy forces.  The user can override but should know."""
     cfg = PySCFConfig(functional="B3LYP", grid_level=3)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     grid_warns = [i for i in issues if i.where == "config.grid_level"
                   and i.severity == "warn"
                   and "hybrid" in i.message.lower()]
@@ -53,7 +53,7 @@ def test_pyscf_grid_level_3_with_pure_gga_no_warn(water_structure):
     (TPSS/SCAN are meta-GGAs, NOT pure GGAs; they DO warn — see the
     meta-GGA test below.)"""
     cfg = PySCFConfig(functional="PBE", grid_level=3)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     grid_warns = [i for i in issues if i.where == "config.grid_level"]
     assert grid_warns == []
 
@@ -66,7 +66,7 @@ def test_pyscf_grid_level_3_with_meta_gga_warns(water_structure, functional):
     must warn.  Pre-2026-07 the gate keyed on "hybrid" and SCAN/TPSS
     passed SILENTLY — the false-negative this fixes."""
     cfg = PySCFConfig(functional=functional, grid_level=3)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     grid_warns = [i for i in issues if i.where == "config.grid_level"
                   and i.severity == "warn"
                   and "meta-gga" in i.message.lower()]
@@ -95,7 +95,7 @@ def test_basis_adequacy_fires_for_closed_shell_metal():
     zn = Structure(elements=["Zn", "O"],
                    positions=np.array([[0., 0, 0], [0, 0, 1.7]]))
     cfg = PySCFConfig(basis="STO-3G")
-    issues = validate(zn, cfg)
+    issues = validate(zn, cfg, calculation="optimization")
     assert any(i.where == "config.basis" and i.severity == "warn"
                and "Zn" in i.message for i in issues), (
         "STO-3G on a closed-shell Zn complex should warn on d-orbital "

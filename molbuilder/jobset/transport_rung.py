@@ -20,7 +20,7 @@ from pathlib import Path
 
 from ..pseudos import PSEUDO_DIRNAME
 from ..runfiles import PSEUDO_FILE, fixed_name
-from .engines import pseudo_dir, screen_pseudos
+from ..siesta.seam import pseudo_dir, screen_pseudos
 from .errors import PrepError, user_error_as_prep
 from .naming import stage_home
 
@@ -96,7 +96,6 @@ def resolve_transport(task, stage: str, allocation, *, template_text,
     and ``use_gpu`` onto each element's resources, both config answers that
     the WRAPPER reads.
     """
-    from ..config.siesta import SiestaConfig
     from ..resolve import ResolveError, resolve
 
     # A SHARED VALUE IS NOT A PER-STAGE OVERRIDE, NOR ONE THE RUNG FIXES --
@@ -112,7 +111,7 @@ def resolve_transport(task, stage: str, allocation, *, template_text,
         log.phase("STEP 2 · RESOLVE — the description becomes a ParameterSet")
         log.received("stage", stage)
     try:
-        ps = resolve(template_text, task, SiestaConfig,
+        ps = resolve(template_text, task,
                      allocation=allocation, stage=stage,
                      run_settings=run_settings)
     except ResolveError as exc:
@@ -200,7 +199,8 @@ def transport_parts(task, stage: str, composed, config):
     # recorded or detected value *stated*.
     from ..validation.chemistry import check_electronic_state
     refused = [i for i in check_electronic_state(
-        composed.junction, labelled(config), calculation="transport")
+        composed.junction, labelled(config), calculation="transport",
+        engine=task.engine, state=state)
         if i.severity == "error"]
     if refused:
         raise PrepError(refused[0].message)
@@ -336,7 +336,7 @@ def transport_spec(task, stage: str, struct, config, state, point=None, *,
 
 
 def scratch_dir_of(base) -> Optional[str]:
-    """The folder of a device run's own its leads' files live in -- the
+    """The folder a device run keeps its leads' files in -- the
     vocabulary's ``scratch_dir`` (`warm-files.toml` [transport]), the one
     spelling every writer and reader takes."""
     from ..warmfiles import warm_list

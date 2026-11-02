@@ -92,7 +92,6 @@ class TestSpectraFieldMetadata:
         (`validation/task.py::preflight`), and it refuses at ERROR.
         """
         import json
-        from molbuilder.config.pyscf import PySCFConfig
         from molbuilder.identity import run_id
         from molbuilder.task import of as task_of
         from molbuilder.validation.task import preflight
@@ -106,7 +105,7 @@ class TestSpectraFieldMetadata:
             "varies": ["dispersion"],
             "stages": [{"name": "coarse",
                         "overrides": {"dispersion": "d5"}}]}))
-        issues = preflight(task_of(tmp_path), PySCFConfig)
+        issues = preflight(task_of(tmp_path))
         bad = [i for i in issues
                if i.severity == "error" and "dispersion" in (i.message or "")]
         assert bad, [i.message for i in issues]

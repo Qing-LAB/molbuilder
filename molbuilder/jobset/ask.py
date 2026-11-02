@@ -41,7 +41,7 @@ GPU_TUNED_RANKS_PER_DEVICE = 4
 
 
 def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
-                    one_process: bool = False) -> List[str]:
+                    one_process: bool) -> List[str]:
     """What a GPU-sharing request means, said at a run's prep -- by the two
     thresholds the bench grid's note reads too (`prep_inputs.bench_inputs`),
     so the two cannot disagree -- and so neither drifts from what

@@ -6,6 +6,8 @@ layout).
 
 from __future__ import annotations
 
+import pytest
+
 from molbuilder.siesta import SiestaConfig
 from molbuilder.validation import validate
 from ._helpers import _peptide_struct
@@ -25,7 +27,7 @@ def test_siesta_mesh_cutoff_below_range_warns(water_structure):
     config.mesh_cutoff warn, and it must name BOTH the meaning and the
     keyword — see the sweep below for why that is a rule and not a taste."""
     cfg = SiestaConfig(mesh_cutoff=5.0)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     out_of_range = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(out_of_range) == 1
     assert "MeshCutoff" in out_of_range[0].message
@@ -64,7 +66,7 @@ def test_every_range_warning_names_the_engine_keyword(water_structure):
         # NON-SCALAR FIELDS ARE SKIPPED, and the skip has to be explicit:
         # ``dataclasses.replace`` does no type checking, so it would store
         # the scalar and the TypeError would surface later, inside
-        # validate(), as a crash rather than a skip.
+        # validate(, calculation="optimization"), as a crash rather than a skip.
         #
         # They are genuinely out of scope for THIS rule: their range warning
         # names a component (``k-point mesh (%block kgrid_Monkhorst_Pack)[0]
@@ -75,7 +77,7 @@ def test_every_range_warning_names_the_engine_keyword(water_structure):
             continue
         cfg = dataclasses.replace(
             SiestaConfig(), **{f.name: type(lo)(hi) * 10 + 1})
-        hits = [i for i in validate(water_structure, cfg)
+        hits = [i for i in validate(water_structure, cfg, calculation="optimization")
                 if i.where == f"config.{f.name}" and "outside" in i.message]
         if not hits:
             continue
@@ -97,9 +99,33 @@ def test_every_range_warning_names_the_engine_keyword(water_structure):
                           "not have:\n  " + "\n  ".join(invented))
 
 
+#: A GPU RUN SOLVES ON ELPA (`engines/siesta.md` § 7): the GPU with a
+#: solver that has no GPU path is an error of the settings check, which the
+#: page's check hears -- until 2.64.0 it was said first when prep wrote the
+#: deck.  ``(use_gpu, diag_algorithm, refused)``.
+GPU_SOLVER_ROWS = [
+    pytest.param(True, "ScaLAPACK", True, id="gpu-with-scalapack"),
+    pytest.param(True, "ELPA-2STAGE", False, id="gpu-with-elpa"),
+    pytest.param(False, "ScaLAPACK", False, id="cpu-with-scalapack"),
+]
+
+
+@pytest.mark.parametrize("use_gpu, algorithm, refused", GPU_SOLVER_ROWS)
+def test_a_gpu_run_with_a_solver_that_has_no_gpu_path_is_an_error(
+        water_structure, use_gpu, algorithm, refused):
+    cfg = SiestaConfig(use_gpu=use_gpu, diag_algorithm=algorithm)
+    issues = validate(water_structure, cfg, calculation="optimization")
+    said = [i for i in issues if i.where == "config.use_gpu"]
+    if refused:
+        assert [i.severity for i in said] == ["error"], said
+        assert algorithm in said[0].message and "ELPA" in said[0].message
+    else:
+        assert said == [], said
+
+
 def test_siesta_mesh_cutoff_in_range_no_warn(water_structure):
     cfg = SiestaConfig(mesh_cutoff=300.0)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     assert [i for i in issues if i.where == "config.mesh_cutoff"] == []
 
 
@@ -113,7 +139,7 @@ def test_siesta_mesh_cutoff_below_production_floor_warns(water_structure):
     the user benefits from a soft nudge.
     """
     cfg = SiestaConfig(mesh_cutoff=120.0)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(mc_issues) == 1, (
         f"expected exactly one mesh_cutoff issue; got "
@@ -134,7 +160,7 @@ def test_siesta_mesh_cutoff_below_production_floor_warns(water_structure):
 def test_siesta_mesh_cutoff_exactly_at_production_floor_no_warn(water_structure):
     """Boundary: 150 Ry is the threshold; >= 150 is silent."""
     cfg = SiestaConfig(mesh_cutoff=150.0)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     assert [i for i in issues if i.where == "config.mesh_cutoff"] == []
 
 
@@ -147,7 +173,7 @@ def test_siesta_mesh_cutoff_at_slider_floor_warns_only_via_production_rule(
     Net: exactly one warn from the production rule.
     """
     cfg = SiestaConfig(mesh_cutoff=100.0)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(mc_issues) == 1
     # Must be the production-floor message (not the range-out message).
@@ -165,7 +191,7 @@ def test_siesta_charged_system_emits_makov_payne_notice(water_structure):
     NOT auto-apply the correction.  Surfacing > implementing here.
     """
     cfg = SiestaConfig(net_charge=+1)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     mp = [i for i in issues if i.where == "config.net_charge.makov_payne"]
     assert len(mp) == 1
     assert mp[0].severity == "warn"
@@ -186,7 +212,7 @@ def test_siesta_neutral_system_no_makov_payne_notice(water_structure):
     """net_charge == 0 (default, or user-set explicitly) -- the
     image-charge artefact doesn't apply, no notice."""
     cfg = SiestaConfig()   # default net_charge None -> auto-detect 0
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     assert [i for i in issues
             if i.where == "config.net_charge.makov_payne"] == []
 
@@ -195,7 +221,7 @@ def test_siesta_negative_charge_also_emits_notice(water_structure):
     """The Makov-Payne bias scales as q^2 -- both signs of charge
     trigger it equally."""
     cfg = SiestaConfig(net_charge=-2)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     mp = [i for i in issues if i.where == "config.net_charge.makov_payne"]
     assert len(mp) == 1
     # The warn quotes the actual charge value for context.
@@ -210,7 +236,7 @@ def test_siesta_mesh_cutoff_below_slider_floor_emits_only_one_warning(
     _check_siesta_mesh_cutoff gates at >= 100 Ry.
     """
     cfg = SiestaConfig(mesh_cutoff=50.0)
-    issues = validate(water_structure, cfg)
+    issues = validate(water_structure, cfg, calculation="optimization")
     mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(mc_issues) == 1, (
         f"expected exactly one mesh_cutoff issue; got "
@@ -223,7 +249,7 @@ def test_siesta_peptide_protonation_warn(water_structure):
     independent property of the structure + charge config)."""
     s = _peptide_struct(["ALA","LYS","ASP","ASP","GLY"])  # +1 -2 = -1
     cfg = SiestaConfig(net_charge=None)   # auto -> 0 for non-nucleic
-    issues = validate(s, cfg)
+    issues = validate(s, cfg, calculation="optimization")
     msgs = [i for i in issues if i.where == "config.net_charge"]
     assert len(msgs) == 1
     assert "-1" in msgs[0].message
@@ -231,7 +257,7 @@ def test_siesta_peptide_protonation_warn(water_structure):
 
 # --------------------------------------------------------------------- #
 #  SIESTA pseudo-coverage check is wired into the preflight: every      #
-#  validate(struct, SiestaConfig) call exercises the coverage check,    #
+#  validate(struct, SiestaConfig, calculation="optimization") call exercises the coverage check,    #
 #  surfacing missing files / XC mismatches as preflight Issues.         #
 # --------------------------------------------------------------------- #
 
@@ -261,7 +287,7 @@ def _make_pdojo_psml(element: str, *, z: int = None,
 
 
 class TestSiestaPseudoCoverageInPreflight:
-    """Pin the actual wiring: validate(struct, SiestaConfig) MUST
+    """Pin the actual wiring: validate(struct, SiestaConfig, calculation="optimization") MUST
     surface pseudo-coverage findings as Issues."""
 
     def _water(self):
@@ -285,7 +311,7 @@ class TestSiestaPseudoCoverageInPreflight:
         """
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
-        issues = validate(self._water(), SiestaConfig())
+        issues = validate(self._water(), SiestaConfig(), calculation="optimization")
         psml_issues = [i for i in issues if i.where == "config.psml_lib"]
         assert psml_issues
         assert psml_issues[0].severity == "warn"
@@ -349,7 +375,8 @@ class TestSiestaPseudoCoverageInPreflight:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib="/no/such/dir"))
+                           SiestaConfig(psml_lib="/no/such/dir"),
+                           calculation="optimization")
         errs = [i for i in issues if i.where == "config.psml_lib"
                 and i.severity == "error"]
         assert errs
@@ -364,7 +391,8 @@ class TestSiestaPseudoCoverageInPreflight:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib=str(lib), xc_authors="PBE"))
+                           SiestaConfig(psml_lib=str(lib), xc_authors="PBE"),
+                           calculation="optimization")
         psml_issues = [i for i in issues if "psml" in i.where.lower()]
         assert psml_issues == []
 
@@ -375,7 +403,8 @@ class TestSiestaPseudoCoverageInPreflight:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib=str(lib)))
+                           SiestaConfig(psml_lib=str(lib)),
+                           calculation="optimization")
         h_issues = [i for i in issues
                     if i.where == "config.psml_lib.H"]
         assert h_issues
@@ -395,7 +424,8 @@ class TestSiestaPseudoCoverageInPreflight:
         from molbuilder.validation import validate
         issues = validate(self._water(),
                            SiestaConfig(psml_lib=str(lib),
-                                          xc_authors="PBE"))
+                                          xc_authors="PBE"),
+                           calculation="optimization")
         mismatch_issues = [i for i in issues
                            if "psml" in i.where.lower()
                            and i.severity == "error"

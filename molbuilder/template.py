@@ -55,6 +55,7 @@ from dataclasses import dataclass, field
 from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
                     Optional, Sequence, Tuple, Union)
 
+from .engine_table import engine_of_config
 from .identity import migrate_as_typed, stage_key
 from . import kind_table as _kinds
 from .persist import check_schema
@@ -285,6 +286,15 @@ def stage_words(stage: str) -> str:
             f"template's value, shown as its hint.")
 
 
+#: Who applies a run-script item's limit (:attr:`Item.limit_applied_by`):
+#: the run script, or the engine's deck.
+LIMIT_APPLIERS = ("run_script", "deck")
+
+#: The item that states a run's rank count (``mpirun -np``), offered only to
+#: an engine that runs ranks (the engine record's ``one_process``).
+RANK_COUNT_ITEM = "mpi_np"
+
+
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
     raise ValueError(f"template{': ' + where if where else ''}: {msg}")
 
@@ -351,16 +361,16 @@ class Item:
     #: [word, ...]}``, each word with the placeholders the script fills
     #: (``{left}``, ``{slack}`` for `wall_slack`).  A program not named takes
     #: the item some other way -- its engine's deck, where
-    #: :attr:`deck_applies` names it -- or not at all (`running-a-job.md`
+    #: :attr:`limit_applied_by` says so -- or not at all (`running-a-job.md`
     #: § 3.6).
     launch: Mapping[str, Tuple[str, ...]] = field(default_factory=dict)
-    #: ``kind = "wrapper"`` -- THE ENGINES WHOSE DECK APPLIES THIS ITEM ITSELF,
-    #: from the value the run script exports or the deck states: PySCF's
-    #: deck keeps the wall's deadline and caps its memory (`mol.max_memory`).
-    #: An engine not named is given the item by its run script -- the
-    #: program's ``launch`` words, the memory cap's ``ulimit -v`` -- or not at
-    #: all (`running-a-job.md` § 3.2, § 3.6).
-    deck_applies: Tuple[str, ...] = ()
+    #: ``kind = "wrapper"`` -- WHO APPLIES THIS LIMIT, by engine: ``{engine:
+    #: "run_script" | "deck"}``, every engine the item serves named.  The run
+    #: script applies it -- the program's ``launch`` words, the memory cap's
+    #: ``ulimit -v`` -- or the deck does, from the value the run script
+    #: exports or the deck states: PySCF's deck keeps the wall's deadline and
+    #: caps its memory (`mol.max_memory`) (`running-a-job.md` § 3.2, § 3.6).
+    limit_applied_by: Mapping[str, str] = field(default_factory=dict)
 
     #: **How the engine SPELLS this**, in full — and a different fact from
     #: :attr:`anchor`, which is the bare leading keyword the deck writer
@@ -894,7 +904,7 @@ def _toml_key(k: Any) -> str:
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
-                   "manual", "expands", "launch", "deck_applies", "type",
+                   "manual", "expands", "launch", "limit_applied_by", "type",
                    "choices", "value", "source", "default", "engine_default", "recommended", "offered", "not_offered", "result", "active_when", "choice_labels", "optional", "required",
                    "allocation", "run_card",
                    "citation", "shared", "role", "role_values", "stages",
@@ -931,8 +941,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["expands"] = list(it.expands)
     if it.launch:
         out["launch"] = {p: list(w) for p, w in it.launch.items()}
-    if it.deck_applies:
-        out["deck_applies"] = list(it.deck_applies)
+    if it.limit_applied_by:
+        out["limit_applied_by"] = dict(it.limit_applied_by)
     if it.choices:
         out["choices"] = list(it.choices)
     # An absent ``value`` is the encoding of *explicitly unset* (§ 3).
@@ -1053,14 +1063,32 @@ def catalogue() -> "Template":
                 f"holds {', '.join(_engines())} -- one list of engines, the "
                 f"engine table's")
     for it in parsed.items:
-        # AN ENGINE WHOSE DECK APPLIES AN ITEM IS ONE IT IS OFFERED ON -- an
-        # item that names no engines serves every one.
+        # WHO APPLIES A LIMIT IS SAID FOR EVERY ENGINE IT SERVES, and for no
+        # other -- an item that names no engines serves every one; an engine
+        # left out would mean "the run script" without anyone saying so.
         serves = it.engines or _engines()
-        stray = [e for e in it.deck_applies if e not in serves]
-        if stray:
-            _refuse(f"deck_applies names {', '.join(map(repr, stray))}, "
-                    f"which the item does not serve ({', '.join(serves)})",
-                    where=it.name)
+        if it.limit_applied_by:
+            said = set(it.limit_applied_by)
+            if said != set(serves):
+                _refuse(f"limit_applied_by names "
+                        f"{', '.join(sorted(said)) or 'no engine'}; the item "
+                        f"serves {', '.join(serves)} -- who applies the limit "
+                        f"is said for each", where=it.name)
+            odd = sorted({v for v in it.limit_applied_by.values()}
+                         - set(LIMIT_APPLIERS))
+            if odd:
+                _refuse(f"limit_applied_by says {', '.join(map(repr, odd))}; "
+                        f"the limit is applied by one of "
+                        f"{', '.join(LIMIT_APPLIERS)}", where=it.name)
+        # A RANK COUNT IS OFFERED ONLY TO AN ENGINE THAT RUNS RANKS: the
+        # engine record's ``one_process`` is the one answer, and the item
+        # that states a rank count agrees with it.
+        if it.name == RANK_COUNT_ITEM:
+            alone = [e for e in serves if _engine(e).one_process]
+            if alone:
+                _refuse(f"offered to {', '.join(alone)}, whose engine record "
+                        f"says it runs one process (one_process) -- a rank "
+                        f"count names nothing it runs", where=it.name)
         for key in ("calculations", "citation", "role", "shared",
                     "required"):
             stray = [k for k in getattr(it, key) if k not in _kinds.kinds()]
@@ -1092,14 +1120,15 @@ def catalogue() -> "Template":
                     "(engines/template.md § 5)", where=it.name)
         # THE ENGINE'S OWN VALUE IS STATED, OR WHAT IT FOLLOWS (§ 5): every
         # item whose anchor is a keyword of a deck its engine reads as
-        # keywords (the engine record's ``keyword_deck`` -- SIESTA's fdf).
+        # keywords (the engine record names its ``keyword_reader`` --
+        # SIESTA's fdf).
         # Two decks are compared as the engine reads them
         # (`siesta.engine_input`), and a keyword one deck states at the
         # engine's own value is the same input as one that leaves it out --
         # so an item that states neither makes every older run another
         # calculation the day a deck starts writing it.
         if (it.anchor and not it.anchor.startswith("%block")
-                and any(_engine(e).keyword_deck
+                and any(_engine(e).keyword_reader is not None
                         for e in (it.engines or _engines()))
                 and not it.engine_default and not it.engine_unfixed):
             _refuse("an item with a keyword of a deck of keywords states its "
@@ -1168,7 +1197,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     if bad:
         raise ValueError(f"source(s) {', '.join(map(repr, bad))} are not "
                          f"one of {', '.join(SOURCES)} (§ 6.6)")
-    eng = engine or engine_name(type(config))
+    eng = engine or engine_of_config(config)
     items = [
         dataclasses.replace(
             it,
@@ -1249,7 +1278,7 @@ def with_values_set(text: str, config_cls, *, calculation: str,
     sources = {it.name: it.source for it in items}
     sources.update({k: source for k in values})
     return template_with_values(
-        cfg, engine=engine_name(config_cls), calculation=calculation,
+        cfg, engine=engine_of_config(config_cls), calculation=calculation,
         title=title_of(text), sources=sources,
         valueless=[it.name for it in items
                    if it.value is None and it.name not in values])
@@ -1310,27 +1339,15 @@ def items_of(cls_or_cfg) -> "Dict[str, Item]":
     fact -- the label, the unit, the range, the choices, the engine keyword,
     the card, the category, whether the machine answers it -- is the
     catalogue's).  Asked with the class or an instance; the engine is the
-    class's (:func:`engine_name`).  Every reader of such a fact asks this:
+    engine whose record names the class (`engine_table.engine_of_config`).
+    Every reader of such a fact asks this:
     the settings gate, the description check, the form's coercion, finding
     placement, the template's membership."""
-    cls = cls_or_cfg if isinstance(cls_or_cfg, type) else type(cls_or_cfg)
-    engine = engine_name(cls)
+    engine = engine_of_config(cls_or_cfg)
     # THE SAME RULE `one` READS BY: an item naming no engines is every
     # engine's.
     return {it.name: it for it in catalogue().items
             if not it.engines or engine in it.engines}
-
-
-def engine_name(cls) -> str:
-    """Whose schema these items are — from the class, never guessed by a caller."""
-    named = getattr(cls, "ENGINE", "")
-    if named:
-        return str(named)
-    stem = cls.__name__
-    for suffix in ("Config", "Configuration"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-    return stem.lower()
 
 
 def _first_difference(want: Any, got: Any, path: str = "") -> str:
@@ -1787,7 +1804,7 @@ def apply_recommended(config, calculation: str, *, engine: str = ""):
     """A copy of ``config`` carrying every recommendation the catalogue makes
     for ``calculation`` on its engine (§ 6.3a) -- what `molbuilder describe` writes a kind's
     template from, so the template starts where the kind says it should."""
-    eng = engine or engine_name(type(config))
+    eng = engine or engine_of_config(config)
     updates = {}
     for it in select(catalogue(), engine=eng, calculation=calculation):
         rec = recommended_for(it, calculation)
@@ -1941,7 +1958,7 @@ def _item_from(name: str, body: Any) -> Item:
                    _engine_default_from(name, body, type_, choices))),
         expands=tuple(body.get("expands", ()) or ()),
         launch=_launch_from(name, body.get("launch")),
-        deck_applies=tuple(body.get("deck_applies", ()) or ()),
+        limit_applied_by=dict(body.get("limit_applied_by", {}) or {}),
         optional=bool(body.get("optional", False)),
         tier=str(body.get("tier", "") or ""),
         pattern=str(body.get("pattern", "") or ""),
@@ -3015,7 +3032,7 @@ def config_from_template(text: str, config_cls):
     # an engine the file does not serve, so *"does not run on that engine"*
     # stays distinct from *"no items matched"*.
     parsed = read_template(text)
-    eng = engine_name(config_cls)
+    eng = engine_of_config(config_cls)
     mine = select(parsed, engine=eng) if parsed.engines else parsed.items
     vals = {it.name: it.value for it in mine if it.is_set}
     # A 0 WRITTEN BEFORE ITS MEANING CHANGED meant *not set*; read now, it
@@ -3250,7 +3267,7 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "CATALOGUE", "catalogue", "load_catalogue",
            "template_with_values",
            "read_template", "config_from_template",
-           "template_fields", "engine_name", "is_member",
+           "template_fields", "is_member",
            "STATE_ITEMS", "shared_by_every_stage", "why_shared",
            "shared_by", "shared_scope_words",
            "run_settings", "why_run_setting",

@@ -6,7 +6,7 @@ it keeps, over plain Python records.  `molwatch.py` builds its Frames from what
 this reads; the monitor reads a running PySCF job's progress log with it, fed
 line by line as the log grows (`execution/run-reports.md` § 2.3).
 
-**Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`).
+**Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`).
 """
 from __future__ import annotations
 

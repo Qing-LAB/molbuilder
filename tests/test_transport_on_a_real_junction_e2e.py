@@ -1366,7 +1366,6 @@ def _another_than_runs(probe, rung: str, name: str, task: dict):
     `parallel_over_k` on), read by the one fdf reader; else the engine's
     own default the catalogue states (`engine_default`); else the item's
     documented default."""
-    from molbuilder.config.siesta import SiestaConfig
     from molbuilder.parse.fdf import fdf_key, fdf_true, read_fdf
     from molbuilder.resolve import BLANK_ANSWERED_BY, resolved_ladder
     from molbuilder.task import Task
@@ -1374,8 +1373,8 @@ def _another_than_runs(probe, rung: str, name: str, task: dict):
     from support.form_fields import another_value
     template = (probe.bundle / "D.template.toml").read_text()
     item = one(catalogue(), name, engine="siesta")
-    was = getattr(dict(resolved_ladder(template, Task.from_dict(task),
-                                       SiestaConfig))[rung], name)
+    was = getattr(dict(resolved_ladder(template, Task.from_dict(task)))[rung],
+                  name)
     if was is None and item.type == "bool" and name in BLANK_ANSWERED_BY:
         stated = read_fdf(probe.unset[rung][0])[0].get(
             fdf_key(item.engine_key))

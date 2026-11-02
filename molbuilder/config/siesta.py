@@ -532,6 +532,29 @@ class SiestaConfig:
                 f"ground state.  Use unrestricted with 1 unpaired electron, "
                 f"or check the charge.")
 
+    def spin_refusal(self, state) -> "Optional[Tuple[str, str]]":
+        """``(setting, why)`` where a setting of this config cannot run the
+        spin ``state`` holds, else ``None``.  SIESTA's OMM solver runs a
+        spin-polarized density only with the spin held: SIESTA 5.4.2 stops a
+        polarized OMM run with no ``Spin.Fix`` at startup (`Src/m_dminim.F90`:
+        *"OMM for spin unpolarized calculations only supports fixed spin!"*).
+        So OMM takes restricted, or unrestricted with a stated count."""
+        from ..electronic_state import FREE
+        if (str(self.solution_method or "") != "OMM"
+                or state.spin_treatment.value == "restricted"
+                or (state.spin_treatment.value == "unrestricted"
+                    and state.pinned is not None)):
+            return None
+        held = ("a floating moment" if state.unpaired_electrons.value == FREE
+                else f"spin_treatment = {state.spin_treatment.value}")
+        return ("solution_method",
+                f"solution_method = OMM with {held} "
+                f"({state.spin_treatment.said}): SIESTA's OMM runs a "
+                f"spin-polarized density only with the spin held, and stops "
+                f"at startup otherwise (Src/m_dminim.F90).  State "
+                f"unpaired_electrons with spin_treatment = unrestricted, "
+                f"state restricted, or use solution_method = diagon.")
+
 
 #: Spin treatments under which SIESTA stops on a fixed total spin
 #: (``read_options.F90``: ``if (nspin .ne. 2) call die(...)``).

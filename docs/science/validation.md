@@ -446,11 +446,20 @@ otherwise went with F25, 2026-10-08)*.
    `not_offered` row saying why for what it cannot. The form then offers exactly
    that, and `resolve` and the gate refuse the rest by name (ES4).
 2. Give its config the four state items from `config/state.py` (the factories
-   every engine's config uses), and `method` if it has one.
+   every engine's config uses), `method` if it has one, and the three rules
+   the gate asks of every engine's config: why, under a spin treatment and
+   kind, it cannot hold a stated number of unpaired electrons
+   (`count_must_float`), what it does with an odd electron count under
+   restricted spin (`odd_count_restricted`), and which setting of its own
+   cannot run the spin state (`spin_refusal` — PySCF's answers `None`,
+   refusing nothing).
 3. Spell the state in its deck writer — read `electronic_state(...)`, never the
    raw fields — and write each value beside its source.
-4. Register its validator in `_ENGINE_VALIDATORS`; the state's findings come to it
-   through `validate()` without a line of its own. Pin its decks through prep.
+4. Name its validator in its engine table entry (`validator`,
+   [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3) — a
+   table without one is refused as it loads; the state's findings come to it
+   through `validate()` without a line of its own, and the state itself is
+   handed to it. Pin its decks through prep.
 
 No endpoint change: `/api/structure/analyze` answers every engine the kind
 has a part on in the kind table.
@@ -464,22 +473,24 @@ directly from the relevant submodule:
 
 ```
 validation/
-├── __init__.py     # public API: validate, report; the engine registry
-│                   # (_ENGINE_VALIDATORS, type-keyed); a kind's science is
-│                   # the part its record names (the kind table's `validator`)
+├── __init__.py     # public API: validate, report; an engine's checks are
+│                   # the part its engine table entry names (`validator`), a
+│                   # kind's science the part its kind table entry names; a
+│                   # junction's checks where the kind's deck relaxes
 ├── geometry.py     # validate_geometry + geometry checks
 ├── metadata.py     # dataclass-field-driven config validation (range/validate/choices)
 ├── chemistry.py    # species labels; THE ELECTRONIC STATE'S ONE FAMILY
-│                   # (check_electronic_state); metal-basis adequacy;
-│                   # peptide protonation
+│                   # (check_electronic_state); peptide protonation
 ├── identity.py     # names and labels (run identity, basenames)
 ├── builders.py     # what a build says of what it built (`check_built`, R5)
 ├── sidecar.py      # frozen-atoms-consumed check; the junction's boundary (§ 6.1c);
 │                   # the relaxation-record check (engines/vibration.md § 2.2)
 ├── stages.py       # stage-ladder checks (shared by describe/dispatch)
 ├── task.py         # the TASK preflight — a description that is not one refuses
-├── siesta.py       # SIESTA preflight aggregator + pseudo/mesh/Makov-Payne/vacuum checks
-├── pyscf.py        # PySCF preflight aggregator
+├── siesta.py       # SIESTA's validator (validate_siesta) + pseudo/mesh/Makov-Payne/
+│                   # vacuum checks, and a GPU run's ELPA solver
+├── pyscf.py        # PySCF's validator (validate_pyscf) + metal-basis adequacy
+│                   # and the ECP hint
 ├── spectra.py      # the vibration kind's science (grid/amplitude/frozen atoms/
 │                   # the relaxation record): validate_vibration_kind, its validator
 └── transport.py    # the transport kind's science (the pole energy and the
@@ -490,16 +501,20 @@ validation/
 *(This tree drifted once — it listed seven files while the package held
 eleven; reconciled 2026-08-21 during the diagram-faithfulness review.)*
 
-Two rules make this safe to extend: **the call order inside `_validate_siesta` /
-`_validate_pyscf` is the per-engine public contract** — load-bearing, since
+Two rules make this safe to extend: **the call order inside `validate_siesta` /
+`validate_pyscf` is the per-engine public contract** — load-bearing, since
 tests count issues by position — and a helper **loses its `_` prefix when it
 gains a cross-module caller** (e.g. `check_electronic_state` is public; the
-others stay private until a PR forces the promotion, no back-compat shim). The
-engine registry (`_ENGINE_VALIDATORS`, populated at import) holds **two**
-configs (SIESTA / PySCF), and a kind's own science is the part its
-record in the kind table names (`validator`), composed from the
-described fact — `validate(struct, cfg, calculation=…)` is the
-one per-engine gate. Tests mirror the layout under `tests/validation/`.
+others stay private until a PR forces the promotion, no back-compat shim). An
+engine's checks are the part its entry in the engine table names
+(`validator`), a kind's own science the part its entry in the kind table names
+(`validator`) — `validate(struct, cfg, calculation=…)` is the one gate, and
+the caller always states the kind. **The gate works out once what every check
+reads**: the config's engine (`engine_table.engine_of_config`), the box, and
+the electronic state the deck will be written from (`None` where a species
+label names no element — the label check owns that finding); each is handed
+to the engine's and the kind's checks, which compose none of their own. Tests
+mirror the layout under `tests/validation/`.
 
 **One fact, one finding.** The kind's validator owns the families the kind's
 science answers — on a vibration: the grid, the held atoms and what survives the
@@ -512,22 +527,25 @@ closes: the engine's copy is reasoned from the wrong calculation (a
 nothing — seen on the Spectrum tab, 2026-09-24). Both engine validators
 branch on the kind the same way (`validation/pyscf.py`, `validation/siesta.py`).
 The charge and spin are neither's: they are the electronic state's one family,
-asked once by `validate()` for every engine and kind (§ 4).
+asked once by `validate()` for every engine and kind (§ 4). **Nor is a
+junction's**: that a lead comes through a relaxation unmoved, and the room at
+its transport boundary, are asked once by `validate()` where the kind's deck
+relaxes the structure (the kind table's `relaxes` — an optimization's), never
+by an engine's validator. A vibration's held atoms are its own question, and
+the free atoms are the system it calculates; a transport rung relaxes nothing,
+and its kind refuses the boundary itself.
 The same wrong calculation reached the transport kind: its rungs write no MD
 block — the junction was relaxed upstream and every rung computes at that
 geometry — so SIESTA's frozen-atom family is not asked there at all, rather
 than deferred to anyone (every junction rung said *"held fixed during SIESTA
 relaxation"*, 2026-09-25).
 
-> *This said **four** configs (SIESTA / PySCF / spectra / transport). Both of
-> the others keyed on a config class nothing in production validates, and both
-> retired for the same reason one year apart in code time: `SpectraConfig`
-> 2026-08-22 (a vibration's science is the KIND's), `TransportConfig`
-> 2026-09-17 (every transport rung resolves a `SiestaConfig`, so the row
-> dispatched for nothing). **A registry keyed on a class is only as live as the
-> callers that construct that class** — which is the difference between
-> `_ENGINE_VALIDATORS` and a kind's `validator`, and the reason transport's
-> science moved to the second.*
+> *A registry keyed on a class is only as live as the callers that construct
+> that class: two such rows — `SpectraConfig` (retired 2026-08-22, a
+> vibration's science being the kind's) and `TransportConfig` (2026-09-17,
+> every transport rung resolving a `SiestaConfig`) — dispatched for nothing.
+> So a kind's science is its record's `validator`, and since 2.64.0 an
+> engine's checks are its record's part too.*
 
 ---
 

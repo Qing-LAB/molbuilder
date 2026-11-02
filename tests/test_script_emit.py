@@ -11,6 +11,7 @@ import pytest
 
 from molbuilder import deck_record as dr
 from molbuilder import script_emit as sc
+from molbuilder.siesta.input import BENCH_FIELDS
 from support.road import CO2, CO2_HELD_FIRST
 from molbuilder.structure_pair import MolstructPairingError
 
@@ -99,7 +100,7 @@ def test_emit_bench_marks_uses_anchors_not_line_numbers():
     """v1 contract: anchor= rather than line=N, for layout-stability."""
     block = sc.emit_bench_marks(
         metadata={"n_atoms": 212, "gpu_mode": "true"},
-        fields=sc.SIESTA_BENCH_FIELDS,
+        fields=BENCH_FIELDS,
         defaults={"BlockSize": 256, "MaxSCFIterations": 500,
                   "MD.Steps": 200, "MeshCutoff": 400.0},
     )
@@ -114,7 +115,7 @@ def test_emit_bench_marks_uses_anchors_not_line_numbers():
 def test_emit_bench_marks_default_value_appears_per_field():
     block = sc.emit_bench_marks(
         metadata={"n_atoms": 212},
-        fields=sc.SIESTA_BENCH_FIELDS,
+        fields=BENCH_FIELDS,
         defaults={"BlockSize": 256, "MaxSCFIterations": 500,
                   "MD.Steps": 200, "MeshCutoff": 400.0},
     )
@@ -526,7 +527,7 @@ def test_user_custom_placeholder_is_well_formed():
 
 
 def test_siesta_bench_fields_cover_the_four_bench_knobs():
-    names = {f.name for f in sc.SIESTA_BENCH_FIELDS}
+    names = {f.name for f in BENCH_FIELDS}
     assert {"BlockSize", "MaxSCFIterations", "MD.Steps", "MeshCutoff"} <= names
 
 
@@ -534,7 +535,7 @@ def test_blocksize_field_constrains_pow2_and_leaves_the_range_to_the_deck():
     """The engine-wide list declares the TYPE and leaves the window to the
     renderer that knows the launch (``siesta/input.py::_block_size_bounds``),
     so a forgotten range is an absent one rather than a wrong one."""
-    bs = next(f for f in sc.SIESTA_BENCH_FIELDS if f.name == "BlockSize")
+    bs = next(f for f in BENCH_FIELDS if f.name == "BlockSize")
     assert bs.type_ == "pow2"
     assert bs.range_ is None
 

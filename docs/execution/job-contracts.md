@@ -513,7 +513,7 @@ category — `siesta`, `pyscf`, whose environments are `molbuilder-siesta`,
 (`molbuilder-siesta-gpu`), when the job's GPU request says it uses a GPU
 (`jobset.model.gpu_request(resources).uses` — never a keyword read out of the
 deck); an env you name always wins. **One run script serves every engine**: the
-record, the job, a catalogue item's declaration (`launch`, `deck_applies`) and the
+record, the job, a catalogue item's declaration (`launch`, `limit_applied_by`) and the
 parse layer's tables for the output's role decide each block below, and nothing
 in it is chosen by the engine's name or the deck's suffix. A program's launcher is chosen on the node
 by the build probe (§ 2.1); a deck that is a script runs on its environment's
@@ -550,18 +550,18 @@ arranges files belongs to Python on the host.
 | the occupancy notice | *(an engine that runs ranks)* the rank count set against the deck's own orbital estimate ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.1a) |
 | **Thread / BLAS pinning** | the OpenMP thread export; where the engine runs ranks, MKL and OpenBLAS pinned to one thread; where ranks are placed on GPUs, the threads bound (`OMP_PROC_BIND`, `OMP_PLACES`) |
 | **MPS daemon** | *(a job that uses a GPU, its engine running ranks)* the per-job daemon when ranks share a GPU |
-| the memory cap | *(the run states `max_memory_mb`, and its engine's deck does not apply it — the item's `deck_applies`, [`engines/template.md`](?doc=engines/template.md) § 5)* `ulimit -v` before the program |
+| the memory cap | *(the run states `max_memory_mb`, and the item's `limit_applied_by` says the run script applies it, [`engines/template.md`](?doc=engines/template.md) § 5)* `ulimit -v` before the program |
 | **Probe the program's build** | *(an engine that runs a program)* the build's parallelisations, which choose the launcher (§ 2.1) |
 | **The deck is a script** | *(an engine whose deck is a script)* the launch on the job's python, one process |
 | **GPU<->CPU socket co-location** | *(a job that uses a GPU, its engine running ranks)* ranks pinned beside the GPU's NUMA node, each rank starting the job's program |
 | **Record resolved launch command + placement** | the command about to run, logged |
 | **Dry-run preview** | `--dry-run`: the resolved command and each value's source, nothing started |
-| **SCF per-iteration timing instrument** | *(where the output's family names a stamp, `scf_timing_rows.STAMPED_BY_RUN_SCRIPT`)* the per-iteration timing log a benchmark reads |
+| **SCF per-iteration timing instrument** | *(where the file catalogue cuts a file from the output — the timing log's row names its `cut_from`, a SIESTA output — its rows recognised by the grammar's patterns, `scf_timing_rows.SCF_ROW_PATTERNS`)* the per-iteration timing log a benchmark reads |
 | **How a run ended** | `_mb_ending`, the script's question to the framework's reader of endings, and the one ask `_mb_ending_able` — see below |
 | **Background job monitor** | `mb_monitor.pyz` at `nice 19`, watching the script's process ([`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6) |
 | **Can the job finish itself?** | *(a job with a finish)* the check that the finish bundle loads on the job's python ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
 | **The run's report step: point started** | *(a point of a run of points)* [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 9 |
-| **What the engine will read** | *(a deck that states keywords)* the `effective-parameters` record: a row for each catalogue item that writes a keyword into its deck, with its default, then the deck as the engine parses it, read by the bundle beside it (`mb_monitor.pyz deck`) |
+| **What the engine will read** | *(a deck that states keywords)* the `effective-parameters` record: a row for each catalogue item the rung reads (its kind's, its stage's roles') that writes a keyword into its deck, with its default, then the deck as the engine parses it, read by the bundle beside it with the engine's keyword reader (`mb_monitor.pyz deck READER DECK`) |
 | **Launch the engine + capture exit** | the wall left, told to the engine; the engine, run as a child, never `exec`'d; after a failure, `_mb_ending` — see below — and the conclusion marker |
 | **The run's report step: point ended** | *(a point of a run of points)* [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 10 |
 | USER-CUSTOM | your own zone (§ 3.5) |
@@ -808,7 +808,7 @@ Which engine-body fields a benchmark may override, and within what limits:
   what prep wrote (rule **A3**,
   [`architecture.md`](?doc=execution/architecture.md) § 7).
 - **`field` lines declare the only parameters a tool may override**
-  (`script_emit.SIESTA_BENCH_FIELDS`). `anchor` names the keyword a value
+  (SIESTA's, `siesta.input.BENCH_FIELDS`, beside its deck writer). `anchor` names the keyword a value
   belongs to; it is read back as a string and compared with `==` — a trial is
   rendered from the description with pins, never spliced into a deck
   ([`engines/template.md`](?doc=engines/template.md) § 8.1).
@@ -1276,7 +1276,7 @@ restart files of the list in effect (§ 4.2a) that lie in the run, each named
 | `CLEAN (this deck reads no prior state; the files here are not read)` | restart files lie here, but the deck's `restart` is `clean` ([`run-identity.md`](?doc=execution/run-identity.md) § 4) |
 | `FROM THE FIRST STEP (this kind of run does not resume)` | restart files lie here, on a kind that does not resume (`resumes = false`): it runs from its first step, reading back only what that step saved |
 
-From a real run's session log:
+From a real run's session log (a 2.63.0 run; since 2.64.0 the banner's labels are padded to its longest):
 
 ```
   Launch mode   : pure MPI (1 ranks; OMP setting irrelevant to this binary)
@@ -1499,8 +1499,8 @@ persisted files (`job-set.json`) and the scheduler flags they become, and
   ([`job-request.md`](?doc=execution/job-request.md) § 3.1).
 - **Memory and the per-rank cap are different questions**: `mem` asks the
   scheduler; `max_memory_mb` is a guard applied on the node — by the run
-  script, or by a deck its catalogue item says applies it (`deck_applies`,
-  [`engines/template.md`](?doc=engines/template.md) § 5).
+  script, or by the deck, as its catalogue item says for each engine
+  (`limit_applied_by`, [`engines/template.md`](?doc=engines/template.md) § 5).
 - **`partition` and `qos` are not `Resources` fields**: they are the target
   record's, resolved from `domain`.
 

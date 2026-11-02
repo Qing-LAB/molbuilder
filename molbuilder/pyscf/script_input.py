@@ -11,9 +11,9 @@ Every other line is compared as written: an edit that would compute the
 same thing written another way is called different, which is the safe
 direction.
 
-It reads with the deck record's grammar alone (`deck_record`), and is
-registered with the door by each surface as it starts
-(`calculation.register_readers`).
+It reads with the deck record's grammar alone (`deck_record`), and is the
+part PySCF's engine record names (``same_calculation``), which the door
+resolves.
 """
 from __future__ import annotations
 

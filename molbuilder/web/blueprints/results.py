@@ -133,7 +133,9 @@ def api_results_contract():
     except DeckRecordUnreadable as exc:
         # A DECK WHOSE RECORD DOES NOT READ is said, never a crash.
         return jsonify({"ok": False, "error": str(exc)}), 400
-    info = run_info(deck=deck, output=output) or {}
+    info = run_info(deck=deck, output=output,
+                    engine=(run.place.task.engine if run is not None
+                            else None)) or {}
     return jsonify({"ok": True, "calculation": info.get("calculation"),
                     "relaxation": info.get("relaxation")})
 

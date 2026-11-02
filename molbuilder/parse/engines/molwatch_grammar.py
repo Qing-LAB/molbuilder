@@ -8,7 +8,7 @@ with), the PySCF parser's sibling-log enrichment, and the cheap ending scan
 (`_run_ending`).
 
 **Stdlib only, and travels** (`configuration.md`'s rule for the monitor's
-modules): it goes beside every job (`runwrap.MONITOR_COMPANIONS`), so the
+modules): it goes beside every job (`runwrap.monitor_companions`), so the
 monitor reads a PySCF run's progress with the lines the Results tab reads it
 with, and what it imports of ours -- the physical constants, the log's own
 vocabulary (`trajectory_log.keys`) -- travels with it and is imported two ways.

@@ -507,7 +507,7 @@ moment. SIESTA's `OMM` solver floats nothing: it runs a polarized density only
 with `Spin.Fix` (`m_dminim.F90`, *"OMM for spin unpolarized calculations only
 supports fixed spin!"*), so `solution_method = OMM` takes `restricted`, or
 `unrestricted` with a stated count, and anything else is refused before the run
-(`validation.chemistry._omm_spin`).
+(SIESTA's config rule, `SiestaConfig.spin_refusal`, asked by the electronic state's one family).
 
 **ES7 · The state travels with the run it starts from.** A structure exported
 from a finished run carries that run's record, and a blank item takes the

@@ -106,7 +106,7 @@ from typing import (Any, Callable, Dict, List, Optional, Sequence,
 # SIESTA parser's and the ONE molwatch parser's reading passes, fed as the
 # output grows; the timing instrument; `runfiles` for every name; and what a
 # report may carry, from the one declaration of it -- and those
-# modules travel beside the job (`runwrap.MONITOR_COMPANIONS`): imported from
+# modules travel beside the job (`runwrap.monitor_companions`): imported from
 # the package here, from the copies beside the job there, as `config_dir`
 # always has been.
 try:                                        # inside molbuilder
@@ -120,12 +120,11 @@ try:                                        # inside molbuilder
     from .parse.engines.molwatch_reader import MolwatchReader
     from .parse.engines.siesta_reader import SiestaReader
     from .parse.engines.tbtrans import loop_words
-    from .parse.instruments.scf_timing_rows import timing_of
+    from .parse.instruments.scf_timing_rows import timing_file, timing_of
     from . import calcdirs as _cd
     from . import runpoints as _rp
     from .trajectory_log import keys as _K
     from .wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
-    from .parse import fdf as _fdf
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_cards as _cards
@@ -137,12 +136,11 @@ except ImportError:                         # beside the job
     from molwatch_reader import MolwatchReader
     from siesta_reader import SiestaReader
     from tbtrans import loop_words
-    from scf_timing_rows import timing_of
+    from scf_timing_rows import timing_file, timing_of
     import calcdirs as _cd
     import runpoints as _rp
     import keys as _K
     from wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
-    import fdf as _fdf
 
 
 @dataclass
@@ -196,10 +194,14 @@ class JobStatus:
     #: A TranSIESTA run that computes no forces: the sentence said in their
     #: place, the reading pass's (`model/parse.md` § 4a).
     forces_not_computed: Optional[str] = None
-    #: TBtrans's account of its loop, as the output's reading pass states it
-    #: (`model/parse.md` § 5d.5) -- not a report field: the summary line
-    #: says it in words (`tbtrans.loop_words`).
-    tbtrans: Optional[Dict[str, Any]] = None
+    #: THE PROGRAM'S OWN LOOP beside the SCF -- TBtrans's k-point x energy
+    #: loop -- as the output's reading pass states it (`model/parse.md`
+    #: § 4a, ``loop``) -- not a report field: the summary line says it in
+    #: the words its output's family gives (:data:`LOOP_WORDS`).
+    loop: Optional[Dict[str, Any]] = None
+    #: The role of the output the run's live state was read from -- what
+    #: picks the words its loop is said in.
+    heard_from: Optional[str] = None
     #: WHERE THE RUN IS, in the reading pass's words (`model/parse.md`
     #: § 2b, ``doing``: the row in flight's phase and iteration, or a
     #: TranSIESTA device's set-up until its first SCF row) -- the summary
@@ -312,7 +314,9 @@ class JobStatus:
             bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
         if self.per_iter_s is not None and not ended["per_iter_s"]:
             bits.append(f"{self.per_iter_s:.2f} s/iter")
-        loop = loop_words(self.tbtrans, over=self.state not in LIVE_STATES)
+        words = LOOP_WORDS.get(self.heard_from)
+        loop = (words(self.loop, over=self.state not in LIVE_STATES)
+                if words is not None and self.loop else "")
         if loop:
             bits.append(loop)
         if self.unit_s is not None and self.units_done:
@@ -360,11 +364,18 @@ LIVE_READERS: Dict[str, Callable[[Optional[str]], Any]] = {
     ".molwatch.log": lambda stage: MolwatchReader(stage=stage),
 }
 
+#: THE WORDS A PROGRAM'S OWN LOOP IS SAID IN, by the role of the output that
+#: accounts for it (`model/parse.md` § 4a): a SIESTA-family ``.out``'s,
+#: TBtrans's (`tbtrans.loop_words`).  So the summary line names no program.
+LOOP_WORDS: Dict[str, Callable[..., str]] = {
+    ".out": loop_words,
+}
+
 #: What a live reading must state to say where the run IS -- an SCF row, a
 #: step, TBtrans's loop (TBtrans states no SCF), or the words of where it
 #: is (`model/parse.md` § 2b, ``doing``: a device's set-up until its first
 #: SCF row).
-_POSITION = ("cycle", "step", "energy", "tbtrans", "doing")
+_POSITION = ("cycle", "step", "energy", "loop", "doing")
 
 
 #: How much of a file's beginning, and of what was last read, identifies it
@@ -490,13 +501,13 @@ class WatchedRun:
             grow.feed_from(path, lambda: make(self.stage))
             state = grow.reader.now()
             if any(k in state for k in _POSITION):
-                heard.append((_mtime(path), state))
+                heard.append((_mtime(path), role, state))
         if heard:
-            self._apply(st, max(heard, key=lambda h: h[0])[1])
+            _when, st.heard_from, state = max(heard, key=lambda h: h[0])
+            self._apply(st, state)
         # THE RUN'S STAMPED SCF ROWS, by the one rule (`model/parse.md`
-        # § 5c): the SIESTA family's tee, else a PySCF run's progress log --
-        # whose rows the deck stamps itself.
-        timing = files.get(".scf-timing.log") or files.get(".molwatch.log")
+        # § 5c): its timing file, the one choice (`timing_file`).
+        timing = timing_file(files)
         if timing is not None:
             m = timing_of(timing)
             st.n_iters = m.get("rows") or st.n_iters
@@ -602,7 +613,7 @@ class WatchedRun:
             # THE HELD ATOMS' FORCE, said only when it is the larger.
             st.max_force_held = (every if every is not None
                                  and every > st.max_force else None)
-        st.tbtrans = state.get("tbtrans")
+        st.loop = state.get("loop")
         st.doing = state.get("doing")
         st.part = state.get("part")
         st.scf_converged = state.get("scf_converged")
@@ -2180,8 +2191,8 @@ def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
         return True
     if (curr.phase, curr.cycle) != (prev.phase, prev.cycle):
         return curr.cycle is not None
-    if curr.tbtrans != prev.tbtrans:
-        return curr.tbtrans is not None
+    if curr.loop != prev.loop:
+        return curr.loop is not None
     if curr.part != prev.part:
         # A PART OF THE OUTPUT BEGAN -- its opening line read, the SCF's
         # last row unchanged (`run-reports.md` § 2.8).
@@ -2639,7 +2650,7 @@ def make_log_notifier(log: Path) -> Notifier:
 #
 # CRITICAL: shipped, this module needs ONLY the stdlib (os/re/signal/time/
 # urllib/dataclasses/pathlib/typing) and the framework modules that travel
-# with it (`runwrap.MONITOR_COMPANIONS`) -- no molbuilder package, no numpy.
+# with it (`runwrap.monitor_companions`) -- no molbuilder package, no numpy.
 # That is what lets the run script SHIP this file -- as ``mb_monitor.py``
 # inside ``mb_monitor.pyz`` -- next to the job and run it with the JOB's own
 # python, from the working directory, with no install and no repo on PATH,
@@ -2673,9 +2684,9 @@ def _sleep_until_stopped(seconds: float) -> None:
 
 def main(argv=None) -> int:
     """The entry of the SHIPPED bundle, ``mb_monitor.pyz``
-    (`runwrap.MONITOR_BUNDLE`): argparse for the monitor, and ``ending ...``
-    handed to `_run_ending`'s door, which travels in the same file -- the
-    wrapper asks how a run ended with ``mb_monitor.pyz ending OUTPUT ...``.
+    (`runwrap.MONITOR_BUNDLE`): argparse for the monitor, and each verb that
+    is no monitor -- ``ending``, ``point``, ``notify``, ``deck`` -- handed to
+    its handler (:data:`BUNDLE_VERBS`), all travelling in the same file.
 
     ONE command line: ``molbuilder monitor`` hands its arguments here, so
     the monitor a person starts from the package is the one the job runs.
@@ -2684,30 +2695,16 @@ def main(argv=None) -> int:
     """
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
-    if args[:1] == ["ending"]:
-        return _ending.main(args[1:])
-    if args[:1] == [POINT_VERB]:
-        # A POINT'S REPORT STEPS, every run of points': its start and end
-        # into the run's index, its kind's own steps in their place, and
-        # the run's events (`execution/runs-of-points.md` § 3, ops 9-10).
-        return _point_main(args[1:])
-    if args[:1] == ["notify"]:
-        # A RUN OF POINTS REPORTS AS ONE RUN: its start, milestones, failed
-        # parts and finish, sent by its points' report steps through this
-        # verb (`execution/runs-of-points.md` § 4.6; `run-reports.md`
-        # § 2.4, § 2.9).
-        return _notify_main(args[1:])
-    if args[:1] == ["deck"]:
-        # THE DECK AS ITS ENGINE READS IT, for its run script's record of
-        # what the engine will read (`running-a-job.md` § 1, step 16).
-        return _deck_main(args[1:])
+    if args[:1] and args[0] in BUNDLE_VERBS:
+        return BUNDLE_VERBS[args[0]](args[1:])
     import argparse
     p = argparse.ArgumentParser(
         prog="mb_monitor",
         description="molbuilder background job-monitor + notifier hooks "
                     "(reads the run through the framework's readers, which "
                     "travel in this same file; execution/run-reports.md "
-                    "§ 2.3).  `ending OUTPUT ...` asks how a run ended.")
+                    "§ 2.3).  Its other verbs: " + ", ".join(BUNDLE_VERBS)
+                    + ".")
     # WHICH RUN, never a path: every file is named through `runfiles`
     # (`run-reports.md` § 2.3), from the identity the wrapper was rendered for.
     p.add_argument("--label", required=True,
@@ -2816,19 +2813,22 @@ NOTIFY_REPORT_VAR = "MB_NOTIFY_REPORT"
 
 
 def _deck_main(args) -> int:
-    """``deck DECK`` -- the deck as its engine reads it: a block read from a
-    file beside it inlined (`parse.fdf.read_deck`), each line the engine
-    parses, no blank or comment line -- the run script's record of what the
-    engine will read (`job-contracts.md` § 2.6).  1, saying why on stderr,
-    for a deck that does not read."""
+    """``deck READER DECK`` -- the deck as its engine reads it, by
+    ``READER``, the keyword reader its engine's record names
+    (``keyword_reader``, ``module:NAME``, resolved from the bundle as every
+    part is, `runpoints.part`): a block read from a file beside it inlined,
+    each line the engine parses, no blank or comment line -- the run
+    script's record of what the engine will read (`job-contracts.md`
+    § 2.6).  1, saying why on stderr, for a deck that does not read."""
     import sys
-    if len(args) != 1:
-        print("usage: mb_monitor.pyz deck DECK", file=sys.stderr)
+    if len(args) != 2:
+        print("usage: mb_monitor.pyz deck READER DECK", file=sys.stderr)
         return 2
+    reader, deck = args
     try:
-        text = _fdf.read_deck(args[0])
+        text = _rp.part(reader).read_deck(deck)
     except (OSError, ValueError) as exc:
-        print(f"deck: {args[0]} does not read -- {exc}", file=sys.stderr)
+        print(f"deck: {deck} does not read -- {exc}", file=sys.stderr)
         return 1
     for line in text.splitlines():
         if line.strip() and not line.lstrip().startswith("#"):
@@ -2840,13 +2840,6 @@ def _deck_main(args) -> int:
 #: operations 9 and 10): the verb and its two words, as every point's run
 #: script renders them (`runwrap._point_block`).
 POINT_VERB, POINT_STARTED, POINT_ENDED = "point", "started", "ended"
-
-#: THE BUNDLE'S VERBS THAT ARE NO MONITOR (:func:`main`): a question or a
-#: step the run script asks of the framework's readers.  The bundle's entry
-#: prints no load pair for them, and a bundle that does not load answers
-#: them 2, *cannot read* (`runwrap._BUNDLE_MAIN`).
-BUNDLE_VERBS = ("ending", POINT_VERB, "notify", "deck")
-
 
 def _point_say(level: str, message: str) -> None:
     """One line in the point's session log, in the wrapper's own format."""
@@ -3145,10 +3138,33 @@ def _notify_main(argv) -> int:
     return 0
 
 
+#: THE BUNDLE'S VERBS THAT ARE NO MONITOR, verb -> its handler, which
+#: :func:`main` hands the rest of the command line: a question or a step the
+#: run script asks of the framework's readers.  The bundle's entry prints no
+#: load pair for them, and a bundle that does not load answers them 2,
+#: *cannot read* (`runwrap._BUNDLE_MAIN`, which reads the verbs from here).
+BUNDLE_VERBS: Dict[str, Callable[[List[str]], int]] = {
+    # HOW A RUN ENDED -- the run script's `_mb_ending` (`_run_ending`).
+    "ending": _ending.main,
+    # A POINT'S REPORT STEPS, every run of points': its start and end into
+    # the run's index, its kind's own steps in their place, and the run's
+    # events (`execution/runs-of-points.md` § 3, ops 9-10).
+    POINT_VERB: _point_main,
+    # A RUN OF POINTS REPORTS AS ONE RUN: its start, milestones, failed
+    # parts and finish, sent by its points' report steps through this verb
+    # (`execution/runs-of-points.md` § 4.6; `run-reports.md` § 2.4, § 2.9).
+    "notify": _notify_main,
+    # THE DECK AS ITS ENGINE READS IT, for its run script's record of what
+    # the engine will read (`running-a-job.md` § 1, step 16).
+    "deck": _deck_main,
+}
+
+
 __all__ = [
     "JobStatus",
     "WatchedRun",
     "LIVE_READERS",
+    "LOOP_WORDS",
     "run_monitor",
     "register_notifier",
     "clear_notifiers",

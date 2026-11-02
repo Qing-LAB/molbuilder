@@ -3,7 +3,9 @@
 
 **What differs between engines is a field here, never a branch** (A18):
 its name as a person reads it, the setting that names its files, its config
-class and seam, what it computes the atoms in and how its runs run -- the
+class, its own settings checks, its reading of *the same calculation* and
+its seam, the longest label it keeps whole, the reader of its keyword deck,
+what it computes the atoms in and how its runs run -- the
 environment they enter and the programs they start, which the one run
 script reads (`runwrap`, `running-a-job.md` § 1).  A fact
 another declaration holds stays there -- an engine's files are the file
@@ -33,11 +35,12 @@ TABLE_FILE = Path(__file__).resolve().parent / "data" / "engine_table.toml"
 COMPUTES_IN = ("cell", "free space")
 
 #: The keys an engine's table states, each required ...
-_KEYS = ("words", "identity_field", "config", "seam", "computes_in",
-         "one_process", "benchmark", "presets", "keyword_deck",
-         "environment")
+_KEYS = ("words", "identity_field", "config", "validator",
+         "same_calculation", "seam", "computes_in", "one_process",
+         "benchmark", "presets", "environment")
 #: ... and those it states where it has one.
-_OPTIONAL = ("method", "gpu_environment", "programs")
+_OPTIONAL = ("method", "gpu_environment", "programs", "longest_label",
+             "keyword_reader")
 
 
 class EngineTableError(ValueError):
@@ -55,8 +58,15 @@ class Engine:
     identity_field: str
     #: ``module:NAME`` of the dataclass a template is rebuilt into (floor 1).
     config: str
-    #: ``module:NAME`` of the factory of its seam (floor 3,
-    #: `jobset.engines.EngineSeam`).
+    #: ``module:NAME`` of its own settings checks, resolved by the settings
+    #: gate (`validation.validate`, `science/validation.md` § 7).
+    validator: str
+    #: ``module:NAME`` of its reading of *the same calculation* -- the
+    #: differences between two of its decks (floor 1), resolved by
+    #: `deck_record.same_calculation`.
+    same_calculation: str
+    #: ``module:NAME`` of the factory of its seam (floor 3, in its own
+    #: package, building `jobset.engines.EngineSeam`).
     seam: str
     #: What it computes the atoms in (:data:`COMPUTES_IN`).
     computes_in: str
@@ -69,10 +79,6 @@ class Engine:
     #: table its ladder's tiers are read from by the one ladder rule
     #: (`jobset.ladder.engine_ladder`; floor 1, `config/`).
     presets: str
-    #: Whether its deck states its settings as keywords the engine reads --
-    #: SIESTA's fdf, not PySCF's script -- which a run's setup rows read back
-    #: from the deck (`parse.dirs.setup`).
-    keyword_deck: bool
     #: THE ENVIRONMENT ITS RUNS ENTER -- a category of `configuration.md`
     #: § 4 (`diagnostics.Capabilities.env_for_category`).
     environment: str = ""
@@ -87,6 +93,16 @@ class Engine:
     #: Its method, where its catalogue offers no choice -- SIESTA's DFT --
     #: else ``None``: the config states it.
     method: Optional[str] = None
+    #: THE LONGEST LABEL IT KEEPS WHOLE in the names of the files it writes
+    #: -- SIESTA's 48 -- or ``None``: it cuts none, and only the cap every
+    #: label has binds it (`execution/run-identity.md` § 3).
+    longest_label: Optional[int] = None
+    #: ``module:NAME`` of THE READER OF ITS KEYWORD DECK -- SIESTA's fdf,
+    #: ``parse.fdf:KEYWORDS``: its key rule, its switches, its values and
+    #: blocks, the deck with its includes (floor 1, it travels beside a job)
+    #: -- or ``None``: its deck is a script whose values are its own
+    #: (PySCF's).
+    keyword_reader: Optional[str] = None
 
     @property
     def program(self) -> Optional[str]:
@@ -133,9 +149,29 @@ def _engine(name: str, body: object) -> Engine:
         raise EngineTableError(
             f"{where}: computes_in {body['computes_in']!r} is not one of "
             f"{', '.join(COMPUTES_IN)}")
-    for key in ("one_process", "benchmark", "keyword_deck"):
+    for key in ("one_process", "benchmark"):
         if not isinstance(body[key], bool):
             raise EngineTableError(f"{where}: {key} is true or false")
+    longest = body.get("longest_label")
+    if longest is not None and (isinstance(longest, bool)
+                                or not isinstance(longest, int)
+                                or longest < 1):
+        raise EngineTableError(
+            f"{where}: longest_label is a whole number of characters")
+    # EVERY PART IS NAMED ALIKE, ``module:NAME``, and resolved by the floor
+    # that asks (`execution/architecture.md` § 3.3).
+    for key in ("config", "validator", "same_calculation", "seam",
+                "presets", "keyword_reader"):
+        ref = body.get(key)
+        if ref is not None and (not isinstance(ref, str) or ":" not in ref):
+            raise EngineTableError(f"{where}: {key} is \"module:NAME\"")
+    # A BENCHMARK TRIAL STARTS COLD, read from its deck's restart keywords
+    # (`jobset.agreement`, `script_emit.restart_group`): a benchmark lane is
+    # an engine's whose deck states its settings as keywords.
+    if body["benchmark"] and body.get("keyword_reader") is None:
+        raise EngineTableError(
+            f"{where}: benchmark = true needs a keyword_reader -- a trial's "
+            f"cold start is read from its deck's restart keywords")
     programs = body.get("programs", {})
     if not (isinstance(programs, dict) and all(
             isinstance(k, str) and isinstance(v, str) and v
@@ -151,16 +187,20 @@ def _engine(name: str, body: object) -> Engine:
             f"process")
     return Engine(name=name, words=str(body["words"]),
                   identity_field=str(body["identity_field"]),
-                  config=str(body["config"]), seam=str(body["seam"]),
+                  config=str(body["config"]),
+                  validator=str(body["validator"]),
+                  same_calculation=str(body["same_calculation"]),
+                  seam=str(body["seam"]),
                   computes_in=str(body["computes_in"]),
                   one_process=bool(body["one_process"]),
                   benchmark=bool(body["benchmark"]),
                   presets=str(body["presets"]),
-                  keyword_deck=bool(body["keyword_deck"]),
                   environment=str(body["environment"]),
                   gpu_environment=body.get("gpu_environment"),
                   programs=tuple(programs.items()),
-                  method=body.get("method"))
+                  method=body.get("method"),
+                  longest_label=longest,
+                  keyword_reader=body.get("keyword_reader"))
 
 
 @lru_cache(maxsize=1)
@@ -206,6 +246,48 @@ def config_class(name: str) -> type:
     return part(rec.config, record=f"engine {rec.name}", key="config")
 
 
+def engine_of_config(cfg_or_cls) -> str:
+    """THE ENGINE A CONFIG IS FOR -- the engine whose ``config`` part names
+    its class (an instance's class asked, or the class itself), or
+    :class:`EngineTableError` naming the engines there are.  The one answer,
+    for a caller that holds a config and not the task; a caller holding the
+    task asks its engine."""
+    cls = cfg_or_cls if isinstance(cfg_or_cls, type) else type(cfg_or_cls)
+    for name in engines():
+        if cls is config_class(name):
+            return name
+    raise EngineTableError(
+        f"{cls.__name__} is no engine's config -- the engines' are "
+        f"{', '.join(config_class(n).__name__ for n in engines())} "
+        f"({TABLE_FILE.name}, config)")
+
+
+def keywords(name: str):
+    """Engine ``name``'s keyword reader -- the part its record names
+    (``keyword_reader``, floor 1), resolved here -- or ``None``: its deck
+    is a script, with no keywords to read."""
+    rec = engine(name)
+    if rec.keyword_reader is None:
+        return None
+    from .kind_table import part
+    return part(rec.keyword_reader, record=f"engine {rec.name}",
+                key="keyword_reader")
+
+
+def read_deck(name: str, path, *, read=None) -> str:
+    """THE DECK AS ENGINE ``name`` READS IT -- through its keyword reader
+    where its record names one (an fdf's ``< file`` blocks inlined), else
+    the file's text: a script's lines are its own.  ``read`` reads a file
+    by its path (a plan's ``read_text``, so a prep reads what it is about
+    to write)."""
+    kw = keywords(name)
+    if kw is not None:
+        return kw.read_deck(path, read=read)
+    p = Path(path)
+    return (read(p) if read is not None
+            else p.read_text(encoding="utf-8-sig", errors="replace"))
+
+
 def stage_presets(name: str) -> dict:
     """Engine ``name``'s stage presets, ``{tier: {item: value}}`` -- the part
     its record names (``presets``, floor 1, `config/`), resolved here."""
@@ -215,4 +297,5 @@ def stage_presets(name: str) -> dict:
 
 
 __all__ = ["TABLE_FILE", "COMPUTES_IN", "EngineTableError", "Engine",
-           "engines", "engine", "config_class", "stage_presets"]
+           "engines", "engine", "config_class", "engine_of_config",
+           "keywords", "read_deck", "stage_presets"]

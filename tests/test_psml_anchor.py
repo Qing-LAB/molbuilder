@@ -187,7 +187,7 @@ class TestPrepRefusesWithTheRealPlace:
             self, calc, tmp_path, monkeypatch):
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.jobset.errors import PrepError
-        from molbuilder.jobset.engines import siesta_provide_pseudos
+        from molbuilder.siesta.seam import siesta_provide_pseudos
         monkeypatch.chdir(calc)          # stand where the failure happened
         with pytest.raises(PrepError) as e:
             siesta_provide_pseudos(

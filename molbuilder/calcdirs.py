@@ -41,7 +41,7 @@ from pathlib import Path, PurePosixPath
 from typing import Optional, Tuple
 
 # TWO WAYS, because this module travels beside a job in ``mb_monitor.pyz``
-# and ``mb_vibration.pyz`` (`runwrap.MONITOR_COMPANIONS`,
+# and ``mb_vibration.pyz`` (`runwrap.monitor_companions`,
 # `VIBRATION_COMPANIONS`), where the package is not installed.
 try:                                       # inside molbuilder
     from .identity import parse_token

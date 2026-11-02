@@ -14,7 +14,10 @@ marker — *"the scheduler answers it"* over a basis set sends a reader to the
 queue configuration.
 
 These run on a synthetic config class, not on `SiestaConfig`: the rule is the
-framework's and must hold before any engine adopts it.
+framework's and must hold before any engine adopts it -- all but the reading of
+a template into a config, which is an engine's: a config is an engine's when
+its record names its class (`engine_table.engine_of_config`), so that test
+reads into `SiestaConfig` from the catalogue's own item.
 """
 from __future__ import annotations
 
@@ -27,10 +30,6 @@ from molbuilder import template as T
 @dataclasses.dataclass
 class _Cited:
     """Three fields, one per answerer, so each assertion has a control."""
-
-    #: `_engine_name` reads this, else it strips a `Config` suffix off the
-    #: class name -- and `_Cited` would resolve to the engine `_cited`.
-    ENGINE = "siesta"
 
     #: the person answers this one
     mesh: int = dataclasses.field(default=300, metadata={
@@ -118,10 +117,13 @@ def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
     adequate for geometry, then transport with TZP because the longer
     orbital tails carry the metal-molecule coupling.
     """
-    text = T._emit([dataclasses.replace(_decl("basis"), value="TZP")],
+    from molbuilder.config.siesta import SiestaConfig
+    item = T.one(T.catalogue(), "basis_size", engine="siesta")
+    assert "transport" in item.citation, "the worked case's item is cited"
+    text = T._emit([dataclasses.replace(item, value="TZP")],
                    engines=("siesta",))
-    cfg = T.config_from_template(text, _Cited)
-    assert cfg.basis == "TZP", (
+    cfg = T.config_from_template(text, SiestaConfig)
+    assert cfg.basis_size == "TZP", (
         "a transport template answering a cited item is now the ORDINARY "
         "state: it is what `molbuilder describe` writes, defaulted from the cited "
         "run, and what a person edits afterwards")

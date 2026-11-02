@@ -92,21 +92,21 @@ def test_report_emits_warnings_even_when_also_raising():
 
 
 def test_the_two_registries_hold_what_the_contract_says():
-    """`science/validation.md`: an ENGINE row keys on a config class, a KIND
-    row on `task.calculation` -- and which registry a science belongs in is
-    decided by whether production constructs that class.
-
-    TWO engine rows: a vibration's science and a junction's are the KIND's.
+    """`science/validation.md` § 7: an engine's checks are the part its
+    record in the engine table names (``validator``), a kind's science the
+    part its kind record names -- a vibration's science and a junction's
+    are the KIND's.
 
     Asserted by EQUALITY, not containment, so a row cannot be added and
     never noticed.
     """
+    from molbuilder.engine_table import engine, engines
     from molbuilder.kind_table import kind, kinds, part
-    from molbuilder.validation import _ENGINE_VALIDATORS
-    assert {c.__name__ for c in _ENGINE_VALIDATORS} == {
-        "SiestaConfig", "PySCFConfig"}, (
-        "the engine registry no longer matches `science/validation.md`; a row "
-        "added here must name a config class production actually validates")
+    for e in engines():
+        assert callable(part(engine(e).validator, record=f"engine {e}",
+                             key="validator")), (
+            f"engine {e}'s validator does not resolve -- every engine's "
+            f"config is checked by the part its record names")
     named = {k for k in kinds() if kind(k).validator}
     assert named == {"vibration", "transport"}, (
         "a calculation kind lost its science -- this is the road a transport "

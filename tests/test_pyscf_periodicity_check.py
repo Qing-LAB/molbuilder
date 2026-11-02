@@ -46,7 +46,7 @@ def _struct(kinds):
 
 
 def _finding(struct):
-    hits = [i for i in validate(struct, PySCFConfig()) if i.where == WHERE]
+    hits = [i for i in validate(struct, PySCFConfig(), calculation="optimization") if i.where == WHERE]
     return hits[0] if hits else None
 
 

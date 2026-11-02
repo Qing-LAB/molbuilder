@@ -214,7 +214,7 @@ def test_a_calculation_wide_value_is_taken_by_the_rungs_that_read_it(
         shape, settings = run_inputs(calc.request, rung)
         assert (shape.get("mpi_np"), shape.get("cpus_per_task")) == (4, 1), \
             (rung, shape)
-        ps = resolve(text, calc.task, SiestaConfig,
+        ps = resolve(text, calc.task,
                      allocation=Resources(**shape), stage=rung,
                      run_settings=settings)
         g = gpu_request(ps.elements[0].resources)

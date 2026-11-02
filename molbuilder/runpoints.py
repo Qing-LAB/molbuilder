@@ -5,7 +5,7 @@ is still to run, what the run's state is and what a point's end says
 
 MODULE  runpoints (floor 1 + stdlib; travels beside the job in
         ``mb_monitor.pyz`` and in every bundle whose steps write the index,
-        `runwrap.MONITOR_COMPANIONS`, `runwrap.VIBRATION_COMPANIONS`)
+        `runwrap.monitor_companions`, `runwrap.VIBRATION_COMPANIONS`)
 ROLE    the run's index -- one per run, at its root
         (``<label>_<NN>_<stage>.points.json``, :func:`index_path`) --
         written by launch (:func:`empty_index`, :func:`add_point`),

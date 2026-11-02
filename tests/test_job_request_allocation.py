@@ -138,10 +138,9 @@ class TestTheRunsConditionIsOneValueEach:
         (`validation/task.py`) -- the same split `bench` makes.  A physics
         value here would otherwise ride to prep and land in a deck as
         something nobody can read back."""
-        from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation.task import preflight
         found = [i for i in preflight(
-                     _DESCRIPTION, SiestaConfig,
+                     _DESCRIPTION,
                      request=_task(execution={"mesh_cutoff": 400}))
                  if "execution" in (i.where or "")]
         assert found, "a physics value passed as a run condition"
@@ -162,11 +161,10 @@ class TestTheRunsConditionIsOneValueEach:
         same amount, so a second home for it would be a second place to look
         and no new answer -- and two places to write one value is how a run
         ends up asking for something nobody typed."""
-        from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation.task import preflight
 
         def _bad(block):
-            return [i for i in preflight(_DESCRIPTION, SiestaConfig,
+            return [i for i in preflight(_DESCRIPTION,
                                          request=_task(execution=block))
                     if "execution" in (i.where or "")]
 

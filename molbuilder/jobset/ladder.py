@@ -58,11 +58,9 @@ def resolved_stages(task, template_text: Optional[str] = None) -> list:
     -- from ``template_text`` as the verb read it (A16);
     ``[]`` with none."""
     from ..resolve import resolved_ladder
-    from .engines import engine_seam
     if template_text is None:
         return []
-    return resolved_ladder(template_text, task,
-                           engine_seam(str(task.engine)).config_cls)
+    return resolved_ladder(template_text, task)
 
 
 def stage_config(task, stage: str, template_text: Optional[str] = None):

@@ -852,10 +852,12 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
             # sentence a run's prep says (`ask.gpu_share_notes`), so a cell
             # and a run cannot be said two ways.  Whether the cores fit a
             # node is each cell's fit above.
+            from ..engine_table import engine as _engine
             from .ask import gpu_share_notes
             note("  GPU sharing in this family:")
+            _one = _engine(str(task.engine)).one_process
             for g, n in sorted({(g, n) for g, n, c in fcells}):
-                for line in gpu_share_notes(g, n):
+                for line in gpu_share_notes(g, n, one_process=_one):
                     note("  " + line)
         if fam and not fcells:
             # every GPU cell was left out above, listed by name, so this

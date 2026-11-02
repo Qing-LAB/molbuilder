@@ -4,7 +4,7 @@ milestone says of each frame's point (`engines/transport.md` § 2a.11;
 § 2.9).
 
 MODULE  transport.run_words (floor 1 + stdlib; travels in
-        ``mb_monitor.pyz``, `runwrap.MONITOR_COMPANIONS`)
+        ``mb_monitor.pyz``, `runwrap.monitor_companions`)
 ROLE    the kind table's ``count`` and ``outcome`` parts of a transport
         rung's run of points: :func:`count_words` -- *k of N points done, m
         failed (F frames × V voltages)* -- over the job's rows
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 # TWO WAYS, because this module travels beside a job (`runwrap.
-# MONITOR_COMPANIONS`), where the package is not installed.
+# monitor_companions`), where the package is not installed.
 try:                                       # inside molbuilder
     from .. import runrecord as _rr
     from ..calcdirs import RunPlace
@@ -119,7 +119,8 @@ class _ScfSays:
 
     @staticmethod
     def fact(row, run_dir: Path, names, facts) -> Optional[int]:
-        out = _rr.run_output(RunPlace.of(run_dir).point(row["rel"]), names)
+        out = _rr.run_output(RunPlace.of(run_dir).point(row["rel"]), names,
+                               "siesta")
         if out is None:
             return None
         try:                               # inside molbuilder
@@ -253,5 +254,12 @@ def _on_grid(on: Sequence[float], e: float, tol: float) -> Optional[int]:
 #: (:data:`SCF`, :data:`PRODUCT`; the kind table's ``computes``).
 _SAID = {SCF: _ScfSays, PRODUCT: _ProductSays}
 
+
+
+#: WHAT TRAVELS WITH THESE WORDS beside the job, in its bundle
+#: (`runwrap.monitor_companions`): a round's conductance at E_F by the
+#: record's own rule, and a transmission point's energies joined.
+TRAVELS_WITH = ("molbuilder.transport.conductance",
+                "molbuilder.transport.energies")
 
 __all__ = ["SCF", "PRODUCT", "count_words", "round_outcome", "point_fact"]

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # Block names used in the markers.  Centralised so a typo doesn't
@@ -291,39 +291,27 @@ def order_record_of(block: Optional[Dict[str, Any]]):
                                  n_atoms=(block or {}).get("n_atoms_total"))
 
 
-#: EACH ENGINE'S READING OF *THE SAME CALCULATION* -- ``engine -> (a, b) ->
-#: every difference`` -- registered by each surface as it starts
-#: (`calculation.register_readers`), so this module, on floor 1 and
-#: travelling with a job, imports no engine.
-_READINGS: Dict[str, Callable[[str, str], List[str]]] = {}
-
-
-def register_reading(engine: str,
-                     reading: Callable[[str, str], List[str]]) -> None:
-    """``engine``'s reading of :func:`same_calculation` -- idempotent."""
-    _READINGS[str(engine)] = reading
-
-
 def same_calculation(engine: str, a: str, b: str) -> List[str]:
     """THE ONE DOOR OF *THE SAME CALCULATION* (`execution/job-request.md`
     § 6): every difference between what ``engine`` computes from deck ``a``
     and from deck ``b``, by name -- none when they are the same, the run
     settings aside.  Asked by the transport gather, by prep of a launched
     stage, and by the run record (`current`) and the run door
-    (`Run.report`); answered by the engine's own reading."""
-    reading = _READINGS.get(str(engine))
-    if reading is None:
-        raise LookupError(
-            f"no reading of the same calculation is registered for engine "
-            f"{engine!r} -- a surface registers each engine's as it starts "
-            f"(`calculation.register_readers`)")
+    (`Run.report`); answered by the engine's own reading, the part its
+    record names (``same_calculation``, floor 1), resolved here -- so this
+    module, travelling with a job, imports no engine at load."""
+    from .engine_table import engine as _engine
+    from .kind_table import part
+    rec = _engine(engine)
+    reading = part(rec.same_calculation, record=f"engine {rec.name}",
+                   key="same_calculation")
     return list(reading(a, b))
 
 
 __all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
-           "MARKER_RE", "register_reading", "same_calculation",
+           "MARKER_RE", "same_calculation",
            "begin_marker", "end_marker", "order_record_of", "read_json_block",
            "DeckRecordUnreadable", "extract_atom_metadata",
            "extract_engine_offset", "extract_vibration_record",

@@ -231,7 +231,7 @@ def _relaxed(folder) -> Optional[bool]:
              if _run is not None else [])
     for path in (q for q in paths if q is not None):
         try:
-            rec = relaxation_of(path)
+            rec = relaxation_of(path, engine=_run.place.task.engine)
         except (OSError, ValueError, ParseError):
             # AN OUTPUT THAT DOES NOT READ says no verdict -- the line says
             # its state, as the status door gave it; a defect in a reader

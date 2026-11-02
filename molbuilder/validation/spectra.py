@@ -497,7 +497,7 @@ def spectra_render_checks(struct: Structure, cfg, *,
     return issues
 
 
-def siesta_vibration_checks(struct: Structure, cfg, *,
+def siesta_vibration_checks(struct: Structure, cfg, *, state,
                             design: Optional[Structure] = None
                             ) -> List[Issue]:
     """The vibration kind's science on SIESTA -- the force-constant run.
@@ -533,8 +533,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
             where="structure.regions"))
         return issues
     if held:
-        from ..template import engine_name
-        _f, n_rigid, n_modes = modes_of(struct, engine_name(type(cfg)))
+        _f, n_rigid, n_modes = modes_of(struct, "siesta")
         if n_rigid:
             issues.append(Issue(
                 severity="info",
@@ -603,15 +602,12 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     # THE STRUCTURE'S OWN EVIDENCE beside the statement (vibration.md § 2.2):
     # the record a finished relaxation left on the pair, judged against
     # THIS calculation's tolerance and level of theory.
-    from ..chemistry import every_label_resolves
-    from ..electronic_state import electronic_state
     from ..parse.contract import contract_fields_of
     from .sidecar import check_relaxation_record
     # The electronic state is part of the level of theory the record is
     # compared against, RESOLVED (ES7): a frequency at a geometry relaxed
-    # for another charge or spin is usually a mistake.
-    _state = (electronic_state(struct, cfg, kind="vibration")
-              if every_label_resolves(struct) else None)
+    # for another charge or spin is usually a mistake -- the gate's, ``None``
+    # where a label names no element.
     # Against the FILE's coordinates (`design`), not the placed subject: a
     # placement is a rigid shift the record never saw (`validate`, ``design``).
     issues.extend(check_relaxation_record(
@@ -619,7 +615,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
         engine="siesta",
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         force_tolerance_ev_ang=(float(_tol) if _tol is not None else None),
-        level=contract_fields_of(cfg, state=_state,
+        level=contract_fields_of(cfg, state=state,
                                  axis_kind=struct.axis_kind,
                                  kind="vibration")))
     # RAMAN FOR (§ 3.1): the range's ends, when one is asked.
@@ -735,8 +731,8 @@ def modes_of(struct: Structure, engine: str):
 
 
 # The render-time checks are the module's public door.
-def validate_vibration_kind(struct: Structure, cfg, cell, *,
-                            design=None, inactive=frozenset(),
+def validate_vibration_kind(struct: Structure, cfg, cell, *, engine: str,
+                            state, design=None, inactive=frozenset(),
                             **_) -> List[Issue]:
     """The vibration kind's science (grid / amplitude / frozen atoms /
     the relaxation record), over the deck's own config view -- the part its
@@ -744,23 +740,22 @@ def validate_vibration_kind(struct: Structure, cfg, cell, *,
     on every deck of the kind; the charge and spin are the electronic
     state's one family, asked by ``validate``.  Its checks are written per
     engine (this module is the kind's own, `execution/architecture.md`
-    § 3.3)."""
-    from ..config.pyscf import PySCFConfig
-    if isinstance(cfg, PySCFConfig):
+    § 3.3), chosen by ``engine``, the config's as the gate found it."""
+    if engine == "pyscf":
         from ..pyscf.vibration_deck import science_view
         return list(spectra_render_checks(struct, science_view(cfg, struct),
                                           inactive=inactive))
-    from ..config.siesta import SiestaConfig
-    if isinstance(cfg, SiestaConfig):
-        return list(siesta_vibration_checks(struct, cfg, design=design))
+    if engine == "siesta":
+        return list(siesta_vibration_checks(struct, cfg, state=state,
+                                            design=design))
     # The kind's science is written per engine, and an engine this dispatch
     # does not name has NO science here -- a gap to refuse, never an empty
     # verdict: an empty list reads as "checked, nothing found" on every
     # surface, which is the silent skip science/validation.md F4 forbids.
     raise TypeError(
-        f"the vibration kind has no science for {type(cfg).__name__}: "
-        f"its checks are written for PySCFConfig and SiestaConfig, and a "
-        f"config class with no checks cannot pass this gate as validated "
+        f"the vibration kind has no science for engine {engine!r}: its "
+        f"checks are written for pyscf and siesta, and an engine with no "
+        f"checks cannot pass this gate as validated "
         f"(science/validation.md F4)")
 
 

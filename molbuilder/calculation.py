@@ -89,24 +89,17 @@ def register_readers() -> None:
     registry -- a transport calculation's description (`task_reader`, floor
     2) and a benchmark's plan (`jobset.sweep_reader`, floor 3), each on its
     record's floor and read through its owner's door, which the registry,
-    on floor 1, imports none of (`execution/architecture.md` § 2.1) -- and
-    each engine's reading of the same calculation, into its door.  Called
-    by each surface as it starts -- the web app (`web.app.create_app`) and
-    the command line (`cli.main`) -- so the Results tab's folder door finds
-    both.  Idempotent, as the registry is."""
+    on floor 1, imports none of (`execution/architecture.md` § 2.1).
+    Called by each surface as it starts -- the web app
+    (`web.app.create_app`) and the command line (`cli.main`) -- so the
+    Results tab's folder door finds both.  Idempotent, as the registry is.
+    (Each engine's reading of the same calculation is its engine record's
+    part, resolved by its door: `deck_record.same_calculation`.)"""
     from .jobset.sweep_reader import JobSetSweepFileParser
     from .parse import register
     from .task_reader import TransportTaskFileParser
     register(TransportTaskFileParser)
     register(JobSetSweepFileParser)
-    # ...AND EACH ENGINE'S READING OF THE SAME CALCULATION, into its one
-    # door on floor 1 (`deck_record.same_calculation`,
-    # `execution/job-request.md` § 6), which imports none.
-    from .deck_record import register_reading
-    from .pyscf.script_input import script_differences
-    from .siesta.engine_input import engine_input_differences
-    register_reading("siesta", engine_input_differences)
-    register_reading("pyscf", script_differences)
 
 
 def open(base) -> Calculation:

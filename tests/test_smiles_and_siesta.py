@@ -143,7 +143,7 @@ def test_a_shift_on_a_single_k_point_axis_is_warned_about():
     from molbuilder.validation import validate
     issues = validate(_h2_in_a_box(), SiestaConfig(
         system_label="h2", kgrid=(4, 4, 1),
-        kgrid_displacement=(0.5, 0.5, 0.5)))
+        kgrid_displacement=(0.5, 0.5, 0.5)), calculation="optimization")
     mine = [i for i in issues if i.where == "config.kgrid_displacement"]
     assert len(mine) == 1, [i.message for i in mine]
     assert mine[0].severity == "warn"
@@ -151,7 +151,7 @@ def test_a_shift_on_a_single_k_point_axis_is_warned_about():
     # The two shifted axes with 4 points each are a legitimate choice.
     ok = validate(_h2_in_a_box(), SiestaConfig(
         system_label="h2", kgrid=(4, 4, 1),
-        kgrid_displacement=(0.5, 0.5, 0.0)))
+        kgrid_displacement=(0.5, 0.5, 0.0)), calculation="optimization")
     assert not [i for i in ok if i.where == "config.kgrid_displacement"]
 
 
@@ -178,7 +178,8 @@ def _kgrid_struct(axis_kind):
 def _kgrid_findings(struct, kgrid):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.validation import validate
-    return [i for i in validate(struct, SiestaConfig(kgrid=kgrid))
+    return [i for i in validate(struct, SiestaConfig(kgrid=kgrid),
+                                calculation="optimization")
             if "kgrid[" in i.message]
 
 

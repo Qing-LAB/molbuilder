@@ -76,12 +76,22 @@ def test_it_warns_rather_than_refusing_and_the_line_is_deliberate():
         == "warn"
 
 
-def test_it_reaches_a_real_siesta_preflight():
+@pytest.mark.parametrize("calculation, warned", [
+    ("optimization", True),
+    # A calculation whose deck relaxes nothing moves no lead (the kind
+    # table's ``relaxes``, `science/validation.md` § 6): until 2.64.0 a
+    # vibration of a junction was told its leads would move.
+    ("vibration", False),
+])
+def test_it_reaches_a_real_siesta_preflight_where_the_deck_relaxes(
+        calculation, warned):
     """Wired, not merely written — a check nothing calls is a check that
-    does not exist."""
+    does not exist; and asked only where the calculation's deck relaxes the
+    structure."""
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.validation import validate
     issues = validate(_junction(frozen=[0, 1]),
-                      SiestaConfig(system_label="j"))
-    assert any(i.where == "structure.electrode_frozen" for i in issues), (
-        "the gate must run it; wiring is the half that makes it exist")
+                      SiestaConfig(system_label="j"),
+                      calculation=calculation)
+    assert any(i.where == "structure.electrode_frozen"
+               for i in issues) is warned, [i.where for i in issues]

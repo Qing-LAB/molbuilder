@@ -79,9 +79,9 @@ section named in the last column.
 | 13 | the monitor | starts `mb_monitor.pyz` at `nice 19`, watching the run script's own PID (`MB_MONITOR=0`: none) | [`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6 |
 | 14 | can the job finish itself | *(a job with a finish)* checks that the finish bundle loads on the job's python; otherwise it concludes `finish cannot load (<bundle>)` | § 2.2a |
 | 15 | point started | *(a point of a run of points)* stamps its start and runs its kind's step before the engine | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, op. 9 |
-| 16 | what the engine will read | where the deck states keywords the engine reads, writes into the log a row for each catalogue item that writes a keyword into its deck, with its default, then the deck as the engine will read it, read by the bundle beside it (`mb_monitor.pyz deck`) | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6 |
+| 16 | what the engine will read | where the deck states keywords the engine reads, writes into the log a row for each catalogue item this rung reads that writes a keyword into its deck — carried by the calculation's kind and read by its stage (`template.reads`, the one rule: a TBtrans step lists TBtrans's settings, never a relaxation's) — with its default, then the deck as the engine will read it, read by the bundle beside it with the engine's keyword reader (`mb_monitor.pyz deck READER DECK`) | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6 |
 | 17 | the wall | counts what is left of the job's wall and tells the engine on its own channel | § 3.6 |
-| 18 | the engine | runs it as a child, its stdout written to the output — where the output's family names a stamp (`scf_timing_rows.STAMPED_BY_RUN_SCRIPT`: a SIESTA output's), its SCF rows stamped and teed into `<stem>.scf-timing.log` too — its exit code captured; logs the engine's wall time (`benchmark:`) | § 2.0a, § 4.1 |
+| 18 | the engine | runs it as a child, its stdout written to the output — where the file catalogue cuts a file from the output (the timing log's row's `cut_from`: a SIESTA output), its SCF rows stamped and teed into `<stem>.scf-timing.log` too — its exit code captured; logs the engine's wall time (`benchmark:`) | § 2.0a, § 4.1 |
 | 19 | after a failure | says how it ended, the advice for its cause where the output's family keeps some (SIESTA's `propor` hint), and what a launch again will do | § 3.5 |
 | 20 | point ended | *(a point of a run of points)* stamps its end, runs its kind's step after the engine, and — no point left — the run's finish | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, op. 10 |
 | 21 | the conclusion | writes `<stem>.concluded`, `rc=<code> at <date>`, its last act on the main line, and exits with the engine's code | § 4.2 |
@@ -89,18 +89,19 @@ section named in the last column.
 
 **One run script, every engine.** Which of these steps a run takes is a fact of its engine's record
 ([`architecture.md`](?doc=execution/architecture.md) § 3.3), of a catalogue item's declaration (`launch`,
-`deck_applies`; [`engines/template.md`](?doc=engines/template.md) § 5), of the parse layer's tables for its
-output's role (`_run_ending.STOPS` and `STDERR_APART`, `scf_timing_rows.STAMPED_BY_RUN_SCRIPT`) and of its job —
+`limit_applied_by`; [`engines/template.md`](?doc=engines/template.md) § 5), of the parse layer's tables for its
+output's role (`_run_ending.STOPS` and `STDERR_APART`, the file catalogue's `cut_from`) and of its job —
 never the engine's name: an engine that runs one process has no ranks to place (steps 9 and 10 resolve its
 threads alone); one whose deck is a script — PySCF's — has no program to probe and runs `"$_mb_py" <deck>`, its
 deck sizing its own BLAS and threads ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3); a setting the deck applies
-itself — PySCF's memory cap and wall — is its catalogue item's `deck_applies` (§ 3.2, § 3.6); one whose deck states no keywords echoes none (step 16); a job with no finish skips step 14, and a run
+itself — PySCF's memory cap and wall — says so in its catalogue item's `limit_applied_by` (§ 3.2, § 3.6); one whose deck states no keywords echoes none (step 16); a job with no finish skips step 14, and a run
 that is no point steps 15 and 20. A dry run passes steps 3 to 5 without writing anything and stops at step 12. A job that runs several members — a
 group, a run of points, a benchmark's shelf — sends or starts a walk script, which starts each member's run
 script in turn, with that member's counts ([`job-system.md`](?doc=execution/job-system.md) § 6.0); each run
 script then runs these steps in its own folder.
 
-A real start, from the session log of a SIESTA run started here (shortened):
+A real start, from the session log of a SIESTA run started here (shortened; a 2.63.0 run — since 2.64.0
+every banner label is padded to the longest one the banner prints, so the colons stand one column further right):
 
 ```text
 launched-by: jobset-launch
@@ -455,8 +456,8 @@ built on an invented number.
 **A memory cap per rank**, where the run states `max_memory_mb` (prep's `--max-memory-mb`): before the program
 it starts — SIESTA's, TBtrans — the run script sets `ulimit -v` to it, a soft guard against a runaway memory
 allocation, ignored where the shell cannot set it; an engine whose deck applies it itself — the item's
-`deck_applies` ([`engines/template.md`](?doc=engines/template.md) § 5): PySCF's, as `mol.max_memory` — gets
-none. It is not the memory the job asks the scheduler for (§ 5.3.1).
+`limit_applied_by` says `deck` ([`engines/template.md`](?doc=engines/template.md) § 5): PySCF's, as
+`mol.max_memory` — gets none. It is not the memory the job asks the scheduler for (§ 5.3.1).
 
 ### 3.3 GPU mode: load balance, MPS and placement
 
@@ -644,7 +645,7 @@ slack.
 | SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
 | the session log | `stopped at its wall: …` and what a launch again will do (§ 3.5) | that stop |
 | the run's state (`jobset status`, the Results tab) | *failed* — `stopped before its end: OUT_OF_TIME: Time is up.` | that stop |
-| the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped and saved its restart state` (`siesta_grammar.CAUSE_WORDS`) | that stop |
+| the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped and saved its restart state` (the output family's words for the cause, `_run_ending.cause_words`) | that stop |
 | a PySCF relaxation's output | `WARNING: stopped before the wall (the job's wall less its slack): the geometry reached is kept; launch this stage again to continue from it`, then `# relaxed: no` in its trajectory log | the first step past the deadline |
 | a PySCF vibration's output | `RuntimeError: stopped before the wall (the job's wall less its slack) before the spectrum was written: launch this stage again` | a displaced SCF due past the deadline |
 | the monitor log | `[WALL] 21m left; the longest of 3 steps so far took 46m -- the step underway may not finish before the wall` | once, in a job sent to a queue |
@@ -698,7 +699,7 @@ decide.
 |---|---|---|
 | how is it going, right now? | the monitor, beside the job | [`run-reports.md`](?doc=execution/run-reports.md) § 2 |
 | how is it doing — how did it end? | `parse.dirs.job.run_status` | § 4.2 |
-| which engine ran? | `parse.contract.engine_of` | § 4.2, *Which engine ran* |
+| which engine ran? | for a run of a calculation, its description (the run door, `runs.run_of`); `parse.contract.engine_of` for a folder read on its own | § 4.2, *Which engine ran* |
 | what ran, with what, and how did it go? | the run record, `runs.folder_answer(dir)["record"]` | [`model/parse.md`](?doc=model/parse.md) § 5d |
 | which file should a viewer open? | the run door, `runs.openable` — `parse.dirs.rundir.openable_in` for a folder no calculation claims | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
 
@@ -710,7 +711,7 @@ decide.
 | **banner** — what the run is about to do (below) | the session log | both | before the engine starts | a person; the run record |
 | **the engine's stdout** | `<stem>.out` · `<stem>.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
 | **monitor** — utilisation every 10 s, progress, notifications | `<stem>.monitor.log` · `<stem>.util.csv` | both | start to end | a person; the run record; `run_status` (its closing record) — [`run-reports.md`](?doc=execution/run-reports.md) § 2.5 |
-| **SCF timing** — every SCF row of both phases (`scf:`, `ts-scf:`), stamped | `<stem>.scf-timing.log` | where the output's family names a stamp (`scf_timing_rows.STAMPED_BY_RUN_SCRIPT`): SIESTA's (a PySCF deck stamps its own, in its progress log) | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
+| **SCF timing** — every SCF row of both phases (`scf:`, `ts-scf:`), stamped | `<stem>.scf-timing.log` | where the file catalogue cuts the file from the run's output (its row's `cut_from`): SIESTA's (a PySCF deck stamps its own, in its progress log) | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
 | **failure hint** — how the run ended, where its output and log are, and the reader's advice for its cause (SIESTA's `propor`: the causes, § 3.1a) | the session log | both | on a nonzero exit | a person |
 | **conclusion marker** — the exit code and the time | `<stem>.concluded` | both | the run script's last act, or its exit trap's; never on a signal | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
@@ -1081,7 +1082,8 @@ not a precedence list:
   first-hit list lets one stale `.run.sh` outrank two agreeing declarations.
 - **The sniff is asked only when nothing declared**, for a folder molbuilder did not write, and never
   overrules a declaration: files outlive the run that wrote them, so a stale `.fdf` beside a freshly prepared
-  PySCF deck is litter, not a second opinion.
+  PySCF deck is litter, not a second opinion. **It reads what ran — the outputs and the warm files — never a
+  deck**: a deck alone says nothing of a run, so a folder holding only a hand-made deck answers `"unknown"`.
 - For a run of a calculation, the directory door answers the engine from its description
   ([`model/parse.md`](?doc=model/parse.md) § 5.0); `engine_of` answers for a folder read on its own.
 

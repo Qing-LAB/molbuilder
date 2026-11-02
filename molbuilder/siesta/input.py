@@ -344,7 +344,7 @@ def _bench_marks_for(struct, cfg, block_size, bs_range, *,
     fields = [
         (dataclasses.replace(f, range_=bs_range) if f.anchor == "BlockSize"
          else f)
-        for f in _sc.SIESTA_BENCH_FIELDS
+        for f in BENCH_FIELDS
         if not (f.anchor == "BlockSize" and block_size is None)
     ]
     return dict(
@@ -399,6 +399,33 @@ def _spin_facts(state) -> dict:
     }
 
 
+#: THE FIELDS A SIESTA DECK'S BENCH-MARKS BLOCK DECLARES (`script_emit.
+#: BenchField`) -- SIESTA's own, beside its deck writer: which keyword carries
+#: the step count, and that ``BlockSize`` comes from a launch quantity.
+#
+# Anchor: ONE step-count keyword, ``MD.Steps``, bounds CG / Broyden / FIRE
+# alike (SIESTA 5.4.2 manual, Docs/tex/sections/Relaxation_phonons_md/
+# Structural_relaxation.tex), so a trial's deck -- rendered by
+# ``jobset prep bench`` -- needs no per-type dispatch.
+BENCH_FIELDS: "List[_sc.BenchField]" = [
+    # NO range here, and that is the declaration.  BlockSize is the one field
+    # in this list derived from a LAUNCH quantity (``engines/stages.md``
+    # § 5.2), so its legal window is a fact about one deck's rank count, not
+    # about the engine -- ``siesta/input.py`` supplies it per deck through
+    # ``_block_size_bounds``.  Leaving it None means a renderer that forgets emits NO
+    # range rather than a wrong one.
+    _sc.BenchField("BlockSize",        "BlockSize",        "pow2"),
+    _sc.BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
+    _sc.BenchField("MD.Steps",         "MD.Steps",         "int"),
+    _sc.BenchField("MeshCutoff",       "MeshCutoff",       "float", None, "Ry"),
+    # ELPA solver variant.  ELPA-1STAGE: direct dense.
+    # ELPA-2STAGE: tridiagonalises through a banded form; typically
+    # wins on N>1000 orbital problems and on GPU because the band
+    # step parallelises well.  Bench sweeps both.
+    _sc.BenchField("Diag.Algorithm",   "Diag.Algorithm",   "enum"),
+]
+
+
 def _parallel_facts(cfg, mesh) -> dict:
     """How the work is split across ranks, and which solver reads which knob.
 
@@ -451,7 +478,8 @@ def _parallel_facts(cfg, mesh) -> dict:
             "card's or the catalogue's default, laid at prep "
             "(engines/template.md 5.4)")
     _algo = cfg.diag_algorithm.strip()
-    _is_elpa = _algo.upper().startswith("ELPA")
+    from .layout import is_elpa
+    _is_elpa = is_elpa(_algo)
 
     # THE K-POINT SPLIT, automatic: on when the mesh holds more than one
     # point -- but never with ELPA, which SIESTA's manual calls not
@@ -461,12 +489,6 @@ def _parallel_facts(cfg, mesh) -> dict:
         over_k = mesh is not None and mesh.n_points > 1 and not _is_elpa
     else:
         over_k = bool(cfg.parallel_over_k)
-    if cfg.use_gpu and not _is_elpa:
-        raise ValueError(
-            "use_gpu requires an ELPA diagonalizer (diag_algorithm = "
-            "ELPA-1STAGE or ELPA-2STAGE); GPU acceleration does not apply to "
-            f"the {_algo} solver.  Pick an ELPA algorithm or turn GPU off "
-            "(engines/siesta.md § 7).")
     # THE FOUR MPI VALUES go through the one door.  They are not all config
     # fields read straight through -- ParallelOverK defaults from whether the
     # k-mesh is more than Gamma and the solver is not ELPA, the algorithm is
@@ -615,10 +637,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             f"a {calculation} deck has no point and no scratch folder: a "
             f"frame, a voltage and the leads' files are a transport rung's "
             f"(docs/engines/transport.md § 2a.11).")
-    if calculation not in ("optimization", "vibration"):
-        raise ValueError(
-            f"SIESTA renders 'optimization', 'vibration' and 'transport'; "
-            f"it has no {calculation!r} deck.")
+    # WHICH KINDS SIESTA RUNS is the kind table's (`kind(...).on`), which
+    # refuses another naming the engines it runs on.
+    from ..kind_table import kind as _kind
+    _kind(calculation).on("siesta")
     # THE VIBRATION KIND on this engine is one run of points, each phase's
     # deck a PART of the kind (`siesta/vibration_deck.py`, `engines/
     # vibration.md` § 5.11 § 4): the relaxation, the optimisation layout;

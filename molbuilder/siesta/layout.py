@@ -15,6 +15,14 @@ from typing import Optional, Tuple
 
 from ..script_emit import Parameter, Section, not_set_line
 
+
+def is_elpa(algorithm: str) -> bool:
+    """Whether ``algorithm`` (``diag_algorithm``) is one of ELPA's solvers
+    -- the one solver family with a GPU path (`engines/siesta.md` § 7):
+    the deck's parallel section, its writer and SIESTA's settings check ask
+    it alike."""
+    return str(algorithm).strip().upper().startswith("ELPA")
+
 #: The basis and the real-space grid.
 BASIS_SECTION = Section(
     "Basis & grid",
@@ -133,7 +141,7 @@ def mpi_section(*, algorithm) -> Section:
       claiming a setting the solver never reads.
     """
     items = ["block_size", "parallel_over_k"]
-    if str(algorithm or "").upper().startswith("ELPA"):
+    if is_elpa(algorithm or ""):
         items += ["diag_algorithm", "use_gpu"]
     return Section("Parallel execution (MPI)", tuple(items), note=(
         "# These settings matter only with `mpirun -np N siesta`",

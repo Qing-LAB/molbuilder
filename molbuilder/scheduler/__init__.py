@@ -23,7 +23,7 @@ belong together.
     read: everything molbuilder says to a scheduler (`scheduler.md` § 6a).
 
 **Nothing here is shipped beside a job.**  The record is JSON and reads
-anywhere; what travels with a run is `runwrap.MONITOR_COMPANIONS`
+anywhere; what travels with a run is `runwrap.monitor_companions`
 (`record.py`'s header).
 
 The re-exports below are the subsystem's public surface — what the rest of

@@ -271,7 +271,7 @@ flowchart TB
     Q1 -->|true| Q2{"engine?"}
 
     Q2 -->|SIESTA| Q3{"diag_algorithm<br/>is ELPA?"}
-    Q3 -->|no| REFUSE1["<b>render refuses</b><br/>GPU + ScaLAPACK<br/><i>the emitter, not the UI</i>"]
+    Q3 -->|no| REFUSE1["<b>refused</b><br/>GPU + ScaLAPACK<br/><i>SIESTA's settings check: the page and prep alike</i>"]
     Q3 -->|yes| DECK["deck: Diag.ELPA.GPU .true."]
     ENV{"the GPU request → molbuilder-siesta-gpu<br/>in the target's record? (G3)"}
     Q2 -->|SIESTA| ENV

@@ -21,9 +21,23 @@ words = "SIESTA"
 identity_field = "system_label"
 # The dataclass a template is rebuilt into (floor 1, `config/`).
 config = "molbuilder.config.siesta:SiestaConfig"
-# What it supplies for prep to run its steps over it (floor 3,
-# `jobset/engines.py`'s `EngineSeam`; `script-preparation.md` § 4).
-seam = "molbuilder.jobset.engines:siesta_seam"
+# Its own settings checks, asked by the settings gate with the state and the
+# box the gate works out once (science/validation.md § 7).
+validator = "molbuilder.validation.siesta:validate_siesta"
+# How it tells that two decks are the same calculation: its keywords read as
+# SIESTA reads them (floor 1; `deck_record.same_calculation`).
+same_calculation = "molbuilder.siesta.engine_input:engine_input_differences"
+# What it supplies for prep to run its steps over it (floor 3, its own
+# package's builder of `jobset/engines.py`'s `EngineSeam`;
+# `script-preparation.md` § 4).
+seam = "molbuilder.siesta.seam:siesta_seam"
+# THE LONGEST LABEL IT KEEPS WHOLE in the names of the files it writes:
+# SIESTA 5.4.2 cut a 58-character label's files at 50 characters, and two
+# benchmark trials differing only past the cut were written to one stem
+# (2026-08-24).  Held a few below the cut so suffixes like `.DM` stay
+# unambiguous; a longer label is refused at prep, never cut
+# (execution/run-identity.md § 3).
+longest_label = 48
 # What it computes the atoms in: the structure's own cell.
 computes_in = "cell"
 # A run is MPI ranks, each with its threads.
@@ -38,9 +52,11 @@ benchmark = true
 # Its stage presets, {tier: {item: value}}: the table its ladder's tiers are
 # read from, by the one ladder rule (`jobset.ladder.engine_ladder`).
 presets = "molbuilder.config.siesta:SIESTA_STAGE_PRESETS"
-# Whether its deck states its settings as keywords the engine reads -- the
-# fdf -- which a run's setup rows read back from the deck.
-keyword_deck = true
+# ITS DECK STATES ITS SETTINGS AS KEYWORDS, read by this reader -- the fdf's
+# key rule, its switches, its values and blocks, and the deck with its
+# includes -- which a run's setup rows, the run script and the benchmark's
+# trial check read the deck back by (floor 1, travels beside a job).
+keyword_reader = "molbuilder.parse.fdf:KEYWORDS"
 # The environment its runs enter: a category of configuration.md § 4
 # (`diagnostics.DEFAULT_ENV_NAMES`, overridable in `envs`) ...
 environment = "siesta"
@@ -57,7 +73,12 @@ programs = { siesta = "SIESTA", tbtrans = "TBtrans" }
 words = "PySCF"
 identity_field = "job_name"
 config = "molbuilder.config.pyscf:PySCFConfig"
-seam = "molbuilder.jobset.engines:pyscf_seam"
+validator = "molbuilder.validation.pyscf:validate_pyscf"
+# Two scripts are the same calculation when the values they set are.
+same_calculation = "molbuilder.pyscf.script_input:script_differences"
+seam = "molbuilder.pyscf.seam:pyscf_seam"
+# No longest label: PySCF writes its files whole, so only the cap every label
+# has binds it (execution/run-identity.md § 3).
 # PySCF's `gto.M` is gas phase: one molecule in free space, whatever the
 # structure's cell -- its electron count a molecule's, a vibration removing
 # a free cluster's motions, no box to judge.
@@ -68,8 +89,7 @@ one_process = true
 # No benchmark lane: the measurement pins name SIESTA's settings.
 benchmark = false
 presets = "molbuilder.config.pyscf:PYSCF_STAGE_PRESETS"
-# A Python script, its settings the script's own values, not keywords.
-keyword_deck = false
+# No keyword reader: a Python script, its settings the script's own values.
 environment = "pyscf"
 # No GPU environment: PySCF's GPU is a device its deck checks at its start
 # (execution/gpu.md G8).  No program: the deck is a script the job's own

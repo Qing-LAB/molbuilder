@@ -47,33 +47,28 @@ def _read(path: Path, *, head: Optional[int] = None) -> str:
 _SETUP_WINDOW = 512 * 1024
 
 
-def deck_value(deck: Path, keyword: str) -> Optional[str]:
-    """The value an fdf deck gives ``keyword``, or ``None`` if absent.
-
-    **First match wins, because that is what SIESTA does.** libfdf's
-    ``fdf_locate`` walks from the first line and stops at the first
-    label that matches (``do while ((.not. fdf_locate) .and. ...)``), so
-    a deck that names a keyword twice is read with its FIRST value.
-
-    Comparison is through ``fdf_key``, so ``Diag.Algorithm`` /
-    ``diag_algorithm`` / ``DIAGALGORITHM`` are one keyword.
-    """
+def deck_item(deck: Path, item: str, engine: str) -> Optional[str]:
+    """What a trial's deck says for catalogue item ``item`` -- by the
+    keyword the item writes, read as ``engine`` reads its deck
+    (`script_emit.deck_values`, the engine's keyword reader) -- or ``None``
+    where the deck states none; the first match, as that reader reads."""
     if not deck.is_file():
         return None
-    # One deck reader: `parse/fdf.py`.  It also tracks `%block`, so a
-    # block's first token is never read as a keyword.
-    from ..parse.fdf import read_deck, read_fdf
-    scalars, _blocks = read_fdf(read_deck(deck))
-    got = scalars.get(fdf_key(keyword))
-    return got[0] if got else None
+    from ..engine_table import read_deck
+    from ..script_emit import deck_values
+    said = deck_values(item, engine, read_deck(engine, deck))
+    got = next(iter(said.values()), None)
+    return None if got is None else str(got).split()[0]
 
 
-def parse_point(label: str, run, engine: str,
-                knobs: Dict, point: Optional[Dict] = None) -> BenchPoint:
+def parse_point(label: str, run, device: str,
+                knobs: Dict, point: Optional[Dict] = None, *,
+                engine: str) -> BenchPoint:
     """Parse one point's artifacts -- the files of its ``run``, the run
     door's `Run` (``None``: no run of ours there yet) -- into a
-    :class:`BenchPoint`.  Every file is the run's own, so a point's figures
-    never mix two runs."""
+    :class:`BenchPoint`; ``device`` is its lane, ``cpu`` or ``gpu``, and
+    ``engine`` the calculation's, whose keyword reader reads its deck.
+    Every file is the run's own, so a point's figures never mix two runs."""
     metrics: Dict = {}
     knobs = dict(knobs)
     # What the JOB SET asked for, snapshotted BEFORE the recovery below
@@ -113,9 +108,9 @@ def parse_point(label: str, run, engine: str,
     # § 5c): the SIESTA family's tee, else a PySCF trial's progress log,
     # whose rows its deck stamps.  The tee's registered parser wraps the same
     # function.
-    from molbuilder.parse.instruments.scf_timing_rows import timing_of
-    from ..runfiles import ROLE_MOLWATCH
-    _timing = ((run.file(".scf-timing.log") or run.file(ROLE_MOLWATCH))
+    from molbuilder.parse.instruments.scf_timing_rows import (
+        timing_file, timing_of, timing_roles)
+    _timing = (timing_file({r: run.file(r) for r in timing_roles()})
                if run is not None else None)
     metrics.update(timing_of(_timing))
 
@@ -156,7 +151,8 @@ def parse_point(label: str, run, engine: str,
     effective = parse_effective_run(out_head,
                                     _read(_wlog) if _wlog is not None else "")
     deck = run.deck if run is not None else None
-    alg = deck_value(deck, "Diag.Algorithm") if deck is not None else None
+    alg = (deck_item(deck, "diag_algorithm", engine) if deck is not None
+           else None)
     if alg is not None:
         asked["diag_algorithm"] = alg
     # The block size the deck REQUESTED, recorded beside the one SIESTA
@@ -165,7 +161,7 @@ def parse_point(label: str, run, engine: str,
     # never bars a trial: see the note on ``compare_asked_to_ran``'s
     # pairs.  SIESTA adapting the block size to the rank count is
     # documented behaviour, not a trial running something else.
-    bs = deck_value(deck, "BlockSize") if deck is not None else None
+    bs = deck_item(deck, "block_size", engine) if deck is not None else None
     if bs is not None:
         try:
             effective["blocksize_asked"] = int(bs)
@@ -173,7 +169,7 @@ def parse_point(label: str, run, engine: str,
             pass                      # a non-numeric BlockSize: not ours to judge
     mismatch = compare_asked_to_ran(asked, effective)
 
-    return BenchPoint(label=label, engine=engine, knobs=knobs,
+    return BenchPoint(label=label, engine=device, knobs=knobs,
                       metrics=metrics, bound=bound, state=state,
                       effective=effective, mismatch=mismatch,
                       point=dict(point or {}), machine=machine)
@@ -191,13 +187,6 @@ def _read_environment(bundle: Path) -> Dict:
     from ..scheduler.record import calculation_environment
     env = calculation_environment(bundle)
     return env.to_dict() if env is not None else {}
-
-
-#: FDF KEYWORD MATCHING, FROM THE MODULE THAT OWNS IT.  `parse/fdf.py::fdf_key`
-#: is fdf's real rule -- case-insensitive and blind to ``.``, ``-`` and ``_``,
-#: so SIESTA reads ``MeshCutoff``, ``Mesh.Cutoff`` and ``mesh_cutoff`` as one
-#: keyword.
-from ..parse.fdf import fdf_key   # noqa: E402  -- fdf's own matching rule
 
 
 def _read_system(calc) -> Dict:
@@ -251,7 +240,7 @@ def discover_points_from_jobset(calc, jobset) -> List[BenchPoint]:
         pts.append(parse_point(
             j.name, _trial_run(calc, jobset, j.name),
             "gpu" if gpus.uses else "cpu", knobs,
-            point=dict(j.point)))
+            point=dict(j.point), engine=jobset.engine))
     return pts
 
 
@@ -273,8 +262,8 @@ def _winner_mechanism(calc, jobset, label: str) -> Dict:
     marks = read_bench_marks_block(text) or {}
     if "gpu_mode" in marks:
         mech["use_gpu"] = str(marks["gpu_mode"]).lower() == "true"
-    # Through the ONE deck reader.
-    alg = deck_value(deck, "Diag.Algorithm")
+    # Through the ONE deck reader, by the item.
+    alg = deck_item(deck, "diag_algorithm", jobset.engine)
     if alg is not None:
         mech["diag_algorithm"] = alg
     return mech

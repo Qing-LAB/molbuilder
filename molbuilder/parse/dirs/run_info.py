@@ -46,7 +46,8 @@ from typing import Any, Dict, Optional, Union
 
 def run_info(*, deck: Union[str, Path, None] = None,
              output: Union[str, Path, None] = None,
-             traj: Any = None) -> Optional[Dict[str, Any]]:
+             traj: Any = None,
+             engine: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """The ``info`` block a run answers for itself, or ``None``.
 
     Its caller hands what it is shown from, both from the run door, because
@@ -56,7 +57,8 @@ def run_info(*, deck: Union[str, Path, None] = None,
     the run door's choice for a folder, or the file a person pointed at --
     whose record is ``relaxation`` (`contract.relaxation_of`), ``traj`` its
     parse when the caller holds one -- the viewer's load -- so the file is
-    not parsed again.
+    not parsed again; ``engine``, the run's -- its description's -- where
+    the caller holds the run (`running-a-job.md` § 4.2).
 
     ``None`` rather than ``{}`` when the run says nothing, so this reads
     exactly like its two siblings on the same load response
@@ -65,22 +67,26 @@ def run_info(*, deck: Union[str, Path, None] = None,
     ``or {}``; one that hands the answer to the viewer passes it through,
     and the viewer's own load door substitutes ``{}``.
 
-    Never raises: a file that cannot be read is a run with nothing to say,
-    not a failed load.
+    A file that cannot be read is a run with nothing to say, not a failed
+    load; a defect in a reader is not caught.
     """
     from molbuilder.parse.contract import contract_of, relaxation_of
+    from molbuilder.parse.errors import ParseError
 
+    # A FILE THAT CANNOT BE READ is a run with nothing to say; a defect in
+    # a reader is not caught (`run_record`'s rule).
+    unreadable = (OSError, ValueError, ParseError)
     out: Dict[str, Any] = {}
     try:
         calculation = contract_of(deck)
-    except Exception:                                       # noqa: BLE001
+    except unreadable:
         calculation = None
     if calculation is not None:
         out["calculation"] = calculation
     try:
-        relaxation = (relaxation_of(output, traj=traj)
+        relaxation = (relaxation_of(output, traj=traj, engine=engine)
                       if output else None)
-    except Exception:                                       # noqa: BLE001
+    except unreadable:
         relaxation = None
     if relaxation is not None:
         out["relaxation"] = relaxation

@@ -1,9 +1,9 @@
-"""Pre-emission validation for SIESTA / PySCF / Spectra / Transport.
+"""Pre-emission validation -- every engine's and every kind's checks, one gate.
 
 The machinery lives in ``docs/science/validation.md``.  Every deck is
 rendered by ``script_emit.render_deck``, which calls :func:`validate`
-before a line is written -- a transport rung's too, through the SIESTA
-validator; errors block emission, warnings print to stderr.
+before a line is written -- a transport rung's too; errors block emission,
+warnings print to stderr.
 
 Design principles realised by this module:
 
@@ -21,22 +21,23 @@ The output is a ``List[Issue]``.  Callers decide what to do with it;
 :func:`report` is the "raise errors, print warnings to stderr"
 helper ``script_emit.render_deck`` uses.
 
-Package layout (see ``docs/science/validation.md`` § 10):
+Package layout (see ``docs/science/validation.md`` § 7):
 
 * :mod:`molbuilder.validation.geometry`  — engine-agnostic geometry
 * :mod:`molbuilder.validation.metadata`  — dataclass-field driven
 * :mod:`molbuilder.validation.chemistry` — the shared chemistry rules, the
   electronic state's one family among them
 * :mod:`molbuilder.validation.sidecar`   — frozen-atoms / region INFO
-* :mod:`molbuilder.validation.siesta`    — SIESTA-specific + aggregator
-* :mod:`molbuilder.validation.pyscf`     — PySCF-specific + aggregator
+* :mod:`molbuilder.validation.siesta`    — SIESTA's validator, the part its
+  engine record names
+* :mod:`molbuilder.validation.pyscf`     — PySCF's validator, likewise
 """
 
 from __future__ import annotations
 
 import sys
 from contextvars import ContextVar
-from typing import Callable, Dict, List, Optional, Tuple, Type
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -44,26 +45,11 @@ from ..issues import Issue, ValidationError
 from ..structure import Structure
 
 # The checks this entry point runs.
-from .chemistry import check_electronic_state
+from .chemistry import check_electronic_state, check_species_labels
 from .geometry import validate_geometry
 from .metadata import (_check_fixed_on_every_rung, _check_inactive, _inactive,
                        _check_values, _validate_config_metadata,
-                       not_carried)
-from .pyscf import _validate_pyscf
-from .siesta import _validate_siesta
-
-
-# --------------------------------------------------------------------- #
-#  Engine-validator registry                                            #
-#                                                                        #
-#  Type-keyed dispatch.  Each engine config class registers an          #
-#  engine-specific validator; `validate()` looks it up by              #
-#  isinstance().  Adding a new engine is a `_ENGINE_VALIDATORS[T] = fn` #
-#  line, not a string-compare in `validate()`.                          #
-# --------------------------------------------------------------------- #
-
-
-_ENGINE_VALIDATORS: Dict[Type, Callable[[Structure, object, Optional[np.ndarray]], List[Issue]]] = {}
+                       not_carried_by)
 
 
 # --------------------------------------------------------------------- #
@@ -167,9 +153,9 @@ def _the_structure(struct: Structure, *, cell: Optional[np.ndarray],
 
 
 def validate(struct: Structure, cfg, *,
+             calculation: str,
              cell: Optional[np.ndarray] = None,
              dest_dir: "Optional[object]" = None,
-             calculation: str = "optimization",
              design: "Optional[Structure]" = None,
              k_meshes=None,
              rung: Optional[str] = None) -> List[Issue]:
@@ -180,16 +166,16 @@ def validate(struct: Structure, cfg, *,
     struct
         The Structure about to be emitted.
     cfg
-        SiestaConfig or PySCFConfig (or any dataclass; the generic
-        config-field metadata pass runs on anything dataclass-shaped).
+        An engine's config -- the class its record in the engine table
+        names (`engine_table.engine_of_config`); any other is refused.
     calculation
-        The described KIND this configuration is for ("optimization"
-        unless the description says otherwise).  The kind's own science
-        joins the same pass -- the part its record in the kind table names
-        (``validator``), a step of the pipeline, not a hook a caller may
-        forget: the deck
-        conductor reads the kind off the spec (a declared fact) and
-        every calculation type flows through this one function.
+        The described KIND this configuration is for -- always stated:
+        nothing judges a configuration as an optimization because nobody
+        said otherwise.  The kind's own science joins the same pass -- the
+        part its record in the kind table names (``validator``), a step of
+        the pipeline, not a hook a caller may forget: the deck conductor
+        reads the kind off the spec (a declared fact) and every calculation
+        type flows through this one function.
     cell
         Optional pre-computed (3, 3) lattice the generator is going
         to use.  **Omit it and the gate resolves the structure's own
@@ -225,50 +211,77 @@ def validate(struct: Structure, cfg, *,
     checks first, generic config-field checks next, then engine-
     specific checks.  Callers can sort / filter as they please.
 
-    This is THE single per-engine validation gate: every engine config
-    (SiestaConfig, PySCFConfig) registers ONE validator, and a kind's
-    science joins through its record's ``validator``, so a caller runs
-    ``validate(struct, cfg)`` once instead of hand-
+    This is THE single validation gate: an engine's checks are the part its
+    record in the engine table names (``validator``), a kind's science the
+    part its record in the kind table names, so a caller runs
+    ``validate(struct, cfg, calculation=...)`` once instead of hand-
     concatenating a separate engine ``preflight()`` (the cross-tab
     silent-skip class the backend-architecture review flagged; V1/V2).
+    What every check reads is worked out HERE, once -- the config's engine,
+    the box, the electronic state -- and handed to each.
     """
-    from ..template import engine_name
-    engine = engine_name(type(cfg))
+    from ..chemistry import every_label_resolves
+    from ..electronic_state import electronic_state
+    from ..engine_table import engine as _engine_rec, engine_of_config
+    from ..kind_table import kind as _kind, part
+    engine = engine_of_config(cfg)
+    kind = _kind(calculation)
     # THE BOX, worked out once with the structure's findings, and the one
     # every check below reads.
     cell, issues = _the_structure(struct, cell=cell, engine=engine)
+    # THE ELECTRONIC STATE THE DECK WILL BE WRITTEN FROM, once
+    # (`science/chemistry-correctness.md` § 2a) -- ``None`` where a species
+    # label names no element: the state is an electron count, and the label
+    # check owns that finding.  A kind this engine does not run has none:
+    # the kind table's one door refuses it, naming the engines.
+    kind.on(engine)
+    state = (electronic_state(struct, cfg, kind=calculation)
+             if every_label_resolves(struct) else None)
     # WHAT MAY STAND FOR EACH ITEM ON THIS KIND, asked first so a refused
     # value's range warning can stand aside (`engines/template.md` § 5.3):
     # a component the kind fixes, a choice it does not offer -- a relaxer a
     # vibration cannot relax with -- a value past a hard limit -- a
     # displacement SIESTA divides by.  Reported after the metadata's own, in
     # the order this function has always emitted.
-    refusals = _check_values(cfg, calculation)
+    refusals = _check_values(cfg, calculation, engine)
     # ...AND WHAT ENTERS NOTHING HERE -- a greyed-out field's (`engines/
     # template.md` § 5, `active_when`): said once below, and no advice is
     # given about it -- no recommended range, no probe's displacement.
-    inactive = _inactive(cfg, calculation)
+    inactive = _inactive(cfg, calculation, engine)
     issues += _validate_config_metadata(
         cfg, refused={i.where.split(".", 1)[1] for i in refusals},
-        foreign=not_carried(cfg, calculation), inactive=frozenset(inactive))
+        foreign=not_carried_by(engine, calculation), inactive=frozenset(inactive))
     # WHAT EVERY RUNG FIXES ALIKE (`engines/template.md` § 6.4): a config
     # that skipped `resolve` holds whatever its caller put there.
-    issues += _check_fixed_on_every_rung(cfg, calculation)
+    issues += _check_fixed_on_every_rung(cfg, calculation, engine)
     issues += refusals
     # A VALUE THAT ENTERS NOTHING HERE: said once.
     issues += _check_inactive(cfg, calculation, inactive)
-    # THE ELECTRONIC STATE, once, for every engine and every kind
-    # (`science/chemistry-correctness.md` § 2a): the state the deck will be
-    # written from, judged by one family of findings.
-    issues += check_electronic_state(struct, cfg, calculation=calculation)
+    # THE ELECTRONIC STATE, judged by its one family of findings, for every
+    # engine and every kind.
+    issues += check_electronic_state(struct, cfg, calculation=calculation,
+                                     engine=engine, state=state)
+    # A JUNCTION, WHERE THE KIND'S DECK RELAXES IT (`science/validation.md`
+    # § 7; the kind table's ``relaxes``): a lead must come through the
+    # relaxation unmoved, and its transport boundary keeps a layer's room.
+    # Asked HERE, where it is cheap -- the compose-time gate that refuses a
+    # MOVED lead is correct and runs after the relaxation is paid for.  A
+    # vibration's held atoms are its own question; a transport rung relaxes
+    # nothing, and its kind refuses the boundary itself.
+    if kind.relaxes:
+        from .sidecar import (check_electrode_labels_are_frozen,
+                              check_junction_boundary)
+        issues += check_electrode_labels_are_frozen(struct)
+        issues += check_junction_boundary(struct, cell, vacuum=False)
+    # A SPECIES LABEL NAMES AN ELEMENT, whichever engine runs it -- a deck
+    # writes the atomic number beside it.  Said here once, readably, rather
+    # than raised from inside a deck writer.
+    issues += check_species_labels(struct, engine=engine)
 
-    # Engine-specific dispatch via the registry.  isinstance() picks
-    # up subclasses too, so a future engine config that subclasses
-    # an existing one inherits its validator unless it registers its
-    # own.  Extra kwargs (dest_dir / design) are forwarded only when
-    # set; every registered validator accepts **_ and ignores the ones
-    # it doesn't use.
-    engine_kw = {}
+    # THE ENGINE'S AND THE KIND'S OWN CHECKS, each handed what the gate
+    # worked out.  Extra kwargs (dest_dir / design) are forwarded only when
+    # set; every validator accepts **_ and ignores the ones it doesn't use.
+    engine_kw = {"engine": engine, "state": state}
     if dest_dir is not None:
         engine_kw["dest_dir"] = dest_dir
     if design is not None:
@@ -295,21 +308,20 @@ def validate(struct: Structure, cfg, *,
     # one fact, one finding -- on a vibration deck the grid and frozen-atom
     # verdicts are the kind's).  The
     # charge and spin are neither's: they are the electronic state's one
-    # family, asked once below for every engine and kind.  Validators that
+    # family, asked once above for every engine and kind.  Validators that
     # do not branch on it ignore it through **_.
     engine_kw["calculation"] = calculation
-    for cfg_cls, fn in _ENGINE_VALIDATORS.items():
-        if isinstance(cfg, cfg_cls):
-            issues += fn(struct, cfg, cell, **engine_kw)
-            break
+    rec = _engine_rec(engine)
+    engine_fn = part(rec.validator, record=f"engine {engine}",
+                     key="validator")
+    issues += engine_fn(struct, cfg, cell, **engine_kw)
 
     # The CALCULATION KIND's own science — the same step, the part its
     # record in the kind table names (``validator``; an optimization's
     # science IS the engine validators above).  A kind that declares one
     # cannot have it forgotten, because every deck route ends in this
     # function.
-    from ..kind_table import kind as _kind, part
-    ref = _kind(calculation).validator
+    ref = kind.validator
     if ref is not None:
         kind_fn = part(ref, record=f"kind {calculation}", key="validator")
         issues += kind_fn(struct, cfg, cell, **engine_kw)
@@ -347,27 +359,6 @@ def report(issues: List[Issue], *,
     errors = [i for i in issues if i.severity == "error"]
     if errors and raise_on_error:
         raise ValidationError(issues)
-
-
-def _register_default_engines() -> None:
-    """Register each engine's validator and each kind's -- AT IMPORT, called
-    just below.  The engine config classes come from `config/`, where they
-    are defined, and are imported in here only to keep the registrations
-    together: nothing in `siesta/`, `pyscf/` or `config/` imports
-    `validation`, so there is no cycle to avoid.
-
-    **An import that fails here RAISES.**  A missing engine config is a
-    broken install, and swallowing it would leave that engine's scientific
-    validation silently absent -- every deck of it passing a gate that
-    checked nothing.
-    Only the config CLASS is imported eagerly (as a registry key)."""
-    from ..config.siesta import SiestaConfig
-    from ..config.pyscf import PySCFConfig
-    _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
-    _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
-
-
-_register_default_engines()
 
 
 __all__ = ["validate", "report", "structure_findings"]

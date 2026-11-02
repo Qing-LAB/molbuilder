@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from support.road import describe_calculation, group_words, jobset
 
 
@@ -42,3 +44,32 @@ def test_a_mistyped_amount_is_refused_by_its_flag(tmp_path, monkeypatch):
                        ("--gpus", "a100x2")):
         r = _prep(bundle, "coarse", flag, said)
         assert r.exit_code != 0 and f"{flag}:" in r.output, (flag, r.output)
+
+
+#: A LABEL LONGER THAN ITS ENGINE KEEPS WHOLE (`execution/run-identity.md`
+#: § 3, the engine record's ``longest_label``): SIESTA cuts its file names
+#: past 48 characters, so prep refuses a longer label in SIESTA's words;
+#: PySCF cuts none, and keeps it.  Until 2.64.0 the 48 was SIESTA's limit
+#: asked of every engine.
+LONG_LABEL = "H2_" + "a" * 46
+
+
+@pytest.mark.parametrize("engine, refused", [("siesta", True),
+                                             ("pyscf", False)])
+def test_a_label_longer_than_its_engine_keeps_is_refused_at_prep(
+        tmp_path, monkeypatch, engine, refused):
+    """A 49-character label: refused at prep for SIESTA, naming its length
+    and the 48 SIESTA keeps, with nothing written; prepared for PySCF.
+
+    MUTATION THIS MUST FAIL AGAINST: the limit read as a constant for every
+    engine (the PySCF row is refused)."""
+    bundle = describe_calculation(tmp_path, monkeypatch, name=LONG_LABEL,
+                                  engine=engine)
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
+               "--target", "this")
+    if refused:
+        assert r.exit_code != 0, r.output
+        assert "49 characters" in r.output and "SIESTA" in r.output \
+            and "48" in r.output, r.output
+    else:
+        assert r.exit_code == 0, r.output

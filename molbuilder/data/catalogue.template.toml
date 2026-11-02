@@ -631,7 +631,7 @@ engine_key = "(molbuilder: SIESTA takes it on its command line as MaxWalltime.Sl
 launch = { siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"] }
 # ... and a PySCF deck keeps the deadline itself, reading MB_WALL_S,
 # MB_JOB_STARTED and MB_WALL_SLACK_S from its environment (pyscf.md 3.9).
-deck_applies = ["pyscf"]
+limit_applied_by = { siesta = "run_script", pyscf = "deck" }
 type = "int"
 default = 600
 unit = "s"
@@ -944,7 +944,7 @@ kind = "wrapper"
 category = ["execution"]
 # Each engine applies it its own way: before a program the run script caps
 # it with `ulimit -v`; a PySCF deck passes it to mol.max_memory itself.
-deck_applies = ["pyscf"]
+limit_applied_by = { siesta = "run_script", pyscf = "deck" }
 engine_key = "(molbuilder: memory cap for the run -- ulimit -v in .run.sh / mol.max_memory)"
 type = "int"
 allocation = true

@@ -440,8 +440,8 @@ one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 
 **This section is the honest one, and it is the reason the rest of the page is
 worth reading carefully.** Both engines ride the one pipeline — describe →
-prep → launch → results — through the engine seam (`jobset/engines.py`,
-`engine_seam`).
+prep → launch → results — through the engine seam (`jobset/engines.py`'s
+`engine_seam`, each engine's built in its own package).
 
 ### Data-driven, and it works
 

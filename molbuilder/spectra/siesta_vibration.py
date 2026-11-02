@@ -698,7 +698,7 @@ def plan_call(deck) -> None:
                         f"planned by the {source} call's record step")
     elif source in {c.phase for c in calls_of(index)}:
         source_dir = here.place.point(Call(source, source).rel)
-        out = run_output(source_dir, here.names)
+        out = run_output(source_dir, here.names, "siesta")
         if out is None:
             raise FinishError(f"{source_dir.name} left no output in "
                               f"{source_dir}: {call.words()} has no "
@@ -985,7 +985,8 @@ def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
     level of each spin channel in ``spins`` (`siesta_grammar.fermi_levels`),
     and the build; from its session log, the engine's wall time
     (`wrapper_log`, the one source of it)."""
-    out = run_output(folder, here.names) if folder.is_dir() else None
+    out = (run_output(folder, here.names, "siesta") if folder.is_dir()
+           else None)
     if out is None:
         return {}
     reading = _reading(out)
@@ -1152,7 +1153,7 @@ def _force_constants(here: _CallHere, index: dict
                if r["phase"] == FC):
         return None
     fc_dir = force_constants_call(here.run_dir)
-    fc_out = run_output(fc_dir, here.names)
+    fc_out = run_output(fc_dir, here.names, "siesta")
     if fc_out is None:
         return None
     run = read_force_constant_run(fc_dir / here.deck.name, fc_out)

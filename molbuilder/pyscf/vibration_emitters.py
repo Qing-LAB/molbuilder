@@ -422,11 +422,11 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView", *,
     out.append("]")
     out.append("")
     # ECP: shared resolver with the optimization deck
-    # (chemistry.resolve_pyscf_ecp).  ``cfg.ecp`` names the ECP and
+    # (`pyscf.ecp.resolve_ecp`).  ``cfg.ecp`` names the ECP and
     # ``cfg.ecp_atoms`` names which elements get it; anything empty on
     # either side means no ECP.  Nothing is auto-picked.
-    from ..chemistry import resolve_pyscf_ecp
-    ecp_chosen = resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
+    from .ecp import resolve_ecp
+    ecp_chosen = resolve_ecp(struct, cfg.ecp, cfg.ecp_atoms)
     # ECP is resolved ONCE above (`ecp_chosen`) and emitted once below.
     # symmetry (category 2, probed 2026-08-21): honored ONLY on the
     # already-relaxed path.  The equilibrium Hessian runs fine under

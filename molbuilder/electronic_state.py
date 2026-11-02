@@ -200,8 +200,8 @@ def electronic_state(struct: Structure, cfg: Any, *,
     if kind not in kinds():
         raise ValueError(f"electronic_state: kind must be one of "
                          f"{kinds()}, not {kind!r}")
-    from .template import engine_name
-    engine = engine_name(type(cfg))
+    from .engine_table import engine_of_config
+    engine = engine_of_config(cfg)
     facts = analyze_structure(struct)
     recorded = _recorded(struct)
     charge = _charge(struct, cfg, kind, recorded)

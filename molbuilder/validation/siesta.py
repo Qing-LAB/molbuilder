@@ -1,7 +1,8 @@
-"""SIESTA-specific validators + the SiestaConfig aggregator.
+"""SIESTA's own settings checks.
 
-The aggregator ``_validate_siesta`` is what gets registered against
-``SiestaConfig`` in the engine-validator registry.
+:func:`validate_siesta` is the part SIESTA's record in the engine table names
+(``validator``), asked by the settings gate (`validation.validate`) with what
+the gate works out once: the engine, the box, the electronic state.
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .chemistry import check_species_labels
 from .sidecar import _check_frozen_atoms_consumed
 
 
@@ -191,20 +191,18 @@ def _relativistic(state) -> str:
             and state.spin_treatment.value == "spin-orbit" else "scalar")
 
 
-def pseudopotential_findings(struct: Structure, cfg, *,
-                             calculation: str = "optimization",
+def pseudopotential_findings(struct: Structure, cfg, *, calculation: str,
                              dest_dir=None) -> List[Issue]:
     """The pseudopotential check alone, as the settings gate asks it -- for a
     door that asks nothing else: the hand-over, before it writes a SIESTA
     calculation's folder, which it names as ``dest_dir`` so the files
     already there count as at `prep` (`web/handover-procedure.md` § 2.2,
-    plan § 5w K20)."""
+    plan § 5w K20).  It works out the state the files must carry -- a
+    spin-orbit run's fully relativistic -- itself, being asked alone."""
     from ..chemistry import every_label_resolves
     from ..electronic_state import electronic_state
-    from ..kind_table import kinds as _kinds
     state = (electronic_state(struct, cfg, kind=calculation)
-             if calculation in _kinds() and every_label_resolves(struct)
-             else None)
+             if every_label_resolves(struct) else None)
     return _check_siesta_pseudo_coverage(struct, cfg, dest_dir=dest_dir,
                                          relativistic=_relativistic(state))
 
@@ -536,15 +534,16 @@ def _bias_window_points(cfg) -> List[Issue]:
         "config.negf_neq_spacing_ev")]
 
 
-def _validate_siesta(struct: Structure, cfg,
-                     cell: Optional[np.ndarray],
-                     *, dest_dir=None, calculation: str = "",
-                     k_meshes=None, refused=frozenset(),
-                     rung: Optional[str] = None,
-                     **_) -> List[Issue]:
-    """SIESTA-specific checks.
-
-    Registered in `validation/__init__.py`'s ``_ENGINE_VALIDATORS``.
+def validate_siesta(struct: Structure, cfg,
+                    cell: Optional[np.ndarray],
+                    *, calculation: str, engine: str, state,
+                    dest_dir=None, k_meshes=None, refused=frozenset(),
+                    rung: Optional[str] = None,
+                    **_) -> List[Issue]:
+    """SIESTA's own checks -- the part its engine record names
+    (``validator``).  ``state`` is the electronic state the gate worked out
+    (``None`` where a species label names no element), ``engine`` the
+    config's engine as the gate found it.
 
     ``dest_dir`` (keyword-only) is passed through to the pseudo-
     coverage check so dest-relative ``cfg.psml_lib`` paths resolve
@@ -561,45 +560,29 @@ def _validate_siesta(struct: Structure, cfg,
     # defers that family on that kind -- the same deferral the PySCF
     # validator makes.
     vibration = calculation == "vibration"
-
-    # THE FIRST VALIDATION OF A JUNCTION: the labels say which atoms are
-    # leads, and a lead must come through the relaxation unmoved.  Asked
-    # HERE, where it is cheap -- the compose-time gate that refuses a
-    # MOVED lead is correct and runs after the relaxation is paid for.
-    from .sidecar import check_electrode_labels_are_frozen
-    # The fact holds on every kind (an unheld lead is moved by whatever
-    # moves atoms); the sentence names the run that would move it, so a
-    # force-constant run is not told about a relaxation it does not do
-    # (science/validation.md § 7).
-    issues += check_electrode_labels_are_frozen(
-        struct, run=("the force-constant run" if vibration
-                     else "the relaxation"))
-    # ...and the room at its transport boundary -- one layer spacing of the
-    # lead, I12 -- said here as a warning: a fused junction cell relaxes as
-    # it stands and is refused only on a transport rung, whose kind gate
-    # owns the rule there (`validation.transport.validate_transport_kind`).
-    if calculation != "transport":
-        from .sidecar import check_junction_boundary
-        issues += check_junction_boundary(struct, vacuum=False)
-
-    # A species label must name an element -- SIESTA needs the Z beside
-    # it in ChemicalSpeciesLabel.  Blocks here with a readable message
-    # rather than raising from inside the emitter.
-    issues += check_species_labels(struct, engine_label="SIESTA")
+    from ..engine_table import engine as _engine
+    words = _engine(engine).words
 
     # THE ELECTRONIC STATE THE DECK WILL CARRY (`science/chemistry-
     # correctness.md` § 2a) -- the charge and the treatment the checks
-    # below are about.  Its own findings (parity, the open-shell guard, what
-    # SIESTA cannot run) are one family asked from `validate` for every
-    # engine; here it is only READ.  None when a species label names no
-    # element: the state is an electron count, and the label check above
-    # owns that finding.
-    from ..chemistry import every_label_resolves
-    from ..electronic_state import electronic_state
-    from ..kind_table import kinds as _kinds
-    state = (electronic_state(struct, cfg, kind=calculation)
-             if calculation in _kinds() and every_label_resolves(struct)
-             else None)
+    # below are about -- as the gate worked it out; its own findings are
+    # one family the gate asks for every engine.  Here it is only READ.
+
+    # A GPU RUN SOLVES ON ELPA (`engines/siesta.md` § 7): ``use_gpu`` moves
+    # an ELPA solve onto the GPU, and no other solver has a GPU path --
+    # said here, where the page's check hears it, never first when prep
+    # writes the deck.  A solver not yet laid (the run card's, at prep)
+    # is judged when it is.
+    from ..siesta.layout import is_elpa
+    _algo = getattr(cfg, "diag_algorithm", None)
+    if bool(getattr(cfg, "use_gpu", False)) and _algo and not is_elpa(_algo):
+        issues.append(Issue(
+            "error",
+            f"use_gpu with diag_algorithm = {_algo}: GPU acceleration moves "
+            f"an ELPA solve onto the GPU, and {_algo} has no GPU path.  Pick "
+            f"ELPA-1STAGE or ELPA-2STAGE, or turn the GPU off "
+            f"(engines/siesta.md § 7).",
+            "config.use_gpu"))
 
     # Pseudopotential coverage (the actionable use of pseudos.py).
     # Wired into preflight + render: missing files become ERROR
@@ -615,8 +598,8 @@ def _validate_siesta(struct: Structure, cfg,
     issues += _check_siesta_mesh_cutoff(cfg, struct, dest_dir=dest_dir)
 
     # The checks that read the CHARGE the deck carries.  With no state -- a
-    # label naming no element, the label check's finding above -- they stand
-    # down rather than judge the structure as neutral.
+    # label naming no element, the gate's label finding -- they stand down
+    # rather than judge the structure as neutral.
     if state is not None:
         # Makov-Payne notice: charged-supercell image-charge bias.  We DON'T
         # auto-apply the correction (see function docstring); we surface it
@@ -638,7 +621,7 @@ def _validate_siesta(struct: Structure, cfg,
     if not vibration and calculation != "transport":
         issues += _check_frozen_atoms_consumed(
             struct,
-            engine="SIESTA",
+            engine=words,
             honored=(relax not in ("none", "")),
             reason_when_dropped=(
                 f"cfg.relax_type = {cfg.relax_type!r} (no MD/relax block "
@@ -674,7 +657,7 @@ def _validate_siesta(struct: Structure, cfg,
     from .. import kmesh as _kmesh
     meshes = tuple(m for m in (k_meshes if k_meshes is not None else (
         _kmesh.mesh_for(cfg, getattr(struct, "axis_kind", None),
-                        kind=calculation or "optimization"),)) if m is not None)
+                        kind=calculation),)) if m is not None)
     issues += _kmesh.check(meshes, struct, cell=cell, refused=refused)
 
     # THE BIAS WINDOW'S LINE (`engines/transport.md` § 2a.11, *The levers*):
@@ -701,9 +684,8 @@ def _validate_siesta(struct: Structure, cfg,
     # molecule: the axes SIESTA computes on (`cell.engine_axis_kinds`,
     # `model/structure-periodicity.md` § 2.1), never the k-point count.
     from ..cell import engine_axis_kinds
-    from ..template import engine_name
     vacuum_box = all(k == "isolated" for k in
-                     engine_axis_kinds(engine_name(type(cfg)), struct))
+                     engine_axis_kinds(engine, struct))
     if state is not None and vacuum_box and len(struct.positions) > 0:
         try:
             from ..chemistry import estimate_dipole_moment_debye

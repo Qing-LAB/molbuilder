@@ -28,16 +28,16 @@ from molbuilder.parse.dirs.record import CONTRIBUTORS, RunFiles, _declared
 from molbuilder.parse.engines._run_ending import RunEnding
 from molbuilder.runfiles import RunNames
 
-#: ``(engine, its stdout role and the field of `RunFiles` that holds it,
-#: the output's run_state, the run's state, verdict.ended -- None: not
-#: stated)``.
+#: ``(engine, its stdout role and the field of `RunFiles` that holds it --
+#: the one output slot, every engine's -- the output's run_state, the run's
+#: state, verdict.ended -- None: not stated)``.
 CASES = [
-    ("siesta", ".out", "out", "running", "running", None),
-    ("siesta", ".out", "out", "ended", "finished", "ended"),
-    ("siesta", ".out", "out", "stopped", "failed", "stopped"),
-    ("siesta", ".out", "out", "out_of_memory", "failed", "out_of_memory"),
-    ("pyscf", ".pyscf.log", "pyscf_log", "running", "running", None),
-    ("pyscf", ".pyscf.log", "pyscf_log", "ended", "finished", "ended"),
+    ("siesta", ".out", "stdout", "running", "running", None),
+    ("siesta", ".out", "stdout", "ended", "finished", "ended"),
+    ("siesta", ".out", "stdout", "stopped", "failed", "stopped"),
+    ("siesta", ".out", "stdout", "out_of_memory", "failed", "out_of_memory"),
+    ("pyscf", ".pyscf.log", "stdout", "running", "running", None),
+    ("pyscf", ".pyscf.log", "stdout", "ended", "finished", "ended"),
 ]
 
 

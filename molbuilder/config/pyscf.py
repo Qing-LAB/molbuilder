@@ -23,7 +23,7 @@ Defaults are tuned for "build a small/medium molecule and relax it":
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..identity import RestartGroup
 from ..selection import parse_index_list
@@ -300,6 +300,11 @@ class PySCFConfig:
         """``None``: PySCF refuses an odd electron count under restricted
         spin when it builds the molecule (``gto/mole.py``), so the parity
         error stands."""
+        return None
+
+    def spin_refusal(self, state) -> "Optional[Tuple[str, str]]":
+        """``None``: no PySCF setting refuses a spin the catalogue offers
+        (`config/siesta.py`'s rule is SIESTA's OMM solver)."""
         return None
 
 

@@ -5,6 +5,8 @@ plus the resolver that decides which of two sources to believe.
 """
 from __future__ import annotations
 
+import pytest
+
 from molbuilder.parse.instruments import utilisation
 
 
@@ -60,3 +62,31 @@ def test_a_symlink_loop_does_not_break_the_envelope(tmp_path):
     real = tmp_path / "real.log"
     real.write_text("x")
     assert _source_str(real) == str(real.resolve())
+
+
+# ---------------------------------------------------------------------------
+#  Which file times a run's SCF rows
+# ---------------------------------------------------------------------------
+
+#: A RUN'S FILES BY ROLE, and the role of the file that times it
+#: (`scf_timing_rows.timing_file`, `model/parse.md` § 5c).  A SIESTA-family
+#: run is timed by the tee its run script cuts from its ``.out`` alone --
+#: its progress log is prep's seed, which SIESTA never writes; until 2.64.0
+#: a SIESTA run with no tee yet was timed from that seed, and read zero
+#: iterations.  A PySCF run is timed by the progress log its deck stamps.
+TIMING_ROWS = [
+    ({".out", ".molwatch.log"}, None),
+    ({".out", ".scf-timing.log", ".molwatch.log"}, ".scf-timing.log"),
+    ({".pyscf.log", ".molwatch.log"}, ".molwatch.log"),
+]
+
+
+@pytest.mark.parametrize("roles, timed_by", TIMING_ROWS,
+                         ids=["siesta-before-its-tee", "siesta-with-its-tee",
+                              "pyscf"])
+def test_a_run_is_timed_by_the_file_its_output_says(tmp_path, roles,
+                                                    timed_by):
+    from molbuilder.parse.instruments.scf_timing_rows import timing_file
+    files = {r: tmp_path / f"run{r}" for r in roles}
+    got = timing_file(files)
+    assert got == (files[timed_by] if timed_by else None), got

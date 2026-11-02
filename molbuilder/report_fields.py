@@ -8,7 +8,7 @@ writes what the field is read from (`run-reports.md` § 2.3).  A description
 (`task.py`), the wrapper, the monitor, the listener and the Task-setup card
 all read this table; none keeps a list.
 
-**Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`):
+**Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`):
 the monitor reads it there, as `config_dir` travels.
 """
 from __future__ import annotations

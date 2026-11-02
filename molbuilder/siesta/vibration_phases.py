@@ -4,7 +4,7 @@ a point of the run (`engines/vibration.md` § 5.11; the framework,
 
 MODULE  siesta.vibration_phases (floor 1 + stdlib; travels in
         ``mb_vibration.pyz`` and ``mb_monitor.pyz``,
-        `runwrap.VIBRATION_COMPANIONS`, `runwrap.MONITOR_COMPANIONS`)
+        `runwrap.VIBRATION_COMPANIONS`, `runwrap.monitor_companions`)
 ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         deck is, what turns it on, where its calls' coordinates and start
         come from, what a call must hold to be done, which warm-files
@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # TWO WAYS, because this module travels beside a job (`runwrap.
-# VIBRATION_COMPANIONS`, `runwrap.MONITOR_COMPANIONS`), where the package
+# VIBRATION_COMPANIONS`, `runwrap.monitor_companions`), where the package
 # is not installed.
 try:                                       # inside molbuilder
     from ..calcdirs import RunPlace

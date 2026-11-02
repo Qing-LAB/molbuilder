@@ -30,7 +30,7 @@ def test_min_distance_too_small_is_error():
         elements=["O", "H"],
         positions=np.array([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]]),
     )
-    issues = validate(s, SiestaConfig())
+    issues = validate(s, SiestaConfig(), calculation="optimization")
     errs = [i for i in issues if i.severity == "error"
             and i.where == "geometry.min_distance"]
     assert len(errs) == 1
@@ -44,7 +44,7 @@ def test_min_distance_short_is_warn():
         elements=["C", "H"],
         positions=np.array([[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]]),
     )
-    issues = validate(s, SiestaConfig())
+    issues = validate(s, SiestaConfig(), calculation="optimization")
     warns = [i for i in issues if i.severity == "warn"
              and i.where == "geometry.min_distance"]
     assert len(warns) == 1
@@ -53,7 +53,7 @@ def test_min_distance_short_is_warn():
 
 def test_min_distance_normal_bonds_no_issue(water_structure):
     """Real water (O-H ~0.957 Å) must not flag any geometry issue."""
-    issues = validate(water_structure, SiestaConfig())
+    issues = validate(water_structure, SiestaConfig(), calculation="optimization")
     geo = [i for i in issues if i.where == "geometry.min_distance"]
     assert geo == []
 
@@ -88,7 +88,7 @@ def test_the_h_ratio_is_a_reference_note_counted_by_element(elements, said):
     the note at any other severity."""
     pos = np.array([[i * 1.2, 0.0, 0.0] for i in range(len(elements))])
     s = Structure(elements=elements, positions=pos)
-    notes = [i for i in validate(s, SiestaConfig())
+    notes = [i for i in validate(s, SiestaConfig(), calculation="optimization")
              if i.where == "geometry.h_ratio"]
     assert [(i.severity, i.message.split(" (")[0]) for i in notes] == (
         [("info", said)] if said else []), notes
@@ -104,7 +104,7 @@ def test_polymer_orientation_normal_chain_no_warn():
         pytest.skip("threedna backend not installed")
     from molbuilder.nucleic import build_dna
     s = build_dna("ATGC", backend="threedna")
-    issues = validate(s, SiestaConfig())
+    issues = validate(s, SiestaConfig(), calculation="optimization")
     assert [i for i in issues if i.where == "polymer.orientation"] == []
 
 
@@ -132,7 +132,7 @@ def test_polymer_orientation_reversed_listing_warns():
         residue_names=list(s.residue_names),
         chain_ids=list(s.chain_ids), title=s.title,
     )
-    issues = validate(s_rev, SiestaConfig())
+    issues = validate(s_rev, SiestaConfig(), calculation="optimization")
     orient = [i for i in issues if i.where == "polymer.orientation"]
     assert len(orient) == 1, (
         f"expected one orientation warn, got: {orient}"
@@ -147,7 +147,7 @@ def test_polymer_orientation_no_phosphorus_silent():
     pytest.importorskip("PeptideBuilder")
     from molbuilder.peptide import build_peptide
     s = build_peptide("ARNDC")
-    issues = validate(s, SiestaConfig())
+    issues = validate(s, SiestaConfig(), calculation="optimization")
     assert [i for i in issues if i.where == "polymer.orientation"] == []
 
 
@@ -161,7 +161,7 @@ def test_cell_determinant_zero_is_error(water_structure):
     """A degenerate cell (det == 0) is unusable; flag as error and
     skip the volume check below."""
     cell = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=float)
-    issues = validate(water_structure, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell, calculation="optimization")
     # "degenerate" and "left-handed" are two faults with two different
     # repairs, so each has its own id and the checker reports one.
     errs = [i for i in issues if i.where == "cell.no_volume"]
@@ -174,7 +174,7 @@ def test_cell_determinant_zero_is_error(water_structure):
 def test_cell_determinant_negative_is_error(water_structure):
     """A left-handed cell (negative det) breaks SIESTA's PBC math."""
     cell = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float) * 10
-    issues = validate(water_structure, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell, calculation="optimization")
     errs = [i for i in issues if i.where == "cell.left_handed"]
     assert len(errs) == 1, [i.where for i in issues]
     assert errs[0].severity == "error"
@@ -187,7 +187,7 @@ def test_cell_volume_tight_is_warn(water_structure):
     """Cell volume / atom-bounding-volume < 3 -- molecule fills the box."""
     # Water bounding box ~1 x 1 x 1 Å^3 -> atom_box ~1.  Cell 1 Å -> det = 1.
     cell = np.eye(3) * 1.0
-    issues = validate(water_structure, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell, calculation="optimization")
     vol = [i for i in issues if i.where == "cell.volume"]
     assert len(vol) == 1
     assert vol[0].severity == "warn"
@@ -196,7 +196,7 @@ def test_cell_volume_tight_is_warn(water_structure):
 
 def test_cell_volume_generous_no_warn(water_structure):
     """A 30 Å cubic box around water is generously vacuum-padded."""
-    issues = validate(water_structure, SiestaConfig(), cell=_vacuum_cell(30.0))
+    issues = validate(water_structure, SiestaConfig(), cell=_vacuum_cell(30.0), calculation="optimization")
     vol = [i for i in issues if i.where == "cell.volume"]
     assert vol == []
 
@@ -211,7 +211,7 @@ def test_image_distance_too_close_is_warn(water_structure):
     """A 5 Å cubic cell makes water see its own image ~5 Å away --
     well below the 6 Å "atoms still interacting" threshold."""
     cell = _vacuum_cell(5.0)
-    issues = validate(water_structure, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell, calculation="optimization")
     msgs = [i for i in issues if i.where == "cell.image_distance"]
     assert len(msgs) == 1
     assert msgs[0].severity == "warn"
@@ -221,7 +221,7 @@ def test_image_distance_too_close_is_warn(water_structure):
 def test_image_distance_generous_no_warn(water_structure):
     """A 30 Å cubic cell puts water's image >25 Å away; safely
     isolated, no warning."""
-    issues = validate(water_structure, SiestaConfig(), cell=_vacuum_cell(30.0))
+    issues = validate(water_structure, SiestaConfig(), cell=_vacuum_cell(30.0), calculation="optimization")
     assert [i for i in issues if i.where == "cell.image_distance"] == []
 
 
@@ -240,7 +240,7 @@ def test_dipole_in_vacuum_polar_molecule_is_warn():
         positions=np.array([[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]]),
     )
     cfg = SiestaConfig(kgrid=(1, 1, 1))
-    issues = validate(s, cfg, cell=_vacuum_cell(30.0))
+    issues = validate(s, cfg, cell=_vacuum_cell(30.0), calculation="optimization")
     msgs = [i for i in issues if i.where == "geometry.dipole"]
     assert len(msgs) == 1
     assert msgs[0].severity == "warn"
@@ -255,7 +255,7 @@ def test_dipole_in_vacuum_nonpolar_molecule_no_warn():
         positions=np.array([[0.0, 0.0, 0.0], [1.10, 0.0, 0.0]]),
     )
     cfg = SiestaConfig(kgrid=(1, 1, 1))
-    issues = validate(s, cfg, cell=_vacuum_cell(30.0))
+    issues = validate(s, cfg, cell=_vacuum_cell(30.0), calculation="optimization")
     assert [i for i in issues if i.where == "geometry.dipole"] == []
 
 
@@ -287,7 +287,7 @@ def test_kgrid_on_isolated_axis_is_warn():
     s, cell = _axis_struct(("isolated", "isolated", "isolated"),
                            extent=2.0, cell_len=20.0)
     cfg = SiestaConfig(kgrid=(4, 4, 1))
-    msgs = [i for i in validate(s, cfg, cell=cell)
+    msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
     assert any("kgrid[0]" in i.message and "isolated" in i.message
                for i in msgs)
@@ -301,7 +301,7 @@ def test_kgrid_one_on_a_periodic_axis_is_silent():
     s, cell = _axis_struct(("periodic", "isolated", "isolated"),
                            extent=3.0, cell_len=6.0)
     cfg = SiestaConfig(kgrid=(1, 4, 1))   # k=1 on the periodic x
-    msgs = [i for i in validate(s, cfg, cell=cell)
+    msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
     assert not any("kgrid[0]" in i.message for i in msgs)
 
@@ -319,7 +319,7 @@ def test_kgrid_periodic_crystal_partial_span_no_false_positive():
     s = Structure(elements=["C"] * 8, positions=corners, cell=cell,
                   axis_kind=("periodic", "periodic", "periodic"))
     cfg = SiestaConfig(kgrid=(4, 4, 4))
-    msgs = [i for i in validate(s, cfg, cell=cell)
+    msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
     assert msgs == [], (
         f"periodic crystal (50% span) with a full k-mesh must not warn; "
@@ -333,7 +333,7 @@ def test_kgrid_long_vacuum_padded_axis_no_false_positive():
     s, cell = _axis_struct(("isolated", "isolated", "isolated"),
                            extent=30.0, cell_len=80.0)
     cfg = SiestaConfig(kgrid=(1, 1, 1))    # Gamma-only, correct for vacuum
-    msgs = [i for i in validate(s, cfg, cell=cell)
+    msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
     assert not any("kgrid[2]" in i.message for i in msgs)
 
@@ -343,7 +343,7 @@ def test_all_gamma_in_vacuum_no_warn(water_structure):
     """Pure 1x1x1 Gamma in vacuum is the molecule case; no kgrid warning."""
     cell = _vacuum_cell(30.0)
     cfg = SiestaConfig(kgrid=(1, 1, 1))
-    issues = validate(water_structure, cfg, cell=cell)
+    issues = validate(water_structure, cfg, cell=cell, calculation="optimization")
     assert [i for i in issues if i.where == "config.kgrid"] == []
 
 

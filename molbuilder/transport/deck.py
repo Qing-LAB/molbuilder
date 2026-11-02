@@ -76,6 +76,18 @@ SHAPE_OF_RUNG = {
     "transmission": "transmission",
 }
 
+#: WHAT A SHAPE'S RUN IS, beside its text: the program that reads its deck
+#: where it is not the engine's own -- `tbtrans` the transmission's
+#: (§ 6.1b) -- and whether its run keeps the folder the leads' files live in
+#: -- the device's (§ 2a.11).  The deck states both (`DeckSpec.program`,
+#: ``scratch_dir``), and prep takes them onto the job.
+SHAPE_RUN = {
+    "seed":         {"program": None,      "keeps_scratch": False},
+    "electrode":    {"program": None,      "keeps_scratch": False},
+    "device":       {"program": None,      "keeps_scratch": True},
+    "transmission": {"program": "tbtrans", "keeps_scratch": False},
+}
+
 
 def rung_of(stage_token: Optional[str]) -> str:
     """The rung name inside a ``<NN>_<name>`` stage token.
@@ -803,6 +815,11 @@ def transport_spec(struct: Structure, cfg, *, state,
             m for m in (derived["k_mesh"], derived["tbt_k_mesh"])
             if m is not None), "rung": rung}),
         created_by="molbuilder transport prep",
+        # WHICH PROGRAM READS THIS RUNG'S DECK, and whether its run keeps
+        # the scratch folder -- the rung's shape's facts (`SHAPE_RUN`).
+        program=SHAPE_RUN[shape]["program"],
+        scratch_dir=(scratch_dir if SHAPE_RUN[shape]["keeps_scratch"]
+                     else None),
     )
 
 
@@ -815,9 +832,12 @@ def rung_meshes(cfg, axis_kind, rung: str):
     § 0.3b)."""
     from .. import kmesh as _kmesh
     k_mesh = _kmesh.mesh_for(cfg, axis_kind, kind="transport", rung=rung)
+    # THE RUNG'S OWN PROGRAM'S MESH, where another program reads its deck
+    # (`SHAPE_RUN`): TBtrans's `TBT.k` on the transmission.
+    program = SHAPE_RUN[SHAPE_OF_RUNG[rung]]["program"]
     tbt_mesh = (_kmesh.mesh_for(cfg, axis_kind, kind="transport",
-                                rung=rung, program="tbtrans")
-                if SHAPE_OF_RUNG[rung] == "transmission" else None)
+                                rung=rung, program=program)
+                if program is not None else None)
     return k_mesh, tbt_mesh
 
 
@@ -864,12 +884,11 @@ def ladder_mesh_findings(template_text: str, task, axis_kind) -> list:
     unresolvable description answers none: prep refuses it in its own
     words."""
     import dataclasses
-    from ..config.siesta import SiestaConfig
     from ..kmesh import check
-    from ..resolve import resolved_ladder
+    from ..resolve import ResolveError, resolved_ladder
     try:
-        ladder = resolved_ladder(template_text, task, SiestaConfig)
-    except Exception:          # noqa: BLE001 -- prep's refusal, not ours
+        ladder = resolved_ladder(template_text, task)
+    except (ResolveError, ValueError):     # prep's refusal, not ours
         return []
     out: list = []
     seen: set = set()

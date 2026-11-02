@@ -45,11 +45,9 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     from ..resolve import resolved_ladder
     from ..identity import stage_key
     from ..template import run_settings
-    from .engines import engine_seam
     from .points import points_of
     task = calc.task
-    ladder = resolved_ladder(calc.template_text or "", task,
-                             engine_seam(task.engine).config_cls)
+    ladder = resolved_ladder(calc.template_text or "", task)
     cfg = next(c for name, c in ladder if stage_key(name) == stage_key(stage))
     # A RUN SETTING IS THE RUN CARD'S: the resolved configuration holds it
     # at its default, which says nothing the person stated.

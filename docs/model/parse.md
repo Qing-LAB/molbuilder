@@ -667,7 +667,7 @@ flowchart LR
   nothing of ours but each other, `runfiles`, `identity`, `report_fields` (the
   span rule's words), `engine_atom_index` (the held atoms' numbering) and
   `pyscf/end_lines`. They ship inside
-  `mb_monitor.pyz` beside every job (`runwrap.MONITOR_COMPANIONS`), each
+  `mb_monitor.pyz` beside every job (`runwrap.monitor_companions`), each
   importing the next from the package or from the bundle; what the monitor
   reads through them is [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3's.
 * **The deck's echo is not the run speaking.** SIESTA copies its input between
@@ -709,14 +709,16 @@ declares ([`web/trajectory.md`](?doc=web/trajectory.md) § 3.0).
 | `stress_voigt_kbar` | the latest step's stress tensor as SIESTA prints it — `Stress tensor Voigt[x,y,z,yz,xz,xy] (kbar)`, six numbers in that order | — |
 | `criteria` · `targets` | per phase, as `criteria()` · the `redata:` limits | — · as `targets()` |
 | `scf_cycles` · `last_cycle` · `scf_rows` | — | the last step's SCF cycles, its last cycle, all rows so far |
-| `tbtrans` | TBtrans's account of its k-point × energy loop: its size, the spin passes it says it will make, and each pass begun — its channel, TBtrans's estimate while it runs, its measured time once it completed, its currents (§ 5d.5) | — |
+| `loop` | the program's own loop beside the SCF, as its output accounts for it — TBtrans's k-point × energy loop: its size, the spin passes it says it will make, and each pass begun — its channel, TBtrans's estimate while it runs, its measured time once it completed, its currents (§ 5d.5) | — |
 | `done_pct` · `eta_s` | the pass underway's: TBtrans's share of that pass done, in per cent, and the time it says that pass has left — its latest progress line, its first estimate `0` per cent done; absent when no pass is underway, a completed pass's estimate ending with it | — |
 | `part` · `scf_converged` | a part of the output that began with a line of its own and is underway — a row of `siesta_grammar.PARTS` by name (§ 5d.5), until the SCF's next row or the run's end; and the last SCF's verdict, `True` / `False` as its convergence line said — what the monitor says an ended SCF's facts by ([`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.8) | — |
 
 The monitor feeds each file only what it gained since its last wake and picks
 the pass by the file's ROLE (`monitor.LIVE_READERS`: `.out` → `SiestaReader`,
 `.molwatch.log` → `MolwatchReader`), as `_run_ending.READERS` picks how a file
-ended (§ 2b).
+ended (§ 2b) — and the words of a program's loop by the same role
+(`monitor.LOOP_WORDS`: `.out` → `tbtrans.loop_words`), so the summary line
+names no program.
 
 ### 4b. What the SIESTA family's SCF lines mean
 
@@ -1218,9 +1220,12 @@ those), the deck's name, and its `sha256`.
 **The run's own deck, handed by its caller** — the run door's
 (`runs.declared(run).deck`, `execution/architecture.md` § 3.2), as the labels
 and the box are (§ 5.3): each run reads its own deck, never another
-stage's. A deck that states nothing, a PySCF deck (no extractor yet) or no run
-of ours is `None` — a missing contract block is an ordinary state, never a
-guess. Transport's citation asks
+stage's. **The deck is read by the reader its role names**
+(`contract.CONTRACT_READERS`: an `.fdf`, the SIESTA family's
+`siesta_contract.contract_fields`), and the record's engine is that role's
+(`runfiles.engine_of_role`). A deck that states nothing, a deck whose role has
+no reader — a PySCF deck — or no run of ours is `None` — a missing contract
+block is an ordinary state, never a guess. Transport's citation asks
 the run door too: a cited folder is the run it speaks for, its deck that run's
 ([`transport.md` § 3.1](?doc=engines/transport.md); W56-2, 2026-10-09).
 
@@ -1258,7 +1263,7 @@ geometry it left**, from the run output a viewer has open — the
 
 | key | what it is |
 |---|---|
-| `engine` · `source` | which engine ran (`engine_of`; `null` when the directory declares none), and the output file the numbers were read from |
+| `engine` · `source` | which engine ran — the run's calculation's, from its description, where the caller holds the run; `engine_of` for a folder read on its own (`null` when it declares none) — and the output file the numbers were read from |
 | `n_steps` | the geometry steps the run took (the last frame's step index) |
 | `force_tolerance_ev_ang` | the run's **own** criterion, as the engine echoed it — `convergence_targets.max_force_tol_eV_per_A`, flat (SIESTA's `redata:` echo, a single-stage molwatch header) or nested one level by stage (a staged molwatch header; one stage is the run's, several is `None`) |
 | `max_force_ev_ang` · `max_force_free_ev_ang` | the last step that reported forces: the **largest absolute Cartesian component** over every atom, and over the atoms the run **moved** — the held set excluded, from that step's per-atom forces (the engine's own `Max` / `Max … constrained` lines, which are that same component, when the step carries no per-atom block). The component, not a per-atom norm: it is what SIESTA's `MD.MaxForceTol` tests and what both read-backs judge by (V1.30); a norm would call a run the engine converged "not converged" by up to √3 |
@@ -1392,9 +1397,11 @@ host's for the data files; `molbuilder-pySCF` since its result's data file,
 `parse/engines/` reads what the *engine* produced. The **wrapper** measures the
 run too, and writes files of its own beside the deck (`running-a-job.md` § 4.1),
 each named once on the stage's stem, one set per run: the monitor's
-`<stem>.monitor.log` and `<stem>.util.csv` for every engine, and — for the
-SIESTA family, whose rows it reads — the SCF-timing tee's
-`<stem>.scf-timing.log` (`runfiles.WRITTEN` says so per row). Being
+`<stem>.monitor.log` and `<stem>.util.csv` for every engine, and the
+SCF-timing tee's `<stem>.scf-timing.log` — cut from the output whose SCF rows
+it stamps, which the file's own catalogue row names (`cut_from`: a SIESTA-family
+`.out`, so the row's engine is that output's), beside the grammar's patterns
+for that output's rows (`scf_timing_rows.SCF_ROW_PATTERNS`). Being
 the wrapper's output rather than the engine's is no reason to read them a
 different way, so they are read here. A PySCF deck stamps its own SCF rows —
 each `scf_history` row of its progress log ends with the epoch the cycle
@@ -1431,7 +1438,13 @@ step into an iteration-1 row spans a step boundary, the step from the last
 periodic row to the first NEGF row holds TranSIESTA's switch and the whole
 first NEGF iteration, and a phase's first interval is dropped as warm-up. The
 headline is the last phase's — a device's NEGF loop, the part it runs until it
-converges.
+converges. **A run's timing file is chosen by one door**
+(`scf_timing_rows.timing_file`, over the roles `timing_roles` names): a run
+whose output is one the file catalogue cuts a tee from (`cut_from` — a
+SIESTA-family `.out`) is timed by that tee alone, none before its first row,
+since its progress log is prep's seed; any other run by the progress log its
+deck stamps (a PySCF run's) — asked by the run record, the monitor, the
+Results load and the benchmark summary alike.
 
 **The monitor sharpens the CSV — § 5a, not a second reader.** Utilisation is
 *"the monitor's own means where it stated them, the samples where it did
@@ -1486,7 +1499,7 @@ window from its own input:
 | `monitored_elapsed_s` | since the **monitor** started | `util.csv` rows, `epochs[-1] − epochs[0]` | `util_csv_metrics` | the bench table's `monitored` column |
 | `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
 | `run_start_local` · `run_end_local` | the run's two ends, as the node's local time of day | the `.out`'s `>> Start of run` / `>> End of run` | `siesta_grammar.read_launch_line` | the run record (§ 5d.2) |
-| `loop_elapsed_s` | one spin pass of TBtrans's k-point × energy **loop** — not the engine's wall: its set-up before the loop is outside it | the `.out`'s `tbt: Completed in S s`, one per pass | the reading pass, `now()["tbtrans"]["passes"][i]["loop_elapsed_s"]` (§ 5d.5) | the progress words (`tbtrans.loop_words`); summed over a point's passes, the transport record's point `loop_elapsed_s` and the rung's `measured.loop_elapsed_s` — the rung row's time a finished point's loop took (`engines/transport.md` § 2a.12) |
+| `loop_elapsed_s` | one spin pass of TBtrans's k-point × energy **loop** — not the engine's wall: its set-up before the loop is outside it | the `.out`'s `tbt: Completed in S s`, one per pass | the reading pass, `now()["loop"]["passes"][i]["loop_elapsed_s"]` (§ 5d.5) | the progress words (`tbtrans.loop_words`); summed over a point's passes, the transport record's point `loop_elapsed_s` and the rung's `measured.loop_elapsed_s` — the rung row's time a finished point's loop took (`engines/transport.md` § 2a.12) |
 
 `[UTIL-SUMMARY]` carries no duration — CPU and per-GPU means and a bound
 verdict, nothing else (`monitor.py::UtilAccum.summary`) — so no window
@@ -1611,8 +1624,10 @@ deck was gathered from are as the run's records state them, said as words.
 ### 5d.1b How it is composed — a declared table, one reader per file
 
 **The record is not written per engine.** `parse/dirs/record.py` holds one
-table, `CONTRIBUTORS`: each row names the record fields it answers, the engines
-whose runs have its file, and the reader it asks — the shape of
+table, `CONTRIBUTORS`: each row names the record fields it answers, the file it
+reads by its role — its engines are those that write that role
+(`runfiles.engine_of_role`), never typed — and the reader it asks, the file's
+family's own — the shape of
 `runfiles.WRITTEN` (a file is a row) and of `_run_ending.READERS` (dispatch on
 what the file IS). The composer walks the table, asks each row whose file the
 run has, and merges what comes back; a row whose file cannot be read costs its
@@ -1628,15 +1643,15 @@ wrapper launched and its node, never its output
 
 | row | the file | its reader, beside its format (§ 1a) | engines | answers |
 |---|---|---|---|---|
-| `siesta-out` | `<base>.out`, head and tail; a TBtrans output whole | the grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and `tbtrans.loop_words` | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
+| `out` | `<base>.out`, head and tail; a TBtrans output whole | its family's grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and its loop's own account (`tbtrans.loop_record`, `tbtrans.loop_words`) | the `.out`'s: SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
 | `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged` · `max_force_free_ev_ang` · `max_force_held_ev_ang` · `stress_voigt_kbar` · `forces_not_computed` (§ 5d.6) |
 | `wrapper-log` | `<base>.runwrap.log`, the run's session log | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
-| `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
-| `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
+| `instruments` | the run's timing file (`scf_timing_rows.timing_file`: `.scf-timing.log`, a PySCF run its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
+| `log` | `<base>.log`, PySCF's own logger | its family's reader, `parse/engines/pyscf.read_pyscf_sys_info` | the `.log`'s: PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — started_from, a point's own `.continued-from` (`runrecord.read_continued_from`), present only where the marker is — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
 | `concluded` | `<base>.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
-| `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
+| `setup` | the parameters fence (§ 5d.3a) · the deck · the engine's log of what it read — SIESTA's `fdf.<stamp>.log`, paired by its output's start (found by the output's role, `record.USED_LOGS`) | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 
 **The table is configuration, not reconciliation.** Each row names the file
 that states a fact and the reader that reads it; the files are one run's
@@ -1683,7 +1698,7 @@ recomputed from today's catalogue:
 
 | column | SIESTA · TranSIESTA · TBtrans | PySCF |
 |---|---|---|
-| default | the wrapper's parameters fence (§ 5d.3a), which lists every item's catalogue default at launch; a run from before the fence has none, and the column is empty | the deck's fence |
+| default | the wrapper's parameters fence (§ 5d.3a), which lists the catalogue default of every item the rung reads, at launch; a run from before the fence has none, and the column is empty | the deck's fence |
 | asked | the deck, per keyword and with its unit (`script_emit.parameter(..., deck_text=)`) | the deck's fence |
 | used | SIESTA's `fdf.<stamp>.log`, through the `siesta-fdf-log` parser: the value it read, or every reading of a key read to several values | the deck's fence, read off the live objects |
 | echo | what SIESTA says it RAN where it says so: the `redata:` / `ts:` echo and the `diag:` lines — `Number of poles = 42` beside the pole energy's two readings | — |
@@ -1745,10 +1760,10 @@ never picks one.
 
 The `effective-parameters` block is `script_emit`'s (§ 1a): one format,
 written through one emitter and read by one reader (`script_emit.parameter_row`
-/ `read_parameters_fence`). A row per catalogue item for the engine,
-calculation and stage *(not built — plan § 5w, K16: SIESTA's run script writes
-every SIESTA item that writes a keyword, `runwrap._effective_parameters_block`; PySCF's narrows by calculation alone,
-`pyscf/layout.py:313-314`)* — `[item, default, asked, used]` — each one JSON array
+/ `read_parameters_fence`). A row per catalogue item the rung reads — its
+engine's, its calculation's, read by its stage (`script_emit.declarations`, by
+the one rule `template.reads`), which the record's reader asks too; a PySCF
+deck writes its own fence, its items narrowed by calculation (`pyscf/layout.py`) — `[item, default, asked, used]` — each one JSON array
 after `#   `, so a blank value or one with spaces cannot shift a column; `null`
 is *this writer cannot know*. The block's first line says what the columns
 are (`script_emit.PARAMETER_COLUMNS_LINE`) — prose, which the reader skips,
@@ -1813,11 +1828,11 @@ case-blind throughout (user, 2026-05-28).
 | TranSIESTA once per run: the `ts:` start-up echo, the charge distribution at the switch, the electrode checks, each lead's surface Green's function begun (`Calculating surface Green functions for: L`), its file's estimated size (`Estimated file size: 49.170 GB`) and written (`Done creating '<file>'.`, `m_ts_electrode.F90`) — or found and read instead (`Using GF-file '<file>'`, `m_ts_gf.F90`, the lead the file's tail after `TSGF`) | `TS_ECHO*`, `TS_CHARGE_START`, `TS_CHARGE_ROW`, `TS_PRINCIPAL_CELL`, `TS_GF_*` | the reading pass | `runtime_info["transiesta"]`: `options`, `electrodes` (each with `principal_cell`, `gf_started`, `gf_file_size`, `gf_done`, `gf_reused`, the recursion's iteration statistics), `contours` (one segment per chemical potential or contour part), `charge_at_switch`; the live reading's `now()["transiesta"]` holds the same facts whenever a `ts:` line was read, and `now()["doing"]` the words of where the run is (§ 2b) |
 | a part of the run that begins with a line of its own: `Optical: Performing optical calculation` (`Src/optical.F`), which prints nothing more until its spectrum is written | `PARTS` (`OutputPart`: the part, the line, its words, its note), `output_part` | the reading pass, one rule over the table (`_part_begins`) | `part`, and `doing` the part's words and note |
 | `siesta: Emadel`, SIESTA's own Makov–Payne term (`write_subs.F`) | `EMADEL` | the reading pass | `runtime_info["emadel_ev"]` |
-| TBtrans set up (`Util/TS/TBtrans/`): the transverse k-points and how they were chosen (`m_tbt_kpoint.F90`); the passes it says it will make — `tbt: Calculate spin UP and DOWN`, `tbt: Calculate spin = UP` or `DOWN`, `tbt: Non-polarized Hamiltonian` (`m_tbt_options.F90` 757–769), its whole loop once per channel (`m_tbtrans.F90`); its energies, `ts: <part> contour points = N` under `ts: >> TBtrans contour <<` (`m_tbt_contour.F90` 551–564) — TranSIESTA prints the same words for its own contours, so only that section's are TBtrans's | `TBT_KPOINTS`, `TBT_KMETHOD`, `TBT_SPIN`, `TBT_CONTOUR_BEGIN`, `TBT_CONTOUR_POINTS` | `tbt_channels`; the reading pass | `now()["tbtrans"]`: `k_points`, `k_method`, `channels` — the passes, in `TBT_CHANNELS`' names — and `energy_points`, summed over its contours |
-| TBtrans, each pass: its data file opened, `tbt: Initializing data file: <label>.TBT_UP.nc` (`m_tbt_save.F90` 513, a NetCDF-4 build), the name carrying the channel's tag; `tbt: Initial ETA in S s` once its first k-point and energy are done, then `tbt: Calculated N %, ETA in S s` each time another `TBT.Progress` per cent of the pass's loop is (5 by default; `m_tbt_trik.F90` 883–900, 1554; `m_tbt_options.F90` 486–487); `tbt: Completed in S s` (`m_tbt_trik.F90` 1646); then its currents, the `V [V] / I [A]` and `V [V] / P [W]` lines (`m_tbt_save.F90`) | `TBT_DATA_FILE`, `TBT_INITIAL_ETA`, `TBT_PROGRESS`, `TBT_COMPLETED`, `TBT_CURRENT`, `TBT_POWER` | `tbt_channel_of`; the reading pass | `now()["tbtrans"]["passes"]`, one per pass begun — at its data file, or at its first estimate in a build that writes none: its `channel` (its file's tag, else the next the set-up names); `done_pct` (`0` at the first estimate) and `eta_s` while it runs — each line is written at the start of an energy point, so the last is short of 100 % — gone at its `Completed in`, which states `loop_elapsed_s`; its `currents` [{`from`, `to`, `voltage_v`, `current_a`, `power_w`}]. A time that is not a number is not stated (no `eta_s`: TBtrans divides by the share done, and at `TBT.Progress 0` its line at 0 % says `Infinity`). `now()`'s own `done_pct` · `eta_s` are the pass underway's |
+| TBtrans set up (`Util/TS/TBtrans/`): the transverse k-points and how they were chosen (`m_tbt_kpoint.F90`); the passes it says it will make — `tbt: Calculate spin UP and DOWN`, `tbt: Calculate spin = UP` or `DOWN`, `tbt: Non-polarized Hamiltonian` (`m_tbt_options.F90` 757–769), its whole loop once per channel (`m_tbtrans.F90`); its energies, `ts: <part> contour points = N` under `ts: >> TBtrans contour <<` (`m_tbt_contour.F90` 551–564) — TranSIESTA prints the same words for its own contours, so only that section's are TBtrans's | `TBT_KPOINTS`, `TBT_KMETHOD`, `TBT_SPIN`, `TBT_CONTOUR_BEGIN`, `TBT_CONTOUR_POINTS` | `tbt_channels`; the reading pass | `now()["loop"]` — the program's own loop beside the SCF, TBtrans's: `k_points`, `k_method`, `channels` — the passes, in `TBT_CHANNELS`' names — and `energy_points`, summed over its contours |
+| TBtrans, each pass: its data file opened, `tbt: Initializing data file: <label>.TBT_UP.nc` (`m_tbt_save.F90` 513, a NetCDF-4 build), the name carrying the channel's tag; `tbt: Initial ETA in S s` once its first k-point and energy are done, then `tbt: Calculated N %, ETA in S s` each time another `TBT.Progress` per cent of the pass's loop is (5 by default; `m_tbt_trik.F90` 883–900, 1554; `m_tbt_options.F90` 486–487); `tbt: Completed in S s` (`m_tbt_trik.F90` 1646); then its currents, the `V [V] / I [A]` and `V [V] / P [W]` lines (`m_tbt_save.F90`) | `TBT_DATA_FILE`, `TBT_INITIAL_ETA`, `TBT_PROGRESS`, `TBT_COMPLETED`, `TBT_CURRENT`, `TBT_POWER` | `tbt_channel_of`; the reading pass | `now()["loop"]["passes"]`, one per pass begun — at its data file, or at its first estimate in a build that writes none: its `channel` (its file's tag, else the next the set-up names); `done_pct` (`0` at the first estimate) and `eta_s` while it runs — each line is written at the start of an energy point, so the last is short of 100 % — gone at its `Completed in`, which states `loop_elapsed_s`; its `currents` [{`from`, `to`, `voltage_v`, `current_a`, `power_w`}]. A time that is not a number is not stated (no `eta_s`: TBtrans divides by the share done, and at `TBT.Progress 0` its line at 0 % says `Infinity`). `now()`'s own `done_pct` · `eta_s` are the pass underway's |
 | TBtrans's k-averaged text files, per channel (`m_tbt_save.F90` `name_save`): the transmission, its eigenchannels, the device's DOS, a lead's spectral and bulk DOS | `TBT_CHANNELS`, `TBT_AVERAGED` | `tbtrans.averaged_files`, `tbtrans.read_averaged` (§ 5e) | `{channel: {quantity: file}}`; each file's energies and columns |
 
-**TBtrans's loop, in words** — `tbtrans.loop_words(now()["tbtrans"], over=…)`,
+**TBtrans's loop, in words** — `tbtrans.loop_words(now()["loop"], over=…)`,
 the one sentence the monitor's summary line, the run record and the transport
 report say it in (`over`: the run is over, its state the run door's). Each pass
 is named by its channel and its place among the passes the set-up names; a
@@ -2190,9 +2205,11 @@ Per parser kind, the specifics:
   format's **grammar table**, each line with its one reader; a **reading pass**
   over it (`feed` · `now` · `finish`); and the registered **FileParser**, which
   feeds the pass the whole file and builds `TrajectoryResult` arrays from
-  `finish()`. The first two are stdlib and join `runwrap.MONITOR_COMPANIONS`;
-  a run-output role also joins `_run_ending.READERS` (§ 5.5), and a live one
-  `monitor.LIVE_READERS`. `can_parse` sniffs content markers in the **first few
+  `finish()`. The first two are stdlib and join the bundle's own list
+  (`runwrap._MONITOR_BASE`, gathered by `runwrap.monitor_companions`); a
+  run-output role also joins `_run_ending.READERS` (§ 5.5), a live one
+  `monitor.LIVE_READERS`, and one whose program reports a loop
+  `monitor.LOOP_WORDS`. `can_parse` sniffs content markers in the **first few
   hundred lines** (SIESTA scans 300; molwatch keys off the first 5) — not a
   fixed byte window. An engine's own account of its settings is an
   `EngineParamsResult` (`siesta_fdflog.py`, § 5d.3).
@@ -2261,7 +2278,7 @@ These stop the next round of parallel parse paths:
     `pyscf/end_lines` — never by a second pattern; a generated program (the
     wrapper's awk) takes its pattern rendered from the table.
 11. **The reading layer is stdlib-only, and it travels** (§ 4a). A grammar, a
-    reading pass, and every module in `runwrap.MONITOR_COMPANIONS` import
+    reading pass, and every module in `runwrap.monitor_companions` import
     nothing but the stdlib and each other, and read the same whether imported
     from the package or from `mb_monitor.pyz`.
 12. **The run record never builds a trajectory** (§ 5d.1). It reads what its

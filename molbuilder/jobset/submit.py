@@ -2464,7 +2464,8 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
         # here the deck itself is verified -- where it IS, the trial's
         # attempt (`project-layout.md` § 1.5a).
         try:
-            check_trial_starts_cold(m.read_from, job)
+            check_trial_starts_cold(m.read_from, job,
+                                    engine=jobset.engine)
         except TrialNotCold as e:
             raise SubmitError(str(e)) from e
         run_name = m.names.name(".run.sh")
@@ -3539,7 +3540,8 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             # the cold gate rides the named-trial door too (user,
             # 2026-08-21) -- one rule, every launch path
             try:
-                check_trial_starts_cold(m.read_from, job)
+                check_trial_starts_cold(m.read_from, job,
+                                        engine=jobset.engine)
             except TrialNotCold as e:
                 raise SubmitError(str(e)) from e
         run_name = m.names.name(".run.sh")

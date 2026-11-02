@@ -16,7 +16,7 @@ from ..issues import Issue
 from ..structure import Structure
 
 
-def validate_transport_kind(struct: Structure, cfg, cell, *,
+def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                             rung=None, **_) -> List[Issue]:
     """The transport KIND's science — the part its record in the kind table
     names (``validator``), so it fires whatever config class the deck
@@ -56,12 +56,12 @@ def validate_transport_kind(struct: Structure, cfg, cell, *,
     # ``stages``, asked through `template.reads`, `template.md` § 6.4): the
     # template's value stays on a rung that never writes it, and that rung
     # is never refused for it.  With no rung named, judged as it stands.
-    from ..template import engine_name, items_of, reads
+    from ..template import items_of, reads
     pole = getattr(cfg, "negf_eq_pole_ev", None)
     temp = getattr(cfg, "electronic_temperature", None)
     pole_item = items_of(cfg).get("negf_eq_pole_ev")
     if pole is not None and (rung is None or pole_item is None or reads(
-            pole_item, engine_name(type(cfg)), "transport", rung)):
+            pole_item, engine, "transport", rung)):
         from ..transport.transiesta import (MIN_EQ_POLES,
                                             MIN_TS_TEMPERATURE_K, pole_count,
                                             pole_energy_for)

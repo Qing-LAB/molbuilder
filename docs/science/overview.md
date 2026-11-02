@@ -110,8 +110,11 @@ The card a finding is drawn on is not the Issue's: `_shared.issues_to_json`
 adds `card` to the wire form (`template.card_of`), so the web UI routes the
 finding to the card its field is drawn in.
 
-The CLI mirrors this: `molbuilder validate <input> --engine siesta` (`cli.py:1058`)
-emits the same `List[Issue]` as **JSON to stdout** for shell-driven pre-flight checks.
+The CLI mirrors this: `molbuilder validate <input> --engine siesta --calculation
+optimization` emits the same `List[Issue]` as **JSON to stdout** for shell-driven
+pre-flight checks. An engine's checks are always a kind's too, so `--engine`
+asks `--calculation`: nothing judges a configuration as an optimization because
+nobody said otherwise.
 
 **What may carry `error` severity** is deliberately narrow — only "physically
 impossible or wrong" (atoms overlapping, a degenerate cell, a missing or
@@ -395,8 +398,8 @@ glosses its own specialised terms inline; this is the common core.)
 
 - **dataclass (frozen)** — a plain typed record; *frozen* = immutable once created.
   **the wire** — the network boundary where these records become JSON.
-- **registry** — a lookup table each engine's validator registers itself into
-  (`validation._ENGINE_VALIDATORS`), so adding an engine needs no change to the
-  callers.
+- **engine record** — an engine's entry in the engine table
+  (`data/engine_table.toml`); it names the engine's validator (`validator`), so
+  adding an engine needs no change to the callers.
 - **preflight** — the validation pass run just before an input script is written.
   **the gate** — the single point (`report()`) that can stop generation.

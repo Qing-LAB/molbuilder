@@ -16,6 +16,7 @@ reads.  A SIESTA keyword is not one of those.)*
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple, Union
 
 # TWO WAYS, because this reader travels: the SIESTA vibration's finish reads
@@ -554,7 +555,21 @@ def deck_atoms(text: str) -> DeckAtoms:
                      labels=tuple(lab for _, lab in picked))
 
 
+#: THE FDF AS A KEYWORD READER -- what SIESTA's engine record names
+#: (``keyword_reader``, `execution/architecture.md` § 3.3), so a reader of
+#: an engine's keyword deck asks the record, never assumes this format:
+#: ``key`` the keyword rule, ``true`` a switch's words, ``read`` a text's
+#: ``(scalars, blocks)``, ``read_deck`` the deck with its includes.
+KEYWORDS = SimpleNamespace(key=fdf_key, true=fdf_true, read=read_fdf,
+                           read_deck=read_deck)
+
+
+
+#: WHAT TRAVELS WITH THIS READER beside the job
+#: (`runwrap.monitor_companions`): the units a value converts in.
+TRAVELS_WITH = ("molbuilder.units",)
+
 __all__ = ["DeckAtoms", "FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS",
-           "GEOMETRY_KEYS", "deck_atoms", "fdf_key", "fdf_true", "read_fdf",
-           "inline_includes", "read_deck", "parse_fdf_params",
+           "GEOMETRY_KEYS", "KEYWORDS", "deck_atoms", "fdf_key", "fdf_true",
+           "read_fdf", "inline_includes", "read_deck", "parse_fdf_params",
            "system_label"]

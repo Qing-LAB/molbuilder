@@ -73,10 +73,6 @@ class VibrationConfigView:
     records is the described PySCFConfig it adapts (:attr:`config`), not
     the adapter's."""
 
-    #: WHOSE VIEW THIS IS -- `template.engine_name` reads it, so a reader
-    #: holding the view gets PySCF's answers, never the class name's.
-    ENGINE = "pyscf"
-
     def __init__(self, cfg, struct: Structure):
         self._cfg = cfg
         # THE HELD ATOMS, by the structure's one read of them.
@@ -111,8 +107,7 @@ class VibrationConfigView:
         (`cell.engine_axis_kinds`), and read by the deck's count, the
         Methods count and the settings check's note alike."""
         from ..cell import engine_axis_kinds
-        from ..template import engine_name
-        return engine_axis_kinds(engine_name(type(self._cfg)), self._struct)
+        return engine_axis_kinds("pyscf", self._struct)
 
     @property
     def scf_class(self) -> str:

@@ -248,14 +248,14 @@ def point_currents(now: Optional[Dict], spin: str) -> Dict:
     (`model/parse.md` § 5c.1).  Read from ``now``, the point's output's
     reading through the family's one read -- the caller's
     (`collect_record`: one read per point) -- and its account of TBtrans's
-    loop (`siesta_reader.read_output`, ``now()["tbtrans"]``,
+    loop (`siesta_reader.read_output`, ``now()["loop"]``,
     `model/parse.md` § 5d.5): each pass's currents beside its channel;
     ``None`` where the run printed none, and every figure ``None`` for a
     point with no reading -- no output, or one that does not read."""
     out: Dict = {"current_a": None, "current_a_printed": None}
     if now is None:
         return out
-    loop = now.get("tbtrans") or {}
+    loop = now.get("loop") or {}
     for k in ("k_points", "k_method"):
         if k in loop:
             out[k] = loop[k]
@@ -939,7 +939,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     """
     from ..jobset.naming import stage_home
     from ..parse.dirs.job import FINAL_STATES
-    from ..parse.dirs.record import tbtrans_loop
+    from ..parse.engines.tbtrans import loop_record
     from ..runpoints import NOT_RUN
     from ..parse.engines._run_ending import keep_reading, version_of
     from ..parse.engines.siesta_reader import read_output
@@ -1054,8 +1054,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                      **shares}
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
-            # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
-            progress = tbtrans_loop(output, over=state in FINAL_STATES,
+            # (`tbtrans.loop_record`, `model/parse.md` § 5d.1b, § 5d.5).
+            progress = loop_record(output, over=state in FINAL_STATES,
                                     now=now)
             if progress:
                 entry["progress"] = {
