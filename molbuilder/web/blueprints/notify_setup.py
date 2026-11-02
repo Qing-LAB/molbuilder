@@ -27,7 +27,7 @@ that mapping and does not try to (user, 2026-08-27) — `access-control.md` § 8
 rule 3, *identity is borrowed, never stored*, applied to the filesystem.
 
 **IT ALWAYS WRITES, AND `launch.mode` HAS NOTHING TO SAY ABOUT IT.**
-`running-a-job.md` § 5.4 defines that setting as ``direct`` (run in place) or
+`configuration.md` § 4 defines that setting as ``direct`` (run in place) or
 through the scheduler, and it gates ``.sbatch`` submission **on this
 machine** — so a login node with SLURM is ``submit`` and is exactly where the
 file belongs.

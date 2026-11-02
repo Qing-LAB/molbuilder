@@ -101,9 +101,9 @@ def _declared_execution_pins(request, bench_override=None):
 
 def _gpus_per_node(routing) -> "int | None":
     """The most GPUs one node of the target's GPU queues holds, or ``None``
-    when no queue lists any -- § 4.3a's fallback when the probed node itself
-    has none (a login node).  ``routing`` is the target's own menu, from the
-    record the caller holds.
+    when no queue lists any -- what § 4.3a reads wherever a queue answers,
+    the probed node's own count only where none does.  ``routing`` is the
+    target's own menu, from the record the caller holds.
 
     A COUNT, and no card: which card a node carries is the machine's
     business (`scheduler.md` R2a; user, 2026-10-01).
@@ -394,7 +394,7 @@ def bench_refusal(engine: str, calculation: str):
     gate, the bench's own assembly (:func:`bench_inputs`, asked first,
     before any machine is read), and the Task setup tab -- a description's
     and a hand-over's -- which offers the Measure step only where `prep
-    bench` would take it (`job-system.md` § 5.3) -- from the two tables:
+    bench` would take it (`job-system.md` § 5.0) -- from the two tables:
     the kind's ``no_benchmark``, and the engine's ``benchmark`` lane."""
     from ..engine_table import engine as _engine
     from ..kind_table import kind as _kind
@@ -535,7 +535,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     """
     # WHAT A PERSON IS TOLD comes back to the caller, never printed here:
     # the command line prints it, the Task setup tab shows it
-    # (`prep.prep_task`, `job-system.md` § 5.3).
+    # (`prep.prep_task`, `job-system.md` § 5.0).
     note = notes.append if notes is not None else (lambda _text: None)
     from ..bench.grid import sweep_K, sweep_grid
     from ..resolve import MachineTranslation
@@ -635,12 +635,13 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     families = gpu_flags if gpu_flags is not None else [bool(on_gpu)]
     mixed = gpu_flags is not None
 
-    # GPUs PER NODE, a count: the probed node's own, else the most a node of
-    # the target's GPU queues holds -- a login node probes none, and the
-    # cluster behind it has them (§ 4.3a: the probe records each partition's
-    # gres on its domain row).  No card (`scheduler.md` R2a).  Needed only
-    # to PROPOSE the device counts: declared counts are kept whatever the
-    # record says, each cell's fit saying so (R6).
+    # GPUs PER NODE, a count (``gpn``, above): the named queue's, else the
+    # most a node of any of the target's GPU queues holds; the probed node's
+    # own only where no queue answers -- a record that lists none, or a
+    # benchmark that goes to none (`generator.md` § 4.3a, *The grid*).  No
+    # card (`scheduler.md` R2a).  Needed only to PROPOSE the device counts:
+    # declared counts are kept whatever the record says, each cell's fit
+    # saying so (R6).
     if any(families) and not gpn:
         if not declared_axes.get("gpu_count"):
             # NAMED BY THE RECORD THAT ANSWERED, renewed in its own two
@@ -662,7 +663,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
                 + f".  If that machine has "
                 f"one, its record is out of date: {_redo}.  Or prep for the "
                 f"machine that has the GPU (`--target`): the comparison is "
-                f"by node type (asu-sol.md § 5.2).")
+                f"by node type (scheduler.md R11).")
 
     # The axes come from the split above -- the value entries already left
     # as pins or value axes, so what remains is machine-answered by
@@ -724,9 +725,12 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     def _family_cells(fam):
         """The machine cells of ONE family, as (G, N, C) -- G=0 is the CPU
         family's held coordinate, G>=1 the device count, N the ranks in
-        all.  Declared counts are the counts, every pair a cell; the
-        machine's proposal (no gpu_count) ranges G over each rank count's
-        divisors."""
+        all (`generator.md` § 4.3a, *The grid*).  Declared device counts
+        (``gpu_count``) are the counts, every pair a cell; a declared rank
+        grid without them takes each rank count's divisors, up to the GPUs
+        a node holds; the machine's proposal ranges G from 1 to the GPUs a
+        node holds (to the largest declared count, filtered to those), its
+        ranks G·K -- K ranks per device."""
         if grid_declared:
             if fam:
                 return sorted({(g, r, c)

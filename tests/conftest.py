@@ -1154,7 +1154,7 @@ def _this_machine_has_been_probed(config_root_is_never_the_developers):
 
     That is a PRECONDITION of prep rather than something prep does for
     you: a machine with no record is refused, naming the
-    command, so the numbers in a wrapper can always be traced to a file
+    command, so the numbers in a run script can always be traced to a file
     somebody can look at *(user: "all environments have to be explicitly
     probed and stored. no environment json, error"; `running-a-job.md`
     § 3.1)*.

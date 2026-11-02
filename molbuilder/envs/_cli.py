@@ -2044,10 +2044,10 @@ def _recommended_activation(conda_binary: "Optional[str]") -> tuple:
     an answer to one.
 
     The distinction is the rule.  ``activation`` is DECLARED, never detected
-    (`running-a-job.md` § 5),
-    and nothing here writes anything: it proposes, the person confirms, and
-    ``--yes`` is the person saying *take the recommendation* -- which is then
-    PRINTED, so a wrong default is visible rather than silent.
+    (`configuration.md` § 4), and nothing here writes anything: it
+    proposes, the person confirms, and ``--yes`` is the person saying *take
+    the recommendation* -- which is then PRINTED, so a wrong default is
+    visible rather than silent.
 
     The split follows the hook.  A ``conda.sh`` on disk means a shell that can
     define the ``conda activate`` function once the hook is sourced -- the
@@ -2211,7 +2211,7 @@ def _ask_projects_root(auto_yes: bool,
                    "being asked.  Written into molbuilder.json as `env_init` "
                    "-- the activation has no default; `jobset probe` copies "
                    "it into the record, and without it every prep for this "
-                   "machine refuses (docs execution/running-a-job.md 5.2).")
+                   "machine refuses (docs/configuration.md § 4).")
 @click.option("--no-probe", "probe", flag_value=False, default=True,
               help="do not write environment.json; `molbuilder jobset probe "
                    "--write` makes it later, copying `env_init` into it.")

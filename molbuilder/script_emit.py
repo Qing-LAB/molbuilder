@@ -50,9 +50,9 @@ from pathlib import Path
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Mapping,
                     Optional, Sequence, Tuple)
 
-# The HOOK BOUNDARY (§ 4.6).  A real import, not a TYPE_CHECKING one: this is
-# called, not annotated.  `issues` is L1 and imports nothing, so there is no
-# cycle to worry about.
+# The HOOK BOUNDARY (`script-preparation.md` § 4.5).  A real import, not a
+# TYPE_CHECKING one: this is called, not annotated.  `issues` is L1 and
+# imports nothing, so there is no cycle to worry about.
 from .issues import calling as _calling
 from . import runfiles as _rf
 # THE BLOCK GRAMMAR IS `deck_record`'s -- the names, the fences, the one JSON
@@ -979,7 +979,7 @@ def deck_values(name: str, engine: str, deck_text: str) -> Dict[str, Any]:
 #                                                                       #
 #  The framework owns the ORDER of the sub-steps and the four that are   #
 #  the same for every engine (validate · reader section · record ·       #
-#  write) plus the frame of the fifth (check).  An engine answers three  #
+#  write) plus the frame of the fifth (check).  An engine answers two    #
 #  doors and never sees a bare value to write, which is what makes       #
 #  "a value is written with its reason" structural rather than a habit.  #
 # --------------------------------------------------------------------- #
@@ -1042,13 +1042,16 @@ class DeckSpec:
     Everything NOT here is the framework's, and an engine that needs a third
     door is evidence the seam is wrong rather than a reason to add a callable.
 
-    **Nine slots and two doors is not a contradiction.**  ``layout`` is door 1
-    and ``line`` is door 2; ``note_lead`` and ``section_title`` are how this
-    engine writes a note and a heading in its own syntax; ``bench_marks`` is
-    the VALUES for a block the framework assembles;
-    ``check_rules`` is what a finished deck of this engine must satisfy; and
-    ``engine`` / ``created_by`` are names.  Only the first two are asked at
-    every item.
+    **Fourteen slots and two doors is not a contradiction.**  ``layout`` is
+    door 1; ``line`` is door 2, with ``note_lead`` and ``section_title`` --
+    how this engine writes a note and a heading in its own syntax;
+    ``bench_marks`` and ``vibration`` are the VALUES for blocks the framework
+    assembles; ``derived`` is W10's context; ``calculation`` and
+    ``engine_frame`` are facts about this deck, ``validate_subject`` is what
+    the settings gate judges, ``check_rules`` is what a finished deck of this
+    engine must satisfy, ``finish`` is the bundle that finishes its run; and
+    ``engine`` / ``created_by`` are names.  Only ``layout`` and ``line`` are
+    asked at every item.
 
     **A form, not a function** (§ 4.3).  A function can only be called; a form
     can be READ -- which is what lets the framework work out what the deck was
@@ -1237,9 +1240,10 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             # (`engines/template.md` § 6.4), so the note says it is fixed
             # and nothing else differs.
             fixed = spec.calculation in tuple(getattr(_decl, "role", ()) or ())
-            # EVERY ENGINE HOOK IS CALLED THROUGH THE BOUNDARY (§ 4.6).  This
-            # walk is a walk over the engine's functions, so an exception with
-            # no owner on it is the ordinary failure here, not an exotic one.
+            # EVERY ENGINE HOOK IS CALLED THROUGH THE BOUNDARY
+            # (`script-preparation.md` § 4.5).  This walk is a walk over the
+            # engine's functions, so an exception with no owner on it is the
+            # ordinary failure here, not an exotic one.
             with _calling("line", engine=spec.engine,
                           where=f"item {name!r}"):
                 text = spec.line(param)
@@ -1635,7 +1639,7 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
 
     ``findings``, when a caller hands in a list, receives both halves of the
     verdict too -- the one prep entry's answer carries them to the doors that
-    cannot read stderr (`jobset/prep.prep_task`, `job-system.md` § 5.3).
+    cannot read stderr (`jobset/prep.prep_task`, `job-system.md` § 5.0).
 
     ``plan`` (`jobset.planned.Plan`) receives the deck and its report instead
     of the disk, and the check reads the deck's text as the plan will write

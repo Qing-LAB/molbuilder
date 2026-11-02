@@ -1650,7 +1650,7 @@ def failed_parts(stopped, tmp_path_factory):
     """THE STOPPED RUN LAUNCHED AGAIN UNDER A WALL ALREADY PASSED
     (:func:`stopped`): a copy of it, its run card given a wall of 20 s
     (`execution.time`, `job-request.md`), prepared again for that job
-    request -- what it computes kept (`job-system.md` § 4, *launched*) --
+    request -- what it computes kept (`job-system.md`, *The states*) --
     and `freq` launched again warm, in the foreground: run-2 takes over
     what run-1 finished, and each optical call it runs is told what is left
     of the run's wall, so SIESTA stops at its first check
@@ -1673,11 +1673,11 @@ def failed_parts(stopped, tmp_path_factory):
 
 
 def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
-    """`run-reports.md` § 2.9: a call that ends not done while the run has
-    calls left to run is said at once -- the call in its words, why, and
-    the run's count, which counts it failed -- and a later call failing for
-    the same reason is not said again; the finish names the first call not
-    done and how many are, its count the failed calls.
+    """`run-reports.md` § 2.9: a call that ends short of done while the run
+    has calls left to run is said at once -- the call by its own word, why,
+    and the run's count, which counts it failed -- and a later call failing
+    for the same reason is not said again; the finish names the first call
+    short of done and how many are, its count the failed calls.
     On the real engine: every optical call of a run launched under a wall
     already passed stops at once, alike.
 
@@ -1707,8 +1707,8 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     assert set(sent) <= {"start", "wall_near", "part_failed", "finish"}, sent
     assert sent.count("wall_near") <= 1, sent
     first = ran[0]
-    # THE WALLED CALL'S OWN LOG says what a launch again does with a point
-    # not done -- runs it as its run's rule starts it -- never a single
+    # THE WALLED CALL'S OWN LOG says what a launch again does with a failed
+    # point -- runs it as its run's rule starts it -- never a single
     # run's "launch this stage again to continue" (`engines/vibration.md`
     # § 5.11 § 6; `running-a-job.md` § 3.5).  MUTATION THIS MUST FAIL
     # AGAINST: the wall line composed without the member flag.
@@ -1720,13 +1720,13 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
         walled_log[-1500:]
     said, = told(run, "part_failed", "freq", n=2)
     assert said.startswith(
-        f"running ({first['words']}: not done -- {first['why']}) | the "
+        f"running ({first['words']}: failed -- {first['why']}) | the "
         f"run: relax done · fc done · optical {len(taken)} of "
         f"{len(optical)} done ({len(taken)} taken over, 1 failed) |"), said
     left = [r for r in rows if not r["done"]]
     finish, = told(run, "finish", "freq", n=2)
     assert finish.startswith(
-        f"failed ({left[0]['words']}: not done -- {left[0]['why']}; "
-        f"{len(left)} of {len(rows)} calls not done) | the run: relax done "
-        f"· fc done · optical {len(taken)} of {len(optical)} done "
+        f"failed ({left[0]['words']}: failed -- {left[0]['why']}; "
+        f"{len(left)} of {len(rows)} calls short of done) | the run: relax "
+        f"done · fc done · optical {len(taken)} of {len(optical)} done "
         f"({len(taken)} taken over, {len(ran)} failed) |"), finish

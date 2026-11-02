@@ -53,7 +53,7 @@ one start, its files named once on its stage's stem
 by the try -- ``<stem>-run0<role>``, its session log stamped with the
 clock -- has each file renamed, every byte kept and its old name said.  A
 run it cannot name so is left as it is, said with its reason, and not read
--- the five reasons of `project-layout.md` § 1.6.1, decided in
+-- the five reasons of `job-request.md` § 8, decided in
 :func:`_migrate_runs`.
 
 **A retired run setting.**  A run setting a
@@ -445,10 +445,11 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     records (`Job.members`; prepared alone, a group of its own); one not
     prepared repeats the number above only where the stage above is not
     prepared either, no stage of that group is one it builds on
-    (`ladder.upstream_of`) and their run cards share one allocation
-    (`group.card_shares`) -- else one more.  A prepared group whose
-    members are not one after another in the ladder cannot be stated by a
-    number, and is refused by name: which jobs to keep is the person's.
+    (`ladder.upstream_of`) and their run cards state what one job's
+    members share (`group.card_shares`) -- else one more.  A prepared
+    group whose members are not one after another in the ladder cannot be
+    stated by a number, and is refused by name: which jobs to keep is the
+    person's.
     A description written since the split (`task@2`) holds no group -- its
     groups are its job request's (`execution/job-request.md` § 3.3)."""
     stages = obj.get("stages")
@@ -514,7 +515,7 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     return [f"stages' groups {' '.join(map(str, groups))} (2026-10-11: "
             f"each stage states the job it runs in -- a prepared one its "
             f"job's, the rest the number above where the ladder allows it "
-            f"and the run cards share one allocation)"]
+            f"and the run cards agree on what one job's members share)"]
 
 
 def _description_view(obj: dict) -> dict:
@@ -1187,7 +1188,7 @@ def _migrate_runs(base: Path) -> Tuple[List[str], List["_Rename"]]:
     any folder of which is not writable here, a new name a file already
     holds or two of its files would take, or a role this molbuilder does
     not name, is LEFT AS IT IS, whole, and said: it is not read
-    (`project-layout.md` § 1.6.1, its five reasons).  A run no job of this
+    (`job-request.md` § 8, its five reasons).  A run no job of this
     machine's holds is read as the copy it is.  Returns what is said and
     the renames, decided before any is made."""
     import os

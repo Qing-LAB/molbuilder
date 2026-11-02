@@ -1,7 +1,7 @@
 """The launch door's engine -- the one entry `launch` runs: its plan, shown
 and asked by the verb, then sent as it was shown (`docs/execution/
-job-system.md` § 6.0; § 5.3, § 7; the wrapper contract is
-`job-contracts.md` § 2).
+job-system.md` § 6.0; § 5.3, § 7; the run script's contract is
+`job-contracts.md` § 2.6).
 
 ``prep`` derives the work and lays out the tree; THIS module sends it, in the
 order § 6.0 states:
@@ -266,8 +266,8 @@ def _needs_header(mode: str, machine) -> bool:
 
 def _scheduler_job_name(jobset: JobSet, name: str) -> str:
     """What the scheduler lists: the calculation, then the job within it --
-    ``bdt_au/coarse``, ``bdt_au/G1N2C4``, ``bdt_au/bench-group-cpu``
-    (`job-system.md` § 6).
+    ``bdt_au/coarse``, a benchmark shelf's ``bdt_au/bench-group-cpu-G0N4C1``
+    (`job-contracts.md` § 6.3).
 
     The id first, because that is the thing you are trying to tell apart
     when several calculations are queued at once, and the job second
@@ -288,8 +288,9 @@ ASK_MAX_QUERIES = 24
 def _no_sbatch(what: str, name: str, *, base, told, machine,
                redo: Optional[str] = None) -> str:
     """The one answer to *there is no scheduler header*, whichever door
-    finds it missing (`job-system.md` § 6.1): prep withholds the
-    ``.sbatch`` where the machine it prepared for names no queue, or where
+    finds it missing (`scheduler.md` § 6a, *When there is no header*):
+    prep withholds the ``.sbatch`` where the machine it prepared for names
+    no queue, or where
     it was told to (``prep --no-sbatch``) -- each said with its own way
     back.  A machine with a queue is another machine, and a
     calculation is set to the machine of its first prep (`configuration.md`
@@ -311,7 +312,7 @@ def _no_sbatch(what: str, name: str, *, base, told, machine,
                                       else ()))])
     if machine.kind.queue:
         # THE MACHINE NAMES A QUEUE, so prep was told to write no header
-        # (`prep --no-sbatch`, `job-system.md` § 6.1's second answer).
+        # (`prep --no-sbatch`, `scheduler.md` § 6a's second case).
         return (f"{what}: there is no scheduler header ({name}) -- it was "
                 f"prepared with --no-sbatch.  To run it here:\n{here}\n"
                 f"  To send it to a queue, prepare it again without "
@@ -319,7 +320,7 @@ def _no_sbatch(what: str, name: str, *, base, told, machine,
                 + (redo or rollback("the benchmark's prep", base=base)))
     return (f"{what}: there is no scheduler header ({name}) -- the "
             f"machine it was prepared for names no queue (its record's "
-            f"scheduler has none, job-system.md § 6.1).  To run it here:\n"
+            f"scheduler has none, scheduler.md § 6a).  To run it here:\n"
             f"{here}\n  For a machine with a queue, prep it for that "
             f"machine (--target, its record's name) -- a calculation is "
             f"set to the machine of its first prep, so "
@@ -333,7 +334,7 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
                                Optional[str]]:
     """THE ONE LINE, for every door that hands work to the scheduler -- a
     stage, a group, a grouped bench's shelf, a run of points
-    (`job-system.md` § 6.1): the header prep wrote -- for a walk, the one
+    (`scheduler.md` § 6a): the header prep wrote -- for a walk, the one
     written from the queue prep recorded and its members' requests -- sent
     as it is.  **Launch decides nothing** (`job-system.md` § 6.0;
     `scheduler.md` R9): the line names the job, carries what the launch
@@ -1556,9 +1557,12 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
     if number is not None and any(m.first for sub in plan.submissions
                                   for m in sub.members):
         # A GROUP'S FIRST LAUNCH: the save its send makes first (R-L24) --
-        # the group named by its members, as every way back names it.
+        # the group named by its members, as every way back names it, and
+        # inside a sequence's job, that job and its sequence.
+        from .commands import launch_save_note
         from .group import named
-        plan.save_before = f"launch task {named(calc.request, number)}"
+        plan.save_before = launch_save_note(named(calc.request, number),
+                                            inside)
     return plan
 
 
@@ -2204,7 +2208,7 @@ class WalkCommand(str):
 class WalkLoop:
     """A walk step over the folders a glob matches WHEN THE STEP RUNS -- the
     planned points below a container of the run, which its job plans
-    (`execution/runs-of-points.md` § 1.1, *the loop step*): each folder's
+    (`execution/runs-of-points.md` § 1.2, *the loop step*): each folder's
     run script
     ``run_sh``, run with ``args`` as a member named ``<member>@<folder>``;
     ``skip``, the folders this launch took over, passed over by name;
@@ -2239,12 +2243,12 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     a glob matches when the step runs -- and ``before`` the files copied
     into it just before it starts -- ``(source, folder)`` pairs, a sweep's
     start (its `along` row), a call's seed; ``()`` for every other walk.
-    ``bound_s`` is a per-member bound, a member past it killed and read
-    incomplete (a benchmark's).  A member that fails leaves the rest to
-    run, and the walk exits nonzero when any failed -- unless ``needs``
-    names, for each step, the steps it builds on -- an index, a tuple of
-    them, or ``None`` for none (a device point's start,
-    the point before it in its frame, `engines/transport.md` § 2a.9; a
+    ``bound_s`` is a per-member bound, a member past it killed, and it
+    reads *failed* (a benchmark's, `generator.md` § 4.3a).  A member that
+    fails leaves the rest to run, and the walk exits nonzero when any
+    failed -- unless ``needs`` names, for each step, the steps it builds
+    on -- an index, a tuple of them, or ``None`` for none (a device point's
+    start, the point before it in its frame, `engines/transport.md` § 2a.9; a
     vibration's force constants its relaxation, § 5.11 § 5): a step whose
     need failed, or was not run, is not run, and the walk goes on with the
     rest.  Stopped by the person (Ctrl-C at a launch waited on, a lost
@@ -2279,7 +2283,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     finds any of them refuses before it starts a point -- a job its
     scheduler requeued ends so, without running -- naming ``again``, the
     launch that opens the next run (`execution/runs-of-points.md` § 3).
-    THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
+    THE TWO-LAYER MODEL HOLDS (`scheduler.md` § 6a): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
     from ..identity import holds_a_start
@@ -2290,7 +2294,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "#!/usr/bin/env bash",
         f"# {GroupNames(name).name('.run.sh')} -- {where}, in sequence",
         "# (job-system.md § 6.0).  Regenerated at each launch.  THE TWO-LAYER",
-        "# MODEL HOLDS (job-system.md § 6): this file is the launcher layer",
+        "# MODEL HOLDS (scheduler.md § 6a): this file is the launcher layer",
         "# only -- ordering, starts and bounds.  Env activation and the",
         "# engine launch stay in each member's own .run.sh, exactly as when",
         "# it runs alone.  A walk whose own steps run molbuilder enters",
@@ -2346,7 +2350,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "    _rc=$?",
         '    if [ "${_rc}" -eq 124 ]; then',
         (f'        echo "{head} ${{_name}} hit the {bound_s}s '
-         f'per-{member_word} bound -- killed; its artifacts read incomplete" >> "$LOG"'
+         f'per-{member_word} bound -- killed; it reads failed" >> "$LOG"'
          if bound_s else
          f'        echo "{head} ${{_name}} killed (124)" >> "$LOG"'),
         "    fi",

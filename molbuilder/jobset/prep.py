@@ -227,8 +227,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
                 # write is one an earlier prep left -- a header for a queue
                 # since dropped, a correction script for a charge since made
                 # 0 -- and is taken away, never sent, run or read as this
-                # one's (`job-system.md`, *The task*, `prep task` 5; § 6.0,
-                # *every header is prep's*).
+                # one's (`job-system.md` § 5.0, checkpoint 6;
+                # `scheduler.md` § 5.1, *every header is prep's*).
                 for _name in beside_the_deck(_deck.name, job.finish, _names):
                     _left = _deck.parent / _name
                     if not plan.decides(_left) and _left.is_file():
@@ -304,7 +304,7 @@ def this_prep_lines(stage: str, takes) -> List[str]:
 
 
 # --------------------------------------------------------------------- #
-#  The five steps, entire — `project-layout.md` § 2.3.1                  #
+#  The five steps, entire — `script-preparation.md` § 3.0               #
 # --------------------------------------------------------------------- #
 
 def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
@@ -896,7 +896,7 @@ def prep_calculation(calc, stage: Optional[str], *,
                      notes: Optional[list] = None,
                      copied: bool = False,
                      contours: Optional[dict] = None) -> List[Path]:
-    """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
+    """**`prep`, entire** — the five steps of `script-preparation.md` § 3.0, in
     the order it calls *forced rather than chosen*.  ``notes`` is the
     planner's list, handed down to step 4 for what a rendering says.
 
@@ -1025,7 +1025,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     log.phase("STEP 2 · RESOLVE — the values for this rung")
     log.received(template_path.name, f"{len(pset[0].provenance)} fields")
     log.received("stage", pset.stage)
-    log.received("allocation", _flat_resources(allocation or Resources()))
+    log.received("the ask", _flat_resources(allocation or Resources()))
     # EACH VALUE'S SOURCE IN THE ONE VOCABULARY, the words `resolve`
     # composed for the deck's table (`ResolvedConfig.said`, `engines/
     # template.md` § 5.4).
@@ -1153,7 +1153,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             if element.is_trial:
                 # The deck's OWN identity line carries the trial label -- this,
                 # not the filename, is what keys SIESTA's warm files away from
-                # the real run's (project-layout.md § 2.3.2).
+                # the real run's (generator.md § 4.2).
                 with _calling("relabel", engine=task.engine,
                               where=element.label):
                     cfg = seam.relabel(cfg, element.label)
@@ -1513,7 +1513,7 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
     states.  Each that differs, named from the calculation; none when the
     plan writes the stage as it stands.  The comparison a prep of a group
     prepared and never launched asks, and only of such a stage
-    (`job-system.md`, *The task*, 2); launch compares nothing (§ 6.0).
+    (`job-system.md` § 5.0, checkpoint 2a); launch compares nothing (§ 6.0).
     ``prepared`` is the stage's row on disk, ``planned`` the row the plan
     holds for it (``None`` when it planned none)."""
     from ..deck_record import same_calculation
@@ -1793,7 +1793,8 @@ def _merge_run_jobset(old: Optional[JobSet], new: JobSet,
 
 
 def _flat_resources(resources) -> str:
-    """One allocation as one line — the fields it actually carries.
+    """One request -- the ask, or a job's resources -- as one line: the
+    fields it actually carries.
 
     ``None`` means *not asked for* and is left out rather than printed as a
     null: a line of ``domain=None, time=None, gres=None`` is noise in a file
@@ -2014,7 +2015,7 @@ def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
 
 
 # --------------------------------------------------------------------- #
-#  The prep verb's ONE entry (`job-system.md` § 5.3; plan W38 F7)       #
+#  The prep verb's ONE entry (`job-system.md` § 5.0; plan W38 F7)       #
 # --------------------------------------------------------------------- #
 #
 # `prep` has two doors -- `molbuilder jobset prep` and the Task setup tab's
@@ -2025,7 +2026,7 @@ def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
 @dataclass
 class PrepAnswer:
     """What one prep found and decided -- the whole of what either door shows
-    (`job-system.md` § 5.3's table)."""
+    (`job-system.md` § 5.0, *What prep answers*)."""
     kind: str
     stage: Optional[str]
     #: WITH NO GROUP NAMED, what the calculation's own record took: a
@@ -2035,8 +2036,8 @@ class PrepAnswer:
     recorded: Optional[str] = None
     #: A STAGE OF A GROUP ALREADY AS THIS PREP PLANS IT -- prepared, never
     #: launched, its decks, scripts and row what prep writes now: the
-    #: sentence both doors say, nothing written for it (`job-system.md`,
-    #: *The task*, 2); ``None`` for a stage this prep prepares.
+    #: sentence both doors say, nothing written for it (`job-system.md`
+    #: § 5.0, checkpoint 2a); ``None`` for a stage this prep prepares.
     unchanged: Optional[str] = None
     #: A STAGE PREPARED, NEVER LAUNCHED, AND PREPARED AGAIN: the files and
     #: the row of its that differ from what this prep writes now, named
@@ -2938,7 +2939,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     :class:`~molbuilder.jobset.planned.Plan` by the one member planner
     (:func:`plan_stage`), each seeing what those before it planned; then
     each group's own checks -- the members
-    share one allocation (`group.envelope`), and that request, the walls
+    share one job's request (`group.envelope`), and that request, the walls
     summed and the largest memory, is placed on the queue it names, as a
     run's is (`placement.placed`) -- its one header, a header of a job
     formed again taken away, and each member's row naming its group, all in
@@ -3308,7 +3309,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             + [need(description.calc, j.name, j.resources.mpi_np)
                for n in sequence if n not in previews for j in jobs_of[n]])
             .to_wire())
-    # 2d · NOTHING TO WRITE (`job-system.md`, *The task*, 2; checkpoint 2a):
+    # 2d · NOTHING TO WRITE (`job-system.md` § 5.0, checkpoint 2a):
     #      a group prepared, never launched, and planned now as it stands --
     #      each member's decks, scripts and row (`prepared_differs`), its
     #      members, its record of what it was prepared with and the group's

@@ -17,22 +17,22 @@ from .errors import PrepError
 #: § 3.1's -- a machine's facts are read from a record and nowhere else, the
 #: local box included -- and the reason it is worth a refusal rather than a
 #: probe is that a probed-on-the-fly number is indistinguishable from a
-#: recorded one once it is in a wrapper.
+#: recorded one once it is in a run script.
 _NO_RECORD = (
     "no machine record for this machine, so there is nothing to prep "
     "against.\n"
     "  Record it, once:\n"
     "      {cmd}\n"
     "  A machine's cores, GPUs and queues are read from a record and never "
-    "probed on the fly -- so the numbers in a wrapper can always be traced "
+    "probed on the fly -- so the numbers in a run script can always be traced "
     "to a file you can look at (running-a-job.md 3.1)."
 )
 
 
 def set_machine(base_dir, target: Optional[str] = None, *,
                 environment, plan) -> Path:
-    """**Step 1 of the five: resolve the machine** (`project-layout.md`
-    § 2.3.1) — the machine's record (its cores, GPUs, scheduler and
+    """**Step 1 of the five: resolve the machine** (`script-preparation.md`
+    § 3.0) — the machine's record (its cores, GPUs, scheduler and
     environment), as the prep entry read it, snapshotted as
     ``environment.json`` beside the bundle.
 

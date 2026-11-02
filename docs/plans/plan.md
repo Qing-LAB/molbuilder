@@ -25,43 +25,32 @@ as they stood.
 
 ---
 
-## ▶ HANDOVER — where we are, and where to start *(2026-11-01)*
-**Where we are: 2.62.0.** The releases are the changelog's rows; the
+## ▶ HANDOVER — where we are, and where to start *(2026-11-02)*
+**Where we are: 2.62.1.** The releases are the changelog's rows; the
 history this handover carried, release by release, and the checks each
 release ran are in [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md),
 *The handover's history*, and the finish-line review's ledger. The last
-two: the whole-jobset review's **Release A** — a run's end known wherever
+three: the whole-jobset review's **Release A** — a run's end known wherever
 it runs, older runs renamed, only `jobset launch` starts a run (2.61.0) —
-and **Release B** — what a stage was prepared with compared over the run
-card's stated values, a sequence's header taken away by a prep of one of
-its groups, a run of points said to continue only from a run it takes
-from, the ways out and the transport describe's checks composed once
-(2.62.0).
+its **Release B** — what a stage was prepared with, a sequence's header, a
+run of points' continuation, the ways out composed once (2.62.0) — and,
+after the jobset documents' consolidation *(the user, 2026-11-01; docs
+only, [`execution/overview.md`](?doc=execution/overview.md) the one route
+in)*, **2.62.1** — the code's text brought to the rewritten chapters, a
+save made by a sequence's job said in its note *(the user, 2026-11-01)*,
+the label cap counting the stage token, one word for a point's state.
 
-**Last checked**: the fast batch on 2.62.0's code (6,428 passed); Release
-B's review over its diff, each finding checked in the code before it was
-fixed (the ledger's *Found by Release B's review*); each new test seen
-failing on the old code or by a deliberate break of its fix. **No e2e**;
-**untested** is listed in 2.62.0's row. Nothing from the review waits on
-the user: its set-aside rows are closed or parked, each with its reason
-(the ledger).
+**Last checked**: the fast batch on 2.62.1's code (6,429 passed); two
+review rounds over its diff, each finding checked in the code before it
+was fixed; each new test seen failing on the old code. **No e2e**;
+**untested** is listed in 2.62.1's row. A whole-suite run found two
+real-engine tests failing on code older than 2.62.1 — the ledger's
+E2E-MON and E2E-STOP, F9's. Nothing waits on the user.
 
-**Done after 2.62.0, docs only: the jobset documents' consolidation** *(the
-user, 2026-11-01)* — twenty chapters rewritten to one home per fact under
-the ownership map the user agreed, each checked against the code in two
-review rounds; [`execution/overview.md`](?doc=execution/overview.md) is the
-one route in. The review's drifting sentences (R11, R13, S13, P8, L9,
-A-doc) closed with it (the ledger's *Found by the jobset documents'
-consolidation*).
-
-**What runs next** is **2.62.1** — the code text the chapters now
-contradict (help texts, messages, comments and test cites, ≈40 sites), a
-save made by a sequence's job said in its note (the user, 2026-11-01), and
-`identity._cap_for`'s 3-byte gap, verified first — then **F2** — the run
-script names no engine — then the releases in the order of *The one plan*
-— the user's to change. **The user's decisions** are under *Decided*;
-**what only Sol can show** and **new science** are under *After the finish
-line*.
+**What runs next** is **F2** — the run script names no engine — then the
+releases in the order of *The one plan* — the user's to change. **The
+user's decisions** are under *Decided*; **what only Sol can show** and
+**new science** are under *After the finish line*.
 
 **Off the plan** (the user, 2026-10-18): every feature the three roads do not
 need; any check, warning or format the contracts do not state. The AuBDTAu

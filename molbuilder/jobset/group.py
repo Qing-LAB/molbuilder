@@ -1,6 +1,5 @@
 """A GROUP: the stages that run as one job, by the number each states in
-the job request (`execution/job-request.md` § 3.3, `project-layout.md`
-§ 1.6.6; plan § 5aa).
+the job request (`execution/job-request.md` § 3.3; plan § 5aa).
 
 Stages that do not build on one another -- a transport ladder's seed and its
 two leads -- wait in the queue once instead of once each.  Each member is
@@ -18,7 +17,7 @@ This module answers the group's questions, each in one place:
   **the numbers a new calculation takes** (:func:`default_groups`,
   :func:`fresh_groups`) and **whether the stated ones keep it**
   (:func:`check_groups`);
-* **can the members share one allocation** (:func:`envelope`) -- one queue,
+* **can the members share one job's request** (:func:`envelope`) -- one queue,
   one count of ranks, cores per rank and GPUs; the wall the sum of theirs,
   the memory the largest;
 * **what the group's files are called** (:func:`names_for`,
@@ -46,7 +45,7 @@ class GroupError(ValueError):
     why, in the person's words."""
 
 
-#: WHAT ONE JOB'S MEMBERS SHARE (`project-layout.md` § 1.6.6) -- each
+#: WHAT ONE JOB'S MEMBERS SHARE (`job-request.md` § 3.3) -- each
 #: `Resources` field, by its word.  A run card's key is read through the
 #: exchange map (`model.AS_RESOURCE`: SIESTA's `omp_threads` and PySCF's
 #: `threads` are `cpus_per_task`, `gpu_count` the count in `gres`); the GPU
@@ -202,7 +201,7 @@ def check_groups(task, request, template_text: Optional[str] = None
 
 
 def envelope(jobs: Sequence) -> "Resources":
-    """The one allocation the members share, or :class:`GroupError` naming
+    """The one job's request the members share, or :class:`GroupError` naming
     the member that cannot: one queue (its placement's domain), one count of
     ranks, cores per rank and GPUs, one GPU binding; the wall the sum of the
     members' walls (they run one after another), the memory the largest."""
@@ -227,9 +226,9 @@ def envelope(jobs: Sequence) -> "Resources":
                 f"`{j.name}` cannot share `{first.name}`'s job: its "
                 + ", ".join(f"{k} {got[k]!r} against {want[k]!r}"
                             for k in differ)
-                + ".  A group runs in one allocation; state the same for "
-                  "each (project-layout.md § 1.6.6), or give them groups of "
-                  "their own.")
+                + ".  A group's members share one job's request; state "
+                  "the same for each (execution/job-request.md § 3.3), or "
+                  "give them groups of their own.")
     walls = [j.resources.time for j in jobs]
     wall = (slurm_time(sum(parse_walltime(str(w)) for w in walls))
             if all(walls) else None)
@@ -247,7 +246,7 @@ def envelope(jobs: Sequence) -> "Resources":
 
 def own_request(jobs: Sequence, points: int = 0) -> "Resources":
     """The request a group's own job sends -- what its own header asks
-    (`job-system.md` § 6.0, *The placement*): its members' shared request
+    (`scheduler.md` § 5.1): its members' shared request
     (:func:`envelope`) for several; a run of points', every point's wall
     (``points`` of them); a stage's own, alone.  Its queue the placement's
     domain, where prep placed it."""
@@ -381,7 +380,7 @@ def formed_again(request, jobs, numbers) -> List[int]:
     """The groups a prep of ``numbers`` names: those, and every group a
     member of a prepared job (``jobs``) of theirs is in now, wherever that
     job's members are no longer one group -- a job is formed again whole,
-    in one prep (`job-system.md`, *The task*, step 3) -- until none is
+    in one prep (`job-request.md` § 3.3) -- until none is
     left out."""
     from ..identity import stage_key
     group_of = {stage_key(n): e.group for n, e in request.stages.items()}

@@ -596,7 +596,7 @@ machine takes:
 
 ```text
 Error: no --mode, and molbuilder.json sets no `launch.mode`.
-  'direct' runs it here with bash; 'submit' hands it to the scheduler.  Set launch.mode once for this machine (running-a-job.md § 5.4), or say the mode on the line:
+  'direct' runs it here with bash; 'submit' hands it to the scheduler.  Set launch.mode once for this machine (configuration.md § 4), or say the mode on the line:
     …the launch as typed, once per mode
 ```
 

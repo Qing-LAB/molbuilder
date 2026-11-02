@@ -706,7 +706,7 @@ def _finished_point(finished, stage: str, pt):
                    launched_in=newest)
     if not ok:
         return None, newest, (f"{fbase.name}/{src.relative_to(fbase)} is "
-                              f"not done -- {why}")
+                              f"short of done -- {why}")
     return src, newest, None
 
 
@@ -801,7 +801,7 @@ def _member(calc, finished, stage: str, once, copied: set
                             launched_in=newest)
             if not ok:
                 return no(f"{stage}: {fbase.name}/{src.relative_to(fbase)} "
-                          f"is not done -- {said}")
+                          f"is short of done -- {said}")
             pairs.append((pt, src))
     else:
         _c, state, _v, detail = read_run(fbase, ftask, stage, newest,
@@ -819,7 +819,7 @@ def _member(calc, finished, stage: str, once, copied: set
                             must_hold=must_hold(stage, ftask.label, newest,
                                                 base_dir=fbase))
             if not ok:
-                return no(f"{stage}: {shown} is not done -- {said}")
+                return no(f"{stage}: {shown} is short of done -- {said}")
         pairs.append((None, newest))
     # THE SAME CALCULATION as the deck this calculation renders for it now,
     # at each of its results (`engines/transport.md` § 6.1).
@@ -900,10 +900,9 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     if not missed:
         return None
     return (f"{fbase.name}/{newest.relative_to(fbase)} holds "
-            + ("a result that is" if len(missed) == 1 else
-               "results that are")
-            + f" not done: {'; '.join(missed)} -- a result that is not done "
-              f"can mean a problem in the physics or in the parameter "
+            + ("a result" if len(missed) == 1 else "results")
+            + f" short of done: {'; '.join(missed)} -- a result short of "
+              f"done can mean a problem in the physics or in the parameter "
               f"choices")
 
 

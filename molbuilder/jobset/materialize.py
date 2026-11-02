@@ -378,7 +378,7 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     (`engines/transport.md` § 2a.11).  The run is the
     stage's newest when it has not been launched -- reused, and emptied
     whole first (:func:`empty_run`) -- else the next (a launch again,
-    `job-system.md` § 5.4, rule 3).  Each point
+    `job-system.md` § 5.4, *A stage launched again*).  Each point
     folder is a run folder (`open_run`); the run above them is their
     container.  What the
     points take from upstream is the caller's (launch's gather), and what

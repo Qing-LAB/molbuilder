@@ -220,11 +220,19 @@ def test_the_cap_is_derived_from_what_gets_appended_to_the_id():
 
 def test_a_known_ladder_tightens_the_cap_instead_of_guessing():
     """The 32-character stage budget is a guess for the case where the id is
-    named before its stages exist. Where they DO exist, the real longest name
-    is used — and a long stage name makes the id's room smaller, which is the
-    honest direction for the error to go."""
+    named before its stages exist. Where they DO exist, the real longest
+    stage TOKEN is used — the file is ``<label>_<NN>_<stage><role>``
+    (run-identity.md § 3), so a label exactly at that cap names a 255-byte
+    file and one byte more is refused.  THE SILENT FAILURE: a cap counting
+    the stage name without its ``NN_`` admits a label whose longest file
+    name passes the filesystem's limit."""
+    from molbuilder.runfiles import engines, longest_tail
     long_stage = "a_very_long_stage_name_indeed_beyond_the_budget"
     at_default = "x" * MAX_LABEL_BYTES
     assert normalise_id(at_default)
     with pytest.raises(ValueError, match="the limit is"):
         normalise_id(at_default, stage_names=["coarse", long_stage])
+    cap = 255 - len(f"_01_{long_stage}") - len(longest_tail(engines()))
+    assert normalise_id("x" * cap, stage_names=["coarse", long_stage])
+    with pytest.raises(ValueError, match="the limit is"):
+        normalise_id("x" * (cap + 1), stage_names=["coarse", long_stage])

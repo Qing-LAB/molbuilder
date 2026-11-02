@@ -142,3 +142,36 @@ def test_what_one_job_refuses(cluster, case):
         out = launched.output
     assert all(w in out for w in case["says"]), out
     assert calls_made(calls) == []
+
+
+def test_a_launch_inside_the_job_names_it_in_the_state_it_saves(cluster):
+    """A group's first launch inside a sequence's job saves the folder with
+    a note naming the job and the sequence, and the group's way back still
+    finds that state by its note (`checkpointing.md` § 9, *The note an act
+    writes*; the user, 2026-11-01).  THE SILENT FAILURE: a state the job
+    took at 03:12 reading like one the person's own launch took -- or, once
+    it says so, a way back that no longer finds it.  The job's own launch is
+    planned here as the walk types it (`--in-sequence`, `--in-job`), from
+    the record the sequence's send wrote; running it is the e2e's."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.checkpoint import save_before
+    from molbuilder.jobset.commands import redo_launched
+    from molbuilder.jobset.submit import Inside, plan_launch
+    bundle, _calls = cluster
+    _cards(bundle)
+    r = jobset("prep", "task", "--group", "1", "--group", "2", "--one-job",
+               "--domain", "htc", "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    r = jobset("launch", "task", "--group", "1", "--group", "2",
+               "--bundle", bundle, "--mode", "submit", "--yes")
+    assert r.exit_code != 0, r.output        # the suite's sbatch refuses
+    name = "H2_sequence-01_coarse-02_medium"
+    plan = plan_launch(open_calculation(bundle), mode="direct", told={},
+                       group=1, record=False,
+                       inside=Inside.of(bundle, name, "4817"))
+    assert plan.save_before == (
+        f"launch task group 1 (coarse), in job 4817 (sequence {name})"), \
+        plan.save_before
+    kept = save_before(bundle, plan.save_before, engine=plan.engine)
+    way = redo_launched("coarse", calc=open_calculation(bundle))
+    assert kept.state.short in way, way

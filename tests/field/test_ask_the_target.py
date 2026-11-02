@@ -4,9 +4,10 @@ reads its answer (`docs/process/testing.md` § 0, tier 2).
 Goal: `jobset launch task --mode ask` on the machine a probed record describes:
 the line asked about is the one `submit` would send, the real scheduler is
 asked once with `--test-only`, its answer reads as a start time, and nothing is
-submitted or recorded.  Contract: `execution/running-a-job.md` § 5.5 (*"no job
-is created, nothing is recorded, and `status` sees nothing"*), `job-system.md`
-§ 6.0 (the line asked about is the line that would be sent).
+submitted or recorded.  Contract: `execution/submission.md` S4, *Asking
+without sending* (`--mode ask` submits nothing; one question per submission,
+as `submit` would send it), `job-system.md` § 6.0 (the line asked about is the
+line that would be sent).
 
 What a scheduler prints is read only here, where one prints it (user,
 2026-10-06: *"there should be no assumption what so ever about the text

@@ -7,10 +7,10 @@ the session log's own line; a monitor that died loading says ``starting``, one
 The monitor opens its `.monitor.log` only once it has loaded, so the session
 log is the one place a failed load can be seen at all.
 
-And the wrapper's ending door, which reads the same bundle: it asks ONCE
+And the run script's ending door, which reads the same bundle: it asks ONCE
 whether the ending can be read, so a bundle that cannot load prints its
-error once and the wrapper says the ending cannot be read (`job-contracts.md`
-§ 2.6, *the one ask*).
+error once and the run script says the ending cannot be read
+(`running-a-job.md` § 3.5, *the one ask*).
 
 Driven through ``molbuilder describe`` -> ``prep task`` -> ``launch task --mode
 direct``: the pass's H2 PySCF run, as prepared (`support.real_runs.pyscf`);

@@ -29,9 +29,9 @@ Schema (all sections optional)::
 
 A top-level ``cert`` / ``key`` is **refused by name** with the ``tls``
 spelling shown (``_RETIRED_FLAT_TLS``).  **An unknown top-level key is
-REFUSED with the known sections named** (U7; ``_``-prefixed keys are
+REFUSED with the known sections named** (``_``-prefixed keys are
 comments); the one total list of sections is the ``_SECTIONS`` registry
-below (architecture § 8.2a).
+below (`configuration.md` § 4).
 
 This reader is intentionally stateless: it reads the file each time
 it's called, parses, validates.  Callers that want a single
@@ -529,7 +529,7 @@ _HOST_ENV_FIXED = (
 def _is_comment(key) -> bool:
     """A key starting with ``_`` is a COMMENT ("_comment_tls": ...) -- JSON
     has no comments and the committed templates lean on this idiom
-    (`execution/architecture.md`'s one carve-out from refusing unknown keys):
+    (`configuration.md` § 4's one carve-out from refusing unknown keys):
     every reader skips it and nothing reports it as supplied."""
     return str(key).startswith("_")
 
@@ -656,7 +656,7 @@ _LAUNCH_MODES = ("direct", "submit")
 
 def _read_launch(raw: Mapping[str, Any]):
     """``launch`` -- how `jobset launch` sends a job when no ``--mode`` is
-    given (`running-a-job.md` § 5.4).  ``mode`` is its one key; another is
+    given (`configuration.md` § 4).  ``mode`` is its one key; another is
     refused by name, because a key nothing reads looks effective and is not.
     A ``_``-prefixed key is a comment, as at the top level."""
     section = _require_object_section(raw, "launch")
@@ -669,7 +669,7 @@ def _read_launch(raw: Mapping[str, Any]):
     if mode is not None and mode not in _LAUNCH_MODES:
         raise RuntimeConfigError(
             f'{CONFIG_FILENAME}: launch.mode must be "direct" or "submit"; '
-            f"got {mode!r} (docs/execution/running-a-job.md § 5.4).")
+            f"got {mode!r} (docs/configuration.md § 4).")
     return section
 
 
@@ -999,8 +999,8 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     refused BY NAME, showing the section to write, rather than as an
     "unknown top-level key".
 
-    **An unknown top-level key is an ERROR, not tolerance** (U7;
-    running-a-job.md § 5): ignoring one would swallow every typo'd section
+    **An unknown top-level key is an ERROR, not tolerance**
+    (`configuration.md` § 4): ignoring one would swallow every typo'd section
     name.  The registry makes "known" one total list, so refusing is precise and the message can
     name what IS known.
 
@@ -1030,7 +1030,7 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f".  A key this loader does not "
             f"know would be silently ineffective -- refused instead, so a "
             f"typo cannot masquerade as configuration "
-            f"(running-a-job.md § 5).  A key starting with '_' is a "
+            f"(docs/configuration.md § 4).  A key starting with '_' is a "
             f"comment and is ignored by design."
         )
     out: Dict[str, Any] = {}
@@ -1495,7 +1495,7 @@ def get_paths() -> Dict[str, Any]:
 
 def get_launch_mode() -> Optional[str]:
     """This machine's ``launch.mode`` -- ``"direct"``, ``"submit"`` or ``None``
-    (`running-a-job.md` § 5.4).  ``None`` is UNSET, and `launch` then refuses
+    (`configuration.md` § 4).  ``None`` is UNSET, and `launch` then refuses
     rather than derive one: deciding ``submit`` from a DETECTED scheduler
     would gate submission on detection.  It arrives validated
     (:func:`_read_launch`), so nothing is checked here."""

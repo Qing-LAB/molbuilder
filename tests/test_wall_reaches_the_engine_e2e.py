@@ -59,8 +59,8 @@ def walled(isolated_projects_root_module, tmp_path_factory):
                    "--name", "H2", "--psml-lib", "pseudopotential",
                    "--stage-strategy", "publishable")
         assert r.exit_code == 0, r.output
-        # THE WALL ITS RUN CARD STATES (`running-a-job.md` § 5.3.1's
-        # chain), 20 s, so the engine, told what is left and the 600 s
+        # THE WALL ITS RUN CARD STATES (`architecture.md` § 5.2's
+        # ladder), 20 s, so the engine, told what is left and the 600 s
         # slack, stops at its first check.
         one_rank(bundle, time="00:00:20")
         r = jobset("prep", "task", *group_words(bundle, "coarse"),

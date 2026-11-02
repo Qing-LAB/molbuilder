@@ -2420,8 +2420,9 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
     """`run-reports.md` § 2.9: a transmission whose every point fails --
     TBtrans refusing its k-point grid -- says the first failure at once and
     no second of the same reason; a round whose points all ended is its
-    milestone, each frame's point not done and why; the finish says the run
-    failed, the first point not done and how many, and the last round.
+    milestone, each frame's point by its own word and why; the finish says
+    the run failed, the first point short of done and how many, and the last
+    round.
     `status` counts the points that failed beside those done.  The silent
     failures: a message per failed point, a round never said because no
     point of it was done, a run said finished."""
@@ -2447,11 +2448,11 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
     def round_said(volts):
         from molbuilder.structure import frame_words
         return (f"{volts:g} V -- G/G0: " + ", ".join(
-            f"{frame_words(r['frame'], _N_FRAMES)} not done -- {r['why']}"
+            f"{frame_words(r['frame'], _N_FRAMES)} failed -- {r['why']}"
             for r in rows if r["bias_v"] == volts))
     said, = told(c, "part_failed", "transmission", n)
     assert said.startswith(
-        f"running ({rows[0]['words']}: not done -- {rows[0]['why']}) | "
+        f"running ({rows[0]['words']}: failed -- {rows[0]['why']}) | "
         f"the run: {_count(0, total, _N_FRAMES, failed=1)} |"), \
         said
     milestone, = told(c, "milestone", "transmission", n)
@@ -2461,8 +2462,8 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
         milestone
     finish, = told(c, "finish", "transmission", n)
     assert finish.startswith(
-        f"failed ({rows[0]['words']}: not done -- {rows[0]['why']}; "
-        f"{total} of {total} points not done; {round_said(_BIAS[1])}) | "
+        f"failed ({rows[0]['words']}: failed -- {rows[0]['why']}; "
+        f"{total} of {total} points short of done; {round_said(_BIAS[1])}) | "
         f"the run: {_count(0, total, _N_FRAMES, failed=failed)} |"), finish
     status = c.said["status transmission"].output
     assert _count(0, total, _N_FRAMES, failed=failed) in status, status
@@ -2520,8 +2521,8 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
     finish, = told(c, "finish", "device", n)
     count = _count(0, 2, 1, failed=1, not_run=1)
     assert finish.startswith(
-        f"failed ({first['words']}: not done -- {first['why']}; 2 of 2 "
-        f"points not done; {_BIAS[0]:g} V: not done -- {first['why']}) | "
+        f"failed ({first['words']}: failed -- {first['why']}; 2 of 2 "
+        f"points short of done; {_BIAS[0]:g} V: failed -- {first['why']}) | "
         f"the run: {count} |"), finish
     assert device.state == "failed" and count in device.detail, (
         device.state, device.detail)
@@ -4622,7 +4623,7 @@ def test_a_result_that_did_not_finish_is_computed_here_and_named(reused):
     reusing one whose transmission was stopped in its loop -- the seed, the
     leads and the device copied in; the transmission prepared here, the
     plan naming its newest run and that it failed; no older run stands in;
-    and the plan warns of the result that is not done, how it ended, and
+    and the plan warns of the result short of done, how it ended, and
     that it can mean a problem in the physics or in the parameter choices
     (*The manifest*; the user, 2026-10-25).  The silent failure: a result
     that never finished copied in as if it had."""
@@ -4637,8 +4638,8 @@ def test_a_result_that_did_not_finish_is_computed_here_and_named(reused):
     (warned,) = [ln.strip() for ln in bare.splitlines()
                  if ln.strip().startswith("warning:")]
     assert warned.startswith("warning: S-stopped-in-its-loop/"
-                             "05_transmission/run-0 holds a result that is "
-                             "not done") \
+                             "05_transmission/run-0 holds a result short "
+                             "of done") \
         and "stopped before its end" in warned \
         and "a problem in the physics or in the parameter choices" \
         in warned, warned

@@ -60,8 +60,8 @@ def _describe(struct, cfg, stages=_ONE_STAGE, *, name="relax", source="structure
 def test_describing_writes_no_deck(struct, cfg, tmp_path):
     """**The route's whole definition.**  A deck carries values that depend on
     how it will be launched — ``BlockSize`` above all — so rendering belongs to
-    ``prep`` on the machine that will run it.  A ``describe`` that emitted a
-    deck would put step 3 before step 1 (`project-layout.md` § 2.3.1)."""
+    ``prep``, for the machine that will run it.  A ``describe`` that emitted a
+    deck would put step 3 before step 1 (`script-preparation.md` § 3.0)."""
     written = D.write_description(_describe(struct, cfg,
                                             engine_ladder("siesta", "publishable")),
                                   tmp_path / "calc")

@@ -1,6 +1,6 @@
 """SIESTA's answers to the emission doors — `execution/script-preparation.md` § 4.2.
 
-The same three doors PySCF answers, answered differently, which is the point:
+The same two doors PySCF answers, answered differently, which is the point:
 SIESTA's deck is a keyword list a reader may scan in any order, so its sections
 are conventions rather than execution order, and its notes are long enough that
 each is headed by the keyword it writes.
@@ -78,7 +78,7 @@ FREE_ENERGY_SECTION = Section(
 SCF_TAIL_SECTION = Section(
     # NAMED: a nameless section is a layout that stops saying what that part
     # of the deck IS, which is the one thing a layout is for
-    # (`script-preparation.md` § 4.1).
+    # (`script-preparation.md` § 4.2).
     "SCF iteration limit and smearing",
     ("max_scf_iter", "scf_must_converge", "electronic_temperature"),
 )

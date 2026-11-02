@@ -298,7 +298,7 @@ class PointOfRun:
     own steps, which the report steps run in their place: ``steps``, a verb
     of the job's bundle (``finish``) per moment, ``before``, ``after`` and
     ``finish`` (the kind table's record, `kind_table.RunOfPoints.steps`).
-    ``relaunch`` is what a launch again does with the point not done --
+    ``relaunch`` is what a launch again does with a point short of done --
     ``again`` or ``continue`` (`PointsOf.relaunch_of`): what the run
     script says after a failure (:func:`_launch_again`)."""
     relaunch: str = AGAIN
@@ -800,7 +800,7 @@ def _gpu_loadbalance_block() -> str:
     EMITS  one stderr line ``molbuilder: GPU load-balance -- N ranks over
            G GPU(s) = K rank(s)/GPU`` -- the human-checkable confirmation
            that K matches the allocation (validation pinpoint for the
-           benchmark sweep, job-contracts.md § 6).
+           benchmark sweep, generator.md § 4.3a).
     WHY: K is the knob the benchmark sizes; it must come from the ACTUAL
     runtime allocation (the scheduler may grant a different GPU count than
     generation assumed).  1 GPU degenerates to all-ranks-on-GPU0 (the
@@ -1382,14 +1382,15 @@ def _launch_again(resumes: bool, continues: bool,
     again (:data:`_TRIAL_ONCE`).
 
     **A POINT OF A RUN OF POINTS** (``relaunch`` -- its declared relaunch,
-    `execution/runs-of-points.md` § 1.2): a launch again takes the run's
-    points done over and, for this one not done, runs it ``again`` from
-    its start or ``continue``s it from its own last state."""
+    `execution/runs-of-points.md` § 1.2): said after its engine failed --
+    the point *failed* (§ 1.3) -- a launch again takes the run's points
+    done over and runs this one ``again`` from its start or ``continue``s
+    it from its own last state."""
     back = "to change a setting, " + way_back_words(True)
     if trial:
         return _TRIAL_ONCE
     if relaunch is not None:
-        return ("this point is not done: a launch again takes the run's "
+        return ("this point failed: a launch again takes the run's "
                 "points done over and "
                 + ("continues this one from its own last state"
                    if relaunch == CONTINUE else
@@ -2015,13 +2016,14 @@ def render_run_wrapper(script_path: Path, *,
 
     # THE GPU BUILD'S PRESENCE IS SAID, NEVER A VETO (`gpu.md` G6; the
     # user, 2026-10-17: the record is shown, the person decides).  When the
-    # .fdf opted into GPU diagonalization and the target's record lists no
-    # ``molbuilder-siesta-gpu``, the run script's ``activate`` would stop
-    # the run at its start with a conda-side error that names no fix.  So
-    # prep says it here -- the env, that the run stops without it, and the
-    # command that installs it -- and prepares the job as asked.  Only when
-    # we AUTO-routed (env not user-passed) AND the inventory lists at least
-    # one env (an empty inventory means the conda probe never ran).
+    # job's GPU request (`gpu_request`, above) asks for the GPU and the
+    # target's record lists no ``molbuilder-siesta-gpu``, the run script's
+    # ``activate`` would stop the run at its start with a conda-side error
+    # that names no fix.  So prep says it here -- the env, that the run
+    # stops without it, and the command that installs it -- and prepares
+    # the job as asked.  Only when we AUTO-routed (env not user-passed) AND
+    # the inventory lists at least one env (an empty inventory means the
+    # conda probe never ran).
     # WHICH MACHINE IS ASKED WHETHER THE ENV EXISTS.
     #
     # *Which* env you want is a preference and comes from your own config
@@ -2054,7 +2056,7 @@ def render_run_wrapper(script_path: Path, *,
             and env_lookup_category == "siesta-gpu"
             and _env_is_known
             and not _env_present):
-        # Only ONE ask reaches here: GPU diagonalization.  Name what the
+        # Only ONE ask reaches here: the job's GPU request.  Name what the
         # record lacks, what a run does without it, and the way out that
         # does not require compiling anything.
         if _rec_envs:
@@ -2068,8 +2070,8 @@ def render_run_wrapper(script_path: Path, *,
             _where = "this machine"
             _there = "here"
         _said = (
-            f"`{script_path.name}` asks for GPU diagonalization "
-            f"(``Diag.ELPA.GPU .true.``), and {_where} lists no "
+            f"`{script_path.name}`'s job asks for the GPU (its GPU "
+            f"request), and {_where} lists no "
             f"``{target_env}`` environment.  The run script enters it at "
             f"its start and stops there if it is absent -- so install it "
             f"before launching, {_there}: "
@@ -2998,11 +3000,10 @@ def render_run_wrapper(script_path: Path, *,
     )
 
     # Launch + diagnostics.  The command is run, not exec'd, for both
-    # engines: the CONCLUSION MARKER is the wrapper's LAST ACT
-    # (`job-contracts.md` § 2.2, `project-layout.md` § 1.6.3 -- absent
-    # means still running or force-stopped), and `exec` would replace this
-    # shell so nothing could run
-    # afterwards.  For SIESTA it also lets us inspect the .out for
+    # engines: the CONCLUSION MARKER is the run script's LAST ACT
+    # (`project-layout.md` § 1.6.3 -- absent means still running or
+    # force-stopped), and `exec` would replace this shell so nothing could
+    # run afterwards.  For SIESTA it also lets us inspect the .out for
     # ``propor: ERROR: IMAX = 0`` on failure and print a targeted
     # hint.  Cost: one extra bash process for the wrapper's lifetime; cheap.
     if category == "siesta":
@@ -3398,7 +3399,7 @@ def render_run_wrapper(script_path: Path, *,
 #: each imports the next two ways -- from the package, or from beside the job
 #: -- as `config_dir` always has, so the monitor reads a run with the readers
 #: the Results tab's directory door reads it with.  The rule for joining is
-#: `configuration.md`'s: *stdlib-only AND travels*, and
+#: `configuration.md` § 2.3's: *stdlib-only AND travels*, and
 #: `tests/test_monitor_watches_a_live_run_e2e.py` runs the whole set with molbuilder
 #: absent.
 #:
@@ -3929,7 +3930,7 @@ def render_wrappers(script_path: Path, *,
     blobs = tuple((name, build()) for name, build
                   in bundles_for(script_path, finish))
 
-    # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
+    # The submission layer (`scheduler.md` § 6a): a ``.sbatch`` only when the
     # machine has a queue -- every value in it the job's own (its resources,
     # its GPU request among them).
     if emit_sbatch:
@@ -4118,7 +4119,7 @@ def walk_header(base: Path, names, *, resources: "Resources",
 
 
 # --------------------------------------------------------------------- #
-#  The scheduler header (docs/execution/job-system.md § 6)              #
+#  The scheduler header (docs/execution/scheduler.md § 6a)              #
 # --------------------------------------------------------------------- #
 
 
@@ -4134,11 +4135,11 @@ def render_sbatch(names, *, scheduler,
     ``scheduler``'s kind (the target record's `record.Scheduler`;
     `scheduler.md` § 6a).
 
-    The thin two-layer model (job-system.md § 6, § 5): a header that
+    The thin two-layer model (scheduler.md § 6a, *Two layers*): a header that
     allocates resources, then a one-line body that delegates to the
     UNCHANGED launcher ``bash <basename>.run.sh "$@"``.  The launcher still
     owns env activation + the ``mpirun`` launch; the ``.sbatch`` never
-    re-implements ``module load`` / ``source activate`` (§ 2 principle 3).
+    re-implements ``module load`` / ``source activate``.
 
     **Every value is the job's own, and every one is required**
     (`architecture.md` § 5.2): the queue it named, bound on the target's
@@ -4203,7 +4204,7 @@ def render_sbatch(names, *, scheduler,
         "#!/bin/bash",
         f"# === molbuilder scheduler header (scheduler: {kind.name}) ===",
         "# Generated by prep from the job's own stated values.",
-        "# Authoritative design: docs/execution/job-system.md.",
+        "# Authoritative design: docs/execution/scheduler.md § 6a.",
         "# Sent by `molbuilder jobset launch`, which opens each run and",
         *(["# records it, and writes the walk script this header runs --",
            "# each member's counts in it."] if where else
@@ -4224,7 +4225,7 @@ def render_sbatch(names, *, scheduler,
                     mem=mem, exclusive=bool(exclusive))
     if exclusive:
         # The ignored value, said out loud so it is never a silent surprise
-        # (the mem<->exclusive rule -- running-a-job.md § 5.3.1).  The RULE
+        # (the whole node, `scheduler.md` § 6a).  The RULE
         # itself lives in the emitter; this is the explanation beside it.
         lines.append(
             f"# The whole node is owned -> ALL its memory.  The stated "

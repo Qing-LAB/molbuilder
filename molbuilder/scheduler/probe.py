@@ -405,7 +405,7 @@ def derive_domains(
         # `max_mem_gb` is the largest machine's memory (what a node has).
         # `default_mem_per_core_gb` is what SLURM GRANTS PER CORE when a job
         # states no --mem.  They are different facts and the code
-        # that reads one must not read the other (submission.md § 1).
+        # that reads one must not read the other (`scheduler.md` § 2).
         if part.mem_mb:
             kw["max_mem_gb"] = round(part.mem_mb / 1024.0, 1)
         # THE POLICY CEILING, beside the hardware one (R13).  ``max_cores``

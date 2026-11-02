@@ -821,7 +821,7 @@ prep:
 ═══════════════════════════════════════════════════════════════════════
   in   h2_siesta.template.toml 88 fields
   in   stage                  coarse
-  in   allocation             domain=cpu, time=0-01:00:00, mem=4G, mpi_np=1, cpus_per_task=1
+  in   the ask                domain=cpu, time=0-01:00:00, mem=4G, mpi_np=1, cpus_per_task=1
 
 ───────────────────────────────────────────────────────────────────────
   h2_siesta — what this rung decided

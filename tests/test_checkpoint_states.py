@@ -603,8 +603,7 @@ def test_where_you_stand_moves_only_where_section_5_says_it_does(calc):
 
 
 def test_nothing_but_save_and_init_ever_records_a_state(calc):
-    """§ 2: *"It is not automatic. Nothing is ever saved without you saying
-    so."*
+    """§ 2: *"It never saves on its own."*
 
     I3 makes the same promise about **your files**; this is the same promise
     about **the history**.  A read that quietly recorded a
@@ -1023,7 +1022,7 @@ def test_the_calculation_is_named_the_same_however_many_runs_appear(staged):
     its own outputs.
 
     The other half of S5 -- that the *run layer* never rewrites the id -- waits
-    on a run layer to test, and § 13.4 says so.
+    on a run layer to test, and § 12 says so.
     """
     names = {staged.standing_at().calculation}
     for n in (2, 3):
@@ -1040,12 +1039,12 @@ def test_the_calculation_is_named_the_same_however_many_runs_appear(staged):
 
 
 # ------------------------------------------------------------------ #
-#  The Python surface itself (§ 10.4, § 15)                           #
+#  The Python surface itself (§ 10.2, § 15)                           #
 # ------------------------------------------------------------------ #
 
 
 def test_states_honours_the_limit_the_python_example_uses(calc):
-    """§ 10.4's example is literally `repo.states(limit=5)`.
+    """§ 10.2's example is literally `repo.states(limit=5)`.
 
     Both halves matter: that it truncates, and that it truncates from the
     **newest** end -- a limit that returned an arbitrary slice would make the
@@ -2538,8 +2537,7 @@ def test_a_folder_with_many_big_files_saves_in_one_go(calc):
     `save` names **every** big file as its own `:(exclude,literal)` pathspec
     on a **single** `git add` command line, so the argument list grows with
     the number of large files.  Every other test in this file has at most a
-    handful, and § 3.1's own prose contemplates a 500-file archive -- so this
-    runs that many.
+    handful, so this runs 500 (§ 13.4, *volume*).
 
     Three things must hold at once, and the third is why the test is here
     rather than being a benchmark: they are all archived, **none reaches

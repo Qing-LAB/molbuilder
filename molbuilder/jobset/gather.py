@@ -169,7 +169,8 @@ def transport_inputs(calc, stage: str, *, point=None,
                     raise PrepError(
                         f"the {stage} stage takes {upstream}'s newest run, "
                         f"{newest.relative_to(base)}, whole -- and its "
-                        f"points {', '.join(not_done)} are not done.  Launch "
+                        f"points {', '.join(not_done)} are short of done.  "
+                        f"Launch "
                         f"it again: the next run takes the done points over "
                         f"and runs the rest --\n"
                         + block(launch_lines("task", upstream, base=base))

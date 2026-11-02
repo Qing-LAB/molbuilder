@@ -3,14 +3,14 @@
 Everything it reads is the JOB SET's — `job-set.json` for discovery,
 `materialize` for the trial directories, the winner's own deck for the
 mechanism — and its verdict is a report a person reads, and writes into
-`task.json` (nothing applies it: there is no second rung, `job-system.md`
-§ 7.1).
+`job-request.json` (nothing applies it: there is no second rung,
+`job-system.md` § 7).
 
 Serves ``molbuilder jobset summarize bench`` (step 6 u4): discovery keyed
 by ``job-set.json``'s own data, each trial parsed with the pure parsers in
 :mod:`molbuilder.bench.result`, the verdict written as a proposal of
 WHAT WAS MEASURED -- the winning configuration and its knobs.  A wall
-and a memory are NOT proposed (`execution/project-layout.md` § 2.3.2).
+and a memory are NOT proposed (`execution/generator.md` § 4.3a).
 """
 
 from __future__ import annotations
@@ -366,7 +366,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
 
     **Nothing applies it.**  It is what the sweep found, said in
     sentences, for a person to read and act on -- and the action is writing
-    an ``execution`` block in ``task.json``, which is the only thing
+    an ``execution`` block in ``job-request.json``, which is the only thing
     ``prep task`` consults (`architecture.md` § 5.2).  *(User ruling:
     "the run parameter needs to be explicitly decided/written … benchmark
     recommendation should be named such that it is understood not as a user
@@ -399,7 +399,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     # `omp_threads` and `gpu_count` are `execution`'s names for what the
     # record calls `cpus_per_task` and a `gres` string (`model.AS_RESOURCE`);
     # naming them here in the RECORD's vocabulary would hand over a block
-    # `task.json` refuses.
+    # `job-request.json` refuses.
     block: Dict = {}
     if knobs.get("mpi_np") is not None:
         block["mpi_np"] = int(knobs["mpi_np"])
@@ -574,7 +574,8 @@ def summary_text(res: BenchResult, out_path: Path, *,
     lines.append(f"  wrote: {out_path}  (the record)")
     # THE CONNECTION SURFACE (roadmap § 0.1 B5): the summary ends with what
     # to do, not only what was found.  What to do is WRITE THE DECISION --
-    # the report says what, and nothing applies it for you (§ 2.3.2).
+    # the report says what, and nothing applies it for you (`job-system.md`
+    # § 7).
     if res.choice.get("label"):
         stage_word = stage or "<stage>"
         # THE REPORT ITSELF, here on stdout: you asked the question, so the
@@ -617,10 +618,9 @@ def sweep_view(calc, jobset) -> Dict:
         running / failed, which ``BenchPoint.state`` does NOT answer (that
         field describes the artifacts on disk, not the run's position).
 
-    Nothing is recomputed here.  **B2** is the reason that matters:
-    ``submission.md`` § 3 records a summary that showed "170 minutes" for
-    five 38-minute jobs because it worked out its own total a second way,
-    and a view comparing six trials has six chances to repeat it.
+    Nothing is recomputed here.  **B2** is the reason that matters: a
+    figure worked out a second way can disagree with the one its door
+    states, and a view comparing six trials has six chances to do that.
 
     Read-only: unlike :func:`run_summarize_jobset` this writes nothing, so
     it is safe to call while the sweep is still running -- which is

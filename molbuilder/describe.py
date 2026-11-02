@@ -22,8 +22,9 @@ WHAT IT WRITES, AND WHAT IT MUST NOT.  Three files: ``<label>.template.toml``,
 ``task.json`` and ``job-request.json`` -- each stage's group, nothing else
 asked yet -- plus whatever data files travel (pseudopotentials).  **It renders
 no deck.**  That is the whole of *floor 2 only*: rendering moved to ``prep``
-step 3 because a deck carries values that depend on how it will be launched
-(`project-layout.md` § 2.3.1), and a description that named a machine would stop
+step 3 (`script-preparation.md` § 3.0) because a deck carries values that
+depend on how it will be launched (`project-layout.md` § 2.2), and a
+description that named a machine would stop
 meaning the same thing when you copied it.
 
 THE STRUCTURE IS REFERENCED, NEVER COPIED (`stages.md` § 6.3).  ``task.json``
@@ -42,8 +43,7 @@ writes every file or none."*
 WHY A DATA OBJECT AND THEN A WRITER, rather than one function that writes.  Two
 surfaces have to produce byte-identical descriptions — the terminal and the
 browser — and the browser writes through its own concealed file layer rather
-than through raw paths.  One producer, two writers, is the shape
-``job-system.md`` § 4.1 calls Promotion A.
+than through raw paths: one producer, two writers.
 """
 from __future__ import annotations
 

@@ -12,9 +12,9 @@
  * arrives composed from /api/bench/summary -- the trials, their measured
  * s/iter, the verdict, and which coordinate the sweep varied.  Nothing is
  * totalled, ranked or converted in the browser, because B2 is a real
- * scar: submission.md § 3 records a summary that said "170 minutes" for
- * five 38-minute jobs by working out its own total a second way, and a
- * page comparing six trials has six chances to repeat it.
+ * scar: a summary once said "170 minutes" for five 38-minute jobs by
+ * working out its own total a second way, and a page comparing six trials
+ * has six chances to repeat it.
  */
 (function (root) {
     "use strict";

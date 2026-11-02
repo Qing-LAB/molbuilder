@@ -161,8 +161,8 @@ def trial_point(name: str) -> Optional[str]:
 
 def trial_label(label: str, point: str) -> str:
     """``<label>-<point>`` -- THE LABEL A TRIAL'S FILES ARE NAMED ON: the
-    calculation's, with the point's token appended (`project-layout.md`
-    § 2.3.2).  A trial is relabelled so its warm files never meet the real
+    calculation's, with the point's token appended (`generator.md`
+    § 4.2).  A trial is relabelled so its warm files never meet the real
     run's: SIESTA finds them by ``SystemLabel``.
 
     THE ONE COMPOSER, and every reader asks it: prep's element label

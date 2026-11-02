@@ -1,12 +1,12 @@
 """``molbuilder jobset ...`` — the calculation's one grammar
 (docs/execution/job-system.md § 5.3).
 
-`molbuilder describe` writes the portable folder (floor 2); on the machine
-that runs it, ``prep`` derives floor 3 and everything below (the five steps of
-project-layout.md § 2.3.1), ``launch`` sends ONE job -- a group, a stage
+`molbuilder describe` writes the portable folder (floor 2); ``prep`` derives
+floor 3 and everything below FOR the machine that runs it, from that
+machine's record (``--target``) -- prep runs here or there (the five steps of
+script-preparation.md § 3.0); ``launch`` sends ONE job -- a group, a stage
 launched again, or a benchmark's trials, one job per resource shelf to the
-queue, each in turn here -- and ``summarize`` reads a sweep's results back.  Nothing is produced on a host
-and shipped.
+queue, each in turn here -- and ``summarize`` reads a sweep's results back.
 
 The verbs own no policy: ``launch`` PRINTS what it will do and the user
 picks the mode and domain explicitly (assistant, not nanny; never a silent
@@ -158,10 +158,11 @@ def _calc_of(folder):
 def jobset_group() -> None:
     """The calculation's verbs, one grammar (job-system.md § 5.3).
     Describing is not one of them: ``describe``, molbuilder's own command,
-    writes the portable folder; on the machine that runs it,
-    ``prep`` derives everything else and ``launch`` launches one stage's run,
-    or a benchmark's trials.  Floor 3 (``job-set.json``) is DERIVED at prep,
-    on the target -- nothing is produced on a host and shipped.
+    writes the portable folder; ``prep`` derives everything else FOR the
+    machine that runs it, from that machine's record (``prep --target``)
+    -- prep runs here or there -- and ``launch`` sends a prepared group's
+    job, a stage launched again, or a benchmark's trials.  Floor 3
+    (``job-set.json``) is DERIVED at prep (job-system.md § 5.0).
 
     ``probe`` measures a machine and ``machines`` lists the records that
     measuring produced, which is how a calculation is prepared for a
@@ -280,9 +281,10 @@ def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
 
 #: ONE declaration for every verb.
 #:
-#: ``must_exist`` is the ONLY axis on which the verbs differ: five of them
-#: act on a calculation that is already there, and `molbuilder describe` creates one.  That
-#: is a parameter of the one option, never a second option with its own
+#: ``must_exist`` is the ONLY axis on which the verbs differ: seven of them
+#: -- status, prep, launch, summarize, migrate, export, scratch -- act on a
+#: calculation that is already there, and `molbuilder describe` creates one.
+#: That is a parameter of the one option, never a second option with its own
 #: semantics -- the fence, the anchor rule and the refusal text stay single.
 def _bundle_option(must_exist: bool = True):
     return click.option(
@@ -662,8 +664,8 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
     from .ready import task_state
     click.echo("")
     click.echo("Change what the new question asks -- on Task setup, or in "
-               "its task.json and template -- then, on the machine that "
-               "will run it:")
+               "its task.json and template -- then prepare it for the "
+               "machine that will run it:")
     click.echo("  " + prep_group_lines(task_state(_calc_of(out_dir)).prep_offer,
                                        base=out_dir)[0])
 
@@ -757,8 +759,8 @@ def describe_cmd(structure, bundle: str,
     not under `molbuilder jobset` (execution/job-request.md 9).
 
     **Floor 2 only -- it renders no deck.**  A deck carries values that depend
-    on how it will be launched, so rendering belongs to ``prep`` on the machine
-    that will run it (project-layout.md 2.3.1).  What this writes names no
+    on how it will be launched, so rendering belongs to ``prep``, for the
+    machine that will run it (job-system.md § 5.0).  What this writes names no
     machine and therefore means the same thing wherever you copy it.
 
     Names and values are validated HERE, on your laptop, not on the cluster: a
@@ -1137,7 +1139,8 @@ def _pick_trial(js, trial):
     point is re-run); refused by name against the sweep's own list.  Bare →
     ``None``: under --mode direct the whole set runs, in order, and sent to
     a scheduler it goes one job per resource shelf (`submit.plan_launch`,
-    § 2.3.2).  The trial named rides the launch's own lines in the ledger.
+    `generator.md` § 4.3a).  The trial named rides the launch's own lines
+    in the ledger.
     """
     if trial is not None and not any(j.name == trial for j in js.jobs):
         raise click.ClickException(
@@ -1182,8 +1185,8 @@ MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
             "a bare number of GB.  `0` asks for all of the node's.  A run "
             "on a scheduler states one -- here, or `allocation.mem` in "
-            "job-request.json -- or prep refuses (running-a-job.md "
-            "§ 5.3.1).")
+            "job-request.json -- or prep refuses (architecture.md "
+            "§ 5.2).")
 
 
 def _duration(text):
@@ -1253,14 +1256,19 @@ def _resolve_stage_name(js, stage: str) -> str:
 @click.option("--target", default=None, metavar="NAME",
               help="which MACHINE this is for -- a record written by "
                    "`jobset probe --write --name NAME`, or `this` for this "
-                   "machine's own.  Omit when there is one; naming it is how "
-                   "a bench prepared on a workstation measures the cluster "
-                   "instead of the desk.")
+                   "machine's own.  A calculation's first prep names it "
+                   "whenever any other machine's record is on file -- "
+                   "otherwise prep refuses, listing them; a calculation "
+                   "already prepared keeps the machine of its first prep.  "
+                   "Naming it is how a bench prepared on a workstation "
+                   "measures the cluster instead of the desk "
+                   "(preparing-for-another-machine.md 4).")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
-              help="emit .sbatch wrappers (default on; withheld where the "
-                   "target's record says `workstation` -- job-system.md "
-                   "§ 6).  --no-sbatch writes none, and then no queue, wall "
-                   "or memory is asked for.")
+              help="write the .sbatch headers (default on; withheld where "
+                   "the target's record names a kind with no queue, "
+                   "`workstation` -- scheduler.md § 6a).  --no-sbatch "
+                   "writes none, and then no queue, wall or memory is "
+                   "asked for.")
 @click.option("--one-job", "one_job", is_flag=True,
               help="task: the groups named also as ONE job that launches "
                    "each in turn, when the one before has finished -- its "
@@ -1275,17 +1283,17 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
     """Set the task's groups up to run -- each group one job -- and report
     what was done; or a benchmark of one stage.
 
-    Renders each stage's deck and its wrappers, makes its first ``run-<n>``
-    with the deck and the shared package in it, and writes each group's one
+    Renders each stage's deck and its run scripts, makes its first
+    ``run-<n>`` with the stage's own files in it, and writes each group's one
     header.  What a stage takes from another stage's run is its first
     launch's to take.  **Prep printing what it resolved is what
     makes the launch a plain yes.**
 
     Bare ``prep task`` shows the groups and asks which, every one not
     prepared and preparable offered; ``--group`` answers without a terminal
-    (`job-system.md`, *The task*).
+    (`job-system.md` § 5.0).
     """
-    # THE ONE ENTRY (`job-system.md` § 5.3, plan W38 F7): the Task setup
+    # THE ONE ENTRY (`job-system.md` § 5.0, plan W38 F7): the Task setup
     # tab's Prep buttons call it too.  This verb collects what the person
     # said -- the flags -- and prints the answer; the act itself is
     # `prep.prep_task`'s, and it asks nothing.
@@ -1335,7 +1343,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
         raise
     asked = None
     if kind == "task":
-        # THE TASK'S QUESTION (`job-system.md`, *The task*): the groups,
+        # THE TASK'S QUESTION (`job-system.md` § 5.0): the groups,
         # each prepared, launched or waiting, then which to prepare --
         # answered here, or by --group.
         groups, asked = _ask_which_groups(calc, list(groups))
@@ -1523,17 +1531,18 @@ def _header_said(lines) -> str:
 
 def _echo_prep_answer(ans, base, *, first: bool = True,
                       last: bool = True, ladder_next: bool = False) -> None:
-    """The prep report, from the entry's answer -- `job-system.md` § 5.3:
-    *"prep prints what it resolved, which is what makes launch a plain
-    yes"*.  Where the configuration came from, what was written, the run
-    and its own files, what its first launch will take, what it will launch
-    with, whether the deck agrees -- then the next command, naming the
-    bundle so it works from anywhere (job-contracts.md § 2.5b).  The Task
-    setup tab shows the same answer.  The stages of the groups prepared are
-    reported one after another, the saved state with the ``first``, and
-    after the ``last`` the launch with nothing named -- it sends the group
-    that can go, asks which when several can, and says what each waits for
-    when none can (`job-system.md`, *The task*).  ``ladder_next``: the
+    """The prep report, from the entry's answer -- `job-system.md` § 5.0,
+    *What prep answers*: prep prints what it resolved, which is what makes
+    launch a plain yes.  Where the configuration came from, what was
+    written, the run and its own files, what its first launch will take,
+    what it will launch with, whether the deck agrees -- then the next
+    command, naming the bundle so it works from anywhere
+    (`job-contracts.md` § 2.5b).  The Task setup tab shows the same
+    answer.  The stages of the groups prepared are reported one after
+    another, the saved state with the ``first``, and after the ``last``
+    the launch with nothing named -- it sends the group that can go, asks
+    which when several can, and says what each waits for when none can
+    (`job-system.md`, *The task*).  ``ladder_next``: the
     prep opened no run of its own (`prep.opened_no_run`), so what comes
     next is the ladder's own step.
     """
@@ -1548,7 +1557,8 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         return
     if ans.unchanged:
         # A GROUP ALREADY AS THIS PREP PLANS IT: nothing written for it --
-        # said, with what comes next (`job-system.md`, *The task*, 2).
+        # said, with what comes next (`job-system.md` § 5.0, checkpoint
+        # 2a).
         click.echo(ans.unchanged)
         if last:
             _echo_next_step(ans, base, ladder_next=ladder_next)
@@ -1594,7 +1604,8 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                 click.echo(f"    {shelf['fit']}")
         _echo_pipeline_log(ans, base)
         # ONE COMMAND A LINE, prose after `#`; the report's `execution`
-        # block is the person's to copy into task.json (job-system.md § 7).
+        # block is the person's to copy into job-request.json (job-system.md
+        # § 7).
         say_next("next -- launch the sweep (to the queue it goes as one "
                  "job per resource shelf):\n"
                  + block(launch_lines("bench", stage, base=base)))
@@ -1631,7 +1642,7 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                    f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
         click.echo(f"  brought in: {', '.join(rep.brought)}")
     # PREPARED AGAIN, never launched: what of it differed from what this
-    # prep writes now (`job-system.md`, *The task*, 2).
+    # prep writes now (`job-system.md` § 5.0, checkpoint 2a).
     if ans.differs:
         click.echo("  prepared again -- differed from what was prepared: "
                    + ", ".join(ans.differs))
@@ -1674,7 +1685,7 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
     if ans.resources is not None:
         r = ans.resources
         # WHAT IS STATED, and nothing else: no launch value is left for
-        # the wrapper to decide (`architecture.md` § 5.2), and a PySCF run
+        # the run script to decide (`architecture.md` § 5.2), and a PySCF run
         # has no rank count at all.
         asks = [f"{word} {r[key]}" for word, key in (("mpi_np", "mpi_np"),
                                                      ("omp", "cpus_per_task"))
@@ -1766,13 +1777,13 @@ def _echo_pipeline_log(ans, base) -> None:
 def summarize_cmd(kind: str, words, bundle: str,
                   tolerance_cm1: Optional[float]) -> None:
     """Summarize results that exist -- never derive a run's own
-    (`job-system.md` § 5, the verb table).  Three summaries, by what was
+    (`job-system.md` § 5.3, *The verbs*).  Three summaries, by what was
     described:
 
     \b
     * ``summarize bench`` reads a benchmark's trials and writes
       ``bench-result.json`` -- a recommendation, not a decision
-      (`project-layout.md` § 2.3.2): you read it, you decide;
+      (`generator.md` § 4.3a): you read it, you decide;
     * ``summarize task`` on a transport calculation reads its transmission
       points into ``<label>.transport.json`` (`engines/transport.md`
       § 2a.12);
@@ -1987,7 +1998,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "ask again before committing.  'ask' needs a login "
                    "node -- there is no prediction without the cluster.  "
                    "**Defaults to `launch.mode` in molbuilder.json** "
-                   "(running-a-job.md § 5.4); pass it only to override that.")
+                   "(configuration.md § 4); pass it only to override that.")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing, write nothing.")
@@ -2068,7 +2079,7 @@ def submit_cmd(kind: str, words, groups, stages, bundle: str, mode: str,
     the exact line is shown and you are asked; ``--dry-run`` shows it and
     sends nothing.
 
-    ``--mode`` falls back to ``launch.mode`` (`running-a-job.md` § 5.4).
+    ``--mode`` falls back to ``launch.mode`` (`configuration.md` § 4).
     """
     # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 6.0, step 5): the
     # entry writes its own, and the verb the ones it says before it calls
@@ -2250,8 +2261,8 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
             raise click.ClickException(_nothing_prepared(calc))
     base = calc.base
     _check_kind(kind, js)
-    # This machine's `launch.mode` when no --mode is given (running-a-job
-    # § 5.4), and every flag the mode refuses -- before any question, so
+    # This machine's `launch.mode` when no --mode is given (configuration
+    # § 4), and every flag the mode refuses -- before any question, so
     # an answer is never thrown away; the refusal says the launch as typed
     # with each mode.
     words = tuple(w for w in (stage, trial) if w is not None)
@@ -2274,17 +2285,17 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
             # A malformed config is ITS OWN error.
             raise click.ClickException(
                 f"the launch block could not be resolved from config: "
-                f"{exc}\n  Fix the config (running-a-job.md § 5.4).") from exc
+                f"{exc}\n  Fix the config (configuration.md § 4).") from exc
         if not mode:
             # Unset is a refusal, never a derivation: deciding `submit` from
             # a DETECTED scheduler would gate submission on detection, which
-            # running-a-job.md § 5.4 forbids.  THE WAY ON AS COMMANDS, one
+            # configuration.md § 4 forbids.  THE WAY ON AS COMMANDS, one
             # per mode the machine takes.
             raise click.ClickException(
                 "no --mode, and molbuilder.json sets no `launch.mode`.\n"
                 "  'direct' runs it here with bash; 'submit' hands it to the "
                 "scheduler.  Set launch.mode once for this machine "
-                "(running-a-job.md § 5.4), or say the mode on the line:\n"
+                "(configuration.md § 4), or say the mode on the line:\n"
                 + each_mode())
         mode_source = "launch.mode (config)"
     told.update(mode=mode, mode_source=mode_source)
@@ -2724,7 +2735,7 @@ def migrate_cmd(bundle: str) -> None:
     scripts.  A run's files an older molbuilder named with its try's number
     are named once, every byte kept; a run it cannot name so -- one that
     started more than once among them -- is left as it is, said with its
-    reason (`project-layout.md` § 1.6.1).
+    reason (`job-request.md` § 8).
 
     What the calculation was is KEPT: every value carried, every blank left
     blank, each change printed with the rule it follows; a change that would
@@ -2796,7 +2807,7 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
     data file ``<label>.transport.nc`` or the same as tables,
     ``<label>.transport-csv/`` -- from what is already there, no data file
     read: the points without their DOS by region said; a ladder in progress
-    exports what exists, a point not done an empty cell
+    exports what exists, a point short of done an empty cell
     (engines/transport.md 2a.12, *Export*).  A VIBRATION calculation: its
     stage's newest result's data files as they are, and with ``--laser-nm``
     the Raman view at that laser, ``<label>.vibration-netcdf/`` or
@@ -2936,7 +2947,7 @@ def cmd_machines() -> None:
     """Which machines a calculation can be prepared FOR, and where each lives.
 
     The answer to *"did the record I copied over actually arrive, and does it
-    parse?"* (`preparing-for-another-machine.md` § 5).
+    parse?"* (`preparing-for-another-machine.md` § 1a).
 
     Prints the same list `GET /api/task-setup/machines` serves, from the same
     function, so the terminal and the tab cannot disagree.  An unreadable

@@ -74,9 +74,8 @@ def _auto_block_size(n_atoms: int,
     distribution), so the bound is ``floor(n_orbitals_est / mpi_np)``
     with ``n_orbitals_est = 10 * n_atoms`` -- the SAME rough DZP
     estimate the deck's BENCH-MARKS block records as
-    ``n_orbitals_est`` (job-contracts.md § 3.2 provenance example
-    + § 3.3).  It is an upper bound for the diag block, not a propor
-    fix (see above).
+    ``n_orbitals_est`` (job-contracts.md § 3.3).  It is an upper bound
+    for the diag block, not a proper fix (see above).
 
     Strategy
     --------
@@ -143,8 +142,8 @@ def _auto_block_size(n_atoms: int,
         # 10x is a rough DZP-basis heuristic; underestimates for
         # heavy elements like Au where DZP gives ~25 orb/atom).
         # The CPU branch below derives from
-        # the same orbital estimate per job-contracts.md § 3.2/
-        # § 3.3; GPU keeps its own branch for the floor of 8.
+        # the same orbital estimate per job-contracts.md § 3.3;
+        # GPU keeps its own branch for the floor of 8.
         # Two further caps narrow the choice to a defensible range:
         #
         #   * ``256`` (load-balance ceiling).  With BlockSize > 256
@@ -179,9 +178,8 @@ def _auto_block_size(n_atoms: int,
     # get >= 1 ORBITAL block, i.e. ``BlockSize <=
     # floor(n_orbitals_est / mpi_np)`` with ``n_orbitals_est =
     # 10 * n_atoms`` -- the SAME estimate the deck's BENCH-MARKS
-    # block records (job-contracts.md § 3.2 provenance example +
-    # § 3.3).  The 256 ceiling: the load-balance ceiling shared with
-    # the GPU branch -- above 256
+    # block records (job-contracts.md § 3.3).  The 256 ceiling: the
+    # load-balance ceiling shared with the GPU branch -- above 256
     # a low-rank run drops below ~12 blocks/rank and tail-effect
     # imbalance bites.  Take the LARGEST power of 2 under the cap.
     orbital_estimate = 10 * max(1, n_atoms)
@@ -408,7 +406,8 @@ def _parallel_facts(cfg, mesh) -> dict:
     `_relaxation_facts` is: the MPI section's membership depends on these
     answers (no ``Diag.*`` when the solver is ScaLAPACK), and an unset
     ``BlockSize`` is said as such where its line would be, so the layout
-    cannot be read until they exist (`script-preparation.md` § 4.1).
+    cannot be read until they exist (`script-preparation.md` § 4.2,
+    *The membership rule*).
 
     ``over_k``'s automatic answer is *more than one point* on ``mesh`` and
     a solver other than ELPA, the k-point mesh THIS deck writes (`kmesh.mesh_for`, `engines/siesta.md`
@@ -487,8 +486,9 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     carries depends on these answers, and a layout whose MEMBERS are only
     known once the writer has run is a layout the framework cannot read --
     which is the whole reason the seam carries a form
-    (`script-preparation.md` § 4.1).  Every value here is a function of
-    ``cfg`` alone, so there was never anything to wait for.
+    (`script-preparation.md` § 4.2, *The membership rule*).  Every value
+    here is a function of ``cfg`` alone, so there was never anything to
+    wait for.
     """
     # Relaxation.  In SIESTA 5.4.2 one step count and one
     # displacement cap serve every relaxation -- ``MD.Steps`` and
@@ -641,7 +641,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # LAYOUT below by the framework, which is the only reading that can
     # close the check gate's loop: a list this writer kept would say what
     # the writer believed, and the gate exists because a writer can be
-    # wrong (`script-preparation.md` § 4.1).
+    # wrong (`script-preparation.md` § 4.3).
     cfg = config or SiestaConfig()
     # THE ONE ENTRY, override included (`model/chemistry.md` § 3a).
     from ..chemistry import species_order as _species_order
@@ -829,8 +829,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # depends on whether that run is dynamics.  A layout whose membership is
     # only known once the writer has run is a layout the framework cannot
     # read, and then the check gate has nothing to compare the file against
-    # (`script-preparation.md` § 4.1).  Every value below is a function of
-    # `(struct, cfg)` alone, so there was never anything to wait for.
+    # (`script-preparation.md` § 4.2, *The membership rule*).  Every value
+    # below is a function of `(struct, cfg)` alone, so there was never
+    # anything to wait for.
     #
     # The syntax door and the record blocks read the same dict.  ONE
     # channel, not one argument list per reader.
@@ -1013,7 +1014,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                        for line in deck_launch(stage_token, trial))
             out.append(f"#     {LAUNCH_MODE_NOTE}")
             out.append(
-                "# The wrapper beside this deck is self-contained: it runs "
+                "# The run script beside this deck is self-contained: it runs "
                 "unattended in a shell")
             out.append(
                 "# that inherits nothing, so it bakes in the environment "
@@ -1024,14 +1025,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append("# and when it ran (running-a-job.md section 2).")
             out.append("#")
             # the deck's OWN rank count, the one BENCH-MARKS records
-            _np_hint = "auto" if cfg.mpi_np is None else str(int(cfg.mpi_np))
+            _np_hint = ("<ranks>" if cfg.mpi_np is None
+                        else str(int(cfg.mpi_np)))
             out.append(
                 "# Or drive SIESTA yourself, from this directory -- all "
                 "outputs share the")
             out.append("# SystemLabel basename below:")
             out.append(f"#     mpirun -np {_np_hint} siesta "
                        f"< {_fdf_name} > {_out_name}"
-                       + ("   # -np auto: the wrapper resolves it"
+                       + ("   # <ranks>: the run's stated rank count"
                           if cfg.mpi_np is None else ""))
             out.append(
                 "# Perfectly good, and the reason the plain invocation is "

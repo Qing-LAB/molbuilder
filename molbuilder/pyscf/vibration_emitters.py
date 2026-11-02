@@ -204,7 +204,7 @@ def _emit_header_docstring(struct: Structure,
         out.append("    net charge's own motion, q·dR_cm/dQ.")
         out.append("")
     out.append("Dependencies:")
-    out.append("    Use the generated molbuilder run wrapper after bootstrap:")
+    out.append("    Use the generated molbuilder run script after bootstrap:")
     out.append("        " + _fix_cmd("bootstrap", "--yes"))
     out.append("")
     # ---- Methods paragraph (verbatim).  Indented one space so the

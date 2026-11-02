@@ -59,8 +59,9 @@ SCHEMA = "molbuilder/run-points@1"
 #: ``finished``): every point DONE, or every point RAN -- converged or not.
 DONE, RAN = "done", "ran"
 
-#: WHAT A RELAUNCH DOES with a point not done (`runs-of-points.md` § 1.2):
-#: runs it AGAIN from its start, or CONTINUES it from its own last state.
+#: WHAT A RELAUNCH DOES with a point short of done (`runs-of-points.md`
+#: § 1.2): runs it AGAIN from its start, or CONTINUES it from its own last
+#: state.
 AGAIN, CONTINUE = "again", "continue"
 
 #: A POINT ITS ENDED WALK NEVER STARTED is :data:`NOT_RUN` -- spelled
@@ -276,7 +277,7 @@ def rows_of(index: Dict[str, Any], run_dir) -> List[Dict[str, Any]]:
     status door says it -- ``finished`` (it ran), ``failed`` (it ran and
     ended with an error), ``not run`` (the ended walk never started it,
     :data:`NOT_RUN`), ``running`` (started), ``queued``;
-    ``why`` it is not done."""
+    ``why`` it is short of done."""
     place = RunPlace.of(run_dir)
     rows = []
     for e in index.get("points") or []:
@@ -386,12 +387,26 @@ def close(index: Dict[str, Any], rows) -> Dict[str, Any]:
     return index
 
 
+def state_word(row: Dict[str, Any]) -> str:
+    """A POINT'S OWN WORD (`runs-of-points.md` § 1.3) -- the one every
+    printer of a point says it by: *done*; *failed*, it ran and ended with
+    an error; *not run*, its ended walk never started it (§ 4.5); *not
+    done*, it ran to its end and is not done; else its run's state as it
+    stands (*queued*, *running*).  ``row`` the job's (:func:`rows_of`) or
+    `status`'s (`continuation.point_rows`)."""
+    if row.get("done"):
+        return "done"
+    state = row.get("state")
+    return ("not run" if state == NOT_RUN else
+            "failed" if state == "failed" else
+            "not done" if state == "finished" else str(state))
+
+
 def not_done_words(row: Dict[str, Any]) -> str:
-    """A point not done, in the words a failed part and a failed finish name
-    it by (`run-reports.md` § 2.9): its words, and why -- *not run* for one
-    the walk never started (`runs-of-points.md` § 4.4)."""
-    said = "not run" if row.get("state") == NOT_RUN else "not done"
-    return f"{row['words']}: {said} -- {row['why'] or row['state']}"
+    """A point short of done, in the words a failed part and a failed finish
+    name it by (`run-reports.md` § 2.9): its words, its own word
+    (:func:`state_word`) and why."""
+    return f"{row['words']}: {state_word(row)} -- {row['why'] or row['state']}"
 
 
 def run_state(rows, index: Dict[str, Any]) -> Tuple[str, Optional[str]]:
@@ -400,17 +415,20 @@ def run_state(rows, index: Dict[str, Any]) -> Tuple[str, Optional[str]]:
     ``finished`` -- every point done, or every point ran
     (`_run_ending.points_state`) -- ``finished``, else ``failed``; a finish
     step that exited non-zero, failed.  Its words: where not every point is
-    done, the first not done in the listing order, and how many when more
-    than one is; *the finish exited N* -- ``None`` when nothing is
-    wrong."""
+    done, the first short of done in the listing order, and how many when
+    more than one is -- *short of done*, or *not done* where every one of
+    them ran to its end (`runs-of-points.md` § 1.3); *the finish exited N*
+    -- ``None`` when nothing is wrong."""
     rows = list(rows)
     if index["finished"] == DONE:
         state = "finished" if all(r["done"] for r in rows) else "failed"
     else:
         state = points_state(r["state"] for r in rows)
     left = [r for r in rows if not r["done"]]
+    short = ("not done" if all(r["state"] == "finished" for r in left)
+             else "short of done")
     why = (not_done_words(left[0]) + (
-        f"; {len(left)} of {len(rows)} {index['unit']}s not done"
+        f"; {len(left)} of {len(rows)} {index['unit']}s {short}"
         if len(left) > 1 else "")) if left else None
     fin = (index.get("finish") or {}).get("exit")
     if fin not in (None, 0):
@@ -459,7 +477,8 @@ def said(rows, rel: str, outcome: Optional[str] = None
     outcome of this point's round; the caller closes the index, runs the
     finish step and puts the run's state before it); ``milestone`` when
     its round has no point left to run (``outcome``, else *<words>:
-    done*); ``part_failed`` when it is not done (once per ``reason``)."""
+    done*); ``part_failed`` when it is short of done (once per
+    ``reason``)."""
     rows = list(rows)
     mine = next(r for r in rows if r["rel"] == rel)
     if not still_to_run(rows):
@@ -521,6 +540,7 @@ __all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN",
            "taken_from",
            "empty_index", "add_point", "entry_of", "planned_by", "why_not_run",
            "stamp_start", "stamp_end", "stamp_step_error", "stamp_finish",
-           "note", "rows_of", "still_to_run", "close", "not_done_words",
+           "note", "rows_of", "still_to_run", "close", "state_word",
+           "not_done_words",
            "run_state", "reason", "round_ended", "round_outcome", "said",
            "outcomes", "count", "part"]

@@ -61,7 +61,7 @@ run = { use_gpu = true }
 refused = "states no GPU count"
 
 [[case]]
-name = "the template's use_gpu with nothing on the card is refused too"
+name = "the run card's use_gpu, given among the template values, with no count is refused too"
 template = { use_gpu = true }
 refused = "states no GPU count"
 
@@ -186,7 +186,7 @@ run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
 refused = "requires an ELPA diagonalizer"
 
 [[case]]
-name = "use_gpu in the template and the count on the card"
+name = "the run card's use_gpu, given among the template values, and the count on the card"
 template = { use_gpu = true }
 run = { gpu_count = 2, mpi_np = 4 }
 header = ["#SBATCH --gres=gpu:2"]

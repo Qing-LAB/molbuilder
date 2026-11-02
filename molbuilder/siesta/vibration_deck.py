@@ -43,7 +43,8 @@ PARTS = tuple(p.part for p in PHASES)
 
 def optical_facts(cfg, mesh) -> dict:
     """What the optical call derives, worked out when the SPEC is built
-    (`script-preparation.md` § 4.1; `engines/vibration.md` § 5.11 § 9): the
+    (`script-preparation.md` § 4.2, *The membership rule*;
+    `engines/vibration.md` § 5.11 § 9): the
     light's direction as the item states it, and the k-point mesh the
     optical sum runs over -- the item's, or the stage's own k-point grid
     (``mesh``, `kmesh.mesh_for`) when none is set: for a molecule Γ
@@ -107,7 +108,8 @@ def optical_block(struct: Structure, cfg, derived: dict) -> str:
 
 def fc_facts(struct: Structure, cfg) -> dict:
     """What the force-constant run derives from the structure, worked out
-    when the SPEC is built (`script-preparation.md` § 4.1): the free range
+    when the SPEC is built (`script-preparation.md` § 4.2, *The membership
+    rule*): the free range
     as SIESTA numbers it, and the count of atoms held.
 
     Refuses a copy whose free atoms are not one trailing run -- the

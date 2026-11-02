@@ -1,9 +1,9 @@
 """PySCF's answers at the **declare** sub-step — `script-preparation.md` § 4.
 
-Two of the seam's fifteen questions, and both are about the job rather than the
-deck: *what may this run reuse from an earlier one*, and *what must the wrapper
-route on*.  They live here beside `siesta/stages.py` for the same reason that
-one does -- the engine knows, and the `jobset` layer must not.
+Two of the seam's questions, and both are about the job rather than the
+deck: *what may this run reuse from an earlier one*, and *what facts are its
+warm files conditioned on*.  They live here beside `siesta/stages.py` for the
+same reason that one does -- the engine knows, and the `jobset` layer must not.
 """
 from __future__ import annotations
 

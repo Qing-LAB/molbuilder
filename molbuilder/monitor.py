@@ -918,7 +918,7 @@ def _read_mem_limit_gb() -> Optional[float]:
 # --------------------------------------------------------------------- #
 #
 # Under a scheduler the job is its cgroup, and the readers above read it.
-# A run started directly (`running-a-job.md` § 5.4, ``--mode direct``) has
+# A run started directly (`job-system.md` § 6.0, ``--mode direct``) has
 # none: `/proc/self/cgroup` then names the cgroup the LAUNCHING session sits
 # in -- a login scope, the web server's service -- and every other process
 # there.  MEASURED 2026-09-26 on a real 2-rank H2 relaxation: the monitor
@@ -1536,9 +1536,10 @@ def is_notify_user(user) -> bool:
 USER_AGENT = "molbuilder (https://github.com/qqing/molbuilder, 1.0)"
 
 #: WHAT A RUN OF POINTS' EVENT ADDS TO ITS CARD'S TITLE, after the run's
-#: state (`run-reports.md` § 2.9, *The card*): a point not done, a round's
-#: end.  The card is otherwise laid out as any other of its state.
-EVENT_TITLE = {"part_failed": "a point failed", "milestone": "a round ended"}
+#: state (`run-reports.md` § 2.9, *The card*): a point short of done, a
+#: round's end.  The card is otherwise laid out as any other of its state.
+EVENT_TITLE = {"part_failed": "a point short of done",
+               "milestone": "a round ended"}
 
 
 def _card(report: Dict[str, Any],
@@ -1565,8 +1566,8 @@ def _card(report: Dict[str, Any],
     # a notification exists to save you (`stages.md` § 6.9).
     run = str(report.get("run") or "molbuilder")
     job = str(report.get("job") or "")
-    # A RUN OF POINTS' OWN EVENT says itself after the state, so a failed
-    # point or a round's end does not read as any periodic card.
+    # A RUN OF POINTS' OWN EVENT says itself after the state, so a point
+    # short of done or a round's end does not read as any periodic card.
     event = EVENT_TITLE.get(str(report.get("event") or ""))
     title = (run + (f" · {job}" if job else "")
              + (f" — {state}" if state else "")
@@ -3065,7 +3066,7 @@ def _notify_main(argv) -> int:
         return 0
     # A FAILED PART SPEAKS ONCE PER REASON (`run-reports.md` § 2.9): a run
     # whose calls fail alike -- its wall reached, a file missing -- says it
-    # once, and the finish counts the calls not done; never as many
+    # once, and the finish counts the calls short of done; never as many
     # messages as calls.
     if a.event == "part_failed" and a.reason is not None and any(
             e.get("event") == "part_failed" and e.get("reason") == a.reason

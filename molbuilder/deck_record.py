@@ -69,13 +69,10 @@ def end_marker(name: str) -> str:
 # group 2: BEGIN | END.
 #
 # The name is one lowercase word (``header``, ``bench-marks``) OR two words
-# (``item mesh_cutoff``) -- the second form is job-contracts.md § 3.7's item
-# block, whose marker carries the FIELD's name.  That is what lets prep walk
-# a template and rebuild a config without an .fdf parser, so the name has to
-# reach the marker; underscores are allowed there because field names have
-# them.  Every consumer already filters on ``group(1) != BLOCK_<x>``, so
-# widening the name pattern cannot make an item block look like a reserved
-# one (checked across all six consumers, 2026-08-07).
+# (``item mesh_cutoff``), underscores allowed in the second.  Every consumer
+# already filters on ``group(1) != BLOCK_<x>``, so widening the name pattern
+# cannot make a two-word block look like a reserved one (checked across all
+# six consumers, 2026-08-07).
 MARKER_RE = re.compile(
     r"^#\s*===\s+molbuilder\s+([a-z-]+(?:\s+[A-Za-z0-9_]+)?)"
     r"\s+(BEGIN|END)\s+===\s*$"

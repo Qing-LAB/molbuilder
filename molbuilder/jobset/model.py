@@ -383,8 +383,8 @@ class Job:
     #: WHERE IT WAS PLACED: a run prepared for a queue -- the queue its
     #: request was placed on at prep (``domain``, ``partition``, ``qos``,
     #: bound on the target's record) and where each value came from
-    #: (``from``: ``flag``, ``run card`` or ``description``, per field;
-    #: `job-system.md` § 6.0) -- what its header renders and launch sends to.
+    #: (``from``: ``flag``, ``run card`` or ``allocation``, per field;
+    #: `scheduler.md` § 5.1) -- what its header renders and launch sends to.
     #: ``None`` with no queue: a trial, a machine with no scheduler.
     placement:  Optional[Dict[str, Any]] = None
     #: THE MEMBERS OF THE JOB IT WAS PREPARED IN: the stages that share one
@@ -503,14 +503,15 @@ def warm_declaration(engine: str, label: str, kind: Optional[str] = None,
 def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
     """What ``job`` takes from ``source`` — the pair's answer, not an edge's.
 
-    `project-layout.md` § 2.3.4 states the rule as three rows, and only the
+    `job-contracts.md` § 4.2a states the rule as three rows, and only the
     third needs two stages:
 
-    | `.XV` | the relaxed coordinates | **always**, unless the list in effect withholds it |
-    | `.DM` | the converged density | when the description says to reuse it |
-    | `.CG` | the optimiser's own history | **only if both stages use the same algorithm** |
+    | `.XV` | the relaxed coordinates | while the stage continues, unless the list in effect withholds it |
+    | `.DM` | the converged density | the same as `.XV` |
+    | `.CG` | the optimiser's own history | the same, and **only if both stages use the same optimiser** |
 
-    A producer states rows one and two on the job itself — they are properties
+    A stage whose ``restart`` is ``clean`` declares none of them.  A
+    producer states rows one and two on the job itself — they are properties
     of the destination alone — and row three as a :class:`WarmFile` condition.
     **This function is the only place the third is evaluated**, because it is
     the only place both stages are known: the launch names the source -- by

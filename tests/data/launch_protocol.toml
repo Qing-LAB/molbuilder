@@ -87,8 +87,9 @@ launch = []
 launch_mode = "submit"
 line = ["-J H2/coarse", "H2_01_coarse.sbatch -np 1 -omp 1"]
 
-# ---- ASKED ABOUT WHERE NO SCHEDULER IS (`running-a-job.md` § 5.5: no
-# scheduler here is an answer): a group's one job answers as a stage does.
+# ---- ASKED ABOUT WHERE NO SCHEDULER IS (`submission.md` S4: on a machine
+# with no queue there is nothing to wait for, and it says so): a group's one
+# job answers as a stage does.
 # Whether there is one to ask is the machine's record's kind, never this
 # computer's PATH -- where the suite's `sbatch` stands (`scheduler.md` § 6a).
 [[case]]

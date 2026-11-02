@@ -14,9 +14,8 @@ same function for a name instead of each spelling the rule again.
 **Contract:** [`execution/run-identity.md`](?doc=execution/run-identity.md)
 § 2 (*the id is built from inputs, never from anything a run produced*) · § 2.1
 (what is in the pin, and the longer list of what is not) · § 3 (the character
-set, the cap, and the three rules) · § 3.1 (the worked table, which is this
-module's test fixture — `tests/test_run_identity.py` parses it out of the
-document rather than retyping it).
+set, the cap, and the three rules) · § 3.1 (the worked table; its cases are
+`tests/data/run_identity.toml`, which `tests/test_run_identity.py` runs).
 
 **Why this is a module and not two helpers on `task.py`.** ``task.py`` is the
 codec for a description; deriving its identity is a different job with its own
@@ -33,8 +32,10 @@ description that disagrees with itself (``Task._check_id``).  That is what makes
 **On the character set.** § 3 is explicit that the set *"is not a new
 decision"* — `job-contracts.md § 2.1` Rule 2 fixes it, and this module does not
 get to widen it. Four validators in the tree spell it
-(``projects._NAME_PATTERN``, ``checkpoint._CALC_NAME_RE``, ``bench/grid`` and
-``config/pyscf``). **None of them normalises**; they all reject. This is the
+(``projects._NAME_PATTERN``, ``checkpoint._CALC_NAME_RE``,
+``config/siesta._validate_basename``, which PySCF's configuration uses too,
+and the file grammar's ``runfiles._LABEL``).
+**None of them normalises**; they all reject. This is the
 one transform. What the tests do instead is assert that every id this
 produces is accepted by the shipped validators, so the agreement is checked
 rather than assumed.
@@ -146,11 +147,11 @@ def _longest_extension() -> str:
 
 _LONGEST_EXTENSION = _longest_extension()
 
-#: What ``_<stage name>`` may occupy when the ladder is not known yet.
+#: What ``_<NN>_<stage>`` may occupy when the ladder is not known yet.
 #:
 #: **This one is a budget, not a derivation, and the difference is worth
-#: stating.** § 3 derives the cap from ``<label>_<longest stage name>.<longest
-#: extension>``, and nothing in the system bounds a stage name — ``STAGE_NAME_RE``
+#: stating.** § 3 derives the cap from ``<label>_<NN>_<longest stage><longest
+#: role>``, and nothing in the system bounds a stage name — ``STAGE_NAME_RE``
 #: is ``[A-Za-z0-9_]+`` with no length. A calculation is usually named before
 #: its stages exist, so when they are unknown this reserves a generous fixed
 #: budget; when they ARE known, pass ``stage_names`` and the real longest is
@@ -441,9 +442,9 @@ class StageRef:
 
     **``seq`` is derived, never stored** (decision 28). Before a produce it
     comes from the ladder's full list; after one it is read back off the
-    artifacts — `project-layout.md` § 4.1's *"`seq` is not a fourth field …
-    the description does not carry it"*. Constructing this is therefore always
-    someone reading, never someone deciding.
+    artifacts -- the description does not carry it (`project-layout.md`
+    § 4.1, invariant 4). Constructing this is therefore always someone
+    reading, never someone deciding.
 
     **``seq`` is ``None`` where there is no assigned ordinal**, and that is a
     real state rather than a missing value: a sweep point's points are
@@ -569,9 +570,9 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
     here and never rewritten downstream (§ 3 rule 1).
 
     ``stage_names``, when the ladder is already known, replaces
-    :data:`_STAGE_BUDGET` with the real longest name — the cap is about what
-    ``<label>_<stage>.<ext>`` will occupy, and guessing is only necessary while
-    the stages do not exist yet.
+    :data:`_STAGE_BUDGET` with the real longest token — the cap is about what
+    ``<label>_<NN>_<stage><role>`` will occupy, and guessing is only necessary
+    while the stages do not exist yet.
 
     ``what`` names the thing being normalised, for the refusals only.
     :func:`run_id` calls this twice — once for the label and once for the
@@ -619,14 +620,18 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
 
 
 def _cap_for(stage_names: Sequence[str]) -> int:
-    """The cap, derived against a real ladder where one is known.  A rung
-    that lengthens the label before its stage token -- a transport lead's
-    ``_L-electrode`` -- is budgeted by the caller's ``label_tail``
-    (`normalise_id`; a kind's is `kind_table.CalculationKind.label_tail`)."""
+    """The cap, derived against a real ladder where one is known: the
+    longest file, ``<label>_<NN>_<stage><role>``, fits the name limit --
+    the longest stage's TOKEN at its two-digit width (:func:`stage_token`),
+    never its bare name.  A rung that lengthens the label before its stage
+    token -- a transport lead's ``_L-electrode`` -- is budgeted by the
+    caller's ``label_tail`` (`normalise_id`; a kind's is
+    `kind_table.CalculationKind.label_tail`)."""
     if not stage_names:
         return MAX_LABEL_BYTES
-    longest = max(len(n) for n in stage_names)
-    return _NAME_LIMIT - (len("_") + longest) - len(_LONGEST_EXTENSION)
+    longest = max(stage_names, key=len)
+    return (_NAME_LIMIT - len("_" + stage_token(0, longest))
+            - len(_LONGEST_EXTENSION))
 
 
 def electrode_hs_stem(job_name: str, label: str) -> str:
@@ -671,7 +676,7 @@ def run_id(label: str, formula: str = "", *,
     **The two halves are normalised apart, and that is not a refactor**
     (§ 2.0a, decision 26, 2026-08-09). The label becomes the ``SystemLabel``
     and the stem of every file, so it carries the **filename cap** — 255 bytes
-    less what ``_<stage>.<longest extension>`` will occupy. The id goes into
+    less what ``_<NN>_<stage><longest role>`` will occupy. The id goes into
     ``task.json`` and never becomes a filename, so nothing bounds the pair.
     Normalising the *joined* string would apply the filename cap to a string
     that is not a filename, and refuse a long name plus a long formula for a

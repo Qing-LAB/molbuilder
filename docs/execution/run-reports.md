@@ -94,7 +94,7 @@ a run with no block still records its `start` and `finish` beside it.
 | `periodic` | every N hours | the run's monitor, or a member monitor | N hours after the last event; the first, N hours after the start | when `notify.every_hours` (`null`: never) |
 | `wall_near` | its wall is near | the run's monitor, or a member monitor | once, on a job sent with a wall, when the warning of § 2.1b is due | always |
 | `milestone` | a round ended, and the run goes on | the report step `point ended`, through the `notify` verb | the point that ends its round, while points are left to run | always, on a run of points |
-| `part_failed` | a part failed, and the run goes on | `point ended`, through `notify` | a point short of done while its round goes on, once per reason | always, on a run of points |
+| `part_failed` | a point short of done, and the run goes on | `point ended`, through `notify` | a point short of done while its round goes on, once per reason | always, on a run of points |
 | `finish` | it ended | the run's monitor | as it stops: SIGTERM from the run script's exit trap (also what a scheduler's wall or cancel sends), or the watched PID gone | always |
 | | — a run of points | `point ended` of the point that leaves none to run | once its index is closed and its kind's finish step has run | always |
 
@@ -652,8 +652,8 @@ This section is what each says.
 **What a milestone says** — the round's outcome, by the kind table's `outcome` part over the round's points: a
 vibration's, each call's own outcome as its record step wrote it into the index (`runpoints.outcomes`); a transport
 sweep's, read from each point's own files (`transport.run_words.round_outcome`) — from the records the steps have
-just written and nothing else. Where the kind says none, *&lt;words&gt;: done*, or *&lt;words&gt;: not done --
-&lt;why&gt;*:
+just written and nothing else. Where the kind says none, *&lt;words&gt;: done*, or the point's own state word
+and why — *&lt;words&gt;: failed -- &lt;why&gt;*, *&lt;words&gt;: not done -- &lt;why&gt;*:
 
 | the round | its outcome | read from |
 |---|---|---|
@@ -688,19 +688,20 @@ A relaxation is done whether or not it converged (done is finished for it,
 The milestone says which it was; what to do about it is the person's.
 
 **What a part's failure says**: the point, by its words (`Call.words`, `transport.stages.Point.words`), and why
-it is short of done, in the one rule's words — the exit, what its own step could not do, or `_run_ending.not_done_why`
-— *mode 7 (4271 cm⁻¹), +δQ: not done -- exit 1*; *frame index 1 (of 3) · 0.4 V: not done -- finished, not
-converged (SCF NO)*. A failure is said once per reason
+it is short of done, its own state's word and the one rule's why — the exit, what its own step could not do, or
+`_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: failed -- exit 1*; *frame index 1 (of 3) · 0.4 V: not done
+-- finished, not converged (SCF NO)*. A failure is said once per reason
 ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.6).
 
 **What a failed `finish` says**: the run's state and its words — the first point short of done, in the listing
-order, *&lt;words&gt;: not done -- &lt;why&gt;*, or *&lt;words&gt;: not run -- &lt;why&gt;* for one its walk never
-started — and how many when more than one: *…: not done -- exit 1; 9 of 121 calls not done*
+order, in its own state's word — *&lt;words&gt;: failed -- &lt;why&gt;*, *&lt;words&gt;: not done --
+&lt;why&gt;* for one that ran to its end, or *&lt;words&gt;: not run -- &lt;why&gt;* for one its walk never
+started — and how many when more than one: *…: failed -- exit 1; 9 of 121 calls short of done*
 ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.4). **Every report's count says how many points
 failed and how many are not run** *(the user, 2026-10-29)* — *optical 60 of 121 done (40 failed)*, *optical 5 of 7
 done (1 failed, 1 not run)* — in the count's words, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.4.
 
-**The card.** The title — the run, its job and its state, then *— a point failed* for a `part_failed` and *— a
+**The card.** The title — the run, its job and its state, then *— a point short of done* for a `part_failed` and *— a
 round ended* for a `milestone` (`monitor.EVENT_TITLE`); the summary line — the state `running`, the outcome or the
 failure in its parentheses, then the run's count; and the run's clock (`elapsed_s`), as the layout gives it
 (§ 4.1c):

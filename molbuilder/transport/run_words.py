@@ -29,11 +29,11 @@ try:                                       # inside molbuilder
     from .. import runrecord as _rr
     from ..calcdirs import RunPlace
     from ..runpoints import NOT_RUN
-    from ..runpoints import why_not_run
+    from ..runpoints import state_word, why_not_run
 except ImportError:                        # beside a job
     import runrecord as _rr  # type: ignore[no-redef]
     from runpoints import NOT_RUN  # type: ignore[no-redef]
-    from runpoints import why_not_run  # type: ignore[no-redef]
+    from runpoints import state_word, why_not_run  # type: ignore[no-redef]
     from calcdirs import RunPlace  # type: ignore[no-redef]
 
 #: WHAT A RUN'S POINTS COMPUTE, the kind table's words for the rung
@@ -74,8 +74,8 @@ def round_outcome(index: Dict[str, Any], rows, round_: str, run_dir,
                   names) -> Optional[str]:
     """THE ROUND'S OUTCOME, as its milestone says it (`run-reports.md`
     § 2.9): the voltage, then each frame's point -- a device's converged in
-    how many NEGF iterations, a transmission's conductance at E_F -- or not
-    done and why, or not run and why; for a transmission, the frames'
+    how many NEGF iterations, a transmission's conductance at E_F -- or its
+    own word and why (:func:`_state_words`); for a transmission, the frames'
     average where every frame's point gives one and the frames state their
     weights.  Each point's fact is read from its own files in ``run_dir``
     (:data:`_SAID`); a run of one frame says the voltage and its point
@@ -101,14 +101,15 @@ def point_fact(index: Dict[str, Any], row: Dict[str, Any], run_dir, names):
 
 
 def _state_words(row, rows) -> Optional[str]:
-    """A point that is not done, in the round's words -- ``None`` for one
-    that is: *not done -- why*, or, one the walk never ran, *not run --*
-    why (`runpoints.why_not_run`)."""
+    """A point short of done, in the round's words -- ``None`` for one
+    that is done: its own word (`runpoints.state_word`) and why -- or, one
+    the walk never ran, *not run --* why (`runpoints.why_not_run`)."""
     if row["done"]:
         return None
     if row.get("not_run") is not None or not row["ended"]:
-        return f"not run -- {row.get('not_run') or why_not_run(rows, row['rel'])}"
-    return f"not done -- {row['why'] or row['state']}"
+        return (f"{NOT_RUN} -- "
+                f"{row.get('not_run') or why_not_run(rows, row['rel'])}")
+    return f"{state_word(row)} -- {row['why'] or row['state']}"
 
 
 class _ScfSays:

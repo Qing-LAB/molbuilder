@@ -4,21 +4,21 @@
 through).  **Callers:** the ``molbuilder checkpoint`` CLI group
 (:mod:`molbuilder.cli`) and the HTTP routes in
 ``molbuilder/web/blueprints/checkpoint.py``; :func:`save_before`, called by
-the three acts that write a calculation -- every ``prep``, a group's first
-``launch`` and Task setup's Save (`checkpointing.md` § 9); and
-``jobset.commands``, which only READS a history for the state a way back
-restores.  Nothing else saves, which is what keeps *"nothing is ever saved
-without you saying so"* true.
+the three acts that write a calculation -- every ``prep`` that writes, a
+group's first ``launch`` and Task setup's Save; and ``jobset.commands``,
+which only READS a history for the state a way back restores.  Nothing else
+saves (`checkpointing.md` § 9).
 
 **Contract:** [`execution/checkpointing.md`](?doc=execution/checkpointing.md) —
 the goal, the rules (S/I/A/L) and their status.  The **MANIFEST and archive
 formats** are [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 § 6.1; the **guide** (what to type, what the buttons do) is
-[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6.
+[`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 5.
 
 Single user, one repository per calculation, no auto-commit.  Saving and
-initialising are CLI/UI acts -- a prep, a group's first launch, a Save --
-never a running job's (`checkpointing.md` § 9).
+initialising are the acts that change the folder -- a prep that writes, a
+group's first launch (a sequence's job's included), a Save, and the person's
+own `checkpoint` verbs -- never a run script's (`checkpointing.md` § 9).
 
 The whole surface is ``Repo``: ``init``, ``save``, ``restore``, ``status``,
 ``states``, ``tag``.  A **state** is a saved snapshot of the folder, a **tag**

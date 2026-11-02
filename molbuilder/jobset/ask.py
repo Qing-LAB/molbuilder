@@ -59,7 +59,8 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
     3. a bare NOTE past :data:`GPU_TUNED_RANKS_PER_DEVICE` -- this stack's
        measured sweet spot.  Past it is a real choice a person may have good
        reason to make, so this states both numbers and renders no verdict
-       (`docs/execution/submission.md` -- ask, do not derive).
+       (`submission.md` S2, stated never derived -- the ladder is
+       `architecture.md` § 5.2).
 
     Whether the cores fit a node is not said here: it is each cell's fit on
     the benchmark's queue (`jobset/prep_inputs._cells_on_the_queue`).

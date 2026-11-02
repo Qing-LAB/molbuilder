@@ -16,7 +16,7 @@ the file would run at SIESTA's own default with no way to ask for another
 (`transport.md` § 3.2).
 
 THE BOUNDARY between items and blocks is drawn by a single question, and it
-is the question `script-preparation.md` § 4.1 asks:
+is the question `script-preparation.md` § 4.2a1 asks (W11):
 
 * **a keyword with a value is a SECTION ITEM**, resolved from its catalogue
   declaration.  The template's items arrive because

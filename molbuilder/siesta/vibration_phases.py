@@ -297,9 +297,9 @@ def count_words(rows, facts) -> str:
     (`continuation.point_rows`): one shape."""
     phases = tuple((facts or {}).get("phases") or ())
     try:                                   # inside molbuilder
-        from ..runpoints import NOT_RUN
+        from ..runpoints import NOT_RUN, state_word
     except ImportError:                    # beside a job, the monitor's
-        from runpoints import NOT_RUN  # type: ignore[no-redef]
+        from runpoints import NOT_RUN, state_word  # type: ignore[no-redef]
     parts: List[str] = []
     by: Dict[str, list] = {}
     for r in rows:
@@ -329,9 +329,8 @@ def count_words(rows, facts) -> str:
         not_done = sum(1 for r in got
                        if r.get("state") == "finished" and not r["done"])
         if len(got) == 1:
-            # ONE CALL: done, not done, or its row's own state word.
-            parts.append(f"{p.name} "
-                         f"{'done' if n_done else 'not done' if not_done else got[0]['state']}")
+            # ONE CALL: its own word (`runpoints.state_word`).
+            parts.append(f"{p.name} {state_word(got[0])}")
         else:
             notes = ([f"{taken} taken over"] if taken else []) + (
                 [f"{failed} failed"] if failed else []) + (

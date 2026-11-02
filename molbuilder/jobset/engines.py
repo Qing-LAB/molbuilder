@@ -28,14 +28,15 @@ class EngineSeam:
     the ordering to read them in: a bag of callables cannot answer *"what does
     this engine still owe?"*, and against the steps a gap is a blank row.
 
-    **Of § 4's fifteen questions**, one is answered by shared code
-    (`validation.validate`), and four arrive together through ``spec_for`` --
-    the layout, the syntax, the record's values and the check rules are all the
-    engine describing its deck, so they ride on one ``DeckSpec`` rather than on
-    four seam members.  A member that answers ``None`` is answering *nothing*,
-    which is a real answer and a recorded one (§ 4, W5): PySCF gives it to
-    ``provide_data``, ``shared_package`` and ``sibling_artifacts``, and to
-    ``bench_marks`` on the spec.
+    **Of § 4's questions**, one is answered by shared code
+    (`validation.validate`), and the ``spec.`` rows arrive together through
+    ``spec_for`` -- the layout, the syntax, the record's values, the check
+    rules and the finish are all the engine describing its deck, so they
+    ride on one ``DeckSpec`` rather than on a seam member each.  A member
+    that answers ``None`` is answering *nothing*, which is a real answer
+    and a recorded one (§ 4, W5): PySCF gives it to ``provide_data``,
+    ``shared_package`` and ``sibling_artifacts``, and to ``bench_marks`` on
+    the spec.
 
     Everything engine-specific that the loop below needs lives HERE, so the
     loop itself never asks which engine it is in.
@@ -56,16 +57,17 @@ class EngineSeam:
     #: The deck's type suffix (``.fdf``).
     suffix: str
     #: ``(config, label) -> config`` — the identity WRITTEN, for a trial's
-    #: relabelling.  Filename relabelling alone is not the § 2.3.2
-    #: protection: the deck's own ``SystemLabel`` line is what keys the warm
-    #: files.
+    #: relabelling.  Filename relabelling alone is not the protection
+    #: (`generator.md` § 4.2): the deck's own ``SystemLabel`` line is what
+    #: keys the warm files.
     relabel: Callable
     #: ``(label, config, calculation, base_dir) -> warm-file declaration``
     #: for the Job -- the engine reads its § 4.2a rules file for the TYPE
     #: (U2), and ``base_dir`` lets a calculation's own fine-tuned copy win
     #: (U6a).
     warm_for: Callable
-    #: ``config -> traits`` the launcher routes on (GPU solver, …).
+    #: ``config -> traits``: the facts its warm files are conditioned on --
+    #: SIESTA's optimizer, which `model.warm_carry` compares (§ 4, 3.13).
     traits_for: Callable
     #: ``(struct, config, deck_path) -> None`` — the sibling files this
     #: engine's deck TEXT promises (E6: a charged SIESTA deck instructs
@@ -74,7 +76,7 @@ class EngineSeam:
     #: nothing.
     sibling_artifacts: Optional[Callable] = None
     #: ``(base_dir) -> [filename]`` — which files in the calculation are the
-    #: SHARED PACKAGE every job links to.  The engine that put them there is
+    #: SHARED PACKAGE every job copies.  The engine that put them there is
     #: the one that can name them.  ``None`` for an engine that puts nothing in — the package is then empty,
     #: which is the honest answer rather than an accident of a glob.
     shared_package: Optional[Callable] = None
@@ -86,10 +88,10 @@ class EngineSeam:
     #: this is about what the ENGINE will open.  ``None`` for an engine that
     #: needs none (PySCF's basis sets ship inside PySCF).
     #:
-    #: It belongs to `prep` because `project-layout.md` § 2.6 puts the copy on
-    #: the machine that runs the job — where the library lives is a fact about
-    #: that machine — and because `prep` is already what decides the shared
-    #: package.
+    #: It belongs to `prep` because `prep` is already what decides the
+    #: shared package; which files it uses and where it looks for the
+    #: missing ones -- the calculation's own folder first, then the library
+    #: inside the projects tree -- are `job-contracts.md` § 2.5a.
     provide_data: Optional[Callable] = None
     #: ``(struct, config, *, calculation, dest_dir) -> (findings, refusal)``
     #: — the findings a describe adds before it writes this engine's
@@ -241,9 +243,9 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
             f"{', '.join(want)} and none are in {base.name}/, but no "
             f"pseudopotential directory is set.  Set `psml_lib` in the "
             f"template to the library they live in -- the convention is the "
-            f"bare name `pseudopotential`, which means the projects tree "
-            f"this calculation lives in (project-layout.md § 2.6, "
-            f"job-contracts.md § 2.5a).")
+            f"bare name `pseudopotential`, which means that folder in the "
+            f"projects tree this calculation lives in (job-contracts.md "
+            f"§ 2.5a).")
     from ..pseudos import PsmlLibError
     try:
         lib = resolve_psml_lib(str(lib_raw), dest_dir=base)

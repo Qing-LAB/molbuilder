@@ -798,7 +798,7 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
         raise ComposeError(
             f"the cited relaxation {citation!r} has not CONCLUDED -- it is "
             f"still running, or it was force-stopped (the two look "
-            f"identical on disk; project-layout.md 1.6).  Let it finish; "
+            f"identical on disk; project-layout.md 1.6.3).  Let it finish; "
             f"transport never decides this over you (engines/transport.md "
             f"3.1).")
     if cited.exit_code != 0:

@@ -877,8 +877,10 @@ the act is about to change, each group named by its number and its members:
 | prep of a transport calculation's older junction, no group named | `… · before prep task: the junction's order record` ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) |
 | prep copying a group in from a finished calculation | `… · before prep task group 1 (seed, electrode_L, electrode_R), copied in from <calculation>` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 | a group's first launch | `2026-10-31 21:19:11 · before launch task group 1 (coarse)` |
+| a group's first launch inside a sequence's job | `… · before launch task group 2 (medium), in job 4817 (sequence H2_sequence-01_coarse-02_medium)` — the job as `molbuilder jobs status` names it (a run here's walk, `<host>-<pid>`), and the sequence its header and launch record are named by |
 | Task setup's Save | `2026-10-30 19:01:58 · before saving the description` |
 
+A state the job took says so, so it is never read as one your own launch took.
 A group is named by its members as well as its number because a number shifts
 when a stage above it is removed ([`job-request.md`](?doc=execution/job-request.md)
 § 3.3). The note's words are read back: a launched stage's way back finds its

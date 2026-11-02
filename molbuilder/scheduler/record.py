@@ -1,7 +1,7 @@
 """Target-machine detection -> a portable ``Environment`` record.
 
 The first half of the benchmark workflow's pluggable seam
-(docs/execution/job-system.md, § 5): **probes** that learn the
+(docs/execution/job-system.md, § 7): **probes** that learn the
 target's scheduler + hardware topology + site facts, and the versioned
 JSON record they produce (``environment@3`` — registry row: job-contracts
 § 6.1; written by ``jobset probe --write`` ON the machine it describes, and
@@ -1051,7 +1051,7 @@ def known_machines() -> List[Dict[str, object]]:
 
     **An unreadable record is described, never dropped** -- the user wrote it,
     and hiding it leaves them waiting for something that cannot happen
-    (`preparing-for-another-machine.md` § 5).  ``readable`` is the flag; the
+    (`preparing-for-another-machine.md` § 1a).  ``readable`` is the flag; the
     summary says how to rewrite it.
     """
     from .fit import domain_ceiling_s            # one parser for max_time
@@ -1425,9 +1425,10 @@ class AmbiguousTarget(Exception):
 
     Raised only when the question is real: no record beside the calculation
     yet (a snapshot IS the answer already taken), no ``--target``, and more
-    than one machine to mean.  One record and silence still proceeds --
-    there is no ambiguity to resolve, so there is no question to ask
-    (`preparing-for-another-machine.md` § 4, C1).
+    than one machine to mean -- which any record of another machine on file
+    makes so, this machine always counting as a choice, even with no record
+    of its own yet.  With no other machine's record on file, silence
+    proceeds: there is nothing to ask (`preparing-for-another-machine.md` § 4, C1).
     """
 
     def __init__(self, choices):

@@ -167,8 +167,9 @@ def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
     * and one line earlier it previewed ``would send: sbatch ...`` under
       *nothing to wait for* -- two answers (user, 2026-08-28).
 
-    Contract: `execution/running-a-job.md` § 5.5 -- *"no job is created,
-    nothing is recorded, and `status` sees nothing"*.  Driven through
+    Contract: `execution/submission.md` S4, *Asking without sending* --
+    `--mode ask` submits nothing, and on a machine with no queue there is
+    nothing to wait for, and it says so.  Driven through
     `init` -> `prep` -> `launch`.  *(A real scheduler's answer is the field
     tier's, `tests/field/test_ask_the_target.py`.)*
 

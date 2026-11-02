@@ -1169,7 +1169,7 @@ def test_a_verdictless_summarize_prints_no_report(calc):
     r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
-    # `project-layout.md` § 2.3: no winner is said, with why
+    # `generator.md` § 4.3a, *The summary*: no winner is said, with why
     assert "no winner: no finished, timed trial to rank (" in r.output
     assert "bench recommendation" not in r.output
 

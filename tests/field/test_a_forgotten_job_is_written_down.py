@@ -61,7 +61,7 @@ def sent(tmp_path, monkeypatch):
     flat = describe_calculation(tmp_path, monkeypatch, engine="siesta",
                                 calculation="optimization", name="H2sent")
     # THE QUEUE, WALL AND MEMORY its header carries, stated in its request
-    # (`running-a-job.md` § 5.3.1: stated nowhere, prep refuses).
+    # (`architecture.md` § 5.2: stated nowhere, prep refuses).
     from support.road import read_request, write_request
     req = read_request(flat)
     req["allocation"] = {"domain": env.domains[0].name,

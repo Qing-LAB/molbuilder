@@ -1369,7 +1369,7 @@ def api_task_setup_prep():
     if target in ("(this machine)", LOCAL_TARGET):
         target = LOCAL_TARGET
 
-    # ---- THE ONE ENTRY (`job-system.md` § 5.3), whole ------------------- #
+    # ---- THE ONE ENTRY (`job-system.md` § 5.0), whole ------------------- #
     # The command line's own prep: the preflight, the save, the steps, the
     # attempt, the transport carry, the launch agreement and their ledger
     # lines -- or, previewed, the same plan stopped before the save -- and
@@ -2785,7 +2785,7 @@ def _folder_ladder(calc) -> dict:
                  # ...IN THE WORDS EVERY SURFACE SHOWS (`GroupAnswer.said`).
                  "said": g.said,
                  # A PREPARED JOB HOLDING OTHER MEMBERS: prepared again,
-                 # formed anew (`job-system.md`, *The task*, step 3).
+                 # formed anew (`job-request.md` § 3.3).
                  "matches": not (g.changed or g.members_changed),
                  "preparable": g.preparable, "why": g.why} for g in gs]},
             "steps": ladder["steps"]}

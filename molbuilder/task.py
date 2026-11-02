@@ -469,8 +469,8 @@ class Task:
     def _stage_names(self) -> Tuple[str, ...]:
         """The ladder, for the cap -- see :func:`~molbuilder.identity._cap_for`.
 
-        The cap is derived from what ``<label>_<longest stage>.<longest
-        extension>`` will occupy, so knowing the real ladder beats the fixed
+        The cap is derived from what ``<label>_<NN>_<longest stage><longest
+        role>`` will occupy, so knowing the real ladder beats the fixed
         budget guessed when the stages do not exist yet.  Reading a
         description is exactly the moment they DO exist."""
         return tuple(s.name for s in self.stages) if self.stages else ()

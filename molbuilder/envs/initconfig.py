@@ -4,7 +4,9 @@
 `execution/running-a-job.md` § 5.2, on the activation:
 
     has **no default**: a target whose record carries none is refused at
-    prep ... On a fresh install that would bite a workstation first.
+    prep, saying where to declare it.
+
+On a fresh install that would bite a workstation first.
 
 **Install time is when the answer is known and nowhere else is.**  The
 installer has just located the env manager and asked the person to confirm it;
@@ -16,10 +18,10 @@ enters an environment there -- and the probe copies it into this machine's
 record, which is what every prep reads (`configuration.md` § 4).
 
 **Asked, not sniffed.**  ``activation`` is DECLARED, never detected
-(`running-a-job.md` § 5): the value arrives as an ARGUMENT, from a person answering a prompt (or from
-``--yes`` taking the recommendation, printed).  A declaration made by the
-operator at install time is what the rule asks for; what it forbids is a
-generator guessing at emit time.
+(`configuration.md` § 4): the value arrives as an ARGUMENT, from a person
+answering a prompt (or from ``--yes`` taking the recommendation, printed).
+A declaration made by the operator at install time is what the rule asks
+for; what it forbids is a generator guessing at emit time.
 
 **Never overwrites what a PERSON wrote.**  Every step reports ``created``,
 ``kept`` or ``rewritten``, and nothing a person wrote is replaced --
@@ -144,12 +146,11 @@ def seed_document(activation: str, preamble: Optional[str] = None,
     measured facts -- its queues, its cores -- nor a job's values, which a job
     states itself.
 
-    The ``_``-prefixed keys are comments.  `running-a-job.md` § 5 makes them
-    legal by name -- *"a key starting with ``_`` is a comment ... and is
-    ignored by design"* -- and they are the whole of the guidance this file
-    carries: each one names the COMMAND and the DOCUMENT that own its subject
-    rather than restating either.  `configuration.md` line 42 is the reason:
-    *"A second copy is a copy that drifts."*
+    The ``_``-prefixed keys are comments.  `configuration.md` § 4 makes them
+    legal by name -- *"a key starting with ``_`` is a comment"* -- and they
+    are the whole of the guidance this file carries: each one names the
+    COMMAND and the DOCUMENT that own its subject rather than restating
+    either, so no second copy can drift from its owner.
     """
     doc = {
         "_README": [
@@ -182,7 +183,7 @@ def seed_document(activation: str, preamble: Optional[str] = None,
             "How `jobset launch` sends a job when no --mode is given:",
             "\"direct\" runs it here with bash, \"submit\" hands it to the",
             "scheduler.  Unset, launch asks for --mode.",
-            "-> docs/execution/running-a-job.md section 5.4",
+            "-> docs/configuration.md section 4",
         ],
         "launch": {},
         "_env_init": [
@@ -382,7 +383,7 @@ def ensure_dirs() -> List[Step]:
 #: What ``environments/README`` says.  A FILE, for the same reason the secrets
 #: one is: the person who needs it is looking at the directory, and a
 #: conda-only install has no checkout to read docs from.
-_ENVIRONMENTS_README = 'molbuilder — environments\n=========================\n\nOne file per MACHINE YOU PREPARE FOR BUT ARE NOT ON: `<name>.json`, where the\nname is yours and becomes `--target <name>`.\n\nTHIS MACHINE\'S OWN RECORD IS NOT IN HERE.  It is `../environment.json`, one\nlevel up.  The two are different scopes, not copies — `record_scopes()` walks\ncalculation → target → machine and takes the first match.\n\nTHE PROBE RUNS ON THE TARGET, NOT HERE\n    This is the part that catches people.  A record describes cores, GPUs, the\n    scheduler and the queues you can actually reach; none of that is knowable\n    from your laptop, and a probe run here would faithfully measure YOUR box\n    and label it with the cluster\'s name.  So:\n\n    1. ON THE TARGET -- a login node is fine, the scheduler is read from\n       `sinfo` rather than from being on a compute node:\n\n           molbuilder jobset probe --write --name sol\n           # -> wrote ~/.config/molbuilder/environments/sol.json\n\n       `--write` shows what it measured and asks before overwriting an\n       existing record, difference by difference.  Silence keeps the record;\n       `--yes` takes every probed value.  The record carries a copy of that\n       machine\'s `env_init` -- how a shell enters an environment there, from\n       ITS molbuilder.json.\n\n    2. COPY IT HERE:\n\n           scp cluster:~/.config/molbuilder/environments/sol.json \\\n               ~/.config/molbuilder/environments/\n\n    3. CONFIRM IT LANDED AND PARSES:\n\n           molbuilder jobset machines\n\n       This prints every record, its path and when it was measured.  It is the\n       only step that answers "did the copy work?" -- a record that is present\n       but corrupt is LISTED AND MARKED, never skipped, because a silently\n       dropped record looks exactly like one that was never copied.\n\n    Then `prep --target sol` sizes for Sol from anywhere.\n\nWHAT DOES NOT BELONG HERE\n    A record written from scratch.  These are records of measurement; a\n    copied `env_init` that is wrong for its machine is the one thing edited\n    here by hand.  A fact the probe cannot see is `--set` on the probe, run on\n    that machine (the record says you asserted it); what you WANT is a\n    preference in `molbuilder.json`.\n\n    An empty directory is the normal state if you only ever run locally.\n\nReference: docs/execution/preparing-for-another-machine.md § 1a (these commands,\nverified end to end), docs/configuration.md § 5 (the record\'s schema and the\nfact-vs-preference rule).\n'
+_ENVIRONMENTS_README = 'molbuilder — environments\n=========================\n\nOne file per MACHINE YOU PREPARE FOR BUT ARE NOT ON: `<name>.json`, where the\nname is yours and becomes `--target <name>`.\n\nTHIS MACHINE\'S OWN RECORD IS NOT IN HERE.  It is `../environment.json`, one\nlevel up.  The two are different scopes, not copies — `record_scopes()` walks\ncalculation → target → machine and takes the first match.\n\nTHE PROBE RUNS ON THE TARGET, NOT HERE\n    This is the part that catches people.  A record describes cores, GPUs, the\n    scheduler and the queues you can actually reach; none of that is knowable\n    from your laptop, and a probe run here would faithfully measure YOUR box\n    and label it with the cluster\'s name.  So:\n\n    1. ON THE TARGET -- a login node is fine, the scheduler is read from\n       `sinfo` rather than from being on a compute node:\n\n           molbuilder jobset probe --write --name sol\n           # -> wrote ~/.config/molbuilder/environments/sol.json\n\n       `--write` shows what it measured and asks before overwriting an\n       existing record, difference by difference.  Silence keeps the record;\n       `--yes` takes every probed value.  The record carries a copy of that\n       machine\'s `env_init` -- how a shell enters an environment there, from\n       ITS molbuilder.json.\n\n    2. COPY IT HERE:\n\n           scp cluster:~/.config/molbuilder/environments/sol.json \\\n               ~/.config/molbuilder/environments/\n\n    3. CONFIRM IT LANDED AND PARSES:\n\n           molbuilder jobset machines\n\n       This prints every record, its path and when it was measured.  It is the\n       only step that answers "did the copy work?" -- a record that is present\n       but corrupt is LISTED AND MARKED, never skipped, because a silently\n       dropped record looks exactly like one that was never copied.\n\n    Then `prep --target sol` sizes for Sol from anywhere.\n\nWHAT DOES NOT BELONG HERE\n    A record written from scratch, or edited by hand.  These are records of\n    measurement.  A copied `env_init` that is wrong for its machine is\n    changed in THAT machine\'s molbuilder.json, then probed again there and\n    the record copied here.  A fact the probe cannot see is `--set` on the\n    probe, run on that machine (the record says you asserted it); what you\n    WANT is a preference in `molbuilder.json`.\n\n    An empty directory is the normal state if you only ever run locally.\n\nReference: docs/execution/preparing-for-another-machine.md § 1a (these commands,\nverified end to end), docs/configuration.md § 5 (the record\'s schema and the\nfact-vs-preference rule).\n'
 
 
 def _readme(directory: Path, text: str, note: str) -> List[Step]:
@@ -509,7 +510,7 @@ def _config_note() -> str:
         return f'left as it is (env_init.activation = "{said}")'
     return ("left as it is -- but it declares no env_init.activation, so the "
             "probe has nothing to copy and every prep for this machine "
-            "refuses (running-a-job.md 5.2)")
+            "refuses (configuration.md § 4)")
 
 
 def seed_environment_record() -> Step:

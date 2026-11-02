@@ -2,7 +2,7 @@
 "Run history" panel (sensor badge + list view + graph viewer).
 
 Contract: docs/execution/checkpointing.md (the rules and their status).
-Guide:    docs/execution/running-a-job.md § 6.
+Guide:    docs/execution/checkpointing.md § 5.
 Panel:    docs/web/projects.md.
 
 Envelope per web-api.md § 1 (four-bucket rule):

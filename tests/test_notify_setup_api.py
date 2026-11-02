@@ -488,7 +488,7 @@ def test_a_malformed_file_can_still_be_FIXED_from_the_page(client):
 
 def test_the_launch_mode_does_not_gate_the_write(tmp_path, monkeypatch):
     """A `submit` machine is a machine with a scheduler
-    (`running-a-job.md` § 5.4) -- a login node, which is exactly where the
+    (`configuration.md` § 4) -- a login node, which is exactly where the
     file belongs.  The route read it as *"the jobs run somewhere I cannot
     reach"* and refused to save from 2026-08-27 until 2026-09-01.
 

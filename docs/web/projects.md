@@ -7,7 +7,7 @@ into and read from `molview.data`; [`workspace.md`](?doc=web/workspace.md) — a
 different thing (auto-saving in-progress edits, not files). `web-api.md` — the
 `/api/files/*`, `/api/build/load`, `/api/structure/save`, and `/api/checkpoint/*`
 routes this module calls (web wave);
-[`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` and the
+[`execution/checkpointing.md`](?doc=execution/checkpointing.md) `§ 5` and the
 Modify-Save doc own the checkpoint panel and the structure Save panel this doc
 only points at.
 
@@ -327,9 +327,8 @@ touch it. The parts:
   exist. It refreshes only when asked (no polling; entering a folder reads
   the state once, which is both what decides whether the button appears and
   what makes its color honest). Its behavior is owned by
-  [`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` (the
-  workflow) and [`execution/checkpointing.md`](?doc=execution/checkpointing.md)
-  (the invariants); this doc owns where it sits.
+  [`execution/checkpointing.md`](?doc=execution/checkpointing.md) — `§ 5` the
+  workflow, § 11 the invariants; this doc owns where it sits.
   *(Until 2026-08-19 this was a separate fixed-width panel to the right of
   the sidebar, with no way to reclaim its space.)*
 - **Layout** — a drag handle resizes the sidebar (double-click resets), a toggle

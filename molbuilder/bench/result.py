@@ -8,7 +8,7 @@ writes ``bench-result@1``.  Its ``choice`` block is the decision as DATA
 own exchange vocabulary (mpi_np / cpus_per_task / gres), and its
 ``mechanism`` read from the winning trial's deck -- materialised by
 `summarize` into the report it PRINTS for a PERSON
-to apply (§ 2.3.2).
+to apply (`generator.md` § 4.3a).
 
 The pure ``parse_*`` functions take text; ``build_bench_result``
 assembles the record.

@@ -7,8 +7,8 @@ USED-BY the parsers, the emitters, the transport composer — anywhere a
 TRAVELS in all three bundles beside a job -- the monitor's
         (`runwrap.MONITOR_COMPANIONS`: the molwatch grammar converts a
         residual with it), a SIESTA finish's and a PySCF script's -- so it
-        stays stdlib-only (`configuration.md`'s rule, *stdlib-only AND
-        travels*)
+        stays stdlib-only (`configuration.md` § 2.3's rule, *stdlib-only
+        AND travels*)
 
 WHY THIS EXISTS.  A constant spelled at each call site drifts.  Left to
 itself the Bohr radius separates into **three values across eight sites**,

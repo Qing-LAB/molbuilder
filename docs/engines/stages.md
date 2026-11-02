@@ -1480,7 +1480,7 @@ flowchart LR
 
 Two decks come out, as before — what changed is **who renders them and when**.
 The template is written once by the browser; each deck is produced by `prep`, in
-its own stage directory, on the machine that will run it.
+its own stage directory, for the machine that will run it.
 
 **The deck is rendered where the machine is known, and that is not deferral for
 its own sake.** Some of what goes *inside* a `.fdf` is a fact about the hardware:
@@ -1599,7 +1599,7 @@ that breaks the premise every rule here rests on: that a folder's contents are
 what its description says they are.
 
 The answer is not to tiptoe around the orphans. It is
-[`molbuilder checkpoint`](?doc=execution/running-a-job.md) § 6, which already puts
+[`molbuilder checkpoint`](?doc=execution/checkpointing.md) § 5, which already puts
 a run directory under a git-backed history — text tracked (including the small
 `.XV` / `.CG`, *"so a restore brings back a resumable state"*), large binaries
 archived by content and stored once, and the engine's scratch in neither

@@ -97,7 +97,7 @@ class Directives:
 
         Whole-node ownership already grants all the node's memory, so a
         memory ask beside it is meaningless and some sites reject the pair
-        (`running-a-job.md` § 5.3.1); the kind's ``whole_node`` says "all
+        (`scheduler.md` § 6a); the kind's ``whole_node`` says "all
         the node's memory" out loud to the person reading the file.
         """
         if self.exclusive:

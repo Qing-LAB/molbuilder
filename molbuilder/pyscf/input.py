@@ -227,12 +227,12 @@ def spec_for(struct: Structure,
     # subject is the structure as it arrived, which is the framework's
     # default, so this spec names no `validate_subject`.
 
-    # EVERYTHING THE PARAMETERS SUB-STEP WRITES, collected as it is written.
-    # The CHECK gate reads the finished file back and asks whether each of
-    # these survived into it -- the rule that closes the loop between what this
-    # function intended and what PySCF will read (`script-preparation.md`
-    # § 3.3).  Collected HERE because the script is assembled here; a set
-    # assembled anywhere else is a second answer to "what did this deck write".
+    # WHAT THE PARAMETERS SUB-STEP WRITES is not collected here.  The
+    # framework keeps it as it walks the layout (`RenderedDeck.emitted`), and
+    # the CHECK gate reads the finished file back and asks whether each line
+    # survived into it -- the rule that closes the loop between what this
+    # deck intended and what PySCF will read (`script-preparation.md` § 4.3).
+    # A list this writer kept would say what the writer believed.
     def _science_a(struct, cfg) -> str:
         """One run of the deck's science, in the order PySCF reads it.
 
@@ -275,7 +275,7 @@ def spec_for(struct: Structure,
             held=cfg.optimize and bool(getattr(struct, "frozen_atoms", None)))
         out.append("")
         out.append("Environment:")
-        out.append("    The wrapper activates it; this is how it gets built.")
+        out.append("    The run script activates it; this is how it gets built.")
         out.append("    Bootstrap managed environments once:")
         out.append("        " + _fix_cmd("bootstrap", "--yes"))
         out.append("\n")
@@ -660,7 +660,7 @@ def spec_for(struct: Structure,
 
         A block of its own so the six convergence targets are a SECTION of
         the layout rather than a section rendered inside a block
-        (`script-preparation.md` § 4.1).
+        (`script-preparation.md` § 4.2, *The membership rule*).
         """
         out: List[str] = []
         if cfg.optimize:
@@ -1066,7 +1066,8 @@ def _emit_optimization(cfg: PySCFConfig,
     # the layout, above this block, so the framework walks it and knows what it
     # said to write -- which is what lets the check gate ask whether each target
     # survived into the file.  A branch is a reason to OMIT a member, not to hide one: `spec_for` holds the
-    # config and answers which (`script-preparation.md` § 4.1).
+    # config and answers which (`script-preparation.md` § 4.2, *The
+    # membership rule*).
     out: List[str] = [""]
     if v:
         out.append("# One relaxation: this deck IS one rung of the ladder.")
@@ -1494,7 +1495,7 @@ def emit_run_with(names) -> List[str]:
     out.extend(f"    {line}" for line in deck_launch(names.stage))
     out.append(f"    {LAUNCH_MODE_NOTE}")
     out.append("")
-    out.append("    The wrapper beside this file is self-contained: it runs")
+    out.append("    The run script beside this file is self-contained: it runs")
     out.append("    unattended in a shell that inherits nothing, so it bakes")
     out.append("    in the environment activation, sizes the threads, tees")
     out.append("    the output, traps the scheduler's SIGTERM, and records")

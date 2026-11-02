@@ -5,10 +5,11 @@
 and **writes nothing**. Imported by ``jobset/prep``.
 
 **Contract:** [`execution/generator.md`](?doc=execution/generator.md) § 5 (the
-object), § 4 (capability ⊇ allocation ⊇ sweep, and the pin channel), § 6.1 (what
-floor 3 may read) · [`execution/project-layout.md`](?doc=execution/project-layout.md)
-§ 2.3.1 step 2 · [`engines/stages.md`](?doc=engines/stages.md) § 4 (effective
-config = the template ⊕ a stage's ``overrides``).
+object), § 4.1 (capability, this prep's ask, the sweep) and § 4.2 (a pin is the
+benchmark's), § 6.1 (what floor 3 may read) ·
+[`execution/script-preparation.md`](?doc=execution/script-preparation.md) § 3.0
+step 2 · [`engines/stages.md`](?doc=engines/stages.md) § 4 (effective config =
+the template ⊕ a stage's ``overrides``).
 
 THE ONE IDEA THIS MODULE EXISTS FOR.  **`prep` step 2 always produces a LIST.**
 A production run is that list with one element; a benchmark is the same list
@@ -154,8 +155,8 @@ class ResolvedConfig:
         orbitals ÷ ranks — and the wrapper writer needs the whole of it. Both
         read one object."* This is that one object, projected for the emitter.
 
-        **Why the allocation has to reach the deck at all**, when floor 2 may
-        never name a machine: a deck is rendered at `prep`, on the machine that
+        **Why the ask has to reach the deck at all**, when floor 2 may never
+        name a machine: a deck is rendered at `prep`, for the machine that
         will run it, and it records what it assumed in its BENCH-MARKS block. A
         deck rendered without a rank count says ``mpi_np auto`` and then gets
         launched at 32 -- the ``-np 14`` / ``propor: IMAX = 0`` crash -- so
@@ -269,7 +270,8 @@ def _points(sweep) -> Tuple[Mapping, ...]:
 
 
 def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
-    """§ 4.1: *a sweep's ask that exceeds the allocation is refused.*
+    """§ 4.1: *the sweep fits inside this prep's ask* -- a point past it is
+    refused.
 
     ``asks`` is the point's machine half AFTER any translation, so a derived
     rank count is bounded exactly like one the sweep named directly — its keys
@@ -283,9 +285,9 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
     for axis, value in asks.items():
         ceiling = getattr(allocation, axis, None)
         if axis == "gres":
-            # A GPU COUNT bounds a trial as a rank count does (§ 4.1a: the
-            # allocation is ranks, cores per rank and GPUs), each read as the
-            # count it spells (`quantities.parse_gres_flag`).
+            # A GPU COUNT bounds a trial as a rank count does (§ 4.1: this
+            # prep's ask holds ranks, cores per rank and GPUs), each read as
+            # the count it spells (`quantities.parse_gres_flag`).
             from .scheduler.quantities import parse_gres_flag
             value, ceiling = (None if v in (None, "") else parse_gres_flag(v)
                               for v in (value, ceiling))
@@ -296,14 +298,15 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
             said = "GPUs" if axis == "gres" else axis
             raise ResolveError(
                 f"this sweep asks for {said}={value}, which exceeds this "
-                f"prep's allocation of {said}={ceiling}.\n"
+                f"prep's ask of {said}={ceiling}.\n"
                 f"  A sweep is bounded by what you ASKED FOR, not by what the "
                 f"machine has -- asking for less is often the better choice, "
                 f"because how a job is scheduled depends on how much you ask "
                 f"for (generator.md 4.1).\n"
-                f"  Either raise the allocation for this prep, or drop the "
-                f"point. It is refused rather than clamped, because a clamped "
-                f"trial measures something you did not ask for.")
+                f"  Either raise this prep's ask (--np, --cpus-per-task, "
+                f"--gpus), or drop the point. It is refused rather than "
+                f"clamped, because a clamped trial measures something you "
+                f"did not ask for.")
 
 
 # --------------------------------------------------------------------- #
@@ -490,7 +493,7 @@ def resolve(template_text: str, task, config_cls, *,
     machine fact like the GPU type is legitimately read.
 
     Raises :class:`ResolveError` when the stage does not exist, when a sweep
-    point exceeds the allocation, when an axis names nothing, or when a pin
+    point exceeds this prep's ask, when an axis names nothing, or when a pin
     names something the schema does not have.
     """
     from .template import config_from_template
@@ -686,7 +689,7 @@ def resolve(template_text: str, task, config_cls, *,
                     f"({', '.join(sorted(_RESOURCE_FIELDS))}).")
             machine.update(delta)
         # The bound applies to what the point ASKS FOR, translated or not --
-        # a trial whose derived rank count exceeds the allocation is the same
+        # a trial whose derived rank count exceeds this prep's ask is the same
         # refusal as one that named mpi_np directly (§ 4.1).
         _check_fits(machine, allocation)
 
@@ -741,7 +744,7 @@ def resolve(template_text: str, task, config_cls, *,
         if wants_gpu is not None:
             resources = dataclasses.replace(resources,
                                             use_gpu=bool(wants_gpu))
-        # A BENCHMARK'S GPU COUNT IS ITS CEILING (§ 4.1a: the allocation
+        # A BENCHMARK'S GPU COUNT IS ITS CEILING (§ 4.1: this prep's ask
         # bounds the sweep, `_check_fits`), never a trial's ask: a trial on
         # the CPU asks no GPU, whatever the prep was allowed (`gpu.md` G5).
         if point and not resources.use_gpu and resources.gres:
@@ -795,8 +798,8 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
     never what it computes (`execution/job-request.md` § 1, A17).
 
     Exists so the surface that surfaces those findings does not re-derive
-    the resolution with primitives of its own — the caller-re-derivation
-    habit `job-system.md` § 9 diagnoses.
+    the resolution with primitives of its own — a surface collects and
+    renders, and composes nothing (`architecture.md` A12).
     """
     from .template import config_from_template, engine_name, role_answers
     base = config_from_template(template_text, config_cls)
@@ -870,8 +873,8 @@ def effective_config(template, overrides: Mapping[str, Any], *,
 
     **It lives HERE, in floor 3, and not in an engine package**.  The body is
     entirely engine-agnostic — it reads the dataclass's own fields.
-    ``generator.md`` § 7's test is that adding an engine adds files and edits
-    none.
+    ``generator.md`` § 7's rule (`architecture.md` A18): adding an engine
+    adds records and a seam, and no shared code branches on its name.
 
     Two rules from § 4 shape what this returns, and both are about keeping a
     stage from becoming a special case:

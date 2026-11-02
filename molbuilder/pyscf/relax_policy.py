@@ -26,8 +26,9 @@ from typing import Tuple
 def policy_of(cfg) -> Tuple[str, int]:
     """``(on_nonconvergence, geom_continue_retries)`` read ONCE, the same way
     for both decks, as the template states them -- the catalogue gives both
-    their values (``halt``, 1).  A blank is refused (`generator.md`
-    § 10.1)."""
+    their values (``halt``, 1).  A blank is refused: neither item is
+    ``optional``, so unset is not a state either has (`engines/template.md`
+    § 5, ``optional``)."""
     policy = getattr(cfg, "on_nonconvergence", None)
     retries = getattr(cfg, "geom_continue_retries", None)
     if policy in (None, "") or retries is None:

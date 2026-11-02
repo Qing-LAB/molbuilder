@@ -4,8 +4,8 @@ PINS: ``docs/execution/job-system.md`` § 6.0 (launch sends the header its
 prep wrote, each stage its own; `-J <calculation>/<job>`);
 ``docs/execution/architecture.md`` § 5.2 (every launch value is stated, at
 prep); ``docs/execution/submission.md`` S4 (nothing is submitted unseen --
-every door); ``docs/execution/running-a-job.md`` § 5.5 (a flag the launch
-would not read is refused).
+every door); ``docs/execution/job-system.md``, *Every refusal, and its way
+on*, R-L4 (a flag the launch would not read is refused).
 
 PREVENTS: the queue one stage's prep baked routing every stage of the
 ladder; a direct run without the ranks and threads its prep stated; a send

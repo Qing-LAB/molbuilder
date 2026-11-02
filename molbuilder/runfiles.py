@@ -1116,7 +1116,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              only="Raman asked, and a mode picked for it",
              listed_by="user_index"),
     # ---- the wrapper --------------------------------------------------
-    Artifact(".run.sh", "the wrapper — activates the environment, tees "
+    Artifact(".run.sh", "the run script — activates the environment, tees "
                         "the output, catches a kill",
              when="prep", level="stage", kind="derived",
              writer="prep (`runwrap.write_run_wrapper`), beside its deck; "
@@ -1185,7 +1185,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # and a refused start write none -- so its being there is the start,
     # what a second start in the folder refuses on (`project-layout.md`
     # § 1.6.1, `job-contracts.md` § 2.6).
-    Artifact(".runwrap.log", "the wrapper's own session log — one per run",
+    Artifact(".runwrap.log", "the run script's own session log — one per "
+             "run",
              kind="record",
              writer="the run script, once the launch-door gate lets its "
                     "start through",
@@ -1291,7 +1292,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # THE CONCLUSION MARKER -- the wrapper's last act on its main line, or
     # its exit trap's when the script fails on its own first
     # (`project-layout.md` § 1.6.3).
-    Artifact(".concluded", "the marker the wrapper writes when the job ends",
+    Artifact(".concluded", "the marker the run script writes when the job "
+             "ends",
              kind="record",
              writer="the run script, its last act; or its exit trap, when "
                     "the script fails on its own before it",
@@ -1375,8 +1377,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "`pseudos/`, and a real copy beside every deck — SIESTA "
                   "opens only its working directory",
              engine="siesta", when="prep", level="calculation", kind="input",
-             writer="prep (`jobset.engines.pseudo_dir`, `materialize`); "
-                    "`molbuilder describe --psml-lib`",
+             writer="`molbuilder describe --psml-lib`, loose at the "
+                    "calculation root; the first prep moves them into "
+                    "`pseudos/` (`jobset.engines.pseudo_dir`), and "
+                    "`materialize` copies one beside each deck",
              door="pseudos.psml_sources"),
     Artifact(name=JUNCTION_FILE, what="the composed junction",
              calculation="transport", when="prep", level="calculation",
@@ -1418,19 +1422,22 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "`.binsnapshots/` rather than in git, and the engines' "
                   "scratch, which they keep nowhere",
              when="setup", level="calculation", kind="record",
-             writer="`checkpoint.save_before`, before every Save and prep and a "
-                    "group's first launch",
+             writer="`checkpoint.Repo` -- `checkpoint init` and `save`, the "
+                    "panel, and `save_before` before every prep that "
+                    "writes, Save and a group's first launch",
              door="checkpoint.Repo"),
     Artifact(name=".git/", what="the folder's saved states",
              when="setup", level="calculation", kind="record",
-             writer="`checkpoint.save_before`, before every Save and prep and a "
-                    "group's first launch",
+             writer="`checkpoint.Repo` -- `checkpoint init` and `save`, the "
+                    "panel, and `save_before` before every prep that "
+                    "writes, Save and a group's first launch",
              door="checkpoint.Repo"),
     Artifact(name=SNAPSHOT_DIR + "/",
              what="the big files of each saved state, by content",
              when="setup", level="calculation", kind="record",
-             writer="`checkpoint.save_before`, before every Save and prep and a "
-                    "group's first launch",
+             writer="`checkpoint.Repo` -- `checkpoint init` and `save`, the "
+                    "panel, and `save_before` before every prep that "
+                    "writes, Save and a group's first launch",
              door="checkpoint.Repo"),
     # THE COORDINATES OF ONE SIESTA CALL, read by the deck beside it
     # (`%block AtomicCoordinatesAndAtomicSpecies < coordinates.fdf`,
@@ -1484,8 +1491,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              only="it continues from an earlier run"),
     Artifact(name=CALCDIR_FILE,
              what="what this folder is in its calculation — a container, "
-                  "a run, or a run's scratch folder — and where the "
-                  "calculation is",
+                  "a run, a run's scratch folder, or a transmission point's "
+                  "shared energies — and where the calculation is",
              when="prep", level="stage", kind="record",
              writer="the code that makes the folder: prep and launch "
                     "(`materialize.open_run` -- a stage's run, a bias "
@@ -1493,7 +1500,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "each -- `naming.open_container`, a "
                     "submission's `launch/`, `pseudos/` and a point's "
                     "folder below its stage, and "
-                    "`materialize.open_scratch`, a device run's `tsgf/`)",
+                    "`materialize.open_scratch`, a device run's `tsgf/`; "
+                    "and `jobset.reuse`, a transmission point's `shared/`)",
              door="calcdirs.where"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",
@@ -1586,7 +1594,23 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="prep", level="launch", kind="derived",
              writer="prep (`prep.walk_header_of`), written again at each "
                     "prep; launch sends it",
-             only="a target with a scheduler, no `--no-sbatch`"),
+             only="a machine whose scheduler has a queue, no "
+                  "`--no-sbatch`"),
+    # THE SCHEDULER'S OWN OUTPUT for a job sent from `launch/`: the header
+    # there names its files in the same folder (`runwrap.render_sbatch`,
+    # ``where``; `scheduler.md` § 6a).
+    Artifact(name=SCHEDULER_STDOUT,
+             what="the scheduler's own stdout for the job",
+             level="launch", kind="record",
+             writer="the scheduler, as the group's header asks (its kind's "
+                    "`stdout`, `scheduler/kinds.toml`)",
+             only="launched to a queue"),
+    Artifact(name=SCHEDULER_STDERR,
+             what="the scheduler's own stderr for the job",
+             level="launch", kind="record",
+             writer="the scheduler, as the group's header asks (its kind's "
+                    "`stderr`, `scheduler/kinds.toml`)",
+             only="launched to a queue"),
     Artifact(name="{group}.log", what="every member's output, in order",
              when="run", level="launch", kind="record",
              writer="the group's sequencer, as it runs"),

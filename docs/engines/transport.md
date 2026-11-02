@@ -2573,7 +2573,7 @@ scheduler and writes its answer (`running-a-job.md` § 4.2); else its points' ve
 (`continuation.points_verdict`): *finished* when every point's run finished,
 converged or not, which the converged column says (*SCF NO* when a point did
 not converge), or *failed* when a point failed or is not run, naming the
-first point not done. A walk that stopped among its points — some run,
+first point short of done. A walk that stopped among its points — some run,
 the rest not run — is a run that ended, failed, never one still queued;
 where no job holding the run is on file, or this machine cannot tell, the
 points' verdict is said. Beside the state, how many of its points are done,
@@ -2588,7 +2588,8 @@ and *(between two points)* while the walk is between them);
 `status <stage>` says what the run gathered and what it continued from, read
 at the point (*0 V, 0.2 V taken over from run-1; the rest walked* — taken
 over as the run's index records launch's decision, `taken_from`), then lists
-the points — each run's state, done or not done and why, what each started
+the points — each run's state, each point's own word and why
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3), what each started
 from, and what each alone took (a transmission point's device point). Every transport rung's
 `status <stage>` shows its gather the same way.
 
@@ -4267,8 +4268,8 @@ the new request as it reaches that rung, in the words of § 6.1's comparison,
 or the finished run's state — a change of shape, a rung run once against a
 rung of points, said by what each calculation runs. A run copied in names
 the results it holds that this calculation does not describe: copied and
-unread, or left behind. **A result that is not done is warned of**: for each stage, when the
-finished calculation's newest run of it has ended holding a result that is not
+unread, or left behind. **A result short of done is warned of**: for each stage, when the
+finished calculation's newest run of it has ended holding a result short of
 done — asked or not, copied in or prepared here — the manifest says, under the
 group, `warning:` that run, each such result and how it ended in the done
 door's words — *not finished*, *finished, not converged (SCF NO)* (possible only

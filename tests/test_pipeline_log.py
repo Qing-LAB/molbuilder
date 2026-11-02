@@ -272,13 +272,15 @@ def test_both_gates_report_their_verdict(tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  6. The hook boundary — W16                                            #
+#  6. The hook boundary — script-preparation.md § 4.5                   #
 # --------------------------------------------------------------------- #
 
-#: EVERY engine hook W16 names, read off the two seams' own declarations: each
-#: `Callable` member of `EngineSeam` (what `prep` asks of an engine) and of
-#: `DeckSpec` (what the framework asks of a deck), and `Block.render`.  A hook
-#: declared on either seam is in this list the day it is declared.
+#: EVERY engine hook -- each one that raises says whose it was
+#: (`script-preparation.md` § 4.5) -- read off the two seams' own
+#: declarations: each `Callable` member of `EngineSeam` (what `prep` asks of
+#: an engine) and of `DeckSpec` (what the framework asks of a deck), and
+#: `Block.render`.  A hook declared on either seam is in this list the day it
+#: is declared.
 #: Each seam member's step (`script-preparation.md` § 4): a preparation
 #: step's unless the member declares another -- the hand-over's ``describe``.
 _SEAM_HOOKS = tuple(f.name for f in dataclasses.fields(EngineSeam)
@@ -294,7 +296,8 @@ _HOOKS = _SEAM_HOOKS + _DECK_HOOKS + ("Block.render",)
 
 @pytest.mark.parametrize("hook", _HOOKS)
 def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
-    """**W16**: the framework is a walk over the engine's functions, so an
+    """**A hook that raised says whose it was** (`script-preparation.md`
+    § 4.5): the framework is a walk over the engine's functions, so an
     exception with no owner on it is the ordinary failure here -- and a rule
     that holds for fifteen hooks is a rule nobody can rely on; the sixteenth
     is where the next afternoon goes.
@@ -356,9 +359,10 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
 @pytest.mark.parametrize("hook", _DESCRIBE_HOOKS)
 def test_a_describe_hook_that_raises_says_whose_it_was(
         web_client, isolated_projects_root, monkeypatch, hook):
-    """**W16** at the hand-over: a seam member asked before `prep` -- by the
-    hand-over that writes the calculation -- that raises keeps its type and
-    message, and says whose it was.
+    """**A hook that raised says whose it was** (§ 4.5), at the hand-over: a
+    seam member asked before `prep` -- by the hand-over that writes the
+    calculation -- that raises keeps its type and message, and says whose it
+    was.
 
     MUTATION THIS MUST FAIL AGAINST: the hook called bare in the hand-over,
     outside its ``calling(...)`` boundary."""
@@ -440,7 +444,8 @@ def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
-    """**W14**: every line declares what it is in its first column.
+    """**W13's one format** (`script-preparation.md` § 4.5, *What it
+    contains*): every line says what it is in its first column.
 
     The rule is what makes one grep answer one question across the file, and
     a line that is none of the four kinds is a line nobody can find twice.
@@ -472,11 +477,12 @@ def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
         if was_rule and re.match(r"^  \S", ln):
             continue
         stray.append(ln)
-    assert not stray, f"lines that are none of W14's kinds: {stray[:5]}"
+    assert not stray, f"lines that are none of the format's kinds: {stray[:5]}"
 
 
 def test_a_block_row_carries_no_items_values_or_sources(tmp_path):
-    """**W15**: what a `Block` hides, it hides from the log too.
+    """**W11, in the log** (`script-preparation.md` § 4.5): what a `Block`
+    hides, it hides from the log too.
 
     The framework can say a block ran and how many lines it produced, and
     nothing more -- there is no declaration to read.  If a Block row ever

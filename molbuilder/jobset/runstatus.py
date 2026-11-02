@@ -80,11 +80,11 @@ class StageStatus:
     ref:        StageRef
     #: The stage's directory, or ``None`` before anything prepared it.
     dir:        Optional[str]
-    #: ``described`` (not prepared: the ready door's word) or the run's:
-    #: pending/queued/running/failed/finished/unknown.  ``queued`` is
-    #: the contract's own word (project-layout.md § 1.6, *"queued as job
-    #: 481923"*) for launched-but-no-output-yet, which is exactly the state an
-    #: empty directory cannot be read for.
+    #: ``described`` (not prepared: the ready door's word), ``missing``
+    #: (:data:`~molbuilder.jobset.ready.MISSING`), or the run's state
+    #: (`running-a-job.md` § 4.2, `job.RUN_STATES`).  ``queued`` is
+    #: launched, its start not yet begun (no session log); a run whose start
+    #: began with no output yet is ``running``.
     state:      str
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
@@ -566,8 +566,8 @@ def _sweep_status(calc, job, *, run: Path, columns: dict) -> "StageStatus":
     (`continuation.read_points`): ``pending`` before it is launched; while
     launched, ``running`` while a point runs, ``finished`` once every point
     is done, ``queued`` when nothing has run yet, else ``failed`` -- and its
-    points, each done or not done and what it started from; ``columns``,
-    the stage's own (:func:`_job_status`)."""
+    points, each by its own word (`runpoints.state_word`) and what it
+    started from; ``columns``, the stage's own (:func:`_job_status`)."""
     base, task = calc.base, calc.task
     got = read_points(base, task, job.name, run)
     pts = got.rows
@@ -971,7 +971,7 @@ def render_steps(status: JobSetStatus) -> str:
 
 def render_status(status: JobSetStatus) -> str:
     """Human-readable status table + each group's next step, the line that
-    moves it (`job-system.md` § 5.3, *The next step*)."""
+    moves it (`job-system.md`, *The next step*)."""
     lines: List[str] = [
         f"JOB-SET STATUS -- {status.name} ({status.engine})",
         "",
@@ -1160,11 +1160,13 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     elif s.unrecorded:
         from .prepared_with import UNRECORDED_SAID
         rows.append(("prepared with", UNRECORDED_SAID))
-    # A SWEEP'S POINTS, one row each (`engines/transport.md` § 2a.11): done
-    # or not done and why, what it started from, what it alone took.
+    # A SWEEP'S POINTS, one row each (`engines/transport.md` § 2a.11): its
+    # own word (`runpoints.state_word`) and why, what it started from, what
+    # it alone took.
+    from ..runpoints import state_word
     for p in s.points:
         rows.append((f"  {p['point']}",
-                     ("done" if p["done"] else f"not done -- {p['why']}")
+                     _said(state_word(p), None if p["done"] else p["why"])
                      + (f"; from {p['started_from']}" if p.get("started_from")
                         else f"; {p['start_unread']}" if p.get("start_unread")
                         else f"; copied from {p['copied_from']}"

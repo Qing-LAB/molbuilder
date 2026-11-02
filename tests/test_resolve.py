@@ -164,7 +164,7 @@ def test_the_split_is_a_lookup_not_a_guess():
 def test_a_sweep_point_over_the_allocation_is_refused_not_clamped(template):
     """**The rule, and the reason it is a refusal.**  A clamped trial measures
     something you did not ask for, and reports it as though you had."""
-    with pytest.raises(ResolveError, match=r"exceeds this prep's allocation"):
+    with pytest.raises(ResolveError, match=r"exceeds this prep's ask"):
         resolve(template, _task(), SiestaConfig,
                 allocation=Resources(mpi_np=16), sweep={"mpi_np": [8, 32]}, stage=STAGE)
 
@@ -286,7 +286,7 @@ def test_the_environment_reaches_the_translation(template):
 def test_a_translated_ask_is_bounded_by_the_allocation_too(template):
     """§ 4.1 does not care how the ask was spelled: a derived rank count over
     the allocation is the same refusal as naming ``mpi_np`` directly."""
-    with pytest.raises(ResolveError, match=r"exceeds this prep's allocation"):
+    with pytest.raises(ResolveError, match=r"exceeds this prep's ask"):
         resolve(template, _task(), SiestaConfig,
                 allocation=Resources(mpi_np=16),
                 sweep=[{"G": 1, "N": 32, "C": 1}], translation=_GNC, stage=STAGE)

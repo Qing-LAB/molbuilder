@@ -165,7 +165,7 @@ def _gpu_library_limits(struct: Structure, cfg,
                         calculation: str) -> List[Issue]:
     """What gpu4pyscf does not do that PySCF does, where this run asks for
     the GPU -- each a ``warn``, never an ``error``: choosing the GPU
-    knowing it is the person's (`execution/job-request.md` § 2,
+    knowing it is the person's (`execution/gpu.md` G11,
     `engines/pyscf.md` § 7.3).  An unrestricted reference: gpu4pyscf has
     no stability analysis, so on the GPU the SCF keeps its first solution
     unchecked.  A solvent model: gpu4pyscf's has not been compared with
@@ -291,8 +291,8 @@ def _validate_pyscf(struct: Structure, cfg,
                 "config.solvent_method",
             ))
 
-    # gpu4pyscf'S OWN LIMITS, SAID -- every kind (`execution/job-request.md`
-    # § 2; the user, 2026-10-21: "a hint and information is enough").
+    # gpu4pyscf'S OWN LIMITS, SAID -- every kind (`execution/gpu.md` G11;
+    # the user, 2026-10-21: "a hint and information is enough").
     if bool(getattr(cfg, "use_gpu", False)):
         issues += _gpu_library_limits(struct, cfg, calculation)
 

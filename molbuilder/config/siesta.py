@@ -152,7 +152,8 @@ def _validate_basename(label: str):
     **ONE VALIDATOR, TWO ENGINES, AND THAT IS THE WHOLE OF WHAT THEY SHARE.**
     A SIESTA ``SystemLabel`` and a PySCF ``JOB`` are the same KIND of thing --
     the basename every output file of a run is prefixed with -- so what a name
-    may be is one rule, stated here and in `execution/job-contracts.md` § 2.5b.
+    may be is one rule, stated here and in `execution/job-contracts.md` § 2.1
+    (rule 2).
     They are not the same MECHANISM and must not be read as if they were: a
     ``SystemLabel`` is an fdf directive holding a bare token, a ``JOB`` is a
     Python string literal where the **quotes are syntax, not value**.

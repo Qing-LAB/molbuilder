@@ -191,8 +191,9 @@ class Where:
     """WHERE A FOLDER IS (`project-layout.md` § 1.4a, *Where am I*): the
     calculation's ``root``; ``what`` the folder is -- :data:`CALCULATION`,
     :data:`STAGE`, :data:`ATTEMPT`, :data:`POINT`, :data:`SCRATCH`,
-    :data:`BENCHMARK`, :data:`TRIAL` or :data:`SUPPORT`; ``role``, its
-    record's (``None`` at the root, a container, which holds no record); and
+    :data:`SHARED`, :data:`BENCHMARK`, :data:`TRIAL` or :data:`SUPPORT`;
+    ``role``, its record's (``None`` at the root, a container, which holds
+    no record); and
     where it sits -- the ``stage`` token (``01_coarse``), the ``run`` index,
     the benchmark ``trial``'s point, and for a point's folder the ``point``,
     its path below the run or the stage (``f001/v0.2``); ``run_folder``, the

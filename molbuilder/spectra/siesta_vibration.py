@@ -1182,8 +1182,8 @@ def finish_run(deck) -> None:
     if got is None:
         # NO FORCE CONSTANTS DONE -- the call failed, or what it builds on
         # did not run -- so no result (§ 5).
-        _say("INFO", "vibration: the force-constant call is not done -- no "
-                     "result to write")
+        _say("INFO", "vibration: the force-constant call is short of done "
+                     "-- no result to write")
         return
     run, res = got
     out = here.run_dir / compose(here.label, ROLE_SPECTRA)

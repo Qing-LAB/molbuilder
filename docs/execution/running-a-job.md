@@ -510,7 +510,7 @@ starts the engine a second time.
    | its deck reads no prior state (`restart: clean`) | a launch again starts over from its own coordinates |
    | its kind does not resume (a PySCF vibration) | a launch again starts this run over from its deck, nothing of it copied in — this kind of run does not resume |
    | its stage takes nothing from a run | the same, *this stage carries nothing from one run to the next* |
-   | a point of a run of points | *this point is not done: a launch again takes the run's points done over and* continues this one from its own last state, or runs it again from its start — its relaunch ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.2) |
+   | a point of a run of points | *this point failed: a launch again takes the run's points done over and* continues this one from its own last state, or runs it again from its start — its relaunch ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.2) |
    | a benchmark trial | a trial measures its point once, and its benchmark's launch does not start it again (`submit._plan_trial`) |
 
    A stop at the wall says *stopped at its wall (MaxWalltime)* in place of *what a launch again will do*

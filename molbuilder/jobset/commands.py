@@ -209,8 +209,9 @@ def launch_lines(kind: str, *words, base,
         return [command("launch", *words_for(kind, *words, groups=groups),
                         base=base, flags=flags)]
     # EACH LINE SAYS WHAT IT DOES, the machine named as its record names it
-    # (`job-system.md` § 9; the user, 2026-10-25: "just claim what it is
-    # doing: submitting to execute on sol").
+    # (`job-system.md` § 5.3, *What molbuilder prints, you can type*; the
+    # user, 2026-10-25: "just claim what it is doing: submitting to execute
+    # on sol").
     from ..scheduler.record import LOCAL_TARGET, calculation_machine
     machine = calculation_machine(base) or target or LOCAL_TARGET
     on = "this machine" if machine == LOCAL_TARGET else machine
@@ -282,6 +283,31 @@ def reason_of(refusal: str) -> str:
     return reason + "." if sep else first.rstrip(" -")
 
 
+def launch_save_note(group: str, inside=None) -> str:
+    """WHAT A GROUP'S FIRST LAUNCH SAVES THE FOLDER BEFORE, as its note says
+    it (`checkpointing.md` § 9, *The note an act writes*): ``launch task``
+    and the group, named by its number and members (`group.named`) --
+    and, for a launch inside a sequence's job (``inside``, `submit.Inside`),
+    the job and the sequence, so a state the job took is told from one the
+    person's own launch took (the user, 2026-11-01).  Composed here and read
+    back here (:func:`names_launch_of`)."""
+    what = f"launch task {group}"
+    if inside is not None:
+        what += f", in job {inside.job} (sequence {inside.name})"
+    return what
+
+
+def names_launch_of(note: str, who: str) -> bool:
+    """Whether a saved state's ``note`` is one :func:`launch_save_note`
+    wrote for the group whose members are ``who`` (``(a, b)``) -- typed, or
+    inside a sequence's job.  A stage name holds no comma, so the job's
+    words never read as a member."""
+    if "before launch task group" not in note:
+        return False
+    group, _sep, _job = note.rstrip().partition(", in job ")
+    return group.endswith(who)
+
+
 def rollback(what: str, *, base) -> str:
     """How ``what`` is redone: the state saved before it, restored, and a
     prep anew (user, 2026-10-02: *"refuse it, redo via rollback"*;
@@ -349,8 +375,7 @@ def redo_launched(stage: Optional[str], *, calc) -> str:
                               and f"{who}, copied in from" in note)
     else:
         what = f"the first launch of {group}"
-        state = _state_before(base, lambda note: "before launch task group"
-                              in note and note.rstrip().endswith(who))
+        state = _state_before(base, lambda note: names_launch_of(note, who))
     if state is None:
         return (f"start {group} from the beginning: go back to the state "
                 f"saved before {what}, and prepare it again -- "

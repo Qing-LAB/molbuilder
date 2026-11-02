@@ -105,17 +105,21 @@ Where each of these lies on disk, and the one door that names each, is § 2.4.
 | **failed** | it ran and ended with an error: its engine exited non-zero, or its own step failed |
 | **not run** | its job ended and the walk never started it — no start of its own in its folder (its session log), whatever its job came to — its reason beside it (§ 4.5). Never *failed*: it did not run *(the user, 2026-10-30: "definitely not 'failed'")* |
 | **not done** | it ran to its end, and is not done: not converged where that counts, or a file it must leave missing |
-| **short of done** | any point that is not done: it failed, is not run, or ran and is not done — what the run's state names the first of (§ 4.4) |
+| **short of done** | any point not *done* — it failed, is not run, or ran and is not done — what the run's state names the first of (§ 4.4) |
 | **queued** | launched and not started yet: its job waits in the queue, or the walk has not reached it; *pending* before any launch |
 | **ended** | it ran or failed, it was taken over, or it is not run |
 | **still to run** | not ended, and every need up its chain that has ended ran (§ 4.3) |
 | **the run finished** | by the kind's rule — **done**: every point done (a vibration's: its result is built from them all); **ran**: every point ran, converged or not (a transport rung's: the converged column says the rest). Otherwise failed, naming the first point short of done |
 
-Three printed lines say *not done* for a point short of done, while the count says it only for a point that ran
-(§ 1.4): a failed part's and a failed run's words — *mode 7 (4271 cm⁻¹), +δQ: not done -- exit 1* for a failed
-point, *9 of 121 calls not done* over every point short of done (`runpoints.not_done_words`, `run_state`, § 4.4) —
-and the run script's line after a point's failure, *this point is not done: a launch again …*
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5).
+Every printed line says a point by its own word, as the count does (§ 1.4): a failed part's and a failed run's
+words name the point's state — *mode 7 (4271 cm⁻¹), +δQ: failed -- exit 1*, *…: not run -- …*, *…: not done --
+finished, not converged (SCF NO)*, each word composed by one function (`runpoints.state_word`, asked by
+`runpoints.not_done_words`, a transport round's words and `status`'s point rows) — and count the wider set *short of
+done*, *9 of 121 calls short of done*, or *not done* where every one of them ran to its end (`run_state`, § 4.4); the
+run script's line after a point's failure says *this point failed: a launch again …*
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). A reuse, which judges another calculation's results by
+the done door alone, says the wider word and the door's reason — *… is short of done -- stopped before its end*
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 
 ```mermaid
 stateDiagram-v2
@@ -525,9 +529,10 @@ constants unrun. The walk script asks the same of its steps (each step's `needs`
 - `finished` — by the record's `finished`: **done**, every point done; **ran**, every point ran
   (`_run_ending.points_state`). Otherwise `failed`.
 - A finish step that exited non-zero makes the run failed, *the finish exited N*.
-- Its words name the first point short of done in the listing order (`runpoints.not_done_words`) — *&lt;words&gt;:
-  not done -- &lt;why&gt;*, or *&lt;words&gt;: not run -- &lt;why&gt;* for one the walk never started — and, when
-  more than one is short of done, *k of N &lt;unit&gt;s not done*.
+- Its words name the first point short of done in the listing order, by its own word (`runpoints.not_done_words`)
+  — *&lt;words&gt;: failed -- &lt;why&gt;*, *&lt;words&gt;: not run -- &lt;why&gt;* for one the walk never
+  started, *&lt;words&gt;: not done -- &lt;why&gt;* for one that ran to its end — and, when more than one is short
+  of done, *k of N &lt;unit&gt;s short of done*, or *not done* where every one of them ran to its end.
 
 **On this machine**, the same rule over its rows (`continuation.points_verdict` asks `run_state`), with what only
 this machine can see (`continuation.points_state`): `running` while a point runs, or between two points while a job
@@ -566,8 +571,8 @@ After `point ended` has stamped the point and run its after-step, the one rule `
 | the point | points left to run | sent |
 |---|---|---|
 | any | none | `finish`: the index closed (§ 4.5), the finish step run, the run's state (§ 4.4) and its words, and the outcome of this point's round |
-| its round has no point left to run | yes | `milestone`: the round's outcome (the record's `outcome`), else *&lt;words&gt;: done* — or *&lt;words&gt;: not done -- &lt;why&gt;* for a point short of done |
-| short of done | yes | `part_failed`: *&lt;words&gt;: not done -- &lt;why&gt;*, once per **reason** |
+| its round has no point left to run | yes | `milestone`: the round's outcome (the record's `outcome`), else *&lt;words&gt;: done* — or, for a point short of done, its own word and why (§ 4.4) |
+| short of done | yes | `part_failed`: *&lt;words&gt;: failed -- &lt;why&gt;*, or *&lt;words&gt;: not done -- &lt;why&gt;* for one that ran to its end, once per **reason** |
 | any other | yes | nothing — the count is the periodic report's |
 
 - **Points left to run** are the points still to run (§ 4.3); a round has no point left when none of its points is

@@ -51,7 +51,7 @@ __all__ = [
 def parse_walltime(s) -> int:
     """SLURM walltime string -> seconds.  Accepts the forms SLURM accepts:
     ``MM``, ``MM:SS``, ``HH:MM:SS``, ``D-HH``, ``D-HH:MM``, ``D-HH:MM:SS``
-    (running-a-job.md § 5.3).  Empty -> 0.  Raises ValueError on garbage
+    (`scheduler.md` § 6a).  Empty -> 0.  Raises ValueError on garbage
     so a malformed config max_time fails loudly, not silently as 0.
 
     **This reads what a MACHINE wrote** -- a queue's ``max_time`` off
@@ -346,8 +346,7 @@ def human_wall(secs: Optional[int]) -> str:
     Whole units where they are whole, and the remainder where it is not:
     a 90-minute queue reads ``1h30m``, not ``1h``.
 
-    Hours, not days: ``168h`` is what this column has always read and what
-    `submission.md`'s worked example shows.
+    Hours, not days: ``168h`` is what this column has always read.
 
     Prose, not a record: what gets WRITTEN is :func:`slurm_time`'s spelling.
     """

@@ -3079,7 +3079,7 @@ function renderNext(task) {
          *
          * OFFERED WITH NO AXES TOO: the target machine then proposes the grid
          * (`generator.md` § 4.3a), as `prep bench` does at the terminal --
-         * the two doors are one prep (`job-system.md` § 5.3).
+         * the two doors are one prep (`job-system.md` § 5.0).
          * And offered only where that prep takes it: the entry's own
          * refusal (a transport calculation, an engine the bench lane does
          * not speak) comes with the folder, and hides the block. */
@@ -3446,7 +3446,7 @@ function membersOf(numbers) {
 /** What ``pick`` takes, as the command door takes it: a group of one
  *  stage's Continue-from choice, to its launch; a member launched again alone
  *  carries its own; a group's stages each start as the description says
- *  (`job-system.md` § 5.3). */
+ *  (`job-system.md` § 5.4). */
 function _continueOf(kind, pick) {
     if (kind !== "task") return {};
     if (pick.stages) {
@@ -3690,11 +3690,12 @@ function prepButton(kind, picks) {
      * it, or another folder is opened (`_resetPerFolderState`). */
     const kept = _fs.answers[key];
     if (kept) _showPrepAnswers(wrap, say, kept);
-    /* PREPARED ALREADY (W55 B4): the prep entry's own sentence, from the
-     * folder's answer, the way back in it -- and neither button, since a
-     * prepared stage is not prepared again (`job-system.md` § 5.0).  Its lines
-     * above are its launch.  It is said over a kept answer, whose lines stay
-     * below it. */
+    /* PREPARED ALREADY (W55 B4): a group prepared and never launched is
+     * prepared again whole, or has nothing to write (`job-system.md` § 5.0,
+     * checkpoint 2a) -- the Prep box offers it as any other.  A benchmark
+     * prepared is not prepared again (below): the prep entry's own
+     * sentence, from the folder's answer, and no Preview.  It is said over
+     * a kept answer, whose lines stay below it. */
     /* WHICH STAGES ARE PREPARED could not be read -- the folder answer's
      * own `error` -- so nothing is offered as if none were: a Prep would
      * meet a stage already prepared, or a folder that does not read. */
@@ -3705,8 +3706,9 @@ function prepButton(kind, picks) {
             + String(unread);
         say.setAttribute("data-state", "bad");
     }
-    /* A BENCHMARK PREPARED is not prepared again (`job-system.md` § 5.0); a
-     * task's groups are the Prep box's to offer, each where it may go. */
+    /* A BENCHMARK PREPARED is not prepared again (`job-system.md` § 5.0,
+     * checkpoint 2a); a task's groups are the Prep box's to offer, each
+     * where it may go. */
     const prepared = !unread && kind === "bench"
         && picks.map((st) => (_fs.prepared[kind] || {})[st]).find(Boolean);
     if (prepared) {
@@ -3807,7 +3809,8 @@ function _showPrepAnswers(wrap, say, r) {
     const written = all.filter((a) => !a.unchanged);
     if (all.length && !written.length) {
         /* EVERY GROUP PICKED ALREADY AS THIS PREP PLANS IT: nothing to
-         * write, and nothing to Prep (`job-system.md`, *The task*, 2). */
+         * write, and nothing to Prep (`job-system.md` § 5.0, checkpoint
+         * 2a). */
         say.textContent = "Nothing to write \u2014 every group picked is "
             + "already prepared as this prep would prepare it now.";
         say.setAttribute("data-state", "ok");
@@ -3829,7 +3832,7 @@ function _showPrepAnswers(wrap, say, r) {
 }
 
 /** Show one stage's prep answer -- the command line's report, from the
- *  same data (`job-system.md` § 5.3, `task-setup.md` § 11.1); ``head``
+ *  same data (`job-system.md` § 5.0, `task-setup.md` § 11.1); ``head``
  *  names the stage when it is one of a group's. */
 function _showPrepAnswer(wrap, say, r, head) {
     const box = el("div", { class: "ts-prep-answer" });
@@ -3866,7 +3869,8 @@ function _showPrepAnswer(wrap, say, r, head) {
     }
     findingLines(r.deck_findings);
     /* NOTHING TO WRITE: a stage of a group already as this prep plans it
-     * -- its sentence, nothing else (`job-system.md`, *The task*, 2). */
+     * -- its sentence, nothing else (`job-system.md` § 5.0, checkpoint
+     * 2a). */
     if (r.unchanged) {
         line(r.unchanged, "ok");
         wrap.appendChild(box);
@@ -3887,7 +3891,7 @@ function _showPrepAnswer(wrap, say, r, head) {
           + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
     /* PREPARED AGAIN, never launched: what of it differed from what this
-     * prep writes now (`job-system.md`, *The task*, 2). */
+     * prep writes now (`job-system.md` § 5.0, checkpoint 2a). */
     if ((r.differs || []).length) {
         line((would ? "would prepare it again \u2014 " : "prepared again \u2014 ")
              + "differed from what was prepared: " + r.differs.join(", "));
