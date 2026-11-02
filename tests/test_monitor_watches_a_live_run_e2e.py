@@ -493,7 +493,7 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         "                      ('names', M._rf))}\n"
         "where['from'] = os.path.basename(os.path.dirname(M.__file__))\n"
         f"w = M.WatchedRun(names=M._rf.RunNames({ran.label!r}, "
-        f"{ran.stage!r}), run={ran.run})\n"
+        f"{ran.stage!r}))\n"
         "st = w.conclude(w.read(0.0, 1.0))\n"
         "print(json.dumps({'where': where, 'state': st.state,\n"
         "                  'detail': st.detail, 'converged': st.converged,\n"

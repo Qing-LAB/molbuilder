@@ -423,9 +423,11 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     page.wait_for_timeout(500)
     assert card.inner_text() == picked, (
         "a click on a root file was taken for one of the picked run's files")
+    # THE TITLE NAMES THE FILE FROM THE PROJECTS FOLDER, as the sidebar
+    # names a path it only shows (`web/results.md` \u00a7 0.3).
     opened = page.locator(".results-ladder-open[aria-pressed='true']") \
         .first.get_attribute("title").split(" \u2014 ")[0]
-    run_dir = bundle / Path(opened).parent
+    run_dir = root / Path(opened).parent
     other = next(f for f in sorted(run_dir.iterdir())
                  if f.is_file() and f.name != picked)
     page.evaluate("([d, f]) => window.molbuilder.projects.setShared(d, f)",

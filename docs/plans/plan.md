@@ -44,8 +44,9 @@ the label cap counting the stage token, one word for a point's state.
 review rounds over its diff, each finding checked in the code before it
 was fixed; each new test seen failing on the old code. **No e2e**;
 **untested** is listed in 2.62.1's row. A whole-suite run found two
-real-engine tests failing on code older than 2.62.1 — the ledger's
-E2E-MON and E2E-STOP, F9's. Nothing waits on the user.
+real-engine tests that no longer matched the code — the ledger's E2E-MON
+and E2E-STOP — revised after 2.62.1 and passing. Nothing waits on the
+user.
 
 **What runs next** is **F2** — the run script names no engine — then the
 releases in the order of *The one plan* — the user's to change. **The
