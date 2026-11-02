@@ -112,8 +112,8 @@ the engine seam, and for the same reason.)*
 | **`kind = "monitor"`** | ⚠ **zero items carry it.** `monitor.py` reads a log; it is not a configured layer. The two molwatch switches are `kind="produce"`, which is correct — the *producer* decides what the script writes | § 6 |
 
 **Why the declarations were kept while unconsumed.** The wrapper's deck scan
-was the habit [`architecture.md`](?doc=execution/architecture.md) § 1 exists to
-remove, and removing it meant the wrapper is *told* instead — so the
+was the habit [`architecture.md`](?doc=execution/architecture.md) § 3, A4 (ask, never
+work it out again), exists to remove, and removing it meant the wrapper is *told* instead — so the
 declarations had to be right on the day that landed, and a guard test failed
 when a scanner was added without one. The last scanner went on 2026-10-03, and
 the guard with it: the wrapper reads no deck keyword for what it is told.
@@ -1197,8 +1197,8 @@ merged item keeps no anchor, § 6.3) with `read_by = ["wrapper"]`.
 **Why that key earns its place — and where it stands today.** The wrapper finds
 this out by **reading the deck text**, which is a layer re-deriving an answer
 another layer already holds — the habit
-[`execution/architecture.md`](?doc=execution/architecture.md) § 1 exists to
-remove. The target is that the wrapper is *told* which items it depends on, so
+[`execution/architecture.md`](?doc=execution/architecture.md) § 3, A4 (ask, never
+work it out again), exists to remove. The target is that the wrapper is *told* which items it depends on, so
 a new engine declares its own without anyone editing the wrapper writer.
 
 > **✅ Reached 2026-08-23** — by carrying the answer rather than by importing
@@ -2604,9 +2604,10 @@ have to be found, and there is nowhere for one to hide.
 ### 10a.3 What the trace makes visible
 
 **The engine appears exactly twice** — steps 9 and 10. Everything above is
-engine-agnostic, which is `generator.md` § 7's test (*adding an engine adds
-files and edits none*) stated as a property of this diagram rather than as a
-hope. Any import from `siesta/` or `pyscf/` above step 9 is a leak; that is how
+engine-agnostic, which is the engine seam's rule (`generator.md` § 7,
+`architecture.md` A18: *adding an engine adds records and a seam; no shared
+code branches on its name*) stated as a property of this diagram rather than
+as a hope. Any import from `siesta/` or `pyscf/` above step 9 is a leak; that is how
 `effective_config` was found sitting in `siesta/input.py` while floor 3 and the
 validation layer both reached into one engine to do something neither engine
 owns *(moved 2026-08-14, audit § 6.1)*.

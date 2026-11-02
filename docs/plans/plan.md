@@ -46,16 +46,22 @@ failing on the old code or by a deliberate break of its fix. **No e2e**;
 the user: its set-aside rows are closed or parked, each with its reason
 (the ledger).
 
-**What runs next** is **the jobset documents' consolidation** *(the user,
-2026-11-01: "holistically review the jobset module's related document to
-reduce overlaps, redundancy, inconsistency and duplicated parts …"; "find
-a good balance and create good logical relation between documents instead
-of piling … over …")* — one home per fact, the existing chapters related
-logically, no document piled on top, the review's drifting sentences (R11,
-R13, S13, P8, L9, A-doc) with it — then **F2** — the run script names no
-engine — then the releases in the order of *The one plan* — the user's to
-change. **The user's decisions** are under *Decided*; **what only Sol can
-show** and **new science** are under *After the finish line*.
+**Done after 2.62.0, docs only: the jobset documents' consolidation** *(the
+user, 2026-11-01)* — twenty chapters rewritten to one home per fact under
+the ownership map the user agreed, each checked against the code in two
+review rounds; [`execution/overview.md`](?doc=execution/overview.md) is the
+one route in. The review's drifting sentences (R11, R13, S13, P8, L9,
+A-doc) closed with it (the ledger's *Found by the jobset documents'
+consolidation*).
+
+**What runs next** is **2.62.1** — the code text the chapters now
+contradict (help texts, messages, comments and test cites, ≈40 sites), a
+save made by a sequence's job said in its note (the user, 2026-11-01), and
+`identity._cap_for`'s 3-byte gap, verified first — then **F2** — the run
+script names no engine — then the releases in the order of *The one plan*
+— the user's to change. **The user's decisions** are under *Decided*;
+**what only Sol can show** and **new science** are under *After the finish
+line*.
 
 **Off the plan** (the user, 2026-10-18): every feature the three roads do not
 need; any check, warning or format the contracts do not state. The AuBDTAu

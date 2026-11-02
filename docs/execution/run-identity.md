@@ -2,55 +2,54 @@
 
 **Role:** contract
 **Domain:** execution
-**Companions:** [`execution/job-contracts.md`](?doc=execution/job-contracts.md) —
-the run directory, the basename rule (§ 2.1), the warm-file inventory and the
-restart banner (§ 4), all of which this document builds on and none of which it
-changes; [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how a
-run is actually launched and what the wrapper does with the files;
-[`engines/stages.md`](?doc=engines/stages.md) — the description this id is
-derived from; [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
-— the plan that motivated this contract, archived; open work lives in
-[`plans/plan.md`](?doc=plans/plan.md), the one plan.
+**Owns:** the label (what the typed name becomes, and the three normalisation rules), the run id (the label plus the formula, or plus the citation) and what it is tied to, and each engine's restart group — the one `restart` field and the two silent failures it prevents.
+**Read with:** [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 (every name made from the label) and § 4.2a (the warm files) · [`job-system.md`](?doc=execution/job-system.md) § 5.4 (what a stage takes, launching again) · [`project-layout.md`](?doc=execution/project-layout.md) § 1.1 (the folder tree) · [`engines/stages.md`](?doc=engines/stages.md) § 6 (the description the id is written in)
 
-**Status: landed.** Written first, then built to: `task.json` stores the id
-and proves it on every parse (`Task._check_id`, with `describe` — 2026-08-11,
-plan step 2), the label reaches every filename through `identity.py`, and
-`prep`'s five steps derive the decks from the description (2026-08-12,
-step 4). *(This line read "proposed, not built" until 2026-08-12.)*
-`job-contracts.md § 4` still describes the shipped warm-restart behaviour the
-id drives.
+---
 
-**This contract owns:** how a run id is built, what it may and may not be tied
-to, how it is normalised, and the per-engine group of parameters that decides
-whether prior state is honoured.
+## The short version
+
+A calculation continues because the **engine** finds files named on the
+label it was given, and its deck tells it to read them. molbuilder makes
+the label right, puts the files where the engine looks, and writes the deck's
+restart keywords from one field. So:
+
+- **The label** is the name you typed, normalised once (§ 3, rules 1–3). It is
+  the `SystemLabel` / `JOB` literal and the stem of every file (§ 2.0a).
+- **The id** is the label plus the structure's formula — or, for a kind that
+  cites a finished run, plus the citation. It is a record in `task.json`,
+  never a filename (§ 2, § 2.0a).
+- **What the id is tied to** is only which atoms the coordinates belong to;
+  everything a stage tunes is left out (§ 2.1).
+- **`restart`** — `continue` or `clean` — is the one field that sets an
+  engine's whole restart group (§ 4). `continue` is the default.
+- **What the id cannot catch** is refused or said, each by its owner (§ 5);
+  what it cannot separate is § 6a.
 
 ---
 
 ## 1. Why identity is the mechanism
 
-A generated script *"declares its ID in one literal (`SystemLabel` / `JOB`)"*,
-and **that ID keys every warm file as `<ID>.<ext>`** (`job-contracts.md § 4.1`).
-`job-contracts.md § 2.1` Rule 2 then says the part that matters most here:
+Every deck declares its label in one literal — SIESTA's `SystemLabel`,
+PySCF's `JOB = "…"` — and every restart file is named on that literal:
+`<label>.XV`, `<label>.DM`, `<label>.chk`. Every stage
+of one calculation shares it
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1, rule 2).
 
-> Across the stages of one staged relaxation the basename **stays identical**
-> (only parameters change); that is exactly what lets SIESTA pick up
-> `<basename>.XV` / `.DM` from the previous stage.
+So **continuing is not something molbuilder does.** It is what the engine
+does when it finds restart files named on the label it was given and its
+restart parameters say to load them (§ 4). molbuilder's part is to make the
+label right, and to put the files in the run before it starts (the launch
+copies them in, [`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.5).
 
-So **continuing is not something molbuilder does.** It is what the engine does
-when it finds warm files keyed by the **label** it was given and its own bound
-parameters say to load them (§ 4). molbuilder's whole contribution is to make the
-label right and put the files where the engine will look. *(The label is the
-half of the id that reaches the engine — § 2.0a.)*
+Two failures follow from getting the label wrong, and both are refused (§ 5):
 
-Two failures would follow directly from getting it wrong, and each is refused
-(§ 5):
-
-- **two different calculations given the same label in one directory** — the
-  second would warm-start from the first's geometry, and the banner would say
-  `CONTINUES (engine will load <files>)` because that is exactly what it would be
-  (`job-contracts.md § 4.4`);
-- **a label edited between runs** — the warm files no longer match, and a run
-  that should have resumed starts cold instead.
+- **two calculations under one label in one folder** — the second would
+  warm-start from the first's geometry, and its MODE line would truthfully say
+  `CONTINUES` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.4);
+- **a label edited between runs** — the restart files no longer match, and a
+  run that should continue starts cold.
 
 ---
 
@@ -58,620 +57,488 @@ Two failures would follow directly from getting it wrong, and each is refused
 
 > **The id is built from inputs, never from anything a run produced.**
 
-It must be knowable *before* the calculation exists — half of it is the basename
-of every file in the folder, and a name cannot wait for a result. An id that
-depended on one would change the moment a stage succeeded, orphaning the state it
-exists to continue from — the identity would break precisely when the calculation
-worked.
+It must be known before the calculation runs: half of it is the stem of every
+file in the folder, and a name cannot wait for a result. An id that depended
+on a result would change the moment a stage succeeded, and orphan the state it
+exists to continue from. So: no coordinates, no energies, no convergence
+status, nothing read back off a `.XV`.
 
-So: no coordinates, no energies, no convergence status, nothing read back off a
-`.XV`. That leaves simple parameters, which is all it needs.
-
-The id is **readable, not cryptographic** — made of things a person already
-knows, and it has two halves that land in two different places:
+The id is **readable, not cryptographic**: a name you recognise in a listing
+and an id you can read in a description are worth more day to day than one
+token that resolves every ambiguity. Its two halves land in two places:
 
 ```mermaid
 flowchart LR
-    U["what the user calls it<br/><b>BDT/Au relax</b>"] --> N["normalise once<br/>§ 3"]
-    N --> L["<b>BDT_Au_relax</b><br/>the <b>label</b><br/>= the SystemLabel literal<br/>= the stem of every file"]
-    M["what the coordinates are of<br/>the molecule, by formula<br/><b>Au38C6H4S2</b>"] --> I
+    U["what you call it<br/><b>BDT/Au relax</b>"] --> N["normalised once<br/>§ 3"]
+    N --> L["<b>BDT_Au_relax</b><br/>the <b>label</b><br/>= the SystemLabel / JOB literal<br/>= the stem of every file"]
+    M["what the coordinates are of<br/>the formula <b>Au38C6H4S2</b><br/><i>or, for a kind that cites a run,<br/>the citation</i>"] --> I
     L --> I["<b>BDT_Au_relax_Au38C6H4S2</b><br/>the <b>id</b><br/>= a record in task.json"]
 ```
 
-> **The label is the stem, and the stem is where this contract stops.** What
-> gets attached to it — the stage token, the attempt counter, the role — is
-> `job-contracts.md` § 2.2a's grammar, and it is composed by `runfiles`, never
-> by hand (rule **A14**). This document owns *what the label is*; that one owns
-> *what a filename made from it looks like*, and its
-> *"Which door to call"* table is what you read before writing code that names
-> one.
+**The label is where this contract stops.** What is attached to it — the
+stage token, the role — is
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a's grammar,
+composed by `runfiles` and never by hand (rule **A14**); read its *"Which
+door to call"* before writing code that names a file.
 
-A hash would be exact and unreadable. A formula is neither, and that is the trade
-made deliberately: a **name** you can recognise in a directory listing, and an
-**id** you can read in a description, are worth more day to day than one token
-that resolves every possible ambiguity.
+**A kind that cites a finished run takes the citation as the second half.**
+A transport calculation's coordinates are the junction it cites, so its id is
+the label plus that citation, normalised the same way — `e2e-walk2` citing
+`AuBDTAu/optimization/min_force_relax/01_fine/run-0` has the id
+`e2e-walk2_AuBDTAu_optimization_min_force_relax_01_fine_run-0`
+(`Task._check_id`; the kind table says which kinds cite,
+[`engines/transport.md`](?doc=engines/transport.md) § 3.1). An id that named
+no input would be the same for every junction.
 
 ### 2.0 The formula, and the one rule it needs
 
-**Element symbols in alphabetical order, each followed by its count, and a count
-of one is written as nothing.** So the worked example below is `Au38C6H4S2` —
-`Au` before `C` before `H` before `S` — and **not** the hand-grouped
-`C` `6` `H` `4` `S` `2` `Au` `38` this document carried until today, which read as
-*"the molecule, then the gold"* and matched no rule at all.
+**Element symbols in alphabetical order, each followed by its count, and a
+count of one written as nothing**: `Au38C6H4S2`, `H2O`, `CO2`. It is
+`Structure.formula`, the same string `Structure.summary()` prints.
 
-*Decided 2026-08-08 (user).* A convention was needed and any convention would
-do, so the deciding argument was that **this one already exists in the code**:
-`Structure.summary()` has computed exactly this since long before this document,
-and lifting it out of a `__repr__` is cheaper and safer than minting a second
-rule that could disagree with it.
-
-Alphabetical rather than the chemists' habit of leading with carbon and
-hydrogen: that convention would read more naturally for an organic molecule
-(`C6H4Au38S2`), and it costs a special case in a rule that otherwise has none.
-The id is a name to recognise, not a formula to publish.
-
-> **What this buys, and it is not tidiness.** Until there was a rule, the
-> formula was the one input to the id that no code could produce — the worked
-> example below was in an order nothing computes — so `run_id` had to be handed
-> it as a string and nothing could fill `structure.formula` in a description.
-> Both close now, and so does the check in § 5's second row, which had nothing
-> to compare against.
+*Decided 2026-08-08 (user).* Any convention would do, so the deciding
+argument was that this one already existed in the code. Alphabetical rather
+than the chemists' carbon-first habit (`C6H4Au38S2`): that habit costs a
+special case in a rule that otherwise has none, and the id is a name to
+recognise, not a formula to publish.
 
 ### 2.0a The label is on disk; the id is on the record
 
-> **Decided 2026-08-09 (user).** *"From dir to the .fdf/script name, we all derive
-> consistently from SystemLabel … from there, the SystemLabel becomes one
-> consistent scheme, and other information is simply attached to it."*
-
-Everything a run emits is named from the **label**. The **id** — label plus
-formula — is written into `task.json` and never becomes a filename:
+> **Decided 2026-08-09 (user).** *"From dir to the .fdf/script name, we all
+> derive consistently from SystemLabel … from there, the SystemLabel becomes
+> one consistent scheme, and other information is simply attached to it."*
 
 | | is | lands in |
 |---|---|---|
-| **label** | the user's name for it, normalised (§ 3) | the `SystemLabel` line inside the deck, and the stem of every file beside it |
-| **id** | `<label>_<formula>` | the `run` block of `task.json` |
+| **label** | the name you typed, normalised (§ 3) | the `SystemLabel` / `JOB` line inside the deck, and the stem of every file beside it |
+| **id** | `<label>_<formula>` (or `<label>_<citation>`, § 2) | the `run` block of `task.json` |
 
-**This is what the code does.** The label is built with
-`normalise_id(typed_name)` — one string, the formula nowhere in it — and the
-deck is named from it through the stage's names (`runfiles.RunNames`). The composite
-`run_id(label, formula)` exists and its production callers are `task.py`'s
-two — `derive_run` builds the id and the codec's validation recomputes it
-(*this sentence said "thirteen places, every one a test" — false since the
-description landed*). This document used to describe that composite as the
-filename; it never was.
+**What the code does.** `task.json` stores the name as typed (`run.name`) and
+the id (`run.id`). The label is not stored: every read derives it from
+`run.name` through the one normaliser (`Task.label`, `identity.normalise_id`)
+and checks the stored id against what the name and the formula give
+(`Task._check_id`). The id is made in one place, `task.derive_run`, which
+calls `identity.run_id(label, formula)`.
 
-**What the split costs, and what answers it.** With the formula in the stem,
-two calculations of *different molecules* sharing a typed label in one directory
-had different filenames and could not touch each other's warm files; on the
-label alone they share a stem. **The formula therefore moves from the name to
-the record**: it is in `task.json`'s run id, and a folder holds one
-calculation — a second is refused at the folder, its run id compared (§ 5's
-first row). That is a name-level guarantee given up deliberately: it buys one
-scheme instead of two. Two isomers share a formula, which is § 6a's open
-question 3.
+A real calculation, from typed name to file names:
 
-**The label is the `SystemLabel` / `JOB` literal. There is no second name on
-disk** — the formula is recorded, not spelled out in a filename.
+| step | value |
+|---|---|
+| the folder you made | `projects/claude-review-2-45-0/spectrum/pyscf_held_ir/` |
+| the name you typed (`run.name`) | `pyscf-held-ir` |
+| the label | `pyscf-held-ir` — the `JOB` literal |
+| the id (`run.id`) | `pyscf-held-ir_H2O` |
+| the files | `pyscf-held-ir_01_freq.py`, `pyscf-held-ir_01_freq.run.sh`, `pyscf-held-ir.template.toml`, `pyscf-held-ir.source.xyz` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3) |
 
-> ⚠ **This is an ordering, not a pairing.** `SystemLabel` is not a copy of the
-> label kept in step with it — it **is** the label, and the label is the half
-> that matters, because it is the only half the engine ever sees. SIESTA is fed
-> the deck on stdin (`siesta < job.fdf`), so the *filename* never reaches it;
-> every file it writes and reads back is named from the `SystemLabel` line
-> **inside** the deck. A deck called `clean.fdf` whose label says `siesta`
-> produces `siesta.XV`, `siesta.out`, and nothing in the directory listing
-> reveals it. Anything that derives a name from a filename instead has the
-> dependency backwards.
->
-> This is also why the id cannot be the thing on disk even if you wanted it to
-> be: the engine's key is a literal *inside* the deck, so putting the formula in
-> a filename without also putting it in that literal would separate the listing
-> and change nothing about what SIESTA loads.
+The folder and the label differ here, and that is allowed: the folder is
+named by you, the label by the normaliser (§ 3.0).
 
-**The timestamp is recorded but is not part of it.** A description carries when
-it was written, for tracing; putting it in the id would make every regeneration a
-new identity and therefore a cold start. Two generations of the same calculation
-*should* land on the same id — that is not a collision, it is the same
-calculation, and its runs continuing one another is the right outcome.
+**The label is the `SystemLabel` / `JOB` literal; there is no second name on
+disk.** `SystemLabel` is not a copy kept in step with the label — it *is*
+the label, and it is the only half the engine ever sees. SIESTA names every
+file it writes on the deck's `SystemLabel`, whatever the deck's filename: a
+deck called `clean.fdf` whose label says `siesta` writes `siesta.XV`.
+Anything that derives a name from a filename has the dependency backwards. This is also why the id cannot be the name on disk: putting the
+formula in a filename without putting it in the literal would change the
+listing and nothing about what SIESTA loads.
 
-**What tells two invocations apart, then?** The layout does: each launch is a
-run folder of its own, `run-<n>/`, one start of its run script, never
-clobbering an earlier one (`project-layout.md § 1.6.1`). That is
-invocation-level bookkeeping; the id is calculation-level and does not repeat
-it.
+**What the split costs, and what answers it.** On the label alone, two
+calculations of different molecules under one typed name share a stem. The
+formula therefore moves from the name to the record, and a folder holds one
+calculation — a second is refused there, its run id compared (§ 5, first
+row).
+
+**The timestamp is recorded, not part of the id.** `task.json` says when the
+description was written (`run.created`); putting it in the id would make every
+regeneration a new identity, and so a cold start.
+
+**Two starts of one calculation are told apart by their folders**, not by the
+id: each launch is a run folder of its own, `run-<n>/`
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1).
 
 ### 2.1 What the identity is tied to — as little as possible
 
-Overstating this is not a safe error: every extra thing in the pin is a case
-where a user tunes something reasonable and loses a geometry they should have
-kept.
-
-Start from what a run *produces*. **The result is a set of coordinates.**
-
-> **Coordinates cannot be in the identity.** They are the output. Bind them in
-> and the pin changes every time a stage succeeds.
-
+Overstating the pin is not a safe error: every extra thing in it is a case
+where someone tunes something reasonable and loses a geometry they should have
+kept. A run's result is a set of coordinates, and **coordinates cannot be in
+the identity** — bind them in and the pin changes every time a stage succeeds.
 What is left is what those coordinates are *of*:
 
-| Considered | In the pin? | Why |
+| considered | in the pin? | why |
 |---|:--:|---|
-| the molecule — its formula (§ 2.0) | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
-| the positions | no | the output (above) |
-| the cell | **no — reported instead** (§ 5) | a `.XV` carries the cell too, so on a continue the saved cell **wins** and the new one is silently ignored. That is a fact to report, not a difference to pin |
-| basis, XC | no | the geometry stays valid across both, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
-| the charge and spin | no — **not a stage's to change** | they belong to the calculation, and a stage override of one is refused (ES1, [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a): a `.DM` or `.chk` is a density for one electronic state, and a density for another is exactly what the engine does NOT catch — it runs, from the wrong start. Changing the template's spin between continuations is the same hazard, one level up, and is not pinned yet |
+| the molecule — its formula (§ 2.0) | **yes** | a `.XV` is positions for *these* atoms |
+| the positions | no | they are the output |
+| the cell | no | § 5 says what answers a changed cell |
+| basis, XC | no | the geometry stays valid; a `.DM` of the wrong shape the engine reports |
+| charge and spin | no — a stage cannot change them | see below |
 | mesh, tolerances, force, steps, algorithm | no | exactly what a description's stages vary |
-| ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
+| ranks, threads, GPU | no | how fast it ran says nothing about whether it may be continued |
 
-So the id covers one thing beyond the user's own name for it: **which atoms these
-coordinates belong to.** A differing atom *count* the engine already refuses, so
-the id is not there for that; it is there for the cases the engine cannot see.
+- **The cell:** a `.XV` carries its own cell, so on a continue the saved cell
+  wins and the deck's is not read. That is a fact to say, not a difference to
+  pin.
+- **Charge and spin** belong to the calculation; a stage override of either is
+  refused (ES1,
+  [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+  § 2a). A `.DM` or `.chk` is a density for one electronic state, and a
+  density for another is exactly what the engine does not catch — it runs,
+  from the wrong start. Changing the template's spin between continuations is
+  the same hazard one level up, and nothing pins it.
 
-**And since 2026-08-09 it covers them on the record rather than in a name**
-(§ 2.0a). "In the pin" used to mean *a different formula gives a different
-filename*; it now means *a different formula is written in `task.json` and said
-out loud by the surface*. The table above is unchanged — what the id is tied to
-did not move — but what being tied to it **does** has: § 5, not a filename.
-
-Note the fifth row. The id is deliberately blind to everything a stage tunes —
-that is what makes several stages one calculation.
-
-**The known gap:** a formula does not separate two isomers, and does not pin the
-*order* species are declared in, which a `.XV` is sensitive to. This is a
-starting point, agreed as one; the plan records what would force it to grow.
+The id is deliberately blind to the row *mesh, tolerances, force, steps,
+algorithm* — that blindness is what makes several stages one calculation.
+A differing atom *count* the engine already refuses; the id is there for what
+the engine cannot see. Being tied to the id means *a different formula is
+written in `task.json` and said by the surface*, not a different filename
+(§ 2.0a).
 
 ---
 
-## 3. Normalisation, and the folder
+## 3. Normalisation, and the three rules
 
-What the user types becomes the **label**; the label becomes the `SystemLabel`,
-and that becomes the stem of every file: `<label>.XV`, `<label>.DM`,
-`<label>_02_tight.fdf`. The formula is appended to the label to make the **id**,
-which goes in `task.json` (§ 2.0a). A name with a space or a slash in it breaks a
-shell line, a glob or a scheduler argument. **What the user types is never used
-raw.**
+What you type becomes the **label**; the label becomes the `SystemLabel` and
+the stem of every file: `<label>.XV`, `<label>.DM`, `<label>_02_tight.fdf`.
+A name with a space or a slash breaks a shell line, a glob or a scheduler
+argument, so **what you type is never used raw.**
 
-**The allowed set is not a new decision.** `job-contracts.md § 2.1` Rule 2 fixes
-it: a single token matching `[A-Za-z0-9_-]+`, rejected at the form/CLI boundary
-by `molbuilder/projects.py::_NAME_PATTERN`, with the wrapper accepting the
-slightly wider `[A-Za-z0-9._-]+` because a `SystemLabel` may legitimately carry a
-dot — and sanitising it there is also what blocks shell injection from a hostile
-script (`job-contracts.md § 4.3`). The project tree uses the same set per
-segment (`job-contracts.md § 2.5`).
+**The allowed set is the basename rule's**: one token of `[A-Za-z0-9_-]`
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1, rule 2). The
+project tree uses the same set per segment
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5).
 
-So the normalisation is: **anything outside `[A-Za-z0-9_-]` to `_`, runs of two
-or more separators collapsed to a single `_`, leading and trailing separators
-trimmed, and length capped.**
+**The transform, in order** (`identity.normalise_id`, the one place it
+happens):
 
-*A run collapses; a lone separator does not.* `BDT-Au` keeps its hyphen — it is
-in the set and the user typed it deliberately — while `BDT  --  Au` is a run of
-six separator characters and becomes one `_`. Collapsing every `-` to `_` would
-be a simpler rule that quietly renames a project.
+1. every character outside `[A-Za-z0-9_-]` becomes `_`;
+2. a run of two or more separators (`-` or `_`) collapses to one `_`;
+3. leading and trailing separators are trimmed;
+4. the length is checked against the cap.
 
-The cap is derived, not chosen: `<label>_<longest stage name>.<longest extension
-the run will write>` must fit the filesystem's name limit (255 bytes, in
-practice). Since rule 3 below **refuses** rather than truncating, the cap has to
-be checked where the label is made — a truncated label is a different calculation
-wearing the same name, which is the one failure this whole document exists to
-prevent.
+*A run collapses; a lone separator does not.* `BDT-Au` keeps its hyphen —
+it is in the set and you typed it on purpose — while `BDT  --  Au` is a run
+of six separator characters and becomes one `_`.
 
-**The id is not capped, and that follows from the line above rather than being
-a second rule.** The cap exists because a name has to fit *beside a stage suffix
-and an extension* — that is a fact about filenames, and since § 2.0a the only
-thing in a filename is the label. The id is longer, so capping the pair would
-refuse a perfectly good name because of the formula attached to it, and the
-refusal would blame the half that fitted. `identity.run_id` therefore normalises
-the two apart: the label against the cap, the formula against the alphabet only.
-*(Corrected 2026-08-09, in the commit that wired the id into `task.json` — this
-paragraph first read "the id is capped by the same number and never binds
-first", which is self-contradictory: the id is the longer string, so under one
-shared cap it is the one that binds first.)*
+**The cap is derived, not chosen.** The longest file name the calculation
+will have — `<label>_<NN>_<stage><role>`, with its longest stage token and the
+longest role — must fit the filesystem's 255-byte name limit. The longest role
+is asked of the file catalogue (`runfiles.longest_tail`); when the stages are
+not known yet, a 32-byte budget stands in for `_<NN>_<stage>`
+(`identity.MAX_LABEL_BYTES`), and once they are, the real longest token
+counts (`identity._cap_for`). A transport lead's longer label
+(`<label>_L-electrode`) is budgeted too. The cap is checked where the label is
+made, because rule 3 refuses rather than truncates.
 
-**Case is preserved, and there is no lowercasing rule.** For the **id** the
-reason is absolute: **it carries a chemical formula, and in a formula the case
-*is* the element.** Lowercasing `Co` (cobalt) makes it `co`, the same token `CO`
-(carbon monoxide) lowercases to — so a tidying rule would erase the one thing the
-formula is in the id to say. For the **label** the reason is that lowercasing it
-would make it the single name in this system that forbids capitals, when the
-project level (`BDT-Au`) allows them. The case-insensitive-filesystem worry is
-handled where it actually bites, by making the **collision check**
-case-insensitive.
+**The id's two halves are normalised apart.** `identity.run_id` normalises
+the label against the cap above and the formula (or citation) on its own,
+through the same alphabet. Normalising the joined string would apply a
+filename's limit to a string that is never a filename, and a refusal would
+blame the half that fitted.
 
-**And the same set is git-ref-safe**, which the checkpoint history depends on:
-`[A-Za-z0-9_-]+` contains none of the characters a ref forbids, so a commit,
-tag or branch naming a calculation and its stage needs no second normalisation
-(`engines/stages.md § 7.3`). That is not luck — a set narrow enough to survive a
-filename, a shell line and a scheduler argument was always going to survive a
-ref — but it is worth writing down, because the alternative is somebody
-inventing a second sanitiser for tags.
+**Case is kept; nothing is lowercased.** For the id the reason is absolute:
+in a formula the case *is* the element — lowercasing `Co` (cobalt) gives the
+same token as `CO` (carbon monoxide). For the label, lowercasing would make it
+the one name in the system that forbids capitals. Case-insensitive
+filesystems are answered where two names really meet: **stage names** are
+compared with their case folded, so `Tight` and `tight` are one stage
+(`identity.stage_key`, the description's duplicate check,
+[`engines/stages.md`](?doc=engines/stages.md) § 2).
 
-### 3.0 Which directory level this is about
+**The same set is git-ref-safe.** `[A-Za-z0-9_-]` holds none of the
+characters a git ref forbids, so the checkpoint history needs no second
+sanitiser for a calculation's or a stage's name.
 
-*"The folder" is five different things in this tree, and only one of them is
-named by a person. Naming the level is the difference between a rule and a
-guess.*
+**Three rules keep normalisation from surprising anyone:**
 
-| # | Level | Example | Who names it | The rule, and where it lives |
-|--:|---|---|---|---|
-| ① | **project** | `BDT-Au` | **the user types it** | `[A-Za-z0-9_-]+` per segment — `job-contracts.md § 2.5` |
-| ② | **topic** | `optimization` | **the user picks** one of the topics | `job-contracts.md § 2.5` |
-| ③ | **calculation** — `job-contracts.md § 2.5`'s innermost segment, renamed from `<structure>/` on 2026-08-11 | `bdt-relax` | **the user types it** *(decided 2026-08-07 — this row is what changed)* | `[A-Za-z0-9_-]+`. This is the level that holds `task.json`, and `task.json` is what makes it a calculation rather than a directory — `checkpointing.md` **L1**. Its *inside* is `project-layout.md § 1` |
-| ④ | **stage** | `01_coarse` | **derived** — `<seq>_<name>`, `seq` assigned once by the produce that creates it | `project-layout.md § 4.1` |
-| ⑤ | **attempt** | `run-0` | **derived** — a counter | `project-layout.md § 4.3` |
+1. **It happens once, in one function, and the result is checked on every
+   read.** `identity.normalise_id` is the only transform: the validators that
+   spell the set — `projects._NAME_PATTERN`, `checkpoint._CALC_NAME_RE`,
+   `config/siesta.py::_validate_basename` (both engines' configs) and the
+   `runfiles` grammar — refuse, they never normalise. The id
+   it makes is stored in `task.json`; every read derives the label again from
+   the stored name through the same function and refuses a description whose
+   name, formula and id disagree (`Task._check_id`) — which of the three was
+   edited is not something a reader may guess.
+2. **The result is shown, never hidden — on every surface, the terminal
+   included.** Task setup shows the name and the id, read-only, before you
+   save; `molbuilder describe` prints the label it described (`Described
+   '<label>' in <folder>`; for a transport calculation, the name it was
+   given). A surface that hid it would hide the thing that
+   decides whether the next run continues.
+3. **A normalisation that loses the name is refused, not patched** — never a
+   digit appended and carried on. Two cases refuse:
+   - **a letter or a digit would be replaced.** Replacing a *separator* — a
+     space, a `/`, a `.` — is expected and silent. A character outside
+     `[A-Za-z0-9_-]` that is nonetheless alphanumeric is a letter or digit of
+     some alphabet, and the label cannot carry it: `Über` is refused rather
+     than becoming `ber`.
+   - **nothing is left, or the result is over the cap.** `///` reduces to
+     nothing; a 300-character name exceeds what `<label>_<NN>_<stage><role>` may
+     occupy. A truncated label would be a different calculation wearing the
+     same name.
 
-**Levels ④ and ⑤ are derived and this section does not touch them.** A stage
-directory legitimately carries a *number* alongside its name, which is the one
-place a number belongs (`project-layout.md § 4.1`) — and everything § 7.3 R5 says
-about positions never reaching a **filename** is still in force.
+Each refusal says what failed — the letter or digit, nothing left, or the
+length against the cap — and cites § 3; a description whose name, formula and
+id disagree is refused citing § 2.0a and § 3, rule 1 (`Task._check_id`).
 
-**Level ③ is the one this rule is about, and the id no longer names it.**
+### 3.0 The calculation folder is not named by the label
 
-```mermaid
-flowchart LR
-    P["① <b>project</b><br/>typed"] --> T["② <b>topic</b><br/>picked, one of the topics"] --> F["③ <b>calculation</b><br/>typed<br/><i>bdt-relax</i>"] --> I["<b>id</b><br/>derived, stored in task.json"] --> L["<b>label</b> — its first half<br/>the stem of every file inside"]
-```
+The folder that holds a calculation — the third level of
+`projects/<project>/<topic>/<calculation>/` — is **the name you type for the
+folder**, and `task.json` inside it is what says which calculation it is
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a). The label and the id name its files and its
+record, never the folder. The tree and who creates each level are
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.1; the
+folder names' forms are
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3, *Directories*.
 
-> **Decided 2026-08-07 (user), reversing this section for level ③.** It used to
-> read *"the id also names the folder"*, and argued the strictness was the point —
-> *a folder whose name is not the id is a folder whose contents cannot be
-> identified from outside it.*
->
-> **That premise was removed by the design's own progress.** When it was written,
-> nothing inside a calculation declared what it was, so the level-③ name was the
-> only handle. `task.json` now declares the id in the one place that travels with
-> the work (`engines/stages.md § 6`), and `checkpoint.py`'s `_is_bundle_root`
-> already finds a calculation by looking for that file rather than by reading a
-> name. Level ③ no longer has to carry information its own *contents* carry
-> better.
->
-> **And the strict rule cost something real.** The id is built from the label, the
-> purpose and the formula — it does not encode the functional, the basis or the
-> pseudopotential set. So *the same system studied two ways in one topic* derives
-> **one id**: `bdt-relax-pbe/` and `bdt-relax-blyp/` are the obvious level-③ names
-> for that work, and under the old rule they were a collision one of them had to
-> escape by inventing a fake label. The id's job was never to separate those —
-> § 1's two failure modes are both about **one directory**, and both still hold.
-
-**What this costs, stated plainly:** an `ls` of a topic no longer tells you what
-each calculation computes. `task.json` does, and every surface that lists
-calculations reads it — but the bare listing is now one step short, and that is
-the trade.
+*Decided 2026-08-07 (user).* The same system studied two ways in one topic
+— `bdt-relax-pbe/` and `bdt-relax-blyp/` — derives one id, because the id
+does not encode the functional or the basis; with the folder named by the id,
+one of them would have needed a fake label. The cost is stated plainly: an
+`ls` of a topic does not tell you what each calculation computes, and the
+surfaces that list calculations read `task.json` for that.
 
 ### 3.1 Normalisation, worked
 
-Each row shows one rule doing its job. The right-hand column is what the surface
-must display back **before** anything is written.
+Each row shows one rule at work. It is copied row for row into
+`tests/data/run_identity.toml`, which runs each through `identity.run_id`:
+a rule that changes changes its row in both.
 
-**Normalisation acts on what the user types, and what comes out is the label.**
-The id is that label with the formula appended — `BDT_Au_relax` + `Au38C6H4S2` →
-`BDT_Au_relax_Au38C6H4S2` — and the formula needs no normalising, because
-`Structure.summary()` only ever produces element symbols and digits (§ 2.0).
-
-| What the user types | Label | Which rule fired |
+| what you type | label | which rule fired |
 |---|---|---|
-| `BDT/Au relax` | `BDT_Au_relax` | `/` and the space are outside the set → `_`; **case is kept** |
+| `BDT/Au relax` | `BDT_Au_relax` | `/` and the space are outside the set → `_`; case is kept |
 | `BDT  --  Au` | `BDT_Au` | a run of six separator characters collapses to one `_` |
 | `_relax_` | `relax` | leading and trailing separators trimmed |
-| `Relax.v2` | `Relax_v2` | the dot is outside the label's set (the *wrapper* tolerates a dot in a `SystemLabel`; the label does not mint one) |
-| `BDT-Au` | `BDT-Au` | hyphens are **kept** — they are in the set, and a lone one is not a run |
-| `Über` | **refused** | `Ü` is a letter, not a separator — the label cannot carry it and will not silently drop it (rule 3) |
-| `///` | **refused** | reduces to nothing; say so and ask |
-| a 300-character name | **refused** | over the derived cap — a truncated label is a different calculation wearing the same name |
+| `Relax.v2` | `Relax_v2` | the dot is outside the label's set |
+| `BDT-Au` | `BDT-Au` | hyphens are kept: in the set, and a lone one is not a run |
+| `Über` | **refused** | `Ü` is a letter, not a separator (rule 3) |
+| `///` | **refused** | reduces to nothing (rule 3) |
+| a 300-character name | **refused** | over the derived cap (rule 3) |
+
+The formula needs no normalising: `Structure.formula` only ever produces
+element symbols and digits.
 
 ### 3.2 One label, and everywhere it lands
 
-The point of the rule is that a *single* token is enough to name every file of a
-calculation, on disk and to the engine. For the label `BDT_Au_relax` — whose id
-is `BDT_Au_relax_Au38C6H4S2`:
+One token names every file of a calculation, on disk and to the engine. For
+the real calculation `h2_siesta` (id `h2_siesta_H2`):
 
 ```text
-projects/BDT-Au/optimization/bdt-relax/   ← the folder is what the user typed
-├── task.json                             ← and this says the id, formula and all
-├── BDT_Au_relax.template.toml
+projects/claude-s28-onestart/optimization/h2_siesta/   ← the folder you named
+├── task.json                     ← run.name, run.id = h2_siesta_H2
 └── 01_coarse/
-    ├── BDT_Au_relax_01_coarse.fdf        ┐ what MOLBUILDER named
-    └── run-0/                            │ carries the stage: <label>_<stage>
-        ├── BDT_Au_relax_01_coarse.out    ┘
-        ├── BDT_Au_relax.XV               ┐ what the ENGINE named
-        └── BDT_Au_relax.DM               ┘ carries the label ALONE
+    ├── h2_siesta_01_coarse.fdf   ┐ named by MOLBUILDER:
+    └── run-1/                    │ the label and the stage
+        ├── h2_siesta_01_coarse.out ┘
+        ├── h2_siesta.XV          ┐ named by the ENGINE:
+        └── h2_siesta.DM          ┘ the label alone
 ```
 
-**The formula is in exactly one place, and it is not a filename.** `task.json`
-holds the id; the folder holds the label. That is § 2.0a, seen in a listing.
+**The formula is in one place, and it is not a filename** — `task.json` holds
+the id; the files hold the label.
 
-The repetition between the stage directory and the deck is a self-check, not
-noise; the rule generating both is `job-contracts.md § 6.3`.
+**What molbuilder names carries the stage; what the engine names carries the
+label alone.** SIESTA looks for `<SystemLabel>.XV` and nothing else, so the
+next stage finds the previous stage's state with no renaming once its launch
+has copied it in. molbuilder spends its own names on a cross-check: the stage
+folder and the deck inside it both say the stage, so a deck swapped by a bad
+copy is wrong on sight. The rule is
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3, *Files*.
 
-and in the history, where a state's message is your note plus two trailers:
+**The history names the folder, a third name.** A saved state's
+`Calculation:` trailer is the calculation folder's name, read from the
+directory, not the label and not the id (`checkpointing.md` **L3**). All
+three share one character set, so none needs a second sanitiser.
 
-```text
-relaxation converged, 41 steps
+**A collision is narrower than it sounds, and molbuilder does not go looking
+for one.** Two calculations interfere only when they share a **folder**, not
+when they derive the same id: the same id under `optimization/` and
+`spectrum/`, or in `bdt-relax-pbe/` and `bdt-relax-blyp/`, never meets.
 
-Calculation: bdt-relax
-Manifest-SHA256: 9f2c…
-```
-
-**The `Calculation:` trailer is the folder, a third name again** — `checkpoint.py`
-reads it from the directory (`Repo.calculation`, defaulting to `root.name`), not
-from the label and not from the id. All three share one character set, so none of
-them needs a second sanitiser; they are simply answers to three different
-questions. *(Nothing tags a state automatically — `checkpointing.md` **L4**. Tags
-are typed by a person, so no derived tag form appears here.)*
-
-**Two naming systems the label passes through unchanged — a filesystem and
-SIESTA's `SystemLabel` line — plus a shell line and a scheduler argument.** That
-is what § 3's character set buys.
-
-Note which files carry the stage and which do not: **anything molbuilder named**
-carries `_<stage>`, and **anything the engine named** carries the bare label.
-That asymmetry is not cosmetic — it is what lets the next stage find the
-previous stage's state with no renaming (§ 4). SIESTA looks for
-`<SystemLabel>.XV`; the warm files a stage resumes from are the ones its first
-launch copied into its attempt (`project-layout.md § 2.3.4`; prep copies
-nothing from another stage's run, `engines/stages.md` § 7.1), under the name
-the engine wrote them.
-
-**Who names a file decides whether it carries the stage:**
-
-| Named by | Carries the stage? | Why it is not a choice |
-|---|:--:|---|
-| **the engine** — `<label>.XV`, `.DM`, `.CG` | **no** | SIESTA looks for `<SystemLabel>.XV` and nothing else. molbuilder has no say |
-| **molbuilder** — `<label>_<stage>.fdf`, `<label>_<stage>.out` | **yes** | molbuilder chooses, so what the name says is a design decision — and it spends it on a cross-check |
-
-> **The redundancy is deliberate.** `01_coarse/` already
-> says which stage it is, and the deck inside it says so again. That is not the
-> naming rule being violated — it is a *self-check*, and it is the same idea as
-> § 6.3's structure witness: write down something you could have derived, so a
-> mismatch has something to fail against.
->
-> Without it, every stage directory holds a file with an identical name. Two
-> decks swapped by a bad copy, a resumed `prep` or a hand-edit would be
-> **invisible** — nothing in either folder disagrees with anything. With it,
-> `01_coarse/<label>_02_tight.fdf` is wrong on sight.
->
-> *Corrected 2026-08-08 (user).* This section used to read *"there every name is
-> the bare id and the directory says which stage"*, and `job-contracts.md § 6.3`'s
-> *a name says what its location does not* was read as forbidding the repetition.
-> That rule is about **noise**. Deliberate redundancy that catches a mix-up is
-> not noise, and applying a style rule to a safety mechanism is how a check gets
-> designed away.
->
-> *Retokenised 2026-08-09 (user).* The stem in these names was written `<id>`
-> until decision 26 separated the two: it is the **label** — the deck is named
-> from it and never has the formula to hand. § 2.0a is the split.
-
-**Three rules keep normalisation from becoming a source of surprise:**
-
-1. **It happens once, when the description is written, and the result is
-   stored.** What `task.json` records *is* the label and the id — nothing
-   downstream re-derives either from the user's raw text, because two components
-   normalising slightly differently is a silent divergence between what a surface
-   shows and what the engine writes.
-2. **The result is shown, not hidden — by every surface, the terminal
-   included.** A surface that hides it hides the thing that decides whether the
-   next run continues, and *"the browser will show it"* is not an answer for
-   someone who never opens the browser. What the user typed goes in, the
-   normalised label comes back, and it is visible **before** anything is written:
-   a printed line from the CLI is as good as a field in a form. *(Stated
-   explicitly 2026-08-08 — it had been read as a web obligation.)*
-3. **A normalisation that loses the name is refused, not patched** — never append
-   a digit and carry on, which produces `bdt_2` and no explanation of what it
-   differs from. Two cases refuse, and what separates them from an ordinary
-   substitution is *what was replaced*:
-
-   - **a letter or a digit was replaced.** Substituting a **separator** — a
-     space, a `/`, a `.` — is expected and silent; that is all `BDT/Au relax`
-     does. Substituting a character the user typed *inside a word* loses it, so
-     `Über` is refused rather than quietly becoming `ber`, and so is `Ω-shape`.
-     The test is mechanical: a character outside `[A-Za-z0-9_-]` that is
-     nonetheless alphanumeric is a letter or a digit in *some* alphabet, and the
-     id has no way to carry it.
-   - **nothing is left, or the result is over the derived cap.** `///` reduces to
-     the empty string; a 300-character name exceeds what `<label>_<stage>.<ext>`
-     may occupy. Say so and ask.
-
-**A "collision" is narrower than it sounds, and since 2026-08-08 molbuilder does
-not go looking for one.** Two calculations only interfere when they occupy the
-**same directory** — not when they merely derive the same id. The same id under
-`optimization/` and under `spectrum/` is fine, and so is the same id in
-`bdt-relax-pbe/` and `bdt-relax-blyp/`: in both cases the warm files never meet.
-
-> **molbuilder does not compare one calculation's folder against another's.**
-> *Decided 2026-08-08 (user): this is not a file manager.* Where a calculation
-> goes is the user's to choose. A pre-emptive search for path collisions
-> would mean molbuilder holding an opinion about a directory tree it does not
-> own, and getting that opinion wrong is worse than not having it.
->
-> What molbuilder owes is about **the folder it was actually pointed at**: it
-> holds one calculation, a second refused there (§ 5's first row), and § 6
-> says what a second prep into it does. That is the whole of it.
+> *Decided 2026-08-08 (user): this is not a file manager.* Where a
+> calculation goes is yours to choose. What molbuilder owes is about the
+> folder it was pointed at: it holds one calculation, and a second is refused
+> there (§ 5, first row).
 
 ---
 
 ## 4. Every engine has an internal identity, and parameters bound to it
 
-The id is only half of a warm start, and this is not a SIESTA quirk. **Every
-engine has its own notion of "which job is this, and may I continue it", and a
-set of parameters tied to that notion.** A design that names only the filename
-has described none of it.
+The id is half of a warm start. **Every engine has its own notion of "which
+job is this, and may I continue it", and a set of parameters tied to that
+notion.** A design that names only the filename has described none of it.
 
-Two things, per engine, always:
-
-| | What it settles | SIESTA | PySCF |
+| | what it settles | SIESTA | PySCF |
 |---|---|---|---|
 | **the engine's job identity** | which prior state belongs to this run | the `SystemLabel` literal | the `JOB = "…"` literal |
-| **the parameters bound to it** | whether that state is honoured when found | `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG` — SIESTA reads a `.DM` it finds *unless* told `.false.`, and an `.XV` or `.CG` only when told `.true.` (`Src/read_options.F90`, `Src/struct_init.F`), so every deck writes each one its run has a use for, with its answer: `MD.UseSaveCG` in a CG relaxation alone, the one branch where SIESTA reads it (`siesta/input.py::_restart_keys`; `job-contracts.md § 4.2`; measured 2026-08-18, `config/siesta.py::SIESTA_RESTART_GROUP`) | the resume branches the generated script carries: `mf.chkfile = JOB + ".chk"` with `init_guess = "chkfile"` when it exists, and `<JOB>_optimized.xyz` overriding the literal geometry |
+| **the parameters bound to it** | whether that state is honoured when found | `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG` | the read branches the generated script carries |
 
-Read across: the identity is the same *idea* in both columns and a different
-*mechanism*; the bound parameters are a declared flag family in one and generated
-control flow in the other. Neither is a filesystem fact, and neither is the
-scheduler's business.
+- **SIESTA** reads a `.DM` it finds *unless* told `.false.`, and a `.XV` or
+  `.CG` only when told `.true.` (`Src/read_options.F90`,
+  `Src/struct_init.F`). So every deck writes each member its run has a use
+  for, with its answer — `MD.UseSaveCG` in a CG relaxation alone, the one
+  branch where SIESTA reads it (`siesta/input.py::_restart_keys`).
+- **PySCF**'s script takes the SCF initial guess from `<JOB>.chk` when that
+  file exists and is not empty, and `<JOB>_optimized.xyz` replaces the
+  literal geometry (the code is
+  [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2).
+
+The identity is the same *idea* in both columns and a different
+*mechanism*; the bound parameters are a declared keyword family in one and
+generated control flow in the other. Neither is a filesystem fact, and
+neither is the scheduler's business.
 
 **So they are one named group per engine, and the group is the generator's:**
 
-1. **An engine declares its group.** Its identity literal, the parameters bound
-   to it, and the warm files they govern belong together in that engine's
-   contract — the same place `job-contracts.md § 4.2` already inventories the
-   files. *A new engine that cannot fill this in is a new engine whose restart
-   behaviour nobody has thought about yet.*
-2. **The user says one thing; the generator sets the group.** `restart` is a
-   single field — `continue` or `clean` — and the renderer expands it into
-   whatever that engine's group is: three declared keys for SIESTA, generated
-   control flow for PySCF. Nobody keeps a group in step by hand, and no
-   description can carry its members individually and disagree with itself.
+1. **An engine declares its group** — its identity literal, the parameters
+   bound to it, and the restart files they govern
+   (`identity.RestartGroup`: `config/siesta.py::SIESTA_RESTART_GROUP`,
+   `config/pyscf.py::PYSCF_RESTART_GROUP`; the files in each engine's
+   `warm-files.toml`, [`job-contracts.md`](?doc=execution/job-contracts.md)
+   § 4.2a). *A new engine that cannot fill this in is a new engine whose
+   restart behaviour nobody has thought about yet.*
+2. **You say one thing; the generator sets the group.** `restart` is one
+   field — `continue` or `clean` — and the renderer expands it into that
+   engine's group: SIESTA's keywords, the catalogue's
+   `[item.restart].expands`, written together; PySCF's read branches,
+   generated or left out. The members are not settable one by one, so no
+   description can carry them separately and disagree with itself
+   (`identity.continues` is the one reading of the field).
 3. **`continue` is the default, and nothing computes it.** A stage launched
-   after the one it builds on is launched by somebody who *looked at that
-   run*, so it continues from it: its launch copies in the warm files of the
-   run it names (`project-layout.md` § 1.6.5), and `continue` lets its deck
-   read them. Saying `clean` is that person overriding the default: the stage
-   builds on nothing, its first launch copies nothing from the stage before
-   it, and its deck says `.false.` to every member of the group.
+   after the one it builds on is launched by somebody who looked at that run,
+   so it continues from it: its launch copies in the restart files of the run
+   it continues from ([`job-system.md`](?doc=execution/job-system.md) § 5.4,
+   [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.5), and
+   `continue` lets its deck read them. Saying `clean` overrides the default:
+   the stage declares no restart files, so its launch copies none, and its
+   deck says `.false.` to every member of the group.
+   - **Nothing has to detect anything.** *Is there prior state?* is answered
+     by the engine, at run time: SIESTA with `MD.UseSaveXV` and no `.XV` uses
+     the deck's coordinates; PySCF's script guards each read on the file. So
+     `continue` means *this deck may read what was handed to it*, and a run
+     handed nothing needs no special case.
+   - **A rung's position does not answer it.** The shipped ladders set no
+     `restart`. A rule like *first stage clean, the rest continue* would
+     discard a result the moment a ladder was run again in a folder holding
+     one.
+   - **Keeping an old state is a separate tool and decision**: `molbuilder
+     checkpoint save` ([`checkpointing.md`](?doc=execution/checkpointing.md)
+     § 5). A run that starts over is a new run folder, and
+     `jobset launch --cold` copies nothing into it, so nothing is removed.
+4. **What `continue` implies is a short declared set, and what a stage needs
+   beyond it is declared data too — never engine knowledge in a producer.**
+   `restart: continue` means the files the engine's `warm-files.toml` marks
+   `carry` for that kind — for a SIESTA relaxation `.XV`, `.DM` and `.CG`,
+   because that is what continuing a relaxation *is*
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a). What a
+   stage needs from *other* stages is its kind's own graph — a transport
+   device's electrode `.TSHS` files, a transmission's device `.TS.HSX` —
+   gathered at its first launch
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1, *What a stage
+   needs*; [`engines/transport.md`](?doc=engines/transport.md) § 6.1). Neither
+   is a field a description sets, and neither is checked by the run script.
 
-   **Nothing has to detect anything.** *Is there prior state?* is answered by
-   the engine, at run time, where it is knowable: SIESTA with `MD.UseSaveXV`
-   and no `.XV` warns and uses the deck's coordinates; PySCF's script guards
-   each read on the file existing and being non-empty. So `continue` means
-   *this deck may read what was handed to it*, and a run handed nothing needs
-   no special case anywhere.
+**Why rule 2 is not tidiness — the silent pair.** The two ways the group can
+be wrong are both silent, and opposite:
 
-   **A rung's POSITION does not answer it, and neither does anything else about
-   the ladder.** The shipped ladders set no `restart` at all.
+- **honoured with nothing to load** — the parameter is on, no prior state
+  exists, and the engine starts cold while the deck says it continued;
+- **present but not honoured** — the files are right there, the parameter is
+  off, and the stage starts from scratch looking as if it continued.
 
-   > **Corrected 2026-08-18 (user), twice on one day.** This first said
-   > *"nothing special is needed to say so"*, which was true of one producer and
-   > not of the system. The fix made it positional — *first stage `clean`, the
-   > rest `continue`* — written into each stage's overrides by the shipped-ladder
-   > builder.
-   >
-   > **That was the wrong rule, not a wrong implementation.** A rung's index has
-   > nothing to do with whether there is anything to continue from, and the
-   > default it produced was the destructive one: re-running a ladder in a folder
-   > holding a result silently discarded it — the one outcome the person who had
-   > just read that result did not ask for.
-   >
-   > **Keeping the old state is a separate tool and a separate decision**:
-   > `molbuilder checkpoint save` ([`checkpointing.md`](?doc=execution/checkpointing.md)),
-   > which is never automatic. A clean run is a new run folder, `jobset launch
-   > --cold` copying nothing into it, so nothing is removed or set aside.
-4. **What `continue` implies is a short fixed set; what a stage needs *beyond*
-   it is declared.** `restart: continue` means the geometry, the density and the
-   optimizer's history — `.XV`, `.DM`, `.CG` — because that is what continuing a
-   relaxation *is*. A run needing something else says so with `required`
-   (`job-contracts.md § 2.1`), and that declaration is checked where the job runs
-   (§ 4.4 there), not here. *Added 2026-08-08: the set used to be three suffixes
-   written into the producer, which meant a TranSIESTA ladder could not express
-   its `.TSHS` dependency without changing molbuilder's code.*
-
-**Why rule 2 is not tidiness.** The two ways the group can be wrong are both
-silent, and opposite:
-
-- **honoured with nothing to load** — the parameter is on, no prior state exists,
-  and the engine cold-starts while the deck says it resumed;
-- **present but not honoured** — the files are right there, the parameter is off,
-  and the stage starts from scratch looking like it continued.
-
-One field cannot produce either.
+One field cannot produce either. The same reason makes the restart files
+follow the field: a `clean` stage is handed none, so none sit unread beside
+it.
 
 ---
 
-## 5. What is reported rather than prevented
+## 5. What the id cannot catch, and what answers it
 
-An identity that tried to prevent every wrong continuation would have to include
-everything, and § 2.1 is about why that is worse. The cases below are real.
-Most are now closed by how a calculation is laid out — one calculation per
-folder, one folder per run, every file a run takes handed over and recorded —
-and the rest are said, before the launch and as the run starts:
+An identity that tried to prevent every wrong continuation would have to pin
+everything, and § 2.1 is why that is worse. These are the real cases; most
+are closed by the layout — one calculation per folder, one folder per run,
+every file a run takes handed over and recorded:
 
-| Case | Why the id cannot fix it | What answers it, and where |
+| case | why the id cannot fix it | what answers it |
 |---|---|---|
-| **two calculations under one label in one folder** — a second molecule's run would warm-start from the first's files | since § 2.0a the formula is not in the stem, so two molecules under one label share warm files | **refused**: one calculation per folder — `molbuilder describe` and the Transport tab's describe door refuse a folder that already holds one (`describe.refuse_described`), and Task setup's Save refuses a description whose run id differs from the folder's. The run id keeps the formula for exactly this; two isomers have one formula, which is § 6a's open question 3 |
-| **a label edited between runs** — the warm files no longer match, and a run that should resume starts cold | the label is the half of the id that reaches the engine (§ 2.0a) | **refused**: the label is half of the run id, so Save refuses the change in a described folder, and a `task.json` edited by hand whose name and id disagree is refused on every read (`Task._check_id`) |
-| **files left in a run's folder** — an `.XV` from an earlier fill that the engine would find | the id names the files; it cannot say which fill wrote them | **closed by the layout**: each run is its own folder, holding prep's files and what its launch hands over, and nothing else; a run opened and never launched is emptied whole before it is filled again (`materialize.empty_run`, `project-layout.md` § 1.6.3) |
-| **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.3`), so the mismatch is detectable | **refused at prep** (`job-system.md` R-P16, `prep._structure_for`): the structure put back, or the calculation described anew |
-| **prior state that matches** — the next run continues | nothing is wrong; the person should still know before it starts | **said twice**: `launch` shows which run each stage continues from and every file it copies, asks once, and records it (`.continued-from`, `run.json`; `job-system.md` § 5.4); the run script's banner says it again as the run starts — `CONTINUES (engine will load <files>)`, the restart files lying there |
-| **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/structure-periodicity.md § 6.2`; design record `archive/2026-08-20-cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum after a stage ran changes the next stage's deck and changes nothing about its run | **nothing says it.** A changed cell is another calculation, so a launched stage is not prepared again for one (`job-request.md` § 5) and its own runs cannot meet it; the case is a stage continuing from the one before it, prepared after the cell changed — its first launch copies the earlier run's `.XV`, and the cell that runs is that run's |
+| two calculations under one label in one folder | since § 2.0a the formula is not in the stem | **refused** — see below |
+| a label edited between runs | the label is the half the engine sees | **refused** — see below |
+| files left in a run folder from an earlier fill | the id names files; it cannot say which fill wrote them | **closed by the layout** — [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3 |
+| the structure moved under a saved description | the description holds a reference and a witness | **refused at prep** — [`job-system.md`](?doc=execution/job-system.md) § 5.0 |
+| prior state that matches: the run continues | nothing is wrong; you should still know | **said twice** — see below |
+| a changed cell | the cell is derived, and derived values are not in the id | **nothing says it** — see below |
 
-**Two moments, on purpose.** `launch` says what each run takes before
-anything is sent, while the choice is still open; the run script's banner
-(`job-contracts.md § 4.4`) says what lies there as the run starts, after the
-person committed. Neither replaces the other, and neither may say something the
-other contradicts — the banner is the one that is always present, so it is the
-one that must never be weakened. This is the shipped doctrine —
-**molbuilder informs, and the person decides to continue** (`job-system.md
-§ 2`, decision 5) — and what made it reach the cases above is that a run now
-records which run its files came from (`.continued-from`, `run.json`'s
-`continued_from`), so the banner's `CONTINUES` is never the only witness.
-
----
-
-## 6. Producing twice into the same level-③ directory
-
-A second generate targets **the directory it is pointed at** — since 2026-08-07
-that is the level-③ name the user typed, not a location the id derives (§ 3.0).
-
-**What a launched stage computes is not prepared again** *(user, 2026-10-02:
-"refuse it, redo via rollback")*. `prep` prepares a stage never launched again,
-its group whole *(user, 2026-10-11)*; a launched one only for its job request,
-its deck the same calculation ([`job-request.md`](?doc=execution/job-request.md) § 5, user, 2026-10-21), and
-refuses any other change, naming the way back: the
-state saved before its group's first launch, restored with
-`molbuilder checkpoint restore`
-([`checkpointing.md`](?doc=execution/checkpointing.md) § 7), and a prep
-anew — and launch saves that state before a group's first send (§ 9 there).
-Its place among prep's checks is
-[`job-system.md`](?doc=execution/job-system.md) § 5.0.
-
-> *Until 2026-10-02 this section said **warn, do not refuse** (user,
-> 2026-08-08): regenerating decks into a folder you were working in was "an
-> ordinary thing to do — after fixing a typo in a basis, or widening a mesh",
-> and from 2026-08-12 (U14) `prep` asked before re-rendering over a run that
-> had happened, default yes. A redo is a rollback now, so nothing is rendered
-> over a prepped stage, and nothing is left to ask before it.*
-
-**"Never rename" is the part that is not negotiable.** A run's files keep the
-names its engine and molbuilder gave them, in a folder of its own
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.5), and the next
-run continues from them by copying them in under the same names (§ 1.6.5
-there) — a name made unique to avoid a clash would leave the engine nothing to
-read. Nothing in this document ever moves a file to make room.
+- **One folder, one calculation.** `molbuilder describe` and the Transport
+  tab's describe door refuse a folder that already holds a description
+  (`describe.refuse_described`), and Task setup's Save refuses a description
+  whose run id differs from the folder's.
+- **A label edit.** The label is half of the run id, so Save refuses the
+  change in a described folder, and a `task.json` edited by hand whose name
+  and id disagree is refused on every read (`Task._check_id`, § 3 rule 1).
+- **Said twice, at two moments.** `launch` shows which run each stage
+  continues from and every file it copies, asks once, and records it
+  (`.continued-from`, `run.json`'s `continued_from`;
+  [`job-system.md`](?doc=execution/job-system.md) § 5.4) — before anything is
+  sent, while the choice is open. The run script's MODE line says what lies
+  in the run as it starts — `CONTINUES (engine will load <files>)`
+  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.4). Neither
+  replaces the other, and neither may contradict the other. molbuilder
+  informs; you decide to continue.
+- **A changed cell.** A `.XV` carries its own cell and frame, so on a
+  continue it wins: widening the vacuum after a stage ran changes the next
+  stage's deck and nothing about its run. A launched stage is not prepared
+  again for a changed cell
+  ([`job-request.md`](?doc=execution/job-request.md) § 5), so its own runs
+  never meet it; the case is a stage that continues from an earlier one and
+  was prepared after the cell changed — its first launch copies the earlier
+  run's `.XV`, and the cell that runs is that run's.
 
 ---
 
-## 6a. Open questions about the id
+## 6. Making a stage again
 
-*Migrated here 2026-08-11 from `archive/2026-08-11-staged-runs-architecture.md` § 9, which is
-now archived. They are about the id, so they belong to the contract that
-owns it.*
+What prep does with a stage that is already prepared or launched — its group
+prepared again whole while never launched; once launched, prepared again only
+for a changed job request, else refused naming the way back through the saved
+state — is one of prep's checks,
+[`job-system.md`](?doc=execution/job-system.md) § 5.0 (the request rule,
+[`job-request.md`](?doc=execution/job-request.md) § 5). Running a stage again
+is launching it again, § 5.4 there.
 
-1. ~~**Should the folder really be named by the id?**~~ **Answered
-   2026-08-07 (user): no — level ③ is what you type.** § 3.0 is the decision and
-   its reasoning; the question is kept struck through because it arrived from the
-   archive already settled, and a reader who meets it elsewhere should be able to
-   see that. What it cost is stated there too: an `ls` of a topic no longer says
-   what each calculation computes, and `task.json` is what does.
-2. **What are the "components" of a composite system?** A junction is a molecule
-   *and* two electrodes. Naming it by total formula loses that structure; naming
-   it by parts needs a convention for what a part is.
-3. **When does the readable id stop being enough?** A formula does not tell two
-   isomers apart, and does not pin the **order species are declared in** — and a
-   `.XV` read against a different order lands every coordinate on the wrong atom
-   (§ 4). The likely answer is a short pin appended when, and only when, the
-   readable part cannot separate two things in the same project.
+**Never rename.** A run's files keep the names its engine and molbuilder gave
+them, in a folder of their own, and the next run continues from them by
+copying them in under the same names
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.5). A name made
+unique to avoid a clash would leave the engine nothing to read.
+
+---
+
+## 6a. What the id does not separate
+
+The id is a starting point, agreed as one. It does not separate:
+
+- **two isomers** — they share a formula, so two isomers under one label are
+  one id; one folder still holds one calculation (§ 5);
+- **the order species are declared in** — and a `.XV` read against a
+  different species order lands every coordinate on the wrong atom. Settings
+  that change it (`species_order`, which orders SIESTA's
+  `ChemicalSpeciesLabel` block) are therefore identity-sensitive: change them
+  only in a calculation that does not continue from a run written before;
+- **a composite's parts** — a junction's id names its citation (§ 2), not
+  its molecule and electrodes.
 
 ---
 
 ## 7. What this contract does not own
 
-- **The warm-file inventory, the restart banner wording, the run's file
-  names, the project tree** —
-  [`execution/job-contracts.md`](?doc=execution/job-contracts.md) §§ 2 and 4.
-  This document adds no file.
-- **How a run is launched, which environment it activates, and where activation
-  comes from** — [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
-  §§ 2, 3 and 5. Unchanged here.
-- **What a stage is, and the description the id is derived from** —
+- **The run's file names, the warm-file vocabulary and the MODE lines** —
+  [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3, § 4.2a and
+  § 4.4. This document adds no file.
+- **The folder tree and who creates each level** —
+  [`project-layout.md`](?doc=execution/project-layout.md) § 1.1.
+- **What a stage takes at its launch, and launching again** —
+  [`job-system.md`](?doc=execution/job-system.md) § 5.4.
+- **How the run script runs the engine** —
+  [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.
+- **What a stage is, and the description the id is written in** —
   [`engines/stages.md`](?doc=engines/stages.md).
-- **Phasing and what is built when** — [`plans/plan.md`](?doc=plans/plan.md),
-  `conventions.md`'s R3 (the record of how it was built is
-  [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)). *(Open questions about the **id** are
-  § 6a above, because they are this contract's to answer.)*

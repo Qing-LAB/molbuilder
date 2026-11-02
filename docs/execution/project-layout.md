@@ -2,375 +2,240 @@
 
 **Role:** contract
 **Domain:** execution
-**Companions:** [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) (a run of points: its words, data, operations and doors); [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
-— the run directory's own rules, the topic list, the filename conventions;
-[`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet the
-per-stage folders come from; [`engines/stages.md`](?doc=engines/stages.md) — what
-a stage is and how its deck is produced;
-[`execution/checkpointing.md`](?doc=execution/checkpointing.md) — what the saved
-history must always hold;
-[`execution/run-identity.md`](?doc=execution/run-identity.md) — the id a
-calculation's files share.
-
-What this document adds is the *whole*: which
-directory owns what, how parameter tuning and resource tuning nest, and where the
-saved history sits.  *(Status lives in `plans/plan.md`, never in a contract — `conventions.md`'s R3.
-The Status block that stood here was also FALSE: it called `task.json`, its
-reader and § 4's stage naming unbuilt long after all three shipped, which is
-exactly why that rule keeps status out of contracts.)*
-
-**This contract owns:** the levels of the tree, who may write at each one, how
-each level is named, and the invariants that hold across them. It does not
-restate the rules inside a single run directory — those are `job-contracts.md`.
+**Owns:** the calculation folder on disk — its levels, which act creates and stamps each folder, what a folder is (`calcdir.json`, `calcdirs.where`), one start per run, the run's record files, copy never link, the manifest of every file (§ 5, generated), and the invariants across levels.
+**Read with:** [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 (every name) · [`job-system.md`](?doc=execution/job-system.md) § 5.0, § 5.4, § 6.0 (what prep and launch decide) · [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2 (how a run's state is read) · [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4 (a run of points' folders) · [`checkpointing.md`](?doc=execution/checkpointing.md) § 9 (the saved history) · [`configuration.md`](?doc=configuration.md) § 5 (the machine record)
 
 ---
 
 ## The short version
 
-**A calculation is a portable folder; everything the machine derives
-stays one level down.** The folder `molbuilder describe` writes travels to any machine
-unchanged; **`prep` adds stage dirs *and the attempt inside them*; `launch`
-runs what prep set up and records that it ran.**
+- **A calculation is one folder you can copy anywhere.** Its description sits at
+  the top and names no machine (§ 2.1).
+- **`prep` adds a folder per stage and opens the stage's first run in it;
+  `launch` fills the run it sends, opens every later run, and records that it
+  sent it; the run writes only inside its own folder.** The whole order is one
+  table (§ 2).
+- **A run is one start.** `run-<n>/` holds one start of its run script. To
+  continue is to launch the stage again, which opens `run-<n+1>/` beside it
+  (§ 1.6.1). What a run computed is never changed (§ 1.5).
+- **Every file goes into a run as a real copy, never a link** (§ 1.6.5).
+- **Every folder says what it is**: `task.json` at the calculation,
+  `calcdir.json` in every folder below it, read by one door, `calcdirs.where`
+  (§ 1.4a).
+- **Every file molbuilder writes has one row** in the manifest: who writes it,
+  and the one function that reads it (§ 5, generated from the catalogue).
 
-*(Opening an attempt is design and spends no queue slot, so it is prep's; `launch`
-refuses a stage with no attempt open — § 1.6.2.)*
+**Reading map.** Code cites these section numbers, so they keep their order.
+Read them by what you need:
 
-```
-<project>/optimization/<Calc>/          <- PORTABLE: travels as-is, names no machine
-  task.json  <label>.template.toml      the description + the answers
-  job-request.json                      how and where it runs
-  <label>.source.xyz (+.molstruct.json) the structure pair
-  pseudos/  (H.psml, ...)               travel with the calculation
-  01_coarse/                            <- prep writes the stage
-    <label>_01_coarse.fdf  *.run.sh     the deck + wrapper, rendered FOR this machine,
-    mb_monitor.pyz                         and the monitor beside them
-    run-0/  run-1/                      <- runs: prep opens the first and copies its
-                                           inputs in, launch each one after; launch writes run.json
-      *.out  *.concluded                the output + the conclusion marker (rc inside)
-    bench/bench-G0N2C1/run-0/           <- a benchmark trial: one run, launched once (§ 1.5a)
-  (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
-```
-
-*Every file, with who writes it and the one door that reads it:
-the manifest, § 5.*
-
-| key rule | one line | where |
-|---|---|---|
-| **portable floor** | the calculation folder never names a machine — copy it anywhere | § 1 |
-| **one layout** | a folder per stage, a folder per run in it (`run-<n>/`); a description stating any other is refused by name | § 1 |
-| **a run is one start** | every run is its own numbered dir, `run-<n>/`, one start of its run script; to continue is to launch again — warm files COPIED from the run you name | § 1.5, § 1.6 |
-| **the conclusion marker** | the wrapper writes `<basename>.concluded` with the rc, its last act — or its exit trap, when the script fails on its own first; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6.3 |
-| **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `job-request.json`'s `execution` | § 2.3.2 |
-| **who writes where** | `molbuilder describe` → the portable floor; prep → stage dirs **and the attempt in them**; launch → `run.json`; the run → its output, the monitor's files and the wrapper's conclusion marker; a person → anything, said aloud | § 2, § 1.6.3 |
-| **invariants** | the cross-level rules, each with its reason | § 7 |
+| you want | read |
+|---|---|
+| the tree, level by level | § 1.1 — a run of points' branch is [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4 |
+| which act puts what where, in order | § 2 (the lifecycle), § 2.6 (each level's writer) |
+| the rules you meet as a user | § 1.5 (a run is not changed), § 1.6.1 (one start), § 1.6.5 (copies), § 1.6.6 (a group is one job), § 1.5a (a trial runs once) |
+| why it is built this way | § 1.0, § 1.4, § 1.5b, § 1.6, § 3 |
+| developer reference | § 1.4a (`calcdir.json`, `where`), § 1.6.2 (the opener), § 1.6.3 (the run's records), § 4 (folder names and the doors that find them), § 5 (the manifest), § 7 (the invariants) |
+| a step another chapter decides | § 2.2–§ 2.3.3 are short pointers to it |
 
 ---
 
 ## 1. One layout: a folder per stage, a folder per run
 
-### 1.0 What the run directory is, and what may be in it
+### 1.0 What the run directory is
 
-*Stated by the user, 2026-08-11. Everything below is an arrangement of this.*
+> **The run directory hands the engine everything it needs and holds
+> everything it produces.** *(the user, 2026-08-11)*
 
-> **The run directory hands the engine everything it needs and holds everything
-> it produces. That is what makes it one — not which files happen to be in it.**
+Every file in a run folder got there one of three ways:
 
-**Two origins, and there is no third.** Every file in it is either:
-
-| origin | examples |
+| how | examples |
 |---|---|
-| **rendered** — translated out of the template and the other sources | the deck, the run script, the monitor (`mb_monitor.pyz`) |
-| **copied** — raw data the engine needs, taken as-is | pseudopotentials, the structure, warm files from a run you named |
+| **rendered** by `prep`, from the template and the description | the deck, the run script, the monitor (`mb_monitor.pyz`) |
+| **copied** as it is | the pseudopotentials, the restart files of the run it continues from |
+| **produced** by the run | everything the engine, the run script and the monitor write |
 
-**So the inventory is not a list anybody maintains** — it follows from those two
-origins. A list would drift; this cannot.
+**A product has one home: its run.** An input may sit at two levels — the deck
+is rendered in the stage's folder and copied into each run — because a second
+copy of an input is a convenience. A second copy of a product is a
+contradiction: a reader can no longer tell which one says how the run went. So
+the progress log `prep` seeds for a viewer goes into the run it opens; a stage
+that opens no run keeps no seed.
 
-> **A product has ONE home, and it is the run** *(2026-09-19)*. The third
-> category — what the engine *produces* — is the run directory's own, and the
-> progress channel is the case that tested it. `prep` seeds that log so a
-> viewer has something to find before the engine starts, and it seeded it
-> beside the deck it renders: the stage CONTAINER. The run then wrote its own
-> inside the attempt. Measured on a finished Raman run: a 971-byte stub with no
-> `# concluded:` footer in `01_raman/`, the real 1763-byte concluded log in
-> `01_raman/run-0/`. An unconcluded log is how every reader tells a run is
-> still going, so the stage directory reported a **finished** calculation as
-> *running*, permanently, and offered the stub to open. The seed now moves
-> into the attempt. Inputs may legitimately exist at both levels — the deck is
-> born in the stage directory and copied down — because a second copy of an
-> input is a convenience and a second copy of a product is a contradiction.
-
-**Why anything is kept outside it: the engine does not see or understand the
-layer we use to organise our information.** It opens what is there and writes
-beside it. So the template, `task.json` and the rest of the *starting point* for
-rendering belong to the **parent**, and only rendered files and copies go down to
-where the engine runs.
-
-> **The directory boundary is where the translation happens.** Above it, our
-> vocabulary — template items, the description. Below it, the engine's
-> vocabulary — its own keywords — plus raw bytes.
-> [`architecture.md`](?doc=execution/architecture.md) § 10 names every
-> translation in the system; this is the one that is a **wall you can see**, and
-> `prep` is what crosses it.
+**The directory wall is where the translation happens.** Above the run folder
+is molbuilder's vocabulary: the template, the description, the job request.
+Inside it is the engine's: its own keywords, and raw bytes. The engine does not
+see the layer above; it opens what is beside it and writes beside it. `prep`
+crosses the wall ([`architecture.md`](?doc=execution/architecture.md) § 10
+names every translation in the system).
 
 ```mermaid
 flowchart TB
-    subgraph PARENT["<b>the parent</b> — the starting point for rendering"]
-      T["the template"]; TJ["task.json"]; DATA["the data files"]
+    subgraph PARENT["<b>the calculation</b> — what the run is rendered from"]
+      T["the template"]; TJ["task.json · job-request.json"]; DATA["the structure · pseudos/"]
     end
     P{{"<b>prep</b> — the translator"}}
-    subgraph RUN["<b>the run directory</b> — the engine's whole world"]
+    L{{"<b>launch</b> — the hand-over"}}
+    subgraph RUN["<b>the run folder</b> — the engine's whole world"]
       R["<i>rendered</i><br/>the deck · the run script · the monitor"]
-      C["<i>copied</i><br/>pseudopotentials · structure · warm files"]
-      O["<i>produced</i><br/>everything the engine writes"]
+      C["<i>copied</i><br/>pseudopotentials · restart files"]
+      O["<i>produced</i><br/>everything the run writes"]
     end
-    PARENT --> P --> R & C
+    PARENT --> P --> R
+    P --> C
+    L -->|"what it continues from"| C
     R -.->|"the engine runs"| O
 ```
 
-**Once it is prepared it needs nothing but the engine's environment and a
-shell.** That is why the run script and the monitor sit inside it rather
-than being invoked from somewhere clever.
+**Once prepared, a run folder needs only the engine's environment and a
+shell.** The run script and the monitor are copied into it, not called from
+elsewhere, so the run starts the same way on a laptop, a login node or inside
+a scheduler's job, and everything it ran from is there to read when something
+goes wrong.
 
-**A follow-up stage takes two inputs**, and `prep` writes a whole new directory
-from them:
+**A stage that builds on another takes two things**: its own deck, which `prep`
+renders from the description, and the files of the run it continues from, which
+its first launch copies in (§ 1.6.5). `prep` copies nothing from another
+stage's run.
 
-1. the **parent's** template and sources, and
-2. the **latest results** from the run you name.
+**molbuilder knows its own files by name.** In a run folder molbuilder's copies
+sit beside the engine's output. *Has anything run here?* is answered by setting
+aside what molbuilder wrote, which the catalogue lists
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2). That list is
+what stops a copy being taken for engine output.
 
-**That boundary is a directory wall.** The starting point stays in the parent;
-each run directory sees only rendered files and copies.
+**This is the one layout.** `task.json` states it — `"shape": "hierarchical"`,
+the one value its reader accepts (`task.of`) — and a description stating any
+other is refused by name, its way out to describe the calculation again.
+Nothing molbuilder writes keeps a calculation's stages or runs side by side in
+one folder.
 
-> **A note on the word "calculation".** This document calls the whole folder
-> *the calculation* and the directory the engine runs in *the run directory*.
-> In conversation the second is often called the calculation directory too.
-> Same thing, opposite ends of the tree — the contract's names are used below.
-
-> #### ⚠ "Bundle" and "calculation" are the same directory, and the word
-> #### **bundle** is retired for it *(2026-08-11)*
->
-> [`job-system.md`](?doc=execution/job-system.md) draws a `bdt_au-bundle/` root
-> holding `job-set.json`, the decks, the shared package and the stage
-> directories. This document draws
-> `projects/<project>/<topic>/<calculation>/` holding the template, `task.json`,
-> the shared package and the stage directories. **They are one directory**, and
-> nothing said so — so a reader following one produced a `-bundle` folder outside
-> the project tree, and a reader following the other produced a calculation
-> inside it.
->
-> | | **calculation** *(this contract's name)* | ~~bundle~~ |
-> |---|---|---|
-> | where | `projects/<p>/<t>/<calc>/` — inside the tree | anywhere |
-> | what declares it | **`task.json`** | `job-set.json` |
-> | who names it | the user | the producer, `<label>-bundle` |
->
-> **`calculation` wins, for a reason that is not taste.** `task.json` is the
-> **source** and `job-set.json` is **derived** from it (§ 5) — so naming the
-> folder after the derived file names it after something you can delete and
-> regenerate. It is also what `checkpoint.py` already looks for to decide a
-> directory owns its subdirectories (`checkpointing.md` **L1**).
->
-> **And *bundle* was already overloaded twice over**: a **handoff bundle** is one
-> finished run carried forward (by CITATION since 2026-08-29 — [`engines/transport.md`](?doc=engines/transport.md) § 3.1),
-> a **benchmark bundle** is a self-contained measurement (§ 2.6). A third sense
-> for *the calculation folder itself* is the one that had to go — `README.md` R5
-> forbids exactly this collision. What keeps the name legitimately is the
-> **benchmark** bundle, which really is a self-contained package that travels.
-
-> **This is why molbuilder must know its own files by name.** In a run folder
-> molbuilder's copies — the deck, the run script, the monitor, the
-> pseudopotentials — sit beside the engine's output. *"Has anything run
-> here?"* works by subtracting **what molbuilder wrote** from what is present
-> ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2), so that list
-> is what stops a copy being mistaken for engine output.
-
-**A calculation holds several stages and several attempts, and keeps them
-apart by directory** — everything else follows from that:
-
-| | |
-|---|---|
-| **Stages are separated by** | a **directory** — `01_coarse/`, `02_tight/` — and the token is kept in the filename too, as a self-check (`run-identity.md § 3.2`) |
-| **Attempts are separated by** | a **directory** — `run-0/`, `run-1/` |
-| **Warm files** (`.XV` `.DM` `.CG`) | one set per attempt |
-| **Continuing** | you **name** the run, and its files are copied in |
-| **What survives** | every stage's, every attempt's |
-| **Depth** | 3 |
-| **Wrappers** | one per stage, in the stage's directory |
-| **Built by** | `prep` |
-
-**This is the one layout.** `task.json` states it — `"shape":
-"hierarchical"`, the one value its reader accepts (`task.of`) — and a
-description stating any other, `"flat"` among them, is refused by name, its
-way out to describe the calculation again. Nothing molbuilder writes keeps a
-calculation's stages or runs side by side in one folder.
-
-**The one real migration LANDED.** The browser writes a **template plus
-`task.json`**, and the job request beside them — the parameter tabs hand over
-to Task setup, which saves the description and the job request — and `prep` renders every deck on the target, into its stage's directory. The
-UI produces the second-to-last file in the chain, never the last. *(Until
-2026-08-18 the Build tab wrote a finished `.fdf` and its `.run.sh` — a single
-job, not a described calculation — and these two paragraphs described moving
-off that as future work. The deck-rendering web routes were deleted the same
-day the hand-over shipped; proven end to end 2026-08-19.)*
-
-**One package, one layout.** The browser always writes the same thing — a
-template, `task.json`, `job-request.json`, the data files, none of it naming a
-machine. `prep`, on the machine that will run it, translates that into a
-runnable directory.
+**Words.** This chapter calls the whole folder *the calculation* and the folder
+the engine runs in *the run* (`run-<n>/`; the code says `attempt`). The CLI's
+`--bundle` option names a calculation folder
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5b).
 
 ### 1.1 What it looks like
 
+A two-stage SIESTA relaxation, with the levels above it. The names are the ones
+molbuilder writes for a calculation labelled `h2_siesta`:
+
 ```
-bdt-relax/                            the CALCULATION — the user typed this name
-├── <label>.template.toml              ─┐ the description: written by the
-├── task.json                         ─┘ browser (or `molbuilder describe`) —
-│                                        portable, names no machine, says
-│                                        the id — label plus formula
-├── job-request.json                     how and where it runs — the run
-│                                        cards, the groups, the queue asked
-├── <label>.source.xyz  + sidecar        the structure pair (§ 6.3's .source
-│                                        reservation), from the hand-over
-├── pseudos/  Au.psml  S.psml         the library's copies, gathered by `prep`
-│                                        (or by `describe --psml-lib`) — § 2.6
-│
-├── 01_coarse/                        a STAGE — written by `prep`
-│   ├── <label>_01_coarse.fdf            the deck, rendered for THIS machine
-│   ├── <label>_01_coarse.run.sh         its wrapper
-│   ├── mb_monitor.pyz                   beside the wrapper: ONE file, the monitor
-│   │                                    and the framework modules it reads the
-│   │                                    run through (`runwrap.MONITOR_BUNDLE`)
-│   ├── Au.psml  S.psml               real copies, beside the deck
-│   ├── run-0/                        a RUN — prep opened it and COPIED in
-│   │   │                                the deck, wrapper, monitor and pseudos
-│   │   ├── run.json                  written by launch: how, when, from what
-│   │   ├── <label>.XV  <label>.DM    SIESTA named these: bare
-│   │   ├── <label>_01_coarse.out        molbuilder named these, on the
-│   │   ├── <label>_01_coarse.concluded  stage — the output, the wrapper's
-│   │   └── ….monitor.log  .util.csv  .scf-timing.log   marker, the
-│   │                                    monitor's pair, the timing log
-│   ├── run-1/                        launched again — run-0 is untouched;
-│   │                                    it continues from run-0, or starts cold
-│   └── bench/                        a BENCHMARK — its own little world
-│
-└── 02_tight/
-    ├── <label>_02_tight.fdf
-    └── run-0/
-        └── <label>.XV                a real copy of 01_coarse/run-0's
+projects/                                   the tree's root (job-contracts.md § 2.5)
+└── H2-tests/                               ① PROJECT — the person names it
+    ├── README.md                              made with the project, as is every topic
+    ├── structure/  pseudopotential/  user/    ② TOPICS — storage, and a free-form one
+    ├── spectrum/  transport/                  ② one run topic per calculation kind
+    └── optimization/                       ②
+        └── h2_siesta/                      ③ CALCULATION — the person names it; task.json makes it one
+            ├── h2_siesta.template.toml        every parameter              ┐ the description:
+            ├── task.json                      the stages, what varies      │ portable, names
+            ├── job-request.json               how and where it runs        │ no machine (§ 2.1)
+            ├── h2_siesta.source.xyz  h2_siesta.source.molstruct.json       ┘
+            ├── pseudos/  H.psml               the calculation's one copy of each pseudopotential
+            ├── environment.json               the machine it is set to — its first prep's
+            ├── job-set.json  prepared-with.json  STAGE-PLAN.md  *.pipeline.log    prep's records
+            ├── jobset-decisions.log           one line per decision of every verb
+            ├── .git/  .binsnapshots/  .gitignore      the saved states (§ 6)
+            ├── launch/                        only for a job of several stages: its header, walk, log
+            ├── 01_coarse/                  ④ STAGE — prep
+            │   ├── h2_siesta_01_coarse.fdf         the deck, rendered for the machine it runs on
+            │   ├── h2_siesta_01_coarse.run.sh      its run script (+ .sbatch on a machine with a queue)
+            │   ├── h2_siesta_01_coarse.validation.txt   what prep checked before it wrote the deck
+            │   ├── mb_monitor.pyz  H.psml          real copies, beside the deck
+            │   ├── run-0/                  ⑤ RUN — prep opened it; one start
+            │   │   ├── the deck, run script, monitor and H.psml, copied in
+            │   │   ├── run.json                    launch: it was sent — how, where, from what
+            │   │   ├── h2_siesta_01_coarse.runwrap.log   the run script: its start
+            │   │   ├── h2_siesta_01_coarse.out  .monitor.log  .util.csv  .scf-timing.log
+            │   │   ├── h2_siesta.XV  h2_siesta.DM  h2_siesta.MD.nc …   SIESTA's own names
+            │   │   └── h2_siesta_01_coarse.concluded   the run script's last act
+            │   ├── run-1/                  ⑤ launched again: warm from run-0, or cold
+            │   └── bench/                     a benchmark of this stage (§ 3)
+            │       └── bench-G0N4C1/run-0/       a trial: one run, launched once (§ 1.5a)
+            └── 02_tight/                   ④
+                ├── h2_siesta_02_tight.fdf  …
+                └── run-0/                  ⑤
+                    ├── .continued-from             01_coarse/run-1
+                    └── h2_siesta.XV  h2_siesta.DM  real copies, taken at its first launch
 ```
 
-*Every directory `prep` makes also holds its `calcdir.json` (§ 1.4a), and each
-run its session log, `<basename>.runwrap.log`. The tree is a picture;
-every file, with its writer and its door, is § 5.*
-
-*`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
-run id, which carries the formula as well and lives in `task.json`
-(`run-identity.md § 2.0a`).*
-
-**The deck repeats the stage its directory already names, on purpose.** Without
-it every stage directory holds an identically-named deck, and two swapped by a
-bad copy or a resumed `prep` disagree with nothing; with it,
-`01_coarse/<label>_02_tight.fdf` is wrong on sight (`run-identity.md § 3.2`,
-decision 21).
-
-**A run's files carry no counter.** The folder is the run, and it holds one
-start (§ 1.6.1): every file molbuilder names in it is named once, on the
-stage's stem or, for a file of the calculation as a whole, on its label.
-
-```mermaid
-flowchart TB
-    subgraph CALC["<b>the calculation</b> — portable, names no machine"]
-      T["template.toml · task.json<br/>pseudos/"]
-    end
-    subgraph ST["<b>a stage</b> — one science setting, built by prep"]
-      D["the rendered deck · its wrapper · mb_monitor.pyz<br/>copies of the pseudopotentials"]
-      subgraph AT["<b>an attempt</b> — one launch, closed when it ends"]
-        O["copies of the stage's files · run.json<br/>the output · .XV · .DM · .concluded"]
-      end
-      BN["<b>bench/</b> — trials that measure this stage"]
-    end
-    CALC --> ST
-    D -->|"copied in"| AT
-    ST -.-> BN
-```
+- **Every folder below the calculation carries a `calcdir.json`** saying what
+  it is (§ 1.4a); the calculation itself is said by its `task.json`.
+- **The tree is a picture.** Every file, with its writer and the one function
+  that reads it, is the manifest (§ 5).
+- **`<label>` is the `SystemLabel`**, the stem of every file here. It is not the
+  run id, which carries the formula and lives in `task.json`
+  ([`run-identity.md`](?doc=execution/run-identity.md) § 2.0a).
+- **The deck repeats the stage its folder names** — `01_coarse/h2_siesta_01_coarse.fdf`
+  — on purpose: a deck copied into the wrong stage folder is wrong on sight
+  ([`run-identity.md`](?doc=execution/run-identity.md) § 3.2). Every name's
+  rule is [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3.
+- **A run's files carry no counter.** The folder is the run, and it holds one
+  start (§ 1.6.1).
+- **A run of points** — a bias sweep, a SIESTA vibration — holds a folder per
+  point inside its run (`run-1/f001/v0.2/`, `run-1/fc/`), and prep's decks for
+  them in folders below the stage. That branch, level by level, is
+  [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4.
 
 ### 1.2 Every state stays on disk
 
 **History is kept in space, not in time.** After three stages have run, every
-stage's and every attempt's state sits on disk at once: stage 1's relaxed
-geometry is in `01_coarse/run-0/`, going back to it is reading that directory,
-and which run produced a `.XV` is its run's `run.json`, without leaving the
-tree. The saved history (§ 6) is insurance and a place to branch from — never
-the only way back — and a restore is a rewind of the whole calculation, text
-and binaries together (`checkpointing.md`, S6), which nothing here needs in
-order to reach an earlier state.
-
-### 1.3 The rules, read against the layout
-
-| Rule | how it holds |
-|---|---|
-| **A directory is a container or a run, never both** (§ 1.4) | calculation and stage are **containers**; `run-N/` is a **run** |
-| **A result is never overwritten** | an attempt is immutable (§ 1.5) |
-| **Every file is named on the label** | the engine's bare (`<label>.XV`), molbuilder's with the stage token (`<label>_<NN>_<stage>`) — § 7, invariant 3 |
-| **Where the deck comes from** | `prep` renders it into the stage's directory, from template ⊕ the stage's values ⊕ this machine (§ 2.2) |
-| **Where the wrapper runs** | in the attempt directory `prep` made |
-| **git tracks / the archive covers** | containers are git's, runs are the archive's — by **depth** (§ 6.1; not held, § 7 invariant 16) |
+stage's and every run's state is on disk at once: stage 1's relaxed geometry is
+in `01_coarse/run-0/`, going back to it is reading that folder, and which run
+produced a `.XV` is in its run's records (§ 1.6.3). The saved history (§ 6) is
+insurance and a place to branch from — never the only way back.
 
 ### 1.4 A directory is a container or a run, never both
 
-
 Every directory in this tree is one of two things:
 
-- a **container** — it holds setup and other directories. Decks, wrappers, the
-  description, the shared package. All text or small.
-- a **run** — one invocation of the engine. It holds what that invocation
-  produced, and nothing else holds that.
+- a **container** — it holds setup and other directories: decks, run scripts,
+  the description, the shared files. All text or small.
+- a **run** — one start of a run script. It holds what that start produced, and
+  nothing else holds that.
 
-A calculation is a container. A stage is a container. A benchmark bundle is
-a container. The leaves are runs: a stage's `run-N/` — or, where the stage
-runs per point, each point's folder in it — and a trial's `run-N/`.
+The calculation, a stage, a benchmark and a trial are containers. The leaves are
+runs: a stage's `run-<n>/`, or, where the stage runs per point, each point's
+folder in it; and a trial's `run-0/`. Two folders are neither: the engine's
+scratch of a run (a device run's `tsgf/`) and a transmission point's `shared/`
+(§ 1.4a).
 
-**This is what makes everything downstream simple.** Setup is text, so git handles
-it entirely. Only a run holds anything big. There is no directory where the two
-are mixed and something has to tell them apart.
+**This is what keeps everything downstream simple.** Setup is text, so git
+holds it. Only a run holds anything big. No directory mixes the two.
+
+**A calculation folder is one calculation**: one `task.json`, one template. A
+folder holding two templates, or one under another name, is refused by name
+(`template_file.of`).
 
 ### 1.4a How a directory says which one it is
 
-*Added 2026-09-19. § 1.4 states the rule and then says the quiet part: "there is
-no directory where the two are mixed and **something has to tell them apart**."
-Nothing in the tree has to — but **a reader handed a path does**, and until this
-section it could not.*
-
-**The gap, and why no amount of care closed it.** Container-or-run is not
-decidable from the name: a stage directory is a container, a swept rung's
-`run-<n>/` is a container where a rung that runs once is a run, and a
-hand-made directory with one `.fdf` in it is a run. Same grammar, opposite
-answers. So every reader that wanted the answer guessed, and they did not
-guess alike — one assumed every directory was a run and reported a `pseudos/`
-folder as *running*; one assumed the description sat in the directory it was
-handed; one walked up a fixed number of levels hoping to find it.
+**Whether a folder is a container or a run cannot be told from its name.** A
+stage folder is a container; a `run-<n>/` is a run where its stage runs once and
+a container where its stage runs per point; a folder a person made with one deck
+in it looks like a run. So molbuilder does not guess.
 
 > **A directory states its place. Nothing infers it.**
 
-**This is affordable because [invariant 6a](#7-the-invariants) already holds:**
-*every directory in this tree is made by Python.* A tree whose
-directories all have a creator inside molbuilder is a tree whose directories can
-all be stamped by that creator, at the moment it makes them. There is no
-population to migrate and no heuristic to tune — only a fact that was known at
-creation and thrown away.
+This is affordable because every directory in the tree is made by Python
+(invariant 6a): the code that makes a folder knows what it is making, and stamps
+it then.
 
 #### Who answers, per level
 
 | the directory | what answers | container or run |
 |---|---|---|
-| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2), read through its one door, `task.of`, by the run door (`architecture.md` § 3.2); `calcdirs` reads no description | a container, always |
-| **everything below it that molbuilder made** | `calcdir.json`, written by the creator | **`role`**, said outright |
-| anything else | nothing | unknown — the directory is read alone, and told so |
+| the **calculation** | its `task.json` | a container, always |
+| **every folder below it that molbuilder made** | its `calcdir.json`, written by the code that made the folder | its `role`, stated |
+| anything else | nothing | unknown — read alone, and said so |
 
-**The root needs no record**, and that is the point rather than an omission:
-invariant 2 already makes `task.json` the thing that says a directory is a
-calculation, and a calculation is a container. A second declaration would be a
-second home for one fact.
+- **The root is the root because its description is here** (invariant 2). The
+  description is read through its one door, `task.of`, by the run door
+  ([`architecture.md`](?doc=execution/architecture.md) § 3.2); `calcdirs` asks
+  only whether it is there (`calcdirs.described`).
+- **The root needs no record**: `task.json` already says the folder is a
+  calculation, and a second declaration would be a second home for one fact.
 
-#### The record — two fields, and the reason it is only two
+#### The record — two fields
 
 ```json
 { "schema": "molbuilder/calcdir@1",
@@ -378,2179 +243,908 @@ second home for one fact.
   "of":     "../.." }
 ```
 
-* **`role` is `container`, `run`, `scratch` or `shared`** — § 1.4's two words, and the two folders that are neither: a device run's `tsgf/`, the engine's scratch of the run above it (invariant 6b; [`engines/transport.md`](?doc=engines/transport.md) § 2a.11); and a transmission point's `shared/`, the energies it shares with the finished calculation its calculation reuses, copied from the point that computed them, read with the point above it (since 2.30.0, [`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
-* **`of` is relative, always** — to the calculation root. That is what survives
-  renaming or moving a whole calculation, and it is the convention
-  `.gathered-from` already uses for the same reason. Copy an attempt out on its
-  own and `of` dangles; *"this attempt's calculation is not here"* is then the
-  honest answer, where a search would have adopted whatever it found.
+- **`role`** is `container`, `run`, `scratch` or `shared`: § 1.4's two words,
+  and the two folders that are neither — a device run's `tsgf/`, the engine's
+  scratch of the run above it
+  ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), and a
+  transmission point's `shared/`, the energies it shares with the finished
+  calculation its calculation reuses, copied from the point that computed them
+  and read with the point above it
+  ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
+- **`of`** is the way to the calculation's folder, always relative. That
+  survives renaming or moving a whole calculation. Copy a run out on its own and
+  `of` leads nowhere; *this run's calculation is not here* is then the honest
+  answer, where a search would adopt whatever it found.
 
 **Everything else is read off the folder's place.** Given the root, what a
-folder is — a stage's, an attempt, a point's, a benchmark's, a trial, support —
-and the stage, run, trial and point it sits in are read off its path, in the
-names the layout gives its folders: `<NN>_<stage>` (`identity.parse_token`),
-`run-<n>` (`paths.attempt_index`), `bench-<point>` (`paths.trial_point`), and
-the benchmark's and the launch folder's own names — the ground floor's, with no description or plan
-read, so one door answers it for every reader (*Where am I*, below). A **stage
-name, an attempt index, a trial's point and a point's folder are facts the
-tree's names already answer**, and storing them would be a second home for each
-— with the drift that always follows.
-
-**What the names cannot answer, and why `role` is therefore stored.** Container
-or run. A swept rung's `run-<n>/` is a container holding its points' runs
-where a rung that runs once is a run
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). The same name,
-opposite answers: whether a rung sweeps decides, and that is the
-description's, which the ground floor does not read — only the code that
-created the directory knew which it was making. That is the whole content of
-this record.
-
-**`seq` is deliberately absent**, for the same one-home reason: invariant 4 puts
-a stage's `seq` on the directory name and says it is "read back off the
-artifacts, stored nowhere else".
+folder is, and the stage, run, trial and point it sits in, are read off its path
+in the names the layout gives its folders: `<NN>_<stage>`
+(`identity.parse_token`), `run-<n>` (`paths.attempt_index`), `bench-<point>`
+(`paths.trial_point`), and the benchmark's and the launch folder's fixed names.
+Storing any of them would give one fact two homes. Only container-or-run is
+stored, because only the code that made the folder knew it: whether a rung runs
+per point is the description's, which this floor does not read.
 
 #### Where am I — one answer, with its context
 
 *(The user, 2026-10-20: "a folder could be a run dir, but its calculation
 information is in parent … shall we give this with a context?")* **One door
-answers where a folder is: `calcdirs.where(folder)` → `Where`**, the ground
-floor's, so every reader asks it — what a folder is in its calculation, with
-its description (`runs.place_of`, the run door's), the Results tab (`place`,
-[`web/results.md`](?doc=web/results.md) § 2.3), the checkpoint panel (*is
-this a calculation's folder*), a benchmark's summary and its verbs (*whose
-benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
+answers where a folder is: `calcdirs.where(folder)` → `Where`.** Every reader
+asks it: what a folder is with its description (`runs.place_of`, the run
+door's), the Results tab (`place`, [`web/results.md`](?doc=web/results.md)
+§ 2.3), the checkpoint panel (*is this a calculation's folder*), and a
+benchmark's summary and verbs (*whose benchmark is this*,
+`materialize.bench_owner`, `bench_stage_of`).
 
 | field | what it says |
 |---|---|
 | `root` | the calculation's folder — the one `task.json` is in, or the one the folder's record names; `None` for a folder no calculation claims |
-| `what` | what the folder is, below — `None` for a folder no calculation claims |
-| `role` | its record's: `container`, `run`, `scratch` or `shared` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — `None` at the root, which holds no record and is a container |
+| `what` | what the folder is (the table below); `None` for a folder no calculation claims |
+| `role` | its record's: `container`, `run`, `scratch` or `shared`; `None` at the root, which holds no record |
 | `stage` | the stage it sits in, by its token — `01_coarse` |
-| `run` | the attempt's index — `0` of `run-0` |
+| `run` | the run's index — `0` of `run-0` |
 | `trial` | the benchmark trial's point — `G1N4C6` of `bench-G1N4C6` |
-| `point` | a point's folder, its path below the run or the stage — `v0.2`, `f001/v0.2` |
-| `run_folder` | the run's own `run-<n>/` the folder lies in — itself for an attempt, the one above a point's folder or a scratch folder: where the run's launch record lies |
+| `point` | a point's folder, as its path below the run or the stage — `v0.2`, `f001/v0.2` |
+| `run_folder` | the run's own `run-<n>/` the folder lies in — itself for a run, the one above a point's folder or a scratch folder: where the run's launch record lies |
 
-**What a folder is, read at its place:**
+**What a folder is, read at its place.** The last column is the same level's
+name in [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4, which
+gives each level's door.
 
-| the folder | `what` | its role, as its creator stamps it |
-|---|---|---|
-| the root — `task.json` is here | `calculation` | none: a container |
-| `<NN>_<stage>/` | `stage` | container |
-| `run-<n>/`, below a stage or a trial | `attempt` | run — a container when its stage runs per point |
-| below a run of points — `f001/`, `v0.2/`, `f001/v0.2/`; `relax/`, `fc/`, `optical/f003/` | `point` | run; a container where it holds points — a frame's folder above its voltages, a vibration's `optical/`, opened with the run ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4) |
-| below a stage, the folder prep renders a point's deck into | `point` | container |
-| a device run's `tsgf/` | `scratch` — read alone, no run asked of it, nothing in it opens | scratch, which says it |
-| `<NN>_<stage>/bench/` | `benchmark` | container |
-| `bench-<point>/`, in a benchmark | `trial` | container, holding its one run |
-| `pseudos/`, a `launch/` | `support` | container |
+| the folder | `what` | its role, as its creator stamps it | the run-of-points level |
+|---|---|---|---|
+| the root — `task.json` is here | `calculation` | none: a container | — |
+| `<NN>_<stage>/` | `stage` | container | stage folder |
+| `run-<n>/`, below a stage or a trial | `attempt` | run — a container when its stage runs per point | run |
+| below a run of points — `f001/`, `v0.2/`, `f001/v0.2/`; `relax/`, `fc/`, `optical/f003/` | `point` | run; a container where it holds points — a frame's folder above its voltages, a vibration's `optical/` | point · frame folder · container · planned point |
+| below a stage, the folder prep renders a point's deck into | `point` | container | prepared folder |
+| a device run's `tsgf/` | `scratch` | scratch — read alone, no run asked of it | scratch |
+| a transmission point's `shared/` | `shared` | shared — read with the point above it (`calcdirs.read_with`) | shared |
+| `<NN>_<stage>/bench/` | `benchmark` | container | — |
+| `bench-<point>/`, in a benchmark | `trial` | container, holding its one run | — |
+| `pseudos/`, a `launch/` | `support` | container | launch folder |
 
-**A folder states its place, or it has none.** It is read for a folder that
-says it — the root by its description, any other by its record — and nothing
-above a folder is searched for: one with neither, a folder a person made inside
-a run among them, answers an empty `Where` and is read alone (below).
+**A folder states its place, or it has none.** It is placed when it says so —
+the root by its description, any other folder by its record — and nothing above
+a folder is searched for. One with neither, such as a folder a person made
+inside a run, answers an empty `Where` and is read alone.
 
 **What a folder is decides everything asked of it** — its place, its role and
-its calculation kind's record ([`architecture.md`](?doc=execution/architecture.md)
-§ 3.3), never its name's shape. What each folder is asked, and what it opens,
-is one table, the directory door's ([`model/parse.md`](?doc=model/parse.md)
-§ 5.2): a run is asked its state and its record; a run of points' root —
-`run-<n>/` of a rung that runs per point — is read as its run of points: its
-state, its points, and the point it is at
-([`architecture.md`](?doc=execution/architecture.md) § 3.2); the way up from
-a point to its run is this record and nothing rendered a second time — the
-job, the monitor and the kind's steps ask `calcdirs.where` too
-([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4); a calculation's
-root, its ladder; the engine's scratch, nothing.
+its calculation kind's record
+([`architecture.md`](?doc=execution/architecture.md) § 3.3), never the shape of
+its name. What each folder is asked, and what it opens, is one table, the
+directory door's ([`model/parse.md`](?doc=model/parse.md) § 5.2): a run is asked
+its state and its records; a run of points' root is read as its run of points
+(its state, its points, the point it is at); the way up from a point to its run
+is this record, so the job, the monitor and the kind's steps ask
+`calcdirs.where` too; a calculation's root, its ladder; the engine's scratch,
+nothing.
 
 #### Absence narrows the answer; it does not refuse the directory
 
-**A directory with no record is still readable — it is read alone.** This is
-the whole reason the record can be trusted where it exists without stranding
-anything where it does not: what is IN a directory has never needed a record to
-be read, and the record adds only what a single directory cannot see — which
-calculation it belongs to, which rung it is, what its siblings are.
+**A directory with no record is still readable — it is read alone.** What is in
+a folder never needed a record to be read; the record adds only what a single
+folder cannot see: which calculation it belongs to, which stage, what its
+siblings are.
 
 | what the directory says | what a reader may answer |
 |---|---|
-| `calcdir.json`, or `task.json` at a root | everything: its role, container-or-run, its calculation, its rung, its siblings, the ladder it sits in |
-| nothing, but a run left evidence — a deck, a file in a stdout role, a conclusion marker | what is here: the files, which have parsers, which one to open, how the run ended. **Nothing above it**, and the reader says which of the two it is doing |
+| `calcdir.json`, or `task.json` at a root | everything: its role, its calculation, its stage, its siblings, the ladder it sits in |
+| nothing, but a run left evidence — a deck, an output, a conclusion marker | what is here: the files, which have parsers, which one to open, how the run ended. **Nothing above it**, and the reader says so |
 | nothing, and no evidence a run happened | the files, and no run state at all |
 
-**The third row is a rule in its own right, and it is the one defect that
-predates the record**: *"running"* must rest on evidence that a run started, and
-an empty directory is not that. Reported as a default for *no result file yet*,
-it made a `pseudos/` folder and an empty `__pycache__` both read as a
-calculation in progress.
+**The third row is a rule of its own**: *running* rests on evidence that a run
+started, and an empty folder is not that — otherwise a `pseudos/` folder or an
+empty `__pycache__` reads as a calculation in progress.
 
-**The missing relation is stated, never guessed around.** A reader that finds no
-record says so — *this directory is not marked as part of a calculation, so only
-what is in it can be shown* — which is a sentence a person can act on by
-re-preparing the calculation. Silence would leave them reading a partial answer
-as a complete one. A tree written before this section behaves exactly this way,
-which is why there is no migration step and nothing to reindex.
+**The missing relation is said, never guessed around.** A reader that finds no
+record says *this directory is not marked as part of a calculation, so only what
+is in it can be shown* — a sentence a person can act on by preparing the
+calculation again.
 
 ### 1.5 A run is immutable
 
-**What a run computed is never changed.** After its launch has ended, a
-run directory receives only these, and none changes what it computed:
-molbuilder's records of it — its launch record's `ended`, the answer
-about its job, written once (`runrecord.record_ended`, § 1.6.3), and an
-older molbuilder's names for its files, named anew once by `jobset migrate`
-with every byte kept (§ 1.6.1),
-readings kept beside a file on a person's word (§ 5.3: a data file's
-digest, `runtime-info`'s sidecar, the parse log); and an engine's scratch
-taken away on a person's word (`jobset scratch --empty`, § 6) — scratch is no result. Launching a stage again
-after it stopped makes `run-1`, carrying what it needs from `run-0` and leaving
-`run-0` exactly as it was. A change to a launched stage is not a run: a
-change of how it runs prepares it again, its deck the same calculation
-([`job-request.md`](?doc=execution/job-request.md) § 5); a change of what it computes takes its way back,
-[`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports
-you*.
+**What a run computed is never changed.** After its launch has ended, a run
+folder receives only these, and none changes what it computed:
 
-**What launching again puts on disk** — when, and warm or cold, is
-[`job-system.md`](?doc=execution/job-system.md), *What molbuilder does for
-you*, 3: the next run, `run-<n+1>/`, is opened beside the ones before it;
-warm, the restart files the stage's own latest run left are copied in;
-`--cold` copies none — the same explicit hand-over a stage takes from the
-stage before it (§ 1.6). **A rung that sweeps the bias** is one run, its
-points inside it ([`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.11): warm, each point done in the latest run is copied into the new run
-whole (its `.continued-from` naming the run that computed it, one hop) and
-only the points not done are walked, each from its hand-over start; cold,
-nothing is copied and every point runs. A point recorded done is never
-rewritten in place, and nothing continues a point inside the run it was
-stopped in.
+- its launch record's `ended`: the answer about its job, written once
+  (`runrecord.record_ended`, § 1.6.3);
+- an older molbuilder's names for its files, named anew once by
+  `jobset migrate`, every byte kept (§ 1.6.1);
+- readings kept beside a file on a person's word: a data file's digest,
+  `molbuilder runtime-info`'s sidecar, the parse log (§ 5.3);
+- an engine's scratch taken away on a person's word (`jobset scratch --empty`,
+  § 5.4; [`job-system.md`](?doc=execution/job-system.md) § 5.3) — scratch is no
+  result.
 
-Three things follow:
+**Launching a stage again opens the next run beside the last**, carrying what
+it takes from it and leaving it exactly as it was (§ 1.6.1). A change to a
+launched stage is not a run: a change of how it runs prepares it again, its deck
+the same calculation ([`job-request.md`](?doc=execution/job-request.md) § 5); a
+change of what it computes takes its way back through the saved history
+([`job-system.md`](?doc=execution/job-system.md), *How the checkpoint supports
+you*).
 
-- **Warm restart is explicit.** "Continue" means *carry from the previous
-  run* — visible on disk, never implied by what is lying around.
-- **The saved history becomes append-only.** No archived file ever changes, so a
-  new save point only has to store the runs that appeared since the last one
-  (§ 6). The engine's scratch is the one exception, and it is no archived
-  file of any state: a save removes it from an archive an older save put it
-  in (`checkpointing.md` S1, I1).
-- **Cold is launch's.** `--cold` opens the next run with nothing copied into
-  it; the run script sweeps nothing (§ 1.6.1).
+**Two things follow on disk:**
 
-Immutability is a contract, not a filesystem permission — but it is **checkable**,
-and § 7 makes it an invariant: a run that has been saved must never differ
-afterwards. Nothing would notice today.
+- **Warm restart is explicit.** *Continue* means *copy from a named run* —
+  visible on disk (`.continued-from`), never implied by what is lying around.
+- **The saved history can be append-only.** No result of a run changes, so a
+  save stores only what appeared since the last one
+  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 3). The engine's
+  scratch is the one exception, and it is no result.
 
-#### 1.5a A trial is a stage, for this purpose — decided 2026-08-27
-
-**A sweep trial keeps runs exactly as a stage does**: its **run**,
-`bench-<point>/run-0/`, opened at the benchmark's prep. It was a third case
-until then, and that is what made `launch` refuse a re-run outright and tell
-you to move the directory aside by hand — the `--force`-era answer this
-section retired.
-
-**A trial is launched once.** `launch` passes over a trial launched before,
-and refuses one named; measuring it again is the state saved before the
-benchmark's prep, restored, and a prep anew
-([`job-system.md`](?doc=execution/job-system.md) § 5.0).
-
-**Every reader asks one function** where a stage or trial runs:
-`materialize.latest_attempt(container)` — its newest run, `None` while none
-is opened, which a reader that needs a run says as the stage not prepared.
-
-> **Why that is a rule and not a convenience.** When trials were given runs,
-> two places in `submit` that composed a **container** path themselves were
-> missed — so the grouped bench `cd`ed one level above its wrapper (every
-> trial `rc=127`; ASU Sol job 62372574) and wrote `run.json` where nothing
-> read it (so every re-launch re-submitted work that had already measured its
-> point). Both were silent: one produced an empty benchmark, the other
-> duplicate jobs.
-
-Neither is new machinery. Both already exist for stages; the sweep simply stops
-opting out. *(User, 2026-08-27: re-running a benchmark must be possible —
-"a new test with new result is trivial".)*
-
-**No conversion, and no reader for the old layout** (user: *"new dir becomes
-standard. No historical burden."*). A benchmark is a **measurement**, and
-measurements are repeatable — which is exactly why the old ones are not worth
-a compatibility path that every reader would carry forever. Sweeps recorded
-before this change stop being readable by `summarize`; their files stay on
-disk, because molbuilder never deletes results.
-
-**A trial has one run, so `summarize` reads the one it has.** A trial's run
-is one start, as every run is (§ 1.6.1), and a trial already launched is refused
-when named again, the way to measure it again a restore and a prep anew
-(`submit._plan_trial`; `job-system.md` § 3.1, *a SWEEP's tree*). So two runs of
-one point are not something molbuilder makes, and the run door's newest run
-(`runs.run_of`) is the trial's only one *(re-derived 2026-10-17, plan PL-R:
-this paragraph asked how a summary should say a second run, and the road has
-none)*.
+Immutability is a contract, not a file permission — and it is checkable: a run
+that was saved must never differ afterwards from its recorded checksums
+(invariant 8a).
 
 #### Where a run happens
 
-**Inside the run directory**, which prep created and filled with the stage's
-own files (§ 1.6.2, and § 2.5 step 4); the stage's first launch adds what it
-takes from the runs before it, before it sends anything. By the time the
-wrapper starts, the run holds every input. The wrapper is invoked there; it activates the environment and
-runs the engine as its child, and every later line of it — the launch, the
-monitor, the SCF tee, the failure hints, the conclusion marker — works relative
-to the current directory, so everything lands in the run with no change to
-the wrapper at all.
+**Inside the run folder.** Prep creates it and fills it with the stage's own
+files (§ 1.6.2); the stage's first launch adds what it takes from earlier runs
+before it sends anything. By the time the run script starts, the run holds
+every input.
 
-```
-prepare  →  01_coarse/run-0/ exists, holding the stage's own files
-launch   →  what it takes copied in, then launched there
-```
+**The run script is started in its run folder, and never changes directory.**
+A stage launched alone is started in its run folder — run here by `jobset
+launch`, or sent to a scheduler from that folder. A walk — a group of stages, a
+run of points, a benchmark's trials — is sent from the folder holding its
+`launch/`, and runs each member's script in that member's own run. No run
+script contains a `cd`. Everything the script and the
+engine write — the output, the monitor's files, the conclusion marker — lands
+in the run ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
 
-Launching in a chosen directory is what `jobset launch` already does one level
-up: `subprocess.run(cmd, cwd=<job dir>)` for the local path, and `sbatch` from
-the same place for SLURM, which lands the job in `SLURM_SUBMIT_DIR`. Pointing it
-at the run instead of the container is a change in the caller, not in the
-wrapper.
+#### 1.5a A trial is a stage, for this purpose
 
-**Everything the run needs is put there before the wrapper starts**, and all
-of it is in place before the engine sees the directory:
+**A benchmark trial keeps a run as a stage does**: `bench-<point>/run-0/`,
+opened at the benchmark's prep, with its own launch record.
 
-| | How | Why |
-|---|---|---|
-| the deck, **the wrapper**, the monitor, the pseudopotentials | **copied** from the stage directory — into the first run by each prep of the stage while it is never launched, and put back by its first launch; into a later one by the launch that opens it | the run directory holds everything its engine reads, and a link holds nothing once the folder moves. The deck is the stage's one deck because a different calculation is a stage (§ 1.5b); a launched stage prepared again for its job request changes only its run settings' lines ([`job-request.md`](?doc=execution/job-request.md) § 5) |
-| whatever this run continues from | **copied**, by the launch | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
-| everything the run writes | created in place | it is already the working directory |
+**A trial is launched once.** `launch bench` passes over a trial launched
+before, and refuses one you name (`submit._plan_trial`). To measure it again,
+restore the state saved before the benchmark's prep and prepare it anew
+([`job-system.md`](?doc=execution/job-system.md) § 5.0). So a trial has one
+run, and `summarize` reads that one.
 
-**One rule generates that whole table: every file goes in as a real file,
-never a link** *(user, 2026-08-24)*. A link dangles once the folder is synced
-to another machine; and for the warm files it would do worse — the engine
-writes them, so a link would reach back and destroy the result you built on.
+**Every reader asks one function where a stage or a trial runs**:
+`materialize.latest_attempt(container)` — its newest run, `None` while none is
+opened, which a reader that needs a run says as *not prepared*. A reader that
+composes the path itself goes wrong silently: a walk that `cd`s one level above
+its run script finds nothing to run, and a launch record written outside the
+run is read by nothing.
 
-**Everything is *reachable from inside the run*, including the wrapper and
-the monitor.** That is the point of copying them in rather than invoking them
-from a level up: once the directory is prepared it needs **nothing but the
-engine's environment and a shell** — `jobset launch` starts the run script in
-it, on a laptop, on a login node or inside a scheduler's job, the only start
-it takes ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5), and
-everything it ran from is in the folder to read when something goes wrong. A
-directory that only worked when invoked from elsewhere would be one you could
-not debug.
+#### 1.5b Two levels, two reasons
 
-#### 1.5b Two levels, two reasons — the directory says what happened
-
-*Settled with the user, 2026-08-11.* **A directory exists for a reason, and there
-are exactly two.**
+**A folder exists for a reason, and there are exactly two:**
 
 | a new… | exists because | so it holds |
 |---|---|---|
-| **stage directory** — `02_tight/` | **the science changed** — a threshold, a tolerance, a method | its own rendered deck and wrapper |
-| **run directory** — `run-1/` | **you launched the stage again** — warm, continuing the previous run, or `--cold`, from nothing; or a transport calculation copied it in, whole, from a finished one it reuses ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | only what that invocation produced |
+| **stage folder** — `02_tight/` | **the science changed** — a threshold, a tolerance, a method | its own rendered deck and run script |
+| **run folder** — `run-1/` | **you launched the stage again** — warm from the run before, or cold with `--cold`; or a transport calculation copied it in whole from a finished one it reuses ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | what that start produced |
 
-**That is the whole rule, and it is deliberately the whole rule.** The contract
-stays small; the **directory structure** carries the flexibility. You can read a
-folder and know what happened without opening a file: a new stage name means
-somebody changed the science, a new `run-` number means somebody launched the
-same calculation again — its `continued_from` says from what, or that it
-started cold.
+You can read a calculation folder and know what happened without opening a
+file: a new stage name means somebody changed the science; a new `run-` number
+means somebody launched the same calculation again, and its `.continued-from`
+says from what (none: it started cold).
 
 **Every run of a stage runs the same calculation.** Different science is a
-stage; what may differ between two runs' decks is their run settings' lines,
+stage. What may differ between two runs' decks is their run settings' lines,
 after the stage's group was prepared again for its job request
-([`job-request.md`](?doc=execution/job-request.md) § 5, § 6). That is why § 1.5's table copies the stage's one
-deck into each run and never renders one per run.
+([`job-request.md`](?doc=execution/job-request.md) § 5, § 6). That is why each
+run takes a copy of the stage's one deck and none is rendered per run.
 
-**The case that looks like it needs a third mechanism does not.** *"Coarse hit
-its step limit and I want to keep going, but with a tighter force tolerance"* is
-**a stage that continues from a named run**, and it already works:
+**The case that looks like it needs a third level does not.** *"Coarse hit its
+step limit and I want to keep going, but with a tighter force tolerance"* is a
+new stage that continues from a named run:
 
 ```bash
-jobset launch task --group 2 --from 01_coarse/run-0
+molbuilder jobset launch task --group 2 --from 01_coarse/run-0
 ```
 
-The tolerance changed, so it is a stage. It continues, so it names what from —
-at its first launch, when the run it takes exists.
-**Nothing new is required** — no per-run override, no extra field in
-`run.json`, no third level of parameter merging. The two reasons above already
-place it.
+The tolerance changed, so it is a stage; it continues, so its first launch names
+the run it takes from. No per-run override, no extra field in `run.json`, no
+third level of parameter merging: a run carrying its own parameter changes would
+need a place to record them, a merge order and a way to reproduce it from the
+description — three new things to keep true, to save one folder.
 
-> **Why this is worth stating as a rule rather than leaving to taste.** The
-> alternative — letting a run carry its own parameter changes — needs a
-> place to record them, a merge order to define, and a way to reproduce an
-> run from the description. That is three new things to keep true, in
-> exchange for saving one directory. **A design that never creates the problem
-> beats one that solves it**, which is the same reasoning that retired chaining
-> (§ 1.6).
+**Continuing is one act at two levels.** Across stages it lands in
+`02_tight/run-0/`; within a stage it lands in `01_coarse/run-1/`. Same
+decision, same `.continued-from`, different depth.
 
-**And continuing is one act at two levels.** Across stages it lands in
-`02_tight/run-0`; within a stage it lands in `01_coarse/run-1`. Same decision,
-same `continued_from` record, different depth.
-
-> **Starting over is a run too** *(user, 2026-10-07: "the user can restart a
-> run cold and the run keeps its increasing index and i don't see a
-> problem")*: `launch task --stage <stage> --cold` opens the next `run-x` with
-> nothing carried in, `continued_from` empty, and the runs before it stay as
-> they were. A launched stage's deck is prepared again only for a change of
-> its job request, as the same calculation ([`job-request.md`](?doc=execution/job-request.md) § 5); any other
-> change's way back is [`job-system.md`](?doc=execution/job-system.md)'s *How
-> the checkpoint supports you*.
-
-> ✅ **The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
-> prologue created and arranged a run in shell — scanning for run
-> directories, making one, symlinking the deck and package in, copying warm
-> files. That is `jobset/materialize.py`'s job, one level down, in the layer
-> `running-a-job.md § 2.2a` keeps free of filesystem logic. It was retired
-> rather than extended, and the guard it needed against being run from inside an
-> run went with it — that stopped being a hazard the moment the caller
-> decides the directory (**invariant 6a, now held**).
-
-### 1.6 Stages do not chain, and what that simplifies
+### 1.6 Stages do not chain
 
 **A stage that builds on another is launched only after that one has run.**
-Nothing links coarse to tight; no scheduler dependency, no queued follow-on, no
-automatic hand-off of files. Prep writes every stage's deck when you pick its
-group; when coarse finishes you look at what it produced, decide, and then
-launch tight — whose first launch copies in the files of the run it takes
-([`job-system.md`](?doc=execution/job-system.md), *The task*, *What a stage
-takes, and when*). Stages that build on
-nothing from each other may share one job, their group (§ 1.6.6).
+Nothing links coarse to tight: no scheduler dependency, no queued follow-on, no
+automatic hand-off of files. Prep writes every stage's deck when you prepare its
+group; when coarse finishes you look at what it produced, decide, and launch
+tight, whose first launch copies in the files of the run it takes
+([`job-system.md`](?doc=execution/job-system.md) § 5.4).
 
-That is § 1's rule — *this framework writes correct files; it does not run
-things* — applied to the one place it was easiest to forget. It is also the only
-sane default when **a stage is a long job**: a chain that continues on its own
-can spend a week computing from a geometry you would have rejected in a minute.
+**The reason is scientific.** Whether stage 2 should start depends on what
+stage 1 actually produced, and that is a judgement. A stage is often a long job:
+a chain that continues on its own can spend a week computing from a geometry you
+would have rejected in a minute.
 
-> **The decision to continue is the user's, made after looking. molbuilder's job
-> is to make continuing correct once that decision is taken.**
+> **The decision to continue is the user's, made after looking. molbuilder's
+> job is to make continuing correct once that decision is taken.**
 
-**Or made before, by naming the groups** *(the user, 2026-10-20)*: a sequence
-of groups ([`job-system.md`](?doc=execution/job-system.md) § 6.0, *A sequence
-of groups*) is one job that launches each group named when the one before it
-has finished — the decision to continue taken when the person names them, and
-said and recorded as that. Nothing chains by itself: every group is named, and
-each group's launch inside the job is the launch the person would type, with
-every gate it has.
+**Or made before, by naming the groups** *(the user, 2026-10-20)*: a sequence of
+groups is one job that launches each named group when the one before has
+finished ([`job-system.md`](?doc=execution/job-system.md) § 6.0, *A sequence of
+groups*). Nothing chains by itself: every group is named, and each group's launch
+inside the job is the launch the person would type, with every gate it has.
 
 #### 1.6.1 A run is one start
 
-*One vocabulary with `job-system.md` § Words: a **run** is one launch — the
-`run-<n>/` folder (the code's name for it is `attempt`: `latest_attempt`,
-`attempt_dir`) — and one start of its run script: the engine runs once there,
-and the run concludes once. A run of points — a bias sweep's, a SIESTA
-vibration's ([`runs-of-points.md`](?doc=execution/runs-of-points.md)) — holds
-a folder per point, each point started once in its run (`transport.md`
-§ 2a.11). A frame set's frames are a level above the voltages —
-`run-<n>/f000/v0.2/` for frame index 0, a level for each axis that varies
-(`transport.md` § 2a.11).* *(The user, 2026-10-31: "automatic retry is a
-residue of flat dir design. explicitly remove this. retry need re-run.
-period.")*
+*(The user, 2026-10-31: "automatic retry is a residue of flat dir design.
+explicitly remove this. retry need re-run. period.")*
 
 | | a run (`attempt` in the code) |
 |---|---|
-| is | one launch of a stage or a trial: one start of its run script |
-| named | `run-<n>/`; every file molbuilder names in it is named once — no counter — on the stage's stem or, for a file of the calculation as a whole, on its label (§ 5.3) |
-| numbered by | the next unused `n` (§ 4.3): `prep` opens the first, `launch` each next (§ 1.6.2) |
-| a new one when | `launch` sends a stage whose newest run was launched (§ 1.6.2) |
+| is | one launch of a stage or a trial: one start of its run script — the engine runs once there, and the run concludes once |
+| named | `run-<n>/`; every file molbuilder names in it is named once, with no counter, on the stage's stem or, for a file of the calculation as a whole, on its label (§ 5.3) |
+| numbered by | the next unused `n` (§ 4.3) |
+| opened by | `prep` for a stage's first; `launch` for each one after (§ 1.6.2) |
+
+A run of points — a bias sweep's, a SIESTA vibration's — is one run too: its
+points are folders inside it, each point started once in its run
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4).
 
 **To continue is to launch again.** A run whose SCF did not converge, whose
-relaxation used its steps, or that stopped at its wall ends there — failed, or
-finished not converged — and the next `jobset launch` of its stage opens
-`run-<n+1>/`: warm, the restart files of the stage's newest launched run copied
-in by the one opener (`materialize.prepare_attempt`); cold, with `--cold`,
-nothing copied ([`job-system.md`](?doc=execution/job-system.md) § 5.4).
-Nothing on the compute node starts the engine a second time.
+relaxation used up its steps, or that stopped at its wall ends there — failed, or
+finished not converged. The next `jobset launch` of its stage opens
+`run-<n+1>/` beside it — what lands there is § 1.6.5, *Launching again, on
+disk*. Nothing on the compute node starts the engine a second time.
 
 **The chain between runs is in each run's own records, never in a name**
-(§ 1.6.3): `.continued-from`, the one run it continues from, written by the
-one hand-over; `run.json`'s `continued_from`; `.gathered-from`, the run each
-gathered input came from; none of them, a cold launch. A run of points' points
-say theirs in their own folders, and its index which it took over
-(`taken_from`).
+(§ 1.6.3): `.continued-from` names the one run it continues from, `run.json`'s
+`continued_from` says the same, and `.gathered-from` names the run each gathered
+input came from. A cold launch writes none of them. A run of points' points say
+theirs in their own folders.
 
-**The run script starts once**
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5): `launch`
-starts it with its counts alone; it takes no number and sweeps nothing — a run
-folder holds what prep and launch put in it — and started in a folder that
-already holds a start (its session log), it refuses, naming `jobset launch`,
-which opens the next run — a job its scheduler requeued meets that refusal
-when it starts again, and ends without running
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2). Which run folder is a stage's newest is the
-layout's (`materialize.latest_attempt`).
+**A second start in a run folder is refused.** The run script takes no run
+number and sweeps nothing: it holds what prep and launch put in its folder.
+Started in a folder that already holds a start — its session log — it refuses,
+naming `jobset launch`, which opens the next run. A job its scheduler requeues
+meets that refusal when it starts again, and ends without running. The script's
+gates are [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5.
 
-**Runs written before this rule** — their files named by the try,
-`<stem>-run<N><role>`, and a session log per start stamped with the clock —
-are not read: the run door reads such a run `unreadable`, naming `jobset
-migrate` (`runs.older_run`). **`jobset migrate` names a run that started
-once anew** *(the user, 2026-11-01: "Migrate renames single-start runs")*:
-its `-run0` files and its one session log take the names above — SIESTA's
-history the name SIESTA gives it, on the label alone, which that run script
-pointed at the numbered file — and a file an earlier migration kept beside
-its rewrite keeps its rule: every byte kept, each old name said and written
-in the ledger (`runfiles.older_named`, `migrate._migrate_runs`). A run is
-decided whole — a run of points with every point of it — and **left as it
-is, said with its reason, and not read**, when:
-
-1. any folder of it started more than once — a `-run1`, a copy an earlier
-   migration kept of one, or a second session log;
-2. its job is one this machine holds, and is still going or cannot be asked;
-3. a folder of it cannot be written here;
-4. a new name is one a file already holds, or two of its files would take;
-5. a file of it names a role this molbuilder does not write.
-
-A run no job of this machine's holds is read as the copy it is.
+**Runs written before this rule are not read.** Their files carry the try's
+number (`<stem>-run<N><role>`), and the run door reads such a run *unreadable*,
+naming `jobset migrate` (`runs.older_run`). `jobset migrate` names a run that
+started once anew, every byte kept, and leaves one that started more than once
+as it is, said with its reason
+([`job-request.md`](?doc=execution/job-request.md) § 8).
 
 #### 1.6.2 Who makes the run directory
 
-**Python, when you prepare the stage** — step 4 of § 2.5 — **and when you launch
-it**, the send filling the first run, or opening the next, before it starts it;
-never the wrapper. By the time anything runs the directory already exists and
-already holds its inputs; the wrapper activates the environment and runs the
-engine as its child (`running-a-job.md § 2.2a`).
+**Python, never the run script.** By the time anything runs, the run folder
+exists and holds its inputs; the run script activates the environment and runs
+the engine as its child
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
 
-Preparing does three things: **open** the stage's first run, `run-0` —
-created, stamped with its `calcdir.json` (§ 1.4a), or, when the stage is
-prepared again, the one there emptied whole (§ 1.6.3); **copy** the deck, the
-wrapper, `mb_monitor.pyz` and the pseudopotentials in (§ 1.5); and **report**
-what it did and what the stage's first launch will take. **The first launch
-copies whatever the run continues from** — the stage before it's files, a
-transport rung's gathered inputs — and launch's plan shows which run, how it
-ended and every file it copies, and asks before anything is sent
-([`job-system.md`](?doc=execution/job-system.md) § 6.0), so you can still read
-it before committing a week of cluster time.
+**Prep opens a stage's first run.** For a stage never launched it opens
+`run-0/` — creates it and stamps it (§ 1.4a), or, when the stage is prepared
+again, empties the one there whole (§ 1.6.3) — and copies in the deck, the run
+script, `mb_monitor.pyz` and the job's other bundles, and the pseudopotentials.
+Prep opens no run for a launched stage (one prepared again for its job request,
+[`job-request.md`](?doc=execution/job-request.md) § 5), nor for a stage a
+transport calculation copies in whole from a finished one it reuses — whose runs
+are those copies, each under its own name
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 
-**One opener makes every run folder** —
-`jobset/materialize.py::open_run`: a stage's run (prep's `run-0`, and the
-next one a launch opens), a point's folder inside a run of points
-(`run-<n>/v<V>/`, a vibration's `run-<n>/fc/`, `open_sweep_run`), and a
-benchmark trial's run; a point a run's own job plans — a vibration's optical
+**Launch fills the run it sends, and opens every later one** — after the yes, at
+the send, never on a dry run ([`job-system.md`](?doc=execution/job-system.md)
+§ 6.0):
+
+- **a stage's first launch** empties the run prep opened and fills it again —
+  the stage's files, the progress logs prep moved into it as they lie — then
+  adds what the run takes: the restart files of the run it continues from, or a
+  transport rung's gathered inputs;
+- **a launch again** opens `run-<n+1>/` beside the stage's newest run and fills
+  it the same way, warm or cold;
+- **a run a refused send opened** is never launched, so whatever fills it next
+  empties it first.
+
+**One opener makes every run folder**: `materialize.open_run`. It makes a
+stage's run (through `materialize.prepare_attempt`), a point's folder inside a
+run of points (through `materialize.open_sweep_run`) and a benchmark trial's
+run, together with every container above it that does not exist yet — the
+stage, a benchmark's `bench/`, a run of points' `run-<n>/` — stamping each
+(§ 1.4a, invariant 6b). Its siblings stamp the rest: `naming.open_container`
+for a `launch/`, `pseudos/` and the folder prep renders a point's deck into, by
+the prep or the send that first writes there; `materialize.open_scratch` for a
+device run's `tsgf/`; `jobset.reuse` for a transmission point's `shared/`, role
+`shared`, as it copies the point in; and a point a run's own job plans — a vibration's optical
 call — is opened in the job by its planner's step, through the opener's
-travelling core (`calcdirs.record`, `planned.bring`;
-[`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 11). It creates the folder and every container above it that does not exist
-yet — the stage, a benchmark's `bench/`, a swept rung's `run-<n>/` — stamping
-each (§ 1.4a; invariant 6b); a submission's `launch/` is
-made and stamped a container by the prep or the send that first writes in it
-(`naming.open_container`), as `pseudos/` and a point's folder below its stage
-are by the prep that writes them, and a device run's `tsgf/` is made with its
-run and stamped `scratch` (`materialize.open_scratch`). What goes in follows: `bring_files` copies
-in what a run runs from — the stage's deck, scripts and bundles; what a run
-takes from other runs is one hand-over, its files and its record
+travelling core (`calcdirs.record`, `jobset.planned.bring`;
+[`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3).
+
+**What goes in follows one path each.** `materialize.bring_files` copies in
+what a run runs from — the stage's deck, scripts and bundles. What a run takes
+from other runs is one hand-over, its files and its record together
 (`materialize.hand_over`, [`job-system.md`](?doc=execution/job-system.md)
-§ 5.4); a trial's deck is rendered into its folder. The run
-script is told the run's own label — a trial's is the trial's. `prep` seeds a
-stage's first run's progress channel, the preview a viewer finds before the
-run starts, beside the deck and then moved into the run it opens — a run of
-points', beside each point's deck the run opens (`PointsOf.rung_points`), and
-none beside a deck the run opens no point for, a vibration's `optical/`
-container; a stage it opens no run for — one launched, or one copied in —
-keeps no seed, the stub taken out (`prep._open_attempts`, one home for both);
-a later run's progress is its engine's own.
+§ 5.4). The run script is told the run's own label — a trial's is the trial's.
 
-**`prep` opens only a first run** — and, for a transport calculation that
-reuses a finished one, copies in whole the runs of each group it reuses, each
-under its own name, opening none ([`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.16). A stage prepared and **never launched** is
-prepared again, its group whole: its `run-0` emptied and filled anew
-(§ 1.6.3), its files rendered anew. A launched one is prepared again only for
-its job request, and opens no run
-([`job-request.md`](?doc=execution/job-request.md) § 5); any other change is refused — its way back is
-[`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
-supports you*.
-**The next run is `launch`'s**: launching a stage whose run has run
-opens `run-<n+1>`, continuing from its own latest run, so a launched run is
-untouchable (§ 1.5) — planned with the launch and opened by its send, after
-the yes, never by a dry run ([`job-system.md`](?doc=execution/job-system.md)
-§ 6.0).
+#### 1.6.3 The launch record and the conclusion marker — `run.json`, and the other files
 
-#### 1.6.3 The launch record and the conclusion marker — `run.json`, and the other file
-
-*Has this been launched?* has no honest answer from the directory alone. A queued
-cluster job has produced nothing yet, so "no output" and "not started" look
-identical — and re-preparing would quietly rewrite the setup under a job already
-in the queue. Nor does *launched* say *over*: it spans three states that must not
-be treated alike — still running, ran to its own end (converged *or* errored —
-both are conclusions), and force-stopped (walltime kill, node death, `kill -9`).
-Two small files answer the two questions *(the second decided by the user,
-2026-08-28)*, and one more says where a run came from:
+*Has this been launched?* has no honest answer from the folder alone: a queued
+job has produced nothing yet, so *no output* and *not started* look the same.
+Nor does *launched* say *over*: a launched run may still be running, may have
+ended on its own (converged or not — both are conclusions), or may have been
+stopped by force. A run's own small records answer each question:
 
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
-| `run.json` (`molbuilder/run-launch@1`) | `launch`, into the run | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, and for a run a sequence of groups' job sent **the sequence** — its mode, command, job id and placement then the job's ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | not launched: `launch` runs in this run |
-| `<basename>.concluded` | the wrapper, on its main line; or its one exit trap, when the script fails on its own before its marker — never for a stop signal | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor; the exit trap's, as the script ends: an activation or a step that failed under `set -e`, an exit before the engine | *the process ended on its own* — the exit code and the time; the exit trap's, `stopped before its end`; **when the finish failed, its exit code and the words `finish failed (<bundle> <verb>)`** (`parse/dirs/job.FINISH_FAILED`); when the job had no python of its env, `no env python (<path>)` (`NO_ENV_PYTHON`) | still running, or force-stopped: the files cannot tell which |
-| `.continued-from` | `launch`, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`); a planned point's, its planner's step in the job (`spectra.siesta_vibration`, through the same writer) | with the files it takes — a stage's run continuing from another, a run of points continuing, a point continued from its own last run, a point taken over (the run that computed it, one hop); a point's start with the launch's plan, its files copied by the walk just before the point runs; a planned point's start as its planner opens the point, and with the launch's plan when a launch opens it again ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.2) | which run, as every record names one (`runrecord.RunRef`): its folder from the calculation's | the run starts from the structure, or from what it gathered |
+| `run.json` (`molbuilder/run-launch@1`) | `launch` (`runrecord.write_launch`) | once the send succeeds | it was launched, and how (the list below) | not launched — a refused or failed send records nothing |
+| `<base>.runwrap.log`, the session log | the run script | as its start goes ahead, once its gates let it through | its start, and everything the script says | not started; a folder holding one refuses a second start (§ 1.6.1) |
+| `<base>.concluded` | the run script, its last act; or its exit trap, when the script fails on its own before it | as the run ends on its own | the exit code and the time, and the words of a step of ours that stopped it | still running, or stopped by force — the files cannot tell which |
+| `.continued-from` | `launch`, by its one hand-over (`runrecord.write_continued_from`); a planner's step, for each point it plans | with the files it takes | the one run it continues from, as a path from the calculation's folder (`runrecord.RunRef`) | the run starts from the structure, or from what it gathered |
+| `.gathered-from` *(transport)* | `launch`, by its one hand-over | a rung's first launch, a `--gather`, or a launch again keeping what its last run was given | each gathered input, and the run it came from | it gathered nothing |
+| `.copied-from` *(transport)* | prep, copying a group in from a finished calculation it reuses; a rung of points' first launch, in each point it takes over | as the copy is made | the finished calculation's run or point this is a copy of | not a copy |
 
-- **`run.json` is written at launch, never at completion** — written when the
-  job finished, it would leave a running direct run reading as never
-  launched, a double-submit window — and a failed *start* records nothing, so a
-  refused launch records nothing. It earns its place three
-  times: a launched run is never run in again — `launch` opens the next; status says *queued as job
-  481923* ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); and
-  `continued_from` is the run's provenance (`checkpointing.md` **S3**). A
-  benchmark trial keeps runs as a stage does (§ 1.5a), and each run
-  gets the same file — which is how `launch bench <stage>` passes over the
-  trials already launched (`job-contracts.md` § 6.1).
-  **`ended`** is the answer about how the job went, written once by the
-  first reader on the machine that holds the job (its address on the jobs
-  list, [`job-system.md`](?doc=execution/job-system.md) § 6.0a): for a sent
-  job, the scheduler no longer listing it, or listing it ended — `asked_on`
-  the cluster as the scheduler names it; for a run here, its process gone
-  with no marker written — `asked_on` this machine, `listed` false as for
-  every answer, `said` empty —
-  `{asked_on, asked_at, listed: false, said}`, `said` the scheduler's words
-  or empty — and `null` at launch, as every key is written every time
-  (`runrecord.record_ended`, [`running-a-job.md`](?doc=execution/running-a-job.md)
-  § 4.2, *Asked once, written once*); a record written before 2.20.0 holds
-  no such key and is read as null.
-  **One that does not read** — not JSON, or not a
+- **`run.json` is written once the send succeeds** — the scheduler took the
+  job, or the process here started — and never at completion: written when the
+  job finished, it would leave a running run reading as never launched, a window
+  to send it twice. It holds the mode, the command, the job's id, when, where it
+  was sent with what wall and memory, the scheduler it was sent to and where that
+  writes the job's error file (`scheduler` — what the run door reads for how the
+  scheduler ended the job), what it continued from, the sequence whose job sent
+  it, and `ended`; every key is written every time, its `null` stated (a run here
+  has no `placed_on` and no `scheduler`).
+- **`ended` is the answer about how the job went, written once** by the first
+  reader on the machine that holds the job, for a run with no marker: a sent
+  job's scheduler no longer listing it, or listing it ended; a run here, its
+  process gone (`runrecord.record_ended`;
+  [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2, *Asked once,
+  written once*).
+- **A `run.json` that does not read** — not JSON, or not a
   `molbuilder/run-launch` record — is an error naming the file, never
-  *launched* or *not launched*: status says so on its row, and prep and
-  launch refuse (`runrecord.launch_record`, the one door,
-  [`architecture.md`](?doc=execution/architecture.md) § 3.2). It is written
-  through `persist`, whole or absent.
-- **A run opened and never launched is emptied whole, and filled again** — a
-  stage's `run-0` that prep opened, or a run a launch opened whose
-  send was refused. Whatever fills it next takes out every file and folder put
-  there before (`materialize.empty_run`), then fills it as that act says: prep
-  again, with the stage's own files; a stage's first launch, with prep's files
-  put back as they lie and what it takes; a launch again, as it asks, from the
-  stage's newest run that was launched. Nothing left from an earlier fill — an
-  `.XV` the engine would find and warm-start from — reaches the run.
-- **An error is a conclusion**: an engine returning nonzero still reaches the
-  wrapper's main line, so the marker carries that code — *"because of error or
-  whatever — but the process is done."* So does a script that stopped before
-  its engine — an activation that failed, a step that exited: its one exit
-  trap writes the marker with the exit code, `stopped before its end`,
-  before it stops the monitor, as the main line does.
-  **A forced stop leaves no marker, by construction**: every signal that
-  would end the script — a walltime SIGTERM, a Ctrl-C, a lost terminal's
-  hang-up — is caught by its one handler, which writes none, and the exit
-  trap writes none after it, nor ever a code 0; a kill no process can catch
-  leaves nothing. Both engines' wrappers write it, since each runs its
-  engine as a child (`running-a-job.md` § 2.2a); a run concludes once, as it
-  starts once (§ 1.6.1).
-- **`.continued-from` carries the provenance because `run.json` cannot exist
-  before launch** — its presence marks the run launched — and a point of a
-  run of points has none of its own. `run.json`'s field is the launch's own
-  hand-over, written with it.
+  *launched* or *not launched*: status says so on its row, and prep and launch
+  refuse (`runrecord.launch_record`, the one door). `run.json` and the
+  `.…-from` records are written through `persist`, whole or absent; the session
+  log and the marker are the run script's own.
+- **An error is a conclusion.** An engine that exits nonzero still reaches the
+  marker, which carries that code; so does a script that stopped before its
+  engine, through its exit trap. **A forced stop leaves no marker, by
+  construction**: the script's one handler for each stopping signal writes none,
+  and a kill nothing can catch leaves nothing. How the run script behaves at its
+  end is [`running-a-job.md`](?doc=execution/running-a-job.md) § 3 (after a
+  failure § 3.5, at the wall § 3.6).
+- **`.continued-from` carries the provenance** because `run.json` cannot exist
+  before the launch — its presence marks the run launched — and a point of a run
+  of points has none of its own. `run.json`'s `continued_from` is the launch's
+  own hand-over, written with it.
 
-What a run holds, moment by moment (`running-a-job.md` § 4.2 reads each):
+> **The marker answers a process question, never a chemistry one.** *Did the run
+> script get to its end* is what the marker knows; *did the SCF converge* stays
+> with the engine's own output and its one reader
+> ([`model/parse.md`](?doc=model/parse.md) § 2b). A marker with `rc=0` beside a
+> non-converged `.out` is a run that ended without converging: two facts, two
+> files.
 
-| moment | the run holds | `run_status` |
+**A run opened and never launched is emptied whole, and filled again.** A
+stage's `run-0/` that prep opened, or a run a launch opened whose send was
+refused: whatever fills it next takes out every file and folder put there before
+(`materialize.empty_run`), then fills it as that act says. Nothing left from an
+earlier fill — an `.XV` the engine would find and warm-start from — reaches the
+run.
+
+**What a run folder holds, moment by moment.** How each state is read from
+these files, and in what order of evidence, is
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2.
+
+| moment | the run folder holds | its state |
 |---|---|---|
-| prepared | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials; the job's finish bundle when it has one (`mb_vibration.pyz`); beside a PySCF deck, the code it imports (`mb_pyscf.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed — every one with its writer and door in § 5.3 | `pending` |
-| launched — its send | + what it takes, copied in: the warm files and `.continued-from` if it continues, a transport rung's inputs and `.gathered-from` | `pending` until the record is written |
+| prepared | `calcdir.json`; copies of the deck, the run script (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz` and the job's other bundles, the pseudopotentials; the progress-log seed | `pending` |
+| the send | + what it takes: restart files and `.continued-from`, or a rung's inputs and `.gathered-from` | `pending` |
 | launched | + `run.json` | `queued` |
-| started | + the session log, as its run script's start goes ahead (§ 1.6.1) | `running` — *started, no output yet* |
-| running | + `<basename>.out` (PySCF: `<basename>.pyscf.log`), the monitor's pair | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
-| concluded | + `<basename>.concluded` | `finished` with exit code 0, `failed` with any other — the one door's answer (`runrecord.ending`, [`architecture.md`](?doc=execution/architecture.md) § 3.2) — or when its output states a stop. A marker naming a failed finish: the engine ended and the job did not, so `failed`. A job that cannot run its finish stops before its engine with a marker saying so and no output: `failed` |
-| force-stopped | as *running*; no marker comes — the scheduler's own line in the job's error file (`slurm.<id>.err`, which `run.json`'s `scheduler.stderr` names), the answer about the job written once into `run.json` (`ended`: the scheduler's for a sent job, its process gone for a run here), and the monitor's closing record `[MONITOR] job ended` when the monitor outlived the stop | `failed` by the scheduler's line or the recorded answer, else by the monitor's record, else once nothing was written for longer than its wall — also when the stop landed after the engine's output ended, inside a job's finish or the wrapper's last lines; `running` when none says it and its wall has not passed (a lost node, read where its job cannot be asked): no file then tells it from a live run |
+| started | + the session log | `running` |
+| running | + the output, the engine's own files, the monitor's pair | `running` |
+| concluded | + `<base>.concluded` | `finished` (exit code 0) or `failed` |
+| stopped by force | as *running*, with no marker; the scheduler's line in the job's error file, `run.json`'s `ended`, or the monitor's closing record says it ended | `failed`, by that evidence |
 
-#### 1.6.4 What reads them
-
-`launch` reads `run.json` to open the next run rather than run in a launched one (§ 1.6.2);
-`run_status` builds its state on the marker, through the one door that says
-whether a run ended on its own (`runrecord.ending`) — an output that states a
-stop fails it whatever followed, and one that states its end is `running`
-until the job concludes — and reads the scheduler's line, then the monitor's
-closing record, where the marker is silent
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); the run record
-reads them as its launch and its exit
-([`model/parse.md`](?doc=model/parse.md) § 5d.2). And **`launch task`, launching
-a stage again over a launched run**, reads the marker:
-
-| the latest run | behaviour |
-|---|---|
-| ended, or launched with **no marker** | launch it again, saying how that run ended: *"WOULD launch it again into run-2: it continues from 01_coarse/run-1 (its own latest run; concluded rc=0 …)"* — warm, or cold with `--cold`; whether it is still running, and whether its state is worth continuing, is the person's ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
-
-> **This answers a PROCESS question, never a chemistry one.** *Did the
-> wrapper get to finish* is what the marker knows; *did the SCF converge*
-> stays with the engine's own output and its one reader, the ending scan
-> ([`model/parse.md`](?doc=model/parse.md) § 2b). A marker with `rc=0` beside
-> a non-converged `.out` is a run that concluded without converging — both
-> true, two facts, two files.
+**Who reads them.** `launch` reads `run.json` to open the next run rather than
+run in a launched one; `run_status` builds a run's state on the marker through
+the one door that says whether a run ended on its own (`runrecord.ending`); the
+run record reads them as its launch and its exit
+([`model/parse.md`](?doc=model/parse.md) § 5d.2).
 
 #### 1.6.5 Continuing from an earlier run is a copy, not a link
 
-Because a stage that builds on another is launched after it, **the run you
-continue from has already finished** — that is what you just looked at, or,
-in a sequence of groups, what the job's group before it just finished. Its
-files are sitting on disk when the next stage is launched, so they are
-**copied**, as real files, then and there.
+**Every file goes into a run as a real file, never a link** *(the user,
+2026-08-24)*. Two reasons:
+
+- **A link holds nothing once the folder moves.** A calculation is synced to a
+  cluster and back; a link would dangle on the other side.
+- **The engine writes to the files it continues from.** SIESTA rewrites `.XV`
+  and `.DM` as it runs; through a link it would overwrite the result you chose
+  to build on.
+
+| what | how it gets into the run | when |
+|---|---|---|
+| the deck, the run script, the monitor and other bundles, the pseudopotentials | copied from the stage's folder (`materialize.bring_files`) | by prep into the first run; by the launch that fills or opens a run |
+| what the run continues from | copied from the run it names (`materialize.hand_over`) | by the launch, before it sends anything |
+| everything the run writes | made in place — it is the working folder | as it runs |
+
+**The run you continue from has already finished** — that is what you just
+looked at, or, in a sequence of groups, what the job's group before it just
+finished. Its files are on disk when the next stage is launched, so they are
+copied then and there:
 
 ```
-02_tight/run-0/<label>.XV  a real copy of 01_coarse/run-0/<label>.XV
+02_tight/run-0/h2_siesta.XV    a real copy of 01_coarse/run-1/h2_siesta.XV
 ```
 
-Copied and not linked for the same reason as always: the engine writes to that
-filename, and writing through a link would destroy the result you started from.
+Nothing has to point at a file that does not exist yet, so there are no
+dangling links to resolve and nothing to swap at run time — problems that arise
+only when a chain is submitted at once.
 
 **Which run you continue from is never a guess.** Continuing from
-`01_coarse/run-0` and continuing from `01_coarse/run-2` are different scientific
-choices; which one the first `launch` takes by default, and how you name
-another, is [`job-system.md`](?doc=execution/job-system.md), *The task*, *What
-a stage takes, and when*. The launch says which run it copies from, and the
-folder names make the choice visible afterwards.
+`01_coarse/run-0` and from `01_coarse/run-2` are different scientific choices.
+Which one a first launch takes by default, and how you name another (`--from`),
+is [`job-system.md`](?doc=execution/job-system.md) § 5.4; the launch says which
+run it copies from, and `.continued-from` keeps it.
 
-This is the same shape one level down: a stage launched again — `run-1` after
-`run-0` — copies from its own latest run, warm, for the same reason.
+**Launching again, on disk.** The next `run-<n>` is opened beside the stage's
+newest run. Warm, the restart files that run left are copied in, with its
+`.continued-from`; `--cold`, or a stage that takes nothing from its own runs,
+copies nothing — the run script takes no `--cold`, since a fresh run is empty
+unless something is copied in. A transport rung's gathered inputs are copied
+with their `.gathered-from` either way, unless the launch gathers them anew
+(`--gather`). Each is one hand-over. When each applies is
+[`job-system.md`](?doc=execution/job-system.md) § 5.4.
 
-And one calculation across: a transport calculation that reuses a finished one
+**And across calculations.** A transport calculation that reuses a finished one
 copies in, at its prep, every run of each group it reuses — each under its own
-name, so every record inside names a run that is here, the engine's scratch
-left behind, `.copied-from` naming the run it is a copy of — and a rung of
-points it prepares takes the finished calculation's converged points over at
-its first launch, their engine's files and account, never their records of
-runs; every record they leave names a run of this calculation ([`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.16).
+name, the engine's scratch left behind, `.copied-from` naming the run it is a
+copy of — and a rung of points takes the finished calculation's converged points
+over at its first launch
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 
-> **Launching again, on disk** — the rule (warm by default, `--cold`, a stage
-> whose kind takes nothing from a run of its own) is
-> [`job-system.md`](?doc=execution/job-system.md), *What molbuilder does for
-> you*, 3. What lands where: the next `run-<n>` is opened beside the stage's
-> latest run; warm, the restart files that run left are copied in, with its
-> `.continued-from`; `--cold`, and a stage that starts over, copy nothing; a
-> transport rung's gathered inputs are copied with their `.gathered-from`
-> either way, unless the launch gathers them anew (`--gather`) — each one
-> hand-over (`materialize.hand_over`). Benchmark trials keep § 1.5a's rule:
-> launched once.
-
-> **What this removes.** Nothing has to point at a file that does not exist yet,
-> so there are no dangling links to resolve, no question of *which run will
-> the producer use*, and nothing to swap at run time — problems that arise only
-> when a chain is submitted at once. A design that never creates the problem
-> beats one that solves it.
-
-#### 1.6.6 What is not touched
+#### 1.6.6 A group is one job, its runs side by side
 
 **A stage starts because a person prepared it and launched it.** A `JobSet`
 carries no scheduler dependency and no instruction to take a file from another
-job; `jobset` threads none between two jobs.
+job.
 
-**The reason is scientific rather than technical.** Whether stage 2 should start
-depends on what stage 1 actually produced, and that is a judgement — so no field
-in a description is permitted to make it; at launch, the person may make it in
-advance by naming both groups, one job launching each in turn (a sequence of
-groups, [`job-system.md`](?doc=execution/job-system.md) § 6.0), each group's
-launch inside it the launch they would type.
+**Stages that take nothing from each other may share one job: their group**
+([`job-request.md`](?doc=execution/job-request.md) § 3.3). On disk a group is
+nothing new: each member is prepared as it would be alone — its own run, deck,
+run script and launch record — and the group's one job keeps its header, its
+walk and its log in the calculation's `launch/` (§ 5.5). The walk runs each
+member's script in that member's own run, one after another; one that fails
+does not stop the others.
 
-**Stages that do not build on one another can share one job** *(user,
-2026-10-07/08 and 2026-10-11)*. No
-judgement stands between them — a transport ladder's seed and its two leads
-each start from the structure — so waiting in the queue three times buys
-nothing. **A group is the stages one number names** in the job request — how
-the numbers are given is [`job-request.md`](?doc=execution/job-request.md) § 3.3's rule. Each member is prepared
-as it would be alone — its own run, deck, run script and record — and the
-group is written on each one's job in `job-set.json` (`members`, its stages in
-order), with one header for the group's job, rendered for the group's request
-and placed at prep; `launch task` sends that one job, walking them in order,
-each member in its own run with its own launch record, one that fails not
-stopping the others.
-
-**What a group's members share — one allocation** (`group.envelope`): one
-queue; the same ranks, cores per rank, GPUs, GPU use and GPU binding; the
-group's wall is the sum of its stages' walls (they run one after another), its
-memory the largest of theirs. Members that cannot share it are refused at prep,
-naming the member and each value that differs. A group in which one stage
-builds on another (its upstream, the one fact § 2.3.4 and
-`transport.stages.stage_inputs` state) is refused by the description's
-preflight ([`engines/stages.md`](?doc=engines/stages.md) § 6.6;
-[`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 3). A
-group is its members, never its number
-([`job-request.md`](?doc=execution/job-request.md) § 3.3): a job
-whose members are no longer one group is formed again by its prep, every group
-its members are in now named in that prep, and its old header removed — as is
-the header of a job whose member's row leaves `job-set.json` when the
-description no longer holds that stage and it was never launched, named while
-every member's row is still there. A launched stage's row stays, and its
-job's header: its runs are read through them. Its first launch
-sends it whole; launched again, a stage goes alone or with its group, as you
-name it. Every group may be prepared at once; a stage that builds on another
-is launched after you have looked at the one it builds on — or, named with it
-at one launch, after it has finished, inside one job (a sequence of groups,
-[`job-system.md`](?doc=execution/job-system.md) § 6.0).
-
-#### 1.6.7 `--cold`, said at launch
-
-`--cold` means *start this run clean*. With a directory per run that is
-simply *skip the copy* — a fresh run is empty unless something is copied
-in. It is said at **launch**, where the run is opened —
-`jobset launch task --stage <stage> --cold`, every launch warm by default or
-cold when you say so ([`job-system.md`](?doc=execution/job-system.md),
-*What molbuilder does for you*, 3; for a bias sweep, cold means every point
-runs) — a first launch too, when the copy from the stage before is skipped
-([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you type). The
-run script takes no `--cold`: it starts once in its run folder, by its launch,
-and holds only what prep and launch put there (§ 1.6.1).
+**A group's members share one job and what it was granted**, so they state the
+same queue, counts and GPU use, and prep refuses a member that differs, naming
+each value; the job's wall is the members' walls summed, and its memory the
+largest of theirs (`group.envelope`). The full rule, and how prep forms a job
+again when its members change — its old header in `launch/` removed — are
+[`job-request.md`](?doc=execution/job-request.md) § 3.3. Stages that build on
+each other are separate groups, linked into one job only as a sequence of groups
+([`job-system.md`](?doc=execution/job-system.md) § 6.0).
 
 ---
 
-## 2. Who does what — the workflow, and each level's owner
+## 2. Who does what, and when
 
-### 2.1 The browser writes a portable package; the terminal makes it runnable
+**Every file in the calculation folder is put there by one act, at one moment**;
+a restore returns the whole folder to a saved state (row 16). In order:
 
-The split is not "design versus execution". It is **what a laptop can know versus
-what only the target machine can**.
+| | moment | who | where | what lands there |
+|---|---|---|---|---|
+| 1 | a project is made | the browser's Projects sidebar (`projects.populate_project_skeleton`) | ①, ② | the project, a `README.md`, and every topic folder with its own |
+| 2 | a calculation is described | `molbuilder describe`, the Transport tab's describe door; or the browser's hand-over, then Task setup's Save | ③ | the template, the structure pair, `task.json`, `job-request.json` (`task.1st.json` while a hand-over waits for its stages); with `describe --psml-lib`, each `<species>.psml` loose at the root |
+| 3 | every save: before a Save with something to save, a prep that writes and a group's first launch; and yours | `checkpoint.save_before`; `molbuilder checkpoint init` / `save`, the checkpoint panel | ③ | `.git/`, `.binsnapshots/`, `.gitignore` — a new state only when the folder changed since the last |
+| 4 | the first prep | `prep` | ③ | `environment.json` — the machine record, copied once |
+| 5 | every prep | `prep` | ③; ④'s `launch/` for a run of points | `job-set.json`, `prepared-with.json`, `STAGE-PLAN.md`, the pipeline log; `pseudos/` — the root's pseudopotentials moved in, the missing ones copied from the library; a transport junction's records; the header of a group's or a sequence of groups' job in ③'s `launch/`, of a run of points' walk in its stage's |
+| 6 | every prep | `prep` | ④ | the stage folder: its deck, check, run script, bundles and pseudopotential copies; a run of points' prepared folders |
+| 7 | every prep, for a stage never launched | `prep` | ⑤ | `run-0/` opened and filled with copies of the stage's files |
+| 8 | `prep bench <stage>` | `prep` | the stage's `bench/` | the benchmark's own `job-set.json` and `STAGE-PLAN.md`; each trial's deck and run script, in `bench-<point>/run-0/`; its shelves' headers in its `launch/` |
+| 9 | the send, after the yes | `launch` | ⑤; the `launch/` of its walk (③, ④ or `bench/`) | the first run filled again, or `run-<n+1>/` opened; what it takes; a run of points' index; a walk's script, and a sequence's launch record in ③'s `launch/` |
+| 10 | the send succeeded | `launch` | ⑤ | `run.json` |
+| 11 | the start goes ahead | the run script | ⑤ | the session log |
+| 12 | the run runs | the engine, the run script, the monitor | ⑤ | the output, the engine's own files, the monitor's pair, the notification record |
+| 13 | the script ends on its own | the run script | ⑤ | `<base>.concluded` |
+| 14 | a job found gone with no marker | the first reader on its machine | ⑤ | `run.json`'s `ended` |
+| 15 | `jobset summarize` | `summarize` | ③, `bench/` | a transport or force-constant sweep's records; `bench-result.json` |
+| 16 | a person asks | `jobset migrate`, `molbuilder runtime-info`, the Results tab, `jobset scratch --empty`, `molbuilder checkpoint restore` | anywhere | files named anew, readings kept beside a file, scratch removed; with a restore, the whole folder returned to a saved state ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7) |
+| 17 | every verb, as it decides | the verb (`jobset.ledger.record`) | ③ | one line per decision in `jobset-decisions.log` |
 
-**The browser writes four things, and none of them mention a machine:**
+Notes on the rows:
 
-| | What | Why it is portable |
-|---|---|---|
-| the **structure pair** | `<label>.source.xyz` + its sidecar | it is the same everywhere. *(Pseudopotentials are NOT the browser's to write — `prep` copies them from the library on the target, or `describe --psml-lib` does; § 2.6, stated 2026-08-18)* |
-| the **template** | the science backbone — **every parameter, carrying the value that holds unless a stage changes it** | it is physics |
-| **`task.json`** | the variables each stage tunes | it is the mission |
-| **`job-request.json`** | how each run is run — the run cards (a GPU or not among them), the groups, the queue, wall and memory asked | it is the person's ask, checked on each target ([`job-request.md`](?doc=execution/job-request.md)) |
-
-**The terminal — `prep`, on the machine that will run it — turns that into a
-runnable directory**, because only there do you know:
-
-- workstation or SLURM;
-- how conda or mamba is installed here, and whether activation is
-  `conda activate` or `source activate` (the machine's record,
-  `environment.json`);
-- what the hardware actually is, and what a benchmark measured on it.
-
-Then it **renders the final deck** — template ⊕ this stage's variables ⊕ this
-machine's resolved parameters — writes the wrapper, builds the run directory, and
-brings in whatever you told it to continue from.
-
-**A described calculation is read through one door**, `calculation.open(base)`
-— the description, its job request, the template with its text, the plan when one is written —
-once per verb, passed whole; each record's own door takes the folder and
-answers `None` for a record that is not there
-([`architecture.md`](?doc=execution/architecture.md) § 3.2, rule A16).
-
-### 2.2 Why the deck cannot be finished in the browser
-
-Because some of what goes *inside* the deck is a fact about the machine.
-
-`BlockSize` is the clearest case. It is a **tunable** knob — you may set it, and
-a benchmark may measure it ([`tuning.md § 2.11`](?doc=engines/tuning.md)) — and
-its legal window is a fact about the launch: the deck's BENCH-MARKS block records
-the rank count it was rendered for and, when the deck carries a `BlockSize`, the
-window that rank count allows. The GPU flag is another: `use_gpu` writes `Diag.ELPA.GPU` into the
-deck *and* sends the wrapper to a different conda environment, and whether this
-machine has a GPU at all is not a laptop's to know. A deck rendered on a laptop
-is either wrong for the cluster or a guess.
-
-> *(This paragraph argued from **the eigensolver** — "ScaLAPACK or ELPA changes
-> both the deck and which environment" — until 2026-08-16. That premise was
-> measured false on 2026-08-14: the packaged SIESTA carries ELPA through ELSI
-> and runs it on CPU, so only `Diag.ELPA.GPU true` re-routes
-> (`running-a-job.md` § 2.3, `engines/siesta.md` § 7.2). The argument is
-> unchanged and the example is now one that holds.)*
-
-> **Note which half of that makes the argument.** It is not that molbuilder
-> *derives* `BlockSize` — it is that **the inputs to any sensible value only
-> exist on the target**. A user who sets it explicitly has answered the question
-> themselves and their value is honoured verbatim; a user who has not still
-> cannot get a good one from a laptop, because the rank count and the hardware
-> are the answer. *(Corrected 2026-08-11 — this paragraph read as though the
-> value were always molbuilder's to compute.)*
-
-So the parent holds a **template**, and the final `.fdf` is produced where its
-last unknowns are known.
-
-**Three inputs meet, and they arrive from three different places** — a
-benchmark's report reaches them only through a person:
+- **Row 3** — a prep with nothing to write and a Save with nothing to save take
+  no state; every group's first launch saves first, wherever it runs — inside a
+  sequence of groups' job too, on its node. Which acts save, and why a run takes
+  no save at its end, is
+  [`checkpointing.md`](?doc=execution/checkpointing.md) § 9.
+- **Row 4** — `environment.json` is written once and never overwritten by a
+  later prep: it names the machine the calculation is set to
+  ([`configuration.md`](?doc=configuration.md) § 5, M-3).
+- **Rows 5–8** — what prep does inside, step by step, is
+  [`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0; the
+  protocol you see (checks, preview, save, what it writes) is
+  [`job-system.md`](?doc=execution/job-system.md) § 5.0. `prepared-with.json` is
+  prep's (`jobset.prepared_with.record`): what each stage was prepared with,
+  which `status` compares with its records now.
+- **Rows 9–10** — the launch protocol (plan, show, ask, send, record) is
+  [`job-system.md`](?doc=execution/job-system.md) § 6.0; what fills a run is
+  § 1.6.2.
+- **Rows 11–14** — a run's records are § 1.6.3; how its state is read is
+  [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2.
 
 ```mermaid
 flowchart LR
-    T["<b>template.toml</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
-    S["<b>task.json · job-request.json</b><br/>this stage's values · its run card<br/><i>the browser · portable</i>"]
-    M["<b>environment.json</b> · <b>molbuilder.json</b><br/>the target's activation and queues · env names<br/><i>outside the tree</i>"]
-    B["<b>bench-result.json</b><br/>what each trial measured, and the fastest<br/><i>measured here, a report — applied by nobody</i>"]
-    D["<b>&lt;label&gt;_&lt;token&gt;.fdf</b><br/>the deck the engine reads"]
-    W["<b>&lt;label&gt;_&lt;token&gt;.run.sh</b><br/>the wrapper"]
-    T --> D
-    S --> D
-    S --> W
-    M --> W
-    B -.->|"a person reads it,<br/>writes execution"| S
+    D["<b>describe</b><br/>③ the description"] --> P["<b>prep</b><br/>③ its records · ④ the stage<br/>⑤ the first run"]
+    P --> L["<b>launch</b><br/>⑤ fills or opens the run<br/>run.json"]
+    L --> R["<b>the run</b><br/>⑤ session log · output<br/>.concluded"]
+    R -->|"look, decide"| L
+    R -->|"look, decide"| P
+    R --> S["<b>summarize</b><br/>③ the results' records"]
 ```
 
-Read the arrows: **the first two are portable — the description, and its job
-request beside it; the third is
-the machine's, and it does not exist until you are standing on the machine** —
-which is why the deck is finished there. A benchmark's `bench-result.json` is
-no input of a deck: it is a report a person reads, and what it found reaches a
-deck only through what that person writes into the run card (`execution`,
-[`job-system.md`](?doc=execution/job-system.md) § 7.1).
+### 2.1 The portable folder — what `describe` writes, and what stays outside it
 
-| Input | Comes from | Decides |
+**A described calculation is its template and its `task.json`, with the job
+request and the structure beside them**, and none of them names a machine. The
+split between the files is the reason the folder is portable at all:
+
+| file | holds | why it is a file of its own |
 |---|---|---|
-| `template.toml` | the browser | the physics: functional, basis, k-grid — **every parameter of the calculation, with its base value.** The hardware's parameters are *named* here too, deliberately without values — the run's ask answers them |
-| `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type, what it builds on |
-| `job-request.json` | the browser | how it runs: the stage's run card (`execution`: ranks, cores per rank, GPUs, the run settings, wall, queue) and the calculation's `allocation` (queue, wall, memory), with `prep`'s flags over both ([`job-request.md`](?doc=execution/job-request.md)) |
-| the target's `environment.json` · `molbuilder.json` | outside the tree | how to activate an environment there, which queues exist (the record); which environment to use (`molbuilder.json`) |
+| `<label>.template.toml` | every parameter, with the value in force unless a stage changes it | what the calculation *is*; made from the catalogue, so each parameter exists in one place |
+| `task.json` | what changes — the stages, what each one varies, the structure it is of | what the calculation *does*; kept out of the template, so one template serves every stage ([`engines/stages.md`](?doc=engines/stages.md) § 6) |
+| `job-request.json` | how and where each stage runs — its run card, its group, the queue, wall and memory asked, a benchmark's plan, the reports | a request may change while what is computed may not ([`job-request.md`](?doc=execution/job-request.md) § 1); a queue's name in it is the person's ask, checked against the target's record at prep |
+| `<label>.source.xyz` + `<label>.source.molstruct.json` | the structure, with its cell and its region labels | the description refers to it; `.source` is a name no engine output can take ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3) |
+| `environment.json` | the machine's record, as the first prep copied it | the one file that says where the calculation runs rather than what was asked — so the others can name no machine ([`configuration.md`](?doc=configuration.md) § 5) |
 
-**A worked instance.** One template, prepared for two machines with two asks —
-on the run card, or by `prep`'s flags (`--np`, `--gpus`):
+A verb reads a described calculation through one door, `calculation.open(base)`,
+once, passed whole ([`architecture.md`](?doc=execution/architecture.md) § 3.2,
+rule A16).
 
-| | workstation | GPU node on the cluster |
+**What the machine knows stays outside the description**: how a shell enters an
+environment there, its queues, its cores and GPUs are the machine's record,
+written by `jobset probe` on that machine and copied to wherever you prepare
+for it. `prep` reads the record of the machine it prepares for — this machine's,
+or a named target's (`prep --target`) — and copies it into the calculation as
+`environment.json` at the first prep
+([`configuration.md`](?doc=configuration.md) § 5, M-3).
+
+**Two kinds of file in the calculation are deliberately not portable**:
+`environment.json`, and a benchmark's files in a stage's `bench/` — each a
+measurement of one machine. Copy the folder to another cluster and they describe
+the old one, which `environment.json` itself says (it names the machine the
+calculation is set to).
+
+> **A description that carries no machine knowledge can be prepared for any
+> machine. Decks rendered for one machine's record run only there.**
+
+**Getting it back is copying the folder back.** Everything a run produces is
+written inside the calculation, and so is the saved history (`.git/`,
+`.binsnapshots/`) and a benchmark's verdict. There is no reconciliation step:
+work on one copy at a time, as with any folder.
+
+### 2.2 Why the deck is rendered at prep, for its machine
+
+Some of what goes inside a deck depends on how it will be launched: the rank
+count the deck records and the block-size window it allows, and the GPU line
+written from the run's GPU request — the request that also picks the
+environment the run script activates. A deck rendered before the launch is
+known has guessed. So the calculation carries the template, and `prep` renders
+the deck for the machine that will run it — here or for a named target
+(`prep --target`) — from the description, the job request and that machine's
+record. Where each launch value is fixed, and what is refused when nobody stated
+it, is [`architecture.md`](?doc=execution/architecture.md) § 5.2.
+
+### 2.3 `prep` is the hub
+
+You come back to `prep` for every new piece of work — a benchmark, a stage's
+first run, a change of how a stage runs — and `launch` for every run after it.
+The verbs and what each decides are
+[`job-system.md`](?doc=execution/job-system.md) § 5.0 (prep), § 5.4 (what a
+stage takes) and § 6.0 (launch).
+
+#### 2.3.1 What `prep` does
+
+`prep` runs the same steps in the same order whatever it is asked — the
+machine, the parameters, the structure, the decks, the run scripts, the folders
+— each planned before anything is written, then all written at once. The steps,
+and why their order is forced, are
+[`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0. Its first
+step reads the machine's record and never probes; with no record it refuses and
+names `jobset probe` ([`configuration.md`](?doc=configuration.md) § 5, M-3).
+What this chapter holds is the last step's product: the folders, § 1 and § 2.
+
+#### 2.3.1a Benchmarking is `prep` with a set
+
+A benchmark is `prep` whose parameters are a set rather than a point: one deck
+per trial, rendered into the stage's `bench/` (§ 3). Everything else — the
+machine, the activation, the folders — is `prep` doing what it does for a real
+run ([`generator.md`](?doc=execution/generator.md) § 2, § 4.3a).
+
+#### 2.3.1b Capability and allocation
+
+Two different things are called "resources": what a machine has, and what one
+run asks of it. Their rules live in [`configuration.md`](?doc=configuration.md)
+§ 5, *Capability and allocation*. **The ids below are this chapter's, kept
+because code cites them; configuration's M-1…M-6 (with a hyphen) are another
+set**, and each row names the one it equals:
+
+| id | the rule, in one line | equals |
 |---|---|---|
-| the ask | 8 ranks | 64 ranks, one GPU |
-| `Diag.ELPA.GPU` in the deck | absent | `true` — written from the job's GPU request |
-| env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` — picked by the same request |
-| the wrapper | `mpirun -np 8` | the `#SBATCH` header prep wrote, with `--gres` |
-| **`template.toml`** | **byte-identical** | **byte-identical** |
+| **D1** · capability | what a machine has — cores, GPUs, the scheduler, the queues you can reach, how a shell enters an environment; the same for every calculation there | configuration § 5, *Capability and allocation* |
+| **D2** · allocation | what one run asks the scheduler for: the queue, the wall and the memory — `job-request.json`'s `allocation` block, which also says whether a GPU ask carries its binding. Ranks, cores per rank and GPUs are not in it: they are the launch's shape, the run card's `execution` | configuration § 5; [`job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2 |
+| **D3** · the machine record | `environment.json` (`molbuilder/environment@3`): the probed answer, kept per machine and copied into the calculation at its first prep | configuration M-2, M-3 |
+| **D4** · the machine config | `molbuilder.json`: what you want — how a launch is sent, which environments to use; no value of a job, and of a machine's facts only `env_init` | configuration § 4 |
+| **M1** | capability is read at prep from the record of the machine prepared for, never probed by a reader | configuration M-3 (and M-4) |
+| **M2** | a machine reports what exists; only the person says what a run uses | configuration M-1 |
+| **M2a** | a machine's facts are recorded by the probe on that machine, and the record is copied to where you prepare; prep says how a run's ask fits it, never a veto | configuration M-1; [`scheduler.md`](?doc=execution/scheduler.md) R6 |
+| **M3** | what came from the machine and what was stated are both recoverable from the folder: the record's `source` says probed or declared, and the deck's provenance block says who set each value | configuration M-1; [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.2 |
+| **M4** | the ask is an input to prep, not a decision at the send | configuration § 5, *Capability and allocation*; [`architecture.md`](?doc=execution/architecture.md) § 5.2 |
+| **M5** | `launch` decides nothing: it sends what prep wrote, one job | configuration § 5, *Capability and allocation*; [`job-system.md`](?doc=execution/job-system.md) § 6.0 |
+| **M6** | a workstation records its capability in the same shape as a cluster | configuration M-2 |
 
-The last row is the point: the physics did not move; the run's ask did, and
-the deck and the wrapper follow it.
+How a benchmark's sweep sits inside them is
+[`generator.md`](?doc=execution/generator.md) § 4.1.
 
-This is the same shape the benchmark already ships: `jobset prep bench` runs
-on the target, **reads** the machine's record into `environment.json`, and
-formats the scripts for it — *"the user never hand-edits a queue name or a core count; this is what
-makes the bundle portable."* The staged path reuses that shape rather than
-inventing a second one.
+#### 2.3.2 A benchmark: measure before you commit
 
-> **A folder that carries no machine knowledge can be copied to any machine. A
-> folder whose decks were finished on a laptop can only be copied to that
-> laptop.**
+`jobset prep bench <stage>` writes the stage's `bench/`: a trial per point of
+its grid, each relabelled so its restart files are keyed away from the real
+run's, and each forced cold (§ 3.2). `jobset launch bench <stage>` runs the
+trials; `jobset summarize bench <stage>` writes `bench-result.json` beside them
+and prints the report. The report is a recommendation, not a decision: it says
+what was measured — which configuration won, its ranks, threads, GPU request and
+solver — proposes no wall and no memory, and nothing applies it. A person reads
+it and writes the run card. The grid, the shelves, the winner and the record are
+[`generator.md`](?doc=execution/generator.md) § 4.3a and § 4.4b; the verbs,
+[`job-system.md`](?doc=execution/job-system.md) § 7.
 
-### 2.3 `prep` is the hub, not step four of a line
+#### 2.3.3 The real run
 
-This is the part a linear list gets wrong. **You come back to `prep` every time,
-and it is where every join is made:**
+A stage's run uses what `job-request.json` states — never a benchmark's result,
+which steers nothing — and a launch value stated nowhere is refused at prep,
+naming where to state it ([`architecture.md`](?doc=execution/architecture.md)
+§ 5.2).
 
-```mermaid
-flowchart LR
-    UI["<b>browser</b><br/>data files · the template<br/>task.json · job-request.json"]
-    P{"<b>prep</b><br/>on the target machine"}
-    B["benchmark<br/>runs"]
-    R["a run<br/>runs"]
+#### 2.3.4 Continuing from an earlier run — what lands in the new run
 
-    UI --> P
-    P -->|"prep bench"| B
-    B -->|"a report you read, and write into job-request.json"| UI
-    P -->|"a run directory"| R
-    R -->|"its results, and what you learned"| P
-```
+**A stage does not connect to the one before it; its first launch is handed
+files.** Which run by default, what `--from` and `--cold` change, and when
+launch refuses are [`job-system.md`](?doc=execution/job-system.md) § 5.4; the
+whole walk — prepare, launch coarse, look, launch tight — is
+[`worked-example.md`](?doc=execution/worked-example.md) § 8.
 
-Four different jobs, one verb, because they are the same act — *assemble a
-runnable directory from a template, a source of earlier results, and this
-machine's parameters*:
+**A SIESTA stage that continues takes three files**, copied into its new run at
+the launch, before the send. The rule — and a calculation's own list, which wins
+— is [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a:
 
-| You are doing | You give `prep` |
-|---|---|
-| measuring, before committing | the stage, and *benchmark this* |
-| the real run, using what you measured | the stage — and what you wrote into `job-request.json` from the benchmark's report (§ 2.3.3: `prep` never reads a verdict) |
-| a redo of that run | nothing — `launch` it again, which continues from its newest run by itself; a change of how it runs, its group prepared again first (`job-request.md` § 5); a change of what it computes takes its way back (`job-system.md`, *How the checkpoint supports you*) |
-| the next stage | its group — prepared any time; its first launch takes what it builds on (`job-system.md`, *The task*, *What a stage takes, and when*) |
-
-**Nothing distinguishes those in the machinery.** "Continue from
-`01_coarse/run-0`" and "continue from `02_tight/run-0`" are the same
-instruction pointing at different directories; "use this benchmark result" is
-the same kind of input as
-"use this geometry". That is why it is one command with arguments rather than
-four commands.
-
-And it is where **you** are in the loop. Every arrow back into `prep` is a
-decision made after looking at what came out — which is the whole reason stages
-do not chain (§ 1.6).
-
-#### 2.3.1 What `prep` does, every time
-
-Whatever job you are asking for, `prep` runs the same five steps in the same
-order — **resolve the machine · resolve the parameters · render the decks ·
-render the wrappers · build the run directory.** Only the *inputs* differ.
-
-**The sequence is owned by
-[`script-preparation.md`](?doc=execution/script-preparation.md)**, which states
-it at three resolutions: the whole system's decision chain, these five steps, and
-the eleven sub-steps inside step 3. Go there for what each step may assume, what
-it leaves behind, why each ordering is forced, and what an engine supplies at
-each one.
-
-**What stays here is step 5's product** — the tree those scripts are laid out
-into, which is the rest of this document.
-
-**Step 1 READS. It does not probe, ever.** `scheduler.record.machine_for` walks the
-scopes — the calculation's own snapshot, then a named target, then this
-machine's record (`configuration.md` M-3) — and **the first one found is the whole answer**, with no
-field-level merge. **When none answers, `prep` refuses** and names the one
-command that fixes it:
-
-```
-molbuilder jobset probe --write                 # this machine
-molbuilder jobset probe --write --name sol      # on that machine; then copy sol.json here
-```
-
-*(User, 2026-09-02: "all environments have to be explicitly probed and stored.
-no environment json, error".)* That is what lets you `prep` for a cluster from
-a workstation: the cluster's record was declared, not detected, and declaring
-is how a fact about a machine you are not standing on arrives
-([`configuration.md § 5`](?doc=configuration.md) M-1, M-3).
-
-> **Why refusing beats probing.** Step 1 used to run a fresh probe when no
-> scope answered, and write the answer down. It reads as helpful and it is the
-> guess [`running-a-job.md § 3.1`](?doc=execution/running-a-job.md) forbids:
-> the numbers a wrapper then carries come from *whichever box happened to run
-> `prep`* — for a bundle described at a desk and run on a cluster, the wrong
-> machine, with a number that looks exactly like a right one. Probing is one
-> command; a record is a file somebody can point at. *(This box said "detect
-> cores, GPUs, scheduler, conda" until 2026-08-17, which described the last
-> resort as though it were the rule; the last resort itself went on
-> 2026-09-02.)*
-
-**Why the order is forced** is argued in
-[`script-preparation.md`](?doc=execution/script-preparation.md) § 4.1, pair by
-pair. The short form, and the reason `prep` is a step of its own rather than
-something the browser finishes: a script carries values that *depend on how it
-will be launched* — the rank count with the block-size window it allows, and a GPU line
-written from the job's GPU request, the request that also picks the environment
-the wrapper activates. **A parameter that
-depends on the launch cannot be decided before the launch is known.** That is
-§ 2.2 restated as a sequencing rule.
-
-#### 2.3.1b Capability and allocation — two different things called "resources"
-
-**Decided 2026-08-10 (user).** One word covers two things that change at
-different times, live in different files, and are decided by different people.
-Naming them apart is what makes step 1 answerable.
-
-##### Definitions
-
-- **D1 · Capability** — **what a machine has.** Cores per node, GPUs and their
-  type, the scheduler, which queues you may use, which account to charge, the
-  activation command. It is a property of *the machine*, and it is the same for
-  every calculation you run there.
-- **D2 · Allocation** — **what one run asks the SCHEDULER for**, chosen from
-  inside a capability: wall time, memory, which queue. It is a property of
-  *this run*, and two runs on the same machine routinely differ.
-  **Ranks, cores per rank and GPUs are not here.** They are the launch's
-  SHAPE, they belong to `job-request.json`'s `execution` block, and they travel a
-  ladder of their own — the two are separate rungs in
-  [`architecture.md § 5.2`](?doc=execution/architecture.md) precisely because
-  a queue that grants a wall clock grants no rank count
-  *(split 2026-09-02; `Allocation` carried all six until then)*.
-- **D3 · The machine record** — `environment.json`
-  (`molbuilder/environment@3`), the **whole probed answer**: topology, scheduler
-  (its kind and where its commands are),
-  site, and the reachable domains. It exists at two scopes — written per-machine
-  by `jobset probe`, snapshotted into the calculation by step 1 — and carries a
-  `source` field saying where each fact came from. One shape whether the machine
-  is a cluster or a workstation ([`configuration.md` § 5](?doc=configuration.md)
-  M-2, M-3).
-- **D4 · The machine config** — `molbuilder.json`. It holds what you
-  **want** — how a launch is sent, which environments to use, the server's
-  settings — and no value of a job, and no fact of a machine but `env_init`,
-  how a shell enters an environment here, declared once and copied by the probe
-  into every record it writes. The `scheduler` block that held a default
-  partition, QoS, account and resource defaults is refused by name since
-  2026-10-02 ([`configuration.md` § 4](?doc=configuration.md)). It is **not** where
-  detection is overridden; that door belongs on the probed side
-  ([`configuration.md` § 5](?doc=configuration.md) M-5).
-
-##### Rules
-
-| | rule | why |
+| file | what it carries | copied when |
 |---|---|---|
-| **M1** | **Capability is resolved on the machine that will run the job, never before.** | The bundle you produce names no machine (§ 2.1). This is target isolation — `job-system.md` § 2, decision 3 |
-| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them a run **uses** — its own statement (`allocation.domain`, `--domain`), never a default ([`architecture.md` § 5.2](?doc=execution/architecture.md)); the activation is a fact of the machine, in its record. **A machine reports what exists; only you can say what you want** — and a machine's facts are recorded by the probe on that machine, its record copied to where you prep (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
-| **M2a** | **A fact is recorded by the probe ON its machine — measured, or declared to the probe there** (`--set`, `--scheduler`; the activation copied from that machine's `molbuilder.json`), and the record is copied to where you prep. *What partitions and QoS you can reach* is such a fact; a queue list written by hand on another machine is refused (`configuration.md` § 5). *Which one this run uses* is the run's own statement. `prep` checks that the second is among the first — a queue the record lists — and says the run's fit on it, never a veto ([`scheduler.md`](?doc=execution/scheduler.md) R6) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. *(History: the workstation-describing-a-cluster case is served now by probing ON the cluster and copying its record — a queue list written on another machine is refused, 2026-10-02.)* Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
-| **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
-| **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape is now the person's own statement — `job-request.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *tied to the rank count* (the block-size window), plus the GPU line written from the job's GPU request — the request that also picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
-| **M5** | **`launch` decides nothing. It sends what prep wrote — one job.** | A deck and its launch are prepared together, by one prep, from one request ([`architecture.md`](?doc=execution/architecture.md) A3), so there is no second answer for a launch to disagree with; a launch at another request is a prep again — of a launched stage too, whose deck keeps what it computes ([`job-request.md`](?doc=execution/job-request.md) § 5) |
-| **M6** | ~~A workstation needs no config file~~ — **AMENDED 2026-08-17 (user): a workstation records its capability in a config file too, in the same shape a cluster uses.** Detection still answers *what is here*; the file answers *what a run may have*, and `prep` needs the second to say how an ask sits on the machine before anything runs ([`scheduler.md`](?doc=execution/scheduler.md) R6) | The original reasoning was *nothing is rationed*, which held only while nothing was said. Once `prep` says each ask's fit on the target's record, a workstation with no record is the one machine where it cannot be said — so the rule that was sparing the user a file was instead leaving them uninformed. **One shape for both kinds of machine** also means the probe verb, the config reader and `prep`'s bound have one path rather than a workstation special case. |
-
-##### What this looks like in practice
-
-```mermaid
-flowchart TB
-    subgraph cap["CAPABILITY — what the machine has"]
-      direction LR
-      W["<b>workstation</b><br/>probed: lscpu, nvidia-smi"]
-      H["<b>HPC</b><br/>probed: scontrol, sinfo, sacctmgr"]
-      E["<b>environment.json</b><br/><i>one shape for both</i><br/>jobset probe writes it"]
-      W --> E
-      H --> E
-    end
-    C["<b>molbuilder.json</b> — what you WANT<br/>how a launch is sent, which environments<br/><i>no job value; of machine facts, only env_init</i>"]
-    A["<b>ALLOCATION — what this run asks for</b><br/>8 ranks · 1 GPU · 4 h<br/><i>given to prep</i>"]
-    P["<b>prep</b><br/>step 1 snapshots capability → environment.json<br/>steps 3-4 render the deck and wrapper<br/><b>against this allocation</b>"]
-    S["<b>launch</b><br/>checks the deck still agrees<br/>runs, or sends, what prep wrote — ONE job"]
-    cap --> P
-    C --> P
-    A --> P
-    P --> S
-```
-
-*"The machine has 64 cores, but this run uses 8 and one GPU"* is **`prep` with
-that allocation**, producing a deck sized for it. Benchmarking is the same act
-repeated — § 2.3.1a, which is why it is not a separate machine.
-
-Status of these rules against the code lives in
-[`plans/plan.md`](?doc=plans/plan.md) § 5f (`conventions.md`'s R3 — contracts hold the rule, the plan
-holds what is left to do).
-
-#### 2.3.1a `prep` is the framework; benchmarking is one thing you prep
-
-The four jobs in the table above are not four features. **They are one framework
-with different inputs**, and it is worth naming which part is general and which
-is specific, because the boundary is where new work will attach.
-
-| The framework — the same for every job | The specialisation — what differs |
-|---|---|
-| resolve this machine | — |
-| resolve the effective parameters | *where the parameter values come from* |
-| render the deck(s) from the template | *how many decks, and at what settings* |
-| render the wrapper | — |
-| build the run directory, copy in what was named | *what gets copied in* |
-
-**Benchmarking is `prep` whose parameters are a set rather than a point.** A
-normal prep resolves one configuration and renders one deck. A benchmark prep
-resolves a *grid* of configurations and renders one deck per point, into a
-subdirectory of the stage. Everything else — machine detection, activation, the
-directory build — is the framework doing exactly what it does for a real run.
-
-> **Read the existing `bench prep` this way round.** It is the one place this
-> framework is already built, and it was built inside the benchmark because that
-> is where the need appeared first. So it is not that the staged path *borrows
-> from* benchmarking; it is that **benchmarking is prep, specialised**, and the
-> general part needs lifting out of it. Which of the two directions the code is
-> refactored in is an implementation matter — but the design reads only one way,
-> and stating it the other way round would make the general case look like a
-> special case of the special case.
-
-The same reading settles a question that would otherwise recur: *what happens
-when a third kind of prep appears* — a convergence study, a set of trial
-geometries, a restart sweep? It is the framework again, with a different answer
-to "how many decks, at what settings". Nothing new is needed at the top.
-
-#### 2.3.2 Job one — measure before you commit
-
-You are about to spend a week of wall-clock on the tight stage. First find out
-what this machine is actually fastest at.
-
-```
-molbuilder jobset prep bench tight
-```
-
-`prep` does what it always does, with the parameter step answering *a grid* — the
-same deck at different rank/GPU/core combinations, one per trial, into
-`02_tight/bench/`. The trials differ from the real run in exactly one way that
-matters: their step count is cut to a handful, because **you are timing the
-machine, not relaxing the molecule**.
-
-> **The benchmark cannot damage the real run**, and this is structural rather
-> than careful. Its decks are **relabelled**, so their warm files are keyed to a
-> different `SystemLabel` and SIESTA will not read them into the real stage; and
-> they are **forced cold** — the measurement pin is the one *setter*, and
-> since 2026-08-21 the submission door is the *verifier*: a trial whose
-> deck would warm-start (or whose restart group was stripped) is refused
-> by name before launch, because prep bakes the intent but submission
-> determines the run's actual starting state (user ruling). See § 4.
-
-You submit them with `jobset launch bench tight` — and under `--mode
-submit` the trials group into **one scheduler job per resource shelf**
-([`generator.md`](?doc=execution/generator.md) § 4.3a; grouped 2026-08-20,
-split per shelf 2026-08-21): trials asking for identical resources (a
-*shelf* — same ranks, cores and GPU request) ride one job together,
-**sized to fit them exactly**.  Within its job the shelf's trials run
-**sequentially** — bounded per trial only when the user said so
-(`--trial-timeout`; nothing is invented, per `submission.md` S2) — driven
-by a generated sequencer that lives in the container's **`launch/`**
-folder beside its `.sbatch`, its log and SLURM's own `slurm.%j.out`
-(rule L3, roadmap 7.10), while each
-trial keeps writing into its own `bench-<POINT>/` directory exactly as
-before. Each job's allocation is its shelf's own ask — nothing wider —
-so a narrow trial never idles a wide allocation's cores, the CPU groups
-ask for no GPU, and a one-device trial never holds a four-device grant;
-the wall is the benchmark's own (`allocation.time`), stated for the shelf's
-whole job, and its header is written at the benchmark's prep. A trial that
-hits its bound is killed and reads `incomplete` in the summary's census;
-the walk continues — one bad point says nothing about the next. The
-shelves submit **biggest ask first**, as independent jobs the queue may
-run concurrently. Each group's
-`bench-group*.log` is the explicit record: the allocation the
-group ran in (job id, node, granted resources), then per trial *when it started,
-when it finished, with what exit code and duration* — so both the ordering
-and any environment question are answered by the log itself. And every
-trial rides with its **own explicit `-np/-omp`** — enforced at generation —
-because inside the allocation what the scheduler tells the job
-(`MB_NTASKS`, `MB_CPUS_PER_TASK`, said by its header) describes the
-envelope, and a flag-less wrapper falling back to it would silently
-measure the widest point instead of its own. Naming a
-trial (`jobset launch bench tight G1N8C2`) still launches that one alone.
-A point is **re-measured** by restoring the state saved before the
-benchmark's prep and preparing it anew — a prepared benchmark is not prepared
-again (§ 1.5a).
-
-> *This amends the 2026-08-12 decision by keeping what it protected: **few
-> launch acts, never a queue flood**. The earlier form — one trial per
-> invocation — made an N-point sweep cost N queue waits, and on an HPC a
-> submission is expensive and unpredictable; the shelf grouping keeps the
-> count at the number of distinct resource asks, which the value axes make
-> small (every solver × block combination shares its shape's shelf).*
-
-`--mode direct` on a workstation is not submission and is exempt as ever:
-it runs the trials as one walk, in order — in the background unless
-`--foreground` ([`job-system.md`](?doc=execution/job-system.md) § 6.0). When the
-sweep has finished,
-`jobset summarize bench tight` reads the timings and writes
-`bench-result.json` — a recommendation, not a decision:
-
-```jsonc
-{ "choice":    { "label": "G1N4C6", "engine": "gpu",
-                 "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:1" },
-                 "mechanism": { "use_gpu": true,
-                                "diag_algorithm": "ELPA-1STAGE" },
-                 "rationale": "G1N4C6 fastest (2.3 s/iter); gpu-bound; vs G1N8C2 3.1 s/iter" } }
-```
-*(the sample tracks `bench/result.py`'s writer — `choice.label` is the
-winning trial's id and its knobs ride under `knobs`; the flat-key sample
-that stood here until 2026-08-12 was the retired pre-fold shape.  This
-sample, the table above and the toml below are ONE dataset, rendered by
-the real code — regenerate all three together if the writers change)*
-
-> **There is no `recommend` block, and there is no longer a suggested wall
-> or memory** *(2026-08-24)*. It held
-> `mem_gb = peak RSS x 1.15` and
-> `time = s/iter x 200 iters x 1.5` — a safety factor and a production
-> iteration count **nobody chose**, the second of them a default sitting in
-> a function signature. `summarize` wrote both into the toml below,
-> `prep` folded them in when no flag said otherwise, and they reached
-> `sbatch`. That is the mechanism the estimation purge was ordered to end,
-> surviving in the one path the purge did not sweep — the same shape as the
-> five 38-minute jobs (62039301-05) it was ordered for.
->
-> **What the sweep still recommends is what it MEASURED**: which
-> configuration won, its ranks, threads, GPU request and solver. The wall
-> and the memory are the person's to state (`execution/submission.md` S1,
-> S2), and unstated is refused at prep
-> ([`architecture.md` § 5.2](?doc=execution/architecture.md)) — never a number
-> derived from a benchmark.
-
-The summary itself is a table — one row per point, the sweep's knobs beside
-what the monitor measured — so the scaling is visible in one look rather
-than one JSON dig per trial:
-
-```
-  point   machine  np  thr  gpu    algorithm    s/iter  iters  monitored  peak-mem  cpu%  gpu-sm%   vram  bound  state
-  G1N4C6  --        4    6  gpu:1  ELPA-1stage     2.3      3        41s     83.5G    34       91  18.2G  gpu    completed
-  G0N8C2  --        8    2  no gpu ELPA-1stage     3.1      3        58s     85.1G    52       --     --  cpu    completed
-```
-
-**Every column, every sweep.** A trial that asked for no GPU says `no gpu`,
-and its GPU measurements `--` (a value nothing measured); a trial whose run
-recorded no machine shows `--` under `machine`.  The knobs carry all three
-keys on every trial -- `gres` null on a CPU one.  *(The GPU and machine
-columns appeared only when some trial had one, and the knobs carried `gres`
-on GPU trials alone, until 2026-10-06: a CPU sweep printed another table.)*
-
-**No winner is said, with why.**  When no trial can win, `choice` is
-`{"none": "<why>"}` -- *no completed, timed trial to rank (`<census>`)*, or
-*every timed trial ran something other than it was asked to* with the
-trials named -- and the terminal says `no winner: <why>`, the Results page
-the same sentence, the ledger's verdict line the same `choice`.  *(`{}`
-stood for both until 2026-10-06, and each reader guessed which.)*
-
-*(columns come from the record: `s/iter` is the steady-state SCF mean;
-`wall`, `peak-mem`, `cpu%` and the GPU columns are the monitor's raw
-samples in `util.csv`; `algorithm` is what the trial **actually ran** — a
-silent eigensolver fallback shows in the table itself, not only in the
-excluded-row note. A value nothing measured prints `--`, and the GPU
-columns appear only when the sweep has GPU points.)*
-
-And it PRINTS **the report** (it wrote `bench-recommendation.txt` beside the record until 2026-09-04; zero were ever produced — `job-system.md` § 7.1):
-```
-molbuilder bench recommendation -- 02_tight
-NOTHING APPLIES THIS.  It is what the benchmark found; the decision is yours to write.
-
-  G1N4C6 fastest (2.3 s/iter); gpu-bound; vs G1N8C2 3.1 s/iter
-
-  it computed with
-      diag_algorithm = 'ELPA-1STAGE'
-      use_gpu = True
-
-To run at it, put this in job-request.json and save:
-
-    "execution": {
-      "diag_algorithm": "ELPA-1STAGE",
-      "mpi_np": 4,
-      "omp_threads": 6,
-      "use_gpu": true
-    }
-
-Until you do, `prep task` launches at what job-request.json states, and
-refuses a launch value it states nowhere (architecture.md 5.2) --
-a benchmark does not steer a run.
-```
-
-> *Re-rendered 2026-09-05 by running `recommendation_text` on this page's
-> own dataset. The block above claimed to be machine-generated and was not:
-> it carried `, measured <date>` (never emitted), a `fastest`/`runner-up`
-> pair (the code prints one rationale line), `it computed with` as a single
-> inline row, and the sentence **`NOTHING READS THIS FILE`** — replaced on
-> 2026-09-04 when it stopped being a file. The prose one line above was
-> swept that day; the sample below it was not.*
-**You read the report. You write the decision.** `bench-result.json` stays
-what it is — the measurement record, schema-checked and never edited by hand
-— and this is that record said in sentences. A verdict-less sweep (no
-completed, timed trial) writes no report, and the summary prints the state
-census that explains why instead.
-
-> **This file was `run-config.toml` until 2026-09-02, and `prep run` read it.**
-> It was labelled *"recommendation, not decision"* here while functioning as a
-> decision: the next prep folded its `[resources]` into the launch and its
-> `[pins]` into the deck. That made a benchmark a second way for a run
-> parameter to arrive, which is the shape of every silent-value defect this
-> project has had. **The measurement is not less useful for being read by a
-> person instead of by `prep` — it is only slower by one paste, and a paste
-> is a decision you can see in `git diff`.**
-
-#### 2.3.3 Job two — the real run, with what you measured
-
-```
-molbuilder jobset prep task --group 2
-  ...
-  resources: mpi_np 4 | omp 6
-```
-
-**Every number in that line came from `job-request.json`.** Not from the benchmark,
-which reports and does not steer; not from this box, which is not the target.
-A launch value nobody stated is refused by name
-([`architecture.md § 5.2`](?doc=execution/architecture.md)), and there is no
-other source: **a run's launch is what a person wrote, or a refusal telling
-them what to write.**
-
-**FINDING IS NOT PERMISSION, AND THERE IS NO LONGER A FILE THAT GRANTS IT.**
-A benchmark lives inside the stage it measured, so prep can always *find*
-one — and it never reads it. Permission is `job-request.json`'s `execution`, which
-you write: the full ladder is
-[`architecture.md § 5.2`](?doc=execution/architecture.md) — the catalogue's
-default < `execution` (the calculation's, then the rung's) < flags, with **no
-rung between the bench and the run**; the template holds no run setting
-([`engines/template.md`](?doc=engines/template.md) § 2).
-
-*(Three designs stood here. Until 2026-08-19 prep asked interactively —
-`use it? [y/N]`, silence-is-no. Until 2026-09-02 the answer lived in an
-editable `run-config.toml` that prep folded in. Both shared one premise: that
-a measurement should reach the launch by itself, if only the person nodded.
-The premise is what changed — a run's parameters are declared in the file that
-records asks, and a benchmark's job is to tell you what to declare.)*
-
-**And when `execution` states no launch shape, `prep` refuses** — before it
-writes anything — and names both places to state it: the run card (`execution`
-in `job-request.json`) and the prep flags (`--np`, `--cpus-per-task`, `--gpus`); a
-benchmark (`prep bench`) is how to find values worth stating. The wrapper has
-no default of its own on any engine — **PySCF has no rank count**, and its
-thread count is stated like SIESTA's cores per rank —
-[`running-a-job.md`](?doc=execution/running-a-job.md) § 3 states the chain
-once: a flag or the scheduler's echo of the header may choose among
-statements, never supply a number nobody stated. The engine's own bare
-default — `siesta` on one core of a 128-core node — is exactly what this
-exists to prevent; nothing here falls through to it.
-
-Once the winner is written into `execution`, step 2 reads it like any statement. The measured
-rank count flows into step 3, where it sets the deck's recorded `mpi_np` and `BlockSize` window; the measured
-eigensolver changes `Diag.Algorithm`; and whether the GPU was worth it changes
-the job's GPU request, which writes `Diag.ELPA.GPU` in step 3 and in step 4
-picks **which environment the wrapper activates** and adds the `--gres` ask.
-One measurement, several destinations —
-the deck three times and the wrapper once — which is why resources are not "just
-scheduler flags" here. Only the last of the three is the **second** row of
-`engines/stages.md § 5`'s four (*a deck line that is also a resource
-decision*); the block size and the solver are ordinary deck lines.
-
-*(Until 2026-08-16 this paragraph gave the solver as what changes the
-environment. It does not — the packaged SIESTA runs ELPA on CPU, so
-`Diag.Algorithm` never leaves its own deck.)*
-
-`prep` prints what it resolved, and that report is the point (abridged —
-`…` marks lines left out):
-
-```
-the folder's state was saved first: 3e1b9c2 -- 2026-10-03 14:05:12 · before prep task group 2 (tight)
-…
-prepared tight: 02_tight/run-0
-  brought in: bdt_au_02_tight.fdf, Au.psml, …, mb_monitor.pyz, bdt_au_02_tight.run.sh
-  at launch: takes bdt_au.XV, bdt_au.DM, … from `coarse`'s newest run, which must have finished
-  resources: mpi_np 4 | omp 6
-…
-next -- launch the group that can go, each group one job:
-    molbuilder jobset launch task --bundle bdt_au --mode direct   # runs directly on this machine
-```
-
-**Printing what it resolved is what makes `launch` a plain yes.** It is the only
-place the measured numbers, the chosen geometry and the rendered deck appear
-together, which is exactly where a person should be looking before spending a
-week.
-
-#### 2.3.4 Job three — continuing from an earlier run
-
-This is the one worth reading slowly, because it is where the design differs
-most from what people expect.
-
-**A stage does not "connect" to the one before it. It is handed a file.** Its
-first `launch` hands it a run of the stage before it — which run by default,
-what `--from` and `--cold` change, and when `launch` refuses, is
-[`job-system.md`](?doc=execution/job-system.md), *The task*, *What a stage
-takes, and when* (and § 5.4). That is a ladder of independent stages; a linked stage — transport's
-device and transmission — has its input fixed by the calculation, and its first
-launch takes it from the stage before; a vibration's first stage builds on
-the calculation's structure, its run relaxing first, and a displacement
-sweep's later stage takes that relaxation over
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9, § 5.11).
-
-```
-molbuilder jobset launch task --group 2                            # the stage before it, newest
-molbuilder jobset launch task --group 2 --from 01_coarse/run-0     # a run you name
-```
-
-The run is **one that has already finished** — you just looked at it, which is
-why you are willing to build on it. So step 5 copies its warm files into the
-new attempt, for real, right then:
-
-| File | What it carries | Copied when |
-|---|---|---|
-| `bdt_au.XV` | the **relaxed coordinates** (and the cell) | always — this is the point of continuing — unless the calculation's own restart-file list withholds it ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a: every reader follows the list in effect) |
-| `bdt_au.DM` | the converged **density matrix**, so the first SCF starts warm | when the description says to reuse it |
-| `bdt_au.CG` | the optimiser's own history | **only if both stages use the same algorithm** — CG history means nothing to Broyden |
-
-**SIESTA's history is not carried: each run's is its own** *(F-MDNC,
-2026-10-13)*. SIESTA appends every step to `.MD.nc`, `.MD`, `.MDE` and `.ANI`
-and reads none of them back, so none warms anything and no hand-over copies
-one: each keeps SIESTA's own name, `<label>.MD.nc`, and holds the steps of the
-run it lies in, read with that run's output.
-
-```mermaid
-flowchart LR
-    A["01_coarse/run-0/<br/>bdt_au.XV<br/>bdt_au.DM"]
-    P{"launch task --group 2<br/>(from 01_coarse/run-0)"}
-    B["02_tight/run-0/<br/><b>bdt_au.XV</b> (a real copy)<br/><b>bdt_au.DM</b> (a real copy)<br/>bdt_au.fdf (its own copy, from prep)"]
-    A -->|"copied, at the first launch"| P --> B
-```
-
-**Three things about that copy, each load-bearing:**
-
-**It is a copy, not a link.** The engine *writes* to these files. Writing through
-a link would reach back into `01_coarse/run-0` and overwrite the very result you
-decided to build on — destroying the thing you would want to return to if the
-tight stage went wrong.
-
-**It happens at the launch, before the send — not when the run starts on the
-node.** This follows from stages not chaining (§ 1.6) rather than being a
-separate choice: the source run must already have finished before the stage
-is launched, so its files exist when the launch copies them, and there is
-nothing to defer. Nothing dangles in the meantime, nothing has to be
-swapped at run time, and no half-resolved directory ever sits on a queue.
-
-> A design that *does* chain has the opposite problem and needs the opposite
-> machinery — links laid before the producer runs, made real on the compute node.
-> That belongs to a chained ladder, and this design is not one. Keeping the two
-> apart is the point: the run-time swap is not a fallback for this path, it is a
-> mechanism this path does not need.
-
-**Nothing after the copy has to be told.** Once `bdt_au.XV` is in the attempt
-directory, SIESTA finds it **by itself**, because it looks for warm files keyed
-to its `SystemLabel` — and every stage of one calculation shares that label by
-design (`run-identity.md`; a transport lead's stage is on its own stem,
-`job-contracts.md` § 2.1 rule 2). *Continuing is not something molbuilder does; it is
-what the engine does when it finds state under the name it was given.* All
-molbuilder contributes is putting the right file in the right place under the
-right name.
-
-> **A redo is the same instruction.** A stage launched again warm opens its
-> next attempt from where the last reached — the coordinates it got to, not
-> the ones it started from — and needs no prep (`job-system.md` § 5.4); both
-> that and continuing to the next stage are *"copy this run's warm files into
-> a new attempt"*. Launched again cold, or a stage that takes nothing from its
-> own runs, its next attempt holds no warm file. A launched stage is
-> prepared again only for a change of its job request, each
-> deck the same calculation as its runs ran
-> ([`job-request.md`](?doc=execution/job-request.md) § 5); to change what it
-> computes, its way back is
-> [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
-> supports you*.
-
-#### 2.3.5 What goes in, what comes out
-
-| Input | Where it comes from | What it decides |
-|---|---|---|
-| the description (`task.json`) | the browser, or a terminal | which stages exist, their overrides, the layout it states |
-| the job request (`job-request.json`) | the browser, or a terminal | each stage's group, the run cards, the queue, wall and memory asked, a benchmark's plan, the reports ([`job-request.md`](?doc=execution/job-request.md)) |
-| the template | the browser | everything about the system that does not depend on the machine |
-| **which groups** | you, on the command line — `--group N`, repeated for several | which stages are prepared, and so which overrides apply |
-| **the machine** | its record, read — `jobset probe` wrote it; `prep` never probes (§ 2.3.1) | ranks, GPUs, scheduler, activation → snapshotted as `environment.json` |
-| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | **nothing, on its own** — it is a REPORT you read, and `prep task` never opens it (§ 2.3.3). What it tells you about rank count, eigensolver, GPU and memory reaches the deck only once YOU write it onto a run card in the job request. |
-| a finished run *(optional)* | what the stage builds on, taken by its first `launch` (`job-system.md`, *The task*, *What a stage takes, and when*) | which coordinates and density matrix the run starts from |
-
-| Output | What it is |
-|---|---|
-| `<NN>_<stage>/<label>_<NN>_<stage>.fdf` | the deck, finally real — every value resolved |
-| `<NN>_<stage>/<label>_<NN>_<stage>.run.sh` (+ `.sbatch`), `mb_monitor.pyz` | the wrapper, activation baked in, and the monitor beside it |
-| `<NN>_<stage>/run-<n>/` | a fresh attempt: its `calcdir.json`, the stage's own files copied in — the warm files from the run it continues from arrive at its first launch |
-| the printed report | what was resolved and measured, and what each stage's first launch will take — the thing you check before submitting |
-
-**A launched stage is prepared again only for how it runs.** Its prep opens
-its first attempt; until something has been submitted into it, a prep again
-renders it anew, its group whole; once something has — `launch`'s `run.json`
-is what says so (§ 1.6.3) — that attempt is finished with (§ 1.5), and
-`launch` opens the next. A prep of a launched stage renders its deck, scripts
-and row anew for a change of its job request, and opens no run; one whose deck
-would compute something else is refused ([`job-request.md`](?doc=execution/job-request.md) § 5), its way back
-[`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports
-you*.
-
-### 2.4 The whole sequence, once through
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as you
-    participant B as browser
-    participant T as the tree
-    participant C as CLI (on the target)
-    participant E as the engine
-
-    U->>B: pick a structure, describe the stages
-    B->>T: template.toml · task.json · the structure pair
-    Note over T: portable — names no machine
-
-    U->>C: jobset prep bench tight
-    C->>T: bench/ — decks made measurable
-    U->>C: jobset launch bench tight
-    C->>E: run the trials
-    E-->>T: timings
-    U->>C: jobset summarize bench tight
-    C->>T: bench-result.json (written) + the report (printed)
-
-    Note over U: you read the report, write `execution` in job-request.json
-
-    U->>C: jobset prep task --group 2 (uses `execution`)
-    C->>T: 02_tight/<label>_02_tight.fdf · run-0/
-    C-->>U: what it resolved, and what its launch will take
-    U->>C: jobset launch task --group 2 --from 01_coarse/run-0
-    C->>T: copied .XV into run-0/
-    C->>E: run it
-    E-->>T: .XV .DM .out
-
-    U->>C: status · checkpoint save
-    Note over U,C: look, decide, and launch the next group (prep it first only if it is not prepared)
-```
-
-**Every arrow into `prep` starts with you.** Nothing in the diagram advances on
-its own, which is § 1.6 drawn rather than stated.
-
-### 2.5 The steps, and which surface
-
-| | Step | Surface |
-|---|---|---|
-| 1 | save the structure into the tree | **browser** |
-| 2 | describe the calculation — the template and `task.json` | **browser** |
-| 3 | write the portable package into the calculation folder | **browser** |
-| 4 | **`prep`** — resolve the target machine, render the deck and wrapper, build the run directory | **CLI**, or Task setup's Prep for a machine whose record is here |
-| 5 | **`launch`** — submit or run here | **CLI** |
-| 6 | look at what happened; save a checkpoint | CLI, with the browser for viewing results |
-| ↻ | back to 5 for the next group once it is prepared, or a stage launched again; back to 4 for a group not prepared yet, or a benchmark | |
-
-**Every step has a CLI equivalent** — `conventions.md § 3` makes the CLI a thin
-shell over the same functions the blueprints call, so a user with no browser can
-do 1–3 from a terminal. Step 5 has no browser equivalent, and that is the real
-boundary rather than a gap: it spends the target machine's time. Step 4 has
-one, Task setup's Prep, because the target's half of prep is its record
-([`job-system.md`](?doc=execution/job-system.md) § 5.3, *One prep, two doors*).
-
-The saved history begins with the first act that changes the folder — Task
-setup's Save or `prep` — which saves the folder's state before it writes
-(`checkpoint.save_before`) and records the calculation's engine in the
-history, which picks its always-large families — the names a save sends to
-the archive without measuring them (`checkpointing.md` § 4). Which files count as big binaries is this machine's
-`molbuilder.json`'s, not the science's (S1c). An engine's scratch, which no
-save stores, is asked of no engine: it is the families every engine's shipped
-vocabulary names (`warmfiles.is_scratch`, S1).
+| `<label>.XV` | the relaxed coordinates and the cell | the stage continues — its `restart` is `continue` — unless the calculation's restart-file list withholds it |
+| `<label>.DM` | the converged density matrix, so the first SCF starts warm | the same as `.XV` |
+| `<label>.CG` | the optimiser's own history | the same, and **only between stages that use the same optimiser** — a CG history means nothing to Broyden |
+
+A stage whose `restart` is `clean` takes none of them: its deck reads no prior
+state. A device's `.TSDE` is carried the same way when it continues (§ 5.4).
+**SIESTA's history is not carried**: `.MD.nc`, `.MD`, `.MDE` and `.ANI` hold the
+steps of the run they lie in, and no hand-over copies one
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2).
+
+**Nothing after the copy has to be told.** SIESTA looks for restart files under
+its `SystemLabel`, and every stage of one calculation shares that label
+([`run-identity.md`](?doc=execution/run-identity.md) § 3.2; a transport lead's
+stage is on its own stem,
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1). *Continuing is
+what the engine does when it finds state under the name it was given;*
+molbuilder puts the right file in the right place under the right name.
+
+**Launching a stage again is the same act one level down**: its next run takes
+the restart files of its own newest launched run (§ 1.6.5).
 
 ### 2.6 Who owns each level of the tree
 
-| Level | Named by | Written by | May contain |
-|---|---|---|---|
-| ① **project** | the user | nobody — it is a folder | topics, nothing else |
-| ② **topic** | the storage topics, each calculation kind's topic and `user` (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
-| ③ **calculation** | **the user** — whatever they type, `[A-Za-z0-9_-]+`. *(This row said "the run id" until 2026-08-16, contradicting § 1.1's own tree and `job-contracts.md` § 6.3, which is the cross-layer authority: the folder is not derived, and what makes it a calculation is the `task.json` inside it — `run-identity.md § 3.0`.)* | **the browser** (step 3), in one transaction | the template, `task.json`, the shared package, the history |
-| ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
-| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable**; where its stage runs per point, the container of its points' runs (§ 1.4a) |
-| — **benchmark** | `bench`, inside the stage it measures | `prep bench <stage>` | its trials, the sweep's own `job-set.json`, and `bench-result.json` — a **container** |
-| — **trial** | `bench-<knobs>` (§ 4.4) | `prep bench` (its deck + wrapper), then the engine when launched | one measured point — its attempts kept as a stage's are (§ 1.5a), each carrying its `run.json` |
+| level | folder | named by | made by | holds | `what` · role (§ 1.4a) |
+|---|---|---|---|---|---|
+| ① **project** | `<project>/` | the person | the Projects sidebar, with every topic | its topics | — |
+| ② **topic** | `<topic>/` | one of the canonical topics ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5) | made with its project | calculations (a run topic), files (a storage topic), anything (`user`) | — |
+| ③ **calculation** | `<calculation>/` | the person, `[A-Za-z0-9_-]+` | the first write of its description | the description and job request, the structure pair, `pseudos/`, prep's and summarize's records, `launch/`, the saved states, its stages | `calculation` · none, a container |
+| ④ **stage** | `<NN>_<stage>/` | the stage's token (§ 4.1) | `prep` | its deck, run script and bundles, its runs, `bench/`, a run of points' prepared folders | `stage` · container |
+| ⑤ **run** | `run-<n>/` | the next unused number (§ 4.3) | `prep` opens a stage's first; `launch` each one after | one start: copies of the stage's files, what it takes, everything it produces; a run of points' points | `attempt` · run, or container for a run of points |
+| — benchmark | `bench/`, in the stage it measures | its fixed name | `prep bench <stage>` | the benchmark's `job-set.json` and `STAGE-PLAN.md`, its trials, its `launch/`, `bench-result.json` | `benchmark` · container |
+| — trial | `bench-<point>/` | its settings (§ 4.4) | `prep bench <stage>` | its one run, `run-0/` (§ 1.5a) | `trial` · container |
 
-*(Numbering note, 2026-08-12: this table is the authority, and it gives the
-benchmark and trial rows **no circled number** — they are nested containers
-inside a stage (④), not levels of the tree. Three sections had each invented
-one — ⑤ in § 5.1, ⑥ in §§ 3 and 5, ④ in invariant 10 — three numbers for one
-unnumbered thing; all now say "the stage's `bench/` container" in words.)*
+The benchmark and the trial carry no circled number: they are containers nested
+in a stage (④), not levels of the tree.
 
-Three rules, and everything else follows:
-
-> **The browser writes level ③ and nothing else, and writes nothing that names a
-> machine. `prep` writes ④ and ⑤, and `launch` adds `run.json`. The run — the
-> engine, its wrapper and its monitor — writes the directory it was launched in,
-> once, and nothing ever writes there again.**
+> **The description is written at ③ and names no machine. `prep` writes ③'s
+> plan records, every stage folder ④ and a never-launched stage's first run ⑤.
+> `launch` fills the run it sends, opens every later run and writes its
+> `run.json`. The run — the engine, its run script and its monitor — writes the
+> folder it was started in, once.**
 
 > **Every directory in this tree is made by Python, and every file put in one is
-> a real file, never a link. The wrapper activates an environment and runs an
-> engine as its child, in a directory it was handed** (`running-a-job.md § 2.2a`;
-> naming the run's output is the one thing it lays down beside the engine —
-> invariant 6a, § 7).
-
-The engine never writes above itself — whatever a run continues from is a real
-copy put there before it starts (§ 1.6).
-
-**A benchmark gets its own directory, and that is not tidiness.** `prep bench
-<stage>` writes the stage's `bench/` container — the sweep's own
-`job-set.json`, and a deck + wrapper per trial in `bench-<point>/` — so a
-trial's inputs never sit beside the real run's, which `job-contracts.md § 2.1`
-Rule 1 forbids. *(Amended 2026-08-12: this paragraph walked
-`generate_bench_bundle` — the shipped standalone bundle writer, with its
-pseudopotential copies and `README.md` — as today's
-builder, and argued it could be pointed at `01_coarse/bench/` "with no change
-at all". The function was deleted in the fold, step 6 u5; the container it
-argued for is now simply where `prep bench` builds, and the two § 2.6 rows
-above were corrected the same day — they credited `prep --bench`, a flag that
-was never the grammar, and "the sweep script", which died with the bundle.)*
+> a real file, never a link** (invariant 6a).
 
 **Storage topics are flat and shared.** `structure/` and `pseudopotential/` hold
-files, not calculations. A calculation *points* at a structure and *copies* the
-pseudopotentials it needs into its own shared package, so it stays
-self-contained when moved to a cluster.
+files, not calculations. A calculation copies the pseudopotentials it needs into
+its own `pseudos/`, so it stays whole when moved to a cluster.
 
-#### `prep` is what puts them there, and it says so when it cannot
-
-**The copy happens at `prep`, and doing it twice costs nothing.** For each element
-the deck names, `prep` looks in the calculation's own folder first and does
-nothing if the file is already there — put there by an earlier `prep`, by
-`molbuilder describe`, or by having travelled with the folder. Only what is missing is
-copied, from the library in `pseudopotential/`.
-
-**Why `prep` and not the surface that wrote the description.** `prep` is the step
-that runs on the machine that will run the job, and *where the library lives* is a
-fact about that machine — the same class of fact as how many cores there are. It
-is also the step that already decides what the shared package contains, so putting
-the copy anywhere else would mean two places deciding one thing. And it is the
-only arrangement under which the two ways of describing a calculation — the
-browser and `molbuilder describe` — end up with identical folders, because neither of
-them has to remember to do it.
-
-**Where the library is, is said once.** `psml_lib` is a path like any other the
-user types, so it follows the anchor rule in
-[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a: absolute or `~`
-means itself, a leading `./` or `../` means *from this calculation*, and a bare
-`pseudopotential` means *the `projects/` tree this calculation lives in* —
-found by walking up from the calculation folder, so the same template works on
-the workstation that wrote it and the cluster that runs it. `prep`, the
-browser's validation and `molbuilder describe --psml-lib` all resolve it through
-that one rule; before 2026-08-21 they had three rules between them, and
-`describe` had a fourth that was simply the working directory.
-
-**A species with no pseudopotential in either place stops `prep`, by name**, before
-a deck is written: *"this calculation needs S.psml and there is none in the folder
-or in the library."* SIESTA has no search path — it opens `<label>.psml` in the
-directory it is run from and nowhere else — so a missing file is not a warning
-about a preference, it is a run that cannot start. **And when the library
-itself is not there, the refusal names the folder the spelling asked for** —
-`~/molbuilder/projects/pseudopotential`, the tree it walked up to — not a
-candidate assembled from the working directory. A user who is told the real
-place can put files in it; a user who is told
-`…/optimization/Relax/projects/pseudopotential` is being shown a folder nobody
-chose (the 2026-08-21 Sol refusal, `architecture.md` § 7 **A10**). Finding that out at `prep`, on
-the machine, costs a second; finding it out afterwards costs a queue wait and
-however long MPI takes to come up first.
-
-> **Stated 2026-08-18 (user).** The rule above — a calculation copies what it
-> needs — was already here, and nothing was said about who performs the copy. So
-> one route did it (`molbuilder describe`, while writing the folder) and the browser's
-> hand-over did not, and a calculation described in the browser reached `prep`,
-> rendered its decks, laid out its directories and reported success with no
-> pseudopotentials anywhere in it. Nothing checked: the coverage check reads the
-> *library*, where the files genuinely are, and never the folder that needs them.
-> An unowned step is one that some callers perform.
+**The copy is `prep`'s**, because `prep` is the step that decides the
+calculation's shared files, so the browser and `molbuilder describe` end with
+the same folder: it moves pseudopotentials left at the root into `pseudos/`
+(`jobset.engines.pseudo_dir`). Which files it uses and where it looks for the
+missing ones are [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a.
+A species found in neither stops `prep` by name before a deck is written: SIESTA
+opens `<species>.psml` only in the folder it runs in.
 
 ---
 
-### 2.7 Getting it back: the folder moves, and everything is inside it
+## 3. A benchmark nests in the stage it measures
 
-The documents describe moving work *to* a target — `scp -r` the calculation
-folder, prep, submit — and say nothing about the other direction. That reads like
-a gap and is not one, but it is worth a paragraph so nobody designs a mechanism
-for it.
+A benchmark measures which resources run one stage's science fastest on one
+machine — the best rank count depends on the mesh, the basis and the block size
+([`engines/tuning.md`](?doc=engines/tuning.md) § 2.11) — so it lives inside the
+stage it measures, and the next stage continues from the real run, never from a
+trial. How a stage and a trial differ, and how a benchmark is measured, are
+[`generator.md`](?doc=execution/generator.md) § 4.3a.
 
-**The calculation folder is the unit of transport, in both directions**
-(`job-contracts.md § 2.1`). Everything a run produces is written *inside* it,
-because that is the engine's whole contract — it runs in one directory and writes
-beside its inputs. So the folder that comes back holds:
+**On disk**, `<NN>_<stage>/bench/` holds:
 
-| | |
-|---|---|
-| the outputs | `<stage>/run-N/` — written where the engine ran |
-| the checkpoint history | `.git/` and `.binsnapshots/`, at the calculation root |
-| a benchmark's verdict | `<stage>/bench/bench-result.json`, inside the stage it measured |
-| the description it was run from | `task.json`, unchanged |
-
-**Copy the folder back and you have all of it.** There is no reconciliation step
-to design, because there is nothing to reconcile: the history is a directory in
-the tree, not a service somewhere.
-
-**The one thing worth saying out loud** is the ordinary consequence of that, not
-a defect: work on one copy at a time. Editing the description locally while
-preparing from the copy on the cluster gives you two folders that have genuinely
-diverged, and nothing in this design will merge them for you — the same way
-nothing merges two copies of any directory you edited twice. If you want that,
-the history is a real git repository and `fetch` is a real operation; the design
-neither requires it nor gets in its way.
-
-> **This section previously claimed a "largest gap" and listed four promises the
-> design supposedly broke across machines** (written 2026-08-07, corrected the
-> same day). Three of the four were wrong, and the fourth had already been
-> settled: the history *does* travel, because `.git` is in the folder; the
-> benchmark verdict travels for the same reason; *"prep is a hub you return
-> to"* is satisfied by returning to it over ssh, which is how people already
-> work; and *"who notices a run finished"* stopped being a question when a
-> checkpoint became an explicit act taken at the next prep
-> (`checkpointing.md § 9`). The error was treating a technical fact — two
-> copies exist — as a user problem, for a user who dispatched the job and knows
-> exactly where it ran.
-
-## 3. Two kinds of tuning, nested
-
-There are two things a user varies. They vary for different reasons, they need
-different machinery, and — this is the part that was implicit — **one nests
-inside the other.**
-
-| | **Stage** (④) — parameter tuning | **Trial** (in the stage's `bench/`) — resource tuning |
-|---|---|---|
-| What varies | the science: mesh cutoff, force tolerance, relaxation method, k-grid | the machine: GPUs, MPI ranks, cores per rank |
-| Why | to approach an answer in steps — coarse first, then tight | to find out what runs *this* science fastest *here* |
-| The deck | **its own file**, rendered from the shared settings with this stage's values substituted | the stage's science **rendered measurable** — the same resolve, with the benchmark's pins laid over (§ 3.2) |
-| Identity | shares the calculation's label, so it warm-starts from the stage before | **its own label** — relabelled per trial (`<label>-<point>`) |
-| Ordered? | **yes** — each continues the one before | **no** — trials are independent; submitted grouped per resource shelf, or singly by name (`job-system.md § 5.3`) |
-| Outcome | a result you keep | a number; the run is thrown away |
-| Produced by | `prep task`, from the template + this stage's values | `prep bench <stage>` — the same five steps, parameters as a set (§ 2.3.1a) |
-
-*(The trial column corrected 2026-08-12 with the fold: its header numbered the
-trial "⑥" — a level § 2.6's table does not define; its identity row still
-said `job-gpu` / `job-cpu`, the two-point bundle's throwaway labels; its
-"Ordered?" row said trials "can all queue at once", which the one-job-per-
-invocation submission rule had already overruled; and its producers were
-`generate_bench_bundle` + `sweep_to_jobset`, both deleted in step 6 u5.)*
-
-**Why trials nest under a stage rather than beside the calculation.** The best
-rank count depends on the science: mesh cutoff changes the grid, basis size
-changes the matrix, and `BlockSize` is bounded by **orbitals over ranks**
-([`tuning.md § 2.11`](?doc=engines/tuning.md)) — so the basis decides it as much
-as the hardware does. A coarse stage and a tight stage can genuinely want
-different resources, so the measurement belongs to the stage that was
-measured.
-
-### 3.1 Why the mechanisms differ
-
-A parameter change alters *what the engine computes*, so it has to be in the file
-the engine reads — hence a deck per stage, rendered into that stage's directory
-when it is prepared (§ 2.1). A resource change alters *how the work spreads over
-hardware*, and the scheduler takes most of that on the command line — which is
-what lets a twenty-point sweep share one rendered wrapper instead of writing
-twenty.
-
-But **not all of it**, and the exceptions below are exactly why the deck cannot
-be finished before the machine is known (§ 2.2).
-
-Four settings sit across the line, and they are the reason neither mechanism is
-*the* mechanism:
-
-| Setting | In the deck | Also decides |
-|---|---|---|
-| **GPU on/off** | yes (`Diag.ELPA.GPU`) | **the most of any item here**: the scheduler's `--gres`, which conda environment the wrapper activates (`molbuilder-siesta-gpu`, the source build), MPS, the NUMA pin and the rank/thread budget. The one item declaring `read_by = ["wrapper"]` |
-| MPI ranks | **no** | the scheduler's `-n`, the launch, and the ceiling a sensible `BlockSize` stays under (`tuning.md` § 2.11) |
-| `Diag.Algorithm` (ScaLAPACK / ELPA-1STAGE / ELPA-2STAGE) | yes | **nothing else.** It is numerics, and the packaged SIESTA carries ELPA through ELSI, so no ELPA variant needs a different build unless it is the GPU one |
-| `BlockSize` | **yes** — a tunable knob, set by you or measured by a benchmark ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | nothing else; it is pure parallel efficiency |
-
-*(The solver row read *"any ELPA variant needs the GPU build"* until 2026-08-16,
-citing `running-a-job.md` § 2.3 — which had said the opposite since 2026-08-14.
-It is kept in the table with an empty second column, because knowing that it
-decides nothing outside its deck is exactly what a reader of this table needs.)*
+- the benchmark's own `job-set.json` and `STAGE-PLAN.md`;
+- a folder per trial, `bench-<point>/`, each holding its one run, `run-0/`, with
+  its deck and run script (§ 1.5a);
+- its `launch/`, with the shelves' headers, walks and logs;
+- `bench-result.json`, once summarized (§ 5.5).
 
 ### 3.2 A trial's deck is the stage's science, made measurable
 
-A trial does **not** run the stage's deck — and it does not *edit* it either.
-Its deck is **rendered from the description like any other**, with the
-benchmark's **pins** laid over the resolved values
-(`template.md § 8.1`: rebuild and render, never splice):
-
-- **SCF capped** (3 iterations) — you are timing an iteration, not converging
-  the chemistry;
-- **relaxation steps zeroed** — a single point, not a geometry;
-- **cold start forced** (`restart: clean`);
-- **the cap made clean** (`scf_must_converge: false` — SIESTA accepts the
-  deliberately-unconverged density instead of aborting; added 2026-08-19);
-- **relabelled per trial** — the calculation's label with the point's token
-  appended: `paths.trial_label`, the one composer prep and every reader of a
-  trial's files ask.
-
-**And nothing else.** What is pinned is what makes a trial a *measurement*
-rather than a run. **What the calculation IS — the GPU, the eigensolver, the
-block size — is the description's, and the benchmark measures what was
-described.**
-
-> **Corrected 2026-08-17.** This list ended with *"the GPU eigensolver pinned
-> (`ELPA-1STAGE`, GPU on) for every trial, so the grid isolates the hardware"*,
-> and `_bench_inputs` implemented it. Two things were wrong with it.
->
-> **It overrode a decision that had already been taken elsewhere.**
-> [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2 — *"use GPU or not is set
-> up only at the Job Prep UI"* (user, 2026-08-16) — makes `use_gpu` a value
-> the person chose, and § 6.2 is equally explicit that the eigensolver is a
-> **separate** question owned by the parameter tab. Pinning both here measured
-> a configuration nobody asked to run, and *"the grid isolates the hardware"* is
-> the argument for a GPU study, not for every benchmark.
->
-> **And it made a CPU benchmark impossible.** The grid enumerated `G` from the
-> probe's GPU count, so on a machine with none the verb refused outright — while
-> `siesta.md § 7.1` says CPU is often the faster answer for a small system, and
-> § 7.2 that the packaged SIESTA runs ELPA on CPU through ELSI. The one
-> measurement that would settle *"is the GPU worth it here?"* could not be run.
->
-> **What replaced it:** the description answers, and the grid follows its
-> answer. `use_gpu = true` → the `(G, N, c)` grid, with `gres`; the
-> device count and type come from this machine's probe **or, on a
-> GPU-less login node, from the domain row's probed GPU inventory** —
-> only a machine with neither is refused by name
-> (`generator.md § 4.3a`, 2026-08-21). `use_gpu = false` → the
-> `(N, c)` grid from the same enumerator, no `gres`, no refusal. One
-> enumeration, two shapes.
-
-**The relabel and the forced cold are what make it safe to nest.** A trial that
-kept the stage's label and honoured saved state would read the stage's
-`.XV`/`.DM` and then overwrite them — a capped-iteration throwaway destroying the
-state the real run depends on. They are not artefacts of the benchmark once
-having been standalone; they are the reason it can live inside a stage's
-directory at all.
-
-> **This section walked `transform_fdf` until 2026-08-12** — the splicer that
-> derived a measurable variant by editing a *finished* deck, relabelled
-> `job-gpu` / `job-cpu`, with `SCF.MustConverge` forced off. It was deleted in
-> the fold (step 6 u5) with the two-point bundle around it. Two consequences
-> worth recording: `SCF.MustConverge` had **no schema field** until
-> 2026-08-19 (the splice used to invent the line), so every properly-capped
-> trial ended `ABNORMAL_TERMINATION`, classified incomplete, and no sweep
-> could produce a verdict — the vocabulary gap is closed
-> (`scf_must_converge`, optional, unset for ordinary work; the pins set it
-> false so a capped trial ends cleanly as the measurement it is); and the
-> closing note here — *"the manifest records the
-> source deck's hash so a stale answer can be recognised"* — died with
-> `bench-manifest.json`: nothing records a source hash today, and how a surface
-> shows a verdict whose science has since changed remains § 8's open question.
-
-### 3.3 How the levels compose
-
-```mermaid
-flowchart LR
-    D["<b>stage 02_tight</b><br/>its deck — the science"] --> T["<b>trials</b><br/>same science, made measurable<br/>bench-G1N2C5 · bench-G2N8C5 · …"]
-    T --> W["<b>a number</b><br/>G · ranks · cores · mem · walltime"]
-    W --> R["<b>the stage's real run</b><br/>its own deck, those resources"]
-    R --> N["<b>stage 03</b><br/>continues from it"]
-```
-
-You measure per stage, when the science changes enough to matter. You keep the
-answer in the stage directory. The real run then uses it, and the next stage
-continues from the real run's state — never from a trial's.
+A trial's deck is the stage's, rendered with the benchmark's pins over it — the
+SCF capped, no relaxation steps, a clean start, `scf_must_converge` false so a
+capped SCF ends as the measurement it is (`template.TRIAL_PINS`) — and
+relabelled `<label>-<point>` (`paths.trial_label`), so it can neither read nor
+overwrite the stage's restart files. The pins, and why they make the nesting
+safe, are [`generator.md`](?doc=execution/generator.md) § 4.2 and § 4.3a.
 
 ---
 
 ## 4. Naming, and why the two levels name differently
 
-> **Every form in this section is tabulated once, for all layers, in
-> [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3** — including the
-> four separators and what each one means. This section explains *why* the two
-> levels differ; that table is what other layers copy from, and it wins if the
-> two ever disagree.
->
-> **And a run FILE's name is not written by hand at all.** `runfiles` composes
-> and parses it — see § 2.2a's *"Which door to call"* and rule **A14**. This
-> section is for understanding the shape; that one is what you call.
+Every naming rule is [`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 6.3, which wins if anything here disagrees, and a run file's name is composed
+and parsed by `runfiles`
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a). This section
+keeps the folder rules this chapter owns.
 
-### 4.1 A stage is identified by its name; a stage *directory* also carries a number
+> **Ordered levels carry position; unordered levels carry settings.** A stage
+> folder is `01_coarse` because stages form a sequence somebody designed: its
+> number orders a listing in the order the work happens. A run is `run-0`,
+> unpadded, because it counts launches that happened. A trial is
+> `bench-G1N4C6` because a sweep has no order: its name says what was tried,
+> which is what lets `summarize` map a folder back to its point. Whatever names
+> a folder knows which kind of level it names, because a set of jobs is ordered
+> or it is not.
 
-**A stage has exactly one identifier: its `name`** — what the user typed
-(`coarse`, `tight`), unique within the calculation, matching `[A-Za-z0-9_]+`.
-`engines/stages.md § 2` says a stage has *"three fields, and no others"* — name,
-enabled, overrides — and that is right.
+### 4.1 A stage is identified by its name; its folder carries a number
 
-**`seq` is not a fourth field.** It is the ordinal of a stage **directory**,
-assigned by the produce that creates it so a listing sorts in the order the work
-happens. It is read off the directory name and stored nowhere else — the
-description does not carry it, and nothing needs it to identify a stage.
-
-The produce assigns it by reading what is already there — the stage
-directories' names — so `Stage` keeps the fields § 2 allows and `seq` is
-still not a fourth.
-
-That division is why nothing else needs the number, and § 4.1's table below is
-short as a result.
-
-**One rule decides every name below: who names the file decides whether it
-carries the stage** (`job-contracts.md § 6.3`). molbuilder's own files say which
-stage they belong to; the engine's cannot, because SIESTA gives no choice.
-
-| Where | name |
-|---|---|
-| stage directory | `<seq>_<name>` — `01_coarse`, `02_tight` |
-| deck | `<label>_<NN>_<name>.fdf` **inside `<NN>_<name>/`** — the same token, and the repetition is a self-check |
-| trajectory log | `<label>_<NN>_<name>.molwatch.log`, in the run — seeded beside the deck and moved in (§ 1.0, § 1.6.2) |
-| warm files | `<label>.XV` `.DM` `.CG` — bare, inside the run |
-
-**The log is named for the deck that produced it** — so it needs no convention
-of its own, and it lands wherever the deck's name is already correct.
-
-*The checkpoint-tag row was removed 2026-08-09.* It gave a derived form,
-`<id>/<name>/<UTC>`, which `checkpointing.md` **L4** retired — *nothing tags a
-state on your behalf*. A tag is typed by a person, so there is no shape for this
-table to specify.
-
-**The deck repeats its stage** (decision 21, 2026-08-08, user): *"That's
-precisely a self-checking to make sure no mixing."* Without the repetition
-every stage directory holds an identically-named deck and a swap disagrees
-with nothing. `job-contracts.md § 6.3`'s *a name says what its location does
-not* is a rule about **noise**, and a mix-up check is not noise. **And the
-stem is `<label>`, not `<id>`** (decision 26, 2026-08-09, user): the id
-carries the formula and lives in `task.json`; the label is the `SystemLabel`
-(`run-identity.md § 2.0a`).
-
-**The deck carries the number too** — *decided 2026-08-10 (user)*: *"we may
-have many stages connected so I'd rather use names with index number."*
-
-This section read *"the deck does not carry the number: names are unique, so it
-would add nothing"* until then, and the flaw is in that "nothing". **Unique is
-not ordered.** With three stages the list order is memorable; with eight,
-`bdt_au_coarse` · `bdt_au_final` · `bdt_au_hires` · `bdt_au_refine` sorts
-alphabetically into an order nothing ran in, wherever a file is read away from
-its directory. The ordinal is safe in a name because § 4.2 assigns
-it once and never reassigns it — see `engines/stages.md` R5's table, which draws
-the line between an assigned ordinal and a list position.
-
-> *(Superseded 2026-08-10 by the paragraph above — every file of a stage
-> carries the whole token, number and name; the note is kept for the
-> disagreement it records.)*
->
-> **`seq` orders; `name` identifies — and only one of them belongs in a file.**
-> The stage directory is the single place both appear, because a directory
-> listing is the one view where *order* is what you want to see. Everywhere else
-> — deck, stdout, trajectory log — keys on the **name**, so every artifact of a
-> stage can be read back to that stage without opening the description to look a
-> number up.
->
-> This corrects a real disagreement between the contracts (found 2026-08-07):
-> this table used to give the log as `<id>-stage<seq>`, adopted from the shipped
-> convention, while `stages.md § 7.3` says the naming *"has to key on the name"*
-> and `stages.md § 7` said the question was still open. Three positions on one
-> question. The name wins for the reason above, and it wins on subtraction — one
-> convention replaces two.
+A stage has one identifier: its `name`, what the person typed, unique in the
+calculation. Its folder is `<NN>_<name>`; the number orders a listing and is read
+back off the folder name — the description does not carry it, and nothing needs
+it to identify a stage. A sweep's trial has no number at all.
 
 ### 4.2 Numbers are assigned once — stages append
 
-**A `seq` is never changed, so a stage can only be added at the end.**
+**A stage's number is never changed, so a stage can only be added at the end.**
+Once stage 2 has run, *insert something between 1 and 2* is not an insertion: it
+is a new stage that runs from where stage 2 left off, and numbering it `03` is
+the truth. Before anything is produced, reordering is free.
 
-That is not a restriction imposed here; it is what the calculation already is.
-Each stage continues from the state the one before it left. Once stage 2 has run,
-"insert something between 1 and 2" is not an insertion — it is a new stage that
-happens to be coarser, and it runs from where stage 2 left off. Numbering it `03`
-is the truth.
+**One door numbers them** (`naming.stage_home`): a stage that has files keeps the
+number its folder carries (`paths.stages_in`); a stage that has none takes its
+place in the description when no folder holds that number, else the next number
+after every one in use. So with nothing produced the numbers are the
+description's order; a stage removed after its prep leaves every later stage
+where it was; a stage added after production takes the next number however early
+it sits in the description. Every reader asks the door — prep, `#N`, status,
+launch, continuation, the transport rungs, the Task setup plan.
 
-Before anything has run, reordering is free: numbers are assigned when the
-directories are produced, not when the rows are typed.
+**Gaps are honest.** A stage is in the description or it is not. Removing one
+that left files leaves them where they are and its number taken: `tight` stays
+`03_tight`, and a stage added later takes `04`. Nothing lists, prepares, launches
+or continues from a stage the description no longer holds; to have it back,
+restore the state saved before it was removed
+([`checkpointing.md`](?doc=execution/checkpointing.md) § 7). Renaming a stage
+that has run makes a different stage, which takes the next number
+([`engines/stages.md`](?doc=engines/stages.md) § 7.3).
 
-**One door reads them, and its rule is this** *(W38 F4, built 2026-10-03 —
-`naming.stage_home`, `execution/architecture.md` § 3.2)*: a stage that
-has files keeps the number its directory carries (`paths.stages_in`); a
-stage that has
-none takes its place in the description when no folder holds that number,
-else the next number after every one in use. So with nothing produced the
-numbers are the description's order; a stage removed after its prep leaves
-every later stage where it was (`#2` is still `02_medium`); a stage added
-after production takes the next number however early it sits in the
-description. Every reader asks the door — prep, `#N`, status, launch,
-continuation, the transport rungs, the Task setup plan. *(Every one counted
-the stage's place in the description until then, so a removal renumbered
-the stages after it: status read `02_tight` for a job in `03_tight` and
-called it not prepared.)*
+### 4.3 A run is numbered, and the number is not padded
 
-**Gaps are honest** *(W38 F5, 2026-09-27; user, 2026-10-07: "we practically
-can always use checkpoint")*. A stage has no on/off switch: it is in the
-description or it is not. Removing one that left files leaves them where they
-are, untouched, and its number stays taken: the stage-number door reads the
-disk, so `tight` stays `03_tight` and a stage added later takes `04`. Nothing
-lists, preps, launches or continues from a stage the description no longer
-holds. To have it back, restore the state saved before it was removed
-([`checkpointing.md`](?doc=execution/checkpointing.md)).
-
-**Renaming is not a rename** — a stage's name is its identity, so renaming one
-that has run is creating a different stage. The rule and its reasoning are
-[`stages.md § 7.3`](?doc=engines/stages.md) R5, because a name is a property of a
-stage rather than of the tree; what this contract adds is only the consequence
-for numbering, which is that the new stage takes the next `seq` like any other.
-
-### 4.3 An attempt is numbered, and the number is not padded
-
-`run-0`, `run-1`, `run-2`. Deliberately **unpadded**, where a stage is
-`01_coarse` — the two are different kinds of thing and the difference is worth
-seeing:
-
-- a **stage** number orders a sequence somebody designed, so it pads and sorts;
-- an **attempt** number counts launches that happened — each one start of
-  its run script (§ 1.6.1).
-
-Attempts are assigned **in Python, by the one opener** (§ 1.6.2): `prep`
-opens a stage's first, and `launch` the next each time a launched stage is sent
-again (`submit.py` → `materialize.prepare_attempt`) — the next unused number,
-never reused. There is no `--force` to reset them (§ 1.5).
-
-**`run-` is a reserved prefix and its members are numbers, full stop.** A
-`run-latest` pointer was considered and dropped: with each stage set up
-separately, you name the run you continue from, so nothing needs a symlink to
-guess it for you.
+`run-0`, `run-1`, `run-2`: the next unused number, assigned in Python by the one
+opener (§ 1.6.2), never reused and never reset. `run-` is a reserved prefix and
+its members are numbers; no `run-latest` pointer exists — you name the run you
+continue from, or the launch says which one it takes.
 
 ### 4.4 Trials name themselves by their settings
 
-A sweep has no order — no trial follows another — so the name carries **what was
-tried**: `bench-G<gpus>N<ranks>C<cores-per-rank>` — `N` the ranks in all — which is what lets
-`summarize` map a directory back to its point.
+A trial's folder is `bench-G<gpus>N<ranks>C<cores-per-rank>` — `N` the ranks in
+all, `G0` a CPU trial — with any value axes appended. The token is built by
+`resolve.point_token` alone; its rules (no inner separator, a string value names
+itself, a label past 48 characters refused because SIESTA cuts label-derived
+names near 50) are [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3.
 
-**A name repeats nothing its data already states** *(L4, roadmap 7.10;
-2026-08-24)*. Three rules keep a trial's name short enough to survive SIESTA
-whole (`resolve.point_token`):
+### 4.5 Every name that is composed is also found — one module, `paths`
 
-- a **rider the coordinate already encodes is dropped** — `G0` *is*
-  `use_gpu=False`, so the name never spells both;
-- a **string value names itself** — `ELPA1STAGE` needs no `diag_algorithm`
-  prefix; a numeric or boolean value keeps its axis name (`block_size16`),
-  because a bare `16` in a listing names nothing;
-- the label is **refused past 48 characters**, never truncated: SIESTA
-  silently cuts label-derived filenames at ~50, which merged two real
-  trials' identities (`…ELPA1STAGE`/`…ELPA2STAGE` differ only past the
-  cut).  The full coordinate lives untouched in the trial's `point` data.
+> **For every name it composes, the framework owns the search.** A door that can
+> build `<NN>_<stage>/bench` also answers *where are the benchmarks in this
+> calculation*, so no caller spells a pattern.
 
-The **shape** is `G<g>N<n>C<c>` — GPUs, ranks in all, cores per rank — and
-the **prefix** is `bench-`: `point` is grid vocabulary — it names nothing a person
-would recognise in a directory listing — while `bench-` says what the directory
-belongs to. It is a rename with a parser cost, taken because the alternative is
-two names for one idea across layers (`job-contracts.md § 6.3`).
-
-> **Ordered levels carry position; unordered levels carry settings.** One naming
-> rule each, matching what the level actually is.
-
-**Whatever names a directory must therefore know which kind of level it is
-naming** — and it always does, because a set of jobs is either ordered or it is
-not, and that is a property of the set rather than something to infer per
-directory. *(How that reaches the code is scheduling, not contract:
-[`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md)
-item 12b.)*
-
----
-
-### 4.5 Every name that is composed is also FOUND — one module, `paths` *(agreed 2026-09-08)*
-
-**The rule.**
-
-> **For every name it composes, the framework owns the search.** A door that
-> can build `<NN>_<stage>/bench` answers *where are the bench containers in
-> this bundle* without the caller spelling a pattern.
-
-**Why it is a rule and not an obvious courtesy.** Measured by
-`tools/classify_path_finders.py` on 2026-09-08: of 72 path searches under
-`molbuilder/`, **22 looked for a name one of our own doors composes**, and
-three were finders. So a caller holding a bundle and a question — *is there a
-sweep in here, which attempts exist, what did this run write* — had nowhere to
-ask and spelled a glob, and the layout rule gained a site each time. Two of
-those sites spelled the SAME pattern, in `materialize` and again in
-`summarize`, for a name whose one home was `runfiles` — which they bypassed
-because it offered no reader.
-
-**The rule is not obeyed by intention, it is obeyed because the door can answer.**
-Every one of those sites had a reason, and in three of them the reason was that
-the door genuinely could not:
-
-- `summarize._wrapper_log` kept a glob for the session log because its row
-  in `runfiles.WRITTEN` was a FAMILY rather than a name, and `find` compared a
-  role by equality, so it could never answer for a patterned one. A role with
-  a varying part declares it as a field (`runfiles.FIELDS`), which `find`
-  maps back to the role's template before it compares; the session log is
-  one name per run, `<stem>.runwrap.log` (§ 1.6.1), which the run door
-  answers (`Run.session_log`).
-- `transport/compose` held four hand-written copies of `.molstruct.json`
-  because the sidecar suffix had a composer (`sidecars.molstruct.sidecar_path_for`)
-  and no public name and no finder. `SUFFIX`, `sidecars_in` and `is_sidecar`
-  are that gap closed.
-- `runfiles.find` iterated `iterdir()` and checked nothing, while its own
-  docstring said *our FILES* and its sibling `find_by_role` did check. Two
-  halves of one door disagreeing is the same defect one level in.
-
-**A migration is not mechanical, and where the answer changed it changed on
-purpose.** Moving `runstatus._stage_state` onto the grammar nearly broke it:
-narrowing the existence check from the glob's `*.out` / `*.log` to the exact
-roles `.out` and `.log` loses `.pyscf.log`, *"the same, for PySCF under the
-wrapper — it writes here and not to `.out`"* — so a finished PySCF rung would
-have answered **queued**, which is § 1.6's one forbidden line. The check asks
-for the role families for that reason, and
-`tests/test_path_framework_doors.py` holds the case.
-
-#### What is NOT ours, and why that is part of the rule
-
-The rule says *for every name **it composes***, and that boundary is load-bearing.
-`job-contracts.md` § 4.2 is explicit that what an ENGINE writes cannot be
-enumerated — *"an engine's output set depends on its version and on which
-options are on, so enumerating THAT is a snapshot pretending to be a rule"* —
-which is why `runfiles.WRITTEN` stops where our own writing stops, and why
-`find_by_role` **refuses** a role outside it rather than answering emptily.
-
-So these searches have no door and must not grow one:
-
-| the search | whose name it is |
-|---|---|
-| `*.XV`, `*{suffix}` from `warmfiles.warm_list`; an engine's scratch, `*.TSGFL` / `*.TSGFR` / `*.contrib.EPSIMG` from `warmfiles.scratch_families`, each name asked of `warmfiles.is_scratch` | SIESTA's restart state and its scratch. The vocabulary already comes from one home (`<engine>/warm-files.toml`, `job-contracts.md` § 4.2a); only the loop is local |
-| `*_geom_optim.xyz` | geomeTRIC's, via the declared `runfiles.ROLE_GEOM_TRAJ`. It cannot go through `find_by_role` and that refusal is the grammar's own rule: without a label, a trailing `_geom_optim.xyz` cannot be told from a stage token named `..._geom_optim` with `.xyz` as the role |
-| conda-meta's `*.json` | conda's |
-
-Where the path-finder survey (`tools/classify_path_finders.py`) meets one of
-these searches, its `_OVERRIDES` entry carries the reason someone wrote after
-reading the site — and an entry that matches no site is itself a failure, so
-an exemption cannot quietly outlive the code it excused.
-
-#### What `paths` owns
-
-`molbuilder/paths.py` — **L1, and stdlib-only.** It travels beside a SIESTA
-vibration's calls in `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`) and
-runs under the JOB's python with no molbuilder installed. A path module
-that a running job cannot import is a path module the job works around.
+A caller that globs for one of molbuilder's names is a second home for the
+layout rule, and two such sites drift apart. So every folder name has its door;
+a file's name, the files in a folder and a run's files are `runfiles` and the run
+door ([`architecture.md`](?doc=execution/architecture.md) § 3.2):
 
 | question | door |
 |---|---|
-| what is this file called? | `runfiles.compose` / `parse` / `stem` / `tail` — § 2.2a still owns the grammar |
-| which files here match? | `runfiles.find`, `find_by_role` |
-| which run is this file of, and where are its files? | the run door, `run_of` → `Run` (`architecture.md` § 3.2) |
-| where does this stage live? | its token's folder, `<NN>_<stage>/` — `naming.stage_home` |
-| which stage directories exist? | `stages_in`; a run's files, by its stem (`runfiles.stem`) |
-| where does a sweep live? | `bench_container`, `bench_containers_in` |
-| where does a trial run? | `trial_name`, `trial_point`; `naming.trial_dir` — its run, `run-0` in it (§ 1.5a), read by `materialize.latest_attempt` |
-| what is a trial's label? | `trial_label` (§ 2.3.2) |
-| which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt`; the run a path a record names lies in, `run_folder_of` — a folder on disk asks `calcdirs.where` (§ 1.4a) |
+| where is this folder in its calculation? | `calcdirs.where` (§ 1.4a) |
+| where does this stage live? | `naming.stage_home` — its token's folder, `<NN>_<stage>/` |
+| which stage folders exist? | `paths.stages_in` |
+| where does a benchmark live? | `paths.bench_container`, `bench_containers_in` |
+| where does a trial run? | `paths.trial_name`, `trial_point`; `naming.trial_dir`; its run, `materialize.latest_attempt` (§ 1.5a) |
+| what is a trial's label? | `paths.trial_label` |
+| which runs exist? | `paths.attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `newest_launched`, `resolve_attempt`; the run a path a record names lies in, `paths.run_folder_of` |
+| a run of points' folders | `calcdirs.RunPlace` ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4) |
 
-*(This table named `paths.path_for`, `sweep_set_dirs`, `attempts` and a
-`trial_dir` in `paths` until 2026-10-04 — doors designed on 2026-09-08 that
-were built under the names above or not at all; a file's whole path is now
-the run door's, `Run.file(role)`.)*
+**What `paths` must never do**: read `task.json` — it is stdlib-only and travels
+beside a job (`mb_vibration.pyz`), so callers pass what they read from the
+description; and answer a question about content — *how is the run doing* is
+`parse.dirs.job.run_status`
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2).
 
-`runfiles` keeps the filename grammar it already owns correctly and is
-imported by `paths`, L1 to L1. The JobSet-level names are `jobset/naming.py`'s
-(floor 3), which `materialize` asks as it lays the tree out.
-`identity.stage_token` stays the one speller of `<NN>_<name>`.
+**What is not ours has no door.** An engine's output depends on its version and
+its options, so `runfiles` stops where molbuilder's own writing stops, and
+`find_by_role` refuses a role outside it. SIESTA's restart files and scratch are
+found by the engine vocabulary (`warmfiles.warm_list`, `warmfiles.is_scratch`;
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a). How a violation
+is caught — the path-finder survey, `tools/classify_path_finders.py --check`,
+run at each milestone review — is
+[`process/code-audit.md`](?doc=process/code-audit.md) § 1c.
 
-#### What it must never do
-
-- **Never read `task.json`.** A door that reads the description is not
-  stdlib-only and cannot travel with a job. Callers that have a description
-  pass what they read from it.
-- **Never answer a question about CONTENT.** *What is in this directory, and
-  how is the run doing* is `parse.dirs.job.run_status`
-  (`running-a-job.md` § 4.2).
-  `paths` says where to look; the reader says what is there.
-
-#### How a violation is noticed
-
-`tools/classify_path_finders.py` — a search that spells one of our names lands
-in its `owned` bucket. Its verdicts are keyed by `(file, function, pattern)`
-and never by line, because reasons keyed to line numbers come unanchored the
-first time anything above them is edited (`plans/plan.md` § 5h).
-
-**The bucket is kept empty by review.** `tools/classify_path_finders.py
---check` exits non-zero on any `owned` or `unclassified` site and on any
-exemption that no longer matches one, and it is run at each milestone review
-(`process/code-audit.md` § 1c (f)). An exemption may only assign a
-non-failing verdict — otherwise any site could be silenced with
-`("owned - ...", "later")` and the check would go green while the code got
-worse. *(It ran as `tests/test_path_framework.py` until 2026-10-16: a scan of
-the package's own source, which `process/testing.md` § 3a leaves to review.
-What a run can show — each finder's answer — is `tests/test_path_framework_doors.py`.)*
-
-#### The rule has two halves, and the second one has its own check
-
-**A duplicate COMPOSER performs no search, so nothing above can see it.** That
-is how the run record's conclusion reader (`runrecord.ending` now) came to spell
-the conclusion marker's name on the line *after* asking `runfiles` for its
-counter, and how `submit.py` built
-`f"{names[j]}/run-{n}"` and handed it to `prepare_attempt` as the attempt to
-continue **from** — a real path on the live continue-a-run route, not a message.
-Both were found on 2026-09-08 by reading the search migration's own diff.
-
-`classify_path_finders.compositions()` is that half, and it is **narrow on
-purpose**. Matching *a string that ends in a catalogued role* finds 35 sites of
-which two are real — `.clone.log`, `serve-<port>.log` and
-`jobset-decisions.log` all end in `.log` and belong to other grammars — and a
-check with 33 exemptions is a nag list, not a guard. So it matches the two
-fragments that carry **rules** rather than just a spelling:
-
-| fragment | rule it carries | its one composer |
-|---|---|---|
-| `run-<N>` | § 1.5: the attempt directory | `paths.attempt_name(n)` |
-
-It is keyed on a **number**, which is what makes a hand-built one dangerous:
-an off-by-one or a renamed prefix reaches disk silently. Everything else about a
-name is the role, and the role is already guarded by `WRITTEN` and
-`find_by_role`. `runfiles.py` and `paths.py` are exempt **by identity, not by
-override** — they are the composers, not sites someone read and excused.
-
-**What neither half can see, and this is a limit rather than a caveat:** a name
-spelled inside a script molbuilder *emits* — template **text** for a script
-that ships beside a job, data here and code there, which no AST pass over
-`molbuilder/` reaches. The door is within its reach: `runfiles` travels beside
-every job inside `mb_monitor.pyz` (`runwrap.MONITOR_COMPANIONS`,
-`run-reports.md` § 2.3), so a script beside a job reaches it by putting that
-file on its path — as `siesta/makov_payne.py`'s does: it reads its run's
-output by name (`runrecord.run_output`) and with SIESTA's one reading pass,
-both from that bundle, and spells no name of its own.
-
-**The two composers once listed here are closed** *(plan N6, 2026-09-18;
-marked here 2026-09-29)*:
-
-- `submit.py`'s group launcher — `<container>/launch/<name>.run.sh` and
-  `.sbatch` — is **not a defect**: `launch/` holds the group's own machinery
-  beside the trial directories so it is not mixed among them, a decision
-  recorded at `submit.py` (roadmap 7.10, user 2026-08-24).
-- `web/blueprints/files.py`'s own `_SIDECAR_SUFFIX` and `sidecar_path_for` are
-  deleted; it asks `sidecars.molstruct.sidecar_path_for`, the module that owns
-  the pairing.
-
-#### Where the survey does not look
-
-The survey covers `molbuilder/`, not `tests/`. That is deliberate: a test that
-located our files through the door would be asserting that the door agrees with
-itself. A test spells the name because the literal IS the independent check on
-the grammar.
+---
 
 ## 5. The manifest — every file in a calculation, who writes it, and the one door that reads it
 
-**The rule.** Every file molbuilder writes into a calculation folder has one
-row here — its name, where it sits, what it is for, who writes it
-and when, and **its door: the one function every reader asks for it.** A reader
-that needs one of these files asks its door. Spelling its name again, globbing
-for it or reading it raw is a second reader of one fact (`architecture.md`
-§ 3.2, rule A14; § 4.5 above). A door of *none* means a person reads the file
-and no code does.
+**The rule.** Every file molbuilder writes into a calculation folder has one row
+here — its name, where it sits, what it is for, who writes it and when, and
+**its door: the one function every reader asks for it.** A reader asks the door;
+spelling the name again, globbing for it or reading it raw is a second reader of
+one fact ([`architecture.md`](?doc=execution/architecture.md) § 3.2, rule A14;
+§ 4.5). A door of *none* means a person reads the file and no code does.
 
-**One source.** The rows of § 5.1–§ 5.3, § 5.5 and § 5.6 are
-`runfiles.WRITTEN`'s — the catalogue of every file molbuilder writes into a
-calculation folder (`job-contracts.md` § 2.2) — rendered here by
-`tools/manifest.py` (`python -m tools.manifest`): **a row is edited in the
-catalogue, never in this document** *(user, 2026-10-04)*. The same rows
-answer the Task setup card (`manifest`) and the Results tab's file card
-(`about`, `web/results.md` § 3b). § 5.4 is not ours to catalogue — an engine's
-output set is the engine's — and is written here by hand.
+**One source.** The rows of § 5.1–§ 5.3, § 5.5 and § 5.6 are `runfiles.WRITTEN`'s
+— the catalogue of every file molbuilder writes into a calculation folder
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2) — rendered here by
+`python -m tools.manifest`: **a row is edited in the catalogue, never in this
+document** *(user, 2026-10-04)*; `python -m tools.manifest --check` fails when
+the two differ. The same rows answer the Task setup card and the Results tab's
+file card ([`web/results.md`](?doc=web/results.md) § 3b). § 5.4 is not ours to
+catalogue — an engine's output set is the engine's — and is written by hand.
 
 **Names.** A run file is `<label>[_<stage>]<role>`, composed by
 `runfiles.compose` and read back by `runfiles.parse` with its run's label
-(`job-contracts.md` § 2.2a), which the run door reads from the description
-(`architecture.md` § 3.2). `<label>` is
-`task.label` (the `SystemLabel` / `JOB`); `<base>` is `<label>_<NN>_<stage>`,
-the deck's stem; `<El>` an element.
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a). `<label>` is
+`task.label` (the `SystemLabel` / `JOB`); `<base>` is `<label>_<NN>_<stage>`, the
+deck's stem; `<El>` an element.
 
-**Kinds** — what losing the file costs (§ 5.7): **source**, nothing else can
-rebuild it; **input**, copied in as it was; **derived**, rendered by `prep` —
-again while the stage is never launched, and for a launched one's change of
-its job request, as the same calculation (`job-request.md` § 5); **record**, what a verb
+**Kinds** — what losing the file costs: **source**, nothing else can rebuild it;
+**input**, copied in as it was; **derived**, rendered by `prep`, again while its
+stage is never launched and for a launched one's change of its job request
+([`job-request.md`](?doc=execution/job-request.md) § 5); **record**, what a verb
 or a run said about itself; **result**, what a run produced.
 
 ### 5.1 The calculation root
 
-An order record lives in its deck's ATOM-METADATA block
-and in a remapped pair's sidecar, never a file of its own
-(`model/overview.md` § 2.2a, I5 and I7).
+An atom-order record lives in its deck's ATOM-METADATA block and in a remapped
+pair's sidecar, never in a file of its own
+([`model/overview.md`](?doc=model/overview.md) § 2.2a).
 
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
@@ -2604,8 +1198,8 @@ and in a remapped pair's sidecar, never a file of its own
 
 ### 5.3 A run
 
-`<NN>_<stage>/run-<n>/` — prep opens the first, launch each one after it —
-with a copy of each stage file it reads.
+`<NN>_<stage>/run-<n>/` — prep opens the first, launch each one after it — with
+a copy of each stage file it reads.
 
 <!-- manifest:run -->
 | file | what it is for | written by | the door | kind |
@@ -2645,32 +1239,31 @@ with a copy of each stage file it reads.
 ### 5.4 What the engines write
 
 None of these is ours to name. SIESTA names its files by `SystemLabel`, so they
-carry no stage — one set in each run, its history among them (below). PySCF writes nothing its deck
-does not name (§ 5.3).
+carry no stage — one set in each run, its history among them. PySCF writes
+nothing its deck does not name (§ 5.3).
 
 | | SIESTA's files | the door |
 |---|---|---|
 | **read** | `<label>.XV` | the registry's `SiestaXVFileParser` (`read_xv_with_cell`) — the Results tab, the transport citation, `xv2xyz` |
-| | `<label>.xyz` | `StructureCodec.load`, the box from the run's own deck (`runs.declared`, `model/structure-periodicity.md` § 6.0) |
+| | `<label>.xyz` | `StructureCodec.load`, the box from the run's own deck (`runs.declared`, [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) |
 | | `fdf.<stamp>.log` | the run record's setup, paired with the `.out` by its stamp (`parse.dirs.record`) |
 | | `<label>.ORB_INDX` | the transport record's PDOS, at the device point the transmission gathered (`transport.record`, through the run door's `Run.on_label`) |
-| | every row of `siesta/warm-files.toml` | for presence only: the run script's banner, and which engine a folder holds |
-| **carried** | `.XV .DM`; `.CG` between stages of one optimizer | `warmfiles.warm_list` (§ 5.3) |
-| **the run's history** | `<label>.MD.nc` `.MD` `.MDE` `.ANI` — SIESTA's own names, the run's alone: no hand-over copies a history into a new run (§ 5.3) | the registry's readers, with the run's output |
-| **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending`), `MESSAGES`, `<El>.ion`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS`, `.BONDS_FINAL`, `.EIG`, `.FA`, `.FAC`, `.HSX`, `.KP`, `.MD_CAR`, `.STRUCT_NEXT_ITER`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | ⚠ `.BONDS` is spelled `.Bonds` in `siesta/warm-files.toml` (D26) |
-| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias sweep; a transmission point's `<label>.TBT.nc` and its k-averaged text files (`.TBT.AVTRANS_<pair>`, `.AVTEIG_<pair>`, `.AVDOS`, `.AVADOS_<lead>`, `.AVBDOS_<lead>`) | the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e), for `transport.record` — a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files too: both channels, summed, each spin's total and eigenchannels kept beside (`tbtnc.point_dos`) |
-| **the engine's scratch** | the device's leads' surface Green's functions, `<NN>_device/run-<n>/tsgf/<label>.<v>.TSGFL` and `.TSGFR` — recomputed by every run, never carried, never taken over, emptied by the walk as each round begins and when it ends; in neither store of the saved history, removed by a restore (§ 6) | `warmfiles.is_scratch` — what is scratch, the one answer, over `scratch_families()`, the families every engine's shipped vocabulary names; `materialize.scratch_in` and `runstatus.scratch_answer` — `jobset scratch`, which lists them, says which a run still going keeps, and with `--empty` removes the rest; `transport.gf_files.status_line` — the device row of `jobset status` (`job-contracts.md` § 4.2a, `engines/transport.md` § 2a.11) |
+| | `<label>.FC` *(vibration)* | the force constants, read by the job's finish (`parse.engines.siesta_fc`; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
+| | `<label>.EPSIMG` *(an optical call)* | the call's dielectric function, read by the job's Raman step (`parse.engines.siesta_epsimg`; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |
+| | every row of `siesta/warm-files.toml` — `.XV`, `.DM`, `.LWF`, `.ZM`, `.BONDS`, `.PARTIAL`, `.EIG`, `.HSX`, `.WFSX`, `.STRUCT_NEXT_ITER`; `.CG`; `.TSHS`, `.TSDE`; `.FC`, `.FCC`; `.EPSIMG` | for presence: which engine a folder holds (`parse.contract.engine_of`), and the run script's restart line |
+| **carried** | `.XV`, `.DM`; `.CG` between stages of one optimiser; a device's `.TSDE` when it continues | `warmfiles.warm_list` (§ 2.3.4) |
+| **the run's history** | `<label>.MD.nc`, `.MD`, `.MDE`, `.ANI` — SIESTA's own names, the run's alone: no hand-over copies a history into a new run | the registry's readers, with the run's output |
+| **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending` reads the marker), `MESSAGES`, `<El>.ion`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS_FINAL`, `.FA`, `.FAC`, `.KP`, `.MD_CAR`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | — |
+| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (`transport.stages`) — never carried by a continuation; the device's `<label>.TSDE`, handed along a bias sweep from point to point (the transport section's `along`); a transmission point's `<label>.TBT.nc` and its k-averaged text files (`.TBT.AVTRANS_<pair>`, `.AVTEIG_<pair>`, `.AVDOS`, `.AVADOS_<lead>`, `.AVBDOS_<lead>`) | the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e), for `transport.record` — a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files too |
+| **the engine's scratch** | the device's leads' surface Green's functions, `<NN>_device/run-<n>/tsgf/<label>.<v>.TSGFL` and `.TSGFR` — recomputed by every run, emptied by the walk as each round begins and when it ends; an optical call's `<label>.contrib.EPSIMG`, beside the call's own files. Each is never carried and never taken over, in neither store of the saved history, and removed by a restore ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11, S1) | `warmfiles.is_scratch`, the one answer; `materialize.scratch_in` and `runstatus.scratch_answer` — `jobset scratch`, which lists them and with `--empty` removes what no running run keeps; `transport.gf_files.status_line`, the device row of `jobset status` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
 
 ### 5.5 Benchmarks and launch groups
 
-A stage's benchmark is a container — `<NN>_<stage>/bench/` — holding the sweep's own `job-set.json`
-and `STAGE-PLAN.md` (§ 5.1's rows) and a folder per trial, `bench-<point>/`,
-whose attempts are kept as a stage's (§ 1.5a). A swept transport rung is the
-other way round: its points are folders inside each run,
-`<NN>_<rung>/run-<n>/v<V>/`, prep's decks at `<NN>_<rung>/v<V>/` copied into
-every run (`engines/transport.md` § 2a.11). Their files are § 5.2's and
-§ 5.3's — a trial's named on its own label, `<label>-<point>`. What is the
-benchmark's alone:
+A stage's benchmark is a container, `<NN>_<stage>/bench/`, holding the
+benchmark's own `job-set.json` and `STAGE-PLAN.md` (§ 5.1's rows) and a folder
+per trial, `bench-<point>/`, whose run is kept as a stage's (§ 1.5a). A trial's
+files are § 5.2's and § 5.3's, named on its own label, `<label>-<point>`. What is
+the benchmark's alone:
 
 <!-- manifest:bench -->
 | file | what it is for | written by | the door | kind |
@@ -2678,15 +1271,11 @@ benchmark's alone:
 | `bench-result.json` | every trial's timing and the winner — the benchmark's archival trace | `jobset summarize` (`run_summarize_jobset`) | none | record |
 <!-- /manifest -->
 
-A grouped launch — a benchmark's trials, a swept rung's points (each a frame
-and a voltage, `transport.md` § 2a.11), a task's stages sharing one job, or a
-task's groups launched one after another in one job (a sequence,
-`job-system.md` § 6.0), in order — keeps its machinery in a `launch/` folder:
-`<stage>/launch/` for a sweep (its walk beside its `.log`), the container's
-`launch/` for a group of stages and for a sequence of groups, and the
-benchmark's container for its trials; `run.json`'s command names the walk
-relative to that folder — a run a sequence's group sent, the sequence's own
-(its job's line):
+A grouped launch keeps its machinery in a `launch/` folder, apart from every run
+it starts: the calculation's `launch/` for a group of stages and for a sequence
+of groups, the stage's `launch/` for a run of points' walk, and the benchmark's
+`launch/` for its trials. `run.json`'s command names the walk relative to that
+folder; a run a sequence's group sent records the sequence's job.
 
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
@@ -2709,345 +1298,143 @@ Each is removed when its write ends; only a kill in between leaves one.
 | `<random>.lock` | a sidecar's lock | `sidecars.molstruct.with_lock` | none | transient |
 <!-- /manifest -->
 
-### 5.7 Two sources, everything else derived
-
-> **Two sources of what is computed, one of how it runs, everything else
-> derived.** The **template** and **`task.json`** say what is computed, and
-> **`job-request.json`** how and where it runs ([`job-request.md`](?doc=execution/job-request.md)) — the files at the
-> calculation level that cannot be reconstructed from the others. The first two
-> are two because they answer two questions: the template says
-> *what every parameter is*, the description says *which of them step, and to
-> what* (`stages.md` § 6.2). Neither derives the other — a template holds values
-> `task.json` never mentions, and `task.json` holds intent no deck records. That
-> pair is what makes reopening a calculation possible, and why no produce and no
-> run may write to either (`checkpointing.md`, S4).
->
-> *(This box said "one source" and named only `task.json` until 2026-08-16, and
-> the table above it omitted the template altogether — in the document whose job
-> is to say what lives where. It dates from before the template was a file of
-> its own: § 3.7 of `job-contracts.md` moved it out on 2026-08-11.)*
-
-A calculation's own `warm-files.toml`, when a person writes one, is a third:
-optional, and read only for the restart files it lists (§ 5.1).
-
-### 5.8 The config files, by level
-
-| File | Level | Format | Holds |
-|---|---|---|---|
-| `molbuilder.json` | outside the tree — the config directory (`$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`, else `~/.config/molbuilder` — `configuration.md` § 2.1c) | validated, no version | **what you want**: how a launch is sent, env names, the server's settings — and how a shell enters an environment on this machine, `env_init` ([`configuration.md` § 4](?doc=configuration.md)) |
-| `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the run settings (the `execution` category) but carries **no value** for them: their values are the job request's run cards, else the catalogue's default ([`job-request.md`](?doc=execution/job-request.md) §§ 2, 4); the target's record checks the machine's answers and supplies none |
-| `task.json` | ③ calculation | `molbuilder/task@2` | **what changes**: which parameters vary, the stages and their overrides, the layout it states (`shape`), the structure reference. **No `base` key** — what does not change is in the template, once (`stages.md` § 4) |
-| `job-request.json` | ③ calculation | `molbuilder/job-request@1` | **how and where it runs**: the scheduler ask (`allocation`), the run cards (`execution`), each stage's group, an optional `bench` plan and `notify` policy ([`job-request.md`](?doc=execution/job-request.md)) |
-| `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep` — again while the stage is never launched, and for a launched one's change of its job request, as the same calculation (`job-request.md` § 5) |
-| `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
-| `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@3` | the machine **as probed**: topology, scheduler (its kind and where its commands are), site, reachable domains, and the activation and preamble copied from that machine's `molbuilder.json` — and, in the calculation's copy, the machine it is set to (`machine`, its first prep's). Never what you want from it — that is `molbuilder.json` |
-| ~~`bench-manifest.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the two comparable points, and the source deck's hash~~ |
-| `bench-result.json` | the stage's `bench/` container | `molbuilder/bench-result@1` | every trial's timing and the winner.  **No wall and no memory** (§ 2.3.2) |
-
-*(Rows corrected 2026-08-12. The "⑤ benchmark bundle" level never existed
-in § 2.6's table — ⑤ is the attempt — and the bundle it described died in the
-fold: its activation writer `_write_activation_config` was deleted with it, so
-activation now comes from
-the target machine's record, snapshotted into the calculation by `prep` step 1; `bench-manifest.json` was retired the same day — nothing writes or
-reads it (`job-contracts.md § 6.1`'s tombstone). `environment.json` is written
-by `prep` step 1 at the calculation root, on every prep, not only when
-measuring; and `job-set.json`'s old clause "the edge fields serve the
-benchmark sweep" had been dead since 2026-08-10, when the edge fields
-themselves were deleted.)*
-
-**The split is strict, and it is why a calculation folder is portable**: the
-machine's knowledge lives in its record, outside the calculation until `prep`
-snapshots it; the science lives in `task.json`, inside it. A calculation carries
-no activation command and no machine's queue list; what it carries beside its
-science is the job's own ask — `job-request.json`: `allocation`'s queue, wall
-and memory, the run card's shape — which each target's record checks
-([`architecture.md` § 5.2](?doc=execution/architecture.md)). Copy it to another
-cluster and it still describes the same calculation (`job-system.md § 2`,
-decision 3).
-
-The machine-measurement files are the one deliberate exception, and they sit
-with the machine's work, **not in the description**: `environment.json` at the
-root and the benchmark files in the stage's `bench/` container are a
-measurement of *this machine* for *this stage*, so they are not portable and
-are not meant to be. Moving a calculation to a different cluster leaves them
-stale, which the recorded environment makes visible. *(This paragraph placed
-them "at ⑤, not ③" until 2026-08-12 — see the numbering note at § 2.6.)*
-
 ---
 
 ## 6. Where the saved history sits
 
-**One saved history per calculation**, at the calculation, level ③: it
-covers the calculation and every stage beneath it — insurance, and a place to
-branch from, since every state is on disk anyway (§ 1.2).
-`checkpointing.md § 11` states its rules.
-
-```
-bdt-relax/
-├── .git/                       the text: decks, wrappers, task.json, .XV, .CG
-├── .binsnapshots/<digest>/     one state's big files, by path:
-│   ├── 01_coarse/run-0/<label>.DM   ← that attempt's density matrix
-│   ├── 01_coarse/run-1/<label>.DM   ← the stage launched again, kept separately
-│   ├── 02_tight/run-0/<label>.DM
-│   └── MANIFEST.do_not_edit      ← name, size, checksum for each
-```
-
-**An engine's scratch is in neither store** — a device run's
-`tsgf/<label>.<v>.TSGFL` and `.TSGFR` in a transport calculation, the
-families every engine's shipped vocabulary names (`warmfiles.is_scratch`): no
-save stores it, the generated `.gitignore` names its families, and a restore
-removes it like every file the target state does not hold
-([`checkpointing.md`](?doc=execution/checkpointing.md) S1;
-[`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a). Restoring a
-state therefore brings a device run's `tsgf/` back empty where the target
-holds its marker (`calcdir.json`), and leaves behind no run folder the target
-never had — a folder the removal empties goes too. Between saves, `jobset
-scratch --empty` removes what a run left.
-
-Three reasons the repository belongs at ③:
-
-- **The shared package is above the stages.** A history rooted inside `01_coarse/`
-  cannot restore a pseudopotential that lives one level up, so a restored stage
-  would have nothing to copy its pseudopotentials from.
-- **Going back to a stage is a whole-calculation act.** Branching at *coarse* to
-  try a different *tight* needs a history containing both.
-- **Results are already separated by path**, so each run's big files stay its
-  own without a history of their own.
-
-### 6.1 What the archive covers, in one rule
-
-**Git tracks the containers. The archive covers the runs.**
-
-That is the whole classification, and it needs no marker file, no config flag and
-no name matching — because § 1.4 already made every directory one thing or the
-other. A container holds setup: decks, wrappers, the description, the
-shared package. All text or small, all git's.
-
-**Which runs?** The ones this calculation owns: each stage's `run-N/`, with
-its points' folders where the stage runs per point. A benchmark's trials are runs of a **nested container**,
-one level deeper, and their `.DM` is a capped-iteration
-throwaway — so the calculation's archive does not reach it. What survives a
-benchmark is `bench-result.json`, text, which git tracks wherever it sits.
-
-So the rule is about **depth, not names**: a run directory is a stage's
-`run-N/` or a point's folder in it. Nothing
-in a nested container is this history's binary business.
-
-### 6.2 Append-only
-
-An attempt never changes after it is written (§ 1.5), so an
-archived file at that path never changes either. A new save point stores the
-attempts that appeared since the last one and references the rest.
-
-The shipped archive is CONTENT-ADDRESSED (`checkpointing.md` § 3: the
-`.binsnapshots/<digest>/` directory is the sha256 of its own manifest), so
-identical content is stored once and a save references what already exists —
-a five-stage mission with an unchanged 2 GB density matrix does not pay for
-it five times.  *(The paragraph that stood here said the archive "copies
-every big file on every save today" and argued a content-addressed store
-would have been "correct and hopeful" — describing the design the code had
-already surpassed; `checkpoint.py` and `checkpointing.md` agree against it.)*
-Immutable attempts make *"archive what is new"* obvious on top of that.
-
-**Immutability is detectable.** It is a contract, not a permission bit — but
-a run that was archived and then edited *differs from its recorded
-checksum*, which is exactly what I2 checks per file. Nothing notices today;
-§ 7 makes it an invariant.
-
-### 6.3 A calculation owns its subdirectories — fixed 2026-08-06
-
-The setup step used to refuse any folder whose subfolders held a calculation
-file, at **any** depth — and this tree has three such levels: a stage's deck, a
-run's copy of it, and the benchmark bundle's own. So the folder could not be
-put under a history at all. **Nor could the one the shipped `jobset prep` already
-produces** — a bundle with `point-stage1/` and `point-stage2/` was refused too,
-which meant a staged job-set had never been checkpointable.
-
-**A directory that carries its description owns its subdirectories.** Holding
-`task.json` or `job-set.json` is what says *these are my
-stages, not somebody else's calculations* — each already an artifact this system
-persists, so nothing new had to be invented. *(`bench-manifest.json` was the
-third marker until U19, 2026-08-12 — retired with the artifact itself; nothing
-writes one, so nothing can own a folder by it.)* The old rule still applies to a
-directory that declares nothing: a topic folder holding two unrelated
-calculations is still refused, and now says why.
-
-Separately, **a subdirectory that is already a repository is refused** — a history inside a history cannot be restored consistently.
-
-`checkpointing.md` L1 holds the invariant and names the tests, including the one
-that matters most: a calculation round-trips, so a `.DM` two levels down
-is archived, survives a later stage, and comes back on restore. An `init` that
-succeeds and then loses results would be worse than one that refuses.
+**One saved history per calculation, at the calculation (③)** — `.git/` and
+`.binsnapshots/` at its root, covering every folder beneath it, for the reasons
+[`checkpointing.md`](?doc=execution/checkpointing.md) § 11, L1 gives. A save
+sorts every file into git or the archive by its size, wherever it lies, so a
+stage's results and a benchmark trial's are saved alike, and an engine's scratch
+is in neither store (S1, S1b there). It is insurance and a place to branch from:
+every state is on disk anyway (§ 1.2). When molbuilder saves, and how to use the
+history, are [`checkpointing.md`](?doc=execution/checkpointing.md) § 9 and § 5.
 
 ---
 
 ## 7. The invariants
 
-Each is written so a test can assert it. Rules about a single run directory or a
-single history live in their own contracts and are cited, not repeated.
+Each is written so a test can assert it. Rules about a single history live in
+[`checkpointing.md`](?doc=execution/checkpointing.md) and are cited, not
+repeated.
 
 **Naming and identity**
 
-1. **Every path segment matches `[A-Za-z0-9_-]+`**, and a topic is one of the
-   topics (`job-contracts.md § 2.5`).
-2. **A calculation directory is named by the user; `task.json` says which
-   calculation it is** (`run-identity.md § 3.0`), and the **label** — not the
-   id — is the `SystemLabel` in every stage deck inside it. *(Reversed: this
-   read "named by its run id, and that id is the SystemLabel" until
-   2026-08-12, stale since 2026-08-07/09 — § 3.0 gave the folder level back
-   to the user, and decision 26 made the id, `<label>_<formula>`, a record in
-   `task.json` that is never a filename stem.)*
+1. **Every segment from the projects root to a calculation matches
+   `[A-Za-z0-9_-]+`**, and a topic is one of the topics
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5).
+2. **A calculation folder is named by the person; its `task.json` says it is a
+   calculation and which one**
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3). Files are
+   named on the label, never on the id.
 3. **Who names a file decides whether it carries the stage**
-   (`job-contracts.md § 6.3`): the files the **engine** names — the warm
-   files, `<label>.XV` / `.DM` / `.CG` — are bare and share the label's one
-   basename, which is why a warm file copied into the next stage's run is the
-   file its engine looks for there (§ 1.6.5); the files **molbuilder** names carry
-   `<label>_<NN>_<stage>`, and the repetition is the mix-up check. *(Reversed:
-   until 2026-08-12 this read "every file a stage reads or writes shares one
-   basename — the id", stale twice over — the stem is the label, decision 26,
-   and decision 21 put the stage token into every molbuilder-named file.)*
-4. **A stage's `seq` is assigned once and never reassigned**; stages append
-   (§ 4.2). The stage directory carries it, and every file of the stage in its
-   token — read back off the artifacts, stored nowhere else (§ 4.1).
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3): the engine's
+   files (`<label>.XV`, `.DM`, `.CG`) are bare, so a restart file copied into
+   the next stage's run is the file its engine looks for there; molbuilder's
+   files carry `<label>_<NN>_<stage>`, and the repetition is the mix-up check.
+4. **A stage's number is assigned once and never reassigned**; stages append
+   (§ 4.2). It is read back off the folder name and stored nowhere else (§ 4.1).
 4a. **No directory in this tree points at a file that does not exist yet.**
-   A stage that builds on another is launched after that one finished, so
-   everything a run continues from is a real file copied in before it starts
-   (§ 1.6). A dangling link means something was chained that should not have
-   been.
-4b. **An attempt's number is the next unused, never reused, and nothing
-   resets it** (§ 1.5) — a directory `run-<n>`: a number that has been used is
-   spent.
+   Everything a run continues from is a real file copied in before it starts
+   (§ 1.6.5).
+4b. **A run's number is the next unused, never reused, and nothing resets it**
+   (§ 4.3).
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
-   and forced cold, so it can neither read nor overwrite a stage's saved state
+   and starts clean, so it can neither read nor overwrite a stage's state
    (§ 3.2).
 
 **Ownership**
 
-6. **Generate writes only level ③** (§ 2.5 step 3); **prepare writes only one
-   attempt at ⑤** (step 4); the run writes only the directory it was launched
-   in.
+6. **Each act writes only where § 2 says** (§ 2.6): the description is written
+   at ③; `prep` writes ③'s plan records, the headers in a `launch/`, the stage
+   folders ④ and a never-launched stage's first run ⑤; `launch` writes into the
+   run it sends and opens, its walk's script in a `launch/`, and a sequence's
+   launch record; every save — before a Save with something to save, a prep
+   that writes or a group's first launch, and the person's own — writes the
+   history at ③, and a restore returns the whole folder to a saved state; every verb appends its decisions to `jobset-decisions.log`; the
+   run writes only the folder it was started in.
 6a. **Every directory in this tree is made by Python, and every file put in one
-   is a real file.** The wrapper activates an environment and runs the engine
-   as its child in a directory it was handed; it creates no directory and
-   arranges no file (`running-a-job.md § 2.2a`) — but for naming the run's
-   output, the one thing only the run can name: its stdout through the tee,
-   and SIESTA's history through a pointer from SIESTA's name to the run's own
-   file, laid as the engine starts and removed when it exits. The pointer is
-   no file put in: it leads to a file of the same run, in the same folder,
-   which the engine is about to write (`job-contracts.md` § 2.2, § 2.6). *Test:* the SIESTA run
-   script is held by the road — the catalogue rows
+   is a real file.** The run script activates an environment and runs the engine
+   as its child in the folder it was handed; it creates no directory and
+   arranges no file — but for its own output's names, the one thing only the run
+   can name: its stdout through the tee (`<base>.out`, `<base>.scf-timing.log`).
+   SIESTA's own files, its history among them, keep SIESTA's names
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2, § 2.6).
+   *Test:* the SIESTA run script is held by the road — the catalogue rows
    (`tests/data/the_catalogue.toml`) launch it and need the run's files where
-   launch ran it; the PySCF run script, which runs only in the e2e tier, is
-   rendered and its text holds no `cd` command
+   launch ran it; the PySCF run script is rendered and its text holds no `cd`
    (`tests/test_warm_file_inventory.py`).
-6b. **Every directory this tree makes below the calculation root carries a
-   `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by
-   the one opener (§ 1.6.2) and its two siblings (`naming.open_container`,
-   `materialize.open_scratch`) — and, for a stage copied in whole from a
-   finished calculation, its stage folder by the copy itself
-   (`naming.stamp_containers`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — a benchmark's folders, `launch/` and a device
-   run's `tsgf/` (role `scratch`: the engine's scratch of the run above it,
-   read alone, no run asked of it — [`engines/transport.md`](?doc=engines/transport.md)
-   § 2a.11) among them. So *container-or-run-or-scratch* — § 1.4's rule — is
-   answerable for every directory this tree makes, without reading a filename. **This is 6a's dividend**: Python
-   makes them all, so Python can stamp them all. A directory carrying neither
-   is not refused — it is read alone, and told so (§ 1.4a), which is what a
-   tree written before this rule, or a run directory copied out of one, gets.
-   A point's folder below its stage, the one prep renders the point's deck
-   into, is a container among them. *Test:* a calculation prepared, its
-   first stage's benchmark too, and every folder prep made asked
-   where it is through the Results tab's door — its `what`, its role and the
-   stage, run and trial it sits in, one row each
-   (`tests/test_results_blueprint.py`); a transport calculation's points, in
-   the run and below the stage (`tests/test_transport_on_a_real_junction_e2e.py`).
-7. **A shared file's source exists once, at ③** (`pseudos/`), and
-   each stage and run receives a real copy of it, never a link (§ 1.5).
+6b. **Every directory made below the calculation root carries a
+   `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by the
+   one opener (§ 1.6.2), its siblings (`naming.open_container`,
+   `materialize.open_scratch`), `jobset.reuse` for a transmission point's
+   `shared/` and, for a stage copied in whole from a finished calculation, by the
+   copy (`naming.stamp_containers`). So container, run,
+   scratch or shared is answerable for every folder the tree makes, without
+   reading a name. A folder carrying neither is not refused; it is read alone.
+   *Test:* a calculation prepared, its first stage's benchmark too, and every
+   folder prep made asked where it is through the Results tab's door
+   (`tests/test_results_blueprint.py`); a transport calculation's points, in the
+   run and below the stage (`tests/test_transport_on_a_real_junction_e2e.py`).
+7. **A shared file's source exists once, at ③** (`pseudos/`), and each stage and
+   run receives a real copy of it (§ 1.6.5).
 8. **Every directory is a container or a run, never both** (§ 1.4) — but the
-   engine's scratch of the run above it, which is neither (§ 1.4a). A run's
-   output stays inside it; nothing a run writes appears above it.
-8a. **An attempt is immutable.** Once its launch has ended — its one start
-   (§ 1.6.1) — what it wrote never
-   changes, and once archived it must never differ from its recorded
-   checksum but for what § 1.5 names — which is `checkpointing.md`'s I2
-   applied to a directory instead of a file (§ 11).
-9. **The description and its job request are the only sources at ③.** No produce and no run modifies it
-   (`checkpointing.md`, S4).
+   engine's scratch and a point's `shared/`, which are neither (§ 1.4a). A run's
+   output stays inside it.
+8a. **A run is immutable.** Once its launch has ended, what it wrote never
+   changes, and once saved it never differs from its recorded checksums but for
+   what § 1.5 names ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11,
+   I2).
+9. **The description and its job request are the only sources at ③**; no prep,
+   launch or run writes them — only the person's acts do: `describe`, Task
+   setup's Save, `jobset migrate`
+   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11, S4).
 
 **Composition**
 
 10. **A calculation folder carries no machine knowledge** — no activation, no
-    queue list, no topology. Those are the machine's record, outside the tree.
-    A job's own ask (`allocation`, the run card) is not machine knowledge: it
-    is checked against each target's record
-    ([`architecture.md` § 5.2](?doc=execution/architecture.md)).
-    The machine-measurement files are the deliberate exception —
-    `environment.json` at the root, the benchmark files in the stage's
-    `bench/` container (§ 5.8). *(The last sentence said they "sit at ④"
-    until 2026-08-12 — one of the three numberings § 2.6's note records.)*
-11. **A parameter difference is a different calculation; a resource or
-    run-setting difference is a different launch** ([`job-request.md`](?doc=execution/job-request.md) § 5, § 6).
-    Neither mechanism is used for the other's job.
-12. **Derived files can be deleted and regenerated** from **the template plus
-    `task.json`** plus the job request and the machine's config, byte-identical except for the
-    provenance timestamp. *(Named only `task.json` until 2026-08-16 — the
-    template is the other source, and a deck cannot be rebuilt without it:
-    § 5.)*
-13. **Warm restart flows down the stage axis only, and never on its own.** A
-    stage continues from an earlier stage's run that the **user named**, never
-    from a trial, and never because something finished (§ 1.6).
+    queue list, no topology; those are the machine's record. A job's own ask
+    (`allocation`, the run card) is not machine knowledge: each target's record
+    checks it ([`architecture.md`](?doc=execution/architecture.md) § 5.2). The
+    deliberate exceptions are `environment.json` and a benchmark's files
+    (§ 2.1).
+11. **A parameter difference is a different calculation, a stage; a resource or
+    run-setting difference is a different launch**
+    ([`job-request.md`](?doc=execution/job-request.md) § 5, § 6). Neither
+    mechanism does the other's job.
+12. **Preparing again changes nothing that did not change.** A group prepared,
+    never launched, and prepared again from the same description, job request
+    and machine record renders the same files but for their stamps — when and
+    by which build each was written (`deck_record.without_stamps`) — so `prep`
+    says *nothing to write* and writes nothing (`prep.as_written`). *Test:*
+    `tests/data/prep_protocol.toml`, the cases *a group prepared, never
+    launched, and already as this prep would prepare it has nothing to write*
+    (a ladder's and a SIESTA vibration's).
+13. **Restart files flow down the stage axis only, and never on their own.** A
+    run continues from a run of its own stage or of an earlier one — the one its
+    launch takes by default or the one the person names — never from a trial,
+    and only at a launch the person asked for, at once or as a named sequence of
+    groups (§ 1.6).
 
 **History**
 
-14. **One history per calculation** — rooted at ③ (§ 6).
-15. **Every big regular file is either in git or in the archive, never both,
-    never neither — but an engine's scratch, which is in neither, and which a
-    restore removes** (`checkpointing.md`, S1; `warmfiles.is_scratch`) — and
-    that holds at every depth, so a stage's result is covered.
-16. **The archive covers runs this calculation owns** — a stage's `run-N/`
-    with its points. A nested container's runs (a benchmark's trials) are
-    not its business (§ 6.1). **Not held**: a save classifies every file by its
-    size (`checkpointing.md` S1b), wherever it lies, and archives a trial's
-    `.DM` like any other.
-17. **A save stores only what is new** (§ 6.2). Content already archived is hard-linked into the new
-    archive where the filesystem allows one, else copied
-    (`checkpoint.publish_archive`); every big file is still read for its
-    fingerprint at each save.
+14. **One history per calculation**, rooted at ③ (§ 6).
+15. **Every big regular file is in git or in the archive, never both, never
+    neither** — but an engine's scratch, which is in neither and which a restore
+    removes ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11, S1;
+    `warmfiles.is_scratch`).
+16. **The saved history reaches every depth.** A save sorts each file by its
+    size wherever it lies; a benchmark trial's `.DM` is archived like any other
+    ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11, S1b).
+17. **A save stores only what is new**; content already archived is referenced,
+    not stored again ([`checkpointing.md`](?doc=execution/checkpointing.md) § 3).
 
 ---
 
 ## 8. What is not settled
 
-1. ~~**Does a trial's answer feed the stage automatically?**~~ **Answered
-   2026-08-07: no — nothing is applied that the user did not hand back.**
-   `bench-result.json` sits beside the stage that was measured, so prep can
-   always *find* one; finding is not permission. **Permission is
-   `job-request.json`'s `execution`, which a person writes** (§ 2.3.3) *(2026-08-19 — the hand-back
-   was an interactive `use it? [y/N]` until then; 2026-09-02 — it was an
-   editable `run-config.toml` prep folded in until then. The doctrine never
-   moved; what moved is that the answer is now written where every other ask
-   is written, and read by the same one assembly)*. What a *surface* does with the same
-   information — how it shows a verdict whose environment or source deck has
-   since changed — is still the surface's to decide.
-2. **Must every stage be measured?** Measuring each of five stages costs five
-   sweeps. In practice a user measures one representative stage and reuses the
-   answer for the rest. The layout allows both; nothing says which is expected,
-   or how a stage records *"resources measured on 02_tight"*.
-3. ~~**Does the deck still need the stage in its filename?**~~ **Answered
-   2026-08-08 (user): yes.** The reasoning here — *the directory
-   already says which stage, so the deck can simply be `<id>.fdf`* — treated the
-   repetition as noise. It is a **self-check**: without it every stage directory
-   holds an identically-named deck, and two swapped by a bad copy or a resumed
-   `prep` disagree with nothing (decision 21; `run-identity.md § 3.2`). The
-   decoder's regex still changes, but toward `<label>_<NN>_<name>`, not away from it.
-4. **May one calculation folder hold two ladders?** Nothing forbids two
-   descriptions side by side, and the layout would allow it. Probably refuse;
-   not yet stated. *(The premise "the id names the folder" was removed
-   2026-08-07 — the folder is what the user typed, `run-identity.md § 3.0` — which
-   makes two ladders in one folder easier to create, not harder.)*
-5. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
-   (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
-   group — `jobset prep task --group <N>` then `jobset launch task --group <N>`, with `--cold` on
-   launch (every launch warm or cold, [`job-system.md`](?doc=execution/job-system.md)
-   § 1.5 rule 3) — a first launch's too, since the copy is made there. The exact spelling is
-   in [`job-system.md`](?doc=execution/job-system.md); only cosmetic choices
-   remain.
+1. **Must every stage be measured?** Measuring each of five stages costs five
+   sweeps; in practice a person measures one representative stage and writes
+   its result into the run card the others use. The layout allows both, and
+   nothing records *"resources measured on 02_tight"* on another stage.

@@ -2,44 +2,44 @@
 
 **Role:** reference
 **Domain:** execution
+**Owns:** a dated snapshot of what ASU Sol offers — its published hardware,
+partitions and QoS, and how its probed record reads — and the Sol examples the
+design was drawn against.
+**Read with:** [`scheduler.md`](?doc=execution/scheduler.md) — the queue model,
+the fit, the header · [`configuration.md`](?doc=configuration.md) § 5 — the
+machine record · [`generator.md`](?doc=execution/generator.md) § 4.4a — where a
+benchmark runs
 
-**Companions:**
-[`configuration.md`](?doc=configuration.md) § 5 — Sol's machine record,
-whose queues `jobset probe` fills in on Sol;
-[`execution/generator.md`](?doc=execution/generator.md) § 4 — capability,
-allocation and sweep, and why per-domain hardware is needed;
-[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5 — the config
-guide a person actually edits.
+## The short version
 
-> **This is a snapshot of somebody else's facility, not a contract.**
-> ASU Research Computing changes Sol without telling us. **Nothing in
-> `molbuilder/` may hard-code a number from this page** — they belong in Sol's
-> record, written by `jobset probe` on Sol, and each job states its own queue,
-> wall, memory and shape ([`architecture.md`](?doc=execution/architecture.md)
-> § 5.2). This document says what Sol offers and why it matters.
-> Sources and the date it was read are at the foot; re-read before trusting it.
-
----
-
-## 1. Why this document exists
-
-Sol is the machine molbuilder is actually used on, and the design was drawn
-against a generic cluster. **Two things here are load-bearing rather than
-informative:**
-
-1. **A domain's limits are a property of the (partition, QOS) *pair*** — not of
-   the partition. `general` is 7 days at `public` QOS and 14 at `long`.
-   The machine record models a domain as a named bundle of partition + QOS +
-   limits, which turns out to be exactly right.
-2. **GPU nodes have fewer cores than CPU nodes** — 48 against 128. So *"run it
-   with GPUs"* and *"run it on CPU"* are not the same machine with an
-   accelerator bolted on; they are different node types with different core
-   budgets. A benchmark sweeping *GPU vs no GPU*
-   ([`generator.md`](?doc=execution/generator.md) § 4) crosses that boundary.
+**The live source for Sol is its machine record**, written by `jobset probe` on
+Sol and read by `molbuilder jobset machines`: every queue the account may use,
+each with its wall, its caps and the machines it draws from. This page is a
+snapshot of somebody else's facility — the published facts as read on
+2026-08-11 (§ 2, § 3) beside the probed record of 2026-10-19 (§ 3.3, § 5.2) —
+and ASU Research Computing changes Sol without telling us. **Nothing in
+`molbuilder/` may hard-code a number from this page**: each job states its own
+queue, wall, memory and shape
+([`architecture.md`](?doc=execution/architecture.md) § 5.2). Two facts here are
+load-bearing for the design (§ 1); where the published page and the record
+differ, the record is what prep reads.
 
 ---
 
-## 2. The hardware, by node type
+## 1. Why this page exists
+
+Sol is the machine molbuilder is used on. Two of its facts shaped the design:
+
+1. **A queue's limits belong to the (partition, QoS) pair**, not to the
+   partition: `htc` at the `debug` QoS allows 15 minutes, at `public` 4 hours.
+   The machine record models a queue — a *domain* — as that pair
+   ([`scheduler.md`](?doc=execution/scheduler.md) § 4).
+2. **One partition holds many machines.** GPU nodes have 48 cores and standard
+   nodes 128, and `htc`, `public` and `general` each hold both, so "run it with
+   GPUs" and "run it on CPU" land on different machines with different core
+   budgets ([`scheduler.md`](?doc=execution/scheduler.md) R0, R11).
+
+## 2. The hardware, by node type — as published
 
 | node type | CPU | cores | memory | accelerator |
 |---|---|--:|--:|---|
@@ -53,198 +53,146 @@ informative:**
 | NEC | 2× AMD EPYC 9274F Zen4 | 48 | 512 GiB | 1× NEC Vector Engine |
 | GPU MI200 | AMD EPYC 9254 | 24 | 77 GiB | 2× AMD MI200 |
 
-**Totals:** 21,000+ cores, 113+ TB RAM, 290+ GPUs, seven 2 TB high-memory nodes.
+**Totals, as published:** 21,000+ cores, 113+ TB RAM, 290+ GPUs, seven 2 TB
+high-memory nodes.
 
-> **The rows that matter for SIESTA are the first five.** The FPGA, Vector
-> Engine, Grace Hopper and MI200 rows are recorded so nobody proposes them as a
-> target without noticing they are a different architecture (`aarch64`, ROCm)
-> than anything molbuilder's environments are built for.
+The rows that matter for SIESTA are the first five. The FPGA, Vector Engine,
+Grace Hopper and MI200 rows are a different architecture (`aarch64`, ROCm) from
+anything molbuilder's environments are built for.
 
----
+The probed record differs in places — its `highmem` queue lists 11 nodes of
+128 cores at 1007.3 GB, and newer GPU nodes (H100, H200, L40) appear in `htc` and
+`general` (§ 5.2). The record is what the fit reads.
 
-## 3. Partitions and QOS — and why the pair is the unit
+## 3. Partitions and QoS
 
 ### 3.1 Partitions
 
-| partition | max wall time | what it is |
+The wall is the probed record's, at the `public` QoS (2026-10-19); the role is
+the published page's:
+
+| partition | wall at `public` | what it is |
 |---|---|---|
-| **public** | 7 days | Research-Computing-owned CPU nodes. **No preemption.** |
-| **general** | 7 days | includes privately-owned nodes; CPU, GPU and FPGA |
-| **htc** | **4 hours** | RC-owned *and* private nodes; jobs run **uninterrupted** |
-| **highmem** | 2 days (7 with extended QOS) | the 2 TB nodes |
-| **lightwork** | 1 day | oversubscribed; **max 8 cores per node**; for builds and light interactive work |
-| fpga · arm | — | the accelerator and `aarch64` nodes |
+| **htc** | **4 hours** | RC-owned and private nodes; jobs run uninterrupted |
+| **public** | 7 days | RC-owned nodes; no preemption |
+| **general** | **14 days** | includes privately-owned nodes; CPU and GPU |
+| **highmem** | 7 days | the high-memory nodes |
+| **lightwork** | 1 day | oversubscribed; for builds and light interactive work — **no policy cap on cores in the record**, nodes of 48 and 128 cores |
+| `gaudi` · `arm` · `fpga` | 7 days | accelerator and `aarch64` nodes |
 
-### 3.2 QOS
+### 3.2 QoS
 
-| QOS | max wall time | preemptable | notes |
+| QoS | wall | preemptable | in the probed record |
 |---|---|---|---|
-| **public** | by partition | no | the default |
-| **debug** | **15 minutes** | no | `general` and `htc` only; for turnaround while troubleshooting |
-| **private** | by arrangement | **yes** — by the hardware's owners | the trade for using privately-owned nodes beyond `htc`'s 4 h |
-| **grp_&lt;lab&gt;** | by arrangement | conditional | lab-owned hardware; no fairshare impact for members |
-| **long** | **14 days** | no | not available by default — granted per user |
-| **class** | 24 hours | no | ≤ 32 cores, 320 GB, 4 GPUs, 2 running jobs |
+| **public** | by partition | no | on every partition; 300 000 submitted jobs per user |
+| **debug** | **15 minutes** | no | on every partition (`htc-debug`, `public-debug`, …); **2 submitted jobs per user** |
+| **private** | by partition | **yes** — by the hardware's owners | on every partition (`htc-private`, …); 10 000 submitted jobs per user |
+| **grp_&lt;lab&gt;** | by arrangement | conditional | not in this account's record |
+| **long** | 14 days (published) | no | not in this account's record — granted per user |
+| **class** | 24 hours (published) | no | not in this account's record |
 
-> **This is why a "cluster" is the wrong unit and a named domain is the right
-> one.** *"7 days"* is not a fact about `general`; it is a fact about
-> `general` + `public`, and the same partition at `long` gives 14. A config that
-> keyed limits to the partition would be wrong for half the pairs.
+The published page lists `debug` on `general` and `htc` only; the probed account
+holds it on every partition. The record's `debug` cap of 2 submitted jobs is the
+limit a benchmark meets ([`scheduler.md`](?doc=execution/scheduler.md) R14).
 
----
+### 3.3 How the pair is named
 
-## 4. How resources are actually asked for
+Each pair is one domain; the one at `public` takes the partition's name, every
+other `<partition>-<qos>` ([`scheduler.md`](?doc=execution/scheduler.md) § 4). On
+Sol the record holds 24: `htc`, `htc-debug`, `htc-private`, `public`,
+`public-debug`, `public-private`, `general`, `general-debug`, `general-private`,
+and the same three for `highmem`, `lightwork`, `gaudi`, `arm` and `fpga`.
+
+## 4. How resources are asked for on Sol
 
 ```bash
 #SBATCH -p htc            # partition
-#SBATCH -q public         # QOS
+#SBATCH -q public         # QoS
 #SBATCH -t 0-4            # wall time, D-HH
 #SBATCH -c 32             # cores
 #SBATCH --mem=80GB        # memory for the whole job
-#SBATCH -N 2              # nodes -- MPI only
-#SBATCH --gres=gpu:1      # GPUs -- a count (Sol also takes a type, e.g. a100:1; molbuilder names none)
+#SBATCH --gres=gpu:1      # GPUs -- a count (Sol also takes a type, e.g. a100:1)
 ```
 
-**Facts with consequences:**
-
-| fact | consequence for molbuilder |
+| Sol's fact | what molbuilder does |
 |---|---|
-| **memory defaults to 2 GB per core** when unspecified | a job asking `-c 128` and no `--mem` gets 256 GB, not the node's 512. The wrapper should not rely on the default |
-| **`--mem=0` means the whole node's memory** | already the documented value of `Resources.mem` |
-| **`-G` can name the GPU *type*** — `a100:1`, `a100.40gb:1`, `a100.20gb:1`, `a30:2` | molbuilder asks a count, `--gres=gpu:N`, and names no card ([`gpu.md`](?doc=execution/gpu.md) § 1.2): which card a job lands on is Sol's to decide, and the run log records it |
-| **`-N` only helps MPI** | true for SIESTA, false for the PySCF path — so it is not a global default |
-
----
+| **memory defaults to 2 GB per core** when unspecified (the record's `default_mem_per_core_gb: 2.0`) | never relies on it: a job states its memory, or prep refuses ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
+| **`--mem=0` means the whole node's memory** | read as no stated limit ([`scheduler.md`](?doc=execution/scheduler.md) R2) |
+| **a GPU ask can name the type** — `a100:1`, `a100.40gb:1`, `a100.20gb:1`, `a30:2` | asks a count, `--gres=gpu:N`, and names no card ([`gpu.md`](?doc=execution/gpu.md) § 1.2); the monitor's log (`.monitor.log`) records the card it landed on, in its `[MACHINE]` line ([`scheduler.md`](?doc=execution/scheduler.md) R12) |
+| **`-N` spreads a job over nodes** | every header asks one node, `-N 1` ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) |
 
 ## 5. What this settles for the design
 
-### 5.1 The benchmark/run split is real, and it has names
+### 5.1 The benchmark and the run go to different queues
 
-[`generator.md`](?doc=execution/generator.md) § 4.4a says a benchmark normally
-runs somewhere shorter and higher-priority than the run it informs. **On Sol
-that is not an abstraction:**
+A benchmark runs somewhere shorter and higher-priority than the run it informs
+([`generator.md`](?doc=execution/generator.md) § 4.4a). On Sol, by the record's
+walls:
 
 | | domain | why |
 |---|---|---|
-| **the benchmark** | `htc` (the htc partition with the public QoS, 4 h, uninterrupted), or `htc-debug` (15 min) for a quick look | trials are minutes; the 4 h cap is no constraint and the queue is fast |
-| **the real run** | `public` or `general` (7 days), `highmem` for big cells, `general-long` if the `long` QoS is granted | the calculation needs the time, and asking for more waits longer |
+| **the benchmark** | `htc` (4 h, uninterrupted), or `htc-debug` (15 min, 2 jobs) for a quick look | trials are minutes; the queue is fast |
+| **the real run** | `public` (7 d), `general` (14 d), `highmem` (7 d) for big cells | the calculation needs the time |
 
-### 5.2 On Sol, transfer is decided per MACHINE — the partition cannot answer
+The run card's own `time` and `domain` make that split
+([`job-request.md`](?doc=execution/job-request.md) § 3.2a).
 
-*Rewritten 2026-08-27 against the probe's own record. What stood here is kept
-below, because how it was wrong is the useful part.*
+### 5.2 On Sol, comparability is decided per machine
 
-`generator.md` § 4.4a says `choice` (the mechanism) carries to another domain
-**"provided the node type is comparable"**. **A Sol partition cannot tell you
-whether that holds**, because a partition is a queue and draws from many
-machines (`scheduler.md` **R0**). The probe, run 2026-08-27:
+Whether a measurement on one queue describes a run on another is decided by the
+machine each landed on, never by the queue
+([`scheduler.md`](?doc=execution/scheduler.md) R11, R12). A Sol queue cannot
+answer it, because each draws from several machines. The probed record
+(2026-10-19), at the `public` QoS:
 
-| domain | machine types | cores across them | devices |
-|---|---|---|---|
-| `htc` · `debug` | **14** | 48 · 64 · 96 · 128 | a100 · a100.20gb · a100.40gb · a30 · h100 · h200 · l40 |
-| `general` | **13** | 48 · 64 · 96 · 128 | a100 · a100.40gb · a30 · h100 · h200 · l40 |
-| `public` | **4** | 48 · 128 | a100 · a100.20gb · a30 |
-| `lightwork` | 2 | 48 · 128 | a100.20gb |
-| `highmem` · `gaudi` · `arm` · `fpga` | 1 each | 128 · 152 · 72 · 48 | — · hl225 · gh200 · — |
+| domain | nodes | machine types | cores | devices |
+|---|--:|--:|---|---|
+| `htc` | 212 | 14 | 48 · 64 · 96 · 128 | a100 · a100.20gb · a100.40gb · a30 · h100 · h200 · h200.35gb · l40 · gpu |
+| `general` | 100 | 13 | 48 · 64 · 96 · 128 | a100 · a100.40gb · a30 · h100 · h200 · h200.35gb · l40 · gpu |
+| `public` | 166 | 4 | 48 · 128 | a100 · a100.20gb · a30 |
+| `lightwork` | 3 | 2 | 48 · 128 | a100.20gb |
+| `highmem` | 11 | 1 | 128 | — |
+| `gaudi` · `arm` · `fpga` | 10 · 4 · 5 | 1 · 1 · 2 | 152 · 72 · 48 | hl225 · gh200 · mi200 |
 
-**So "measured on `htc`, running on `public`" says nothing about comparability**
-— either side could be a 48-core A100 node or a 128-core node with no device,
-and the two differ by 2.7× in cores. What decides it is the machine each run
-actually landed on, which is `scheduler.md` **R11**, and which is why **R12**
-has the monitor record it on the node rather than inferring it from the queue.
+So "measured on `htc`, running on `public`" says nothing about comparability:
+either side could be a 48-core A100 node or a 128-core node with no device.
 
-> **⛔ What this section claimed until 2026-08-27, and why it was wrong.** It
-> said *"all nodes in `public` and `general` are uniformly AMD EPYC … the same
-> silicon"*, and `generator.md` § 4.4a starred it as the proof that
-> transferability is checkable. Two failures, and they are different:
->
-> * **Uniform vendor is not uniform hardware.** AMD EPYC is true and does not
->   support the conclusion: core counts inside one queue run 48–128, and the
->   section's own counter-example — *"a GPU node has 48 cores against a standard
->   node's 128"* — was already describing two machines **in the same partition**
->   without noticing.
-> * **A stated figure nobody re-measured** — *"`lightwork` caps at 8 cores"*.
->   The probe finds **48- and 128-core nodes** there and `max_cores: 128`. It
->   was used to justify a transferability exception, so the number was doing
->   real work.
->
-> **⚠ And that second one is not fully settled, which is worth being exact
-> about.** Two different facts can both be called a cap: the **size of a node**
-> and the **most cores a QOS lets one job ask for**. The probe measures the
-> first and **does not measure the second at all** — `max_cores` is derived as
-> the widest node (R3's corollary), never read from a QOS limit. So:
->
-> * read as *node size*, the 8 is contradicted — the nodes are 48 and 128;
-> * read as a *request cap*, the probe can neither confirm nor deny it, **and if
->   such a cap exists our `max_cores: 128` does not show it** — the fit would
->   call a 128-core job held while the scheduler refuses it.
->
-> **And this is a PROBE gap, not a question for a person** *(user, 2026-08-27:
-> "why do I need to separately get info on lightwork? your jobset probe did not
-> do its job?" — correct)*. Both numbers are in output the probe **already
-> fetches and discards**:
->
-> | where the cap lives | what the probe runs today | what it keeps |
-> |---|---|---|
-> | QOS `MaxTRESPerJob` (`cpu=N`) | `sacctmgr -nP show qos format=Name,MaxWall,Flags` | Name, MaxWall — **`MaxTRES` is not even in the format list** |
-> | partition `MaxCPUsPerNode` | `scontrol show partition` | `DefMemPerCPU` only |
->
-> So the answer is one field in each, not a trip to the login node. **Built
-> 2026-08-27** (`machine-identity-plan.md` P7): the probe asks for both and
-> the fit compares against them. The next `jobset probe` on Sol settles the
-> 8 — either answer is a result.
->
-> Kept rather than deleted because the second is the recurring one: this page's
-> job is to hold **measured** site facts, and a figure that arrives by memory
-> reads exactly like one that arrives by probe.
+### 5.3 A queue's row in Sol's record
 
-### 5.3 Decision 38's shape, now concrete
-
-A queue's row in the machine record (`environment.json`'s `domains`, written by
-the probe) needs exactly the columns this page has:
+`htc`, as the probe wrote it — the fields are
+[`scheduler.md`](?doc=execution/scheduler.md) § 2's (machines abridged):
 
 ```jsonc
-{ "name": "bench",                  // what you type: --domain bench
-  "partition": "htc", "qos": "public",
-  "max_time": "0-04:00:00",
-  "max_cores": 128,                 // ← the WIDEST machine, read where no machines are listed (R0)
-  "max_mem_gb": 512,
-  "default_mem_per_core_gb": 2,
-  "node_types": [                   // ← every machine the queue draws from (R0)
-    { "cores": 128, "nodes": 134, "mem_gb": 503 },
-    { "cores":  48, "nodes":  51, "mem_gb": 503, "gpu": { "a100": 4 } } ] }
+{ "name": "htc", "partition": "htc", "qos": "public",
+  "max_time": "4:00:00",
+  "max_cores": 128, "max_mem_gb": 1511.2,
+  "default_mem_per_core_gb": 2.0,
+  "max_cpus_per_job": null, "max_cpus_per_node": null,
+  "max_submit_jobs": 300000,
+  "gpu": { "a100.40gb": 4, "a100": 4, "h100": 8, "a30": 3, "l40": 4,
+           "h200": 1, "h200.35gb": 4, "gpu": 1, "a100.20gb": 16 },
+  "node_types": [
+    { "cores": 128, "nodes": 134, "mem_gb": 503.2 },
+    { "cores":  64, "nodes":   4, "mem_gb": 503.5, "gpu": { "a100.40gb": 4 } },
+    …
+    { "cores":  48, "nodes":  51, "mem_gb": 503.5, "gpu": { "a100": 4 } },
+    …  ] }
 ```
-
-**`node_types` is the field that does the new work**, and it is a **list**
-because a queue holds a mixture. Everything else bounds an allocation; this is
-the only place a machine can be named, which is what `scheduler.md` R11 needs.
-
-> **This block declared a scalar `node_type: "standard"` until 2026-08-27**, and
-> called it *"the transferability key"*. R0 retired it: a queue that holds 134
-> standard nodes **and** 51 A100 nodes has no one node type, so no honest value
-> existed to write — and the probe, correctly, never wrote one. A cluster that
-> genuinely is uniform declares a single entry above.
->
-> **The key was never the declaration anyway.** A domain says what a queue could
-> give you; transfer is decided by what a run actually got (R12). Declaring a
-> machine here would only have described the queue more precisely — it could not
-> have said which of its machines your trial landed on.
-
----
 
 ## 6. Sources, and when they were read
 
-Read **2026-08-11**. ASU RC changes these without notice — re-read before
-relying on a number.
+The published pages, read **2026-08-11** — ASU RC changes these without notice:
 
 - [Sol Partitions and QoS](https://asurc.atlassian.net/wiki/spaces/RC/pages/1908867081/Sol+Partitions+and+QoS) — § 3
 - [Supercomputer Hardware](https://docs.rc.asu.edu/supercomputer-hardware/) — § 2
 - [Requesting Resources](https://docs.rc.asu.edu/requesting-resources/) — § 4
 - [The Sol supercomputer](https://asurc.atlassian.net/wiki/spaces/RC/pages/1852637228/The+Sol+supercomputer) — § 2 totals
 
-> **One discrepancy, recorded rather than resolved.** The PEARC23 paper
-> ([Jennewein et al.](https://dl.acm.org/doi/fullHtml/10.1145/3569951.3597573))
-> describes **four** partitions — `general`, `htc`, `highmem`, `lightwork` —
-> while the current wiki lists those plus `public`, `fpga` and `arm`. The wiki
-> is newer and is what § 3 follows; the paper is a 2023 snapshot of a facility
-> that has grown.
+The machine record, probed on Sol **2026-10-19T16:34Z** (`environments/sol.json`,
+schema `molbuilder/environment@3`) — § 3.1's walls, § 3.2's record column, § 3.3,
+§ 5. Re-probe on Sol for the current answer; `jobset machines` prints when a
+record was measured.
+
+The PEARC23 paper ([Jennewein et al.](https://dl.acm.org/doi/fullHtml/10.1145/3569951.3597573))
+describes four partitions — `general`, `htc`, `highmem`, `lightwork` — where the
+wiki lists more; the wiki is newer and is what § 3 follows.

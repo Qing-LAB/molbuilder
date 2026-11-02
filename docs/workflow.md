@@ -469,9 +469,10 @@ read back out of a deck, how the launch line is formed. Those facts belong besid
 them is the recorded seam item **W1**
 ([`backend-architecture.md § 5`](?doc=backend-architecture.md); its measured
 state, [`plans/plan.md`](?doc=plans/plan.md) § 2, **S1**). Until then, adding an
-engine edits `runwrap.py` — which is exactly what
-[`generator.md § 7`](?doc=execution/generator.md)'s *"adding an engine adds
-files and edits none"* test exists to catch.
+engine edits `runwrap.py` — which is exactly what the engine seam's rule
+([`generator.md`](?doc=execution/generator.md) § 7, `architecture.md` A18:
+*"adding an engine adds records and a seam; no shared code branches on its
+name"*) exists to catch.
 
 **Every kind rides this pipeline.** A vibration is a calculation KIND —
 `render_deck` runs its deck like any other, and § 9's gates cover it — and

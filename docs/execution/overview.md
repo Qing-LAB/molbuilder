@@ -1,283 +1,177 @@
-# Execution — running jobs, from one task to a job system
+# Execution — from a described calculation to its results
 
 **Role:** overview
 **Domain:** execution
+**Owns:** the routes into the execution chapters — which chapter answers which
+question — and nothing else. Every rule is stated in the chapter that owns it.
+**Read with:** [`docs/README.md`](?doc=README.md) — the index of the whole tree.
 
-**Companions:**
-[`docs/README.md`](?doc=README.md) — the tree-wide index and the R-rules this
-header follows; every doc this overview routes is its own companion (§ 1's
-table names them all).
+## The short version
 
-This is the **start-here map** for everything about turning a generated input
-into a finished result: where a run's files live, how the wrapper runs and
-resumes it, how you configure and checkpoint it, and how batches of jobs are
-staged, deployed, and benchmarked. Read this page to learn *which* doc answers
-your question and to understand the one transition the whole domain is built
-around.
+- **Everything is a job set.** One calculation, a ladder of stages and a
+  benchmark go through the same verbs — `molbuilder describe`, then
+  `molbuilder jobset prep`, `launch` and `status` — and there is no separate
+  single-job path ([`job-system.md`](?doc=execution/job-system.md) § 1).
+- **The browser describes, prepares and observes; the terminal launches.**
+  Task setup's Prep buttons call the same prep the terminal does
+  ([`job-system.md`](?doc=execution/job-system.md) § 5.0); launching spends a
+  queue slot and stays at the terminal
+  ([`web/task-setup.md`](?doc=web/task-setup.md) § 1).
+- **Each chapter owns its facts once.** § 1 follows a calculation through its
+  steps and names the chapter that owns each step; § 2 finds a chapter by
+  question; § 3 lists every chapter with its role.
+- **Three kinds of chapter, and this page.** A *contract* states the rules —
+  when it and anything else disagree, the contract wins and the other is a
+  bug. A *guide* shows how to do something with what exists, pointing at the
+  contracts. A *reference* records facts about one machine or one moment. This
+  page is an *overview*: it routes and states nothing. What is still to be
+  built lives only in [`plans/plan.md`](?doc=plans/plan.md).
 
 ---
 
-## 1. The map — which doc to open
+## 1. A calculation's steps, and the chapter that owns each
 
-The documents here come in **three kinds**. Knowing which kind
-you are reading tells you how much to trust it and what to do when two disagree.
+```mermaid
+flowchart LR
+    D["<b>describe</b><br/>template · task.json ·<br/>job-request.json<br/><i>job-request.md</i>"]
+    P["<b>prep</b><br/>decks · run scripts ·<br/>headers · job-set.json<br/><i>job-system.md § 5.0</i><br/><i>script-preparation.md § 3.0</i>"]
+    L["<b>launch</b><br/>opens the run, copies in<br/>what it takes, sends<br/><i>job-system.md § 6.0</i>"]
+    R["<b>run</b><br/>the run script on the node<br/><i>running-a-job.md</i>"]
+    S["<b>status · results</b><br/>a run's state, the reports<br/><i>running-a-job.md § 4.2</i><br/><i>run-reports.md</i>"]
+    N["<b>the next stage</b><br/>launch again, warm or cold<br/><i>job-system.md § 5.4</i>"]
+    D --> P --> L --> R --> S --> N
+    N -.-> L
+```
 
-- A **contract** says what a thing *is*. It is the authority. When a contract and
-  anything else disagree, the contract wins and the other is a bug.
-- A **guide** says how you *do* it with what exists today. It describes shipped
-  behaviour and points at the contract for the rules.
-- A **plan** says what we will *build*, and in what order. It is the only kind
-  that is allowed to describe something that does not exist yet.
+| step | what happens | the owner |
+|---|---|---|
+| describe | the portable description: the template, `task.json`, `job-request.json` — no machine named | [`job-request.md`](?doc=execution/job-request.md), [`engines/stages.md`](?doc=engines/stages.md) |
+| prep | checks, then writes every deck, run script and header for the named machine's record; saves the folder's state first | [`job-system.md`](?doc=execution/job-system.md) § 5.0; inside it, [`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0 |
+| place | the queue the job names, its fit printed, the header written | [`scheduler.md`](?doc=execution/scheduler.md) R6, § 6a |
+| launch | opens the run folder, copies in what the stage takes, sends after one question | [`job-system.md`](?doc=execution/job-system.md) § 6.0; [`submission.md`](?doc=execution/submission.md) S4 |
+| run | the run script: environment, counts, the wall, how the run ends | [`running-a-job.md`](?doc=execution/running-a-job.md) |
+| a run of many points | one run walking its points (a bias sweep, a vibration's calls) | [`runs-of-points.md`](?doc=execution/runs-of-points.md) |
+| watch | the monitor beside the run; its events and reports | [`run-reports.md`](?doc=execution/run-reports.md) |
+| status | each stage's and group's state, and the next step | [`job-system.md`](?doc=execution/job-system.md) *The states*, *The next step*; a run's state [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2 |
+| continue | what the next stage takes, launching again, `--from`, `--cold` | [`job-system.md`](?doc=execution/job-system.md) § 5.4 |
+| keep and go back | saved states, when molbuilder saves, restoring | [`checkpointing.md`](?doc=execution/checkpointing.md) |
 
-### Contracts — what things are
+The same calculation, walked from start to end with real commands and output, is
+[`worked-example.md`](?doc=execution/worked-example.md).
 
-| You want to know… | Open |
-|---|---|
-| **Who decides what** — the seven floors, the four routes, which function is the entry point at each floor, and the rules that must never break | **[`architecture.md`](?doc=execution/architecture.md)** |
-| **What ASU Sol actually provides** — node types, partitions, QOS, and how to ask for resources | **[`asu-sol.md`](?doc=execution/asu-sol.md)** |
-| **What every value is and where it came from** — schema → template → `ParameterSet`, and why benchmarking and running are one pipeline | **[`generator.md`](?doc=execution/generator.md)** |
-| **How a value becomes a file** — the preparation steps, in order, and what each engine supplies at each one | **[`script-preparation.md`](?doc=execution/script-preparation.md)** |
-| **Which config setting reaches which part of the system**, and at which step | **[`architecture.md`](?doc=execution/architecture.md)** § 8 |
-| **What differs between a workstation and a cluster** — and what does not | **[`architecture.md`](?doc=execution/architecture.md)** § 9 |
-| **What language is spoken where, and who translates** — the nine vocabularies and every point one becomes another | **[`architecture.md`](?doc=execution/architecture.md)** § 10 |
-| Where a run's files go, what they are named, what a `.fdf`'s reserved comment blocks are, what warm/cold restart means, or what any persisted file's format is | **[`job-contracts.md`](?doc=execution/job-contracts.md)** |
-| **You are about to write code that names, finds or parses a run file** — which door to call, and what never to do | **[`job-contracts.md`](?doc=execution/job-contracts.md)** § 2.2a, *"Which door to call"* (rule **A14**) |
-| What a whole project directory looks like — **one layout**, a directory per stage and per run — what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
-| Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
-| What a saved history must always guarantee — the 31 rules behind `molbuilder checkpoint` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
-| How a **finished run** becomes the starting point of the next calculation | **cite it** — the transport composite names the attempt and prep composes ([`engines/transport.md`](?doc=engines/transport.md) § 3.1; the old handoff bundle retired 2026-08-29) |
-| **How and where a calculation runs** — its job request: the run cards, the groups, the queue, a benchmark's plan, the reports, and what may change once a stage is launched | **[`job-request.md`](?doc=execution/job-request.md)** |
-| What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
-| What a **template** is — the file that carries every parameter with its value, and which layer owns each one | **[`engines/template.md`](?doc=engines/template.md)** — in `engines/`, by the same rule: a template is nothing but parameters |
+---
 
-### Guides — how you do it today
+## 2. Find the chapter by question
+
+### For the person running calculations
 
 | You want to… | Open |
 |---|---|
-| Run **one** job: the wrapper, MPI/GPU resolution, `molbuilder.json`, watching it, checkpointing it | **[`running-a-job.md`](?doc=execution/running-a-job.md)** |
-| Run **many** jobs: a staged ladder, a parameter sweep, an HPC deployment, a benchmark | **[`job-system.md`](?doc=execution/job-system.md)** |
-| See the whole design done once, with a real molecule, in the order a person actually works | **[`worked-example.md`](?doc=execution/worked-example.md)** |
+| see the whole road once, with real commands | [`worked-example.md`](?doc=execution/worked-example.md) |
+| know what each verb does, what it refuses and the way on | [`job-system.md`](?doc=execution/job-system.md) — the verb table § 5.3, the refusals |
+| say how and where a calculation runs — its run cards, groups, queue, reports | [`job-request.md`](?doc=execution/job-request.md) |
+| run stages that build on each other in one job | [`job-system.md`](?doc=execution/job-system.md) § 6.0, *A sequence of groups*; groups [`job-request.md`](?doc=execution/job-request.md) § 3.3 |
+| know why a run is *queued*, *running*, *finished* or *failed* | [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2 |
+| see or stop the jobs launched from this machine | [`job-system.md`](?doc=execution/job-system.md) § 6.0a, `molbuilder jobs` |
+| understand a bias sweep's or a vibration's points: *done*, *not run*, *still to run* | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4 |
+| be told when a run ends or fails | [`run-reports.md`](?doc=execution/run-reports.md) |
+| save the folder, see its history, go back | [`checkpointing.md`](?doc=execution/checkpointing.md) § 5, § 7; when molbuilder saves by itself, § 9 |
+| prepare here for a cluster | [`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md) |
+| measure which resources run fastest | [`generator.md`](?doc=execution/generator.md) § 4.3a; the verbs [`job-system.md`](?doc=execution/job-system.md) § 7 |
+| use a GPU | [`gpu.md`](?doc=execution/gpu.md) |
+| know what a queue offers and where a job is placed | [`scheduler.md`](?doc=execution/scheduler.md); ASU Sol's own facts [`asu-sol.md`](?doc=execution/asu-sol.md) |
+| set molbuilder's own settings, or read a machine record | [`configuration.md`](?doc=configuration.md) § 4, § 5 |
+| find where a file is and who wrote it | [`project-layout.md`](?doc=execution/project-layout.md) § 1.1 (the tree), § 2 (the lifecycle), § 5 (every file and its writer) |
+| know why a calculation continues from an earlier one, or does not | [`run-identity.md`](?doc=execution/run-identity.md) |
 
-### Plans — what is being built
+### For the person changing the code
 
-| You want to know… | Open |
+| You want to… | Open |
 |---|---|
-| **What got built in which order, and how each step was checked** — the milestones, the gates, and the three reviews at each one *(archived — the build completed)* | **[`staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)** |
+| know which layer decides what, and which function to call for a fact | [`architecture.md`](?doc=execution/architecture.md) — the floors § 2, the doors § 3.2 |
+| know whether a launch value is stated, defaulted or refused | [`architecture.md`](?doc=execution/architecture.md) § 5.2 |
+| add an engine, or change what prep writes | [`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0, § 4 |
+| name, find or parse a run file | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a, § 6.3 |
+| add or change a persisted file and its schema | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1; the generated file list [`project-layout.md`](?doc=execution/project-layout.md) § 5 |
+| change what the run script does on the node | [`running-a-job.md`](?doc=execution/running-a-job.md); its blocks [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6 |
+| change a rule of the saved history | [`checkpointing.md`](?doc=execution/checkpointing.md) §§ 11–16 |
 
-*(The Task-setup tab graduated out of this kind: it shipped, and
-[`web/task-setup.md`](?doc=web/task-setup.md) is a **contract** — the tab that
-writes a description.)*
+---
 
-**Where the design itself lives has changed.** It is
-[`architecture.md`](?doc=execution/architecture.md), a contract, because it says
-what the system *is*.
+## 3. Every chapter, its role, what it owns
 
-> **⚠ `staged-runs-architecture.md` was archived 2026-08-11**
-> (`archive/2026-08-11-staged-runs-architecture.md`). It was written before
-> the job system, so its design sections are the pre-job-system picture: one
-> tab writing one directory. **Two
-> documents now do its job** — the contract states the design, the plan holds the
-> items, the order and the gates. What is left in the archive is its **dated code
-> audits** (2026-08-07), which are history.
+| chapter | role | owns |
+|---|---|---|
+| [`job-system.md`](?doc=execution/job-system.md) | contract | the jobset protocol: the words, groups, stage states, prep, the verbs, what a stage takes, launch, sequences, refusals |
+| [`job-request.md`](?doc=execution/job-request.md) | contract | `job-request.json`: run settings, the keys, groups and what they share, a launched stage's request, `jobset migrate` |
+| [`project-layout.md`](?doc=execution/project-layout.md) | contract | the calculation folder on disk: levels, who creates each folder, record files, the file list, invariants |
+| [`job-contracts.md`](?doc=execution/job-contracts.md) | contract | file formats and names: the catalogue, the name grammar, run-script blocks, deck blocks, warm files, the schema registry |
+| [`run-identity.md`](?doc=execution/run-identity.md) | contract | the label, the run id, and the restart group |
+| [`running-a-job.md`](?doc=execution/running-a-job.md) | contract | the run script at run time, and a run's states |
+| [`runs-of-points.md`](?doc=execution/runs-of-points.md) | contract | one run of many points: its words, operations and states |
+| [`run-reports.md`](?doc=execution/run-reports.md) | contract | the monitor, its events and reports, the channels |
+| [`checkpointing.md`](?doc=execution/checkpointing.md) | guide and contract | saved history: the verbs and panel, when molbuilder saves, the rules |
+| [`scheduler.md`](?doc=execution/scheduler.md) | contract | the queue model, the fit, placement, the header and the send line |
+| [`submission.md`](?doc=execution/submission.md) | contract | the sending rules: nothing goes unseen, one job at a time |
+| [`gpu.md`](?doc=execution/gpu.md) | contract | which GPU questions are molbuilder's, every GPU name, rules G1–G11 |
+| [`generator.md`](?doc=execution/generator.md) | contract | the benchmark: `ParameterSet`, the grid, pins, shelves, the winner |
+| [`architecture.md`](?doc=execution/architecture.md) | contract | the floors, the doors, the value ladder, rules A1–A18 |
+| [`script-preparation.md`](?doc=execution/script-preparation.md) | contract | prep's steps, the engine seam, the pipeline log |
+| [`configuration.md`](?doc=configuration.md) | contract | configuration files, `molbuilder.json`, the machine record, M-1…M-6 |
+| [`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md) | guide | prep here, for there: `prep --target` |
+| [`worked-example.md`](?doc=execution/worked-example.md) | guide | the one two-stage walk-through |
+| [`asu-sol.md`](?doc=execution/asu-sol.md) | reference | a dated snapshot of ASU Sol; the probed record is the live source |
 
-### How they stack
+Two neighbours outside this folder hold what a calculation *is*:
+[`engines/stages.md`](?doc=engines/stages.md) (a stage, and the description)
+and [`engines/template.md`](?doc=engines/template.md) (every parameter and its
+layer). The Task setup tab that writes a description is
+[`web/task-setup.md`](?doc=web/task-setup.md).
 
-Everything rests on the formats; each layer uses the one below and never
-reaches past it. Arrows point from a document to the ones it depends on.
+---
+
+## 4. How the chapters lean on each other
 
 ```mermaid
 flowchart TB
-    subgraph plans["Plans that shipped (docs graduated / archived)"]
-      IMP["staged-runs-implementation-plan.md<br/>the order + the gates (archived)"]
-      TSP["task-setup.md<br/>writes a description (a contract now)"]
+    subgraph guides["guides"]
+      WE["worked-example"]
+      PFM["preparing-for-another-machine"]
     end
-    subgraph guides["Guides — how to do it today"]
-      RAJ["running-a-job.md<br/>ONE job"]
-      JS["job-system.md<br/>MANY jobs"]
-      WE["worked-example.md<br/>one walk-through"]
+    subgraph protocol["the protocol — what the verbs do"]
+      JS["job-system"]
+      JR["job-request"]
+      SUB["submission"]
     end
-    subgraph contracts["Contracts — the authority"]
-      PL["project-layout.md<br/>the whole folder"]
-      CP["checkpointing.md<br/>the history"]
-      RI["run-identity.md<br/>the name"]
-      ST["engines/stages.md<br/>a stage"]
-      TPL["engines/template.md<br/>the parameter catalogue"]
-      JC["job-contracts.md<br/>the file formats"]
+    subgraph runtime["a run"]
+      RAJ["running-a-job"]
+      ROP["runs-of-points"]
+      RR["run-reports"]
+      CP["checkpointing"]
     end
-    TSP --> ST
-    IMP --> ST & PL & CP & RI
-    WE --> PL & CP
-    JS --> JC
-    RAJ --> JC
-    PL --> JC & RI & CP & ST & TPL
-    CP --> JC
-    RI --> JC
-    ST --> JC & TPL
-    TPL --> JC
+    subgraph machine["the machine"]
+      SCH["scheduler"]
+      GPU["gpu"]
+      CONF["configuration"]
+      SOL["asu-sol"]
+    end
+    subgraph ground["the ground — on disk and in code"]
+      PL["project-layout"]
+      JC["job-contracts"]
+      RI["run-identity"]
+      ARCH["architecture"]
+      SP["script-preparation"]
+      GEN["generator"]
+    end
+    guides --> protocol
+    protocol --> runtime
+    protocol --> machine
+    runtime --> ground
+    machine --> ground
+    protocol --> ground
 ```
 
-**Read the arrows as *"is defined in terms of"*.** `job-contracts.md` has no
-outgoing arrow, which is what makes it the ground: it defines the file formats in
-terms of nothing but themselves. Nothing points *down* from a contract into a
-plan — a contract that needed a plan to be true would not be a contract.
-
-**The three guides build on each other bottom-up**: the formats are the ground
-both surfaces rest on, running one job is the primitive, and the job system runs
-many of that primitive. Nothing in the job system replaces the single-job wrapper
-— it orchestrates around it.
-
----
-
-## 2. The one transition to understand
-
-molbuilder is mid-way through a deliberate shift in how jobs are organised and
-executed, and the whole `execution/` domain is shaped by it:
-
-- **Where it started: one task at a time.** You generate a single
-  calculation, and a self-contained wrapper runs it. *(This bullet described
-  the web UI's present tense until 2026-08-19; the web now describes staged
-  calculations — the third bullet.)*
-- **Where the command line already is: a job system.** A real result needs a
-  *sequence* of runs (coarse → tight), a project needs *many* such sequences,
-  and HPC adds scheduler headers, queue routing, and the question of how many
-  GPUs/cores actually run fastest. The **JobSet framework** answers all of that —
-  and it is **shipped on the CLI today**.
-- **Where the browser landed — narrower than first planned, by decision**
-  (2026-08-07). The browser gets to **describe a staged calculation, prepare
-  it for a named machine, and observe it**; it does not get to launch one.
-  **The browser describes, prepares and observes; the terminal launches.** A
-  deck carries values that depend on how it will be launched
-  (`project-layout.md § 2.2`), so it is rendered from the chosen machine's
-  record — the Task setup tab's Prep buttons call the one prep entry the
-  terminal calls (`job-system.md` § 5.3) — and launching, which spends a
-  queue slot, stays at the terminal. **The two
-  tabs this needed are built and shipped**: the generating tabs hand over, and
-  the shared **Task setup** tab writes the description
-  ([`web/task-setup.md`](?doc=web/task-setup.md)); the whole loop ran end to
-  end on 2026-08-19. *(This bullet ended "Neither is built" until then.)*
-
-So the honest one-line status of the whole domain: **describe in the browser,
-act on the terminal, observe on either — shipped and proven for structure
-optimization on a workstation; the cluster proof remains (`plans/plan.md`
-**E7**) — the web plan/status view was dropped (W14, killed 2026-09-10: no
-stated use); spectra (2026-08-21) and transport
-(2026-08-29, the composite) both migrated onto the framework.**
-
-```mermaid
-flowchart TB
-    subgraph now["Shipped today"]
-      direction LR
-      WD["Web UI<br/>DESCRIBE a staged calculation<br/>(Task setup) + observe results"]
-      CS["CLI<br/>one job + checkpoints"]
-      CJ["CLI<br/>JobSet framework:<br/>ladders, sweeps, HPC, benchmarks —<br/>prep + submit, one group at a time"]
-    end
-    subgraph target["Still to build (roadmap workstream 1)"]
-      WJ["Web UI<br/>plan view + per-stage status roll-up<br/>(observe half, beyond Results)"]
-    end
-    CJ -. "reuses the shipped decoder,<br/>no new parser" .-> WJ
-    classDef t fill:#eef;
-    class target t;
-```
-
-### The status matrix
-
-| Capability | CLI | Web | Where |
-|---|:--:|:--:|---|
-| Generate + run one task | ✅ | ✅ | `running-a-job.md` |
-| Watch a run's live trajectory + monitor | ✅ | ✅ | `running-a-job.md § 4` |
-| `molbuilder.json` config (launch, envs, `env_init` — `configuration.md` § 4) | ✅ | — | `running-a-job.md § 5` |
-| Checkpoint / restore a run (`molbuilder checkpoint`) | ✅ | ✅ | `running-a-job.md § 6` |
-| Describe a staged calculation (stages · bench) | ✅ | ✅ | `web/task-setup.md`, `job-system.md § 5.1` |
-| Prep a staged ladder (its groups, launched one at a time) | ✅ | ✅ *(the one prep entry, for a named machine)* | `job-system.md § 5.3` |
-| Launch a stage | ✅ | — *(by design: it spends a queue slot, by hand)* | `job-system.md § 3` |
-| Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
-| Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
-| SLURM deployment (routing domains; **one job per submission**) | ✅ | — *(launching stays on the terminal; the web plan view, W14, was dropped 2026-09-10)* | `job-system.md § 6` |
-| Fork a what-if tail (save from a restored state — there is no `branch` verb) | ✅ | ✅ *(Restore, then Save state — `lib/projects/checkpoint.js` over `/api/checkpoint/restore` and `/api/checkpoint/save`; the new state's parent is the restored one)* | `checkpointing.md § 7.1` |
-
-`✅` shipped · `⏳` planned (see [`plans/plan.md`](?doc=plans/plan.md)) ·
-`—` not applicable / not planned for that surface.
-
-Two facts keep the picture honest:
-
-- **The web's describe and prepare halves are built; launching stays on the
-  terminal by design.** The parameter tabs write no deck at all — the old
-  deck-rendering routes were deleted (2026-08-18) — they hand over to Task
-  setup, which writes the description and preps it from the chosen machine's
-  record through the one prep entry (`job-system.md` § 5.3); `launch` runs
-  where the machine is. What the
-  web does not have is a plan view and a per-stage status roll-up beyond the
-  Results tab — proposed as W14 and dropped on 2026-09-10 (no stated use);
-  `jobset status` and the Results tab are the observe half.
-- **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared
-  in `task.json` and executes one rung per job, exactly as SIESTA's does
-  ([`stages.md § 1.1a`](?doc=engines/stages.md), decided 2026-08-18 — the
-  in-script loop this bullet used to describe is retired). The spectra and
-  transport producers migrated too (2026-08-21 / 2026-08-29 — the roadmap's
-  migration box records both).
-
-### 2.1 One folder layout — a directory per stage, a directory per run
-
-The status matrix above is about *which surface* can run a job. *What the
-folder looks like* has one answer, and
-[`project-layout.md`](?doc=execution/project-layout.md) § 1 is its contract:
-each stage a directory and each run a directory inside it, so every state
-stays on disk, continuing to the next stage is a copy you asked for, and the
-saved history is insurance, never the only way back.
-
----
-
-## 3. Everything is a job set
-
-> **Decided 2026-08-11 (user): there is no separate single-job path. A single
-> job is a job set of one, and it goes through the same commands as a hundred.**
-
-**One calculation, one ladder of stages, or a benchmark sweep are the same
-thing at different sizes**, so there is one way in and one vocabulary:
-
-```
-describe it   →  molbuilder describe --structure <structure> --bundle <calculation> --engine siesta|pyscf --calculation <kind> [--stage-strategy …]
-set it up     →  molbuilder jobset prep     task [--group N]
-run it        →  molbuilder jobset launch   task [--group N | --stage <stage>] [--mode direct|submit]
-look at it    →  molbuilder jobset status
-```
-
-`--mode direct` runs it here, in the background unless you wait for it
-(`--foreground`, or the question's answer); `--mode submit` queues it. **That is
-the only difference between a workstation and a cluster at this level**
-([`architecture.md`](?doc=execution/architecture.md) § 9).
-
-**There is no `molbuilder run`.** It was the pre-job-system entry point — a
-wrapper for one hand-made deck — and a second way in is a second way to lose
-your results: it skips the description, so nothing records what was run, nothing
-can reproduce it, and the folder stops being able to tell you what happened.
-
-**Why this is worth stating as a rule rather than a tidy-up:** every surface
-then reads and writes the **same run directory** (`job-contracts.md § 2`), the
-**same wrapper** built by the same function, and the **same formats**
-(`job-contracts.md`). That is exactly why the *web* job system is additive
-rather than a rewrite — it drives the producers and decoders that already work
-from the terminal, instead of a parallel single-task path that would have to be
-kept in step.
-
----
-
-## 4. Shared foundations (one place each)
-
-When two docs need the same fact, it lives once, in `job-contracts.md`:
-
-- **Run-directory layout, filenames, the project/topic tree** — `job-contracts.md § 2`.
-- **The generated-script reserved blocks** (provenance, atom-metadata, …) —
-  `job-contracts.md § 3`.
-- **Warm / cold restart semantics** — `job-contracts.md § 4`.
-- **The handoff bundle** (a finished run → the next calculation) —
-  the citation model ([`engines/transport.md`](?doc=engines/transport.md) § 3.1) — the old
-  handoff-bundle contract retired 2026-08-29.
-- **The persisted-artifact registry, the `@major` schema rule, and the
-  config ↔ scheduler parameter vocabulary** — `job-contracts.md § 6`.
-
-A note on one overloaded word: a **handoff bundle** (one finished run carried
-into the next calculation) is *not* the **calculation folder** (once called
-the JobSet's bundle — a word `project-layout.md` § 1.0 retired for it). Different objects, different documents —
-*(handoff-bundle.md — retired 2026-08-29; citations replaced it)*
-vs `job-system.md`.
+**Read the arrows as "is defined in terms of".** A guide uses the protocol;
+the protocol says what happens to runs and on which machine; all of them rest on
+what is on disk and which code decides it. A chapter that needs a fact from
+another links to the owner's section rather than saying it again.

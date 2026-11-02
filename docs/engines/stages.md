@@ -1162,7 +1162,7 @@ Removing the last stage is refused.
 **A group is named or picked, never guessed — including when there is only
 one.** `prep task --group 1` names it; a bare `prep task` shows the groups
 and asks which — what it offers is [`job-system.md`](?doc=execution/job-system.md),
-*The task*, `prep task`, 2 — on one rung exactly as on three, and with nobody
+§ 5.0, checkpoint 2a — on one rung exactly as on three, and with nobody
 to ask it is refused, naming the line that picks them. `prep bench
 coarse`, not `prep bench`; `--from 01_coarse/run-0`, not `--from run-0`.
 Taking the lone stage without asking would be a rule that holds only at length

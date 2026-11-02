@@ -1816,8 +1816,8 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 > the template's `max_scf_iter` — Class C, not on the shared panel: each SCF
 > rung runs the template's value unless its own tab sets one (§ 2a.13) — and
 > preparing the rungs again — never launched, each group is
-> prepared again whole ([`execution/job-system.md`](?doc=execution/job-system.md),
-> *The task*) — gives
+> prepared again whole ([`execution/job-system.md`](?doc=execution/job-system.md)
+> § 5.0, checkpoint 2a) — gives
 > every rung the new values:
 >
 > | rung | `PAO.BasisSize` | `MeshCutoff` | `MaxSCFIterations` |
@@ -2794,7 +2794,7 @@ walk's end:  tsgf/ emptied
 - **A walk that did not reach its end** — stopped by you, a kill, a wall, a
   node lost — leaves the round's pair, or one file of it when the stop fell
   between the two writes, in that run's `tsgf/`. The run is yours to recover
-  (`job-system.md`, *runs are yours*): `status` names it on the device's
+  (`job-system.md`, *What molbuilder does for you*): `status` names it on the device's
   row (each run's line under its name where the stage has several runs),
   `jobset scratch --empty` removes it once that
   run is no longer going (each run going keeps its own, `job-system.md`
@@ -4168,7 +4168,7 @@ one:
 | another calculation, a result it does not hold, an input from a stage this calculation does not copy in — each difference named; not finished, a result not done, not there — its state named | **prepared here**, as in any calculation |
 
 The run asked is the **newest**, as every hand-over asks (`job-system.md`,
-*The task*, D5). A folder `reuses` names that is not there answers every
+*What a stage takes, and when*). A folder `reuses` names that is not there answers every
 group *prepared here*, saying so.
 
 **A group copied in** has its stages' files prepared as any stage's — the
@@ -4689,7 +4689,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 |---|---|---|
 | `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
 | `molbuilder describe --calculation transport --reuses <finished> [--slot junction=<set>] [--window LO,HI [--finer N]]` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole — `--bias` and `--low-bias-approximation` set what they set; `--slot junction=` cites a frame set whose frame 0 is the finished junction in its place (§ 2a.16, *A frame set of the same junction*); `--window` fits the transmission window to the finished grid, written as the transmission's own values (§ 2a.16) | `jobset/_cli.py::_init_reusing`, `transport/reuse.py`, `transport/window.py` |
-| `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `transport_rung_of` |
+| `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md` § 5.0, checkpoint 2a); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
 | `jobset scratch [--empty] [-y]` | list the leads' surface Green's function files (`*.TSGFL`, `*.TSGFR`) the calculation's runs hold — a device that ran once, a walk that stopped before its end, a run prepared before 2.22.0 — each with its stage, size and path; a run still going keeps its own — held by a job launched from this machine that is going or whose state this machine cannot tell, or read queued or running by the run door — each kept file said with why; `--empty` removes the rest after one question, `remove them? [y/N]` (`job-system.md` § 5.3) | `jobset/_cli.py::scratch_cmd`, `jobset/runstatus.py::scratch_answer`, `jobset/materialize.py::scratch_in` |
@@ -6321,7 +6321,7 @@ and a rung's first launch walks it, with what every stage continues from
 | that attempt actually holds the named file | a run that concluded without writing what it promised |
 
 The newest attempt is the one asked: one that fails a gate is refused by
-name, never passed over for an older one (`job-system.md`, *The task*, D5) —
+name, never passed over for an older one (`job-system.md`, *What a stage takes, and when*) —
 and the copy records its provenance in `.gathered-from`.  One gather reads
 the junction record once (`transport_rung.junction_record`, the one read
 prep asks too) and renders each upstream rung's deck once for each point it

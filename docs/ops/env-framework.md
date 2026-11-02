@@ -259,10 +259,8 @@ neither can be left to "whatever that env happened to need":
   conda_packages entry". That is a promise the registry has to keep, and HPC
   sites' system git versions are inconsistent enough that the env's is the only
   one under our control. When a save is taken is `checkpointing.md` § 9's
-  rule — prep and Save, never a running job. *("Availability is not
-  permission" — no generated wrapper may invoke git, `checkpointing.md` I4 —
-  stood here until 2026-10-04: I4's premise was a node without git, which
-  this entry removes.)*
+  rule — every prep that writes, Task setup's Save and a group's first launch,
+  never a running job's run script.
 
 *Stated here 2026-09-18. `git` had been declared in all six recipes by hand
 with the rule written nowhere, which is the arrangement that let `python` slip

@@ -598,17 +598,12 @@ Three things are true of it at once, and no parameter tab can know any of them:
   ([`project-layout.md § 2.3.3`](?doc=execution/project-layout.md)). You read
   the report and write the value into `execution` yourself.
 
-  > *This said `prep run` "**offers** the verdict and waits" until 2026-09-04 —
-  > citing the section that says the opposite. Nothing offered anything: the
-  > value fell silently to `auto_ranks` and the benchmark was never applied,
-  > which is the exact silent-value failure the 2026-09-02 ruling exists to
-  > prevent.*
-
 **What it is not is the eigensolver.** `diag_algorithm` is a speed setting on
 this card, and it decides no environment and no resource — the packaged
 SIESTA carries ELPA through ELSI and runs it on CPU
-([`siesta.md § 7.2`](?doc=engines/siesta.md)). Only `Diag.ELPA.GPU true`
-re-routes the wrapper. The two are easy to confuse, so they are two rows of
+([`siesta.md § 7.2`](?doc=engines/siesta.md)). The GPU environment follows the
+job's GPU request — `use_gpu`, which the deck renders as `Diag.ELPA.GPU` — never
+the solver ([`gpu.md`](?doc=execution/gpu.md) G3). The two are easy to confuse, so they are two rows of
 this card, each its own question.
 
 **The GPU switch says what the engine's library does not**, for a PySCF
@@ -846,6 +841,54 @@ A key must name a field the catalogue puts in the **`execution`** category —
 ([`template.md § 6.2`](?doc=engines/template.md)). Sweeping anything else means
 each point silently measures a different calculation, and the comparison is
 meaningless. The page refuses rather than warns.
+
+### 6.4 Which machine a prep is for — the machine card
+
+The tab prepares for a machine as the terminal does, under the same rules
+([`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md)
+§ 4); it has no rules of its own, it surfaces those.
+
+- **It lists the reachable machine records and requires a choice whenever a
+  named record exists** — this machine is always one of the choices, so any
+  record of another machine makes the question real. `GET
+  /api/task-setup/machines` answers with the records and a `choice_required`
+  flag computed by the rule the terminal's prep refuses on (C1 there), so the
+  two cannot disagree about what is ambiguous.
+- **An unreadable record is listed and marked, never hidden.** The person wrote
+  it; hiding it would leave them waiting for something that cannot happen.
+- **The commands it teaches are the terminal's own** (`jobset/commands.stage_lines`,
+  served by `/api/task-setup/commands`). They carry `--target` whenever the
+  choice was required — the record's name for another machine, **`this`** for
+  the one you are on — and `launch` never carries it: a job starts on the
+  machine it runs on.
+- **A calculation already set to its machine is shown so** — the machine of its
+  first prep, which does not change ([`configuration.md`](?doc=configuration.md)
+  M-3): the folder's answer names it (`set_to`), the card shows it chosen,
+  offers no other and says why — the way to another machine is the state saved
+  before the first prep, and a prep anew — and its commands carry no
+  `--target`, since the calculation's copy of the record answers.
+- **It shows which `molbuilder.json` answered, and what it supplies**: the
+  folder's answer (`GET /api/task-setup/folder`) serves `provenance` — this
+  machine's part of the `config_provenance` block prep prints, with its warnings
+  (a file shadowed in the working directory, the file's mode), served, never
+  restated, so the page cannot drift from the terminal. It leaves out the machine
+  records: which record answers depends on the machine a prep names, and comes
+  with a Prep's or a Preview's answer
+  ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4). It
+  carries paths, presence and an allowlisted set of effective values, never file
+  contents, so no key or secret reaches the page.
+- **There is no separate warning that the bootstrap will not travel.** Prep
+  refuses any target whose record cannot say how a shell enters its environment
+  ([`configuration.md`](?doc=configuration.md) § 4), so a run script that is
+  written has its bootstrap from the record it names.
+- **The card reuses the page's choice components** — the machine and queue
+  cards' `.ts-choice` / `.opt`, with `.card`, `.hint`, `.ts-needs` and
+  `.ts-state` — so one idea has one component.
+
+The tab's Prep buttons call the one prep entry
+([`job-system.md`](?doc=execution/job-system.md) § 5.0): capability comes from
+the chosen machine's record, so preparing needs no particular desk. Launching
+stays on the machine the job runs on (§ 10).
 
 ---
 
@@ -1376,24 +1419,9 @@ that resolves to nothing is silent by design.
   went. That is the page's reason for existing, not a dashboard.
 - **It does not name a machine _in what it writes_.** Every value it writes
   means the same thing wherever the folder is copied
-  ([`template.md § 7`](?doc=engines/template.md)).
-  *(Narrowed 2026-08-22. The page now asks which machine a calculation will
-  be prepared FOR and puts `--target` in the command it teaches — because
-  `prep` needs the target's measurements and refuses to guess between
-  several: a remote machine's record name, and **`--target this` for this
-  machine whenever the choice was required** (with one record there is no
-  question and no flag; `launch` never carries it — it runs on the machine).
-  *(Until 2026-09-24 the flag was omitted for this machine even when the CLI
-  refused without it, measured on the UI walk of 2026-09-23.)* That choice shapes a printed command; it never reaches
-  `task.json`, the job request or the template, so the written description still names no
-  machine. See [`preparing-for-another-machine.md
-  § 5`](?doc=execution/preparing-for-another-machine.md).)*
-  **Once a stage is prepared, the calculation is set to that machine**, and
-  that does not change ([`configuration.md`](?doc=configuration.md) M-3): the
-  folder's answer names it (`set_to`), and the card shows it chosen, offers
-  no other and says why — the way to another machine is the state saved
-  before the first prep, and a prep anew. Its commands carry no `--target`
-  then: the calculation's copy of the record answers.
+  ([`template.md § 7`](?doc=engines/template.md)). Which machine a prep is for
+  shapes only the commands it teaches, never `task.json`, the job request or
+  the template (§ 6.4).
 
 ---
 
@@ -1427,8 +1455,8 @@ a box, and the box is the group answer's** (`ready.GroupAnswer`,
 answer says the group may be prepared now, and when it may not, the answer's
 why beside it — a launched group whose members changed among them, never
 offered. A group `prep task` offers — not prepared as described, and
-preparable ([`job-system.md`](?doc=execution/job-system.md), *The task*,
-`prep task`, 2) — is **ticked when the folder opens**. A group **prepared and never launched**
+preparable ([`job-system.md`](?doc=execution/job-system.md), § 5.0,
+checkpoint 2a) — is **ticked when the folder opens**. A group **prepared and never launched**
 has a box you can tick: Prep prepares it again, whole — the way a change made
 after looking reaches a group not yet launched. A **launched** group has a
 box too, for a change of its job request: Prep renders it again, each deck the
@@ -1447,7 +1475,7 @@ next one marked — from the folder's
 answer (`runstatus.jobset_status`'s `steps`), so a Save, a reload or a
 reopened page shows what a Prep's answer showed. **A ticked group already
 prepared as this prep would prepare it now** has nothing to write
-([`job-system.md`](?doc=execution/job-system.md), *The task*, 2): its
+([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 2a): its
 Preview says so with its next step, and Prep writes nothing for it. Beside each prepared stage, what its
 launch will take and whether it can go now — `ready to launch -- <what it
 takes>`, or `waits for: <why>` — the ready door's answer (`ready.Readiness.detail`,
@@ -1642,7 +1670,7 @@ from the same answer:
 **A refusal shows what it had found** — the preflight's notes and what the
 inputs said — beside its own sentence: a bench refused because *no cell is
 left* points at its cells left out and those dropped, and they are there. A refused prep
-wrote nothing ([`job-system.md`](?doc=execution/job-system.md) § 5.0, rule 3).
+wrote nothing ([`job-system.md`](?doc=execution/job-system.md) § 5.0, agreement 3).
 
 **The bench is offered on every stage `prep bench` takes**, with or without
 declared axes: with none, the target machine proposes the grid, as the command

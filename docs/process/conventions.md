@@ -259,10 +259,9 @@ Machine detection, activation and the directory build are the same framework
 doing the same thing, so there was never a second system to integrate — only a
 general part to lift out of where the need first appeared.
 
-**`bench` is a positional, alongside `run`.** `jobset prep <run|bench> [STAGE]`
-— which settles `generator.md` § 9's open question G3. And the STAGE is
-required for a benchmark, because a sweep belongs to one stage rather than to
-the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
+**`bench` is a positional, alongside `task`.** `jobset prep <task|bench> [STAGE]`.
+The STAGE is required for a benchmark, because a sweep belongs to one stage
+rather than to the calculation ([`generator.md`](?doc=execution/generator.md) § 4.3a).
 
 ### The CLI-wide conventions
 
