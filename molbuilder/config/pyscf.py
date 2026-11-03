@@ -302,9 +302,9 @@ class PySCFConfig:
         error stands."""
         return None
 
-    def spin_refusal(self, state) -> "Optional[Tuple[str, str]]":
-        """``None``: no PySCF setting refuses a spin the catalogue offers
-        (`config/siesta.py`'s rule is SIESTA's OMM solver)."""
+    def spin_hint(self, state) -> "Optional[Tuple[str, str]]":
+        """``None``: PySCF stops on no setting with a spin the catalogue
+        offers (`config/siesta.py`'s hint is SIESTA's OMM solver)."""
         return None
 
 

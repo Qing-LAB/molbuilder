@@ -26,7 +26,7 @@ as they stood.
 ---
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-02)*
-**Where we are: 2.65.0** — **F3's kind side and pages**: a kind's and a
+**Where we are: 2.65.1** (an engine's own stop said, never refused — F3-E, ruled by the user) after **2.65.0** — **F3's kind side and pages**: a kind's and a
 pair's facts asked of their records — the atom order a pair's decks list
 atoms in, a lead's label and what it is for, the description's checks, the
 kind a citation is, the doors that extend or cite — the rung builders in each
@@ -35,8 +35,7 @@ palette, Task setup's rows and run headings served by the server (the
 changelog's 2.65.0 row). **Next**: **F3-L** — launch still calls transport's
 reuse and gather by name; its own parts in the kind's record are a design
 for the user, their names to be approved as the four description parts'
-were — and **F3-E**, the user's ruling on refusals that repeat an engine's
-own stop (the ledger's *Found by 2.65.0's review rounds*); then F4. The
+were; then F4. The
 releases are the changelog's rows; the history this handover carried,
 release by release, and the checks each release ran are in
 [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md),
@@ -63,8 +62,7 @@ and one write guard covers the whole run
 ([`process/testing.md`](?doc=process/testing.md) § 2b). The audit that
 found why — every test file read whole, with a verdict per file — is
 [`archive/audits/2026-11-02-test-audit`](?doc=archive/audits/2026-11-02-test-audit/README.md);
-its cleanup is F9's. **Waiting on the user**: F3-E's ruling and F3-L's part
-names.
+its cleanup is F9's. **Waiting on the user**: F3-L's part names.
 
 **What runs next** is **F3-L** — then the releases in the order of *The one
 plan* — the user's to change. **The

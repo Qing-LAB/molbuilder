@@ -129,17 +129,19 @@ def check_electronic_state(struct: Structure, cfg, *, calculation: str,
 
     At most one finding per fact (ES9), and the first that holds wins:
 
-    * **ES4 / ES5 / ES6 -- what cannot run** (errors): a treatment or a
-      count the kind does not offer on this engine (the catalogue's
-      `offered` -- a floating moment on PySCF, unrestricted on a PySCF
-      vibration, non-collinear on transport), unpaired electrons beside
-      restricted, a fixed count where SIESTA cannot hold one (non-collinear,
-      spin-orbit, unrestricted on transport), and a setting of the engine's
-      own that cannot run the spin (its config class's ``spin_refusal`` --
-      SIESTA's OMM solver with a spin it does not hold);
-    * **ES3 -- parity**, for a finite system and a pinned count: an error
-      where the engine refuses it or a fixed count contradicts it, a warning
-      where SIESTA runs a restricted radical half-filled;
+    * **ES4 / ES5 -- what the kind does not offer, or two values that
+      conflict** (errors): a treatment or a count the kind does not offer
+      on this engine (the catalogue's `offered` -- a floating moment on
+      PySCF, unrestricted on a PySCF vibration, non-collinear on
+      transport), unpaired electrons beside restricted;
+    * **ES6 and the engine's own start stops -- information**, never
+      refused (the user, 2026-11-02): a fixed count where SIESTA stops on
+      one (non-collinear, spin-orbit, unrestricted on transport), and a
+      setting the engine stops on with this spin (its config class's
+      ``spin_hint`` -- SIESTA's OMM solver with a spin it does not hold);
+    * **ES3 -- parity**, for a finite system and a pinned count: said as
+      information where the engine stops on it, a warning where SIESTA
+      runs a restricted radical half-filled;
     * **ES9 -- a stated closed shell where the structure implies an open
       one** (the hemeC guard), and **a constrained singlet on a closed
       shell**; a stated open-shell count on an even structure is not a
@@ -165,21 +167,21 @@ def check_electronic_state(struct: Structure, cfg, *, calculation: str,
     # fixes its charge, refused when stated (ES7): advice to state one
     # there would be advice this family refuses.
     return (out + _spin_findings(struct, state, engine, calculation)
-            + _spin_refusal(cfg, state)
+            + _spin_hint(cfg, state)
             + (_check_peptide_protonation(struct, state.net_charge)
                if fixed is None else []))
 
 
-def _spin_refusal(cfg, st) -> List[Issue]:
-    """A setting of the engine's own that cannot run this spin -- its
-    config's ``spin_refusal`` (SIESTA's OMM solver with a spin it does not
-    hold, `config/siesta.py`), refused here, before the run, never at the
-    engine's start."""
-    refused = cfg.spin_refusal(st)
-    if refused is None:
+def _spin_hint(cfg, st) -> List[Issue]:
+    """A setting the engine stops on at its start with this spin -- its
+    config's ``spin_hint`` (SIESTA's OMM solver with a spin it does not
+    hold, `config/siesta.py`): said as information, never refused -- the
+    stop is the engine's (the user, 2026-11-02)."""
+    said = cfg.spin_hint(st)
+    if said is None:
         return []
-    item, why = refused
-    return [Issue("error", why, f"config.{item}")]
+    item, words = said
+    return [Issue("info", words, f"config.{item}")]
 
 
 def _charge_fixed(cfg, kind) -> List[Issue]:
@@ -265,15 +267,17 @@ def _spin_findings(struct: Structure, st, engine: str,
                      calculation)
     if not is_member(c.value, counts):
         return _not_offered("unpaired_electrons", c, counts)
-    # ES6 -- where the count can only float, a fixed one is refused: the
-    # non-collinear and spin-orbit treatments on SIESTA, and unrestricted on a
-    # transport rung (TranSIESTA).  A count nobody stated already floats.
+    # ES6 -- where SIESTA stops on a fixed count, a stated one is said, as
+    # information, and written as stated: the non-collinear and spin-orbit
+    # treatments, and unrestricted on a transport rung (TranSIESTA).  A
+    # count nobody stated already floats.
     why = count_must_float(engine, calculation, t.value)
     if why and c.value != FREE:
         return [Issue(
-            "error",
-            f"unpaired_electrons = {c.value} cannot be held here: {why}.  "
-            f"Leave unpaired_electrons blank, or state free.",
+            "info",
+            f"unpaired_electrons = {c.value} is written as stated, and the "
+            f"engine stops on a fixed count here: {why}.  A blank count, or "
+            f"free, floats.",
             "config.unpaired_electrons")]
 
     # ES3 -- parity binds a finite system with a pinned count.
@@ -290,7 +294,9 @@ def _spin_findings(struct: Structure, st, engine: str,
             if runs_anyway:
                 return [Issue("warn", runs_anyway + detail,
                               "config.unpaired_electrons")]
-            return [Issue("error", msg[0].upper() + msg[1:] + detail,
+            # ...AND WHERE THE ENGINE STOPS ON IT, said as information,
+            # never refused: the stop is the engine's (the user, 2026-11-02).
+            return [Issue("info", msg[0].upper() + msg[1:] + detail,
                           "config.unpaired_electrons")]
 
     out: List[Issue] = []

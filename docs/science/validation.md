@@ -451,8 +451,8 @@ otherwise went with F25, 2026-10-08)*.
    kind, it cannot hold a stated number of unpaired electrons
    (`count_must_float`), what it does with an odd electron count under
    restricted spin (`odd_count_restricted`), and which setting of its own
-   cannot run the spin state (`spin_refusal` — PySCF's answers `None`,
-   refusing nothing).
+   the engine stops on with the spin state (`spin_hint` — said as
+   information, never refused; PySCF's answers `None`).
 3. Spell the state in its deck writer — read `electronic_state(...)`, never the
    raw fields — and write each value beside its source.
 4. Name its validator in its engine table entry (`validator`,

@@ -125,7 +125,7 @@ engine-agnostic and side-effect-free:
 | Helper | What it answers |
 |---|---|
 | `total_electrons(struct, charge=0)` | Σ Z − charge (raises on a label that names no element) |
-| `check_spin_charge_parity(struct, charge, unpaired)` | a count of the wrong parity, or above the electron count — PySCF raises this at *run* time; the state's family (ES3) catches it before a deck is written, with a clearer message |
+| `check_spin_charge_parity(struct, charge, unpaired)` | a count of the wrong parity, or above the electron count — PySCF raises this at *run* time; the state's family (ES3) says it before a deck is written, as information, never refused (the user, 2026-11-02) |
 | `analyze_structure(struct)` | the structure's facts: its atoms, elements, and the metals that bear on its spin — `open_d_metals`, `noble_metals` — with each metal's usual spins (`metal_hints`) |
 | `explain_metal_spin(element, unpaired)` | one-line meaning of e.g. `(Fe, 4)` → "Fe(II), high-spin (S=2, 4 unpaired) -- e.g. deoxy-heme, bis-thiolate" |
 
@@ -480,7 +480,10 @@ phosphates)"* rather than a bare number. Explicit wins, 0 included.
 needs at least one unpaired electron. In a repeating cell it does not: the count
 per cell is odd, the band is partly filled, and bulk gold — one s-electron per
 atom — is non-magnetic. Parity is not asked of a structure with a periodic or
-transport axis, and a `free` moment has no parity to match.
+transport axis, and a `free` moment has no parity to match. A mismatch is
+said, as information, and the deck written as stated: where the engine stops
+on it (PySCF's `gto.M`), the stop is the engine's, never refused here
+*(the user, 2026-11-02)*.
 
 **ES4 · What an engine can run is declared, not discovered** (§ 2a.3). A choice an
 engine cannot run for this kind is refused by name at the settings gate, never
@@ -498,7 +501,8 @@ polarized` without `Spin.Fix` — and always where `Spin.Fix` stops the run:
 under `non-collinear` and `spin-orbit` (`read_options.F90`), and under
 `unrestricted` on a transport rung, which TranSIESTA cannot hold
 (`m_ts_options.F90`, *"Fixing spin is not possible in TranSiesta"*). There a
-count nobody stated floats, and a stated one is refused by name — one rule,
+count nobody stated floats, and a stated one is written as stated, SIESTA's
+stop said beforehand as information, never refused (the user, 2026-11-02) — one rule,
 SIESTA's own (`SiestaConfig.count_must_float`), asked through
 `electronic_state.count_must_float`, which names no engine. PySCF pins N↑ and N↓ from `mol.spin`
 (`pyscf/scf/uhf.py`, `get_occ`), so a PySCF calculation refuses `free` by
@@ -506,8 +510,9 @@ name; UKS at `unpaired_electrons = 0` is a *constrained* singlet, not a free
 moment. SIESTA's `OMM` solver floats nothing: it runs a polarized density only
 with `Spin.Fix` (`m_dminim.F90`, *"OMM for spin unpolarized calculations only
 supports fixed spin!"*), so `solution_method = OMM` takes `restricted`, or
-`unrestricted` with a stated count, and anything else is refused before the run
-(SIESTA's config rule, `SiestaConfig.spin_refusal`, asked by the electronic state's one family).
+`unrestricted` with a stated count, and SIESTA stops on anything else at its
+start — said beforehand as information, never refused (SIESTA's config rule,
+`SiestaConfig.spin_hint`, asked by the electronic state's one family).
 
 **ES7 · The state travels with the run it starts from.** A structure exported
 from a finished run carries that run's record, and a blank item takes the
@@ -575,7 +580,7 @@ and is the kind table's — a kind's parts ([`execution/architecture.md`](?doc=e
 | `unpaired_electrons` | SIESTA | SIESTA transport | PySCF |
 |---|---|---|---|
 | a count | beside `unrestricted` (and 0 beside `restricted`) | 0 beside `restricted` only | always — PySCF pins it; a vibration, restricted, 0 alone |
-| `free` | beside `unrestricted`; the only value under `non-collinear` and `spin-orbit` | the only value beside `unrestricted`: TranSIESTA stops on a fixed total spin (`m_ts_options.F90`: *"Fixing spin is not possible in TranSiesta"*), so a blank count floats there and a stated one is refused | ❌ refused by name (ES6) |
+| `free` | beside `unrestricted`; the only value under `non-collinear` and `spin-orbit` | the only value beside `unrestricted`: TranSIESTA stops on a fixed total spin (`m_ts_options.F90`: *"Fixing spin is not possible in TranSiesta"*), so a blank count floats there and a stated one is written as stated, the stop said | ❌ written as stated, the stop said (ES6) |
 
 ### 2a.4 How each engine reads what molbuilder writes
 

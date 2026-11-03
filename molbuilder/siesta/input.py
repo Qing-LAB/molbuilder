@@ -383,13 +383,15 @@ def _spin_facts(state) -> dict:
 
     The spin section always writes ``Spin`` (`template.md` § 6.6: nothing
     reaches the engine by omission); ``Spin.Fix`` + ``Spin.Total`` join it
-    only for a pinned count beside ``Spin polarized`` -- SIESTA ignores the
-    number without ``Spin.Fix`` and stops on ``Spin.Fix`` at any other spin
-    (``read_options.F90``).  So which items the section carries depends on
-    the answer, and the layout cannot be read until it exists.
+    for a pinned count -- SIESTA ignores the number without ``Spin.Fix``.
+    A count is written as stated whatever the spin: where SIESTA stops on
+    ``Spin.Fix`` (non-collinear, spin-orbit, ``read_options.F90``) the stop
+    is SIESTA's, said beforehand as information (the user, 2026-11-02); a
+    count nobody stated floats there (`electronic_state`).  So which items
+    the section carries depends on the answer, and the layout cannot be read
+    until it exists.
     """
-    fixed = (state.spin_treatment.value == "unrestricted"
-             and state.pinned is not None)
+    fixed = state.pinned is not None
     return {
         # Scalars, so the pipeline log's `derived` rows read as values.
         "spin_treatment": state.spin_treatment.value,

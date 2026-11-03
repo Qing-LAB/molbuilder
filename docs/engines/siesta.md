@@ -374,8 +374,10 @@ two template items shared with PySCF, where a blank means *work it out*.
   largest moment, aligned (`m_new_dm.F90`). Under `non-collinear` or `spin-orbit`
   the count can only float — SIESTA stops on `Spin.Fix` there — and so under
   `unrestricted` on a transport rung, which TranSIESTA cannot hold (`m_ts_options.F90`):
-  a count nobody stated floats, a stated one is refused (ES6), and `restricted`
-  with a count above 0 is refused too (ES5).
+  a count nobody stated floats, a stated one is written as stated and SIESTA's
+  stop said beforehand, as information (ES6; the user, 2026-11-02), and
+  `restricted` with a count above 0 is refused (ES5: two stated values that
+  conflict).
 
 The checks are the state's one family, asked for every engine and kind: parity
 at the resolved charge for a finite system (ES3), the open-shell guard (ES9), a

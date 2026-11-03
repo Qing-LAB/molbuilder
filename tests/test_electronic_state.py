@@ -366,24 +366,28 @@ def test_a_half_stated_spin_is_completed_in_the_one_order(
     assert "(2S): 0 (detected: the structure has no unpaired electron" in fdf
 
 
-def test_what_siesta_cannot_run_is_refused_and_non_collinear_floats(
+def test_what_siesta_stops_on_is_said_and_what_it_lacks_is_refused(
         isolated_projects_root):
     """ES4 / ES6 on SIESTA: non-collinear with the count blank floats -- no
-    ``Spin.Fix``, which SIESTA stops on there -- and with a count it is
-    refused by name; restricted-open is a formalism SIESTA does not have."""
+    ``Spin.Fix``, which SIESTA stops on there; with a count stated, the
+    deck is written as stated and the stop is said, as information, never
+    refused (the user, 2026-11-02); restricted-open, a formalism the kind
+    does not offer on SIESTA, is refused by name."""
     _d, _s, fdf = _siesta(isolated_projects_root, WATER(),
                           SiestaConfig(system_label="JOB",
                                        spin_treatment="non-collinear"))
     assert _spin_lines(fdf) == ("non-colinear", None), fdf
-    for cfg, words in (
-            (SiestaConfig(system_label="JOB", spin_treatment="non-collinear",
-                          unpaired_electrons=2), "cannot be held here"),
-            (SiestaConfig(system_label="JOB",
-                          spin_treatment="restricted-open"),
-             "no restricted open-shell formalism")):
-        _d, _s, said = _siesta(isolated_projects_root, WATER(), cfg,
-                               refused=True)
-        assert words in said, said
+    dest, stage, fdf = _siesta(
+        isolated_projects_root, WATER(),
+        SiestaConfig(system_label="JOB", spin_treatment="non-collinear",
+                     unpaired_electrons=2))
+    assert _spin_lines(fdf) == ("non-colinear", 2.0), fdf
+    assert "the engine stops on a fixed count here" in _report(dest, stage)
+    _d, _s, said = _siesta(isolated_projects_root, WATER(),
+                           SiestaConfig(system_label="JOB",
+                                        spin_treatment="restricted-open"),
+                           refused=True)
+    assert "no restricted open-shell formalism" in said, said
 
 
 def test_a_count_a_metal_decided_warns_until_it_is_stated(
@@ -404,7 +408,8 @@ def test_an_odd_count_under_restricted_runs_half_filled_on_siesta(
         isolated_projects_root):
     """SIESTA runs a restricted radical, putting 0.5 electron in each spin on
     its highest level -- a warning there, saying so in those words; PySCF
-    refuses the pair outright (ES3)."""
+    stops on the pair, which is said, as information, and the job prepared
+    as asked (ES3; the user, 2026-11-02)."""
     dest, stage, _f = _siesta(isolated_projects_root, METHYL(),
                               SiestaConfig(system_label="JOB",
                                            spin_treatment="restricted"))
@@ -413,11 +418,11 @@ def test_an_odd_count_under_restricted_runs_half_filled_on_siesta(
     # ONE finding per fact (ES9): the parity finding holds first, so the
     # stated-restricted-on-a-radical finding does not say it again.
     assert "implies unrestricted" not in report, report
-    _d, _s, said = _pyscf(isolated_projects_root, METHYL(),
-                          PySCFConfig(job_name="JOB",
-                                      spin_treatment="restricted"),
-                          refused=True)
-    assert "the electron count and the spin disagree" in said.lower(), said
+    dest, stage, _f = _pyscf(isolated_projects_root, METHYL(),
+                             PySCFConfig(job_name="JOB",
+                                         spin_treatment="restricted"))
+    report = _report(dest, stage)
+    assert "the electron count and the spin disagree" in report.lower(), report
 
 
 # --------------------------------------------- it belongs to the calculation

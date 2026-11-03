@@ -85,9 +85,11 @@ class TestANetChargeIsRefusedRatherThanDropped:
 class TestThePoleEnergyIsTiedToTheTemperature:
     """The equilibrium contour's pole COUNT is derived, and 20 is a floor.
 
-    TranSIESTA computes N = E / (pi kT) from the pole energy and refuses fewer
-    than twenty, stopping with *"The continued fraction method requires at
-    least 20 poles"* -- after the queue wait, having read the electrodes.
+    TranSIESTA computes N = E / (pi kT) from the pole energy and stops under
+    twenty, with *"The continued fraction method requires at least 20
+    poles"* -- after the queue wait, having read the electrodes.  The stop is
+    TranSIESTA's: molbuilder says it before, as information, and refuses
+    nothing (the user, 2026-11-02).
 
     MEASURED against SIESTA 5.4.2 on a real device run, 2026-09-16: 1.5 eV
     gives 18 poles and aborts; 1.7 gives 20; 2.0 gives 24; 4.0 gives 49; with
@@ -101,16 +103,17 @@ class TestThePoleEnergyIsTiedToTheTemperature:
 
     @pytest.mark.parametrize("pole,temp,poles", [(1.5, 300.0, 18),
                                                  (1.7, 1000.0, 6)])
-    def test_too_few_poles_is_refused_with_the_arithmetic(
+    def test_too_few_poles_is_said_with_the_arithmetic(
             self, junction, pole, temp, poles):
         cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
                            negf_eq_pole_ev=pole, electronic_temperature=temp)
-        found = _find(validate(junction, cfg, calculation="transport"),
-                      "config.negf_eq_pole_ev", "error")
+        issues = validate(junction, cfg, calculation="transport")
+        found = _find(issues, "config.negf_eq_pole_ev", "info")
         assert found, f"{pole} eV at {temp} K is {poles} poles, under 20"
         assert f"{poles} poles" in found[0].message, (
-            "the refusal must show the arithmetic -- a person told only "
+            "the hint must show the arithmetic -- a person told only "
             "'too small' cannot tell what to raise it to")
+        assert not _find(issues, "config.negf_eq_pole_ev", "error")
 
     @pytest.mark.parametrize("pole,temp", [(1.7, 300.0), (2.0, 300.0),
                                            (6.0, 1000.0)])
@@ -123,22 +126,22 @@ class TestThePoleEnergyIsTiedToTheTemperature:
         cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
                            negf_eq_pole_ev=pole, electronic_temperature=temp)
         assert not _find(validate(junction, cfg, calculation="transport"),
-                         "config.negf_eq_pole_ev", "error")
+                         "config.negf_eq_pole_ev", "info")
 
-    @pytest.mark.parametrize("rung,refused", [("device", True),
-                                              ("seed", False),
-                                              ("electrode_L", False),
-                                              ("transmission", False)])
-    def test_judged_on_the_rung_that_reads_it(self, junction, rung, refused):
+    @pytest.mark.parametrize("rung,said", [("device", True),
+                                           ("seed", False),
+                                           ("electrode_L", False),
+                                           ("transmission", False)])
+    def test_judged_on_the_rung_that_reads_it(self, junction, rung, said):
         """§ 6.1c: the pole energy is the device's alone (`stages =
         ["device"]`).  A template value under the floor, set right on the
         device's own tab, stays on the other rungs, which never write it --
-        and must not refuse them."""
+        and nothing is said of it there."""
         cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
                            negf_eq_pole_ev=1.5, electronic_temperature=300.0)
         found = _find(validate(junction, cfg, calculation="transport",
-                               rung=rung), "config.negf_eq_pole_ev", "error")
-        assert bool(found) is refused, (rung, found)
+                               rung=rung), "config.negf_eq_pole_ev", "info")
+        assert bool(found) is said, (rung, found)
 
 
 class TestTheCellWrapsAlongTransport:

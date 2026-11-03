@@ -148,11 +148,13 @@ stage = "medium"
 deck_says = { "SystemLabel" = "H2" }
 
 # SIESTA's OMM runs a polarized density only with the spin held
-# (`science/chemistry-correctness.md` ES6, `m_dminim.F90`).
+# (`science/chemistry-correctness.md` ES6, `m_dminim.F90`): SIESTA stops
+# otherwise, which is SIESTA's -- the deck is written as asked, and the stop
+# said beforehand as information (the user, 2026-11-02).
 [[case]]
-name = "OMM with a floating moment is refused before the run"
+name = "OMM with a floating moment is written as asked"
 template = { solution_method = "OMM", spin_treatment = "unrestricted", unpaired_electrons = "free" }
-refused = "solution_method = OMM with a floating moment"
+deck_says = { "SolutionMethod" = "OMM" }
 
 [[case]]
 name = "...and OMM with the count held is written"

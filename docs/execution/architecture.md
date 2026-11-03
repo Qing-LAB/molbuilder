@@ -694,9 +694,10 @@ the one door, naming the engines it runs on.
 - its config class (`config`, a part) — which also says what the engine does
   with the electronic state: a count of unpaired electrons it
   cannot hold under a spin treatment (`count_must_float`), an odd electron
-  count under restricted spin, run anyway and said or refused
-  (`odd_count_restricted`), and a setting of its own that cannot run a spin
-  state — SIESTA's OMM solver with a spin it does not hold (`spin_refusal`).
+  count under restricted spin, run anyway and said (`odd_count_restricted`),
+  and a setting of its own the engine stops on with a spin state — SIESTA's
+  OMM solver with a spin it does not hold (`spin_hint`, said as information,
+  never refused).
   **A config's engine is the engine whose `config` names its class**
   (`engine_table.engine_of_config`), and a caller holding the task asks the
   task's;

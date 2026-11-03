@@ -4949,7 +4949,7 @@ dissolves at the same place:
 | symptom | the floor-3 fact behind it |
 |---|---|
 | the seed ran 1000 SCF iterations and died `SCF_NOT_CONV` | `MaxSCFIterations` is not in the hardcoded list, so the citation's `30` cannot travel |
-| the device deck aborts: *"the continued fraction method requires at least 20 poles"* | **Diagnosed wrongly here until 2026-09-16, and the wrong fix shipped for a day.** `TS.Contours.Eq.Pole.N` *is* a real keyword (`Src/m_ts_chem_pot.F90:113`) — but on the deck shape this project emits it can never take effect. A deck declaring `%block TS.ChemPot.<name>` with no `contour.eq` inside it takes the continued-fraction branch (`:299`), where the count is set from the ENERGY at `:319`, `N = int(E / (pi * kT))`, and the branch's own default (`:316`, `E = pi*60*kT*0.7`) is non-zero, so the override always fires. Only the block-interior `contour.eq.pole.n` (`:263`) short-circuits it, and this emitter writes no such line. The abort was caused by this project's own shipped default, `negf_eq_pole_ev = 1.5` eV, which is **18 poles at 300 K**. 1.7 gives 20, 2.0 gives 24, 4.0 gives 49, and writing nothing gets the engine's 42. The row defaulted to 0 — *let the engine choose* — from 2026-09-17 to 2026-09-29, when a real device lost the charge on the engine's 42 and held it on 10 eV's 123: it now defaults to **10 eV, always written** (§ 6.1c), and `validate_transport_kind` refuses any stated energy too small for the run's own temperature, with the arithmetic. The refusal's rule is `:319` + `:324` verbatim, not a curve fitted to observations |
+| the device deck aborts: *"the continued fraction method requires at least 20 poles"* | **Diagnosed wrongly here until 2026-09-16, and the wrong fix shipped for a day.** `TS.Contours.Eq.Pole.N` *is* a real keyword (`Src/m_ts_chem_pot.F90:113`) — but on the deck shape this project emits it can never take effect. A deck declaring `%block TS.ChemPot.<name>` with no `contour.eq` inside it takes the continued-fraction branch (`:299`), where the count is set from the ENERGY at `:319`, `N = int(E / (pi * kT))`, and the branch's own default (`:316`, `E = pi*60*kT*0.7`) is non-zero, so the override always fires. Only the block-interior `contour.eq.pole.n` (`:263`) short-circuits it, and this emitter writes no such line. The abort was caused by this project's own shipped default, `negf_eq_pole_ev = 1.5` eV, which is **18 poles at 300 K**. 1.7 gives 20, 2.0 gives 24, 4.0 gives 49, and writing nothing gets the engine's 42. The row defaulted to 0 — *let the engine choose* — from 2026-09-17 to 2026-09-29, when a real device lost the charge on the engine's 42 and held it on 10 eV's 123: it now defaults to **10 eV, always written** (§ 6.1c), and the settings check says, as information, a stated energy too small for the run's own temperature, with the arithmetic — never refused, the stop TranSIESTA's (2026-11-02). Its rule is `:319` + `:324` verbatim, not a curve fitted to observations |
 | `TBT.k` is emitted as a bare scalar the parser cannot read *(closed 2026-09-29 by the list form; always the block since 2026-09-30, which carries the offset — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* | the list hand-formats values, so no emitter owns "how a list-valued keyword is written" |
 | `tbt_k_grid`'s transport axis was unguarded *(guarded 2026-09-16 by the kind's validator; since 2026-09-30 a fixed component, [`siesta.md`](?doc=engines/siesta.md) § 6.1)* | there was no declaration to carry a bound |
 | the electronic contract is two frozensets and a predicate spelled twice | floor 2's job done in code, because floor 2 held nothing |
@@ -6713,8 +6713,10 @@ overwrites it from the energy, so it cannot act here — `plan.md` § 5p.3o.)
 
 **The ruling.** `negf_eq_pole_ev` defaults to **10 eV** and is **always
 written**, the count beside it; a stated energy that gives fewer than 20
-poles at the run's temperature is refused before the queue wait, and the
-refusal names the least energy that is accepted. 0 no longer means *let
+poles at the run's temperature is said before the queue wait, as
+information, with the least energy that gives twenty — never refused: the
+stop is TranSIESTA's *(the user, 2026-11-02: "it is not your business to
+refuse")*. 0 no longer means *let
 TranSIESTA choose* (§ 5p.3o's reading, superseded: TranSIESTA's own choice is
 the 42 that lost the charge), and it is not an energy TranSIESTA takes — the
 branch reads the energy only when it is positive (`:318`), so the count stays
@@ -6722,12 +6724,13 @@ at `TS.Contours.Eq.Pole.N`'s default of 8 and the run stops at the floor.
 **The temperature has a floor of its own**: TranSIESTA stops below 10 K before
 it counts a pole — *"TranSiesta electronic temperature \*must\* be larger than
 10 kT"* (`m_ts_options.F90`:258–262, and per chemical potential :284–288) — so
-that is refused too. The range the form offers is 1–40 eV: 10 eV gives fewer
+that is said too. The range the form offers is 1–40 eV: 10 eV gives fewer
 than 20 poles above 1847 K, and the electronic temperature runs to 5000 K,
 where 27.1 eV is needed. It is
 the device's alone (`stages = ["device"]`): `tbtrans` integrates no density —
-and the two floors are judged on the device's deck alone (`template.reads`),
-so a template value the device's own tab sets right refuses no other rung.
+and the two floors are said of the device's deck alone (`template.reads`),
+so a template value the device's own tab sets right says nothing of another
+rung.
 **The 10 eV is interim** — M3 P4's stated contour (`contour.eq` inside the
 chemical potential's block, W35 decision 2) replaces it, and the first
 device run may say sooner.
@@ -6736,7 +6739,9 @@ device run may say sooner.
 written once — with its inverse, `pole_energy_for`, the least energy that
 gives a count (rounded up, since the count truncates), and the two floors,
 `MIN_EQ_POLES` and `MIN_TS_TEMPERATURE_K`; the settings gate asks them for
-the refusal, and the deck's context asks for the count the line states.
+its information, and the deck's context asks for the count the line states.
+When TranSIESTA stops, the run's ending keeps TranSIESTA's own words, shown
+by `status`, the Results tab and the record.
 
 #### Vacuum, by axis — measured from the lead
 

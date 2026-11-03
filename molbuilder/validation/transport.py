@@ -24,7 +24,8 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     runs for one of two config classes is not a gate; this one runs for the
     kind.
 
-    Its science: the pole energy against the temperature, the vacuum where
+    Its science: the pole energy against the temperature (said, as
+    information: TranSIESTA's own floors), the vacuum where
     the crystal continues (I12), the transmission window against the bias.  **The k-point sampling is
     not here** -- the transport axis's one point, a lead's own count, the
     transmission's grid are the k-point mesh's (`kmesh.py`,
@@ -41,9 +42,11 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     # `Src/m_ts_chem_pot.F90`, read 2026-09-16 rather than inferred -- and it
     # has one home, `transiesta.pole_count`, which the device deck also asks
     # for the count it states beside the energy.  TranSIESTA stops a run under
-    # twenty poles, after the queue wait; this says so before it.
+    # twenty poles, after the queue wait; this says so before it, as
+    # information -- TranSIESTA's stop is TranSIESTA's, never refused here
+    # (the user, 2026-11-02).
     #
-    # 0 IS REFUSED TOO (`engines/transport.md` § 6.1c): TranSIESTA's own
+    # 0 IS SAID TOO (`engines/transport.md` § 6.1c): TranSIESTA's own
     # choice -- about 42 poles at 300 K -- lost the charge on a real Au-BDT-Au
     # device, where 10 eV (123 poles) held it.  So the energy is
     # always written; and an energy at or below zero is not taken as one --
@@ -54,8 +57,8 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     #
     # JUDGED ON THE RUNG THAT READS IT -- the device's (the catalogue's
     # ``stages``, asked through `template.reads`, `template.md` § 6.4): the
-    # template's value stays on a rung that never writes it, and that rung
-    # is never refused for it.  With no rung named, judged as it stands.
+    # template's value stays on a rung that never writes it, and nothing is
+    # said of it there.  With no rung named, judged as it stands.
     from ..template import items_of, reads
     pole = getattr(cfg, "negf_eq_pole_ev", None)
     temp = getattr(cfg, "electronic_temperature", None)
@@ -67,13 +70,13 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                                             pole_energy_for)
         if temp is None or float(temp) < MIN_TS_TEMPERATURE_K:
             out.append(Issue(
-                "error",
+                "info",
                 f"the electronic temperature is "
                 f"{0.0 if temp is None else float(temp):g} K, and TranSIESTA "
                 f"stops a device run below {MIN_TS_TEMPERATURE_K:g} K before "
                 f"it starts -- \"TranSiesta electronic temperature *must* be "
-                f"larger than 10 kT\".  Set it to at least "
-                f"{MIN_TS_TEMPERATURE_K:g} K; 300 K is the default "
+                f"larger than 10 kT\".  At least "
+                f"{MIN_TS_TEMPERATURE_K:g} K runs; 300 K is the default "
                 f"(engines/transport.md 6.1c).",
                 where="config.electronic_temperature"))
         else:
@@ -86,7 +89,7 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                         f"{float(pole):g} eV gives {n} poles at "
                         f"{float(temp):g} K")
                 out.append(Issue(
-                    "error",
+                    "info",
                     f"the equilibrium contour's pole energy: {said}, and "
                     f"TranSIESTA needs at least {MIN_EQ_POLES}.  It stops "
                     f"with \"the continued fraction method requires at least "
