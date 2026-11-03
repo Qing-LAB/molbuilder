@@ -1311,8 +1311,22 @@ molbuilder describe --structure BDT-Au/structure/bdt.xyz \
   `--calculation`): nothing is guessed from a folder's name.
 - **Names and values are checked here**: a stage name outside
   `[A-Za-z0-9_]+`, a duplicate stage, an `overrides` key the schema does not
-  know, or a value outside its bounds is refused with the field named
+  know, or a value outside its bounds is refused with the field named — the
+  whole preflight, with the template and the job request it writes
   ([`engines/stages.md`](?doc=engines/stages.md) § 6.6).
+- **The pseudopotentials are covered here** for a kind described from its
+  structure, as the hand-over covers them: the engine's describe findings,
+  of the folder it writes into
+  ([`web/handover-procedure.md`](?doc=web/handover-procedure.md) § 2.2) — a
+  SIESTA species with no `.psml` in that folder or in `--psml-lib`, or no
+  `--psml-lib` at all, is refused by name, nothing written. A kind described
+  from a citation brings them by its own rule
+  ([`engines/transport.md`](?doc=engines/transport.md) § 3.1).
+- **A kind described from a citation or from a calculation it extends** is
+  described by its own describe — its record's `describe` part
+  ([`architecture.md`](?doc=execution/architecture.md) § 3.3), the one the
+  kind's tab takes too; the command line collects the flags, refuses the ones
+  the kind says do not apply, and prints what it answers.
 - **The job request it writes holds each stage's group and nothing else.** The
   queue, wall, memory and each run's card are stated on Task setup's cards or
   in the file; a launch value stated nowhere is refused at prep

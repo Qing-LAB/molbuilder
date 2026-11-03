@@ -480,9 +480,9 @@ def stages_for_transport(engine: str, bags=None):
     maps a rung name to that rung's mapping, and a rung not named gets an
     empty bag.
 
-    The web describe door's, over the one ladder door `molbuilder describe`
-    asks too (`fresh_stages`), so the two cannot build the ladder
-    differently.  A rung this ladder does not have is refused by name.
+    The kind's one describe's (`transport.describe`), over the one ladder
+    door every describe asks (`fresh_stages`).  A rung this ladder does not
+    have is refused by name.
 
     **Ownership is not decided here.**  The per-rung form asks the question
     per rung (`engines/transport.md` § 3.8.2a), so a bag arrives already

@@ -128,8 +128,10 @@ the pseudopotential check by the rule `prep` opens the files by
 first calculation found out only after the script was generated (user,
 2026-09-30). The sender passes the folder (`dest`); the refusal's findings land
 beside the field through the tab's findings panel, and the page is brought to
-the first of them. PySCF reads no pseudopotentials, and transport describes on
-its own tab with the citation's own ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1).
+the first of them. `molbuilder describe` asks the same before it writes
+([`job-system.md`](?doc=execution/job-system.md) § 5.1). PySCF reads no
+pseudopotentials, and transport describes on its own tab with the citation's
+own ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1).
 
 ---
 

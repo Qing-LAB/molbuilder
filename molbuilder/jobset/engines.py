@@ -10,7 +10,6 @@ asks it.
 """
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -107,9 +106,8 @@ def relabel(engine: str) -> Callable:
     the setting its record in the engine table names as the one that names
     a calculation's files (``identity_field`` -- ``system_label``,
     ``job_name``)."""
-    from ..engine_table import engine as _engine
-    field = _engine(engine).identity_field
-    return lambda cfg, label: dataclasses.replace(cfg, **{field: label})
+    from ..engine_table import relabelled
+    return lambda cfg, label: relabelled(engine, cfg, label)
 
 
 def engine_seam(engine: str) -> EngineSeam:

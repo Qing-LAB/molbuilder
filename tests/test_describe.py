@@ -135,16 +135,20 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
     # `init` cites both the structure and the calculation FROM THE PROJECTS
     # ROOT (job-contracts.md 2.5b), so the test says where its tree is --
     # the same thing a user does when calculations live on scratch.
+    from conftest import write_pseudos
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     xyz = tree / "P" / "structure" / "h2.xyz"
     xyz.write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
+    # A SIESTA describe covers its pseudopotentials (job-system.md § 5.1).
+    (tree / "pseudopotential").mkdir()
+    write_pseudos(tree / "pseudopotential", ["H"])
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     res = CliRunner().invoke(describe_cmd, [
         "--structure", "P/structure/h2.xyz",
         "--bundle", "P/optimization/calc", "--engine", "siesta",
         "--calculation", "optimization",
-        "--vacuum", "8", "--name", "JOB"])
+        "--vacuum", "8", "--name", "JOB", "--psml-lib", "pseudopotential"])
     assert res.exit_code == 0, res.output
     calc = tree / "P" / "optimization" / "calc"
     assert sorted(p.name for p in calc.glob("*.source.*")) == [
@@ -235,15 +239,18 @@ def test_a_value_past_its_hard_limit_is_refused(struct, cfg):
     """A stage's value past its item's hard limit (`above`,
     `engines/template.md` § 5.3) is refused where the description is
     written, with the reason; a value merely outside the recommended range
-    describes.  API-LEVEL, because the road cannot reach it: `molbuilder describe`
+    describes, the description's own check saying it (`Description.notes`,
+    which the road prints).  API-LEVEL, because the road cannot reach it: `molbuilder describe`
     describes a non-transport calculation from its ladder presets alone, so
     no person's value reaches this door but through the library."""
     from molbuilder.task import Stage
     with pytest.raises(D.DescribeError, match=r"k-point count"):
         _describe(struct, cfg,
                   (Stage(name="tight", overrides={"kgrid": [0, 4, 4]}),))
-    _describe(struct, cfg,
-              (Stage(name="tight", overrides={"mesh_cutoff": 1e9}),))
+    said = _describe(struct, cfg,
+                     (Stage(name="tight", overrides={"mesh_cutoff": 1e9}),))
+    assert any("outside the recommended range" in n.message
+               for n in said.notes), said.notes
 
 
 def test_a_failure_while_writing_publishes_nothing(struct, cfg, tmp_path,
@@ -301,10 +308,11 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
     from click.testing import CliRunner
     from molbuilder.projects import PROJECTS_ROOT_ENV
 
+    from conftest import write_pseudos
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "pseudopotential").mkdir()
-    (tree / "pseudopotential" / "H.psml").write_text("<psml/>\n")
+    write_pseudos(tree / "pseudopotential", ["H"])
     (tree / "P" / "structure" / "h2.xyz").write_text(
         "2\n\nH 0 0 0\nH 0 0 0.74\n")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
@@ -329,6 +337,32 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
     assert one(written, "psml_lib").source == "person"
 
 
+def test_a_siesta_describe_whose_species_has_no_pseudopotential_is_refused(
+        tmp_path, monkeypatch):
+    """`job-system.md` § 5.1: the pseudopotentials are covered at describe,
+    as the hand-over covers them (`web/handover-procedure.md` § 2.2) -- a
+    SIESTA run cannot start without a `.psml` for every species, so a
+    describe naming a library without one is refused by name and writes
+    nothing.  Until 2.65.3 the command line wrote the calculation and said
+    only `WARN: no H.psml`, a calculation found unable to start at prep."""
+    from click.testing import CliRunner
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "h2.xyz").write_text(
+        "2\n\nH 0 0 0\nH 0 0 0.74\n")
+    (tree / "pseudopotential").mkdir()
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    res = CliRunner().invoke(describe_cmd, [
+        "--structure", "P/structure/h2.xyz",
+        "--bundle", "P/optimization/calc", "--engine", "siesta",
+        "--calculation", "optimization", "--name", "JOB",
+        "--psml-lib", "pseudopotential"])
+    assert res.exit_code != 0, res.output
+    assert "no .psml file for H" in res.output, res.output
+    assert not (tree / "P" / "optimization" / "calc").exists()
+
+
 @pytest.mark.parametrize("engine, ladder", [("siesta", ["freq"]),
                                             ("pyscf", ["freq"])])
 def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box(
@@ -344,13 +378,18 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     from molbuilder.template import catalogue, recommended_for, select
     from molbuilder.template_file import of as template_of
 
+    from conftest import write_pseudos
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "P" / "structure" / "h2.xyz").write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
+    # A SIESTA describe covers its pseudopotentials (job-system.md § 5.1).
+    (tree / "pseudopotential").mkdir()
+    write_pseudos(tree / "pseudopotential", ["H"])
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     res = CliRunner().invoke(describe_cmd, [
         "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
-        "--engine", engine, "--calculation", "vibration", "--name", "V"])
+        "--engine", engine, "--calculation", "vibration", "--name", "V",
+        *(("--psml-lib", "pseudopotential") if engine == "siesta" else ())])
     assert res.exit_code == 0, res.output
     bundle = tree / "P" / "frequency" / "V"
     assert [s.name for s in task_of(bundle).stages] == ladder

@@ -230,7 +230,11 @@ def test_a_rung_tab_offers_no_run_setting(web):
 #: (the body the describe door is sent, the refusal it answers): the engine
 #: is the page's to name, refused in the kind table's one sentence when it
 #: runs no transport (`engines/transport.md` § 3.8.8) -- the schema door's
-#: rule, asked through the same helper.
+#: rule, asked through the same helper; and, through the kind's one
+#: describe (`transport.describe`), what it starts from, refused before
+#: anything is read further: no citation, a citation naming nothing, a
+#: finished calculation that is not there (§ 3.1, § 2a.16) -- the plan
+#: alone, so no folder is needed to ask it.
 _BODY = {"junction": "P/optimization/R/01_relax/run-0", "bias": [0.0],
          "stages": {}, "shared": {}}
 DESCRIBE_REFUSALS = [
@@ -239,15 +243,25 @@ DESCRIBE_REFUSALS = [
     pytest.param({**_BODY, "engine": "pyscf"},
                  "no PySCF transport backend is built yet",
                  id="an-engine-that-runs-no-transport"),
+    pytest.param({**_BODY, "engine": "siesta", "plan": True, "junction": ""},
+                 "no junction citation", id="no-citation"),
+    pytest.param({**_BODY, "engine": "siesta", "plan": True},
+                 "names nothing under the projects tree",
+                 id="a-citation-naming-nothing"),
+    pytest.param({**_BODY, "engine": "siesta", "plan": True,
+                  "reuses": "P/transport/Gone"},
+                 "P/transport/Gone", id="a-finished-calculation-not-there"),
 ]
 
 
 @pytest.mark.parametrize("body, refused", DESCRIBE_REFUSALS)
-def test_the_describe_door_refuses_an_engine_it_cannot_describe_on(
+def test_the_describe_door_refuses_what_it_cannot_describe(
         web, isolated_projects_root, body, refused):
     """400, nothing written.  THE SILENT FAILURE: a door that took the
     engine as given would describe a calculation on an engine no transport
-    backend runs, refused first by prep."""
+    backend runs, refused first by prep; one that took a citation or a
+    finished calculation unread would write a description prep cannot
+    compose."""
     r = web.post("/api/transport/describe", json=body)
     got = r.get_json()
     assert r.status_code == 400 and refused in got["error"], got

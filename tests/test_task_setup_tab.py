@@ -129,6 +129,35 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
         pass    # tmp_path removes the tree
 
 
+
+@pytest.mark.parametrize("length, taken", [(1, True), (100, False)],
+                         ids=["inside-the-ladders-cap", "past-it"])
+def test_the_handover_names_its_calculation_as_its_save_reads_it(
+        web_client, isolated_projects_root, length, taken):
+    """`run-identity.md` § 3: the label is the one rule's, its cap counting
+    the ladder's own stage token once the ladder is known -- and the
+    hand-over knows it (`task.label_of`): a name the description takes is
+    taken, its label the one the save reads; one past the cap is refused by
+    name, 400.  THE SILENT FAILURE: the hand-over capping a name by a
+    guessed stage budget its save does not use, a name the description
+    takes refused at the hand-over (until 2.65.3, a 500)."""
+    from molbuilder.identity import MAX_LABEL_BYTES
+    from molbuilder.jobset.ladder import fresh_stages
+    from molbuilder.task import label_of
+    _fresh_calc_dir(isolated_projects_root)
+    name = "a" * (MAX_LABEL_BYTES + length)
+    stages = tuple(s.name for s in fresh_stages("optimization", "siesta"))
+    r = web_client.post("/api/task-setup/handover", json=dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name=name, params={"system_label": name}))
+    if taken:
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["label"] == label_of(
+            name, calculation="optimization", stage_names=stages)
+    else:
+        assert r.status_code == 400, r.get_json()
+        assert r.get_json()["error"].startswith("name:"), r.get_json()
+
 # THE PROPOSED LADDER RIDES THE HAND-OVER, numbered, made by the server's one
 # rule (`ladder.fresh_stages`, `jobset.group.numbered_fresh`): a vibration's
 # one stage, whichever way the box is ticked -- on SIESTA the relaxation is

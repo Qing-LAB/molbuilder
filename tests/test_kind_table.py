@@ -163,7 +163,7 @@ _KIND_ROWS = [
     ("a citation of a kind the table does not hold",
      '[k]\nnoun = "k"\ntopic = "k"\n'
      'description = {cites = "c", cited_kind = "nope", '
-     'cited_frames = "m:f"}\n[k.on.siesta]\n',
+     'cited_frames = "m:f", describe = "m"}\n[k.on.siesta]\n',
      "cited_kind 'nope' is no kind of the table"),
     # A door asked of a kind that cites or extends comes with what makes it
     # asked: a cited slot, a carried `reuses`.
@@ -193,12 +193,36 @@ _KIND_ROWS = [
     ("an extension named as a module",
      '[k]\nnoun = "k"\ntopic = "k"\n'
      'description = {carries = ["reuses"], extension = "m", '
-     'reuse = "m"}\n[k.on.siesta]\n',
+     'reuse = "m", describe = "m"}\n[k.on.siesta]\n',
      "description.extension is 'm' -- a part is \"module:NAME\""),
+    # ...and a kind that cites or extends names how it is described: its
+    # own describe, which the command line asks (a kind naming none would
+    # end `molbuilder describe` in a traceback).
+    ("a kind that cites and names no describe",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {cites = "c", cited_kind = "optimization", '
+     'cited_frames = "m:f"}\n[k.on.siesta]\n',
+     "cites and names no describe part"),
+    ("a kind that carries reuses and names no describe",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {carries = ["reuses"], extension = "m:f", '
+     'reuse = "m"}\n[k.on.siesta]\n',
+     "carries reuses and names no describe part"),
+    ("a describe on a kind that neither cites nor extends",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {describe = "m"}\n[k.on.siesta]\n',
+     "description.describe on a kind whose description does not state "
+     "cites or carries reuses"),
+    ("a describe named as one function",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {carries = ["reuses"], extension = "m:f", '
+     'reuse = "m", describe = "m:f"}\n[k.on.siesta]\n',
+     "description.describe is 'm:f' -- a describe part is a module, named "
+     "whole"),
     ("a reuse named as one function",
      '[k]\nnoun = "k"\ntopic = "k"\n'
      'description = {carries = ["reuses"], extension = "m:f", '
-     'reuse = "m:f"}\n[k.on.siesta]\n',
+     'reuse = "m:f", describe = "m"}\n[k.on.siesta]\n',
      "description.reuse is 'm:f' -- a reuse part is a module, named whole"),
 ]
 
@@ -227,8 +251,9 @@ def test_a_kind_on_an_engine_it_has_no_part_for_is_refused_naming_its_engines():
 
 #: A description part that does not give the floor that asks what it asks,
 #: refused as it resolves, naming the kind and the key: a part naming no
-#: function, and the reuse module lacking one door launch asks -- which
-#: would otherwise be found missing at a first launch, on a cluster.
+#: function; the reuse module lacking one door launch asks -- found missing
+#: otherwise at a first launch, on a cluster -- and the describe module
+#: lacking one `molbuilder describe` asks.
 _PART_ROWS = [
     ("a part naming no function", "extension",
      'extension = "molbuilder.transport.reuse:no_such_limits", '
@@ -237,9 +262,16 @@ _PART_ROWS = [
      "'molbuilder.transport.reuse:no_such_limits', does not resolve"),
     ("a reuse module without a door it is asked", "reuse",
      'extension = "molbuilder.transport.reuse:Extension", '
-     'reuse = "molbuilder.transport.reuse"', "carry_shared",
+     'reuse = "molbuilder.transport.reuse"',
+     ("molbuilder.transport.reuse", "carry_shared"),
      "k's description's reuse, 'molbuilder.transport.reuse', provides no "
      "carry_shared"),
+    ("a describe module without a door it is asked", "describe",
+     'extension = "molbuilder.transport.reuse:Extension", '
+     'reuse = "molbuilder.transport.reuse"',
+     ("molbuilder.transport.describe", "not_taken"),
+     "k's description's describe, 'molbuilder.transport.describe', "
+     "provides no not_taken"),
 ]
 
 
@@ -248,11 +280,13 @@ _PART_ROWS = [
 def test_a_part_that_does_not_resolve_is_refused_naming_record_and_key(
         tmp_path, monkeypatch, what, key, parts, gone, words):
     if gone:
-        from molbuilder.transport import reuse
-        monkeypatch.delattr(reuse, gone)
+        import importlib
+        module, door = gone
+        monkeypatch.delattr(importlib.import_module(module), door)
     table = tmp_path / "kind_table.toml"
     table.write_text('[k]\nnoun = "k"\ntopic = "k"\n'
-                     f'description = {{carries = ["reuses"], {parts}}}\n'
+                     f'description = {{carries = ["reuses"], {parts}, '
+                     f'describe = "molbuilder.transport.describe"}}\n'
                      '[k.on.siesta]\n')
     monkeypatch.setattr(kind_table, "TABLE_FILE", table)
     kind_table._table.cache_clear()

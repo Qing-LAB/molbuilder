@@ -115,7 +115,9 @@ structure, a suggestion and never a fill — and checks each species' file and i
 XC family once it is set. The Send asks the same check of the folder it writes
 into (`validation.siesta.pseudopotential_findings`: pseudopotentials already
 beside the calculation count, as at `prep`) and refuses until every species is
-covered — its findings beside the field, the page brought to it. Not PySCF's (it
+covered — its findings beside the field, the page brought to it; `molbuilder
+describe` asks the same before it writes
+([`execution/job-system.md`](?doc=execution/job-system.md) § 5.1). Not PySCF's (it
 reads no pseudopotentials) nor transport's (a cited run's come with it; a cited
 pair's from the directory `molbuilder describe --psml-lib` names, prep's door).
 

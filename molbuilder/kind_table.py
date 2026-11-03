@@ -86,21 +86,26 @@ PART_REFS = ("points", "rung", "inputs", "gather", "continues", "sum",
 #: The parts a kind's description may name for the shared doors that ask of
 #: a kind that cites or extends (:func:`description_part`): the limits of
 #: extending a finished calculation, the frames its citation holds, the
-#: citation's atom order recorded at a prep that names no group, and the
-#: reuse of the calculation it extends -- each ``module:NAME``, or a module
-#: named whole where :data:`WHOLE_MODULE_PARTS` says so.
-DESCRIPTION_PARTS = ("extension", "cited_frames", "order_record", "reuse")
+#: citation's atom order recorded at a prep that names no group, how it is
+#: described from its citation or the calculation it extends, and the reuse
+#: of the calculation it extends -- each ``module:NAME``, or a module named
+#: whole where :data:`WHOLE_MODULE_PARTS` says so.
+DESCRIPTION_PARTS = ("extension", "cited_frames", "order_record", "describe",
+                     "reuse")
 #: THE DOORS A ``reuse`` PART PROVIDES, asked of the module it names: by
-#: prep (``decide``, ``copy_in``), describe (``finished_window``,
-#: ``decide``) and launch (``takes_over``, ``take_into``, ``shared_into``,
-#: ``carry_shared``).
-REUSE_DOORS = ("decide", "copy_in", "finished_window", "takes_over",
-               "take_into", "shared_into", "carry_shared")
+#: prep (``decide``, ``copy_in``) and launch (``takes_over``,
+#: ``take_into``, ``shared_into``, ``carry_shared``).
+REUSE_DOORS = ("decide", "copy_in", "takes_over", "take_into",
+               "shared_into", "carry_shared")
+#: THE DOORS A ``describe`` PART PROVIDES, asked by the command line's
+#: `molbuilder describe`: the describe itself, what it does not take, and
+#: its refusal.
+DESCRIBE_DOORS = ("describe", "not_taken", "NotDescribed")
 #: THE DESCRIPTION PARTS NAMED AS A MODULE WHOLE, each with the doors it
 #: provides -- read as the table loads (named whole, never
 #: ``module:NAME``) and as the part resolves (every door there,
 #: :func:`description_part`); every other part is ``module:NAME``.
-WHOLE_MODULE_PARTS = {"reuse": REUSE_DOORS}
+WHOLE_MODULE_PARTS = {"describe": DESCRIBE_DOORS, "reuse": REUSE_DOORS}
 
 #: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): when its
 #: run is finished -- every point DONE, or every point RAN, the words the
@@ -646,6 +651,8 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
             ("cited_kind", "cites", "cites" in desc),
             ("cited_frames", "cites", "cites" in desc),
             ("order_record", "cites", "cites" in desc),
+            ("describe", "cites or carries reuses",
+             "cites" in desc or "reuses" in carries),
             ("extension", "carries reuses", "reuses" in carries),
             ("reuse", "carries reuses", "reuses" in carries)):
         if key in desc and not has:
@@ -656,9 +663,10 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     # A KIND THAT CITES OR CARRIES `reuses` NAMES WHAT ANSWERS FOR IT --
     # the doors that read a citation's frames, or extend a finished
     # calculation, ask the part, never a module by name.
-    for needs, has, keys in (("cites", "cites" in desc, ("cited_frames",)),
+    for needs, has, keys in (("cites", "cites" in desc,
+                              ("cited_frames", "describe")),
                              ("carries reuses", "reuses" in carries,
-                              ("extension", "reuse"))):
+                              ("extension", "reuse", "describe"))):
         for key in (keys if has else ()):
             if key not in desc:
                 _refuse(where, f"description {needs} and names no {key} "
@@ -943,4 +951,4 @@ __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
            "RunOfPoints", "run_of_points", "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
            "pair", "lead_of", "rung_label", "role_set", "part_of", "part",
-           "export_of", "Region", "DESCRIPTION_PARTS", "REUSE_DOORS", "WHOLE_MODULE_PARTS", "own_structure", "atom_order", "labels", "description_part"]
+           "export_of", "Region", "DESCRIPTION_PARTS", "DESCRIBE_DOORS", "REUSE_DOORS", "WHOLE_MODULE_PARTS", "own_structure", "atom_order", "labels", "description_part"]

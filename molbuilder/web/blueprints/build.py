@@ -1082,7 +1082,8 @@ def api_task_setup_handover():
                                             calculation=calculation),
             }), 400
 
-    from molbuilder.identity import normalise_id
+    from molbuilder.jobset.ladder import fresh_stages
+    from molbuilder.task import label_of
     from molbuilder.template import template_with_values
     from molbuilder.template_file import (
         template_filename as _template_filename)
@@ -1110,7 +1111,16 @@ def api_task_setup_handover():
         return jsonify({"ok": False,
                         "error": "name: the calculation has no name -- the "
                                  "parameter tab's identity field states it"}), 400
-    label = normalise_id(typed)
+    # THE LADDER IT PROPOSES first -- the fresh ladder's one owner
+    # (`ladder.fresh_stages`) -- and the label by the one rule the
+    # description reads it by (`task.label_of`: its cap counts the ladder's
+    # stage token and what a rung of the kind adds).
+    proposed = fresh_stages(calculation, engine)
+    try:
+        label = label_of(typed, calculation=calculation,
+                         stage_names=tuple(st.name for st in proposed))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": f"name: {exc}"}), 400
     formula = str(getattr(struct, "formula", "") or "")
 
     # AND THE TEMPLATE CARRIES THE SAME ONE.  Choosing the label above is only
@@ -1176,9 +1186,7 @@ def api_task_setup_handover():
                           if not f["name"].endswith(".json")), "")
 
     from molbuilder.jobset.group import fresh_groups
-    from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import derive_run, fresh_varies
-    proposed = fresh_stages(calculation, engine)
     # WHAT THE HAND-OVER WAITS ON -- the key Task setup still asks: the
     # stages.  The layout is never asked: there is one, and Save writes it
     # (`web/task-setup.md` § 4).
@@ -2562,8 +2570,14 @@ def api_task_setup_folder():
     if hasattr(_task, "label"):
         _label = _task.label
     elif isinstance(handover, dict) and (handover.get("run") or {}).get("name"):
-        from molbuilder.identity import normalise_id
-        _label = normalise_id(handover["run"]["name"])
+        # Its kind is there: a hand-over stating none is refused by its
+        # reader (`_proposal_refused`).
+        from molbuilder.task import label_of
+        _label = label_of(handover["run"]["name"],
+                          calculation=str(handover["calculation"]),
+                          stage_names=tuple(
+                              str(st.get("name") or "") for st in
+                              handover.get("proposed_stages") or ()))
     else:
         _label = None
     # THE STRUCTURE PAIR THE DESCRIPTION NAMES -- its geometry, and the

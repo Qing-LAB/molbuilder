@@ -844,8 +844,8 @@ def describe_findings(task, template_text: str, request, *, cited=None,
     """WHAT A TRANSPORT CALCULATION'S DESCRIBE CHECKS before anything is
     written -- the description's own check (`validation.task.preflight`)
     and each rung's k-point mesh on its junction
-    (:func:`junction_mesh_findings`): the Transport tab's describe and
-    `molbuilder describe` alike."""
+    (:func:`junction_mesh_findings`): the kind's one describe's
+    (`transport.describe`)."""
     from ..validation.task import preflight
     return (list(preflight(task, template_text=template_text,
                            request=request))
@@ -855,8 +855,8 @@ def describe_findings(task, template_text: str, request, *, cited=None,
 
 def junction_mesh_findings(template_text: str, task, *, cited=None,
                            base=None) -> list:
-    """THE MESH FINDINGS BOTH DESCRIBE DOORS SAY beside the description's
-    own check -- the Transport tab's and `molbuilder describe` -- each
+    """THE MESH FINDINGS THE DESCRIBE SAYS beside the description's own
+    check (`transport.describe`) -- each
     rung's judged on the junction's own axis kinds
     (:func:`ladder_mesh_findings`): the ``cited`` junction's, or, for a calculation that reuses a finished
     one, the composed junction that one recorded (``base``).  None where

@@ -29,7 +29,6 @@ at prep: they are not parameters, they are the structure (§ 2a.3's
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Tuple
 
 if TYPE_CHECKING:                                    # pragma: no cover
@@ -100,20 +99,20 @@ class CitationAnswers:
     net_charge: int = 0
 
 
-def citation_answers(cited_path) -> CitationAnswers:
+def citation_answers(cited) -> CitationAnswers:
     """Read the citation once (`engines/transport.md` § 3.8.0: at `molbuilder describe`,
-    into this calculation's own template): its recorded contract -- a cited
+    into this calculation's own template) -- ``cited`` as the citation's door
+    classified it (`compose.resolve_citation`): its recorded contract -- a cited
     run's, its view as the Results tab reads it (`runs.view_of`: its deck
     through `contract_of`), a cited pair's ``info.calculation`` as that door
     wrote it -- each item the catalogue tags ``citation = ["transport"]``
     taken by its own name, the k-point mesh by its rule
     (:func:`_apply_kgrid`)."""
-    from .compose import CitedPair, classify_citation
+    from .compose import CitedPair
     from ..parse.contract import K_MESH_RECORD_KEYS
     from ..runs import declared, view_of
     from .. import template as _T
 
-    cited = classify_citation(Path(cited_path))
     if isinstance(cited, CitedPair):
         record, source, name = cited.calculation, "pair", cited.path.name
     else:
@@ -214,8 +213,8 @@ def asked_of_the_person(cited) -> Tuple[str, ...]:
 
 def check_pseudopotentials(cited, psml_lib) -> None:
     """THE PSEUDOPOTENTIALS BY THE CITATION'S KIND (`engines/transport.md`
-    § 3.1), asked by both roads that describe a transport calculation --
-    `molbuilder describe` and the Transport tab's describe door: a cited run's
+    § 3.1), asked by the kind's one describe (`transport.describe`), which
+    `molbuilder describe` and the Transport tab's Describe both take: a cited run's
     travel with it, so a directory named for one is refused; a cited pair
     brings none, so the directory that holds them all is required, as a
     structure optimization's is (:func:`asked_of_the_person`).  Raises
@@ -244,11 +243,13 @@ def _the_persons(chosen) -> Dict[str, Any]:
     return mine
 
 
-def transport_template_text(cite_dir, *, label: str, blank=(),
-                            **chosen) -> str:
-    """The text of a transport description's template -- **the one door
-    both roads write it through** (`molbuilder describe` and the browser's describe
-    door), so the file cannot differ by the road that made it.
+def transport_template_text(answers: CitationAnswers, *, label: str,
+                            blank=(), **chosen) -> str:
+    """The text of a transport description's template, from the citation's
+    ``answers`` (:func:`citation_answers`) -- **the one door it is written
+    through**, by the kind's one describe (`transport.describe`) and drawn
+    by the Transport tab's schema route, so the file cannot differ by the
+    road that made it, nor the tab show another.
 
     Its values are :func:`siesta_config_from_citation`'s: the citation's
     answers with the person's choices laid over them.  **A `citation` row
@@ -268,9 +269,10 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
     card beside it says.
     """
     from .. import template as _T
-    # THE CITATION READ ONCE (`engines/transport.md` § 3.8.0), every frame
-    # of a frame set and the electrode gate with it.
-    cited = citation_answers(cite_dir)
+    # THE CITATION READ ONCE (`engines/transport.md` § 3.8.0), by the
+    # caller (:func:`citation_answers`), every frame of a frame set and the
+    # electrode gate with it.
+    cited = answers
     cfg = siesta_config_from_citation(cited, label=label, blank=blank,
                                       **chosen)
     mine = _the_persons(chosen)

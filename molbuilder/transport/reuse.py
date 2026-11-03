@@ -10,9 +10,10 @@ read by the composition's one reader and written by its one writer, and
 its pseudopotentials -- through the one writer every describe takes
 (`describe.write_description`); or, in place of its junction, a frame set
 whose frame 0 is that junction (*A frame set of the same junction*,
-:func:`frame_set_refusal`), composed here.  Asked by `molbuilder describe
---reuses`; the Transport tab's describe door writes through
-:func:`write_reusing` too, its pick of a frame set asks
+:func:`frame_set_refusal`), composed here.  Written through
+:func:`write_reusing` by the kind's one describe (`transport.describe`),
+which `molbuilder describe --reuses` and the Transport tab's Describe both
+take; the tab's pick of a frame set asks
 :func:`frame_set_of`, and a window fitted to the finished grid reads it
 from :func:`finished_window`.
 

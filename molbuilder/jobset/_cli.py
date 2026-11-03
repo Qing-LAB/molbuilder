@@ -342,192 +342,95 @@ def _resolve_bundle_may_be_new(ctx, param, value):
     return _resolve_bundle(ctx, param, value, must_exist=False)
 
 
-def _junction_slot(slots_opt, root, *, slot: str):
-    """``(citation, its path, the citation classified)`` -- the one slot a
-    citing kind takes, its record's ``description.cites`` -- a transport
-    calculation's ``--slot junction=<path>`` (spelled
-    NAME=PATH, from the projects root or absolute inside it), fenced to the
-    tree and classified through the door prep composes through
-    (`compose.resolve_citation`): a citation that cannot compose is refused
-    at describe, naming what is missing (strict composition)."""
+def _slot_of(slots_opt, *, slot: str) -> str:
+    """The one slot a citing kind takes, its record's ``description.cites``,
+    as ``--slot NAME=PATH`` spells it -- the path as given, from the
+    projects root or absolute inside it; the kind's describe resolves and
+    fences it, through the door prep composes through."""
     from pathlib import Path as _P
-
-    from ..transport.compose import (ComposeError, refuse_failed_citation,
-                                     resolve_citation)
     slots = {}
     for entry in slots_opt:
         name_, sep, cite = entry.partition("=")
         if not sep or not name_ or not cite:
             raise click.ClickException(
                 f"--slot {entry!r}: spell it NAME=PATH, e.g. "
-                f"--slot junction=<project>/<topic>/<calc>/<NN>_<stage>/"
-                f"run-<n> "
-                f"-- a finished relaxation run's folder, or a structure "
-                f"pair's .xyz (engines/transport.md § 3.1).")
+                f"--slot {slot}=<the run's folder or the pair's file it "
+                f"cites, from the projects root>.")
         slots[name_] = cite
     if set(slots) != {slot}:
         raise click.ClickException(
-            f"this calculation takes exactly one slot, `{slot}` -- the "
-            f"relaxed junction it composes from: a finished relaxation run "
-            f"of molbuilder's own, or a structure pair that records its "
-            f"optimization (engines/transport.md § 3.1).")
-    raw = _P(slots[slot]).expanduser()
-    if raw.is_absolute():
-        try:
-            raw = raw.resolve().relative_to(root)
-        except ValueError:
-            raise click.ClickException(
-                f"--slot {slot}={slots[slot]}: {raw} is not inside "
-                f"the projects tree ({root}); give its path from the tree's "
-                f"root.")
-    try:
-        resolved, cited = resolve_citation(str(raw), root)
-        # A RUN THAT FAILED is refused here, before anything is written
-        # (`engines/transport.md` § 3.1).
-        refuse_failed_citation(cited, str(raw))
-    except ComposeError as exc:
-        raise click.ClickException(str(exc))
-    return str(resolved.relative_to(root)), resolved, cited
+            f"this calculation takes exactly one slot, `{slot}` -- what it "
+            f"cites, named by --slot {slot}=PATH.")
+    return str(_P(slots[slot]).expanduser())
 
 
-def _init_transport(*, rec, out_dir, run_name, engine, slots_opt,
-                    bias_opt, structure, psml_lib, vacuum,
-                    low_bias_approximation=None,
-                    stage_strategy) -> None:
-    """`describe --calculation transport` -- task.json and the
-    calculation's template, from the junction citation
-    (engines/transport.md § 3.1): a
-    finished relaxation run, or a structure pair recording its optimization.
-
-    The structure and the cell arrive at prep from the citation, so every
-    option that would supply them here is refused naming that rule rather
-    than silently ignored.  The pseudopotentials come with a cited run and
-    from ``--psml-lib`` for a cited pair -- refused for the first, required
-    for the second.
-    """
+def _described_by_its_kind(rec, *, out_dir, reuses, engine, run_name,
+                           given, slots_opt, bias_opt, low_bias_approximation,
+                           window_opt, finer) -> None:
+    """A KIND DESCRIBED FROM ITS CITATION, OR FROM A CALCULATION IT EXTENDS
+    -- by its own describe, its record's ``describe`` part
+    (`execution/architecture.md` § 3.3), the one its own tab takes too:
+    this road collects the flags, refuses the ones the kind does not take
+    (``given``, by the input each names), and prints what it answers."""
     from pathlib import Path as _P
 
     from ..describe import DescribeError
-    from ..task import Task, derive_run, fresh_varies
-
-    # THE ENGINE IT RUNS ON, refused in the one sentence the tab and the
-    # web doors say (`CalculationKind.why_not_on`, `engines/transport.md`
-    # § 3.8.8); its stages, fixed.
-    no = rec.why_not_on(engine)
-    if no:
-        raise click.ClickException(f"engine {engine!r}: {no}.")
-    part = rec.on(engine)
-    for given, flag, why in (
-            (structure, "--structure", f"its structure IS the "
-             f"{rec.description.cites} citation, copied in at prep"),
-            (vacuum, "--vacuum", "the cell comes with the cited junction"),
-            (stage_strategy, "--stage-strategy", f"its stages are fixed by "
-             f"design ({', '.join(part.stages or ())})")):
-        if given is not None and given != ():
-            raise click.ClickException(
-                f"{flag} does not apply to {rec.with_article} -- "
-                f"{why} (engines/transport.md § 3.1).")
-
-    # THE CITATION DOOR prep composes through (`_junction_slot`).
+    from ..kind_table import description_part
     from ..projects import projects_root
-    from ..transport.compose import CitedPair, ComposeError
-    root = _P(projects_root()).expanduser().resolve()
-    citation, resolved, cited = _junction_slot(
-        slots_opt, root, slot=rec.description.cites)
-    pair = isinstance(cited, CitedPair)
-    from ..transport.compose import refuse_inside_citation
+    door = description_part(rec.name, "describe")
+    reusing = reuses is not None
+    where = "beside --reuses" if reusing else f"to {rec.with_article}"
+    for item, why in door.not_taken(rec.name, engine,
+                                    reusing=reusing).items():
+        flag, value = given[item]
+        if value not in (None, ()):
+            raise click.ClickException(
+                f"{flag} does not apply {where} -- {why}.")
+    if finer != 1 and not window_opt:
+        raise click.ClickException(
+            "--finer cuts the window fitted by --window finer -- name the "
+            "window too (engines/transport.md § 2a.16).")
+    window = None
+    if window_opt:
+        try:
+            lo, hi = (float(v) for v in window_opt.split(","))
+        except ValueError:
+            raise click.ClickException(
+                f"--window {window_opt}: two energies in eV, LO,HI.")
+        window = (lo, hi, finer)
+    junction = (_slot_of(slots_opt, slot=rec.description.cites)
+                if slots_opt or not reusing else None)
+    # THE VOLTAGES GIVEN, or none: the kind's describe says what none is
+    # (a new calculation's single bias; an extension's own).
+    bias = _bias_of(bias_opt) if bias_opt else None
+    psml_lib = given["psml_lib"][1]
     try:
-        refuse_inside_citation(out_dir, cited.path)
-    except ComposeError as exc:
-        raise click.ClickException(str(exc))
-
-    # THE SINGLE BIAS IS STATED, `[0.0]` -- the one spelling both roads
-    # write (`engines/transport.md` § 2a.10; the tab writes the same), never
-    # an empty list a reader has to fill in (2026-10-18).
-    bias = _bias_of(bias_opt) if bias_opt else (0.0,)
-
-    # THE LADDER IS THE PAIR'S: its fixed stages in dependency order, every
-    # one, through the one door every describe road takes
-    # (`jobset.ladder.fresh_stages`).
-    from .ladder import fresh_stages
-    stages = fresh_stages(rec.name, engine)
-    try:
-        task = Task(
-            engine=engine,
-            run=derive_run(run_name, citation,
-                           stage_names=tuple(s.name for s in stages)),
-            structure=None, calculation=rec.name,
-            slots={rec.description.cites: citation}, bias=bias,
+        made = door.describe(
+            calculation=rec.name, engine=engine, junction=junction,
+            reuses=reuses, name=None if reusing else run_name,
+            dest=_P(out_dir), bias=bias,
             low_bias_approximation=low_bias_approximation,
-            varies=fresh_varies(stages), stages=stages)
-    except ValueError as exc:
+            shared={"psml_lib": str(psml_lib)} if psml_lib else {},
+            window=window, refuse_limits=False,
+            tree_root=_P(projects_root()).expanduser().resolve())
+    except door.NotDescribed as exc:
         raise click.ClickException(str(exc))
-
-    # THE TEMPLATE'S TEXT FIRST -- before the folder exists -- so a
-    # citation it refuses (one that carried a net charge, ES7,
-    # `science/chemistry-correctness.md` § 2a; a pair with no
-    # pseudopotential directory, or a run with one, § 3.1) leaves nothing
-    # behind.
-    from ..transport.citation_defaults import (check_pseudopotentials,
-                                               transport_template_text)
-    try:
-        check_pseudopotentials(cited, psml_lib)
-        _tmpl_text = transport_template_text(
-            resolved, label=task.label,
-            **({"psml_lib": str(psml_lib)} if psml_lib else {}))
-    except ValueError as exc:
-        raise click.ClickException(str(exc))
-    # THE DESCRIPTION'S OWN CHECK (gate ③), which every describe runs
-    # (`workflow.md` § 9) -- refusing before the folder exists, and saying its warnings
-    # (a bias point outside its recommended range) the way `prep` says its
-    # notes.
-    from ..describe import Description, write_description
-    from ..issues import ValidationError
-    from ..transport.deck import describe_findings
-    from ..validation.task import refuse_on_error
-    desc = Description(task=task, template=_tmpl_text)
-    try:
-        # ...AND THE K-POINT MESHES EACH RUNG WILL WRITE, as the Transport
-        # tab's describe says them (`engines/transport.md` § 0.3b).
-        for issue in refuse_on_error(describe_findings(
-                task, _tmpl_text, desc.request, cited=cited)):
-            click.echo(f"note: {issue.message}", err=True)
-    except ValidationError as exc:
-        raise click.ClickException(str(exc))
-    # THE DESCRIPTION AND ITS TEMPLATE, every file or none, through the one
-    # writer every describe takes (`describe.write_description`) -- the
-    # Transport tab's describe door writes through it too.
-    #
-    # The template is transport's shared baseline, like every other kind's
-    # (`engines/transport.md` § 2a.3): its values are DEFAULTED FROM THE
-    # CITED RUN, not sealed to it (§ 2a.7), and its TEXT comes through the
-    # same door the describe door uses (`citation_defaults.
-    # transport_template_text`): a `citation` row the cited directory does
-    # not answer stays VALUELESS (§ 3.8.3).
-    try:
-        written = write_description(desc, out_dir)
     except (DescribeError, OSError) as exc:
         raise click.ClickException(str(exc))
-
-    click.echo(f"Described transport '{task.run.name}' in {out_dir} -- "
-               f"composes {citation}.")
-    for path in written:
+    for note in made.notes:
+        click.echo(f"note: {note.message}", err=True)
+    click.echo(made.headline)
+    for path in made.written:
         click.echo(f"  {path.name}")
-    click.echo("")
-    click.echo("The template carries the shared electronic description, "
-               "filled in from the "
-               + ("record of the optimization your pair carries"
-                  if pair else "run you cited")
-               + " -- change anything in it and every stage follows, "
-               "because there is one of it.  The structure arrives at prep "
-               "from the citation, and the pseudopotentials "
-               + ("from the directory you named" if pair
-                  else "from the run you cited")
-               + ".  On the machine that will run it:")
-    # THE FIRST COMMAND A PERSON COPIES: the groups `prep task` offers --
-    # every one, before anything has run.
+    if made.manifest is not None:
+        click.echo("")
+        click.echo("\n".join(made.manifest))
+    # THE FIRST COMMAND A PERSON COPIES: the groups `prep task` offers.
     from .commands import prep_group_lines
     from .ready import task_state
+    click.echo("")
+    for line in made.after:
+        click.echo(line)
     click.echo("  " + prep_group_lines(task_state(_calc_of(out_dir)).prep_offer,
                                        base=out_dir)[0])
 
@@ -540,143 +443,6 @@ def _bias_of(bias_opt: str) -> tuple:
         raise click.ClickException(
             f"--bias {bias_opt!r}: a comma-separated list of volts, "
             f"e.g. --bias 0.0,0.2,0.4.")
-
-
-def _init_reusing(*, out_dir, reuses, engine, bias_opt,
-                  low_bias_approximation, window_opt, finer, slots_opt,
-                  refused) -> None:
-    """`describe --calculation transport --reuses <finished>` -- the new
-    calculation written from the finished one's records as they read now
-    (`engines/transport.md` § 2a.16, *Describing it*): its description,
-    with ``reuses`` naming it, its template and its job request, its
-    composed junction and its pseudopotentials.  ``--bias`` and
-    ``--low-bias-approximation`` set what they set on any describe; a flag
-    naming what the finished calculation fixes -- its label, its
-    pseudopotentials -- is refused, naming why.  ``--slot junction=<set>``
-    cites a frame set whose frame 0 is the finished junction in its place
-    (*A frame set of the same junction*), its run id the label and that
-    citation (`run-identity.md` § 2).  ``--window a,b`` (``--finer n``)
-    fits the transmission's window to the finished grid
-    (`transport.window.fitted`), written as the transmission's own values
-    and said where it is fitted."""
-    import dataclasses
-
-    from ..describe import DescribeError, Description
-    from ..issues import ValidationError
-    from ..projects import projects_root
-    from ..kind_table import kind as _kind
-    from ..transport.reuse import ReuseError, reused, write_reusing
-    from ..validation.task import refuse_on_error
-    if refused:
-        flag, why = next(iter(refused.items()))
-        raise click.ClickException(
-            f"{flag} does not apply beside --reuses -- {why} "
-            f"(engines/transport.md § 2a.16).")
-    root = Path(projects_root()).expanduser().resolve()
-    try:
-        finished, citation = reused(reuses, tree_root=root)
-    except ReuseError as exc:
-        raise click.ClickException(str(exc))
-    # WHAT A FLAG SETS, as on any describe: the voltages with their
-    # treatment, or the treatment alone.  Voltages typed with no treatment
-    # keep the finished calculation's, as the Transport tab does
-    # (`engines/transport.md` § 2a.16) -- a single voltage states none.
-    said = {}
-    if bias_opt:
-        bias = _bias_of(bias_opt)
-        said = {"bias": bias, "low_bias_approximation": (
-            low_bias_approximation if low_bias_approximation is not None
-            else finished.task.low_bias_approximation if len(bias) > 1
-            else None)}
-    elif low_bias_approximation is not None:
-        said = {"low_bias_approximation": low_bias_approximation}
-    engine = engine or finished.task.engine
-    rec = _kind(finished.task.calculation)
-    # THE KIND'S OWN REUSE, the one part this road asks (its description's
-    # `reuse`; a kind that carries `reuses` names one, `kind_table`).
-    from ..kind_table import description_part
-    _reuse = description_part(rec.name, "reuse")
-    no = rec.why_not_on(engine)
-    if no:
-        raise click.ClickException(f"engine {engine!r}: {no}.")
-    # A FRAME SET OF THE SAME JUNCTION, cited in its place (§ 2a.16,
-    # `reuse.citing`); whether its first frame is the finished junction is
-    # the writer's question (`write_reusing`).
-    junction = (_junction_slot(slots_opt, root,
-                               slot=rec.description.cites)[0]
-                if slots_opt else None)
-    try:
-        task = dataclasses.replace(
-            finished.task, reuses=citation, engine=engine, **said)
-        if junction is not None:
-            from ..transport.reuse import citing
-            task = citing(task, junction)
-    except ValueError as exc:
-        raise click.ClickException(str(exc))
-    if finer != 1 and not window_opt:
-        raise click.ClickException(
-            "--finer cuts the window fitted by --window finer -- name the "
-            "window too (engines/transport.md § 2a.16).")
-    if window_opt:
-        # THE WINDOW FITTED TO THE FINISHED GRID, the transmission's own
-        # values -- where the page's *use these* writes it
-        # (`engines/transport.md` § 2a.16).
-        from ..task import Stage
-        from ..transport.window import fitted
-        from ..transport.window import window_rung
-        try:
-            lo, hi = (float(v) for v in window_opt.split(","))
-            fit = fitted(_reuse.finished_window(finished), lo, hi, finer)
-        except ValueError as exc:
-            raise click.ClickException(f"--window {window_opt}: {exc}")
-        window = fit.values()
-        task = dataclasses.replace(
-            task, varies=tuple(dict.fromkeys((*task.varies, *window))),
-            stages=tuple(Stage(s.name, {**s.overrides, **window})
-                         if s.name == window_rung() else s
-                         for s in task.stages))
-        click.echo(f"transmission window: {fit.words()}")
-    desc = Description(task=task, template=finished.template_text,
-                       request=finished.request)
-    from ..transport.deck import describe_findings
-    try:
-        for issue in refuse_on_error(describe_findings(
-                task, desc.template, desc.request, base=finished.base)):
-            click.echo(f"note: {issue.message}", err=True)
-    except ValidationError as exc:
-        raise click.ClickException(str(exc))
-    try:
-        written, notes = write_reusing(desc, out_dir, finished, tree_root=root)
-    except (ReuseError, DescribeError, OSError) as exc:
-        raise click.ClickException(str(exc))
-    for note in notes:
-        click.echo(f"note: {note.message}", err=True)
-    click.echo(f"Described transport '{task.run.name}' in {out_dir} -- reuses "
-               f"{citation}.")
-    for path in written:
-        click.echo(f"  {path.name}")
-    # WHAT IT WILL REUSE, AND WHAT RUNS -- the one answer prep composes
-    # (the kind's `reuse` part, `kind_table.description_part`), said once it
-    # is described (`engines/transport.md` § 2a.16, *Extending it*): every
-    # group, nothing written.
-    try:
-        calc_now = _calc_of(out_dir)
-        manifest = _reuse.decide(calc_now, calc_now.request.numbers)
-    except PrepError as exc:
-        click.echo(f"note: what it will reuse is not known yet -- {exc}",
-                   err=True)
-    else:
-        if manifest is not None:
-            click.echo("")
-            click.echo("\n".join(manifest.lines(out_dir)))
-    from .commands import prep_group_lines
-    from .ready import task_state
-    click.echo("")
-    click.echo("Change what the new question asks -- on Task setup, or in "
-               "its task.json and template -- then prepare it for the "
-               "machine that will run it:")
-    click.echo("  " + prep_group_lines(task_state(_calc_of(out_dir)).prep_offer,
-                                       base=out_dir)[0])
 
 
 @click.command("describe",
@@ -781,7 +547,6 @@ def describe_cmd(structure, bundle: str,
 
     from ..workingcopy_structure import StructureCodec
     from ..describe import DescribeError, build_description, write_description
-    from ..identity import normalise_id
     from ..chemistry import species_order
     from .ladder import engine_ladder, fresh_stages
 
@@ -801,6 +566,12 @@ def describe_cmd(structure, bundle: str,
         _rec = _kind(calculation)
     except KindTableError as exc:
         raise click.ClickException(str(exc))
+    # WHAT THE KIND DOES NOT TAKE IS ITS OWN TO SAY (its `describe` part),
+    # by the input each flag names: the flag, and what it was given.
+    _given = {"name": ("--name", name), "psml_lib": ("--psml-lib", psml_lib),
+              "structure": ("--structure", structure),
+              "vacuum": ("--vacuum", vacuum),
+              "stage_strategy": ("--stage-strategy", stage_strategy)}
     if reuses is not None:
         # A FINISHED CALCULATION EXTENDED belongs to a kind whose
         # description carries it (the kind table's ``description.carries``).
@@ -809,21 +580,11 @@ def describe_cmd(structure, bundle: str,
                 f"--reuses belongs to --calculation "
                 f"{' or '.join(carrying('reuses'))} alone "
                 f"(engines/transport.md § 2a.16).")
-        _init_reusing(
-            out_dir=out_dir, reuses=reuses, engine=engine,
+        _described_by_its_kind(
+            _rec, out_dir=out_dir, reuses=reuses, engine=engine,
+            run_name=run_name, given=_given, slots_opt=slots_opt,
             bias_opt=bias_opt, low_bias_approximation=low_bias_approximation,
-            window_opt=window_opt, finer=finer, slots_opt=slots_opt,
-            refused={flag: why for flag, given, why in (
-                ("--name", name, "the label is the finished calculation's: "
-                 "SystemLabel names every file a deck reads and writes, and "
-                 "decks under two labels are never the same calculation"),
-                ("--psml-lib", psml_lib, "the pseudopotentials are the "
-                 "finished calculation's, copied with it"),
-                ("--structure", structure, f"its structure IS the "
-                 f"{_rec.description.cites} citation"),
-                ("--vacuum", vacuum, "the cell comes with the junction"),
-                ("--stage-strategy", stage_strategy, "its stages are fixed "
-                 "by design")) if given not in (None, ())})
+            window_opt=window_opt, finer=finer)
         return
     if window_opt is not None or finer != 1:
         raise click.ClickException(
@@ -836,13 +597,11 @@ def describe_cmd(structure, bundle: str,
     # A KIND THAT CITES its structure (the kind table's
     # ``description.cites``) is described from the citation.
     if _rec.description.cites:
-        _init_transport(rec=_rec, out_dir=out_dir, run_name=run_name,
-                        engine=engine, slots_opt=slots_opt,
-                        bias_opt=bias_opt,
-                        low_bias_approximation=low_bias_approximation,
-                        structure=structure,
-                        psml_lib=psml_lib, vacuum=vacuum,
-                        stage_strategy=stage_strategy)
+        _described_by_its_kind(
+            _rec, out_dir=out_dir, reuses=None, engine=engine,
+            run_name=run_name, given=_given, slots_opt=slots_opt,
+            bias_opt=bias_opt, low_bias_approximation=low_bias_approximation,
+            window_opt=None, finer=1)
         return
     # WHICH KINDS CITE, AND WHICH CARRY A BIAS LIST: their records'.
     from ..kind_table import kinds as _kinds
@@ -910,19 +669,15 @@ def describe_cmd(structure, bundle: str,
                 f"the template's own.")
         stages = (tuple(engine_ladder(engine, stage_strategy))
                   if stage_strategy else fresh_stages(calculation, engine))
-        # The label goes through the SAME normaliser Task.label uses, so the
-        # template's SystemLabel and the description's id cannot disagree
-        # about what this calculation is called.
-        label = normalise_id(run_name, what="name",
-                             stage_names=tuple(s.name for s in stages))
         # The config the template is written from -- the engine's own class
-        # (its record's ``config``), carrying its identity field (the
-        # record's ``identity_field``) and the pseudopotential folder where
-        # the engine's catalogue offers one.
+        # (its record's ``config``), carrying the pseudopotential folder
+        # where the engine's catalogue offers one; its identity setting is
+        # the description's label, written by the describe
+        # (`describe.build_description`, from `task.label_of`).
         from ..engine_table import config_class, engine as _engine
         from ..template import catalogue as _catalogue, select as _select
         _ident = _engine(engine).identity_field
-        _own = {_ident: label}
+        _own = {}
         if psml_lib and any(it.name == "psml_lib" for it in
                             _select(_catalogue(), engine=engine)):
             _own["psml_lib"] = psml_lib
@@ -933,10 +688,28 @@ def describe_cmd(structure, bundle: str,
         from ..template import apply_recommended as _apply_recommended
         cfg = _apply_recommended(cfg, calculation, engine=engine)
 
+        # THE PSEUDOPOTENTIALS, COVERED BEFORE ANYTHING IS WRITTEN -- the
+        # engine's describe findings of the folder it writes into, as the
+        # hand-over asks them (`web/handover-procedure.md` § 2.2).
+        from ..issues import calling
+        from .engines import engine_seam
+        _findings = engine_seam(engine).describe_findings
+        if _findings is not None:
+            with calling("describe_findings", engine=engine,
+                         where="molbuilder describe"):
+                _found, _refusal = _findings(struct, cfg,
+                                             calculation=calculation,
+                                             dest_dir=out_dir)
+            if _refusal:
+                raise click.ClickException("\n".join(
+                    i.message for i in _found if i.severity == "error"))
+            for _issue in _found:
+                click.echo(f"note: {_issue.message}", err=True)
+
         # WHAT THE PERSON STATED here is theirs (`template.md` § 6.6
         # obligation 2): the calculation's name, and the pseudopotential
         # folder when given; the kind's recommendations are nobody's choice.
-        _said = {name: "person" for name in _own}
+        _said = {name: "person" for name in (_ident, *_own)}
         desc = build_description(
             struct, cfg, stages,
             engine=engine, name=run_name,
@@ -944,6 +717,10 @@ def describe_cmd(structure, bundle: str,
             pseudo_species=species_order(struct.elements),
             value_sources=_said,
         )
+        # WHAT THE DESCRIPTION'S OWN CHECK SAYS beside a refusal it does not
+        # make -- a value outside its recommended range.
+        for _issue in desc.notes:
+            click.echo(f"note: {_issue.message}", err=True)
         # The struct AS DESCRIBED travels: --vacuum replaced it in memory,
         # and a raw copy of the source would drop that choice.
         written = write_description(desc, out_dir, psml_lib=psml_lib,

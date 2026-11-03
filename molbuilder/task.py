@@ -63,7 +63,8 @@ import dataclasses as _dc
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
+from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
+                    Tuple)
 
 from .identity import normalise_id, run_id, stage_key
 from .persist import check_schema, read_json, write_json
@@ -192,6 +193,21 @@ class Stage:
                 f"stage name {self.name!r} must match [A-Za-z0-9_]+ -- it "
                 "becomes a filename and a shell word "
                 "(engines/stages.md 6.6)")
+
+
+def label_of(name: str, *, calculation: str,
+             stage_names: Sequence[str] = ()) -> str:
+    """THE LABEL a calculation called ``name`` is filed under -- the
+    ``SystemLabel`` / ``JOB`` literal and the stem of every file
+    (`run-identity.md` § 3) -- by the one rule: the normaliser, its cap
+    counting the ladder's stage token and what a rung of the kind adds
+    before it, its longest lead stem
+    (`kind_table.CalculationKind.label_tail`).  Asked by :attr:`Task.label`,
+    and by a door that names a calculation before its description exists
+    (the hand-over)."""
+    from .kind_table import kind
+    return normalise_id(name, stage_names=tuple(stage_names), what="name",
+                        label_tail=kind(calculation).label_tail)
 
 
 @dataclass(frozen=True)
@@ -459,13 +475,6 @@ class Task:
 
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
 
-    def _label_tail(self) -> int:
-        """What a rung adds to the label before its stage token -- its
-        kind's longest lead stem (`kind_table.CalculationKind.label_tail`);
-        nothing for a kind without leads."""
-        from .kind_table import kind
-        return kind(self.calculation).label_tail
-
     def _stage_names(self) -> Tuple[str, ...]:
         """The ladder, for the cap -- see :func:`~molbuilder.identity._cap_for`.
 
@@ -482,9 +491,9 @@ class Task:
         Derived rather than stored (see :class:`Run`), through the same
         normaliser that built half of ``run.id`` -- so the two cannot disagree
         about what the user's name normalises to, and ``__post_init__`` has
-        already proved it."""
-        return normalise_id(self.run.name, stage_names=self._stage_names(),
-                            what="name", label_tail=self._label_tail())
+        already proved it -- by the one rule (:func:`label_of`)."""
+        return label_of(self.run.name, calculation=self.calculation,
+                        stage_names=self._stage_names())
 
     def _check_id(self) -> None:
         """``run.id`` is what ``run.name`` and ``structure.formula`` derive.
@@ -1032,7 +1041,7 @@ def write_task(base, task: Task):
 
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Run", "StructureRef", "Stage", "Task",
-           "derive_run", "of", "from_text", "path_of",
+           "derive_run", "label_of", "of", "from_text", "path_of",
            "refuse_another_layout", "varies_for", "write_task"]
 
 

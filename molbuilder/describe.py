@@ -2,8 +2,9 @@
 
 **Module:** L2. Imports ``task``, ``template``, ``identity`` and
 ``validation.task`` -- and the composed junction's writer
-(``transport.compose``) for a calculation that reuses a finished one; imported by ``jobset/_cli``, ``jobset/materialize`` and
-the Transport tab's describe door (``web/blueprints/transport``).
+(``transport.compose``) for a calculation that reuses a finished one;
+imported by ``jobset/_cli``, the hand-over (``web/blueprints/build``)
+and a kind's own describe (``transport/describe``, ``transport/reuse``).
 It is **pure up to one function**: everything is built and
 checked in memory, and :func:`write_description` is the only part that touches
 a disk.
@@ -86,6 +87,9 @@ class Description:
     template: str
     pseudo_species: Tuple[str, ...] = ()
     request: Optional[JobRequest] = None
+    #: what its own check said beside a refusal it did not make (a value
+    #: outside its recommended range), for the road to say
+    notes: Tuple[Any, ...] = ()
 
     def __post_init__(self) -> None:
         """EVERY STAGE STATES ITS GROUP (`execution/job-request.md` § 3.3):
@@ -163,7 +167,9 @@ def build_description(
 
     ``source`` is where the structure lives, recorded as a **reference**
     (§ 6.3). ``name`` is what the user called this calculation; the label and
-    the run id are derived from it and never retyped.
+    the run id are derived from it and never retyped -- the label written
+    into ``cfg``'s identity setting from the task's own (`task.label_of`),
+    so the template and the description cannot disagree about it.
 
     Raises :class:`DescribeError` if any § 6.6 check refuses — with the
     offending key, the stage it was in, and the bound it broke, because this is
@@ -193,8 +199,8 @@ def build_description(
         calculation=calculation,
     )
 
-    _check(task, cfg, generators=generators)
-
+    from .engine_table import relabelled
+    cfg = relabelled(engine, cfg, task.label)
     # § 4.3: this calculation's template is the CATALOGUE, narrowed to this
     # engine, carrying the values `cfg` holds.  The questions were asked by the
     # catalogue; `describe` supplies the answers, exactly as a surface does.
@@ -203,24 +209,29 @@ def build_description(
     text = template_with_values(cfg, engine=engine,
                                 calculation=calculation,
                                 sources=value_sources)
-    return Description(task=task, template=text,
+    desc = Description(task=task, template=text,
                        pseudo_species=tuple(pseudo_species))
+    return _dc.replace(desc, notes=tuple(_check(desc, generators=generators)))
 
 
-def _check(task: Task, cfg, *, generators=None) -> None:
-    """§ 6.6's schema-dependent half, refusing on the first error.
+def _check(desc: Description, *, generators=None) -> List[Any]:
+    """§ 6.6's schema-dependent half: every error refuses, named; the
+    warnings are returned, for the road to say.
 
     The codec's own four checks have already run — ``Task`` refuses in its
     constructor, so there is no object to get here without them. This is the
-    other four, and it is **the existing preflight** rather than a second
-    implementation: `validation/task.py` already walks them in the contract's
-    order and already names what it refused.
+    rest of § 6.6, with the template and the job request this describe
+    writes (the job request's own check among them), and it is **the
+    existing preflight** rather than a second implementation:
+    `validation/task.py` already walks them in the contract's order and
+    already names what it refused.
     """
     from .validation.task import preflight, refuse_on_error
-    issues = preflight(task,
+    issues = preflight(desc.task, template_text=desc.template,
+                       request=desc.request,
                        **({"generators": generators} if generators else {}))
     try:
-        refuse_on_error(issues)
+        return refuse_on_error(issues)
     except Exception as exc:
         raise DescribeError(str(exc)) from exc
 
@@ -233,9 +244,9 @@ def refuse_described(dest, *, shown: Optional[str] = None) -> None:
     """ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse): a folder that
     already holds a description is changed in Task setup or its
     ``task.json``, never described again.  Asked by every door that
-    describes -- `molbuilder describe` and the Transport tab's describe door
-    (`engines/transport.md` § 3.8.2a) -- before anything is read or
-    written.  ``shown`` is the folder as the door's reader names it (the
+    describes -- `molbuilder describe`, the hand-over and a kind's own
+    describe (`transport.describe`, `engines/transport.md` § 3.8.2a) --
+    before anything is written.  ``shown`` is the folder as the door's reader names it (the
     browser's, from the projects root); the path otherwise."""
     from .calcdirs import described
     if described(dest):

@@ -223,6 +223,7 @@ cited_kind = "optimization"
 extension = "molbuilder.transport.reuse:Extension"
 cited_frames = "molbuilder.transport.compose:cited_frames"
 order_record = "molbuilder.transport.gather:order_record"
+describe = "molbuilder.transport.describe"
 reuse = "molbuilder.transport.reuse"
 
 [transport.on.siesta]

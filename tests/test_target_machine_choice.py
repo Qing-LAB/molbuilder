@@ -153,11 +153,17 @@ class TestTheUserChoosesTheMachine:
         # SIESTA, the engine the bench lane speaks: a PySCF description is
         # refused before any machine is asked (`prep_inputs.bench_refusal`),
         # so it cannot reach the question this test is about.
+        # ...and a SIESTA describe covers its pseudopotentials
+        # (job-system.md § 5.1).
+        from conftest import write_pseudos
+        (machines.tree / "pseudopotential").mkdir()
+        write_pseudos(machines.tree / "pseudopotential", ["H"])
         init = r.invoke(describe_cmd, [
             "--structure", "P/structure/h2.xyz",
             "--bundle", "P/optimization/wb",
             "--engine", "siesta",
-            "--calculation", "optimization"])
+            "--calculation", "optimization",
+            "--psml-lib", "pseudopotential"])
         assert init.exit_code == 0, init.output
         # a bench needs an axis to measure; declare one the way the tab does
         from support.road import read_request, write_request

@@ -3954,9 +3954,11 @@ source, so every deck reads the files the finished runs read. A flag beside
 `--reuses` sets what it sets on any describe — the voltages, the treatment,
 the window; voltages typed with no treatment keep the finished calculation's,
 as the Transport tab does — and one naming what the extension keeps is
-refused by name:
-`--name` (the label), `--psml-lib` (the pseudopotentials); `--slot
-junction=` names a frame set of the same junction or is refused by name
+refused by name: `--name` (the label), `--psml-lib` (the
+pseudopotentials), `--structure`, `--vacuum` and `--stage-strategy` (the
+junction and its stages); an `--engine` other than the finished
+calculation's, as below; `--slot junction=` names a frame set of the same
+junction or is refused by name
 (*A frame set of the same junction*, below). You then change what the new
 question asks, on the Transport tab before Describe or on Task setup after,
 as for any calculation. The describe copies no run.
@@ -3964,6 +3966,11 @@ as for any calculation. The describe copies no run.
 - **The label is the finished calculation's**: SIESTA's `SystemLabel` names
   every file a deck reads and writes, and is engine input — decks under two
   labels are never the same calculation (§ 6.1).
+- **The engine is the finished calculation's** *(the user, 2026-11-02)*: a
+  run on another engine runs another calculation, and nothing the finished
+  one computed would be taken (§ 6.1). `--engine` beside `--reuses` may be
+  left out; another engine than the finished calculation's is refused,
+  naming both — on the Transport tab's Describe, the engine strip's.
 - **A USER-CUSTOM zone is not carried**: the zone § 6.1's comparison merges is
   the one in the deck this calculation's prep wrote, so a keyword typed into
   the finished calculation's deck makes its rung run here, the keyword named
@@ -3981,7 +3988,8 @@ a frame set needs that record: it is compared with it, and refused without
 it.)
 
 Refused, before anything is written: a folder `--reuses` names that is not a
-transport calculation's — said in its description's own words; a new folder
+transport calculation's — said in its description's own words; another
+engine (*The engine is the finished calculation's*, above); a new folder
 inside the finished calculation (§ 3.1, *A calculation's folder is its own*;
 `compose.refuse_inside_citation`); a new folder that holds a description, as
 every describe refuses.
@@ -4692,8 +4700,8 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 
 | Command | Does | Code |
 |---|---|---|
-| `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
-| `molbuilder describe --calculation transport --reuses <finished> [--slot junction=<set>] [--window LO,HI [--finer N]]` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole — `--bias` and `--low-bias-approximation` set what they set; `--slot junction=` cites a frame set whose frame 0 is the finished junction in its place (§ 2a.16, *A frame set of the same junction*); `--window` fits the transmission window to the finished grid, written as the transmission's own values (§ 2a.16) | `jobset/_cli.py::_init_reusing`, `transport/reuse.py`, `transport/window.py` |
+| `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `transport/describe.py` — the kind's `describe` part, which the command line asks and the Transport tab's Describe takes too |
+| `molbuilder describe --calculation transport --reuses <finished> [--slot junction=<set>] [--window LO,HI [--finer N]]` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole — `--bias` and `--low-bias-approximation` set what they set; `--slot junction=` cites a frame set whose frame 0 is the finished junction in its place (§ 2a.16, *A frame set of the same junction*); `--window` fits the transmission window to the finished grid, written as the transmission's own values (§ 2a.16) | `transport/describe.py`, `transport/reuse.py`, `transport/window.py` |
 | `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md` § 5.0, checkpoint 2a); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
@@ -4773,8 +4781,9 @@ optimization, copied into the calculation by prep, and the transport
 calculation's record shows where they were copied from: its template's
 `psml_lib` row, and the seed deck's note naming that directory; `--psml-lib` is refused for a cited run, whose
 pseudopotentials come with it, and required for a pair — one rule, asked by
-both roads that describe (`citation_defaults.check_pseudopotentials`:
-`molbuilder describe` and the Transport tab's describe door). **Once a calculation
+the kind's one describe (`citation_defaults.check_pseudopotentials`, from
+`transport.describe`, which `molbuilder describe` and the Transport tab's
+Describe both take). **Once a calculation
 cites a pair, leave the pair alone** *(the user, 2026-10-10: "effort should
 be tell user what not to do")*: a new or changed frame set is a new file,
 cited by a new transport calculation (`molbuilder describe`). The pair's two files
@@ -4795,7 +4804,7 @@ frame and voltage (§ 2a.11).
 **A calculation's folder is its own.** A calculation does not live inside its
 own input: describing into the cited run's folder, or a folder below it, is
 refused before anything is written (`compose.refuse_inside_citation`, asked by
-the Transport tab's describe door and by `molbuilder describe`) — every later prep
+the kind's one describe, `transport.describe`) — every later prep
 would otherwise write into the finished run it cites. A pair is a file, so no folder is inside it.
 
 **Settings** here means what every stage of the calculation must agree on: the
@@ -5511,8 +5520,8 @@ began answering it on 2026-09-28: `spin_treatment` and `unpaired_electrons` are
 Both surfaces are served by `/api/transport/schema?surface=rung|shared`
 from `catalogue_to_form_schema(surface=)`, and given the citation **both are
 drawn from the template this tab's describe will write** — the one text the
-describe door writes (`blueprints/transport.py::_panel_template`, through
-`citation_defaults.transport_template_text`), so the tab cannot show one
+describe writes (`citation_defaults.transport_template_text`, the panel's
+values typed by `transport.describe.shared_of`), so the tab cannot show one
 calculation and describe another *(plan § 5w K7, 2026-09-30)*. Each field
 carries the template's value and its source (`form-schema.md` § 1.1): the
 shared panel **holds** them, the citation's answers named as such; a rung's

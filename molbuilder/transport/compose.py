@@ -226,7 +226,7 @@ def classify_citation(cited: Path) -> "CitedRun | CitedPair":
     CLASSIFYING IS NOT COMPOSING: a run still going, or one that ended with
     an error, is RECORDED here -- describing a transport calculation ahead
     of its relaxation is legal -- and refused by :func:`compose_junction`;
-    the describe doors refuse one that ended with an error first
+    the kind's describe refuses one that ended with an error first
     (:func:`refuse_failed_citation`).
     """
     cited = Path(cited)
@@ -395,8 +395,9 @@ def cited_frames(citation: str, tree_root: Path) -> dict:
 def resolve_citation(citation: str, tree_root: Path
                      ) -> "Tuple[Path, CitedRun | CitedPair]":
     """The citation's path, fenced to the tree and classified against § 3.1's
-    condition (`engines/transport.md` § 3.1).  Public: the web hand-over
-    validates a citation through the SAME door prep composes through."""
+    condition (`engines/transport.md` § 3.1).  Public: the kind's describe,
+    the Transport tab's pick and its schema route resolve a citation through
+    the SAME door prep composes through."""
     from ..projects import OutsideRoot, contain
     try:
         cited = contain(tree_root / citation, tree_root)
@@ -693,8 +694,9 @@ def refuse_inside_citation(dest, cited, *, what: str = "the cited junction",
     ``task.json`` -- and later every prep attempt -- inside the finished
     relaxation it cites; or inside the finished transport calculation it
     reuses (§ 2a.16), ``what`` naming it.  ``cited`` is the cited folder.
-    Asked by both doors that describe; ``shown`` is the folder as the door's
-    reader names it, as `describe.refuse_described` takes it."""
+    Asked by the kind's one describe (`transport.describe`) and the writer
+    of an extension (`reuse.write_reusing`); ``shown`` is the folder as the
+    road's reader names it, as `describe.refuse_described` takes it."""
     home = Path(cited).resolve()
     there = Path(dest).resolve()
     if there == home or home in there.parents:

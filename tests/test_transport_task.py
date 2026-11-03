@@ -4,8 +4,10 @@ person meets it, `molbuilder describe`.
 
 * `init --calculation transport` refuses: no junction slot or a second one, a
   citation that is not tree-relative, and every option whose answer arrives
-  via the citation (--structure / --psml-lib / --vacuum / --stage-strategy);
-  and `--slot` on any other kind.  Each refusal is the door's own -- the
+  via the citation (--structure / --vacuum / --stage-strategy); beside
+  `--reuses`, every option naming what the extension keeps (the kind's
+  `describe.not_taken`), a window flag spelled wrong, and a folder that is
+  not a transport calculation; and `--slot` on any other kind.  Each refusal is the door's own -- the
   codec's where the codec owns the rule (`task.py`), surfaced by name.  The
   refusal that comes after a citation is read -- a bias list that does not
   start at 0.0 -- needs a finished relaxation to cite, so it is asked on the
@@ -161,7 +163,42 @@ class TestInitCLI:
                       ["--stage-strategy", "publishable"]):
             r = _init(_TRANSPORT + ["--slot", f"junction={_CITE}"] + extra)
             assert r.exit_code != 0, f"{extra} must be refused"
-            assert "transport" in r.output
+            assert f"{extra[0]} does not apply to" in r.output, r.output
+
+    @pytest.mark.parametrize("extra, words", [
+        (["--name", "R"], "--name does not apply beside --reuses"),
+        (["--psml-lib", "pseudopotential"],
+         "--psml-lib does not apply beside --reuses"),
+        (["--structure", "<the road's structure>"],
+         "--structure does not apply beside --reuses"),
+        (["--vacuum", "8"], "--vacuum does not apply beside --reuses"),
+        (["--stage-strategy", "publishable"],
+         "--stage-strategy does not apply beside --reuses"),
+        (["--finer", "3"], "--finer cuts the window fitted by --window"),
+        (["--window", "lo"], "--window lo: two energies in eV"),
+        ([], "is not a transport calculation"),
+    ], ids=["name", "psml-lib", "structure", "vacuum", "stage-strategy",
+            "finer-alone", "window-spelled-wrong", "not-transport"])
+    def test_what_an_extension_does_not_take_is_refused(self, tmp_path,
+                                                        monkeypatch, extra,
+                                                        words):
+        """`engines/transport.md` § 2a.16: beside `--reuses`, an option
+        naming what the extension keeps is refused by name, and a folder
+        that is not a transport calculation's is refused in its
+        description's words -- before anything is written.  THE SILENT
+        FAILURE: an option taken and dropped, the extension written as if
+        it had been read.  The folder reused is an optimization described
+        by the road (`support.road.describe_calculation`)."""
+        from support.road import STRUCTURE, describe_calculation
+        finished = describe_calculation(tmp_path, monkeypatch)
+        extra = [STRUCTURE if a == "<the road's structure>" else a
+                 for a in extra]
+        rel = finished.relative_to(tmp_path / "projects").as_posix()
+        r = _init(["--calculation", "transport", "--bundle",
+                   "P/transport/R", "--reuses", rel] + extra)
+        assert r.exit_code != 0, r.output
+        assert words in r.output, r.output
+        assert not (tmp_path / "projects" / "P" / "transport").exists()
 
     def test_slot_on_a_non_transport_init_is_refused(self, tree):
         (tree / "BDT-Au" / "structure").mkdir(parents=True, exist_ok=True)

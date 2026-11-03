@@ -246,6 +246,14 @@ def config_class(name: str) -> type:
     return part(rec.config, record=f"engine {rec.name}", key="config")
 
 
+def relabelled(name: str, cfg, label: str):
+    """``cfg`` with ``label`` written into the setting engine ``name``'s
+    record names as the one that names a calculation's files
+    (``identity_field`` -- ``system_label``, ``job_name``)."""
+    import dataclasses
+    return dataclasses.replace(cfg, **{engine(name).identity_field: label})
+
+
 def engine_of_config(cfg_or_cls) -> str:
     """THE ENGINE A CONFIG IS FOR -- the engine whose ``config`` part names
     its class (an instance's class asked, or the class itself), or
@@ -297,5 +305,5 @@ def stage_presets(name: str) -> dict:
 
 
 __all__ = ["TABLE_FILE", "COMPUTES_IN", "EngineTableError", "Engine",
-           "engines", "engine", "config_class", "engine_of_config",
+           "engines", "engine", "config_class", "relabelled", "engine_of_config",
            "keywords", "read_deck", "stage_presets"]
