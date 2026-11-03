@@ -100,7 +100,7 @@ def _make_preppable(calc):
     write_pseudos(calc, ["H"])
     cfg = SiestaConfig(system_label="JOB")
     (calc / "JOB.template.toml").write_text(
-        _T.template_with_values(cfg, engine="siesta"))
+        _T.template_with_values(cfg, engine="siesta", calculation="optimization"))
 
 
 def _post(client, *, stage=None, group=None, **body):
@@ -581,7 +581,7 @@ def _pyscf_calc(root, name):
         "execution": {"threads": 1}}))
     (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
     (calc / "JOB.template.toml").write_text(
-        _T.template_with_values(PySCFConfig(), engine="pyscf"))
+        _T.template_with_values(PySCFConfig(), engine="pyscf", calculation="optimization"))
     return calc
 
 

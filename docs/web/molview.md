@@ -178,8 +178,9 @@ it:
   `∠H #5 – O #1 – H #6 = 104.5°`
 
 **Tagging atoms.** In an editable view the panel tags the selected atoms with a
-label — `L-electrode`, `R-electrode`, `bridge`, `interface`, `frozen_atoms`, or
-a name you type. They show as chips you can remove. These are not decoration: they are
+label — one a calculation reads (a transport calculation's `L-electrode`,
+`R-electrode`, `bridge`, `buffer`), MolView's own `interface` and
+`frozen_atoms`, or a name you type. They show as chips you can remove. These are not decoration: they are
 written into the structure's sidecar file and into the generated input script, so
 the calculation and the results view both see what was set here.
 
@@ -527,6 +528,7 @@ classDiagram
       +Row[] customized
       +Map otherMetadata
       +string orderSaid
+      +Label[] labelsOffered
     }
     class AtomFacts {
       +string[] labels
@@ -601,6 +603,7 @@ classDiagram
 | `customized` | `Row[]` — `{name, value, unit?, note?}`, the structure's named values (`model/structure.md` § 2.2d) | **Shared by every frame.** Part of the structure: written only through `data.customized` (§ 9.3), gated like any edit (§ 9.4) |
 | `otherMetadata` | every other key of the structure's metadata, as the server stated it — today `atom_order`, the order record (`model/overview.md` § 2.2a) | **Shared by every frame**, carried whole and never opened: in from the envelope's `metadata`, back out into it |
 | `orderSaid` | the order the atoms are in, in the server's words — *in the engine's order (held atoms first)* — or `null` in the user order | **Worked out by the server** from the order record, like the resolved box (`atom_order_said` on the answer); shown, never sent back (§ 6.8) |
+| `labelsOffered` | `{name, description}[]` — the labels a calculation kind reads, each with what it is for, `[]` when the answer carried none | **Served beside the structure** (the answer's `labels`, the kind table's, 2.65.0): the palette offers them first (*The viewer does hold the SPELLINGS*); kept with the structure, so a state restored from the workspace offers the ones its last answer carried until the next answer brings the table's again (a state saved before 2.65.0 offers MolView's own two until then); never sent back |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 | `rowsPerFrame` | `Row[][]` or `null` | `rowsPerFrame[f]` = frame `f`'s own `customized` rows; `null` when no frame has one, otherwise exactly one entry per frame. Folded in from the envelope's `metadata.customized.frames` and out again only by the two translators (§ 11.1), as the annotations are |
@@ -768,16 +771,16 @@ A label is just a name attached to a set of atoms. **Some names are reserved**:
 they are stored, filtered and displayed exactly like any other label, and the
 only difference is that something downstream knows what they mean.
 
-Today's set is `frozen_atoms` and the transport vocabulary — `L-electrode`,
-`R-electrode`, `bridge`, `interface`. They are named here as examples, not as a
-list this document keeps: **what each one MEANS lives with the labels
+Today's set is `frozen_atoms` and the labels the transport kind reads —
+`L-electrode`, `R-electrode`, `bridge`, `buffer`. They are named here as
+examples, not as a list this document keeps: **what each one MEANS lives with the labels
 themselves**, in
 [`model/structure-annotations.md`](?doc=model/structure-annotations.md), keyed by
 name and next to the description each one shows a user. That is deliberate, so
 that adding a reserved MEANING touches that list and its translator and nothing
 else — not this document, and nothing in the viewer.
 
-The viewer holds the same six as **spellings to offer** (below). The two are
+The viewer offers them, and its own `interface`, as **spellings** (below). The two are
 different things and they are allowed to be in different places: a spelling costs
 nothing to know, a meaning is what § 6.6 keeps out of here.
 
@@ -789,26 +792,38 @@ generates the input, not here. The viewer's job ends at "these atoms carry this
 name".
 
 **The viewer does hold the SPELLINGS, and only the spellings.** Six names are
-offered before anyone has used them — `L-electrode`, `R-electrode`, `bridge`,
-`interface`, `buffer`, `frozen_atoms` — as `PREDEFINED_LABELS` in
-`model-jobs.js`, the last built from `FROZEN_LABEL` rather than repeating it.
+offered before anyone has used them. **Four are a calculation kind's, and come
+with the structure**: the labels a kind reads — a transport calculation's two
+leads, `L-electrode` and `R-electrode`, and its `bridge` and `buffer` — each
+with the sentence its chip shows on hover, arrive beside every structure the
+server hands MolView (the structure answer's `labels`, read from the kind
+table, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3;
+*Decided* 6, 2.65.0), so a rename happens in the table, once. **Two are
+MolView's own**, `interface` and `frozen_atoms` — `PREDEFINED_LABELS` in
+`model-jobs.js`, the last built from `FROZEN_LABEL` rather than repeating it —
+offered after the kind's.
 
 > *(It read **five** until 2026-09-02, omitting `buffer` — atoms excluded from
 > the transport region entirely, padding beyond the electrode blocks
 > (`engines/transport.md`). The name has always been in the list the code
 > ships; the count and the enumeration here were a hand-kept copy that fell one
-> behind. The test reads the module, so only this document was wrong.)* **The list is
-MolView's own, and each entry carries the colour its chip wears and the sentence
-it shows on hover.**
+> behind. The test reads the module, so only this document was wrong.)* **Each
+entry carries the sentence its chip shows on hover** — a kind's label the
+sentence its record gives (`about`), MolView's own the sentence MolView keeps —
+**and the colour it wears by its place in the list** (`offeredLabels`).
 
+> *(The kind's four come with the structure, never as a mount option: every
+> page MolView is on gets them through the one answer every structure crosses
+> — 2.65.0.)*
+>
 > **This was a mount option once, and it cost the feature.** Each page was to
 > hand in `reservedLabels: [{name, description, tone?}]`, on the reasoning that
 > knowing which names are special is the host's business. Five pages then had to
 > repeat the same four names — five copies of one list — and only the module's
 > own demo page ever did. So on every page a user actually works in, every chip
 > came out the same neutral colour and the tones sat unused in the stylesheet,
-> for as long as they existed. **Decided 2026-08-03: the spellings are
-> conveniences, so the module that offers them keeps them.**
+> for as long as they existed — which is why a kind's labels now ride the one
+> answer every structure crosses, never a page.
 
 That is not the module acquiring a meaning. A predefined name is a **spelling**:
 it exists so that the six names nearly every device structure needs are picked
@@ -817,21 +832,25 @@ become two regions that look like one. MolView still assigns none of them,
 interprets none of them, and treats a user's own name identically.
 
 **What the colours say, and what they do not.** Five of the six —
-`L-electrode`, `R-electrode`, `bridge`, `interface`, `buffer` — each wear a
-different tone for one reason: so they can be told apart on a crowded atom
-list. That is a
+`L-electrode`, `R-electrode`, `bridge`, `buffer`, `interface` — each wear a
+different tone, numbered by its place in the list, for one reason: so they can
+be told apart on a crowded atom list. That is a
 reading aid, not a meaning. **`frozen_atoms` is the exception and looks it**: the
 calculation acts on it, so it wears the tone a warning wears here, and a user is
 told what it does before tagging atoms with it by accident. *"This changes your
 run"* and *"this is a name I picked"* must not look the same. A name the user
 invented reads as an ordinary label, which is what it is.
 
-**Where a label can be chosen, the choice is the same list.** The predefined
-names first, in the order the device reads; then whatever the loaded structure
-carries that is not already among them; and a name appears once however many
+**Where a label can be chosen, the choice is the same list.** The offered
+names first — the kind's labels in its table's order, then MolView's own
+(`offeredLabels`); then whatever the loaded structure carries that is not
+already among them; and a name appears once however many
 sources name it. Two controls ask this question — the Assign chooser and the
-filter's `by label` row — and both read the one list, because reading it twice is
-how they come to disagree about what exists.
+filter's `by label` row — and both read the one list, redrawn when it changes
+(a structure's arrival brings the kind's labels), because reading it twice is
+how they come to disagree about what exists. **A default is nobody's choice**:
+until a person picks a name, the Assign chooser shows the first one offered and
+follows the list as it changes; a name picked is kept.
 
 **`by label` chooses; the other rules type.** A label that is not defined matches
 no atom, so a free-text box on that rule can only ever produce an empty selection
@@ -2061,15 +2080,16 @@ the master copy?" has no single answer.
 The table above is the *needs*. This is the same surface written out as calls, so
 a caller does not have to infer an argument. **With nothing loaded every data
 read answers `null`** — "there is nothing here", which is a different answer from
-"a structure with no atoms" — and the three below that do not are marked.
+"a structure with no atoms" — and the four below that do not are marked.
 
 | Call | Parameters | Answers |
 |---|---|---|
-| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, orderSaid, frames, forcesPerFrame, rowsPerFrame}` |
+| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, orderSaid, labelsOffered, frames, forcesPerFrame, rowsPerFrame}` |
 | `getAtoms()` | — | `[{index, element, labels, residue}]` |
 | `getElements()` · `getCoordinates()` | — | the elements; `{frames, forcesPerFrame}` |
 | `getRegions()` | — | `{label: [atom…]}` |
 | `getFrozen()` | — | the atoms carrying `frozen_atoms` (§ 6.6) |
+| `getLabelsOffered()` | — | the labels a calculation kind reads that the structure arrived with, `[{name, description}]` (*The viewer does hold the SPELLINGS*) — **`[]` with nothing loaded**, not `null`: a list the choosers read |
 | `getFrameAllAtoms(i)` | `i` — frame index, 0-based | every atom of that frame, original order |
 | `getUnitCellInfo()` | — | the cell **as it will be used** — `{cell, box_corner, axis_kind, vacuum}`, each `null` where there is nothing; `box_corner` is the server's, where the box is drawn (`structure-periodicity.md` § 6.0), never worked out here. **Never `null` itself** |
 | `getUnitCell()` · `getUnitCellOrigin()` · `getAxisKind()` · `getVacuum()` | — | what the structure itself states, `null` where it states nothing — `getUnitCellOrigin()` is the ASSIGNED origin, `null` for *Automatic* |
@@ -2194,7 +2214,7 @@ structure**, so one read holds them all.
 
 | You want… | Ask | You get |
 |---|---|---|
-| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, orderSaid, frames, forcesPerFrame, rowsPerFrame}` — *every* frame |
+| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, orderSaid, labelsOffered, frames, forcesPerFrame, rowsPerFrame}` — *every* frame |
 | to **send** the structure to the server | `exportFile(range)` | the same facts **in the server's words**, for **one frame** (the one on screen, unless a range says otherwise), plus the name it came in under |
 
 **A tab never converts between them.** The renaming is a translation, and this

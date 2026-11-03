@@ -97,10 +97,8 @@ def rung_of(stage_token: Optional[str]) -> str:
     never learns the word), so this reads the name back out rather than being
     told it twice.
     """
-    from ..identity import parse_token
-    tok = str(stage_token or "")
-    got = parse_token(tok)
-    return got[1] if got else tok
+    from ..identity import stage_name
+    return stage_name(str(stage_token or "")) or ""
 
 
 # ===================================================================== #
@@ -765,7 +763,7 @@ def transport_spec(struct: Structure, cfg, *, state,
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
     calculation's own template ⊕ this rung's overrides, as
-    :func:`molbuilder.jobset.transport_rung.resolve_transport` resolves it (TR4) —
+    :func:`molbuilder.transport.rung.resolve_transport` resolves it (TR4) —
     because the sections above name catalogue rows and
     :func:`~molbuilder.script_emit.parameter` resolves a row by
     ``getattr(config, name)``.  That is not a preference: an item whose name

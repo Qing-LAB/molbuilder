@@ -319,92 +319,11 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         document.querySelector("#generate-card .tabs")
             || document.querySelector(".tabs"), {});
 
-    // ----- Parameter compatibility rules -----------------------------
-    //
-    // When one input's value makes another field meaningless or
-    // forbidden (e.g. relax_type=none leaves the relaxation's step
-    // settings nothing to do), the dependent field
-    // gets disabled with a "(locked: ...)" hint explaining why.  The
-    // hints update live as the user changes options.
-    //
-    // Each rule is a function that reads triggering inputs and calls
-    // setLock(elementId, lockReason | null) to toggle the lock state.
-    // setLock(id, null) unlocks; setLock(id, "<text>") locks + hint.
-
-    function setLock(elId, reason) {
-        const el = $(elId);
-        if (!el) return;
-        const label = el.closest("label");
-        // Find or create the .lock-reason span as the last child of
-        // the enclosing <label>.
-        let hint = label && label.querySelector(":scope > .lock-reason");
-        if (!hint && label) {
-            hint = document.createElement("span");
-            hint.className = "lock-reason";
-            hint.hidden = true;
-            label.appendChild(hint);
-        }
-        if (reason === null) {
-            el.disabled = false;
-            if (label) label.classList.remove("is-locked");
-            if (hint)  hint.hidden = true;
-        } else {
-            el.disabled = true;
-            if (label) label.classList.add("is-locked");
-            if (hint) {
-                hint.textContent = reason;
-                hint.hidden = false;
-            }
-        }
-    }
-
-    // ---- PySCF rules -------------------------------------------------
-    function applyPyscfCompatibility() {
-        // Solvent <-> solvent_method: method only meaningful when a
-        // solvent is selected.
-        const solv = $("py-solvent") && $("py-solvent").value;
-        setLock("py-solvent-method",
-                (!solv || solv === "")
-                    ? "No solvent selected (gas phase)."
-                    : null);
-    }
-
-    // ---- SIESTA rules ------------------------------------------------
-    function applySiestaCompatibility() {
-        // Relaxation type "none" -> per-step relaxation params moot.
-        const relax = $("p-relax-type") && $("p-relax-type").value;
-        const noneReason =
-            (relax === "none")
-                ? "Single-point only (no MD block emitted in the FDF)."
-                : null;
-        ["p-relax-steps", "p-relax-force-tol", "p-relax-max-displ"]
-            .forEach(id => setLock(id, noneReason));
-    }
-
-    function applyCompatibility() {
-        applyPyscfCompatibility();
-        applySiestaCompatibility();
-    }
-
-    // The compat-engine wiring + initial run move into
-    // initFormsFromSchema() below: the form's inputs only exist
-    // AFTER the schema-driven renderer fills the containers, so
-    // attaching listeners at module-load (when the containers are
-    // empty <div>s) wouldn't find anything.  Same reason
-    // restoreFormState() and the first applyCompatibility() are
-    // deferred.
-    function wireCompatibilityListeners() {
-        [
-            "py-optimize", "py-solvent",
-            // A listener on a dead id is silent -- it simply never
-            // attaches, so the gate it drives stops updating and nothing
-            // says so.
-            "p-relax-type",
-        ].forEach(id => {
-            const el = $(id);
-            if (el) el.addEventListener("change", applyCompatibility);
-        });
-    }
+    // ----- What greys a field out -------------------------------------
+    // The catalogue's `active_when` (engines/template.md § 5), drawn by the
+    // one renderer (`lib/form-schema.js`): a relaxation's step settings wait
+    // on a relaxer, the PCM model on a solvent.  The page keeps no rule of
+    // its own about which field locks which (form-schema.md § 1.3).
 
     // Module-level cache of the form schemas, populated once on
     // page load by initFormsFromSchema().  collectParams() reads from
@@ -531,9 +450,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             refresh();
         });
 
-        // The form is also written by the compatibility engine and by
-        // session restore, so the panel follows the DOM rather than only
-        // the user's typing.
+        // The form is also written by session restore, so the panel follows
+        // the DOM rather than only the user's typing.
         container.addEventListener("change", refresh);
         container.addEventListener("input", refresh);
         refresh();
@@ -573,12 +491,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             }
             return;
         }
-        // restoreFormState BEFORE applyCompatibility so compat rules
-        // see the restored values when computing locks.
+        // The restore writes through `setValues`, which fires `input`, so
+        // the renderer's greying follows the restored values.
         restoreFormState();
-        wireCompatibilityListeners();
         wirePreflightListeners();
-        applyCompatibility();
         // AFTER the restore: mounted here, the panel's first reading is the
         // form as restored.  (The restore writes through `setValues`, which
         // fires `input`, so each field's caption follows it.)
@@ -1102,9 +1018,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     window.addEventListener("pagehide", saveFormState);
 
     // Kick off the async schema fetch + form render.  Everything
-    // that depends on the form's inputs (compatibility engine,
-    // change listeners, full restoreFormState walk) happens inside
-    // this function once the renderer has populated the DOM.
+    // that depends on the form's inputs (change listeners, the full
+    // restoreFormState walk) happens inside this function once the
+    // renderer has populated the DOM.
     initFormsFromSchema();
 
     // Wire each engine-scoped form input to the debounced preflight
@@ -1187,9 +1103,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             standing:     _live[engine],
             // ...and a refusal's first error brought into view.
             showFindings: (issues) => _showFindings(engine, issues, true),
-            structure: _structureForRequest(),
+            door:      mb.taskHandover.HANDOVER,
+            fields:    { structure: _structureForRequest(), params: params },
             engine:    engine,
-            params:    params,
             calculation: "optimization",
         });
     }

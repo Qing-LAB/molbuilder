@@ -493,7 +493,7 @@ def _ask(row, calc, client, tmp_path, monkeypatch) -> _Answer:
         from molbuilder.transport.compose import ComposeError, compose_junction
         try:
             compose_junction(str(named.relative_to(calc.tree)),
-                             tree_root=calc.tree)
+                             tree_root=calc.tree, engine="siesta")
         except ComposeError as exc:
             return answered(ok=False, text=str(exc))
         return answered(ok=True)

@@ -36,7 +36,9 @@ STATIC = ROOT / "molbuilder/web/static/lib"
 #: ``ladder``: each stage's runs as ``(folder below the bundle, phase)``;
 #: ``page_points``: whether the page's reading carries the run of points'
 #: view -- at a run of points' root alone, never at a point's folder, which
-#: shows its own record (§ 3a).
+#: shows its own record (§ 3a).  Every folder of a SIESTA calculation is
+#: answered with the engine's words and its kind's noun, from the two tables
+#: -- what a run's heading reads (`web/presenters.md` § 2).
 CASES = [
     ("vibration", "", {
         "status": None, "points": None, "point": None,
@@ -61,7 +63,8 @@ CASES = [
 
 def _page_reading(body: dict) -> dict:
     """``body`` read as the page reads a folder's answer -- the picker's
-    one reading (`resultsFilePicker.readAnswer`), under node."""
+    one reading (`resultsFilePicker.readAnswer`), under node -- with the
+    words every listed file's ``meta`` carries to its presenter."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -71,7 +74,10 @@ def _page_reading(body: dict) -> dict:
         (STATIC / "results/file-picker.js").read_text(),
         "const a = window.molbuilder.resultsFilePicker.readAnswer("
         + json.dumps(body) + ", null);",
-        "console.log(JSON.stringify({opens: a.opens, points: a.points}));"])
+        "const m = window.molbuilder.resultsFilePicker;",
+        "console.log(JSON.stringify({opens: a.opens, points: a.points,",
+        "  words: a.results.map((r) => { const x = m.metaOf(r);",
+        "    return [x.engine_words, x.noun]; })}));"])
     proc = subprocess.run([node, "--input-type=commonjs", "-e", script],
                           capture_output=True, text=True, timeout=15)
     assert proc.returncode == 0, proc.stderr
@@ -113,9 +119,22 @@ def test_a_folder_is_served_with_the_views_it_is_read_with(
             None, None), body["points"]
     assert ((body["point"] or {}).get("phase")) == want["point"], (
         body["point"])
+    # THE HEADING'S WORDS, from the two tables -- the engine's and the
+    # kind's noun (`web/presenters.md` § 2) -- carried onto every file the
+    # page lists, which its presenter heads with them.
+    from molbuilder.engine_table import engine as _engine
+    from molbuilder.kind_table import kind as _kind
+    words = [_engine("siesta").words, _kind(calculation).noun]
+    assert [body["engine_words"], body["noun"]] == words, body
+    assert words == ["SIESTA", calculation], words
     # THE PAGE'S ONE READING: the run of points' view at its root alone,
     # and what it opens -- the view's there, the run door's elsewhere.
     page = _page_reading(body)
+    # ...every result the page lists carries them: one pair per file it
+    # reads (a row whose folder holds none at prep reads none).
+    assert len(page["words"]) == sum(1 for f in body["files"]
+                                     if f["parser"]), page
+    assert all(w == words for w in page["words"]), page
     assert (page["points"] is not None) == want["page_points"], page
     assert page["opens"] == (body["points"]["opens"] if want["page_points"]
                              else body["openable"]), page

@@ -37,6 +37,10 @@ class ReportField:
     engines: Tuple[str, ...] = ()
     #: The calculation kinds that have it; empty is every kind.
     calculations: Tuple[str, ...] = ()
+    #: Stated by a run of points alone -- every pair the kind table gives a
+    #: run of points (`kind_table.run_of_points`), asked on this machine
+    #: (:meth:`applies`); the job, which holds no table, never asks.
+    runs_points: bool = False
     #: WHICH PART OF THE RUN IT BELONGS TO (`run-reports.md` § 2.8):
     #: ``"scf"`` for an SCF's own facts, said as ended once another part of
     #: the run is underway (:meth:`ended`); ``"run"`` for the rest.
@@ -53,7 +57,12 @@ class ReportField:
     def applies(self, engine: Optional[str],
                 calculation: Optional[str]) -> bool:
         """Can a run of this engine and calculation state it?  ``None`` for
-        either narrows nothing."""
+        either narrows nothing; a field a run of points alone states asks
+        the pair's record (the kind table, read on this machine only)."""
+        if self.runs_points and engine is not None and calculation is not None:
+            from .kind_table import run_of_points
+            if run_of_points(calculation, engine) is None:
+                return False
         return ((not self.engines or engine is None
                  or engine in self.engines)
                 and (not self.calculations or calculation is None
@@ -82,26 +91,21 @@ FIELDS: Tuple[ReportField, ...] = (
     # in the kind's word for one, the report's ``call_unit``.
     ReportField("call_elapsed_s",
                 "How long this call or point has been running",
-                "this {unit}", span=True, engines=("siesta",),
-                calculations=("vibration", "transport")),
+                "this {unit}", span=True, runs_points=True),
     # THE PACE (§ 2.8): the run's units of work -- an engine's steps, or a
     # run of points' calls or points -- finished, left where the run states
     # how many there are, the mean a finished one took, and what the left
     # need at it.
     ReportField("units_done",
                 "How many of its steps, calls or points are finished",
-                "finished",
-                calculations=("optimization", "vibration", "transport")),
+                "finished"),
     ReportField("units_left", "How many of its calls or points are left",
-                "to go", engines=("siesta",),
-                calculations=("vibration", "transport")),
+                "to go", runs_points=True),
     ReportField("unit_s", "How long one step, call or point takes",
-                "each took", span=True,
-                calculations=("optimization", "vibration", "transport")),
+                "each took", span=True),
     ReportField("left_at_pace_s",
                 "How long the calls or points left need at that pace",
-                "at that pace", span=True, engines=("siesta",),
-                calculations=("vibration", "transport")),
+                "at that pace", span=True, runs_points=True),
     ReportField("n_iters", "SCF iterations", "SCF iters", part="scf"),
     ReportField("energy", "The last energy", "energy", " eV"),
     # The step the ENGINE began, in its own numbering: a relaxation's move, a
@@ -161,9 +165,35 @@ NAMES: Tuple[str, ...] = tuple(f.name for f in FIELDS)
 BY_NAME: Dict[str, ReportField] = {f.name: f for f in FIELDS}
 
 
+def _named_by_the_tables() -> None:
+    """THE KINDS AND ENGINES A FIELD NAMES ARE THE TABLES'
+    (`execution/architecture.md` § 3.3): checked once, where a field is
+    asked on this machine -- the job, which holds no table, never asks -- a
+    name neither the kind table nor the engine table holds refused naming
+    the field."""
+    global _CHECKED
+    if _CHECKED:
+        return
+    from .engine_table import engines
+    from .kind_table import KindTableError, kinds
+    known_kinds, known_engines = set(kinds()), set(engines())
+    for f in FIELDS:
+        stray = ([k for k in f.calculations if k not in known_kinds]
+                 + [e for e in f.engines if e not in known_engines])
+        if stray:
+            raise KindTableError(
+                f"report_fields.py {f.name}: names {', '.join(stray)}, which "
+                f"neither the kind table nor the engine table holds")
+    _CHECKED = True
+
+
+_CHECKED = False
+
+
 def for_run(engine: Optional[str] = None,
             calculation: Optional[str] = None) -> Tuple[ReportField, ...]:
     """The fields a run of this engine and calculation can state, in order."""
+    _named_by_the_tables()
     return tuple(f for f in FIELDS if f.applies(engine, calculation))
 
 
@@ -171,6 +201,7 @@ def refusal(name: str, engine: Optional[str] = None,
             calculation: Optional[str] = None) -> Optional[str]:
     """Why ``name`` cannot be asked of such a run, in words -- or ``None``
     when it can.  The one sentence a description, a flag and a route give."""
+    _named_by_the_tables()
     field = BY_NAME.get(name)
     if field is None:
         return (f"{name!r} is not a report field. The fields are "

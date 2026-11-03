@@ -702,7 +702,7 @@ named the other way round (`swap_electrodes`), or an older one whose junction
 composed again is another (below). A prep composes afresh — and writes the
 record again — only when there is no usable one and no stage is launched
 (`gather.composed_for_prep`); the gather reads the same record, by
-the same one read (`transport_rung.junction_record`), and compares an older
+the same one read (`transport.rung.junction_record`), and compares an older
 one in memory, writing nothing.
 
 **A junction whose sidecar states no order record** — written before the
@@ -2294,7 +2294,11 @@ functions at $\mu = \pm V/2$, and TBtrans says nothing when those energies cut t
 integral short. So the energies it samples must reach **$\pm(\lvert V\rvert/2 + 5\,kT)$** at
 the deck's electronic temperature. One rule, `record.window_short_of`, on the
 energies TBtrans samples: the transmission deck's settings gate and the
-description's preflight ask it with `record.sampled_window` — the mid-rule's
+description's preflight — the kind's own description checks
+(`validation.transport.check_description`, beside the bias list's check against
+its setting, which the preflight asks through the kind table's
+`description_checks`, [`architecture.md`](?doc=execution/architecture.md) § 3.3)
+— ask it with `record.sampled_window` — the mid-rule's
 first and last energy, worked out from the window and its point count — and
 the record with the energies the run wrote. The gate refuses a point whose
 own voltage they do not reach; the preflight refuses a bias list whose
@@ -4090,7 +4094,7 @@ that every electrode atom is among them (§ 1.1, Step 0, *What transport
 asks of the held set*). No transport input file states which atoms are
 held — the stages solve the electrons with every atom where it is, with no
 `Geometry.Constraints` — and the atom order the engine reads follows the four
-labels above (`sort.deck_sort_key`), never the held atoms. So a larger held
+labels above (the pair's `atom_order`, `kind_table.atom_order`), never the held atoms. So a larger held
 set changes nothing the engine reads. *(Measured on AuBDTAu, 2026-10-24: the
 finished junction held its 150 electrode atoms, the mode-56 set 292, the
 electrodes and 142 more gold atoms; the seed's, both leads' and the first
@@ -4746,7 +4750,7 @@ with itself there, and a refusal names atoms, through the junction's own
 answer, `Structure.map_to_user_index` — no map by hand, and no translation into
 the engine's order but the sort's (I3). The composer sorts by the key the
 transport calculation's decks are written by, the one table
-(`transport.sort.deck_sort_key`). A cited pair is in the user order, as
+(the pair's `atom_order`, `kind_table.atom_order`). A cited pair is in the user order, as
 every pair molbuilder writes for a person is (I1); one saved before this rule
 from a reordered run's view cannot be told apart (I9).
 
@@ -5348,7 +5352,7 @@ fixed.**
 
 | | |
 |---|---|
-| ~~the 21 are **present**, not yet **answerable**~~ | **Closed.** `config_for` validated a stage override against `TransportConfig`'s field names, so `max_scf_iter` as an override was refused. Since TR4 a rung's overrides resolve against the engine's vocabulary (`jobset/transport_rung.py::resolve_transport`), narrowed since 2026-09-30 to the items the rung reads (`template.unread_overrides`, the one door every road asks); `config_for` was deleted on 2026-10-02 |
+| ~~the 21 are **present**, not yet **answerable**~~ | **Closed.** `config_for` validated a stage override against `TransportConfig`'s field names, so `max_scf_iter` as an override was refused. Since TR4 a rung's overrides resolve against the engine's vocabulary (`transport/rung.py::resolve_transport`), narrowed since 2026-09-30 to the items the rung reads (`template.unread_overrides`, the one door every road asks); `config_for` was deleted on 2026-10-02 |
 | **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1.0e-05`, `DM.EnergyTolerance 1.0e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opened a `PipelineLog` and carried it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=`. *(The arm went 2026-10-05, § 3.6 item 4: prep's one entry opens the log for every kind.)* |
@@ -5651,12 +5655,12 @@ six scattered versions could not do.
 | the deck viewer | ✅ **done 2026-10-11**, for every calculation, not transport's alone — the Results ladder's *input* and *check report* on each run, each frame and each voltage, in the sidebar's file viewer ([`web/results.md`](?doc=web/results.md) § 2.4) |
 | `role` items never a control on any form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind — and shown read-only at the rung's answer since K7 (`locked`, `form-schema.md` § 1.1) |
 | the Task setup stage table offers no shared value as a column | ✅ **done 2026-09-24** — `/api/task-setup/columns` reads `shared` per kind (measured that morning: thirteen offered, `mesh_cutoff` and `basis_size` among them) |
-| an override on a rung the `stages` marker excludes is refused at `prep` | ✅ **done 2026-09-24** — beside the shared refusal, at the one `resolve` that `transport_rung.resolve_transport` asks; the describe door routed by the declaration since TR8, the other roads reached `resolve`, which knows no ownership |
+| an override on a rung the `stages` marker excludes is refused at `prep` | ✅ **done 2026-09-24** — beside the shared refusal, at the one `resolve` that `transport.rung.resolve_transport` asks; the describe door routed by the declaration since TR8, the other roads reached `resolve`, which knows no ownership |
 | a foreign rung's cell on the stage table is disabled, naming the owners | ✅ **done 2026-09-24** — the column payload carries `stages`; the cell is shown and not editable |
 | the shared values echoed read-only, with their source, on Task setup | ✅ **done 2026-10-11** — the *What came over* card's *Shared by every stage*, every value the kind shares with its source, from the folder answer's `template.shared` (`web/task-setup.md` § 3; `template.md` § 6.6 obligation 3) |
 | a value nobody chose is MARKED as such in the deck | ✅ **done 2026-10-11** — each deck's PROVENANCE block says who set each value it is rendered from, a value nobody chose *the template · not chosen*, and a setting left to the engine says so where its line would be, in its own `not_set` (`template.md` § 6.6 obligations 4 and 5; `job-contracts.md` § 3.2). *(The file's half — each value's source, obligation 2 — is built, K7.)* |
 | the device deck carries only what `siesta` reads | ✅ **done 2026-09-29** (M5 step 1) — the device deck carries no `TBT.*` line (`deck.py::_device_layout`): `siesta` reads none (its binary holds none); the transmission deck keeps the `TS.*` declarations `tbtrans` reads (§ 6.1b) |
-| one panel per engine (§ 3.8.8) | ✅ **done 2026-10-11** — card 4's engine strip, one tab per engine molbuilder knows (`transport.stages.engine_tabs`, from the engine table and the transport calculation's parts in the kind table, `execution/architecture.md` § 3.3): TranSIESTA live — its part's own name for the kind — and PySCF disabled with its reason; the schema route, the describe door and `molbuilder describe` refuse an engine that runs no transport with one sentence (`why_no_transport`) |
+| one panel per engine (§ 3.8.8) | ✅ **done 2026-10-11** — card 4's engine strip, one tab per engine molbuilder knows (`transport.stages.engine_tabs`, from the engine table and the transport calculation's parts in the kind table, `execution/architecture.md` § 3.3): TranSIESTA live — its part's own name for the kind — and PySCF disabled with its reason; the schema route, the describe door and `molbuilder describe` refuse an engine that runs no transport with one sentence (the kind's `why_not_on`) |
 | the per-rung form is a tab per rung, its group cards foldable, each tab opening with the rung's note (§ 3.8.2a) | ✅ **done 2026-09-24** |
 
 ---
@@ -5733,7 +5737,7 @@ person sees it.
 |---|---|
 | **the card** | the parameters card gains a `.tabs` strip, one `.tab-btn` per KNOWN engine and one `.tab-panel` each — `index.html`'s pattern, reused rather than reinvented |
 | **the panel IS the engine** | the active panel is the value of the sealed `engine` field nothing renders; the panel decides which renderer runs, as on the optimization tab |
-| **the schema** | `/api/transport/schema` answers per engine beside `surface=` (§ 3.8.2's two surfaces, each per engine); an unknown engine is a clean refusal, never a defaulted answer |
+| **the schema** | `/api/transport/schema` answers per engine beside `surface=` (§ 3.8.2's two surfaces, each per engine); an unknown engine is a clean refusal, never a defaulted answer. The junction's pick (`describe_attempt`) and Describe name the same engine, the strip's: a junction is composed in its pair's atom order (`kind_table.atom_order`) |
 | **one config per engine** | TranSIESTA's is `SiestaConfig` — every rung resolves one, and `TransportConfig` retired (TD4, 2026-10-02), so its panel draws the catalogue's TranSIESTA items; a PySCF-NEGF config is authored WITH that backend, not before — a config nothing renders from is the residue this rule exists to prevent. *(This said `TransportConfig` keeps its name and loses its two `pyscf_*` fields; TD4 superseded it.)* |
 | **the override gate follows** | its vocabulary is the SELECTED engine's field names, so a PySCF name is **refused** for a TranSIESTA run rather than accepted and ignored |
 | **a known engine with no backend is a DISABLED tab** | *(the user's choice, against hiding it and against live fields)* — drawn from the known engines, disabled, its title saying what would make it live: *no PySCF transport backend is built yet; transport ships on TranSIESTA* — the tab named by the engine's part's own name for the kind where it has a part, else by the engine's. A disabled button cannot be chosen, so nothing can be described on it and no field of its can travel; what it buys is that the separation is visible on the page, and the tab goes live the day a backend registers |
@@ -5744,7 +5748,7 @@ drawn by the page from `transport.stages.engine_tabs()` — one tab per engine
 molbuilder knows (the engine table), live where the engine runs a
 transport calculation (a part of the kind's in the kind table,
 [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), else
-disabled with `why_no_transport`'s sentence as its title and its panel's one
+disabled with the kind's one sentence (`CalculationKind.why_not_on`) as its title and its panel's one
 line. The active tab is the engine: core.js sends it on both schema surfaces
 (`&engine=`) and in the describe body, and `task.json` records it. A missing
 engine, an unknown one and one with no backend are each refused by name, at
@@ -5766,7 +5770,7 @@ door's question.
 | the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group save what the citation asks (§ 3.8.1) | — | — | ✅ the citation's answers, each field's source named *(K7)* | ✅ kept off |
 | the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`template.unread_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `molbuilder describe` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ no item — a run setting is the job request's |
-| `prep` (`transport_rung.resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
+| `prep` (`transport.rung.resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners, and the picker names the calculation's own rungs that read each item, on every kind whose rungs have roles (`web/task-setup.md` § 5, *2026-10-11*) | ✅ not a column | — | ✅ not a column |
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)*; on a transport folder the rows are the ladder's five rungs, fixed, the seed included (its part in the kind table), and each rung's own values are edited here once the description is written (`web/task-setup.md` § 5.3, *2026-10-11*) | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ✅ *Shared by every stage*, on *What came over* *(2026-10-11)* | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
@@ -5870,6 +5874,14 @@ device. The convention (the *vocabulary* is owned by
   partition label passed the sort and the device deck declared a lead whose
   `.TSHS` no rung writes — plan D4. Before that day this bullet said a
   `tip-electrode` worked "without code changes".)*
+
+**The names, and what each is for, are the kind table's** — the leads' on
+their roles (`lead`, its sentence `about`), `bridge` and `buffer` in the
+kind's `regions` ([`architecture.md`](?doc=execution/architecture.md) § 3.3):
+the sort reads them there, and the server hands them, each with its sentence,
+beside every structure MolView holds, so the label palette offers them and
+keeps no copy (2.65.0). `interface` places no atom, and is the palette's own
+spelling ([`web/molview.md`](?doc=web/molview.md)).
 
 **Any other label is the user's.** TranSIESTA reads the canonical 2-terminal
 set plus `buffer`; a structure carrying any other region label still runs,
@@ -6324,12 +6336,12 @@ and a rung's first launch walks it, with what every stage continues from
 The newest attempt is the one asked: one that fails a gate is refused by
 name, never passed over for an older one (`job-system.md`, *What a stage takes, and when*) —
 and the copy records its provenance in `.gathered-from`.  One gather reads
-the junction record once (`transport_rung.junction_record`, the one read
+the junction record once (`transport.rung.junction_record`, the one read
 prep asks too) and renders each upstream rung's deck once for each point it
 is compared at — once for a rung that runs once, whichever point asks
 (`gather.rung_deck_now`, `gather.ReadOnce`); a record or a composition that
 does not read is the gather's refusal, said in its reader's words
-(`transport_rung.compose_refusals`).  The engine-input
+(`transport.rung.compose_refusals`).  The engine-input
 gate is the load-bearing one: it is what makes "the device's H and the
 electrodes' H were built on the same basis, XC, mesh and electronic
 temperature" a *checked* fact rather than a hope (§ 5).

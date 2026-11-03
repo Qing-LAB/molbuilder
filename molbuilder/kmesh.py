@@ -156,7 +156,7 @@ def _triple(value, cast) -> Optional[Tuple[Any, Any, Any]]:
 
 
 def mesh_for(cfg, axis_kind: Optional[Sequence[str]], *,
-             kind: str = "optimization", rung: Optional[str] = None,
+             kind: str, rung: Optional[str] = None,
              program: str = "siesta") -> Optional[KMesh]:
     """The k-point grid this rung writes -- the ONE derivation.
 

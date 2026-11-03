@@ -190,7 +190,7 @@ def _charge_fixed(cfg, kind) -> List[Issue]:
     state's rule fixes it (``electronic_state._charge``), so a value in the
     template would otherwise be dropped without a word -- silently
     neutralising someone's charged junction is the defect; saying so is the
-    fix (`engines/transport.md` 2a.7 defers net charge and gating)."""
+    fix -- in the record's own reason (its ``charge.why``)."""
     fixed = kind.charge
     charge = getattr(cfg, "net_charge", None)
     if charge is None or int(charge) == fixed.value:
@@ -198,9 +198,8 @@ def _charge_fixed(cfg, kind) -> List[Issue]:
     return [Issue(
         "error",
         f"net_charge = {int(charge):+d}, and {kind.with_article} carries "
-        f"{fixed.value:+d} -- {fixed.why}.  Net charge and gating are "
-        f"deferred by ruling (engines/transport.md 2a.7).  Remove "
-        f"net_charge from this calculation's template.",
+        f"{fixed.value:+d} -- {fixed.why}.  Remove net_charge from this "
+        f"calculation's template.",
         "config.net_charge")]
 
 

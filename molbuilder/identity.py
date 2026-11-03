@@ -219,10 +219,10 @@ def command_stage(token: str) -> str:
     Never the token: ``02_freq`` is itself a legal stage name, of another
     stage (plan § 5w K12).  Never ``#N``: an unquoted ``#`` begins a
     comment in bash, so a pasted ``launch task --stage #2`` names no stage."""
-    m = re.fullmatch(r"\d{2,}_([A-Za-z0-9_]+)", str(token))
-    if m is None:
+    got = parse_token(token)
+    if got is None:
         raise ValueError(f"not a stage token: {token!r}")
-    return m.group(1)
+    return got[1]
 
 
 #: THE JOBSET VERBS' COMMAND, and the kinds of work each names: the
@@ -413,6 +413,16 @@ def parse_token(token: str) -> Optional[Tuple[int, str]]:
     name; a filename's is `runfiles.parse`'s."""
     m = _TOKEN_RE.fullmatch(str(token))
     return (int(m.group(1)), m.group(2)) if m else None
+
+
+def stage_name(stage: Optional[str]) -> Optional[str]:
+    """A stage's name from its token (``02_electrode_L`` -> ``electrode_L``)
+    or its name, as it is -- the one reading every door that is handed
+    either asks; ``None`` for none.  A name shaped like a token reads as
+    one: the doors handed either (`kind_table.own_structure`, `atom_order`)
+    answer for a lead, whose name is its role's and never so shaped."""
+    got = parse_token(stage) if stage else None
+    return got[1] if got else stage
 
 
 def seq_text(seq: Optional[int]) -> str:

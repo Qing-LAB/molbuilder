@@ -24,7 +24,7 @@ from molbuilder.template import template_with_values
 @pytest.fixture
 def template() -> str:
     return template_with_values(SiestaConfig(system_label="relax", mesh_cutoff=300.0,
-                                        basis_size="DZP"))
+                                        basis_size="DZP"), calculation="optimization")
 
 
 #: The ordinary description's one rung.  `engines/stages.md` § 6.5: a job

@@ -1076,6 +1076,7 @@ const WORKSPACE_TAG = "transport";
     function _describeAttempt(rel, swap, reuses) {
         return root.fetch("/api/transport/describe_attempt?path="
                           + encodeURIComponent(rel.replace(/^\/+/, ""))
+                          + "&engine=" + encodeURIComponent(_engine())
                           + (swap ? "&swap_electrodes=1" : "")
                           + (reuses ? "&reuses=" + encodeURIComponent(reuses)
                                     : ""))
@@ -1104,8 +1105,15 @@ const WORKSPACE_TAG = "transport";
      * measured z centroids).  This panel adds only what that sentence
      * cannot: the button, and what pressing it costs.
      *
-     * The server answers `fix` as a WORD; nothing here matches prose. */
-    var SWAP_LABEL = "Swap L-electrode and R-electrode";
+     * The server answers `fix` as a WORD; nothing here matches prose.
+     * THE LEADS' NAMES are the kind table's, rendered onto the panel's
+     * host (`data-leads`): the page spells none. */
+    function _leads() {
+        var host = _$("transport-junction-fix");
+        return JSON.parse((host && host.getAttribute("data-leads")) || "[]")
+            .join(" and ");
+    }
+    function _swapLabel() { return "Swap " + _leads(); }
 
     var WITHDRAW_LABEL = "Withdraw the rename";
     function _offerFix(described) {
@@ -1128,8 +1136,8 @@ const WORKSPACE_TAG = "transport";
         var say = root.document.createElement("span");
         say.className = "hint";
         say.textContent = (holds
-            ? "This calculation composes the junction with L-electrode and "
-              + "R-electrode traded (swap_electrodes: true); the cited "
+            ? "This calculation composes the junction with " + _leads()
+              + " traded (swap_electrodes: true); the cited "
               + "junction is unchanged.  "
             : "")
             + "A rename in this calculation's own copy of the junction: "
@@ -1140,7 +1148,7 @@ const WORKSPACE_TAG = "transport";
         btn.type = "button";
         btn.id = "transport-swap-electrodes-btn";
         btn.className = "full-btn";
-        btn.textContent = holds ? WITHDRAW_LABEL : SWAP_LABEL;
+        btn.textContent = holds ? WITHDRAW_LABEL : _swapLabel();
         btn.addEventListener("click", function () {
             btn.disabled = true;
             btn.textContent = _swapElectrodesChoice ? "Withdrawing…" : "Swapping…";
@@ -1153,7 +1161,8 @@ const WORKSPACE_TAG = "transport";
     function _swapElectrodes(citation, btn) {
         function _failed(why) {
             btn.disabled = false;
-            btn.textContent = _swapElectrodesChoice ? WITHDRAW_LABEL : SWAP_LABEL;
+            btn.textContent = _swapElectrodesChoice ? WITHDRAW_LABEL
+                                                    : _swapLabel();
             _setStatus(why, "error");
         }
         /* The choice is made HERE and read back through the SAME door the
@@ -1167,7 +1176,7 @@ const WORKSPACE_TAG = "transport";
             .then(function (d) {
                 if (mine !== _citeSeq) return;     // a citation made since
                 _adoptCitation(d, (want
-                    ? "L-electrode and R-electrode trade names in this "
+                    ? _leads() + " trade names in this "
                       + "calculation (swap_electrodes: true).  Re-cited: "
                     : "The rename is withdrawn.  Re-cited: "));
             })
@@ -1510,17 +1519,23 @@ const WORKSPACE_TAG = "transport";
                         reveal: true,
                     });
                 },
+                // THE DOOR THAT WRITES THE DESCRIPTION ITSELF: nothing is
+                // awaiting -- stages and identity are fixed by the kind --
+                // and the road after it is said once, on the page's
+                // "After you describe" card (transport.md \u00a7 3.8.2a).
+                door: {
+                    url: "/api/transport/describe",
+                    writes: true,
+                    next: "Next: the steps under \u201cAfter you "
+                        + "describe\u201d, on this page.",
+                },
+                // WHAT ITS DESCRIPTION CARRIES, the body Describe's plan asks
+                // with (`_describeBody`), whole: the citation, the
+                // calculation reused, the rename, the voltages and their
+                // treatment, each rung's own values and the shared panel's.
+                fields: body,
                 engine: body.engine,
                 calculation: body.calculation,
-                junction: body.junction,
-                // THE CALCULATION IT REUSES, written as `reuses`
-                // (engines/transport.md \u00a7 2a.16).
-                reuses: body.reuses,
-                swap_electrodes: body.swap_electrodes,
-                bias: body.bias,
-                low_bias_approximation: body.low_bias_approximation,
-                stages: body.stages,
-                shared: body.shared,
             });
         });
     }
@@ -1857,7 +1872,7 @@ const WORKSPACE_TAG = "transport";
     }
 
     /* THE BIAS ON EACH RUNG'S TAB IS THE LIST'S POINTS: the device and the
-     * transmission are answered point by point (`template.PER_POINT`), so
+     * transmission are answered point by point (`template.per_point_items`), so
      * their locked box shows the list as typed, kept current with it and
      * with the treatment held -- one voltage, one run; several, one run at
      * 0 V under the low-bias approximation (`engines/transport.md`

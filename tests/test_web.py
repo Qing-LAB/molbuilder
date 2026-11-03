@@ -1162,7 +1162,7 @@ def test_siesta_form_schema_matches_documented_layout():
     a prompt to check the form still reads well, not a nuisance.
     """
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("siesta", "p")
+    sch = catalogue_to_form_schema("siesta", "p", "optimization")
     # The catalogue builder names the ENGINE, not the translator class --
     # which is the point: the form is built from the catalogue, and the
     # config class is a translator on the way out to that engine.
@@ -1207,8 +1207,7 @@ def test_api_build_schema_returns_siesta_schema(web_client):
     assert sch["config"] == "siesta"
     assert sch["id_prefix"] == "p"
     # The first panel is `system` -- § 6.2's reading order starts there -- and
-    # it carries SystemLabel, whose id the compatibility engine in viewer.js
-    # references by string.
+    # it carries SystemLabel.
     assert sch["sections"][0]["name"] == "system"
     sysl = next(f for s in sch["sections"] for f in s["fields"]
                 if f["name"] == "system_label")
@@ -1229,7 +1228,7 @@ def test_pyscf_form_schema_matches_documented_layout():
     """PySCF's half of the same contract -- the six shared categories,
     from the same builder the tab uses."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("pyscf", "py")
+    sch = catalogue_to_form_schema("pyscf", "py", "optimization")
     assert sch["config"] == "pyscf"
     assert sch["id_prefix"] == "py"
 
@@ -1306,7 +1305,7 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     # so ask the catalogue and the list cannot go stale.
     items = {i.name: i for i in T.read_template(T.load_catalogue()).items}
     for engine, prefix in (("siesta", "p"), ("pyscf", "py")):
-        sch = catalogue_to_form_schema(engine, prefix)
+        sch = catalogue_to_form_schema(engine, prefix, "optimization")
         checked = 0
         for f in _flatten_schema_fields(sch):
             item = items.get(f["name"])
@@ -1331,7 +1330,7 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
     expected engine_key text.  If any of these changes, downstream
     text searches + the .fdf grep workflow break."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("siesta", "p")
+    sch = catalogue_to_form_schema("siesta", "p", "optimization")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     expected = {
         # `Spin`, not `SpinPolarized`: the manual deprecates all three old
@@ -1372,7 +1371,7 @@ def test_engine_key_pins_load_bearing_pyscf_keywords():
     the two badges between them say which class (the treatment's is the
     merged item's, pinned in the SIESTA test)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("pyscf", "py")
+    sch = catalogue_to_form_schema("pyscf", "py", "optimization")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     # (The merged items -- the charge and the spin -- are ONE declaration
     # for both engines, pinned once, in the SIESTA test above.)

@@ -107,7 +107,7 @@ def test_prep_carries_state_only_into_a_stage_that_will_read_it():
 
     def warm(overrides):
         eff = effective_config(tpl, overrides)
-        return warm_for("job", eff)
+        return warm_for("job", eff, "optimization")
 
     # THE PROPERTY IS THE GATE, not the membership.  `clean` carries
     # nothing; `continue` carries whatever the rules file declares --
@@ -142,7 +142,7 @@ def test_only_the_optimizer_history_is_conditional():
     eff = effective_config(
         SiestaConfig(system_label="job", relax_type="CG"),
         {"restart": "continue"})
-    warm = {w.name: w.requires_same for w in warm_for("job", eff)}
+    warm = {w.name: w.requires_same for w in warm_for("job", eff, "optimization")}
     # THE PROPERTY: exactly one row is conditional, and it is the optimiser
     # history.  Asserted as a property rather than as a full dict, because
     # the membership can grow while this rule does not change.

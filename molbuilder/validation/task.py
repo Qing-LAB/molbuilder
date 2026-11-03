@@ -92,8 +92,8 @@ def preflight(task, *,
     # `execution/architecture.md` § 3.3) -- refused, naming migrate, which
     # folds it into the others, keeping its overrides.
     from ..kind_table import pair
-    _part = pair(task.calculation, task.engine)
-    retired = _part.retired if _part is not None else None
+    _on = pair(task.calculation, task.engine)
+    retired = _on.retired if _on is not None else None
     if retired is not None:
         from ..identity import stage_key
         old = [s.name for s in task.stages
@@ -170,13 +170,26 @@ def preflight(task, *,
             out.append(Issue("error", why, where="job_request.stages.group"))
 
     # -- 4b. a value that may stand outside its recommended range is warned
+    #  -- unless it enters nothing on its rung as resolved (`engines/
+    #  template.md` § 5, `active_when`: no advice about it).
+    from ..template import inactive_settings
     out.extend(_values_in_range(
         task, cls, fields,
         refused={(i.stage, i.where.split(".", 1)[1])
-                 for i in (*refused, *stepless)}))
+                 for i in (*refused, *stepless)},
+        inactive={(name, key) for name, cfg in ladder
+                  for key in inactive_settings(cfg, engine=_engine,
+                                               calculation=_kind)}))
     out.extend(stepless)
-    out.extend(_bias_points_in_range(task))
-    out.extend(_window_reaches_the_bias(task, ladder))
+    # -- 4c. THE KIND'S OWN DESCRIPTION CHECKS, where its entry names them
+    #        (`description_checks`, `execution/architecture.md` § 3.3): a
+    #        transport calculation's bias list and window, judged on the
+    #        description before any deck is written.
+    from ..kind_table import kind as _kind_rec, part as _resolve
+    _checks = _kind_rec(_kind).description_checks
+    if _checks is not None:
+        out.extend(_resolve(_checks, record=_kind,
+                         key="description_checks")(task, ladder))
 
     # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
     out.extend(check_ladder_does_not_loosen(ladder, engine=_engine,
@@ -402,59 +415,6 @@ def _no_such_field(name, fields, cls, lead, *, value=None,
             f"{cls.__name__}{hint}")
 
 
-def _bias_points_in_range(task) -> List[Issue]:
-    """The bias list's points are values of `bias_voltage_v`, and a value
-    outside its item's recommended range is WARNED, as any value is
-    (`engines/template.md` § 5.3).  A repeated point is the codec's refusal
-    (`task.py`), with the list's other shape rules."""
-    bias = tuple(getattr(task, "bias", ()) or ())
-    if not bias:
-        return []
-    from ..template import catalogue, one
-    item = one(catalogue(), "bias_voltage_v", engine=str(task.engine))
-    if item is None or not item.range:
-        return []
-    lo, hi = item.range
-    out = [float(v) for v in bias if not lo <= float(v) <= hi]
-    return [Issue(
-        "warn",
-        f"the bias list holds {', '.join(f'{v:g}' for v in out)} V, outside "
-        f"the recommended range [{lo:g}, {hi:g}] V -- a recommendation, not "
-        f"a limit (engines/template.md 5.3)",
-        where="task.bias")] if out else []
-
-
-def _window_reaches_the_bias(task, ladder) -> List[Issue]:
-    """The transmission window reaches the largest listed voltage's bias
-    window, ±(|V|/2 + 5 kT) -- the one rule `record.window_short_of` states
-    (`engines/transport.md` § 2a.10, P2), judged here on the description as
-    the transmission rung resolves it, so a list that the window cannot
-    serve is refused where it is written: under the low-bias approximation
-    the record integrates every listed voltage over the one 0 V slice, and
-    a sweep's point writes its own voltage into that window.  Nothing to
-    say without the resolved ladder (no template in hand)."""
-    bias = tuple(getattr(task, "bias", ()) or ())
-    if not bias or not ladder:
-        return []
-    cfg = next((c for name, c in ladder if name == "transmission"), None)
-    if cfg is None:
-        return []
-    emin = getattr(cfg, "transmission_emin_ev", None)
-    emax = getattr(cfg, "transmission_emax_ev", None)
-    n = getattr(cfg, "transmission_n_points", None)
-    temp = getattr(cfg, "electronic_temperature", None)
-    if emin is None or emax is None or not n or temp is None:
-        return []
-    from ..constants import BOLTZMANN_EV_K
-    from ..transport.record import sampled_window, window_short_of
-    largest = max(bias, key=lambda v: abs(float(v)))
-    short = window_short_of(*sampled_window(emin, emax, n), largest,
-                            BOLTZMANN_EV_K * float(temp))
-    return [Issue("error", short + " (engines/transport.md 2a.10)",
-                  where="config.transmission_emax_ev",
-                  stage="transmission")] if short else []
-
-
 def _kind_of(task) -> str:
     return str(task.calculation)
 
@@ -488,22 +448,24 @@ def _overrides_may_stand(task, fields) -> List[Issue]:
     return out
 
 
-def _values_in_range(task, cls, fields, *,
-                     refused=frozenset()) -> List[Issue]:
+def _values_in_range(task, cls, fields, *, refused=frozenset(),
+                     inactive=frozenset()) -> List[Issue]:
     """An override outside its item's recommended ``range`` is WARNED, as
     on every surface: a range is a recommendation, never a limit
     (`engines/template.md` § 5.3).  A field with none is unbounded on
     purpose.  ``refused`` holds the ``(stage, item)`` overrides the door
     refused (:func:`_overrides_may_stand`) or that a stepless relaxation
     drew: each drew that refusal, and draws nothing more here -- one value,
-    one refusal."""
+    one refusal.  ``inactive`` holds those that enter nothing on their rung
+    (§ 5, ``active_when``), which are given no advice."""
     from .metadata import outside_range
     from ..template import items_of
     items = items_of(cls)
     out: List[Issue] = []
     for st in (task.stages or ()):
         for key, value in st.overrides.items():
-            if key not in fields or (st.name, key) in refused:
+            if (key not in fields or (st.name, key) in refused
+                    or (st.name, key) in inactive):
                 continue
             item = items.get(key)
             rng = item.range if item is not None else None

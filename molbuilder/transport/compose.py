@@ -31,8 +31,9 @@ from ..parse.fdf import read_deck
 from ..persist import sha256_of
 from ..structure import (SAME_PLACE_ANG, Structure, farthest_apart,
                          frame_words)
+from ..kind_table import atom_order
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, SortError,
-                   deck_sort_key, sort_by)
+                   sort_by)
 from .wizard import ElectrodeModel, extract_electrode_model
 
 if TYPE_CHECKING:                                    # pragma: no cover
@@ -335,12 +336,12 @@ def _classify_pair(path: Path) -> CitedPair:
             f"{path} carries no info.calculation -- {sidecar.name} records no "
             f"optimization -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
-    _frames_keep_the_leads(struct, path)
+    frames_keep_the_leads(struct, path)
     return CitedPair(path=path, sidecar=sidecar, structure=struct,
                      calculation=calc, said=tuple(said))
 
 
-def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
+def frames_keep_the_leads(struct: Structure, path: Path) -> None:
     """Every frame's electrode atoms where frame 0 has them (§ 2a.9: the
     lead Hamiltonian is truth for every frame), measured as the lead gate
     measures an unmoved atom -- the distance, against
@@ -374,6 +375,21 @@ def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
             f"{FROZEN_TOL_ANG:g} A "
             f"(engines/transport.md 2a.9).  Write the frames with the "
             f"electrodes held.")
+
+
+def cited_frames(citation: str, tree_root: Path) -> dict:
+    """THE FRAMES A JUNCTION CITATION HOLDS, as the describe door answers
+    them (`frame_average.answer_said`) -- the transport kind's
+    ``cited_frames`` part, Task setup's folder answer's frame set: a cited
+    pair's frames, a cited run's none; a citation that does not resolve
+    answers why, in its words, so the folder still opens."""
+    from ..frame_average import answer_said
+    try:
+        _, cited = resolve_citation(str(citation), tree_root)
+    except ComposeError as exc:
+        return {"n_frames": None, "definition": None, "why": str(exc)}
+    return answer_said(
+        cited.structure if isinstance(cited, CitedPair) else None)
 
 
 def resolve_citation(citation: str, tree_root: Path
@@ -589,7 +605,7 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     return tuple(models)
 
 
-def _with_swapped_leads(struct, source_name: str):
+def with_swapped_leads(struct, source_name: str):
     """THIS CALCULATION'S COPY with ``L-electrode`` ↔ ``R-electrode`` traded
     (`engines/transport.md` § 4; user, 2026-10-04): the description's
     ``swap_electrodes: true``, applied to the junction as it is composed --
@@ -703,7 +719,7 @@ def _held_by_its_relaxation(relaxed: Structure):
     return held_atoms_of(relaxed, rec)
 
 
-def compose_junction(citation: str, *, tree_root,
+def compose_junction(citation: str, *, tree_root, engine: str,
                      swap_electrodes: bool = False) -> ComposedJunction:
     """The whole § 4.1–4.2 compose: citation → sorted, gated, extracted --
     from either kind (`engines/transport.md` § 3.1): a cited run's relaxed
@@ -728,9 +744,9 @@ def compose_junction(citation: str, *, tree_root,
     relaxed = entering(relaxed)
     _refuse_outside(relaxed)
 
-    # THE JUNCTION'S SORTED COPY, by the key its decks are written by (the
-    # one table, `sort.deck_sort_key`).
-    sorted_res = sort_by(relaxed, deck_sort_key("siesta", "transport"))
+    # THE JUNCTION'S SORTED COPY, by the order its decks list atoms in on
+    # ``engine`` (the pair's `atom_order`, `kind_table.atom_order`).
+    sorted_res = sort_by(relaxed, atom_order("transport", engine))
     dev = sorted_res.structure
 
     # The electrode models, extracted from the SORTED blocks -- and the
@@ -776,7 +792,7 @@ def _pair_parts(cited: CitedPair, swap_electrodes: bool):
     its frame count for the record."""
     struct, source = labeled_citation_structure(cited)
     if swap_electrodes:
-        struct = _with_swapped_leads(struct, Path(source).name)
+        struct = with_swapped_leads(struct, Path(source).name)
     _bad = _unusable_cell(struct)
     if _bad:
         raise ComposeError(
@@ -810,10 +826,10 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
             f"(engines/transport.md 3.1).")
     struct, start, output = _run_geometry(cited, junction_axis_kind(cited))
     # A swap renames the labels on this calculation's copy
-    # (`_with_swapped_leads`) and never writes the cited run.
+    # (`with_swapped_leads`) and never writes the cited run.
     deck = cited.run.deck
     if swap_electrodes:
-        struct = _with_swapped_leads(struct, deck.name)
+        struct = with_swapped_leads(struct, deck.name)
     # `Structure.cell`'s setter is permissive, so an unusable box would
     # travel on and raise a bare ValueError later -- and `prep` catches only
     # ComposeError/SortError, so it would reach the person as a traceback.
@@ -1016,8 +1032,8 @@ def junction_difference(recorded: Structure,
     return None
 
 
-def load_compose_record(base_dir, *, citation: str, tree_root=None,
-                        why: "Optional[list]" = None,
+def load_compose_record(base_dir, *, citation: str, engine: str,
+                        tree_root=None, why: "Optional[list]" = None,
                         swap_electrodes: bool = False
                         ) -> Optional[ComposedJunction]:
     """The travelled copy, loaded back — or ``None`` when there is no
@@ -1108,6 +1124,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
                        f"projects tree")
         try:
             composed = compose_junction(citation, tree_root=tree_root,
+                                        engine=engine,
                                         swap_electrodes=swap_electrodes)
         except (ComposeError, SortError) as exc:
             return _no(f"{recorded.order_unstated}; its citation does not "

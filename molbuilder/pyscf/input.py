@@ -152,7 +152,7 @@ def spec_for(struct: Structure,
                   config: Optional[PySCFConfig] = None,
                   *,
                   names,
-                  calculation: str = "optimization") -> "_sc.DeckSpec":
+                  calculation: str) -> "_sc.DeckSpec":
     """Describe a Structure's PySCF deck -- the spec
     `script_emit.render_deck` renders into a runnable script.
 
@@ -206,7 +206,7 @@ def spec_for(struct: Structure,
     # is written only after the gate, so it never meets the None.
     from ..chemistry import every_label_resolves
     from ..electronic_state import electronic_state
-    state = (electronic_state(struct, cfg, kind="optimization")
+    state = (electronic_state(struct, cfg, kind=calculation)
              if every_label_resolves(struct) else None)
     charge = state.net_charge.value if state is not None else None
     # The CLASS is composed when the text is written, inside the blocks --
@@ -581,7 +581,7 @@ def spec_for(struct: Structure,
                    "solver {_RUNTIME_INFO['scf_solver_class']}.\")")
 
         out += _emit_effective_parameters(cfg, is_dft,
-                                          calculation="optimization",
+                                          calculation=calculation,
                                           state=state)
         out += _emit_runtime_from_parameters()
 
@@ -731,7 +731,7 @@ def spec_for(struct: Structure,
     # The reader's section, the record blocks and the banner are the
     # framework's (`script-preparation.md` § 4.2a).
     spec = _sc.DeckSpec(
-        engine="pyscf",
+        engine="pyscf", calculation=calculation,
         engine_frame=_frame,
         layout=(_sc.Block("system, molecule and the mean field", _science_a),
                 # THE FUNCTIONAL, THE GRID, DENSITY FITTING AND DISPERSION, and
@@ -821,6 +821,11 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
                  "spin_treatment": state.spin_treatment.value,
                  "unpaired_electrons": state.unpaired_electrons.value,
                  "method": state.method.value}
+    # WHAT ENTERS NOTHING HERE has no object to read back: a setting whose
+    # `active_when` the others do not meet (`template.inactive_why`) -- a
+    # solvent model with no solvent, the gas phase.
+    from ..template import inactive_settings
+    _off = inactive_settings(cfg, engine="pyscf", calculation=calculation)
     for name in _layout.recorded_items(calculation):
         param = (_sc.parameter(name, "pyscf", value=_resolved[name])
                  if name in _resolved
@@ -831,10 +836,7 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
             # (`scf.hf.SCF.disp`), and HF takes the correction, so it is
             # read back like any other setting (pyscf.md § 7a).
             expr = None
-        if expr and name == "solvent_method" and not cfg.solvent:
-            # No continuum on a gas-phase object: the solvent's blank is the
-            # gas phase (`scf_setup.emit_solvent_lines`), so there is no
-            # model to read back.
+        if name in _off:
             expr = None
         third = f"_mb_read(lambda: {expr})" if expr else "None"
         # A RUN SETTING'S ROW READS ITS ZONE, by name (`job-contracts.md`

@@ -47,20 +47,46 @@ from ..structure import REMAPPED_NOT_EDITED, Structure
 # The labels a transport junction's atoms carry in the `.molstruct.json`
 # sidecar's `regions`.  Here because this module owns the partition they
 # make; everything that reads a region label -- the emitter, compose,
-# validation -- asks here.  The two electrode labels are the kind table's:
-# each is the region a lead is cut from, named on the lead's role
+# validation -- asks here.  Every label it reads is the kind table's: the
+# two electrode labels each the region a lead is cut from, named on the
+# lead's role, and the bridge and the buffer the kind's `regions`
 # (`execution/architecture.md` § 3.3), so a rename happens there, once.
 
+from ..kind_table import KindTableError  # noqa: E402
 from ..kind_table import kind as _kind  # noqa: E402
 
 _LEADS = _kind("transport").leads
-REGION_LEFT_ELECTRODE  = _LEADS["electrode_L"]
-REGION_RIGHT_ELECTRODE = _LEADS["electrode_R"]
-REGION_BRIDGE          = "bridge"
+_REGIONS = tuple(g.name for g in _kind("transport").regions)
+
+
+def _lead(role: str) -> str:
+    """The region the lead role ``role`` is cut from, as the kind's record
+    names it -- refused when the record has no such lead role."""
+    if role not in _LEADS:
+        raise KindTableError(
+            f"transport/sort.py places the {role!r} lead, which the "
+            f"transport kind's roles do not name ({', '.join(_LEADS)})")
+    return _LEADS[role]
+
+
+def _region(name: str) -> str:
+    """A label this sort places by its own rule, as the kind's record lists
+    it (``regions``) -- refused when the record lists no such label, so the
+    sort never places by a name the record does not hold."""
+    if name not in _REGIONS:
+        raise KindTableError(
+            f"transport/sort.py places {name!r}, which the transport kind's "
+            f"regions do not list ({', '.join(_REGIONS)})")
+    return name
+
+
+REGION_LEFT_ELECTRODE  = _lead("electrode_L")
+REGION_RIGHT_ELECTRODE = _lead("electrode_R")
+REGION_BRIDGE          = _region("bridge")
 #: Atoms excluded from the NEGF region entirely (``TS.Atoms.Buffer``):
 #: padding at the OUTER ends of the device, beyond the electrode blocks.
 #: Optional -- most 2-terminal junctions need none.
-REGION_BUFFER          = "buffer"
+REGION_BUFFER          = _region("buffer")
 
 #: The two leads, by EXACT name -- the list every reader of "which regions
 #: are leads" asks (`structure-annotations.md` § 5; user, 2026-10-02:
@@ -68,10 +94,20 @@ REGION_BUFFER          = "buffer"
 #: so any other label, ``tip-electrode`` included, is not a lead.
 ELECTRODE_LABELS = (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)
 
-#: The four PARTITION labels — exactly one per atom.  Everything else
+#: The PARTITION labels — exactly one per atom: the labels the kind reads
+#: (its leads' and its ``regions``, the kind table's).  Everything else
 #: (``interface``, ``frozen_atoms``, user labels) is partition-neutral
 #: bookkeeping that rides along untouched.
-PARTITION_LABELS = (*ELECTRODE_LABELS, REGION_BRIDGE, REGION_BUFFER)
+PARTITION_LABELS = tuple(name for name, _about in _kind("transport").labels)
+# ...EVERY ONE OF WHICH THE ORDER BELOW PLACES: a label the record adds that
+# the sort has no place for is refused here, never a bijection that fails
+# on the first junction.
+if set(PARTITION_LABELS) != {REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
+                             REGION_BRIDGE, REGION_BUFFER}:
+    raise KindTableError(
+        f"transport/sort.py places {REGION_LEFT_ELECTRODE}, "
+        f"{REGION_RIGHT_ELECTRODE}, {REGION_BRIDGE} and {REGION_BUFFER}; the "
+        f"transport kind reads {', '.join(PARTITION_LABELS)}")
 
 #: The transport axis is the THIRD cell axis (z) -- the one home is
 #: `kmesh.TRANSPORT_AXIS` (a copy stood here until 2026-10-18, K3).
@@ -293,8 +329,8 @@ def _transport_order(struct: Structure) -> Tuple[List[int], Tuple[str, ...]]:
 
 
 #: THE KEYS, by name -- what a calculation needs done to the atom order.
-#: A kind asks ``sort_by(struct, deck_sort_key(...))``, the key its decks
-#: are written by (:data:`SORTED_COPY`); the name travels into the order
+#: A kind asks ``sort_by(struct, kind_table.atom_order(...))``, the order
+#: its pair's decks list atoms in (the kind table's); the name travels into the order
 #: record so the return leg knows which order it is undoing.  The names are
 #: the order record's (``atom_permutation.SORT_KEY_NAMES``); each maps to the
 #: function that works its order out, and :func:`sort_by` hands that order to
@@ -304,50 +340,6 @@ SORT_KEYS = {
     SORT_TRANSPORT:  lambda s: _transport_order(s),
     SORT_HELD_FIRST: lambda s: _held_first_order(s),
 }
-
-
-#: WHICH DECKS ARE WRITTEN FROM A SORTED COPY, AND BY WHICH KEY, keyed by
-#: ``(engine, kind)`` (`model/overview.md` § 2.2a): a SIESTA vibration's
-#: every stage, held atoms first (`engines/vibration.md` § 5.2), and a
-#: transport calculation's junction rungs, TranSIESTA's electrode blocks
-#: (`engines/transport.md` § 4).  Every other calculation's decks are in
-#: the user order.  THE ONE TABLE (:func:`deck_sort_key`): prep and the composer
-#: sort by it, and the run door reads from it which runs' decks may be in
-#: an engine's order (I9).
-SORTED_COPY = {("siesta", "vibration"): SORT_HELD_FIRST,
-               ("siesta", "transport"): SORT_TRANSPORT}
-
-
-#: What a deck whose atoms are a structure of its own is, said where its
-#: map has no user index (`model/overview.md` § 2.2b, F2).
-OWN_STRUCTURE_WORDS = "a structure of its own (the electrode cell)"
-
-
-def deck_own_structure(engine: str, kind: str,
-                       stage: Optional[str] = None) -> Optional[str]:
-    """What a deck of ``stage`` of an ``(engine, kind)`` calculation is when
-    its atoms are A STRUCTURE OF ITS OWN -- not the user's, reordered or
-    not: a transport lead rung's electrode cell (a lead role,
-    the kind's own ``leads``; `model/overview.md` § 2.2a, *a structure
-    derived from the user's*) -- in words; ``None`` for every other deck."""
-    if stage is not None:
-        from .deck import rung_of
-        if rung_of(stage) in _kind(kind).leads:
-            return OWN_STRUCTURE_WORDS
-    return None
-
-
-def deck_sort_key(engine: str, kind: str,
-                  stage: Optional[str] = None) -> Optional[str]:
-    """The key a deck of ``stage`` (its name or its token) of an
-    ``(engine, kind)`` calculation is written from a sorted copy by
-    (:data:`SORTED_COPY`) -- or ``None``, a deck in the user order: every
-    calculation the table does not name, and a deck of a structure of its
-    own (:func:`deck_own_structure`)."""
-    key = SORTED_COPY.get((str(engine), str(kind)))
-    if key is not None and deck_own_structure(engine, kind, stage):
-        return None
-    return key
 
 
 def sort_by(struct: Structure, key: str) -> SortResult:

@@ -113,3 +113,76 @@ def test_the_two_registries_hold_what_the_contract_says():
         "or vibration prep actually travels")
     for k in named:
         assert callable(part(kind(k).validator, record=k, key="validator"))
+
+
+#: (engine's config, calculation, the setting given, what it waits on) -- a
+#: value given to a setting whose `active_when` the other settings do not
+#: meet (`engines/template.md` § 5): a PySCF solvent model with no solvent
+#: (`active_when = { solvent = "set" }`), a SIESTA step count with no
+#: relaxation (`relax_type = "none"`).
+INACTIVE_ROWS = [
+    pytest.param("pyscf", "vibration", {"solvent_method": "C-PCM"},
+                 "solvent_method", "solvent", 1,
+                 id="solvent-model-without-a-solvent"),
+    pytest.param("siesta", "optimization",
+                 {"relax_type": "none", "relax_steps": 77}, "relax_steps",
+                 "relax_type", 1, id="steps-without-a-relaxation"),
+    # ...and a value at the kind's default is nobody's statement: nothing.
+    pytest.param("pyscf", "vibration", {}, "solvent_method", "solvent", 0,
+                 id="solvent-model-at-its-default-says-nothing"),
+]
+
+
+@pytest.mark.parametrize("engine, calculation, given, name, waits_on, said",
+                         INACTIVE_ROWS)
+def test_a_setting_waiting_on_another_is_said_once_never_refused(
+        water_structure, engine, calculation, given, name, waits_on, said):
+    """The settings gate says once that the value has no effect here, in
+    the catalogue's words for what it waits on, and refuses nothing for
+    it -- the form greys the same field (`form-schema.md` § 1.3).
+
+    THE SILENT FAILURE: a page lock or an engine's own warning standing in
+    for the catalogue's rule -- a second sentence, or none, for the same
+    fact (until 2.65.0 the PySCF solvent model was warned by the spectra
+    checks and the SIESTA steps were greyed by the page alone)."""
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
+    cfg = (PySCFConfig if engine == "pyscf" else SiestaConfig)(**given)
+    issues = validate(water_structure, cfg, calculation=calculation)
+    about = [i for i in issues if i.where == f"config.{name}"]
+    assert [i.severity for i in about] == ["warn"] * said, about
+    # ...naming the setting it waits on, in the why after the value.
+    assert all(waits_on in i.message.split("has no effect here:", 1)[1]
+               for i in about), about
+
+
+
+#: (engine, kind, the values given, the value refused, a setting waiting
+#: on it): a value refused draws that refusal alone (`engines/template.md`
+#: § 5.3) -- one error -- and a setting that waits on it is not said to
+#: enter nothing, since what it waits on is not what will run.
+REFUSED_ROWS = [
+    pytest.param("siesta", "vibration",
+                 {"relax_type": "none", "relax_steps": 77}, "relax_type",
+                 "relax_steps", id="a-relaxer-a-vibration-does-not-offer"),
+]
+
+
+@pytest.mark.parametrize("engine, calculation, given, refused, waiting",
+                         REFUSED_ROWS)
+def test_a_refused_value_draws_its_refusal_alone(
+        water_structure, engine, calculation, given, refused, waiting):
+    """THE SILENT FAILURE (until 2.65.0): the gate said a refused value
+    entered nothing too, and so the settings waiting on it -- three
+    findings for one statement, two of them about a run that will not
+    happen."""
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
+    cfg = (PySCFConfig if engine == "pyscf" else SiestaConfig)(**given)
+    issues = validate(water_structure, cfg, calculation=calculation)
+    assert [i.severity for i in issues
+            if i.where == f"config.{refused}"] == ["error"], issues
+    assert not [i for i in issues if i.where == f"config.{waiting}"
+                and "has no effect here" in i.message], issues

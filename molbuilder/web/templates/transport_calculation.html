@@ -109,8 +109,8 @@
     <p class="hint">
       Labels are assigned where the junction is built, on the
       <a href="/molbuilder">Molbuilder</a> tab, never here.  The
-      convention is <code>L-electrode</code> at low z and
-      <code>R-electrode</code> at high z: atom order follows the
+      convention is <code>{{ leads[0] }}</code> at low z and
+      <code>{{ leads[1] }}</code> at high z: atom order follows the
       <em>geometry</em>, but the bias <code>µ = +V/2</code> follows the
       <em>name</em>, so labelling them the other way round biases the
       other lead.  That case is detected below and offers a rename.
@@ -147,7 +147,8 @@
         aria-live="polite"></ul>
     {#- The one refusal with a one-click fix: inverted electrode
         labels.  Populated by core.js from the describe's `fix` word. -#}
-    <div id="transport-junction-fix" hidden></div>
+    <div id="transport-junction-fix" hidden
+         data-leads='{{ leads | tojson }}'></div>
     {#- AN EXTENSION OF A FINISHED TRANSPORT CALCULATION (`engines/transport.md`
         § 2a.16, *Extending it*): what may change and what is fixed, and the
         way out -- drawn by core.js from the describe door's `extend`. -#}

@@ -49,7 +49,7 @@
  *                         onChange to re-word the header only -- nothing
  *                         in the sidebar moves this panel (results.md
  *                         § 2.1); Reload does.
- *   ``filterToResultFiles(entries, engine, pickResult)`` -- pure helper.
+ *   ``filterToResultFiles(entries, folder, pickResult)`` -- pure helper.
  *   ``absorbSatellites(entries, pickResult)`` -- pure helper that drops
  *                         the files a run's master subsumes, so one run is
  *                         one entry (results.md § 2.3).
@@ -89,7 +89,11 @@
      *
      * Pure (no DOM, no fetch).  Exported for unit tests.
      */
-    function filterToResultFiles(entries, engine, pickResult) {
+    function filterToResultFiles(entries, folder, pickResult) {
+        // WHAT THE FOLDER'S ANSWER SAYS OF ITS RUN, carried onto each file:
+        // the engine, its words and the calculation's noun (presenters.md
+        // § 2) -- each null where the answer names none.
+        const said = folder || {};
         if (!Array.isArray(entries)) return [];
         const out = [];
         for (const entry of entries) {
@@ -111,7 +115,9 @@
                 label:  entry.label || null,
                 stage:  entry.stage || null,
                 parser: entry.parser,
-                engine: engine || null,
+                engine: said.engine || null,
+                engine_words: said.engine_words || null,
+                noun:   said.noun || null,
             };
             // AND A PRESENTER MUST CLAIM IT, which is the SECOND half of
             // "a file this menu lists".
@@ -294,7 +300,7 @@
     function readAnswer(body, pickResult) {
         const b = body || {};
         const here = absorbSatellites(
-            filterToResultFiles(b.files || [], b.engine, pickResult),
+            filterToResultFiles(b.files || [], b, pickResult),
             pickResult);
         const pts = b.points || null;
         const ofPoints = !!(pts && b.place && b.place.of_points);
@@ -303,7 +309,7 @@
             && pts.at_work.opens.path === opens ? pts.at_work.opens : null;
         const leadRow = b.report || atWork;
         const lead = leadRow
-            ? filterToResultFiles([leadRow], b.engine, pickResult) : [];
+            ? filterToResultFiles([leadRow], b, pickResult) : [];
         return {
             here: here,
             lead: lead,
@@ -325,13 +331,14 @@
     }
 
     /** The server's reading of a listed file, as presenters take it --
-     *  `{role, label, stage, parser, engine}` (`presenters.md` § 2) --
-     *  or ``null`` for none. */
+     *  `{role, label, stage, parser, engine, engine_words, noun}`
+     *  (`presenters.md` § 2) -- or ``null`` for none. */
     function metaOf(rec) {
         if (!rec) return null;
         return { role:   rec.role,   label:  rec.label,
                  stage:  rec.stage,  parser: rec.parser,
-                 engine: rec.engine };
+                 engine: rec.engine, engine_words: rec.engine_words,
+                 noun:   rec.noun };
     }
 
     /**

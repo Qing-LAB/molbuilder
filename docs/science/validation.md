@@ -488,7 +488,7 @@ validation/
 ├── stages.py       # stage-ladder checks (shared by describe/dispatch)
 ├── task.py         # the TASK preflight — a description that is not one refuses
 ├── siesta.py       # SIESTA's validator (validate_siesta) + pseudo/mesh/Makov-Payne/
-│                   # vacuum checks, and a GPU run's solver (said, G11)
+│                   # vacuum checks
 ├── pyscf.py        # PySCF's validator (validate_pyscf) + metal-basis adequacy
 │                   # and the ECP hint
 ├── spectra.py      # the vibration kind's science (grid/amplitude/frozen atoms/

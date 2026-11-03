@@ -177,9 +177,11 @@ class TestTransportPageRendering:
         assert 'id="transport-form-container"' in body
         # ONE TAB PER ENGINE (`engines/transport.md` § 3.8.8): an engine
         # that runs no transport is drawn DISABLED, its title saying why.
-        from molbuilder.transport.stages import why_no_transport
+        from molbuilder.kind_table import kind
         pyscf = body.split('data-tab="pyscf"')[1].split(">")[0]
-        assert "disabled" in pyscf and why_no_transport("pyscf") in pyscf
+        assert "disabled" in pyscf and kind("transport").why_not_on("pyscf") in pyscf
+        # ...in the contract's words (§ 3.8.8).
+        assert "no PySCF transport backend is built yet" in pyscf
         assert 'id="transport-junction-btn"' in body
         assert 'id="transport-send-btn"' in body
         assert 'transport-generate-btn' not in body
@@ -223,3 +225,30 @@ def test_a_rung_tab_offers_no_run_setting(web):
     assert "diag_algorithm" in run_settings("siesta")
     assert not (names & run_settings("siesta")), sorted(
         names & run_settings("siesta"))
+
+
+#: (the body the describe door is sent, the refusal it answers): the engine
+#: is the page's to name, refused in the kind table's one sentence when it
+#: runs no transport (`engines/transport.md` § 3.8.8) -- the schema door's
+#: rule, asked through the same helper.
+_BODY = {"junction": "P/optimization/R/01_relax/run-0", "bias": [0.0],
+         "stages": {}, "shared": {}}
+DESCRIBE_REFUSALS = [
+    pytest.param({**_BODY}, "engine must name the engine",
+                 id="no-engine"),
+    pytest.param({**_BODY, "engine": "pyscf"},
+                 "no PySCF transport backend is built yet",
+                 id="an-engine-that-runs-no-transport"),
+]
+
+
+@pytest.mark.parametrize("body, refused", DESCRIBE_REFUSALS)
+def test_the_describe_door_refuses_an_engine_it_cannot_describe_on(
+        web, isolated_projects_root, body, refused):
+    """400, nothing written.  THE SILENT FAILURE: a door that took the
+    engine as given would describe a calculation on an engine no transport
+    backend runs, refused first by prep."""
+    r = web.post("/api/transport/describe", json=body)
+    got = r.get_json()
+    assert r.status_code == 400 and refused in got["error"], got
+    assert not any(isolated_projects_root.iterdir())

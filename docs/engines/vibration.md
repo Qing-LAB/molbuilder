@@ -2434,7 +2434,7 @@ each point, the point it starts from (`engines/transport.md` § 2a.11).
 |---|---|---|---|
 | `relax` | the structure, the held-first copy — prep's file, copied with the folder | none; launched again not done, its own warm files (§ 6) | its relaxation record — steps, largest force, the fingerprint of the geometry reached — from its output (`parse.contract.relaxation_of_output`); the geometry itself the `fc` call's plan step reads from that output |
 | `fc` | the relaxed geometry, from the `relax` call's output; the structure itself when stated relaxed | `relax`'s `.DM` — one hand-over: its `.continued-from` written by launch, the file copied by the walk | the number of modes (the analysis, § 5.5, writes the modes and the charges into the result at the run's root); one entry per optical call it plans, for the modes *Raman for* picks (`select_modes`, § 3.1, § 5.11 § 4), each with its mode, side and $\delta Q = \delta / \max_k \lvert L_k\rvert$ (`normal_modes.q_for_largest_move`, over `largest_move`, the one $\max_k \lvert L_k\rvert$ a frame set's outermost move rests on too), $\delta$ the `.FC` header's displacement (one source, the one the finish reads) |
-| `optical` | frame 0 the force-constant run's reference geometry; then $R_0 \pm \delta Q\cdot L$, the displacement rule `mode_frames` uses (one function for both) | the force-constant run's `.DM` — its reference density, from which every displacement of that run started (§ 5.3; verified: one SCF iteration at frame 0, § 12) — one hand-over: its `.continued-from` written by `fc`'s record step as it plans the call (by launch, opening it again), the file copied by the walk's loop step | $\varepsilon_2(\omega)$ and the output's facts into the data file |
+| `optical` | frame 0 the force-constant run's reference geometry; then $R_0 \pm \delta Q\cdot L$, the displacement rule `spectra.mode_frames` uses (one function for both) | the force-constant run's `.DM` — its reference density, from which every displacement of that run started (§ 5.3; verified: one SCF iteration at frame 0, § 12) — one hand-over: its `.continued-from` written by `fc`'s record step as it plans the call (by launch, opening it again), the file copied by the walk's loop step | $\varepsilon_2(\omega)$ and the output's facts into the data file |
 
 **Data, not code**: the phases table `siesta/vibration_phases.PHASES` —
 each row its name, its deck part, the item that turns it on, its
@@ -2461,7 +2461,7 @@ use, in the bundle; nothing of their own but the verb that walks the table:
 | reads `.FC` → the Hessian, and $\delta$ | `parse/engines/siesta_fc.py` (`read_fc`, `hessian_from_fc`) | the displacement sweep (§ 5.9) |
 | the modes | `spectra/vibrational_analysis.py` → `normal_modes.vibrational_modes`, the analysis the finish runs | the PySCF route, its `normal_modes.vibrational_modes` (§ 4.5) |
 | which modes | `spectra/selection.select_modes`, the one selector, on *Raman for* as the deck's `vibration` block carries it (§ 4) | the PySCF route; it travels in both bundles |
-| the frames $R_0 \pm \delta Q\cdot L$ — $L$ over every atom, zero on held, $\delta Q$ from the largest atom's move | `normal_modes.displaced` | the frame generator (`mode_frames`, § 5.10 ③) |
+| the frames $R_0 \pm \delta Q\cdot L$ — $L$ over every atom, zero on held, $\delta Q$ from the largest atom's move | `normal_modes.displaced` | the frame generator (`spectra.mode_frames`, § 5.10 ③) |
 | the coordinates file | `siesta/deck_lines.coordinates_rows` | every SIESTA deck (`siesta/input.py`) and TranSIESTA's (`transport/transiesta.py`) |
 | a call folder: made, stamped, the phase folder's files copied | the opener's travelling core — `calcdirs.record` with `paths`, and the copier `planned.bring` | `materialize.open_run` and `bring_files` on this machine |
 | every file's name — the seed, the output, the index | `runfiles.compose` / `RunNames` | every writer and reader of a run's files |
@@ -3326,7 +3326,7 @@ v7, which states none.
 temperature, are views too** — each asked with its inputs and derived by one
 function, never stored: `spectra.infrared.infrared_view`, from
 `partial_charges`, for a direction and a partition (§ 5.10 ②); and
-`mode_frames.outermost_move`, the outermost frames' largest atom move for a
+`spectra.mode_frames.outermost_move`, the outermost frames' largest atom move for a
 rule at a temperature, from the mode's zero-point amplitude and its pattern
 (`science/vibrational-averaging.md` § 5). The load door serves each
 (`web/spectra.md` § 3.2, § 4.3).
@@ -4005,7 +4005,7 @@ nothing is in that state as of 2026-09-28.
 | ~~the PySCF deck's own `_optimized.xyz` pair records `info.relaxation`~~ | **closed 2026-09-29** by the one-source rule (V1.31): the record is the one reader's (`parse.contract.relaxation_of`, over the run's own output), which the Results tab's export writes; a copy computed in the deck would be a second writer of it | § 2.2 |
 | a δ-convergence report: two stages at $\delta$ and $\delta/2$ and a printed comparison of $\omega_\nu$ and $e_\nu$ | **built 2026-09-28** — V1.23: `summarize task` writes `<label>.fc-sweep.json` (modes matched by shape, the force constants compared from the raw `.FC`), the Results tab presents it; a later stage takes the first stage's relaxation over (2.58.0), and two stages at different geometries the summary refuses (§ 5.9) | § 5.9 |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
-| a mode's frame set — one mode as one multi-frame pair a transport calculation cites; the density-difference maps $\Delta\rho_\nu(r)$; the projected density of states along a mode | V1.25 **built 2.35.0** (D6, D7: the frame set of § 5.10 ③, `mode_frames.frameset_from_mode`, `molbuilder frameset from-mode` and the spectrum viewer's *Write frame set…*); V1.26 **needs a decision** (M10) | § 5.6, § 5.10 |
+| a mode's frame set — one mode as one multi-frame pair a transport calculation cites; the density-difference maps $\Delta\rho_\nu(r)$; the projected density of states along a mode | V1.25 **built 2.35.0** (D6, D7: the frame set of § 5.10 ③, `spectra.mode_frames.frameset_from_mode`, `molbuilder frameset from-mode` and the spectrum viewer's *Write frame set…*); V1.26 **needs a decision** (M10) | § 5.6, § 5.10 |
 | the PySCF probe: five points, the coupling per zero-point amplitude $g_\nu$, a molecule-projected window for a cluster | **decided, not built** — V1.27 (D8: the same nodes as the frame set) | § 4.8, § 5.10 |
 | the `fc` phase's deck leaves the input's relaxation record behind; its calculation record stays | **built 2026-09-29** — V1.35 | § 5.2a |
 | what a SIESTA vibration says about its geometry after its `relax` phase: that call's outcome and its remedy, judged at the finish, not the describe-time box and record advice | **built 2026-09-29** — V1.36, the user's word the same day | § 5.2a, § 5.8 |

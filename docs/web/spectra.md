@@ -764,7 +764,7 @@ asks two things and then where to save:
 computes it at the temperature typed (`frameset_temperature_k`, § 6): the
 mode's mean number of quanta $n$, its spread against the zero-point one
 $\sigma/Q_{\mathrm{zp}}$, and how far the outermost frames move the atom that
-moves most — the outermost move — for the rule chosen (`mode_frames.outermost_move`, `science/vibrational-averaging.md` § 5),
+moves most — the outermost move — for the rule chosen (`spectra.mode_frames.outermost_move`, `science/vibrational-averaging.md` § 5),
 beside this mode's largest zero-point atom move (the result's
 `zero_point_displacement_ang`). Typing another temperature asks the door again
 at it, and the sentence names the temperature the door computed the numbers
@@ -881,7 +881,7 @@ catalogue schema + hand-over doors (§ 5):
 |---|---|---|
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data — with `temperature_k`, each mode's thermal spread at it (§ 4.1); with `frameset_temperature_k` — the frame-set dialog's, the run's thermochemistry temperature when not asked — each mode's `frameset`: its mean number of quanta, its spread and that spread against its zero-point one, and the outermost frames' largest atom move for three, five and seven frames at it (§ 4.3); with `infrared: {direction, partition}`, the free atoms' infrared at those choices — along z by Hirshfeld charges when not asked, and derived with every load of a result that states its charges (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3) | `{ok, results}`, `results.infrared` the infrared view where the result has one, `results.raman` the Raman view when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 | `GET /api/spectra/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
-| `POST /api/spectra/frameset` | `{path, mode, temperature_k, nodes, out}` — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`mode_frames.NODES`, § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
+| `POST /api/spectra/frameset` | `{path, mode, temperature_k, nodes, out}` — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`spectra.mode_frames.NODES`, § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
 
 Each follows the app's `{ok: …}` envelope convention, the export's file
 aside. The form schema comes

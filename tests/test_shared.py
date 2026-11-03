@@ -63,7 +63,7 @@ class TestWorkspacePayloadCanonicalKeys:
         payload = workspace_payload(_h2o())
         canonical = {
             "text", "source_format", "title", "n_atoms",
-            "atoms", "lattice", "issues", "extra",
+            "atoms", "lattice", "issues", "labels", "extra",
         }
         assert set(payload.keys()) == canonical, (
             f"workspace_payload key set drifted from canonical;\n"
@@ -72,6 +72,22 @@ class TestWorkspacePayloadCanonicalKeys:
             f"Update docs/web/workspace.md "
             f"before extending."
         )
+
+    def test_labels_are_the_kind_tables(self):
+        """The labels a calculation kind reads arrive with every structure,
+        each with what it is for, read from the kind table -- a transport
+        calculation's leads, bridge and buffer (`web/molview.md`) -- so no
+        page spells them.  SILENT FAILURE: a page's copy drifting from the
+        table after a rename, a lead offered under its old name."""
+        served = workspace_payload(_h2o())["labels"]
+        assert [e["name"] for e in served] == [
+            "L-electrode", "R-electrode", "bridge", "buffer"]
+        assert all(set(e) == {"name", "description"} and e["description"]
+                   for e in served), served
+        # ...each sentence the kind table's own for that label.
+        from molbuilder.kind_table import labels
+        assert [(e["name"], e["description"]) for e in served] == \
+            list(labels())
 
     def test_text_is_xyz_bytes(self):
         payload = workspace_payload(_h2o())
@@ -174,11 +190,12 @@ class TestStructureToDictLegacyShim:
         )
 
     def test_emits_canonical_keys_alongside_legacy(self):
+        """Every key the canonical door sends -- the second serializer adds
+        to it, never re-lists it.  THE SILENT FAILURE (2.65.0, found
+        headless): a hand-listed copy of the canonical keys dropped the
+        kind table's `labels`, and the palette offered MolView's two."""
         d = structure_to_dict(_h2o())
-        canonical_subset = {
-            "text", "source_format", "lattice",
-        }
-        missing = canonical_subset - set(d.keys())
+        missing = set(workspace_payload(_h2o())) - set(d.keys())
         assert not missing, (
             f"structure_to_dict is missing canonical keys; "
             f"Phase-2-ready consumers won't be able to read them: "

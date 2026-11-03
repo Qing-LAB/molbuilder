@@ -92,6 +92,23 @@ def _fence(raw: str):
 # ===================================================================== #
 
 
+def _engine_refused(engine: str, what: str):
+    """THE ENGINE A TRANSPORT DOOR IS ASKED ON (`engines/transport.md`
+    § 3.8.8): named by the page, never defaulted -- the refusal of none
+    named, or of one that runs no transport in the kind table's sentence --
+    or ``None``, the engine stands.  ``what`` says what the engine is."""
+    from molbuilder.kind_table import kind
+    if not engine:
+        return jsonify({"ok": False,
+                        "error": f"engine must name the engine {what} -- "
+                                 f"the transport tab's engine strip names "
+                                 f"it"}), 400
+    no = kind("transport").why_not_on(engine)
+    if no:
+        return jsonify({"ok": False, "error": f"engine {engine!r}: {no}"}), 400
+    return None
+
+
 @bp.route("/api/transport/describe_attempt", methods=["GET"])
 def api_transport_describe_attempt() -> Any:
     """Classify a picked path -- a run's folder or a pair's ``.xyz`` --
@@ -264,9 +281,15 @@ def api_transport_describe_attempt() -> Any:
     # order, taken as the user order (`model/overview.md` § 2.2b, F4).
     if isinstance(cited, CitedPair):
         findings.extend(cited.said)
+    # THE ENGINE THE JUNCTION IS COMPOSED FOR, asked where it is needed: its
+    # decks' atom order is the pair's (`kind_table.atom_order`).
+    engine = str(request.args.get("engine") or "")
+    refusal = _engine_refused(engine, "the junction is composed for")
+    if refusal is not None:
+        return refusal
     composed = None
     try:
-        composed = compose_junction(citation, tree_root=root,
+        composed = compose_junction(citation, tree_root=root, engine=engine,
                                     swap_electrodes=swap)
         structure_wire = composed.relaxed.to_dict()
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
@@ -299,13 +322,13 @@ def api_transport_describe_attempt() -> Any:
         # refusal is about something else entirely.
         try:
             from molbuilder.cell import entering
-            from molbuilder.transport.compose import _with_swapped_leads
+            from molbuilder.transport.compose import with_swapped_leads
             cited_struct, _src = labeled_citation_structure(cited)
             # WITH THE RENAME HELD, as compose takes it (§ 4): the viewer
             # and the orientation question show the junction as it will be
             # composed.
             if swap:
-                cited_struct = _with_swapped_leads(cited_struct,
+                cited_struct = with_swapped_leads(cited_struct,
                                                    cited.path.name)
             # As this calculation will take it (`cell.entering`).
             structure_wire = entering(cited_struct).to_dict()
@@ -366,6 +389,7 @@ def _describe_reused(folder: str, root) -> Any:
     with the refusal as its summary, as any path that is not citable."""
     from molbuilder.frame_average import answer_said
     from molbuilder.issues import Issue
+    from molbuilder.jobset.rung import citation_of
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.transport.compose import ComposeError, recorded_junction
     from molbuilder.transport.reuse import Extension, ReuseError, reused
@@ -375,7 +399,7 @@ def _describe_reused(folder: str, root) -> Any:
         return jsonify({"ok": True, "citation": None, "summary": str(exc),
                         "findings": []}), 200
     from molbuilder.jobset.ladder import stage_config
-    from molbuilder.jobset.reuse import SHARING_RUNG
+    from molbuilder.transport.window import window_rung
     task = calc.task
     unread = None
     try:
@@ -393,7 +417,7 @@ def _describe_reused(folder: str, root) -> Any:
         junction = junction.replace(order_unstated=True)
     # THE WINDOW ITS TRANSMISSION COMPUTED: the template's, or the rung's
     # own values over it (`ladder.stage_config`).
-    cfg = stage_config(task, SHARING_RUNG, calc.template_text)
+    cfg = stage_config(task, window_rung(), calc.template_text)
     window = (f"{cfg.transmission_emin_ev:g}…{cfg.transmission_emax_ev:g} "
               f"eV at {cfg.transmission_n_points} points")
     steps = jobset_status(calc).steps
@@ -403,7 +427,7 @@ def _describe_reused(folder: str, root) -> Any:
                         for s in steps))
     summary = " · ".join([
         "TRANSPORT CALCULATION", Extension(rel, task).name,
-        f"its junction, cited from {task.slots['junction']}",
+        f"its junction, cited from {citation_of(task)}",
         str(task.treatment),
         ", ".join(str(float(v)) for v in task.bias) + " V", window,
         stands] + ([f"its junction's record does not read: {unread}"]
@@ -413,7 +437,7 @@ def _describe_reused(folder: str, root) -> Any:
     frame_set = answer_said(junction if junction is not None
                             and junction.n_frames > 1 else None)
     return jsonify({
-        "ok": True, "citation": task.slots["junction"], "reuses": rel,
+        "ok": True, "citation": citation_of(task), "reuses": rel,
         "concluded": True, "summary": summary,
         "findings": _issues_to_json(
             [Issue("error", str(frame_set["why"]))]
@@ -428,10 +452,9 @@ def _describe_reused(folder: str, root) -> Any:
         "window": window,
         # WHAT AN EXTENSION OF IT MAY CHANGE, AND WHAT IS FIXED
         # (`engines/transport.md` § 2a.16, *Extending it*): the rungs it
-        # keeps, and what each control says -- drawn as they are.
-        # ...AND THE RUNG WHOSE WINDOW A FIT IS WRITTEN INTO
-        # (`jobset.reuse.SHARING_RUNG`), named for the page.
-        "extend": dict(Extension(rel, task).to_wire(), window=SHARING_RUNG),
+        # keeps, what each control says and the rung whose window a fit is
+        # written into -- drawn as they are.
+        "extend": Extension(rel, task).to_wire(),
     })
 
 
@@ -668,24 +691,17 @@ def api_transport_describe() -> Any:
                                              refuse_failed_citation,
                                              resolve_citation)
     from molbuilder import template as _T
-    from molbuilder.transport.stages import (TRANSPORT_STAGES,
-                                             resolvable_override_names,
+    from molbuilder.transport.stages import (resolvable_override_names,
                                              stages_for_transport)
 
     body = request.get_json(silent=True) or {}
     # THE ENGINE IS THE PANEL THE PERSON DESCRIBED ON (`engines/transport.md`
     # § 3.8.8), named by the page and never defaulted; one that runs no
     # transport is refused, saying why.
-    from molbuilder.transport.stages import why_no_transport
     engine = str(body.get("engine") or "")
-    if not engine:
-        return jsonify({"ok": False,
-                        "error": "engine must name the engine the "
-                                 "calculation is described on -- the "
-                                 "transport tab's engine strip names it"}), 400
-    no = why_no_transport(engine)
-    if no:
-        return jsonify({"ok": False, "error": f"engine {engine!r}: {no}"}), 400
+    refusal = _engine_refused(engine, "the calculation is described on")
+    if refusal is not None:
+        return refusal
     _RESOLVABLE = resolvable_override_names(engine)
     citation = str(body.get("junction") or "")
     if not citation:
@@ -721,7 +737,7 @@ def api_transport_describe() -> Any:
     if not isinstance(shared_chosen, dict):
         return jsonify({"ok": False,
                         "error": "shared must be an object"}), 400
-    typed = str(body.get("name") or "") or "transport"
+    typed = str(body.get("name") or "")
     # THE PLAN ALONE (`engines/transport.md` § 2a.16, *On the page*): the
     # same checks, then what the description would copy and run, written
     # nowhere the person sees -- no folder needed.
@@ -843,6 +859,16 @@ def api_transport_describe() -> Any:
                                      f"this calculation; the shared panel "
                                      f"carries the items the catalogue "
                                      f"marks `shared` for transport"}), 400
+    # THE NAME OF A NEW CALCULATION, refused by name when there is none --
+    # never defaulted, as the hand-over door refuses it (the tab sends the
+    # folder's), and a plan's too: its run id is its name (`task.derive_run`).
+    # After the path fences, which come before anything else (`web/web-api.md`
+    # § 2.1); a calculation that reuses one keeps the finished one's.
+    if finished is None and not typed:
+        return jsonify({"ok": False,
+                        "error": "name: the calculation has no name -- send "
+                                 "its name, as the transport tab sends the "
+                                 "folder's"}), 400
     try:
         stages = tuple(stages_for_transport(engine, bags))
         # THE stages.md 6.2 RULE: an override names a PROMOTED field, and
@@ -866,7 +892,7 @@ def api_transport_describe() -> Any:
             if finished is not None else Task(
             engine=engine,
             run=derive_run(typed, citation,
-                           stage_names=TRANSPORT_STAGES),
+                           stage_names=tuple(st.name for st in stages)),
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
             low_bias_approximation=approx,
@@ -1088,9 +1114,9 @@ def api_transport_schema() -> Any:
     from molbuilder.projects import projects_root
     from molbuilder.transport.citation_defaults import (asked_of_the_person,
                                                         citation_answers)
+    from molbuilder.jobset.rung import citation_of
     from molbuilder.transport.compose import ComposeError, resolve_citation
-    from molbuilder.transport.stages import (TRANSPORT_STAGES, rung_notes,
-                                             why_no_transport)
+    from molbuilder.transport.stages import TRANSPORT_STAGES, rung_notes
     from molbuilder import template as _T
 
     surface = str(request.args.get("surface") or "rung")
@@ -1102,14 +1128,9 @@ def api_transport_schema() -> Any:
     # the panel the form is drawn on, named by the page, never defaulted --
     # and one that runs no transport is refused, saying why.
     engine = str(request.args.get("engine") or "")
-    if not engine:
-        return jsonify({"ok": False,
-                        "error": "engine must name the engine whose form "
-                                 "this is -- the transport tab's engine "
-                                 "strip names it"}), 400
-    no = why_no_transport(engine)
-    if no:
-        return jsonify({"ok": False, "error": f"engine {engine!r}: {no}"}), 400
+    refusal = _engine_refused(engine, "whose form this is")
+    if refusal is not None:
+        return refusal
     # ONE RUNG'S TAB (§ 3.8.2a): `&rung=<name>` narrows the rung surface to
     # the items that rung owns plus the ones any rung may set.  Without it
     # the answer is every rung item at once, and it carries the rung list
@@ -1161,7 +1182,7 @@ def api_transport_schema() -> Any:
         # carried by the way out as the person's.  A citation that no
         # longer resolves asks nothing here; its describe says why.
         try:
-            _, cited = resolve_citation(finished.task.slots["junction"],
+            _, cited = resolve_citation(citation_of(finished.task),
                                         projects_root())
             asks = asked_of_the_person(cited)
         except ComposeError:

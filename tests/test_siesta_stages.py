@@ -53,7 +53,7 @@ def test_the_siesta_form_schema_emits_no_stage_table():
     """
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     for engine, prefix in (("siesta", "p"), ("pyscf", "py")):
-        sch = catalogue_to_form_schema(engine, prefix)
+        sch = catalogue_to_form_schema(engine, prefix, "optimization")
         kinds = [f["kind"] for s in sch["sections"] for f in s["fields"]]
         assert "stage-table" not in kinds, engine
 

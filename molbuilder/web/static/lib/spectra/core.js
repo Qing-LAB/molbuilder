@@ -1096,9 +1096,9 @@
             standing:     live[engine],
             // ...and a refusal's first error brought into view.
             showFindings: (issues) => showFindings(engine, issues, true),
-            structure:   _structure,
+            door:        mb.taskHandover.HANDOVER,
+            fields:      { structure: _structure, params: params },
             engine:      engine,
-            params:      params,
             calculation: "vibration",
         });
     }
@@ -3619,7 +3619,7 @@
         // run's own thermochemistry temperature until another is typed.
         const held = state.fileState.results || {};
         // THE RULES THE GENERATOR WRITES, served with the load, its default
-        // first (`mode_frames.NODES`, web/spectra.md § 4.3).
+        // first (`spectra.mode_frames.NODES`, web/spectra.md § 4.3).
         const RULES = (K.frameset_nodes || []).map(String);
         // WHAT THE DOOR SAID OF THIS MODE: ``{t, f}``, the temperature it
         // computed at and the mode's ``frameset`` there.

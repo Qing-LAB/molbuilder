@@ -480,7 +480,7 @@ gathers what is already there, one import for a person's script:
 | `raman_view(path, *, laser_nm, broaden_ev=None)` | the Raman of a SIESTA vibration result at a laser, from its optical calls' data file: the spectrum viewer's one derivation (`spectra.raman.raman_view_of`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) |
 | `read_raman_data(path)` | an exported Raman view, `<label>.raman.nc` (`spectra.raman.read_raman_data`) |
 | `reaveraged(path, *, temperature_k, swing_quanta=0)` | a frame set's transport calculation, from its data file `<label>.transport.nc`, averaged over another motion than the set's: the bell curve at `temperature_k` — the junction's, or a randomly pumped mode's effective one — with a swing adding `swing_quanta` quanta on it; each frame weighted from its position along the mode alone (`frame_average.motion_weights`, [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.4), each voltage by the record's own rule (`frame_average.at_voltage`); answered as `{motion, frames, weights, reach, bias_v, energy_ev, transmission, conductance_g0, conductance_change_percent, said}` — the motion's quanta, spreads and turning points; each frame's position and weight; how far the frames reach against the motion; at each voltage the averaged T(E), G/G₀ and its change from frame 0's; and what is said beside them (three frames blind to the shape, a weight below zero, a voltage not all done) — nothing written. Refused by name: frames stating no position along a mode, two frames at one position, a temperature not kelvin 0 or more, swing quanta below 0, a swing whose turning points lie beyond the outermost frame |
-| `outermost_move(path, *, mode, temperature_k, nodes=3)` | a vibration result's mode — by its number — and how far a frame set at that temperature moves the atom that moves most at its outermost frames, for a rule of 3, 5 or 7 frames, in Å, read through the result's reader (`mode_frames.outermost_move`, [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5); `None` for an imaginary mode, a temperature not kelvin 0 or more refused |
+| `outermost_move(path, *, mode, temperature_k, nodes=3)` | a vibration result's mode — by its number — and how far a frame set at that temperature moves the atom that moves most at its outermost frames, for a rule of 3, 5 or 7 frames, in Å, read through the result's reader (`spectra.mode_frames.outermost_move`, [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5); `None` for an imaginary mode, a temperature not kelvin 0 or more refused |
 
 `from molbuilder.postprocess import parse, atom_index_map,
 read_transport_data` — molbuilder's own doors ask the same functions at
@@ -1761,8 +1761,11 @@ never picks one.
 The `effective-parameters` block is `script_emit`'s (§ 1a): one format,
 written through one emitter and read by one reader (`script_emit.parameter_row`
 / `read_parameters_fence`). A row per catalogue item the rung reads — its
-engine's, its calculation's, read by its stage (`script_emit.declarations`, by
-the one rule `template.reads`), which the record's reader asks too; a PySCF
+engine's, its calculation's, read by its stage, or by the one role a point of
+a run of points plays, as a SIESTA vibration's call does (`script_emit.declarations`, by
+the one rule `template.reads`) — and the record's reader takes the stage's
+declared items, each with what its fence and its deck state, showing none that
+neither states, so a call's rows are what its role reads; a PySCF
 deck writes its own fence, its items narrowed by calculation (`pyscf/layout.py`) — `[item, default, asked, used]` — each one JSON array
 after `#   `, so a blank value or one with spaces cannot shift a column; `null`
 is *this writer cannot know*. The block's first line says what the columns

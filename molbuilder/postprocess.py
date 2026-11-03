@@ -17,7 +17,7 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         transport calculation averaged over another motion
         (`frame_average.motion_weights`); and ``outermost_move`` -- how far
         a mode's frame set at a temperature moves its atom that moves most
-        (`mode_frames`)
+        (`spectra.mode_frames`)
 USED-BY a notebook's kernel, which imports the molbuilder its server runs
         (`web/jupyter.md` § 7), and the post-processing documents' examples
 
@@ -229,9 +229,9 @@ def outermost_move(path, *, mode: int, temperature_k: float,
     numbers its modes) of the vibration result ``<label>.spectra.json`` at
     ``temperature_k`` for ``nodes`` frames, in Angstrom -- the largest atom's
     move at the outermost frames of the set the frame generator writes
-    there, read through the result's own reader (`mode_frames.outermost_move`);
+    there, read through the result's own reader (`spectra.mode_frames.outermost_move`);
     ``None`` for an imaginary mode, which has no spread."""
-    from .mode_frames import FrameSetError, outermost_move as _move
+    from .spectra.mode_frames import FrameSetError, outermost_move as _move
     from .sidecars.spectra import parse_spectra_json
     rows = parse_spectra_json(path).to_dict()["modes"]
     row = next((m for m in rows if m["index_1based"] == mode), None)

@@ -181,15 +181,14 @@ said = ["gpu share  one process on 2 GPU(s)"]
 # (`running-a-job.md` § 3.3): no rank binding, no shared-GPU service.
 run_sh_lacks = ["_mpirun_bind=", "_have_mps=", "socket co-location"]
 
-# The deck's GPU switch is ELPA's: a GPU run on ScaLAPACK is prepared as
-# asked -- its GPUs asked -- and the settings check the page's check hears
-# says its solve stays on the CPU (`engines/siesta.md` § 7, `gpu.md` G11: a
-# library's own GPU limit is said, never refused).
+# The solver and the GPU are two of the person's choices: a GPU run on
+# ScaLAPACK is prepared as asked, its GPUs asked, and molbuilder couples
+# neither to the other -- nothing said of the pair (the user, 2026-11-02).
 [[case]]
-name = "a GPU run on ScaLAPACK is prepared, its CPU solve said"
+name = "a GPU run on ScaLAPACK is prepared as asked"
 template = { diag_algorithm = "ScaLAPACK" }
 run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
-said = ["use_gpu with diag_algorithm = ScaLAPACK", "its solve stays on the CPU"]
+said_lacks = ["diag_algorithm = ScaLAPACK"]
 header = ["#SBATCH --gres=gpu:1"]
 
 [[case]]

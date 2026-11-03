@@ -74,8 +74,8 @@ _COMPANIONS = {
     # on the already-relaxed path (elsewhere it refuses, which also
     # counts as honored).
     "symmetry": {"already_relaxed": True},
-    # a method methods nothing without a solvent (the validator warns
-    # standalone); its deck effect is probed beside one -- with infrared
+    # a method enters nothing without a solvent (`active_when`, said once
+    # by the settings gate); its deck effect is probed beside one -- with infrared
     # and Raman off, on the one route PCM reaches (`engines/vibration.md`
     # § 4.6): a refused render would count as honored and measure nothing.
     "solvent_method": {"solvent": "water", "compute_raman": False,

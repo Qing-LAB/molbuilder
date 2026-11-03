@@ -436,21 +436,9 @@ def spectra_render_checks(struct: Structure, cfg, *,
                     where="config.solvent",
                 ))
 
-    elif _smethod and _smethod not in ("IEF-PCM",):
-        # A method with no solvent methods nothing -- say so rather
-        # than letting the field sit inert (the honesty gate's rule:
-        # every shown knob speaks).
-        issues.append(Issue(
-            severity="warn",
-            message=(
-                f"solvent_method = {_smethod} is set but `solvent` is "
-                f"empty, so no solvation model is applied and the "
-                f"method choice does nothing.  Pick a solvent (the PCM "
-                f"dielectric table: water, methanol, ethanol, acetone, "
-                f"dmso, thf, chloroform, toluene, hexane) or clear the "
-                f"method."),
-            where="config.solvent_method",
-        ))
+    # A METHOD WITH NO SOLVENT enters nothing: the catalogue says so, its
+    # `active_when` waiting on a solvent being set (engines/template.md § 5)
+    # -- the settings gate says it once, for every kind.
 
     # --- symmetry (category 2; probed 2026-08-21) -------------------
     if bool(getattr(cfg, "symmetry", False)) and not bool(

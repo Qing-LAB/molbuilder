@@ -815,6 +815,13 @@ export function createModel(opts) {
             return structure ? groupByLabel(structure.annotations) : null;
         },
 
+        /* The labels a calculation kind reads, as the structure's answer
+         * served them (§ 6.2 `labelsOffered`) -- a narrow cut, read for
+         * every chip, so the whole structure is never copied to find one. */
+        getLabelsOffered() {
+            return structure ? copy(structure.labelsOffered || []) : [];
+        },
+
         /* The `info` doors (molview.md § 8.4a, structure-info-plan.md):
          * the free-form NON-structural store.  The HOST's -- `set`,
          * `remove` -- are UNGATED on a read-only viewer: § 9.4's one

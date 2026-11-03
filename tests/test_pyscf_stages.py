@@ -59,7 +59,7 @@ def test_the_pyscf_form_schema_emits_no_stage_table():
     answers *what settings exist and how is each drawn*; it must never meet
     a stage (web/form-schema.md § 1's callout)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("pyscf", "py")
+    sch = catalogue_to_form_schema("pyscf", "py", "optimization")
     kinds = [f["kind"] for s in sch["sections"] for f in s["fields"]]
     assert "stage-table" not in kinds
 

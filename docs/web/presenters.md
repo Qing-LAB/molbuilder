@@ -134,8 +134,12 @@ catalogue does not name is left to what its FORMAT says — a `.xyz` or
 a `.json` or `.log` the text pane's. No suffix read off a name stands in for
 the answer. `engine: "unknown"` is the directory declining to name one, which
 reads the same as an answer without an engine: `trajectory`'s heading reads
-*SIESTA optimization* with `meta.engine`, *Optimization* without — the file is
-still named for what it IS, and the engine is left unclaimed. Guessing it from
+the engine's words and the calculation's noun, both served with the folder
+answer from the two tables (`engine_words`, `noun`) — *SIESTA optimization*,
+*PySCF vibration* — the engine's words alone where the folder is no
+calculation of ours, *SIESTA trajectory*, and *Trajectory* without either — the file is
+still named for what it IS, and neither the engine nor the kind is claimed
+(2.65.0: until then every run read *… optimization*). Guessing it from
 the suffix is what filed most SIESTA runs under *PySCF optimization* while the
 plot title, which asked the server, said SIESTA (2026-09-04), and what labelled
 a VASP directory's trajectory *PySCF optimization* by construction (2026-09-18).

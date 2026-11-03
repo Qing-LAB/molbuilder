@@ -301,6 +301,11 @@ class PointOfRun:
     script says after a failure (:func:`_launch_again`)."""
     relaunch: str = AGAIN
     steps: Optional[Dict[str, str]] = None
+    #: The one role this point plays, where its stage plays several -- a
+    #: SIESTA vibration's phase (`Rung.role_at`) -- so its record of what
+    #: the engine will read lists that role's settings; ``None``, the
+    #: stage's.
+    role: Optional[str] = None
 
     def step(self, moment: str) -> Optional[str]:
         return (self.steps or {}).get(moment)
@@ -1421,7 +1426,8 @@ def _n_orbitals_est(text: Optional[str]) -> Optional[int]:
 
 
 def _effective_parameters_block(script_name: str, engine: str,
-                                 calculation: str, stage: str) -> str:
+                                 calculation: str, stage: str,
+                                 role: Optional[str] = None) -> str:
     """What the engine will be given, echoed into the run log at launch --
     for a deck whose settings are KEYWORDS the engine reads, by the keyword
     reader its record names (`engine_table`'s ``keyword_reader``); a script
@@ -1430,10 +1436,11 @@ def _effective_parameters_block(script_name: str, engine: str,
 
     **The one block both engines write** (`model/parse.md` § 5d.3a): a row per
     catalogue item THIS RUNG READS -- of ``engine``, carried by a
-    ``calculation`` and read by the rung its ``stage`` token names
-    (`script_emit.declarations`, by the one rule `template.reads`, which
-    the record's reader asks too): a transmission deck lists TBtrans's
-    settings, never a relaxation's --
+    ``calculation`` and read by the rung its ``stage`` token names -- or,
+    given ``role``, by the one role its point plays, a SIESTA vibration's
+    phase (`script_emit.declarations`, by the one rule `template.reads`;
+    the record's reader lists what this block names): a transmission deck lists
+    TBtrans's settings, never a relaxation's --
     ``[item, default, asked, used]``,
     `script_emit`'s format and its reader -- then the deck as the engine
     will read it.  The engine is a separate process that has not started
@@ -1463,7 +1470,7 @@ def _effective_parameters_block(script_name: str, engine: str,
     from .engine_table import engine as _engine_rec
     reader = _engine_rec(engine).keyword_reader
     for item in _sc.declarations(engine=engine, calculation=calculation,
-                                 stage=stage):
+                                 stage=stage, role=role):
         param = _sc.parameter(item.name, engine)
         if param.writes:
             lines.append("echo " + _shlex.quote(
@@ -2810,8 +2817,9 @@ def render_run_wrapper(script_path: Path, *,
         # coordinates (`engines/vibration.md` § 5.11 § 4) -- for a deck
         # whose settings are keywords; a script deck writes its own from
         # inside itself, where it can read its objects back.
-        + (_effective_parameters_block(script_name, engine, calculation,
-                                       names.stage)
+        + (_effective_parameters_block(
+            script_name, engine, calculation, names.stage,
+            role=point.role if point is not None else None)
            if eng.keyword_reader is not None else "")
         # THE WALL REACHES THE ENGINE (running-a-job.md § 3.6; siesta.md
         # § 8.9): what is left of the job's wall when the program starts,

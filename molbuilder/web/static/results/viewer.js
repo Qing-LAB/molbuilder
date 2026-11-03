@@ -389,7 +389,7 @@
             // words, beside the detail.
             tr.appendChild(td((s.detail || "")
                 + (s.standing && s.standing.say ? " \u00b7 " + s.standing.say : "")
-                + (s.tsgf ? " \u00b7 " + s.tsgf : "")
+                + (s.scratch ? " \u00b7 " + s.scratch : "")
                 // A RUN COPIED IN from a finished calculation this one
                 // reuses (engines/transport.md \u00a7 2a.16).
                 + (s.copied_from ? " \u00b7 copied from " + s.copied_from : "")));

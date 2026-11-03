@@ -23,8 +23,9 @@ from ..runrecord import RunRef
 from .errors import PrepError, user_error_as_prep
 from .materialize import GATHERED, HandOver, hand_over
 from .naming import stage_home
-from .transport_rung import (at_frame, at_point, transport_rung,
-                             transport_sources, transport_spec)
+from .rung import citation_of
+from ..transport.rung import (at_frame, at_point, transport_rung,
+                             transport_sources, rung_spec)
 
 
 class ReadOnce:
@@ -85,7 +86,7 @@ def transport_inputs(calc, stage: str, *, point=None,
       in, because a rung launched again is the run you mean;
     * that run must have run **the same engine input as the deck that rung
       renders NOW** -- from the current template, junction and run card,
-      through the rung's own door (`transport_rung`), never the stage
+      through the rung's own door (`transport.rung.transport_rung`), never the stage
       folder's last render, which a change since leaves as it was (plan § 5w
       K11) -- and hold the file (`engines/transport.md` § 6.1).
 
@@ -300,13 +301,34 @@ def composed_junction(calc):
     (:func:`no_usable_record`); a refusal of the composition's is
     said as the gather's (:class:`PrepError`), as every door that asks the
     gather catches it -- through the one read prep asks too
-    (`transport_rung.junction_record`)."""
-    from .transport_rung import junction_record
+    (`transport.rung.junction_record`)."""
+    from ..transport.rung import junction_record
     composed, why, root = junction_record(calc)
     if composed is None:
         raise PrepError(no_usable_record(calc, why, root=root,
                                          afresh=False))
     return composed
+
+
+def order_record(calc, plan) -> Optional[str]:
+    """THE TRANSPORT KIND'S ``order_record`` PART: at a prep that names no
+    group, a junction whose sidecar states no order record has it recorded
+    -- its order found by composing the citation again and comparing it
+    atom for atom, its record written again by the one writer
+    (:func:`composed_for_prep`, never composing afresh) into ``plan`` --
+    and the words prep says of it; ``None`` when the record states its
+    order, nothing to record.  A record that does not read is refused
+    (:class:`PrepError`)."""
+    from ..transport.compose import ComposeError, recorded_junction
+    try:
+        recorded = recorded_junction(calc.base)
+    except ComposeError as exc:
+        raise PrepError(str(exc)) from None
+    if recorded is None or not recorded.order_unstated:
+        return None
+    composed_for_prep(calc, plan, afresh=False)
+    return ("the composed junction's order recorded -- checked against its "
+            "citation, atom for atom")
 
 
 def composed_for_prep(calc, plan, *, afresh: bool = True):
@@ -322,9 +344,9 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
     by state (:func:`no_usable_record`).
 
     Written into ``plan`` (`jobset.planned.Plan`), with everything else this
-    prep writes, by one road (`transport_rung.written_and_read_back`)."""
+    prep writes, by one road (`transport.rung.written_and_read_back`)."""
     from ..transport.compose import compose_junction
-    from .transport_rung import (compose_refusals, junction_record,
+    from ..transport.rung import (compose_refusals, junction_record,
                                  written_and_read_back)
     base, task = calc.base, calc.task
     composed, why, root = junction_record(calc)
@@ -341,7 +363,8 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
         if refusal is not None:
             raise PrepError(refusal)
         return written_and_read_back(
-            base, compose_junction(task.slots["junction"], tree_root=root,
+            base, compose_junction(citation_of(task), tree_root=root,
+                                   engine=task.engine,
                                    swap_electrodes=task.swap_electrodes),
             plan, root=root, task=task)
     except compose_refusals() as exc:
@@ -377,7 +400,7 @@ def no_usable_record(calc, why, *, root, afresh: bool) -> "str | None":
     if root is None:
         return (f"this transport calculation cannot be composed here: "
                 f"{reason}.  And {base} is not inside a projects tree, so the "
-                f"citation {task.slots['junction']!r} cannot be resolved to "
+                f"citation {citation_of(task)!r} cannot be resolved to "
                 f"compose afresh.  Prep once inside the tree that holds the "
                 f"cited junction -- the record then travels with the folder "
                 f"(engines/transport.md § 3.1).")
@@ -392,7 +415,7 @@ def no_usable_record(calc, why, *, root, afresh: bool) -> "str | None":
 def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     """The deck ``stage`` of ``calc`` renders NOW -- its text exactly as
     `prep task` writes it, from the calculation's template, junction and
-    the rung's run card (`transport_rung`, `transport_spec`,
+    the rung's run card (`transport.rung.transport_rung`, `rung_spec`,
     `script_emit.render_deck`), and the person's own USER-CUSTOM zone of the
     deck prep wrote for it, which prep keeps when it writes the deck again
     (`script_emit.write_script`) -- so a keyword typed there is the same
@@ -410,15 +433,17 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     struct = at_frame(struct, point)
     # A TRANSMISSION POINT WHOSE GRID IS A FINISHED POINT'S OWN renders that
     # point's contours (`reuse.that_point`; `engines/transport.md` § 2a.16).
-    from .reuse import SHARING_RUNG, that_point
+    from ..transport.window import window_rung
+    from .reuse import that_point
     contours = (that_point(calc, point, at_point(config, point))
-                if stage == SHARING_RUNG else None)
-    spec, cfg = transport_spec(task, stage, struct, config, state, point,
+                if stage == window_rung() else None)
+    spec, cfg = rung_spec(task, stage, struct, config, state, point,
                                 base=base, contours=contours)
     with user_error_as_prep():
         text = _sc.render_deck(spec, struct, cfg, verbose=True,
                                dest_dir=base,
-                               sources=transport_sources(_element)).text
+                               sources=transport_sources(
+                                   _element, engine=task.engine)).text
     # THE ZONE PREP KEEPS: from the deck prep wrote for this rung -- in its
     # point's folder for a rung that runs per point (`prep`'s
     # `prepare_deck`, `script_emit.merge_user_custom_from_target`).

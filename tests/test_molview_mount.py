@@ -19,6 +19,8 @@ it.
 from __future__ import annotations
 
 import json
+
+import pytest
 from pathlib import Path
 
 from tests._node_esm import run_node
@@ -27,6 +29,18 @@ REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 INDEX = MODULE_DIR / "index.js"
 SUPPORT = Path(__file__).parent / "support"
+
+
+def _served_labels() -> str:
+    """THE LABELS THE SERVER SERVES beside every structure -- its own door's
+    answer (`workspace_payload`, the kind table's labels), so the stand-in
+    answers as the server does (`web/molview.md`)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.web.blueprints._shared import workspace_payload
+    return json.dumps(workspace_payload(
+        Structure(elements=["H"], positions=np.zeros((1, 3))))["labels"])
+
 
 # ORDER MATTERS: both stand-ins offer a host element, and the DOM one must win —
 # mount builds real elements inside it, which the embed's minimal host cannot do.
@@ -47,9 +61,12 @@ globalThis.fetch = async function (route, init) {
     ];
     const extra = globalThis.__nextNotices
         ? { notices: globalThis.__nextNotices } : {};
-    return { ok: true, status: 200, json: async () => Object.assign({ atoms }, extra) };
+    // THE KINDS' LABELS ride every structure answer, as the server's do.
+    return { ok: true, status: 200, json: async () => Object.assign(
+        { atoms, labels: globalThis.__servedLabels }, extra) };
 };
 globalThis.__nextNotices = null;
+globalThis.__servedLabels = __SERVED_LABELS__;
 globalThis.setInterval = globalThis.setInterval;
 """
 
@@ -86,7 +103,11 @@ async function mounted(opts) {{
 
 
 def _run(snippet: str):
-    return run_node([], PRELUDE + snippet, globals_js=GLOBALS)
+    # The server's labels, asked when a test runs -- inside its isolation,
+    # never while the module is collected.
+    return run_node([], PRELUDE + snippet,
+                    globals_js=GLOBALS.replace("__SERVED_LABELS__",
+                                               _served_labels()))
 
 
 # ---------------------------------------------------------------------------
@@ -1580,8 +1601,9 @@ def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
     about before tagging atoms with it by accident. "This changes your run" and
     "this is a name I picked" must not look the same.
 
-    THE LIST IS MOLVIEW'S OWN (user decision, 2026-08-03): handed in at mount,
-    five pages would each have had to repeat the same names.
+    THE FOUR A KIND READS COME WITH THE STRUCTURE (decided 6, 2.65.0), never
+    handed in at mount -- five pages would each have had to repeat them (the
+    user, 2026-08-03) -- and MolView keeps its own two.
     """
     out = _run(
         """
@@ -1671,9 +1693,11 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
     label that looks like the first, which is a whole extra region as far as
     anything downstream is concerned.
 
-    TWO SOURCES, ONE LIST. The five predefined names are offered before anyone
-    has used them, because nearly every device structure needs them and typing
-    `L-electrode` by hand is where `L-Electrode` comes from. Everything the
+    TWO SOURCES, ONE LIST. The offered names -- the labels a calculation kind
+    reads, served with the structure, then MolView's own two (`web/molview.md`,
+    2.65.0) -- come before anyone has used them, because nearly every device
+    structure needs them and typing `L-electrode` by hand is where
+    `L-Electrode` comes from. Everything the
     structure itself carries is offered beside them, read from `getRegions` and
     never kept (§ 5.2), so the list follows the structure with nothing to keep in
     step. A predefined name is a SPELLING, not a meaning: MolView assigns none of
@@ -1721,11 +1745,10 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
         """
     )
     assert out["offered"][:6] == ["L-electrode", "R-electrode", "bridge",
-                                  "interface", "buffer",
+                                  "buffer", "interface",
                                   "frozen_atoms"], (
-        "the six predefined names come first, in the order the device reads "
-        "(buffer joined with the transport composite -- TS.Atoms.Buffer is "
-        f"a real region the emitter consumes): {out['offered']}"
+        "the kind's four come first, as the kind table lists them, then "
+        f"MolView's own two (web/molview.md): {out['offered']}"
     )
     assert out["offered"][-1] == "", (
         f"the last entry is the way to name a new label: {out['offered']}"
@@ -1920,9 +1943,10 @@ def test_by_label_offers_the_defined_names_and_nothing_else():
         f"label called it: {out['offered']}"
     )
     assert out["offered"][1:7] == ["L-electrode", "R-electrode", "bridge",
-                                   "interface", "buffer",
+                                   "buffer", "interface",
                                    "frozen_atoms"], (
-        f"the six names MolView offers come first: {out['offered']}"
+        f"the six names offered come first -- the kind's, then MolView's own: "
+        f"{out['offered']}"
     )
     assert "custom-tag" in out["offered"], (
         "a label the structure carries must be offered beside the predefined "
@@ -2434,3 +2458,56 @@ def test_a_pick_reaches_the_drawing_as_a_mark_then_an_arrow():
         f"FIRST (x={out['atom1x']}) and atom 0 second (x={out['atom0x']}) — the "
         f"arrow must follow the click order, which is what it exists to show"
     )
+
+
+#: (what the person picked before the structure arrived, what the Assign
+#: chooser shows after): a default is nobody's choice -- it follows the
+#: offered list when the kind's labels arrive with the structure -- and a
+#: pick is kept (`web/molview.md`, *Where a label can be chosen*).
+CHOOSER_ROWS = [
+    (None, "L-electrode"),
+    ("frozen_atoms", "frozen_atoms"),
+]
+
+
+@pytest.mark.parametrize("picked, shown", CHOOSER_ROWS,
+                         ids=["no-pick-follows", "a-pick-stays"])
+def test_both_choosers_follow_the_labels_a_structure_arrives_with(picked,
+                                                                  shown):
+    """THE SILENT FAILURE (2.65.0, the round reviews): the kind's labels
+    arrive after the first draw at mount, and the Assign chooser kept
+    MolView's first name as if someone had chosen it, while the filter's
+    `by label` row, opened on an empty viewer, kept MolView's two -- two
+    controls disagreeing about what exists.
+
+    Category: API -- the module in Node against its stand-ins."""
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        viewer.data.selection.setEditor("filter");
+        const card = host.querySelector(".molviewer-card");
+        const chooser = card.querySelector(".molviewer-selection-assign-select");
+        const picked = %s;
+        if (picked) {
+            chooser.value = picked;
+            chooser.dispatch("change", { target: chooser });
+        }
+        card.querySelector(".molviewer-selection-add-filter-row").click();
+        const kindOf = () => card.querySelector(".molviewer-filter-kind");
+        kindOf().value = "by_label";
+        kindOf().dispatch("change", { target: kindOf() });
+        const filterOffered = () => card.querySelector(".molviewer-filter-text")
+            .children.map(o => o.value).filter(Boolean);
+        const before = filterOffered();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        console.log(JSON.stringify({
+            before, after: filterOffered(), shown: chooser.value,
+            assignOffered: chooser.children.map(o => o.value).filter(Boolean),
+        }));
+        """ % json.dumps(picked)
+    )
+    assert out["before"] == ["interface", "frozen_atoms"], out
+    assert out["after"] == out["assignOffered"], out
+    assert out["after"][:4] == ["L-electrode", "R-electrode", "bridge",
+                                "buffer"], out
+    assert out["shown"] == shown, out

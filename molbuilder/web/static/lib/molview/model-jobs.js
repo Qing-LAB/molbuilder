@@ -47,75 +47,65 @@
 export const FROZEN_LABEL = "frozen_atoms";
 
 
-/* THE NAMES OFFERED BEFORE ANYONE HAS USED THEM — MolView's own list.
+/* THE NAMES OFFERED BEFORE ANYONE HAS USED THEM (`web/molview.md`, *The
+ * viewer does hold the SPELLINGS*).
  *
  * A predefined label is a SPELLING, not a meaning. It saves the user retyping
- * the four names nearly every device structure uses, because a retyped name is
+ * the names nearly every device structure uses, because a retyped name is
  * where `L-electrode` and `L-Electrode` become two regions that look like one.
- * They are conveniences — commonest in SIESTA today, and the same idea will fit
- * whatever engine comes next. MolView assigns none of them and reads meaning
- * into none of them; each is a name sitting ready to be used.
+ * MolView assigns none of them and reads meaning into none of them.
+ *
+ * TWO SOURCES, EACH OWNING ITS OWN: the labels a calculation kind reads -- a
+ * transport calculation's leads and regions, each with what it is for --
+ * arrive beside every structure the server hands over (the structure answer's
+ * `labels`, the kind table's), so a rename happens there, once; these two
+ * are MolView's own, offered after them.
  *
  * ONLY `frozen_atoms` IS DIFFERENT, and it is different because something
  * downstream acts on it: the atoms wearing it are held still by the
  * calculation. That is the one a user is owed a warning about before tagging
- * atoms with it by accident, and it is why it is `tone: "warn"` below while the
- * others are just told apart from each other.
- *
- * WHY THE LIST LIVES HERE AND NOT IN THE TABS (user decision, 2026-08-03):
- * these are MolView's conveniences, so MolView keeps them, rather than every
- * page handing in its own copy of one list.
- *
- * `frozen_atoms` appears here as the CONSTANT, never as a second literal: the
- * reserved meaning costs one name and one accessor, and that name is spelled
- * once, above.
+ * atoms with it by accident, and it is why `offeredLabels` tones it `warn`
+ * while the others are told apart by their place in the list.
+ * It appears here as the CONSTANT, never as a second literal.
  *
  * NOTHING HERE ENDS IN `#`, AND THAT IS THE POINT. A trailing `#` marks a label
  * MOLBUILDER wrote rather than a person -- today, the signature a generated
  * structure carries, naming the SMILES / sequence / lookup text that built it
- * (`CCO#`, `AG#`). These six are the opposite: names offered TO a person to
- * assign by hand. The marker exists because region labels are one namespace
- * with meaning in part of it -- `L-electrode` and `R-electrode` ARE the leads
- * -- and the name generator takes whatever gets typed into it; with the `#`
- * after it a generated label is never one of those names. See
+ * (`CCO#`, `AG#`). These are the opposite: names offered TO a person to
+ * assign by hand, and the name generator takes whatever gets typed into it;
+ * with the `#` after it a generated label is never one of them. See
  * `model/structure-annotations.md` § 5.1. */
-/* THE RESERVED TRANSPORT LABELS.  Descriptions say what each is FOR and
- * when to use it, because a transport calculation reads them as physics
- * (engines/transport.md § 4): the electrode blocks are extracted
- * as the semi-infinite leads, so mislabeling silently changes the device.
- * The two lead names are the kind table's (`data/kind_table.toml`, a
- * lead role's `lead`); this list keeps its own copy until the page reads
- * them from there (plan § 1ak, S2.4). */
 export const PREDEFINED_LABELS = [
-    { name: "L-electrode", tone: 1,
-      description: "the left lead: bulk metal layers, FROZEN during "
-        + "relaxation, at bulk positions. Transport extracts the left "
-        + "electrode cell from exactly these atoms -- label only the "
-        + "bulk-like block, not the surface layers" },
-    { name: "R-electrode", tone: 2,
-      description: "the right lead: same rules as L-electrode, other "
-        + "end of the junction" },
-    { name: "bridge",      tone: 3,
-      description: "the scattering region: the molecule plus the "
-        + "relaxed surface layers between the leads -- where the "
-        + "metal-molecule chemistry is computed. Every atom that is "
-        + "not lead or buffer belongs here" },
-    { name: "interface",   tone: 4,
-      description: "optional bookkeeping inside the bridge: the "
-        + "contact atoms (e.g. the two S anchors), for projected-DOS "
-        + "analysis. Changes no partition" },
-    { name: "buffer",      tone: 5,
-      description: "optional: atoms excluded from the transport "
-        + "region entirely, padding beyond the electrode blocks at "
-        + "the outer ends. Most junctions need none" },
-    { name: FROZEN_LABEL,  tone: "warn",
-      description: "these atoms are held still by the calculation. "
-        + "Electrode blocks must also carry this during relaxation -- "
-        + "transport refuses a moved electrode atom" },
+    { name: "interface",
+      description: "optional bookkeeping: atoms to find again -- the "
+        + "contact atoms (e.g. the two S anchors) -- for a projected-DOS "
+        + "analysis. No calculation reads it" },
+    { name: FROZEN_LABEL,
+      description: "these atoms are held still by the calculation" },
 ];
 
-/* Just the names, in order — what every chooser offers. */
-export const PREDEFINED_LABEL_NAMES = PREDEFINED_LABELS.map((e) => e.name);
+/* EVERY NAME OFFERED, in order -- the kind's labels the structure arrived
+ * with (`served`, its `labelsOffered`), then MolView's own -- each `{name,
+ * description, tone, served}`: `served` true for a calculation kind's, a
+ * tone by its place in the list (1, 2, ...), and `warn` for `frozen_atoms`
+ * whoever offers it -- it is the one label that changes a run.  A name
+ * offered twice keeps its first place.  The one list the chooser, the
+ * filter and the chips read. */
+export function offeredLabels(served) {
+    served = Array.isArray(served) ? served : [];
+    const out = [];
+    const seen = new Set();
+    for (const entry of served.map((e) => ({ ...e, served: true }))
+            .concat(PREDEFINED_LABELS.map((e) => ({ ...e, served: false })))) {
+        if (seen.has(entry.name)) continue;
+        seen.add(entry.name);
+        out.push({ name: entry.name, description: entry.description || "",
+                   served: entry.served,
+                   tone: entry.name === FROZEN_LABEL ? "warn"
+                       : out.filter((e) => e.tone !== "warn").length + 1 });
+    }
+    return out;
+}
 
 /* THE METADATA KEYS THIS MODULE HOLDS IN SHAPES OF ITS OWN (§ 6.2): the
  * labels, folded onto the atoms (`regions`); each channel's two halves
@@ -298,6 +288,16 @@ export function structureFromServer(payload) {
              * sent back. */
             orderSaid: typeof payload.atom_order_said === "string"
                 ? payload.atom_order_said : null,
+            /* THE LABELS A CALCULATION KIND READS, each with what it is
+             * for, served beside every structure (the answer's `labels`,
+             * the kind table's) -- offered (`offeredLabels`), never sent
+             * back. */
+            labelsOffered: Array.isArray(payload.labels)
+                ? payload.labels
+                    .filter((e) => e && typeof e.name === "string")
+                    .map((e) => ({ name: e.name,
+                                   description: String(e.description || "") }))
+                : [],
         },
         /* THE FRAMES, each with its coordinates and its rows (§ 6.1): one
          * entry per frame in every list.  One frame is the atoms' own

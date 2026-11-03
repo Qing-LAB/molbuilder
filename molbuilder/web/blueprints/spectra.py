@@ -77,7 +77,7 @@ def _page_constants():
     load rather than copied into the browser (`architecture.md` § 3; user,
     2026-09-27: one source per fact).  Named by what each converts."""
     from molbuilder import constants as C
-    from molbuilder.mode_frames import NODES
+    from molbuilder.spectra.mode_frames import NODES
     from molbuilder.spectra import activity as A
     return {
         "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
@@ -87,7 +87,7 @@ def _page_constants():
         "ir_present_floor_km_mol":    A.CHANNEL_PRESENT_FLOOR_IR_KM_MOL,
         "raman_present_floor_a4_amu": A.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU,
         # the frame-set rules the generator writes, its default first
-        # (`mode_frames.NODES`, `web/spectra.md` § 4.3)
+        # (`spectra.mode_frames.NODES`, `web/spectra.md` § 4.3)
         "frameset_nodes": list(NODES),
     }
 
@@ -132,7 +132,7 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     none, no mode carries it.  ``frameset_temperature_k`` is the frame-set
     dialog's: each mode is served its ``frameset`` at it -- its mean number
     of quanta, its spread and the outermost move for each rule
-    (`mode_frames.at_temperature`, § 4.3) -- the run's own thermochemistry
+    (`spectra.mode_frames.at_temperature`, § 4.3) -- the run's own thermochemistry
     temperature when the dialog has named none; the tab holds no constant
     and derives nothing.
 
@@ -233,7 +233,7 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     if set_t is None:
         set_t = (payload.get("thermo") or {}).get("temperature_K")
     if set_t is not None:
-        from molbuilder.mode_frames import at_temperature
+        from molbuilder.spectra.mode_frames import at_temperature
         payload["frameset_temperature_k"] = float(set_t)
         for mode in payload.get("modes") or []:
             mode["frameset"] = at_temperature(mode, float(set_t))
@@ -402,7 +402,7 @@ def api_spectra_frameset():
     ``.xyz``, each path inside the tree (the fence, `web-api.md` § 2.1).
     Answers ``{ok, path, frames, said}``, or the generator's refusal in its
     words (400)."""
-    from molbuilder.mode_frames import FrameSetError, frameset_from_mode
+    from molbuilder.spectra.mode_frames import FrameSetError, frameset_from_mode
     from molbuilder.projects import projects_root
     from .files import _PickerError, _resolve_within_roots
     body = request.get_json(silent=True) or {}

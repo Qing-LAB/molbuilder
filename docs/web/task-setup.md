@@ -185,6 +185,16 @@ guessing at the one thing the description exists to state.
 
 ## 3. What came over, and is not editable here
 
+**Which of these a calculation has is its kind's entry**, served in the folder
+answer beside the parts it already serves (`kind`: the slot it cites, the
+fields its description carries and its leads —
+[`execution/architecture.md`](?doc=execution/architecture.md) § 3.3): the page
+draws a cited slot's row where the kind cites one, each carried field's row
+where the kind carries it (the leads named as the kind table names them), a
+structure pair where the description names one,
+and a reused calculation's fit where the folder answer's `extension` is — and
+names no kind (2.65.0).
+
 The identity facts, read-only, from the parameter tab that wrote them: the
 calculation's name, the engine, and what it is OF — a structure's file, formula
 and atom count; for a transport calculation the junction it cites, the bias

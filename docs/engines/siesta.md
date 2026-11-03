@@ -519,7 +519,7 @@ flowchart TD
     A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"use_gpu?"}
     G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu<br/><i>the only ask needing a source build</i>"]
     G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta<br/><i>CPU-ELPA runs in the packaged env</i>"]
-    A -.->|"ScaLAPACK + use_gpu"| SAID["emit NOTHING, the GPUs asked as stated<br/>env → molbuilder-siesta-gpu<br/><i>said by SIESTA's settings check: the solve stays on the CPU</i>"]
+    A -.->|"ScaLAPACK + use_gpu"| ASKED["emit NOTHING, the GPUs asked as stated<br/>env → molbuilder-siesta-gpu"]
 ```
 
 Two **orthogonal** decisions (contract rewritten 2026-06-29):
@@ -534,13 +534,11 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
 2. **`cfg.use_gpu` — an accelerator on top of an ELPA choice.** On → the ELPA
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
-   Read by an ELPA solve alone: with any other solver the deck carries no GPU
-   switch, and the run is prepared as asked — its GPUs asked, its environment
-   the GPU build ([`gpu.md`](?doc=execution/gpu.md) G3) — while its solve
-   stays on the CPU. **SIESTA's settings check says so** (`validation.siesta`,
-   a warning on `use_gpu` naming the two ELPA choices), which the page's live
-   check and prep hear alike: a library's own GPU limit is said, never refused
-   ([`gpu.md`](?doc=execution/gpu.md) G11).
+   With any other solver the deck carries no `Diag.*` line, and the run is
+   prepared as asked — its GPUs asked, its environment the GPU build
+   ([`gpu.md`](?doc=execution/gpu.md) G3). The solver and the GPU are two of
+   the person's choices; molbuilder couples neither to the other and says
+   nothing of the pair *(the user, 2026-11-02)*.
 
 **Emission:**
 - `ScaLAPACK` → emit **nothing** (SIESTA's built-in default).
@@ -835,7 +833,7 @@ variant tested must render end-to-end without raising.
 `test_review_fixes.py` (the thin-vacuum **warn** — D3, since `cell_padding`
 was removed 2026-07), `test_siesta_stages.py` (the ladder and its strategy
 presets), `test_siesta_use_gpu.py` (§ 7's
-two orthogonal decisions, including the rejected GPU + ScaLAPACK pair),
+two orthogonal decisions),
 `test_k_point_mesh.py` (§ 6.1's mesh on every rung, through `molbuilder describe`
 and `prep`), and `test_molwatch_preview.py` (the sibling log). *(This list named
 `test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until

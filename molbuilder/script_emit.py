@@ -811,12 +811,13 @@ _UNSET = object()
 
 
 def declarations(engine: str = None, *, calculation: str = None,
-                 stage: str = None):
+                 stage: str = None, role: str = None):
     """Every item the catalogue declares, for one engine — the LIST door.
 
     ``calculation`` narrows it to the items a run of that kind can carry, and
     ``stage`` — the rung's stage token, ``05_transmission`` — to those the
-    rung reads, by the one rule (`template.reads`): what the run script's
+    rung reads, and ``role`` to those the one role a point of it plays reads
+    (a SIESTA vibration's phase), by the one rule (`template.reads`): what the run script's
     record of what the engine will read lists, and what its reader reads
     back (`model/parse.md` § 5d.3).  A token that names no stage is refused:
     a record listing every item would say the rung reads what it does not.
@@ -841,7 +842,7 @@ def declarations(engine: str = None, *, calculation: str = None,
             f"which items rung {stage!r} reads is asked with its stage token "
             f"(<NN>_<name>) and its calculation's kind (template.reads)")
     return [it for it in items
-            if _T.reads(it, engine, calculation, token[1])]
+            if _T.reads(it, engine, calculation, token[1], role=role)]
 
 
 def parameter(name: str, engine: str, *, config=None,
@@ -1107,8 +1108,9 @@ class DeckSpec:
     #: The described calculation KIND this deck renders — a FACT the
     #: settings gate reads (validate(..., calculation=…) composes the
     #: kind's science from it).  A fact, not a hook: the spec states
-    #: what it is; the framework decides what that implies.
-    calculation: str = "optimization"
+    #: what it is; the framework decides what that implies.  Every spec
+    #: states it: a kind assumed would be judged by another kind's science.
+    calculation: str = _dataclasses.field(kw_only=True)
     #: ``(text, struct, cfg) -> [Issue]`` — this engine's answer to *what must
     #: a finished deck of mine satisfy?*  Runs on the file as written.
     check_rules: Optional[Callable] = None
@@ -1251,9 +1253,8 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             # warm-up that has no trajectory to write.
             #
             # An untagged row belongs to every kind, which is why the guard
-            # tests for a non-empty declaration first.  `DeckSpec.calculation`
-            # defaults to "optimization", so a spec that names no kind keeps
-            # exactly the items it had.
+            # tests for a non-empty declaration first; every spec names its
+            # kind (`DeckSpec.calculation`, no default).
             _decl = param.declaration
             _kinds = tuple(getattr(_decl, "calculations", ()) or ())
             if _kinds and spec.calculation not in _kinds:

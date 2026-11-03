@@ -34,6 +34,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from ..calcdirs import RunPlace
 from ..parse.fdf import read_deck
 from ..runrecord import LaunchRecordError
+from ..transport.window import window_rung
 
 
 @dataclass(frozen=True)
@@ -354,7 +355,7 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
     """:func:`decide`'s answer, its records read."""
     from .gather import ReadOnce
     from .materialize import ever_launched
-    from .transport_rung import junction_record
+    from ..transport.rung import junction_record
     from ..transport.stages import frames_of, rung_points
     finished, gone = finished_of(calc)
     if finished is not None:
@@ -430,7 +431,7 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
                 # A RUNG THAT RUNS ONCE takes nothing over -- copied in with
                 # its group, or run here: its one point, the run itself.
                 taken, walked = [], (None,)
-            if st != SHARING_RUNG:
+            if st != window_rung():
                 continue
             # A POINT TAKEN OVER renders the finished point's own contours
             # (`engines/transport.md` § 2a.16, *is that point*); one walked
@@ -449,11 +450,6 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
     return Reuse(calc.task.reuses, tuple(out))
 
 
-#: THE RUNG WHOSE POINTS SHARE ENERGIES -- the transmission, TBtrans's
-#: (`engines/transport.md` § 2a.16).
-SHARING_RUNG = "transmission"
-
-
 def launched_contours(calc, stage: str) -> Optional[dict]:
     """What each point of a LAUNCHED ``stage`` computes where it is not its
     window whole, by its key (:func:`point_key`), as the decks its prep
@@ -461,7 +457,7 @@ def launched_contours(calc, stage: str) -> Optional[dict]:
     § 2a.16); ``None`` for a calculation that reuses nothing or a stage
     that shares nothing.  A rung that runs once is its one point, the
     stage's own folder."""
-    if stage != SHARING_RUNG or not calc.task.reuses:
+    if stage != window_rung() or not calc.task.reuses:
         return None
     from ..transport.energies import Contours
     from ..transport.stages import point_folders
@@ -486,14 +482,14 @@ def _rendered(calc, members, once, *, only=None) -> List[tuple]:
     from ..transport.energies import Contours
     from ..transport.stages import frames_of, rung_points
     out = []
-    if SHARING_RUNG not in members:
+    if window_rung() not in members:
         return out
     for pt in (only if only is not None else rung_points(
-            calc.task, SHARING_RUNG, frames=frames_of(calc.base))
+            calc.task, window_rung(), frames=frames_of(calc.base))
                or (None,)):
-        c = Contours.of_deck(once.deck_now(SHARING_RUNG, pt))
+        c = Contours.of_deck(once.deck_now(window_rung(), pt))
         if c is not None:
-            out.append((SHARING_RUNG, point_key(pt), c))
+            out.append((window_rung(), point_key(pt), c))
     return out
 
 
@@ -509,9 +505,9 @@ def finished_window(finished) -> Tuple[float, float, int]:
     from ..transport.energies import deck_window
     from ..transport.stages import frames_of, rung_points
     said = ""
-    for pt in (rung_points(finished.task, SHARING_RUNG,
+    for pt in (rung_points(finished.task, window_rung(),
                            frames=frames_of(finished.base)) or (None,)):
-        src, _run, why = _finished_point(finished, SHARING_RUNG, pt)
+        src, _run, why = _finished_point(finished, window_rung(), pt)
         said = said or why or ""
         run = run_of(src) if src is not None else None
         window = (deck_window(read_deck(run.deck))
@@ -579,7 +575,7 @@ def that_point(calc, pt, cfg):
     finished, _gone = finished_of(calc)
     # THE FINISHED POINT, DONE (`_finished_point`): a point not done holds
     # no energy of its own to be.
-    src = (_finished_point(finished, SHARING_RUNG, pt)[0]
+    src = (_finished_point(finished, window_rung(), pt)[0]
            if finished is not None else None)
     c = sharing_of(src) if src is not None and src.is_dir() else None
     if c is None:
@@ -627,7 +623,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
                                       shared_contours)
     words = f"{_words(pt):<6}"
     fbase = Path(finished.base)
-    src, newest, why = _finished_point(finished, SHARING_RUNG, pt)
+    src, newest, why = _finished_point(finished, window_rung(), pt)
     if src is None:
         return None, (f"{words} shares none -- "
                       + (why or f"the finished calculation holds no "
@@ -636,7 +632,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
     if not _given_the_same(finished, newest, src, mine):
         return None, (f"{words} shares none -- it is not given what "
                       f"{shown} was given")
-    now = once.deck_now(SHARING_RUNG, pt)
+    now = once.deck_now(window_rung(), pt)
     ran = read_deck(run_of(src).deck)
     differs = same_calculation(calc.task.engine, ran,
                                _with_energies(now, ran))
@@ -809,7 +805,7 @@ def _member(calc, finished, stage: str, once, copied: set
         if not usable(state):
             return no(f"{stage}: {shown} is {state}"
                       + (f" -- {detail}" if detail else ""))
-        if stage == SHARING_RUNG:
+        if stage == window_rung():
             # A TRANSMISSION THAT RAN ONCE IS ITS ONE POINT, whole only with
             # what it holds -- the energies it shared among them -- as the
             # done door asks of a point (§ 2a.16, *is that point*); the deck
@@ -1289,7 +1285,7 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     write_copied_from(dest, origin(calcdirs.where(src).root, src), plan=plan)
 
 
-__all__ = ["Copy", "Take", "Takes", "Decision", "Reuse", "SHARING_RUNG",
+__all__ = ["Copy", "Take", "Takes", "Decision", "Reuse",
            "finished_of", "finished_window", "origin",
            "point_key", "decide", "launched_contours",
            "that_point", "copy_in", "takes_over", "take_into",

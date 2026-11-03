@@ -483,7 +483,7 @@ name no refusal.
 | **R-P13** | a job walking several members — a group, a benchmark's shelf — whose members do not ask the same of what they share | the same values for each, or groups of their own | a group, `prep.group_header` (`group.envelope`); a benchmark, `prep.prep_jobset` (`shelves.shelf_request`) |
 | **R-P14** | a Prep whose plan differs from the one previewed | preview again | `prep._prep_groups` |
 | **R-P15** | the folder's state cannot be saved | the save's words | `checkpoint.save_before` |
-| **R-P16** | the structure is missing, or not the one described | the structure put back, or the calculation described anew | `prep._structure_for` |
+| **R-P16** | the structure is missing, or not the one described | the structure put back, or the calculation described anew | `rung.structure_for` |
 | **R-P17** | a run's GPU request disagrees with itself: GPUs used and none counted, or counted and not used | the count stated, or no GPU | `prep.plan_stage` (`model.gpu_request`) |
 | **R-P19** | a description stating a layout other than the one, `"shape": "flat"` among them ([`project-layout.md`](?doc=execution/project-layout.md) § 1) | the calculation described again | `task.of` — at describe, at Save and at every read |
 | **R-P20** | a stage the description no longer holds has a launch record that does not read | the record's own words | `prep.prep_calculation` (`materialize.ever_launched`) |

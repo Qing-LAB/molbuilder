@@ -25,7 +25,7 @@
  * a global", and mounting must publish nothing; an import breaks neither. */
 import { render as renderFindings } from "../validation-findings.js";
 import { fromDisplay, toDisplay } from "./_atom.js";
-import { FROZEN_LABEL, PREDEFINED_LABELS, PREDEFINED_LABEL_NAMES }
+import { FROZEN_LABEL, offeredLabels }
     from "./model-jobs.js";
 
 
@@ -41,8 +41,8 @@ import { FROZEN_LABEL, PREDEFINED_LABELS, PREDEFINED_LABEL_NAMES }
 /* THE CLASS EACH PREDEFINED NAME WEARS. Written out rather than composed, so
  * the class an element gets is a string that appears in this file — which is
  * what lets "every class the module writes is one the stylesheet defines" be
- * checked at all. The stylesheet owns what each one looks like; the list in
- * model-jobs.js owns which name wears which. */
+ * checked at all. The stylesheet owns what each one looks like; the one list
+ * in model-jobs.js (`offeredLabels`) owns which name wears which. */
 const TONE_CLASS = {
     1:      "molviewer-label-predefined--1",
     2:      "molviewer-label-predefined--2",
@@ -56,8 +56,9 @@ const TONE_CLASS = {
 /**
  * Draw and wire every control, and return one teardown for all of them.
  *
- * The names MolView offers before anyone has used them are its own
- * (`PREDEFINED_LABELS`, model-jobs.js). They are conveniences — spellings, so a
+ * The names MolView offers before anyone has used them are the labels a
+ * calculation kind reads, served with the structure, and MolView's own
+ * (`offeredLabels`, model-jobs.js). They are conveniences — spellings, so a
  * user does not retype `L-electrode` as `L-Electrode` — and MolView reads
  * meaning into none of them. The single exception is `frozen_atoms`, which the
  * calculation acts on, and it looks different for that reason.
@@ -1277,15 +1278,11 @@ function angle(a, vertex, c) {
  * choose them.
  */
 function mountPanel(doc, card, model) {
-    /* WHAT EACH PREDEFINED NAME WEARS, and what it says on hover. Read once
-     * from MolView's own list (model-jobs.js). */
-    const labelTone = new Map();
-    const labelNote = new Map();
-    PREDEFINED_LABELS.forEach((entry) => {
-        const cls = TONE_CLASS[entry.tone];
-        if (cls) labelTone.set(entry.name, cls);
-        if (entry.description) labelNote.set(entry.name, entry.description);
-    });
+    /* WHAT AN OFFERED NAME IS, WEARS AND SAYS ON HOVER: read from the one
+     * list (`offeredLabels`) for the structure on screen, whose answer
+     * carried the kinds' labels. */
+    const offeredEntry = (name) => offeredLabels(model.getLabelsOffered())
+        .find((entry) => entry.name === name) || null;
 
     const el = (tag, className) => {
         const node = doc.createElement(tag);
@@ -1702,13 +1699,14 @@ function mountPanel(doc, card, model) {
      * allowed, and the viewer says so*): nothing refuses it -- a reserved name
      * is just a label -- but the moment what is typed matches one, the line
      * under the box says it is reserved and what it does, from the notes the
-     * chooser and the chip show (`labelNote`). */
+     * chooser and the chip show (`offeredEntry`). */
     const reservedSaid = el("p", "molviewer-selection-reserved-note");
     reservedSaid.hidden = true;
     assign.appendChild(reservedSaid);
     const sayReserved = () => {
         const typed = target.hidden ? "" : String(target.value || "").trim();
-        const note = labelNote.get(typed);
+        const entry = typed ? offeredEntry(typed) : null;
+        const note = entry ? entry.description : "";
         reservedSaid.hidden = !note;
         reservedSaid.textContent = note
             ? typed + " is a reserved name: " + note : "";
@@ -1725,11 +1723,16 @@ function mountPanel(doc, card, model) {
      * whenever the set of names changes: reading a choice off a control you are
      * about to rebuild is how a rebuild invents one (§ 8.5). */
     let chosen;
+    /* A DEFAULT IS NOBODY'S CHOICE: until a person picks, the chooser follows
+     * the head of the offered list -- the kind's labels arrive with the
+     * structure, after the first draw at mount. */
+    let pickedByPerson = false;
     const NO_NAME = "";     // the option's DOM value — a select carries strings
     // The free-text box is only in the way when an existing label is chosen.
     const showNewBox = () => { target.hidden = chosen !== null; sayReserved(); };
     chooser.addEventListener("change", () => {
         chosen = chooser.value || null;
+        pickedByPerson = true;
         showNewBox();
     });
 
@@ -1746,14 +1749,16 @@ function mountPanel(doc, card, model) {
      * chooser and the filter's `by label` row. Reading it in two places is how
      * they come to disagree about what exists.
      *
-     * Predefined first and in their own order (the device reads left to right:
-     * L-electrode, R-electrode, bridge, interface), then the structure's own,
-     * sorted. § 9.5: what is worth offering is read from the structure -- the
+     * Offered first and in their own order (`offeredLabels`: the kinds'
+     * labels as the kind table lists them, then MolView's own), then the
+     * structure's own, sorted. § 9.5: what is worth offering is read from the structure -- the
      * predefined names are added to that reading, never instead of it. */
     const knownLabels = () => {
+        const offered = offeredLabels(model.getLabelsOffered())
+            .map((entry) => entry.name);
         const carried = Object.keys(model.getRegions() || {}).sort();
-        return PREDEFINED_LABEL_NAMES.concat(
-            carried.filter((name) => PREDEFINED_LABEL_NAMES.indexOf(name) < 0));
+        return offered.concat(
+            carried.filter((name) => offered.indexOf(name) < 0));
     };
 
     let renderedTargets = null;   // the last list of names drawn
@@ -1775,8 +1780,10 @@ function mountPanel(doc, card, model) {
              * only after it is applied -- the chip's note, as a hover
              * title on the chooser entry too (user, 2026-08-28: the
              * meaning and use of these labels must be clear IN the tab). */
-            const note = labelNote.get(name);
-            if (note) option.title = name + " — " + note;
+            const entry = offeredEntry(name);
+            if (entry && entry.description) {
+                option.title = name + " — " + entry.description;
+            }
             chooser.appendChild(option);
         }
         const fresh = doc.createElement("option");
@@ -1789,7 +1796,7 @@ function mountPanel(doc, card, model) {
          * rather than silently landing on whichever label happens to sort first.
          * Quietly retargeting the next Assign is how a user labels the wrong
          * atoms and is never told. */
-        if (chosen === undefined) {
+        if (chosen === undefined || !pickedByPerson) {
             chosen = names.length ? names[0] : null;
         } else if (chosen !== null && names.indexOf(chosen) < 0) {
             if (!target.value) target.value = chosen;
@@ -2581,15 +2588,18 @@ function mountPanel(doc, card, model) {
          *
          * The description rides on the chip, which is as far as the viewer goes:
          * it CARRIES what the list says and acts on none of it. */
-        const tone = labelTone.get(name);
+        const entry = offeredEntry(name);
+        const tone = entry ? TONE_CLASS[entry.tone] : null;
         const tag = el("span", tone
             ? "molviewer-selection-tag " + tone
             : "molviewer-selection-tag molviewer-label-region");
-        const note = labelNote.get(name);
-        if (note) {
+        if (entry && entry.description) {
             tag.title = name === FROZEN_LABEL
-                ? name + " — " + note
-                : name + " — a name MolView offers: " + note;
+                ? name + " — " + entry.description
+                : entry.served
+                    ? name + " — a label a calculation reads: "
+                        + entry.description
+                    : name + " — a name MolView offers: " + entry.description;
         }
         const text = el("span");
         text.textContent = name;
@@ -2715,7 +2725,16 @@ function mountPanel(doc, card, model) {
          *
          * A row's VALUE is still not a reason to rebuild -- that is the caret
          * bug above, and the control the user typed into already holds it. */
+        /* ...AND, WHILE A ROW IS `by label`, ON THE LABELS ON OFFER: its
+         * chooser is built from `knownLabels()`, which a structure's
+         * arrival or an Assign changes -- the kind's labels arrive after
+         * the first draw at mount -- and the Assign chooser beside it
+         * follows the same list (molview.md, *Where a label can be
+         * chosen*). */
         const shape = state.filters.map((f) => f.kind);
+        if (shape.indexOf("by_label") >= 0) {
+            shape.push(...knownLabels().map((name) => "label:" + name));
+        }
         if (renderedRows
             && renderedRows.length === shape.length
             && renderedRows.every((kind, at) => kind === shape[at])) return;

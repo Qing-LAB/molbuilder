@@ -10,6 +10,7 @@ grid, and every new energy lies at the same spacing (:func:`fitted`).
 from __future__ import annotations
 
 import math
+import functools
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
@@ -18,6 +19,27 @@ from typing import Dict, Tuple
 #: rung of them).
 WINDOW_ITEMS = ("transmission_emin_ev", "transmission_emax_ev",
                 "transmission_n_points")
+
+
+@functools.lru_cache(maxsize=None)
+def window_rung() -> str:
+    """THE RUNG THAT READS THE WINDOW -- the one rung every window item's
+    catalogue ``stages`` names (the transmission, TBtrans's): where a fitted
+    window is written, and the rung whose points share energies with a
+    finished calculation's (`engines/transport.md` § 2a.16).  Declared once,
+    on the items; a catalogue whose window items name another rung, or none,
+    or more than one, is a defect of the shipped catalogue -- raised as one,
+    never answered as the person's error."""
+    from ..template import catalogue
+    by_name = {it.name: it for it in catalogue().items}
+    rungs = {tuple(by_name[n].stages) for n in WINDOW_ITEMS if n in by_name}
+    if len(rungs) != 1 or len(next(iter(rungs))) != 1:
+        raise RuntimeError(
+            f"catalogue.template.toml: the window items "
+            f"{', '.join(WINDOW_ITEMS)} name {sorted(rungs)} as their rungs "
+            f"-- they are read by one rung together (engines/transport.md "
+            f"§ 2a.16)")
+    return next(iter(rungs))[0]
 
 
 @dataclass(frozen=True)
@@ -86,4 +108,4 @@ def fitted(window: Tuple[float, float, int], lo: float, hi: float,
                   points=n * finer + left + right, kept=n)
 
 
-__all__ = ["Fitted", "WINDOW_ITEMS", "fitted"]
+__all__ = ["Fitted", "WINDOW_ITEMS", "fitted", "window_rung"]

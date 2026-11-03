@@ -117,6 +117,19 @@ _TRANSPORT = ["--calculation", "transport", "--bundle", "BDT-Au/transport/T"]
 
 class TestInitCLI:
 
+    def test_an_engine_that_runs_no_transport_is_refused_in_the_tabs_words(
+            self, tree):
+        """`molbuilder describe` refuses an engine the kind runs no part on
+        in the one sentence the engine tab and the web doors say -- the
+        kind's own (`CalculationKind.why_not_on`, `engines/transport.md`
+        § 3.8.8) -- before any citation is read."""
+        from molbuilder.kind_table import kind
+        r = CliRunner().invoke(describe_cmd, ["--engine", "pyscf"] + _TRANSPORT
+                               + ["--slot", f"junction={_CITE}"])
+        assert r.exit_code != 0
+        assert kind("transport").why_not_on("pyscf") in r.output, r.output
+        assert "no PySCF transport backend is built yet" in r.output
+
     def test_the_junction_slot_is_required(self, tree):
         """One slot, `junction`, and nothing else (§ 3.1): none and two are
         refused by name before any citation is read."""

@@ -329,7 +329,7 @@ def junction(tmp_path_factory):
         cfg = dataclasses.replace(
             config_from_template(path.read_text(), SiestaConfig),
             **RELAXED_WITH)
-        path.write_text(template_with_values(cfg, engine="siesta"))
+        path.write_text(template_with_values(cfg, engine="siesta", calculation="optimization"))
         _taken(relax, "prep", "prep", "task",
                *group_words(relax.bundle, "coarse"), "--target", "this")
         _taken(relax, "launch", "launch", "task", "--stage", "coarse",
@@ -405,7 +405,7 @@ def junction(tmp_path_factory):
         run.said["describe into a topic"] = Said(b.status_code,
                                                  json.dumps(b.get_json()))
         run.topic_after = _all_written(run.topic)
-        a = client.get(f"/api/transport/describe_attempt?path={cite}")
+        a = client.get(f"/api/transport/describe_attempt?path={cite}&engine=siesta")
         run.said["describe_attempt"] = Said(a.status_code,
                                             json.dumps(a.get_json()))
 
@@ -724,7 +724,7 @@ def junction(tmp_path_factory):
         run.tab_said = {}
         for kind, cited in (("run", cite), ("mode's set", frame_set),
                             ("family", run.family)):
-            d = client.get(f"/api/transport/describe_attempt?path={cited}")
+            d = client.get(f"/api/transport/describe_attempt?path={cited}&engine=siesta")
             s = client.get(f"/api/transport/schema?engine=siesta"
                            f"&surface=shared&junction={cited}")
             run.tab_said[kind] = (d.get_json(), s.get_json())
@@ -946,7 +946,7 @@ def test_a_finished_relaxation_composes_and_says_how_it_ended(junction):
     words -- and its leads are the labelled blocks."""
     from molbuilder.transport.compose import load_compose_record
     record = load_compose_record(junction.bundle, citation=junction.cite,
-                                 tree_root=junction.tree)
+                                 engine="siesta", tree_root=junction.tree)
     assert record is not None
     said = record.provenance
     assert said["evidence"].startswith("rc=0 at "), said
@@ -996,7 +996,7 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
     from molbuilder.transport.sort import (REGION_LEFT_ELECTRODE,
                                            REGION_RIGHT_ELECTRODE)
     out = compose_junction(junction.cite, tree_root=junction.tree,
-                           swap_electrodes=True)
+                           engine="siesta", swap_electrodes=True)
     regions = out.junction.regions
     zs = np.asarray(out.junction.positions)[:, 2]
     assert min(zs[regions[REGION_LEFT_ELECTRODE]]) > max(
@@ -1183,7 +1183,7 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
     assert (psml.value, psml.source) == ("pseudopotential", "person")
     record = load_compose_record(junction.from_pair.bundle,
                                  citation=junction.frame_set,
-                                 tree_root=junction.tree)
+                                 engine="siesta", tree_root=junction.tree)
     assert record is not None
     assert (record.provenance["kind"], record.provenance["frames"]) == (
         "pair", _N_FRAMES)
@@ -1222,8 +1222,9 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
     s.frozen_atoms = sorted(held | {_at(_LEAD + _WIRE // 2 - 1)}
                             if change == "hold" else held - {_FREED})
     if as_the_deck:
-        from molbuilder.transport.sort import deck_sort_key, sort_by
-        s = sort_by(s, deck_sort_key("siesta", "vibration")).structure
+        from molbuilder.kind_table import atom_order
+        from molbuilder.transport.sort import sort_by
+        s = sort_by(s, atom_order("vibration", "siesta")).structure
         # the row's premise: in the copy the freed atom has another index
         assert s.map_from_user_index([_FREED]) != [_FREED]
     cfg = SiestaConfig(system_label="J", psml_lib="pseudopotential",
@@ -1261,7 +1262,7 @@ def test_a_pair_whose_relaxation_left_an_electrode_atom_free_is_refused(
         StructureCodec().write(s, where / "relabelled.xyz")
         with pytest.raises(ComposeError) as refused:
             compose_junction("P/relabelled/relabelled.xyz",
-                             tree_root=junction.tree)
+                             tree_root=junction.tree, engine="siesta")
     finally:
         shutil.rmtree(where, ignore_errors=True)
     said = str(refused.value)
@@ -4363,7 +4364,7 @@ def reused(junction, tmp_path_factory):
         client = create_app(config={}).test_client()
         page = junction.tree / "P" / "transport" / "page"
         page.mkdir()
-        a = client.get(f"/api/transport/describe_attempt?path={finished}")
+        a = client.get(f"/api/transport/describe_attempt?path={finished}&engine=siesta")
         # THE SHARED PANEL AS THE PAGE SENDS IT: an extension's shared
         # values are the finished calculation's, every field locked and
         # never collected (`formSchema.collectForm`) -- nothing.

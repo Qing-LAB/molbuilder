@@ -105,11 +105,11 @@ class StageStatus:
     #: to ask (`runs.standing_of`; `web/results.md` § 2.4); ``None`` for
     #: any other state.
     standing: Optional[Dict[str, Any]] = None
-    #: A device rung's one line about the leads' surface Green's function
-    #: files -- what its run's ``tsgf/`` holds, or the size each lead's
-    #: will have (`transport.gf_files.status_line`, `engines/transport.md`
-    #: § 2a.11); ``None`` for every other rung.
-    tsgf: Optional[str] = None
+    #: A rung's one line about the scratch folder its run keeps -- the pair's
+    #: ``scratch_status`` part's: a transport device's, what its run's
+    #: ``tsgf/`` holds, or the size each lead's will have
+    #: (`engines/transport.md` § 2a.11); ``None`` for every other rung.
+    scratch: Optional[str] = None
     #: Whether this stage, launched again, continues from its own latest run
     #: -- the job's one fact (`Job.relaunch_continues`), which `launch`
     #: asks too, so the status says what launching it again will do
@@ -604,7 +604,7 @@ def _computes_scf(task, stage: str) -> bool:
 def _job_status(calc, job, *, dirs, refs) -> StageStatus:
     """One prepared job's status, read from where its runs are -- a run of
     points' row (:func:`_sweep_status`) or one run's
-    (:func:`_one_run_status`), its leads' files' line (:func:`_tsgf_line`)
+    (:func:`_one_run_status`), its scratch folder's line (:func:`_scratch_line`)
     and a queued row's standing (`runs.standing_of`, `running-a-job.md`
     § 4.2) asked the same way for both; a prepared stage with no run on
     disk is :data:`MISSING`, said."""
@@ -635,7 +635,7 @@ def _job_status(calc, job, *, dirs, refs) -> StageStatus:
            if where(run).of_points else
            _one_run_status(base, jobset, run=run, names=names,
                            columns=columns))
-    row = dataclasses.replace(row, tsgf=_tsgf_line(
+    row = dataclasses.replace(row, scratch=_scratch_line(
         base, task, job, d, run if row.launch else None, row.attempts,
         going=row.state in ("queued", "running")))
     if row.state != "queued":
@@ -676,18 +676,23 @@ def _one_run_status(base: Path, jobset: JobSet, *, run: Path, names,
         **columns)
 
 
-def _tsgf_line(base, task, job, stage_dir, run_dir, attempts, *,
-               going: bool) -> Optional[str]:
-    """The line about the leads' files of a rung that keeps them in a
-    scratch folder (`Job.scratch_dir`; `transport.gf_files.status_line`):
-    the newest run's -- ``run_dir`` ``None`` for a stage not launched, which
-    is answered with the estimate; ``going`` whether that run is queued or
-    running -- and, where the stage has older runs, each older run's after
-    it, newest first, those having ended; ``None`` for every other rung."""
+def _scratch_line(base, task, job, stage_dir, run_dir, attempts, *,
+                  going: bool) -> Optional[str]:
+    """The line about the scratch folder of a rung that keeps one
+    (`Job.scratch_dir`), by the pair's own ``scratch_status`` part (the kind
+    table's -- a transport device's lead files): the newest run's --
+    ``run_dir`` ``None`` for a stage not launched, which the part answers
+    with its estimate; ``going`` whether that run is queued or running --
+    and, where the stage has older runs, each older run's after it, newest
+    first, those having ended; ``None`` for every other rung."""
     if task is None or not job.scratch_dir:
         return None
+    from ..kind_table import part_of
+    status_line = part_of(str(task.calculation), str(task.engine),
+                          "scratch_status")
+    if status_line is None:
+        return None
     from ..paths import attempt_dir
-    from ..transport.gf_files import status_line
     first = status_line(base, task, stage_dir, run_dir, job.scratch_dir,
                         going=going)
     if run_dir is None or first is None or len(attempts) < 2:
@@ -989,7 +994,7 @@ def render_status(status: JobSetStatus) -> str:
              str(s.group) if s.group is not None else "-",
              s.attempt or "-", s.state,
              s.converged or "-", ", ".join(s.warm_files) or "-",
-             s.detail + (f" \u00b7 {s.tsgf}" if s.tsgf else "")
+             s.detail + (f" \u00b7 {s.scratch}" if s.scratch else "")
              + (f" \u00b7 copied from {s.copied_from}" if s.copied_from
                 else ""))
             for s in status.stages]
@@ -1112,10 +1117,11 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         # (`engines/transport.md` § 2a.11): the inputs it started from.
         rows.append(("gathered", "; ".join(s.gathered)))
 
-    if s.tsgf:
-        # THE LEADS' FILES (`engines/transport.md` § 2a.11): the newest
-        # run's scratch folder, or the size to come.
-        rows.append(("tsgf", s.tsgf))
+    if s.scratch:
+        # ITS SCRATCH FOLDER (a transport device's lead files,
+        # `engines/transport.md` § 2a.11): the newest run's, or the size
+        # to come.
+        rows.append(("scratch", s.scratch))
     runs = ", ".join(attempt_name(n) for n in s.attempts) or "-"
     rows.append(("attempt", f"{s.attempt or '-'}"
                             + (f"   (of {runs})" if len(s.attempts) > 1

@@ -326,16 +326,18 @@ function renderStages(task) {
         const rung = _fs.extension && _fs.extension.window;
         const row = rung ? stages.findIndex((st) => st && st.name === rung)
                          : -1;
-        fitHost.hidden = !(task.calculation === "transport" && task.reuses
-                           && row !== -1);
+        // WHERE THE FOLDER ANSWER STATES AN EXTENSION (task-setup.md § 3).
+        fitHost.hidden = row === -1;
         if (!fitHost.hidden) {
             if (extensionSays("window")) {
                 fitHost.appendChild(el("p", { class: "hint" },
                                        extensionSays("window")));
             }
+            // THE CALCULATION IT REUSES, as the folder answer states it --
+            // the one source the row's showing is read from too.
             fitHost.appendChild(fitRow({
-                reuses: task.reuses,
-                name: (_fs.extension && _fs.extension.name) || task.reuses,
+                reuses: _fs.extension.reuses,
+                name: _fs.extension.name || _fs.extension.reuses,
                 use: (v) => setRowValues(row, v, "the fitted window") }));
         }
     }
@@ -616,6 +618,7 @@ function freshFolderState() {
         ladder:       { stages: [], offer: [] },  // the ready door's answer per stage
         steps:        [],         // each group's next step, `jobset status`'s
         extension:    null,       // an extension's limits, or null (§ 3)
+        kind:         null,       // the kind's entry: cites, carries, leads (§ 3)
         groups:       { stages: [], groups: [] },  // each stage's group, each group's state
         prepPick:     null,       // the groups picked for the task's Prep; null = the offer
         fixed:        null,       // the stages the kind fixes (§ 5.3)
@@ -1707,29 +1710,28 @@ async function readFolder(projects, dir, opts) {
      * else's structure and not its own.  `prep` refuses on that, late; this
      * says it on the page where it can still be fixed. */
     let ref = {};
-    let docKind = null;
     try {
         const doc = JSON.parse(taskText || overText || "{}");
         ref = (doc && doc.structure) || {};
-        // THE KIND AS THE DESCRIPTION STATES IT -- every kind writes it.
-        docKind = doc.calculation;
     } catch (_) { /* a file that does not parse is refused further down */ }
-    /* THE COMPOSITE HAS NO STRUCTURE PAIR OF ITS OWN: its structure is the
-     * cited junction, composed at prep (`engines/transport.md` § 3.1), so
-     * listing "<label>.xyz ... not there yet" would be the page claiming a
-     * file is missing that this kind never writes.  It DOES have a
-     * template -- the shared electronic description the transport tab's
-     * shared panel writes (§ 3.8.2; TR1) -- so that row stays. */
+    /* A KIND THAT CITES ITS STRUCTURE HAS NO STRUCTURE PAIR OF ITS OWN: its
+     * structure is the citation, composed at prep (`engines/transport.md`
+     * § 3.1), so listing "<label>.xyz ... not there yet" would be the page
+     * claiming a file is missing that this kind never writes.  It DOES have
+     * a template -- the shared electronic description -- so that row
+     * stays.  Which kind cites is its entry's (`said.kind`, task-setup.md
+     * § 3). */
+    const cites = (said.kind && said.kind.cites) || null;
     for (const id of ["ts-f-struct", "ts-f-side"]) {
         const el = $(id);
         const li = el && el.closest("li");
-        if (li) li.hidden = (docKind === "transport");
+        if (li) li.hidden = !!cites;
     }
-    if (docKind === "transport" && taskText) {
+    if (cites && taskText) {
         markFile("ts-f-task", true,
-                 "already here — the rungs, the bias and the "
-                 + "citation; the structure is the cited junction, "
-                 + "composed at prep");
+                 "already here — its stages and its " + cites
+                 + " citation; the structure is the citation, composed "
+                 + "at prep");
     }
     // THE PAIR BY ITS RULE'S ONE HOME: the folder answer names both files.
     const pair = said.structure_pair || {};
@@ -1762,6 +1764,7 @@ async function readFolder(projects, dir, opts) {
         // SAVE IS HELD FROM HERE until the proposal lands: what a Save
         // would write is the proposal, not the hand-over as handed.
         _mode = "handover"; _handover = over; _fs.proposing = true;
+        _fs.kind = said.kind || null;
         // WHETHER IT TAKES A MEASURE STEP is the folder answer's for a
         // hand-over too: its engine and kind decide (§ 11.1).
         _fs.benchRefusal = said.bench_refusal || null;
@@ -1859,6 +1862,7 @@ async function readFolder(projects, dir, opts) {
     /* AN EXTENSION'S LIMITS, before the cards that say them are drawn
      * (§ 3; the folder answer's `extension`). */
     _fs.extension = said.extension || null;
+    _fs.kind = said.kind || null;
     renderCameOver(task, said.treatment, said.frame_set,
                    said.template && said.template.shared);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
@@ -2077,9 +2081,10 @@ function setCell(i, col, raw) {
  * rather than silent (`run-identity.md` § 3).
  */
 /* WHAT THE CALCULATION IS OF (`task-setup.md` § 3): for every kind its
- * name, id and engine; then what identifies the subject -- a structure's
- * file, formula and atom count, or, for a transport calculation, the
- * junction it cites, the bias list it walks and how it treats that list
+ * name, id and engine; then what identifies the subject, by its kind's
+ * entry in the folder answer (`kind`: the slot it cites, the fields it
+ * carries, its leads) -- a structure's file, formula and atom count, or
+ * the citation, the fields it carries and how it treats a bias list
  * (`treatment`, the folder answer's word from the one rule the record
  * names it by); and every value shared by every stage, with whose it is
  * (`renderShared`, `template.md` § 6.6 obligation 3). */
@@ -2092,10 +2097,14 @@ function renderCameOver(obj, treatment, frameSet, shared) {
     /* THE CITED JUNCTION'S FRAMES, by the one card (transport.md § 3.8.1),
      * from the folder's answer; nothing for one structure or another kind. */
     renderFrameSet($("ts-frameset"), obj ? frameSet : null);
-    // WHERE A TRANSPORT CALCULATION'S RENAME AND BIAS LIST ARE CORRECTED,
-    // said on a transport calculation's card alone (§ 3).
-    const fixHere = $("ts-came-transport");
-    if (fixHere) fixHere.hidden = !(obj && obj.calculation === "transport");
+    /* WHICH ROWS IT HAS IS ITS KIND'S ENTRY (`_fs.kind`, task-setup.md
+     * § 3): a cited slot's where the kind cites one, each carried field's
+     * where the kind carries it, the structure's where it holds one. */
+    const kind = _fs.kind || {};
+    const carries = (f) => (kind.carries || []).indexOf(f) !== -1;
+    // WHERE ITS CARRIED FIELDS ARE CORRECTED, said where it carries any.
+    const fixHere = $("ts-came-carried");
+    if (fixHere) fixHere.hidden = !(obj && (kind.carries || []).length);
     if (!obj) { card.hidden = true; return; }
     const run = obj.run || {};
     const st  = obj.structure || {};
@@ -2104,35 +2113,44 @@ function renderCameOver(obj, treatment, frameSet, shared) {
         ["Run id",      run.id   || "\u2014"],
         ["Engine",      (obj.engine && obj.engine.name) || "\u2014"],
     ];
-    if (obj.calculation === "transport") {
+    if (kind.cites) {
+        rows.push(
+            [kind.cites.charAt(0).toUpperCase() + kind.cites.slice(1),
+             (obj.slots && obj.slots[kind.cites]) || "\u2014"],
+            // THE CITATION THAT DOES NOT RESOLVE, in its reader's words.
+            ...(frameSet && frameSet.why ? [["The citation", frameSet.why]] : []));
+    }
+    if (carries("bias")) {
         const bias = (obj.bias && obj.bias.voltages_v) || [];
         rows.push(
-            ["Junction",  (obj.slots && obj.slots.junction) || "\u2014"],
-            // THE CITATION THAT DOES NOT RESOLVE, in its reader's words.
-            ...(frameSet && frameSet.why ? [["The citation", frameSet.why]] : []),
             // 0 V keeps its full spelling, as the bias list is written;
             // an extension's says what a change of each re-runs (§ 3).
             ["Bias list", bias.length
                 ? bias.map((v) => (v === 0 ? "0.0" : String(v))).join(", ")
                   + " V" : "\u2014", extensionSays("bias")],
-            ["Treatment", treatment || "\u2014", extensionSays("treatment")],
-            // THE RENAME this calculation makes in its own copy of the cited
-            // junction (transport.md § 4): it decides which lead is biased
-            // positive, so it is said here with the junction.
-            ["Electrodes", obj.swap_electrodes
-                ? "L-electrode and R-electrode traded in this calculation's "
-                  + "copy (swap_electrodes: true)"
-                : "as labelled on the cited junction"],
-            // THE FINISHED CALCULATION IT REUSES, whose groups its prep
-            // copies in -- what, and its size, the Preview says
-            // (engines/transport.md \u00a7 2a.16).
-            ...(obj.reuses ? [["Reuses", obj.reuses
-                + " \u2014 its prep copies in what that calculation "
-                + "computed as this one would now; the Preview says what"]]
-                : []));
-    } else {
+            ["Treatment", treatment || "\u2014", extensionSays("treatment")]);
+    }
+    if (carries("swap_electrodes")) {
+        // THE RENAME this calculation makes in its own copy of the cited
+        // structure (transport.md § 4): it decides which lead is biased
+        // positive, so it is said here with the citation -- its leads
+        // named as the kind table names them.
+        rows.push(["Electrodes", obj.swap_electrodes
+            ? (kind.leads || []).join(" and ") + " traded in this "
+              + "calculation's copy (swap_electrodes: true)"
+            : "as labelled on the cited " + (kind.cites || "structure")]);
+    }
+    if (carries("reuses") && obj.reuses) {
+        // THE FINISHED CALCULATION IT REUSES, whose groups its prep
+        // copies in -- what, and its size, the Preview says
+        // (engines/transport.md \u00a7 2a.16).
+        rows.push(["Reuses", obj.reuses
+            + " \u2014 its prep copies in what that calculation "
+            + "computed as this one would now; the Preview says what"]);
+    }
+    if (st.source) {
         rows.push(
-            ["Structure", st.source ? String(st.source).split("/").pop() : "\u2014"],
+            ["Structure", String(st.source).split("/").pop()],
             ["Formula",   st.formula || "\u2014"],
             ["Atoms",     (st.atoms === undefined ? "\u2014" : String(st.atoms))]);
     }

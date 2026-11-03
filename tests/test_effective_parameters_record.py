@@ -37,22 +37,31 @@ def deck(tmp_path) -> Path:
     return p
 
 
-#: WHICH SETTINGS A STEP'S RECORD LISTS, by the calculation and the step
-#: (`running-a-job.md` § 1 step 16, `template.md` § 6.4): an item listed and
-#: one never listed.  A TBtrans step reads TBtrans's settings, never an SCF's
-#: (`transport.md` § 6.1b: tbtrans writes no forces); a relaxation reads no
-#: TBtrans setting, which its calculation does not carry.
+#: WHICH SETTINGS A STEP'S RECORD LISTS, by the calculation, the step and --
+#: for a point of a run of points -- the role it plays (`running-a-job.md`
+#: § 1 step 16, `template.md` § 6.4): an item listed and one never listed.
+#: A TBtrans step reads TBtrans's settings, never an SCF's (`transport.md`
+#: § 6.1b: tbtrans writes no forces); a relaxation reads no TBtrans setting,
+#: which its calculation does not carry; a SIESTA vibration's phases are one
+#: step's roles, the relaxation's step count in its own phase alone and the
+#: displacement in the force constants' (until 2.65.0 every phase listed
+#: every role's).
 FENCE_ROWS = [
-    pytest.param("optimization", "01_coarse", "mesh_cutoff", "tbt_k_grid",
-                 id="relaxation-lists-no-tbtrans-setting"),
-    pytest.param("transport", "05_transmission", "tbt_k_grid", "write_forces",
-                 id="tbtrans-step-lists-no-scf-setting"),
+    pytest.param("optimization", "01_coarse", None, "mesh_cutoff",
+                 "tbt_k_grid", id="relaxation-lists-no-tbtrans-setting"),
+    pytest.param("transport", "05_transmission", None, "tbt_k_grid",
+                 "write_forces", id="tbtrans-step-lists-no-scf-setting"),
+    pytest.param("vibration", "01_freq", "relaxation", "relax_steps",
+                 "fc_displacement",
+                 id="a-relaxation-phase-lists-no-displacement"),
+    pytest.param("vibration", "01_freq", "force_constants", "fc_displacement",
+                 "relax_steps", id="a-force-constant-phase-lists-no-steps"),
 ]
 
 
-@pytest.mark.parametrize("calculation,stage,listed,never", FENCE_ROWS)
+@pytest.mark.parametrize("calculation,stage,role,listed,never", FENCE_ROWS)
 def test_siesta_s_fence_states_the_step_s_items_and_the_deck_as_launched(
-        deck, calculation, stage, listed, never):
+        deck, calculation, stage, role, listed, never):
     """The wrapper's block, RUN as the wrapper runs it, read back through the
     one reader both engines' blocks are read by (`model/parse.md` § 5d.3a):
     a row for each keyword-writing catalogue item THIS STEP reads, with its
@@ -78,7 +87,7 @@ def test_siesta_s_fence_states_the_step_s_items_and_the_deck_as_launched(
     block = (f'_mb_py="{sys.executable}"\n_runwrap_log=/dev/null\n'
              '_log() { echo "$2" >&2; }\n'
              + _effective_parameters_block(deck.name, "siesta",
-                                           calculation, stage))
+                                           calculation, stage, role=role))
 
     def run():
         return subprocess.run(["bash", "-c", block], cwd=deck.parent,
@@ -112,7 +121,7 @@ def _fdf(**over):
                                            [0.957, 0., 0.],
                                            [-0.24, 0.927, 0.]]))
     cfg = SiestaConfig(system_label="t", **over)
-    return (render_deck(spec_for(struct, cfg, names=NAMES), struct, cfg),
+    return (render_deck(spec_for(struct, cfg, names=NAMES, calculation="optimization"), struct, cfg),
             struct, cfg)
 
 

@@ -144,11 +144,12 @@ def road_structure(s: dict):
 
 def co2_in_engine_order():
     """The road's CO2 as a SIESTA vibration's decks hold it: sorted by its
-    decks' key (`transport.sort.sort_by`, `deck_sort_key`), its order record
-    on it."""
-    from molbuilder.transport.sort import deck_sort_key, sort_by
+    decks' order (`transport.sort.sort_by`, `kind_table.atom_order`), its
+    order record on it."""
+    from molbuilder.kind_table import atom_order
+    from molbuilder.transport.sort import sort_by
     return sort_by(road_structure(CO2),
-                   deck_sort_key("siesta", "vibration")).structure
+                   atom_order("vibration", "siesta")).structure
 
 
 def describe_calculation(tmp_path, monkeypatch, *, name: str = "H2",

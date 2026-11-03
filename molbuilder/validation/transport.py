@@ -102,19 +102,9 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     # gate and the description's preflight (`record.window_short_of`):
     # TBtrans integrates the current over its window and says nothing when
     # the window cuts it short.
-    if rung == "transmission" and bias is not None and temp is not None:
-        emin = getattr(cfg, "transmission_emin_ev", None)
-        emax = getattr(cfg, "transmission_emax_ev", None)
-        n = getattr(cfg, "transmission_n_points", None)
-        if emin is not None and emax is not None and n:
-            from ..constants import BOLTZMANN_EV_K
-            from ..transport.record import sampled_window, window_short_of
-            short = window_short_of(*sampled_window(emin, emax, n), bias,
-                                    BOLTZMANN_EV_K * float(temp))
-            if short:
-                out.append(Issue("error",
-                                 short + " (engines/transport.md 2a.10)",
-                                 where="config.transmission_emax_ev"))
+    from ..transport.window import window_rung
+    if rung == window_rung() and bias is not None:
+        out += _window_short(cfg, bias)
     # THE K-POINT SAMPLING IS NOT HERE: it is the k-point mesh's
     # (`kmesh.py`, `engines/siesta.md` § 6.1): the third
     # component of `kgrid` and `tbt_k_grid` is one a transport calculation
@@ -202,4 +192,78 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     return out
 
 
-__all__ = ["validate_transport_kind"]
+def check_description(task, ladder) -> List[Issue]:
+    """A TRANSPORT DESCRIPTION'S OWN CHECKS, before any deck is written --
+    the kind table's ``description_checks``, run by the description's check
+    (`validation.task.preflight`): its bias list's points against their
+    setting's recommended range, and the transmission window against the
+    largest listed voltage.  ``ladder`` is the resolved ladder, ``[(stage,
+    config)]``, or empty where no template is in hand."""
+    return _bias_points_in_range(task) + _window_reaches_the_bias(task, ladder)
+
+
+def _bias_points_in_range(task) -> List[Issue]:
+    """The bias list's points are values of `bias_voltage_v`, and a value
+    outside its item's recommended range is WARNED, as any value is
+    (`engines/template.md` § 5.3).  A repeated point is the codec's refusal
+    (`task.py`), with the list's other shape rules."""
+    bias = tuple(getattr(task, "bias", ()) or ())
+    if not bias:
+        return []
+    from ..template import catalogue, one
+    item = one(catalogue(), "bias_voltage_v", engine=str(task.engine))
+    if item is None or not item.range:
+        return []
+    lo, hi = item.range
+    out = [float(v) for v in bias if not lo <= float(v) <= hi]
+    return [Issue(
+        "warn",
+        f"the bias list holds {', '.join(f'{v:g}' for v in out)} V, outside "
+        f"the recommended range [{lo:g}, {hi:g}] V -- a recommendation, not "
+        f"a limit (engines/template.md 5.3)",
+        where="task.bias")] if out else []
+
+
+def _window_reaches_the_bias(task, ladder) -> List[Issue]:
+    """The transmission window reaches the largest listed voltage's bias
+    window, ±(|V|/2 + 5 kT) -- the one rule `record.window_short_of` states
+    (`engines/transport.md` § 2a.10, P2), judged here on the description as
+    the transmission rung resolves it, so a list that the window cannot
+    serve is refused where it is written: under the low-bias approximation
+    the record integrates every listed voltage over the one 0 V slice, and
+    a sweep's point writes its own voltage into that window.  Nothing to
+    say without the resolved ladder (no template in hand)."""
+    bias = tuple(getattr(task, "bias", ()) or ())
+    if not bias or not ladder:
+        return []
+    from ..transport.window import window_rung
+    rung = window_rung()
+    cfg = next((c for name, c in ladder if name == rung), None)
+    if cfg is None:
+        return []
+    largest = max(bias, key=lambda v: abs(float(v)))
+    return _window_short(cfg, largest, stage=rung)
+
+
+def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
+    """THE ONE RULE for whether the transmission's window reaches the bias
+    window at its temperature -- the record's, this gate's and the
+    description's (`record.window_short_of`, `engines/transport.md`
+    § 2a.10) -- an error on the window's edge when it cuts the current
+    short, none when a value it needs is unset."""
+    emin = getattr(cfg, "transmission_emin_ev", None)
+    emax = getattr(cfg, "transmission_emax_ev", None)
+    n = getattr(cfg, "transmission_n_points", None)
+    temp = getattr(cfg, "electronic_temperature", None)
+    if emin is None or emax is None or not n or temp is None:
+        return []
+    from ..constants import BOLTZMANN_EV_K
+    from ..transport.record import sampled_window, window_short_of
+    short = window_short_of(*sampled_window(emin, emax, n), bias,
+                            BOLTZMANN_EV_K * float(temp))
+    return [Issue("error", short + " (engines/transport.md 2a.10)",
+                  where="config.transmission_emax_ev",
+                  stage=stage)] if short else []
+
+
+__all__ = ["validate_transport_kind", "check_description"]

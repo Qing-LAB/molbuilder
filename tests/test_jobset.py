@@ -308,7 +308,7 @@ def _shipped_ladder(coarse_restart=None):
         jobs.append(Job(name=st.name,
                         script=f"{label}_{stage_token(i, st.name)}.fdf",
                         resources=Resources(),
-                        warm=warm_for(label, eff),
+                        warm=warm_for(label, eff, "optimization"),
                         traits=traits_for(eff)))
     js = JobSet(name=label, engine="siesta", kind="ladder", jobs=jobs)
     # lowercase: the trait normalizes at its ONE producer so

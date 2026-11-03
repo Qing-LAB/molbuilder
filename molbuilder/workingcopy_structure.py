@@ -205,15 +205,15 @@ def pair_engine_listing(sidecar: Path) -> "Optional[bool]":
     ``_optimized`` pairs (`runfiles.listed_by_of`, F3) -- and if so whether
     its kind may be sorted: ``None`` for the user's pair (a pair in no
     calculation of ours is the user's, whatever its name); ``True`` where
-    the one sort table sorts the stage it belongs to
-    (`transport.sort.deck_sort_key` -- the composed junction), and where the
+    the pair's atom order sorts the stage it belongs to
+    (`kind_table.atom_order` -- the composed junction), and where the
     calculation's description does not read, so nothing says; ``False`` for
     a kind that sorts nothing (a PySCF run's)."""
     try:                                    # inside molbuilder
         from .atom_permutation import LISTED_BY_ENGINE
         from .runfiles import listed_by_of
         from .runs import place_of, run_of
-        from .transport.sort import deck_sort_key
+        from .kind_table import atom_order
     except ImportError:                     # beside a job: no calculation
         return None
     if listed_by_of(sidecar.name) != LISTED_BY_ENGINE:
@@ -224,8 +224,8 @@ def pair_engine_listing(sidecar: Path) -> "Optional[bool]":
     if place.task is None:
         return True
     run = run_of(sidecar.parent)
-    return deck_sort_key(place.task.engine, place.task.calculation,
-                         run.stage if run is not None else None) is not None
+    return atom_order(place.task.calculation, place.task.engine,
+                      run.stage if run is not None else None) is not None
 
 
 #: THE ENGINE RECORD'S WORDS in its `.xyz` comment line, after the title
@@ -660,7 +660,7 @@ class StructureCodec:
         give the format's suffix.  Both writers of a calculation's structure
         ask it: the hand-over and `molbuilder describe`.  Written AS GIVEN, its
         origin's record with it: prep decides how the calculation takes it
-        (`cell.entering`, `jobset.prep._structure_for`)."""
+        (`cell.entering`, `jobset.rung.structure_for`)."""
         from .runfiles import compose
         return self.files(struct, compose(label, ".source.xyz"))
 

@@ -94,7 +94,7 @@ def _form_fields(engine, prefix):
     items = {i.name: i for i in T.select(T.read_template(T.load_catalogue()),
                                          engine=engine)}
     out = {}
-    for section in catalogue_to_form_schema(engine, prefix)["sections"]:
+    for section in catalogue_to_form_schema(engine, prefix, "optimization")["sections"]:
         for field in section["fields"]:
             fid = field.get("id", "")
             if not fid.startswith(prefix + "-"):
@@ -127,7 +127,7 @@ def test_every_field_the_form_offers_changes_the_generated_deck(
     def deck(**over):
         cfg = dataclasses.replace(cls(**base_kw), **over)
         return _engine_read(se.render_deck(
-            spec_for(struct, cfg, names=_names(cfg)), struct, cfg))
+            spec_for(struct, cfg, names=_names(cfg), calculation="optimization"), struct, cfg))
 
     dead, unprobed = [], []
     for name, item in sorted(_form_fields(engine, prefix).items()):

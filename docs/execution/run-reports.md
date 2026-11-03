@@ -940,11 +940,11 @@ monitor, the listener and the Task-setup card all read; each is read by § 2.3's
 | field | unit | what it is | runs that state it |
 |---|---|---|---|
 | `elapsed_s` | s — a length of time, said in words on a card (`6h`, [`web/ui-contract.md`](?doc=web/ui-contract.md) § 4) | the run's clock: wall time since its monitor started — a member's, since its run's first point this run computed started (§ 2.8) | every run |
-| `call_elapsed_s` | s, a length of time | a member's own point's clock, since its monitor started — its card's label in the kind's word, *this call* or *this point* (`report_cards`, the report's `call_unit`) | `vibration` and `transport` on SIESTA |
-| `units_done` | — | the run's units of work finished: an engine's steps, or the phase underway's points a run of points computed — those its pace is the mean of (§ 2.8) | `optimization`, `vibration`, `transport` |
-| `units_left` | — | the phase underway's points still to run, where the run's index states how many there are ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.3) | `vibration`, `transport` on SIESTA |
-| `unit_s` | s, a length of time | the mean a finished unit took | `optimization`, `vibration`, `transport` |
-| `left_at_pace_s` | s, a length of time | the time the points left need at that mean | `vibration`, `transport` on SIESTA |
+| `call_elapsed_s` | s, a length of time | a member's own point's clock, since its monitor started — its card's label in the kind's word, *this call* or *this point* (`report_cards`, the report's `call_unit`) | every run of points — today `vibration` and `transport` on SIESTA |
+| `units_done` | — | the run's units of work finished: an engine's steps, or the phase underway's points a run of points computed — those its pace is the mean of (§ 2.8) | every run |
+| `units_left` | — | the phase underway's points still to run, where the run's index states how many there are ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.3) | every run of points |
+| `unit_s` | s, a length of time | the mean a finished unit took | every run |
+| `left_at_pace_s` | s, a length of time | the time the points left need at that mean | every run of points |
 | `n_iters` | — | SCF iterations so far in the current phase: SIESTA's timing rows, a PySCF run's SCF history across its finished steps — part `scf` (§ 2.8) | every run |
 | `energy` | eV | the latest SCF energy: E_KS of SIESTA's last SCF row, or a PySCF step's energy | every run |
 | `geom_step` | — | the step the engine began, in its own numbering — a relaxation's move, a force-constant run's displacement | `optimization`, `vibration` |
@@ -953,6 +953,14 @@ monitor, the listener and the Task-setup card all read; each is read by § 2.3's
 | `per_iter_s` | s | seconds per SCF iteration in the current phase, a step's boundary excluded — part `scf` (§ 2.8) | every run whose SCF rows are stamped: SIESTA's tee, a PySCF deck's progress log |
 | `done_pct` | % — a share as the engine printed it, said `40 %` on a card | the share of the spin pass underway the engine says is done — TBtrans's `Calculated N %`, its first estimate `0`; absent between passes and once the last completed — which pass it is, `text` says | `transport`: the transmission rung |
 | `eta_s` | s — a length of time, said in words on a card (`6d`) | the time the engine says the pass underway has left, as of its latest progress line — TBtrans's `ETA in S s` | `transport`: the transmission rung |
+
+**Which runs state a field is the record's where a record holds it.** A field that exists because a run is a run of
+points — `call_elapsed_s`, `units_left`, `left_at_pace_s` — is stated by every pair the kind table gives a run of
+points (`kind_table.run_of_points`; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.1); every other field's
+runs are the declaration's own list of kinds and engines, each name checked against the two tables once, where a
+field is first asked on this machine, a name neither holds refused naming the field ([`architecture.md`](?doc=execution/architecture.md)
+§ 3.3). Only this machine asks which runs state a field — the Task-setup card and the job request; the job, which
+holds no table, never does.
 
 **A field the run has not stated is never a value**: it is `null` on the wire, and absent from the stored line and
 from a chat card — so a reader can tell *unknown* from *zero*.

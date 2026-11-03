@@ -511,7 +511,7 @@ class Item:
     #: nothing: the form greys it out, keeping its value, and the settings
     #: gate says so (:func:`inactive_why`).  Catalogue-only, like
     #: ``result``.
-    active_when: Tuple[Tuple[str, Tuple[Any, ...]], ...] = ()
+    active_when: Tuple[Tuple[str, Any], ...] = ()
     #: THE WORDS A PERSON READS FOR EACH CHOICE (§ 5), as ``(choice,
     #: words)`` pairs -- *All modes* for ``all``: what a form's list shows
     #: and a message says (:func:`choice_words`); the value written stays
@@ -598,6 +598,17 @@ class Item:
     #: ``transiesta`` is the case (§ 6.4).  Pairs, as ``recommended``'s, so
     #: the frozen item stays hashable.
     role_values: Tuple[Tuple[str, Any], ...] = ()
+    #: **WHY THE RUNG FIXES IT**, in the sentence a refusal of any other
+    #: value says -- on a `role` item whose reason is its own (SIESTA's
+    #: per-step forces and coordinates, the bias); ``None``: `role`'s own
+    #: reason (:func:`why_role`).  Catalogue-only.
+    why_fixed: Optional[str] = None
+    #: **THE DESCRIPTION FIELD WHOSE LIST ANSWERS IT POINT BY POINT** -- the
+    #: bias's ``"bias"`` (`engines/transport.md` § 2a.10): a rung renders one
+    #: point of that list, and the point is its value, so the item has no
+    #: one answer (:func:`fixed_answers`).  Only on a `role` item, the field
+    #: one a kind's description carries.  Catalogue-only.
+    per_point_from: Optional[str] = None
     #: **BINDS EVERY RUNG of these kinds** -- a scope, not an answerer
     #: (`engines/transport.md` § 3.8.6, decided 2026-09-24: a sibling marker
     #: beside `citation`, which keeps meaning *who supplies the default*).
@@ -627,6 +638,11 @@ class Item:
     #:
     #: Ask it directly, or filter for it: ``select(t, shared=True)``.
     shared: Tuple[str, ...] = ()
+    #: **WHY THE STAGES IT BINDS HOLD ONE VALUE**, in the sentence a refusal
+    #: of one stage's own says -- on a `shared` item whose reason is its own
+    #: (a transport calculation's cited settings); ``None``: one of
+    #: `shared`'s own rules (:func:`why_shared`).  Catalogue-only.
+    why_shared: Optional[str] = None
 
     #: **WHICH KINDS' FORMS DRAW THIS OPTIONAL ITEM AS REQUIRED** (plan § 5w
     #: K20).  Unset stays a state the item has; on these kinds the Send
@@ -761,6 +777,30 @@ class Item:
         if self.role_values and not self.role:
             _refuse("'role_values' names a rung's own answer to a `role` item, "
                     "and this item declares no `role`", where=self.name)
+        # A REASON IS ITS RULE'S (§ 5): why a rung fixes it on a `role` item,
+        # why the stages hold one value on a `shared` one, the list that
+        # answers it point by point on a `role` item -- a field a kind's
+        # description carries.
+        if (self.why_fixed or self.per_point_from) and not self.role:
+            _refuse("'why_fixed' and 'per_point_from' are a `role` item's, and "
+                    "this item declares no `role`", where=self.name)
+        if self.per_point_from and not self.stages:
+            _refuse("'per_point_from' answers a rung point by point, and this "
+                    "item names no `stages` -- the rungs it answers",
+                    where=self.name)
+        if self.why_shared and not self.shared:
+            _refuse("'why_shared' is a `shared` item's, and this item declares "
+                    "no `shared`", where=self.name)
+        _lacks = [k for k in self.role
+                  if self.per_point_from is not None
+                  and self.per_point_from
+                  not in _kinds.kind(k).description.carries]
+        if _lacks:
+            _refuse(f"per_point_from = {self.per_point_from!r} is no field "
+                    f"{_kinds.kind(_lacks[0]).with_article}'s description "
+                    f"carries -- it carries "
+                    f"{', '.join(_kinds.kind(_lacks[0]).description.carries) or 'none'}",
+                    where=self.name)
         # § 6.2a: a result is one the kind gives -- a misspelling would draw
         # the setting on no card and send its warnings nowhere.
         for _k, _r in self.result:
@@ -907,7 +947,8 @@ _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "ancho
                    "manual", "expands", "launch", "limit_applied_by", "type",
                    "choices", "value", "source", "default", "engine_default", "recommended", "offered", "not_offered", "result", "active_when", "choice_labels", "optional", "required",
                    "allocation", "run_card",
-                   "citation", "shared", "role", "role_values", "stages",
+                   "citation", "shared", "why_shared", "role", "role_values",
+                   "why_fixed", "per_point_from", "stages",
                    "unit", "range", "above", "at_least", "tightens", "tier",
                    "pattern",
                    "group", "label", "null_label", "not_set", "read_by", "help")
@@ -992,7 +1033,7 @@ def _item_payload(it: Item) -> Dict[str, Any]:
     if it.result:
         out["result"] = dict(it.result)
     if it.active_when:
-        out["active_when"] = {k: list(v) for k, v in it.active_when}
+        out["active_when"] = active_when_of(it)
     if it.choice_labels:
         out["choice_labels"] = {str(c): w for c, w in it.choice_labels}
     if it.refs:
@@ -1008,8 +1049,14 @@ def _item_payload(it: Item) -> Dict[str, Any]:
     if it.role_values:
         out["role_values"] = {k: (list(v) if isinstance(v, tuple) else v)
                               for k, v in it.role_values}
+    if it.why_fixed:
+        out["why_fixed"] = it.why_fixed
+    if it.per_point_from:
+        out["per_point_from"] = it.per_point_from
     if it.shared:
         out["shared"] = list(it.shared)
+    if it.why_shared:
+        out["why_shared"] = it.why_shared
     if it.required:
         out["required"] = list(it.required)
     if it.stages:
@@ -1158,14 +1205,33 @@ def catalogue() -> "Template":
                 _refuse(f"active_when names {other_name!r}, which is not an "
                         f"item of every engine and kind this one serves "
                         f"(engines/template.md § 5)", where=it.name)
+            if values == ACTIVE_WHEN_SET:
+                # ANY VALUE is a state only an optional setting lacks -- on
+                # any other, "set" would always hold.
+                if not other.optional:
+                    _refuse(f"active_when.{other_name} = \"set\", and "
+                            f"{other_name} is not optional -- it always "
+                            f"holds a value: list the values it waits on "
+                            f"instead (engines/template.md § 5)",
+                            where=it.name)
+                continue
             for v in values:
                 _check_raw_value(it.name, f"active_when.{other_name}", v,
                                  other.type, other.choices)
+        # A SHARED ITEM SAYS WHY ITS STAGES HOLD ONE VALUE (§ 5): one of
+        # `shared`'s own rules, or its own ``why_shared`` -- never another
+        # item's reason given for it.
+        if it.shared and not it.why_shared and not (
+                it.name in STATE_ITEMS or it.name in IDENTITY_ITEMS
+                or it.stages):
+            _refuse("a `shared` item no rule of `shared` explains states its "
+                    "own `why_shared` -- why its stages must hold one value "
+                    "(engines/template.md § 5)", where=it.name)
     return parsed
 
 
 def template_with_values(config, *, engine: str = "", catalogue: str = "",
-                         calculation: str = "optimization",
+                         calculation: str,
                          title: str = "",
                          valueless: Sequence[str] = (),
                          sources: Optional[Mapping[str, str]] = None) -> str:
@@ -1244,6 +1310,9 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             result=(),
             active_when=(),
             choice_labels=(),
+            # ...nor why a rung fixes it or the stages share it, nor the
+            # list that answers it point by point (§ 5): the catalogue's.
+            why_fixed=None, why_shared=None, per_point_from=None,
         )
         for it in select(parsed, engine=eng, calculation=calculation)
         # NO RUN SETTING, valueless or not: it is the job request's
@@ -1642,22 +1711,58 @@ def _result_from(name: str, raw) -> Tuple[Tuple[str, str], ...]:
     return tuple((str(k), str(v)) for k, v in raw.items())
 
 
-def _active_when_from(name: str, raw) -> Tuple[Tuple[str, Tuple[Any, ...]], ...]:
+#: ``active_when``'s word for "holding any value" (§ 5): an optional setting
+#: set -- the solvent model waits on a solvent being chosen, whose blank is
+#: the gas phase.
+ACTIVE_WHEN_SET = "set"
+
+
+def _active_when_from(name: str, raw) -> Tuple[Tuple[str, Any], ...]:
     """The ``active_when`` table of an item (§ 5): another item's name ->
-    the values it must hold, a non-empty list.  That each name is an item
-    and each value passes its type is the catalogue's to check, holding
+    the values it must hold, a non-empty list, or :data:`ACTIVE_WHEN_SET`:
+    any value.  That each name is an item, each value passes its type and
+    ``"set"`` names an optional one is the catalogue's to check, holding
     every item (:func:`catalogue`)."""
     if raw is None:
         return ()
     if not isinstance(raw, Mapping) or not raw or not all(
-            isinstance(k, str) and isinstance(v, list) and v
+            isinstance(k, str) and ((isinstance(v, list) and v)
+                                    or v == ACTIVE_WHEN_SET)
             for k, v in raw.items()):
         _refuse('`active_when` must be a table of other settings, each a '
-                'non-empty list of the values it must hold -- e.g. '
-                'active_when = { compute_raman = [true] }', where=name)
+                'non-empty list of the values it must hold, or "set" -- e.g. '
+                'active_when = { compute_raman = [true] }, '
+                'active_when = { solvent = "set" }', where=name)
     if name in raw:
         _refuse("`active_when` names the item itself", where=name)
-    return tuple((str(k), tuple(v)) for k, v in raw.items())
+    return tuple((str(k), v if v == ACTIVE_WHEN_SET else tuple(v))
+                 for k, v in raw.items())
+
+
+def active_when_of(item: "Item") -> Dict[str, Any]:
+    """``item``'s ``active_when`` as TOML and the wire spell it (§ 5): each
+    named setting's list of values, or ``"set"``."""
+    return {k: (v if v == ACTIVE_WHEN_SET else list(v))
+            for k, v in item.active_when}
+
+
+def _holds(value: Any, wanted: Any) -> bool:
+    """Whether a setting at ``value`` holds what an ``active_when`` entry
+    wants (§ 5): one of its values, or -- :data:`ACTIVE_WHEN_SET` -- any
+    value at all, a blank being none."""
+    if wanted == ACTIVE_WHEN_SET:
+        return value not in (None, "")
+    return value in wanted
+
+
+def _sentence_from(name: str, key: str, raw) -> Optional[str]:
+    """A key that holds one non-empty string (§ 5) -- a reason, a field's
+    name -- or ``None`` where the item states none."""
+    if raw is None:
+        return None
+    if not (isinstance(raw, str) and raw.strip()):
+        _refuse(f"`{key}` is one non-empty string", where=name)
+    return raw
 
 
 def _choice_labels_from(name: str, raw, choices) -> Tuple[Tuple[Any, str], ...]:
@@ -1997,6 +2102,10 @@ def _item_from(name: str, body: Any) -> Item:
                                 type_, choices, keyed_by="rung",
                                 example='role_values = { device = "transiesta" }'),
         shared=tuple(body.get("shared", ()) or ()),
+        why_shared=_sentence_from(name, "why_shared", body.get("why_shared")),
+        why_fixed=_sentence_from(name, "why_fixed", body.get("why_fixed")),
+        per_point_from=_sentence_from(name, "per_point_from",
+                                      body.get("per_point_from")),
         required=tuple(body.get("required", ()) or ()),
         stages=_stages_from(name, body.get("stages")),
         null_label=str(body.get("null_label", "") or ""),
@@ -2130,7 +2239,13 @@ def _scoped_shared(name: str) -> Optional["Item"]:
 
 def why_shared(name: str) -> str:
     """Why a `shared` item cannot be one stage's -- the clause a refusal
-    puts after *"is shared by <who>"* (:func:`shared_by`)."""
+    puts after *"is shared by <who>"* (:func:`shared_by`): the item's own
+    ``why_shared`` where it states one (§ 5), else one of `shared`'s own
+    rules, which the catalogue requires where the item states none."""
+    own = next((it.why_shared for it in catalogue().items
+                if it.name == name and it.why_shared), None)
+    if own is not None:
+        return own
     if name in STATE_ITEMS:
         return ("the electronic state belongs to the calculation, never to "
                 "a stage -- every stage's warm files are a density for one "
@@ -2145,8 +2260,8 @@ def why_shared(name: str) -> str:
         return ("they are the rungs that read it, and must not be able to "
                 "disagree about it (engines/template.md § 5, `shared` with "
                 "`stages`)")
-    return ("the electrode and the device must not be able to disagree "
-            "about it (engines/transport.md § 2a.7)")
+    raise ValueError(f"{name}: no catalogue item states why its stages share "
+                     f"it, and no rule of `shared` explains it")
 
 
 def shared_scope_words(item: "Item") -> str:
@@ -2208,14 +2323,16 @@ def stage_roles(engine: str, kind: str, stage: Optional[str]
     return tuple(got) if got else (stage,)
 
 
-def reads(item: "Item", engine: str, kind: str, stage: Optional[str]) -> bool:
-    """Does the rung ``stage`` of a ``kind`` calculation read ``item``?  Not
-    when the kind does not carry it (`calculations`); on a kind without
-    roles, always; else when its ``stages`` names one of the rung's roles,
-    or names none (§ 6.4)."""
+def reads(item: "Item", engine: str, kind: str, stage: Optional[str], *,
+          role: Optional[str] = None) -> bool:
+    """Does the rung ``stage`` of a ``kind`` calculation read ``item`` -- or,
+    given ``role``, the point of it that plays that one role (a SIESTA
+    vibration's phase)?  Not when the kind does not carry it
+    (`calculations`); on a kind without roles, always; else when its
+    ``stages`` names one of the rung's roles, or names none (§ 6.4)."""
     if item.calculations and kind not in item.calculations:
         return False
-    roles = stage_roles(engine, kind, stage)
+    roles = (role,) if role is not None else stage_roles(engine, kind, stage)
     return (roles is None or not item.stages
             or bool(set(roles) & set(item.stages)))
 
@@ -2298,7 +2415,7 @@ def role_answers(engine: str, kind: str,
 def fixed_answers(engine: str, kind: str) -> Dict[str, Any]:
     """``{item: value}`` -- the `role` items of a ``kind`` calculation with
     ONE answer wherever they are read: no ``role_values`` (a rung's own
-    answer) and not answered point by point (:data:`PER_POINT`), so the
+    answer) and not answered point by point (``per_point_from``), so the
     catalogue's ``value`` is the answer of every rung that reads it (§ 6.4).
 
     `resolve` reads a template value for one of these as that answer when
@@ -2307,7 +2424,7 @@ def fixed_answers(engine: str, kind: str) -> Dict[str, Any]:
     return {it.name: it.value
             for it in select(catalogue(), engine=engine)
             if kind in it.role and not it.role_values
-            and it.name not in PER_POINT}
+            and not it.per_point_from}
 
 
 def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
@@ -2468,9 +2585,12 @@ def active_words(item: "Item", *, names: bool = False) -> Optional[str]:
 
     def _said(n: str, v: Any) -> str:
         return choice_words(cat[n], v) if n in cat else shown(v)
+
+    def _wants(n: str, vs: Any) -> str:
+        return ("set" if vs == ACTIVE_WHEN_SET
+                else " or ".join(_said(n, v) for v in vs))
     return ("it takes effect only while "
-            + " and ".join(f"{_named(n)} is "
-                           + " or ".join(_said(n, v) for v in vs)
+            + " and ".join(f"{_named(n)} is {_wants(n, vs)}"
                            for n, vs in item.active_when))
 
 
@@ -2480,9 +2600,24 @@ def inactive_why(item: "Item", values: Mapping[str, Any]) -> Optional[str]:
     intensities (compute_raman) is on"* -- or ``None`` when every setting
     it waits on holds one of its values.  Asked by the settings gate; the
     form shows the same words beside the field (:func:`active_words`)."""
-    if all(values.get(n) in vs for n, vs in item.active_when):
+    if all(_holds(values.get(n), vs) for n, vs in item.active_when):
         return None
     return active_words(item, names=True)
+
+
+def inactive_settings(cfg, *, engine: str,
+                      calculation: Optional[str] = None) -> Dict[str, str]:
+    """The settings of ``cfg`` that enter nothing here, each with why (§ 5,
+    ``active_when``; :func:`inactive_why`) -- the one reading the settings
+    gate, the deck writers and a record ask: a setting in it is said once
+    and never written as if it were run."""
+    values = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
+    out: Dict[str, str] = {}
+    for it in select(catalogue(), engine=engine, calculation=calculation):
+        why = inactive_why(it, values)
+        if why:
+            out[it.name] = why
+    return out
 
 
 def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
@@ -2499,28 +2634,25 @@ def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
     return f"{_kinds.kind(kind).with_article} on {engine} does not run it"
 
 
-#: The role item no rung answers with ONE value: each point of the
-#: description's bias list is one device run and one transmission, written at
-#: that point (`engines/transport.md` § 2a.10) -- the catalogue's ``value`` is
-#: the list's first point, not a rung's answer.  A surface echoing the rung's
-#: answers shows this one's reason and no number (`form-schema.md` § 1.1).
-PER_POINT = frozenset({"bias_voltage_v"})
+def per_point_items() -> Dict[str, "Item"]:
+    """``{name: item}`` -- the `role` items no rung answers with ONE value,
+    each answered point by point from the description field its
+    ``per_point_from`` names (§ 5): the bias, each point of the bias list
+    one device run and one transmission (`engines/transport.md` § 2a.10) --
+    the catalogue's ``value`` is the list's first point, not a rung's
+    answer.  A surface echoing the rung's answers shows such an item's
+    reason and no number (`form-schema.md` § 1.1)."""
+    return {it.name: it for it in catalogue().items if it.per_point_from}
 
 
 def why_role(name: str) -> str:
     """Why nobody may set a `role` item -- the clause a refusal puts after
-    *"which the rung fixes"*."""
-    if name in PER_POINT:
-        return ("the bias is the description's bias list -- each rung writes "
-                "the point it runs, the device and the transmission alike "
-                "(engines/transport.md § 2a.10); change the list instead")
-    if name in ("write_forces", "write_coor_step"):
-        return ("every SIESTA run writes each step's forces and coordinates, "
-                "because molbuilder reads them back -- the relaxation "
-                "record, the trajectory and a vibration's finish "
-                "(engines/template.md § 6.4)")
-    return ("it is what makes the rung that rung -- a choice with one "
-            "correct answer (engines/template.md § 6.4)")
+    *"which the rung fixes"*: the item's own ``why_fixed`` (§ 5), else
+    `role`'s own reason."""
+    own = next((it.why_fixed for it in catalogue().items
+                if it.name == name and it.why_fixed), None)
+    return own or ("it is what makes the rung that rung -- a choice with "
+                   "one correct answer (engines/template.md § 6.4)")
 
 
 # --------------------------------------------------------------------- #

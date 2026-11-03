@@ -206,8 +206,8 @@ assumed is that reach.
   - `joblist` — each launch's address and whether that job is going (`write`, `every`, `going_here`, `signal_here`, `is_going`, `holding`, `inside`, `Asked`, `scheduler_of`; [`job-system.md`](?doc=execution/job-system.md) § 6.0a).
   - `jobset/ledger` (`record`) · `jobset/errors` (`PrepError`) · `jobset/machine` (`machine_record`, `set_machine`, `require_activation`) · `jobset/planned` (a plan's writes as values, `Plan`) · `jobset/sequence` (a sequence of groups' launch record: `write_record`, `read_record`, `sent`).
 - **Floor 2 — description.** `task` (`of`, `from_text`, `write_task`) · `job_request` (`of`) · `template_file` (`of`) · `runs`, the run door (`run_of`, `place_of`, `state_of`, `record_of`, `on_label_at`, `about`, `openable`, `declared`, `view_of`, `folder_answer`) · `task_reader` (the Results tab's reader of a transport calculation's description).
-- **Floor 3 — plan & render.** `calculation` (`open`, `at`, `Calculation.job`) · `resolve` · `jobset/model` (`JobSet.of`, `write`, `validate`, `gpu_request`) · `jobset/naming` (`stage_home`, `job_dir_names`, `stage_refs`, `run_names`, `open_container`) · `jobset/ladder` (`independent`, `inputs_of`, `upstream_of`, `stage_before`, `fresh_stages`) · `jobset/engines` (`engine_seam`) and each engine's seam (`siesta/seam`, `pyscf/seam`) · `jobset/placement` (`placed`, `queue_table`, `launch_refusal`) · `jobset/group` · `jobset/shelves` · `jobset/transport_rung` · `jobset/plan` · `jobset/commands` · `jobset/sweep_reader` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `script_emit` (`render_deck`, `prepare_deck`) · `runwrap` (`render_wrappers`, `write_run_wrapper`, `render_sbatch`).
-- **Floor 4 — layout.** `jobset/materialize` (`open_run`, `prepare_attempt`, `hand_over`, `latest_attempt`, `newest_launched`, `ever_launched`, `job_folder`, `scratch_in`) · `jobset/continuation` (`continuation_answer`, `usable`, `relaunch`, `point_rows`, `points_state`) · `jobset/gather` (`gather_sources`, `composed_for_prep`) · `jobset/ready` (`task_state`, `readiness`, `first_launch_takes`, `launched_without`, `regrouped`, `held_by_sequence`) · `jobset/reuse` (`decide`, `copy_in`, `takes_over`, `take_into`, `shared_into`) · `jobset/points` (`points_of`, `point_of`) and each kind's declaration (`jobset/transport_points`, `jobset/vibration_points`) · `jobset/prepared_with` (what a stage was prepared with, and what changed since: `values_of`, `changes`).
+- **Floor 3 — plan & render.** `calculation` (`open`, `at`, `Calculation.job`) · `resolve` · `jobset/model` (`JobSet.of`, `write`, `validate`, `gpu_request`) · `jobset/naming` (`stage_home`, `job_dir_names`, `stage_refs`, `run_names`, `open_container`) · `jobset/ladder` (`independent`, `inputs_of`, `upstream_of`, `stage_before`, `fresh_stages`) · `jobset/engines` (`engine_seam`) and each engine's seam (`siesta/seam`, `pyscf/seam`) · `jobset/placement` (`placed`, `queue_table`, `launch_refusal`) · `jobset/group` · `jobset/shelves` · `jobset/rung` (`Rung`, `described_rung`, `structure_for`, `citation_of`) and the SIESTA vibration's rung builder (`spectra/siesta_rung`) · `jobset/plan` · `jobset/commands` · `jobset/sweep_reader` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `script_emit` (`render_deck`, `prepare_deck`) · `runwrap` (`render_wrappers`, `write_run_wrapper`, `render_sbatch`).
+- **Floor 4 — layout.** `jobset/materialize` (`open_run`, `prepare_attempt`, `hand_over`, `latest_attempt`, `newest_launched`, `ever_launched`, `job_folder`, `scratch_in`) · `jobset/continuation` (`continuation_answer`, `usable`, `relaunch`, `point_rows`, `points_state`) · `jobset/gather` (`gather_sources`, `composed_for_prep`) · the transport calculation's rung builder (`transport/rung`), on this floor by what it holds — the gather's composed junction and a launched rung's records · `jobset/ready` (`task_state`, `readiness`, `first_launch_takes`, `launched_without`, `regrouped`, `held_by_sequence`) · `jobset/reuse` (`decide`, `copy_in`, `takes_over`, `take_into`, `shared_into`) · `jobset/points` (`points_of`, `point_of`) and each kind's declaration (`jobset/transport_points`, `jobset/vibration_points`) · `jobset/prepared_with` (what a stage was prepared with, and what changed since: `values_of`, `changes`).
 - **Floor 5 — launch.** `jobset/submit` (the one sender, `_go`; launch's entry, `plan_launch` and `send_launch`, lives in this module and is a conductor, § 2.2) · `jobset/agreement` (`check_trial_starts_cold`) · `jobset/ask`.
 - **Floor 6 — observe.** `jobset/runstatus` (`jobset_status`, `every_run`, `points_view`, `views_of`, `run_answer`, `render_status`, `render_stage_status`, `job_members`, `run_folders`, `scratch_answer`) · `jobset/summarize` (`run_summarize_jobset`) · `jobset/memory` (`need`, `largest`) · each kind's sum (`jobset/transport_sum`, `jobset/vibration_sum`).
 - **Floor 7 — surfaces.** `cli` · `jobset/_cli` · `jobs_cli` · `web`. The verbs: `molbuilder describe`, `molbuilder jobset {prep, launch, status, summarize, scratch, export, probe, machines, migrate}`, `molbuilder jobs {status, stop}`, and the web blueprints. Each appends its verb's decisions to the ledger, but prep's, launch's and migrate's, whose entries append them.
@@ -528,7 +528,7 @@ One line per fact; the detail is in the linked chapter.
 |---|---|---|---|
 | where a folder is | `calcdirs.where(folder)` → `Where`; a folder no calculation claims answers empty | 1 | [`project-layout.md`](?doc=execution/project-layout.md) § 1.4a |
 | what molbuilder writes, and what each file is | `runfiles.WRITTEN` — one row per file; a name composed by `runfiles.compose` and read back by `runfiles.parse` (A14) | 1 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1; [`project-layout.md`](?doc=execution/project-layout.md) § 5 |
-| what a calculation kind is, and what an engine is | `kind_table.kind(calculation)` → `CalculationKind`; `CalculationKind.on(engine)`; `engine_table.engine(name)` → `Engine` | 1 | § 3.3 |
+| what a calculation kind is, and what an engine is | `kind_table.kind(calculation)` → `CalculationKind`; `CalculationKind.on(engine)`, and why it does not run on one in the one sentence the engine tab, the web doors and `molbuilder describe` say (`why_not_on(engine)`, named by `engine_label`) — the description's reader keeps `on`'s own words, from the same record; `engine_table.engine(name)` → `Engine` | 1 | § 3.3 |
 | the order of a structure's atoms, and the way back | the structure's `atom_order`; `transport.sort.sort_by` into an engine's order, `Structure.restored()` back | 1 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
 | a run's order record | its deck's ATOM-METADATA block, through `runs.declared(run)` | 2 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
 
@@ -585,11 +585,16 @@ loads, and a name with no record is refused naming the file and the key.
   [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 rule 2), and it
   samples the transport axis with its own count, `electrode_kz`. **A kind with
   leads is open along the transport axis on every other rung**, one k-point
-  there ([`engines/siesta.md`](?doc=engines/siesta.md) § 6.1, `kmesh`). The
-  region's name is declared here, and `transport/sort.py` reads it here. The
-  page's label palette keeps its own copy of the two names
-  (`lib/molview/model-jobs.js` `PREDEFINED_LABELS`) — a second source until
-  the page reads them from the table ([`plans/plan.md`](?doc=plans/plan.md));
+  there ([`engines/siesta.md`](?doc=engines/siesta.md) § 6.1, `kmesh`). A
+  lead says what its label is for, in a sentence (`about`);
+- **the other labels its structure's atoms carry that it reads**, each with
+  its sentence (`regions`) — a transport calculation's `bridge` and `buffer`,
+  which place every atom with the leads
+  ([`engines/transport.md`](?doc=engines/transport.md) § 4). `transport/sort.py`
+  reads the leads' and these names here, and the server hands them, each with
+  its sentence, beside every structure MolView holds (`labels`,
+  `_shared.workspace_payload`): the label palette offers them, keeping no copy
+  ([`web/molview.md`](?doc=web/molview.md));
 - whether its deck relaxes the structure (`relaxes`), which the progress log
   seeded for its run reads as its targets;
 - the science checks its decks run before they are written, where it has its
@@ -605,9 +610,26 @@ loads, and a name with no record is refused naming the file and the key.
 - what its description carries beyond every kind's fields — a transport
   calculation cites a junction instead of holding a structure, states its
   voltages and may extend a finished calculation — and what its identity is
-  made of;
+  made of; the kind of run a citation is (`cited_kind`: a transport
+  calculation cites an optimization, whose order rule judges the cited
+  deck); and the code each shared door asks of a kind that cites or extends,
+  a part each *(names, the user 2026-11-02)*: the limits of extending a
+  finished calculation (`extension`, asked by Task setup's Save and its folder
+  answer where the description carries `reuses`), the frames its citation
+  holds (`cited_frames`, Task setup's frame set), the citation's atom order
+  recorded at a prep that names no group (`order_record`), and what a prep
+  copies in from the calculation it extends and what each of its points
+  computes (`reuse`, a module named whole, as `export` is) — so no shared
+  door imports the kind's modules.  The one fact the conductor still carries
+  is the reuse part's decision, handed to every rung builder alike and read
+  by the kind's own; launch's calls into the kind's reuse and gather are the
+  next design (F3-L);
+- its description's own checks, before any deck is written, where it has its
+  own (`description_checks`, a part, resolved by the description's check,
+  `validation.task.preflight`) — a transport calculation's bias list against
+  its setting, its window against the largest voltage;
 - the charge it fixes, where it fixes one, and why — a transport junction is
-  neutral;
+  neutral, and net charge and gating are deferred by ruling;
 - why it takes no benchmark, where it takes none (`no_benchmark`) — a
   transport calculation's one axis is its bias list;
 - which tab hands it over to Task setup (`web/tabs.py`'s key), or that it
@@ -642,7 +664,17 @@ loads, and a name with no record is refused naming the file and the key.
 - for a linked kind whose rungs take inputs, which rung hands which file to
   which, and the gather that takes them at a first launch (parts); for one
   whose stage continues from another, which stage (`continues`);
-- the builder of its rung, for a pair with steps of its own (`rung`, a part);
+- the builder of its rung, for a pair with steps of its own (`rung`, a part
+  in the kind's own package — `transport/rung.py`, `spectra/siesta_rung.py`;
+  what every builder shares, the `Rung` and the structure step, is
+  `jobset/rung.py`'s, so no builder imports the conductor);
+- the order its decks list atoms in, where it is not the structure's own
+  (`atom_order`: a SIESTA vibration's held atoms first, `held-first`; a
+  transport calculation's TranSIESTA order, `transport`) — a word of
+  `atom_permutation`'s, checked when the table loads, asked by prep, the run
+  door and the working copy alike (`kind_table.atom_order`);
+- the line Status shows about a rung's scratch folder, for a pair whose rung
+  keeps one (`scratch_status`, a part — a transport device's lead files);
 - what `summarize task` adds up for it, and the options that summary reads (a
   part) — a transport calculation's current against voltage, a SIESTA
   vibration's displacement sweep with its `--tolerance-cm1`;
@@ -736,7 +768,14 @@ row in each.
   `parse/engines/`, `parse/coords/`, and `kmesh.py` (SIESTA's k-point grids);
 - **a kind's own modules choose by engine, and refuse another kind at their
   doors** — `transport/` and `validation/transport.py`; the vibration's
-  `spectra/` and `validation/spectra.py`;
+  `spectra/` and `validation/spectra.py`. **A kind's own module is one its
+  entry names, or one only its entry's parts call**, and it lives on the
+  floor of what it holds: `jobset/transport_points.py`, `jobset/reuse.py` and
+  `jobset/gather.py` are transport's, `jobset/vibration_points.py` the
+  vibration's; only their shared callers ask the record — the conductor,
+  describe and Task setup do (the four description parts); launch
+  (`jobset/submit`) still calls transport's reuse and gather by name, its
+  own parts the next design's (plan § 1am, F3-L);
 - **`jobset migrate`'s rewrites of an older molbuilder's files** — each names
   the version and the layout it rewrites.
 

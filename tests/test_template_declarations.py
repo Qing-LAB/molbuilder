@@ -175,7 +175,7 @@ def test_pyscf_renders_a_template_at_all():
     """The template is the single source of truth, so PySCF must produce
     one."""
     from molbuilder.template import template_with_values, read_template
-    t = read_template(template_with_values(PySCFConfig(), engine="pyscf"))
+    t = read_template(template_with_values(PySCFConfig(), engine="pyscf", calculation="optimization"))
     assert len(t.items) > 30
     assert all(i.category for i in t.items)
 
@@ -236,7 +236,7 @@ def test_the_calculation_kind_filters_the_generated_template():
     from molbuilder.config.pyscf import PySCFConfig
 
     cfg = PySCFConfig(job_name="X")
-    opt = T.template_with_values(cfg, engine="pyscf")
+    opt = T.template_with_values(cfg, engine="pyscf", calculation="optimization")
     vib = T.template_with_values(cfg, engine="pyscf",
                                  calculation="vibration")
     for name in ("already_relaxed", "compute_raman", "es_mode_selection"):
@@ -334,6 +334,29 @@ _REFUSED_AT_LOAD = [
     pytest.param("mpi_np", r'^engines = \["siesta"\]$',
                  'engines = ["siesta", "pyscf"]', "one_process",
                  id="rank-count-for-one-process"),
+    # "SET" IS AN OPTIONAL SETTING'S STATE: on one that always holds a value
+    # it would always hold, and the item would never be greyed (2.65.0).
+    pytest.param("relax_steps", r'^active_when = \{ relax_type = .*\}$',
+                 'active_when = { relax_type = "set" }', "is not optional",
+                 id="active-when-set-on-a-setting-always-set"),
+    # A SHARED ITEM SAYS WHY ITS STAGES HOLD ONE VALUE -- one of `shared`'s
+    # own rules, or its own words -- and a reason belongs to the rule it
+    # explains: why it is shared on a shared item, why it is fixed on a
+    # fixed one, where its per-point value comes from on a fixed one.
+    pytest.param("basis_size", r'^why_shared = .*\n', "", "own `why_shared`",
+                 id="shared-with-no-reason"),
+    pytest.param("relax_steps", r'^type = "int"$',
+                 'type = "int"\nwhy_shared = "x"', "is a `shared` item's",
+                 id="why-shared-on-an-item-not-shared"),
+    pytest.param("basis_size", r'^anchor = ', 'why_fixed = "x"\nanchor = ',
+                 "a `role` item's", id="why-fixed-on-an-item-not-fixed"),
+    pytest.param("bias_voltage_v", r'^per_point_from = "bias"$',
+                 'per_point_from = "voltage"', "is no field",
+                 id="per-point-value-from-no-field"),
+    # ...and a per-point value answers the rungs it names: with none, it
+    # answers nothing, and the sweep runs once in silence.
+    pytest.param("bias_voltage_v", r'^stages = \["device", "transmission"\]\n',
+                 "", "names no `stages`", id="per-point-value-on-no-rung"),
 ]
 
 

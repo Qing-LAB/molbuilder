@@ -710,7 +710,8 @@
     /* A FIELD THAT ENTERS ONLY UNDER OTHER FIELDS' VALUES (`active_when`,
      * form-schema.md § 1.3; the catalogue's, `engines/template.md` § 5):
      * drawn greyed out while any named field holds another value -- a blank
-     * field holding its default -- and followed as they change.  A named
+     * field holding its default -- or, where the field waits on one being
+     * "set", while it holds none; followed as they change.  A named
      * field is looked for in this part, then in the parts the page draws
      * with it (`opts.alongside`, each {host, schema}: the Spectrum tab's
      * engine part beside the shared part, where *Compute Raman* is); a name
@@ -750,8 +751,13 @@
         };
         const apply = () => {
             for (const f of waiting) {
-                const on = Object.keys(f.active_when).every((name) =>
-                    f.active_when[name].some((v) => same(valueOf(name), v)));
+                const on = Object.keys(f.active_when).every((name) => {
+                    const wants = f.active_when[name];
+                    const v = valueOf(name);
+                    return wants === "set"
+                        ? v !== null && v !== undefined && v !== ""
+                        : wants.some((w) => same(v, w));
+                });
                 const box = container.querySelector("#" + cssEsc(f.id));
                 const wrap = box && box.closest(".schema-field");
                 if (!wrap) continue;

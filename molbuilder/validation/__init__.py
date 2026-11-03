@@ -244,12 +244,14 @@ def validate(struct: Structure, cfg, *,
     # displacement SIESTA divides by.  Reported after the metadata's own, in
     # the order this function has always emitted.
     refusals = _check_values(cfg, calculation, engine)
+    refused = frozenset(i.where.split(".", 1)[1] for i in refusals)
     # ...AND WHAT ENTERS NOTHING HERE -- a greyed-out field's (`engines/
     # template.md` § 5, `active_when`): said once below, and no advice is
-    # given about it -- no recommended range, no probe's displacement.
-    inactive = _inactive(cfg, calculation, engine)
+    # given about it -- no recommended range, no probe's displacement.  A
+    # value refused, and a setting waiting on it, draw that refusal alone.
+    inactive = _inactive(cfg, calculation, engine, refused=refused)
     issues += _validate_config_metadata(
-        cfg, refused={i.where.split(".", 1)[1] for i in refusals},
+        cfg, refused=refused,
         foreign=not_carried_by(engine, calculation), inactive=frozenset(inactive))
     # WHAT EVERY RUNG FIXES ALIKE (`engines/template.md` § 6.4): a config
     # that skipped `resolve` holds whatever its caller put there.
@@ -300,8 +302,7 @@ def validate(struct: Structure, cfg, *,
     # ...AND WHAT THE ONE PER-VALUE DOOR REFUSED, so a check on a value
     # built from a refused one stands aside: a value refused draws that
     # refusal alone (`engines/template.md` § 5.3).
-    engine_kw["refused"] = frozenset(i.where.split(".", 1)[1]
-                                     for i in refusals)
+    engine_kw["refused"] = refused
     engine_kw["inactive"] = frozenset(inactive)
     # The KIND rides along so an engine validator can defer a family the
     # kind's own science owns (the double-fire dedup, ruled 2026-08-21:

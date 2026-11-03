@@ -82,6 +82,31 @@ def test_the_force_constant_deck_nudges_the_free_range_only(tmp_path,
         assert scalars.get(fdf_key(key)) == ["geometry"], key
 
 
+def test_each_phase_s_record_lists_what_its_role_reads(tmp_path,
+                                                       monkeypatch):
+    """A phase is one role of its step's run, and what its record shows is
+    what that role reads (`template.reads`, the phase's role;
+    `running-a-job.md` row 16): the relaxation's step count in the
+    relaxation's, the displacement in the force constants'.  Read as the
+    Results tab reads it, through the road -- the run door's `record` at
+    prep, from the deck each phase was written with.  What each phase's
+    fence lists at launch is `test_effective_parameters_record.py`'s, by
+    its role (the phase rows)."""
+    from molbuilder.runs import folder_answer
+    from support.road import CO2, describe_calculation, group_words, jobset
+    bundle = describe_calculation(tmp_path, monkeypatch, name="CO2",
+                                  calculation="vibration", structure=CO2)
+    r = jobset("prep", "task", *group_words(bundle, "freq"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    for phase, listed, never in (("relax", "relax_steps", "fc_displacement"),
+                                 (FC_PART, "fc_displacement", "relax_steps")):
+        folder = bundle / "01_freq" / "run-0" / phase
+        record = folder_answer(folder)["record"]
+        said = {row["item"] for row in record["setup"]["rows"]}
+        assert listed in said and never not in said, (phase, sorted(said))
+
+
 #: (the person's values, the charges' keywords in the fc deck, an optical
 #: phase prepared) -- `engines/vibration.md` § 3.1, § 5.3, § 5.11 § 9.
 _SWITCH_ROWS = [

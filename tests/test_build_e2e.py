@@ -1173,8 +1173,8 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
         // `input` ALONE on the way up, `change` alone on the way back down
         // (see the reset below).  Each listener is proved separately because
         // they answer different writers: a person types (input), while the
-        // compatibility engine and the session restore write the form
-        // without a keystroke and fire change.  A panel wired to only one of
+        // session restore writes the form without a keystroke and fires
+        // change.  A panel wired to only one of
         // them shows a stale count exactly when it matters.
         num.dispatchEvent(new Event("input", {bubbles: true}));
         // The panel tags each row's checkbox with the SCHEMA field name,

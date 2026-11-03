@@ -1023,14 +1023,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="setup", level="calculation", kind="input",
              writer="the hand-over and `molbuilder describe` "
                     "(`StructureCodec.source_files`)",
-             door="jobset.prep._structure_for",
+             door="jobset.rung.structure_for",
              listed_by="user_index"),
     Artifact(".source.molstruct.json", "its cell and its region labels",
              staged=False,
              when="setup", level="calculation", kind="input",
              writer="the hand-over and `molbuilder describe` "
                     "(`StructureCodec.source_files`)",
-             door="jobset.prep._structure_for",
+             door="jobset.rung.structure_for",
              listed_by="user_index"),
     # THE DECK'S COMPANION REPORT: a file molbuilder writes and does not
     # declare reads as ENGINE OUTPUT.

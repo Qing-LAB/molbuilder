@@ -48,7 +48,21 @@
 # (`kind_table.export_of`; `jobset export`).
 #
 # A part's `relaxation`: what relaxes the structure first, in a person's
-# words, where the pair relaxes before it measures.
+# words, where the pair relaxes before it measures.  Its `atom_order`: the
+# order its decks list atoms in, where it is not the structure's own -- a
+# word of `atom_permutation`'s (a lead's deck, a structure of its own, keeps
+# its own).  Its `scratch_status`: the line Status shows about a rung's
+# scratch folder, a part, for a pair whose rung keeps one.
+#
+# A kind's `description_checks`: its description's own checks before any
+# deck is written, a part (`validation.task.preflight` runs them).  Its
+# description's `cited_kind`: the kind of run a citation is; and the parts
+# the shared doors ask of a kind that cites or extends -- `extension` (the
+# limits of extending a finished calculation), `cited_frames` (the frames
+# its citation holds), `order_record` (the citation's atom order recorded
+# at a prep that names no group), `reuse` (what a prep copies in from the
+# calculation it extends and what each point computes, a module named
+# whole).
 #
 # A part's `words`: the engine's own name for the kind, where it has one --
 # the program that runs it on that engine.
@@ -61,7 +75,11 @@
 # are on that region's name, it samples the transport axis with its own
 # count, and a kind with leads is open along that axis on every other rung
 # (`execution/architecture.md` § 3.3).  The region's name has this one home
-# (`transport/sort.py` reads it), and a lead's name is no other kind's role.
+# (`transport/sort.py` reads it), and a lead's name is no other kind's role;
+# a lead says what its label is for (`about`), the sentence the label
+# palette shows beside it.  A kind's `regions`: the other labels its
+# structure's atoms carry that it reads, each with its sentence -- served,
+# with the leads', beside every structure MolView holds.
 # How a pair's stages play the roles (`stage_roles`): "own", its stages are
 # its rungs -- every role, in order, a stage's role its name, which fixes
 # them; "every", each stage every role; or the list of roles each stage
@@ -117,10 +135,13 @@ results = [
 # Its one stage is one run in three phases, and carries every phase's role
 # (`engines/vibration.md` § 5.11 § 9).
 stage_roles = "every"
+# Its decks list the held atoms first, the force-constant run's order
+# (`engines/vibration.md` § 5.2).
+atom_order = "held-first"
 # ...in one stage, `freq`, the harmonic analysis -- a new description's.
 ladder = ["freq"]
 relaxation = "The run's own relaxation (its `relax` phase)"
-rung = "molbuilder.jobset.prep:siesta_vibration_rung_of"
+rung = "molbuilder.spectra.siesta_rung:siesta_vibration_rung_of"
 # A displacement sweep's later stage continues from the first, whose
 # relaxation it takes over (`engines/vibration.md` § 5.9).
 continues = "molbuilder.siesta.vibration_phases:continues_from"
@@ -160,8 +181,8 @@ topic = "transport"
 no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json (engines/transport.md 2a.10)"
 roles = [
     { name = "seed",         computes = "scf" },
-    { name = "electrode_L",  computes = "scf", lead = "L-electrode" },
-    { name = "electrode_R",  computes = "scf", lead = "R-electrode" },
+    { name = "electrode_L",  computes = "scf", lead = "L-electrode", about = "the left lead: bulk metal layers, FROZEN during relaxation, at bulk positions. Transport extracts the left electrode cell from exactly these atoms -- label only the bulk-like block, not the surface layers" },
+    { name = "electrode_R",  computes = "scf", lead = "R-electrode", about = "the right lead: same rules as L-electrode, other end of the junction" },
     { name = "device",       computes = "scf" },
     # TBtrans writes no file a viewer reads on its own: the run's folder
     # opens the calculation's report at its point.
@@ -170,6 +191,16 @@ roles = [
 # Its report is composed on read from its folder (engines/transport.md
 # § 2a.12), opened through its description at the root.
 root_opens = "description"
+# The labels besides the leads its sort reads -- every atom is a lead's, the
+# bridge's or the buffer's (engines/transport.md § 4).
+regions = [
+    { name = "bridge", about = "the scattering region: the molecule plus the relaxed surface layers between the leads -- where the metal-molecule chemistry is computed. Every atom that is not lead or buffer belongs here" },
+    { name = "buffer", about = "optional: atoms excluded from the transport region entirely, padding beyond the electrode blocks at the outer ends. Most junctions need none" },
+]
+# Its description's own checks: the bias list against its setting, the
+# transmission window against the largest voltage (engines/transport.md
+# § 2a.10).
+description_checks = "molbuilder.validation.transport:check_description"
 # Its science: the pole energy against the temperature, the transmission
 # window against the bias, no vacuum where the crystal continues
 # (engines/transport.md § 6.1c).
@@ -178,7 +209,7 @@ export = "molbuilder.transport.export"
 
 [transport.charge]
 value = 0
-why = "a transport junction is neutral: its boundaries are open, so the electrodes' chemical potentials set its electron number"
+why = "a transport junction is neutral: its boundaries are open, so the electrodes' chemical potentials set its electron number; net charge and gating are deferred by ruling (engines/transport.md 2a.7)"
 
 [transport.description]
 # Its relaxed junction, cited (engines/transport.md § 3.1); the electrode
@@ -186,13 +217,25 @@ why = "a transport junction is neutral: its boundaries are open, so the electrod
 # calculation it extends (§ 2a.16).
 cites = "junction"
 carries = ["swap_electrodes", "bias", "reuses"]
+# A finished relaxation is what it cites (§ 3.1), so the cited deck is
+# judged by an optimization's order rule.
+cited_kind = "optimization"
+extension = "molbuilder.transport.reuse:Extension"
+cited_frames = "molbuilder.transport.compose:cited_frames"
+order_record = "molbuilder.jobset.gather:order_record"
+reuse = "molbuilder.jobset.reuse"
 
 [transport.on.siesta]
 words = "TranSIESTA"
 # Its stages are its rungs, every one, in order (the seed among them: the
 # device starts from its density, user 2026-10-12).
 stage_roles = "own"
-rung = "molbuilder.jobset.prep:transport_rung_of"
+rung = "molbuilder.transport.rung:transport_rung_of"
+# Its junction rungs' decks list atoms in TranSIESTA's order, the electrode
+# blocks placed (engines/transport.md § 4).
+atom_order = "transport"
+# The device keeps its leads' surface Green's functions in a scratch folder.
+scratch_status = "molbuilder.transport.gf_files:status_line"
 # Which rung hands which file to which (the ladder's DAG), and the gather
 # that takes them at a rung's first launch (engines/transport.md § 6.1).
 inputs = "molbuilder.transport.stages:inputs_of"

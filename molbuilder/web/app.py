@@ -622,11 +622,15 @@ def create_app(*, config=None) -> Flask:
     def transport_calculation_page():
         # THE ENGINE STRIP, one tab per engine (`engines/transport.md`
         # § 3.8.8): the first that runs transport is the panel described on.
+        from molbuilder.transport.sort import ELECTRODE_LABELS
         from molbuilder.transport.stages import engine_tabs
         engines = engine_tabs()
         live = next(i for i, e in enumerate(engines) if e["runs"])
+        # ITS LEADS, low z first, as the sort places them (the kind table's
+        # names) -- the page spells none.
+        leads = list(ELECTRODE_LABELS)
         return render_template("transport_calculation.html",
-                               engines=engines, live=live)
+                               engines=engines, live=live, leads=leads)
 
     @app.route("/documents")
     def documents_page():

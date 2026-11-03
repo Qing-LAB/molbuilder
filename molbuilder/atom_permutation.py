@@ -5,7 +5,7 @@ ROLE    the order record -- the class every reader crosses with, its one dict
         reader, the sort keys' names (`model/overview.md` § 2.2a)
 USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
         (the keys, and the record it sorts by), deck_record.py (a deck's
-        record, read by ``order_record_of``), jobset/transport_rung.py (its
+        record, read by ``order_record_of``), transport/rung.py (its
         refusal), spectra/vibrational_analysis.py and
         spectra/siesta_vibration.py (read it back, beside the job)
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration

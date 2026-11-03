@@ -1964,7 +1964,7 @@ def cmd_frameset_from_mode(run, mode, temperature, nodes, out):
         molbuilder frameset from-mode P/spectrum/V/01_freq/run-0 \\
             --mode 7 --temperature 300 --out P/structure/mode7.xyz
     """
-    from .mode_frames import FrameSetError, frameset_from_mode
+    from .spectra.mode_frames import FrameSetError, frameset_from_mode
     from .projects import projects_root
     try:
         got = frameset_from_mode(run, mode=mode, temperature_k=temperature,

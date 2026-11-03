@@ -20,7 +20,11 @@ spectra migration's P0–P2
 ([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)).
 **Transport never joined, by design** (resolved 2026-08-29): the composite
 leaves no question open for Task setup to answer, so its tab describes
-directly — no hand-over exists for it (see the closing section).
+directly — no hand-over exists for it (see the closing section). **Which a kind does is
+its entry's** — a `handover` names the tab that hands it over; a kind with
+none describes on its own tab — and the shared library the tabs send through
+(`lib/task-handover.js`) compares no kind: the calling tab hands it the door
+it writes through and the fields its kind's description carries (2.65.0).
 
 ---
 
@@ -54,6 +58,11 @@ flowchart LR
   T -->|"save: task.from_text validates"| D
   T -.->|"projects.deleteEntry, after"| W
 ```
+
+**Before step 1 — what the door needs.** A description is *of* a structure,
+so a Send with none loaded sends nothing and says *"Load a structure first — a
+description is of something."* — the hand-over door's own words, which the
+library asks of every door it is handed (`needs`) before anything is sent.
 
 **Step 1 — render.** The server turns the collected values into the texts and
 **returns them**. It writes nothing. Two of them can only be made here:

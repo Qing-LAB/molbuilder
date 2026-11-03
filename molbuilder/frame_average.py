@@ -17,7 +17,7 @@ ROLE    the post-process over a multi-frame transport calculation, kept out of
         maker writes its rows in: the vocabulary's page words and meanings
         (:data:`ROWS`) and what a harmonic mode's average assumes
         (:data:`ASSUMPTIONS`)
-USED-BY the frame generator (`mode_frames`: the vocabulary it writes in),
+USED-BY the frame generator (`spectra.mode_frames`: the vocabulary it writes in),
         the transport record (`transport.record`), the data file
         (`transport.datafile`), the describe door and Task setup's folder
         answer (`web/blueprints/transport.py`, `web/blueprints/build.py`)

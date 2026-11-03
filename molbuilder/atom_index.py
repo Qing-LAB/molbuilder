@@ -94,7 +94,7 @@ def _of_folder(folder: Path) -> AtomIndexMap:
             if len(runs) > _RUNS_NAMED else "")
     raise AtomIndexUnknown(
         f"{folder.resolve().name} is no run's folder: each run lists its atoms by its "
-        f"own deck (an electrode rung's cell is a structure of its own) -- "
+        f"own deck -- "
         + (f"name one of its runs: {named}{more}" if runs
            else "name a run folder or a file"))
 
@@ -114,14 +114,6 @@ def _runs_under(folder: Path) -> List[Path]:
     return found
 
 
-def _stage_name(stage: Optional[str]) -> Optional[str]:
-    """A stage's name from its folder's token (``02_electrode_L`` →
-    ``electrode_L``), a name as it is."""
-    from .identity import parse_token
-    got = parse_token(stage) if stage else None
-    return got[1] if got else stage
-
-
 def _of_run(p: Path, folder: Path) -> AtomIndexMap:
     """The map of the run that holds ``p`` -- its deck's (F3): the file's
     own run (`runs.run_of`), a point's ``shared/`` folder the point's.  A lead's file gathered into another rung's run is that lead's
@@ -136,15 +128,18 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
     run = (run_of(p) if point == folder else None) or run_of(point)
     task = (run.place if run is not None else place_of(point)).task
     if task is not None:
+        from .identity import stage_name
+        from .kind_table import own_structure
         for stage in kind(task.calculation).leads:
             # A LEAD'S FILE, read back with the lead's own label
             # (`runfiles.parse`, `kind_table.rung_label`) -- never told by
             # how its name begins.
             if (read_name(p.name, rung_label(task.label, stage)) is not None
-                    and (run is None or _stage_name(run.stage) != stage)):
+                    and (run is None or stage_name(run.stage) != stage)):
                 raise AtomIndexUnknown(
                     f"{p.name} is the {stage} rung's file, gathered here: "
-                    f"its electrode cell is a structure of its own "
+                    f"its cell is "
+                    f"{own_structure(task.calculation, stage)} "
                     f"(model/overview.md 2.2a, I6) -- its atoms are "
                     f"answered by {_lead_run_words(p, point, stage)}")
     if run is None:
@@ -159,9 +154,10 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
 
 
 def _no_run_words(p: Path, folder: Path, task) -> str:
-    """Why no run answers ``p``, by where it lies: a lead's surface Green's
-    function kept as a run's scratch -- its electrode's orbitals, a
-    structure of its own (I6); an input a run of points keeps once, in its
+    """Why no run answers ``p``, by where it lies: an engine's scratch, which
+    every run recomputes and which lists no atom of the structure (I6) -- a
+    lead's surface Green's function, an optical call's imaginary-part
+    contributions; an input a run of points keeps once, in its
     attempt -- its points named; a calculation's or a stage's own file --
     the runs that answer named; a file no calculation of ours claims."""
     from .calcdirs import ATTEMPT
@@ -170,10 +166,9 @@ def _no_run_words(p: Path, folder: Path, task) -> str:
     if task is None:
         return f"{p.name} states no atom index map, and no run of ours holds it"
     if is_scratch(p.name):
-        return (f"{p.name} is a lead's surface Green's function, its run's "
-                f"scratch: its electrode's orbitals, a structure of its own "
-                f"(model/overview.md 2.2a, I6) -- it names no atom of the "
-                f"junction")
+        return (f"{p.name} is the engine's scratch, recomputed by every run "
+                f"(model/overview.md 2.2a, I6) -- it lists no atom of the "
+                f"structure")
     runs = _runs_under(folder)
     named = ", ".join(str(r.relative_to(folder)) for r in runs[:_RUNS_NAMED])
     if place_of(folder).where.what == ATTEMPT and runs:
@@ -315,8 +310,13 @@ def _of_deck(deck: Path) -> Optional[AtomIndexMap]:
     place = place_of(deck.parent)
     if not place.ours:
         return None
-    stage = _stage_name(place.where.stage)
-    kind = "optimization" if deck.name == JUNCTION_CITED_FILE else None
+    from .identity import stage_name
+    stage = stage_name(place.where.stage)
+    # THE CITED DECK is judged by the kind its citation is a run of -- the
+    # citing kind's ``cited_kind`` (the kind table's).
+    from .kind_table import kind as _kind
+    kind = (_kind(place.task.calculation).description.cited_kind
+            if deck.name == JUNCTION_CITED_FILE else None)
     try:
         atoms = deck_atom_index_map(
             declared_of_deck(deck, place.task, stage, kind=kind),

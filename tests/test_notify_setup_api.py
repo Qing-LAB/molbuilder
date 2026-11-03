@@ -925,6 +925,33 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
     assert "per_iter_s" in offered_somewhere[("pyscf", "optimization")]
     assert "geom_step" not in offered_somewhere[("siesta", "transport")]
     assert "max_force" in offered_somewhere[("siesta", "transport")]
+    # A RUN OF POINTS' OWN FIELDS are offered for exactly the pairs that run
+    # points (`execution/runs-of-points.md`): a SIESTA vibration's phases and
+    # a transport calculation's voltages.
+    for (engine, calculation), offered in offered_somewhere.items():
+        has = (engine, calculation) in {("siesta", "vibration"),
+                                        ("siesta", "transport")}
+        for name in ("call_elapsed_s", "units_left", "left_at_pace_s"):
+            assert (name in offered) == has, (engine, calculation, name)
+
+
+def test_a_report_field_naming_no_kind_of_the_tables_is_refused_by_name(
+        monkeypatch):
+    """The kinds and engines a report field names are the tables'
+    (`execution/architecture.md` § 3.3): checked where a field is asked on
+    this machine, a stray name refused naming the field.
+
+    THE SILENT FAILURE: a field naming a kind the table renamed, offered
+    for no calculation and never said."""
+    import dataclasses
+    from molbuilder import report_fields as R
+    from molbuilder.kind_table import KindTableError
+    stray = dataclasses.replace(R.FIELDS[0], calculations=("no_such_kind",))
+    monkeypatch.setattr(R, "FIELDS", (*R.FIELDS, stray))
+    monkeypatch.setattr(R, "_CHECKED", False)
+    with pytest.raises(KindTableError) as got:
+        R.for_run("siesta", "optimization")
+    assert stray.name in str(got.value) and "no_such_kind" in str(got.value)
 
 
 # --------------------------------------------------------------------- #

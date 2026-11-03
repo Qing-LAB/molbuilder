@@ -342,9 +342,10 @@ def _resolve_bundle_may_be_new(ctx, param, value):
     return _resolve_bundle(ctx, param, value, must_exist=False)
 
 
-def _junction_slot(slots_opt, root):
+def _junction_slot(slots_opt, root, *, slot: str):
     """``(citation, its path, the citation classified)`` -- the one slot a
-    transport calculation takes, ``--slot junction=<path>`` (spelled
+    citing kind takes, its record's ``description.cites`` -- a transport
+    calculation's ``--slot junction=<path>`` (spelled
     NAME=PATH, from the projects root or absolute inside it), fenced to the
     tree and classified through the door prep composes through
     (`compose.resolve_citation`): a citation that cannot compose is refused
@@ -364,19 +365,19 @@ def _junction_slot(slots_opt, root):
                 f"-- a finished relaxation run's folder, or a structure "
                 f"pair's .xyz (engines/transport.md § 3.1).")
         slots[name_] = cite
-    if set(slots) != {"junction"}:
+    if set(slots) != {slot}:
         raise click.ClickException(
-            "a transport calculation takes exactly one slot, `junction` "
-            "-- the relaxed junction it composes from: a finished "
-            "relaxation run of molbuilder's own, or a structure pair that "
-            "records its optimization (engines/transport.md § 3.1).")
-    raw = _P(slots["junction"]).expanduser()
+            f"this calculation takes exactly one slot, `{slot}` -- the "
+            f"relaxed junction it composes from: a finished relaxation run "
+            f"of molbuilder's own, or a structure pair that records its "
+            f"optimization (engines/transport.md § 3.1).")
+    raw = _P(slots[slot]).expanduser()
     if raw.is_absolute():
         try:
             raw = raw.resolve().relative_to(root)
         except ValueError:
             raise click.ClickException(
-                f"--slot junction={slots['junction']}: {raw} is not inside "
+                f"--slot {slot}={slots[slot]}: {raw} is not inside "
                 f"the projects tree ({root}); give its path from the tree's "
                 f"root.")
     try:
@@ -389,7 +390,7 @@ def _junction_slot(slots_opt, root):
     return str(resolved.relative_to(root)), resolved, cited
 
 
-def _init_transport(*, out_dir, run_name, engine, slots_opt,
+def _init_transport(*, rec, out_dir, run_name, engine, slots_opt,
                     bias_opt, structure, psml_lib, vacuum,
                     low_bias_approximation=None,
                     stage_strategy) -> None:
@@ -409,29 +410,30 @@ def _init_transport(*, out_dir, run_name, engine, slots_opt,
     from ..describe import DescribeError
     from ..task import Task, derive_run, fresh_varies
 
-    for given, flag, why in (
-            (structure, "--structure", "its structure IS the junction "
-             "citation, copied in at prep"),
-            (vacuum, "--vacuum", "the cell comes with the cited junction"),
-            (stage_strategy, "--stage-strategy", "the composite's five "
-             "stages are fixed by design (seed, electrode_L, electrode_R, "
-             "device, transmission)")):
-        if given is not None and given != ():
-            raise click.ClickException(
-                f"{flag} does not apply to a transport calculation -- "
-                f"{why} (engines/transport.md § 3.1).")
-    # THE ONE SENTENCE every door refuses an engine with (`transport.stages.
-    # why_no_transport`, `engines/transport.md` § 3.8.8).
-    from ..transport.stages import why_no_transport
-    no = why_no_transport(engine)
+    # THE ENGINE IT RUNS ON, refused in the one sentence the tab and the
+    # web doors say (`CalculationKind.why_not_on`, `engines/transport.md`
+    # § 3.8.8); its stages, fixed.
+    no = rec.why_not_on(engine)
     if no:
         raise click.ClickException(f"engine {engine!r}: {no}.")
+    part = rec.on(engine)
+    for given, flag, why in (
+            (structure, "--structure", f"its structure IS the "
+             f"{rec.description.cites} citation, copied in at prep"),
+            (vacuum, "--vacuum", "the cell comes with the cited junction"),
+            (stage_strategy, "--stage-strategy", f"its stages are fixed by "
+             f"design ({', '.join(part.stages or ())})")):
+        if given is not None and given != ():
+            raise click.ClickException(
+                f"{flag} does not apply to {rec.with_article} -- "
+                f"{why} (engines/transport.md § 3.1).")
 
     # THE CITATION DOOR prep composes through (`_junction_slot`).
     from ..projects import projects_root
     from ..transport.compose import CitedPair, ComposeError
     root = _P(projects_root()).expanduser().resolve()
-    citation, resolved, cited = _junction_slot(slots_opt, root)
+    citation, resolved, cited = _junction_slot(
+        slots_opt, root, slot=rec.description.cites)
     pair = isinstance(cited, CitedPair)
     from ..transport.compose import refuse_inside_citation
     try:
@@ -444,18 +446,18 @@ def _init_transport(*, out_dir, run_name, engine, slots_opt,
     # an empty list a reader has to fill in (2026-10-18).
     bias = _bias_of(bias_opt) if bias_opt else (0.0,)
 
-    # THE LADDER IS THE KIND'S: its five rungs in dependency order, every
-    # one, through the one door both describe roads take
-    # (`transport.stages.stages_for_transport`).
-    from ..transport.stages import stages_for_transport
-    stages = tuple(stages_for_transport(engine))
+    # THE LADDER IS THE PAIR'S: its fixed stages in dependency order, every
+    # one, through the one door every describe road takes
+    # (`jobset.ladder.fresh_stages`).
+    from .ladder import fresh_stages
+    stages = fresh_stages(rec.name, engine)
     try:
         task = Task(
             engine=engine,
             run=derive_run(run_name, citation,
                            stage_names=tuple(s.name for s in stages)),
-            structure=None, calculation="transport",
-            slots={"junction": citation}, bias=bias,
+            structure=None, calculation=rec.name,
+            slots={rec.description.cites: citation}, bias=bias,
             low_bias_approximation=low_bias_approximation,
             varies=fresh_varies(stages), stages=stages)
     except ValueError as exc:
@@ -562,8 +564,8 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
     from ..describe import DescribeError, Description
     from ..issues import ValidationError
     from ..projects import projects_root
+    from ..kind_table import kind as _kind
     from ..transport.reuse import ReuseError, reused, write_reusing
-    from ..transport.stages import why_no_transport
     from ..validation.task import refuse_on_error
     if refused:
         flag, why = next(iter(refused.items()))
@@ -589,13 +591,20 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
     elif low_bias_approximation is not None:
         said = {"low_bias_approximation": low_bias_approximation}
     engine = engine or finished.task.engine
-    no = why_no_transport(engine)
+    rec = _kind(finished.task.calculation)
+    # THE KIND'S OWN REUSE, the one part this road asks (its description's
+    # `reuse`; a kind that carries `reuses` names one, `kind_table`).
+    from ..kind_table import description_part
+    _reuse = description_part(rec.name, "reuse")
+    no = rec.why_not_on(engine)
     if no:
         raise click.ClickException(f"engine {engine!r}: {no}.")
     # A FRAME SET OF THE SAME JUNCTION, cited in its place (§ 2a.16,
     # `reuse.citing`); whether its first frame is the finished junction is
     # the writer's question (`write_reusing`).
-    junction = _junction_slot(slots_opt, root)[0] if slots_opt else None
+    junction = (_junction_slot(slots_opt, root,
+                               slot=rec.description.cites)[0]
+                if slots_opt else None)
     try:
         task = dataclasses.replace(
             finished.task, reuses=citation, engine=engine, **said)
@@ -614,17 +623,17 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
         # (`engines/transport.md` § 2a.16).
         from ..task import Stage
         from ..transport.window import fitted
-        from .reuse import SHARING_RUNG, finished_window
+        from ..transport.window import window_rung
         try:
             lo, hi = (float(v) for v in window_opt.split(","))
-            fit = fitted(finished_window(finished), lo, hi, finer)
+            fit = fitted(_reuse.finished_window(finished), lo, hi, finer)
         except ValueError as exc:
             raise click.ClickException(f"--window {window_opt}: {exc}")
         window = fit.values()
         task = dataclasses.replace(
             task, varies=tuple(dict.fromkeys((*task.varies, *window))),
             stages=tuple(Stage(s.name, {**s.overrides, **window})
-                         if s.name == SHARING_RUNG else s
+                         if s.name == window_rung() else s
                          for s in task.stages))
         click.echo(f"transmission window: {fit.words()}")
     desc = Description(task=task, template=finished.template_text,
@@ -647,12 +656,12 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
     for path in written:
         click.echo(f"  {path.name}")
     # WHAT IT WILL REUSE, AND WHAT RUNS -- the one answer prep composes
-    # (`reuse.decide`), said once it is described (`engines/transport.md`
-    # § 2a.16, *Extending it*): every group, nothing written.
-    from .reuse import decide
+    # (the kind's `reuse` part, `kind_table.description_part`), said once it
+    # is described (`engines/transport.md` § 2a.16, *Extending it*): every
+    # group, nothing written.
     try:
         calc_now = _calc_of(out_dir)
-        manifest = decide(calc_now, calc_now.request.numbers)
+        manifest = _reuse.decide(calc_now, calc_now.request.numbers)
     except PrepError as exc:
         click.echo(f"note: what it will reuse is not known yet -- {exc}",
                    err=True)
@@ -810,11 +819,11 @@ def describe_cmd(structure, bundle: str,
                  "decks under two labels are never the same calculation"),
                 ("--psml-lib", psml_lib, "the pseudopotentials are the "
                  "finished calculation's, copied with it"),
-                ("--structure", structure, "its structure IS the junction "
-                 "citation"),
+                ("--structure", structure, f"its structure IS the "
+                 f"{_rec.description.cites} citation"),
                 ("--vacuum", vacuum, "the cell comes with the junction"),
-                ("--stage-strategy", stage_strategy, "the composite's five "
-                 "stages are fixed by design")) if given not in (None, ())})
+                ("--stage-strategy", stage_strategy, "its stages are fixed "
+                 "by design")) if given not in (None, ())})
         return
     if window_opt is not None or finer != 1:
         raise click.ClickException(
@@ -827,7 +836,7 @@ def describe_cmd(structure, bundle: str,
     # A KIND THAT CITES its structure (the kind table's
     # ``description.cites``) is described from the citation.
     if _rec.description.cites:
-        _init_transport(out_dir=out_dir, run_name=run_name,
+        _init_transport(rec=_rec, out_dir=out_dir, run_name=run_name,
                         engine=engine, slots_opt=slots_opt,
                         bias_opt=bias_opt,
                         low_bias_approximation=low_bias_approximation,
@@ -835,16 +844,20 @@ def describe_cmd(structure, bundle: str,
                         psml_lib=psml_lib, vacuum=vacuum,
                         stage_strategy=stage_strategy)
         return
+    # WHICH KINDS CITE, AND WHICH CARRY A BIAS LIST: their records'.
+    from ..kind_table import kinds as _kinds
+    _citing = [k for k in _kinds() if _kind(k).description.cites]
     if slots_opt or bias_opt or low_bias_approximation is not None:
         raise click.ClickException(
-            "--slot / --bias / --low-bias-approximation belong to --calculation "
-            "transport alone "
-            "(engines/transport.md § 3.1).")
+            f"--slot belongs to --calculation {' or '.join(_citing)}, and "
+            f"--bias / --low-bias-approximation to "
+            f"{' or '.join(carrying('bias'))}, alone "
+            f"(engines/transport.md § 3.1).")
     if structure is None:
         raise click.ClickException(
-            "--structure is required -- it is what this calculation "
-            "describes (transport is the one kind without it: its "
-            "structure IS the junction citation).")
+            f"--structure is required -- it is what this calculation "
+            f"describes (a kind that cites its structure takes none: "
+            f"{', '.join(_citing)}).")
 
     try:
         # THE PAIR, through the one door: the geometry with its regions,
@@ -1497,10 +1510,12 @@ def _ask_which_groups(calc, named) -> tuple:
         return [], None
     # WHAT EACH GROUP OFFERED COPIES, AND WHAT IT RUNS, for a calculation
     # that reuses a finished one -- so picking a group is agreeing to its
-    # copy (`engines/transport.md` § 2a.16, *The manifest*).
-    from .reuse import decide
+    # copy (`engines/transport.md` § 2a.16, *The manifest*): the kind's own
+    # reuse (its description's `reuse` part), where it has one.
+    from ..kind_table import description_part
+    _reuse = description_part(str(calc.task.calculation), "reuse")
     try:
-        reuse = decide(calc, pre)
+        reuse = _reuse.decide(calc, pre) if _reuse is not None else None
     except PrepError as exc:
         raise _refuse(str(exc)) from None
     if reuse is not None:
@@ -1808,6 +1823,23 @@ def summarize_cmd(kind: str, words, bundle: str,
             "`summarize task` reads the whole calculation -- it names no "
             "stage.")
     stage, _trial, _ = _stage_words(kind, words, (), "summarize")
+
+    def _summing(option: Optional[str] = None) -> str:
+        # WHAT ADDS UP, AND WHAT READS AN OPTION: the pairs whose record
+        # names a summary (the kind table's `sum`, its `options`) -- never
+        # a list here.
+        from ..engine_table import engine as _engine
+        from ..kind_table import kind as _kind, kinds as _kinds, part_of
+        return ", ".join(
+            f"{_kind(k).with_article} on {_engine(e).words}"
+            for k in _kinds() for e in _kind(k).engines
+            if part_of(k, e, "sum") is not None
+            and (option is None or option in part_of(k, e, "sum").options))
+    def _no_tolerance() -> str:
+        # Composed when said: the words import every pair's summary.
+        return (f"--tolerance-cm1 is read by the summary of "
+                f"{_summing('tolerance_cm1')} alone -- drop it here "
+                f"(engines/vibration.md 5.9)")
     if kind != "bench":
         # WHAT THE CALCULATION ADDS UP: the summary its kind's record names
         # on its engine (`summarize.TaskSum`, `execution/architecture.md`
@@ -1827,23 +1859,16 @@ def summarize_cmd(kind: str, words, bundle: str,
         _options = {"tolerance_cm1": tolerance_cm1}
         if tolerance_cm1 is not None and (
                 _sum is None or "tolerance_cm1" not in _sum.options):
-            raise click.ClickException(
-                "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
-                "vibration's force-constant stages compared "
-                "(engines/vibration.md 5.9)")
+            raise click.ClickException(_no_tolerance())
         if _sum is None:
-            # WHAT ADDS UP, from the kind table's `sum` -- never a list here.
             from ..engine_table import engine as _engine
-            from ..kind_table import kind as _kind, kinds as _kinds
-            _has = [f"{_kind(k).with_article} on {_engine(e).words}"
-                    for k in _kinds() for e in _kind(k).engines
-                    if _kind(k).on(e).sum is not None]
+            from ..kind_table import kind as _kind
             _what = (f"{_kind(_tt.calculation).with_article} on "
                      f"{_engine(_tt.engine).words}" if _tt is not None
                      else "this folder")
             raise click.ClickException(
                 f"`summarize task` adds up what a calculation's kind names "
-                f"on its engine -- {', '.join(_has)} -- and {_what} names "
+                f"on its engine -- {_summing()} -- and {_what} names "
                 f"nothing to add up: its stages each write their own "
                 f"result, which `jobset status` and the Results tab read "
                 f"(job-system.md § 5.3).  A benchmark's sweep is "
@@ -1864,10 +1889,7 @@ def summarize_cmd(kind: str, words, bundle: str,
         _ledger(_P(bundle), "summarize", _sum.event, **summed.ledger)
         return
     if tolerance_cm1 is not None:
-        raise click.ClickException(
-            "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
-            "vibration's force-constant stages compared "
-            "(engines/vibration.md 5.9)")
+        raise click.ClickException(_no_tolerance())
     calc = _calc_of(bundle)
     base = calc.base
     stage = _described_stage(stage, calc)

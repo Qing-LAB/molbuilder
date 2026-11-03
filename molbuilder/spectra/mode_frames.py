@@ -3,7 +3,7 @@ structure pair a transport calculation cites (`engines/vibration.md`
 § 5.10 ③; its rows `model/structure.md` § 2.2f; its rule
 `science/vibrational-averaging.md` § 5).
 
-MODULE  mode_frames (L2; the run door, the vibration result's reader, the
+MODULE  spectra.mode_frames (L2; the run door, the vibration result's reader, the
         structure and its codec, numpy)
 ROLE    :func:`frameset_from_mode` -- the one generator, and
         :class:`ModeFrames`, what it wrote and what it says;
@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .persist import sha256_of
+from ..persist import sha256_of
 
 #: The rules the generator writes -- three frames by default, five or seven
 #: on request, each the check of the one before
@@ -90,11 +90,11 @@ def _relaxation_record(run) -> Tuple[Optional[Dict[str, Any]], str]:
     so its own deck's record (`runs.view_of`); a structure stated already
     relaxed (its deck's `vibration` block says so) states its own -- the
     calculation's structure beside it, its ``info.calculation``."""
-    from .deck_record import extract_vibration_record
-    from .jobset.prep import structure_path
-    from .runs import view_of
-    from .workingcopy_structure import StructureCodec
-    from .parse.fdf import read_deck
+    from ..deck_record import extract_vibration_record
+    from ..jobset.rung import structure_path
+    from ..runs import view_of
+    from ..workingcopy_structure import StructureCodec
+    from ..parse.fdf import read_deck
     deck = run.deck
     record = (extract_vibration_record(read_deck(deck))
               if deck is not None else None)
@@ -131,7 +131,7 @@ def _checked_temperature(temperature_k) -> float:
     """The temperature the frames sample, by the rule every door shares
     (`spectra.derived.checked_temperature_k`) -- stated every time, never
     defaulted -- refused as the generator refuses."""
-    from .spectra.derived import checked_temperature_k
+    from .derived import checked_temperature_k
     try:
         return checked_temperature_k(temperature_k)
     except ValueError:
@@ -150,8 +150,8 @@ def outermost_move(mode: Dict[str, Any], temperature_k: float,
     § 5) -- what :func:`frameset_from_mode` measures on the frames it
     writes, by the same node rule.  ``None`` for a mode with no zero-point
     amplitude (an imaginary one)."""
-    from .spectra.derived import thermal_spread_of
-    from .spectra.normal_modes import largest_move
+    from .derived import thermal_spread_of
+    from .normal_modes import largest_move
     nodes = _checked_nodes(nodes)
     sigma = thermal_spread_of(mode, temperature_k)
     if sigma is None:
@@ -170,7 +170,7 @@ def at_temperature(mode: Dict[str, Any],
     outermost_move_ang: {"3": …, …}}`` -- from the derivations the
     generator writes by.  ``None`` for a mode with no zero-point
     amplitude."""
-    from .spectra.derived import mean_quanta, thermal_spread_of
+    from .derived import mean_quanta, thermal_spread_of
     sigma = thermal_spread_of(mode, temperature_k)
     if sigma is None:
         return None
@@ -210,17 +210,17 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     result stating no masses, a mode it does not hold or an imaginary one,
     a temperature that is not a number of kelvin, 0 or more, another rule
     than :data:`NODES`, a pair already at ``out``."""
-    from .chemistry import MASS_SOURCE
-    from .frame_average import INFO_KEY, MASS_CHANNEL, ROWS
-    from .runfiles import ROLE_SPECTRA
-    from .runs import on_label_at, place_of, run_of
-    from .siesta.vibration_phases import force_constants_call
-    from .sidecars.molstruct import sidecar_path_for
-    from .sidecars.spectra import SpectraJsonError, parse_spectra_json
-    from .spectra.derived import (mean_quanta, thermal_spread_amu12_ang,
+    from ..chemistry import MASS_SOURCE
+    from ..frame_average import INFO_KEY, MASS_CHANNEL, ROWS
+    from ..runfiles import ROLE_SPECTRA
+    from ..runs import on_label_at, place_of, run_of
+    from ..siesta.vibration_phases import force_constants_call
+    from ..sidecars.molstruct import sidecar_path_for
+    from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
+    from .derived import (mean_quanta, thermal_spread_amu12_ang,
                                   zero_point_amplitude_amu12_ang)
-    from .structure import AtomChannel, Structure
-    from .workingcopy_structure import StructureCodec
+    from ..structure import AtomChannel, Structure
+    from ..workingcopy_structure import StructureCodec
 
     nodes = _checked_nodes(nodes)
     temperature_k = _checked_temperature(temperature_k)
@@ -293,7 +293,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     # q_j = sqrt(2) sigma x_j, by THE ONE DISPLACEMENT RULE
     # (`spectra.normal_modes`): R + q·L, what a Raman phase's plan applies
     # at ±δQ too (§ 5.11 § 3).
-    from .spectra.normal_modes import displaced, mode_over_atoms
+    from .normal_modes import displaced, mode_over_atoms
     L = mode_over_atoms(m.eigenvector_canonical, res.free_atom_idxs,
                         base.n_atoms)
     n_quanta = mean_quanta(m.frequency_cm1, temperature_k)
@@ -363,12 +363,12 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
 
     # AN ELECTRODE ATOM THE FRAMES MOVE -- written, and said in the words
     # of the one check a transport citation asks of every frame
-    # (`compose._frames_keep_the_leads`, within `wizard.FROZEN_TOL_ANG`;
+    # (`compose.frames_keep_the_leads`, within `wizard.FROZEN_TOL_ANG`;
     # `engines/transport.md` § 2a.9), so what the person is told is what
     # the citation does.
-    from .transport.compose import ComposeError, _frames_keep_the_leads
+    from ..transport.compose import ComposeError, frames_keep_the_leads
     try:
-        _frames_keep_the_leads(built, out)
+        frames_keep_the_leads(built, out)
     except ComposeError as exc:
         said.append(str(exc))
     StructureCodec().write(built, out)

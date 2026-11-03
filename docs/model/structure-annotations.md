@@ -239,8 +239,9 @@ transport emitter. Users assign labels in the Modify tab (the data model only re
 non-empty string — `Structure._validate_regions`).
 
 > **The convention, in one line:** the two transport **leads** are the regions
-> named exactly `L-electrode` and `R-electrode`. Their one list is
-> `transport.sort.ELECTRODE_LABELS`, and every reader asks it — the emitter,
+> named exactly `L-electrode` and `R-electrode`. Their one home is the kind
+> table (the transport calculation's lead roles); `transport.sort.ELECTRODE_LABELS`
+> is read from it, and every reader asks that — the emitter,
 > the lead extraction, the checks; the browser does not decide electrode-ness at
 > all, it carries the labels and the server reads them. *(User, 2026-10-02:
 > "these are just two matching names". Until that day any label ending

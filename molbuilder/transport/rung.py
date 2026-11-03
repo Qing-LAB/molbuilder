@@ -1,16 +1,18 @@
-"""A TRANSPORT RUNG, built from the description as it reads now -- its
-junction read from its record (:func:`junction_record`; composed from the
-citation by prep, `gather.composed_for_prep`), the
-template ⊕ the rung's overrides ⊕ its run card resolved
-(:func:`resolve_transport`), its structure and electronic state
-(:func:`transport_parts`), each deck's spec at its point
-(:func:`transport_spec`, :func:`at_frame`, :func:`at_point`) and its
+"""A TRANSPORT RUNG, built from the description as it reads now -- the
+transport kind's own module (`execution/architecture.md` § 3.3): its
+builder, :func:`transport_rung_of`, is the pair's ``rung`` part, which the
+conductor resolves (`jobset.prep`); its junction read from its record
+(:func:`junction_record`; composed from the citation by prep,
+`gather.composed_for_prep`), the template ⊕ the rung's overrides ⊕ its run
+card resolved (:func:`resolve_transport`), its structure and electronic
+state (:func:`transport_parts`), each deck's spec at its point
+(:func:`rung_spec`, :func:`at_frame`, :func:`at_point`) and its
 pseudopotentials (:func:`provide_pseudos`).
 
-Asked by prep's conductor, which writes the rung (`prep.transport_rung_of`),
-and by the gather, which renders an upstream rung NOW to compare it with the
-deck its run ran (`gather.rung_deck_now`; `engines/transport.md` § 6.1) --
-one builder, so the two cannot render a rung two ways.
+Asked by the conductor through the builder, and by the gather, which renders
+an upstream rung NOW to compare it with the deck its run ran
+(`gather.rung_deck_now`; `engines/transport.md` § 6.1) -- one builder, so
+the two cannot render a rung two ways.
 """
 from __future__ import annotations
 
@@ -21,8 +23,9 @@ from pathlib import Path
 from ..pseudos import PSEUDO_DIRNAME
 from ..runfiles import PSEUDO_FILE, fixed_name
 from ..siesta.seam import pseudo_dir, screen_pseudos
-from .errors import PrepError, user_error_as_prep
-from .naming import stage_home
+from ..jobset.errors import PrepError, user_error_as_prep
+from ..jobset.naming import stage_home
+from ..jobset.rung import Rung, citation_of
 
 
 def provide_pseudos(struct, cfg, base: Path,
@@ -140,7 +143,7 @@ def transport_parts(task, stage: str, composed, config):
     electronic state.
 
     ONE DOOR, asked by the conductor through the rung
-    (`prep.transport_rung_of`) and by the gather when it renders an
+    (:func:`transport_rung_of`) and by the gather when it renders an
     upstream rung NOW (:func:`transport_rung`, plan § 5w K11, T-F30).
     """
     from ..kind_table import lead_of, rung_label
@@ -152,7 +155,7 @@ def transport_parts(task, stage: str, composed, config):
     region = lead_of(stage)
     if region is not None:
         # THE LEAD BY ITS REGION, as the kind table names it (`leads`).
-        from ..transport.sort import REGION_LEFT_ELECTRODE
+        from .sort import REGION_LEFT_ELECTRODE
         model = (composed.electrode_left if region == REGION_LEFT_ELECTRODE
                  else composed.electrode_right)
         struct = model.as_structure()
@@ -166,7 +169,7 @@ def transport_parts(task, stage: str, composed, config):
         # A FRAME SET (`engines/transport.md` § 2a.9): the seed runs once,
         # on frame 0; the device and the transmission run per frame, each
         # point's deck its frame (`at_frame`).
-        from ..transport.stages import per_point_rungs
+        from .stages import per_point_rungs
         if struct.n_frames > 1 and stage not in per_point_rungs():
             struct = struct.frame_at(0)
 
@@ -175,8 +178,10 @@ def transport_parts(task, stage: str, composed, config):
         # from `task.label` -- the junction's rungs by it, a lead by
         # `rung_label` -- so the device deck's `TS.Elec.<name> HS` line, the
         # gather and the run door name the files the lead wrote.  The
-        # template's `system_label` never reaches a transport deck.
-        return dataclasses.replace(cfg, system_label=label)
+        # template's `system_label` never reaches a transport deck.  Written
+        # through the engine's seam, on the field its record names.
+        from ..jobset.engines import engine_seam
+        return engine_seam(task.engine).relabel(cfg, label)
     # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
     # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
     # that is physics, not bookkeeping: TranSIESTA joins the leads'
@@ -192,14 +197,14 @@ def transport_parts(task, stage: str, composed, config):
     # (§ 2a.5).  Folded alone, the rungs read it as *stated*.
     from ..electronic_state import electronic_state
     state = electronic_state(composed.junction, labelled(config),
-                             kind="transport")
+                             kind=task.calculation)
     # A STATE TRANSIESTA CANNOT RUN is refused HERE, on the junction, where
     # each value still says where it came from (`template.md` § 6.3a, ES4):
     # once folded into the rungs' configs, every rung's gate would call a
     # recorded or detected value *stated*.
     from ..validation.chemistry import check_electronic_state
     refused = [i for i in check_electronic_state(
-        composed.junction, labelled(config), calculation="transport",
+        composed.junction, labelled(config), calculation=task.calculation,
         engine=task.engine, state=state)
         if i.severity == "error"]
     if refused:
@@ -228,14 +233,16 @@ def transport_rung(task, stage: str, composed, allocation, *,
     return struct, configure(element.render_config()), state, element
 
 
-def transport_sources(element):
+def transport_sources(element, *, engine: str):
     """Who set each value a transport rung's decks write: `resolve`'s rows,
     the label said as the rung's -- it spells every rung's ``SystemLabel``
     from the calculation's (:func:`transport_parts`, C2).  Asked by both
     roads that render a rung, so the deck the gather compares with says
     what the prepared one says."""
+    from ..engine_table import engine as _engine
     from ..resolve import SET_AFTER, said_by
-    return said_by(element.deck_sources, "system_label",
+    return said_by(element.deck_sources,
+                   _engine(engine).identity_field,
                    SET_AFTER["rung_label"])
 
 
@@ -247,8 +254,8 @@ def compose_refusals() -> tuple:
     (`gather.composed_junction`) alike."""
     from ..atom_permutation import PermutationError
     from ..deck_record import DeckRecordUnreadable
-    from ..transport.compose import ComposeError
-    from ..transport.sort import SortError
+    from .compose import ComposeError
+    from .sort import SortError
     return (ComposeError, SortError, PermutationError, DeckRecordUnreadable)
 
 
@@ -261,13 +268,14 @@ def junction_record(calc):
     record is loaded: the reload holds a cited pair to the bytes it was
     composed from (`compose.load_compose_record`)."""
     from ..projects import find_projects_root
-    from ..transport.compose import load_compose_record
+    from .compose import load_compose_record
     base, task = calc.base, calc.task
     try:
         root = find_projects_root(base)
         why: list = []
-        composed = load_compose_record(base, citation=task.slots["junction"],
-                                       tree_root=root, why=why,
+        composed = load_compose_record(base, citation=citation_of(task),
+                                       engine=task.engine, tree_root=root,
+                                       why=why,
                                        swap_electrodes=task.swap_electrodes)
     except compose_refusals() as exc:
         raise PrepError(str(exc)) from exc
@@ -289,12 +297,13 @@ def written_and_read_back(base, composed, plan, *, root, task):
     sets of numbers ~1e-10 apart (measured 2026-09-25 on the ENGINE-OFFSET
     record), and a deck rendered from each differs."""
     import tempfile
-    from ..transport.compose import load_compose_record, write_compose_record
+    from .compose import load_compose_record, write_compose_record
     why: list = []
     with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
         names = write_compose_record(tmp, composed)
-        back = load_compose_record(tmp, citation=task.slots["junction"],
-                                   tree_root=root, why=why,
+        back = load_compose_record(tmp, citation=citation_of(task),
+                                   engine=task.engine, tree_root=root,
+                                   why=why,
                                    swap_electrodes=task.swap_electrodes)
         if back is None:
             raise PrepError(
@@ -305,7 +314,7 @@ def written_and_read_back(base, composed, plan, *, root, task):
     return back
 
 
-def transport_spec(task, stage: str, struct, config, state, point=None, *,
+def rung_spec(task, stage: str, struct, config, state, point=None, *,
                    base=None, contours=None):
     """One transport deck's ``(spec, cfg)`` -- its point's when ``point``
     is given: the config at its voltage (the point is the rung's answer,
@@ -314,20 +323,19 @@ def transport_spec(task, stage: str, struct, config, state, point=None, *,
     reaches them (`engines/transport.md` § 2a.11); ``contours`` a
     transmission point's sharing with a finished calculation's point
     (`transport.energies.Contours`, § 2a.16)."""
-    from ..siesta.input import spec_for as _siesta_spec_for
+    from ..jobset.engines import engine_seam
     cfg = at_point(config, point)
     # THE RUNG'S NAMES -- the one composer (`StageHome.names`): a lead's
     # on its own stem, the junction's rungs on the calculation's label.
     names = stage_home(base, task, stage).names
     with user_error_as_prep():
         try:
-            spec = _siesta_spec_for(struct, cfg, names=names,
-                                    calculation="transport", state=state,
-                                    point=point,
-                                    scratch_dir=scratch_dir_of(base),
-                                    contours=contours)
+            spec = engine_seam(task.engine).spec_for(
+                struct, cfg, names=names, calculation=task.calculation,
+                **spec_keywords(task, state, point, base, contours))
         except ValueError as exc:
-            # `transport_spec` refuses an unknown rung with a message
+            # The deck's spec (`transport.deck.transport_spec`, through
+            # the engine's seam) refuses an unknown rung with a message
             # written FOR a person, and `user_error_as_prep` translates
             # only ValidationError / RuntimeConfigError / WrapperError --
             # deliberately, so a TypeError still looks like the bug it is.
@@ -335,12 +343,28 @@ def transport_spec(task, stage: str, struct, config, state, point=None, *,
     return spec, cfg
 
 
-def scratch_dir_of(base) -> Optional[str]:
+def spec_keywords(task, state, point, base, contours) -> dict:
+    """WHAT A TRANSPORT DECK'S SPEC IS TOLD beside its structure and config
+    -- the one composition both roads give the engine's writer (prep's
+    rung, the gather's "same calculation" check, `engines/transport.md`
+    § 6.1): its electronic state, its point (the device names its run's
+    shared files the way its point reaches them, § 2a.11), where the
+    device keeps the leads' files, and what a transmission point computes
+    where it is not its window whole (§ 2a.16)."""
+    return {"state": state, "point": point,
+            "scratch_dir": scratch_dir_of(base, engine=task.engine,
+                                          calculation=task.calculation),
+            "contours": contours}
+
+
+def scratch_dir_of(base, *, engine: str,
+                   calculation: str) -> Optional[str]:
     """The folder a device run keeps its leads' files in -- the
-    vocabulary's ``scratch_dir`` (`warm-files.toml` [transport]), the one
-    spelling every writer and reader takes."""
+    vocabulary's ``scratch_dir`` (`warm-files.toml`, the calculation's
+    section on its engine), the one spelling every writer and reader
+    takes."""
     from ..warmfiles import warm_list
-    return warm_list("siesta", "transport", base).scratch_dir
+    return warm_list(engine, calculation, base).scratch_dir
 
 
 def at_frame(struct, point):
@@ -368,7 +392,92 @@ def at_bias(cfg, volts):
             else dataclasses.replace(cfg, bias_voltage_v=float(volts)))
 
 
+def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
+                      reuse=None) -> Rung:
+    """A transport rung (`engines/transport.md`): its four steps of its own.
+
+    **compose** -- the junction and its leads, composed from the cited
+    relaxation, or read from the record that travelled beside ``task.json``
+    (:func:`composed_for_prep`); the rung's structure is the junction or
+    the lead taken out of it (:func:`transport_parts`).  **electronic
+    state** -- decided once, on the junction, folded into every rung.
+    **points** -- a sweep's rung writes one deck per bias point, each in its
+    own folder (`transport.stages.point_folders`).  Its data files come
+    from the citation, and its job carries the rung's own restart files and,
+    for the transmission, TBtrans's program.  The fifth, **gather** -- each
+    rung's inputs from the runs upstream -- is its first launch's
+    (:func:`gather_sources`, `job-system.md` § 6.0).  ``reuse`` is what
+    the kind's own reuse decided for this prep (`jobset.reuse.decide`, its
+    description's ``reuse`` part), from which the rung's points' contours
+    are its own (:func:`_contours`)."""
+    from ..jobset.gather import composed_for_prep
+    from ..jobset.reuse import point_key
+    base, task, stage = calc.base, calc.task, pset.stage
+    contours = _contours(calc, stage, reuse)
+    # NO SWEEP REACHES IT: `prep bench` refuses the kind first, in its
+    # record's words (`no_benchmark`, `prep_inputs.bench_refusal`).
+    composed = composed_for_prep(calc, plan)
+    struct, configure, state = transport_parts(task, stage, composed,
+                                                pset[0].render_config())
+    from .stages import point_folders, warm_declaration
+    # THE RUNG'S POINTS (`transport.stages.rung_points`): a frame of the
+    # cited set and a voltage each, the frames the junction composed here.
+    points = tuple(point_folders(base, task, stage,
+                                 frames=composed.junction.n_frames))
+    citation = citation_of(task)
+
+    def provide_data(plan):
+        # The pseudopotentials: a cited run's travel with it, a cited pair's
+        # come from the library the template names (`engines/transport.md`
+        # § 3.1) -- screened against the config the rung's decks render
+        # from: what it checks is each file's XC family against the
+        # functional the run will ask for.
+        cfg = configure(pset[0].render_config())
+        if composed.provenance["kind"] == "pair":
+            seam.provide_data(composed.junction, cfg, base, plan=plan)
+        else:
+            provide_pseudos(composed.junction, cfg, base, citation,
+                            plan=plan)
+
+    def job_facts(job):
+        # The rung's own restart files (`transport.stages.warm_declaration`:
+        # the seed's and the device's; the leads and the transmission carry
+        # none).  The program its deck is read by and the scratch folder its
+        # run keeps are the deck's own statement (`DeckSpec.program`,
+        # ``scratch_dir``), taken onto the job by `_job_for`.
+        return dataclasses.replace(
+            job, warm=warm_declaration(stage, task.label, base))
+    return Rung(struct=struct, render_kind=task.calculation, configure=configure,
+                sources=lambda element: transport_sources(
+                    element, engine=task.engine),
+                # THE DECK'S POINT reaches the spec: the device names its
+                # run's shared files the way its point reaches them
+                # (`engines/transport.md` § 2a.11).
+                spec_extra=lambda element, cfg, point: spec_keywords(
+                    task, state, point, base,
+                    # a rung that runs once, its one point
+                    (contours or {}).get(point_key(point))),
+                points=points, at_point=at_point,
+                struct_at=lambda pt: at_frame(struct, pt),
+                provide_data=provide_data, job_facts=job_facts)
+
+
+def _contours(calc, stage: str, reuse) -> Optional[dict]:
+    """WHAT EACH POINT OF THIS RUNG COMPUTES where it is not its window
+    whole, by the point's key (`jobset.reuse.point_key`;
+    `engines/transport.md` § 2a.16): a launched rung's as its decks record
+    it -- never decided again -- else the prep's reuse decision's
+    (``reuse``), else ``None``."""
+    from ..jobset.materialize import ever_launched
+    from ..jobset.reuse import launched_contours
+    job = calc.job(stage)
+    if job is not None and ever_launched(calc, job):
+        return launched_contours(calc, stage)
+    return reuse.contours_for(stage) if reuse is not None else None
+
+
 __all__ = ["provide_pseudos", "resolve_transport", "transport_parts",
            "scratch_dir_of", "transport_rung", "transport_sources",
            "compose_refusals", "junction_record", "written_and_read_back",
-           "transport_spec", "at_frame", "at_point", "at_bias"]
+           "rung_spec", "at_frame", "at_point", "at_bias",
+           "transport_rung_of"]

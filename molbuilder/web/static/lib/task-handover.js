@@ -4,17 +4,12 @@
  * notice handling are CONTRACT (`job-contracts.md` SS 2.1, SS 2.5;
  * `handover-procedure.md` SS 2), and two copies of a contract drift.
  *
- * Consumers:
- *   * structure-optimization/viewer.js  -- engine siesta|pyscf, optimization
- *   * lib/spectra/core.js               -- engine pyscf, calculation vibration
- *   * lib/transport/core.js             -- engine siesta, calculation
- *     transport: NO structure/params -- `junction` (the citation),
- *     `bias` (volts, 0.0 first), `low_bias_approximation`,
- *     `swap_electrodes`, `stages` (per-rung override bags) and `shared`
- *     ride instead, with the folder (`dest`) the door
- *     writes the description into -- a folder holding one is refused --
- *     and the answer names what it wrote (`written`; transport.md
- *     § 3.8.2a, § 3.8.5)
+ * IT COMPARES NO KIND (`handover-procedure.md`, 2.65.0): the calling tab
+ * hands it the door it writes through and the fields its kind's description
+ * carries.  The hand-over door is this library's (`HANDOVER`): its answer's
+ * files are written into the folder.  A writing door -- one the tab names
+ * with `writes` -- writes the description itself into the folder (`dest`)
+ * and names what it wrote (`written`; transport.md § 3.8.2a, § 3.8.5).
  *
  * Classic script on the `window.molbuilder` namespace (same loading
  * pattern as lib/form-schema.js) so both a classic-script consumer
@@ -37,17 +32,17 @@
  *                   //   true of the form it sends: a send adds its findings
  *                   //   to these and clears none (handover-procedure.md
  *                   //   § 2.1).  A tab with no live check sends none.
- *     structure,    // the envelope from the tab's own MolView exportFile()
- *     engine,       // "siesta" | "pyscf"
- *     params,       // collectForm() output, keyed by catalogue names
- *     calculation,  // REQUIRED: "optimization" | "vibration" | "transport"
- *     junction,     // transport only: the citation string
- *     bias,         // transport only: [volts...], 0.0 first
- *     low_bias_approximation, // transport only: true | false for several voltages
- *     swap_electrodes, // transport only: the electrode rename on the
- *                   //   calculation's own copy of the junction
- *     stages,       // transport only: {rung: {catalogue item: value}}, per-rung bags
- *     shared,       // transport only: {catalogue item: value}, the shared panel
+ *     engine,       // the engine the tab describes on
+ *     calculation,  // REQUIRED: the kind, stated by the tab
+ *     door,         // REQUIRED: {url, next, writes?, needs?} -- the route
+ *                   //   it sends to; `next`, the words for the road after
+ *                   //   it; `writes` for a door that writes the description
+ *                   //   itself (nothing for the page to write, no Cancel:
+ *                   //   one act on the server); `needs`, [[field, words],
+ *                   //   ...], a field it must be given, said in its words
+ *                   //   when it is not
+ *     fields,       // what the kind's description carries, sent as given
+ *     showManifest, // (lines|null) -> void -- a writing door's manifest
  *   })
  */
 (function () {
@@ -56,19 +51,31 @@
     /* ONE HEAVY CLICK AT A TIME (`ui-contract.md` § 10): the fence covers
      * the window from the folder check to the last write, so a click on
      * another folder mid-send cannot split the files between two folders,
-     * and its Cancel aborts the request in flight.  A transport Describe
-     * offers none: its door writes the description in one act on the
+     * and its Cancel aborts the request in flight.  A writing door's
+     * Describe offers none: it writes the description in one act on the
      * server, which an aborted request does not stop. */
     async function send(opts) {
         const fence = window.molbuilder && window.molbuilder.pageBusy;
         if (!fence) return await sendUnder(opts, undefined);
         const ctl = new AbortController();
-        const describe = !!(opts && opts.calculation === "transport");
+        const writes = !!(opts && opts.door && opts.door.writes);
         return await fence.run(
-            describe ? "Describing\u2026" : "Sending to Task setup\u2026",
-            describe ? [] : [() => ctl.abort()],
+            writes ? "Describing\u2026" : "Sending to Task setup\u2026",
+            writes ? [] : [() => ctl.abort()],
             () => sendUnder(opts, ctl.signal));
     }
+
+    /* THE HAND-OVER DOOR: the field every kind handed over needs -- a
+     * description is OF a structure -- and the road after it, each said
+     * once, for the tabs that send through it. */
+    const HANDOVER = {
+        url: "/api/task-setup/handover",
+        next: "Next: open Task setup and pick this folder — it asks for the "
+            + "stages, which this hand-over leaves out on purpose, and "
+            + "writes task.json when you save.",
+        needs: [["structure",
+                 "Load a structure first — a description is of something."]],
+    };
 
     async function sendUnder(opts, signal) {
         const o = opts || {};
@@ -104,81 +111,47 @@
                 + "folder and creates none of its own.");
             return;
         }
-        const structure = o.structure;
-        const isTransport = o.calculation === "transport";
-        /* The transport composite carries NO structure -- its structure
-         * IS the junction citation, copied in at prep
-         * (transport.md § 3.1).  Every other kind is OF a
-         * structure and must bring one. */
-        if (!structure && !isTransport) {
-            say("warn", "Load a structure first — a description is "
-                + "of something.");
-            return;
+        const door = o.door;
+        if (!door || !door.url || !door.next) {
+            throw new Error("task-handover.send: the tab names the door it "
+                            + "writes through, and the road after it");
         }
-        if (isTransport && !o.junction) {
-            say("warn", "Pick the relaxed junction first — a finished "
-                + "relaxation run, or a structure pair saved from one: the "
-                + "composite derives everything from that citation.");
-            return;
+        const fields = o.fields || {};
+        /* WHAT THE DOOR NEEDS GIVEN, in its own words -- the hand-over
+         * door's structure, since a description is of one. */
+        for (const [field, words] of (door.needs || [])) {
+            if (!fields[field]) {
+                say("warn", words);
+                return;
+            }
         }
         /* THE FOLDER'S RULES ARE THE DOOR'S -- a calculation lives under a
          * topic, one calculation per folder (`job-contracts.md` § 2.5,
-         * § 2.1 Rule 1): both hand-over doors refuse (`/api/task-setup/
-         * handover`, `/api/transport/describe`), and their sentence is shown
+         * § 2.1 Rule 1): every door refuses, and its sentence is shown
          * below.  `rel` is the sidebar's own words for the folder. */
         const rel = (typeof projects.relativeToProjects === "function")
             ? String(projects.relativeToProjects(dest) || "") : "";
 
-        say("muted", isTransport ? "Describing…" : "Rendering…");
-        const req = {
-            engine:    o.engine,
-            name:      (dest.split("/").filter(Boolean).pop() || ""),
-        };
         /* THE KIND RIDES EVERY HAND-OVER, stated by the tab that sends it
          * -- the server refuses one with none (2026-10-06). */
         if (!o.calculation) {
             throw new Error("task-handover.send: the tab states its "
-                            + "calculation kind (optimization, vibration, "
-                            + "transport)");
+                            + "calculation kind");
         }
+        say("muted", door.writes ? "Describing…" : "Rendering…");
+        const req = Object.assign({}, fields, {
+            engine:    o.engine,
+            name:      (dest.split("/").filter(Boolean).pop() || ""),
+        });
         req.calculation = o.calculation;
-        if (isTransport) {
-            req.junction  = o.junction;
-            req.bias      = o.bias || [0.0];
-            // THE LOW-BIAS APPROXIMATION, as chosen -- none for a single
-            // voltage (`engines/transport.md` § 2a.10).
-            req.low_bias_approximation =
-                typeof o.low_bias_approximation === "boolean"
-                    ? o.low_bias_approximation : null;
-            // THE ELECTRODE RENAME ON THE CALCULATION'S OWN COPY OF THE
-            // JUNCTION (transport.md § 4), as the tab holds it.
-            req.swap_electrodes = !!o.swap_electrodes;
-            // THE CALCULATION IT REUSES, when a transport calculation's
-            // folder was picked (`engines/transport.md` § 2a.16).
-            if (o.reuses) req.reuses = o.reuses;
-            req.stages    = o.stages || {};      // {rung: {item: value}}
-            req.shared    = o.shared || {};
-            // THE FOLDER THE DOOR WRITES INTO (transport.md § 3.8.2a).
-            req.dest      = dest;
-        } else {
-            req.structure = structure;
-            req.params    = o.params || {};
-            // The folder the files go into: a SIESTA calculation's
-            // pseudopotentials are checked against it, the files already
-            // there counting (`handover-procedure.md` § 2.2).
-            req.dest      = dest;
-        }
-        /* NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
-         * nothing is awaiting -- stages and identity are fixed by the
-         * kind -- so the transport door WRITES the finished
-         * description itself, into the folder named here (transport.md
-         * § 3.8.2a).  Every other kind still hands to Task setup, which
-         * owns the questions those kinds leave open. */
-        const url = isTransport ? "/api/transport/describe"
-                                : "/api/task-setup/handover";
+        /* THE FOLDER: the one a writing door writes the description into
+         * (transport.md § 3.8.2a); the one a hand-over's files go into, a
+         * SIESTA calculation's pseudopotentials checked against it, the
+         * files already there counting (`handover-procedure.md` § 2.2). */
+        req.dest = dest;
         let out;
         try {
-            const r = await fetch(url, {
+            const r = await fetch(door.url, {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(req),
@@ -209,9 +182,9 @@
         }
 
         /* WHAT A CALCULATION THAT REUSES A FINISHED ONE WILL COPY, AND WHAT
-         * RUNS -- the transport describe's manifest, for the page to show
-         * (`engines/transport.md` § 2a.16); null for any other. */
-        if (isTransport && typeof o.showManifest === "function") {
+         * RUNS -- a writing door's manifest, for the page to show
+         * (`engines/transport.md` § 2a.16); null for a new one. */
+        if (typeof o.showManifest === "function") {
             o.showManifest(out.manifest || null);
         }
 
@@ -219,18 +192,18 @@
          * a fetch of our own (`web/projects.md` § 1), into `dest` -- the
          * folder checked above, not whatever the sidebar holds when each
          * write lands.  `writeFile` re-lists the sidebar afterwards.  A
-         * transport description was written by its door: there is nothing
+         * writing door wrote the description itself: there is nothing
          * to write, and the sidebar is re-listed to show it. */
         say("muted", "Writing…");
         /* The STRUCTURE goes first, and the order is deliberate: the hand-over
          * NAMES those files, so writing it before them would leave a folder
          * whose description points at nothing if the next write fails. */
-        const parts = isTransport ? []
+        const parts = door.writes ? []
             : (out.structure_files || []).map((f) => [f.name, f.text])
                   .concat([[out.template_name, out.template_text],
                            [out.handover_name, out.handover_text]]);
         const toWrite = parts.filter(([n, x]) => n && typeof x === "string");
-        if (isTransport && typeof projects.refresh === "function") {
+        if (door.writes && typeof projects.refresh === "function") {
             await projects.refresh();
         }
         const done = [];
@@ -260,7 +233,7 @@
             }
             done.push(name);
         }
-        const written = isTransport ? (out.written || [])
+        const written = door.writes ? (out.written || [])
                                     : toWrite.map(([n]) => n);
 
         /* WHAT THE CELL GATE SAID.  The same gate every structure door runs
@@ -272,12 +245,10 @@
          * parameters and refusing to save them helps nobody. */
         const notices = Array.isArray(out.notices) ? out.notices : [];
         if (showFindings) showFindings(beside(notices));
-        // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, pointed to whether
-        // or not something came back -- a notice is read, not a stop.  The
-        // road itself is said once, on the page's "After you describe" card
-        // (`transport_calculation.html`); this line names it, never a copy.
-        const transportNext = "Next: the steps under \u201cAfter you "
-            + "describe\u201d, on this page.";
+        // THE ROAD AFTER IT, pointed to whether or not something came back
+        // -- a notice is read, not a stop: the door's own words for it
+        // (`door.next`), never a copy here.
+        const next = door.next;
         const described = "Described — wrote " + written.join(" and ")
             + " into " + (rel || "the selected folder") + ".";
         if (notices.length) {
@@ -295,13 +266,13 @@
             // WHO SPOKE is the door's: on a hand-over, what the server said
             // of the structure -- the cell gate, or a structure put back in
             // the user order (`model/overview.md` § 2.2a); the description's own
-            // check on the transport describe, which has no Task setup to
-            // open next (`workflow.md` § 9, gates ② and ③).
+            // check on a writing door, which has no Task setup to open next
+            // (`workflow.md` § 9, gates ② and ③).
             // The findings themselves are the findings panel's, above.
             const count = (notices.length === 1 ? "one finding"
                            : notices.length + " findings");
             say(worst,
-                (isTransport ? described + " The description was checked: "
+                (door.writes ? described + " The description was checked: "
                              : "Wrote " + written.join(", ")
                                + ". About the structure, ")
                 + count + " came back"
@@ -309,15 +280,14 @@
                                                         : " — read them")
                                 : ", and this page has no findings panel "
                                   + "to show them in")
-                + (isTransport ? ".  " + transportNext
-                               : ", then open Task setup."));
+                + ".  " + next);
             return;
         }
 
-        if (isTransport) {
+        if (door.writes) {
             /* The tab decided; the description is DONE.  The road is
              * stated, and going anywhere is the person's move (below). */
-            say("ok", described + "  " + transportNext);
+            say("ok", described + "  " + next);
             return;
         }
         /* NO NAVIGATION (user, 2026-09-19: *"we just skip
@@ -333,11 +303,9 @@
             + " into " + (rel || "the selected folder")
             + (out.handover_here
                ? " — replacing the hand-over that was there" : "")
-            + ".  Next: open Task setup and pick this folder — it asks for "
-            + "the stages, which this hand-over leaves out on purpose, and "
-            + "writes task.json when you save.");
+            + ".  " + next);
     }
 
     window.molbuilder = window.molbuilder || {};
-    window.molbuilder.taskHandover = { send: send };
+    window.molbuilder.taskHandover = { send: send, HANDOVER: HANDOVER };
 })();

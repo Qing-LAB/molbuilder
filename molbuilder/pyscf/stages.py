@@ -25,8 +25,7 @@ def traits_for(eff) -> Dict[str, str]:
     return {}
 
 
-def warm_for(label: str, eff,
-             calculation: str = "optimization",
+def warm_for(label: str, eff, calculation: str,
              base_dir=None) -> List[WarmFile]:
     """What a PySCF stage takes from a run it continues.
 

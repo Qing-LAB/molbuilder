@@ -76,20 +76,16 @@
                && TRAJECTORY_PARSERS.indexOf(meta.parser) >= 0),
         // The picker groups a run's files under the engine's own heading.
         resultCategory: (file, meta) => {
-            /* THE ENGINE COMES FROM THE SERVER: `/api/results/dir` answers
-             * `engine` for the directory (`plans/plan.md` N9), so the
-             * heading names it instead of guessing from the suffix, a guess
-             * wrong by construction for a third engine.
-             */
-            const engine = (meta && meta.engine
-                            && meta.engine !== "unknown") ? meta.engine : "";
-            // The folder answer names no engine: the heading leaves it
-            // unclaimed.
-            if (!engine) return "Optimization";
-            const label = engine === "siesta" ? "SIESTA"
-                        : engine === "pyscf"  ? "PySCF"
-                        : engine.toUpperCase();
-            return label + " optimization";
+            /* THE WORDS COME FROM THE SERVER: `/api/results/dir` answers
+             * the engine's words and the calculation's noun from the two
+             * tables (`presenters.md` § 2) -- *SIESTA optimization*,
+             * *PySCF vibration* -- never guessed from the suffix; a run of
+             * no calculation of ours keeps its engine's words, *SIESTA
+             * trajectory*; an answer naming neither claims neither. */
+            const words = meta && meta.engine_words;
+            const noun = meta && meta.noun;
+            return words && noun ? words + " " + noun
+                : words ? words + " trajectory" : "Trajectory";
         },
 
         /* A RUN IS ONE RESULT (results.md § 2.3).

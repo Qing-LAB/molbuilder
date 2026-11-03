@@ -34,7 +34,7 @@ import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
-from typing import (TYPE_CHECKING, Callable, Dict, List, NamedTuple, Set,
+from typing import (TYPE_CHECKING, Dict, List, NamedTuple, Set,
                     Optional, Sequence, Tuple)
 
 from .. import calcdirs
@@ -52,10 +52,13 @@ from ..runfiles import RunNames, beside_the_deck
 from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
 from .engines import EngineSeam, engine_seam
-from .gather import composed_for_prep
-from .transport_rung import (at_frame, at_point, scratch_dir_of,
-                             provide_pseudos, transport_parts,
-                             transport_sources)
+from .rung import cited_pair_path, described_rung, structure_path
+
+#: A SAVE AGAINST A PREVIEW THAT NO LONGER HOLDS (`job-system.md` § 5.0):
+#: what prep would write now is not the plan the person was shown.
+PLAN_CHANGED = ("what prep would write now differs from the plan you "
+                "previewed -- something it is made from changed since.  "
+                "Preview again (job-system.md § 5.0).")
 
 if TYPE_CHECKING:                      # annotations only
     from ..calculation import Calculation
@@ -316,86 +319,16 @@ def this_prep_lines(stage: str, takes) -> List[str]:
 #  The five steps, entire — `script-preparation.md` § 3.0               #
 # --------------------------------------------------------------------- #
 
-def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
-                     struct) -> dict:
-    """A SIESTA force-constant deck's `vibration` block, format v5: the
-    facts the run's finish reads and no SIESTA keyword states
-    (`engines/vibration.md` § 5.3, § 5.11 § 4), built here because only
-    `prep` holds all of them -- the stage, its resolved config, the
-    molbuilder rendering the deck -- and *Raman for*, the modes the optical
-    phase applies (`select_modes`), the one fact of that phase no keyword
-    states.  ``criterion`` is the relaxation phase's own ``relax_force_tol``
-    -- the force the reference geometry is relaxed to, and judged by.
-    ``struct`` is the structure the deck is written from, whose atoms'
-    masses the block states (`chemistry.atomic_mass`, I3).  The relaxation
-    record is the `relax` call's, read from the run's index at the finish
-    (§ 5.11 § 3), never written here."""
-    import dataclasses
-    from .. import __version__ as _mb_version
-    from ..chemistry import atomic_mass
-    from ..siesta.vibration_phases import OPTICAL, phases_on
-    from ..spectra.siesta_vibration import vibration_record
-    from ..structure import IDENTITY_FIELDS
-    from ..template import catalogue, inactive_why, one
-    # WHAT ENTERS, asked of its declarations: the optical phase of the phase
-    # table's switch (`phases_on`), each of Raman for's ends of its
-    # `active_when` -- a setting that enters nothing is not stated as if it
-    # did (`template.inactive_why`).
-    values = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
-
-    def _entering(name: str):
-        item = one(catalogue(), name, engine="siesta")
-        return None if inactive_why(item, values) else values[name]
-    return vibration_record(
-        stage=stage,
-        force_criterion_ev_ang=criterion,
-        force_criterion_from=criterion_from,
-        already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
-        temperature_K=float(cfg.temperature_K),
-        masses_amu=[atomic_mass(el) for el in struct.elements],
-        molbuilder_version=str(_mb_version),
-        # RAMAN FOR, as the optical phase applies it -- none when the
-        # stage runs no optical phase.
-        raman=({"modes": str(cfg.raman_modes),
-                "freq_min_cm1": _entering("raman_freq_min_cm1"),
-                "freq_max_cm1": _entering("raman_freq_max_cm1")}
-               if any(p.name == OPTICAL for p in phases_on(cfg)) else None),
-        # WHAT NO OTHER BLOCK OF THE DECK CARRIES of the structure the result
-        # states (engines/vibration.md 6.10.1).
-        title=str(struct.title or ""),
-        identity={k: getattr(struct, k) for k in IDENTITY_FIELDS})
-
-
-def structure_path(task, base: Path) -> Optional[Path]:
-    """Where the structure this calculation is *of* is -- beside the
-    calculation first, at the recorded path second (`stages.md` § 6.3); the
-    suffix-corrected candidate is the codec's own naming rule (a .pdb source
-    travels as <stem>.xyz).  ``None`` when it is in neither place, and for
-    a calculation of no structure of its own -- a transport calculation,
-    which cites its junction."""
-    from ..workingcopy_structure import StructureCodec
-    if task.structure is None:
-        return None
-    src = Path(task.structure.source)
-    for candidate in (base / src.name,
-                      (base / src.name).with_suffix(
-                          StructureCodec.GEOMETRY_SUFFIX),
-                      src):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
 def _order_said(task, base: Path) -> list:
     """WHAT THE PAIR THIS CALCULATION IS OF STATES OF ITS ORDER, when it
     states none (`model/overview.md` § 2.2b, F4): prep takes it as the user
     order of this calculation, the warning said -- its structure's pair, or
-    a transport calculation's cited pair (:func:`_cited_pair_path`), the
+    a transport calculation's cited pair (`rung.cited_pair_path`), the
     codec's read notice from its one read (`StructureCodec.load`).  A pair
     that does not read says nothing here: the read that builds refuses
     it."""
     from ..workingcopy_structure import ORDER_NOT_STATED, StructureCodec
-    path = structure_path(task, base) or _cited_pair_path(task, base)
+    path = structure_path(task, base) or cited_pair_path(task, base)
     if path is None:
         return []
     said: list = []
@@ -404,377 +337,6 @@ def _order_said(task, base: Path) -> list:
     except (OSError, ValueError):
         return []
     return [n for n in said if n.where == ORDER_NOT_STATED]
-
-
-def _cited_pair_path(task, base: Path) -> Optional[Path]:
-    """A citing kind's cited structure pair (the kind table's
-    ``description.cites`` -- a transport calculation's junction,
-    `engines/transport.md` § 3.1), fenced to the projects tree -- ``None``
-    for a cited run's folder, and for a kind that cites nothing."""
-    from ..kind_table import kind
-    cites = kind(task.calculation).description.cites
-    citation = (task.slots or {}).get(cites) if cites else None
-    if not citation:
-        return None
-    from ..projects import OutsideRoot, contain, find_projects_root
-    root = Path(find_projects_root(base))
-    try:
-        path = contain(root / citation, root)
-    except OutsideRoot:
-        return None
-    return path if path.is_file() else None
-
-
-def _structure_for(task, base: Path, pset):
-    """The structure this calculation is *of*, from the reference in the
-    description (`stages.md` § 6.3 — a reference plus a witness, never a copy).
-
-    Looked for beside the calculation first and at the recorded path second, so
-    a folder carried to a cluster with its structure alongside resolves without
-    the original tree existing there.
-
-    **The witness is checked and the mismatch is loud**: a description opened
-    against a structure that has since changed would otherwise build a
-    different calculation under the same id — § 1's second failure mode.
-    """
-    from ..structure_pair import GeometryChangedError
-    from ..workingcopy_structure import StructureCodec
-    codec = StructureCodec()
-    # The codec, not the bare loader: describe writes the structure as the
-    # pair (--vacuum lives NOWHERE a bare .xyz can put it), and the codec
-    # applies the .molstruct.json and compares its pin with the file
-    # (`structure-molstruct.md` § 3).
-    candidate = structure_path(task, base)
-    if candidate is not None:
-        try:
-            struct = codec.load(candidate)
-        except GeometryChangedError as exc:
-            # THE PIN (`structure-molstruct.md` § 3): the atoms or the
-            # cell moved after the pair was written -- a deck rendered
-            # now would put the old labels on them.
-            raise PrepError(f"the structure has changed since this "
-                            f"calculation was described: {exc}") from None
-    else:
-        raise PrepError(
-            f"the structure this calculation describes is not here: "
-            f"{task.structure.source!r}. `task.json` records a REFERENCE to it "
-            f"(engines/stages.md § 6.3), so `prep` needs the file to be either "
-            f"beside the calculation or still at that path.")
-    if task.structure.fingerprint and codec.fingerprint_on_disk(
-            candidate) != task.structure.fingerprint:
-        # THE WHOLE PAIR IS THE ONE IT WAS DESCRIBED WITH (`engines/stages.md`
-        # § 6.3): every stage of a calculation is of one structure, and an
-        # edit after its description -- a label, a held atom, a coordinate,
-        # the box -- is refused, never worked around.
-        raise PrepError(
-            f"the structure has changed since this calculation was "
-            f"described: {candidate.name} is not the pair its description "
-            f"records (task.json's structure fingerprint) -- an atom, a "
-            f"label, a held atom or the box was edited after it.  Every "
-            f"stage of a calculation is of the one structure it was "
-            f"described with: describe it again to build on the edit.")
-    if struct.formula != task.structure.formula or \
-            struct.n_atoms != task.structure.atoms:
-        raise PrepError(
-            f"the structure has changed since this calculation was described: "
-            f"the description witnesses {task.structure.formula} with "
-            f"{task.structure.atoms} atoms, and {candidate} now holds "
-            f"{struct.formula} with {struct.n_atoms}.\n"
-            f"  Describing again is the honest fix -- rendering this deck would "
-            f"build a different calculation under the same id.")
-    # THE STRUCTURE ENTERS THIS CALCULATION (`model/structure-periodicity.md`
-    # § 6.0): an engine's stated origin is not carried in, so the one rule
-    # places it -- unless the kind keeps the engine's frame: a vibration
-    # whose input is stated relaxed, as THIS stage resolves it (``pset``,
-    # the stage's own values over the template's -- the door every other
-    # reader of `already_relaxed` asks).
-    from ..cell import entering
-    relaxed = bool(getattr(pset[0].render_config(), "already_relaxed", False))
-    return entering(struct, keep_engine_frame=relaxed)
-
-
-# --------------------------------------------------------------------- #
-#  The rung -- what a kind adds to the one table of steps               #
-#  (`script-preparation.md` § 3.0)                                       #
-# --------------------------------------------------------------------- #
-
-def _at_no_point(cfg, point):
-    return cfg
-
-
-@dataclass
-class Rung:
-    """What one rung's decks are written from -- the structure step's
-    answer, read by every step after it (`script-preparation.md` § 3.0).
-
-    A pair with steps of its own builds one -- its builder the part the
-    kind table names (``rung``); every other pair is a calculation of its
-    described structure, one deck per element
-    (:func:`_described_rung`).  The conductor (:func:`prep_calculation`)
-    reads these and never asks which kind it is in."""
-    #: The structure the decks describe.
-    struct: object
-    #: The program each deck is -- `spec_for`'s ``calculation``: the
-    #: calculation's own (a SIESTA vibration's phases are its parts,
-    #: `spec_extra`'s ``part``).
-    render_kind: str
-    #: WHAT THE KIND SAYS OF THE RUN IT PREPARES, beside its request -- a
-    #: SIESTA vibration's count and sizes (`engines/vibration.md` § 5.11
-    #: § 9); prep's notes carry them to both doors.  Nothing judges the
-    #: wall: it stays the person's.
-    said: Tuple[str, ...] = ()
-    #: ``cfg -> cfg``: the config an element renders from -- a lead's own
-    #: label, the junction's electronic state folded in.
-    configure: Callable = lambda cfg: cfg
-    #: ``(element, cfg, point) -> {keyword: value}``: what else `spec_for`
-    #: is told -- a vibration's block and its phase's part, the cell; the
-    #: junction's electronic state and the deck's point.
-    spec_extra: Callable = lambda element, cfg, point: {}
-    #: ``((folder, point), ...)``: the folders each holding a deck written at
-    #: that point -- a frame and a voltage (`transport.stages.Point`,
-    #: `engines/transport.md` § 2a.9-11) -- each with its own wrapper; its
-    #: runs are the stage's, ``run-<n>/<point>``.  Empty: one deck, in the
-    #: element's folder.
-    points: tuple = ()
-    #: ``(cfg, point) -> cfg``: a deck's config at its point -- the rung
-    #: answers the bias, the one value the catalogue does not hold
-    #: (`engines/template.md` § 6.4).
-    at_point: Callable = _at_no_point
-    #: ``point -> struct``: the structure a point's deck describes -- its
-    #: frame of the cited set; ``None``, every deck describes ``struct``.
-    struct_at: Optional[Callable] = None
-    #: ``(plan) -> None``: the data files, when the kind's come from
-    #: somewhere other than the engine's library (transport: the citation);
-    #: ``None`` is the engine's own step (`EngineSeam.provide_data`).
-    provide_data: Optional[Callable] = None
-    #: ``job -> job``: what the rung's job carries forward and runs, where
-    #: the kind answers it per rung -- a transport rung's restart files, the
-    #: transmission's program.
-    job_facts: Callable = lambda job: job
-    #: ``element -> ((item, who), ...)``: who set each value the rung's decks
-    #: are rendered from -- `resolve`'s rows, and the rung's own words for a
-    #: value its steps set after them (a transport rung's label;
-    #: `job-contracts.md` § 3.2).
-    sources: Callable = lambda element: element.deck_sources
-    #: ``(sources, point) -> sources``: the rows a point's deck states --
-    #: a vibration phase's, the items its role reads; every row by default.
-    sources_at: Callable = lambda sources, point: sources
-    #: ``point -> {resumes}``: how a point's run script is rendered beyond
-    #: the job's own facts and what every point of a run of points has
-    #: (`runwrap.PointOfRun`) -- a vibration phase's `resumes`, its
-    #: warm-files section's (`engines/vibration.md` § 5.11 § 6); ``{}``
-    #: renders the job's.
-    wrapper_at: Callable = lambda point: {}
-    #: ``point -> bool``: whether a point's deck relaxes -- its progress
-    #: log's targets (`_seed_trajectory_log`); by default the render kind's
-    #: record's (``relaxes``, the kind table).
-    relaxes_at: Optional[Callable] = None
-    #: ``(point, spec, folder, plan) -> None``: what the rung writes BESIDE
-    #: a deck before the deck is checked -- a vibration phase's
-    #: `coordinates.fdf`, which the deck reads as its coordinate block
-    #: (`engines/vibration.md` § 5.11 § 4); ``None`` for a kind whose deck
-    #: holds everything.
-    beside: Optional[Callable] = None
-
-
-def _described_rung(calc, pset, *, seam, sweep, log, plan,
-                    contours=None) -> Rung:
-    """A calculation of its described structure, one deck per element --
-    every kind with no steps of its own."""
-    return Rung(struct=_structure_for(calc.task, calc.base, pset),
-                render_kind=calc.task.calculation)
-
-
-def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
-                             contours=None) -> Rung:
-    """A SIESTA vibration's rung -- ONE RUN OF POINTS (`engines/vibration.md`
-    § 5.11): the relaxation, the force constants and the optical calls,
-    each phase a point of the run with its own deck, written for its part
-    by the one deck writer (§ 5.11 § 4) from the structure as given -- the
-    atoms in the order the force-constant run needs, the held ones first,
-    on a COPY whose order record its deck states and the job's finish
-    inverts (`model/overview.md` § 2.2a, I5); the user order never reaches
-    the engine and the sorted order never reaches a person.  Every phase's
-    deck is written at the structure's coordinates; what a call computes
-    at is its own `coordinates.fdf`, written by the run's plan step
-    (§ 5.11 § 3).  Which phases run is the stage's config's: each `PHASES`
-    row's switch (`already_relaxed` turns the relaxation off,
-    `compute_raman` off the optical calls).  Each phase's run script
-    is rendered with its own `resumes` (:attr:`Rung.wrapper_at`); its
-    report steps and the kind's own steps are every run of points'
-    (`PointOfRun`, the kind table's ``steps``)."""
-    from ..siesta.vibration_phases import (FC, RELAX, Call, phase, phases_on,
-                                           run_size_words)
-    from ..transport.sort import deck_sort_key, sort_by
-    from ..warmfiles import warm_list
-    from .naming import stage_home
-    base, task = calc.base, calc.task
-    # THE GEOMETRY IN THE USER ORDER, then sorted as every prep sorts
-    # (`model/overview.md` § 2.2a, I3-I5): the structure as given, every
-    # phase's deck at it.  THE ORDER RECORD RIDES THE COPY into its deck's
-    # ATOM-METADATA block (I5): the deck states the way back, beside the job.
-    struct = _structure_for(task, base, pset)
-    key = deck_sort_key(task.engine, task.calculation, pset.stage)
-    struct = sort_by(struct, key).structure
-    log.step(f"the atom order the engine needs -- {key}, {struct.n_atoms} "
-             f"atoms; the deck states its order record")
-    cfg0 = pset[0].render_config()
-    # THE PHASES THIS STAGE RUNS, by the table's switches (§ 5.11 § 1) --
-    # each a point of the run: its folder below the stage, holding the
-    # phase's deck and run script every call of it copies (§ 5.11 § 2).
-    on = phases_on(cfg0)
-    stage_dir = stage_home(base, task, pset.stage).dir
-    points = tuple((calcdirs.prepared_folder(stage_dir, c.prepared), c)
-                   for c in (Call(p.name, p.name) for p in on))
-    log.step("the run's phases: " + ", ".join(p.name for p in on))
-    # THE FINISH'S FORCE CRITERION is the relaxation phase's own tolerance
-    # (`engines/vibration.md` § 5.5): the one yardstick the run relaxes to
-    # and judges the reference geometry by -- said with where it came from.
-    criterion = getattr(cfg0, "relax_force_tol", None)
-    criterion_from = "the stage's relax_force_tol"
-
-    def spec_extra(element, cfg, point):
-        # THE PART THE DECK IS -- the point's phase; a benchmark trial's
-        # the force constants' (a trial measures the one call that costs).
-        part = point.phase if point is not None else FC
-        return {"part": part,
-                # The finish's facts ride the force-constant deck alone --
-                # never a benchmark trial's: a spectrum of capped SCFs is a
-                # spectrum of nothing (§ 5.5).
-                **({"vibration": _vibration_block(
-                        pset.stage, cfg, criterion=criterion,
-                        criterion_from=criterion_from, struct=struct)}
-                   if part == FC and not element.is_trial else {})}
-
-    def wrapper_at(point):
-        # EACH PHASE'S RUN SCRIPT (§ 5.11 § 6): the phase's `resumes` from
-        # its warm-files section -- what its Mode line says of the restart
-        # files it finds; what a launch again does with the point is its
-        # declared relaunch (`PointOfRun.relaunch`).
-        return {"resumes": warm_list("siesta", phase(point.phase).warm_kind,
-                                     base).resumes}
-
-    def sources_at(sources, point):
-        # A PHASE'S DECK STATES THE ROWS ITS ROLE READS (the catalogue's
-        # `stages`, `engines/template.md` § 6.4): never another phase's
-        # settings, nor the relaxation's `restart` in a call that fixes its
-        # own start (§ 5.11 § 4).  A benchmark trial's deck states them all.
-        if point is None:
-            return sources
-        from ..template import catalogue, select
-        role = phase(point.phase).role
-        items = {it.name: it for it in select(catalogue(), engine="siesta")}
-        return tuple((n, w) for n, w in sources
-                     if n not in items or not items[n].stages
-                     or role in items[n].stages)
-
-    def beside(point, spec, folder, plan):
-        # THE STRUCTURE'S COORDINATES, beside every phase's deck (§ 5.11
-        # § 4): the rows the deck writer derived, as the deck reads them.
-        from ..runfiles import COORDINATES_FILE
-        plan.text(Path(folder) / COORDINATES_FILE,
-                  spec.derived["coordinates_file"])
-
-    # THE COUNT AND THE SIZES, beside the wall (§ 5.11 § 9): the free atoms
-    # are those the held label leaves; the modes the run reports, the rank
-    # rule's -- the one count prep's check states too.
-    from ..validation.spectra import modes_of
-    n_free, _n_rigid, n_modes = modes_of(struct, task.engine)
-
-    def job_facts(job):
-        # THE RUN'S PHASES, on its job (`Job.phases`): what launch opens and
-        # walks, what the run's own python follows.  AND WHAT A LAUNCH AGAIN
-        # CARRIES (§ 5.11 § 6): the relaxation call's files, by its row's
-        # section (`warm_kind`) -- none without a relaxation, nor where the
-        # stage starts clean (`_job_for` gave it none).
-        from .model import warm_declaration
-        relaxes = any(p.name == RELAX for p in on)
-        return dataclasses.replace(
-            job, phases=[p.name for p in on],
-            warm=(warm_declaration("siesta", task.label,
-                                   phase(RELAX).warm_kind, base)
-                  if relaxes and job.warm else []))
-    return Rung(struct=struct, render_kind="vibration",
-                said=(run_size_words(cfg0, n_free, n_modes),),
-                spec_extra=spec_extra, points=points, wrapper_at=wrapper_at,
-                beside=beside, sources_at=sources_at,
-                relaxes_at=lambda pt: pt is not None and pt.phase == RELAX,
-                job_facts=job_facts)
-
-
-def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
-                      contours=None) -> Rung:
-    """A transport rung (`engines/transport.md`): its four steps of its own.
-
-    **compose** -- the junction and its leads, composed from the cited
-    relaxation, or read from the record that travelled beside ``task.json``
-    (:func:`composed_for_prep`); the rung's structure is the junction or
-    the lead taken out of it (:func:`transport_parts`).  **electronic
-    state** -- decided once, on the junction, folded into every rung.
-    **points** -- a sweep's rung writes one deck per bias point, each in its
-    own folder (`transport.stages.point_folders`).  Its data files come
-    from the citation, and its job carries the rung's own restart files and,
-    for the transmission, TBtrans's program.  The fifth, **gather** -- each
-    rung's inputs from the runs upstream -- is its first launch's
-    (:func:`gather_sources`, `job-system.md` § 6.0)."""
-    from .reuse import point_key
-    base, task, stage = calc.base, calc.task, pset.stage
-    if sweep is not None:
-        raise PrepError(
-            "a transport calculation takes no parameter sweep or "
-            "translation.  Its parameters come from its own template and "
-            "each rung's run card, and its one axis is the bias -- a list "
-            "in task.json, rendered as one deck per point "
-            "(engines/transport.md 2a.10: single bias is the degenerate "
-            "case of that axis, one point at zero).")
-    composed = composed_for_prep(calc, plan)
-    struct, configure, state = transport_parts(task, stage, composed,
-                                                pset[0].render_config())
-    from ..transport.stages import point_folders, warm_declaration
-    # THE RUNG'S POINTS (`transport.stages.rung_points`): a frame of the
-    # cited set and a voltage each, the frames the junction composed here.
-    points = tuple(point_folders(base, task, stage,
-                                 frames=composed.junction.n_frames))
-    citation = task.slots["junction"]
-
-    def provide_data(plan):
-        # The pseudopotentials: a cited run's travel with it, a cited pair's
-        # come from the library the template names (`engines/transport.md`
-        # § 3.1) -- screened against the config the rung's decks render
-        # from: what it checks is each file's XC family against the
-        # functional the run will ask for.
-        cfg = configure(pset[0].render_config())
-        if composed.provenance["kind"] == "pair":
-            seam.provide_data(composed.junction, cfg, base, plan=plan)
-        else:
-            provide_pseudos(composed.junction, cfg, base,
-                                       citation, plan=plan)
-
-    def job_facts(job):
-        # The rung's own restart files (`transport.stages.warm_declaration`:
-        # the seed's and the device's; the leads and the transmission carry
-        # none).  The program its deck is read by and the scratch folder its
-        # run keeps are the deck's own statement (`DeckSpec.program`,
-        # ``scratch_dir``), taken onto the job by `_job_for`.
-        return dataclasses.replace(
-            job, warm=warm_declaration(stage, task.label, base))
-    return Rung(struct=struct, render_kind="transport", configure=configure,
-                sources=transport_sources,
-                # THE DECK'S POINT reaches the spec: the device names its
-                # run's shared files the way its point reaches them
-                # (`engines/transport.md` § 2a.11).
-                spec_extra=lambda element, cfg, point: {
-                    "state": state, "point": point,
-                    # WHERE THE DEVICE KEEPS THE LEADS' FILES: the
-                    # vocabulary's folder (`engines/transport.md` § 2a.11).
-                    "scratch_dir": scratch_dir_of(base),
-                    # WHAT A TRANSMISSION POINT COMPUTES where it is not its
-                    # window whole -- the prep's decision (§ 2a.16); a rung
-                    # that runs once, its one point.
-                    "contours": (contours or {}).get(point_key(point))},
-                points=points, at_point=at_point,
-                struct_at=lambda pt: at_frame(struct, pt),
-                provide_data=provide_data, job_facts=job_facts)
 
 
 @dataclass(frozen=True)
@@ -898,7 +460,7 @@ def prep_calculation(calc, stage: Optional[str], *,
                      walks: Optional[dict] = None,
                      notes: Optional[list] = None,
                      copied: bool = False,
-                     contours: Optional[dict] = None) -> List[Path]:
+                     reuse=None) -> List[Path]:
     """**`prep`, entire** — the five steps of `script-preparation.md` § 3.0, in
     the order it calls *forced rather than chosen*.  ``notes`` is the
     planner's list, handed down to step 4 for what a rendering says.
@@ -936,9 +498,10 @@ def prep_calculation(calc, stage: Optional[str], *,
     ``copied`` -- a member of a group copied in from the finished
     calculation a transport calculation reuses (`jobset.reuse`): its files
     planned as any stage's, no run opened -- its runs are the copies, which
-    the entry plans after it (`engines/transport.md` § 2a.16).  ``contours``
-    is what each transmission point computes where it is not its window
-    whole, by the point's key (`reuse.point_key`, § 2a.16).
+    the entry plans after it (`engines/transport.md` § 2a.16).  ``reuse``
+    is what the kind's own reuse decided for this prep (its description's
+    ``reuse`` part, `kind_table.description_part`), handed to its own rung
+    builder whole -- the conductor reads nothing in it.
 
     ``findings``, when given, receives what each deck's checks said
     (`script_emit.prepare_deck`) -- the terminal also reads them on stderr as
@@ -961,7 +524,7 @@ def prep_calculation(calc, stage: Optional[str], *,
             calc, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             opened=opened, findings=findings,
             plan=plan, walks=walks,
-            notes=notes, copied=copied, contours=contours)
+            notes=notes, copied=copied, reuse=reuse)
     finally:
         PLANNED.reset(scope)
 
@@ -975,7 +538,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                       walks: Optional[dict] = None,
                       notes: Optional[list] = None,
                       copied: bool = False,
-                      contours: Optional[dict] = None) -> List[Path]:
+                      reuse=None) -> List[Path]:
     """The steps of :func:`prep_calculation`, planned into ``plan``: nothing
     is written here.  Steps 1 and 2 arrive answered (``resolved``): this
     snapshots the machine's record it was handed and plans the rest -- it
@@ -1054,9 +617,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # copy.
     from ..kind_table import kind as _kind, part_of
     builds = (part_of(str(task.calculation), str(task.engine), "rung")
-              or _described_rung)
+              or described_rung)
     rung = builds(calc, pset, seam=seam, sweep=sweep, log=log, plan=plan,
-                  contours=contours)
+                  reuse=reuse)
     if notes is not None:
         notes.extend(rung.said)
     # The DATA FILES the engine will open, before any deck is written: a
@@ -1160,7 +723,11 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                 with _calling("relabel", engine=task.engine,
                               where=element.label):
                     cfg = seam.relabel(cfg, element.label)
-                _sources = said_by(_sources, "system_label",
+                # ...said on the field the engine's record names as its
+                # identity (``identity_field``).
+                from ..engine_table import engine as _engine_rec
+                _sources = said_by(_sources,
+                                   _engine_rec(task.engine).identity_field,
                                    SET_AFTER["trial_label"])
                 # The forced cold has ONE setter -- the measurement pin
                 # (`template.TRIAL_PINS`, resolved with provenance "pin") --
@@ -1221,8 +788,11 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                     _sc.prepare_deck(_spec, _struct, _at, _out / script,
                                      log=log, dest_dir=base,
                                      findings=findings, plan=plan,
-                                     sources=rung.sources_at(_sources,
-                                                             _point))
+                                     sources=_rows_read(
+                                         _sources, rung.role_at(_point),
+                                         engine=str(task.engine),
+                                         kind=str(task.calculation),
+                                         stage=token))
                     # WHAT THIS DECK'S OWN TEXT PROMISES, beside it -- each
                     # point's deck its own, so every run folder a launch
                     # brings it into holds it (`materialize.bring_files`).
@@ -1368,7 +938,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     _points = [(d, {**rung.wrapper_at(pt),
                     "point": PointOfRun(
                         relaunch=_declared.relaunch_of(pset.stage, pt),
-                        steps=dict(_record.steps))})
+                        steps=dict(_record.steps), role=rung.role_at(pt))})
                for d, pt in rung.points]
     dirs = prep_jobset(js, base, calculation=str(task.calculation),
                        env=env, emit_sbatch=emit_sbatch,
@@ -1866,7 +1436,7 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     Its header states its atoms' indices (`model/overview.md` § 2.2b): the
     deck's structure listed by engine index, both columns from its order
     record -- the engine column alone for a structure of its own (an
-    electrode cell, `transport.sort.deck_own_structure`).
+    electrode cell, `kind_table.own_structure`).
     """
     if not getattr(cfg, "write_molwatch_log", False):
         return
@@ -1900,18 +1470,35 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         convergence_targets=(targets or None),
         frame=frame,
         frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
-        plan=plan, atom_index_map=_deck_atoms(struct, engine, kind,
+        plan=plan, atom_index_map=_deck_atoms(struct, kind,
                                               names.stage).to_dict())
 
 
-def _deck_atoms(struct, engine: str, kind: str, stage):
+def _rows_read(sources, role, *, engine: str, kind: str, stage: str):
+    # ``stage``: the rung's stage token, as the list door asks it.
+    """THE ROWS A DECK STATES -- `resolve`'s, with who set each -- that its
+    rung reads: every row where its point plays no one role, else those the
+    one role reads (a SIESTA vibration's phase, `Rung.role_at`), by the one
+    rule (`template.reads`), the rule its run script's record of what the
+    engine will read asks too."""
+    if role is None:
+        return sources
+    # THE LIST DOOR asked (`script_emit.declarations`): every item of the
+    # engine, and those the role reads; a row no item declares is kept.
+    every = {it.name for it in _sc.declarations(engine)}
+    read = {it.name for it in _sc.declarations(engine, calculation=kind,
+                                               stage=stage, role=role)}
+    return tuple((n, w) for n, w in sources if n not in every or n in read)
+
+
+def _deck_atoms(struct, kind: str, stage):
     """THE ATOM INDEX MAP of the files a deck of ``struct`` makes its run
     write (`model/overview.md` § 2.2b, F2): listed by engine index, both
     columns from the structure's order record, the identity where it
     carries none; the engine column alone for a structure of its own."""
     from ..atom_permutation import AtomIndexMap
-    from ..transport.sort import deck_own_structure
-    own = deck_own_structure(engine, kind, stage)
+    from ..kind_table import own_structure
+    own = own_structure(kind, stage)
     if own:
         return AtomIndexMap.of_own_structure(struct.n_atoms, own)
     return AtomIndexMap.of_engine_record(struct.atom_order, struct.n_atoms)
@@ -2339,7 +1926,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                env: Optional[str] = None,
                emit_sbatch: bool = True, plan, notes: Optional[list] = None,
                on_inputs=None, copied: bool = False,
-               contours: Optional[dict] = None) -> PrepAnswer:
+               reuse=None) -> PrepAnswer:
     """**THE MEMBER PLANNER** -- one stage, planned into ``plan``, nothing
     written, saved or recorded (`job-system.md` § 5.0, checkpoints 4–4b):
     its inputs, assembled (`prep_inputs`, A12) -- a benchmark's grid
@@ -2358,10 +1945,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     once the inputs and their checks stand, before anything is rendered --
     so a terminal says a benchmark's grid ahead of what its decks say.
     ``copied`` plans a member of a group copied in (:func:`prep_calculation`):
-    its answer is a launched stage's.  ``contours`` -- what each transmission
-    point computes where it is not its window whole -- is the caller's: the
-    prep's reuse decision, or a launched stage's decks
-    (`reuse.launched_contours`)."""
+    its answer is a launched stage's.  ``reuse`` -- what the kind's own reuse
+    decided for this prep -- is the caller's, handed to the stage's rung
+    builder whole (:func:`prep_calculation`)."""
     from .prep_inputs import bench_inputs, prep_run_inputs
     from .placement import launch_refusal, placed
     from ..engine_table import engine as _engine_rec
@@ -2492,7 +2078,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                             opened=opened, findings=deck_findings,
                             plan=plan,
                             resolved=resolved, walks=walks,
-                            notes=notes, copied=copied, contours=contours)
+                            notes=notes, copied=copied, reuse=reuse)
 
     # THE ANSWER, from the plan -- what a preview shows and a prep records
     # once it is written.
@@ -2699,10 +2285,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
                                                      notes)))
         identity = plan.identity()
         if plan_id is not None and plan_id != identity:
-            raise PrepError(
-                "what prep would write now differs from the plan you "
-                "previewed -- something it is made from changed since.  "
-                "Preview again (job-system.md § 5.0).")
+            raise PrepError(PLAN_CHANGED)
         if preview:
             out.preview = True
             out.plan_id = identity
@@ -2770,41 +2353,40 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
                         one_job=one_job)
 
 
-def _record_the_order(calc, *, refuse, asked, preview,
-                      plan_id) -> PrepAnswer:
-    """`prep task` with no group named, on a junction whose sidecar states no
-    order record (`engines/transport.md` § 1.1, *No group left to prepare*):
-    its order found by composing the citation again and comparing it atom
-    for atom, and its record written again by the one writer
-    (`composed_for_prep`, never composing afresh) -- the folder's state
-    saved first, nothing else written.  ``refuse`` and ``asked`` are the
-    prep's own (:func:`_prep_groups`)."""
+def _record_the_order(calc, record_order, *, refuse, asked, preview,
+                      plan_id) -> Optional[PrepAnswer]:
+    """`prep task` with no group named, on a calculation whose kind records
+    its citation's atom order (its description's ``order_record`` part,
+    `kind_table.description_part` -- a junction whose sidecar states no
+    order record, `engines/transport.md` § 1.1, *No group left to
+    prepare*): the part plans the record and says what it recorded, the
+    folder's state saved first, nothing else written; ``None`` when it has
+    nothing to record.  ``refuse`` and ``asked`` are the prep's own
+    (:func:`_prep_groups`)."""
     from ..checkpoint import CheckpointError, save_before
     from .ledger import record as ledger
     from .planned import Plan
     base, task = calc.base, calc.task
     plan = Plan()
     try:
-        composed_for_prep(calc, plan, afresh=False)
+        said = record_order(calc, plan)
     except PrepError as exc:
         raise refuse(str(exc)) from None
+    if said is None:
+        return None
     written = [str(w.relative_to(base)) for w in plan.writes()]
     answer = PrepAnswer(
         kind="task", stage=None,
-        recorded=(f"the composed junction's order recorded -- checked "
-                  f"against its citation, atom for atom: "
-                  f"{', '.join(written)} written; no group prepared"))
+        recorded=f"{said}: {', '.join(written)} written; no group prepared")
     identity = plan.identity()
     if preview:
         answer.preview, answer.plan_id = True, identity
         return answer
     if plan_id is not None and plan_id != identity:
-        raise refuse("what prep would write now differs from the plan you "
-                     "previewed -- something it is made from changed "
-                     "since.  Preview again (job-system.md § 5.0).")
+        raise refuse(PLAN_CHANGED)
     try:
         with user_error_as_prep():
-            kept = save_before(base, "prep task: the junction's order record",
+            kept = save_before(base, "prep task: the citation's order record",
                                engine=str(task.engine))
     except (CheckpointError, PrepError) as exc:
         raise refuse(f"the folder's state could not be saved, so nothing "
@@ -2999,18 +2581,19 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     task, request = description.task, calc.request
     described = request.numbers
     if not numbers:
-        # NO GROUP NAMED: the calculation's own record -- a junction whose
-        # sidecar states no order record -- has it recorded, and nothing else
-        # (`engines/transport.md` § 1.1, *No group left to prepare*).
-        from ..transport.compose import ComposeError, recorded_junction
-        try:
-            recorded = recorded_junction(base)
-        except ComposeError as exc:
-            raise _refuse(str(exc)) from None
-        if recorded is not None and recorded.order_unstated:
-            return [_record_the_order(description.calc, refuse=_refuse,
-                                      asked=_asked, preview=preview,
-                                      plan_id=plan_id)]
+        # NO GROUP NAMED: the calculation's own record of its citation's
+        # atom order, where its kind keeps one and it states none, is
+        # recorded, and nothing else (its description's `order_record`
+        # part; `engines/transport.md` § 1.1, *No group left to prepare*).
+        from ..kind_table import description_part
+        record_order = description_part(str(task.calculation),
+                                        "order_record")
+        if record_order is not None:
+            got = _record_the_order(description.calc, record_order,
+                                    refuse=_refuse, asked=_asked,
+                                    preview=preview, plan_id=plan_id)
+            if got is not None:
+                return [got]
         # THE GROUPS IT OFFERS, the one offer (`ready.prep_offer`: every one
         # not prepared as described that may be prepared now), and why each
         # other may not; none offered, each group's next step says how it is
@@ -3139,8 +2722,9 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     #     is the prep's, written down as every refusal is -- the
     #     description's notes first (`job-system.md` § 5.0, *The
     #     checkpoints, in order*).
+    from ..kind_table import description_part
     from .planned import Plan
-    from .reuse import decide, launched_contours
+    _reuse = description_part(str(task.calculation), "reuse")
     the_plan = Plan()
     previews: Dict[int, List[PrepAnswer]] = {}
     try:
@@ -3154,9 +2738,10 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             #      here -- decided before anything is planned, in the
             #      ladder's order -- the manifest.  A group copied in is in
             #      no sequence of groups: no job launches it.
-            reuse = decide(description.calc, [
+            reuse = (_reuse.decide(description.calc, [
                 n for n in numbers
                 if not any(st in launched_members for st in members[n])])
+                     if _reuse is not None else None)
             if reuse is not None and sequence:
                 sequence = [n for n in sequence if not reuse.copied(n)]
                 if len(sequence) < 2:
@@ -3177,13 +2762,11 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                     allocation=allocation,
                     env=env, emit_sbatch=emit_sbatch, plan=the_plan,
                     copied=reuse is not None and reuse.copied(n),
-                    # WHAT EACH TRANSMISSION POINT COMPUTES: the reuse's
-                    # decision for a member it decides, a launched one's as
-                    # its decks record it (`engines/transport.md` § 2a.16).
-                    contours=(launched_contours(description.calc, at)
-                              if at in launched_members
-                              else reuse.contours_for(at)
-                              if reuse is not None else None))
+                    # WHAT THE KIND'S OWN REUSE DECIDED, handed to its rung
+                    # builder whole (`transport.rung._contours` reads what
+                    # each of its points computes, a launched rung's as its
+                    # decks record it; `engines/transport.md` § 2a.16).
+                    reuse=reuse)
                     for at in members[n]]
         except step_errors() as exc:
             raise as_prep_error(exc) from exc
@@ -3435,10 +3018,10 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     #      (`engines/transport.md` § 2a.16): a run of a member prepared here
     #      and never launched removed first, each run's launch record last.
     if reuse is not None:
-        from .reuse import copy_in
+        # ...by the kind's own reuse, the part that decided it.
         for d in reuse.groups:
             if d.copied:
-                copy_in(description.calc, d, the_plan)
+                _reuse.copy_in(description.calc, d, the_plan)
     #      EACH GROUP ON ITS MEMBERS' ROWS -- the members in order, ``None``
     #      for a group of one.
     js = JobSet.of(base, plan=the_plan)
@@ -3479,9 +3062,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             a.preview, a.plan_id = True, identity
         return answers
     if plan_id is not None and plan_id != identity:
-        raise _refuse("what prep would write now differs from the plan you "
-                      "previewed -- something it is made from changed "
-                      "since.  Preview again (job-system.md § 5.0).")
+        raise _refuse(PLAN_CHANGED)
     # 3 · THE SAVE, ONCE, before anything is written.
     try:
         with user_error_as_prep():

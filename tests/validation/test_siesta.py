@@ -99,29 +99,23 @@ def test_every_range_warning_names_the_engine_keyword(water_structure):
                           "not have:\n  " + "\n  ".join(invented))
 
 
-#: THE DECK'S GPU SWITCH IS ELPA'S (`engines/siesta.md` § 7): the GPU with
-#: a solver that has none is a warning of the settings check, which the
-#: page's check hears -- a library's own GPU limit is said, never refused
-#: (`execution/gpu.md` G11); 2.64.0 refused it.
-#: ``(use_gpu, diag_algorithm, warned)``.
+#: THE SOLVER AND THE GPU ARE TWO OF THE PERSON'S CHOICES (`engines/siesta.md`
+#: § 7; the user, 2026-11-02): the settings check couples neither to the
+#: other -- 2.64.0 refused the GPU with ScaLAPACK, 2.64.1 warned of it.
+#: ``(use_gpu, diag_algorithm)``.
 GPU_SOLVER_ROWS = [
-    pytest.param(True, "ScaLAPACK", True, id="gpu-with-scalapack"),
-    pytest.param(True, "ELPA-2STAGE", False, id="gpu-with-elpa"),
-    pytest.param(False, "ScaLAPACK", False, id="cpu-with-scalapack"),
+    pytest.param(True, "ScaLAPACK", id="gpu-with-scalapack"),
+    pytest.param(True, "ELPA-2STAGE", id="gpu-with-elpa"),
+    pytest.param(False, "ScaLAPACK", id="cpu-with-scalapack"),
 ]
 
 
-@pytest.mark.parametrize("use_gpu, algorithm, warned", GPU_SOLVER_ROWS)
-def test_a_gpu_run_on_a_solver_the_gpu_switch_skips_is_said(
-        water_structure, use_gpu, algorithm, warned):
+@pytest.mark.parametrize("use_gpu, algorithm", GPU_SOLVER_ROWS)
+def test_the_settings_check_says_nothing_of_a_solver_and_the_gpu(
+        water_structure, use_gpu, algorithm):
     cfg = SiestaConfig(use_gpu=use_gpu, diag_algorithm=algorithm)
     issues = validate(water_structure, cfg, calculation="optimization")
-    said = [i for i in issues if i.where == "config.use_gpu"]
-    if warned:
-        assert [i.severity for i in said] == ["warn"], said
-        assert algorithm in said[0].message and "ELPA" in said[0].message
-    else:
-        assert said == [], said
+    assert [i for i in issues if i.where == "config.use_gpu"] == [], issues
 
 
 def test_siesta_mesh_cutoff_in_range_no_warn(water_structure):

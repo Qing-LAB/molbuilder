@@ -12,16 +12,20 @@ benchmark, the tab that hands it over or where it describes itself, its
 topic -- the folder a new project lays down for it -- whether its deck
 relaxes the structure, what its root opens and what a rung's folder opens
 where that is not a run's own result, its science checks (a part) and the
-module that exports its results;
+module that exports its results, the labels its regions are with what each
+is for, the checks its description takes (a part), the kind its citation
+is a run of, and the code the shared doors ask of a kind that cites or
+extends -- its description's parts;
 and on each engine it runs on, the
 engine's own name for it, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
 name), the ladder a new description starts from, what relaxes the
 structure first, a stage older versions wrote that it no longer holds, and
-its run of points (its record, `execution/runs-of-points.md` § 2.1), and
-the code parts the pair names -- its run of points' declaration, its rung's
-builder, the inputs its rungs take and their gather, and what `summarize
-task` adds up.  The engines a kind
+its run of points (its record, `execution/runs-of-points.md` § 2.1), the
+order its decks list atoms in, and the code parts the pair names -- its run
+of points' declaration, its rung's builder, the inputs its rungs take and
+their gather, what `summarize task` adds up, and what a scratch folder's
+status line reads.  The engines a kind
 runs on are its parts -- no second list says which engine runs which kind
 -- and each is the engine table's (`engine_table`).
 
@@ -68,14 +72,24 @@ ROLE_OPENS = ("report",)
 
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "relaxes",
-              "root_opens", "validator", "export", "on")
+              "root_opens", "validator", "export", "regions",
+              "description_checks", "on")
 _PART_KEYS = ("words", "stage_roles", "points", "rung",
               "inputs", "gather", "continues", "sum", "retired", "ladder",
-              "relaxation")
+              "relaxation", "atom_order", "scratch_status")
 
 #: The parts a pair may name, each ``module:NAME`` (:func:`part_of`) --
 #: ``points`` its run of points' declaration (:attr:`RunOfPoints.declaration`).
-PART_REFS = ("points", "rung", "inputs", "gather", "continues", "sum")
+PART_REFS = ("points", "rung", "inputs", "gather", "continues", "sum",
+             "scratch_status")
+
+#: The parts a kind's description may name for the shared doors that ask of
+#: a kind that cites or extends (:func:`description_part`): the limits of
+#: extending a finished calculation, the frames its citation holds, the
+#: citation's atom order recorded at a prep that names no group -- each
+#: ``module:NAME`` -- and the reuse of the calculation it extends, a module
+#: named whole (``module``), as ``export`` is.
+DESCRIPTION_PARTS = ("extension", "cited_frames", "order_record", "reuse")
 
 #: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): when its
 #: run is finished -- every point DONE, or every point RAN, the words the
@@ -113,6 +127,18 @@ class Role:
     #: What the rung's run folder opens where that is not the run's own
     #: result (:data:`ROLE_OPENS`) -- or ``None``: its own result.
     opens: Optional[str] = None
+    #: A LEAD's label, what it is for -- the sentence the label palette shows
+    #: beside it -- or ``None`` for a role that is no lead.
+    about: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Region:
+    """A label besides the leads that a kind reads on its structure's atoms
+    (``regions``) -- a transport junction's ``bridge`` -- and what it is
+    for, the sentence the label palette shows beside it."""
+    name: str
+    about: str
 
 
 @dataclass(frozen=True)
@@ -146,6 +172,12 @@ class Description:
     cites: Optional[str] = None
     #: The fields only it may state (:data:`DESCRIPTION_FIELDS`).
     carries: Tuple[str, ...] = ()
+    #: The kind of run its citation is -- an optimization, whose order rule
+    #: judges the cited deck -- or ``None``: it cites nothing.
+    cited_kind: Optional[str] = None
+    #: Its parts for the shared doors (:data:`DESCRIPTION_PARTS`), by key --
+    #: each ``module:NAME``, ``reuse`` a module named whole.
+    parts: Mapping[str, str] = None  # type: ignore[assignment]
 
 
 @dataclass(frozen=True)
@@ -231,6 +263,13 @@ class KindOnEngine:
     #: What relaxes the structure first, in a person's words, where the
     #: pair relaxes before it measures -- a vibration's -- or ``None``.
     relaxation: Optional[str] = None
+    #: The order its decks list atoms in, where it is not the structure's
+    #: own -- a word of `atom_permutation.SORT_KEY_NAMES` -- or ``None``: the
+    #: user order (:func:`atom_order`).
+    atom_order: Optional[str] = None
+    #: ``module:NAME`` of the line Status shows about a rung's scratch
+    #: folder, for a pair whose rung keeps one, or ``None``.
+    scratch_status: Optional[str] = None
 
     @property
     def points(self) -> Optional[str]:
@@ -281,6 +320,13 @@ class CalculationKind:
     #: **asks)``, ``name_of(calc, fmt)``, ``ASKS`` -- or ``None``: it
     #: exports nothing (:func:`export_of`).
     export: Optional[str] = None
+    #: The labels besides its leads that it reads on its structure's atoms,
+    #: each with its sentence (:class:`Region`), in order.
+    regions: Tuple[Region, ...] = ()
+    #: ``module:NAME`` of its description's own checks before any deck --
+    #: ``(task, ladder) -> [Issue]``, run by `validation.task.preflight` --
+    #: or ``None``.
+    description_checks: Optional[str] = None
     #: Its part on each engine it runs on, by the engine's name.
     parts: Mapping[str, KindOnEngine] = None  # type: ignore[assignment]
 
@@ -316,6 +362,14 @@ class CalculationKind:
         return {r.name: r.lead for r in self.roles if r.lead}
 
     @property
+    def labels(self) -> Tuple[Tuple[str, str], ...]:
+        """THE LABELS IT READS on its structure's atoms, each with what it is
+        for: its leads' regions, then its other ``regions``, in order -- the
+        label palette's names and sentences (`web/molview.md`)."""
+        return (tuple((r.lead, r.about) for r in self.roles if r.lead)
+                + tuple((g.name, g.about) for g in self.regions))
+
+    @property
     def label_tail(self) -> int:
         """How much longer than the calculation's label its longest
         lead's stem is (:func:`rung_label`) -- what the label's cap budgets
@@ -328,6 +382,29 @@ class CalculationKind:
         """Its name with its article, as a sentence says it -- *an
         optimization*, *a transport calculation*."""
         return f"{'an' if self.noun[:1] in 'aeiou' else 'a'} {self.noun}"
+
+    def engine_label(self, engine: str) -> str:
+        """``engine``'s name for this kind: its part's own (*TranSIESTA*),
+        else the engine's (`engine_table`), for one it does not run on --
+        what an engine tab is named (`engines/transport.md` § 3.8.8)."""
+        from .engine_table import engine as _engine
+        got = self.parts.get(str(engine))
+        return got.words if got is not None and got.words else \
+            _engine(engine).words
+
+    def why_not_on(self, engine: str) -> Optional[str]:
+        """Why it cannot be described on ``engine``, or ``None`` when it
+        can -- the one sentence a disabled engine tab and every door that
+        refuses the engine say (`engines/transport.md` § 3.8.8)."""
+        from .engine_table import engines
+        if str(engine) in self.parts:
+            return None
+        ships = " and ".join(self.engine_label(e) for e in self.engines)
+        if engine not in engines():
+            return (f"{engine!r} is no engine molbuilder knows; {self.topic} "
+                    f"ships on {ships}")
+        return (f"no {self.engine_label(engine)} {self.topic} backend is "
+                f"built yet; {self.topic} ships on {ships}")
 
     def on(self, engine: str) -> KindOnEngine:
         """Its part on ``engine``, or :class:`KindTableError` naming the
@@ -448,6 +525,17 @@ def _part(kind: str, engine: str, body: object,
                                        and relaxation):
         _refuse(where, "relaxation is a sentence -- what relaxes the "
                        "structure first")
+    from .atom_permutation import SORT_KEY_NAMES
+    atom_order = body.get("atom_order")
+    if atom_order is not None and atom_order not in SORT_KEY_NAMES:
+        _refuse(where, f"atom_order is {atom_order!r} -- one of "
+                       f"{', '.join(SORT_KEY_NAMES)} (atom_permutation)")
+    for key in PART_REFS:
+        if key == "points" or key not in body:
+            continue                    # `points` is a table, checked below
+        if not (isinstance(body[key], str) and ":" in body[key]):
+            _refuse(where, f"{key} is {body[key]!r} -- a part is "
+                           f"\"module:NAME\"")
     points = body.get("points")
     return KindOnEngine(kind=kind, engine=engine, words=body.get("words"),
                         stage_roles=sr,
@@ -459,7 +547,8 @@ def _part(kind: str, engine: str, body: object,
                         inputs=body.get("inputs"), gather=body.get("gather"),
                         continues=body.get("continues"),
                         sum=body.get("sum"), retired=retired,
-                        relaxation=relaxation)
+                        relaxation=relaxation, atom_order=atom_order,
+                        scratch_status=body.get("scratch_status"))
 
 
 def _kind(name: str, body: object, engines: Tuple[str, ...]
@@ -485,17 +574,32 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     roles = []
     for r in body.get("roles", ()):
         if (not {"name", "computes"} <= set(r)
-                <= {"name", "computes", "lead", "opens"}
+                <= {"name", "computes", "lead", "about", "opens"}
                 or r["computes"] not in COMPUTES
                 or ("lead" in r and not (isinstance(r["lead"], str)
                                          and r["lead"]))
+                or ("lead" in r) != ("about" in r)
+                or ("about" in r and not (isinstance(r["about"], str)
+                                          and r["about"]))
                 or ("opens" in r and r["opens"] not in ROLE_OPENS)):
             _refuse(where, f"a role is {{name, computes}}, a lead's region "
-                           f"and what its folder opens -- computes one of "
+                           f"with what its label is for (lead, about) and "
+                           f"what its folder opens -- computes one of "
                            f"{', '.join(COMPUTES)}, opens one of "
                            f"{', '.join(ROLE_OPENS)} -- got {r!r}")
         roles.append(Role(name=str(r["name"]), computes=str(r["computes"]),
-                          lead=r.get("lead"), opens=r.get("opens")))
+                          lead=r.get("lead"), opens=r.get("opens"),
+                          about=r.get("about")))
+    regions = []
+    raw_regions = body.get("regions", [])
+    if not isinstance(raw_regions, list):
+        _refuse(where, "regions is a list of {name, about}")
+    for g in raw_regions:
+        if (not isinstance(g, dict) or set(g) != {"name", "about"}
+                or not all(isinstance(v, str) and v for v in g.values())):
+            _refuse(where, f"a region is {{name, about}} -- the label and "
+                           f"what it is for -- got {g!r}")
+        regions.append(Region(name=g["name"], about=g["about"]))
     results = []
     for r in body.get("results", ()):
         if set(r) != {"key", "title", "line"}:
@@ -503,13 +607,18 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
         results.append(Result(key=str(r["key"]), title=str(r["title"]),
                               line=str(r["line"])))
     for key, named in (("roles", [r.name for r in roles]),
-                       ("results", [r.key for r in results])):
+                       ("results", [r.key for r in results]),
+                       ("labels", [r.lead for r in roles if r.lead]
+                        + [g.name for g in regions])):
         twice = sorted({n for n in named if named.count(n) > 1})
         if twice:
             _refuse(where, f"{key} names {', '.join(twice)} twice")
     desc = body.get("description", {})
-    if not isinstance(desc, dict) or set(desc) - {"cites", "carries"}:
-        _refuse(where, "description is a table of cites and carries")
+    if not isinstance(desc, dict) or set(desc) - {
+            "cites", "carries", "cited_kind", *DESCRIPTION_PARTS}:
+        _refuse(where, f"description is a table of cites, carries, "
+                       f"cited_kind and its parts "
+                       f"({', '.join(DESCRIPTION_PARTS)})")
     carries = desc.get("carries", [])
     if (not isinstance(carries, list)
             or set(carries) - set(DESCRIPTION_FIELDS)):
@@ -518,6 +627,34 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     if "cites" in desc and not (isinstance(desc["cites"], str)
                                 and desc["cites"]):
         _refuse(where, "description.cites is the slot's name")
+    # WHAT A CITATION IS, AND THE DOORS OF A KIND THAT CITES OR EXTENDS, come
+    # with what makes them asked: a citation with a cited slot, the
+    # extension and the reuse with a carried `reuses`.
+    for key, needs, has in (
+            ("cited_kind", "cites", "cites" in desc),
+            ("cited_frames", "cites", "cites" in desc),
+            ("order_record", "cites", "cites" in desc),
+            ("extension", "carries reuses", "reuses" in carries),
+            ("reuse", "carries reuses", "reuses" in carries)):
+        if key in desc and not has:
+            _refuse(where, f"description.{key} on a kind whose description "
+                           f"does not state {needs}")
+        if key in desc and not (isinstance(desc[key], str) and desc[key]):
+            _refuse(where, f"description.{key} is a name")
+    # A KIND THAT CITES OR CARRIES `reuses` NAMES WHAT ANSWERS FOR IT --
+    # the doors that read a citation's frames, or extend a finished
+    # calculation, ask the part, never a module by name.
+    for needs, has, keys in (("cites", "cites" in desc, ("cited_frames",)),
+                             ("carries reuses", "reuses" in carries,
+                              ("extension", "reuse"))):
+        for key in (keys if has else ()):
+            if key not in desc:
+                _refuse(where, f"description {needs} and names no {key} "
+                               f"part")
+    for key in ("extension", "cited_frames", "order_record"):
+        if key in desc and ":" not in desc[key]:
+            _refuse(where, f"description.{key} is {desc[key]!r} -- a part "
+                           f"is \"module:NAME\"")
     charge = body.get("charge")
     if charge is not None and not (
             isinstance(charge, dict) and set(charge) == {"value", "why"}
@@ -525,9 +662,16 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
             and not isinstance(charge["value"], bool)):
         _refuse(where, "charge is {value, why} -- the charge it fixes, a "
                        "whole number, and why")
-    for key in ("no_benchmark", "handover", "validator", "export"):
-        if key in body and not (isinstance(body[key], str) and body[key]):
-            _refuse(where, f"{key} is a sentence")
+    for key, what, ok in (
+            ("no_benchmark", "a sentence", bool),
+            ("handover", "the tab's name", bool),
+            ("validator", "a part, \"module:NAME\"", lambda v: ":" in v),
+            ("export", "a module's name", bool),
+            ("description_checks", "a part, \"module:NAME\"",
+             lambda v: ":" in v)):
+        if key in body and not (isinstance(body[key], str) and body[key]
+                                and ok(body[key])):
+            _refuse(where, f"{key} is {what}")
     if not isinstance(body.get("relaxes", False), bool):
         _refuse(where, "relaxes is true or false")
     if body.get("root_opens", ROOT_OPENS[0]) not in ROOT_OPENS:
@@ -547,7 +691,10 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                            roles=tuple(roles), results=tuple(results),
                            description=Description(
                                cites=desc.get("cites"),
-                               carries=tuple(carries)),
+                               carries=tuple(carries),
+                               cited_kind=desc.get("cited_kind"),
+                               parts={k: desc[k] for k in DESCRIPTION_PARTS
+                                      if k in desc}),
                            charge=(FixedCharge(value=charge["value"],
                                                why=str(charge["why"]))
                                    if charge is not None else None),
@@ -557,6 +704,8 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                            root_opens=body.get("root_opens"),
                            validator=body.get("validator"),
                            export=body.get("export"),
+                           regions=tuple(regions),
+                           description_checks=body.get("description_checks"),
                            parts=parts)
 
 
@@ -566,6 +715,13 @@ def _table() -> Dict[str, CalculationKind]:
     raw = tomllib.loads(TABLE_FILE.read_text(encoding="utf-8"))
     known = engines()
     table = {name: _kind(name, body, known) for name, body in raw.items()}
+    # A CITATION'S KIND IS A KIND OF THE TABLE.
+    for name, rec in table.items():
+        cited = rec.description.cited_kind
+        if cited is not None and cited not in table:
+            _refuse(f"[{name}.description]", f"cited_kind {cited!r} is no "
+                                             f"kind of the table "
+                                             f"({', '.join(table)})")
     # A LEAD IS FOUND BY ITS STAGE'S NAME (:func:`lead_of`), so its name is
     # one no other kind's role has.
     for name, rec in table.items():
@@ -610,6 +766,64 @@ def run_of_points(calculation: str, engine: str) -> Optional[RunOfPoints]:
     once, or no such pair."""
     got = pair(calculation, engine)
     return got.run_of_points if got is not None else None
+
+
+def own_structure(calculation: str, stage: Optional[str]) -> Optional[str]:
+    """What a deck of ``stage`` (its name or its token) of a ``calculation``
+    is when its atoms are A STRUCTURE OF ITS OWN -- a lead rung's cell, cut
+    from the region its role names (`model/overview.md` § 2.2a, *a structure
+    derived from the user's*) -- in words, *a structure of its own (the
+    L-electrode cell)*; ``None`` for every other deck."""
+    from .identity import stage_name
+    got = _table().get(str(calculation))
+    region = got.leads.get(stage_name(stage)) if got is not None else None
+    return (f"a structure of its own (the {region} cell)" if region
+            else None)
+
+
+def atom_order(calculation: str, engine: str,
+               stage: Optional[str] = None) -> Optional[str]:
+    """THE ORDER a deck of ``stage`` (its name or its token) of a
+    ``calculation`` on ``engine`` lists atoms in -- the pair's
+    ``atom_order``, a word of `atom_permutation.SORT_KEY_NAMES` -- or
+    ``None``, the user order: a pair that states none, and a deck of a
+    structure of its own (:func:`own_structure`).  Prep sorts by it, the
+    composer too, and the run door and the working copy read from it which
+    runs' decks may be in an engine's order (`model/overview.md` § 2.2a,
+    I9)."""
+    got = pair(calculation, engine)
+    if got is None or got.atom_order is None:
+        return None
+    return None if own_structure(calculation, stage) else got.atom_order
+
+
+def labels() -> Tuple[Tuple[str, str], ...]:
+    """Every label a kind reads on its structure's atoms, each with what it
+    is for (:attr:`CalculationKind.labels`), in the table's order -- what
+    the server hands MolView beside every structure, the label palette's
+    (`web/molview.md`)."""
+    return tuple(lab for rec in _table().values() for lab in rec.labels)
+
+
+def description_part(calculation: str, key: str) -> Any:
+    """THE CODE a ``calculation``'s description names under ``key``
+    (:data:`DESCRIPTION_PARTS`), imported now by the floor that asks -- a
+    ``module:NAME``'s object, or ``reuse``'s module whole -- or ``None``:
+    its description names none (a kind that cites or extends nothing)."""
+    if key not in DESCRIPTION_PARTS:
+        raise KindTableError(f"no description part {key!r} -- they are "
+                             f"{', '.join(DESCRIPTION_PARTS)}")
+    ref = kind(calculation).description.parts.get(key)
+    if ref is None:
+        return None
+    if ":" not in ref:
+        try:
+            return importlib.import_module(ref)
+        except ImportError as exc:
+            raise KindTableError(
+                f"{calculation}'s description.{key}, {ref!r}, does not "
+                f"import: {exc}") from exc
+    return part(ref, record=f"{calculation}'s description", key=key)
 
 
 def lead_of(stage: Optional[str]) -> Optional[str]:
@@ -703,4 +917,4 @@ __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
            "RunOfPoints", "run_of_points", "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
            "pair", "lead_of", "rung_label", "role_set", "part_of", "part",
-           "export_of"]
+           "export_of", "Region", "DESCRIPTION_PARTS", "own_structure", "atom_order", "labels", "description_part"]

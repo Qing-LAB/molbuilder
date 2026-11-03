@@ -327,3 +327,29 @@ def test_a_run_setting_as_a_column_is_refused_naming_the_run_card(name,
     for where in ("task.varies", f"config.{name}"):
         assert any(i.where == where and "run card" in i.message
                    and name in i.message for i in issues), (where, issues)
+
+
+#: (the stage's overrides, whether the force tolerance is advised about): a
+#: value outside its recommended range is warned on a rung that reads it,
+#: and a setting that enters nothing on its rung as resolved is given no
+#: advice (`engines/template.md` § 5, `active_when`).
+ADVICE_ROWS = [
+    pytest.param({"relax_type": "CG", "relax_force_tol": 1.0}, True,
+                 id="on-a-rung-that-relaxes"),
+    pytest.param({"relax_type": "none", "relax_force_tol": 1.0}, False,
+                 id="on-a-rung-that-relaxes-nothing"),
+]
+
+
+@pytest.mark.parametrize("overrides, advised", ADVICE_ROWS)
+def test_a_range_is_advised_only_where_the_setting_enters(overrides, advised):
+    """THE SILENT FAILURE (until 2.65.0): the description's check warned a
+    relaxation's force tolerance outside its range on a rung that relaxes
+    nothing, while the settings gate said it entered nothing there."""
+    from molbuilder.template import template_with_values
+    text = template_with_values(SiestaConfig(), engine="siesta",
+                                calculation="optimization")
+    issues = preflight(_staged(overrides), template_text=text)
+    about = [i for i in issues if i.where == "config.relax_force_tol"
+             and "outside the recommended range" in i.message]
+    assert bool(about) is advised, issues

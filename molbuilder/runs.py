@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
-from molbuilder.identity import parse_token
+from molbuilder.identity import stage_name
 from molbuilder.paths import trial_label
 
 
@@ -100,7 +100,7 @@ def _position(place: Place) -> Tuple[str, Optional[str], bool]:
     if at.stage is not None:
         # A LEAD'S FILES ARE ON ITS OWN STEM (`rung_label`, the one door
         # prep named them by).
-        label = rung_label(label, parse_token(at.stage)[1])
+        label = rung_label(label, stage_name(at.stage))
     if at.trial is not None:
         label = trial_label(label, at.trial)
     return label, at.stage, at.trial is not None
@@ -326,13 +326,13 @@ class OrderUnstated(ValueError):
 
 def _reorders(task, stage: Optional[str], kind: Optional[str] = None
               ) -> bool:
-    """Whether a stage's decks are written from a sorted copy (I9) -- the one
-    table's answer for it (`transport.sort.deck_sort_key`), for ``kind``
-    where the deck is another kind's (the cited relaxation's deck) and the
+    """Whether a stage's decks are written from a sorted copy (I9) -- the
+    pair's ``atom_order`` (`kind_table.atom_order`), for ``kind`` where the
+    deck is another kind's (the cited relaxation's deck) and the
     calculation's otherwise."""
-    from molbuilder.transport.sort import deck_sort_key
-    return deck_sort_key(task.engine, kind or task.calculation,
-                         stage) is not None
+    from molbuilder.kind_table import atom_order
+    return atom_order(kind or task.calculation, task.engine,
+                      stage) is not None
 
 
 @dataclass(frozen=True)
@@ -462,7 +462,7 @@ def atom_index_map_of(run: Run):
     one of molbuilder's, is listed by engine index and answered here, from
     its deck (I5): both columns from the deck's order record, the identity
     where it states none; the engine column alone for a deck of a structure
-    of its own (`transport.sort.deck_own_structure` -- an electrode cell).
+    of its own (`kind_table.own_structure` -- an electrode cell).
     A deck written before the order was recorded is refused by name (I9);
     one that states no atom count names it."""
     return deck_atom_index_map(declared(run), run.place.task, run.stage)
@@ -475,25 +475,19 @@ def deck_atom_index_map(said: Declared, task, stage: Optional[str]):
     states none; the engine column alone for a stage of a structure of its
     own.  Its run's files, and the deck itself wherever it lies."""
     from molbuilder.atom_permutation import AtomIndexMap
-    from molbuilder.transport.sort import deck_own_structure
+    from molbuilder.kind_table import own_structure
     said = said.require_order()
     record = said.atom_order
     n = (said.atom_metadata or {}).get("n_atoms_total")
     if n is None and record is not None:
         n = record.n_atoms
-    if n is None and said.deck is not None and said.deck.suffix == ".fdf":
-        # A DECK WITH NOTHING ELSE TO SAY -- no block -- states its count in
-        # the engine's own keyword, read through the one fdf reader.
-        from molbuilder.parse.fdf import read_deck, read_fdf
-        got = read_fdf(read_deck(said.deck))[0].get("numberofatoms")
-        n = int(got[0]) if got else None
     if n is None:
         raise ValueError(f"{said.deck.name if said.deck else 'the run'} "
                          f"states no atom count -- a deck written before "
                          f"2.32.0 with no label, no named value and no "
                          f"order record -- so its atoms' indices cannot be "
                          f"stated")
-    own = deck_own_structure(task.engine, task.calculation, stage)
+    own = own_structure(task.calculation, stage)
     atoms = (AtomIndexMap.of_own_structure(int(n), own) if own
              else AtomIndexMap.of_engine_record(record, int(n)))
     return replace(atoms, stated_by=str(said.deck or ""))
@@ -1039,7 +1033,7 @@ def _opens_the_report(place: Place) -> bool:
     if (at.stage is None or at.trial is not None
             or not (place.role == calcdirs.RUN or at.of_points)):
         return False
-    return kind(place.task.calculation).opens_report(parse_token(at.stage)[1])
+    return kind(place.task.calculation).opens_report(stage_name(at.stage))
 
 
 #: What a folder stamped a run that lies in no stage's ``run-<n>/`` is
@@ -1115,11 +1109,11 @@ def _container_product(folder: Path, place: Place, label: str,
     sweep's (`jobset.sweep_reader`), so a ladder's is never opened.  Any
     other container: the first result role the calculation produces that is
     present (`_openable`)."""
-    from molbuilder.kind_table import kind
+    from molbuilder.kind_table import ROOT_OPENS, kind
     from molbuilder.parse.dirs.rundir import claimed
     rec = kind(place.task.calculation)
     if (place.where.what == calcdirs.CALCULATION
-            and rec.root_opens == "description"):
+            and rec.root_opens == ROOT_OPENS[0]):
         handle = calcdirs.description_path(folder)
         if claimed(str(handle)):
             attempts.append(f"*{_rf.TASK_FILE}: {rec.with_article}'s "
@@ -1170,7 +1164,8 @@ def file_row(entry, place: Optional[Place] = None) -> Dict[str, Any]:
 def folder_answer(directory) -> Dict[str, Any]:
     """WHAT A FOLDER IS AND HOLDS, for a viewer -- the directory door the
     Results tab serves (`/api/results/dir`; `model/parse.md` § 5.0,
-    `web/results.md` § 2.3): ``place``, ``engine``, ``openable``,
+    `web/results.md` § 2.3): ``place``, ``engine`` (with its words and
+    the calculation's noun, ``engine_words`` and ``noun``), ``openable``,
     ``attempts``, ``status`` and ``record``, and per file its whole path,
     role, label, stage, whether a parser reads it and what it is
     (``files``) -- with ``report``, the same row for the file it opens when
@@ -1250,6 +1245,14 @@ def folder_answer(directory) -> Dict[str, Any]:
     files = [file_row(entry, place)
              for entry in sorted(d.iterdir(), key=lambda e: e.name)
              if entry.is_file()]
+    # THE HEADING'S WORDS, from the two tables (`web/presenters.md` § 2):
+    # the engine's, and the calculation's noun where the folder is one of
+    # ours -- none where it names neither, so no page claims one.
+    from molbuilder.engine_table import engine as _engine_rec, engines
+    from molbuilder.kind_table import kind as _kind
+    engine_words = _engine_rec(engine).words if engine in engines() else None
+    # A folder of ours read its description, whose kind the table holds.
+    noun = _kind(str(place.task.calculation)).noun if place.ours else None
     # THE FILE IT OPENS, WHEN IT LIES OUTSIDE IT -- a transmission run's
     # calculation report (`web/results.md` § 2): its row, so the menu lists
     # it first.
@@ -1267,6 +1270,8 @@ def folder_answer(directory) -> Dict[str, Any]:
                       # view (`runstatus.views_of`).
                       "of_points": at.of_points},
             "engine": engine,
+            "engine_words": engine_words,
+            "noun": noun,
             "openable": chosen,
             "report": report,
             "attempts": attempts,

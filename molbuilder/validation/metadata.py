@@ -236,22 +236,22 @@ def _check_values(cfg, calculation: str, engine: str) -> List[Issue]:
     return issues
 
 
-def _inactive(cfg, calculation: str, engine: str) -> Dict[str, str]:
-    """The settings that enter nothing here, each with why -- the items
-    whose ``active_when`` the other settings do not meet (`engines/
-    template.md` § 5), whatever they hold.  Asked once by ``validate``: the
-    gate's one line about each (:func:`_check_inactive`), and the advice
-    that stands aside for them -- a recommended range, the probe's
-    displacement -- since nothing they hold is run."""
-    from ..template import catalogue, inactive_why, select
+def _inactive(cfg, calculation: str, engine: str, *,
+              refused: frozenset = frozenset()) -> Dict[str, str]:
+    """The settings that enter nothing here, each with why
+    (`template.inactive_settings`), whatever they hold.  Asked once by
+    ``validate``: the gate's one line about each (:func:`_check_inactive`),
+    and the advice that stands aside for them -- a recommended range, the
+    probe's displacement -- since nothing they hold is run.  A value
+    ``refused`` draws that refusal alone (`engines/template.md` § 5.3), and
+    so does a setting that waits on it: neither is said to enter nothing."""
+    from ..template import catalogue, inactive_settings, one
     cat = catalogue()
-    values = {f.name: getattr(cfg, f.name) for f in fields(cfg)}
-    out: Dict[str, str] = {}
-    for it in select(cat, engine=engine, calculation=calculation):
-        why = inactive_why(it, values) if it.active_when else None
-        if why:
-            out[it.name] = why
-    return out
+    return {name: why for name, why in inactive_settings(
+                cfg, engine=engine, calculation=calculation).items()
+            if name not in refused
+            and not any(other in refused
+                        for other, _ in one(cat, name).active_when)}
 
 
 def _check_inactive(cfg, calculation: str,

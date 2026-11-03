@@ -339,6 +339,7 @@ def _bench_marks_for(struct, cfg, block_size, bs_range, *,
     a vibration's force-constant and optical calls do not, and carry no
     relaxation's step count.
     """
+    from ..template import inactive_settings
     # BlockSize's row carries the range this deck's rank count makes legal, and
     # drops out entirely when the deck carries no BlockSize (state three).
     fields = [
@@ -369,10 +370,8 @@ def _bench_marks_for(struct, cfg, block_size, bs_range, *,
             # keyword is the block lying -- the same rule as BlockSize's state
             # three one entry up (R11, 2026-08-12).
             **({"MD.Steps": cfg.relax_steps}
-               if (relaxes and cfg.relax_type
-                   and cfg.relax_type.strip().upper()
-                   in ("CG", "BROYDEN", "FIRE"))
-               else {}),
+               if relaxes and "relax_steps" not in inactive_settings(
+                   cfg, engine="siesta") else {}),
             "MeshCutoff":        cfg.mesh_cutoff,
         },
     )
@@ -545,7 +544,7 @@ def _relaxation_facts(cfg) -> Optional[dict]:
 def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, names: "RunNames",
                cell: Optional[np.ndarray] = None,
-               calculation: str = "optimization",
+               calculation: str,
                vibration: Optional[dict] = None,
                part: Optional[str] = None,
                state=None,
@@ -872,7 +871,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # THE COORDINATES IN A FILE BESIDE THE DECK (`engines/vibration.md`
         # § 5.11 § 4): the rows the deck would hold, which it reads with
         # `%block AtomicCoordinatesAndAtomicSpecies < coordinates.fdf` --
-        # prep writes the file (`prep.Rung.beside`), a call's own python
+        # prep writes the file (`jobset.rung.Rung.beside`), a call's own python
         # its own.
         from .deck_lines import coordinates_text
         _derived["coordinates_file"] = coordinates_text(

@@ -1111,8 +1111,8 @@ def _first_launch(calc, job, *, member, container: Path,
     return member(job, container, opened.dir, container,
                   first=True, cold=cold, continuation=cont,
                   hands=_hands(opened.hand, gathered),
-                  took=[{"file": fn, "from": src, "frame": None,
-                         "volts": None} for src, fn in inputs])
+                  took=[{"file": fn, "from": src, "point": None}
+                        for src, fn in inputs])
 
 
 def _warm_impossible(stage: str, source, why, *, base) -> "SubmitError":
@@ -1235,7 +1235,7 @@ def _launch_again(calc, job, *, member, container: Path,
     if inputs is not None:
         inputs = [(src, fn) for src, fn in inputs if fn not in own]
         gathered = gather_into(base, opened.dir, inputs, writes)
-        took = [{"file": fn, "from": src, "frame": None, "volts": None}
+        took = [{"file": fn, "from": src, "point": None}
                 for src, fn in inputs]
     else:
         gathered = _carry_the_gather(ran, opened.dir, writes, base=base,
@@ -1748,9 +1748,14 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
                                         or m.continuation.carries or ()),
                             written_as_ended=dict(m.warned))
             if m.took:
-                plan.record("gathers", stage=m.name,
-                            inputs=[{**t, "from": str(t["from"])}
-                                    for t in m.took])
+                # EACH INPUT WITH THE POINT IT IS FOR, in the point's one
+                # wire form (`PointsOf`: every point answers `to_wire`),
+                # none for a run's whole.
+                plan.record("gathers", stage=m.name, inputs=[
+                    {"file": t["file"], "from": str(t["from"]),
+                     "point": (t["point"].to_wire()
+                               if t["point"] is not None else None)}
+                    for t in m.took])
             elif m.gathered:
                 # LAUNCHED AGAIN, warm or cold, a transport rung still
                 # carries the inputs its run was given, each from its run.
@@ -3121,9 +3126,10 @@ def _across(calc, stage: str, m: "_Member"):
     base = Path(calc.base)
 
     def given(pt):
+        # BY THE POINT ITSELF -- its kind's point type compares (frozen,
+        # `PointsOf`) -- never by one kind's axes.
         return {t["file"]: origin(base, t["from"].path(base))
-                for t in m.took
-                if (t["frame"], t["volts"]) == (pt.frame, pt.volts)}
+                for t in m.took if t["point"] == pt}
     return takes_over(calc, finished, stage, [pt for _p, pt in m.points],
                       once=ReadOnce(calc), inputs=given)
 
@@ -3161,9 +3167,7 @@ def _gather_sweep(base: Path, run: Path, points, got, writes
                         writes)
     for pdir, pt in points:
         gather_into(base, pdir, by_point.get(pt, []), writes)
-    return ([{"file": fn, "from": src,
-              "frame": pt.frame if pt is not None else None,
-              "volts": pt.volts if pt is not None else None}
+    return ([{"file": fn, "from": src, "point": pt}
              for pt, inputs in got for src, fn in inputs],
             _hands(whole))
 

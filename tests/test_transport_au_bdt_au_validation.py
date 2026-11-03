@@ -203,7 +203,7 @@ def _live_device_deck(label="au_bdt_au_test", rung="device", point=None,
     import dataclasses
     from molbuilder import script_emit as _sc
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.transport_rung import at_point, scratch_dir_of
+    from molbuilder.transport.rung import at_point, scratch_dir_of
     from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
     from molbuilder.template import role_answers
@@ -216,14 +216,15 @@ def _live_device_deck(label="au_bdt_au_test", rung="device", point=None,
         **role_answers("siesta", "transport", rung), **over), point)
     token = {"device": "04_device", "transmission": "05_transmission"}[rung]
     # ...and the device's leads' folder, as prep hands it
-    # (`transport_rung.scratch_dir_of`; no calculation folder here, so the
+    # (`transport.rung.scratch_dir_of`; no calculation folder here, so the
     # engine's own list says it).
     spec = spec_for(struct, cfg, calculation="transport",
                     state=electronic_state(struct, cfg, kind="transport"),
                     names=RunNames(label, token),
                     point=point,
-                    scratch_dir=(scratch_dir_of(None) if rung == "device"
-                                 else None))
+                    scratch_dir=(scratch_dir_of(None, engine="siesta",
+                                                calculation="transport")
+                                 if rung == "device" else None))
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
 
@@ -451,7 +452,7 @@ def test_prep_refuses_a_spacing_that_leaves_the_bias_window_under_two_points():
     without the cutoff's kT; 0 V checked."""
     import dataclasses
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.transport_rung import at_point
+    from molbuilder.transport.rung import at_point
     from molbuilder.template import role_answers
     from molbuilder.transport.stages import Point
     from molbuilder.validation import validate

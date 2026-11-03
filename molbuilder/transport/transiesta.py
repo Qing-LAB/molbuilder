@@ -71,7 +71,7 @@ def lead_gf_file(job_name: str, volts: float, lead: str) -> str:
     (the chemical potential is in the file, and the engine refuses a file
     at another: `m_ts_gf.F90` `check_Green`).  ``lead`` is the block's
     name (`LEAD_NAMES`); ``volts`` the deck's ``bias_voltage_v``, the
-    point's (`jobset.transport_rung.at_point`)."""
+    point's (`transport.rung.at_point`)."""
     from ..task import bias_token
     return f"{job_name}.{bias_token(float(volts))}.TSGF{lead}"
 

@@ -6,9 +6,6 @@ PySCF show the same headings in the same order.
 """
 from __future__ import annotations
 
-import pathlib
-import re
-
 import pytest
 
 from molbuilder import template as T
@@ -55,7 +52,7 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
                   if (not i.calculations or kind in i.calculations)
                   and kind not in (getattr(i, "role", None) or ())}
         fields = [f for sec in catalogue_to_form_schema(
-                      engine, calculation=kind)["sections"]
+                      engine, "p", calculation=kind)["sections"]
                   for f in sec["fields"]]
         got = {f["name"] for f in fields if "locked" not in f}
         assert got == expect, (engine, kind)
@@ -65,12 +62,6 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
                   if "locked" in f}
         assert echoed == T.fixed_on_every_rung(engine, kind), (engine, kind)
 
-    # And the no-argument call IS the optimization form -- the default
-    # spelled out, so the two spellings cannot drift.
-    def names(**kw):
-        return {f["name"] for sec in catalogue_to_form_schema(
-                    engine, **kw)["sections"] for f in sec["fields"]}
-    assert names() == names(calculation="optimization")
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
@@ -121,7 +112,7 @@ def test_the_displacement_gets_a_control_that_can_carry_its_value():
     control turns it into 0 silently, which is the Gamma-centred grid the user
     was moving off.
     """
-    f = {x["name"]: x for s in catalogue_to_form_schema("siesta")["sections"]
+    f = {x["name"]: x for s in catalogue_to_form_schema("siesta", "p", "optimization")["sections"]
          for x in s["fields"]}
     assert f["kgrid"]["kind"] == "int-triple"
     assert f["kgrid_displacement"]["kind"] == "float-triple"
@@ -131,7 +122,7 @@ def test_the_displacement_gets_a_control_that_can_carry_its_value():
 def test_an_optional_item_offers_its_unset_state():
     """§ 1.2: `optional` is written to the catalogue precisely so a surface can
     offer *(auto)* / *(no cap)*.  It cannot be inferred from `null_label`."""
-    f = {x["name"]: x for s in catalogue_to_form_schema("siesta")["sections"]
+    f = {x["name"]: x for s in catalogue_to_form_schema("siesta", "p", "optimization")["sections"]
          for x in s["fields"]}
     # ``net_charge``: optional, worked out from the structure when unset,
     # and its *(auto)* state is the whole reason `optional` is written down.
@@ -153,7 +144,7 @@ def test_a_tri_select_carries_the_three_states_it_walks(engine):
     missed it because none of them RENDERED the schema; found by drawing the
     form through the real form-schema.js (2026-08-14).
     """
-    for s in catalogue_to_form_schema(engine)["sections"]:
+    for s in catalogue_to_form_schema(engine, "p", "optimization")["sections"]:
         for f in s["fields"]:
             if f["kind"] == "tri-select":
                 assert f.get("choices") == ["auto", "true", "false"], f["name"]
@@ -164,7 +155,7 @@ def test_every_select_has_something_to_select_from(engine):
     """The general form of the same defect: any control the renderer builds by
     walking ``choices`` must have them, or it throws and the whole form is
     blank rather than one field being wrong."""
-    for s in catalogue_to_form_schema(engine)["sections"]:
+    for s in catalogue_to_form_schema(engine, "p", "optimization")["sections"]:
         for f in s["fields"]:
             if f["kind"] in ("select", "tri-select"):
                 assert f.get("choices"), f"{f['name']}: {f['kind']} with no choices"

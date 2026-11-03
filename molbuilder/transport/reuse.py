@@ -100,13 +100,14 @@ def frame_set_of(finished, citation: str, *, tree_root, composed=None):
     that does not read, in its reader's words; a citation that does not
     compose, in the composer's; a frame 0 that is another junction, by
     name.  THE ONE CHECK the writer and the Transport tab's pick ask."""
+    from ..jobset.rung import citation_of
     from .compose import compose_junction, load_compose_record
     from .sort import SortError
     why: List[str] = []
     try:
         ran = load_compose_record(
-            finished.base, citation=finished.task.slots["junction"],
-            tree_root=tree_root, why=why,
+            finished.base, citation=citation_of(finished.task),
+            engine=finished.task.engine, tree_root=tree_root, why=why,
             swap_electrodes=finished.task.swap_electrodes)
     except ComposeError as exc:
         raise ReuseError(str(exc)) from exc
@@ -118,7 +119,7 @@ def frame_set_of(finished, citation: str, *, tree_root, composed=None):
     if composed is None:
         try:
             composed = compose_junction(
-                citation, tree_root=tree_root,
+                citation, tree_root=tree_root, engine=finished.task.engine,
                 swap_electrodes=finished.task.swap_electrodes)
         except (ComposeError, SortError) as exc:
             raise ReuseError(str(exc)) from exc
@@ -139,12 +140,15 @@ def citing(task, junction: str):
     (:func:`write_reusing`)."""
     import dataclasses
 
+    from ..jobset.rung import citation_of
+    from ..kind_table import kind
     from ..task import derive_run
-    if junction == task.slots.get("junction"):
+    if junction == citation_of(task):
         return task
     run = task.run
     return dataclasses.replace(
-        task, slots={**task.slots, "junction": junction},
+        task, slots={**task.slots,
+                     kind(task.calculation).description.cites: junction},
         run=derive_run(run.name, junction, created=run.created,
                        stage_names=tuple(st.name for st in task.stages)))
 
@@ -178,9 +182,10 @@ def write_reusing(desc, dest, finished, *, tree_root
     from ..describe import write_description
     from ..issues import Issue
     from ..pseudos import PSEUDO_DIRNAME
+    from ..jobset.rung import citation_of
     from .compose import load_compose_record, refuse_inside_citation
-    citation = desc.task.slots["junction"]
-    ran = finished.task.slots["junction"]
+    citation = citation_of(desc.task)
+    ran = citation_of(finished.task)
     try:
         for cited, what in (
                 (finished.base, "the finished calculation"),
@@ -201,7 +206,8 @@ def write_reusing(desc, dest, finished, *, tree_root
     else:
         try:
             composed = load_compose_record(
-                finished.base, citation=ran, tree_root=tree_root, why=why,
+                finished.base, citation=ran, engine=finished.task.engine,
+                tree_root=tree_root, why=why,
                 swap_electrodes=finished.task.swap_electrodes)
         except ComposeError as exc:
             raise ReuseError(str(exc)) from exc
@@ -247,6 +253,11 @@ class Extension:
     describing doors check them by (the Transport tab's Describe, Task
     setup's Save); the command line limits nothing and says what it reuses.
     """
+
+    #: What :meth:`of` raises for a finished calculation that does not read
+    #: -- the error a shared door catches, asking the kind's part for it
+    #: (`kind_table.description_part`), never importing this module.
+    Error = ReuseError
     reuses: str          # the finished calculation's folder, tree-relative
     finished: object     # its description (`task.Task`)
 
@@ -381,10 +392,13 @@ class Extension:
 
     def to_wire(self) -> Dict[str, object]:
         """Its wire form -- what the describe door and the folder answer
-        serve: the rungs it keeps, and what each control says
-        (:attr:`says`)."""
+        serve whole: the rungs it keeps, what each control says
+        (:attr:`says`), and the rung whose window a fit is written into
+        (`transport.window.window_rung`)."""
+        from .window import window_rung
         return {"reuses": self.reuses, "name": self.name,
-                "fixed": self.fixed, "says": self.says}
+                "fixed": self.fixed, "says": self.says,
+                "window": window_rung()}
 
 
 def _own(task, rung: str) -> Dict[str, object]:

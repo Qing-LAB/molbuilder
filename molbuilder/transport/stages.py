@@ -19,7 +19,7 @@ through the framework's own pipeline — ``siesta.input.spec_for`` with
 ``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
 ``SHAPE_OF_RUNG`` tables the four deck shapes — which is what lets the
 template's items reach them; the electronic contract is resolved by
-``transport_rung.resolve_transport`` from the calculation's own template.
+``transport.rung.resolve_transport`` from the calculation's own template.
 
 The cited relaxation DEFAULTS the electronic description at ``jobset
 init``; it does not seal it (§ 2a.7).  The shared-contract invariant holds
@@ -108,35 +108,24 @@ def same_volts(a: float, b: float) -> bool:
     return abs(float(a) - float(b)) < SAME_VOLTS_V
 
 
-def bias_points(task) -> Tuple[float, ...]:
-    """The sweep's points, in the order the description states them —
-    the codec already enforced that the list starts at 0.0 (the chain
-    starts from equilibrium).  ``()`` and a single entry mean NO sweep:
-    the stage keeps its plain single-deck layout, because the v-dir
-    layer exists for the axis, not for every calculation
-    (architecture § 0: a list with more than one element)."""
-    bias = tuple(getattr(task, "bias", ()) or ())
-    return bias if len(bias) > 1 else ()
-
-
 # --------------------------------------------------------------------- #
 #  Where a rung's attempts are (`engines/transport.md` § 2a.11; plan    #
 #  § 5w K10)                                                            #
 # --------------------------------------------------------------------- #
 
 def per_point_rungs() -> frozenset:
-    """The rungs a bias sweep runs once per point: the bias item's own
-    `stages` (`template.PER_POINT`, the role item no rung answers with one
-    value) -- the device and the transmission, declared once, in the
-    catalogue."""
-    from ..template import PER_POINT, catalogue, one
-    return frozenset(rung for name in PER_POINT
-                     for rung in one(catalogue(), name, engine="siesta").stages)
+    """The rungs a bias sweep runs once per point: the `stages` of the role
+    items the bias list answers point by point (`template.per_point_items`,
+    their ``per_point_from``) -- the device and the transmission, declared
+    once, in the catalogue."""
+    from ..template import per_point_items
+    return frozenset(rung for it in per_point_items().values()
+                     for rung in it.stages)
 
 
 def sweep_points(task, stage: str) -> Tuple[float, ...]:
     """The voltages ``stage`` runs at, as a sweep -- the bias list
-    (:func:`bias_points`) for a rung the bias item names
+    -- the list its item is answered from -- for a rung the bias item names
     (:func:`per_point_rungs`: the device, the transmission) when the
     calculation states ``low_bias_approximation: false``; ``()`` for every
     other rung, a single bias, and the low-bias approximation, under which
@@ -144,7 +133,14 @@ def sweep_points(task, stage: str) -> Tuple[float, ...]:
     (`engines/transport.md` § 2a.10, § 2a.11)."""
     if getattr(task, "low_bias_approximation", None) is not False:
         return ()
-    return bias_points(task) if stage in per_point_rungs() else ()
+    # THE LIST THE RUNG'S ITEM IS ANSWERED FROM, point by point: the field
+    # its ``per_point_from`` names (`template.per_point_items`).
+    from ..template import per_point_items
+    for it in per_point_items().values():
+        if stage in it.stages:
+            got = tuple(getattr(task, it.per_point_from, ()) or ())
+            return got if len(got) > 1 else ()
+    return ()
 
 
 @dataclass(frozen=True)
@@ -412,18 +408,6 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     return warm_declaration("siesta", task_label, "transport", base_dir)
 
 
-def _label(engine: str) -> str:
-    """An engine's name on the transport tab: the program that runs the
-    open-boundary calculation on it -- its part's own name for the kind
-    (*TranSIESTA*) -- else the engine's own (`engine_table`), for one that
-    runs no transport (§ 3.8.8)."""
-    from ..engine_table import engine as _engine
-    from ..kind_table import pair
-    on = pair("transport", engine)
-    return (on.words if on is not None and on.words
-            else _engine(engine).words)
-
-
 def engine_tabs() -> List[Dict[str, object]]:
     """The transport tab's engine strip, one entry per engine molbuilder
     knows (`engine_table.engines`), those that run a transport calculation
@@ -431,26 +415,10 @@ def engine_tabs() -> List[Dict[str, object]]:
     whether it runs one, and, for one that does not, why -- the disabled
     tab's title (§ 3.8.8)."""
     from ..engine_table import engines
-    runs = _kind("transport").engines
-    return [{"name": e, "label": _label(e), "runs": e in runs,
-             "why": why_no_transport(e)}
-            for e in sorted(engines(), key=lambda e: e not in runs)]
-
-
-def why_no_transport(engine: str) -> Optional[str]:
-    """Why ``engine`` cannot describe a transport calculation, or ``None``
-    when it can -- one sentence for the disabled tab and every door that
-    refuses the engine (§ 3.8.8)."""
-    from ..engine_table import engines
-    runs = _kind("transport").engines
-    if engine in runs:
-        return None
-    ships = " and ".join(_label(e) for e in runs)
-    if engine not in engines():
-        return (f"{engine!r} is no engine molbuilder knows; transport ships "
-                f"on {ships}")
-    return (f"no {_label(engine)} transport backend is built yet; "
-            f"transport ships on {ships}")
+    rec = _kind("transport")
+    return [{"name": e, "label": rec.engine_label(e), "runs": e in rec.engines,
+             "why": rec.why_not_on(e)}
+            for e in sorted(engines(), key=lambda e: e not in rec.engines)]
 
 
 def rung_notes() -> Dict[str, str]:
@@ -512,9 +480,9 @@ def stages_for_transport(engine: str, bags=None):
     maps a rung name to that rung's mapping, and a rung not named gets an
     empty bag.
 
-    One door, so the two construction sites -- `molbuilder describe` and the web
-    describe door -- cannot build the ladder differently.  A rung this
-    ladder does not have is refused by name.
+    The web describe door's, over the one ladder door `molbuilder describe`
+    asks too (`fresh_stages`), so the two cannot build the ladder
+    differently.  A rung this ladder does not have is refused by name.
 
     **Ownership is not decided here.**  The per-rung form asks the question
     per rung (`engines/transport.md` § 3.8.2a), so a bag arrives already

@@ -568,24 +568,6 @@ def validate_siesta(struct: Structure, cfg,
     # below are about -- as the gate worked it out; its own findings are
     # one family the gate asks for every engine.  Here it is only READ.
 
-    # THE DECK'S GPU SWITCH IS ELPA'S (`engines/siesta.md` § 7):
-    # ``Diag.ELPA.GPU`` moves an ELPA solve onto the GPU, and the deck of any
-    # other solver carries none.  A library's own GPU limit is said, never
-    # refused (`execution/gpu.md` G11): the run asks its GPUs and runs in
-    # the GPU build as asked.  A solver not yet laid (the run card's, at
-    # prep) is judged when it is.
-    from ..siesta.layout import is_elpa
-    _algo = getattr(cfg, "diag_algorithm", None)
-    if bool(getattr(cfg, "use_gpu", False)) and _algo and not is_elpa(_algo):
-        issues.append(Issue(
-            "warn",
-            f"use_gpu with diag_algorithm = {_algo}: this run asks for its "
-            f"GPUs and runs in SIESTA's GPU build, but its solve stays on "
-            f"the CPU -- the deck's one GPU switch, Diag.ELPA.GPU, is read "
-            f"by an ELPA solve alone.  ELPA-1STAGE or ELPA-2STAGE solves on "
-            f"the GPU (engines/siesta.md § 7).",
-            "config.use_gpu"))
-
     # Pseudopotential coverage (the actionable use of pseudos.py).
     # Wired into preflight + render: missing files become ERROR
     # Issues (SIESTA hard-fails without them); XC mismatches

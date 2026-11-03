@@ -497,7 +497,7 @@ engine receives it then we would like to normalize it such that it's cleaned
 up")*. A structure whose stated offset is the engine's (`offset_by =
 engine`) enters a new calculation stating none, so the rule centres it
 (`cell.entering`). Prep takes it, where the template's word is final: the
-calculation's structure as prep reads it for a stage (`prep._structure_for`
+calculation's structure as prep reads it for a stage (`rung.structure_for`
 — its `.source` pair is written as given, its origin's record with it), and a
 transport junction composed from its citation — a cited run, whose
 coordinates are always the engine's, or a cited pair recording the engine's
@@ -567,7 +567,7 @@ it is judged"*, and the one place atoms are placed: every emitter takes
 | `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | `to_engine`, `resolve`, `Structure.to_wire`, `Structure.frame_at` (a later frame of a set states frame 0's, below) |
 | `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was stated | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
 | every door that builds a structure from an engine's output | states `engine_offset = 0` on it, set together with the coordinates and recorded as the engine's (`offset_by = engine`) — keywords, no API of their own (plan § 5q D10) | the `.XV` reader, a run's view (`runs.Declared.frame`: the transport citation, the Results door, `xv2xyz`), PySCF's own pairs, the vibration `freq` stage, the SIESTA validators' subject |
-| `entering(struct, *, keep_engine_frame)` | the structure as a new calculation takes it: an engine's stated offset dropped, so the rule places it; a person's kept; the engine's kept when the kind says so (a vibration's input stated relaxed, read from the template at prep) | `prep._structure_for`, the transport compose, and the two that show or judge it as it will be taken: the hand-over's box check, the Transport tab's describe of a citation |
+| `entering(struct, *, keep_engine_frame)` | the structure as a new calculation takes it: an engine's stated offset dropped, so the rule places it; a person's kept; the engine's kept when the kind says so (a vibration's input stated relaxed, read from the template at prep) | `rung.structure_for`, the transport compose, and the two that show or judge it as it will be taken: the hand-over's box check, the Transport tab's describe of a citation |
 | `Structure.to_wire` | `box_corner = −engine_offset`, the one place a viewer's corner is worked out | every payload that tells a viewer where to draw |
 | `require_placed(frame, struct)` | refuses coordinates that were not placed: a computed frame whose atoms are not centred, and any frame with an atom outside the cell along a non-periodic lattice vector, to 1e-6 Å | the deck renderer, before it writes a line |
 | the periodicity door's `box_corner` op | assigns the box's origin on a typed cell (`offset_by = person`), or clears it back to the rule | the Cell page |

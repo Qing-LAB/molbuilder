@@ -28,6 +28,7 @@ kind = "engine"
 category = ["method", "accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 anchor = "PAO.BasisSize"
 engine_key = "PAO.BasisSize"
 manual = "SIESTA 5.4.2 §6.3.3 'Size of the basis set'"
@@ -54,6 +55,7 @@ kind = "engine"
 category = ["method", "accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 anchor = "PAO.EnergyShift"
 engine_key = "PAO.EnergyShift"
 manual = "SIESTA 5.4.2 §6.3.4 'Range of the orbitals'"
@@ -81,6 +83,7 @@ kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 anchor = "MeshCutoff"
 engine_key = "MeshCutoff"
 manual = "SIESTA 5.4.2 §6.10 'The real-space grid and the eggbox-effect'"
@@ -114,6 +117,7 @@ kind = "engine"
 category = ["method"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 anchor = "XC.functional"
 engine_key = "XC.functional"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
@@ -142,6 +146,7 @@ kind = "engine"
 category = ["method"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 anchor = "XC.authors"
 engine_key = "XC.authors"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
@@ -399,6 +404,7 @@ kind = "engine"
 category = ["system", "accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 anchor = "ElectronicTemperature"
 engine_key = "ElectronicTemperature"
 manual = "SIESTA 5.4.2 §6.12.3 'Occupation of electronic states and Fermi level'"
@@ -426,6 +432,7 @@ kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack"
 manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
@@ -459,6 +466,7 @@ kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
+why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
 citation = ["transport"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack  (displ column)"
@@ -522,6 +530,7 @@ engine_key = "MD.Steps"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
 calculations = ["optimization", "vibration"]
 stages = ["relaxation"]
+active_when = { relax_type = ["CG", "Broyden", "FIRE"] }
 type = "int"
 value = 200
 default = 200
@@ -546,6 +555,7 @@ engine_key = "MD.MaxForceTol"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
 calculations = ["optimization", "vibration"]
 stages = ["relaxation"]
+active_when = { relax_type = ["CG", "Broyden", "FIRE"] }
 type = "float"
 value = 0.02
 default = 0.02
@@ -574,6 +584,7 @@ engine_key = "MD.MaxDispl (CG / Broyden / FIRE)"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
 calculations = ["optimization", "vibration"]
 stages = ["relaxation"]
+active_when = { relax_type = ["CG", "Broyden", "FIRE"] }
 type = "float"
 value = 0.05
 default = 0.05
@@ -692,6 +703,7 @@ Emit inline tuning hints and a Troubleshooting block in the generated script, in
 [item.write_forces]
 # role: every SIESTA run that runs an SCF writes each step's forces -- molbuilder reads them back (template.md 6.4); tbtrans writes none, so a transport calculation's transmission does not carry it (transport.md 6.1b).
 role = ["optimization", "vibration", "transport"]
+why_fixed = "every SIESTA run writes each step's forces and coordinates, because molbuilder reads them back -- the relaxation record, the trajectory and a vibration's finish (engines/template.md § 6.4)"
 stages = "scf"
 kind = "engine"
 category = ["procedure"]
@@ -714,6 +726,7 @@ It does NOT control the .FA file.  The last step's forces reach the .FA file wha
 [item.write_coor_step]
 # role: every SIESTA run that runs an SCF writes each step's coordinates -- molbuilder reads them back (template.md 6.4); tbtrans writes none, so a transport calculation's transmission does not carry it (transport.md 6.1b).
 role = ["optimization", "vibration", "transport"]
+why_fixed = "every SIESTA run writes each step's forces and coordinates, because molbuilder reads them back -- the relaxation record, the trajectory and a vibration's finish (engines/template.md § 6.4)"
 stages = "scf"
 kind = "engine"
 category = ["procedure"]
@@ -991,7 +1004,7 @@ label = "Use GPU (NVIDIA)"
 read_by = ["wrapper"]
 help = """
 OPTIONAL: move the heavy linear algebra onto an NVIDIA CUDA GPU.  It means something different for each engine.
-SIESTA: run the ELPA diagonalization on the GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE); this toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  With ScaLAPACK the deck carries no GPU switch: the run still asks its GPUs and runs in the GPU build, its solve on the CPU, and the settings check says so (gpu.md G11).  It needs an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU (or ScaLAPACK if that's selected).  This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  Where the target's record lists no such env, prep prepares the job as asked and says so, naming the command that installs it (gpu.md G6).  Affinity hint: GPU favors 1STAGE.
+SIESTA: run the ELPA diagonalization on the GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE); this toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  It needs an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU.  This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  Where the target's record lists no such env, prep prepares the job as asked and says so, naming the command that installs it (gpu.md G6).  Affinity hint: GPU favors 1STAGE.
 PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``).  The script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0).  There is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label.  What gpu4pyscf does not do, for you to weigh: it has no stability analysis, so an unrestricted reference (UHF, UKS) keeps its first SCF solution unchecked on the GPU, where the CPU path may find a lower one; and its solvent model has not been compared with PySCF's here.  Said, never refused -- the choice is yours (engines/pyscf.md 7.3).
 """
 
@@ -1676,6 +1689,7 @@ type = "enum"
 choices = ["IEF-PCM", "C-PCM", "COSMO"]
 value = "IEF-PCM"
 default = "IEF-PCM"
+active_when = { solvent = "set" }
 group = "profile"
 label = "PCM model"
 help = """
@@ -2701,6 +2715,8 @@ kind = "engine"
 category = ["system"]
 engines = ["siesta"]
 role = ["transport"]
+why_fixed = "the bias is the description's bias list -- each rung writes the point it runs, the device and the transmission alike (engines/transport.md § 2a.10); change the list instead"
+per_point_from = "bias"
 calculations = ["transport"]
 anchor = "TS.Voltage"
 engine_key = "TS.Voltage"

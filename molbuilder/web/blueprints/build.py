@@ -1119,8 +1119,7 @@ def api_task_setup_handover():
     # `task.json` took the folder's name, the split would simply reappear from
     # the other side.  Normalisation happens once and the result is stored
     # (§ 3 rule 1) — this is the storing.
-    import dataclasses as _dc
-    cfg = _dc.replace(cfg, **{_field: label})
+    cfg = engine_seam(engine).relabel(cfg, label)
 
     # WHAT THE PERSON'S FORM SENT is theirs (`template.md` § 6.6
     # obligation 2): the form sends the fields that hold a value
@@ -1604,19 +1603,21 @@ def api_task_setup_save():
     # § 2a.16, *Extending it*; `task-setup.md` § 3): the rungs it keeps,
     # its voltages, its rename and its label stay -- another junction is
     # another calculation, refused above by its id -- the one rule the Transport
-    # tab's Describe asks (`transport.reuse.Extension`), each change
-    # measured against the folder's own description, so what the command
-    # line wrote is never refused for what it holds.  A finished
-    # calculation that no longer reads leaves its groups prepared here
-    # (§ 2a.16, *At prep*), nothing to keep.
-    if getattr(task, "reuses", ""):
+    # tab's Describe asks (the kind's ``extension`` part,
+    # `kind_table.description_part`), each change measured against the
+    # folder's own description, so what the command line wrote is never
+    # refused for what it holds.  A finished calculation that no longer
+    # reads leaves its groups prepared here (§ 2a.16, *At prep*), nothing to
+    # keep.
+    from molbuilder.kind_table import description_part
+    Extension = description_part(str(task.calculation), "extension")
+    if Extension is not None and getattr(task, "reuses", ""):
         from molbuilder.issues import Issue
         from molbuilder.projects import find_projects_root
-        from molbuilder.transport.reuse import Extension, ReuseError
         try:
             ext = Extension.of(task.reuses,
                                tree_root=find_projects_root(dest))
-        except ReuseError:
+        except Extension.Error:
             ext = None
         no = ext.refusal(task, against=prior) if ext is not None else None
         if no is not None:
@@ -2605,6 +2606,10 @@ def api_task_setup_folder():
         # is a fact about the folder and belongs in the folder's answer.
         "files": sorted(e.name for e in folder.iterdir() if e.is_file()),
         "structure_pair": structure_pair,
+        # WHAT ITS KIND'S DESCRIPTION IS -- the slot it cites, the fields it
+        # carries, its leads -- the kind table's entry (`web/task-setup.md`
+        # § 3), so the page names no kind.
+        "kind": _folder_kind(_doc.get("calculation")),
         "template": _folder_template(
             folder, _label,
             found=_calc.template if _calc is not None else None,
@@ -2691,6 +2696,24 @@ def _default_groups_of(folder, task) -> dict:
     return {st.name: g for st, g in zip(task.stages, groups)}
 
 
+def _folder_kind(calculation) -> Optional[dict]:
+    """The kind's entry as the page draws a description by it: the slot it
+    ``cites`` (or null), the fields it ``carries`` and its ``leads`` (the
+    regions its lead roles are cut from) -- ``None`` with no description or
+    hand-over, or a kind the table does not hold (its reader says so,
+    `refused`)."""
+    from molbuilder.kind_table import KindTableError, kind
+    if not calculation:
+        return None
+    try:
+        rec = kind(str(calculation))
+    except KindTableError:
+        return None
+    return {"cites": rec.description.cites,
+            "carries": list(rec.description.carries),
+            "leads": list(rec.leads.values())}
+
+
 def _folder_fixed(task) -> Optional[dict]:
     """The stages a kind's part on its engine fixes (the kind table),
     ``{"stages"}``, as the stage table reads them; ``None`` for a pair that
@@ -2703,23 +2726,24 @@ def _folder_fixed(task) -> Optional[dict]:
 
 
 def _folder_extension(task, folder) -> Optional[dict]:
-    """An extension's limits, for a transport calculation that reuses a
-    finished one -- the one door's wire form (`transport.reuse.Extension`:
-    the rungs it keeps, what it offers and what each control says) -- or
-    ``None``; ``{"error"}`` when the finished calculation does not read
-    (`engines/transport.md` § 2a.16)."""
+    """An extension's limits, for a calculation that reuses a finished one
+    -- its kind's ``extension`` part's wire form, served whole (a transport
+    calculation's: the rungs it keeps, what it offers, what each control
+    says and the rung a fit is written into) -- or ``None``; ``{"error"}``
+    when the finished calculation does not read (`engines/transport.md`
+    § 2a.16)."""
     reuses = getattr(task, "reuses", "") or ""
     if not reuses:
         return None
-    from molbuilder.jobset.reuse import SHARING_RUNG
+    from molbuilder.kind_table import description_part
     from molbuilder.projects import find_projects_root
-    from molbuilder.transport.reuse import Extension, ReuseError
+    Extension = description_part(str(task.calculation), "extension")
+    if Extension is None:
+        return None
     try:
-        # ...AND THE RUNG WHOSE WINDOW A FIT IS WRITTEN INTO, as the
-        # Transport tab's extend answer names it.
-        return dict(Extension.of(reuses, tree_root=find_projects_root(
-            pathlib.Path(folder))).to_wire(), window=SHARING_RUNG)
-    except ReuseError as exc:
+        return Extension.of(reuses, tree_root=find_projects_root(
+            pathlib.Path(folder))).to_wire()
+    except Extension.Error as exc:
         return {"error": str(exc)}
 
 
@@ -2803,14 +2827,12 @@ def _folder_frame_set(task, folder):
     structure (the kind table's ``description.cites`` -- a transport
     calculation's junction); ``None`` for every other kind.  A citation that
     does not read says why, in its words -- the folder still opens."""
-    from molbuilder.kind_table import kind as _kind
+    from molbuilder.kind_table import description_part, kind as _kind
     cites = _kind(task.calculation).description.cites if task else None
     if not cites:
         return None
     from molbuilder.projects import find_projects_root
-    from molbuilder.frame_average import answer_said
-    from molbuilder.transport.compose import (CitedPair, ComposeError,
-                                              resolve_citation)
+    cited_frames = description_part(str(task.calculation), "cited_frames")
     cited_at = ((getattr(task, "slots", None) or {}).get(cites))
     if not cited_at:
         return None
@@ -2821,12 +2843,9 @@ def _folder_frame_set(task, folder):
         return {"n_frames": None, "definition": None,
                 "why": f"{folder} is in no projects tree, so its citation "
                        f"{cited_at} names nothing"}
-    try:
-        _, cited = resolve_citation(str(cited_at), tree)
-    except ComposeError as exc:
-        return {"n_frames": None, "definition": None, "why": str(exc)}
-    return answer_said(
-        cited.structure if isinstance(cited, CitedPair) else None)
+    # ...ITS FRAMES, by the kind's own reading of its citation (its
+    # ``cited_frames`` part).
+    return cited_frames(str(cited_at), tree)
 
 
 def _folder_set_to(folder):

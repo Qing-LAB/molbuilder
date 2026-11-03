@@ -74,6 +74,7 @@ def _spec(**over) -> se.DeckSpec:
         # stub included -- the renderer refuses a deck without one
         # (`model/structure-periodicity.md` § 6.0, check 3).
         engine_frame=to_engine(_struct()),
+        calculation="optimization",
     )
     kw.update(over)
     return se.DeckSpec(**kw)
@@ -325,7 +326,7 @@ def test_a_real_engine_reports_the_keywords_its_deck_writes(engine):
     2026-08-19.
     """
     seam, struct, cfg = _real(engine)
-    deck = se.render_deck(seam.spec_for(struct, cfg, names=_names(cfg)),
+    deck = se.render_deck(seam.spec_for(struct, cfg, names=_names(cfg), calculation="optimization"),
                           struct, cfg)
     assert len(deck.emitted) >= 10, (
         f"{engine}: the deck reports {len(deck.emitted)} written lines for "

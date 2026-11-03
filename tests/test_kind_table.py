@@ -34,6 +34,50 @@ def test_every_part_a_pair_names_resolves(calculation, engine):
             assert kind_table.part_of(calculation, engine, key) is not None
 
 
+_DESCRIPTION_PARTS = [(k, key) for k in kind_table.kinds()
+                      for key in kind_table.kind(k).description.parts]
+
+
+@pytest.mark.parametrize("calculation, key", _DESCRIPTION_PARTS,
+                         ids=[f"{k}-{key}" for k, key in _DESCRIPTION_PARTS])
+def test_every_part_a_kind_s_description_names_resolves(calculation, key):
+    """Every door a kind's description names for the shared doors that ask
+    of a kind that cites or extends -- the extension's limits, a citation's
+    frames, the order record, the reuse decision -- is importable: the
+    floor that asks finds it (`execution/architecture.md` § 3.3)."""
+    assert kind_table.description_part(calculation, key) is not None
+
+
+#: (calculation, engine, stage, the order its deck lists atoms in) -- the
+#: pair's word (`execution/architecture.md` § 3.3: a SIESTA vibration's held
+#: atoms first, a transport calculation's TranSIESTA order), none on a lead
+#: rung, whose electrode cell is a structure of its own, and none for a
+#: pair that states none, the user order.
+#: The last column: whether the deck is a structure of its own.
+ORDER_ROWS = [
+    ("vibration", "siesta", "freq", "held-first", False),
+    ("transport", "siesta", "device", "transport", False),
+    ("transport", "siesta", "seed", "transport", False),
+    ("transport", "siesta", "electrode_L", None, True),
+    ("transport", "siesta", "03_electrode_R", None, True),
+    ("optimization", "siesta", "coarse", None, False),
+    ("vibration", "pyscf", "freq", None, False),
+]
+
+
+@pytest.mark.parametrize("calculation, engine, stage, order, own", ORDER_ROWS,
+                         ids=[f"{c}-{e}-{s}" for c, e, s, _, _ in ORDER_ROWS])
+def test_a_deck_lists_its_atoms_in_its_pair_s_order(calculation, engine,
+                                                     stage, order, own):
+    """The order the run door, the working copy and prep each ask of the
+    table (`kind_table.atom_order`) for a deck of a stage, by its name or
+    its token.  THE SILENT FAILURE: a lead rung's electrode cell sorted as
+    the whole junction is, or a pair that states no order sorted anyway --
+    a deck's atoms in an order its order record does not say."""
+    assert kind_table.atom_order(calculation, engine, stage) == order
+    assert (kind_table.own_structure(calculation, stage) is not None) is own
+
+
 @pytest.mark.parametrize("engine", engine_table.engines())
 def test_every_part_an_engine_names_resolves(engine):
     """Its config class and its seam resolve -- and the environments its
@@ -83,7 +127,8 @@ _KIND_ROWS = [
     # kind's lead stem.
     ("a lead's name another kind's role has",
      '[k]\nnoun = "k"\ntopic = "k"\n'
-     'roles = [{name = "a", computes = "scf", lead = "A-region"}]\n'
+     'roles = [{name = "a", computes = "scf", lead = "A-region", '
+     'about = "what the A-region is"}]\n'
      '[k.on.siesta]\nstage_roles = "own"\n'
      '[j]\nnoun = "j"\ntopic = "j"\n'
      'roles = [{name = "a", computes = "scf"}]\n'
@@ -94,6 +139,51 @@ _KIND_ROWS = [
      'stage_roles = "own"\n'
      'retired = { stage = "s", role = "b", since = "1", why = "w" }\n',
      "retired names role 'b'"),
+    # The order a pair's deck lists its atoms in is one of the sort rules'
+    # words (`atom_permutation.SORT_KEY_NAMES`), so the order record prep
+    # writes names a rule its reader knows.
+    ("an atom order that is no sort rule's word",
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\natom_order = "by_colour"\n',
+     "atom_order is 'by_colour'"),
+    ("a scratch status that names no part",
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\n'
+     'scratch_status = "a sentence"\n', "scratch_status is 'a sentence'"),
+    # A lead's label is offered on the label palette with what it is for
+    # (`web/molview.md`), so a lead says it.
+    ("a lead that does not say what its label is for",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'roles = [{name = "a", computes = "scf", lead = "A-region"}]\n'
+     '[k.on.siesta]\nstage_roles = "own"\n', "what its label is for"),
+    ("a region that is not a label with what it is for",
+     '[k]\nnoun = "k"\ntopic = "k"\nregions = [{name = "x"}]\n'
+     '[k.on.siesta]\n', "a region is {name, about}"),
+    ("a citation of a kind the table does not hold",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {cites = "c", cited_kind = "nope", '
+     'cited_frames = "m:f"}\n[k.on.siesta]\n',
+     "cited_kind 'nope' is no kind of the table"),
+    # A door asked of a kind that cites or extends comes with what makes it
+    # asked: a cited slot, a carried `reuses`.
+    ("an order record on a kind that cites nothing",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {order_record = "m:f"}\n[k.on.siesta]\n',
+     "description.order_record on a kind whose description does not state "
+     "cites"),
+    # ...and a kind that cites names what reads its citation's frames, and
+    # one that carries `reuses` what decides it.
+    ("a kind that cites and names no cited frames",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {cites = "c"}\n[k.on.siesta]\n',
+     "cites and names no cited_frames part"),
+    ("a kind that carries reuses and names no reuse",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {carries = ["reuses"], extension = "m:f"}\n'
+     '[k.on.siesta]\n', "carries reuses and names no reuse part"),
+    ("a reuse on a kind that carries no reuses",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {reuse = "m"}\n[k.on.siesta]\n',
+     "description.reuse on a kind whose description does not state carries "
+     "reuses"),
 ]
 
 

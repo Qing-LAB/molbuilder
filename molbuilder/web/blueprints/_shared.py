@@ -259,6 +259,7 @@ def workspace_payload(
             "atoms":         [<per-atom row>, ...],   # per atoms_list
             "lattice":       [[...3...], [...3...], [...3...]] | None,
             "issues":        [<Issue JSON>, ...],
+            "labels":        [{"name", "description"}, ...],
             "extra":         { ... endpoint-specific add-ons ... },
         }
 
@@ -284,7 +285,12 @@ def workspace_payload(
       ``lattice`` is a single-field spelling that no consumer reads; it
       stays for the wire shape's sake.
     * ``issues`` is populated via :func:`validate_geometry`.
+    * ``labels`` are the labels a calculation kind reads on a structure's
+      atoms, each with what it is for (`kind_table.labels`) -- the label
+      palette's, served beside every structure so MolView spells none of
+      them (`web/molview.md`).
     """
+    from molbuilder.kind_table import labels as _kind_labels
     return {
         "text":          struct.to_xyz(),
         "source_format": "xyz",
@@ -297,6 +303,8 @@ def workspace_payload(
         # residual panel's.
         "issues":        issues_to_json(
             validate_geometry(struct), cfg=None),
+        "labels":        [{"name": name, "description": about}
+                          for name, about in _kind_labels()],
         "extra":         dict(extra) if extra else {},
     }
 
@@ -310,8 +318,7 @@ def structure_to_dict(
     Structure-returning endpoint.
 
     Routes through :func:`workspace_payload` for the canonical
-    keys (``text``, ``source_format``, ``title``, ``n_atoms``,
-    ``atoms``, ``lattice``, ``issues``, ``extra``) and adds the
+    keys (every key it serves) and adds the
     legacy aliases that the existing modify-tab front-end's
     ``applyStructure(r)`` reads directly (``xyz``, ``elements``,
     flat per-atom columns, ``n_residues``).
@@ -354,13 +361,10 @@ def structure_to_dict(
         # derived from this one Structure, so they cannot come to disagree. The
         # legacy keys go when nothing reads them -- a question the code can answer.
         "structure":     struct.to_dict(),
-        # Canonical keys (forward-compat with workspace dispatcher).
-        "text":          base["text"],
-        "source_format": base["source_format"],
-        "title":         base["title"],
-        "n_atoms":       base["n_atoms"],
-        "atoms":         base["atoms"],
-        "lattice":       base["lattice"],
+        # THE CANONICAL KEYS, every one `workspace_payload` serves, whole --
+        # the labels among them -- so a key added there reaches every
+        # endpoint with no edit here.
+        **base,
         # Structure-owned: full periodicity (incl. resolved_cell, box_corner) +
         # annotations ride with the geometry into the store so a captured
         # electrode cell survives the modify op (`web-api.md` § 1, what
@@ -371,8 +375,6 @@ def structure_to_dict(
         # like the resolved box (`model/overview.md` § 2.2a): what a viewer
         # holding an engine's order marks itself with; none in the user order.
         "atom_order_said": wire["atom_order_said"],
-        "issues":        base["issues"],
-        "extra":         base["extra"],
         # Legacy aliases for existing modify-tab consumers (identity columns
         # also sourced from the ONE view so they can't diverge).
         #
@@ -531,8 +533,8 @@ def _control_for(item) -> str:
     return _CONTROL_FOR_TYPE.get(item.type, "text")
 
 
-def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
-                             calculation: str = "optimization",
+def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
+                             calculation: str,
                              surface: Optional[str] = None,
                              rung: Optional[str] = None,
                              template=None,
@@ -694,12 +696,13 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
         elif h is not None and h.is_set:
             field["default"] = _jsonable(h.value)
         if it.name in echoed:
-            field["locked"] = {"value": (None if it.name in _T.PER_POINT
+            field["locked"] = {"value": (None if it.per_point_from
                                          else _jsonable(echoed[it.name])),
                                "why": _T.why_role(it.name)}
-            # ANSWERED POINT BY POINT (`template.PER_POINT`): no one value to
-            # draw, so the page shows the points it holds (`showPoints`).
-            if it.name in _T.PER_POINT:
+            # ANSWERED POINT BY POINT (the item's `per_point_from`): no one
+            # value to draw, so the page shows the points it holds
+            # (`showPoints`).
+            if it.per_point_from:
                 field["locked"]["per_point"] = True
         # WHICH RUNGS OWN IT (template.md § 6.4's `stages`; empty = any):
         # the fact a rung's tab folds its cards by, and the stage table
@@ -790,7 +793,7 @@ def engine_key_for(item) -> str:
 
 
 def _item_to_field(item, id_prefix: str,
-                   calculation: str = "optimization") -> Dict[str, Any]:
+                   calculation: str) -> Dict[str, Any]:
     """One catalogue item as one form field (`form-schema.md` § 1.1), for a
     ``calculation`` of that kind -- which components of a triple the kind
     fixes is a fact about the kind (`engines/siesta.md` § 6.1)."""
@@ -813,9 +816,9 @@ def _item_to_field(item, id_prefix: str,
     # the named fields of the same form, its parts drawn together
     # (`form-schema.md` § 1.3).
     if item.active_when:
-        out["active_when"] = {k: list(v) for k, v in item.active_when}
+        from molbuilder.template import active_when_of, active_words
+        out["active_when"] = active_when_of(item)
         # ...and what it waits on, in words, shown beside it while greyed.
-        from molbuilder.template import active_words
         words = active_words(item)
         out["active_words"] = words[:1].upper() + words[1:] + "."
     # The engine-keyword badge.  **The FULL spelling, not the anchor**: an

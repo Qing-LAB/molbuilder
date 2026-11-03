@@ -48,7 +48,7 @@ def test_a_config_survives_the_round_trip(cfg):
     produce the ordinary config a stage's ``overrides`` land on (`stages.md`
     § 4).  If the trip is lossy, every stage resolves against something the
     user did not write."""
-    text = T.template_with_values(cfg)
+    text = T.template_with_values(cfg, calculation="optimization")
     back = T.config_from_template(text, SiestaConfig)
     for item in T.items_of(SiestaConfig).values():
         if "execution" in (item.category or ()):
@@ -73,7 +73,7 @@ def test_the_round_trip_preserves_types_not_just_content(cfg):
     only one sequence, so it comes back a list unless the declared type is what
     decides the shape.  This caught a real bug on the day it was written.
     """
-    back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
+    back = T.config_from_template(T.template_with_values(cfg, calculation="optimization"), SiestaConfig)
     assert back.write_hs is True                  # a real bool stays a bool
     assert back.spin_treatment == "unrestricted"  # an enum stays its own string
     assert isinstance(back.relax_steps, int)
@@ -87,7 +87,7 @@ def test_an_unset_optional_comes_back_unset_not_defaulted():
     value somebody chose.  A round trip that filled it in would turn "let it
     be decided" into "I chose this"."""
     cfg = SiestaConfig(system_label="JOB", mpi_np=None, net_charge=None)
-    back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
+    back = T.config_from_template(T.template_with_values(cfg, calculation="optimization"), SiestaConfig)
     assert back.mpi_np is None
     assert back.net_charge is None
 
@@ -96,7 +96,7 @@ def test_unset_is_encoded_as_an_absent_key_not_an_empty_one():
     """§ 3: *"a missing ``value`` means explicitly unset"*.  TOML has no null,
     so absence is the encoding — and writing ``value = ""`` instead would make
     *unset* indistinguishable from an empty string."""
-    text = T.template_with_values(SiestaConfig(system_label="JOB", net_charge=None))
+    text = T.template_with_values(SiestaConfig(system_label="JOB", net_charge=None), calculation="optimization")
     item = T.one(T.read_template(text), "net_charge")
     assert item.value is None and not item.is_set
     assert "\nvalue" not in text.split("[item.net_charge]")[1].split("[item.")[0]
@@ -106,7 +106,7 @@ def test_a_template_missing_an_item_keeps_the_class_default():
     """A template written against an older schema is **missing** items, not
     wrong about them.  The per-field checks name the ones that moved; the
     reader's job is to not invent values."""
-    text = T.template_with_values(SiestaConfig(system_label="JOB"))
+    text = T.template_with_values(SiestaConfig(system_label="JOB"), calculation="optimization")
     head, _, rest = text.partition("[item.mesh_cutoff]")
     trimmed = head + rest[rest.index("[item."):]
     back = T.config_from_template(trimmed, SiestaConfig)
@@ -116,7 +116,7 @@ def test_a_template_missing_an_item_keeps_the_class_default():
 def test_a_stage_resolves_against_the_template_read_back(cfg):
     """What ``prep`` actually does: rebuild the config, then land the stage's
     ``overrides`` on it (`stages.md` § 4)."""
-    base = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
+    base = T.config_from_template(T.template_with_values(cfg, calculation="optimization"), SiestaConfig)
     eff = effective_config(base, {"mesh_cutoff": 500.0})
     assert eff.mesh_cutoff == 500.0
     assert eff.basis_size == "TZP"          # untouched by the stage
@@ -135,13 +135,13 @@ def test_the_writer_refuses_output_that_does_not_read_back(monkeypatch, cfg):
     monkeypatch.setattr(T, "_toml_value",
                         lambda v: '"WRONG"' if v == 275.0 else real(v))
     with pytest.raises(ValueError, match=r"does not read back as written"):
-        T.template_with_values(cfg)
+        T.template_with_values(cfg, calculation="optimization")
 
 
 def test_the_emitted_file_is_valid_toml_and_carries_the_three_top_keys(cfg):
     """§ 3: ``schema`` and ``engines`` — the two required top-level keys."""
     import tomllib
-    raw = tomllib.loads(T.template_with_values(cfg))
+    raw = tomllib.loads(T.template_with_values(cfg, calculation="optimization"))
     assert raw["schema"] == T.SCHEMA
     assert raw["engines"] == ["siesta"]      # @2: a LIST -- a calculation may run on several
     assert "fingerprint" not in raw     # § 10
@@ -215,7 +215,7 @@ def test_an_optional_item_says_what_unset_is_called():
 
 
 def test_the_three_surface_keys_survive_the_round_trip():
-    text = T.template_with_values(SiestaConfig(system_label="JOB"))
+    text = T.template_with_values(SiestaConfig(system_label="JOB"), calculation="optimization")
     item = T.one(T.read_template(text), "mesh_cutoff")
     assert item.label and item.category and item.unit == "Ry"
 
@@ -253,7 +253,7 @@ def test_the_five_ungated_fields_round_trip_through_a_template():
     cfg = SiestaConfig(system_label="JOB",
                        species_order=["C", "H", "S", "Au"],
                        write_hs=False)
-    back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
+    back = T.config_from_template(T.template_with_values(cfg, calculation="optimization"), SiestaConfig)
     assert list(back.species_order) == ["C", "H", "S", "Au"]
     assert back.write_hs is False
 
@@ -278,7 +278,7 @@ def test_an_unknown_item_name_is_refused_not_dropped():
     """E4: this is a file people edit by hand; a typo'd item silently
     ignored renders a deck missing what the person believes they set.
     Until U16 config_from_template filtered on `k in known` -- the drop."""
-    text = T.template_with_values(SiestaConfig(system_label="JOB"))
+    text = T.template_with_values(SiestaConfig(system_label="JOB"), calculation="optimization")
     assert "[item.mesh_cutoff]" in text
     broken = text.replace("[item.mesh_cutoff]", "[item.mesh_cutof]")
     with pytest.raises(ValueError, match="mesh_cutof"):
@@ -295,7 +295,7 @@ def test_a_hand_edited_value_of_the_wrong_type_is_refused_by_name():
     (`engines/template.md` § 5.4)."""
     import re
     text = T.template_with_values(SiestaConfig(system_label="JOB",
-                                          mesh_cutoff=300.0))
+                                          mesh_cutoff=300.0), calculation="optimization")
     i = text.index("[item.mesh_cutoff]")
     j = text.index("[item.", i + 10)
     block = text[i:j]
@@ -306,7 +306,7 @@ def test_a_hand_edited_value_of_the_wrong_type_is_refused_by_name():
         T.read_template(mutated)
     # an enum outside its own choices is the same class of edit
     text2 = T.template_with_values(SiestaConfig(system_label="JOB",
-                                           basis_size="TZP"))
+                                           basis_size="TZP"), calculation="optimization")
     i = text2.index("[item.basis_size]")
     j = text2.index("[item.", i + 10)
     block = text2[i:j]
@@ -324,7 +324,7 @@ def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
     import re
     cfg = SiestaConfig(system_label="JOB", species_order=["C", "H"],
                        kgrid=(3, 3, 1))
-    text = T.template_with_values(cfg)
+    text = T.template_with_values(cfg, calculation="optimization")
     i = text.index("[item.species_order]")
     j = text.index("[item.", i + 10)
     block = text[i:j]
@@ -367,7 +367,7 @@ def test_a_template_file_missing_category_is_refused_on_READ():
 # ------------------------------------------------------------------ #
 
 def _siesta_template():
-    return T.read_template(T.template_with_values(SiestaConfig(), engine="siesta"))
+    return T.read_template(T.template_with_values(SiestaConfig(), engine="siesta", calculation="optimization"))
 
 
 def test_select_with_no_filter_is_every_item():

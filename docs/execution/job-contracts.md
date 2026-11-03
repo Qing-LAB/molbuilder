@@ -1154,7 +1154,7 @@ vocabulary cannot say belongs in the one interpreter,
   which no reader of ours reads. PySCF names none.
 - **`scratch_dir`.** The device deck names `tsgf/`, the run's opener makes it
   with the run and stamps it `scratch` (`materialize.open_scratch`), `prep`
-  records the name on the device's job (`transport_rung.scratch_dir_of` →
+  records the name on the device's job (`transport.rung.scratch_dir_of` →
   `Job.scratch_dir`), and a run of points' walk empties it as each round begins
   and when the walk ends
   ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). A kind that

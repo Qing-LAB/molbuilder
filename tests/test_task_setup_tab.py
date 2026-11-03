@@ -1203,3 +1203,45 @@ class TestTheFolderDoor:
         assert body["description"] is not None, (
             "the description is still there to read")
 
+
+
+#: (calculation, the kind's entry the folder answer serves) -- what "What came
+#: over" draws its rows by (`web/task-setup.md` § 3): a kind of a structure
+#: cites nothing and carries none of a transport calculation's fields; a
+#: transport calculation cites its junction, carries the rename, the bias
+#: list and the calculation it reuses, and has two leads.
+KIND_ENTRY_ROWS = [
+    ("optimization", {"cites": None, "carries": [], "leads": []}),
+    ("vibration", {"cites": None, "carries": [], "leads": []}),
+    ("transport", {"cites": "junction",
+                   "carries": ["swap_electrodes", "bias", "reuses"],
+                   "leads": ["L-electrode", "R-electrode"]}),
+]
+
+
+@pytest.mark.parametrize("calculation, entry", KIND_ENTRY_ROWS,
+                         ids=[r[0] for r in KIND_ENTRY_ROWS])
+def test_the_folder_answer_states_its_kind_s_entry(tmp_path, monkeypatch,
+                                                   calculation, entry):
+    """Which rows "What came over" draws is its kind's entry, served in the
+    folder answer -- the slot it cites, the fields it carries and its leads
+    (`web/task-setup.md` § 3) -- so the page
+    names no kind.  A kind of a structure is read through the road (its
+    folder answer); a transport description needs a resolvable citation,
+    which only an engine run makes, so its entry is asked of the answer's
+    composer (`build._folder_kind`).
+
+    THE SILENT FAILURE (until 2.65.0): the page compared the kind's name to
+    "transport", so a second kind that cites would have been drawn as one
+    that holds a structure.  The page's reading of the entry is the
+    browser's (the F9 e2e)."""
+    if entry["cites"] is not None:
+        from molbuilder.web.blueprints.build import _folder_kind
+        assert _folder_kind(calculation) == entry
+        return
+    from molbuilder.web.app import create_app
+    from support.road import describe_calculation
+    bundle = describe_calculation(tmp_path, monkeypatch,
+                                  calculation=calculation)
+    client = create_app(config={}).test_client()
+    assert _folder(client, bundle)["kind"] == entry
