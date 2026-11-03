@@ -93,8 +93,9 @@ def unticked(real_co2_vibration, tmp_path_factory):
     (`support.real_runs.copy_of`), on which, in order -- `summarize` asked
     of one stage; `freq` launched again, warm, with every call done and the
     result written; a displacement sweep, `freq_half` at 0.02 Bohr added
-    beside `freq` in a group of its own (a launched group is fixed,
-    `engines/stages.md` § 2), prepared, the sweep summarized (``early``),
+    beside `freq` in a group of its own (a later stage builds on the first,
+    so it never shares that stage's job, `engines/vibration.md` § 5.9),
+    prepared, the sweep summarized (``early``),
     `freq_half` launched -- taking `freq`'s relaxation over,
     `engines/vibration.md` § 5.9 -- and summarized (``record``), and summarized again
     under a tolerance (``flagged``).  What each step answered is written
@@ -253,9 +254,16 @@ def _the_optical_record(run, computed_in, n: int = 0):
     grid = np.asarray(data["photon_energy_ev"])
     ds = xarray.load_dataset(path, group="frames")
     assert ds["eps2"].dims == ("frame", "photon_energy_ev", "spin")
-    # EACH CHANNEL'S FERMI LEVEL, one a channel (§ 5.11 § 8).
+    # EACH CHANNEL'S FERMI LEVEL, one a channel, a number for every
+    # finished frame (§ 5.11 § 8: `fermi_level_ev(frame, spin)` -- each
+    # channel's own under Spin.Fix, else the one Ef they share).  THE
+    # SILENT FAILURE (2.58.0): frames that recorded no Fermi level -- a
+    # fill (NaN) where SIESTA printed one.
     assert ds["fermi_level_ev"].dims == ("frame", "spin")
-    assert all(len(f["fermi_level_ev"]) == len(data["spin"])
+    assert np.isfinite(ds["fermi_level_ev"].values).all(), \
+        ds["fermi_level_ev"].values
+    assert all(f["fermi_level_ev"] is not None
+               and len(f["fermi_level_ev"]) == len(data["spin"])
                for f in frames), frames
     for k, (f, c) in enumerate(zip(frames, calls)):
         row = entry_of(index, c.rel)
@@ -448,7 +456,13 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     outcome, and its finish (§ 7a, `run-reports.md` § 2.9); and
     `status` counts the run in its phases' words (§ 7).  Launched again warm
     with every call done and the result written, a launch has nothing to
-    run and says so, naming `--cold` (§ 6)."""
+    run and says so, naming `--cold` (§ 6).
+
+    THE SILENT FAILURE: force constants taken at the input geometry rather
+    than the one the relaxation reached -- a spectrum that looks right off
+    its stationary point (§ 2.2: an unrelaxed structure is the one error
+    that looks like a result) -- or a run that ends without reporting its
+    phases; the module head's MUTATIONS name each."""
     from molbuilder.parse.fdf import fdf_key
     from molbuilder.runs import declared
     from molbuilder.siesta.vibration_phases import FC, OPTICAL, RELAX
@@ -1034,7 +1048,7 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
 
         # THE FREE ATOMS' INFRARED ON OPEN (§ 3.2): a spectrum, the column
         # titled short with its note, a number in every cell, the summary
-        # naming the view -- and no choice of atoms.
+        # naming the view -- and no choice of atoms (below, the bar).
         page.wait_for_function(
             "() => document.getElementById('ir-col-head').textContent"
             "  === 'IR* (km/mol)'", timeout=20000)
@@ -1065,12 +1079,22 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
         assert summary()["IR intensities"] == (
             "from the run's charges — the free atoms (2), along z, "
             "Hirshfeld"), summary()["IR intensities"]
-        assert page.locator("#ir-atoms").count() == 0
 
         # THE BAR (§ 2.1): the light and the charges, no Raman -- the run
-        # asked for none -- and nothing to update.
+        # asked for none -- and nothing to update.  NO SET OF ATOMS IS
+        # CHOSEN on the page (§ 3.2: "No set of atoms is chosen anywhere");
+        # the bar's shown controls are *Light along* and *Charges*, by the
+        # label a person reads, and nothing else (§ 2.1: a control shows
+        # only where the result has its choice).
         assert _shown(page, "#view-bar")
         assert _shown(page, "#ir-direction") and _shown(page, "#ir-partition")
+        shown_controls = page.evaluate("""() => [...document.querySelectorAll(
+            '#view-bar select, #view-bar input')]
+            .filter(e => e.getClientRects().length > 0)
+            .map(e => { const l = e.closest('label');
+                        const s = l && l.querySelector('span');
+                        return s ? s.textContent : e.id; })""")
+        assert shown_controls == ["Light along", "Charges"], shown_controls
         assert not _shown(page, "#raman-controls")
         assert not _shown(page, "#ir-absent")
         assert page.is_disabled("#view-update")
@@ -1414,9 +1438,19 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     numbering.  Before `freq_half` is launched the record lists it as
     pending, in its attempt's own words.
 
-    MUTATION THIS MUST FAIL AGAINST: the second stage's record step not
+    `freq_half`'s result states the relaxation it took over as its own
+    (§ 6.2: `enabled` true when the `relax` call "ran, or was taken over
+    from the first stage of a displacement sweep", its `n_steps` from that
+    relaxation record) and judges its reference geometry by the tolerance
+    the first stage's run relaxed to, which that record carries (§ 5.5;
+    2.58.0).
+
+    MUTATIONS THIS MUST FAIL AGAINST: the second stage's record step not
     writing its own result at its run's root -- the summary then lists it
-    failed, and compares nothing.
+    failed, and compares nothing; a later stage's result whose relaxation
+    steps are not the first stage's record's.  (Both stages here relax to
+    the same tolerance, so a criterion read from the later stage's own
+    deck would pass the criterion check: that mutation is not caught.)
     """
     from molbuilder.siesta.vibration_phases import FC
     bundle, early, rec, rec2 = (unticked.bundle, unticked.early,
@@ -1451,6 +1485,18 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     for d in (a1, a2):
         assert d["phase_relaxation"] == "complete" and \
             d["relaxation"]["converged"] is True
+    # THE LATER STAGE'S RELAXATION IS THE FIRST STAGE'S (§ 6.2, § 5.5):
+    # its result states the relaxation `freq`'s run computed -- `enabled`,
+    # that record's steps -- and its criterion is the tolerance that
+    # record carries.
+    (computed,) = [p for p in _index_of(unticked, "freq")["points"]
+                   if p["phase"] == RELAX]
+    record = computed["facts"]["relaxation"]
+    assert a2["relaxation"]["enabled"] is True, a2["relaxation"]
+    assert a2["relaxation"]["n_steps"] == record["n_steps"], (
+        a2["relaxation"], record)
+    assert a2["engine_metadata"]["reference_force_criterion_ev_ang"] == \
+        record["force_tolerance_ev_ang"], (a2["engine_metadata"], record)
 
     assert rec["schema"] == "molbuilder/fc-displacement-sweep@2"
     assert rec["pending"] == [] and rec["failed"] == []  # every stage has one
@@ -1575,8 +1621,16 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     (:func:`_the_optical_record`), each frame computed where it was --
     run-1's for a frame taken over -- with no force-constant call of its
     own, the record of each optical call stands on the one it took over.
+    The stopped run read back first: run-1 *failed*, no `finish` sent, the
+    calls its walk never started *not run* (`run-reports.md` § 2.4;
+    `runs-of-points.md` § 4.5); and what each run continues from -- run-2
+    from run-1, whose calls it took over, run-1, launched cold, from
+    nothing (`runs-of-points.md` § 3, *What the run continues from*).
 
-    MUTATIONS THIS MUST FAIL AGAINST: launch not taking a done call over
+    MUTATIONS THIS MUST FAIL AGAINST: a walk stopped by the person read
+    *running* for ever, or its never-started calls counted failed; a run
+    of points' launch record naming no run it took calls from, or naming
+    one at a cold launch; launch not taking a done call over
     (the relaxation runs again: its start is run-2's); a done optical call
     walked again; an optical call's record step reading what only a run
     that took its own force constants writes (the run then fails); the
@@ -1593,6 +1647,21 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     finished = {p["call"] for p in run.stopped.points
                 if p["phase"] == OPTICAL and p["done"]}
     assert 0 < len(finished) < len(_OPTICAL_CALLS), run.stopped.points
+    # THE STOPPED RUN, READ BACK as the stop left it (`run-reports.md`
+    # § 2.4: "a walk stopped by the person, or killed, sends no `finish`,
+    # and the run door reads the run failed"; `runs-of-points.md` § 4.5:
+    # a call the ended walk never started reads *not run*, never failed --
+    # by the one word every printer says a point by, `runpoints.state_word`).
+    from molbuilder.runpoints import state_word
+    assert run.stopped.state == "failed", (run.stopped.state,
+                                           run.stopped.detail)
+    assert "finish" not in notified(run, "freq", n=1), \
+        notified(run, "freq", n=1)
+    started = {r["facts"]["name"] for r in run.stopped_index["points"]
+               if r.get("started")}
+    never = [p for p in run.stopped.points if p["call"] not in started]
+    assert never, ("the stop left no call unstarted", run.stopped.points)
+    assert {state_word(p) for p in never} == {"not run"}, never
     before = {r["facts"]["name"]: r for r in run.stopped_index["points"]}
     said = run.said["launch freq warm"]
     assert said.exit_code == 0, said.output
@@ -1610,6 +1679,16 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
         status.detail
     run1 = run.attempt("freq", 1).relative_to(run.bundle).as_posix()
     run2 = run.attempt("freq", 2).relative_to(run.bundle).as_posix()
+    # WHAT EACH RUN CONTINUES FROM (`runs-of-points.md` § 3: "only where
+    # it takes something from it ... That is the run's `.continued-from`,
+    # its launch record's `continued_from`"; "Cold, nothing is taken
+    # over"): run-2, which took run-1's calls over, from run-1 -- its
+    # launch record through the status door, its marker through its reader
+    # -- and run-1, launched cold, from nothing.
+    from molbuilder.runrecord import read_continued_from
+    assert status.launch["continued_from"] == run1, status.launch
+    assert str(read_continued_from(run.attempt("freq", 2))) == run1
+    assert run.stopped.launch["continued_from"] is None, run.stopped.launch
     index = {r["facts"]["name"]: r for r in _index_of(run, n=2)["points"]}
     for p in status.points:
         name = p["call"]
@@ -1679,7 +1758,9 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     for the same reason is not said again; the finish names the first call
     short of done and how many are, its count the failed calls.
     On the real engine: every optical call of a run launched under a wall
-    already passed stops at once, alike.
+    already passed stops at once, alike -- its log saying what a launch
+    again does with the point, and its state the engine's own words for
+    the stop (`running-a-job.md` § 3.5, § 3.6).
 
     THE SILENT FAILURES: a run's failed call never reported until its
     finish, hours later; a run whose calls all fail alike -- its wall
@@ -1707,17 +1788,42 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     assert set(sent) <= {"start", "wall_near", "part_failed", "finish"}, sent
     assert sent.count("wall_near") <= 1, sent
     first = ran[0]
-    # THE WALLED CALL'S OWN LOG says what a launch again does with a failed
-    # point -- runs it as its run's rule starts it -- never a single
-    # run's "launch this stage again to continue" (`engines/vibration.md`
-    # § 5.11 § 6; `running-a-job.md` § 3.5).  MUTATION THIS MUST FAIL
-    # AGAINST: the wall line composed without the member flag.
+    # THE WALLED CALL'S OWN LOG says it stopped at its wall and, in place of
+    # what a launch again will do for a single run, what it does with a
+    # point of a run of points (`running-a-job.md` § 3.6: *stopped at its
+    # wall* in place of *what a launch again will do*; § 3.5's row *a point
+    # of a run of points*: "*this point failed: a launch again takes the
+    # run's points done over and* ... runs it again from its start") -- an
+    # optical call runs again (`engines/vibration.md` § 5.11 § 6).
+    # MUTATIONS THIS MUST FAIL AGAINST: the wall line composed without the
+    # member flag (a single run's *launch the stage again to continue
+    # warm*); an optical call's relaunch said as *continues*.
     from molbuilder.runs import run_of
     walled = run_of(run.attempt("freq", 2) / first["rel"]).session_log
     walled_log = walled.read_text(errors="replace")
-    assert ("stopped at its wall" in walled_log
-            and "launch this stage again to continue" not in walled_log), \
-        walled_log[-1500:]
+    at_wall = next((ln.split("stopped at its wall: ", 1)[1]
+                    for ln in walled_log.splitlines()
+                    if "stopped at its wall: " in ln), None)
+    assert at_wall is not None, walled_log[-1500:]
+    assert at_wall.startswith(
+        "this point failed: a launch again takes the run's points done "
+        "over and "), at_wall
+    assert "again from its start" in at_wall.split(" -- ")[0], at_wall
+    # THE ENGINE'S OWN WORDS FOR ITS STOP, each walled call's state as
+    # `jobset status` reads it (`running-a-job.md` § 3.6, *What you see of
+    # the wall*: "*failed* -- `stopped before its end: OUT_OF_TIME: Time is
+    # up.`"; 2.65.1: the ending keeps SIESTA's own line).  THE SILENT
+    # FAILURE: a call stopped at its wall read as an SCF failure, or failed
+    # with no cause named.
+    from support.real_runs import stage_status
+    status = stage_status(run.bundle, "freq")
+    assert status.attempt == run.attempt("freq", 2).name, status.attempt
+    by_rel = {p["rel"]: p for p in status.points}
+    for r in ran:
+        p = by_rel[r["rel"]]
+        assert p["state"] == "failed", p
+        assert (p["detail"].startswith("stopped before its end: ")
+                and p["detail"].endswith("OUT_OF_TIME: Time is up.")), p
     said, = told(run, "part_failed", "freq", n=2)
     assert said.startswith(
         f"running ({first['words']}: failed -- {first['why']}) | the "

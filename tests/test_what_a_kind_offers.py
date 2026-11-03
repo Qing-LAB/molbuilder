@@ -181,15 +181,18 @@ def test_the_form_and_the_stage_table_offer_the_kinds_set():
         assert "transiesta" not in _form_choices(c, "siesta", "optimization",
                                                  "solution_method")
     # ...and the Transport tab's shared panel, the one surface a transport
-    # calculation's spin is picked on: two treatments, and no fixed count
-    # but restricted's 0 (`engines/transport.md` § 3.1's spin note).
+    # calculation's spin is picked on: two treatments, and every count --
+    # a stated one is written as stated, TranSIESTA's stop said beforehand,
+    # never refused (`engines/transport.md` § 3.1's spin note;
+    # `science/chemistry-correctness.md` ES6, the user, 2026-11-02).
     from molbuilder.web.app import create_app
     body = create_app(config={}).test_client().get(
         "/api/transport/schema?engine=siesta&surface=shared").get_json()
     shared = {f["name"]: f.get("choices") for s in body["schema"]["sections"]
               for f in s["fields"]}
     assert shared["spin_treatment"] == ["restricted", "unrestricted"], shared
-    assert shared["unpaired_electrons"] == [0, "free"], shared
+    assert shared["unpaired_electrons"] == list(range(11)) + ["free"], \
+        shared
 
 
 def test_a_description_refuses_what_its_kind_does_not_offer():

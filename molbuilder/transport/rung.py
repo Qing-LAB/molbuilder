@@ -260,19 +260,28 @@ def compose_refusals() -> tuple:
 
 
 def junction_record(calc):
-    """The junction record beside ``task.json``, read for THIS citation --
-    ``(the junction or None, why, the projects tree's root)``: ``why`` the
-    reasons a record found is not usable (`compose.load_compose_record`).
-    The one read of it, by prep and the gather; refused as
-    :func:`compose_refusals` say.  The tree root is resolved BEFORE the
-    record is loaded: the reload holds a cited pair to the bytes it was
-    composed from (`compose.load_compose_record`)."""
+    """THE JUNCTION THIS CALCULATION HAS OR WILL HAVE -- ``(the junction or
+    None, why, the projects tree's root)``: the record beside ``task.json``,
+    read for THIS citation (``why`` the reasons a record found is not
+    usable, `compose.load_compose_record`); and, where the folder holds no
+    record yet and its description reuses a finished calculation -- its
+    first prep -- the junction the finished one ran, or the frame set cited
+    in its place, checked against it (`reuse.finished_junction`;
+    `engines/transport.md` § 2a.16), which prep writes here
+    (`gather.composed_for_prep`).  The one read of it, by prep, the gather
+    and the reuse decision; refused as :func:`compose_refusals` say, and
+    an extension's junction as the reuse refuses it.  The tree root is
+    resolved BEFORE the record is loaded: the reload holds a cited pair to
+    the bytes it was composed from (`compose.load_compose_record`)."""
     from ..projects import find_projects_root
-    from .compose import load_compose_record
+    from .compose import load_compose_record, read_provenance
     base, task = calc.base, calc.task
     try:
         root = find_projects_root(base)
         why: list = []
+        if (task.reuses and root is not None
+                and read_provenance(base) is None and not _launched(calc)):
+            return _finished_junction(calc, root=root, why=why), why, root
         composed = load_compose_record(base, citation=citation_of(task),
                                        engine=task.engine, tree_root=root,
                                        why=why,
@@ -280,6 +289,57 @@ def junction_record(calc):
     except compose_refusals() as exc:
         raise PrepError(str(exc)) from exc
     return composed, why, root
+
+
+def frames_had(calc, *, read=None) -> int:
+    """HOW MANY FRAMES THE JUNCTION THIS CALCULATION HAS OR WILL HAVE HOLDS
+    -- its record's, on disk or in a prep's plan (`stages.frames_of`,
+    ``read``); an extension's before its first prep has written one, the
+    junction that prep will take (:func:`junction_record`;
+    `engines/transport.md` § 2a.16).  A junction that prep would refuse is
+    the prep's to say: until then the record's count answers."""
+    from .compose import read_provenance
+    from .stages import frames_of
+    if calc.task.reuses and read_provenance(calc.base, read=read) is None:
+        try:
+            composed = junction_record(calc)[0]
+        except PrepError:
+            composed = None
+        if composed is not None:
+            return composed.junction.n_frames
+    return frames_of(calc.base, read=read)
+
+
+def _launched(calc) -> bool:
+    """Whether a stage of ``calc`` was launched -- its junction then the one
+    its runs ran on, never replaced (`engines/transport.md` § 1.1, *The
+    first prep*): a record missing then is refused by its state
+    (`gather.no_usable_record`), never taken again from elsewhere."""
+    from ..jobset.ready import launched_stage
+    from ..runrecord import LaunchRecordError
+    try:
+        return launched_stage(calc) is not None
+    except LaunchRecordError:
+        # A launch record that does not read: something was launched, and
+        # its state's refusal says what (`gather.no_usable_record`).
+        return True
+
+
+def _finished_junction(calc, *, root, why: list):
+    """The junction an extension takes from its finished calculation at its
+    first prep (`reuse.finished_junction`) -- ``None``, saying why, when
+    that calculation is not there or its record does not read, prep then
+    composing from the citation; refused by name what the reuse refuses."""
+    from .reuse import ReuseError, finished_junction, finished_of
+    finished, gone = finished_of(calc)
+    if finished is None:
+        why.append(gone)
+        return None
+    try:
+        return finished_junction(finished, citation_of(calc.task),
+                                 tree_root=root, why=why)
+    except ReuseError as exc:
+        raise PrepError(str(exc)) from exc
 
 
 def written_and_read_back(base, composed, plan, *, root, task):
@@ -433,6 +493,12 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
         # from: what it checks is each file's XC family against the
         # functional the run will ask for.
         cfg = configure(pset[0].render_config())
+        if task.reuses:
+            # AN EXTENSION'S FILES ARE THE ONES ITS FINISHED RUNS READ,
+            # taken before any other source (`engines/transport.md`
+            # § 2a.16); the folder still wins.
+            from .reuse import carry_pseudos
+            carry_pseudos(composed.junction, base, task.reuses, plan=plan)
         if composed.provenance["kind"] == "pair":
             seam.provide_data(composed.junction, cfg, base, plan=plan)
         else:
@@ -478,6 +544,7 @@ def _contours(calc, stage: str, reuse) -> Optional[dict]:
 
 __all__ = ["provide_pseudos", "resolve_transport", "transport_parts",
            "scratch_dir_of", "transport_rung", "transport_sources",
-           "compose_refusals", "junction_record", "written_and_read_back",
+           "compose_refusals", "junction_record", "frames_had",
+           "written_and_read_back",
            "rung_spec", "at_frame", "at_point", "at_bias",
            "transport_rung_of"]

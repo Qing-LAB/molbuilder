@@ -2,7 +2,7 @@
  *
  * User-facing contract: docs/web/results.md § 6.
  *
- * Polls /api/system/load (psutil + nvml under the hood, see
+ * Polls /api/system/load (psutil + nvidia-smi under the hood, see
  * web/blueprints/system_load.py) and renders five sparkline canvases:
  * CPU %, RAM %, GPU SM %, GPU BW %, VRAM %.  Samples held in 600-element
  * ring buffers (10 min of history at 1 Hz).
@@ -177,9 +177,9 @@
                 if (gpuFault) {
                     notice.textContent =
                         "GPU stats unavailable — " + gpuFault
-                        + "\nThe driver is checked once, when the server "
-                        + "starts, so restart the server after fixing the "
-                        + "host.";
+                        + "\nThe server asks the driver again every few "
+                        + "seconds: once the host is fixed, this clears "
+                        + "by itself.";
                 }
                 notice.hidden = !gpuFault;
             }
@@ -316,7 +316,7 @@
                     // GPU: an empty ``gpus`` list has TWO causes and they
                     // are not the same news.  ``gpu_error`` is the one
                     // that tells them apart -- the server sets it only
-                    // when NVML was installed and would not start.
+                    // when nvidia-smi is there and would not answer.
                     //
                     //   * null  -> this host has no GPU support at all.
                     //             Drop the cells, say nothing.  A CPU-
@@ -363,7 +363,7 @@
                     // power throttle; sm_clock_mhz drop at sustained
                     // 100% util = clock throttle (often the underlying
                     // cause).  All fields are best-effort -- show "—"
-                    // when NVML didn't return them on this chip.
+                    // when nvidia-smi didn't return them on this chip.
                     function _fmt(v, suffix) {
                         return (typeof v === "number") ? (v + suffix) : "—";
                     }

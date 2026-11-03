@@ -521,9 +521,10 @@ def _bias_of(bias_opt: str) -> tuple:
 @click.option("--reuses", default=None, metavar="FOLDER",
               help="transport only: a finished transport calculation's "
                    "folder, from the projects root.  The new calculation "
-                   "starts as its description and its composed junction, "
-                   "whole; its prep copies in every group the finished one "
-                   "already computed (engines/transport.md 2a.16).")
+                   "starts as its description; its first prep takes its "
+                   "junction and pseudopotentials and copies in every group "
+                   "the finished one already computed "
+                   "(engines/transport.md 2a.16).")
 def describe_cmd(structure, bundle: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
                  calculation: str, slots_opt, bias_opt,

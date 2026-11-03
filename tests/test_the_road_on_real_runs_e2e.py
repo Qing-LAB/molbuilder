@@ -1,5 +1,6 @@
 """What molbuilder does with runs that happened -- each made once in this pass
-with the real SIESTA (`support/real_runs.py`, plan § 5y) and read here.
+with the real SIESTA (`support/real_runs.py`; `process/testing.md` § 0,
+tier 3) and read here.
 
 A stage builds on the newest run of the stage before it, and launched again
 continues from its own latest run, warm, or takes nothing, cold
@@ -9,8 +10,8 @@ dry run of it writes nothing (§ 6.0); a launch that names no stage sends the
 one prepared and not launched; a benchmark run here walks its unlaunched
 trials under one per-trial bound, passing over the ones launched before by
 name; the run script's own dry run says where its ranks and threads came
-from (`execution/architecture.md` § 5.2); and every name the Task setup card
-gives a stage is a file on disk (`job-contracts.md` § 2.2).
+from (`execution/running-a-job.md` § 3.1, § 3.2, § 3.4); and every name the
+Task setup card gives a stage is a file on disk (`job-contracts.md` § 2.2).
 
 Every expectation is the contract's words, read off what the commands
 answered while the runs were made and off the folders they left -- never
@@ -19,6 +20,7 @@ a reader's number.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -67,11 +69,28 @@ def test_a_run_here_is_shown_and_asked_and_written_down(real_h2_layered):
     """A run on this machine is shown and asked as a submission is, then
     run -- waited on, under `--foreground`, saying where its output is as a
     run left in the background does -- and the ledger holds the question as
-    asked, its answer and the launch (`job-system.md` § 6.0)."""
+    asked, its answer and the launch (`job-system.md` § 6.0).
+
+    And the run script was handed what the launch passed: `jobset launch`
+    hands the counts, ``-np`` and ``-omp``, and nothing else
+    (`running-a-job.md` § 3.4), and the run's session log says so on its
+    ``argv:`` line -- § 1's own example, from this road's H2: ``argv:
+    H2_01_coarse.run.sh -np 1 -omp 1`` -- the line the launch record keeps
+    (``command``).  THE SILENT FAILURE (2.63.0): the line logged after the
+    arguments were read, so it said nothing of what the launch passed."""
     from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.runrecord import launch_record
+    from molbuilder.runs import run_of
     _said(real_h2_layered, "launch coarse", "about to run here, waited on:",
           "bash H2_01_coarse.run.sh", "its output: 01_coarse/run-0/",
           "(--yes)", "[ran]")
+    ran = real_h2_layered.attempt("coarse")
+    log = run_of(ran).session_log.read_text(errors="replace")
+    argv = re.search(r"\] argv:(.*)$", log, re.M)
+    assert argv is not None, log[:3000]
+    assert argv.group(1).split() == ["H2_01_coarse.run.sh", "-np", "1",
+                                     "-omp", "1"], argv.group(0)
+    assert launch_record(ran)["command"] == ["bash", *argv.group(1).split()]
     lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
              .read_text().splitlines() if x.strip()]
     first = [e for e in lines if e.get("verb") == "launch"
@@ -194,14 +213,6 @@ def test_a_dry_run_of_launching_again_writes_nothing(real_h2_layered):
     assert before == after, sorted(set(before.items()) ^ set(after.items()))
 
 
-def test_a_launch_naming_no_stage_sends_the_one_prepared_and_not_launched(
-        real_h2_layered):
-    """`medium` prepared and `coarse` launched: the bare launch sends
-    `medium`, and its launch record is written as it starts."""
-    from molbuilder.runrecord import launch_record
-    assert launch_record(real_h2_layered.attempt("medium")) is not None
-
-
 # --------------------------------------------------------------------- #
 #  A stage launched again (job-system.md § 5.4)                          #
 # --------------------------------------------------------------------- #
@@ -221,6 +232,14 @@ def test_launched_again_warm_it_continues_from_its_own_latest_run(
 
 
 def test_launched_again_cold_it_takes_nothing_of_its_own(real_h2_layered):
+    """`--cold` takes nothing from a run of its own: the next run is opened
+    with none of them (`job-system.md` § 5.4, *A stage launched again*) --
+    the launch says it starts from its deck alone, and the run records no
+    run it continues from.
+
+    THE SILENT FAILURE: a cold launch again that copies the latest run's
+    restart files in all the same, so SIESTA starts from the geometry the
+    person asked to leave behind."""
     from molbuilder.runrecord import read_continued_from
     _said(real_h2_layered, "launch coarse again cold",
           "launched again into run-2: it starts cold -- from its deck alone")
@@ -316,7 +335,12 @@ def test_a_run_that_ended_on_its_own_is_not_followed(real_h2_layered):
 
 def test_every_name_the_card_gives_a_stage_is_on_disk(real_h2_layered):
     """A launched stage's names for its prep, its launch and its run, and
-    the stage prepared after it."""
+    the stage prepared after it, are the files the road wrote
+    (`job-contracts.md` § 2.2; `project-layout.md` § 5, the manifest).
+
+    THE SILENT FAILURE: the Task setup card naming a file the road writes
+    under another name -- the card points a person at a file that is not
+    there, while every run goes on."""
     from support.road import _road_card_written
     _road_card_written([{"stage": "coarse", "moments": ["prep", "launch", "run"]},
                         {"stage": "medium", "moments": ["prep"]}],
@@ -324,10 +348,19 @@ def test_every_name_the_card_gives_a_stage_is_on_disk(real_h2_layered):
 
 
 # --------------------------------------------------------------------- #
-#  The run script's own dry run (architecture.md § 5.2)                  #
+#  The run script's own dry run (running-a-job.md § 3.1, § 3.2, § 3.4)   #
 # --------------------------------------------------------------------- #
 
 def test_the_run_script_runs_the_stated_ranks_and_threads(real_h2_layered):
+    """With no flag and no count in its shell, the run script resolves the
+    ranks and threads stated at prep -- the last rung of each precedence
+    (`running-a-job.md` § 3.1, § 3.2) -- and its `--dry-run` says each
+    count's source (§ 3.4).
+
+    THE SILENT FAILURE: a run script running a count of its own -- a
+    default, the node's cores -- where the run card stated one, or its dry
+    run naming the wrong source, so the person cannot check the line before
+    a real run."""
     said = real_h2_layered.said["script dry run"]
     assert said.exit_code == 0, said.output
     _said(real_h2_layered, "script dry run",
@@ -337,6 +370,13 @@ def test_the_run_script_runs_the_stated_ranks_and_threads(real_h2_layered):
 
 def test_a_flag_on_the_run_script_still_overrides_and_says_so(
         real_h2_layered):
+    """`-np` typed on the run script wins over the stated count -- the
+    highest rung of the precedence (`running-a-job.md` § 3.1) -- and its dry
+    run says the flag was the source.
+
+    THE SILENT FAILURE: the flag `jobset launch` hands the run script
+    (§ 3.4) losing to the baked value, so a launch's counts never reach the
+    engine."""
     said = real_h2_layered.said["script dry run -np 2"]
     assert said.exit_code == 0, said.output
     _said(real_h2_layered, "script dry run -np 2",
@@ -382,9 +422,15 @@ def test_a_benchmark_walks_its_unlaunched_trials_passing_the_launched_over(
 
 
 def test_a_benchmarks_per_trial_bound_is_the_walks(real_h2_bench):
-    """Asked for five seconds a trial, the walk bounds each at the floor it
-    states: five minutes, killed thirty seconds after -- the bound around
-    whatever runs the trial (`submit._walk_script`)."""
+    """Asked for five minutes a trial (``--trial-timeout 5``: minutes,
+    taken as given, nothing derived), the walk bounds each trial at 300 s,
+    killed thirty seconds after -- the bound around whatever runs the trial
+    -- read in the walk script prep wrote, the bound and the line it puts
+    around each trial (`job-system.md` § 6.0, *A benchmark's walk*;
+    `generator.md`, *The shelves*: `--trial-timeout MINUTES`).
+
+    THE SILENT FAILURE: the bound read in another unit, or not put around
+    the trial, so one trial that hangs holds the whole walk."""
     walk = (real_h2_bench.bundle / "01_coarse" / "bench" / "launch"
             / "bench-group.run.sh").read_text()
     for words in ("per-trial-bound=300s", "timeout -k 30 300 "):

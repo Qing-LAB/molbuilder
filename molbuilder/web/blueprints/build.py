@@ -64,6 +64,7 @@ from flask import Blueprint, jsonify, request
 
 from ._shared import (
     config_from_params as _config_from_params,
+    stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
     engine_key_for as _engine_key_for,
     issues_to_json as _issues_to_json,
@@ -191,9 +192,14 @@ def _analyze_response(struct, body):
         # use -- so a blank means exactly what it means there.
         try:
             cfg = _config_from_params(config_class(engine), items or {}, kind)
+            # WHAT THE PERSON STATED, read by the same door: a blank the
+            # config fills with the catalogue's value is not chosen, and
+            # said so (`web/form-schema.md` § 1.1).
+            chosen = _stated_params(config_class(engine), items or {})
         except (TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        states[engine] = electronic_state(struct, cfg, kind=kind).as_dict()
+        states[engine] = electronic_state(struct, cfg, kind=kind,
+                                          chosen=chosen).as_dict()
     return jsonify({
         "ok":          True,
         "kind":        kind,

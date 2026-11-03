@@ -247,7 +247,8 @@ def read_runtime(serve_port: int) -> Dict[str, object]:
     """``{"url": ..., "base": ..., "token": ...}``, or ``{}``.
 
     The token is a CREDENTIAL -- it authenticates a browser to a live kernel --
-    so this is read server-side and handed to the page, never published.
+    so this is read server-side and presented by the pass-through, never
+    handed to the page (`web/jupyter.md` § 2).
     """
     import json
 

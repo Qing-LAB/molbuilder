@@ -515,6 +515,14 @@ writes `?doc=...` back into the URL; loading a URL with `?doc=...` opens that
 doc and expands every folder along the path so you can see where it lives in
 the tree.
 
+### 5.5 The reading surface starts dark
+
+The app is dark, so the reader starts dark too — a document opening white
+inside a dark app was the 2026-08-23 defect. The bar's ◑/◐ button offers a
+light reading surface (some people print from this pane), and that choice is a
+reading preference kept in the browser's own storage: a page opened later in
+the same browser starts on the surface last chosen.
+
 ## 6. Save flow — the out-gate
 
 **One door out, and the page does not own it.** Saving a structure is

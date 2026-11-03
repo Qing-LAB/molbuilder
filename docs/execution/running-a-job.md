@@ -112,16 +112,16 @@ launched-by: jobset-launch
 [09:58:41-0700] [INFO ] job python: /home/qqing/miniconda3/envs/molbuilder-siesta/bin/python3
 molbuilder: detected phys_cores=20, n_sockets=2, cores_per_socket=10
 ===== molbuilder run script: SIESTA =====
-  SIESTA binary : /home/qqing/miniconda3/envs/molbuilder-siesta/bin/siesta
-  SIESTA version: 5.4.2
-  Build paral.  : MPI
-  Launch mode   : pure MPI (1 ranks; OMP setting irrelevant to this binary)
-  Ranks         : 1 (from -np flag)
-  Threading     : OMP_NUM_THREADS=1 (from -omp flag), OPENBLAS=1, MKL=1
-  Mode          : CLEAN START (no restart file here)
-  Held atoms    : none held -- every atom free
-  Command       :  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
-  Wall          : 1800s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
+  SIESTA binary  : /home/qqing/miniconda3/envs/molbuilder-siesta/bin/siesta
+  SIESTA version : 5.4.2
+  Build paral.   : MPI
+  Launch mode    : pure MPI (1 ranks; OMP setting irrelevant to this binary)
+  Ranks          : 1 (from -np flag)
+  Threading      : OMP_NUM_THREADS=1 (from -omp flag), OPENBLAS=1, MKL=1
+  Mode           : CLEAN START (no restart file here)
+  Held atoms     : none held -- every atom free
+  Command        :  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
+  Wall           : 1800s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
 [09:58:43-0700] [INFO ] monitor: mb_monitor.pyz started
 [09:58:43-0700] [INFO ] wall: 1798s left of 1800s; SIESTA stops 600s before it (running-a-job.md 3.6)
 [09:59:08-0700] [INFO ] benchmark: SIESTA wall 24.9s, 54 SCF rows in H2_01_coarse.scf-timing.log
@@ -133,12 +133,12 @@ road (shortened) — one process, a script deck on its environment's python:
 
 ```text
 ===== molbuilder run script: PySCF =====
-  Launch mode   : a script deck on the job's python (2 OpenMP threads)
-  Threading     : OMP_NUM_THREADS=2 (from -omp flag)
-  Mode          : CLEAN START (no restart file here)
-  Held atoms    : none held -- every atom free
-  Command       : /home/qqing/miniconda3/envs/molbuilder-pySCF/bin/python3 H2_01_coarse.py > H2_01_coarse.pyscf.log 2>&1
-  Wall          : 1800s from the job's start; PySCF stops 600s before it (running-a-job.md 3.6)
+  Launch mode : a script deck on the job's python (2 OpenMP threads)
+  Threading   : OMP_NUM_THREADS=2 (from -omp flag)
+  Mode        : CLEAN START (no restart file here)
+  Held atoms  : none held -- every atom free
+  Command     : /home/qqing/miniconda3/envs/molbuilder-pySCF/bin/python3 H2_01_coarse.py > H2_01_coarse.pyscf.log 2>&1
+  Wall        : 1800s from the job's start; PySCF stops 600s before it (running-a-job.md 3.6)
 ```
 
 ---
@@ -640,7 +640,7 @@ slack.
 
 | where | the line | when |
 |---|---|---|
-| the run script's banner, in the session log | `Wall          : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` | every run |
+| the run script's banner, in the session log | `Wall : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — the label padded, as every banner label is, to the longest the banner prints | every run |
 | the session log | `wall: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` | a wall told, to an engine that stops before it, as the engine starts |
 | SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
 | the session log | `stopped at its wall: …` and what a launch again will do (§ 3.5) | that stop |
@@ -653,7 +653,7 @@ slack.
 A program the item gives no words reads no wall: a TBtrans banner says `… TBtrans checks no clock and runs to it
 (running-a-job.md 3.6)`. A deck that is a script reads it from its environment, and its banner says the engine
 stops before it — `… PySCF stops 600s before it …`. A run told no wall says
-`Wall          : none stated -- runs until done`. The clause after *stopped at its wall:* is § 3.5's
+`Wall : none stated -- runs until done`. The clause after *stopped at its wall:* is § 3.5's
 line for that run: a single run whose kind
 resumes continues warm from the files it saved; a point of a run of points — a vibration's call, a transport
 point — is run again as its run's relaunch says (a vibration's relaxation continues warm from its own last run;

@@ -1,5 +1,6 @@
 """A PySCF relaxation's outcome is geomeTRIC's own, read — never assumed
-(`engines/pyscf.md` § 3; plan § 5w K6).
+(`engines/pyscf.md` § 3; the K6 review) -- and a failed run's ending in PySCF's
+own words (`execution/running-a-job.md` § 3.5, § 4.2).
 
 geomeTRIC raises at its step cap with its criteria unmet, PySCF's driver
 catches it, and only ``geometric_solver.kernel`` returns the flag.  Both decks
@@ -48,7 +49,8 @@ _H2 = (["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])
 def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
          molecule=_H2, execution=None):
     """``molecule``, its one stage carrying ``overrides``, its run card
-    ``execution`` (`stages.md` § 6.8d: a run setting lives there alone) and
+    ``execution`` (`job-request.md` § 2: a run setting lives in the job
+    request alone) and
     its template ``template``'s values -- written by the hand-over's own writer
     (`template_with_values`), since the electronic state binds every rung
     and is the template's -- prepared and launched directly: the stage's run
@@ -120,6 +122,46 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     return run, row.state, log.read_text(errors="replace")
 
 
+def _the_engines_words_kept(run, words: str) -> str:
+    """A failed PySCF run's ending keeps PySCF's own words -- its exception
+    line -- on every surface that says how it ended (2.65.1; 2.64.0 left it
+    *untested before F9*), and the run script said it after the failure:
+
+    * the status door -- the ladder row `jobset status` and the Results tab
+      show, and the folder answer's ``status`` -- `running-a-job.md` § 4.2:
+      *failed -- "stopped before its end: <the line that stopped it>"*, *"The
+      detail quotes the line"*; for PySCF that line is *"the exception
+      line"* (`model/parse.md` § 2b, ``error_message``);
+    * the run's record, whose ``verdict.detail`` is *"`run_status`'s words
+      for the directory"* (`model/parse.md` § 5d.1a);
+    * the session log: *"After a failure the run script says ... How it
+      ended, asked of the framework's reader, never grepped, whatever the
+      engine"* (`running-a-job.md` § 3.5, 1; *a PySCF run's now too*,
+      2.63.0) -- the engine's own output goes to its ``.pyscf.log``, so the
+      words reach the session log only by that line.
+
+    THE SILENT FAILURE: a failed PySCF run that says only *concluded (rc=1
+    ...)* -- the person told it failed and not why -- or a run script that
+    asks a SIESTA run how it ended and never a PySCF one.  Returns the
+    session log's text."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.runstatus import jobset_status
+    from molbuilder.runs import folder_answer
+    row = next(iter(jobset_status(open_calculation(run.place.root)).stages))
+    answer = folder_answer(run.folder)
+    for surface, detail in (
+            ("jobset status", row.detail),
+            ("the folder answer", answer["status"]["detail"]),
+            ("the record", answer["record"]["verdict"]["detail"])):
+        assert (detail or "").startswith("stopped before its end: ") \
+            and words in detail, (surface, detail)
+    assert run.session_log is not None, sorted(
+        p.name for p in run.folder.iterdir())
+    session = run.session_log.read_text(errors="replace")
+    assert words in session, session[-3000:]
+    return session
+
+
 def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
                                                                monkeypatch):
     """One step cannot relax H2 from 0.95 Å: ``halt`` stops the job, an
@@ -153,6 +195,16 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
         "a halted rung kept no geometry to continue from")
     log = parse(run.file(".molwatch.log"))
     assert log.run_state == "stopped", log.run_state
+    # ITS OWN WORDS on every surface (:func:`_the_engines_words_kept`) --
+    # and what a launch again will do, said by the run script: this stage
+    # continues (`running-a-job.md` § 3.5, 3: *"a stage that continues |
+    # launch the stage again to continue warm from the files this run
+    # saved"*).  THE SILENT FAILURE: a halted rung told to start over.
+    session = _the_engines_words_kept(
+        run, "did not meet geomeTRIC's criteria in 1 steps "
+             "(on_nonconvergence = halt)")
+    assert ("launch the stage again to continue warm from the files this "
+            "run saved") in session, session[-3000:]
 
 
 def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
@@ -182,6 +234,10 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
         said[-3000:])
     assert ("did not meet geomeTRIC's criteria in 3 steps "
             "(on_nonconvergence = continue)") in said, said[-3000:]
+    # The whole budget's stop, in PySCF's words on every surface
+    # (:func:`_the_engines_words_kept`).
+    _the_engines_words_kept(run, "did not meet geomeTRIC's criteria in 3 "
+                                 "steps (on_nonconvergence = continue)")
     kept = run.on_label("_optimized.xyz").read_text().split("\n")
     z = [float(ln.split()[3]) for ln in kept[2:4]]
     assert round(abs(z[1] - z[0]), 4) != 1.6, (
@@ -348,3 +404,17 @@ def test_the_wall_stops_a_vibration_before_its_spectrum(tmp_path,
     assert state == "failed", said[-3000:]
     assert ("stopped before the wall (the job's wall less its slack) "
             "before the spectrum was written") in said, said[-3000:]
+    # ITS OWN WORDS on every surface (:func:`_the_engines_words_kept`) --
+    # and what a launch again will do: a PySCF vibration does not resume
+    # (`running-a-job.md` § 3.5, 3: *"its kind does not resume (a PySCF
+    # vibration) | a launch again starts this run over from its deck,
+    # nothing of it copied in — this kind of run does not resume"*).  THE
+    # SILENT FAILURE: a run told it continues warm from files no launch
+    # copies into the next run.
+    session = _the_engines_words_kept(
+        run, "stopped before the wall (the job's wall less its slack) "
+             "before the spectrum was written")
+    for words in ("a launch again starts this run over from its deck, "
+                  "nothing of it copied in", "this kind of run does not "
+                                             "resume"):
+        assert words in session, (words, session[-3000:])

@@ -286,8 +286,8 @@ export function createHistory(handed) {
         get state_index() { return position; },
         // The badge is not bookkeeping: it shows in the corner of the 3D window,
         // so "there is work here that is not on the sequence yet" is visible
-        // without opening a menu. Without it, an explicit-save history would
-        // silently lose work a user assumed was being kept.
+        // without opening a menu. Without it, work no point holds would be
+        // lost silently by the next Retract.
         get uncommitted() { return uncommitted; },
         get writeState()  { return state; },
 
@@ -314,22 +314,21 @@ export function createHistory(handed) {
 
         /* ── An edit happened ───────────────────────────────────────────── */
         //
-        // "An edit — a delete, a rotate, a new electrode — changes the structure
-        // and does NOT record a state; the user decides when the structure is
-        // worth being able to come back to, and says so."
+        // "Every edit lays down a point of its own" (§ 1.1, § 11.2) — and the
+        // point is not laid HERE: an operation that declares `checkpoint` in
+        // `OPERATIONS` asks for it with `save(1)` when it lands.
         //
-        /* NO POINT is laid down on a timer or because something changed: the
-         * sequence grows from opening a structure, an explicit save, and a load.
+        /* NO POINT is laid down on a timer: the sequence grows from opening a
+         * structure, an edit that lays its point, an explicit save, and a load.
          *
          * THE SESSION COPY IS A DIFFERENT WRITE, and it follows every change
          * (§ 11.3). An edit changes what would be lost if the tab closed, so an
          * edit refreshes it — `request` with `isSave` false, which sends the
          * bytes to the browser and lays down no point.
          *
-         * Persistence is about the accident, the timeline about the decision.
-         * Making one behave like the other takes it away: save on every edit and
-         * every keystroke becomes a milestone, so there is nothing left to come
-         * back to; save on neither and a reload loses the afternoon.
+         * Persistence is about the accident, the timeline about going back: the
+         * draft keeps work no point holds over a reload, the points are what a
+         * Retract steps back to.
          *
          * It goes through the same machine as any other write, so an edit landing
          * mid-bracket is held exactly like a save would be — the halfway
@@ -347,8 +346,8 @@ export function createHistory(handed) {
         //             IT. This is what the user calls "Save state".
         //   save(0) — re-write the current point where it is, without moving.
         //
-        // "Stepping forward lasts until you save. The moment a user commits to a
-        // different path, the abandoned one stops existing."
+        // "Stepping forward lasts until the next point is laid. The moment a
+        // user commits to a different path, the abandoned one stops existing."
         // A save asked for during CHANGING is HELD like any other write, and
         // § 11.2's table is what says so: "if a saved state is among them, that
         // is the one sent" only means anything if a save can be among them.
@@ -378,9 +377,9 @@ export function createHistory(handed) {
         //   load(0)  — NOT A MOVE: put back the point you were on. Zero is a
         //              different verb, and it is what a session restore needs.
         //
-        // A RETRACT SPENDS UNSAVED WORK FIRST. From a saved point with edits
-        // sitting on top of it, the first Retract discards the edits and leaves
-        // you ON that point; only the next one steps to the point before it. The
+        // A RETRACT SPENDS UNSAVED WORK FIRST. From a point with work no point
+        // holds sitting on top of it, the first Retract discards that work and
+        // leaves you ON that point; only the next one steps to the point before it. The
         // first press undoes what you just did, not what you had already decided
         // to keep.
         async load(step) {

@@ -388,6 +388,12 @@ neither may be answered by looking at the value instead:
 | which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers); everything else a text box |
 | what the typed text **means** | the setting door, on the server — `POST /api/task-setup/value` (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) | one reader per member of `template.TYPES`, the one every home reads with; the page keeps none *(2.28.0, plan § 1w: the page's own readers took `"0x10"` for a number and any text but `"true"` for `false`)* |
 
+**A stored value this kind does not offer is shown as itself, marked** —
+*`none (not offered here)`* — beside the offered choices, never a blank cell over
+an override the description still holds; prep refuses it by name
+([`engines/template.md`](?doc=engines/template.md) § 6.3a), and the cell is
+where the person picks an offered one instead.
+
 Guessing either from the value's look is a bug this tab has had twice. A
 sweep row born as the number `1` made `use_gpu` a number box (fixed
 2026-08-20). And a cell that stored `Number(text)` when the text parsed and

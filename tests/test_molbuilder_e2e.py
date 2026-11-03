@@ -1,24 +1,31 @@
 """/molbuilder end-to-end — the contract's promise, driven the way a user drives it.
 
-**A test may not reach past the seal, and this is why.**  § 4 exports exactly
-``mount`` and ``formula``; § 5.6 says a viewer belongs to whoever mounted it and
-there is no registry.  A test that reaches the model is asserting on a thing the
-page's own controls do not use — so it can pass while every control is dead.
+**A test may not reach past the seal, and this is why.**  `web/molview.md` § 4
+exports ``mount``, ``formula``, ``toDisplay`` and ``fromDisplay`` and nothing
+else; § 5.6 says a viewer belongs to whoever mounted it and there is no
+registry.  A test that reaches the model is asserting on a thing the page's own
+controls do not use — so it can pass while every control is dead.
 
 So every assertion below is something a user can see: DOM in, DOM out.  The
-tests are the six steps of the browser walk in
-``docs/archive/2026-08-16-molview-integration-plan.md`` § 6.5.
+walk is the tab's own: a file loads, and a second one is added
+(`web/tabs.md` § 2; molview § 6.6, § 6.7); the cell reads alike on both
+surfaces and changes through its one door (molview § 9.3;
+`model/structure-periodicity.md` § 7); an edit lays down its own point and
+Retract steps back (molview § 1.1, § 11.2, § 11.2a); the structure is saved
+to the project (`tabs.md` § 6).
 
 WHAT IS DELIBERATELY NOT HERE
 -----------------------------
 Coverage NOT reproduced here, recorded so its
-absence is a known hole rather than a silent one: the electrode/junction ops,
-the transform sub-tab (translate / rotate / centre), the by-residue and by-label
-filters, the measurement readout, DNA/RNA/peptide generators, and the narrow-
-viewport layout.  Each needs writing from the contract the same way.
+absence is a known hole rather than a silent one: the transform sub-tab
+(translate / rotate / centre), the by-residue and by-label filters' selections,
+the measurement readout, the DNA/RNA/peptide generators and the findings their
+panels draw (`science/validation.md` § 4.1 R5), and the narrow-viewport
+layout.  Each needs writing from the contract the same way.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -52,29 +59,6 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     )
     diagnostics.set_capabilities(caps)
     monkeypatch.setattr(diagnostics, "_snapshot", _orig)
-
-
-@pytest.fixture(autouse=True)
-def _a_session_that_did_not_happen(tmp_path, monkeypatch):
-    """Each test starts as a browser that has never opened this tab.
-
-    MolView's sequence is PERSISTENT — it outlives the page (molview.md § 11.2)
-    — so without isolation a test inherits whatever the test before it left on
-    the canvas, unsaved badge and all, and its Load hits the discard-unsaved
-    gate and waits on a modal nobody answers.
-
-    The isolation comes from giving the test server a projects root of its own.
-    ``tmp_path`` is already per-test, so "no state from the last test" is not
-    something this fixture has to arrange — it is true by construction, and the
-    directory is thrown away with the test.
-
-    Patched on ``workspace_storage`` rather than on ``molbuilder.projects``
-    because the name is bound at import (``from ... import projects_root``), so
-    rebinding the source module would not reach the caller.
-    """
-    from molbuilder.web.blueprints import workspace_storage
-    monkeypatch.setattr(workspace_storage, "projects_root", lambda: tmp_path)
-    yield
 
 
 @pytest.fixture
@@ -119,8 +103,6 @@ _ACT_MS = 15_000
 _CARD = "#molview-host .molviewer-card"
 #: "N of M selected" — the panel's own line, and the only atom count on screen.
 _COUNT = "#molview-host .molviewer-selection-count"
-#: The unsaved-work badge, bottom-right of the 3D window (§ 11.2).
-_BADGE = "#molview-host .molviewer-overlay--warn"
 
 
 def _open(page, base_url):
@@ -247,24 +229,31 @@ def test_a_second_load_adds_to_the_first_instead_of_replacing_it(
     such that we can keep adding content into the same editing session"*
     (user, 2026-09-07).
 
-    Driven the way a person drives it: pick, Load, pick, Load.  Two things are
-    checked from the screen, because both had to be true for it to be an APPEND
-    rather than a replace: the count is the SUM, and the incoming label arrived
-    under a name of its own instead of merging into the one already there.
+    Driven the way a person drives it: pick, Load, pick, Load.  `tabs.md` § 2:
+    *"With a structure open, it is ADDED"*, and the merge numbers *"a label the
+    canvas already has"* (`model/structure.md` § 2.2b).  So the rows, read
+    whole, are the canvas's three atoms under FRAG and the incoming two under
+    FRAG2 -- the sum, with the first fragment still identifiable and the
+    second not merged into it.
+
+    THE SILENT FAILURES: a replace (two rows), and the incoming label merged
+    into the canvas's (five rows of FRAG, the fragments no longer separable).
     """
     water, pair = two_files
     errors = _open(page, flask_server)
     _load(page, water)
     _load(page, pair, answer="add")
 
-    # WHICH ATOMS ARE THERE, not how many: what separates an APPEND from a
-    # REPLACE is that the first fragment is still identifiable, which is what
-    # the two labels below say.
-    rows = page.locator(_CARD).inner_text()
-    assert "FRAG" in rows, "the first structure's label did not survive"
-    assert "FRAG2" in rows, (
-        "the incoming label was merged into the one already there, so the two "
-        f"fragments cannot be picked apart: {rows[:400]}")
+    # WHICH ATOMS ARE THERE, not how many: each row's labels, as whole names,
+    # so FRAG cannot pass as a part of FRAG2.
+    rows = page.eval_on_selector_all(
+        f"{_CARD} .molviewer-atoms-table tr",
+        "rows => rows.map((r) => [...r.querySelectorAll("
+        "  '.molviewer-atoms-column-labels .molviewer-selection-tag > span')]"
+        "  .map((s) => s.textContent))")
+    assert rows == [["FRAG"]] * 3 + [["FRAG2"]] * 2, (
+        "the canvas's three atoms keep FRAG and the incoming two arrive as "
+        f"FRAG2: {rows}")
     assert not errors, errors
 
 
@@ -273,6 +262,11 @@ def test_the_status_line_says_a_load_was_added(
     """The line distinguishes the two things a Load can do, because they are
     different: the first put a structure on an empty canvas, the second added
     to one that was not.
+
+    `web/molview.md` § 6.7: *"Loaded wire.xyz" ... are the tab's to say* --
+    the tab did the operation, so the tab reports it; `tabs.md` § 2 makes the
+    second Load an ADD.  THE SILENT FAILURE: an add reported as a load, which
+    reads as the file having replaced what was open.
     """
     water, pair = two_files
     _open(page, flask_server)
@@ -286,7 +280,17 @@ def test_the_status_line_says_a_load_was_added(
 
 def test_start_empty_then_load_is_how_you_replace(
         page, flask_server, two_files):
-    """Replacing is a separate gesture: Clear structure, then Load."""
+    """After *Clear structure*, a Load installs the file without asking, and
+    the canvas holds the file alone.
+
+    `web/molview.md` § 6.7a: *Clear* is the start-empty operation -- nothing
+    is loaded, and the sequence starts again; `tabs.md` § 2: *"With nothing
+    open the file is installed and nothing is asked."*
+
+    THE SILENT FAILURES: Clear leaving atoms behind for the next Load to add
+    to (5, not 2); and the add-or-clear question put on an empty canvas --
+    ``_load`` with no answer then waits on a count that never changes.
+    """
     water, pair = two_files
     _open(page, flask_server)
     _load(page, water)
@@ -322,8 +326,10 @@ def test_each_append_is_a_point_the_timeline_can_come_back_to(
     """*"all operation should automatically call state save timeline api, such
     that the user always can retract back"* (user, 2026-09-07).
 
-    An append is an edit, so it records a point (§ 11.2).  Retract therefore
-    steps back exactly ONE load -- with Save state never pressed.
+    An append is *"an edit like any other, a point on the timeline"*
+    (`tabs.md` § 2), and every edit lays down a point of its own
+    (`web/molview.md` § 1.1, § 11.2).  Retract therefore steps back exactly ONE
+    load -- with Save state never pressed.
     """
     water, pair = two_files
     _open(page, flask_server)
@@ -341,41 +347,71 @@ def test_each_append_is_a_point_the_timeline_can_come_back_to(
 
 
 # --------------------------------------------------------------------- #
-#  § 6.5 step 1 — the page mounts                                       #
+#  A file loads, and says so (tabs.md § 2; molview § 6.6, § 6.7)         #
 # --------------------------------------------------------------------- #
 
-def test_the_page_mounts_a_viewer(page, flask_server):
-    """The card, its canvas and the op controls are on screen, with no error.
+def _offered(page, select: str) -> list[str]:
+    """The names a label chooser offers, in order: its options' values,
+    without the chooser's own empty entry (*+ new label…* / *Choose a
+    label…*, value "")."""
+    return page.eval_on_selector_all(
+        f"{select} option", "os => os.map((o) => o.value).filter((v) => v)")
 
-    This is step 1, and it is not trivial: this tab did not mount AT ALL for
-    weeks.  ``selection-bootstrap.js`` tested for a viewer *before* calling
-    ``mount`` — a name looked up in a global MolView had stopped publishing — so
-    the guard failed every time and returned without ever mounting.
-    """
-    errors = _open(page, flask_server)
-    assert page.locator("#save-state").count() == 1
-    assert page.locator("#optab-btn-cell").count() == 1
-    assert not errors, f"the page threw while starting up: {errors}"
-
-
-# --------------------------------------------------------------------- #
-#  § 6.5 step 2 — a file loads, and says so                             #
-# --------------------------------------------------------------------- #
 
 def test_loading_a_project_file_shows_its_atoms_and_its_labels(
         page, flask_server, labelled_xyz):
-    """The atoms are drawn AND the sidecar's label reaches the panel.
+    """The atoms are drawn AND the sidecar's label reaches the panel -- and
+    both label choosers offer the one list.
 
     The label is the part worth asserting: it lives only in the
     ``.molstruct.json``, so seeing ``SOLVENT`` on the rows proves the server
     read the pair and that ``installMolecule`` installed the whole thing in one
     write.  Loading is what failed on every tab with *"installMolecule
     unavailable"* when the load door looked its viewer up by name.
+
+    THE LABEL PALETTE (`web/molview.md` § 6.6, *Where a label can be chosen*;
+    2.65.0): *"The offered names first — the kind's labels in its table's
+    order, then MolView's own (`offeredLabels`); then whatever the loaded
+    structure carries that is not already among them; and a name appears
+    once"* -- the kind's arriving with the structure (the answer's
+    ``labels``, `kind_table.labels`), MolView's own *"`interface` and
+    `frozen_atoms` ... offered after the kind's"*.  The Assign chooser and a
+    `by label` row *"both read the one list"*, and *"until a person picks a
+    name, the Assign chooser shows the first one offered"*.
+
+    THE SILENT FAILURES: the kind's labels not reaching the page (every chip
+    in one neutral colour, the leads typed by hand), the two controls
+    disagreeing about what exists, and a default picked for the person.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
     assert _atom_count(page) == 3
     assert "SOLVENT" in page.locator(f"{_CARD}").inner_text()
+
+    from molbuilder.kind_table import labels
+    want: list[str] = []
+    for name in ([name for name, _about in labels()]
+                 + ["interface", "frozen_atoms", "SOLVENT"]):
+        if name not in want:
+            want.append(name)
+    chooser = f"{_CARD} .molviewer-selection-assign-select"
+    page.wait_for_function(
+        "(sel) => [...document.querySelectorAll(sel + ' option')]"
+        "  .some((o) => o.value === 'SOLVENT')",
+        arg=chooser, timeout=_ACT_MS)
+    assert _offered(page, chooser) == want, _offered(page, chooser)
+    assert page.locator(chooser).input_value() == want[0], (
+        "the Assign chooser does not show the head of the list while nobody "
+        "has picked a name")
+
+    page.locator(f"{_CARD} .molviewer-selection-mode-option",
+                 has_text="Filter").click()
+    page.locator(f"{_CARD} .molviewer-selection-add-filter-row").click()
+    page.locator(f"{_CARD} .molviewer-filter-row .molviewer-filter-kind"
+                 ).first.select_option("by_label")
+    by_label = f"{_CARD} .molviewer-filter-row select.molviewer-filter-text"
+    page.wait_for_selector(by_label, timeout=_ACT_MS)
+    assert _offered(page, by_label) == want, _offered(page, by_label)
 
 
 def test_the_status_line_says_what_landed(page, flask_server, labelled_xyz):
@@ -425,8 +461,16 @@ def test_the_loader_readout_tells_picked_from_loaded(
 
 
 # --------------------------------------------------------------------- #
-#  § 6.5 step 3 — the cell reads as the data says, on both surfaces      #
+#  The cell reads as the data says, on both surfaces                     #
+#  (molview § 9.3; structure-periodicity.md § 7)                         #
 # --------------------------------------------------------------------- #
+
+def _cell_row(page, label: str) -> str:
+    """MolView's Cell-page row named ``label``, as it reads."""
+    return page.locator(
+        f"{_CARD} .molviewer-cell-readout dt:text-is('{label}') + dd"
+    ).inner_text()
+
 
 def test_the_cell_reads_the_same_on_both_surfaces(
         page, flask_server, labelled_xyz):
@@ -440,17 +484,23 @@ def test_the_cell_reads_the_same_on_both_surfaces(
     rendered "(default)" whatever the structure said.  Two surfaces disagreeing
     about whether a structure has a cell is the bug the one server-side resolver
     exists to prevent.
+
+    Read row by row: MolView's Vacuum row is *"a default when the structure
+    states none"* (molview § 9.3's table) -- and its Origin and Axes rows are
+    defaults for this water too, so the whole readout carrying "(default)"
+    somewhere says nothing about the vacuum.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
     page.wait_for_selector("#pv-vac-a", state="visible", timeout=_ACT_MS)
 
-    # This structure states no cell, so the tab's vacuum row is marked derived...
+    # This structure states no vacuum, so the tab's vacuum row is marked
+    # derived...
     assert "default" in page.locator("#pv-vac-tag").inner_text().lower()
-    # ...and MolView's own readout says the same about it.
-    readout = page.locator(f"{_CARD} .molviewer-cell-readout").inner_text()
-    assert "default" in readout.lower()
+    # ...and MolView's own Vacuum row says the same about it.
+    row = _cell_row(page, "Vacuum")
+    assert "(default)" in row, row
 
 
 def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
@@ -460,8 +510,9 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
     ``commitPeriodicityOp`` is the only way the cell changes (§ 6.2): the server
     decides what the box becomes and MolView stores what comes back,
     interpreting none of it.  Once the vacuum is stated it is no longer derived,
-    so the "(default)" mark must come OFF that row — that is the whole
-    derived-vs-explicit contract, visible.
+    so the "(default)" mark must come OFF that row on both surfaces — that is
+    the whole derived-vs-explicit contract, visible — and MolView's Vacuum row
+    reads the gap that was committed, per axis (molview § 9.3).
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -480,6 +531,11 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
         arg=before, timeout=_ACT_MS)
     assert "default" not in page.locator("#pv-vac-tag").inner_text().lower(), \
         "a vacuum the user typed is explicit, and must stop reading as derived"
+    row = _cell_row(page, "Vacuum")
+    assert "(default)" not in row, (
+        f"MolView's Vacuum row still reads as derived after the commit: {row}")
+    assert [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", row)] \
+        == [5.0, 5.0, 5.0], f"MolView's Vacuum row is not the gap committed: {row}"
 
 
 # --------------------------------------------------------------------- #
@@ -641,12 +697,6 @@ def test_one_picked_atom_becomes_the_box_origin(page, flask_server,
         and abs(got[2]) < 1e-3, got
 
 
-def _origin_row(page):
-    """MolView's Origin row, as it reads."""
-    return page.locator(
-        f"{_CARD} .molviewer-cell-readout dt:text-is('Origin') + dd").inner_text()
-
-
 def _apply_and_wait(page):
     """Press Apply and wait for MolView's readout to show the answer."""
     before = page.locator(f"{_CARD} .molviewer-cell-readout").inner_text()
@@ -659,9 +709,9 @@ def _apply_and_wait(page):
 
 def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
         page, flask_server, labelled_xyz):
-    """`model/structure-periodicity.md` § 6.0, *A stated offset* (plan § 5q
-    D1): on a typed cell a person may assign the box's origin -- three numbers
-    -- and blank is Automatic, the atoms centred by the rule.  Both surfaces
+    """`model/structure-periodicity.md` § 6.0, *A stated offset*: on a typed
+    cell a person may assign the box's origin -- three numbers -- and blank is
+    Automatic, the atoms centred by the rule.  Both surfaces
     say which: the editor's origin boxes with their "(default)" tag, and
     MolView's Origin row (molview § 9.3, `getUnitCellOrigin`).  Automatic is a
     gesture too, since once something is typed there is otherwise no way back
@@ -682,7 +732,7 @@ def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
     org = [page.locator(f"#pv-org-{ax}") for ax in "abc"]
     assert [b.input_value() for b in org] == ["", "", ""]
     assert "default" in page.locator("#pv-org-tag").inner_text().lower()
-    assert "(default)" in _origin_row(page)
+    assert "(default)" in _cell_row(page, "Origin")
 
     page.locator("#pv-cell-grid input").nth(0).fill("12.345678")
     for b in org:
@@ -691,7 +741,7 @@ def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
     assert [float(b.input_value()) for b in org] == [-1.234567] * 3
     assert float(page.locator("#pv-cell-grid input").nth(0).input_value()) == 12.345678
     assert "default" not in page.locator("#pv-org-tag").inner_text().lower()
-    row = _origin_row(page)
+    row = _cell_row(page, "Origin")
     assert row.startswith("-1.235, -1.235, -1.235") and "(default)" not in row, row
     # A second Apply re-sends what the boxes now hold, and nothing drifts.
     # The edit it answers is c's length (the vacuum is hidden under a typed
@@ -705,7 +755,7 @@ def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
     _apply_and_wait(page)
     assert [b.input_value() for b in org] == ["", "", ""]
     assert "default" in page.locator("#pv-org-tag").inner_text().lower()
-    assert "(default)" in _origin_row(page)
+    assert "(default)" in _cell_row(page, "Origin")
 
 
 def test_the_panel_says_left_handed_before_the_server_refuses_it(
@@ -740,7 +790,7 @@ def test_the_panel_says_left_handed_before_the_server_refuses_it(
 
 
 # --------------------------------------------------------------------- #
-#  § 6.5 step 4 — an edit lands, and the page notices                   #
+#  An edit lands, and the page notices (molview § 1.1, § 8.4)           #
 # --------------------------------------------------------------------- #
 
 def test_selecting_an_atom_wakes_the_controls_that_need_one(
@@ -767,13 +817,15 @@ def test_selecting_an_atom_wakes_the_controls_that_need_one(
 
 def test_the_edit_survives_a_page_reload(
         page, flask_server, labelled_xyz):
-    """§ 11.2a: "the sequence outlives the page" — a fresh viewer ADOPTS the
-    draft already in storage, and what comes back is the DRAFT, not the point.
+    """molview § 11.2a, *Coming back to a session*: "the sequence outlives the
+    page" — a fresh viewer ADOPTS the draft already in storage instead of
+    re-reading the file, and takes its place on the sequence with it.
 
-    Three things must come back, and they are the three a reopened page cannot
-    infer: the atoms as EDITED (not as loaded), the unsaved badge, and the
-    position in the sequence.  Asserting only the atom count would pass on a
-    viewer that re-read the FILE and threw the edit away.
+    Two things come back here that a reopened page cannot infer: the atoms as
+    EDITED — a page that re-read the FILE shows 3, not 2 — and the position on
+    the sequence, which a fresh viewer starting at 0 cannot work out.  (The
+    delete laid its own point, § 1.1, so on this walk no work sits above #1:
+    the draft and point #1 hold the same atoms, and the unsaved flag is down.)
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -819,7 +871,8 @@ def test_an_edit_changes_the_structure_and_records_itself(
     the timeline.
 
     The point is laid down INSIDE the viewer's gate when the change lands
-    (§ 11.2) — not by the page afterwards — so the sequence advancing proves the
+    (molview § 1.1, § 11.2: *every edit lays down a point of its own*) — not
+    by the page afterwards — so the sequence advancing proves the
     edit reached the model rather than only the screen.
 
     The badge answers the same for a recorded edit and a refused one, so the
@@ -851,7 +904,7 @@ def test_an_edit_changes_the_structure_and_records_itself(
 
 
 # --------------------------------------------------------------------- #
-#  § 6.5 step 5 — the state timeline                                    #
+#  The state timeline (molview § 1.1, § 11.2, § 11.2a)                  #
 # --------------------------------------------------------------------- #
 
 def test_retract_puts_the_atom_back_with_no_save_state_pressed(
@@ -860,8 +913,9 @@ def test_retract_puts_the_atom_back_with_no_save_state_pressed(
     make that true.
 
     *"all operation should automatically call state save timeline api, such
-    that the user always can retract back"* (user, 2026-09-07).  The delete lays
-    down its own point, so one Retract restores the atom.
+    that the user always can retract back"* (user, 2026-09-07; molview § 1.1).
+    The delete lays down its own point, so one Retract -- § 11.2's `load(-1)`
+    -- restores the atom.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -895,7 +949,7 @@ def test_retract_puts_the_atom_back_with_no_save_state_pressed(
 
 
 def test_retract_says_so_when_the_point_it_wanted_is_gone(
-        page, flask_server, labelled_xyz, tmp_path):
+        page, flask_server, labelled_xyz):
     """A retraction that could not happen must not be reported as one.
 
     A saved sequence is bounded at its last 30 saves (`workspace.md` § 9.1), so
@@ -906,7 +960,7 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
     retraction happened that did not.
 
     Reaching it for real would take 31 saves.  The state files are the test's
-    own now (its projects root is `tmp_path`), so deleting point 0 reproduces
+    own (conftest's `_isolated_workspace_store`), so deleting point 0 reproduces
     exactly what the rolling window does, in one line and without the wait.
     """
     _open(page, flask_server)
@@ -926,8 +980,11 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
         "  document.getElementById('timeline-status').textContent)",
         timeout=_ACT_MS)
 
-    # Drop point 0 the way the rolling window would.
-    states = tmp_path / ".molbuilder_workspace" / "states"
+    # Drop point 0 the way the rolling window would -- in the store this
+    # test's server writes to.
+    from molbuilder.web.blueprints import workspace_storage
+    states = (workspace_storage.projects_root() / workspace_storage.SCRATCH_DIR
+              / "states")
     gone = [p for p in states.glob("*.0.wc.json") if "-draft" not in p.name]
     assert gone, f"expected a point 0 to delete, found {list(states.iterdir())}"
     for p in gone:
@@ -955,9 +1012,12 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
 
 def test_the_timeline_indicator_says_where_you_are(
         page, flask_server, labelled_xyz):
-    """Unsaved work and the point Retract would restore are both on screen.
+    """The point Retract would restore is on screen.
 
-    A push-only timeline with no indicator is a promise the user cannot check:
+    molview § 11.2: the position on the sequence, and the point `load(-1)` --
+    Retract -- lands on; § 11.2a: Save state and Retract are the host's
+    controls, so the tab shows where they stand.  A push-only timeline with no
+    indicator is a promise the user cannot check:
     "Save state" only means something if you can see that you have not.
     """
     _open(page, flask_server)
@@ -983,7 +1043,7 @@ def test_the_timeline_indicator_says_where_you_are(
 
 
 # --------------------------------------------------------------------- #
-#  § 6.5 step 6 — saving to the project                                 #
+#  Saving to the project (tabs.md § 6; molview § 11.3)                  #
 # --------------------------------------------------------------------- #
 
 def test_saving_to_the_project_writes_the_pair_and_remembers_where(

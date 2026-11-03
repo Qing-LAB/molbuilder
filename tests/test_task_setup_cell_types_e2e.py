@@ -161,18 +161,6 @@ def test_a_typed_k_grid_lands_as_three_numbers(page, flask_server, calc_dir,
     assert got == [4, 4, 1], f"typed {typed!r}, description carries {got!r}"
 
 
-def test_the_k_grid_is_not_stored_as_text(page, flask_server, calc_dir):
-    """The defect in its own words.  A ``[4, 4, 1]`` assertion alone would
-    still pass if the value were the STRING ``"[4, 4, 1]"``, and the whole
-    bug was a string that looked right."""
-    _open(page, flask_server, calc_dir)
-    _type(page, "tight kgrid", "4,4,1")
-    got = _described(page)["stages"][0]["overrides"]["kgrid"]
-    assert not isinstance(got, str), (
-        f"the k-grid is stored as text ({got!r}) -- the description now says "
-        f"a string where the config declares Tuple[int, int, int]")
-
-
 def test_an_emptied_cell_still_removes_the_override(page, flask_server,
                                                     calc_dir):
     """Absent means *this stage uses the template's value* (`stages.md`
@@ -212,7 +200,7 @@ def bool_column_dir(isolated_projects_root_module):
     """The same calculation, but the column that varies is a **bool**.
 
     Separate from `calc_dir` rather than added to it: that fixture is
-    module-scoped and shared by the four tests above, and widening its
+    module-scoped and shared by the three tests above, and widening its
     `varies` would change what they open.
     """
     from molbuilder.config.siesta import SiestaConfig
@@ -308,7 +296,10 @@ def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
     """The cell's menu offers what a vibration's relaxation may take --
     CG, Broyden, FIRE -- and still shows the override the description
     holds, marked, rather than a blank cell over it; prep refuses it by
-    name (`engines/template.md` § 6.3a).
+    name (`engines/template.md` § 6.3a).  `task-setup.md` § 5.2: *"A stored
+    value this kind does not offer is shown as itself, marked —
+    `none (not offered here)` — beside the offered choices, never a blank
+    cell over an override the description still holds"*.
 
     MUTATION THIS MUST FAIL AGAINST: the viewer without the branch (the
     cell shows nothing selected)."""

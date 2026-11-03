@@ -154,17 +154,19 @@ def _setup_modify_dir(page, base_url, dir_path):
 
 
 class TestVisibilityChangeForcesRescan:
-    """``visibilitychange`` -> visible (tab gains focus after being
-    in the background) is the secondary refresh trigger.  Same fix,
-    different event."""
+    """``visibilitychange`` -> visible (the tab shown again after being in
+    the background) re-reads the folder the panel is bound to
+    (`web/results.md` § 2.1, *Come back to the browser tab*)."""
 
     def test_a_rescan_of_the_file_on_screen_does_not_leave_parsing_up(
             self, page, flask_server, project_with_one_xyz):
         """A tab return rescans the folder and re-announces the file already
         on screen, and its viewer answers ready at once -- from inside that
-        announcement.  The picker started its "Parsing…" line only AFTER
-        announcing, so the answer met nothing to clear and the line sat
-        busy for its whole timer (the Results-tab review, 2026-09-28).
+        announcement -- which lifts the "Parsing…" line (`web/results.md`
+        § 2.1-§ 2.2; `web/presenters.md` § 3, step 4).  The picker started
+        that line only AFTER announcing, so the answer met nothing to clear
+        and the line sat busy for its whole timer (the Results-tab review,
+        2026-09-28).
 
         MUTATION THIS MUST FAIL AGAINST: `_startParseStatus` called after
         the dispatch in `_emitFileSelected`.

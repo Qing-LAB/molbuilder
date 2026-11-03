@@ -9,8 +9,6 @@ on CM's internal DOM.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 
@@ -115,10 +113,13 @@ def _cm_line_count(page):
 
 def test_preview_modal_view_edit_save_round_trip(
         page, flask_server, tmp_path, monkeypatch):
-    """The canonical edit-save round trip: open modal → click
-    Edit → modify → click Save → verify file on disk + status
-    shows "Saved at ..." → close → reopen → verify new content
-    is what's rendered."""
+    """The canonical edit-save round trip (`projects.md` § 4, the preview
+    pop-up): open modal → click Edit → modify → click Save → verify file
+    on disk + status shows "Saved at ..." → close → reopen → verify new
+    content is what's rendered.
+
+    THE SILENT FAILURE: an edit Save never wrote to disk, or a reopened
+    file showing the text it had before the save."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     proj = tmp_path / "myproj"
     proj.mkdir()
@@ -203,7 +204,9 @@ def test_preview_modal_save_handles_mtime_conflict(
         page, flask_server, tmp_path, monkeypatch):
     """If the file changes on disk between Read and Save, the
     server returns 409 with a clear message; the modal surfaces
-    that in the error slot instead of silently clobbering."""
+    that in the error slot instead of silently clobbering
+    (`projects.md` § 4: *a concurrent change on disk is caught ...
+    instead of being silently overwritten*)."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     proj = tmp_path / "myproj"
     proj.mkdir()
@@ -245,24 +248,25 @@ def test_preview_modal_save_handles_mtime_conflict(
 
 def test_preview_modal_disables_edit_for_large_files(
         page, flask_server, tmp_path, monkeypatch):
-    """Files past the VIEW_ONLY_BYTES cap (1 MB) load in
-    paginated VIEW mode — bytes stream in 256 KB chunks via
-    /api/files/read_range and Edit is disabled with a "use
-    external editor" hint.  Pin both halves so a future refactor
-    that drops the size check (or silently re-enables Edit on a
-    too-big file) surfaces.
+    """`projects.md` § 4: files up to 1 MB are editable, larger ones open
+    view-only, and very large ones are paged in as you scroll.  In
+    `preview.js`: past `VIEW_ONLY_BYTES` (1 MB) Edit is disabled and the
+    editor read-only, with a "use an external editor" hint; past the
+    one-read ceiling `BULK_READ_MAX_BYTES` (16 MB) the file is paged in,
+    `PAGE_BYTES` (256 KB) at a time through /api/files/read_range.  Pin
+    both halves so a refactor that reads a very large file whole, or
+    re-enables Edit on one, surfaces.
 
-    The cap is in the JS — the test exercises a file built over
-    the cap so the paginated path fires.  The fixture writes
-    33 MB of 'A' so the file's UTF-8 size matches the byte size
-    exactly + the chunked load completes quickly."""
+    The file is 33 MB of 'A' -- past both caps, so the paged path fires;
+    its UTF-8 size is its byte size and its first page lands quickly.  The
+    1 MB edit cap alone (a file between 1 and 16 MB) is not reached here."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     proj = tmp_path / "myproj"
     proj.mkdir()
     big = proj / "large.txt"
-    # 33 MB > 32 MB cap.  Write in a single shot; trivially
-    # compressible at the filesystem layer but the modal sees the
-    # full size on stat.
+    # 33 MB > the 16 MB one-read ceiling.  Write in a single shot;
+    # trivially compressible at the filesystem layer but the modal sees
+    # the full size on stat.
     big.write_text("A" * (33 * 1024 * 1024))
 
     _setup(page, flask_server, str(big))

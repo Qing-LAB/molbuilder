@@ -124,7 +124,8 @@ hand-over writes into** — its seam's `describe_findings`
 ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4), SIESTA's
 the pseudopotential check by the rule `prep` opens the files by
 (`pseudos.psml_sources`: the folder's own files first, then `psml_lib`) —
-**and refuses until every element is covered.** A SIESTA run cannot start without them, and a person setting up a
+**and refuses until every species is covered** — a species is a label and its
+element (`chemistry.species_order`), so a labelled `H1` asks for `H1.psml`. A SIESTA run cannot start without them, and a person setting up a
 first calculation found out only after the script was generated (user,
 2026-09-30). The sender passes the folder (`dest`); the refusal's findings land
 beside the field through the tab's findings panel, and the page is brought to

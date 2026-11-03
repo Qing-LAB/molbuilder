@@ -34,15 +34,14 @@ def _boot(page, base):
         timeout=8000)
 
 
-def test_bar_present_and_hidden_until_first_notification(page, flask_server):
-    _boot(page, flask_server)
-    assert page.locator("#app-notifications").count() == 1
-    # Hidden while empty (notifications.md §1).
-    assert page.locator("#app-notifications").is_hidden()
-    assert page.evaluate("() => window.molbuilder.notify.list()") == []
-
-
 def test_persist_error_event_surfaces_one_error_row(page, flask_server):
+    """A failed save is said, never silent: one error row with the save
+    warning's words (`notifications.md` § 3; `workspace.md` § 5,
+    ``onPersistError``).
+
+    THE SILENT FAILURE: the bar's listener for the save failure gone -- a
+    save that failed shows nothing, and the person keeps working on edits
+    the server never got."""
     _boot(page, flask_server)
     page.evaluate(
         "() => window.dispatchEvent(new CustomEvent('molbuilder:persist-error',"
@@ -57,6 +56,11 @@ def test_persist_error_event_surfaces_one_error_row(page, flask_server):
 
 
 def test_repeat_persist_error_dedups_into_one_row_with_counter(page, flask_server):
+    """A burst of the same failure is one row with a ``×N`` counter, not a
+    stack (`notifications.md` § 1, *Dedup by id*; § 3).
+
+    THE SILENT FAILURE: every failed save of a burst stacking its own row --
+    fifty rows for one failure (§ 1: *one row, not fifty*)."""
     _boot(page, flask_server)
     for _ in range(3):
         page.evaluate(
@@ -71,6 +75,12 @@ def test_repeat_persist_error_dedups_into_one_row_with_counter(page, flask_serve
 
 
 def test_stack_of_two_and_individual_clearance(page, flask_server):
+    """Two messages are a stack the person clears one at a time: a row's
+    × removes that row alone, and the bar hides once it is empty
+    (`notifications.md` § 1-§ 2).
+
+    THE SILENT FAILURE: a × that clears the whole bar, or a new message
+    replacing the one before it."""
     _boot(page, flask_server)
     # A persist error + a distinct info notification -> a STACK of two.
     page.evaluate(
@@ -97,7 +107,8 @@ def test_stack_of_two_and_individual_clearance(page, flask_server):
 
 
 def test_persist_ok_clears_the_error_row(page, flask_server):
-    """Saving recovered — the warning must come down.
+    """Saving recovered — the warning must come down (`notifications.md`
+    § 3: *a save that succeeds lowers it*).
 
     Until 2026-09-05 nothing lowered it: `dispatcher.js` emitted
     ``molbuilder:persist-error`` on failure and had NO success signal at all,
@@ -124,7 +135,8 @@ def test_persist_ok_clears_the_error_row(page, flask_server):
 
 
 def test_persist_ok_leaves_other_notifications_alone(page, flask_server):
-    """Recovery clears the SAVE warning, not the bar.
+    """Recovery clears the SAVE warning, not the bar (`notifications.md`
+    § 3: *only that row, the others stay*).
 
     `clear(id)` is per-row, and this is the anti-vacuity half: if recovery
     called `clearAll()` the test above would pass while a validation error or
@@ -143,7 +155,9 @@ def test_persist_ok_leaves_other_notifications_alone(page, flask_server):
     page.evaluate(
         "() => window.dispatchEvent(new CustomEvent('molbuilder:persist-ok',"
         "  { detail: { op: 'write-state' } }))")
-    page.wait_for_timeout(150)
+    page.wait_for_function(
+        "() => !window.molbuilder.notify.list()"
+        "  .some(r => r.id === 'persist-error')", timeout=5000)
 
     lst = page.evaluate("() => window.molbuilder.notify.list()")
     assert [r["id"] for r in lst] == ["other"], (

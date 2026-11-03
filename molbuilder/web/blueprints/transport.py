@@ -671,10 +671,11 @@ def api_transport_describe() -> Any:
     With ``reuses`` -- a transport calculation's folder, picked to reuse it
     (`engines/transport.md` § 2a.16) -- it writes what `molbuilder describe
     --reuses` writes: that calculation's description and its label, its
-    junction -- its own, or a frame set of it, ``junction`` naming which --
-    as the cards change its voltages, its rungs' values and its shared
-    ones, an extension's limits refused here (the tab's to hold); its
-    template; its job request.
+    junction's citation -- its own, or a frame set of it, ``junction``
+    naming which -- as the cards change its voltages, its rungs' values and
+    its shared ones, an extension's limits refused here (the tab's to
+    hold); its template; its job request.  The junction itself and the
+    pseudopotentials are its first prep's (§ 2a.16, *Describing it*).
     """
     from molbuilder.projects import projects_root
 
@@ -802,7 +803,7 @@ def api_transport_describe() -> Any:
         "manifest": manifest,
         # WHAT IS SAID BESIDE IT, each at its weight -- the description's
         # own notes, a finished calculation carrying no composed junction,
-        # a frame set written in its junction's place (`issues.Issue`).
+        # a frame set cited in its junction's place (`issues.Issue`).
         "notices": notices,
     })
 

@@ -6,8 +6,8 @@ output's own ``>> End of run``, and its "total" the run's own length, the
 engine's wall its record states (`web/trajectory.md` § 4).
 
 The run is the layered H2 relaxation's first `coarse` run, made once in this
-pass on the road (`support/real_runs.py`, run A of plan § 5y), opened in the
-Results tab as a person opens it, in its folder.
+pass on the road (`support/real_runs.layered`, `process/testing.md` tier 3),
+opened in the Results tab as a person opens it, in its folder.
 """
 from __future__ import annotations
 
@@ -21,11 +21,15 @@ import pytest
 from _road import conda_hook, env_available
 
 pytestmark = [
+    pytest.mark.e2e,
     pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
+
+pytest.importorskip("playwright.sync_api")
+pytest.importorskip("flask")
 
 
 @pytest.fixture(scope="module")
@@ -85,11 +89,19 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
     """The SCF line's rate is the number the run record states -- the
     SCF-timing log, through one reader -- and the badge dates the run by its
     output's end and says its total as the record's engine wall, the Run
-    panel's.
+    panel's.  The menu files the run under the heading the folder answer's
+    words make, the engine's and the calculation's noun: *SIESTA
+    optimization* (`web/presenters.md` § 2, 2.65.0).
 
     THE SILENT FAILURES: the viewer computing its own rate; the badge's
     total read off a SIESTA timer line that times one SCF iteration, so a
-    24 s run read *total 0s* (2.56.1).
+    24 s run read *total 0s* (2.56.1); the served words not reaching the
+    menu -- the run under *Trajectory* (on an optimization a guessed noun
+    reads the same, so a guessed heading is not caught here).
+
+    MUTATION THIS MUST FAIL AGAINST: the picker's rows not carrying the
+    folder answer's ``engine_words`` and ``noun`` (`file-picker.js`
+    `filterToResultFiles`).
     """
     from molbuilder.report_fields import span_words
     time, ended = _the_runs_own_times(finished)
@@ -103,6 +115,12 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
     assert "ended" in detail and ended.strftime(":%M:%S") in detail, detail
     assert f"total {span_words(time['engine_elapsed_s'])}" in detail, (
         detail, time)
+    heading = page.evaluate(
+        "() => { const s = document.getElementById("
+        "  'results-file-picker-select');"
+        "  const o = s && s.selectedOptions[0];"
+        "  return o && o.parentElement ? o.parentElement.label : null; }")
+    assert heading == "SIESTA optimization", heading
 
 
 def test_the_scf_plot_draws_both_tests_siesta_requires(
@@ -191,12 +209,13 @@ def test_opening_the_run_again_and_again_leaves_what_once_left(
     from support.leftovers import SPY, grew
     output, _ = openable(finished)
     # THE SERVER'S ANSWER FOR THE FILE, as the picker passes it to the
-    # viewer (`/api/results/dir`'s row, `file-picker.js` `_metaFor`).
+    # viewer (`/api/results/dir`'s row with its folder's engine, words and
+    # noun, `file-picker.js` `metaOf`).
     answer = folder_answer(os.path.dirname(output))
     row = next(f for f in answer["files"]
                if f["name"] == os.path.basename(output))
     meta = {**{k: row[k] for k in ("role", "label", "stage", "parser")},
-            "engine": answer["engine"]}
+            **{k: answer[k] for k in ("engine", "engine_words", "noun")}}
     monkeypatch.setattr(type(diagnostics.get_capabilities()),
                         "file_picker_roots",
                         lambda self: ((tree.resolve(), "road"),))

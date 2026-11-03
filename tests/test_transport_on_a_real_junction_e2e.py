@@ -48,7 +48,6 @@ the runs were made and off the folders and records they left.
 """
 from __future__ import annotations
 
-import dataclasses
 import json
 import os
 from pathlib import Path
@@ -306,9 +305,6 @@ def junction(tmp_path_factory):
     `RealRun` of the transport calculation, with ``cite``, the relaxation's
     citation, ``cited_before`` -- the cited run's files as the relaxation
     left them -- and every answer the road gave, by step."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.template import config_from_template, template_with_values
-    from molbuilder.template_file import template_path
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _on_the_road, _taken, _typed
     from support.road import group_words
@@ -325,11 +321,10 @@ def junction(tmp_path_factory):
         assert r.exit_code == 0, r.output
         relax = RealRun(tree=tree, bundle=tree / "P" / "opt" / "J")
         one_rank(relax.bundle)
-        path = template_path(relax.bundle, "J")
-        cfg = dataclasses.replace(
-            config_from_template(path.read_text(), SiestaConfig),
-            **RELAXED_WITH)
-        path.write_text(template_with_values(cfg, engine="siesta", calculation="optimization"))
+        # ITS TEMPLATE SET AS A PERSON SETS IT, each value said to be the
+        # person's (`engines/template.md` § 6.6) -- never the whole file
+        # rewritten, which records every value as a default nobody chose.
+        set_by_the_person(relax.bundle, RELAXED_WITH)
         _taken(relax, "prep", "prep", "task",
                *group_words(relax.bundle, "coarse"), "--target", "this")
         _taken(relax, "launch", "launch", "task", "--stage", "coarse",
@@ -494,6 +489,7 @@ def junction(tmp_path_factory):
                    "--no-low-bias-approximation")
         assert r.exit_code == 0, r.output
         from_pair = RealRun(tree=tree, bundle=tree / "P" / "transport" / "F")
+        from_pair.said["init"] = Said(r.exit_code, r.output)
         one_rank(from_pair.bundle)
         run.pair_template = (from_pair.bundle / "F.template.toml").read_text()
         set_by_the_person(from_pair.bundle,
@@ -1031,6 +1027,56 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
             assert one(tmpl, name).source == "cited", name
 
 
+def _described_as_printed(said) -> tuple:
+    """What `molbuilder describe` answered, as it printed it: its headline,
+    the files it names as written -- the indented lines under the headline
+    -- and the first command it offers, the prep."""
+    lines = said.output.splitlines()
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("Described "))
+    files = []
+    for ln in lines[at + 1:]:
+        if not ln.startswith("  "):
+            break
+        files.append(ln.strip())
+    first = next(ln.strip() for ln in lines[at + 1:]
+                 if ln.strip().startswith("molbuilder jobset prep task"))
+    return lines[at], files, first
+
+
+def test_describe_from_a_citation_writes_the_description_alone(junction):
+    """`execution/job-system.md` § 5.1: *`molbuilder describe` writes the
+    description -- the template, `task.json`, `job-request.json`*; a
+    transport calculation's junction is its first prep's
+    (`engines/transport.md` § 1.1, *The first prep*: *"The transport
+    calculation cites the finished relaxation, and its first prep composes
+    it"*), and a pair's pseudopotentials are *copied into the calculation
+    by prep* (§ 3.1).  So a describe from a cited run and from a cited pair
+    -- the kind's one describe, `transport.describe` (2.65.3) -- names those
+    three files as written and no other; heads its answer with the
+    calculation and what it cites (§ 3's table: *the junction citation*);
+    and offers the first prep naming the calculation by its address from
+    the projects root (`job-system.md` § 5.3, *What molbuilder prints, you
+    can type*).  The Transport tab's Describe answers the same three files
+    (§ 3.8.2a: it *writes the template, `task.json` and `job-request.json`,
+    every file or none*).  THE SILENT FAILURES: a describe that composes the
+    junction or copies a file before any prep -- a record no prep checked
+    against its citation -- and a next step naming no calculation, which
+    acts on whatever folder it is pasted in."""
+    for said, name, cited in (
+            (junction.said["init"], "T", junction.cite),
+            (junction.from_pair.said["init"], "F", junction.frame_set)):
+        assert said.exit_code == 0, said.output
+        head, files, first = _described_as_printed(said)
+        assert head.startswith(f"Described transport calculation '{name}' "
+                               ) and cited in head, head
+        assert sorted(files) == sorted([f"{name}.template.toml", "task.json",
+                                        "job-request.json"]), said.output
+        assert first.endswith(f" --bundle P/transport/{name}"), first
+    tab = json.loads(junction.said["describe"].output)
+    assert sorted(tab["written"]) == sorted([
+        f"{tab['label']}.template.toml", "task.json", "job-request.json"]), tab
+
+
 def _cited_on_the_tab(page, base, junction, cite=None) -> dict:
     """The Transport tab citing the relaxation -- or ``cite``, a path from
     the tree's root -- as a returning person's tab cites it: its session
@@ -1449,10 +1495,12 @@ _NO_OTHER_VALUE_HERE = {
     "species_order":
         "the junction holds one element, H: there is no other order",
     "unpaired_electrons":
-        "on a transport calculation the spin treatment decides it -- 0 "
-        "restricted, floating unrestricted, a stated count refused "
-        "(`engines/transport.md` § 3.1's spin note) -- so no value of its "
-        "own changes a deck",
+        "the probe states restricted, which holds 0 alone -- any other "
+        "count is refused (`science/chemistry-correctness.md` ES5); a "
+        "stated count is written as stated only under unrestricted, "
+        "TranSIESTA's stop said as information (ES6, `engines/transport.md` "
+        "§ 3.1's spin note), which the probe does not run -- so no value of "
+        "its own reaches a deck here",
 }
 
 
@@ -1546,8 +1594,20 @@ def test_each_scf_stage_writes_its_own_mixer_and_the_transmission_none(
     which runs no SCF, writes none -- what the rows above, one value at a
     time and asking only that the input changed, do not ask.  Each deck is read
     through the one fdf reader (`parse.fdf.parse_fdf_params`).  The
-    mechanism once sent the T(E) window to the device's deck."""
+    mechanism once sent the T(E) window to the device's deck.
+
+    AND WHAT EACH TRANSMISSION POINT'S RUN SAID IT WOULD READ: the run
+    script's record in its session log lists the settings its step reads
+    -- a TBtrans step's, never an SCF's (`model/parse.md` § 5d.3a: *"A row
+    per catalogue item the rung reads ... by the one rule
+    `template.reads`"*; 2.64.0, untested before on a TBtrans step built
+    through prep).  The silent failure: a TBtrans run's record listing the
+    SCF mixer it never reads, so a person reads a setting into a result it
+    played no part in."""
     from molbuilder.parse.fdf import parse_fdf_params
+    from molbuilder.runs import run_of
+    from molbuilder.script_emit import read_parameters_fence
+    from molbuilder.template import catalogue, one, reads
     want = {**_OWN_MIXING, "electrode_R": RELAXED_WITH["mixing_weight"],
             "transmission": None}
     for stage, weight in want.items():
@@ -1557,6 +1617,15 @@ def test_each_scf_stage_writes_its_own_mixer_and_the_transmission_none(
             got = parse_fdf_params(deck.read_text()).mixing_weight
             assert (got is None if weight is None
                     else got == pytest.approx(weight)), (deck, got, weight)
+    for v in _BIAS:
+        log = run_of(_point(junction, "transmission", v)).session_log
+        assert log is not None, v
+        fenced = [r["item"] for r in read_parameters_fence(log.read_text())]
+        assert "transmission_n_points" in fenced, (v, fenced)
+        assert "mixing_weight" not in fenced, (v, fenced)
+        assert all(reads(one(catalogue(), n, engine="siesta"), "siesta",
+                         "transport", "transmission") for n in fenced), (
+            v, fenced)
 
 
 def test_every_rung_of_the_junction_states_its_order(junction):
@@ -1742,7 +1811,12 @@ def test_what_a_deck_leaves_to_the_engine_is_read_as_siesta_reads_it(
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):
     """The lead gate's measurements are `info` findings of the card's
-    answer, each lead's prefixed with the lead it is about."""
+    answer, each lead's prefixed with the lead it is about
+    (`engines/transport.md` § 3.8.1; `web/web-api.md`,
+    `/api/transport/describe_attempt`'s `findings`: *"each lead's period
+    `info` and seam at its weight"*).  THE SILENT FAILURE: a seam verdict
+    said with no lead named, so the person cannot tell which lead's block
+    does not continue its crystal."""
     body = json.loads(junction.said["describe_attempt"].output)
     assert junction.said["describe_attempt"].exit_code == 200, body
     assert body["citation"] == junction.cite, body
@@ -1777,9 +1851,11 @@ def _point(run, stage, v, frame=None):
 def test_a_sweep_is_one_run_its_points_inside(junction):
     """The device's run holds a folder per voltage, each with what the rungs
     downstream take from it; `status` says how many points are done.  Each
-    point's progress log is in the run's point, which writes it, and none
-    is left in the point's folder below the stage, where nothing writes to
-    it again (`project-layout.md` § 1.0)."""
+    point's progress log -- the seed prep writes for a viewer, which SIESTA
+    never writes to -- is in the run's point, the run it opens, and none is
+    left in the point's folder below the stage (`project-layout.md` § 1.0:
+    *"A product has one home: its run ... the progress log `prep` seeds for
+    a viewer goes into the run it opens"*)."""
     from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import WRITTEN, role_of
     from molbuilder.task import of as task_of
@@ -1849,8 +1925,12 @@ def test_a_walk_of_points_is_written_at_prep_as_the_one_header_launch_sends(
 
 
 def test_launched_again_warm_with_every_point_done_it_is_refused(junction):
-    """No run is opened with nothing to run in it: the refusal names the
-    `--cold` line."""
+    """`engines/transport.md` § 2a.11, *Launched again*: *"A warm launch with
+    every point done is refused, naming the `--cold` line -- no run is
+    opened with nothing to run in it"* (`execution/runs-of-points.md` § 3,
+    operation 17).  THE SILENT FAILURE: an empty run opened as the stage's
+    newest, which the transmission's gather then takes as the device's
+    run."""
     r = junction.said["launch device again"]
     assert r.exit_code != 0, r.output
     assert "--cold" in r.output, r.output
@@ -1859,16 +1939,24 @@ def test_launched_again_warm_with_every_point_done_it_is_refused(junction):
 
 
 def test_launched_cold_every_point_runs_again(junction):
-    """Cold, nothing is taken over: every point of the new run is walked,
-    each start written beside it -- the 0 V point from the seed's density,
-    what its run gathered (its `.gathered-from`, and no `.continued-from`,
-    which a point taken over would carry), and the next from the point
-    before it in this walk (its `.continued-from`)."""
+    """`engines/transport.md` § 2a.11, *Launched again*: *"Cold (`--cold`),
+    nothing is taken over and every point runs"* -- every point of the new
+    run walked, each start written beside it: the 0 V point from the seed's
+    density, what its run gathered (its `.gathered-from`, and no
+    `.continued-from`, which a point taken over would carry), and the next
+    from the point before it in this walk (its `.continued-from`).  And the
+    run itself continues from no run (`execution/runs-of-points.md` § 3,
+    *What the run continues from*, 2.62.0: *"Points that start over take
+    nothing: the run is launched, and not said to continue from the
+    last"*) -- its launch record's `continued_from` null.  THE SILENT
+    FAILURES: a done point taken over by a launch the person asked to
+    compute again; a cold run recorded as continuing from the last."""
     from molbuilder.task import of as task_of
     from support.real_runs import point_row, stage_status
     label = task_of(junction.bundle).label
     device = stage_status(junction.bundle, "device")
     assert device.attempt == "run-1", device.attempt
+    assert device.launch["continued_from"] is None, device.launch
     zero, then = (point_row(device, v) for v in _BIAS)
     assert zero["started_from"] is None and zero["done"], zero
     assert f"{label}.DM \u2190 01_seed/run-0" in device.gathered, \
@@ -1935,8 +2023,13 @@ def test_launched_again_warm_it_takes_the_done_points_over(junction):
     over into the new run, its `.continued-from` naming the run that
     computed it; the point not done is walked in the new run, starting from
     the point before it in this walk; the stopped run is kept as it ended.
-    The silent failure: a done point run again, or a point not done copied
-    as done.
+    And the new run continues from the stopped one, which it takes a point
+    from (`execution/runs-of-points.md` § 3, *What the run continues from*,
+    2.62.0: *"Warm, its own newest launched run ... but only where it takes
+    something from it ... That is the run's `.continued-from`, its launch
+    record's `continued_from`"*).  The silent failures: a done point run
+    again, or a point not done copied as done; a run holding a point it took
+    over whose record names no run it came from.
 
     MUTATION THIS MUST FAIL AGAINST: the warm launch taking nothing over
     (the 0 V point recomputed, its start the seed's density)."""
@@ -1959,6 +2052,8 @@ def test_launched_again_warm_it_takes_the_done_points_over(junction):
     assert zero["done"] and then["done"], device.points
     assert zero["started_from"] == f"{ended.dir}/{first['folder']}", zero
     assert then["started_from"] == f"{device.dir}/{zero['folder']}", then
+    assert device.launch["continued_from"] == (
+        f"{ended.dir}/{ended.attempt}"), device.launch
     # THE STOPPED RUN, kept as it ended, as the Results tab opens its
     # points: its first point finished, its second not.
     state = {p["bias_v"]: (folder_answer(c.bundle / ended.dir / p["folder"])
@@ -2423,9 +2518,17 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
     milestone, each frame's point by its own word and why; the finish says
     the run failed, the first point short of done and how many, and the last
     round.
-    `status` counts the points that failed beside those done.  The silent
-    failures: a message per failed point, a round never said because no
-    point of it was done, a run said finished."""
+    `status` counts the points that failed beside those done.  And each
+    point says why it stopped in TBtrans's own words, with what they may
+    mean (`engines/transport.md` § 6.3: *"When a run stops, the result says
+    why in the engine's words -- a SIESTA or TBtrans `die` prints its
+    reason, then *Stopping Program from Node*, and the reading pass keeps
+    the reason -- and, where molbuilder knows the message, what it may
+    mean: `status`, the Results tab and the transport record's failed
+    points say it"*; its table's TBtrans row; 2.65.1: the engine's own
+    words, shown by `status`).  The silent failures: a message per failed
+    point, a round never said because no point of it was done, a run said
+    finished; a point said failed with nothing of what TBtrans said."""
     from support.real_runs import notified, told
     from support.real_runs import stage_status
     c = junction.refused
@@ -2467,6 +2570,16 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
         f"the run: {_count(0, total, _N_FRAMES, failed=failed)} |"), finish
     status = c.said["status transmission"].output
     assert _count(0, total, _N_FRAMES, failed=failed) in status, status
+    # WHY EACH POINT STOPPED, as the status door reads it: TBtrans's line
+    # and the table's meaning beside it.
+    points = stage_status(c.bundle, "transmission").points
+    assert len(points) == total, points
+    for p in points:
+        said = (p["detail"] or "").lower()
+        assert ("gamma calculation while you request transmission k-points"
+                in said), p
+        assert "what it may mean: " in said and (
+            "leave tbt_k_grid blank or 1 1 1" in said), p
 
 
 def test_a_device_point_that_finishes_unconverged_is_walked_on_and_said_once(
@@ -2505,10 +2618,15 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
     `run-reports.md` § 2.9: the run's `finish` comes after the point that
     ended the chain, the run failed; the voltage never run is said so,
     where its chain ended, and counted *not run* -- never failed, it did not
-    run (`execution/runs-of-points.md` § 1.3) -- as `status` counts it.  The silent failures: a finish that never
-    comes, waiting on a point the walk will not run; a count that disagrees
-    with `status`."""
-    from support.real_runs import notified, stage_status, told
+    run (`execution/runs-of-points.md` § 1.3) -- as `status` counts it.
+    And the voltage that stopped says why in SIESTA's own words, as `status`
+    reads it (`model/parse.md` § 2b, the run's `error_message`: *"the
+    `SCF_NOT_CONV:` line when it came before the stop -- it names the
+    cause"*; `engines/transport.md` § 6.3; 2.65.1).  The silent failures: a
+    finish that never comes, waiting on a point the walk will not run; a
+    count that disagrees with `status`; a point said failed with nothing of
+    why SIESTA stopped it."""
+    from support.real_runs import notified, point_row, stage_status, told
     c = junction.aborted
     device = stage_status(c.bundle, "device")
     n = device.attempts[-1]
@@ -2526,6 +2644,8 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
         f"the run: {count} |"), finish
     assert device.state == "failed" and count in device.detail, (
         device.state, device.detail)
+    stopped = point_row(device, _BIAS[0])["detail"] or ""
+    assert "SCF_NOT_CONV:" in stopped and "(required)" in stopped, stopped
 
 
 def test_a_point_the_ended_walk_never_reached_reads_not_run_everywhere(
@@ -2597,6 +2717,7 @@ def test_a_stopped_walk_says_no_finish_and_its_warm_launch_one(junction):
     said = notified(c, "device", stopped)
     assert said[0] == "start" and "finish" not in said, said
     assert set(said) <= {"start", "milestone"}, said
+    assert ended.state == "failed", (ended.state, ended.detail)
     warm = stage_status(c.bundle, "device").attempts[-1]
     assert notified(c, "device", warm) == ["start", "finish"]
     _index, rows = _run_index(c, "device", warm)
@@ -2693,7 +2814,10 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     the labels of its points coordinates beside it -- every variable says
     what it is, which the one writer holds (`ncdata.check_said`); and a
     calculation of one
-    structure has the same layout, one frame."""
+    structure has the same layout, one frame.  THE SILENT FAILURE: a value
+    written at another point's cell of the grid, or a variable that does
+    not say what it is -- a script reading the file takes another point's
+    numbers, with nothing in the file to tell it."""
     from molbuilder.frame_average import FRAME_ROWS, MASS_CHANNEL
     from molbuilder.task import of as task_of
     from molbuilder.transport.datafile import data_file_path, read_data_file
@@ -2814,7 +2938,9 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
     voltage) cell on the `scf_cycle` axis, the cycles past its last the fill
     value; the once-run rungs on the `rung` axis; each point's state; the
     NEGF charges by TranSIESTA's own columns; the leads compared -- each as
-    the record it is composed from states it."""
+    the record it is composed from states it.  THE SILENT FAILURE: a point's
+    SCF history filed in another point's cell, or its unused cycles read as
+    values, so a person judges one voltage's convergence by another's."""
     from molbuilder.task import of as task_of
     from molbuilder.transport.datafile import data_file_path, read_data_file
     run = junction.from_pair
@@ -2838,7 +2964,7 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         parts = list(V["charge_part"])
         assert {k: V["device_charge"][cell][parts.index(k)]
                 for k in charges} == charges, cell
-        # EVERY NEGF ROW'S CHARGES, and the run's phases (@4).
+        # EVERY NEGF ROW'S CHARGES, and the run's phases.
         for c, r in enumerate(rows):
             for k, q in (r.get("charges") or {}).items():
                 assert V["device_scf_charge"][cell][c][parts.index(k)] == q
@@ -3074,7 +3200,7 @@ def test_a_scripts_read_structure_gives_the_map_of_what_it_returns(junction):
 
 
 def test_the_data_file_holds_the_calculations_own_records(junction):
-    """§ 2a.12, *the data file* (@4): the calculation's own records -- its
+    """§ 2a.12, *the data file*: the calculation's own records -- its
     description, template and job request, each the file's text -- the
     provenance chain, and each point's transmission k-points, as the
     record states them.  The silent failure: a result no one can rerun or
@@ -3190,7 +3316,10 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     `frame_average.ROWS`); a family its count and no rows; a run one structure.  The shared panel
     asks the pseudopotential directory of the person exactly for a pair,
     which brings none; and Task setup's folder answer echoes the frame-set
-    calculation's frames as the describe door states them."""
+    calculation's frames as the describe door states them.  THE SILENT
+    FAILURES: a card stating rows, weights or moves the cited set does not
+    hold, so a person cites frames they misread; a pair not asked its
+    pseudopotential directory, described with none."""
     from molbuilder.frame_average import MASS_CHANNEL
     from molbuilder.workingcopy_structure import StructureCodec
     # WHAT THE CARD SAYS, from § 2.2f's table and the rows the script wrote
@@ -3296,7 +3425,10 @@ def test_a_selections_pdos_is_asked_at_its_frame_and_voltage(junction, ask):
     atoms named in the user order, asked and answered (`model/overview.md`
     § 2.2a, I1); a frame set's point names its frame, one structure's names
     none, and either asked otherwise is refused by name (`web/web-api.md`,
-    `/api/transport/pdos`)."""
+    `/api/transport/pdos`).  THE SILENT FAILURE: a selection's PDOS summed at
+    another frame or voltage than asked, or over the atoms in TranSIESTA's
+    order while named in yours -- a curve of other atoms drawn as the
+    selection's."""
     status, body = junction.pdos_said[ask["name"]]
     if "refused" in ask:
         assert status == 400 and ask["refused"] in body["error"], body
@@ -4173,7 +4305,9 @@ def reused(junction, tmp_path_factory):
                  "P/transport/R3"),
                 ("another junction", ("--reuses", finished, "--slot",
                                       f"junction={moved}"),
-                 "P/transport/R4")):
+                 "P/transport/R4"),
+                ("another engine", ("--reuses", finished, "--engine",
+                                    "pyscf"), "P/transport/R5")):
             r = molbuilder("describe", "--calculation", "transport",
                            *flags, "--bundle", folder)
             out["refused"][step] = (Said(r.exit_code, r.output),
@@ -4407,17 +4541,40 @@ def reused(junction, tmp_path_factory):
         kept = junction.tree / "P" / "transport" / "kept"
         kept.mkdir()
         refusals = {}
-        # EACH AS THE PAGE SENDS IT: one voltage carries no treatment
-        # (`low_bias_approximation` null, `engines/transport.md` § 2a.10).
+        # EACH AS THE PAGE SENDS IT -- the body above, its voltages and their
+        # treatment stated -- with the one change the row names: a kept
+        # value, the rename, no voltage, a value the shared panel does not
+        # carry.
+        swapped = not json.loads((junction.bundle / "task.json").read_text()
+                                 ).get("swap_electrodes", False)
         for step, change in (("a seed value", {"stages": {"seed": {
                                  "mixing_weight": 0.31}}}),
                              ("a shared value", {"shared": {
-                                 "mesh_cutoff": 310}})):
+                                 "mesh_cutoff": 310}}),
+                             ("its rename", {"swap_electrodes": swapped}),
+                             ("no voltage", {"bias": []}),
+                             ("a value the shared panel does not carry",
+                              {"shared": {"mixing_weight": 0.31}})):
             r = client.post("/api/transport/describe",
                             json={**body, "dest": str(kept), **change})
             refusals[step] = (r.status_code, r.get_json().get("error"),
                               [f.get("where") for f in
                                r.get_json().get("findings") or []])
+        # ...AND WHAT A REQUEST LEAVES OUT IS THE FINISHED CALCULATION'S:
+        # the plan alone, asked with the device's and the transmission's
+        # own values as their tabs hold them -- the voltages, their
+        # treatment, the junction and the rename left out; then with a
+        # voltage more and no treatment.
+        own_tabs = {s["name"]: s.get("overrides", {}) for s in json.loads(
+            (junction.bundle / "task.json").read_text())["stages"]
+            if s["name"] in ("device", "transmission")}
+        left_out = {}
+        for step, more in (("everything", {}),
+                           ("the treatment", {"bias": [0.0, 0.2, 0.4]})):
+            r = client.post("/api/transport/describe", json={
+                "engine": "siesta", "reuses": finished, "plan": True,
+                "stages": own_tabs, **more})
+            left_out[step] = (r.status_code, r.get_json())
         # ...AND TASK SETUP'S SAVE OF THE EXTENSION holds the same limits.
         made = json.loads((page / "task.json").read_text())
         for st in made["stages"]:
@@ -4437,6 +4594,7 @@ def reused(junction, tmp_path_factory):
         out["kept"] = (locks, refusals, kept,
                        {k: (r.status_code, r.get_json().get("error"))
                         for k, r in saves.items()})
+        out["left out"] = left_out
     out["finished"] = junction
     return out
 
@@ -4470,16 +4628,27 @@ def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
         reused):
     """`engines/transport.md` § 2a.16, *Describing it*: refused before
     anything is written -- a folder that is not a transport calculation's, a
-    new folder inside the finished calculation -- a flag naming what the
-    finished calculation fixes, its label -- and, *A frame set of the same
-    junction*, a set whose frame 0 is not the junction it ran."""
+    new folder inside the finished calculation, named by its address from
+    the projects root (`execution/job-system.md` § 5.1: *"Every path is an
+    address from the projects root"*; 2.65.3) -- a flag naming what the
+    finished calculation fixes, its label -- another engine than the one it
+    ran on, naming both (*The engine is the finished calculation's*:
+    *"another engine than the finished calculation's is refused, naming
+    both"*; 2.65.3) -- and, *A frame set of the same junction*, a set whose
+    frame 0 is not the junction it ran.  THE SILENT FAILURE: a calculation
+    that can never reuse what it names -- another kind, another engine,
+    another junction -- written as if it would, or one written inside the
+    finished calculation, which every later prep then writes into."""
     for step, words in (("not transport", "is not a transport calculation"),
-                        ("inside", "is inside the finished calculation"),
+                        ("inside", "P/transport/T/inner is inside the "
+                                   "finished calculation T"),
                         ("its label", "the label is the finished "
                                       "calculation's"),
                         ("another junction", "P/structure/moved.xyz: its "
                                              "frame 0 is not the junction T "
-                                             "ran")):
+                                             "ran"),
+                        ("another engine", "engine 'pyscf': T ran on "
+                                           "siesta")):
         said, written = reused["refused"][step]
         assert said.exit_code != 0 and words in said.output, (step, said)
         assert not written, step
@@ -4518,10 +4687,15 @@ def test_a_question_the_finished_results_answer_is_copied_in(
     of points stamped a container.  Each result names the one it is a copy
     of, one hop; what each was given is a file of this calculation -- the
     transmission's device the device's result at its own point -- and the
-    record holds the voltages asked, each the finished result, copied.  The
-    silent failure: a copy whose record of its inputs is lost -- a launch
-    again sends the engine without the leads' files, a later calculation
-    reusing it takes nothing over."""
+    record holds the voltages asked, each the finished result, copied.  Its
+    describe wrote the three statement files alone, and its first prep took
+    the junction the finished calculation ran and its pseudopotentials
+    (*Describing it*, 2.65.4).  The silent failures: a copy whose record of
+    its inputs is lost -- a launch again sends the engine without the leads'
+    files, a later calculation reusing it takes nothing over -- and a first
+    prep that writes a junction other than the one the finished calculation
+    ran (another frame, order or partition), or that leaves out a
+    pseudopotential its runs read."""
     from molbuilder import calcdirs
     from molbuilder.runs import folder_answer
     from molbuilder.task import of as task_of
@@ -4540,6 +4714,32 @@ def test_a_question_the_finished_results_answer_is_copied_in(
             in bare, bare
     label = task_of(made.bundle).label
     where = theirs.bundle.relative_to(theirs.tree).as_posix()
+    # ITS DESCRIBE WROTE THE THREE STATEMENT FILES; ITS FIRST PREP TOOK THE
+    # JUNCTION THE FINISHED CALCULATION RAN -- its frame 0, by the one
+    # comparison an extension's junction is held to (`frame_set_refusal`),
+    # and, citing the same junction, the whole record by the one comparison
+    # two junctions are compared by -- and THE PSEUDOPOTENTIALS ITS RUNS
+    # READ, byte for byte (§ 2a.16, *Describing it*; 2.65.4).
+    if "describe" in made.said:
+        _head, files, _first = _described_as_printed(made.said["describe"])
+        assert sorted(files) == sorted([f"{label}.template.toml",
+                                        "task.json", "job-request.json"]), \
+            made.said["describe"].output
+    from molbuilder.pseudos import PSEUDO_DIRNAME
+    from molbuilder.transport.compose import (junction_difference,
+                                              read_provenance,
+                                              recorded_junction)
+    from molbuilder.transport.reuse import frame_set_refusal
+    ours = recorded_junction(made.bundle).structure
+    ran = recorded_junction(theirs.bundle).structure
+    assert frame_set_refusal(ran, ours, name=theirs.bundle.name,
+                             citation=name) is None
+    if (read_provenance(made.bundle)["citation"]
+            == read_provenance(theirs.bundle)["citation"]):
+        assert junction_difference(ran, ours) is None
+    for psml in sorted((theirs.bundle / PSEUDO_DIRNAME).glob("*.psml")):
+        assert ((made.bundle / PSEUDO_DIRNAME / psml.name).read_bytes()
+                == psml.read_bytes()), psml.name
 
     def one_hop(status, folder):
         """What a copy of the finished result in ``folder`` names: its own
@@ -4654,7 +4854,10 @@ def test_a_frame_set_of_the_same_junction_takes_over_frame_0(reused):
     frame's -- O's device launched twice, the second warm, so what its
     newest run carries, not its own record alone, is what the point was
     given (*At prep*); the record holds a point per frame, frame 0's copied
-    from O."""
+    from O.  The set is checked at describe, which says so, and again at the
+    first prep, which writes it here (2.65.4).  THE SILENT FAILURE: a frame
+    set's frame 0 not taken over, or its other frames copied from a junction
+    they are not."""
     from molbuilder.parse.sidecars.transport import TransportRecordFileParser
     from molbuilder.runrecord import read_copied_from, read_gathered_from
     from molbuilder.task import of as task_of
@@ -4707,7 +4910,10 @@ def test_more_voltages_take_the_finished_points_over(reused):
     each rung of points takes over the finished calculation's done points,
     the same calculation given the same inputs, and walks the new voltage
     from the closest converged one before it; each point taken over names
-    the finished point; the ledger keeps a line for each."""
+    the finished point; the ledger keeps a line for each.  THE SILENT
+    FAILURE: a point the finished calculation computed the same run again,
+    or one taken over that names no finished point -- its result's
+    provenance lost."""
     import json
     from molbuilder.jobset.ledger import LEDGER_FILE
     from molbuilder.runrecord import read_copied_from
@@ -4792,7 +4998,10 @@ def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
     as line contours in its deck; its `shared/` holds the finished point's
     files and their record; and the point's result is its grid, joined --
     every energy of it, T(E) at the shared energies the finished point's,
-    its current the record's, said so."""
+    its current the record's, said so.  THE SILENT FAILURE: a wider window
+    computing again every energy the finished point holds, or joining the
+    two on another grid -- a curve whose shared energies are not the
+    finished point's."""
     import json
     import numpy as np
     from molbuilder.runrecord import read_copied_from
@@ -4910,7 +5119,10 @@ def test_a_transmission_that_runs_once_shares_as_its_one_point(reused):
     approximation the transmission runs once -- its one point, the run
     itself -- and, its window fitted wider, shares the energies the
     finished run holds -- here a copy of the finished 0 V point -- its
-    `shared/` in its run's folder, its result its grid joined."""
+    `shared/` in its run's folder, its result its grid joined.  THE SILENT
+    FAILURE: a transmission that runs once -- no point folder -- computing
+    every energy again, or sharing files whose record names no run that
+    computed them."""
     from molbuilder.runrecord import read_copied_from
     lowfit = reused["lowfit"]
     bare = lowfit.said["prep bare"].output
@@ -4937,10 +5149,22 @@ def test_an_extension_keeps_what_its_finished_calculation_computed_once(
     calculation's, drawn at its values and never a control; its voltages
     are the person's to add or remove.  The describe door answers the
     limits; Describe keeps the fixed rungs' own values, refuses a change of
-    a fixed one, writing nothing, and answers what will be reused.  The
-    silent failure: an extension whose seed was edited on the page, its
-    every group run again while the person thought they only added a
-    voltage."""
+    a fixed one, writing nothing, and answers what will be reused.  Since
+    2.65.3 it also refuses, by name and writing nothing, a changed rename
+    (*"a changed fixed value, or its rename or its label changed is refused
+    by name"*), an empty voltage list (§ 2a.10: *"an empty list is written
+    by neither"*) and a value the shared panel does not carry (§ 3.8.2: the
+    panel holds *"every value binding all five rungs"*); and what a request
+    leaves out is the finished calculation's -- its voltages, their
+    treatment, its junction and rename (*Describing it*: *"voltages typed
+    with no treatment keep the finished calculation's, as the Transport tab
+    does"*; `web/web-api.md`, `/api/transport/describe`: *"an extension's
+    `bias`, `junction` or `swap_electrodes` left out keeps the finished
+    calculation's"*), as the plan alone answers it.  The silent failure: an
+    extension whose seed was edited on the page, its every group run again
+    while the person thought they only added a voltage; or one whose
+    voltages fell back to the single bias, or whose added voltage ran under
+    another treatment, because the page left them out."""
     import json
     attempt, code, answer, page = reused["page"]
     locks, refusals, kept, saves = reused["kept"]
@@ -4978,10 +5202,30 @@ def test_an_extension_keeps_what_its_finished_calculation_computed_once(
     for step, said in (("a seed value", "seed's values are fixed by T"),
                        ("a shared value", "the shared values are fixed by T"),
                        ("Task setup's Save of a seed value",
-                        "seed's values are fixed by T")):
+                        "seed's values are fixed by T"),
+                       ("its rename", "the electrodes' rename "
+                                      "(swap_electrodes) is fixed by T"),
+                       ("no voltage", "bias: state the voltages"),
+                       ("a value the shared panel does not carry",
+                        "'mixing_weight' is not a shared value")):
         status, error, _where = refusals[step]
         assert status == 400 and said in error, (step, error)
     assert not any(kept.iterdir()), list(kept.iterdir())
+    # WHAT A REQUEST LEAVES OUT, the finished calculation's: every group
+    # copied in and no voltage left unasked; a voltage more with no
+    # treatment walked self-consistently, as T ran, its others taken over.
+    status, said = reused["left out"]["everything"]
+    assert status == 200 and said["ok"] and said["manifest"], said
+    plan = "\n".join(said["manifest"])
+    assert _copied_in(plan) == [1, 2, 3] and "not asked here" not in plan, (
+        plan)
+    status, said = reused["left out"]["the treatment"]
+    assert status == 200 and said["ok"] and said["manifest"], said
+    plan = "\n".join(said["manifest"])
+    for stage in ("device", "transmission"):
+        (line,) = [ln for ln in plan.splitlines()
+                   if f"{stage}: takes over 0 V, 0.2 V from " in ln]
+        assert line.endswith("; walks 0.4 V"), plan
     # An extension the command line wrote: its rename stays.
     assert saves["its rename"][0] == 400 and \
         "swap_electrodes" in saves["its rename"][1], saves
@@ -5049,12 +5293,15 @@ def test_a_rung_of_points_changed_after_its_prep_is_said_by_status(reused):
 
 
 def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
-    """§ 2a.16, *On the page*: the junction card's picker takes a transport
-    calculation's folder -- the describe door answers its meta line, its
-    junction's citation and `reuses` -- and Describe writes what `molbuilder
-    describe --reuses` writes: its description with `reuses`, its template
-    as the panel left it, its composed junction and its
-    pseudopotentials."""
+    """§ 2a.16, *On the page* and *Describing it*: the junction card's
+    picker takes a transport calculation's folder -- the describe door
+    answers its meta line, its junction's citation and `reuses` -- and
+    Describe writes what `molbuilder describe --reuses` writes: its three
+    statement files, its description with `reuses` and its template as the
+    panel left it -- the junction and the pseudopotentials are its first
+    prep's (2.65.4).  THE SILENT FAILURE: a describe that copies the
+    finished junction and pseudopotentials ahead of any prep, which no prep
+    checks against the finished calculation as it then reads."""
     import json
     attempt, code, answer, page = reused["page"]
     assert attempt["reuses"] == "P/transport/T"
@@ -5075,8 +5322,11 @@ def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
     # value and whose it is, as the finished calculation's.
     assert ((page / "T.template.toml").read_text()
             == (reused["finished"].bundle / "T.template.toml").read_text())
-    for f in ("junction.xyz", "slot-provenance.json", "H.psml"):
-        assert (page / f).is_file(), f
+    assert sorted(answer["written"]) == sorted([
+        "T.template.toml", "task.json", "job-request.json"]), answer
+    for f in ("junction.xyz", "slot-provenance.json", "H.psml",
+              "pseudos/H.psml"):
+        assert not (page / f).exists(), f
 
 
 def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(

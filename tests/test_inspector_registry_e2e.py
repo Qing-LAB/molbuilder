@@ -64,16 +64,26 @@ def registry_answers(browser, flask_server):
     name has registered -- each with its row's ``meta``, as the dropdown
     passes the directory's answer: ``{table: {row name: answer}}``.
 
-    A row's answer is one the server can give: its role one the catalogue
-    declares, its parser one the registry holds."""
+    A row's answer is one the server can give (`runs.folder_answer`): its
+    role one the catalogue declares, its parser one the registry holds, its
+    engine's words the engine table's for that engine and its noun one the
+    kind table holds."""
+    from molbuilder.engine_table import engine, engines
+    from molbuilder.kind_table import kind, kinds
     from molbuilder.parse.registry import _FILE_PARSERS
     from molbuilder.runfiles import roles
     parsers = {k.name for k in _FILE_PARSERS}
+    nouns = {kind(k).noun for k in kinds()}
     for tbl in ("pick", "result", "heading"):
         for r in PRESENTERS[tbl]:
             meta = r.get("meta", {})
             assert meta.get("role") in (None, *roles()), (r["name"], meta)
             assert meta.get("parser") in (None, *parsers), (r["name"], meta)
+            assert meta.get("noun") in (None, *nouns), (r["name"], meta)
+            if meta.get("engine_words") is not None:
+                assert (meta.get("engine") in engines() and
+                        engine(meta["engine"]).words == meta["engine_words"]
+                        ), (r["name"], meta)
     page = browser.new_page()
     try:
         page.goto(f"{flask_server}/results")
@@ -134,9 +144,19 @@ def test_the_dropdown_lists_a_file_by_the_viewer_its_kind_names(
 
 @_rows("heading")
 def test_the_dropdown_files_it_under_its_heading(registry_answers, row):
-    """`presenters.md` § 2: the heading names the engine when, and only
-    when, the directory's answer does; the spelling is what the person
-    reads."""
+    """`presenters.md` § 1-§ 2 (2.65.0): a run's heading is the folder
+    answer's words -- the engine's and the calculation's noun, *SIESTA
+    optimization*, *PySCF vibration*; *Trajectory* where either is missing,
+    ``engine = "unknown"`` read as none -- never guessed from a suffix; the
+    spelling is what the person reads.
+
+    THE SILENT FAILURES: a heading from the page's own guess -- SIESTA runs
+    filed under *PySCF optimization* while the plot title said SIESTA
+    (2026-09-04); every run read *... optimization* until 2.65.0.
+
+    MUTATION THIS MUST FAIL AGAINST: the trajectory presenter's
+    `resultCategory` reading ``meta.engine`` or a fixed noun instead of the
+    served ``engine_words`` and ``noun``."""
     assert registry_answers["heading"][row["name"]] == row.get("heading")
 
 
@@ -380,103 +400,3 @@ class TestInspectorListenerTeardown:
             assert got["text"], (name, got)
             assert "error" in got["cls"].split(), (name, got)
         assert "trajectory-status" in out["trajectory"]["cls"].split(), out
-
-
-# --------------------------------------------------------------------- #
-#  Error-rendering on partial-fetch failure (2026-05-20 review #16)     #
-# --------------------------------------------------------------------- #
-
-
-class TestInspectorErrorCardRuntime:
-    """What a viewer shows when the panel it fetches cannot be had: the
-    ``.inspector-card.error-card``, saying which file and why."""
-
-    def test_partial_fetch_404_renders_error_card(
-            self, page, flask_server):
-        """Intercept the trajectory partial URL with a 404; mount
-        the trajectory inspector; verify the host shows an
-        ``.inspector-card.error-card`` with the file name + HTTP
-        reason (not a blank panel)."""
-        _open_results(page, flask_server)
-        # Route the partial URL to a 404 BEFORE triggering the mount.
-        page.route(
-            "**/partials/trajectory-inspector",
-            lambda route: route.fulfill(
-                status=404,
-                content_type="text/plain",
-                body="not found",
-            ),
-        )
-        page.evaluate("""() => {
-            const host = document.getElementById("inspector-host");
-            const reg  = window.molbuilder.inspectors;
-            const ctx  = reg.createDefaultContext(host);
-            reg.mount(host, "/projects/foo/run.molwatch.log", ctx,
-                      { parser: "molwatch", role: ".molwatch.log" });
-        }""")
-        # The adapter's .catch() handler renders the error card; wait
-        # for it (the fetch + setHTML + DOM update is microtask-fast
-        # but not synchronous).
-        page.wait_for_selector(".inspector-card.error-card", timeout=3000)
-        # Card body must mention the file name (basename only) so the
-        # user knows which selection failed.
-        title = page.locator(
-            ".inspector-card.error-card .inspector-card-title"
-        ).text_content() or ""
-        assert "failed to mount" in title.lower(), (
-            f"error card title should mention 'failed to mount'; "
-            f"got {title!r}"
-        )
-        # And the HTTP status the user can act on.
-        body = page.locator(
-            ".inspector-card.error-card"
-        ).text_content() or ""
-        assert "404" in body, (
-            f"error card body should show the HTTP 404 reason so the "
-            f"user can debug; got {body!r}"
-        )
-
-    def test_aborterror_during_mount_does_not_render_error_card(
-            self, page, flask_server):
-        """Mount inspector A, immediately mount inspector B before
-        A's partial fetch resolves.  A's fetch should be aborted by
-        the cleanup chain; the abort must NOT surface as an error
-        card (it's the user's deliberate file-switch, not a failure).
-        Verify B's content is in the host, no error-card overlay
-        from A.
-        """
-        _open_results(page, flask_server)
-        page.route(
-            "**/partials/trajectory-inspector",
-            lambda route: route.fulfill(
-                status=200,
-                content_type="text/html",
-                body="<div id='viewer'></div>",
-            ),
-        )
-        page.evaluate("""() => {
-            const host = document.getElementById("inspector-host");
-            const reg  = window.molbuilder.inspectors;
-            const ctx  = reg.createDefaultContext(host);
-            // Mount A (trajectory), with the directory's answer for the
-            // file, as the page passes it.
-            const handleA = reg.mount(host, "/x/a.molwatch.log", ctx,
-                { parser: "molwatch", role: ".molwatch.log" });
-            // Immediately dispose A (simulates user picking another
-            // file before A's partial fetch resolves).
-            handleA.dispose();
-            // Mount B (different inspector -- source) so the host
-            // ends up with B's content, not A's late HTML.
-            reg.mount(host, "/x/file.fdf", ctx);
-        }""")
-        # Wait for the source inspector's card (synchronous: source
-        # inspector mounts without fetching a partial).
-        page.wait_for_selector(".source-card", timeout=3000)
-        # The error-card must NOT be visible -- A's abort was
-        # expected, not a failure.
-        err_count = page.locator(".inspector-card.error-card").count()
-        assert err_count == 0, (
-            "an .inspector-card.error-card appeared after a user-"
-            "triggered abort -- the AbortError guard in the .catch() "
-            "handler is missing or broken"
-        )

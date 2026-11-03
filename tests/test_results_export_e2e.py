@@ -1,7 +1,9 @@
 """A structure saved out of the Results tab reloads where the engine had it
-(plan § 5q.4, T3): the engine's coordinates WITH the engine's origin -- a
-stated offset of 0 -- "so its next treatment applies nothing and the box
-stays where the engine had it" (`model/structure-periodicity.md` § 6.0).
+(`model/structure-periodicity.md` § 6.0): *"a structure saved from an
+engine's output carries the engine's coordinates with the engine's origin,
+(0,0,0), set together and recorded as the engine's"* -- so the saved pair
+draws its box where the engine had it, and a new calculation made from it is
+centred.
 
 § 6.0 asks it of "every door that makes a structure from an engine's output
 ... and every save of a run's output", and the Results tab reaches a run's
@@ -17,6 +19,11 @@ and saved as a person saves them (`support/results_export.py`).  Each saved pair
 codec every load goes through and compared with the engine's own statement of
 its frame: the output as the Results door parses it (``parse.detect``), or
 the record in the deck it ran.
+
+The two trajectory opens also read the run's heading in the picker
+(`web/presenters.md` § 2): *"the engine's words and the calculation's noun,
+both served with the folder answer"* -- *SIESTA optimization*, *PySCF
+optimization*.
 """
 from __future__ import annotations
 
@@ -73,6 +80,16 @@ def _open(page, flask_server, monkeypatch, folder, pick):
     return root
 
 
+def _heading(page, pick):
+    """The heading ``pick`` sits under in the picker -- its group's label."""
+    return page.eval_on_selector(
+        "#results-file-picker-select",
+        "(s, want) => { const o = [...s.options].find((o) => o.value === want);"
+        "  return o && o.parentElement.tagName === 'OPTGROUP'"
+        "    ? o.parentElement.label : null; }",
+        str(pick))
+
+
 def _as_the_door_reads(output):
     """The frames and the cell of ``output``, through the parser the
     Results door picks for it."""
@@ -95,12 +112,19 @@ def _the_decks_cell(run_dir):
 
 
 def _holds_the_engines_frame(saved, cell, positions):
+    """The saved pair, read back through the codec: the engine's cell and
+    coordinates, its origin a stated 0 recorded as the ENGINE's (§ 6.0) --
+    recorded as the person's, *Entering a new calculation* would keep the
+    0 instead of centring it."""
     from molbuilder.workingcopy_structure import StructureCodec
     back = StructureCodec().read(saved)
     assert back.engine_offset is not None, (
         "the saved pair states no origin, so its next treatment re-derives "
         "one and moves the box off where the engine had it")
     assert np.allclose(back.engine_offset, 0.0), back.engine_offset
+    assert back.offset_by == "engine", (
+        f"the saved origin is recorded as {back.offset_by!r}'s, not the "
+        "engine's, so a new calculation made from it is not centred")
     assert back.cell is not None, "the saved pair carries no cell"
     assert np.allclose(back.cell, cell, atol=1e-5), (back.cell, cell)
     assert np.allclose(back.positions, positions, atol=1e-5), (
@@ -115,15 +139,19 @@ def test_a_siesta_trajectory_saves_the_box_its_output_states(
     writes ``mine.xyz``), with the frame it holds.
 
     MUTATIONS THIS MUST FAIL AGAINST: the one composer not stating the
-    engine's origin (`runs.Declared.frame`);
+    engine's origin (`runs.Declared.frame`), or stating it as the person's;
     the viewer naming its install after the parser's label, which offered
-    " .log_frame6" and saved a hidden ``.log_frame6.xyz`` until 2026-09-27.
+    " .log_frame6" and saved a hidden ``.log_frame6.xyz`` until 2026-09-27;
+    the served words not reaching the menu -- the run under *Trajectory*
+    (`web/presenters.md` § 2).  (On an optimization a guessed noun reads the
+    same, so a heading guessed from the suffix is not caught here.)
     """
     from molbuilder.runs import run_of
     out = run_of(siesta_run).stdout
     frames, cell = _as_the_door_reads(out)
     assert len(frames) > 1, "a relaxation with one frame asks no frame range"
     root = _open(page, flask_server, monkeypatch, siesta_run, out)
+    assert _heading(page, out) == "SIESTA optimization", _heading(page, out)
     wait_for_viewer(page, atoms=2, frames=len(frames))
     offered = save_to_project(page, "siesta-trajectory", frames=len(frames))
     assert offered == f"{out.stem}_frame{len(frames) - 1}", offered
@@ -158,8 +186,10 @@ def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
     """The trajectory viewer on a PySCF optimisation, whose output states no
     cell: the box is the one its deck recorded placing the atoms in.
 
-    MUTATION THIS MUST FAIL AGAINST: the one composer ignoring the deck
-    record's cell when the output carries none.
+    MUTATIONS THIS MUST FAIL AGAINST: the one composer ignoring the deck
+    record's cell when the output carries none; the heading not the engine's
+    words and the calculation's noun, *PySCF optimization*
+    (`web/presenters.md` § 2).
     """
     from molbuilder.runs import run_of
     log = run_of(pyscf_run).file(".molwatch.log")
@@ -168,6 +198,7 @@ def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
     assert len(frames) > 1, "an optimisation with one frame asks no range"
     cell = _the_decks_cell(pyscf_run)
     root = _open(page, flask_server, monkeypatch, pyscf_run, log)
+    assert _heading(page, log) == "PySCF optimization", _heading(page, log)
     wait_for_viewer(page, atoms=2, frames=len(frames))
     save_to_project(page, "pyscf-trajectory", frames=len(frames))
     _holds_the_engines_frame(root / "pyscf-trajectory.xyz", cell,

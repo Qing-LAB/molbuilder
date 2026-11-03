@@ -113,15 +113,16 @@ hidden. It is neither: it is this module's storage, and this module is public.
 
 Say you open a molecule in the Modify tab, delete an atom, then move another:
 
-1. Each edit rewrites **the draft** — one file, replaced each time. Neither edit
-   adds a point: you have not said either was worth coming back to.
-2. You press **Save state**. That adds a numbered point, and drops any points
-   above it.
+1. Each edit rewrites **the draft** — one file, replaced each time — and lays
+   down a numbered point of its own (`molview.md` § 1.1), dropping any points
+   above it: two edits, two points.
+2. You pick out a few atoms and press **Save state**: a point for a state no
+   edit produced.
 3. You **close the tab and reopen it.** The tab reads its draft back and your
-   edited molecule is there, including the change you made after saving.
-4. You click **Retract**. The first press throws away the work sitting on top of
-   the point you saved and leaves you on it; the next press steps to the point
-   before that, read back from its own numbered file.
+   edited molecule is there, with the atoms you picked out.
+4. You click **Retract**. Each press steps back one point, read back from its
+   own numbered file — the selection, then the move, then the delete. Work no
+   point holds yet (the badge says when) is what the first press throws away.
 5. If a write ever fails — disk full, network drop — the editor does not freeze.
    The failure is reported through `onPersistError` and a page event, never
    swallowed.

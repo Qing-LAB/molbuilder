@@ -46,6 +46,12 @@ class ReadOnce:
             self._junction = composed_junction(self.calc)
         return self._junction
 
+    def frames(self) -> int:
+        """How many frames the junction this calculation has or will have
+        holds (:meth:`junction`) -- its record's count before prep has
+        written it here, as an extension's is at its first prep."""
+        return self.junction().junction.n_frames
+
     def deck_now(self, stage: str, point) -> str:
         key = (stage, point)
         if key not in self._decks:
@@ -324,7 +330,10 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
     beside ``task.json`` when it is usable for THIS citation (the folder
     travels, `project-layout.md` § 2.1) -- written again when its order was
     found rather than read (`ComposedJunction.order_found`, a junction whose
-    sidecar states none) -- else composed afresh from the projects tree,
+    sidecar states none); an extension's, at its first prep, the junction
+    its finished calculation ran or the frame set cited in its place,
+    written here (`rung.junction_record`, `engines/transport.md` § 2a.16)
+    -- else composed afresh from the projects tree,
     when ``afresh`` and no stage is launched.  With a stage launched, the
     recorded junction is never replaced: its runs ran on it; `prep task`
     with no group named writes only an order it found (``afresh`` false;
@@ -333,7 +342,7 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
 
     Written into ``plan`` (`jobset.planned.Plan`), with everything else this
     prep writes, by one road (`transport.rung.written_and_read_back`)."""
-    from .compose import compose_junction
+    from .compose import compose_junction, read_provenance
     from .rung import (compose_refusals, junction_record,
                        written_and_read_back)
     base, task = calc.base, calc.task
@@ -343,10 +352,14 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
             # ITS ORDER FOUND (`engines/transport.md` § 1.1, *The first
             # prep*): the record written again by its one writer -- the
             # recorded junction's atoms, places, cell and labels as they
-            # were, its sidecar stating the order record.
+            # were, its sidecar stating the order record.  And A JUNCTION
+            # NOT YET HERE -- an extension's, taken from its finished
+            # calculation at its first prep (§ 2a.16) -- written here by
+            # the same writer.
+            here = read_provenance(base) is not None
             return (written_and_read_back(base, composed, plan, root=root,
                                            task=task)
-                    if composed.order_found else composed)
+                    if composed.order_found or not here else composed)
         refusal = no_usable_record(calc, why, root=root, afresh=afresh)
         if refusal is not None:
             raise PrepError(refusal)

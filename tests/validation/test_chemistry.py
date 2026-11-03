@@ -128,3 +128,33 @@ def test_light_elements_are_never_mentioned():
                                           [-0.24, 0.93, 0]]),
                       vacuum=(12.0, 12.0, 12.0))
     assert _ecp_findings(water, basis="cc-pVDZ") == []
+
+
+# --------------------------------------------------------------------- #
+#  ES6 on a transport rung: TranSIESTA's stop said, never refused       #
+# --------------------------------------------------------------------- #
+
+
+def test_a_stated_count_on_an_unrestricted_transport_rung_is_said_not_refused():
+    """`science/chemistry-correctness.md` ES6 (the user, 2026-11-02: an
+    engine's own stop is said, never refused): TranSIESTA stops on a fixed
+    total spin, so under `unrestricted` a stated count is written as stated
+    and the stop said beforehand, as information -- while a count beside
+    `restricted` is two stated values that conflict, refused (ES5).  The
+    failure it guards: the kind's offered set refusing the count by name, as
+    an error -- the engine's own stop made ours (2.65.3's catalogue row)."""
+    from molbuilder.config.siesta import SiestaConfig
+    chain = Structure(elements=["H"] * 4, positions=np.array(
+        [[0, 0, 0], [0, 0, 0.75], [0, 0, 3.0], [0, 0, 3.75]], float))
+
+    def said(treatment):
+        return [(i.severity, i.message) for i in validate(
+            chain, SiestaConfig(system_label="J", spin_treatment=treatment,
+                                unpaired_electrons=2),
+            calculation="transport")
+            if i.where in ("config.unpaired_electrons",
+                           "config.spin_treatment")]
+    (severity, message), = said("unrestricted")
+    assert severity == "info", message
+    assert "written as stated" in message, message
+    assert [s for s, _m in said("restricted")] == ["error"]

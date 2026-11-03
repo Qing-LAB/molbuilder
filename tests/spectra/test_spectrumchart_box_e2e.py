@@ -1,9 +1,11 @@
-"""The chart's box traps, measured after the cascade rather than read off it.
+"""The chart's box rule, measured after the cascade rather than read off it.
 
-`spectrumchart.md` § 11, all three traps, all three from real breakage:\nthe frame states a height, the frame clips, and **the frame pads while\nthe surface does not.**  The
-plotting library asks the surface how wide it is, and the browser's answer
-counts padding in -- so a padded surface draws wider than the frame meant to
-contain it, and the overflow is clipped rather than reported.
+`spectrumchart.md` § 11: *"The frame states its size; the surface fills it,
+carries no padding, and never spills past it."*  All three from real breakage
+on one day: a height that came from the plot collapsed to a strip; a padded
+surface drew wider than its frame, because the plotting library asks the
+surface how wide it is and the browser's answer counts padding in; and the
+drawing then overflowed across the panel beside it.
 
 WHY THIS IS NOT A REGEX ON `_style.css`.  A stylesheet is not a file, it is a
 cascade: a page sheet, a reset, a `.spectrumchart *` shorthand or a later
@@ -28,7 +30,8 @@ def flask_server():
         yield base_url
 
 
-def test_the_frame_pads_and_the_surface_does_not(page, flask_server):
+def test_the_frame_states_its_size_and_the_surface_carries_no_padding(
+        page, flask_server):
     """Mount a real chart on the real server; read what the browser computed.
 
     The real app is used rather than a synthetic page because the module
@@ -57,7 +60,7 @@ def test_the_frame_pads_and_the_surface_does_not(page, flask_server):
                            + "host held: " + host.innerHTML.slice(0, 200)};
         }
         const cs = getComputedStyle(frame);
-        const out = {surface: pad(surf), frame: pad(frame),
+        const out = {surface: pad(surf),
                      overflow: cs.overflow,
                      // WHERE THE NUMBER CAME FROM, which is the whole claim.
                      // The token is `clamp(220px, 34vh, 460px)`, so its raw
@@ -92,10 +95,6 @@ def test_the_frame_pads_and_the_surface_does_not(page, flask_server):
         f"the surface computes padding {got['surface']} -- the library asks "
         f"this element how wide it is and the browser counts padding in, so "
         f"the drawing comes out wider than the frame and is clipped")
-    assert any(p != "0px" for p in got["frame"]), (
-        f"the FRAME computes no padding either ({got['frame']}); the rule is "
-        f"that the frame pads and the surface does not, and half of it "
-        f"holding by accident is not the rule holding")
     assert 0 < got["surfaceInner"] <= got["frameInner"], (
         f"the surface reports {got['surfaceInner']}px of drawable width "
         f"inside a {got['frameInner']}px frame")

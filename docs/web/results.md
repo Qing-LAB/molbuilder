@@ -1319,10 +1319,11 @@ flowchart TD
 ```
 
 The server tells them apart with a `gpu_error` field on every reading: `null`
-when this host simply has no GPU support installed, and the reason as text when
-the NVIDIA library **was** installed — meaning this box is meant to have a GPU —
-and could not reach the driver. Only the second case prints anything, because
-only the second case is something being wrong.
+when this host simply has no GPU support installed (no `nvidia-smi` to ask), and
+the reason as text when `nvidia-smi` **is** there — meaning this box is meant to
+have a GPU — and could not answer: its own words when it exits with an error, or
+that it timed out. Only the second case prints anything, because only the second
+case is something being wrong.
 
 That distinction was added on 2026-08-04 after the silent version cost real time:
 a driver upgrade on the development host left the userspace library ahead of the
@@ -1340,11 +1341,12 @@ one** request when the page loads and reads nothing from it but `gpu_error` —
 one request per page load, not a stream, so the "collapsed means no polling"
 rule still holds.
 
-One more thing to know when you see that warning: **the driver is checked once,
-when the server starts.** Fixing the host is not enough on its own — a server
-that started while the driver was broken stays GPU-blind for its whole life.
-Restart it. The server log carries the same message at warning level, so it is
-also in the terminal you started the server from.
+One more thing to know when you see that warning: **the server asks the driver
+again every few seconds** (a reading is kept 3 s, and `nvidia-smi` runs as a
+child process with a time limit, so a stuck driver never holds the server). Fix
+the host and the next reading clears the warning — nothing needs restarting.
+The server log carries the same message at warning level on each reading that
+fails, so it is also in the terminal you started the server from.
 
 ## 7. A worked example
 
@@ -1394,7 +1396,9 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
 
 - `test_results_blueprint.py` — the page + the registered presenter set + script
   order.
-- `test_inspector_pageshow_refresh_e2e.py` — the re-scan on tab return.
+- `test_inspector_pageshow_refresh_e2e.py` — the trajectory viewer's one ask
+  on a tab return (`trajectory.md` § 5), by `pageshow` and by
+  `visibilitychange`.
 - § 2, a transmission run's folder:
   `test_transport_on_a_real_junction_e2e.py::test_a_transmission_runs_folder_opens_its_report_at_its_point`
   (the run door's answer, every point of the road's two calculations) and
@@ -1406,9 +1410,10 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
   folder's own state, the run of points' view at its root and its points'
   folders, the point a folder is, the ladder's every run, and every path
   whole (§ 0.2, § 0.3, § 2.4, § 3a).
-- `test_results_file_picker_e2e.py` — the picker: one scan per visit (§ 2.2),
-  the re-read on a restore and on tab return, Reload, and the folder it owns
-  (§ 2.1).
+- `test_results_file_picker_e2e.py` — a tab return's rescan of the file on
+  screen leaves no *Parsing…* up (§ 2.1, § 2.2). The picker's other rules — one
+  scan per visit, Reload, the folder it owns — are owed a test on a real run
+  (F9).
 - `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped`
   — the Run panel (§ 3a) on a SIESTA run the road makes and stops: the closed
   line, the four sections, the deck's View, and hidden for a container and

@@ -2,11 +2,11 @@
 the one before has finished (`execution/job-system.md` § 6.0, *A sequence of
 groups*) -- down the road with the real SIESTA.
 
-``molbuilder describe`` (the shipped `publishable` ladder: three
-stages, each building on the one before, groups 1 2 3) -> ``prep task
---group 1 --group 2 --group 3 --one-job`` -> ``launch task --group 1
---group 2 --group 3 --mode direct``: ONE walk, run here, launching each
-group as its own launch would, each run recording the job it rode.
+``molbuilder describe`` (the shipped `publishable` ladder: two stages,
+`coarse` and `medium`, the second building on the first, groups 1 2) ->
+``prep task --group 1 --group 2 --one-job`` -> ``launch task --group 1
+--group 2 --mode direct``: ONE walk, run here, launching each group as its
+own launch would, each run recording the job it rode.
 
 THE SILENT FAILURES IT GUARDS: a group launched before the one it builds on
 finished (taking an older run, or nothing); a run inside the job recorded as
@@ -38,8 +38,9 @@ pytestmark = [
 
 
 def _calculation(tree: Path, name: str) -> Path:
-    """A three-stage H2 relaxation ladder, one rank a run -- an H2 needs no
-    more -- described as `molbuilder describe` describes it."""
+    """The `publishable` H2 relaxation ladder -- `coarse`, then `medium`,
+    each its own group -- one rank a run (an H2 needs no more), described
+    as `molbuilder describe` describes it."""
     from molbuilder.workingcopy_structure import StructureCodec
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
     pair = tree / "P" / "structure" / "h2.xyz"
@@ -119,6 +120,18 @@ def road(isolated_projects_root_module, tmp_path_factory):
         job = next(j for j in every()
                    if isinstance(j, Job) and j.sequence is not None
                    and Path(j.calculation) == left.resolve())
+        # THE STOP LANDS ON A RUN THAT STARTED: group 1's first stage read
+        # as begun (running, or already ended) before it is sent, as its
+        # status door reads it -- a stop sent before the job's first run
+        # began would leave it never started, not stopped.  Waited for,
+        # bounded; what the stop then found is the tests' to judge
+        # (`reached_last`, the stopped stage's state).
+        from support.real_runs import stage_status
+        first, deadline = groups[0][1][0], time.time() + 300
+        while (stage_status(left, first).state
+               not in ("running", "finished", "failed")
+               and time.time() < deadline):
+            time.sleep(0.5)
         said["stop"] = molbuilder("jobs", "stop", job.id, "--yes")
         # THE WALK ENDS ON ITS SIGNAL: waited for, bounded, never assumed.
         deadline = time.time() + 120
@@ -154,12 +167,20 @@ def test_the_sequence_runs_every_group_in_turn(road):
 
 def test_each_run_records_the_sequence_it_rode(road):
     """Every run the job sent records the sequence -- its name, and the
-    job's line, the walk run here -- read back through the run record the
-    Results tab reads (`computation.launch.sequence`)."""
+    job's line, the walk run here: ``mode: direct`` and the walk's line
+    (`job-system.md` § 6.0, *The walk*: "run here, `mode: direct` and the
+    walk's line") -- read back through the run record the Results tab reads,
+    its folder answer (`runs.folder_answer`; `web/results.md` § 3a,
+    `computation.launch.sequence`; `model/parse.md` § 5d.1b, the
+    ``run-json`` row).
+
+    THE SILENT FAILURE: a run inside the job recorded as a run of its own,
+    so every reader asks no job about it and a job killed leaves it reading
+    running."""
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.group import sequence_names
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runrecord import launch_record
+    from molbuilder.runs import folder_answer
     calc = open_calculation(road["whole"])
     numbers = [n for n, _ in road["groups"]]
     name = sequence_names(road["whole"], calc.task, calc.request,
@@ -167,17 +188,33 @@ def test_each_run_records_the_sequence_it_rode(road):
     for _n, stages in road["groups"]:
         for st in stages:
             home = stage_home(road["whole"], calc.task, st)
-            rec = launch_record(home.dir / "run-0")
-            assert rec["sequence"] == name, (st, rec)
-            assert rec["mode"] == "direct" and rec["job_id"] is None, rec
-            assert rec["command"] == ["bash", f"launch/{name}.run.sh"], rec
+            launch = folder_answer(home.dir / "run-0")[
+                "record"]["computation"]["launch"]
+            assert launch["sequence"] == name, (st, launch)
+            assert launch["mode"] == "direct" and launch["job_id"] is None, \
+                launch
+            assert launch["command"] == ["bash", f"launch/{name}.run.sh"], \
+                launch
 
 
 def test_the_sequence_record_and_the_ledger_say_it(road):
     """The sequence's launch record states its groups and how it went, and
     the ledger keeps the one launch that sent it and each group's launch
-    inside it, naming the job."""
+    inside it, naming the job (`job-system.md` § 6.0, *A sequence of
+    groups*).
+
+    And each group's first launch, inside the job, saved the folder saying
+    so -- ``… · before launch task group 2 (medium), in job 4817 (sequence
+    H2_sequence-01_coarse-02_medium)``, the job as `molbuilder jobs status`
+    names it (a run here's walk, ``<host>-<pid>``: the address the ledger's
+    ``launched`` line names) and the sequence by its name
+    (`checkpointing.md` § 9, *The note an act writes*; 2.62.1), read back
+    through the folder's history (`checkpoint.Repo.states`, § 10.2).  THE
+    SILENT FAILURE: a state the job took read as one the person's own
+    launch took -- or the job's words never reaching the note, only the
+    walk carrying them to each group's launch on the job's node."""
     from molbuilder.calculation import open as open_calculation
+    from molbuilder.checkpoint import Repo
     from molbuilder.jobset.group import sequence_names
     from molbuilder.jobset.sequence import read_record, record_path
     calc = open_calculation(road["whole"])
@@ -194,6 +231,11 @@ def test_the_sequence_record_and_the_ledger_say_it(road):
     assert len(outer) == 1, entries
     assert len(inner) == len(numbers), inner
     assert all(e["in_sequence"] == names.stem for e in inner), inner
+    notes = [s.note for s in Repo(str(road["whole"])).states()]
+    for n, stages in road["groups"]:
+        said = (f"· before launch task group {n} ({', '.join(stages)}),"
+                f" in job {outer[0]['job']} (sequence {names.stem})")
+        assert sum(note.endswith(said) for note in notes) == 1, (said, notes)
 
 
 def test_a_group_the_job_holds_goes_in_it(road):
@@ -236,8 +278,20 @@ def test_what_the_job_holds_is_not_taken_from_it(road, verb, says):
 
 def test_jobs_status_lists_the_sequence_and_a_stop_ends_it(road):
     """`molbuilder jobs status` names the job a sequence of its groups, with
-    the groups not reached yet; `jobs stop` ends the walk, and the groups it
-    never reached are back to their own state -- not the job's."""
+    the groups not reached yet (`job-system.md` § 6.0a); `jobs stop` ends
+    the walk -- SIGTERM to its process group, which reaches the engine --
+    and "the run then reads *failed — stopped before its end* by its own
+    files" (§ 6.0a, `jobs stop`; `running-a-job.md` § 4.2); the group it
+    never reached is left as it was (§ 6.0, *A sequence of groups*: "a
+    sequence that ended before a group leaves that group as it was") --
+    prepared, never launched: *pending*, no launch record -- its own again,
+    not the job's.
+
+    THE SILENT FAILURES (2.61.0: a sequence stopped, untested): the run the
+    job was running when stopped reading *running* for ever, or a group the
+    job never reached reading as launched, or as still the job's."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.runstatus import jobset_status
     jobs = road["said"]["jobs"].output
     assert "a sequence of groups" in jobs, jobs
     assert "not launched yet" in jobs, jobs
@@ -245,3 +299,13 @@ def test_jobs_status_lists_the_sequence_and_a_stop_ends_it(road):
     assert road["said"]["stopped_going"] is False
     after = road["said"]["after_stop"].output
     assert "goes in job" not in after, after
+    assert not road["said"]["reached_last"], (
+        "the job launched the last group before it was stopped")
+    rows = {s.name: s for s in
+            jobset_status(open_calculation(road["left"])).stages}
+    for st in road["groups"][0][1]:
+        assert rows[st].state == "failed" and rows[st].detail.startswith(
+            "stopped before its end"), (st, rows[st].state, rows[st].detail)
+    for st in road["groups"][-1][1]:
+        assert (rows[st].state, rows[st].launch) == ("pending", None), (
+            st, rows[st].state, rows[st].detail)

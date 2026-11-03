@@ -345,6 +345,7 @@ the whole amendment.
 class Resolved:
     value:  Any          # the item's value, never blank
     source: str          # "stated" · "implied" · "recorded" · "detected" · "rule"
+                         # · "default" (a form's blank method, below)
     why:    str          # the reason in words — "three deprotonated phosphates",
                          # "Fe is an open-d metal: 2S = 2 is the starting guess; verify"
     said:   str          # (derived) where it came from, in words — "stated", or
@@ -365,7 +366,8 @@ class ElectronicState:
     recommended:        Recommended  # what the structure alone implies at this charge
     facts:              ChemistryAnalysis   # the metals and their hints it was decided from
 
-def electronic_state(struct, cfg, *, kind) -> ElectronicState
+def electronic_state(struct, cfg, *, kind, chosen=None) -> ElectronicState
+    # chosen: the items a FORM states, where the caller holds one (the card)
 ```
 
 `cfg` is either engine's config — the four items are spelled alike in both, which
@@ -407,7 +409,12 @@ answers it:
    and `free` in a repeating one.
 
 `method` is never blank: the catalogue's `DFT` is written into a template like
-any other value, and SIESTA is DFT by rule.
+any other value, and SIESTA is DFT by rule. On a form, before a template exists,
+a method the person left blank is the catalogue's and the card says so — its
+source `default`, said in the words every surface says a value nobody chose,
+*not chosen* (`template.SOURCE_WORDS`), never *stated*
+([`web/form-schema.md`](?doc=web/form-schema.md) § 1.1: a value the person did
+not choose is never presented as if they had).
 
 **And one rule after them all**: a count nobody stated floats where the engine
 cannot hold a fixed one (ES6) — a recorded or detected number on a transport
@@ -574,13 +581,13 @@ and is the kind table's — a kind's parts ([`execution/architecture.md`](?doc=e
 | `restricted` | ✅ | ✅ | ✅ | ✅ |
 | `restricted-open` | ❌ SIESTA has no restricted open-shell formalism | ❌ | ✅ ROHF/ROKS gradients exist (`pyscf/grad/rohf.py`, `roks.py`) | ❌ **no analytic ROHF/ROKS Hessian** — `pyscf/hessian/` holds `rhf`, `rks`, `uhf`, `uks` only, and the vibration deck uses the analytic Hessian |
 | `unrestricted` | ✅ (`Spin polarized`) | ✅ — the count floats (below) | ✅ | ❌ *until the spectrum record carries two spin channels* — its orbital block is written one channel wide and the reader refuses a second (PS-C2, ruled 2026-09-29) |
-| `non-collinear` | ✅ — a pinned count refused: SIESTA `die()`s on `Spin.Fix` here (`read_options.F90`) | ❌ TranSIESTA stops on more than two spin components (`m_transiesta.F90`: *"transiesta does not work for non-collinear or spin-orbit"*) | ❌ not offered | ❌ |
-| `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count refused as above | ❌ as `non-collinear` | ❌ | ❌ |
+| `non-collinear` | ✅ — a pinned count written as stated, SIESTA's stop said (ES6): it `die()`s on `Spin.Fix` here (`read_options.F90`) | ❌ TranSIESTA stops on more than two spin components (`m_transiesta.F90`: *"transiesta does not work for non-collinear or spin-orbit"*) | ❌ not offered | ❌ |
+| `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count said as above | ❌ as `non-collinear` | ❌ | ❌ |
 
 | `unpaired_electrons` | SIESTA | SIESTA transport | PySCF |
 |---|---|---|---|
-| a count | beside `unrestricted` (and 0 beside `restricted`) | 0 beside `restricted` only | always — PySCF pins it; a vibration, restricted, 0 alone |
-| `free` | beside `unrestricted`; the only value under `non-collinear` and `spin-orbit` | the only value beside `unrestricted`: TranSIESTA stops on a fixed total spin (`m_ts_options.F90`: *"Fixing spin is not possible in TranSiesta"*), so a blank count floats there and a stated one is written as stated, the stop said | ❌ written as stated, the stop said (ES6) |
+| a count | beside `unrestricted` (and 0 beside `restricted`) | 0 beside `restricted`; beside `unrestricted`, written as stated, TranSIESTA's stop said beforehand (ES6) | always — PySCF pins it; a vibration, restricted, 0 alone |
+| `free` | beside `unrestricted`; under `non-collinear` and `spin-orbit` the value a blank count takes (SIESTA stops on a fixed one: a stated count written as stated, the stop said) | beside `unrestricted`, the value a blank count takes: TranSIESTA stops on a fixed total spin (`m_ts_options.F90`: *"Fixing spin is not possible in TranSiesta"*), so a stated one is written as stated, the stop said | ❌ refused by name: PySCF pins N↑ and N↓ (ES6) |
 
 ### 2a.4 How each engine reads what molbuilder writes
 

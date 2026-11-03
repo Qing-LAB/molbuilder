@@ -75,11 +75,13 @@ def capped(isolated_projects_root_module, tmp_path_factory):
                    "--bundle", bundle, "--target", "this")
         assert r.exit_code == 0, r.output
         home = stage_home(bundle, task_of(bundle), "coarse").dir
-        jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-               "--mode", "direct", "--foreground", "--yes")
+        # A RUN OUT OF MOVES FINISHED (`running-a-job.md` § 3.5), so the
+        # launch that waited on it exits 0 (`job-system.md` § 6.0, *A run
+        # here, waited on*: "exits 0 when every member finished").
+        launched = jobset("launch", "task", "--stage", "coarse", "--bundle",
+                          bundle, "--mode", "direct", "--foreground", "--yes")
+        assert launched.exit_code == 0, launched.output
         first = latest_attempt(home)
-        assert first is not None and first.name == "run-0", sorted(
-            p.name for p in bundle.rglob("*"))
         # ...AND LAUNCHED AGAIN: the next run, warm from the one that ran
         # out of moves.
         again = jobset("launch", "task", "--stage", "coarse", "--bundle",
@@ -321,10 +323,18 @@ def test_xv2xyz_from_run_refuses_a_xv_no_run_of_ours_holds(opt, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  The output and its companions (`model/parse.md` § 2a, § 5.3, § 6)      #
+#  The output and its companions (`model/parse.md` § 3, § 5c, § 5d)      #
 # --------------------------------------------------------------------- #
 
 def test_the_registry_reads_the_output_as_siestas(opt):
+    """The output SIESTA wrote is claimed by exactly one parser, SIESTA's,
+    and read as a trajectory with frames (`model/parse.md` § 3: `detect`
+    returns the one parser whose `can_parse` is true -- none, or two, is
+    refused; registration order is not precedence).
+
+    THE SILENT FAILURE: a real SIESTA output claimed by no parser or by
+    two -- a new parser's `can_parse` matching it -- so nothing opens the
+    run's own output; only SIESTA's real output can show it."""
     from molbuilder.parse import TrajectoryResult, detect, parse
     from molbuilder.parse.engines import SiestaOutFileParser
     assert detect(_out(opt)) is SiestaOutFileParser
@@ -374,9 +384,13 @@ def test_a_relaxations_step_boundaries_are_not_iterations(opt):
     into a row whose iteration is 1 spans the previous SCF's end, the forces,
     the move and the next step's setup, and the phase's first delta can
     carry warm-up -- neither is an iteration (`scf_timing_rows`,
-    `model/parse.md` § 5c).
+    `model/parse.md` § 5c).  And the run's record states those figures, read
+    from this file alone (§ 5c, *A run's timing file is chosen by one
+    door*; 2.64.0).
 
-    MUTATION THIS MUST FAIL AGAINST: keep the deltas into iteration 1."""
+    MUTATION THIS MUST FAIL AGAINST: keep the deltas into iteration 1; the
+    record timed by prep's seeded progress log (no rate, zero iterations)
+    instead of the run's own `.scf-timing.log`."""
     from molbuilder.parse.instruments.scf_timing_rows import \
         scf_timing_metrics
     text = _run(opt).file(".scf-timing.log").read_text()
@@ -392,6 +406,15 @@ def test_a_relaxations_step_boundaries_are_not_iterations(opt):
     # stated to the millisecond, the precision it is reported at
     assert m["s_per_iter"] == pytest.approx(sum(within) / len(within),
                                             abs=5e-4), m
+    # THE RUN'S RECORD TIMES IT BY THIS FILE ALONE (2.64.0; `model/parse.md`
+    # § 5c: a run whose output the catalogue cuts a tee from "is timed by
+    # that tee alone ... since its progress log is prep's seed"; § 5d.1b,
+    # the `instruments` row): the figures the Results tab shows are this
+    # file's -- never the seed's, which read as zero iterations.
+    from molbuilder.runs import record_of
+    timed = record_of(_run(opt))["computation"]["time"]
+    assert (timed.get("s_per_iter"), timed.get("iters_measured")) == (
+        m["s_per_iter"], m["iters_measured"]), timed
 
 
 def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(opt):
@@ -518,7 +541,9 @@ def test_a_frames_geometry_and_energy_belong_to_one_step(opt):
 def test_the_output_keeps_its_frames_and_the_history_matches_in_order(opt):
     """The output defines the frame list and opens with the input geometry,
     which the history never stores; the history only upgrades the frames it
-    matches, in its own order, each row once (§ 6)."""
+    matches, in its own order, each row once (`model/parse.md` § 5a, *The
+    SIESTA case*: the primary file owns the frame list; no row for the
+    input geometry; a row matched by coordinates)."""
     from molbuilder.parse import parse
     from molbuilder.parse.engines.siesta_mdnc import align_to_reference
     out = parse(str(_out(opt)))

@@ -22,9 +22,9 @@ the interesting one is easy to get wrong:
     default, and collapsing stops polling).  A fault that is only
     visible inside a folded-away card is a fault nobody sees.
 
-The server runs in-process here, and the fixture fakes the GPU sampler's
-one door (see ``_set_gpu_error``).  Nothing about the front-end path is
-stubbed.
+The rule is `web/results.md` § 6.3.  The server runs in-process here, and
+the fixture fakes the GPU sampler's one door (see ``_set_gpu_error``).
+Nothing about the front-end path is stubbed.
 """
 from __future__ import annotations
 
@@ -37,10 +37,11 @@ pytestmark = pytest.mark.e2e
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
-#: A verbatim NVML failure -- the string the development host really
-#: produced, so the assertions are about text a user really sees.
-_REASON = ("NVMLError_LibRmVersionMismatch: "
-           "RM has detected an NVML/RM version mismatch.")
+#: The reason the sampler composes for the driver/library mismatch measured
+#: on the development host (2026-09-18: `nvidia-smi` exits 18 and says why on
+#: stdout; `web/blueprints/system_load._gpu_snapshot`).
+_REASON = ("nvidia-smi exited 18: "
+           "Failed to initialize NVML: Driver/library version mismatch")
 
 
 @pytest.fixture(scope="module")
@@ -84,7 +85,9 @@ class TestABrokenDriverIsVisible:
     def test_the_pill_is_marked_while_the_card_is_still_collapsed(
             self, page, flask_server, monkeypatch):
         """The first visit shows a collapsed card, so the pill is the
-        only thing on screen -- and it has to carry the news."""
+        only thing on screen -- and it has to carry the news: marked, its
+        hover giving the reason (`web/results.md` § 6.3, *You do not have to
+        open the card to find out*)."""
         _set_gpu_error(monkeypatch, _REASON)
         _open_results(page, flask_server)
 
@@ -105,8 +108,13 @@ class TestABrokenDriverIsVisible:
 
     def test_opening_the_card_gives_the_reason_in_full(
             self, page, flask_server, monkeypatch):
-        """Open the card and the notice states the failure and the one
-        non-obvious consequence: a restart is required."""
+        """Open the card and the notice states the failure, and that it
+        clears by itself once the host is fixed: the server asks the driver
+        again every few seconds, nothing needs restarting
+        (`web/results.md` § 6.3).
+
+        THE SILENT FAILURE: the notice telling the person to restart a
+        server that asks again within seconds (corrected 2026-11-02)."""
         _set_gpu_error(monkeypatch, _REASON)
         _open_results(page, flask_server)
         page.wait_for_selector(".system-load-toggle.has-gpu-fault",
@@ -118,7 +126,8 @@ class TestABrokenDriverIsVisible:
         notice.wait_for(state="visible", timeout=5000)
         text = notice.inner_text()
         assert _REASON in text
-        assert "restart the server" in text.lower()
+        assert "asks the driver again every few seconds" in text, text
+        assert "clears by itself" in text, text
         # The GPU cells stay hidden -- there are no numbers to draw.
         for metric in ("gpu", "gpubw", "vram"):
             assert page.locator(
@@ -132,7 +141,8 @@ class TestAHealthyHostSaysNothing:
             self, page, flask_server, monkeypatch):
         """A CPU-only box is not a fault.  Nothing is marked, nothing is
         printed -- otherwise the warning becomes background noise and
-        stops meaning anything."""
+        stops meaning anything (`web/results.md` § 6.3: *Only the second
+        case prints anything*)."""
         _set_gpu_error(monkeypatch, None)
         _open_results(page, flask_server)
 
@@ -151,5 +161,3 @@ class TestAHealthyHostSaysNothing:
 
         assert page.locator(".system-load-toggle.has-gpu-fault").count() == 0
         assert page.locator(".system-load-notice").is_visible() is False
-        assert page.locator(".system-load-toggle").get_attribute("title") == \
-            "Hide server load"

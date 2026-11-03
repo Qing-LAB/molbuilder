@@ -198,7 +198,8 @@ def test_a_run_that_failed_is_never_built_on(after_the_stop):
     """The stage after it is prepared -- prep takes nothing from another
     run -- and its first launch is refused before anything is sent, naming
     the run and how it ended (`job-system.md` § 5.4: the newest run, which
-    must have finished; L2)."""
+    must have finished; *Every refusal*, R-L11: what it builds on is not
+    usable)."""
     assert after_the_stop["prep medium"].exit_code == 0, \
         after_the_stop["prep medium"].output
     r = after_the_stop["launch medium"]

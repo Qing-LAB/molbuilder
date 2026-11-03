@@ -31,27 +31,27 @@ from molbuilder import diagnostics                         # noqa: E402
 from molbuilder.config.siesta import SiestaConfig          # noqa: E402
 from molbuilder.jobset.model import Resources              # noqa: E402
 from molbuilder.jobset.prep import prep_bench              # noqa: E402
-from molbuilder.scheduler import Environment, Topology     # noqa: E402
+from molbuilder.scheduler import Topology                  # noqa: E402
 from molbuilder.jobset.ladder import engine_ladder  # noqa: E402
 from molbuilder.structure import Structure                 # noqa: E402
 from support.machines import WORKSTATION
-
-
-@pytest.fixture(autouse=True)
-def _sandbox(isolated_projects_root, tmp_path_factory, monkeypatch):
-    """cwd + HOME + projects-root isolation, the pattern the prep tests
-    use: without it the run reads the developer's own config cascade."""
-    box = tmp_path_factory.mktemp("sandbox")
-    monkeypatch.chdir(box)
-    monkeypatch.setenv("HOME", str(box / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (box / "home").mkdir()
+from support.road import read_request, write_request
 
 
 @pytest.fixture
 def sweep(isolated_projects_root, monkeypatch):
     """A prepared GPU sweep, nothing run — returns
-    ``(job_set_path, first_trial_label, n_trials)``."""
+    ``(job_set_path, first_trial_label, n_trials)``.
+
+    THE GPU IS THE PERSON'S, ON THE RUN CARD (`execution/gpu.md` § 1.1:
+    *"`use_gpu` on the run card"*; G2: nothing derives it from the
+    machine): the calculation's card states it, and *"whether the trials
+    are a GPU family is … the bench's points for it, else the calculation's
+    card"* (`generator.md` § 4.3a) -- the template holds no run setting
+    (`task-setup.md` § 6.1).  THE MACHINE IS THIS ONE'S RECORD, one a100,
+    where `jobset probe --write` puts it (`conftest.write_machine_record`);
+    prep copies it into the calculation (`configuration.md` M-3)."""
+    from conftest import write_machine_record, write_pseudos
     tree = isolated_projects_root
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
@@ -60,23 +60,22 @@ def sweep(isolated_projects_root, monkeypatch):
     calc = tree / "calc"
     D.write_description(
         D.build_description(struct,
-                            SiestaConfig(system_label="JOB", use_gpu=True,
-                                         diag_algorithm="ELPA-1STAGE"),
+                            SiestaConfig(system_label="JOB"),
                             engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
                             name="JOB",
                             source=str(tree / "h2.xyz")),
         calc)
-    from conftest import write_pseudos
     write_pseudos(calc, ["H"])
-    (calc / "environment.json").write_text(
-        Environment(machine="this", scheduler=WORKSTATION,
-                    topology=Topology(sockets=1, cores_per_socket=4,
-                                      gpus_per_node=1,
-                                      gpu_type="a100"),
-                    env_init={"activation": "conda activate",
-                                       "preamble": "true"}).to_json() + "\n")
+    req = read_request(calc)
+    req["execution"] = {"use_gpu": True, "diag_algorithm": "ELPA-1STAGE",
+                        "gpu_count": 1}
+    write_request(calc, req)
+    write_machine_record(
+        scheduler=WORKSTATION,
+        topology=Topology(sockets=1, cores_per_socket=4, gpus_per_node=1,
+                          gpu_type="a100"))
 
     prep_bench(open_calculation(calc), "coarse",
                allocation=Resources(mpi_np=8, cpus_per_task=8),
@@ -146,43 +145,51 @@ def test_the_page_says_when_it_last_looked(page, server, sweep):
     assert _re.search(r"\d{1,2}:\d{2}", foot), foot
 
 
-def test_the_declared_cadence_is_the_trajectory_viewers(page, server, sweep):
-    """B4 says "polled on the trajectory viewer's cadence (15 s)".  Nothing
-    else on this page can see that number, so a viewer that drifted off it
-    would pass every other test."""
-    jpath, _winner, _n = sweep
-    _open(page, server, jpath.parent)
-    assert page.evaluate(
-        "() => window.molbuilder.inspectors.benchSummaryInspector.pollMs"
-    ) == 15000
-
-
 def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
-    """B4's first half: the page IS live -- and put away, it stops and
-    leaves nothing (the registry's dispose contract: a viewer that keeps
-    polling after it is put away is the leak it exists to prevent).
+    """B4's first half: the page IS live, *"polled on the trajectory
+    viewer's cadence (15 s)"* -- and put away, it stops and leaves nothing
+    (the registry's dispose contract: a viewer that keeps polling after it
+    is put away is the leak it exists to prevent).
 
     The declared cadence collapsed rather than waited through -- the
     presenter schedules through ``window.setTimeout``, so shortening the
     15 s schedules proves the loop re-arms without the test sitting
-    through a real cadence.  A cycle is that short wait AND the server's
-    answer, measured here at 150-400 ms, so "stopped" is watched for five
-    of the longest cycles seen while it ran, never less than 2 s: a watch
-    shorter than one cycle sees a running loop as stopped.
+    through a real cadence.  THE CADENCE ITSELF is what armed the re-polls:
+    each summary fetch made from inside a timer records that timer's delay,
+    so a viewer that drifted off 15 s is seen re-polling at another.  A
+    cycle is that short wait AND the server's answer, measured here at
+    150-400 ms, so "stopped" is watched for five of the longest cycles seen
+    while it ran, never less than 2 s: a watch shorter than one cycle sees
+    a running loop as stopped.
+
+    MUTATION THIS MUST FAIL AGAINST: `POLL_MS` off 15 000 (the re-polls
+    armed at another delay).
     """
     jpath, _winner, _n = sweep
     errors = _open(page, server, jpath.parent, before="""
         window.__starts = [];
+        window.__armedBy = [];
+        let firing = null;
         const realFetch = window.fetch;
         window.fetch = (...a) => {
-            if (String(a[0]).includes('/api/bench/summary'))
+            if (String(a[0]).includes('/api/bench/summary')) {
                 window.__starts.push(performance.now());
+                window.__armedBy.push(firing);
+            }
             return realFetch(...a);
         };
         const realTimeout = window.setTimeout;
-        window.setTimeout = (fn, ms, ...r) =>
-            realTimeout(fn, ms === 15000 ? 40 : ms, ...r);""")
+        window.setTimeout = (fn, ms, ...r) => realTimeout(
+            typeof fn !== 'function' ? fn : (...x) => {
+                firing = ms;
+                try { return fn(...x); } finally { firing = null; }
+            },
+            ms === 15000 ? 40 : ms, ...r);""")
     page.wait_for_function("() => window.__starts.length >= 3", timeout=10000)
+    armed = page.evaluate("() => window.__armedBy")
+    assert 15000 in armed, (
+        "no re-poll was armed on the trajectory viewer's 15 s cadence "
+        f"(bench-summary.md B4); the summary fetches were armed by {armed}")
     starts = page.evaluate("() => window.__starts")
     cycle_ms = max(b - a for a, b in zip(starts, starts[1:]))
     _put_away(page)

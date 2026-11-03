@@ -18,8 +18,6 @@ through its one public import and nothing else.
 """
 from __future__ import annotations
 
-import threading
-
 import pytest
 
 pytest.importorskip("playwright.sync_api")
@@ -32,26 +30,12 @@ pytest.importorskip("flask")
 
 @pytest.fixture(scope="module")
 def molview_server():
-    """The app on a free port in a daemon thread.
-
-    ``config={}`` is the no-auth, no-TLS build — the same one the other e2e
-    files use, so a developer's ``molbuilder.json`` (which may enable auth)
-    cannot change what these tests are looking at. Port 0 lets the OS pick,
-    so this never collides with a `molbuilder serve` already running.
-    """
-    from werkzeug.serving import make_server
-
-    from molbuilder.web.app import create_app
-
-    app = create_app(config={})
-    server = make_server("127.0.0.1", 0, app, threaded=True)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
+    """The app on a free port, through THE way a test starts one
+    (`support/live_server.serve`): the no-auth, no-TLS build, with a
+    projects tree of its own (`process/testing.md` § 2a)."""
+    from support.live_server import serve
+    with serve() as base_url:
+        yield base_url
 
 
 #: A workspace a test's own viewer saves through: the calls `workspace.md`
@@ -173,7 +157,8 @@ def test_a_switch_changes_the_picture(demo, index, name):
 
 
 def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
-    """§ 1.1's `▦` switch, in a real page: pressing it draws the cell.
+    """§ 1.1's `▦` switch, in a real page: pressing it draws the cell -- and
+    draws it at the structure's corner whenever the switch goes on.
 
     § 10.3: "The visibility switch carries ONLY a boolean: show it or don't. It
     never carries geometry" — the geometry travels on its own, unconditionally,
@@ -181,6 +166,15 @@ def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
     is given is the one "as it will actually be used... so it always has an
     answer", which means EVERY structure has a box to show, not only one that was
     handed an explicit lattice.
+
+    WHERE THE WIREFRAME IS DRAWN is what § 10.3 asks a test to assert, "not
+    what the cell data says": two viewers, one shown the cell before its load
+    and one only after a hidden load, each fitted again by Reset on what it
+    then holds -- the box among it -- draw one picture.
+
+    MUTATION THIS MUST FAIL AGAINST: the cell's geometry handed down only
+    while the cell is shown -- turned on after a hidden load, the box is
+    drawn from the world origin, or not at all.
     """
     before = _canvas_pixels(demo)
     button = demo.locator(".molviewer-rail button").nth(4)
@@ -201,6 +195,68 @@ def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
     assert _canvas_pixels(demo) == before, (
         "turning the cell off left something of the box behind"
     )
+
+    # WHERE THE BOX IS DRAWN.  Each step waited out by the window's own
+    # cover, which a redraw raises and lowers (§ 10.9); the pictures compared
+    # whole.
+    out = demo.evaluate(
+        """async () => {
+            const { mount } = await import("/static/lib/molview/index.js");
+            const ws = """ + _MEMORY_WORKSPACE + """;
+            const water = { text: "3\\n\\nO 0 0 0\\nH 0.957 0 0\\nH -0.239 0.927 0\\n",
+                            filename: "water.xyz" };
+            const host = () => {
+                const h = document.createElement("div");
+                h.style.width = "400px";
+                document.body.appendChild(h);
+                return h;
+            };
+            const picture = (h) => {
+                const c = h.querySelector(".molviewer-window-canvas canvas");
+                return c ? c.toDataURL() : "";
+            };
+            const drawn = async (...hosts) => {
+                await new Promise((r) => setTimeout(r, 0));
+                for (let i = 0; i < 250; i++) {
+                    if (hosts.every((h) => {
+                        const c = h.querySelector(".molviewer-window-busy");
+                        return c && c.hidden; })) return;
+                    await new Promise((r) => setTimeout(r, 20));
+                }
+                throw new Error("a window's cover never came down");
+            };
+
+            const hostFirst = host(), hostAfter = host();
+            const first = await mount(hostFirst, ws,
+                                      { owner: "cell-shown-first", mode: "readonly" });
+            const after = await mount(hostAfter, ws,
+                                      { owner: "cell-shown-after", mode: "readonly" });
+            first.data.selection.setSwitch("showCell", true);
+            await first.data.installMolecule(water);
+            await after.data.installMolecule(water);
+            await drawn(hostFirst, hostAfter);
+            const hidden = picture(hostAfter);
+            after.data.selection.setSwitch("showCell", true);
+            await drawn(hostAfter);
+            const shown = picture(hostAfter);
+            // One fit for both, on what each window now holds -- the box
+            // among it -- so the camera cannot tell them apart.
+            first.resetView();
+            after.resetView();
+            await drawn(hostFirst, hostAfter);
+            const out = { hidden, shown,
+                          first: picture(hostFirst), after: picture(hostAfter) };
+            first.dispose(); after.dispose();
+            hostFirst.remove(); hostAfter.remove();
+            return out;
+        }"""
+    )
+    assert out["hidden"] and out["shown"] != out["hidden"], (
+        "turned on after a hidden load, the cell drew nothing")
+    assert out["after"] == out["first"], (
+        "the box turned on after a hidden load is not where it is drawn when "
+        "the cell was shown at the load -- its geometry came with the switch "
+        "(§ 10.3)")
 
 
 def test_selecting_an_atom_draws_a_highlight(demo):
@@ -227,7 +283,13 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
     copy was never cut down.
 
     § 1.1: isolate STAYS SET when the selection empties, and the whole
-    structure is drawn because there is nothing to hide.
+    structure is drawn because there is nothing to hide -- and it *"starts
+    hiding the rest the moment you pick something"*.
+
+    Every pick here is a panel row's.  The window's own click gate, which
+    reads the same answer (`isolateInEffect`, § 1.1), is the node level's:
+    the sealed layer answers no atom's drawn position (§ 9.9), so a page
+    cannot aim a click at one.
     """
     # The untouched view: every atom, nothing highlighted.  Captured BEFORE
     # anything is selected, because it is what the window must look like again
@@ -264,14 +326,19 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
         "everything"
     )
 
-    # ...and the window still selects.  This is the defect the fix closed: the
-    # click gate read the raw switch, so with isolate on and nothing selected
-    # every click here was dropped while the drawing looked normal.
-    demo.locator(".molviewer-atoms-table tr").nth(1).click()
+    # ...and the next pick is hidden around at once.  The same atom picked
+    # again, isolate still on: the drawing holds only it, exactly as when it
+    # was isolated above -- the camera has not moved since (§ 9.6), so it is
+    # the same picture.
+    demo.locator(".molviewer-atoms-table tr").first.click()
     _settle(demo)
     assert demo.locator(".molviewer-selection-count").inner_text().startswith("1 of"), (
         "selecting stopped working while isolate was on with an empty "
         "selection"
+    )
+    assert _canvas_pixels(demo) == isolated, (
+        "isolate stayed set but did not hide the rest when an atom was picked "
+        "again -- the button reads on and the drawing reads off"
     )
 
 
@@ -461,8 +528,9 @@ def test_a_trajectory_gets_a_frame_bar_that_scrubs(demo):
 
 
 def test_playing_runs_the_movie_and_pauses(demo):
-    """§ 1.1's play-pause, and § 10.4: playing is a frame swap at the library's
-    own speed, not a re-render.
+    """§ 1.1's play-pause: playing advances the frame counter, and pausing
+    stops it.  (§ 10.4's *a frame swap, not a re-render* is the node level's
+    to show, § 13.2 -- a page sees only the counter.)
     """
     demo.click("#demo-trajectory")
     demo.wait_for_function(
@@ -484,7 +552,7 @@ def test_playing_runs_the_movie_and_pauses(demo):
 
 
 # --------------------------------------------------------------------- #
-#  § 8.1 — the card is dark, and it is the module's own                 #
+#  § 5.4, § 8.1 — the card's surfaces are the module's own              #
 # --------------------------------------------------------------------- #
 
 def test_the_card_brings_its_own_surfaces(demo):
@@ -508,8 +576,6 @@ def test_the_card_brings_its_own_surfaces(demo):
         "the ground and the cards are the same colour, so nothing separates them"
     )
     assert scene != window_card, "the 3D window has no ground of its own"
-    for name, value in [("ground", ground), ("card", window_card), ("scene", scene)]:
-        assert "255, 255, 255" not in value, f"the {name} is white: {value}"
 
 
 def test_the_cell_door_speaks_the_route_it_posts_to(demo):

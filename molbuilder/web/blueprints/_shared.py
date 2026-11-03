@@ -886,25 +886,17 @@ def _item_to_field(item, id_prefix: str,
     return out
 
 
-def config_from_params(cls, params: Dict[str, Any],
-                       calculation: str = ""):
-    """The config a form's payload describes (`web/form-schema.md` § 1.1):
-    the kind's own recommendations (`template.apply_recommended`), with the
-    values the payload holds laid over them, each read as its item's
-    declared type by the setting door's reader (`template.read_text`,
-    `engines/template.md` § 5.4) -- the reader every page asks.
-
-    **A blank is not chosen**, for every field: ``None`` or ``""`` leaves the
-    field at what lies under it -- the kind's recommendation, else the class
-    default, which for an optional field is its own blank.
-
-    **A value that will not read as its type is refused, naming its
-    field**: the caller says it as the refusal.
-    """
+def stated_params(cls, params: Dict[str, Any]) -> Dict[str, Any]:
+    """WHAT A FORM'S PAYLOAD STATES (`web/form-schema.md` § 1.1): each of
+    ``cls``'s fields the payload names, read as its item's declared type by
+    the setting door's reader (`template.read_text`, `engines/template.md`
+    § 5.4) -- the reader every page asks -- a blank left out: it is not
+    chosen.  **A value that will not read as its type is refused, naming
+    its field** (``ValueError``): the caller says it as the refusal."""
     by_name = {f.name for f in fields(cls)}
     from molbuilder.template import items_of, read_text
     items = items_of(cls)
-    kwargs: Dict[str, Any] = {}
+    out: Dict[str, Any] = {}
     for k, v in params.items():
         if k not in by_name:
             continue
@@ -912,7 +904,21 @@ def config_from_params(cls, params: Dict[str, Any],
         if why:
             raise ValueError(f"{k} = {v!r}{why}")
         if value is not None:
-            kwargs[k] = value
+            out[k] = value
+    return out
+
+
+def config_from_params(cls, params: Dict[str, Any],
+                       calculation: str = ""):
+    """The config a form's payload describes (`web/form-schema.md` § 1.1):
+    the kind's own recommendations (`template.apply_recommended`), with what
+    the payload states laid over them (:func:`stated_params`).
+
+    **A blank is not chosen**, for every field: it leaves the field at what
+    lies under it -- the kind's recommendation, else the class default,
+    which for an optional field is its own blank.  A value that will not
+    read as its type is refused, naming its field."""
+    kwargs = stated_params(cls, params)
     base = cls()
     if calculation:
         from molbuilder.template import apply_recommended
@@ -1001,6 +1007,7 @@ __all__ = [
     "finite_float",
     "catalogue_to_form_schema",
     "config_from_params",
+    "stated_params",
     "PeriodicityRefused",
     "checked_periodicity",
     "for_writing",

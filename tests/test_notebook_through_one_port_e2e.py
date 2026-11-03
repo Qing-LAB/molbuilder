@@ -191,7 +191,8 @@ def test_the_tab_frames_the_notebook_from_its_own_origin_and_a_cell_answers(
 
     MUTATIONS THIS MUST FAIL AGAINST: the frame pointed at Jupyter's own
     port (the page's origin no longer); the WebSocket not joined (the cell
-    never answers)."""
+    never answers); the token handed to the page (``?token=`` in the
+    frame's address, or written into the page)."""
     base = one_port["base"]
     notebook = {"cells": [{"cell_type": "code", "execution_count": None,
                            "id": "one", "metadata": {}, "outputs": [],
@@ -209,6 +210,18 @@ def test_the_tab_frames_the_notebook_from_its_own_origin_and_a_cell_answers(
     lab.locator(".jp-LabShell").wait_for(timeout=90_000)
     framed = page.evaluate("document.getElementById('nb-frame').src")
     assert framed.startswith(f"{base}/jupyter/lab"), framed
+    # THE TOKEN IS NEVER THE PAGE'S (`jupyter.md` § 2: *"molbuilder never
+    # hands the browser the token -- not in its pages, not in the frame's
+    # address"*): the notebook's own, read through its one reader in this
+    # stack's runtime folder, is in neither.
+    from unittest import mock
+    from molbuilder.jupyter import read_runtime
+    with mock.patch.dict(os.environ, {
+            "XDG_RUNTIME_DIR": one_port["env"]["XDG_RUNTIME_DIR"]}):
+        token = str(read_runtime(one_port["port"]).get("token") or "")
+    assert token, "the stack's notebook states no token to look for"
+    assert token not in framed, "the frame's address carries the token"
+    assert token not in page.content(), "the page carries the token"
 
     page.evaluate("(u) => { document.getElementById('nb-frame').src = u; }",
                   f"{base}/jupyter/lab/tree/one.ipynb")
@@ -231,32 +244,28 @@ def test_the_tab_frames_the_notebook_from_its_own_origin_and_a_cell_answers(
     assert out.inner_text().strip() == "2", out.inner_text()
 
 
-def _an_address_off_loopback():
-    """This machine's address on its outward interface, or ``None``."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        try:
-            s.connect(("192.0.2.1", 9))          # TEST-NET-1: nothing is sent
-            ip = s.getsockname()[0]
-        except OSError:
-            return None
-    return None if ip.startswith("127.") else ip
-
-
 def test_the_notebooks_own_port_answers_this_machine_only(one_port):
-    """`jupyter.md` § 2, § 6: Jupyter listens on ``127.0.0.1`` -- its own
-    port answers there, and is refused on this machine's outward address,
-    so no kernel is on a network port.
+    """`jupyter.md` § 2, § 6: *"Jupyter listens on `127.0.0.1` only"* -- its
+    own port answers there, and every socket listening on it is bound to
+    loopback, so no kernel is on a network port.  Read from the kernel's
+    own table of this machine's sockets: a test makes no connection off
+    loopback (`process/testing.md` § 2b).
 
-    MUTATION THIS MUST FAIL AGAINST: Jupyter bound to every interface."""
+    MUTATION THIS MUST FAIL AGAINST: Jupyter bound to every interface
+    (``0.0.0.0`` or ``::``), or to this machine's outward address."""
+    import ipaddress
+
+    import psutil
+
     from molbuilder.jupyter import jupyter_port
     nb = jupyter_port(one_port["port"])
     with socket.create_connection(("127.0.0.1", nb), timeout=5):
         pass
-    outward = _an_address_off_loopback()
-    if outward is None:
-        pytest.skip("this machine has no address off loopback to ask")
-    with pytest.raises(ConnectionRefusedError):
-        socket.create_connection((outward, nb), timeout=5).close()
+    bound = sorted({c.laddr.ip for c in psutil.net_connections(kind="inet")
+                    if c.status == psutil.CONN_LISTEN
+                    and c.laddr and c.laddr.port == nb})
+    assert bound, f"nothing listens on the notebook's port {nb}"
+    assert all(ipaddress.ip_address(ip).is_loopback for ip in bound), bound
 
 
 def test_a_restart_of_the_server_stops_its_notebook(tmp_path):

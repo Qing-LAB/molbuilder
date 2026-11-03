@@ -4,16 +4,18 @@
 `kind_table.REUSE_DOORS` lists, which prep, describe and launch ask.
 
 DESCRIBED (*Describing it*): the finished calculation opened through the
-calculation door, and the new one written from its records as they read
-now -- its description, template and job request, its composed junction,
-read by the composition's one reader and written by its one writer, and
-its pseudopotentials -- through the one writer every describe takes
-(`describe.write_description`); or, in place of its junction, a frame set
-whose frame 0 is that junction (*A frame set of the same junction*,
-:func:`frame_set_refusal`), composed here.  Written through
-:func:`write_reusing` by the kind's one describe (`transport.describe`),
-which `molbuilder describe --reuses` and the Transport tab's Describe both
-take; the tab's pick of a frame set asks
+calculation door, and the new one's three statement files written from its
+records as they read now -- its description, template and job request --
+through the one writer every describe takes (`describe.write_description`;
+:func:`write_reusing`, asked by the kind's one describe,
+`transport.describe`, which `molbuilder describe --reuses` and the
+Transport tab's Describe both take).  The junction it will have -- the
+finished calculation's, or a frame set whose frame 0 is that junction (*A
+frame set of the same junction*, :func:`frame_set_refusal`) -- is one
+answer (:func:`finished_junction`), checked at describe and taken, with
+the finished calculation's pseudopotentials (:func:`carry_pseudos`), by
+the first prep; until then every reader asks the one door for it
+(`rung.junction_record`).  The tab's pick of a frame set asks
 :func:`frame_set_of`, and a window fitted to the finished grid reads it
 from :func:`finished_window`.
 
@@ -46,6 +48,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -139,14 +142,14 @@ def frame_set_of(finished, citation: str, *, tree_root, composed=None):
     name.  THE ONE CHECK the writer and the Transport tab's pick ask."""
     from ..jobset.rung import citation_of
     from .compose import compose_junction, load_compose_record
-    from .sort import SortError
+    from .rung import compose_refusals
     why: List[str] = []
     try:
         ran = load_compose_record(
             finished.base, citation=citation_of(finished.task),
             engine=finished.task.engine, tree_root=tree_root, why=why,
             swap_electrodes=finished.task.swap_electrodes)
-    except ComposeError as exc:
+    except compose_refusals() as exc:
         raise ReuseError(str(exc)) from exc
     if ran is None:
         raise ReuseError(
@@ -158,7 +161,7 @@ def frame_set_of(finished, citation: str, *, tree_root, composed=None):
             composed = compose_junction(
                 citation, tree_root=tree_root, engine=finished.task.engine,
                 swap_electrodes=finished.task.swap_electrodes)
-        except (ComposeError, SortError) as exc:
+        except compose_refusals() as exc:
             raise ReuseError(str(exc)) from exc
     refused = frame_set_refusal(ran.junction, composed.junction,
                                 name=finished.base.name, citation=citation)
@@ -190,37 +193,60 @@ def citing(task, junction: str):
                        stage_names=tuple(st.name for st in task.stages)))
 
 
+def finished_junction(finished, citation: str, *, tree_root, why: list):
+    """THE JUNCTION A CALCULATION THAT EXTENDS ``finished`` WILL HAVE, citing
+    ``citation`` (`engines/transport.md` § 2a.16): the junction ``finished``
+    ran, as its record holds it -- or, ``citation`` naming another junction,
+    the frame set of it cited in its place, composed and checked by the one
+    check (:func:`frame_set_of`).  ``None``, with ``why``, when the finished
+    calculation's record does not read: prep then composes the junction from
+    its citation, and nothing it computed is reused.
+
+    THE ONE ANSWER describe checks before it writes and prep writes at its
+    first contact (`rung.junction_record`): refused, :class:`ReuseError`, a
+    cited pair edited since the finished calculation was composed from it,
+    by name (`compose.load_compose_record`), and a frame set whose frame 0
+    is not the finished junction."""
+    from ..jobset.rung import citation_of
+    from .compose import load_compose_record
+    from .rung import compose_refusals
+    if citation != citation_of(finished.task):
+        # A FRAME SET OF THE SAME JUNCTION, cited in its place.
+        return frame_set_of(finished, citation, tree_root=tree_root)
+    try:
+        return load_compose_record(
+            finished.base, citation=citation, engine=finished.task.engine,
+            tree_root=tree_root, why=why,
+            swap_electrodes=finished.task.swap_electrodes)
+    except compose_refusals() as exc:
+        raise ReuseError(str(exc)) from exc
+
+
 def write_reusing(desc, dest, finished, *, tree_root
                   ) -> Tuple[List[Path], list]:
     """``desc`` -- a transport description whose ``reuses`` names
-    ``finished`` -- written into ``dest`` with the finished calculation's
-    composed junction, as its record holds it, and its pseudopotentials,
-    every file or none.  Answers what was written, and what the person is
-    told, each at its weight (`issues.Issue`): why no junction travels,
-    when the finished calculation's record does not read -- prep then
-    composes it from its citation, as for any calculation -- a warning; the
-    frame set written in its place, information.
-
-    A ``desc`` citing another junction than the finished calculation's
-    cites a frame set of it (`engines/transport.md` § 2a.16, *A frame set
-    of the same junction*): composed and checked by the one check
-    (:func:`frame_set_of`), every frame, and written in its place.
+    ``finished`` -- written into ``dest``: its three statement files, every
+    one or none (`describe.write_description`).  The junction it will have
+    is checked first, never written here: prep takes it at its first
+    contact, with the finished calculation's pseudopotentials
+    (:func:`finished_junction`, :func:`carry_pseudos`;
+    `engines/transport.md` § 2a.16, *Describing it*).  Answers what was
+    written, and what the person is told, each at its weight
+    (`issues.Issue`): why no junction can be taken, when the finished
+    calculation's record does not read -- prep then composes it from its
+    citation, as for any calculation -- a warning; the frame set cited in
+    its place, information.
 
     Refused before anything is written: ``dest`` inside the finished
     calculation, or inside a junction's citation, as every describe
     refuses it (`compose.refuse_inside_citation`); a cited pair edited since
-    the finished calculation was composed from it, by name
-    (`compose.load_compose_record`); a frame set whose frame 0 is not the
-    finished junction, or compared with a finished junction whose record
-    does not read, by name."""
-    import dataclasses
-
-    from ..chemistry import species_order
+    the finished calculation was composed from it, by name; a frame set
+    whose frame 0 is not the finished junction, or compared with a finished
+    junction whose record does not read, by name."""
     from ..describe import write_description
     from ..issues import Issue
-    from ..pseudos import PSEUDO_DIRNAME
     from ..jobset.rung import citation_of
-    from .compose import load_compose_record, refuse_inside_citation
+    from .compose import refuse_inside_citation
     citation = citation_of(desc.task)
     ran = citation_of(finished.task)
     try:
@@ -233,35 +259,49 @@ def write_reusing(desc, dest, finished, *, tree_root
         raise ReuseError(str(exc)) from exc
     why: List[str] = []
     notes: list = []
+    composed = finished_junction(finished, citation, tree_root=tree_root,
+                                 why=why)
     if citation != ran:
-        # A FRAME SET OF THE SAME JUNCTION, cited in its place (§ 2a.16).
-        composed = frame_set_of(finished, citation, tree_root=tree_root)
         notes.append(Issue(
             "info", f"the junction is {citation}, its "
                     f"{composed.junction.n_frames} frame(s); its first frame "
                     f"is the first frame {finished.base.name} ran"))
-    else:
-        try:
-            composed = load_compose_record(
-                finished.base, citation=ran, engine=finished.task.engine,
-                tree_root=tree_root, why=why,
-                swap_electrodes=finished.task.swap_electrodes)
-        except ComposeError as exc:
-            raise ReuseError(str(exc)) from exc
-    if composed is None:
+    elif composed is None:
         notes.append(Issue(
             "warn", f"{finished.base.name} carries no record of its junction "
                     f"that reads -- {'; '.join(why)}; prep composes the "
                     f"junction again from its citation, and nothing "
                     f"{finished.base.name} computed is then reused: every "
                     f"stage runs here"))
-    else:
-        desc = dataclasses.replace(desc, pseudo_species=tuple(
-            species_order(composed.junction.elements)))
-    written = write_description(desc, dest,
-                                psml_lib=finished.base / PSEUDO_DIRNAME,
-                                junction=composed)
-    return written, notes
+    return write_description(desc, dest), notes
+
+
+def carry_pseudos(struct, base: Path, reuses: str, *, plan,
+                  say: bool = True) -> None:
+    """AN EXTENSION'S PSEUDOPOTENTIALS ARE THE FILES ITS FINISHED RUNS READ
+    (`engines/transport.md` § 2a.16): each species ``struct`` holds that the
+    folder does not -- as the plan leaves it (`pseudos.PLANNED`) -- taken
+    from the finished calculation ``reuses`` names, ``pseudos/``, into
+    ``plan``, before any other source is asked; what it does not hold is
+    the citation's or the library's, as for any calculation, and the folder
+    still wins.  ``say`` false plans them silently (:func:`decide`'s view,
+    which copies nothing)."""
+    from ..chemistry import species_order
+    from ..projects import find_projects_root
+    from ..pseudos import PSEUDO_DIRNAME, psml_sources
+    from ..siesta.input import copy_pseudopotentials
+    from ..siesta.seam import pseudo_dir
+    root = find_projects_root(Path(base))
+    lib = (Path(root) / reuses / PSEUDO_DIRNAME) if root is not None else None
+    if lib is None or not lib.is_dir():
+        return
+    want = [s for s, d in psml_sources(species_order(struct.elements),
+                                       dest_dir=base).items() if d is None]
+    held = [s for s, d in psml_sources(want, library=lib).items()
+            if d is not None]
+    if held:
+        copy_pseudopotentials(held, lib, pseudo_dir(base, plan), plan=plan,
+                              say=say)
 
 
 def _fixed_rungs() -> List[str]:
@@ -694,7 +734,7 @@ class Reuse:
                            for d in self.groups]}
 
 
-def _finished_of(calc):
+def finished_of(calc):
     """``(the finished calculation, why)`` -- the calculation ``calc``'s
     description reuses, opened through the one door that opens it
     (:func:`reused`: inside the tree, a transport calculation
@@ -800,9 +840,37 @@ def decide(calc, numbers: Sequence[int]) -> Optional[Reuse]:
     if not calc.task.reuses or not numbers:
         return None
     try:
-        return _decided(calc, numbers)
+        with _as_its_first_prep_leaves_it(calc):
+            return _decided(calc, numbers)
     except LaunchRecordError as exc:
         raise PrepError(str(exc)) from None
+
+
+@contextmanager
+def _as_its_first_prep_leaves_it(calc):
+    """THE FOLDER AS ITS FIRST PREP WILL LEAVE IT, while the question is
+    asked (`engines/transport.md` § 2a.16, *Describing it*): the decks it
+    renders now are the decks that prep renders, which read the
+    pseudopotentials the finished runs read -- taken in by
+    :func:`carry_pseudos` into a plan of the question's own, never written,
+    read through the planned view every pseudopotential reader asks
+    (`pseudos.PLANNED`).  A prep already planning keeps its own view."""
+    from ..jobset.planned import Plan
+    from ..pseudos import PLANNED
+    from .rung import junction_record
+    if PLANNED.get() is not None:
+        yield
+        return
+    plan = Plan()
+    composed = junction_record(calc)[0]
+    if composed is not None:
+        carry_pseudos(composed.junction, Path(calc.base), calc.task.reuses,
+                      plan=plan, say=False)
+    scope = PLANNED.set(plan)
+    try:
+        yield
+    finally:
+        PLANNED.reset(scope)
 
 
 def _decided(calc, numbers: Sequence[int]) -> Reuse:
@@ -810,14 +878,15 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
     from .gather import ReadOnce
     from ..jobset.materialize import ever_launched
     from .rung import junction_record
-    from .stages import frames_of, rung_points
-    finished, gone = _finished_of(calc)
+    from .stages import rung_points
+    finished, gone = finished_of(calc)
     if finished is not None:
         composed, said, _root = junction_record(calc)
         if composed is None:
-            # NO JUNCTION RECORDED FOR THIS DESCRIPTION -- its citation or
-            # its rename changed since it was described: composed anew at
-            # this prep, every rung is another calculation (§ 1.2).
+            # NO JUNCTION THIS CALCULATION HAS OR WILL HAVE from the
+            # finished one -- its record here no longer this citation's or
+            # rename's, or the finished calculation's not reading: composed
+            # anew at this prep, every rung another calculation (§ 1.2).
             finished, gone = None, ("this calculation's junction is "
                                     "composed anew at this prep -- "
                                     + "; ".join(said))
@@ -846,8 +915,7 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
             # A GROUP AN EARLIER PREP PREPARED: its rungs of points no
             # launch has sent take their points over at their first launch.
             for st in (members if finished is not None else ()):
-                points = rung_points(calc.task, st,
-                                     frames=frames_of(calc.base))
+                points = rung_points(calc.task, st, frames=once.frames())
                 job = calc.job(st)
                 if points and job is not None and not ever_launched(calc,
                                                                     job):
@@ -876,7 +944,7 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
             continue
         rungs, energies, contours, shares = [], [], [], 0
         for st in members:
-            points = rung_points(calc.task, st, frames=frames_of(calc.base))
+            points = rung_points(calc.task, st, frames=once.frames())
             if points:
                 t = takes(st, points)
                 rungs.append(t)
@@ -934,12 +1002,12 @@ def _rendered(calc, members, once, *, only=None) -> List[tuple]:
     (`gather.ReadOnce`); ``only`` those points.  A rung that runs once is
     its one point, the run itself."""
     from .energies import Contours
-    from .stages import frames_of, rung_points
+    from .stages import rung_points
     out = []
     if window_rung() not in members:
         return out
     for pt in (only if only is not None else rung_points(
-            calc.task, window_rung(), frames=frames_of(calc.base))
+            calc.task, window_rung(), frames=once.frames())
                or (None,)):
         c = Contours.of_deck(once.deck_now(window_rung(), pt))
         if c is not None:
@@ -1026,7 +1094,7 @@ def that_point(calc, pt, cfg):
     from .energies import grid, same_grid, sharing_of
     if not calc.task.reuses:
         return None
-    finished, _gone = _finished_of(calc)
+    finished, _gone = finished_of(calc)
     # THE FINISHED POINT, DONE (`_finished_point`): a point not done holds
     # no energy of its own to be.
     src = (_finished_point(finished, window_rung(), pt)[0]
@@ -1219,7 +1287,7 @@ def _member(calc, finished, stage: str, once, copied: set
         return no(f"{stage}: the finished calculation holds no run of it")
     shown = _shown(fbase, newest)
     names = home.names
-    points = rung_points(calc.task, stage, frames=frames_of(calc.base))
+    points = rung_points(calc.task, stage, frames=once.frames())
     theirs = rung_points(ftask, stage, frames=frames_of(fbase))
     if points and not theirs:
         # THIS CALCULATION RUNS POINTS WHERE THE FINISHED ONE RAN ONCE: its
@@ -1284,7 +1352,7 @@ def _member(calc, finished, stage: str, once, copied: set
     # WHAT THE NEWEST RUN HOLDS THAT THIS CALCULATION DOES NOT ASK, named.
     asked = {point_key(pt) for pt, _src in pairs}
     unasked = tuple(q.words() for q in theirs if point_key(q) not in asked)
-    moved = _laid_here(calc, finished, stage)
+    moved = _laid_here(calc, finished, stage, frames=once.frames())
     if not moved:
         # THE SAME FOLDERS: every run of it, whole, under its own name --
         # a result this calculation does not describe stays in its copy,
@@ -1300,7 +1368,8 @@ def _member(calc, finished, stage: str, once, copied: set
     # records naming each folder where this calculation keeps it -- its
     # own, and those of each stage it takes inputs from.
     for upstream, _filename in inputs_of(calc.task, stage):
-        moved.update(_laid_here(calc, finished, upstream))
+        moved.update(_laid_here(calc, finished, upstream,
+                                frames=once.frames()))
     return [_relaid_copy(finished, stage, newest,
                          attempt_dir(here.dir, FIRST_ATTEMPT),
                          tuple((src, str(pt.rel) if pt is not None else "",
@@ -1356,15 +1425,18 @@ def _unfinished(finished, stage: str) -> Optional[str]:
               f"choices")
 
 
-def _laid_here(calc, finished, stage: str) -> Dict[str, str]:
+def _laid_here(calc, finished, stage: str, *, frames: int
+               ) -> Dict[str, str]:
     """WHERE THIS CALCULATION KEEPS EACH RESULT of the finished one's newest
     run of ``stage`` it describes -- and that run itself -- when it keeps
     them in other folders (`engines/transport.md` § 2a.16, *A group copied
     in*): ``{the folder in the finished calculation: its folder here}``,
     both from their calculation's folder, ``run-0`` here; empty when the
-    folders are the same, every run then copied whole under its own name."""
+    folders are the same, every run then copied whole under its own name.
+    ``frames`` this calculation's junction holds (`gather.ReadOnce.frames`:
+    its record's before its first prep has written one here)."""
     from ..paths import FIRST_ATTEMPT, attempt_dir
-    from .stages import frames_of, rung_points
+    from .stages import rung_points
     from ..jobset.naming import stage_home
     newest = _newest(finished, stage)
     if newest is None:
@@ -1372,7 +1444,7 @@ def _laid_here(calc, finished, stage: str) -> Dict[str, str]:
     fbase, base = Path(finished.base), Path(calc.base)
     run = attempt_dir(stage_home(base, calc.task, stage).dir, FIRST_ATTEMPT)
     moved = {newest: run}
-    for pt in rung_points(calc.task, stage, frames=frames_of(base)) or [None]:
+    for pt in rung_points(calc.task, stage, frames=frames) or [None]:
         src = _at(finished, stage, newest, pt)
         if src is not None:
             moved[src] = (RunPlace.of(run).point(pt.rel)
@@ -1592,7 +1664,7 @@ def takes_over(calc, stage: str, points, took) -> Optional[Takes]:
     if not calc.task.reuses:
         return None
     points = list(points)
-    finished, gone = _finished_of(calc)
+    finished, gone = finished_of(calc)
     if finished is None:
         return Takes(stage, calc.task.reuses, "", (), tuple(points),
                      (gone,) if gone else ())
@@ -1769,7 +1841,8 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
 
 __all__ = ["Extension", "Refused", "ReuseError", "citing",
            "frame_set_of", "frame_set_refusal", "reused",
-           "write_reusing", "Copy", "Take", "Takes", "Decision",
+           "finished_of", "finished_junction", "write_reusing",
+           "carry_pseudos", "Copy", "Take", "Takes", "Decision",
            "Reuse", "finished_window", "origin",
            "point_key", "decide", "launched_contours", "that_point",
            "copy_in", "takes_over", "take_into", "carry_shared",

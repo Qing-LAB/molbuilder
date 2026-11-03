@@ -40,7 +40,7 @@ viewer for one kind of file. Today there are eight:
 | Presenter | The file you open | The viewer you get | Shows in the Results dropdown? |
 |---|---|---|---|
 | `structure` | `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
-| `trajectory` | `.molwatch.log`, `.out`, `_geom_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
+| `trajectory` | `.molwatch.log`, `.out`, `_geom_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — the engine's words and the calculation's noun, *SIESTA optimization* / *PySCF vibration*; else *Trajectory* (§ 2) |
 | `spectra` | `.spectra.json` | a modes table, the mode's animation and a **chart** — the spectrum where a strength was computed, the mode positions where none was (a SIESTA result; `spectra.md` § 2) | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `transport` | a transport calculation's `task.json` (the registry's `transport-task` parser; `<label>.transport.json` is `summarize`'s copy, opened as a file) | the transport **report**, composed on read: T(E) per channel, DOS and PDOS, the I–V, each rung's convergence and the provenance chain ([`results.md`](?doc=web/results.md) § 2.5) | yes — *Transport* |
@@ -109,11 +109,13 @@ that declares four things (and three optional ones), and calls `register` once:
 
 **`meta` is the server's answer about this file**, and it is the last argument
 to `match`, `resultCategory` and `absorbs` alike: `{role, label, stage, parser,
-engine}` from `/api/results/dir` ([`parse.md`](?doc=model/parse.md) § 5.5) — the
+engine, engine_words, noun}` from `/api/results/dir` ([`parse.md`](?doc=model/parse.md) § 5.5) — the
 catalogue's role, *which run this file is part of and which rung*, the
-registry's verdict, and the engine that ran in the DIRECTORY. A presenter that
-has it prefers it to reading the filename, and for three of those five there is
-no filename answer at all:
+registry's verdict, the engine that ran in the DIRECTORY, and the words a heading
+is made of: the engine's (the engine table's `words`) and the calculation's
+noun (the kind table's) — § 2's heading reads those two, never `engine`. A presenter that
+has it prefers it to reading the filename, and for three of these there is no
+filename answer at all:
 
 - the **role** is the catalogue's own vocabulary rather than a run-output suffix
   spelled a second time here (`parse.md` R-RO1);
@@ -136,8 +138,7 @@ the answer. `engine: "unknown"` is the directory declining to name one, which
 reads the same as an answer without an engine: `trajectory`'s heading reads
 the engine's words and the calculation's noun, both served with the folder
 answer from the two tables (`engine_words`, `noun`) — *SIESTA optimization*,
-*PySCF vibration* — the engine's words alone where the folder is no
-calculation of ours, *SIESTA trajectory*, and *Trajectory* without either — the file is
+*PySCF vibration* — and *Trajectory* without them — the file is
 still named for what it IS, and neither the engine nor the kind is claimed
 (2.65.0: until then every run read *… optimization*). Guessing it from
 the suffix is what filed most SIESTA runs under *PySCF optimization* while the

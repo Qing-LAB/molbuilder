@@ -32,7 +32,7 @@ state can say *"-3 -- three deprotonated phosphates"* rather than a number.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Collection, Dict, Optional
 
 from .chemistry import (
     ChemistryAnalysis,
@@ -66,8 +66,8 @@ def count_must_float(engine: str, kind: str, treatment: str) -> Optional[str]:
     """Why the unpaired-electron count can only float here, or ``None`` --
     the engine's own rule, asked of its config class
     (`config/siesta.py`, `config/pyscf.py`): there a count nobody stated
-    floats (the resolution below) and a stated one is refused by name (the
-    settings gate).
+    floats (the resolution below) and a stated one is written as stated,
+    the stop said beforehand as information (the settings gate, ES6).
     """
     from .engine_table import config_class
     return config_class(engine).count_must_float(kind, treatment)
@@ -89,8 +89,11 @@ class Resolved:
     ``source`` is ``stated`` (in the template -- typed, or written there from
     the run a transport calculation cites), ``implied`` (by a stated item),
     ``recorded`` (by the run the structure came out of), ``detected`` (from
-    the structure) or ``rule`` (the charge a kind fixes; an engine's one
-    method; a count that can only float, :func:`count_must_float`).
+    the structure), ``rule`` (the charge a kind fixes; an engine's one
+    method; a count that can only float, :func:`count_must_float`) or
+    ``default`` (on a form that left the item blank, the catalogue's --
+    the method, the one item that never stays blank -- said in the words
+    every surface says a value nobody chose, `template.SOURCE_WORDS`).
     """
     value: Any
     source: str
@@ -184,11 +187,17 @@ class ElectronicState:
         }
 
 
-def electronic_state(struct: Structure, cfg: Any, *,
-                     kind: str) -> ElectronicState:
+def electronic_state(struct: Structure, cfg: Any, *, kind: str,
+                     chosen: Optional[Collection[str]] = None
+                     ) -> ElectronicState:
     """THE resolver: ``cfg`` is either engine's config -- the four items are
     spelled alike in both, which is what merges them (``template.md`` § 6.3)
-    -- and ``kind`` the calculation kind.
+    -- and ``kind`` the calculation kind.  ``chosen`` names the items the
+    person stated, where the caller holds a FORM rather than a description
+    (the card, ``/api/structure/analyze``): an item outside it that the
+    config still carries is not chosen, said so, never *stated*
+    (``web/form-schema.md`` § 1.1).  ``None`` where the config is a
+    description's -- a template states every value it holds.
 
     Raises ``KeyError`` when a species label names no element: the answer is
     an electron count, and a count with an atom left out is not a smaller
@@ -218,7 +227,7 @@ def electronic_state(struct: Structure, cfg: Any, *,
         net_charge=charge,
         spin_treatment=treatment,
         unpaired_electrons=count,
-        method=_method(cfg, engine),
+        method=_method(cfg, engine, chosen),
         n_electrons=n_electrons,
         finite=finite,
         recommended=rec,
@@ -280,15 +289,20 @@ def _charge(struct: Structure, cfg: Any, kind: str,
     return Resolved(0, "detected", "no deprotonated phosphate groups")
 
 
-def _method(cfg: Any, engine: str) -> Resolved:
+def _method(cfg: Any, engine: str,
+            chosen: Optional[Collection[str]]) -> Resolved:
     """``method`` is never blank: the engine's own where its catalogue
     offers no choice (the engine table's ``method`` -- SIESTA's DFT), else
-    the config's, stated."""
+    the config's -- stated, or, on a form that left it blank (``chosen``
+    without it), the catalogue's default."""
     from .engine_table import engine as _engine
     rec = _engine(engine)
     if rec.method is not None:
         return Resolved(rec.method, "rule",
                         f"{rec.words} is a {rec.method} code")
+    if chosen is not None and "method" not in chosen:
+        from .template import SOURCE_WORDS
+        return Resolved(cfg.method, "default", SOURCE_WORDS["default"])
     return Resolved(cfg.method, "stated", "stated")
 
 

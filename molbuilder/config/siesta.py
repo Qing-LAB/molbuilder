@@ -503,7 +503,8 @@ class SiestaConfig:
         unrestricted spin -- it stops at start on ``Spin.Fix`` otherwise
         (``read_options.F90``) -- and TranSIESTA holds none at all
         (``m_ts_options.F90``).  There a count nobody stated floats, and a
-        stated one is refused naming this reason."""
+        stated one is written as stated, this reason said beforehand as
+        information, never refused (ES6)."""
         if treatment in _ALWAYS_FREE:
             return (f"SIESTA can hold a fixed number of unpaired electrons "
                     f"only with ordinary (collinear) unrestricted spin; "

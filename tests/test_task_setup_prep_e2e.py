@@ -156,8 +156,8 @@ def _open(page, base, calc):
 
 def _commands_shown(page):
     """Every stage's command lines, once each block has filled -- the
-    server composes them (`/api/task-setup/commands`, W55 B4), so a block
-    is on the page before its lines are."""
+    server composes them (`/api/task-setup/commands`, `task-setup.md`
+    § 6.4), so a block is on the page before its lines are."""
     page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
     page.wait_for_function(
         "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
@@ -183,21 +183,17 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     assert page.evaluate("() => document.getElementById('ts-save').disabled"), \
         "Save is offered on arrival, with nothing unsaved"
 
-    # ── add a rank count to the run card, then type it ─────────────────
-    # A run needs no benchmark (stages.md § 6.8d), so this description has
-    # none and the card starts with no rows -- "+ Add setting" is how a
-    # person puts one there.
-    page.wait_for_selector(".ts-runcard select.ts-pick", timeout=20000)
-    page.evaluate(
-        "() => { const cards = document.querySelectorAll('.ts-runcard');"
-        "  const c = cards[0];"
-        "  const sel = c.querySelector('select.ts-pick');"
-        "  sel.value = 'mpi_np';"
-        "  sel.dispatchEvent(new Event('change', {bubbles: true}));"
-        "  for (const b of c.querySelectorAll('button'))"
-        "    if (/Add setting/.test(b.textContent)) { b.click(); return; } }")
+    # ── type a rank count into the run card's standing row ─────────────
+    # A run needs no benchmark, and this description has none; the launch
+    # rows stand on the card all the same, "blank until stated"
+    # (`task-setup.md` § 6.2b) -- the rank count is stated nowhere, so its
+    # row is there, unstated, before anything is typed.
     sel = '.ts-runcard input[aria-label="value for mpi_np"]'
     page.wait_for_selector(sel, timeout=20000)
+    row = _rows(page).get("mpi_np") or {}
+    assert row.get("kind") == "unstated" and row.get("value") == "", (
+        "the rank count, stated nowhere, does not stand blank on the run "
+        f"card: {row}")
     page.fill(sel, "8")
     page.dispatch_event(sel, "change")
     wait_for_file(page, "request", '"mpi_np"')
@@ -265,10 +261,10 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     assert lines == written, (
         f"the preview showed {lines} and the .sbatch carries {written}")
 
-    # the deck and the wrapper came out too -- a folder you can actually run
+    # the deck and the run script came out too -- a folder you can run
     d = calc_dir / "01_coarse"
     assert list(d.glob("*.fdf")), "no deck"
-    assert list(d.glob("*.run.sh")), "no wrapper"
+    assert list(d.glob("*.run.sh")), "no run script"
 
 
 def test_the_tab_saves_the_folder_first_and_says_so(
@@ -279,7 +275,8 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     files prep reads, so Prep refuses it first (§ 7a).  The group,
     prepared and never launched, is shown so when the folder opens again
     (`task-setup.md` § 11): its box unticked, so nothing is prepared until
-    it is picked again, and its tab's lines are its launch (W55 B4)."""
+    it is picked again, and its tab's lines are its launch (§ 11, *Each
+    group's next step is always there*)."""
     import re
     from molbuilder.checkpoint import Repo
     calc = unprepped_dir
@@ -427,7 +424,8 @@ def filled_dir(isolated_projects_root_module):
     # (`task-setup.md` § 6.2b):
     #   `omp_threads`  chosen    -- this rung says 4
     #   `mpi_np`       inherited -- only the calculation-wide block says 16
-    #   `time`         chosen    -- a LANE ASK, this run's own (§ 6.8e)
+    #   `time`         chosen    -- a LANE ASK, this run's own
+    #                               (`job-request.md` § 3.2a)
     # and `allocation` beside them, which is a different block for a
     # different question (§ 7).
     req = read_request(d)
@@ -503,7 +501,7 @@ def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
 
 def test_the_queue_the_request_names_stays_through_a_machine_and_an_ask(
         page, flask_server, isolated_projects_root_module):
-    """`task-setup.md` § 6.2b: the queue the job request names is the job
+    """`task-setup.md` § 6.1: the queue the job request names is the job
     request's -- a machine chosen changes what the queue card offers, never
     what the request says, and a queue that machine does not list is shown
     as stated, with that said.
@@ -605,8 +603,28 @@ def test_a_folder_opens_showing_what_it_already_states(
     it with the merged value would make blank unreachable: clearing writes
     this rung's own block, so with nothing there it writes nothing and the
     field snaps back.
+
+    **What came over is drawn by the kind's entry** (`task-setup.md` § 3,
+    2.65.0): *"a cited slot's row where the kind cites one, each carried
+    field's row where the kind carries it …, a structure pair where the
+    description names one"*.  An optimization cites no slot and carries no
+    field, so its card is its identity and its structure's formula and atom
+    count.  THE SILENT FAILURE: a row drawn for a slot or a field this kind
+    has not, standing empty (*—*) on the card, or the structure's formula
+    and atom count not drawn from the folder answer.
     """
     _open(page, flask_server, filled_dir)
+    # WHAT CAME OVER, every row with what the folder states for it.
+    page.wait_for_selector("#ts-facts > div", state="attached",
+                           timeout=20000)
+    facts = dict(page.eval_on_selector_all(
+        "#ts-facts > div",
+        "ds => ds.map(d => [d.querySelector('dt').textContent,"
+        "                   d.querySelector('dd').textContent])"))
+    assert facts.get("Formula") == "H2" and facts.get("Atoms") == "2", facts
+    assert not [k for k, v in facts.items() if v.strip() in ("", "—")], (
+        "What came over drew a row this calculation states nothing for -- a "
+        f"slot or a field its kind has not: {facts}")
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
     rows = _rows(page)
 
@@ -636,7 +654,8 @@ def test_a_folder_opens_showing_what_it_already_states(
 
     # A LANE ASK is an ordinary chosen row -- `time` is the RUN's own, and
     # `allocation.time` beside it is the calculation's and the bench's
-    # (`stages.md` § 6.8e).  They are different fields and both are stated.
+    # (`job-request.md` § 3.2a).  They are different fields and both are
+    # stated.
     assert rows["time"]["kind"] == "chosen", rows["time"]
     assert rows["time"]["value"] == "2-00:00:00", rows["time"]
     ask = page.evaluate(
@@ -645,14 +664,16 @@ def test_a_folder_opens_showing_what_it_already_states(
         "the queue card lost the calculation's own wall clock, or read the "
         f"run's: {ask!r}")
 
-    # `mem` HAS NO SECOND HOME and must not be offerable on the run card.
+    # `mem` HAS NO SECOND HOME and must not be offerable on the run card
+    # (`job-request.md` § 3.2a; `task-setup.md` § 6.2b).
     offered = page.evaluate(
         "() => Array.from("
         "  document.querySelectorAll('.ts-runcard select.ts-pick option'))"
         " .map(o => o.value).filter(Boolean)")
     assert "mem" not in offered, (
-        "the run card offered `mem`, which § 6.8e keeps out of `execution` "
-        "on purpose -- a trial and a run hold about the same memory")
+        "the run card offered `mem`, which job-request.md § 3.2a keeps out "
+        "of `execution` on purpose -- a trial and a run hold about the same "
+        "memory")
 
 
 def test_the_every_stage_card_writes_the_calculations_own_card(
@@ -1023,8 +1044,9 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     *this feature is gone*, and the one thing it never says is the true one
     — that the check could not run *(user, 2026-09-02: "we can't have a fit
     on. I just said, I don't know. Lack of information.")*.  Asked of the
-    bench grid card's panel: whether a run fits is the preview's to say
-    (W55 B3).
+    bench grid card's panel, `task-setup.md` § 6.2a: *"a failed fetch says
+    the check could not run, with the server's reason"* -- whether a run
+    fits is the preview's to say (§ 6.2b).
 
     Reached as a person reaches it: a folder on a machine that has no
     record -- nothing probed here -- so the server itself decides it cannot
@@ -1060,7 +1082,7 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
 
 
 # ---------------------------------------------------------------------------
-#  What the card TELLS YOU TO RUN  (plans/plan.md § 5h, cluster 4)
+#  What the card TELLS YOU TO RUN  (`task-setup.md` § 6.4, § 11)
 # ---------------------------------------------------------------------------
 
 
@@ -1107,7 +1129,9 @@ def two_stage_dir(isolated_projects_root):
 
 def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     """The commands a person copies, READ FROM THE PAGE: this reads what
-    the card renders.
+    the card renders -- `task-setup.md` § 11: per member `prep bench
+    <stage>` → `launch bench` → `summarize bench`, per group `prep task
+    --group <N>`.
 
     The claims, all of them about what a person is TOLD:
       * every group's tab offers each member's benchmark and the group's
@@ -1194,7 +1218,8 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
         page, flask_server, two_stage_dir, a_named_machine):
     """Pick a remote machine; the prep commands gain `--target`, launch does not.
 
-    The defect this test found: `setMachine()` updated `_machine` and
+    `task-setup.md` § 6.4: *"They carry `--target` whenever the choice was
+    required … and `launch` never carries it"*.  The defect this test found: `setMachine()` updated `_machine` and
     re-synced the prep BUTTONS, but never re-ran `renderNext()`, so the
     `pre.ts-cmd` blocks a person actually copies were built before the
     machine existed and kept a command with no `--target` in it.
@@ -1229,7 +1254,8 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
 
 def test_a_calculation_set_to_its_machine_is_shown_so(
         page, flask_server, two_stage_dir, a_named_machine):
-    """W55 D12, the page's half: a calculation is set to the machine of its
+    """`task-setup.md` § 6.4, *a calculation already set to its machine is
+    shown so*, the page's half: a calculation is set to the machine of its
     first prep, which does not change (`configuration.md` M-3), so once a
     stage is prepared the card shows that machine chosen, offers no other,
     and says why -- the folder's own answer, `set_to`.  The answer's half
@@ -1259,7 +1285,9 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
 
 def test_the_notify_card_offers_this_machines_channels(
         page, flask_server, two_stage_dir):
-    """A channel configured on this machine appears as a tick you can see.
+    """A channel configured on this machine appears as a tick you can see
+    (`task-setup.md` § 9b: *"The list is painted from `GET
+    /api/notify/channels`"*).
 
     Three steps that only run together in a browser: the card unhides once a
     description loads, `loadChannelNames()` asks the server, and the answer
@@ -1388,10 +1416,10 @@ def test_no_rung_is_taught_a_from_by_default(
     """By default the page composes no `--from`, even for a rung that
     continues (its `restart`, the default): which run a stage continues
     from is then its
-    first launch's answer -- the newest attempt of the stage before it,
-    which must have finished (`job-system.md` § 5.4, plan W37) -- and a
-    `--from` is taken as said, so it appears only when a person chooses a
-    run.
+    first launch's answer -- the newest run of the stage before it, which
+    must have finished (`job-system.md` § 5.4; `task-setup.md` § 11,
+    *Continue from*) -- and a `--from` is taken as said, so it appears only
+    when a person chooses a run.
 
     MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again --
     here, the stage before the second prepared, its run opened.

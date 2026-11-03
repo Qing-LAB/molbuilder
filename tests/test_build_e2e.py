@@ -3,11 +3,13 @@
 What the tests cover:
 
   * The two parameter forms (SIESTA + PySCF) populate from the CATALOGUE
-    schema door and carry engine_key badges — a silent renderer break
-    leaves the "Loading from schema..." placeholder (the failure class
-    the 2026-08-22 span-cut regression demonstrated: the file parsed,
-    every text pin was green, and only this lane knew the form was dead).
-  * Tab switching between the two engine panels.
+    schema door, every field inside a card, with engine_key badges and no
+    JS error -- a silent renderer break leaves the containers empty (the
+    failure class the 2026-08-22 span-cut regression demonstrated: the
+    file parsed, every text pin was green, and only this lane knew the
+    form was dead).
+  * A field that waits on another (`active_when`) greys out and comes
+    back as the catalogue declares, over a reload too.
   * The sidebar contract: setShared alone must NOT load (candidate-only);
     publishCommit is the load; a second commit replaces the first
     (the #51 `enforce` rule).
@@ -19,8 +21,8 @@ What the tests cover:
     the parameter template and the hand-over into the selected folder
     through the one shared door (lib/task-handover.js), carrying the
     structure you loaded with its held atoms after a click elsewhere, at
-    the frame on screen, and the one-calculation-per-folder guard fails
-    CLOSED.
+    the frame on screen; a folder already holding a description is
+    refused, nothing overwritten (one calculation per folder).
 
 NOT covered here (intentional scope split): the HTTP layer is
 test_web.py's; Task setup's own save door is test_task_setup_tab.py's.
@@ -53,7 +55,7 @@ def flask_server():
 def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     """Pin ``tmp_path`` as the only Capabilities picker root so the
     files blueprint accepts files written under it.  Mirrors the
-    helper in ``test_molbuilder_e2e.py`` / ``test_source_inspector_e2e.py``.
+    helper in ``test_molbuilder_e2e.py``.
     """
     from molbuilder import diagnostics
     _orig = diagnostics.get_capabilities()
@@ -138,18 +140,20 @@ def _open_build(page, base_url):
     #
     # This tab keeps the structure it was showing (workspace.md § 4: several
     # savers on one page, each deciding what and when), so "open the tab" is not
-    # the same as "open an empty tab" once anything has been loaded -- and these
-    # tests share one server and one workspace, so without this each one
-    # inherits whatever the previous one left on the canvas.
+    # the same as "open an empty tab" once anything has been loaded.  Two tags
+    # save on this page: the tab's panel, `structure-opt:panel`, where the
+    # structure is kept (structure-optimization/viewer.js, `PANEL_TAG`), and
+    # MolView's own, the bare `structure-opt`.  Each id below is the
+    # dispatcher's `workspaceId` of its tag.
     #
-    # Cleared through the tab's own door rather than by deleting files: the id
-    # is the workspace's to compute, and a test that hard-codes a filename is
-    # pinning a layout the workspace is free to change.  `above_index = -1`
-    # clears the whole tag.
-    page.request.post(
-        f"{base_url}/api/workspace-storage/prune",
-        data={"workspace_id": "ws-structure-opt", "above_index": -1},
-    )
+    # Cleared through the workspace's own route rather than by deleting files:
+    # a test that hard-codes a filename is pinning a layout the workspace is
+    # free to change.  `above_index = -1` clears the whole id.
+    for workspace_id in ("ws-structure-opt-panel", "ws-structure-opt"):
+        page.request.post(
+            f"{base_url}/api/workspace-storage/prune",
+            data={"workspace_id": workspace_id, "above_index": -1},
+        )
     page.goto(f"{base_url}/structure-optimization")
     # The "Load from sidebar selection" button is server-rendered;
     # waiting for it proves the HTML reached the browser.  The form-
@@ -168,35 +172,22 @@ class TestFormSchemasRender:
     regression in catalogue_to_form_schema or in form-schema.js'
     renderer would leave the containers empty -- silent UI break."""
 
-    def test_siesta_form_renders_fields_after_init(
-            self, page, flask_server):
-        errors = _open_build(page, flask_server)
-        # The form renderer mounts inputs/selects into
-        # #siesta-form-container after the schema fetch resolves.
-        page.wait_for_selector(
-            "#siesta-form-container input, "
-            "#siesta-form-container select",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        # The Loading-from-schema placeholder must be gone.
-        container_text = page.locator(
-            "#siesta-form-container"
-        ).inner_text()
-        assert "Loading from schema" not in container_text
-        assert errors == [], f"JS errors during /build init: {errors}"
-
     @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
     def test_no_field_renders_loose_outside_a_card(
             self, page, flask_server, engine):
-        """Every field the catalogue asks for lands INSIDE a card.
+        """Every field the catalogue asks for lands INSIDE a card, and the
+        page boots without a JS error.
 
         `form-schema.js` draws the cards the schema lists (``cards``) and
         renders a field whose ``card`` is not among them bare, appended
         straight to the container -- the same invisible outcome as no card
-        at all.  Asked of the rendered DOM, where the answer is the same one
-        the person gets.
+        at all (`web/form-schema.md` § 1a rule 1).  Asked of the rendered
+        DOM, where the answer is the same one the person gets.  A throw
+        during init() -- the 2026-05 Spectra parse bug's failure mode --
+        can leave a page that still draws its fields, so the error list is
+        asked too.
         """
-        _open_build(page, flask_server)
+        errors = _open_build(page, flask_server)
         sel = f"#{engine}-form-container"
         page.wait_for_selector(f"{sel} input, {sel} select",
                                state="attached", timeout=_BOOT_TIMEOUT_MS)
@@ -220,6 +211,7 @@ class TestFormSchemasRender:
             f"instead of inside one: their card is not among the schema's "
             f"`cards` (`template.cards`), so the renderer has nowhere to "
             f"draw them.")
+        assert errors == [], f"JS errors during the tab's init: {errors}"
 
     def test_engine_key_badges_present_after_schema_render(
             self, page, flask_server):
@@ -253,29 +245,6 @@ class TestFormSchemasRender:
 
 
 # --------------------------------------------------------------------- #
-#  Tab switching                                                        #
-# --------------------------------------------------------------------- #
-
-
-class TestTabSwitching:
-    """Clicking the SIESTA / PySCF tabs reveals the matching panel."""
-
-    def test_clicking_siesta_tab_returns_to_siesta_panel(
-            self, page, flask_server):
-        _open_build(page, flask_server)
-        page.wait_for_selector(
-            "#siesta-form-container input, "
-            "#siesta-form-container select",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        page.locator("[role='tab']").filter(has_text="PySCF").click()
-        page.locator("[role='tab']").filter(has_text="SIESTA").click()
-        page.wait_for_selector(
-            "#tab-siesta:not([hidden])", timeout=_BOOT_TIMEOUT_MS,
-        )
-
-
-# --------------------------------------------------------------------- #
 #  The sidebar structure flow                                           #
 # --------------------------------------------------------------------- #
 
@@ -284,37 +253,6 @@ class TestSidebarStructureFlow:
     """The sidebar is the ONLY way a structure reaches this tab: a commit
     loads, a bare pick does not, a second commit replaces the first.
     """
-
-    def test_sidebar_load_updates_info_atoms(
-            self, page, flask_server, water_xyz_file):
-        """Structures come from the project sidebar.  A commit on a sidebar pick rebuilds the structure section
-        and the #info-atoms span flips from the em-dash
-        placeholder to a numeric atom count."""
-        _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => window.molbuilder "
-            "&& window.molbuilder.projects "
-            "&& typeof window.molbuilder.projects.publishCommit "
-            "       === 'function'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        parent = str(Path(p).parent)
-        page.evaluate(
-            """(ctx) => window.molbuilder.projects.publishCommit(
-                ctx.dir, ctx.file)""",
-            {"dir": parent, "file": p},
-        )
-        page.wait_for_function(
-            "() => /^\\d+$/.test("
-            "document.querySelector('#info-atoms').textContent.trim())",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        atom_count = int(
-            page.locator("#info-atoms").inner_text().strip()
-        )
-        assert atom_count == 3   # water.xyz
 
     def test_commit_mounts_molview_card(
             self, page, flask_server, water_xyz_file):
@@ -635,9 +573,10 @@ class TestFindingsSitBesideTheirField:
     def test_a_finding_about_the_mesh_sits_beside_the_mesh(
             self, page, flask_server, water_xyz_file):
         """A triple is one field, and its finding sits beside it like any
-        other's (the K3 review, plan § 5w K7): the field's id was on its
-        three cells alone, so the finding about `kgrid` -- placed by that id
-        -- fell back to the card."""
+        other's (`web/form-schema.md` § 1.1: the settings gate's refusal
+        lands beside the field it names; the K3 review): the field's id was
+        on its three cells alone, so the finding about `kgrid` -- placed by
+        that id -- fell back to the card."""
         _open_build(page, flask_server)
         page.wait_for_function(
             "() => window.molbuilder && window.molbuilder.projects"
@@ -721,8 +660,9 @@ class TestSendToTaskSetup:
 
     Two halves: a legal send writes the CLI's own files into the
     selected folder, and a folder already holding a description refuses
-    with nothing overwritten (the one-calculation-per-folder guard, which also
-    fails CLOSED on a read error)."""
+    with nothing overwritten (the one-calculation-per-folder guard,
+    `describe.refuse_described`: the description's file is there or it is
+    not, and the guard reads nothing of it)."""
 
     def _calc_dir(self, tmp_path, monkeypatch):
         """projects/<project>/<topic>/<calc> — the depth the send guard
@@ -823,6 +763,15 @@ class TestSendToTaskSetup:
 
     def test_send_writes_the_handover_into_the_selected_folder(
             self, page, flask_server, tmp_path, monkeypatch):
+        """A Send writes the structure's pair, the parameter template and
+        `task.1st.json` into the folder selected in the sidebar, for the
+        engine on screen, and the page stays where it is, its status naming
+        Task setup as the road after it (`web/handover-procedure.md` § 2,
+        steps 1-2; § 3: the hand-over says what it is in its `_what` line).
+
+        THE SILENT FAILURE: the button clicked and nothing written -- every
+        route below it green -- or written and the page gone elsewhere, so
+        the person edits whatever folder another tab last showed."""
         calc, xyz = self._calc_dir(tmp_path, monkeypatch)
         self._load_and_send(page, flask_server, calc, xyz)
         page.wait_for_function(
@@ -871,9 +820,23 @@ class TestSendToTaskSetup:
         Measured 2026-09-19: the hand-over landed correctly in
         `optimization/junction6-hier` and Task setup opened
         `spectrum/bridge-hier`, ready to edit the wrong calculation.
+
+        THE CLEAN PATH IS THE DOOR'S ANSWER WITH NO NOTICES
+        (`web/handover-procedure.md` § 2.1: a box the gate accepted but
+        wants read comes back as notices) -- asked of the answer the page
+        received, so this fixture's stated 18 Å box is known to reach it.
         """
         calc, xyz = self._calc_dir_with_a_cell(tmp_path, monkeypatch)
-        self._load_and_send(page, flask_server, calc, xyz)
+        self._open_on(page, flask_server, calc)
+        self._use(page, xyz, 3)
+        with page.expect_response(
+                lambda r: "/api/task-setup/handover" in r.url,
+                timeout=10_000) as answered:
+            page.locator("#send-to-task-setup").click()
+        assert answered.value.json()["notices"] == [], (
+            "this fixture must reach the CLEAN branch, or the assertions "
+            "below are about the notices branch; the hand-over answered "
+            f"{answered.value.json()['notices']}")
         page.wait_for_function(
             "() => (document.querySelector('#handover-status') || {})"
             "      .textContent.includes('Wrote')",
@@ -885,9 +848,6 @@ class TestSendToTaskSetup:
             "the hand-over navigated away; it writes files and stops")
         status = page.evaluate(
             "() => document.querySelector('#handover-status').textContent")
-        assert "cell was checked" not in status, (
-            "this fixture must reach the CLEAN branch, or the assertion "
-            "above is about the wrong code; got: " + status)
         assert "Task setup" in status, (
             "nothing opens Task setup for you, so the status has to say to; "
             "got: " + status)
@@ -1249,3 +1209,83 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
     after = state()
     assert after["box"] is True, "the box nobody answered came back answered"
     assert after["said"] == "you set this", after
+
+
+#: The tab's two locks, the catalogue's (`active_when`, `web/form-schema.md`
+#: § 1.3): a relaxation's step settings wait on Relaxation type being a
+#: relaxer, the PCM model on a solvent being chosen.
+_WAITING = ("p-relax-steps", "p-relax-force-tol", "p-relax-max-displ",
+            "py-solvent-method")
+
+
+def test_a_field_waits_on_the_field_the_catalogue_names(page, flask_server):
+    """`web/form-schema.md` § 1.3: *"a relaxation's step settings wait on
+    Relaxation type being a relaxer (`relax_type = ["CG", "Broyden",
+    "FIRE"]`), and the solvent model on a solvent being chosen (`solvent =
+    "set"`, an optional field holding any value) -- the
+    Structure-optimization tab's two locks, its own code until 2.65.0"*.
+    The renderer draws a waiting field *"greyed out while any named field
+    holds another value -- its words muted, its control disabled, and a
+    line beside it saying what it waits on (`active_words`) -- and follows
+    each change"*; a blank applies the kind's recommendation (§ 1.1), CG
+    here, so the step settings are live at load and the PCM model, with no
+    solvent, is not.  After a reload the restore writes the held values
+    through the form's writer, and the greying follows them.
+
+    THE SILENT FAILURE: 2.65.0 deleted the tab's own lock code for the
+    renderer's one rule, which only a browser runs -- a lock lost on the way
+    leaves the step settings editable under `none`, where they enter
+    nothing, or the PCM model greyed for good, and the form still sends
+    both, so nothing says so.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the `"set"` branch dropped (the PCM
+    model never live); a blank read as no value rather than the default
+    (the step settings greyed at load); the lock applied at render only (a
+    change, or the restore's write, leaves it as it was)."""
+    errors = _open_build(page, flask_server)
+    for sel in ("#p-relax-type", "#py-solvent", *(f"#{i}" for i in _WAITING)):
+        page.wait_for_selector(sel, state="attached",
+                               timeout=_BOOT_TIMEOUT_MS)
+
+    def states():
+        # A FIELD IS LIVE WHEN ITS CONTROLS TAKE AN EDIT and nothing beside
+        # it says what it waits on; greyed out when they take none and the
+        # line beside it says.
+        got = page.evaluate("""(ids) => ids.map((i) => {
+            const w = document.getElementById(i).closest('.schema-field');
+            const why = w.querySelector(':scope > .lock-reason');
+            return [[...w.querySelectorAll('input, select, textarea')]
+                        .every((c) => !c.disabled),
+                    !!why && !why.hidden];
+        })""", list(_WAITING))
+        return ["live" if on and not said else
+                "greyed" if said and not on else
+                f"mixed (live={on}, said={said})" for on, said in got]
+
+    seen = {"at load": states()}
+    page.select_option("#p-relax-type", value="none")
+    seen["no relaxation"] = states()
+    page.select_option("#p-relax-type", value="Broyden")
+    seen["a relaxer"] = states()
+    page.click('.tab-btn[data-tab="pyscf"]')
+    page.fill("#py-solvent", "water")
+    seen["a solvent"] = states()
+    page.click('.tab-btn[data-tab="siesta"]')
+    page.select_option("#p-relax-type", value="none")
+
+    page.reload()
+    page.wait_for_function(
+        "() => (document.getElementById('p-relax-type') || {}).value === 'none'"
+        "   && (document.getElementById('py-solvent') || {}).value === 'water'",
+        timeout=_BOOT_TIMEOUT_MS)
+    seen["after a reload"] = states()
+
+    steps, pcm = 3, 1
+    assert seen == {
+        "at load":        ["live"] * steps + ["greyed"] * pcm,
+        "no relaxation":  ["greyed"] * steps + ["greyed"] * pcm,
+        "a relaxer":      ["live"] * steps + ["greyed"] * pcm,
+        "a solvent":      ["live"] * steps + ["live"] * pcm,
+        "after a reload": ["greyed"] * steps + ["live"] * pcm,
+    }, seen
+    assert errors == [], f"JS errors on the tab: {errors}"

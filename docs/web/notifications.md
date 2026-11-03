@@ -65,7 +65,11 @@ The workspace persistence layer, when a save to disk fails, dispatches a
 listens for it and shows a single, stable-id error row —
 *"Couldn't save state to disk … your edits are kept in memory, but
 retract / crash-recovery history may be incomplete."* A burst of failures updates
-that one row rather than stacking.
+that one row rather than stacking. **A save that succeeds lowers it**: the
+dispatcher signals `molbuilder:persist-ok` after a write lands, and the row is
+cleared — only that row, the others stay — so a warning never outlives the
+recovery it warned about (measured 2026-09-05: until then the row stayed up
+after the disk came back).
 
 ## 4. Where the module stands (current → target ESM)
 

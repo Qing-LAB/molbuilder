@@ -435,7 +435,9 @@ def describe(*, calculation: str, engine: Optional[str],
                     f"reuses {reuses_rel}.")
         after = ("Change what the new question asks -- on Task setup, or in "
                  "its task.json and template -- then prepare it for the "
-                 "machine that will run it:",)
+                 "machine that will run it; its first prep takes its "
+                 "junction and the pseudopotentials "
+                 f"{finished.base.name}'s runs read:",)
     else:
         headline = (f"Described {rec.noun} '{task.run.name}' in {dest} -- "
                     f"composes {junction}.")

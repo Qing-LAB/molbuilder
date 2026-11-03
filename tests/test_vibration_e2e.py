@@ -1,14 +1,15 @@
-"""The vibration calculation's E2E — the spectra-migration plan's P1 bar.
+"""The PySCF vibration's E2E (`engines/vibration.md` § 4, its test map § 9).
 
 Water, on this workstation, through the WHOLE framework loop:
-``init --calculation vibration`` → ``prep task --group 1`` →
-``launch --mode direct`` → a schema-5 ``.spectra.json`` in the attempt
-directory, every phase complete, loadable through the Results door.  Two
-runs: the default (Raman) and the DECOUPLED IR-only run the 2026-08-20
-ruling asked for — whose intensities are held to water's literature
-windows at B3LYP/def2-SVP, which is what resolves the IR prefactor's
-NOT-VALIDATED flag at the band level (pattern + magnitudes; an external
-cross-code digit match can harden it later, and the item's help says so).
+``describe --calculation vibration`` → ``prep task`` →
+``launch --mode direct`` → a ``.spectra.json`` in the run's folder, every
+phase complete, loadable through the Results door.  Two runs of free water:
+one asking Raman and not infrared (:func:`water`), and the default --
+infrared alone, DECOUPLED from Raman (the 2026-08-20 ruling) -- whose
+intensities are held to water's literature windows at B3LYP/def2-SVP, which
+is what resolves the IR prefactor's NOT-VALIDATED flag at the band level
+(pattern + magnitudes; an external cross-code digit match can harden it
+later, and the item's help says so).
 
 Needs the ``molbuilder-pySCF`` env + conda hook on this machine; skipped
 cleanly anywhere else.  Wall cost ~1 min total (water is 17 s a run); a plain water run is made once
@@ -194,6 +195,19 @@ def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
 
 
 def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
+    """The plain water run end to end, read back as its readers read it:
+    each phase it asked complete and each it did not `not requested`
+    (`engines/vibration.md` § 4.9); the relaxation converged and the file's
+    geometry the RELAXED one the Hessian was taken at (§ 4.2); water's three
+    frequencies in their windows; full RRHO thermochemistry whose headline
+    is a row of its grid (§ 4.7); the monitor beside the run reading it with
+    the framework's readers and judging a CPU run on no GPU
+    (`execution/run-reports.md` § 2.1a, § 2.3, § 2.5); and the result loading
+    through the Results door, every atom's mass stated (§ 6.2, § 6.6).
+
+    THE SILENT FAILURE: a result that loads and draws while its geometry is
+    the input's, its headline thermochemistry a different sum from its
+    curves, or its monitor judging a GPU a CPU run never held."""
     bundle, d = water
 
     from molbuilder.spectra.results import SCHEMA_VERSION
@@ -212,7 +226,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
     assert rel["enabled"] and rel["converged"] and rel["n_steps"] >= 1
     assert rel["max_force_eh_bohr"] < 1e-3
     # The geometry in the file is the one the Hessian was taken at -- the
-    # RELAXED one, not the input (design § 15.4): the relaxation moved
+    # RELAXED one, not the input (§ 4.2): the relaxation moved
     # atoms, so the two must differ.
     from molbuilder.structure import Structure
     _moved = np.abs(np.asarray(d["structure"]["positions"])
@@ -234,7 +248,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
     assert th["regime"] == "rrho"
     assert 0.019 < th["zpe_eh"] < 0.023
     assert th["g_eh"] < d["equilibrium"]["scf_energy_eh"] + 0.05
-    # ONE quantity under one label (design § 15.3): the headline T is on
+    # ONE quantity under one label (§ 4.7): the headline T is on
     # the grid and the grid's row there IS the headline -- full RRHO both.
     tg = th["grid"]["temperatures_K"]
     assert len(tg) == 31 and th["temperature_K"] in tg
@@ -415,8 +429,8 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
 
 def test_water_in_water_runs_the_solvated_chain_end_to_end(
         tmp_path, monkeypatch):
-    """Category 2's live bar (integration plan, 2026-08-21), on the route
-    PCM reaches (`engines/vibration.md` § 4.6): PCM water, the relaxation
+    """The solvated run on the route PCM reaches (`engines/vibration.md`
+    § 4.6, its PCM box): PCM water, the relaxation
     and the Hessian under one solvated Hamiltonian -- PySCF's analytic
     Hessian adds the solvent's own response (`with_solvent.hess`).  IR and
     Raman are OFF: their routes are built without that term, and the
@@ -425,7 +439,9 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     deliberately loose: PCM shifts water's bands by tens of cm^-1, so the
     gas windows widen; what is being proven is the solvated run completing
     with real numbers, plus the solvated deck actually differing from gas
-    (the eps line is in the deck; the energy is the solvated one)."""
+    (the solvent and its dielectric are in the deck).  The frequencies'
+    windows hold gas water's too: nothing here measures that the energy is
+    the solvated one."""
     bundle = _describe(tmp_path, monkeypatch)
     # Water as the solvent, and IR OFF (it defaults on) -- Raman stays off,
     # its default: the one route PCM reaches (`engines/vibration.md` § 4.6).
@@ -452,7 +468,9 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
 
 
 def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
-    """The analytic route must return the Hessian the NO-IR path returns.
+    """The analytic route must return the Hessian the NO-IR path returns
+    (`engines/vibration.md` § 4.6: *"Asking for intensities must not move
+    the frequencies"*).
 
     ``pyscf.prop.infrared`` computes a Hessian on its way to dmu/dR, and
     two of its choices differ from ``Hessian.kernel()``:
@@ -511,10 +529,10 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
 
 
 def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
-    """The gate of the unification design (§ 7.5 step 2): before the deck
-    is touched, the one path -- `spectra.normal_modes.vibrational_modes`,
-    nothing held -- must reproduce PySCF's own `harmonic_analysis` on
-    free molecules to numerical noise.  Four systems, each for a reason:
+    """`engines/vibration.md` § 4.5, *the gate this rests on*: the one path
+    -- `spectra.normal_modes.vibrational_modes`, nothing held -- must
+    reproduce PySCF's own `harmonic_analysis` on free molecules to numerical
+    noise, at the tolerances § 4.5 states.  Four systems, each for a reason:
     water (the ordinary case), CO2 (five motions removed, not six, with
     no linearity flag anywhere), HF (one mode, nothing to hide behind),
     methane (degenerate modes -- eigenvalues must agree, eigenvectors
@@ -591,7 +609,8 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
 
 def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
                                                              monkeypatch):
-    """The unification's demonstrator (design § 7.6): hold water's oxygen
+    """The demonstrator (`science/normal-modes.md` § 7, the water row with
+    O held; `engines/vibration.md` § 4.4, § 4.7): hold water's oxygen
     and half of the six numbers the old path reported were not vibrations
     -- the two hydrogens swinging about a nailed-down atom, at 15-24 cm-1
     with the two loudest infrared bands of the run.  Through the whole
@@ -637,15 +656,18 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     # atoms only.
     assert d["hessian_scope"] == "free" and d["n_atoms_in_hessian"] == 2
     assert d["hessian_density_fit"] is False
-    # The run wrapper states the constraint in its own header, read back
-    # off the deck: one fact, one spelling across the process boundary.
+    # THE RUN SCRIPT'S BANNER states the held atoms as prep read them from
+    # the deck's own record (`execution/running-a-job.md` § 1 row 11, § 4.1):
+    # one held here.  Read by its label, the padding the banner's own.
     attempt = bundle / "01_freq" / "run-0"
+    import re
     from molbuilder.runs import run_of
     wrap_log = run_of(attempt).session_log
     assert wrap_log is not None, (
         "the wrapper writes its session log beside the run")
     header = wrap_log.read_text(errors="replace")
-    assert "frozen_atoms: 1 listed indices" in header, header[:1500]
+    assert re.search(r"^\s*Held atoms\s*:\s*1 atom held\b", header, re.M), (
+        header[:2500])
     # HELD, SO READ ALONG THE LIGHT (§ 4.6; `web/spectra.md` § 3.2): the
     # load door answers the stored dipole change along each axis, and the
     # three average back to the file's own orientation average -- one vector
@@ -687,7 +709,8 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
 
 
 def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
-    """§ 10's owed check.  The reduced calculation asks PySCF for second
+    """`engines/vibration.md` § 4.4: the block agrees with
+    compute-everything-and-slice.  The reduced calculation asks PySCF for second
     derivatives of the free atoms only.  It must give exactly the free-free
     block of the compute-everything Hessian -- with and without a
     dispersion correction, whose Hessian term is full-size and has to be

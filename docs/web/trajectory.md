@@ -260,6 +260,13 @@ viewer makes says so. *(Until 2026-10-13 none did: every rebuild after the
 first load was refused in silence, the frame counter growing while the movie
 kept its old frames.)*
 
+**Coming back to the tab asks once.** A page shown again from the browser's
+cache, or a tab made visible again, sends one `GET /api/watch/data` at once —
+live run or not — so a frame written while you were away shows within one
+round trip rather than at the next 15-second tick, and a page restored from
+the cache never keeps the frames it held when you left (2026-06-02, #194). It
+is one ask, not a restart of polling: a run no longer live is still not polled.
+
 **Refresh is a clean reload**, not a nudge: it re-runs the whole load, so the
 movie opens again at its newest frame, as a load opens it, and the camera
 refits — the same reset a file-switch does. This is deliberate (it closed a class of half-refreshed-state
@@ -326,6 +333,9 @@ header. The header's source-path line has the username redacted.
   element the viewer draws into, looked up on the panel the server sends,
   answers — one element, at the moment it is asked, as the run opens and as
   § 1's three force controls are used.
+- `test_inspector_pageshow_refresh_e2e.py` — § 5's one ask on a tab return:
+  a page shown again from the cache, and a tab made visible, each send
+  `/api/watch/data` once.
 - § 4's badge and § 5's follow read the run the server sends:
   `test_trajectory_settle_post_load_js.py` (the settle, as a case table) and
   `test_trajectory_transition_js.py` (a quiet poll's answer taken) —

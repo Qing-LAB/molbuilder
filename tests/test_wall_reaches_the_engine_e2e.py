@@ -16,6 +16,7 @@ numbers); and a continuation taking such a file in silence.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,11 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
     way out, and the run is its one start: nothing in the job starts the
     engine again -- a launch again continues it (§ 3.5).
 
+    The banner line and the session log's wall line are § 3.6's *What you
+    see of the wall*, read by their label and value -- the banner pads its
+    labels to the longest it prints (§ 1, since 2.64.0), so no column is
+    pinned.
+
     MUTATION THIS MUST FAIL AGAINST: the card's wall not exported to a run
     here (`submit._go`; SIESTA relaxes H2 to its end, converged); the wall
     read as an SCF failure (the grammar without `OUT_OF_TIME`)."""
@@ -114,8 +120,11 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
                and "OUT_OF_TIME" in ln
                for ln in launched.output.splitlines()), launched.output
     wrap = walled["wrap"].read_text(errors="replace")
-    assert "Wall          : 20s from the job's start" in wrap, wrap[:3000]
-    assert "wall: " in wrap and "SIESTA stops 600s before it" in wrap, wrap[-2000:]
+    assert re.search(r"^\s*Wall\s*: 20s from the job's start; SIESTA stops "
+                     r"600s before it \(running-a-job\.md 3\.6\)\s*$",
+                     wrap, re.M), wrap[:3000]
+    assert re.search(r"\bwall: \d+s left of 20s; SIESTA stops 600s before "
+                     r"it \(running-a-job\.md 3\.6\)", wrap), wrap[-2000:]
     assert "stopped at its wall:" in wrap, wrap[-2000:]
     # ONE START (`project-layout.md` § 1.6.1): the session log holds the
     # run script's one start, the engine run once.

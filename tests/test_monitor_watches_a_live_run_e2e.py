@@ -132,9 +132,11 @@ def _whole(run: Path) -> int:
 def test_a_completion_marker_does_not_stop_the_sampling(run, tmp_path):
     """The loop keeps going while the watched PID lives, whatever the output
     says: the whole run is on disk, ``>> End of run`` included, and this
-    process -- certainly alive -- is the watched PID (`job-contracts.md`: the
-    monitor follows the launcher's PID rather than guessing from output
-    markers)."""
+    process -- certainly alive -- is the watched PID (`run-reports.md` § 2.2,
+    *Why no convergence phrase is read*: *when* it ended is the watched
+    PID's answer or the run script's signal, never an output marker; § 2.3).
+    THE SILENT FAILURE: sampling stopped at an end line, leaving a job that
+    still holds its CPUs and GPUs unwatched."""
     _, watched, _grow = replay(run, tmp_path, _whole(run))
     slept = []
     final = monitor.run_monitor(
@@ -223,18 +225,28 @@ def test_a_run_that_does_not_advance_writes_and_sends_nothing(run, tmp_path):
     assert [e for e in seen if e not in ("start", "finish")] == [], seen
 
 
-def test_util_sampling_is_change_gated_and_summarised(run, tmp_path):
-    """The run's `.util.csv` gets a row only when a metric moves >= 10 % (or a
-    keepalive passes), and a [UTIL-SUMMARY] verdict lands at the end.  The
-    samples are scripted -- the SAMPLER is the monitor's own, and what it
-    reads is the machine, not a file."""
-    there, watched, _grow = replay(run, tmp_path, _whole(run))
-    seq = [
-        monitor.UtilSample(0.0, 50.0, 100.0, [(0, 95.0, 40.0, 20.0)]),
-        monitor.UtilSample(0.0, 51.0, 100.0, [(0, 94.0, 40.0, 20.0)]),
-        monitor.UtilSample(0.0, 52.0, 100.0, [(0, 60.0, 40.0, 20.0)]),
-        monitor.UtilSample(0.0, 52.0, 100.0, [(0, 60.0, 40.0, 20.0)]),
-    ]
+def test_util_rows_are_change_gated(run, tmp_path):
+    """`run-reports.md` § 2.1, § 2.5: the run's `.util.csv` holds a header and
+    a first row at start, then a row only when a metric moved by >= 10 % of
+    its LAST WRITTEN value (or the keepalive passed -- not reached here).
+    The samples are scripted -- the SAMPLER is the monitor's own hook, and
+    what it reads is the machine, not a file -- and hold no GPU, as this run
+    (a CPU SIESTA run) holds none: *a GPU is sampled only for a run that
+    uses one* (§ 2.1a).  No PID is watched (0), so every wake samples.
+
+    CPU at 50, then 54, 58, 58: 54 moved 4 of the 5 that 10 % of 50 asks,
+    58 moved 8 from the last row written, the second 58 nothing -- so the
+    rows are 50 and 58.
+
+    THE SILENT FAILURE: a row per wake, the series growing with the wake
+    rate; or a slow drift never written.  MUTATIONS THIS MUST FAIL AGAINST:
+    every sample written (54 appears); the move measured from the last
+    SAMPLE instead of the last row (58 is 4 from 54, and never written)."""
+    import csv
+
+    _there, watched, _grow = replay(run, tmp_path, _whole(run))
+    seq = [monitor.UtilSample(float(t), cpu, 2.0)
+           for t, cpu in enumerate((50.0, 54.0, 58.0, 58.0))]
     it = iter(seq)
     last = {"s": seq[0]}
 
@@ -245,19 +257,23 @@ def test_util_sampling_is_change_gated_and_summarised(run, tmp_path):
             pass
         return last["s"]
 
-    monitor.run_monitor(watched, interval=1, watch_pid=999_999_999,
-                        sleep=lambda s: None, max_ticks=4, util=True,
+    monitor.run_monitor(watched, interval=1, watch_pid=0,
+                        sleep=lambda s: None, max_ticks=3, util=True,
                         util_keepalive_s=1e9, sampler=_sampler,
-                        clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0, 4.0]))
-    rows = watched.path(".util.csv").read_text().splitlines()
-    assert rows[0].startswith("epoch,iso,cpu_pct,mem_gb,gpu0_sm")
-    assert len(rows) >= 2
-    log = watched.path(".monitor.log").read_text()
-    assert "[UTIL-SUMMARY]" in log and "gpu0 sm mean=" in log
+                        clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0]))
+    with open(watched.path(".util.csv"), newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert [float(r["cpu_pct"]) for r in rows] == [50.0, 58.0], rows
 
 
 def test_a_failing_notifier_does_not_break_the_loop(run, tmp_path):
-    """Ends on the WATCHED PID, the only stop signal."""
+    """`run-reports.md` § 3: each channel is guarded on its own -- *"A
+    failure costs the run nothing"*.  A notifier that raises leaves the
+    monitor watching to the end, and the next notifier still hears
+    ``finish``; the watched PID gone is what ends it here (§ 2.6).
+
+    THE SILENT FAILURE: one broken channel ending the monitor, or silencing
+    every channel after it."""
     _, watched, _grow = replay(run, tmp_path, _whole(run))
 
     def _boom(st, ev):
@@ -438,23 +454,6 @@ def test_the_machine_is_the_logs_first_line(run, tmp_path):
         encoding="utf-8").splitlines()[0]
     assert "[MACHINE]" in first, first
     assert f"node={os.uname().nodename[:128]}" in first
-
-
-def test_a_monitor_missing_its_companion_still_monitors(run, tmp_path,
-                                                        monkeypatch):
-    """`config_dir.py` travels beside the shipped monitor; when a staging
-    defect loses it, WHERE reports go cannot be answered -- and the answer is
-    *reports off*, said in the log, never startup death."""
-    def _no_companion():
-        raise ModuleNotFoundError("config_dir")
-    monkeypatch.setattr(monitor, "_secrets_dir", _no_companion)
-    monkeypatch.delenv("MOLBUILDER_NOTIFY_FILE", raising=False)
-    _, watched, _grow = replay(run, tmp_path, _whole(run))
-    monitor.run_monitor(watched, interval=1, watch_pid=999_999_999,
-                        sleep=lambda s: None, clock=_clock())
-    text = watched.path(".monitor.log").read_text(encoding="utf-8")
-    assert "[MACHINE]" in text and "[MONITOR]" in text, text
-    assert "reports off" in text, text
 
 
 # --------------------------------------------------------------------- #

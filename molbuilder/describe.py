@@ -1,9 +1,8 @@
 """``describe`` — write the portable description and its job request.
 
 **Module:** L2. Imports ``task``, ``template``, ``identity`` and
-``validation.task`` -- and the composed junction's writer
-(``transport.compose``) for a calculation that reuses a finished one;
-imported by ``jobset/_cli``, the hand-over (``web/blueprints/build``)
+``validation.task``; imported by ``jobset/_cli``, the hand-over
+(``web/blueprints/build``)
 and a kind's own describe (``transport/describe``, ``transport/reuse``).
 It is **pure up to one function**: everything is built and
 checked in memory, and :func:`write_description` is the only part that touches
@@ -258,8 +257,7 @@ def refuse_described(dest, *, shown: Optional[str] = None) -> None:
 
 
 def write_description(desc: Description, dest, *,
-                      psml_lib=None, struct=None,
-                      junction=None) -> List[Path]:
+                      psml_lib=None, struct=None) -> List[Path]:
     """Write *desc* into *dest*, publishing every file or none.
 
     *struct*, when given, is the structure AS DESCRIBED -- including any
@@ -279,13 +277,9 @@ def write_description(desc: Description, dest, *,
     files themselves, which are the same everywhere (`project-layout.md`
     § 2.1).
 
-    *junction*, for a transport calculation that reuses a finished one, is
-    the junction it is described with (`transport.reuse.write_reusing`):
-    the finished calculation's, as its record holds it
-    (`compose.load_compose_record`), or a frame set of it, composed
-    (`engines/transport.md` § 2a.16, *A frame set of the same junction*) --
-    written beside the description by the composition's one writer
-    (`compose.write_compose_record`), so prep does not compose it again.
+    A transport calculation's junction is never written here: its first
+    prep composes it from its citation, or takes the one a finished
+    calculation ran (`engines/transport.md` § 2a.16).
     """
     out_dir = Path(dest)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -357,9 +351,6 @@ def write_description(desc: Description, dest, *,
                     + "  The pseudopotentials travel with the calculation, "
                       "so they have to be somewhere readable now.")
             copy_pseudopotentials(list(desc.pseudo_species), lib, staging)
-        if junction is not None:
-            from .transport.compose import write_compose_record
-            write_compose_record(staging, junction)
     except BaseException:
         # Nothing is published, so the target is exactly as it was.
         shutil.rmtree(staging, ignore_errors=True)

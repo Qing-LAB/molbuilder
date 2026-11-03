@@ -219,7 +219,7 @@ def test_a_channels_secret_never_reaches_the_page(page, flask_server):
 
 
 # NOT asserted here: that a successful save clears `#tm-url`.  It does not,
-# and `web/this-machine.md` § 3.1 enumerates what a save DOES clear -- the
+# and `web/this-machine.md` § 3 enumerates what a save DOES clear -- the
 # previous format's top-level `url`/`key`/`headers` in the FILE -- a closed
 # list the form is not on.  The observation is real (a saved webhook stays in
 # the box until the tab closes) but it is a UI decision nobody has made, and a
@@ -228,9 +228,9 @@ def test_a_channels_secret_never_reaches_the_page(page, flask_server):
 def test_saving_writes_the_file_the_page_tells_you_to_write(
         page, flask_server, config_home):
     """The page instructs a person to put a 0600 file at
-    ``<config dir>/notify``.  Saving through the form must produce exactly
-    that file, or the instruction on screen is about something the app does
-    not do.
+    ``<config dir>/secrets/notify`` (`web/this-machine.md` § 3, § 3.1).
+    Saving through the form must produce exactly that file, or the
+    instruction on screen is about something the app does not do.
 
     This is the end of the chain the page describes: form → API → the file a
     monitor on the compute node will open.
@@ -244,7 +244,7 @@ def test_saving_writes_the_file_the_page_tells_you_to_write(
     from molbuilder.monitor import default_notify_path
     dest = default_notify_path()
     assert dest.exists(), (
-        f"the page says the monitor reads <config dir>/notify, but saving "
+        f"the page says the monitor reads <config dir>/secrets/notify, but saving "
         f"through the form wrote no such file under {config_home}")
     assert (dest.stat().st_mode & 0o077) == 0, (
         "the notify file holds credentials and the page states mode 0600; "

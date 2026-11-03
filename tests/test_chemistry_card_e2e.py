@@ -1,8 +1,8 @@
 """The chemistry card, in the browser: the charge and spin a calculation will
 carry, and why (``docs/science/chemistry-correctness.md`` §§ 2.5, 2a.5).
 
-PINS the forms' half of the electronic state (plan § 5s.3, P3's
-done-condition): loading a structure shows, for each engine form, the state the
+PINS the forms' half of the electronic state (``chemistry-correctness.md``
+§ 2a.5): loading a structure shows, for each engine form, the state the
 one class resolves for exactly what that form says -- each value with its
 source -- and **a blank field stays blank**: nothing is filled in.  Typing a
 charge changes the card.  The chip on each form's Profile card says the same.
@@ -108,8 +108,16 @@ def _blocks(page) -> dict:
 def test_the_card_answers_for_each_form_and_fills_nothing(
         page, flask_server, tmp_path, monkeypatch):
     """Fe with every field blank: both forms' answers are unrestricted, 2S =
-    2, detected from an open-d metal and saying to verify it; the charge
-    fields stay blank; each form's chip carries its own answer."""
+    2, detected from an open-d metal and saying to verify it (§ 2.5); the
+    PySCF form's Method, left blank, is the catalogue's DFT said *not
+    chosen* (§ 2a.1a: *"a method the person left blank is the catalogue's
+    and the card says so ... never stated"*; ``web/form-schema.md`` § 1.1,
+    `template.SOURCE_WORDS`); the charge fields stay blank; each
+    form's chip carries its own answer.
+
+    THE SILENT FAILURE on the Method line: the card presenting the
+    catalogue's value as the person's choice -- *stated* where nobody
+    stated it."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     (tmp_path / "p").mkdir()
     target = tmp_path / "p" / "fe.xyz"
@@ -123,10 +131,13 @@ def test_the_card_answers_for_each_form_and_fills_nothing(
     assert "verify it against experiment" in card, card
     # Each form's own block.  SIESTA's method is a rule -- it is a
     # density-functional code -- so it is no choice anybody made and has no
-    # line; PySCF's is the form's.
+    # line; PySCF's is the form's, blank here, so the catalogue's default.
     blocks = _blocks(page)
     assert "Method" not in blocks["SIESTA"], blocks["SIESTA"]
-    assert "DFT — stated" in blocks["PySCF"], blocks["PySCF"]
+    assert "DFT — " in blocks["PySCF"], blocks["PySCF"]
+    assert "not chosen" in blocks["PySCF"], blocks["PySCF"]
+    assert "stated" not in blocks["PySCF"].split("Method", 1)[1], \
+        blocks["PySCF"]
     # NOTHING FILLED IN: a blank stays blank -- the instruction, answered.
     assert page.evaluate(
         "() => [document.getElementById('p-net-charge').value,"
@@ -203,10 +214,11 @@ def test_the_spectrum_tab_answers_for_its_vibration_forms(
 
 def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
         page, flask_server, tmp_path, monkeypatch):
-    """`web/spectra.md` § 5: a structure that repeats along an axis switches
-    the Spectrum tab's engine strip to SIESTA and says why, because PySCF's
-    gate refuses a periodic structure.  Driven the way a person drives it:
-    the pair picked in the sidebar, the Load button, the strip read back."""
+    """`web/spectra.md` § 5 step 4: a structure that repeats along an axis
+    switches the Spectrum tab's engine strip to SIESTA and says why, because
+    PySCF computes a repeating structure as an isolated cluster -- a note,
+    not a refusal.  Driven the way a person drives it: the pair picked in
+    the sidebar, the Load button, the strip read back."""
     import numpy as np
 
     from molbuilder.structure import Structure

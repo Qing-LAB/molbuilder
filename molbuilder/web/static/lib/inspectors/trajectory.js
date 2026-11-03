@@ -79,13 +79,11 @@
             /* THE WORDS COME FROM THE SERVER: `/api/results/dir` answers
              * the engine's words and the calculation's noun from the two
              * tables (`presenters.md` § 2) -- *SIESTA optimization*,
-             * *PySCF vibration* -- never guessed from the suffix; a run of
-             * no calculation of ours keeps its engine's words, *SIESTA
-             * trajectory*; an answer naming neither claims neither. */
+             * *PySCF vibration* -- never guessed from the suffix; an answer
+             * without both claims neither. */
             const words = meta && meta.engine_words;
             const noun = meta && meta.noun;
-            return words && noun ? words + " " + noun
-                : words ? words + " trajectory" : "Trajectory";
+            return words && noun ? words + " " + noun : "Trajectory";
         },
 
         /* A RUN IS ONE RESULT (results.md § 2.3).

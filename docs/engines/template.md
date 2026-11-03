@@ -1686,7 +1686,9 @@ offered set, checked when the catalogue loads.
 **A rule about two items together is not a choice set** and stays a check of
 the kind's, by name: PCM with held atoms, IR-only or Raman on a PySCF
 vibration ([`vibration.md`](?doc=engines/vibration.md) § 4.6); a fixed spin
-count on a transport rung, which TranSIESTA cannot hold.
+count on a transport rung, which TranSIESTA cannot hold — written as stated,
+the stop said beforehand, never refused
+([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) ES6).
 
 ### 6.4 An item may be declared without a value
 

@@ -1,6 +1,6 @@
 """**A restore rewrites the folder under an open tab, and the tab re-reads.**
 
-`web/projects.md` § 4.1 states the contract and names this exact defect:
+`web/projects.md` § 2 states the contract and names this exact defect:
 
 > a checkpoint **restore** rewrites a folder while the selection sits still,
 > and can swap `task.json` for `task.1st.json` under an open tab. Neither
@@ -22,7 +22,6 @@ gives.
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -144,9 +143,9 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     a row, Restore -- because the defect was a gap BETWEEN two surfaces and
     only a walk that uses both can stand in it.  The one thing done behind
     the page's back is rewriting `task.json` on disk, and that is the
-    premise rather than a shortcut: `projects.md` § 4.1 is about a folder
-    "rearranged behind an open tab", which is by definition something the
-    tab did not do.
+    premise rather than a shortcut: `projects.md` § 2 is about *"anything
+    that rearranges a folder behind an open tab"*, which is by definition
+    something the tab did not do.
     """
     native = []
     page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
@@ -260,6 +259,6 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
         "BEFORE the restore.  The selection never moved and nothing was "
         "committed, so the restore must announce with "
         "`projects.publishFolderChanged(dir)` and the tab must re-read on "
-        "`onFolderChanged` (`web/projects.md` § 4.1).  Right now a person "
+        "`onFolderChanged` (`web/projects.md` § 2).  Right now a person "
         "is looking at stages the folder no longer has.")
     assert native == [], f"a native dialog was opened: {native}"

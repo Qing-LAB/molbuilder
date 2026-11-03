@@ -806,6 +806,151 @@
               ]
             },
             {
+              "label": "2026-11-03-e2e-review",
+              "children": [
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/brief.md",
+                  "label": "E2E review brief — does each e2e test still pin the right detail of the contract as it now reads?",
+                  "subtitle": "E2E review brief — does each e2e test still pin the right detail of the contract as it now reads?"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-P.md",
+                  "label": "Group P — fixes made",
+                  "subtitle": "Group P — fixes made"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-S1.md",
+                  "label": "fix-S1 — `tests/test_siesta_vibration_e2e.py` · `tests/test_siesta_relax_run_e2e.py`",
+                  "subtitle": "fix-S1 — `tests/test_siesta_vibration_e2e.py` · `tests/test_siesta_relax_run_e2e.py`"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-S2.md",
+                  "label": "fix-S2 — SIESTA optimization / stopped / road / sequence / keyword / wall / GPU",
+                  "subtitle": "fix-S2 — SIESTA optimization / stopped / road / sequence / keyword / wall / GPU"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-T.md",
+                  "label": "fix-T — `tests/test_transport_on_a_real_junction_e2e.py`",
+                  "subtitle": "fix-T — `tests/test_transport_on_a_real_junction_e2e.py`"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-W1.md",
+                  "label": "fix-W1 — Task setup (prep, cell types, one folder, restore) and the bench summary",
+                  "subtitle": "fix-W1 — Task setup (prep, cell types, one folder, restore) and the bench summary"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-W2.md",
+                  "label": "fix-W2 — test_build_e2e.py, test_this_machine_e2e.py, test_chemistry_card_e2e.py, test_spectrum_form_e2e.py",
+                  "subtitle": "fix-W2 — test_build_e2e.py, test_this_machine_e2e.py, test_chemistry_card_e2e.py, test_spectrum_form_e2e.py"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-W3.md",
+                  "label": "fix-W3 — test_molbuilder_e2e, test_molview_e2e, test_vibrationview_e2e, test_results_export_e2e",
+                  "subtitle": "fix-W3 — test_molbuilder_e2e, test_molview_e2e, test_vibrationview_e2e, test_results_export_e2e"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix-W4.md",
+                  "label": "fix-W4 — Results shell, presenters, sidebar, preview, notifications, load strip, layout, docs pane",
+                  "subtitle": "fix-W4 — Results shell, presenters, sidebar, preview, notifications, load strip, layout, docs pane"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/fix_brief.md",
+                  "label": "E2E fix brief — revise your group's e2e tests to pin the contract as it reads today",
+                  "subtitle": "E2E fix brief — revise your group's e2e tests to pin the contract as it reads today"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/P.md",
+                  "label": "Group P — e2e review: vibration (PySCF), monitor live run, PySCF relaxation outcome, notebook, monitor start",
+                  "subtitle": "Group P — e2e review: vibration (PySCF), monitor live run, PySCF relaxation outcome, notebook, monitor start"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/README.md",
+                  "label": "E2E review, 2026-11-02/03 — does each e2e test still pin the right detail of the contract?",
+                  "subtitle": "E2E review, 2026-11-02/03 — does each e2e test still pin the right detail of the contract?"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/rev-R1.md",
+                  "label": "rev-R1 — `tests/test_transport_on_a_real_junction_e2e.py` revisions + 2.65.4 product code",
+                  "subtitle": "rev-R1 — `tests/test_transport_on_a_real_junction_e2e.py` revisions + 2.65.4 product code"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/rev-R2.md",
+                  "label": "rev-R2: review of the revised SIESTA/PySCF/monitor/notebook e2e tests",
+                  "subtitle": "rev-R2: review of the revised SIESTA/PySCF/monitor/notebook e2e tests"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/rev-R3.md",
+                  "label": "rev-R3: review of the e2e revisions (task setup, bench, build, chemistry card) and the method's `chosen`",
+                  "subtitle": "rev-R3: review of the e2e revisions (task setup, bench, build, chemistry card) and the method's `chosen`"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/rev-R4.md",
+                  "label": "rev-R4 — review of the W3/W4 e2e revisions, the GPU notice, and this round's doc edits",
+                  "subtitle": "rev-R4 — review of the W3/W4 e2e revisions, the GPU notice, and this round's doc edits"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/rev-round2.md",
+                  "label": "rev-round2 — fresh eyes on 2.65.4 option B + round-1 fixes, the card's method word, the catalogue's transport count, the JS, the tests in scope, and this round's docs",
+                  "subtitle": "rev-round2 — fresh eyes on 2.65.4 option B + round-1 fixes, the card's method word, the catalogue's transport count, the JS, the tests in scope, and this round's docs"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/review_brief.md",
+                  "label": "Review brief — the e2e revisions and 2.65.4's code, before the one e2e run",
+                  "subtitle": "Review brief — the e2e revisions and 2.65.4's code, before the one e2e run"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/S1.md",
+                  "label": "S1 — `tests/test_siesta_vibration_e2e.py` (1732) · `tests/test_siesta_relax_run_e2e.py` (550)",
+                  "subtitle": "S1 — `tests/test_siesta_vibration_e2e.py` (1732) · `tests/test_siesta_relax_run_e2e.py` (550)"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/S2.md",
+                  "label": "S2 — e2e review: SIESTA optimization / stopped / road / sequence / keyword / wall / GPU",
+                  "subtitle": "S2 — e2e review: SIESTA optimization / stopped / road / sequence / keyword / wall / GPU"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/T1.md",
+                  "label": "T1 — `tests/test_transport_on_a_real_junction_e2e.py`, lines 1–2585 (fixtures 1–940, tests 941–2585)",
+                  "subtitle": "T1 — `tests/test_transport_on_a_real_junction_e2e.py`, lines 1–2585 (fixtures 1–940, tests 941–2585)"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/T2.md",
+                  "label": "T2 — `tests/test_transport_on_a_real_junction_e2e.py`, lines 2586–5230",
+                  "subtitle": "T2 — `tests/test_transport_on_a_real_junction_e2e.py`, lines 2586–5230"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/verified.md",
+                  "label": "Findings verified by hand (2026-11-02)",
+                  "subtitle": "Findings verified by hand (2026-11-02)"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/W1.md",
+                  "label": "W1 — e2e review: Task setup (prep, cell types, one folder, restore) and the bench summary",
+                  "subtitle": "W1 — e2e review: Task setup (prep, cell types, one folder, restore) and the bench summary"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/W2.md",
+                  "label": "W2 — e2e review: test_build_e2e.py, test_this_machine_e2e.py, test_chemistry_card_e2e.py, test_spectrum_form_e2e.py",
+                  "subtitle": "W2 — e2e review: test_build_e2e.py, test_this_machine_e2e.py, test_chemistry_card_e2e.py, test_spectrum_form_e2e.py"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/W3.md",
+                  "label": "W3 — e2e review: test_molbuilder_e2e, test_molview_e2e, test_vibrationview_e2e, test_results_export_e2e",
+                  "subtitle": "W3 — e2e review: test_molbuilder_e2e, test_molview_e2e, test_vibrationview_e2e, test_results_export_e2e"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/W4.md",
+                  "label": "W4 — e2e review: the Results shell, presenters, sidebar, preview, notifications, load strip, layout, docs pane",
+                  "subtitle": "W4 — e2e review: the Results shell, presenters, sidebar, preview, notifications, load strip, layout, docs pane"
+                },
+                {
+                  "path": "archive/audits/2026-11-03-e2e-review/X.md",
+                  "label": "X — tests/spectra/test_spectrumchart_box_e2e.py (read by me, 2026-11-02)",
+                  "subtitle": "X — tests/spectra/test_spectrumchart_box_e2e.py (read by me, 2026-11-02)"
+                }
+              ]
+            },
+            {
               "label": "audit-2026-06-26",
               "children": [
                 {

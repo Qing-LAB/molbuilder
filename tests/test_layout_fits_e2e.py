@@ -28,7 +28,9 @@ pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
 
-#: Every served page a person navigates to.
+#: The pages measured, each as it opens with nothing in it -- six of the
+#: nine tabs in `web/tabs.TABS` (Transport calculation, This machine and
+#: JupyterNB are not among them).
 PAGES = ["/structure-optimization", "/spectrum-calculation", "/task-setup",
          "/results", "/molbuilder", "/documents"]
 
@@ -111,6 +113,12 @@ def test_no_page_scrolls_sideways(page, flask_server, width):
 
 @pytest.mark.parametrize("width", WIDTHS)
 def test_content_fits_its_box(page, flask_server, width):
+    """§ 3: a layout reflows because its CONTENT stops fitting -- no
+    element's content runs past its own box where nothing scrolls it.
+
+    THE SILENT FAILURE: the Task-setup facts grid's `minmax(9rem, 1fr)`
+    clipping a conda hook's path off the edge of its card, every UI test
+    green."""
     page.set_viewport_size({"width": width, "height": 900})
     found = {}
     for path in PAGES:

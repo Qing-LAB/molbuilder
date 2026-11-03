@@ -605,11 +605,6 @@
         name:        "bench-summary",
         displayName: "Bench sweep",
         isResult:    true,
-        /* Declared so B4's cadence is checkable without a test sitting
-         * through it.  A viewer that quietly stopped matching the
-         * trajectory viewer's 15 s would still pass every other test
-         * here, because nothing else can see the number. */
-        pollMs:      POLL_MS,
         resultCategory: () => "Benchmark sweeps",
         /* THE SERVER'S PARSE ANSWER names the job set's record
          * (`runs.file_row`: `parser`); registered ahead of the .json

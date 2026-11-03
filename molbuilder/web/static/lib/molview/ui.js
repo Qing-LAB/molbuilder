@@ -1066,8 +1066,8 @@ function exportStem(model, source, range) {
  *
  * "Not bookkeeping": it shows in the corner of the 3D window so "there is work
  * here that is not on the sequence yet" is visible without opening a menu.
- * Without it, an explicit-save history silently loses work a user assumed was
- * being kept.
+ * Without it, work no point holds — an operation that declares none — would
+ * be spent silently by the next Retract.
  */
 function mountBadge(doc, card, model) {
     const badge = doc.createElement("div");

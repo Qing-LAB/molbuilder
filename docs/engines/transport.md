@@ -703,7 +703,11 @@ composed again is another (below). A prep composes afresh — and writes the
 record again — only when there is no usable one and no stage is launched
 (`gather.composed_for_prep`); the gather reads the same record, by
 the same one read (`transport.rung.junction_record`), and compares an older
-one in memory, writing nothing.
+one in memory, writing nothing. **A calculation that reuses a finished one**
+takes, at its first prep, the junction that one ran — or the frame set cited in
+its place — instead of composing its citation again, and writes it here by the
+same writer; until then the one read answers that junction to every reader
+(§ 2a.16, *Describing it*).
 
 **A junction whose sidecar states no order record** — written before the
 field, `atom_order` absent — is known by what the file states, never by the
@@ -3452,7 +3456,7 @@ Edited in one panel. Changing any of these rebuilds every stage that reads it �
 | `pao_energy_shift` | `PAO.EnergyShift` | Orbital confinement radius. Aggressive confinement truncates exactly the tails that conduct — transport is more sensitive to this than a total-energy run | 3 |
 | `mesh_cutoff` | `MeshCutoff` | Real-space grid: accuracy against cost, with egg-box error if too coarse | 3 |
 | `electronic_temperature` | `ElectronicTemperature` | Fermi broadening — sets the leads' distribution functions; affects metallic SCF convergence and T(E) near E_F | 3 |
-| `spin_treatment` · `unpaired_electrons` | `Spin` | Whether the physics is spin-resolved at all — restricted or unrestricted, TranSIESTA's two; the count floats, since TranSIESTA holds no fixed total spin (`Spin.Fix` is never written here, § 3.1's spin note) | 3 |
+| `spin_treatment` · `unpaired_electrons` | `Spin` | Whether the physics is spin-resolved at all — restricted or unrestricted, TranSIESTA's two; a count left blank floats, since TranSIESTA holds no fixed total spin, and a stated one is written as stated, its stop said beforehand (§ 3.1's spin note) | 3 |
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA runs the deck's functional and only prints an `xc_check` WARNING when the pseudo was generated with another | 2 |
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly. Held by one rule, `chemistry.species_order` (I15, § 5) | 2 |
 | `kgrid` *(its counts in the electrode plane)* | `%block kgrid_Monkhorst_Pack` | **The shared k-point grid** in the electrode plane (x, y). The leads and the device share one cell in that plane, and the device uses each lead as the bulk of its own electrode region — so both must be sampled on the same k-points, and TranSIESTA stops if they are not (§ 0.2). *(Advisory as to whether the density is converged; checkable that they agree)* | 2 + 3 |
@@ -3940,17 +3944,23 @@ molbuilder describe --calculation transport \
     --bundle AuBDTAu/transport/lowbias_wide
 ```
 
-writes the new calculation from the finished one's records as they read now:
-its `task.json` — the junction citation, `swap_electrodes`, the bias list, the
-stages, the run and so its **label** — its template, and its job request with
-its run cards and groups; `reuses`, the finished calculation's folder,
-tree-relative (`job-contracts.md` § 6.1); its **composed junction** —
-`junction.xyz`, its sidecar, the cited deck and `slot-provenance.json`, read
-by the composition's one reader and written by its one writer
-(`compose.load_compose_record`, `compose.write_compose_record`) — so the
-junction is the finished one's, atom for atom, and is not composed again; and
-its **pseudopotentials**, `pseudos/`, which prep takes before any other
-source, so every deck reads the files the finished runs read. A flag beside
+writes the new calculation's three statement files from the finished one's
+records as they read now: its `task.json` — the junction citation,
+`swap_electrodes`, the bias list, the stages, the run and so its **label** —
+its template, and its job request with its run cards and groups; `reuses`,
+the finished calculation's folder, tree-relative (`job-contracts.md` § 6.1).
+**Its first prep takes the rest** *(the user, 2026-11-02: "option B yes")*:
+the **composed junction** — `junction.xyz`, its sidecar, the cited deck and
+`slot-provenance.json` — read from the finished calculation's record by the
+composition's one reader and written here by its one writer
+(`compose.load_compose_record`, `compose.write_compose_record`;
+`gather.composed_for_prep`), so the junction is the finished one's, atom for
+atom, and is not composed again; and its **pseudopotentials**, `pseudos/`,
+taken from the finished calculation's before any other source
+(`reuse.carry_pseudos`), so every deck reads the files the finished runs
+read. Until that prep, every reader asks the one door for the junction the
+calculation has or will have (`rung.junction_record`) — the reuse decision,
+its manifest and its frame count among them. A flag beside
 `--reuses` sets what it sets on any describe — the voltages, the treatment,
 the window; voltages typed with no treatment keep the finished calculation's,
 as the Transport tab does — and one naming what the extension keeps is
@@ -3981,11 +3991,14 @@ as for any calculation. The describe copies no run.
 
 **A finished calculation whose record of its junction does not read** — its
 `slot-provenance.json` or its composed junction missing or incomplete — is
-described all the same, saying so: no junction and no pseudopotentials are
-written, prep composes the junction again from its citation, and nothing the
-finished calculation computed is then reused — every stage runs here. (Citing
-a frame set needs that record: it is compared with it, and refused without
-it.)
+described all the same, saying so: its first prep composes the junction again
+from its citation, and nothing the finished calculation computed is then
+reused — every stage runs here. (Citing a frame set needs that record: it is
+compared with it, and refused without it.) **The refusals are asked twice**,
+at describe and again at that first prep, by the one answer
+(`reuse.finished_junction`): a cited pair edited since the finished
+calculation was composed from it, and a frame set whose first frame is not
+the finished junction — the finished calculation may change between the two.
 
 Refused, before anything is written: a folder `--reuses` names that is not a
 transport calculation's — said in its description's own words; another
@@ -4114,7 +4127,7 @@ nothing here reads them.
 **What the extension keeps, and what it takes from the set.** Like every
 extension, it keeps the finished calculation's name (its label), its
 parameter template, its run cards and its pseudopotentials. The junction is
-the set's, every frame, recorded in the new folder when it is described
+the set's, every frame, recorded in the new folder by its first prep
 (`compose.write_compose_record`), so the device and the transmission run
 once per frame and voltage (§ 2a.11).
 
@@ -4140,7 +4153,8 @@ the new device's inputs are compared with — *At prep*, below.)*
 
 **Where it is asked**, both through the writer every extension is described
 by (`transport.reuse.write_reusing`), which checks the set
-(`transport.reuse.frame_set_of`):
+(`transport.reuse.frame_set_of`) — and again at the first prep, which takes
+the set and writes it here (*Describing it*, above):
 
 - **The command line**: `molbuilder describe --reuses <finished> --slot
   junction=<the set's .xyz>`. Its answer says the junction is the set's,
@@ -4846,7 +4860,9 @@ its `SCF_RECORD_KEYS`), so a pair saved from a run carries them too.
 > [`template.md`](?doc=engines/template.md) § 6.3a); under `unrestricted` a
 > blank count floats by that rule, a cited run's fixed count is not defaulted
 > into the template (it is left blank, and floats), and a stated count is
-> refused by name.
+> written as stated, TranSIESTA's stop said beforehand as information, never
+> refused ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+> ES6; the user, 2026-11-02).
 
 **A run's condition is that it is a run of ours, read through the run door**
 *(W56-2, 2026-10-09)*. The folder is a run's own, `<calc>/<NN>_<stage>/run-<n>`,

@@ -130,6 +130,13 @@ def test_siesta_REFUSES_a_physical_value_with_no_unit(keyword, bare,
     `parse/fdf.py` therefore passes no `default=` for any of these, and
     a bare value is left unanswered rather than read as a guess.  A deck
     carrying one is a deck SIESTA would not have run.
+
+    CONTRACT: a deck is read as SIESTA reads it, by the one fdf reader
+    (`engines/transport.md` § 6.1, *The same engine input*: "Both decks are
+    read as SIESTA reads them, by the one fdf reader (`parse.fdf.read_fdf`,
+    `parse.fdf.parse_fdf_params`)", a unit as written).  THE SILENT
+    FAILURE: the reader answering a bare value in a unit it guessed, so a
+    value SIESTA refuses is compared and recorded as if the deck stated it.
     """
     binary = _require_siesta_binary()
     bad_dir = tmp_path / "bad"; bad_dir.mkdir(parents=True)
@@ -173,10 +180,16 @@ def test_siesta_defaults_omitted_coordinates_to_BOHR(tmp_path):
     """The one keyword here that DOES have a default, and it is not Ang.
 
     `AtomicCoordinatesFormat` is read with `fdf_string(key, default)`,
-    so omitting it is legal and means something.  `parse/fdf.py` read it
-    as Ang, which is 1.89x out -- and `coords_ang` is the frozen gate's
-    baseline, so a correct junction cited as a foreign deck was refused
-    for atoms that had not moved.
+    so omitting it is legal and means something.  `parse/fdf.py` once read
+    it as Ang, which is 1.89x out.
+
+    CONTRACT: `coords_ang` is the geometry the one fdf reader answers for a
+    deck, "read in Å as SIESTA places them -- the coordinates' format ...
+    folded in by the reader" (`engines/transport.md` § 6.1, *The same engine
+    input*; `siesta.engine_input` compares two decks' atoms by it).  THE
+    SILENT FAILURE: a deck that omits the format read 1.89x off where
+    SIESTA places its atoms, so two decks are judged by places neither run
+    had.
     """
     binary = _require_siesta_binary()
     (tmp_path / "d").mkdir(parents=True, exist_ok=True)
@@ -207,6 +220,10 @@ def test_siesta_scales_lattice_vectors_by_ONE_when_no_constant_is_given(
     different question and `parse/fdf.py` answers it with 1 Ang.
     If SIESTA scales by anything else, every cell read from a deck
     without the keyword is wrong by that factor, silently.
+
+    CONTRACT: `cell_ang` is the lattice the one fdf reader answers, "read in
+    Å as SIESTA places them -- ... `LatticeConstant` and the units folded in
+    by the reader" (`engines/transport.md` § 6.1, *The same engine input*).
     """
     binary = _require_siesta_binary()
     (tmp_path / "d").mkdir(parents=True, exist_ok=True)

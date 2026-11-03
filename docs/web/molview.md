@@ -3415,33 +3415,36 @@ and *restore where I was* — and the third is what a session restore needs.
 
 (None of this is the Export menu's *Image*, which is a picture — § 11.3.)
 
-**Saving a state is something the user does.** An edit — a delete, a rotate, a
-new slab — changes the structure and does **not** record a state; the user
-decides when the structure is worth being able to come back to, and says so.
+**Every edit lays down a point of its own** (§ 1.1, the user, 2026-09-07). An
+edit — a delete, a rotate, a new slab, a label written, a cell committed —
+records a point when it lands (`save(1)`), so Retract steps back exactly one
+edit. Which operations lay one is declared, not decided per call: an operation
+says so in its own entry (`checkpoint` in `OPERATIONS`), and one that declares
+none leaves its work on top of the current point, unsaved, the badge saying so.
+**Save state** is still there for a point no edit produced — a selection you
+want to come back to.
 
-The one point nobody asks for is **point 0**, laid down when a structure is
-opened. That is not a save; it is the floor the sequence stands on — the state
-you started from, so that a Retract from the first edit has somewhere to land.
+The first point is **point 0**, laid down when a structure is opened — the
+state you started from, so that a Retract from the first edit has somewhere to
+land.
 
 Three consequences follow, and they are the whole user-facing shape of this:
 
-- **Undo returns to the last state the user saved**, not to the moment before the
-  last edit. Three edits after a save are undone together, because they were never
-  three points — they were one stretch of work between two of them. **A Retract
-  spends that unsaved work first:** from a saved point with edits sitting on top of
-  it, the first Retract discards the edits and leaves you *on* that point; only the
-  next one steps to the point before it. The first press undoes what you just did,
-  not what you had already decided to keep.
-- **Stepping forward lasts until you save.** After a Retract you can step forward
-  again into the points you moved away from. Saving ends that: a new point is
-  written and everything above it is dropped. The moment a user commits to a
+- **Undo returns to the point before the last edit.** Three edits are three
+  points, and three Retracts undo them one at a time. **A Retract spends unsaved
+  work first:** with work no point holds sitting on the current point (an
+  operation that declares no point), the first Retract discards that
+  work and leaves you *on* the point; only the next one steps to the point before
+  it. The first press undoes what you just did, not what you had already kept.
+- **Stepping forward lasts until the next point is laid.** After a Retract you
+  can step forward again into the points you moved away from. The next edit or
+  save ends that: a new point is written and everything above it is dropped. The moment a user commits to a
   different path, the abandoned one stops existing — which is the same rule as
   *opening a new structure prunes the old sequence* below, one scale smaller.
 - **The badge is what makes that honest.** The unsaved-changes flag is not
   bookkeeping: it shows as a small badge in the corner of the 3D window, so "there
   is work here that is not on the sequence yet" is visible without opening a menu.
-  Without it, an explicit-save history would silently lose work that a user
-  assumed was being kept.
+  Without it, work no point holds would be lost silently by the next Retract.
 
 **State is the truth. What you are looking at is not state.**
 
@@ -3478,9 +3481,9 @@ context, § 11.2b, a separate lane that no state, draft or export ever reads;
 until 2026-08-19 this sentence said "written anywhere", and the lane is why
 it no longer can.)*
 
-**No POINT is laid down on a timer, and none is laid down because something
-changed.** The sequence grows from exactly three things: opening a structure
-(which lays down point 0), an explicit save, and a load.
+**No POINT is laid down on a timer.** The sequence grows from exactly four
+things: opening a structure (which lays down point 0), an edit that lays its
+point (§ 1.1, § 11.2), an explicit save, and a load.
 
 **That rule is about the sequence, and only about it.** The draft — the other
 file, § 11.3 — is rewritten by *every* change, because that is what it is for: an
@@ -3488,11 +3491,10 @@ edit changes what would be lost if the tab closed. Nobody asks for it and nobody
 should have to.
 
 **The two together are the whole promise.** Persistence means *you do not lose
-work you did* — automatic, and about the accident. The timeline means *you can go
-back to a moment you chose* — explicit, and about the decision. Confusing them
-takes one of the two away: make persistence explicit and unsaved work is lost on
-a reload; make the timeline automatic and every keystroke becomes a milestone,
-so there is nothing left to come back *to*.
+work you did* — automatic, and about the accident: the draft. The timeline means
+*you can go back* — a point per edit (§ 1.1), and Save state for a moment no edit
+marks. Neither stands in for the other: without the draft, work no point holds
+is lost on a reload; without the points, there is nothing to step back *to*.
 
 **When a write may go out is a state machine, and it has three states.** Every
 rule below is a transition of it; there is no fourth state and no other reason a
@@ -3713,15 +3715,16 @@ What is left to MolView is **when** to write and **what goes in** the bytes. The
 over each other (§ 5.6). The workspace cannot read what it stores and holds no
 opinion about the content.
 
-**Three things lay down a point:** anchoring a structure, an explicit `save`, and
-a `load`. **The draft is rewritten by every change**, which is the other half of
+**Four things lay down a point:** anchoring a structure, an edit (§ 1.1), an
+explicit `save`, and a `load`. **The draft is rewritten by every change**, which is the other half of
 § 11.2's promise and not an exception to it.
 
 **Starting, in an editable viewer.** `mount` → EMPTY → `installMolecule(input)`
-→ the whole structure lands in one settle (§ 6.4) → **point 0 is laid down**, and
-that is the only point nobody asks for. From there: edits raise the badge and lay
-down no point — while rewriting the draft, so nothing is lost to a reload —
-`save(1)` writes a point and drops everything above it, `load(-1)` steps back,
+→ the whole structure lands in one settle (§ 6.4) → **point 0 is laid down**, the
+point the structure opened at. From there: each edit lays down its own point
+(§ 1.1) and rewrites the draft, so nothing is lost to a reload — an operation
+that declares no point raises the badge instead — `save(1)` writes a point and
+drops everything above it, `load(-1)` steps back,
 `load(0)` puts back the point you are on.
 
 **Starting, in a read-only viewer.** `mount` → EMPTY → `installMolecule(input)`
@@ -3752,17 +3755,17 @@ that already exists**. That is the only place the two states of § 11.2a's diagr
 are entered other than by installing.
 
 ```
-session 1: install, edit, save(1), edit again
+session 1: install, edit, edit again
 session 2: fresh viewer, load(0)  ->  the second edit is on screen,
-                                      the badge is up, and Retract
-                                      goes to point 1 exactly as it would have
+                                      and Retract goes to point 1
+                                      exactly as it would have
 ```
 
 **What comes back is the draft, not the point** — and that is the whole of
 § 11.2's first promise. "Persistence means *you do not lose work you did*". The
-numbered point is where you last chose to be able to return to; the draft is what
-was actually on screen. Coming back to the point would silently throw away every
-edit made after it, which is precisely the loss persistence exists to prevent.
+numbered point is the last one laid; the draft is what was actually on screen.
+Coming back to the point would silently throw away any work no point holds yet,
+which is precisely the loss persistence exists to prevent.
 
 **So three things travel with the draft**, because a reopened page cannot work
 them out and nothing else knows them:
@@ -3771,7 +3774,7 @@ them out and nothing else knows them:
 |---|---|
 | the **position** on the sequence | a fresh viewer starts at 0; without this, Retract from a session that was on point 3 steps to −1 and answers nothing |
 | the **highest** point that exists | `load(+1)` has nowhere to go, and a save would drop a tail it never knew about |
-| whether there was **unsaved work** | the badge is the honest part of an explicit-save history (§ 11.2); coming back with it down would say the work was on the sequence when it is not |
+| whether there was **unsaved work** | the badge says there is work no point holds (§ 11.2); coming back with it down would say the work was on the sequence when it is not |
 
 They ride in the draft's own envelope. MolView already decides "what goes in the
 bytes" — the workspace holds no opinion about content — so this needs nothing new
@@ -3872,8 +3875,8 @@ The first two are easy to run together and must not be. They are both files in
 the same place — under the project directory, on the server — but they answer
 different questions and one must never land on the other. **A saved point is
 somewhere you chose to be able to return to. The draft is just where you are.**
-An edit rewrites the draft and leaves every point alone; a save adds a point and
-leaves the earlier ones alone.
+Every change rewrites the draft and never rewrites a point already laid; an edit
+that lays its point, and a save, add one and leave the earlier ones alone.
 
 > Writing an edit onto the point you last saved would be the quiet version of
 > losing work: Retract would take you back to something that had been rewritten
@@ -3921,8 +3924,9 @@ flowchart LR
 | **Export → Image** | a picture of the molecule as it is drawn. One frame is a `.png`; a range is a `.webm` or `.gif`, rendered frame by frame with the view as it is set | **the drawing** | **the range asked for**, defaulting to the displayed frame | no |
 
 **When each is written.** An edit changes what would be lost if the tab closed,
-so **an edit rewrites the draft**. An edit is not a milestone, so **an edit adds
-no point**: you decide what is worth coming back to and say so (§ 11.2).
+so **an edit rewrites the draft**. And **an edit lays down its own point** (§ 1.1,
+§ 11.2), so Retract always steps back one edit; an operation that declares no
+point leaves its work in the draft alone, the badge saying so.
 
 **Neither write is waited for.** Both are sent to the server without waiting, so
 a slow disk never freezes an edit — which means neither one's outcome can come
@@ -4721,12 +4725,11 @@ A user selects two atoms in the panel and clicks Delete.
 2. The model passes it to the **edits helper**, which sends the selected atoms to
    the server and applies the smaller structure that comes back — all at once. If
    the server refuses, nothing is applied and the structure is untouched (§ 11.1).
-3. The structure changed, so the viewer now has unsaved work: the badge appears in
-   the corner of the 3D window (§ 11.2). Nothing is written on its own.
-4. The user clicks Undo. There is unsaved work, so this first press spends it
-   (§ 11.2): the model asks the **history helper** for the point it is sitting on
-   and hands that state to the **load helper** to put back. The delete is undone.
-   A second press would step to the point before it.
+3. The structure changed, so the delete lays down a point of its own (§ 1.1),
+   and the draft is rewritten with it.
+4. The user clicks Undo: the model asks the **history helper** for the point
+   before it and hands that state to the **load helper** to put back. The delete
+   is undone. A second press would step to the point before that.
 
 Every step crosses exactly one helper, and each helper only ever calls the
 functions the model gave it. That is why the module stays sealed: the outside
@@ -4877,10 +4880,10 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.9 — a refused change throws, carrying the server's own sentence | the caller of a door the server refused receives the *text the server sent*, not a status code and not `null`; asserting it means asserting that text |
 | § 6.9 — `null` and a refusal are different answers | nothing loaded, a read-only viewer and a wrongly-sized selection all answer `null` and say nothing; only a refusal throws — so a caller cannot mistake one for the other |
 | § 6.9 — a failed change leaves the notices alone | after a refused edit every condition that held before it still stands, because nothing is stored and nothing was cleared |
-| § 11.3 — the draft and a saved point are separate files | an edit rewrites the draft and leaves every point exactly as it was, so Retract returns you to what you chose; and the badge answers only whether work is on the sequence |
+| § 11.3 — the draft and a saved point are separate files | a change rewrites the draft and never a point already laid, so Retract returns you to a point exactly as it was laid; and the badge answers only whether work is on the sequence |
 | § 6.7 — a viewer holds no file path | nothing a viewer answers, saves or restores names a file it was read from; a structure built with no file behaves exactly like one read from disk, and the only name kept is what an export gets called |
 | § 11.2 — a read waits for a write that has not finished | "put me back where I am", asked while a save is on its way, answers about the point that save creates and returns its bytes — not the point before it; and a write that failed ends the wait too, rather than leaving the read hanging |
-| § 6.6 — the predefined names are offered, not typed | the six appear in the label chooser and in a `by label` row before any structure carries them, once each however many sources name them, and a user's own name is offered beside them |
+| § 6.6 — the predefined names are offered, not typed | the kind's four, which come with the structure the server hands over, then MolView's own two, appear in the label chooser and in a `by label` row before any atom carries them, in that order, once each however many sources name them, and a user's own name is offered beside them |
 | § 9.5 — `by label` chooses from what is defined | the value control is a chooser for that rule and a text box for the other three, and re-kinding a row swaps it |
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
 | § 11.1 — an edit reaches the route it names | the operation's arguments arrive where the route reads them, and the selection lands under the key its row gives; a request the route cannot act on is refused, not answered `ok` |
@@ -4944,9 +4947,9 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.2 — a bracketed change writes once, at the end | a write requested mid-bracket does not land until the bracket closes, and what lands is the settled state; if a saved state was among the held writes, it is the one written |
-| § 11.2 — saving a state is the user's act, and undo returns to it | an edit records nothing and raises the badge; after three edits with no save between them, one undo restores the state before all three |
+| § 1.1, § 11.2 — every edit lays its own point | after three edits, three Retracts step back one edit each; an operation that declares no point raises the badge, and the next Retract discards its work |
 | § 11.2 — the history is offered as calls, not as a control | a mounted viewer draws no save-state or retract button of its own, and the calls work all the same when a host wires its own |
-| § 11.2 — a Retract spends unsaved work first | from a saved point with edits on top, one Retract lands **on** that point with the edits discarded; a second lands on the point before it |
+| § 11.2 — a Retract spends unsaved work first | from a point with work no point holds on top, one Retract lands **on** that point with the work discarded; a second lands on the point before it |
 | § 11.2 — Save state drops what was above it | after retracting past two points and saving, stepping forward is no longer possible — the abandoned points are gone |
 | § 11.2 — `load(0)` puts back the point you are on | it restores the current point rather than the anchor, and does not move the position. Coming back to a sequence in a viewer that did not write it has no path yet — § 11.2a |
 | § 11.3 — only the data export is the truth, at the frames the user chose | exporting data yields **the asked-for range's** coordinates and its metadata, from the master copy — scrub to frame 40, accept the default range, and frame 40 is what the file holds, whatever isolate is doing; an image is a render and carries whatever the view was set to |

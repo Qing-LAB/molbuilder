@@ -249,8 +249,9 @@ def _spin_findings(struct: Structure, st, engine: str,
         if "unrestricted" in treatments:
             floats = count_must_float(engine, calculation, "unrestricted")
             ways.append("unrestricted (the two channels relax separately"
-                        + (f"; its count floats here -- {floats}" if floats
-                           else "") + ")")
+                        + (f"; the engine stops on a fixed count here -- "
+                           f"{floats} -- so left blank the count floats"
+                           if floats else "") + ")")
         way = (f"State {' or '.join(ways)}." if ways else
                f"{_kind(calculation).with_article[:1].upper()}{_kind(calculation).with_article[1:]} "
                f"on {words} offers restricted alone -- "

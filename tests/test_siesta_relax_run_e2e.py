@@ -118,10 +118,16 @@ def _moves(calc) -> int:
 # --------------------------------------------------------------------- #
 
 def test_a_finished_relaxation_answers_its_record(relaxed):
-    """The run's own tolerance; the last reported forces over every atom and
-    over the moved one, judged as SIESTA judges them; the held set and its
-    atoms' lines; the verdict; and a fingerprint of the FINAL geometry,
-    whatever order the atoms are listed in."""
+    """THE SILENT FAILURE: a relaxation record that vouches for coordinates
+    it is not about -- a fingerprint of another frame, or one that changes
+    with the order the atoms are listed in -- or states a tolerance, a step
+    count, a held set or a verdict the run did not have; the vibration gate
+    (`engines/vibration.md` § 2.2) then answers the ticked box on its word.
+
+    `model/parse.md` § 5b.1: the run's own tolerance; the last reported
+    forces over every atom and over the moved one, judged as SIESTA judges
+    them; the held set and its atoms' lines; the verdict; and a fingerprint
+    of the FINAL geometry, whatever order the atoms are listed in."""
     from molbuilder.parse.contract import relaxation_of
     from molbuilder.structure import Structure
     rec = relaxation_of(_out(relaxed))
@@ -172,7 +178,11 @@ def test_both_doors_answer_one_record_of_the_run(relaxed, web_client,
     """The trajectory load, of the file it opened in the run's folder
     (`runs.openable`), and the structure inspector's door, of the run's
     `.XV` a person opens there: one record, and the level of theory its own
-    deck states (`model/parse.md` § 5b)."""
+    deck states (`model/parse.md` § 5b, § 5b.1: "the two doors answer one
+    record of one file").  THE SILENT FAILURE: the Results tab and the
+    structure inspector each reading the record or the level of theory of
+    another file, so the pair a person exports carries a record the tab
+    never showed."""
     from molbuilder.parse.contract import contract_of
     _at_the_runs_tree(relaxed, monkeypatch)
     run = _run(relaxed)
@@ -234,10 +244,15 @@ def _cfg(**over):
 
 
 def test_a_matching_record_answers_the_ticked_box_with_its_numbers(relaxed):
-    """Ticked, the record for these coordinates, within this calculation's
-    tolerance at the same level and held set: one info line with the
-    engine, the run's tolerance and the largest force it left; and a record
-    edited by hand says whose word its values are, first."""
+    """THE SILENT FAILURE: a ticked box answered without the evidence the
+    structure carries, or a record a person edited read as the run's word.
+
+    `engines/vibration.md` § 2.2's record table, rows *ticked -- present,
+    for these coordinates* and *any -- edited by hand*: ticked, the record
+    for these coordinates, within this calculation's tolerance at the same
+    level and held set, is one info line with the engine, the run's
+    tolerance and the largest force it left; a record edited by hand says
+    whose word its values are, first."""
     s = _carrying_the_record(relaxed)
     rec = s.info["relaxation"]
     tol = _tolerance(relaxed)
@@ -257,8 +272,13 @@ def test_a_matching_record_answers_the_ticked_box_with_its_numbers(relaxed):
 
 
 def test_a_record_looser_than_this_calculation_warns_when_ticked(relaxed):
-    """The record's largest force above THIS calculation's tolerance: a
-    warning when ticked, information when unticked (rows 3 and 5)."""
+    """THE SILENT FAILURE: a structure relaxed to a looser force than this
+    calculation asks accepted as relaxed with nothing said.
+
+    `engines/vibration.md` § 2.2's record table, rows *ticked -- present,
+    for these coordinates* (a largest force above this calculation's
+    tolerance is a warning) and *unticked -- anything else* (the same facts
+    as information): a warning when ticked, information when unticked."""
     s = _carrying_the_record(relaxed)
     left = s.info["relaxation"]["max_force_free_ev_ang"]
     assert left > 0
@@ -274,8 +294,12 @@ def test_a_record_looser_than_this_calculation_warns_when_ticked(relaxed):
 
 
 def test_a_record_for_another_geometry_does_not_vouch(relaxed):
-    """Another frame of the run, or an edit since: the fingerprint differs
-    and the record is set aside with a warning (ticked)."""
+    """THE SILENT FAILURE: a record vouching for coordinates it is not
+    about -- another frame of the run, or an edit since.
+
+    `engines/vibration.md` § 2.2's record table, row *ticked -- present,
+    for a different geometry*: the fingerprint differs and the record is
+    set aside with a warning."""
     s = _carrying_the_record(relaxed, shift_z=0.01)
     found = _record_findings(s, _cfg(already_relaxed=True))
     assert len(found) == 1 and found[0].severity == "warn", found
@@ -283,9 +307,14 @@ def test_a_record_for_another_geometry_does_not_vouch(relaxed):
 
 
 def test_a_record_at_another_level_of_theory_warns(relaxed):
-    """The recorded contract against a form that runs another basis: a
-    different level of theory, named field by field -- and another engine is
-    the same fact at the engine level."""
+    """THE SILENT FAILURE: a structure relaxed at another level of theory --
+    another basis, k-point grid or engine -- taken as relaxed here unsaid.
+
+    `engines/vibration.md` § 2.2's record table, row *ticked -- present,
+    for these coordinates* (a different engine or level of theory is each
+    a warning naming the field); `model/parse.md` § 5b: the recorded
+    contract against a form that runs another basis, named field by field
+    -- and another engine the same fact at the engine level."""
     from molbuilder.config.pyscf import PySCFConfig
     from molbuilder.parse.contract import contract_of
     s = _carrying_the_record(relaxed)
@@ -314,10 +343,14 @@ def test_a_record_at_another_level_of_theory_warns(relaxed):
 
 
 def test_a_record_at_another_charge_warns(relaxed):
-    """ES7 (`science/chemistry-correctness.md` § 2a): the electronic state is
-    part of the level of theory the record is compared against, resolved --
-    CO2 at -2 keeps the electron count even, so the parity rule does not
-    answer first."""
+    """THE SILENT FAILURE: a frequency taken at a geometry relaxed for
+    another electronic state, unsaid.
+
+    ES7 (`science/chemistry-correctness.md` § 2a.2: "A difference between
+    what a calculation states and what its structure's run recorded is
+    warned by the record check"); `engines/vibration.md` § 2.2's record
+    table, row *ticked -- present, for these coordinates* (the charge it
+    will carry, resolved, is part of the level of theory)."""
     s = _carrying_the_record(relaxed)
     found = [i for i in _record_findings(
         s, _cfg(already_relaxed=True, net_charge=-2)) if i.severity == "warn"]
@@ -326,8 +359,13 @@ def test_a_record_at_another_charge_warns(relaxed):
 
 
 def test_a_good_record_under_an_unticked_box_offers_the_skip(relaxed):
-    """Unticked, with a record that already meets the criterion: the info
-    line offers the skip (row 4)."""
+    """THE SILENT FAILURE: a structure already relaxed to this calculation's
+    criterion relaxed again, the person never told the relaxation could be
+    skipped.
+
+    `engines/vibration.md` § 2.2's record table, row *unticked -- present,
+    for these coordinates, within this calculation's tolerance at the same
+    level*: the info line offers the skip."""
     s = _carrying_the_record(relaxed)
     found = _record_findings(s, _cfg(already_relaxed=False,
                                      relax_force_tol=_tolerance(relaxed)))
@@ -337,8 +375,11 @@ def test_a_good_record_under_an_unticked_box_offers_the_skip(relaxed):
 
 
 def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
-    """Ticked with no record: accepted, with the hint that the statement
-    stands on its own (row 1)."""
+    """THE SILENT FAILURE: a ticked box with no evidence refused, or
+    accepted with nothing said of the missing record.
+
+    `engines/vibration.md` § 2.2's record table, row *ticked -- absent*:
+    accepted, with the hint that the statement stands on its own."""
     s = _carrying_the_record(relaxed)
     s.apply_info_dict(None)
     found = _record_findings(s, _cfg(already_relaxed=True))
@@ -536,6 +577,15 @@ def _ask(row, calc, client, tmp_path, monkeypatch) -> _Answer:
 @pytest.mark.parametrize("row", _ROWS, ids=[r["name"] for r in _ROWS])
 def test_every_door_asked_of_the_run_says_its_order(
         row, relaxed, web_client, tmp_path, monkeypatch):
+    """THE SILENT FAILURE: a run in its engine's order shown, saved or
+    converted as if it were in the user order -- the carbon taken for the
+    first oxygen -- with nothing to say so.
+
+    `model/overview.md` § 2.2a (I1, I5, I8; the refusals), `model/parse.md`
+    § 5.3, `engines/transport.md` § 3.1: every door that shows, writes or
+    builds from the run (:data:`_ROWS`) answers in the order it states,
+    puts the run back in the user order and says so, or refuses naming its
+    way out."""
     got = _ask(row, relaxed, web_client, tmp_path, monkeypatch)
     assert got.ok is row["ok"], (row["name"], got)
     if "says" in row:

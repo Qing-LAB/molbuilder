@@ -32,7 +32,7 @@ def test_the_selection_locks_what_it_would_ignore(page, flask_server):
 
     First the page as it loads, before any change: nothing chosen -- a new
     calculation's form holds what the person gives it, and a blank is not
-    chosen (`web/form-schema.md`, plan K7) -- and the kind's `skip`, which
+    chosen (`web/form-schema.md` § 1.1) -- and the kind's `skip`, which
     then applies, locks all three.
 
     MUTATIONS THIS MUST FAIL AGAINST: the window left out of the lock map

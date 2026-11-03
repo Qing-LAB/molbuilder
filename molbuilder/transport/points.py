@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .stages import (STAGE_FACT, Point, frames_of, hands_on, must_hold,
+from .stages import (STAGE_FACT, Point, hands_on, must_hold,
                      points_in, rung_points)
 from ..jobset.points import PointsOf, Start
 
@@ -24,7 +24,8 @@ def _deck_text(deck):
 
 
 def _declared_rung_points(calc, stage: str, *, read=None):
-    return rung_points(calc.task, stage, frames=frames_of(calc.base, read=read))
+    from .rung import frames_had
+    return rung_points(calc.task, stage, frames=frames_had(calc, read=read))
 
 
 def _declared_points_in(run, task, stage: str, base):
