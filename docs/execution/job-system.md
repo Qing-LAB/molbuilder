@@ -2527,7 +2527,7 @@ flowchart TB
 | entry | the verb's one function, whichever surface called; owns the save and the record | `prep.prep_task`, `prep.prep_bench` | `submit.plan_launch` → `submit.send_launch` |
 | the work | which members: by the job request's groups, matched by their members | `prep._prep_groups` (`group.formed_again`; R-P5, R-P6) | `submit._the_group`: the group named or offered, or one stage again |
 | member planner | one member — what it is, what it takes, its checks, its run — planned with nothing written | `prep.plan_stage`: inputs, resolved, launch values stated and placed, the steps planned (`prep_calculation`) | `submit._plan_member`: `_first_launch` (from the ready door) or `_launch_again` (from `materialize.newest_launched`); a trial, `_plan_trial` |
-| run filler | fill the member's run | `prep_calculation` opens `run-0` with the stage's own files (`materialize.prepare_attempt`, `open_sweep_run`) | the same openers, then prep's own files back (`_prep_files_back`) and what it takes, each one hand-over (`materialize.hand_over`): a continuation, a gather (`gather.gather_into`), or the inputs its last run was given (`_carry_the_gather`); a run of points' take-overs and starts (`_points_walk`) |
+| run filler | fill the member's run | `prep_calculation` opens `run-0` with the stage's own files (`materialize.prepare_attempt`, `open_sweep_run`) | the same openers, then prep's own files back (`_prep_files_back`) and what it takes, each one hand-over (`materialize.hand_over`): a continuation, a gather (`materialize.gather_into`), or the inputs its last run was given (`_carry_the_gather`); a run of points' take-overs and starts (`_points_walk`) |
 | submission builder | how the members are sent | — prep sends nothing; every job's header is planned with its members (`prep.walk_header_of`) | `_plan_stage` (a run of points to `_points_walk`), `_plan_group`, `_plan_shelves`, `_plan_bench_here`, `_plan_sequence` |
 | save, write, send, record | only once the plan is whole | `checkpoint.save_before`, `Plan.carry_out`, `_record_prepared` | `send_launch`: the folder as planned, the save at a group's first launch, `Plan.carry_out`, `_go`, each member's `run.json` |
 
@@ -2599,10 +2599,11 @@ Every `jobset` module, its floor and its entry points are
 each fact is § 3.2 there. The ones this chapter leans on: `jobset/prep.py`
 (the prep entries and the member planner), `jobset/submit.py` (the launch
 entry, the submission builders, the one sender), `jobset/ready.py` (the task's
-and each group's answer), `jobset/continuation.py` and `jobset/gather.py`
-(what a run takes), `jobset/materialize.py` (the run opener and the
-hand-over), `jobset/runstatus.py` (`status` and the next step),
-`jobset/commands.py` (every printed line), `jobset/group.py` (a group, its
+and each group's answer), `jobset/continuation.py` and the pair's gather
+part (what a run takes; a transport rung's, `transport/gather.py`),
+`jobset/materialize.py` (the run opener and the hand-over),
+`jobset/runstatus.py` (`status` and the next step), `jobset/commands.py`
+(every printed line), `jobset/group.py` (a group, its
 shared request, a sequence's), `joblist.py` (§ 6.0a) and `jobset/ledger.py`
 (`jobset-decisions.log`). **To add an engine**, you write one engine seam
 ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4) and nothing else: the

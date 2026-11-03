@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Dict, Tuple
 
 #: THE WINDOW'S THREE ITEMS, by the catalogue's names -- what a fitted
-#: window is written into (the transmission's own fields, `jobset.reuse`'s
+#: window is written into (the transmission's own fields, `reuse`'s
 #: rung of them).
 WINDOW_ITEMS = ("transmission_emin_ev", "transmission_emax_ev",
                 "transmission_n_points")
@@ -80,7 +80,7 @@ def fitted(window: Tuple[float, float, int], lo: float, hi: float,
            finer: int = 1) -> Fitted:
     """THE WINDOW FITTED to the finished grid ``window`` -- its ends and its
     number of energies, mid-rule, as the finished point's deck states them
-    (`jobset.reuse.finished_window`) -- covering ``lo``…``hi`` eV, its
+    (`reuse.finished_window`) -- covering ``lo``…``hi`` eV, its
     spacing the finished one over ``finer``: the finished window cut
     ``finer`` to a spacing, extended by whole spacings each side until its
     end energies reach the range asked -- the finished window itself, end

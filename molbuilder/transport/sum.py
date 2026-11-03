@@ -3,10 +3,11 @@ transmission points read into the calculation's record and data file,
 current against voltage (`engines/transport.md` § 2a.12): the summary the
 kind table names for the pair (``sum``, `execution/architecture.md` § 3.3).
 
-MODULE  jobset.transport_sum (floor 6, beside `jobset.summarize`): the
-        points, the record and the data file are the transport kind's
-        readers and writers (`transport.tbtnc`, `transport.record`,
-        `transport.datafile`); this declares the summary from them.
+MODULE  transport.sum (floor 6, the kind's summary `jobset.summarize`
+        adds up): the points, the record and the data file are the
+        transport kind's readers and writers (`transport.tbtnc`,
+        `transport.record`, `transport.datafile`); this declares the
+        summary from them.
 """
 from __future__ import annotations
 

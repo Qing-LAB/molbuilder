@@ -496,7 +496,7 @@ def prep_calculation(calc, stage: Optional[str], *,
     keyed by its header (:func:`walk_header_of`).
 
     ``copied`` -- a member of a group copied in from the finished
-    calculation a transport calculation reuses (`jobset.reuse`): its files
+    calculation a transport calculation reuses (its kind's reuse part): its files
     planned as any stage's, no run opened -- its runs are the copies, which
     the entry plans after it (`engines/transport.md` § 2a.16).  ``reuse``
     is what the kind's own reuse decided for this prep (its description's
@@ -1721,7 +1721,7 @@ class PrepAnswer:
     sequence: Optional[dict] = None
     #: A CALCULATION THAT REUSES A FINISHED ONE: the manifest -- each group
     #: of the prep copied in, its runs, or prepared here and why
-    #: (`jobset.reuse.Reuse`; `engines/transport.md` § 2a.16) -- the same
+    #: (the reuse part's ``Reuse``; `engines/transport.md` § 2a.16) -- the same
     #: on every answer of the prep.  ``None`` otherwise.
     copied: Optional[object] = None
     #: A PREVIEW: the plan, stopped before the save, named by its identity

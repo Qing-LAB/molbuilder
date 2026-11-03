@@ -1505,7 +1505,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "submission's `launch/`, `pseudos/` and a point's "
                     "folder below its stage, and "
                     "`materialize.open_scratch`, a device run's `tsgf/`; "
-                    "and `jobset.reuse`, a transmission point's `shared/`)",
+                    "and `transport.reuse`, a transmission point's `shared/`)",
              door="calcdirs.where"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",
@@ -1545,7 +1545,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="launch, by its one hand-over (`materialize.hand_over`, "
                     "through `runrecord.write_gathered_from`) -- a rung's "
                     "first launch or a `--gather` "
-                    "(`jobset.gather.transport_inputs`), or a launch again "
+                    "(`transport.gather.transport_inputs`), or a launch again "
                     "keeping what its last run was given",
              door="runrecord.read_gathered_from"),
     Artifact(name=COPIED_FROM_FILE,
@@ -1554,10 +1554,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
              calculation="transport", when="prep", level="run",
              kind="record",
              writer="prep, copying a group in from the finished calculation "
-                    "it reuses (`jobset.reuse.copy_in`), before the run's "
+                    "it reuses (`transport.reuse.copy_in`), before the run's "
                     "launch record; a rung of points' first launch, in each "
-                    "point it takes over (`jobset.reuse.take_into`) and each "
-                    "point's `shared/`, written last (`jobset.reuse."
+                    "point it takes over (`transport.reuse.take_into`) and each "
+                    "point's `shared/`, written last (`transport.reuse."
                     "shared_into`) -- through `runrecord.write_copied_from`",
              door="runrecord.read_copied_from",
              only="a transport calculation that reuses a finished one"),

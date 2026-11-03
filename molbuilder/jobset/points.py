@@ -19,10 +19,10 @@ USED-BY `jobset.submit`, `jobset.continuation`, `jobset.runstatus`,
         `runs`
 
 A transport rung's points are a frame of the cited set and a voltage,
-decided at prep (`jobset.transport_points`); a SIESTA vibration's are the
+decided at prep (`transport.points`); a SIESTA vibration's are the
 SIESTA calls of its one run -- its phases' -- the relaxation's and the force
 constants' prepared, the optical ones planned in the job
-(`jobset.vibration_points`).  Both are read alike: a point is a folder below
+(`spectra.vibration_points`).  Both are read alike: a point is a folder below
 the run holding that point's deck, run script, output and records.
 """
 from __future__ import annotations

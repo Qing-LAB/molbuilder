@@ -169,7 +169,7 @@ Four declarations, each with one door; nothing in the shared code names a kind, 
 
 ```toml
 [transport.on.siesta.points]
-declaration = "molbuilder.jobset.transport_points:POINTS"
+declaration = "molbuilder.transport.points:POINTS"
 unit        = "point"
 finished    = "ran"
 wall        = "each"
@@ -177,7 +177,7 @@ count       = "molbuilder.transport.run_words:count_words"
 outcome     = "molbuilder.transport.run_words:round_outcome"
 
 [vibration.on.siesta.points]
-declaration = "molbuilder.jobset.vibration_points:POINTS"
+declaration = "molbuilder.spectra.vibration_points:POINTS"
 unit        = "call"
 finished    = "done"
 wall        = "one"
@@ -463,8 +463,10 @@ flowchart TD
 - **Another stage's points.** A run that **continues from another stage's run** — a first launch's default, or a run
   named by `--from` — takes over the points its kind carries, done there (`continuation.carried_points`), each file
   named for this stage (`runfiles.RunNames.restaged`), its entry what that run knew of it, and nothing of its own
-  stage's runs. A first launch of a calculation that reuses a finished one takes that one's points over by the
-  reuse's own rule ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
+  stage's runs. A first launch of a calculation that reuses a finished one takes that one's points over by its
+  kind's reuse part, which the walk asks as prep does — `takes_over`, the walk leaving out each point its answer `covers` —
+  and a kind whose description names none takes nothing over ([`engines/transport.md`](?doc=engines/transport.md)
+  § 2a.16; [`architecture.md`](?doc=execution/architecture.md) § 3.3).
 - **The walk's order.** Round by round — the rounds in the order the listing first meets them, each round's points
   in the listing order — a step for each walked prepared point, needing its walked needs, and a loop step for each
   container whose planned points or planner this walk runs. Where the rung keeps the engine's scratch in a folder of

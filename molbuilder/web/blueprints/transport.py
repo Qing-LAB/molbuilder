@@ -469,9 +469,8 @@ def api_transport_fit() -> Any:
     finished calculation holding no transmission point done, is refused in
     its words."""
     from pathlib import Path
-    from molbuilder.jobset.reuse import finished_window
     from molbuilder.projects import projects_root
-    from molbuilder.transport.reuse import ReuseError, reused
+    from molbuilder.transport.reuse import ReuseError, finished_window, reused
     from molbuilder.transport.window import fitted
     try:
         finished, _rel = reused(str(request.args.get("reuses") or ""),
@@ -1024,13 +1023,13 @@ def api_transport_describe() -> Any:
 
 def _manifest_of(where) -> tuple:
     """WHAT A DESCRIBED EXTENSION AT ``where`` WILL REUSE, AND WHAT RUNS --
-    the one answer prep composes (`jobset.reuse.decide`), in the manifest's
+    the one answer prep composes (`transport.reuse.decide`), in the manifest's
     words: ``(lines or None, notes)``, a note saying why where it is not
     known yet."""
     from molbuilder.calculation import open as _open_calc
     from molbuilder.issues import Issue
     from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.reuse import decide
+    from molbuilder.transport.reuse import decide
     try:
         made = _open_calc(where)
         reuse = decide(made, made.request.numbers)
@@ -1043,7 +1042,7 @@ def _manifest_of(where) -> tuple:
 def _plan_of(desc, finished, *, root, task, notices, cfg) -> Any:
     """THE PLAN ALONE (`engines/transport.md` § 2a.16, *On the page*): what
     the description ``desc`` would copy from ``finished`` and run -- the one
-    answer prep composes (`jobset.reuse.decide`) -- worked out in a hidden
+    answer prep composes (`transport.reuse.decide`) -- worked out in a hidden
     folder of its own under the projects tree's root, which the reuse needs
     to find the finished calculation by its path, removed whatever happens.
     A new calculation copies nothing: no plan."""

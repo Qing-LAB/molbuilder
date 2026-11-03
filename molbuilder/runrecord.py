@@ -559,7 +559,7 @@ def carried_gather(base, source) -> "List[Tuple[RunRef, str]]":
     first launch gathered (`job-system.md` § 5.4).  A point of a run of
     points carries its own record alone.  The one answer the launch takes
     again (`submit._carry_the_gather`) and a reuse compares a finished run
-    by (`jobset.reuse.takes_over`)."""
+    by (`transport.reuse.takes_over`)."""
     from .paths import attempt_index
     base = Path(base)
     took = list(read_gathered_from(source))
@@ -585,7 +585,7 @@ def carried_gather(base, source) -> "List[Tuple[RunRef, str]]":
 
 # The finished calculation's run a run is a copy of, tree-relative -- one
 # line, written by the prep that copies a group in from the finished
-# calculation a transport calculation reuses (`jobset.reuse.copy_in`,
+# calculation a transport calculation reuses (`transport.reuse.copy_in`,
 # :func:`write_copied_from`) and read by the readers that say *copied from*
 # and by the way back (:func:`read_copied_from`; `engines/transport.md`
 # § 2a.16).

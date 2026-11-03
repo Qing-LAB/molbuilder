@@ -3,11 +3,12 @@ SIESTA calls (`engines/vibration.md` § 5.11), and this is the declaration
 the kind table's record names for the pair (``declaration``,
 `execution/runs-of-points.md` § 2.2).
 
-MODULE  jobset.vibration_points (floor 4, beside `jobset.points`): the
-        phases, the calls and a call's entry are `siesta.vibration_phases`'s,
-        which travels beside the job and holds no part of a higher floor;
-        what a reader of the run's points asks is answered here, from the
-        phases table (`PHASES`) -- no phase is named.
+MODULE  spectra.vibration_points (floor 4, the declaration
+        `jobset.points` reads): the phases, the calls and a call's entry are
+        `siesta.vibration_phases`'s, which travels beside the job and holds
+        no part of a higher floor; what a reader of the run's points asks is
+        answered here, from the phases table (`PHASES`) -- no phase is
+        named.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from ..runfiles import COORDINATES_FILE, ROLE_SPECTRA, compose
 from ..runpoints import index_at, index_of, read_index
 from ..siesta.vibration_phases import (Call, calls_of, must_hold, phase,
                                        point_entry)
-from .points import Container, PointsOf, Start
+from ..jobset.points import Container, PointsOf, Start
 
 
 def _job_phases(calc, stage: str) -> Tuple[str, ...]:
@@ -52,11 +53,11 @@ def _declared_points_in(run, task, stage: str, base) -> List[Tuple[Path, Call]]:
     plan's row's phases, `Job.phases`).  The index is the run's one,
     written by the launch that opened the run (`runpoints.index_of`, which
     refuses an older molbuilder's naming `jobset migrate`)."""
-    from .naming import stage_home
+    from ..jobset.naming import stage_home
     place = RunPlace.of(run)
     path = index_of(place.run_dir, stage_home(base, task, stage).names)
     if path is None:
-        from .model import JobSet
+        from ..jobset.model import JobSet
         plan = JobSet.of(base)
         job = plan.job(stage) if plan is not None else None
         return [(place.point(c.rel), c)

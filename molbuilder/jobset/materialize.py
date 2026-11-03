@@ -489,7 +489,7 @@ def empty_old_points(stage_dir, points, plan, *, keep=()) -> List[str]:
 
 
 #: A hand-over's two records (`job-system.md` § 5.4): the one run a run
-#: continues from (`.continued-from`), and a transport rung's inputs, each
+#: continues from (`.continued-from`), and a rung's gathered inputs, each
 #: from its run (`.gathered-from`).
 CONTINUED, GATHERED = "continued", "gathered"
 
@@ -613,6 +613,20 @@ def hand_over(base, h: HandOver, plan=None) -> List[str]:
     if own:
         plan.carry_out()
     return copied
+
+
+def gather_into(base, run, inputs, plan) -> Optional[HandOver]:
+    """A RUNG'S GATHER HANDED OVER into ``run``, a run or a point of one:
+    ``inputs``, ``[(the run it comes from, filename)]`` -- what its kind's
+    gather decided (the pair's ``gather`` part, `ready.gather_of`) -- copied
+    with the record of what came from where (`.gathered-from`), into
+    ``plan`` (:func:`hand_over`).  The hand-over, or ``None`` for a run that
+    takes nothing."""
+    if not inputs:
+        return None
+    h = HandOver(Path(run), GATHERED, files=tuple(inputs))
+    hand_over(base, h, plan)
+    return h
 
 
 def prepare_attempt(calc, stage_name: str, *,
@@ -802,6 +816,7 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
 
 __all__ = [
     "Attempt", "CONTINUED", "GATHERED", "HandOver", "hand_over",
+    "gather_into",
     "bench_owner", "bench_stage_of", "scratch_in", "ScratchFile",
     "materialize", "latest_attempt", "newest_launched", "job_folder", "launched_run",
     "resolve_attempt", "ever_launched", "empty_run",

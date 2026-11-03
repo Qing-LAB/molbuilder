@@ -15,7 +15,7 @@ deck** among them (the fdf that actually ran is the truth about a result;
 user ruling 2026-08-28).
 
 Pure composition: everything here reads the tree and returns objects;
-the caller (prep, `jobset.gather.composed_for_prep`) owns what lands on
+the caller (prep, `gather.composed_for_prep`) owns what lands on
 disk where.
 """
 from __future__ import annotations

@@ -11,7 +11,7 @@ ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         section it reads, which phases it needs, what a relaunch does with
         a call not done, and which phase's step plans its calls -- read by
         prep (the decks and run scripts), the pair's declaration
-        (`jobset.vibration_points`: launch's walk, `status`) and the run's
+        (`spectra.vibration_points`: launch's walk, `status`) and the run's
         own python (its steps).  The call (:class:`Call`), a point of the
         run; a call's entry in the run's index (:func:`point_entry`), the
         one shape launch and the force constants' step write; and the
@@ -20,7 +20,7 @@ ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         stage continues from (:func:`continues_from`, the kind table's
         ``continues``).  The index itself, its stamps and its rules are
         every run of points' (`runpoints`).
-USED-BY `jobset.prep`, `jobset.vibration_points`, `spectra.siesta_vibration`,
+USED-BY `jobset.prep`, `spectra.vibration_points`, `spectra.siesta_vibration`,
         `siesta.vibration_deck`, `spectra.mode_frames`, `spectra.displacement_sweep`,
         `monitor` (the count, through the index's part)
 """
@@ -76,7 +76,7 @@ class PhaseRule:
     #: Whether a call's VERDICT counts toward done -- its SCF converged
     #: (`_run_ending.not_done_why`): not a relaxation's, done finished,
     #: converged or not (§ 5, § 6).  Read by this machine's done door
-    #: (`jobset.vibration_points`), and copied into each call's entry in
+    #: (`spectra.vibration_points`), and copied into each call's entry in
     #: the run's index, which the job judges it by (`runpoints.rows_of`).
     verdict_counts: bool
     #: The warm-files section a call of this phase reads, launched again

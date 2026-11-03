@@ -7,7 +7,7 @@ ROLE    `jobset summarize task` on a vibration calculation with two or more
         constants -- compare them as a function of what the stages varied
         (the displacement, the mesh), and write ``<label>.fc-sweep.json`` at the
         calculation root with the table printed
-USED-BY jobset/vibration_sum.py (the vibration's summary, ``summarize task``);
+USED-BY spectra/vibration_sum.py (the vibration's summary, ``summarize task``);
         the Results tab's sweep presenter reads the record
         (`lib/inspectors/fc-sweep.js`)
 
@@ -118,7 +118,7 @@ def why_no_sweep(task) -> Optional[str]:
     ``None`` when it has one (`engines/vibration.md` § 5.9): fewer than two
     force-constant stages.  THE ONE RULE, asked by the sweep
     (:func:`collect_sweep`) and,
-    as the vibration's summary's ``why_none`` (`jobset/vibration_sum.py`),
+    as the vibration's summary's ``why_none`` (`spectra/vibration_sum.py`),
     by the verb and the task's next step."""
     names = sweep_stages(task)
     if len(names) < 2:

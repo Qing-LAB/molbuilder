@@ -1657,7 +1657,7 @@ def test_the_geometry_is_compared_where_siesta_places_it(junction, case):
     for the rounding of a box placed again."""
     import dataclasses
 
-    from molbuilder.jobset.gather import composed_junction, rung_deck_now
+    from molbuilder.transport.gather import composed_junction, rung_deck_now
     from molbuilder.siesta.engine_input import engine_input_differences
     from molbuilder.transport.sort import REGION_BRIDGE
     base = junction.single.bundle
@@ -1718,7 +1718,7 @@ def test_what_a_deck_leaves_to_the_engine_is_read_as_siesta_reads_it(
     calculation and its hours of compute thrown away; or a real difference
     -- a spacing other than the engine's -- taken as none."""
     from molbuilder.calculation import open as open_calculation
-    from molbuilder.jobset.gather import composed_junction, rung_deck_now
+    from molbuilder.transport.gather import composed_junction, rung_deck_now
     from molbuilder.siesta.engine_input import engine_input_differences
     from molbuilder.transport.stages import frames_of, rung_points
     base = junction.bundle

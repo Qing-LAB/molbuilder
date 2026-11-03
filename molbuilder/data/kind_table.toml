@@ -147,7 +147,7 @@ rung = "molbuilder.spectra.siesta_rung:siesta_vibration_rung_of"
 continues = "molbuilder.siesta.vibration_phases:continues_from"
 # Its stages' force constants compared, where it has two or more
 # (`engines/vibration.md` § 5.9).
-sum = "molbuilder.jobset.vibration_sum:SUM"
+sum = "molbuilder.spectra.vibration_sum:SUM"
 retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIESTA vibration is one run of points -- its relaxation the run's first call, switched by already_relaxed (engines/vibration.md 5.11)" }
 
 # Its run is a run of points: each SIESTA call a point, the phases its rounds
@@ -157,7 +157,7 @@ retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIE
 # record what it came to (planning the optical calls after the force
 # constants) and write the result once no call is left.
 [vibration.on.siesta.points]
-declaration = "molbuilder.jobset.vibration_points:POINTS"
+declaration = "molbuilder.spectra.vibration_points:POINTS"
 unit = "call"
 finished = "done"
 wall = "one"
@@ -222,8 +222,8 @@ carries = ["swap_electrodes", "bias", "reuses"]
 cited_kind = "optimization"
 extension = "molbuilder.transport.reuse:Extension"
 cited_frames = "molbuilder.transport.compose:cited_frames"
-order_record = "molbuilder.jobset.gather:order_record"
-reuse = "molbuilder.jobset.reuse"
+order_record = "molbuilder.transport.gather:order_record"
+reuse = "molbuilder.transport.reuse"
 
 [transport.on.siesta]
 words = "TranSIESTA"
@@ -239,10 +239,10 @@ scratch_status = "molbuilder.transport.gf_files:status_line"
 # Which rung hands which file to which (the ladder's DAG), and the gather
 # that takes them at a rung's first launch (engines/transport.md § 6.1).
 inputs = "molbuilder.transport.stages:inputs_of"
-gather = "molbuilder.jobset.gather:gather_sources"
+gather = "molbuilder.transport.gather:gather_sources"
 # Its transmission points read into the calculation's record and data file,
 # current against voltage (engines/transport.md § 2a.12).
-sum = "molbuilder.jobset.transport_sum:SUM"
+sum = "molbuilder.transport.sum:SUM"
 
 # A swept rung's run is a run of points: a frame of the cited set and a
 # voltage each, a round one voltage at every frame (execution/runs-of-points.md
@@ -250,7 +250,7 @@ sum = "molbuilder.jobset.transport_sum:SUM"
 # converged or not -- the converged column says the rest; each point told the
 # card's wall, the job's their sum.  No steps of its own between its points.
 [transport.on.siesta.points]
-declaration = "molbuilder.jobset.transport_points:POINTS"
+declaration = "molbuilder.transport.points:POINTS"
 unit = "point"
 finished = "ran"
 wall = "each"

@@ -6,9 +6,10 @@ its one run giving every displacement).  Only a SIESTA vibration with two
 or more force-constant stages has one; any other says why
 (`spectra.displacement_sweep.why_no_sweep`).
 
-MODULE  jobset.vibration_sum (floor 6, beside `jobset.summarize`): the
-        sweep's reader and writer are the vibration kind's
-        (`spectra.displacement_sweep`); this declares the summary from them.
+MODULE  spectra.vibration_sum (floor 6, the kind's summary
+        `jobset.summarize` adds up): the sweep's reader and writer are the
+        vibration kind's (`spectra.displacement_sweep`); this declares the
+        summary from them.
 """
 from __future__ import annotations
 

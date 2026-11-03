@@ -407,11 +407,11 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
     for the transmission, TBtrans's program.  The fifth, **gather** -- each
     rung's inputs from the runs upstream -- is its first launch's
     (:func:`gather_sources`, `job-system.md` § 6.0).  ``reuse`` is what
-    the kind's own reuse decided for this prep (`jobset.reuse.decide`, its
+    the kind's own reuse decided for this prep (`reuse.decide`, its
     description's ``reuse`` part), from which the rung's points' contours
     are its own (:func:`_contours`)."""
-    from ..jobset.gather import composed_for_prep
-    from ..jobset.reuse import point_key
+    from .gather import composed_for_prep
+    from .reuse import point_key
     base, task, stage = calc.base, calc.task, pset.stage
     contours = _contours(calc, stage, reuse)
     # NO SWEEP REACHES IT: `prep bench` refuses the kind first, in its
@@ -464,12 +464,12 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
 
 def _contours(calc, stage: str, reuse) -> Optional[dict]:
     """WHAT EACH POINT OF THIS RUNG COMPUTES where it is not its window
-    whole, by the point's key (`jobset.reuse.point_key`;
+    whole, by the point's key (`reuse.point_key`;
     `engines/transport.md` § 2a.16): a launched rung's as its decks record
     it -- never decided again -- else the prep's reuse decision's
     (``reuse``), else ``None``."""
     from ..jobset.materialize import ever_launched
-    from ..jobset.reuse import launched_contours
+    from .reuse import launched_contours
     job = calc.job(stage)
     if job is not None and ever_launched(calc, job):
         return launched_contours(calc, stage)

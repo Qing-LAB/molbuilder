@@ -2,8 +2,9 @@
 at its first launch or at a launch that gathers anew (`job-system.md` § 6.0;
 `engines/transport.md` § 6.1): which file from which run
 (:func:`gather_sources`, :func:`transport_inputs` -- three gates, each a
-refusal naming what to do first), and the copies with their record
-(:func:`gather_into`, `.gathered-from`).
+refusal naming what to do first) -- the pair's ``gather`` part, whose
+answer the launch hands over with its record (`materialize.gather_into`,
+`.gathered-from`).
 
 A door: it answers and refuses, and writes only into the plan it is handed.
 The ready door asks it what a first launch would take; the launch asks it,
@@ -20,12 +21,11 @@ from .. import script_emit as _sc
 from ..calcdirs import RunPlace, prepared_folder
 from ..deck_record import same_calculation
 from ..runrecord import RunRef
-from .errors import PrepError, user_error_as_prep
-from .materialize import GATHERED, HandOver, hand_over
-from .naming import stage_home
-from .rung import citation_of
-from ..transport.rung import (at_frame, at_point, transport_rung,
-                             transport_sources, rung_spec)
+from ..jobset.errors import PrepError, user_error_as_prep
+from ..jobset.naming import stage_home
+from ..jobset.rung import citation_of
+from .rung import (at_frame, at_point, transport_rung, transport_sources,
+                   rung_spec)
 
 
 class ReadOnce:
@@ -33,7 +33,7 @@ class ReadOnce:
     upstream rung's deck as it renders now, by the point it is rendered at
     -- one render for a rung that runs once, whichever point asks
     (`engines/transport.md` § 6.1); and what a calculation that reuses a
-    finished one reads for all its groups (`jobset.reuse`, § 2a.16)."""
+    finished one reads for all its groups (`reuse`, § 2a.16)."""
 
     def __init__(self, calc):
         self.calc = calc
@@ -60,7 +60,7 @@ class ReadOnce:
         record)."""
         key = (stage, run)
         if key not in self._runs:
-            from .continuation import read_points
+            from ..jobset.continuation import read_points
             self._runs[key] = read_points(self.calc.base, self.calc.task,
                                           stage, run)
         return self._runs[key]
@@ -72,7 +72,7 @@ def transport_inputs(calc, stage: str, *, point=None,
     """What one attempt of ``stage`` takes from the runs upstream -- the
     § 4.2 DAG's inputs: ``[(the run it comes from, filename)]``, decided at the
     stage's first launch, or a launch that gathers anew (`job-system.md`
-    § 6.0), and copied into its run (:func:`gather_into`).
+    § 6.0), and copied into its run (`materialize.gather_into`).
 
     A transport rung takes no ``--from`` (`continuation.cannot_be_named`):
     its sources are structural — fixed by the design's DAG, not named by a
@@ -95,8 +95,8 @@ def transport_inputs(calc, stage: str, *, point=None,
     result can always say which electrode run fed it.  ``once`` is what the
     gather this belongs to reads for all its points (:class:`ReadOnce`).
     """
-    from ..transport.stages import frames_of, inputs_of, rung_points
-    from .continuation import usable
+    from .stages import frames_of, inputs_of, rung_points
+    from ..jobset.continuation import usable
 
     base, task, jobset = Path(calc.base), calc.task, calc.jobset
     once = once if once is not None else ReadOnce(calc)
@@ -115,9 +115,10 @@ def transport_inputs(calc, stage: str, *, point=None,
         # launched; a prepared one is launched, or let finish, or -- to run
         # it as it is described now -- redone from the state saved before
         # its group's first launch (§ 5.0).
-        from .commands import (block, launch_lines, launch_pending,
-                               redo_launched, run_first as _run_first)
-        from .continuation import read_run, state_remedy
+        from ..jobset.commands import (block, launch_lines, launch_pending,
+                                       redo_launched,
+                                       run_first as _run_first)
+        from ..jobset.continuation import read_run, state_remedy
         q2 = ("\n  (strict composition: transport never runs its "
               "pieces for you.)")
         redo = redo_launched(upstream, calc=calc)
@@ -132,7 +133,7 @@ def transport_inputs(calc, stage: str, *, point=None,
         # finished (`continuation.usable`) -- exit code 0 and nothing in its
         # output saying the engine stopped -- or the refusal is worded by
         # its state, as a stage's own default is (`state_remedy`).
-        from .materialize import latest_attempt
+        from ..jobset.materialize import latest_attempt
         newest = latest_attempt(up_dir) if up_dir.is_dir() else None
         if up_points and newest is not None:
             got = once.points_run(upstream, newest)
@@ -240,7 +241,7 @@ def ran_otherwise(once: ReadOnce, stage: str, where: Path, *,
     engine's reading, comments, molbuilder's records and the run settings
     aside); ``[]`` when it is the same calculation.  Asked by the
     gather of the runs upstream, and by a calculation that reuses a finished
-    one of that calculation's runs (`jobset.reuse`)."""
+    one of that calculation's runs (`reuse`)."""
     from ..runs import run_of
     now = once.deck_now(stage, point)
     # THE DECK THAT RAN, asked of its run's folder through the run door
@@ -271,25 +272,12 @@ def gather_sources(calc, stage: str
     strict composition).  Prep renders the decks without it: a
     deck is the reviewable artifact, whether or not the rungs before it have
     run."""
-    from ..transport.stages import frames_of, rung_points
+    from .stages import frames_of, rung_points
     base = Path(calc.base)
     once = ReadOnce(calc)
     return [(pt, transport_inputs(calc, stage, point=pt, once=once))
             for pt in (rung_points(calc.task, stage, frames=frames_of(base))
                        or (None,))]
-
-
-def gather_into(base: Path, run, inputs, plan) -> Optional[HandOver]:
-    """``inputs`` -- :func:`transport_inputs`' decision -- handed over into
-    ``run``, a run or a point of one: the copies with the record of what
-    came from where (`.gathered-from`), into ``plan``
-    (`materialize.hand_over`).  The hand-over, or ``None`` for a run that
-    takes nothing."""
-    if not inputs:
-        return None
-    h = HandOver(Path(run), GATHERED, files=tuple(inputs))
-    hand_over(base, h, plan)
-    return h
 
 
 def composed_junction(calc):
@@ -302,7 +290,7 @@ def composed_junction(calc):
     said as the gather's (:class:`PrepError`), as every door that asks the
     gather catches it -- through the one read prep asks too
     (`transport.rung.junction_record`)."""
-    from ..transport.rung import junction_record
+    from .rung import junction_record
     composed, why, root = junction_record(calc)
     if composed is None:
         raise PrepError(no_usable_record(calc, why, root=root,
@@ -319,7 +307,7 @@ def order_record(calc, plan) -> Optional[str]:
     and the words prep says of it; ``None`` when the record states its
     order, nothing to record.  A record that does not read is refused
     (:class:`PrepError`)."""
-    from ..transport.compose import ComposeError, recorded_junction
+    from .compose import ComposeError, recorded_junction
     try:
         recorded = recorded_junction(calc.base)
     except ComposeError as exc:
@@ -345,9 +333,9 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
 
     Written into ``plan`` (`jobset.planned.Plan`), with everything else this
     prep writes, by one road (`transport.rung.written_and_read_back`)."""
-    from ..transport.compose import compose_junction
-    from ..transport.rung import (compose_refusals, junction_record,
-                                 written_and_read_back)
+    from .compose import compose_junction
+    from .rung import (compose_refusals, junction_record,
+                       written_and_read_back)
     base, task = calc.base, calc.task
     composed, why, root = junction_record(calc)
     try:
@@ -380,8 +368,8 @@ def no_usable_record(calc, why, *, root, afresh: bool) -> "str | None":
     by the gather, which never composes (``afresh`` false;
     `gather.composed_junction`)."""
     from ..runrecord import LaunchRecordError
-    from .commands import block, prep_group_lines, redo_launched
-    from .ready import launched_stage
+    from ..jobset.commands import block, prep_group_lines, redo_launched
+    from ..jobset.ready import launched_stage
     base, task = calc.base, calc.task
     reason = why[-1] if why else "there is no usable record"
     try:
@@ -421,8 +409,8 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     (`script_emit.write_script`) -- so a keyword typed there is the same
     engine input in the run and now.  A transport deck records no machine
     sizing, so no allocation is needed to render it."""
-    from .model import Resources
-    from .prep_inputs import run_inputs
+    from ..jobset.model import Resources
+    from ..jobset.prep_inputs import run_inputs
     base, task = calc.base, calc.task
     # THE RUNG'S RUN SETTINGS, as `prep task` takes them from its card
     # (`run_inputs`).
@@ -433,7 +421,7 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     struct = at_frame(struct, point)
     # A TRANSMISSION POINT WHOSE GRID IS A FINISHED POINT'S OWN renders that
     # point's contours (`reuse.that_point`; `engines/transport.md` § 2a.16).
-    from ..transport.window import window_rung
+    from .window import window_rung
     from .reuse import that_point
     contours = (that_point(calc, point, at_point(config, point))
                 if stage == window_rung() else None)
@@ -457,6 +445,6 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
 
 
 __all__ = ["ReadOnce", "ran_otherwise", "gather_sources",
-           "transport_inputs", "gather_into",
+           "transport_inputs",
            "composed_junction", "composed_for_prep", "no_usable_record",
            "rung_deck_now"]

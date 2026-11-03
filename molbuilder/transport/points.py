@@ -3,18 +3,18 @@ and a voltage each, decided at prep (`engines/transport.md` § 2a.11), and
 this is the declaration the kind table's record names for the pair
 (``declaration``, `execution/runs-of-points.md` § 2.2).
 
-MODULE  jobset.transport_points (floor 4, beside `jobset.points`): the
-        rungs' points, their folders, what each must hold and hands on are
-        `transport.stages`'s, which lower floors read; what a reader of a
-        run's points asks is answered here, from them.
+MODULE  transport.points (floor 4, the declaration `jobset.points` reads):
+        the rungs' points, their folders, what each must hold and hands on
+        are `transport.stages`'s, which lower floors read; what a reader of
+        a run's points asks is answered here, from them.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..transport.stages import (STAGE_FACT, Point, frames_of, hands_on,
-                                must_hold, points_in, rung_points)
-from .points import PointsOf, Start
+from .stages import (STAGE_FACT, Point, frames_of, hands_on, must_hold,
+                     points_in, rung_points)
+from ..jobset.points import PointsOf, Start
 
 
 def _deck_text(deck):
@@ -37,7 +37,7 @@ def _entry(calc, stage: str, point: Point, deck) -> dict:
     is -- its frame and voltage, and the energy grid its deck describes
     (`energies.deck_window`), what a transmission round's outcome puts its
     printed energies on."""
-    from ..transport.energies import deck_window
+    from .energies import deck_window
     return {"words": point.words(), "phase": stage, "round": point.round,
             "facts": {**point.facts(),
                       "window": (list(deck_window(_deck_text(deck)) or ())
@@ -78,9 +78,9 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
     states them (`frameset.read`) -- what a round's outcome reads."""
     from ..frameset import read as read_frame_set
     from ..parse.fdf import parse_fdf_params
-    from ..transport.compose import recorded_junction
-    from ..transport.record import spin_of
-    from ..transport.transiesta import LEAD_NAMES, LEAD_PAIR
+    from .compose import recorded_junction
+    from .record import spin_of
+    from .transiesta import LEAD_NAMES, LEAD_PAIR
     recorded = recorded_junction(Path(calc.base))
     rows = (read_frame_set(recorded.structure) if recorded is not None
             else None)

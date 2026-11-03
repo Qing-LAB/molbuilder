@@ -2457,7 +2457,7 @@ ended at every frame, done or not — **the round** — a failed point said at o
 and one `finish`. Three pieces, every run of points'
 ([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 2, § 3,
 § 4.6) — the rung's record in the kind table, `[transport.on.siesta.points]`:
-its declaration (`jobset/transport_points.py`), its unit *point*, finished
+its declaration (`transport/points.py`), its unit *point*, finished
 when every point *ran*, converged or not, its points' walls *each* the
 card's (the job's their sum), its words, and no steps of its own between
 its points:
@@ -4424,7 +4424,7 @@ transmission window: -3…3 eV asked, fitted to the finished grid -- -3.00748…
   ends and its count, the numbers tbtrans computed its energies from; a point
   that shared energies, the grid its record describes — at the finished
   calculation's newest transmission run's first point done
-  (`jobset.reuse.finished_window`). A range whose ends the finished energies
+  (`transport.reuse.finished_window`). A range whose ends the finished energies
   already reach — the first at or below it, the last at or above — fits that
   window end for end: the same deck, copied in.
 
@@ -6324,7 +6324,7 @@ flowchart TB
 a row in `stages.py::stage_inputs` — the DAG as data, not as control flow —
 and a rung's first launch walks it, with what every stage continues from
 ([`job-system.md`](?doc=execution/job-system.md) § 6.0), in
-`jobset/gather.py::transport_inputs`, which takes an upstream file only if
+`transport/gather.py::transport_inputs`, which takes an upstream file only if
 **three gates** all pass — then copies it into the run it sends:
 
 | gate | what it refuses |

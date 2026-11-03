@@ -786,7 +786,7 @@ template and a stage's overrides ([`execution/job-request.md`](?doc=execution/jo
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff`; `diag_algorithm` → `Diag.Algorithm` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `use_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
 | a field the deck never carries | `mpi_np`, `omp_threads`, `wall_slack` | the **wrapper** — baked at prep (`wall_slack`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
-| **what a rung needs from the runs before it** | a transport rung's `.DM`, `.TSHS`, `.TS.HSX` | **not a field**: the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at the rung's first launch (`jobset/gather.py`; `job-contracts.md § 2.1`, *What a stage needs*) |
+| **what a rung needs from the runs before it** | a transport rung's `.DM`, `.TSHS`, `.TS.HSX` | **not a field**: the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at the rung's first launch (`transport/gather.py`; `job-contracts.md § 2.1`, *What a stage needs*) |
 
 > **The second row is about where a value *lands*, not about who *chooses* it**
 > (clarified 2026-08-07, because the wording invited the other reading).
@@ -827,7 +827,7 @@ template and a stage's overrides ([`execution/job-request.md`](?doc=execution/jo
 > run finished, the same engine input, the file there) and copies it into the
 > run with its record — before anything is sent
 > ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1, *What a stage
-> needs*; `jobset/gather.py`). The wrapper checks nothing of the kind.
+> needs*; `transport/gather.py`). The wrapper checks nothing of the kind.
 
 **The routing is derivable, never a second list.** A field carries an
 `engine_key` when it is a line in the deck; the config ↔ exchange translation for

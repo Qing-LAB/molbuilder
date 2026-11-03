@@ -86,10 +86,21 @@ PART_REFS = ("points", "rung", "inputs", "gather", "continues", "sum",
 #: The parts a kind's description may name for the shared doors that ask of
 #: a kind that cites or extends (:func:`description_part`): the limits of
 #: extending a finished calculation, the frames its citation holds, the
-#: citation's atom order recorded at a prep that names no group -- each
-#: ``module:NAME`` -- and the reuse of the calculation it extends, a module
-#: named whole (``module``), as ``export`` is.
+#: citation's atom order recorded at a prep that names no group, and the
+#: reuse of the calculation it extends -- each ``module:NAME``, or a module
+#: named whole where :data:`WHOLE_MODULE_PARTS` says so.
 DESCRIPTION_PARTS = ("extension", "cited_frames", "order_record", "reuse")
+#: THE DOORS A ``reuse`` PART PROVIDES, asked of the module it names: by
+#: prep (``decide``, ``copy_in``), describe (``finished_window``,
+#: ``decide``) and launch (``takes_over``, ``take_into``, ``shared_into``,
+#: ``carry_shared``).
+REUSE_DOORS = ("decide", "copy_in", "finished_window", "takes_over",
+               "take_into", "shared_into", "carry_shared")
+#: THE DESCRIPTION PARTS NAMED AS A MODULE WHOLE, each with the doors it
+#: provides -- read as the table loads (named whole, never
+#: ``module:NAME``) and as the part resolves (every door there,
+#: :func:`description_part`); every other part is ``module:NAME``.
+WHOLE_MODULE_PARTS = {"reuse": REUSE_DOORS}
 
 #: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): when its
 #: run is finished -- every point DONE, or every point RAN, the words the
@@ -176,7 +187,8 @@ class Description:
     #: judges the cited deck -- or ``None``: it cites nothing.
     cited_kind: Optional[str] = None
     #: Its parts for the shared doors (:data:`DESCRIPTION_PARTS`), by key --
-    #: each ``module:NAME``, ``reuse`` a module named whole.
+    #: each ``module:NAME``, or a module named whole
+    #: (:data:`WHOLE_MODULE_PARTS`).
     parts: Mapping[str, str] = None  # type: ignore[assignment]
 
 
@@ -651,10 +663,14 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
             if key not in desc:
                 _refuse(where, f"description {needs} and names no {key} "
                                f"part")
-    for key in ("extension", "cited_frames", "order_record"):
-        if key in desc and ":" not in desc[key]:
-            _refuse(where, f"description.{key} is {desc[key]!r} -- a part "
-                           f"is \"module:NAME\"")
+    for key in DESCRIPTION_PARTS:
+        if key not in desc:
+            continue
+        whole = key in WHOLE_MODULE_PARTS
+        if (":" in str(desc[key])) == whole:
+            _refuse(where, f"description.{key} is {desc[key]!r} -- "
+                           + (f"a {key} part is a module, named whole"
+                              if whole else "a part is \"module:NAME\""))
     charge = body.get("charge")
     if charge is not None and not (
             isinstance(charge, dict) and set(charge) == {"value", "why"}
@@ -808,22 +824,32 @@ def labels() -> Tuple[Tuple[str, str], ...]:
 def description_part(calculation: str, key: str) -> Any:
     """THE CODE a ``calculation``'s description names under ``key``
     (:data:`DESCRIPTION_PARTS`), imported now by the floor that asks -- a
-    ``module:NAME``'s object, or ``reuse``'s module whole -- or ``None``:
-    its description names none (a kind that cites or extends nothing)."""
+    ``module:NAME``'s object, or a module named whole
+    (:data:`WHOLE_MODULE_PARTS`), refused naming each door it does not
+    provide -- or ``None``: its description names none (a kind that cites
+    or extends nothing)."""
     if key not in DESCRIPTION_PARTS:
         raise KindTableError(f"no description part {key!r} -- they are "
                              f"{', '.join(DESCRIPTION_PARTS)}")
     ref = kind(calculation).description.parts.get(key)
     if ref is None:
         return None
-    if ":" not in ref:
-        try:
-            return importlib.import_module(ref)
-        except ImportError as exc:
-            raise KindTableError(
-                f"{calculation}'s description.{key}, {ref!r}, does not "
-                f"import: {exc}") from exc
-    return part(ref, record=f"{calculation}'s description", key=key)
+    doors = WHOLE_MODULE_PARTS.get(key)
+    if doors is None:
+        return part(ref, record=f"{calculation}'s description", key=key)
+    try:
+        module = importlib.import_module(ref)
+    except ImportError as exc:
+        raise KindTableError(
+            f"{calculation}'s description's {key}, {ref!r}, does not "
+            f"import: {exc}") from exc
+    lacks = [d for d in doors if not callable(getattr(module, d, None))]
+    if lacks:
+        raise KindTableError(
+            f"{calculation}'s description's {key}, {ref!r}, provides no "
+            f"{', '.join(lacks)} -- a {key} part provides "
+            f"{', '.join(doors)}")
+    return module
 
 
 def lead_of(stage: Optional[str]) -> Optional[str]:
@@ -917,4 +943,4 @@ __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
            "RunOfPoints", "run_of_points", "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
            "pair", "lead_of", "rung_label", "role_set", "part_of", "part",
-           "export_of", "Region", "DESCRIPTION_PARTS", "own_structure", "atom_order", "labels", "description_part"]
+           "export_of", "Region", "DESCRIPTION_PARTS", "REUSE_DOORS", "WHOLE_MODULE_PARTS", "own_structure", "atom_order", "labels", "description_part"]

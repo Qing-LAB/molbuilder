@@ -6,9 +6,10 @@ facts live, so a record that reads wrongly is wrong everywhere at once and
 silently: a part naming a function that was renamed fails only at the prep
 of that one pair, on a cluster; a mistyped key would drop a fact and the
 code would take the absence for "this kind fixes nothing".  Reading the TOML
-by eye cannot tell either.  So: every part each record names resolves, and a
+by eye cannot tell either.  So: every part each record names resolves, a
 record that does not say what a record must is refused naming the file and
-the key.
+the key, and a part that does not give the floor that asks what it asks is
+refused as it resolves, naming the record and the key.
 """
 from __future__ import annotations
 
@@ -43,8 +44,10 @@ _DESCRIPTION_PARTS = [(k, key) for k in kind_table.kinds()
 def test_every_part_a_kind_s_description_names_resolves(calculation, key):
     """Every door a kind's description names for the shared doors that ask
     of a kind that cites or extends -- the extension's limits, a citation's
-    frames, the order record, the reuse decision -- is importable: the
-    floor that asks finds it (`execution/architecture.md` § 3.3)."""
+    frames, the order record, the reuse module with every door prep,
+    describe and launch ask of it (`kind_table.REUSE_DOORS`) -- is
+    importable: the floor that asks finds it (`execution/architecture.md`
+    § 3.3)."""
     assert kind_table.description_part(calculation, key) is not None
 
 
@@ -184,6 +187,19 @@ _KIND_ROWS = [
      'description = {reuse = "m"}\n[k.on.siesta]\n',
      "description.reuse on a kind whose description does not state carries "
      "reuses"),
+    # A part is named as its door asks -- `module:NAME`, or a module whole
+    # where its doors are asked of it -- refused as the table loads, before
+    # any command asks it.
+    ("an extension named as a module",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {carries = ["reuses"], extension = "m", '
+     'reuse = "m"}\n[k.on.siesta]\n',
+     "description.extension is 'm' -- a part is \"module:NAME\""),
+    ("a reuse named as one function",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'description = {carries = ["reuses"], extension = "m:f", '
+     'reuse = "m:f"}\n[k.on.siesta]\n',
+     "description.reuse is 'm:f' -- a reuse part is a module, named whole"),
 ]
 
 
@@ -209,11 +225,43 @@ def test_a_kind_on_an_engine_it_has_no_part_for_is_refused_naming_its_engines():
     assert "runs on siesta" in str(got.value)
 
 
-def test_a_part_that_does_not_resolve_is_refused_naming_record_and_key():
-    with pytest.raises(kind_table.KindTableError) as got:
-        kind_table.part("molbuilder.jobset.prep:no_such_rung",
-                        record="vibration on siesta", key="rung")
-    assert "vibration on siesta's rung" in str(got.value)
+#: A description part that does not give the floor that asks what it asks,
+#: refused as it resolves, naming the kind and the key: a part naming no
+#: function, and the reuse module lacking one door launch asks -- which
+#: would otherwise be found missing at a first launch, on a cluster.
+_PART_ROWS = [
+    ("a part naming no function", "extension",
+     'extension = "molbuilder.transport.reuse:no_such_limits", '
+     'reuse = "molbuilder.transport.reuse"', None,
+     "k's description's extension, "
+     "'molbuilder.transport.reuse:no_such_limits', does not resolve"),
+    ("a reuse module without a door it is asked", "reuse",
+     'extension = "molbuilder.transport.reuse:Extension", '
+     'reuse = "molbuilder.transport.reuse"', "carry_shared",
+     "k's description's reuse, 'molbuilder.transport.reuse', provides no "
+     "carry_shared"),
+]
+
+
+@pytest.mark.parametrize("what, key, parts, gone, words", _PART_ROWS,
+                         ids=[r[0] for r in _PART_ROWS])
+def test_a_part_that_does_not_resolve_is_refused_naming_record_and_key(
+        tmp_path, monkeypatch, what, key, parts, gone, words):
+    if gone:
+        from molbuilder.transport import reuse
+        monkeypatch.delattr(reuse, gone)
+    table = tmp_path / "kind_table.toml"
+    table.write_text('[k]\nnoun = "k"\ntopic = "k"\n'
+                     f'description = {{carries = ["reuses"], {parts}}}\n'
+                     '[k.on.siesta]\n')
+    monkeypatch.setattr(kind_table, "TABLE_FILE", table)
+    kind_table._table.cache_clear()
+    try:
+        with pytest.raises(kind_table.KindTableError) as got:
+            kind_table.description_part("k", key)
+        assert words in str(got.value)
+    finally:
+        kind_table._table.cache_clear()
 
 
 #: An engine record added to the shipped table, broken one way each -- the
