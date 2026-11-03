@@ -663,18 +663,18 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
     """
     import subprocess
     import sys
-    from molbuilder import runwrap
+    from molbuilder import runfiles, runwrap
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
-    (ship / runwrap.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
+    (ship / runfiles.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
 
     env = dict(os.environ)
     env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
     env.pop("PYTHONPATH", None)          # nothing of molbuilder reachable
     proc = subprocess.run(
         [sys.executable, "-c",
-         f"import sys; sys.path.insert(0, {runwrap.MONITOR_BUNDLE!r}); "
+         f"import sys; sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r}); "
          "import mb_monitor; print(mb_monitor.default_notify_path())"],
         cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, (
@@ -694,18 +694,18 @@ def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
     raise) is how a numpy-less python is had on a machine that has it."""
     import subprocess
     import sys
-    from molbuilder import runwrap
+    from molbuilder import runfiles, runwrap
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
-    (ship / runwrap.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
+    (ship / runfiles.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
     env = dict(os.environ)
     env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
     env.pop("PYTHONPATH", None)
     proc = subprocess.run(
         [sys.executable, "-c",
          "import sys; sys.modules['numpy'] = None; "
-         f"sys.path.insert(0, {runwrap.MONITOR_BUNDLE!r}); "
+         f"sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r}); "
          "import mb_monitor, _run_ending, siesta_reader, report_cards; "
          "lay = report_cards.load(); "
          "print('loaded', lay.source, mb_monitor.card("
@@ -718,7 +718,7 @@ def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
     # THE LAYOUT IS THE BUNDLE'S OWN MEMBER (`run-reports.md` § 4.1c), read
     # through the zip's loader -- not a file beside the job, not the
     # package's.
-    assert f"{runwrap.MONITOR_BUNDLE}/report-cards.json" in proc.stdout
+    assert f"{runfiles.MONITOR_BUNDLE}/report-cards.json" in proc.stdout
     assert "[('energy', '1.5 eV')]" in proc.stdout, proc.stdout
 
 

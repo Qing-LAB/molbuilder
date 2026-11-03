@@ -51,6 +51,7 @@ import numpy as np
 from molbuilder.frame import Frame, Trajectory
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import TrajectoryResult
+from molbuilder.runfiles import ROLE_MOLWATCH
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
@@ -133,9 +134,9 @@ class MolwatchLogParser:
     ``name`` / ``label`` / ``hint`` class attributes."""
 
     name  = "molwatch"
-    label = "molwatch unified log (.molwatch.log)"
-    hint  = ("the unified per-step log emitted by molbuilder-generated "
-             "PySCF scripts (e.g. <job>.molwatch.log)")
+    label = f"molwatch unified log ({ROLE_MOLWATCH})"
+    hint  = (f"the unified per-step log emitted by molbuilder-generated "
+             f"PySCF scripts (e.g. <job>{ROLE_MOLWATCH})")
 
     @classmethod
     def can_parse(cls, path):
@@ -148,9 +149,8 @@ class MolwatchLogFileParser(FileParser):
     """Parse a ``.molwatch.log`` unified trajectory file."""
 
     name   = "molwatch"
-    label  = "molwatch unified log (.molwatch.log)"
-    hint   = ("the unified per-step log emitted by molbuilder-generated "
-              "PySCF scripts (e.g. <job>.molwatch.log)")
+    label  = MolwatchLogParser.label
+    hint   = MolwatchLogParser.hint
     output = TrajectoryResult
 
     @classmethod

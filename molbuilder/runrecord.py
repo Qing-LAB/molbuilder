@@ -218,7 +218,8 @@ def ending(where, basename: str) -> Ending:
     (SIESTA's ``0_NORMAL_EXIT``) says the ENGINE ended, while the job -- a
     finish after it, the wrapper's own end -- may not have.
     """
-    marks = _rf.find(Path(where), basename, role=".concluded")
+    label, stage = _rf.split_stem(basename)
+    marks = _rf.find(Path(where), label, role=_rf.ROLE_CONCLUDED, stage=stage)
     if marks:
         mark = marks[0][0]
         try:

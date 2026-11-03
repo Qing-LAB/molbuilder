@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:                                        # inside molbuilder
     from ... import runfiles as _rf
@@ -37,22 +37,15 @@ Row = Tuple[float, str, bool]
 #: phase's own figures (:func:`timing_figures`).
 PHASES: Tuple[str, ...] = (_G.PHASE_PERIODIC, _G.PHASE_NEGF, _MG.SCF_PHASE)
 
-#: HOW AN OUTPUT PRINTS ITS SCF ROWS, by its role -- ``{role: (a row's ERE,
-#: its prefix's ERE)}``, the SIESTA family's grammar's: its engine prints no
-#: time per row, so the run script stamps them as they print.  WHICH output
-#: it stamps is the file catalogue's to say -- the timing file's row names
-#: the output it is cut from (`runfiles.cut_from_output`); these are the
-#: patterns it stamps that output's rows by (`running-a-job.md` § 4.1).
-SCF_ROW_PATTERNS: Dict[str, Tuple[str, str]] = {
-    ".out": (_G.SCF_ROW_ERE, _G.SCF_PREFIX_ERE),
-}
-
-
 def scf_row_patterns(role: str) -> Optional[Tuple[str, str]]:
     """How an output in ``role`` prints an SCF row -- ``(a row's ERE, its
-    prefix's ERE)`` -- or ``None``: its grammar names none
-    (:data:`SCF_ROW_PATTERNS`)."""
-    return SCF_ROW_PATTERNS.get(role)
+    prefix's ERE)``, what its catalogue row names for ``scf_rows`` (the
+    SIESTA family's grammar's: its engine prints no time per row, so the run
+    script stamps them as they print) -- or ``None``: it names none.  WHICH
+    output the run script stamps is the file catalogue's to say too -- the
+    timing file's row names the output it is cut from
+    (`runfiles.cut_from_output`; `running-a-job.md` § 4.1)."""
+    return _rf.reader(role, "scf_rows")
 
 
 def scf_timing_metrics(text: str) -> Dict[str, Any]:
@@ -134,19 +127,17 @@ def progress_log_timing_metrics(text: str) -> Dict[str, Any]:
     return timing_figures(rows)
 
 
-#: WHICH ROW READER A FILE GETS is what the file IS -- the role the catalogue
-#: gives its name (`runfiles.WRITTEN`) -- as `_run_ending.READERS` dispatches.
-TIMING_READERS: Dict[str, Callable[[str], Dict[str, Any]]] = {
-    ".scf-timing.log": scf_timing_metrics,
-    ".molwatch.log":   progress_log_timing_metrics,
-}
+# WHICH ROW READER A FILE GETS is what the file IS -- the reader its
+# catalogue row names for ``timing`` (`runfiles.WRITTEN`): the run script's
+# tee, a progress log's stamped rows.
 
 
 def timing_roles() -> Tuple[str, ...]:
     """The roles :func:`timing_file` chooses among: the timing files' own
-    (:data:`TIMING_READERS`) and every output the run script cuts a tee from
-    (`runfiles.cut_from_output`) -- what a caller holding a run hands it."""
-    return tuple(TIMING_READERS) + tuple(
+    (the rows naming a ``timing`` reader) and every output the run script
+    cuts a tee from (`runfiles.cut_from_output`) -- what a caller holding a
+    run hands it."""
+    return _rf.read_roles("timing") + tuple(
         r for r in _rf.stdout_roles() if _rf.cut_from_output(r))
 
 
@@ -164,7 +155,7 @@ def timing_file(files) -> Optional[Path]:
         tee = _rf.cut_from_output(role) if path is not None else None
         if tee is not None:
             return files.get(tee)
-    return next((files[r] for r in TIMING_READERS
+    return next((files[r] for r in _rf.read_roles("timing")
                  if files.get(r) is not None
                  and r not in {_rf.cut_from_output(o)
                                for o in _rf.stdout_roles()}), None)
@@ -176,8 +167,8 @@ def timing_of(path) -> Dict[str, Any]:
     if path is None:
         return {}
     p = Path(path)
-    read = next((fn for suffix, fn in TIMING_READERS.items()
-                 if p.name.endswith(suffix)), None)
+    role = _rf.role_of(p.name)
+    read = _rf.reader(role, "timing") if role else None
     if read is None:
         return {}
     try:

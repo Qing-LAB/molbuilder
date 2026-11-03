@@ -9,6 +9,8 @@ source text.
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from molbuilder import runfiles
@@ -64,11 +66,55 @@ def test_canonical_role_maps_a_name_back_to_its_TEMPLATE():
     mode that would make every comparison in the module quietly approximate.
     """
     assert canonical_role(".TBT_UP.digest.nc") == (
-        runfiles.TBT_DIGEST, {"tbt": "TBT_UP"})
-    for plain in (".out", ".pyscf.log", ".log", "_geom_optim.xyz"):
+        runfiles.ROLE_TBT_DIGEST, {"tbt": "TBT_UP"})
+    # ...and an engine's file the catalogue names (`runfiles.ENGINE_FILES`):
+    # a lead's Green's functions at a voltage, a channel's data file.
+    assert canonical_role(".v0.2.TSGFL") == (
+        runfiles.SIESTA_TSGF, {"bias": "v0.2", "lead": "L"})
+    assert canonical_role(".TBT_DN.nc") == (
+        runfiles.TBTRANS_NC, {"tbt": "TBT_DN"})
+    for plain in (".out", ".pyscf.log", ".log", "_geom_optim.xyz", ".XV"):
         assert canonical_role(plain) == (plain, {}), plain
     # a value outside the field's shape stays foreign
     assert canonical_role(".TBT_XX.digest.nc") == (".TBT_XX.digest.nc", {})
+    assert canonical_role(".x0.2.TSGFL") == (".x0.2.TSGFL", {})
+
+
+@pytest.mark.parametrize("name,role,fields", [
+    ("tsgf/AuBDT.v0.2.TSGFL", runfiles.SIESTA_TSGF,
+     {"bias": "v0.2", "lead": "L"}),
+    ("dev.TBT_UP.AVADOS_Left", runfiles.TBTRANS_AVADOS,
+     {"tbt": "TBT_UP", "lead": "Left"}),
+    ("AuBDT.TSHS", runfiles.SIESTA_TSGF, None),
+], ids=["a-lead-of-ours", "a-lead-another-deck-names", "not-of-the-role"])
+def test_a_templated_engine_name_reads_back_its_fields(name, role, fields):
+    """`runfiles.fields_of`: the fields an engine's file carries, read off
+    the name it prints (``Using GF-file '<path>'``) or writes by its row's
+    pattern -- a lead any deck names, as TBtrans takes any word.  THE
+    SILENT FAILURE: a lead cut from the name by hand, or a file another
+    deck's leads name read as no lead's."""
+    assert runfiles.fields_of(name, role) == fields
+
+
+@pytest.mark.parametrize("rows,said", [
+    ((runfiles.EngineFile("cp2k", ".wfn"),), "names the engine 'cp2k'"),
+    ((runfiles.EngineFile("siesta", ".X", name="X"),),
+     "states both a role and a name"),
+    ((runfiles.EngineFile("siesta", "X"),), "does not begin with '.' or '_'"),
+    ((runfiles.EngineFile("siesta", ".out"),), "is a file of ours too"),
+    ((runfiles.ENGINE_FILES[0],) * 2, "is in the table twice"),
+], ids=["an-engine-no-row-of-ours-names", "a-role-and-a-name",
+        "a-role-without-its-separator", "a-file-of-ours", "a-row-twice"])
+def test_an_engine_file_row_the_tables_cannot_both_hold_is_refused(rows,
+                                                                   said):
+    """The engines' table checks its rows as the catalogue loads
+    (`runfiles._check_engine_files`): its engines are the catalogue's, each
+    row a role or a name, and none a file of ours -- the two tables never
+    overlap (`job-contracts.md` § 2.2).  THE SILENT FAILURE: a file of
+    ours listed as the engine's, which *did the engine leave this?* then
+    counts as the engine's."""
+    with pytest.raises(runfiles.RunFileError, match=re.escape(said)):
+        runfiles._check_engine_files(rows)
 
 
 def test_a_field_round_trips_through_compose_and_parse():
@@ -80,7 +126,7 @@ def test_a_field_round_trips_through_compose_and_parse():
     written = "bdt.TBT_UP.digest.nc"
     rf = runfiles.parse(written, "bdt")
     assert rf is not None
-    assert rf.role == runfiles.TBT_DIGEST
+    assert rf.role == runfiles.ROLE_TBT_DIGEST
     assert dict(rf.fields) == {"tbt": "TBT_UP"}
     assert rf.name == written
 
@@ -92,25 +138,53 @@ def test_a_template_cannot_be_composed_without_its_field():
     what the field's declared shape exists to prevent.
     """
     with pytest.raises(runfiles.RunFileError) as e:
-        runfiles.compose("bdt", runfiles.TBT_DIGEST)
+        runfiles.compose("bdt", runfiles.ROLE_TBT_DIGEST)
     assert "needs the field" in str(e.value)
     with pytest.raises(runfiles.RunFileError) as e:
-        runfiles.compose("bdt", runfiles.TBT_DIGEST, tbt="TBT_XX")
+        runfiles.compose("bdt", runfiles.ROLE_TBT_DIGEST, tbt="TBT_XX")
     assert "declared shape" in str(e.value)
 
 
 def test_find_by_role_answers_for_the_family_without_a_label(tmp_path):
     """Label-less, because the catalogue's role is recognisable on its own."""
     d = _touch(tmp_path, "a.TBT.digest.nc", "b.TBT_UP.digest.nc", "a.out")
-    assert [p.name for p in find_by_role(d, runfiles.TBT_DIGEST)] == [
+    assert [p.name for p in find_by_role(d, runfiles.ROLE_TBT_DIGEST)] == [
         "a.TBT.digest.nc", "b.TBT_UP.digest.nc"]
 
 
-def test_find_by_role_still_refuses_a_role_the_catalogue_does_not_declare():
-    """A typo is a refusal, not an empty list — the reason the check is there."""
-    with pytest.raises(runfiles.RunFileError) as e:
-        find_by_role(".", ".digest.nc")             # no field: not a row
-    assert "not a role molbuilder writes" in str(e.value)
+@pytest.mark.parametrize("role", [".XV", ".TBT_UP.digest.nc"],
+                         ids=["an-engine's-file", "a-name-of-a-templated-row"])
+def test_find_by_role_sends_a_role_it_cannot_read_without_a_label_to_find(
+        role, tmp_path):
+    """`find_by_role` reads names by `role_of`, which knows our own rows'
+    dotted roles alone: a declared role it could never answer -- an
+    engine's file, one name of a templated row -- is refused, pointing at
+    `find`, which reads a name back with its label.  THE SILENT FAILURE: an
+    empty list for files that are there."""
+    _touch(tmp_path, f"a{role}")
+    with pytest.raises(runfiles.RunFileError, match=r"by its\s+label \(`find`\)"):
+        find_by_role(tmp_path, role)
+
+
+@pytest.mark.parametrize("engine,calculation,theirs", [
+    ("pyscf", "optimization", (runfiles.PYSCF_BUNDLE,)),
+    ("siesta", "optimization", (runfiles.MAKOV_PAYNE_SCRIPT,)),
+    ("siesta", "vibration", (runfiles.MAKOV_PAYNE_SCRIPT,
+                             runfiles.COORDINATES_FILE)),
+], ids=["a-PySCF-deck", "a-SIESTA-relaxation", "a-SIESTA-vibration"])
+def test_what_travels_beside_a_deck_is_its_engines_and_its_kinds(
+        engine, calculation, theirs):
+    """`job-contracts.md` § 2.2: the files a launch brings beside a deck are
+    the catalogue's travelling rows, each narrowed by its own engine and
+    kind -- the run script, its header and the monitor beside every deck,
+    then what this engine's and this kind's runs open.  THE SILENT FAILURE:
+    one hand list for every deck -- SIESTA's charge-correction script and a
+    vibration call's coordinates file brought beside a PySCF script, and
+    claimed as prep's own beside it."""
+    names = runfiles.RunNames("h2", "01_coarse")
+    assert sorted(runfiles.beside_the_deck(engine, calculation, None,
+                                           names)) == sorted(
+        (names.run_script, names.header, runfiles.MONITOR_BUNDLE, *theirs))
 
 
 # --------------------------------------------------------------------------- #

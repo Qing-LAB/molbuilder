@@ -3,8 +3,10 @@
 Contract: `docs/execution/job-contracts.md` § 2.2a (the name grammar), which
           § 2.1 rule 2 (one basename) and § 2.3 (only per-stage files carry the
           token) had both implied without making sayable.
-Owns:     the grammar, the role vocabulary's *shape*, and both directions
-          across it.
+Owns:     the grammar; the vocabulary -- every file molbuilder writes
+          (`WRITTEN`, a `ROLE_*` constant each), the engines' files it names
+          (`ENGINE_FILES`), each output's readers (`Artifact.reads`); and both
+          directions across it.
 Called by: every writer that names a run file and every reader that looks one
           up.  Nothing composes or splits a run-file name inline.
 
@@ -42,7 +44,7 @@ import functools
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 #: A stage artifact token: `01_coarse`, `02_electrode_L`.  The ordinal is
 #: **two or more** digits and the name is ``[A-Za-z0-9_]+`` -- `identity.py`'s
@@ -51,46 +53,86 @@ from typing import Optional, Tuple, Union
 #: cannot reach a filename through here either.
 _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 
-#: The underscore-introduced roles of the files an ENGINE itself writes: what
-#: it warm-starts from (``_optimized.xyz``, `pyscf/warm-files.toml`) and
-#: geomeTRIC's scratch under the prefix the deck hands it, which is not warm
-#: state (`engines/stages.md` § 1.1a, consequence 4) and is named here all the
-#: same, because a reader still has to tell it apart from a stage.
-#: geomeTRIC's trajectory under that prefix is a row of :data:`WRITTEN`.
-#:
-#: **Why `parse` needs a vocabulary at all.** A stage name may contain ``_``
-#: (`02_electrode_L`) and so may a role (`_geom_optim.xyz`), so the separator
-#: cannot say where one ends and the other begins:
-#: ``job_01_coarse_geom_optim.xyz`` is *either* stage `01_coarse` + role
-#: `_geom_optim.xyz` *or* stage `01_coarse_geom_optim` + role `.xyz`, and only
-#: knowing the roles decides it.  What molbuilder writes comes from
-#: :data:`WRITTEN` below; these are the engines' own, named here because the
-#: engines' vocabularies are read by modules this one may not import -- L1
-#: grammar reaching an L1 TOML reader would put a file read behind every
-#: filename.  A caller holding the real vocabulary passes it as ``roles``.
-#: THE ROLES OTHER MODULES NAME IN CODE -- each spelled here and nowhere
-#: else (`model/parse.md` § 5.5 R-RO1): the PySCF deck emitter names the
-#: files its script writes by these (`pyscf/input.py` imports them), the
-#: readers ask `role_of`/`stem_before` with them, the catalogue's rows below
-#: are written with them.
-ROLE_CHK         = ".chk"
-ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
-ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
-ROLE_SPECTRA_DATA = ".spectra.nc"        # the same result as structured data
-ROLE_POINTS      = ".points.json"        # a run of points: its index
-ROLE_OPTICAL     = ".optical.nc"         # a SIESTA vibration's optical calls, as data
-ROLE_INITIAL     = "_initial.xyz"
-ROLE_OPTIMIZED   = "_optimized.xyz"
-ROLE_CONSTRAINTS = ".constraints.txt"
-ROLE_VALIDATION  = ".validation.txt"     # what prep checked, beside the deck
-ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # geomeTRIC's trajectory, a rung's own
-ROLE_MOLWATCH    = ".molwatch.log"       # the run as it happens, every engine
+#: THE ROLES OF OUR FILES -- one constant per row of :data:`WRITTEN` named on
+#: the label, each spelled here and nowhere else (`model/parse.md` § 5.5
+#: R-RO1; `job-contracts.md` § 2.2): the rows are written with them, and
+#: every writer and reader imports them.  A deck has none: shared code asks
+#: an engine's deck by the engine (:func:`deck_role`), so no module names
+#: SIESTA's deck where any engine's would do.
+ROLE_TEMPLATE      = ".template.toml"      # every parameter, as given
+ROLE_SOURCE        = ".source.xyz"         # the structure the calculation is of
+ROLE_SOURCE_SIDECAR = ".source.molstruct.json"   # its cell and labels
+ROLE_VALIDATION    = ".validation.txt"     # what prep checked, beside the deck
+ROLE_INITIAL       = "_initial.xyz"        # a PySCF run's input geometry
+ROLE_INITIAL_SIDECAR = "_initial.molstruct.json"
+ROLE_OPTIMIZED_SIDECAR = "_optimized.molstruct.json"
+ROLE_CONSTRAINTS   = ".constraints.txt"    # geomeTRIC's held atoms
+ROLE_POINTS        = ".points.json"        # a run of points: its index
+ROLE_SPECTRA       = ".spectra.json"       # a vibration's result
+ROLE_SPECTRA_DATA  = ".spectra.nc"         # the same result as structured data
+ROLE_OPTICAL       = ".optical.nc"         # a SIESTA vibration's optical calls, as data
+ROLE_RUN_SCRIPT    = ".run.sh"             # the run script
+ROLE_HEADER        = ".sbatch"             # its queue header
+ROLE_MOLWATCH      = ".molwatch.log"       # the run as it happens, every engine
+ROLE_SIESTA_OUT    = ".out"                # the SIESTA family's stdout
+ROLE_PYSCF_STDOUT  = ".pyscf.log"          # PySCF's stdout
+ROLE_PYSCF_LOG     = ".log"                # PySCF's own log, a rung's own
+#: geomeTRIC NAMES ITS FILES UNDER THE PREFIX A PySCF DECK HANDS IT, the
+#: run's stem and this (`geometric/optimize.py`): ``<prefix>_optim.xyz``,
+#: its trajectory, and ``<prefix>.tmp/``, its scratch folder.
+GEOMETRIC_PREFIX   = "_geom"
+GEOMETRIC_APPENDS  = "_optim.xyz"
+ROLE_GEOM_TRAJ     = GEOMETRIC_PREFIX + GEOMETRIC_APPENDS  # a rung's own trajectory
+ROLE_SESSION_LOG   = ".runwrap.log"        # the run script's session log
+ROLE_MONITOR_LOG   = ".monitor.log"        # the monitor's rolling status
+ROLE_UTIL_CSV      = ".util.csv"           # the monitor's samples
+ROLE_SCF_TIMING    = ".scf-timing.log"     # the run script's SCF tee
+ROLE_PARSE_LOG     = ".parse.log"          # molbuilder's log of reading an output
+ROLE_MOLWATCH_PARSE_LOG = ".molwatch.parse.log"
+ROLE_TRANSPORT_RECORD = ".transport.json"  # a transport calculation's results
+ROLE_TRANSPORT_DATA = ".transport.nc"      # the same results as data
+ROLE_TBT_DIGEST    = ".{tbt}.digest.nc"    # a transmission point's data file, read
+ROLE_TBT_DIGEST_CLAIM = ROLE_TBT_DIGEST + ".reading"   # its reading under way
+ROLE_FC_SWEEP      = ".fc-sweep.json"      # a displacement sweep, compared
+ROLE_CONCLUDED     = ".concluded"          # the conclusion marker
+ROLE_RUNTIME_INFO  = ".runtime_info.json"  # what `molbuilder runtime-info` read
 #: THE ONE LAYOUT'S NAME (`project-layout.md` § 1) -- what every description
 #: states as its ``shape`` (`task`) and every prep's log carries in its name.
-LAYOUT           = "hierarchical"
-ROLE_PIPELINE_LOG = ".{engine}." + LAYOUT + ".pipeline.log"  # a prep's log
+LAYOUT             = "hierarchical"
+ROLE_PIPELINE_LOG  = ".{engine}." + LAYOUT + ".pipeline.log"  # a prep's log
 
-_ENGINE_ROLES = (ROLE_OPTIMIZED, "_geom.tmp")
+#: THE ENGINES' FILES MOLBUILDER NAMES IN CODE -- one constant per row of
+#: :data:`ENGINE_FILES` (below) that a module of ours composes, reads or
+#: carries by name, spelled here and nowhere else (`job-contracts.md` § 2.2):
+#: an engine module asks its own, shared code an engine's by its record.
+SIESTA_XV          = ".XV"                 # the geometry and velocities
+SIESTA_DM          = ".DM"                 # the density matrix
+SIESTA_CG          = ".CG"                 # the conjugate-gradient optimizer's history
+SIESTA_HSX         = ".HSX"                # the Hamiltonian and overlap
+SIESTA_FC          = ".FC"                 # a force-constant run's forces
+SIESTA_EPSIMG      = ".EPSIMG"             # an optical call's dielectric function
+SIESTA_ORB_INDX    = ".ORB_INDX"           # the orbitals each atom carries
+SIESTA_MD_NC       = ".MD.nc"              # a run's steps, NetCDF
+SIESTA_MD          = ".MD"
+SIESTA_MDE         = ".MDE"
+SIESTA_ANI         = ".ANI"
+SIESTA_BASIS_ENTHALPY = ".BASIS_ENTHALPY"
+SIESTA_TSHS        = ".TSHS"               # an electrode's Hamiltonian
+SIESTA_TS_HSX      = ".TS.HSX"             # the device's, read by TBtrans
+SIESTA_TSDE        = ".TSDE"               # the device's NEGF density
+SIESTA_TSGF        = ".{bias}.TSGF{lead}"  # a lead's Green's function, at a voltage
+TBTRANS_NC         = ".{tbt}.nc"           # a transmission point's data file
+TBTRANS_CC         = ".TBT.CC"             # its energy contour
+TBTRANS_DOS        = ".{tbt}.DOS"          # its DOS at each k-point
+TBTRANS_AVTRANS    = ".{tbt}.AVTRANS_{pair}"   # its k-averaged transmission
+TBTRANS_AVTEIG     = ".{tbt}.AVTEIG_{pair}"    # ... its eigenchannels
+TBTRANS_AVDOS      = ".{tbt}.AVDOS"            # ... the device's DOS
+TBTRANS_AVADOS     = ".{tbt}.AVADOS_{lead}"    # ... a lead's spectral DOS
+TBTRANS_AVBDOS     = ".{tbt}.AVBDOS_{lead}"    # ... a lead's bulk DOS
+PYSCF_CHK          = ".chk"                # PySCF's checkpoint
+PYSCF_CUBE         = ".cube"               # a grid `cubegen` writes
+PYSCF_OPTIMIZED    = "_optimized.xyz"      # a PySCF relaxation's geometry
+GEOMETRIC_SCRATCH  = GEOMETRIC_PREFIX + ".tmp"  # geomeTRIC's scratch folder
 
 #: The basename rule, restated from `config/siesta.py::_validate_basename`
 #: (job-contracts.md § 2.1: "a single token matching [A-Za-z0-9_-]+").  It is
@@ -99,6 +141,21 @@ _ENGINE_ROLES = (ROLE_OPTIMIZED, "_geom.tmp")
 #: other way.  A label carrying a dot would make `parse` ambiguous, which is
 #: the one thing the pattern is load-bearing for.
 _LABEL = re.compile(r"[A-Za-z0-9_-]+")
+
+
+#: TBTRANS'S CHANNELS, each with the tag its files carry after the label
+#: (``Util/TS/TBtrans/m_tbt_save.F90`` ``name_save``): ``<label>.TBT.nc``
+#: unpolarized, ``<label>.TBT_UP.nc`` / ``<label>.TBT_DN.nc`` for the two
+#: channels of a polarized run -- the ``tbt`` field's values, and every
+#: reader's channel (`siesta_grammar.TBT_CHANNELS`).
+TBT_CHANNEL_TAGS: "dict[str, str]" = {"unpolarized": "TBT", "up": "TBT_UP",
+                                      "down": "TBT_DN"}
+
+#: THE LEADS MOLBUILDER'S DECKS NAME, the left one then the right one: each
+#: lead's ``TS.Elec.<name>`` block (`transport.transiesta`), and so the name
+#: TranSIESTA and TBtrans give a lead's files in a run of ours -- the
+#: ``lead`` field's values, and the ``pair`` field's example.
+OUR_LEADS: "tuple[str, str]" = ("L", "R")
 
 
 #: Every declared FIELD, in ONE place.
@@ -119,6 +176,12 @@ class Field:
     what: str
     shape: str
     example: str
+    #: EVERY VALUE MOLBUILDER'S OWN RUNS GIVE IT -- the TBtrans channels,
+    #: the leads its decks name -- so a check can walk every name a
+    #: templated row makes for a run of ours; ``()`` where the example
+    #: stands for them.  The shape is what reads back, which an engine run
+    #: prepared elsewhere may fill otherwise (a lead named ``Left``).
+    values: "tuple[str, ...]" = ()
 
 
 FIELDS: "dict[str, Field]" = {
@@ -143,8 +206,31 @@ FIELDS: "dict[str, Field]" = {
     "tbt": Field(
         what="a TBtrans data file's channel, as its name tags it: TBT "
              "(unpolarized), TBT_UP or TBT_DN (spin up, spin down)",
-        shape=r"TBT(?:_UP|_DN)?",
-        example="TBT"),
+        shape="(?:" + "|".join(sorted(TBT_CHANNEL_TAGS.values(), key=len,
+                                     reverse=True)) + ")",
+        example="TBT", values=tuple(TBT_CHANNEL_TAGS.values())),
+    # THE ENGINES' FILES' FIELDS (:data:`ENGINE_FILES`): what TranSIESTA and
+    # TBtrans put in a name beside the label, and SIESTA's fdf log's stamp.
+    "bias": Field(
+        what="a bias point's token, as its folder and its leads' Green's "
+             "functions are named (`task.bias_token`): v0, v0.2, v-0.5",
+        shape=r"v-?[0-9][0-9.e+-]*",
+        example="v0.2"),
+    "lead": Field(
+        what="a lead as a deck's `TS.Elecs` block names it -- molbuilder's "
+             "decks :data:`OUR_LEADS`, another deck's any word "
+             "(`m_tbt_save.F90` `name_save`)",
+        shape=r"[^.\s/-]+",
+        example=OUR_LEADS[0], values=OUR_LEADS),
+    "pair": Field(
+        what="the two leads a TBtrans quantity runs between, as its file "
+             "names them",
+        shape=r"[^.\s/-]+-[^.\s/-]+",
+        example="-".join(OUR_LEADS)),
+    "stamp": Field(
+        what="the moment SIESTA opened its fdf log, as it names the file",
+        shape=r"[0-9]{8}T[0-9]{6}\.[0-9]+",
+        example="20260925T194936.695"),
     "pid": Field(
         what="the run script's own process id",
         shape=r"[0-9]+",
@@ -159,6 +245,11 @@ FIELDS: "dict[str, Field]" = {
         what="a temporary file's random part",
         shape=r"[A-Za-z0-9_.-]+",
         example="k3j9x_2a"),
+    "target": Field(
+        what="the name of the file a temporary one replaces, or a lock "
+             "guards",
+        shape=r"[^/]+",
+        example="H2.molstruct.json"),
     # "engine": the catalogue's own engines, set once its rows are declared
     # (below WRITTEN) -- never a second list typed here.
     "kept": Field(
@@ -184,16 +275,17 @@ SCHEDULER_STDERR = "{scheduler}.{jobid}.err"
 #: the script's own process id (`runwrap`), removed at its exit.
 RANK_LAUNCHER = ".mb-rank-launch-{pid}.sh"
 
-#: A TRANSMISSION POINT'S DATA FILE, READ (`model/parse.md` § 5e): its
-#: digest beside it, and the claim of a reading under way -- composed by
-#: the SIESTA family's parser (`parse.engines.tbtrans_nc`) from these.
-TBT_DIGEST = ".{tbt}.digest.nc"
-TBT_DIGEST_CLAIM = TBT_DIGEST + ".reading"
 #: A SIESTA pseudopotential, named for its species label (`fixed_name`).
 PSEUDO_FILE = "{species}.psml"
 #: A record `jobset migrate` rewrote, kept beside its rewrite under the
 #: earliest rule it was written before (`migrate._kept_as`).
 KEPT_FILE = "{kept}.pre-{rule}"
+#: A LAUNCH GROUP'S FILES, in its `launch/` folder (:class:`GroupNames`):
+#: its sequencer, its queue header, its log, a sequence's launch record.
+GROUP_RUN_SCRIPT = "{group}.run.sh"
+GROUP_HEADER = "{group}.sbatch"
+GROUP_LOG = "{group}.log"
+GROUP_LAUNCH_RECORD = "{group}.launch.json"
 #: The saved states' big files, by content (`checkpoint`), and the ignore
 #: list that sends them there.
 #:
@@ -205,6 +297,8 @@ KEPT_FILE = "{kept}.pre-{rule}"
 #: disk is the data's.
 SNAPSHOT_DIR = ".binsnapshots"
 GITIGNORE_FILE = ".gitignore"
+#: The saved states themselves, git's own folder (`checkpoint`).
+HISTORY_DIR = ".git"
 
 
 def _fields_in(role: str) -> "tuple[str, ...]":
@@ -236,16 +330,15 @@ def canonical_role(concrete: str) -> "tuple[str, dict]":
     """A role read off a filename, mapped back to the TEMPLATE it matches.
 
     ``(".TBT_UP.digest.nc")`` -> ``(".{tbt}.digest.nc", {"tbt": "TBT_UP"})``,
-    and anything that matches no template comes back unchanged with no
-    fields. This is what lets every comparison in this
+    an engine's file's alike (``".v0.2.TSGFL"`` -> ``SIESTA_TSGF``, its
+    ``bias`` and ``lead``), and anything that matches no template comes back
+    unchanged with no fields. This is what lets every comparison in this
     module stay an EQUALITY on the declared role.
     """
-    for a in ON_THE_LABEL:
-        if not a.fields:
-            continue
-        m = _role_pattern(a.role).match(concrete)
+    for template in _templated_roles():
+        m = _role_pattern(template).match(concrete)
         if m:
-            return a.role, m.groupdict()
+            return template, m.groupdict()
     return concrete, {}
 
 
@@ -269,7 +362,10 @@ class RunFile:
 
     @property
     def name(self) -> str:
-        return compose(self.label, self.role, self.stage, **dict(self.fields))
+        """The name again, by :func:`compose` -- whose role the name it was
+        read from declares, whoever's file that was."""
+        return compose(self.label, self.role, self.stage, roles=(self.role,),
+                       **dict(self.fields))
 
 
 def split_stem(stem_: str) -> "tuple[str, Optional[str]]":
@@ -319,12 +415,12 @@ def stem(label: str, stage: Optional[str] = None) -> str:
 
 
 def compose(label: str, role: str, stage: Optional[str] = None,
-            **fields) -> str:
+            roles: "tuple[str, ...]" = (), **fields) -> str:
     """The one way a run file gets its name (§ 2.2a).
 
     ``role`` is what the file IS and begins with ``.`` or ``_`` -- ``".chk"``,
-    ``"_optimized.xyz"``, ``".molwatch.log"``.  It is declared once per engine
-    in that engine's ``warm-files.toml`` and never spelled at a call site.
+    ``"_optimized.xyz"``, ``".molwatch.log"`` -- a constant of this module,
+    never spelled at a call site.
 
     ``stage`` omitted is a file named on the label alone, which is a
     statement and not a default: a carried file, which crosses rungs, or a
@@ -332,12 +428,18 @@ def compose(label: str, role: str, stage: Optional[str] = None,
 
     ``fields`` fill a templated role (:data:`FIELDS`): every field the role
     names, and no other.
+
+    ``role`` is a role of :data:`WRITTEN`, of :data:`ENGINE_FILES`, or of
+    ``roles`` -- the vocabulary a caller holds that neither table may (a
+    calculation's own restart-file list) -- and anything else is refused
+    (:func:`declared`): a misspelled role names a file nobody reads.
     """
     if not role or role[0] not in "._":
         raise RunFileError(
             f"role {role!r} must begin with '.' or '_' -- it is the part that "
             f"says what the file IS, and the separator is what lets `parse` "
             f"find where the label ends.")
+    declared(role, roles, door="compose")
     # A field is refused unless the role declares it, and a declared one is
     # refused unless its value matches the shape in `FIELDS` -- a channel
     # that is not a channel would produce a name `parse` could not read back.
@@ -373,7 +475,8 @@ def compose(label: str, role: str, stage: Optional[str] = None,
 _PLACEHOLDER = "L"
 
 
-def tail(role: str, stage: Optional[str] = None, **fields) -> str:
+def tail(role: str, stage: Optional[str] = None,
+         roles: "tuple[str, ...]" = (), **fields) -> str:
     """Everything AFTER the label -- for a writer that has no label yet.
 
     A generated script names its own outputs at RUN time, from its own ``JOB``
@@ -389,7 +492,7 @@ def tail(role: str, stage: Optional[str] = None, **fields) -> str:
 
     **:func:`compose` when you own the label; this when you were handed a stem.**
     """
-    return compose(_PLACEHOLDER, role, stage,
+    return compose(_PLACEHOLDER, role, stage, roles=roles,
                    **fields)[len(_PLACEHOLDER):]
 
 
@@ -412,7 +515,7 @@ def parse(filename: str, label: str,
     nothing can find the boundary between them by looking at the string alone.
 
     ``roles`` is the caller's own vocabulary, added to the one this module
-    knows (:data:`WRITTEN` plus :data:`_ENGINE_ROLES`).  It only matters for
+    knows (:data:`WRITTEN` and :data:`ENGINE_FILES`).  It only matters for
     roles that begin with ``_``: a stage NAME may contain ``_`` too, so those
     two are the case the separator cannot decide, and the vocabulary is what
     decides it.  A dotted role never needs it.
@@ -440,9 +543,8 @@ def parse(filename: str, label: str,
     # tell `01_coarse` + `_geom_optim.xyz` from `01_coarse_geom_optim` + `.xyz`.
     # Longest first: `_geom_optim.xyz` must beat nothing, but a vocabulary that
     # grows a shorter suffix of a longer one would otherwise split too late.
-    known = sorted({a.role for a in WRITTEN if a.role.startswith("_")}
-                   | set(_ENGINE_ROLES)
-                   | {r for r in roles if r.startswith("_")},
+    known = sorted({r for r in (*_declared_roles(), *roles)
+                    if r.startswith("_")},
                    key=len, reverse=True)
     for role in known:
         if after.endswith(role) and _STAGE.fullmatch(after[:-len(role)]):
@@ -501,9 +603,17 @@ def transient_families() -> "tuple[str, ...]":
     """:func:`is_transient` as families of file names -- each field a star,
     a role on the label after one -- for an ignore list or an exclude line
     (`warmfiles.never_carried_families`)."""
-    return tuple(sorted({("*" + _FIELD_RE.sub("*", a.role)) if a.role
+    return tuple(sorted({family(a.role) if a.role
                          else _FIELD_RE.sub("*", a.name)
                          for a in _transient_rows()}))
+
+
+def family(role: str) -> str:
+    """EVERY NAME A ROLE MAKES, as a glob -- a star for the label and one
+    for each field: ``*.DM``, ``*.*.AVTRANS_*`` -- for an ignore list, an
+    exclude line or a hint of which files are large (`runtime_config`'s
+    checkpoint defaults); never a star placed by hand at the call."""
+    return "*" + _FIELD_RE.sub("*", declared(role, door="family"))
 
 
 @functools.lru_cache(maxsize=65536)
@@ -561,8 +671,10 @@ def find(directory, label: str, *,
     on its rung's token (``<label>_<NN>_<stage>_geom_optim.xyz``) -- so a
     caller asks by role as well when it wants one of molbuilder's.
 
-    ``role`` narrows to one, and it is an EQUALITY on the declared role -- pass
-    the catalogue's spelling, template and all (``".{tbt}.digest.nc"``).
+    ``role`` narrows to one, and it is an EQUALITY on the declared role --
+    the catalogue's spelling, template and all (``".{tbt}.digest.nc"``, every
+    channel's), or a concrete name of it (``".TBT_UP.digest.nc"``, that
+    channel's).
     Every name is mapped back to its template by :func:`canonical_role` before
     the comparison, so one rule reads and one rule matches.  ``roles`` passes a caller's own
     vocabulary through to :func:`parse` for the ``_``-prefixed kind, exactly as
@@ -571,6 +683,11 @@ def find(directory, label: str, *,
     Takes a directory and returns paths: stdlib ``pathlib`` only, so this stays
     importable by a monitor shipped beside a job (§ 4.5's floor rule).
     """
+    if role is not None:
+        declared(role, roles, door="find")
+        # A CONCRETE NAME OF A TEMPLATED ROLE (``.TBT_UP.nc``) asks for its
+        # template with those fields; the template itself, for every value.
+        want, want_fields = canonical_role(role)
     d = Path(directory)
     try:
         # FILES, which is what the first line of this docstring says and what
@@ -583,7 +700,9 @@ def find(directory, label: str, *,
         parsed = parse(entry.name, label, roles)
         if parsed is None:
             continue
-        if role is not None and parsed.role != role:
+        if role is not None and (
+                parsed.role != want
+                or not set(want_fields.items()) <= set(parsed.fields)):
             continue
         if stage is not None and parsed.stage != stage:
             continue
@@ -591,7 +710,8 @@ def find(directory, label: str, *,
     return out
 
 
-def find_on_label(directory, label: str, role: str) -> "list[Path]":
+def find_on_label(directory, label: str, role: str,
+                  roles: "tuple[str, ...]" = ()) -> "list[Path]":
     """The label's files in ``role`` named on the label ALONE, no stage
     token -- as an engine names its own (SIESTA's ``<label>.FC``,
     TBtrans's ``<label>.TBT.nc``) and a run its result
@@ -599,7 +719,8 @@ def find_on_label(directory, label: str, role: str) -> "list[Path]":
     `runs.Run.on_label` and every reader of an engine file on the label
     (`job-contracts.md` § 2.2a): a reader that copied it answered the same
     question a second way."""
-    return [p for p, rec in find(directory, label, role=role)
+    declared(role, roles, door="find_on_label")
+    return [p for p, rec in find(directory, label, role=role, roles=roles)
             if rec.stage is None]
 
 
@@ -612,7 +733,7 @@ ONE_START_SINCE = "2.60.0"
 #: SIESTA's history, appended to ``<SystemLabel><role>`` -- the label alone
 #: -- which those run scripts pointed at the run's numbered file while the
 #: engine ran (2.59's ``pointed_roles``).
-_ENGINE_NAMED_SINCE = (".MD.nc", ".MD", ".MDE", ".ANI")
+_ENGINE_NAMED_SINCE = (SIESTA_MD_NC, SIESTA_MD, SIESTA_MDE, SIESTA_ANI)
 
 
 @dataclass(frozen=True)
@@ -679,7 +800,8 @@ def older_named(directory, stage: str) -> "list[OlderName]":
             continue
         m = logged.match(name)
         if m:
-            out.append(OlderName(f, None, m["label"], ".runwrap.log", rule))
+            out.append(OlderName(f, None, m["label"], ROLE_SESSION_LOG,
+                                 rule))
     return out
 
 
@@ -690,7 +812,7 @@ def longest_tail(engine_names: "tuple[str, ...]") -> str:
     from (`run-identity.md` § 3)."""
     fill = {"engine": max(engine_names, key=len)}
     out = ""
-    for r in roles():
+    for r in roles(engines=False):
         try:
             t = r.format(**fill)
         except (KeyError, IndexError):
@@ -700,19 +822,69 @@ def longest_tail(engine_names: "tuple[str, ...]") -> str:
     return out
 
 
-def stem_before(name, role: str) -> Optional[str]:
+def stem_before(name, role: str, roles: "tuple[str, ...]" = ()
+                ) -> Optional[str]:
     """What precedes ``role`` in ``name`` -- the stem every other file of
     that run is named on -- or ``None`` when ``name`` does not end in it, or
     is nothing but it.  ``role`` is one of this module's (the constant,
-    never a literal at the call site); the cut is one place, so a reader
-    handed a path and no label (`parse.engines.pyscf`, geomeTRIC's
-    trajectory) does not split the name by hand."""
-    if role not in roles():
-        raise ValueError(f"not a role of the catalogue: {role!r}")
+    never a literal at the call site), a concrete name of a templated one
+    (``.TBT_UP.nc``) or one of ``roles`` (:func:`declared`) -- a templated
+    role read by its pattern, so a role :func:`role_of` answers cuts the name
+    it was read off; the cut is one place, so a reader handed a path and no
+    label (`parse.engines.pyscf`, geomeTRIC's trajectory) does not split the
+    name by hand."""
+    declared(role, roles, door="stem_before")
     base = str(name).rsplit("/", 1)[-1]
+    if _FIELD_RE.search(role):
+        m = _role_pattern(role).search(base)
+        return base[:m.start()] if m and m.start() > 0 else None
     if len(base) <= len(role) or not base.endswith(role):
         return None
     return base[:-len(role)]
+
+
+def fields_of(name, role: str) -> "Optional[dict[str, str]]":
+    """THE FIELDS A NAME OF THE TEMPLATED ``role`` CARRIES --
+    ``fields_of("tsgf/AuBDT.v0.2.TSGFL", SIESTA_TSGF)`` is ``{"bias":
+    "v0.2", "lead": "L"}`` -- or ``None`` for a name not of it: what an
+    engine's own line names a file by, read back without its label."""
+    declared(role, door="fields_of")
+    base = str(name).rsplit("/", 1)[-1]
+    m = _role_pattern(role).search(base)
+    return m.groupdict() if m and m.start() > 0 else None
+
+
+def named_beside(name, role: str) -> Optional[str]:
+    """THE NAME OF THE FILE IN ``role`` BESIDE THE FILE ``name`` -- on the
+    stem ``name``'s own role leaves, its label and stage kept
+    (:func:`split_stem`), the stage dropped where ``role``'s row names its
+    file on the label alone -- or ``None`` for a name that ends in no role
+    of either table on a stem a label begins (``notes.txt``,
+    ``my.job.out``), and for a fixed name (``coordinates.fdf``).  Its own
+    role is the longest that ends it, as :func:`parse` reads an underscore
+    role (``H2_01_relax_geom_optim.xyz`` is ``H2_01_relax``'s, not
+    ``H2_01_relax_geom_optim``'s ``.xyz``).  What a runtime record, a
+    parse log, a deck's validation report and the output a deck names are
+    named by; ``role`` refused as :func:`compose` refuses one."""
+    declared(role, door="named_beside")
+    base = str(name).rsplit("/", 1)[-1]
+    if any(a.name == base and not a.role for a in WRITTEN):
+        return None
+    cut: Optional[int] = None
+    for own in roles():
+        if _FIELD_RE.search(own):
+            m = _role_pattern(own).search(base)
+            at = m.start() if m else 0
+        else:
+            at = len(base) - len(own) if base.endswith(own) else 0
+        if at > 0 and _LABEL.fullmatch(split_stem(base[:at])[0]) \
+                and (cut is None or at < cut):
+            cut = at
+    if cut is None:
+        return None
+    label, stage = split_stem(base[:cut])
+    return compose(label, role,
+                   stage if _staged(role, "named_beside") else None)
 
 
 def find_by_role(directory, role: str) -> "list[Path]":
@@ -733,6 +905,7 @@ def find_by_role(directory, role: str) -> "list[Path]":
     The role is checked against :data:`WRITTEN`, so a typo is a refusal here
     instead of an empty list at the call site.
     """
+    declared(role, door="find_by_role")
     if not role.startswith("."):
         raise RunFileError(
             f"find_by_role({role!r}): only a dotted role can be found without "
@@ -741,8 +914,10 @@ def find_by_role(directory, role: str) -> "list[Path]":
     known = {a.role for a in WRITTEN}
     if role not in known:
         raise RunFileError(
-            f"find_by_role({role!r}): not a role molbuilder writes.  "
-            f"The catalogue is `runfiles.WRITTEN`; known dotted roles are "
+            f"find_by_role({role!r}): a name is read without its label by "
+            f"the roles of `runfiles.WRITTEN` alone (`role_of`) -- an "
+            f"engine's file, or one name of a templated role, is found by its "
+            f"label (`find`).  The dotted roles are "
             + ", ".join(sorted(r for r in known if r.startswith("."))))
     d = Path(directory)
     try:
@@ -878,12 +1053,29 @@ class Artifact:
     #: and writes geomeTRIC's -- said wherever its atom index map is shown;
     #: empty for a file that is not one.
     counted_by: "tuple[str, ...]" = ()
-    #: A BUNDLE THAT TRAVELS BESIDE A DECK into every folder it runs in
-    #: (`execution/architecture.md` § 3.3): with no ``engine``, beside every
-    #: job -- the monitor's; with one, beside that engine's decks -- the code
-    #: a PySCF script imports.  A job's finish is chosen by the job
-    #: (`Job.finish`), not by this flag.
-    bundle: bool = False
+    #: IT TRAVELS BESIDE A DECK into every folder the deck runs in
+    #: (`execution/architecture.md` § 3.3; :func:`beside_the_deck`): the run
+    #: script and its header, the bundles -- with no ``engine`` beside every
+    #: job, the monitor's; with one beside that engine's decks, the code a
+    #: PySCF script imports -- a charged SIESTA deck's correction script, a
+    #: SIESTA vibration call's coordinates; narrowed by the row's ``engine``
+    #: and ``calculation``.  A job's finish is chosen by the job
+    #: (`Job.finish`), not by this column; which travelling file is BUILT is
+    #: the run script builder's own map (`runwrap.bundles_for`).
+    travels: bool = False
+    #: THE CODE THAT READS IT, by the question each answers
+    #: (:data:`READ_QUESTIONS`) -- ``(question, "module:NAME")`` pairs, the
+    #: one declaration of which reader a file of this role gets
+    #: (`job-contracts.md` § 2.2; :func:`reads_of`), resolved by
+    #: `runpoints.part` on the machine and beside a job, and the modules of
+    #: those a job asks (:data:`READ_BESIDE_A_JOB`) travel in its bundle by
+    #: this row (`runwrap.monitor_companions`).
+    reads: "tuple[tuple[str, str], ...]" = ()
+    #: A RUN OUTPUT WHOSE ENGINE'S STDERR STAYS APART -- the SIESTA
+    #: family's, kept in the session log: ``die`` flushes stdout on node 0
+    #: alone, and another rank may say why it died only there
+    #: (`running-a-job.md` § 3.5).  Every other output takes its stderr in.
+    stderr_apart: bool = False
 
     @property
     def calculations(self) -> "tuple[str, ...]":
@@ -948,33 +1140,30 @@ def written_by(a: "Artifact", calculation: str, *, any_: bool = False) -> bool:
     return str(calculation) in a.calculations
 
 
-def bundle_names(engine: str, finish: Optional[str]) -> "tuple[str, ...]":
-    """THE BUNDLES BESIDE A DECK, by name: the catalogue's bundles
-    (:attr:`Artifact.bundle`) for every job and for the job's ``engine`` --
-    the monitor's; beside a PySCF script, the molbuilder code it imports
-    (`engines/pyscf.md` § 3) -- then the job's finish when it has one
-    (`Job.finish`).  The engine is the job's, handed in, never read off the
-    deck's name.  `runwrap.bundles_for` pairs each with its builder."""
-    out = [a.name for a in WRITTEN
-           if a.bundle and a.engine in (None, engine)]
+def travelling(engine: str, calculation: str) -> "tuple[Artifact, ...]":
+    """THE ROWS THAT TRAVEL BESIDE ``engine``'s DECK of a ``calculation``
+    (:attr:`Artifact.travels`), each narrowed by its own ``engine`` and
+    ``calculation`` -- in the catalogue's order."""
+    return tuple(a for a in WRITTEN
+                 if a.travels and a.engine in (None, engine)
+                 and written_by(a, calculation, any_=True))
+
+
+def beside_the_deck(engine: str, calculation: str, finish: Optional[str],
+                    names: "RunNames") -> "tuple[str, ...]":
+    """THE FILES THAT TRAVEL BESIDE A DECK into every folder it runs in --
+    the one list, the catalogue's travelling rows (:func:`travelling`) by
+    the stage's names, then the job's finish when it has one
+    (`Job.finish`): what prep renders beside the deck, what a launch brings
+    into a run (`materialize.bring_files`), and what a run's own plan step
+    brings into a call it opens (`spectra.siesta_vibration`); the
+    calculation's shared package (`JobSet.shared`, the pseudopotentials)
+    comes beside them."""
+    out = [names.name(a.role) if a.role else a.name
+           for a in travelling(engine, calculation)]
     if finish is not None:
         out.append(finish)
     return tuple(out)
-
-
-def beside_the_deck(engine: str, finish: Optional[str], names: "RunNames"
-                    ) -> "tuple[str, ...]":
-    """THE FILES THAT TRAVEL BESIDE A DECK into every folder it runs in --
-    the one list: its bundles (:func:`bundle_names`), the post-run script a
-    charged deck's header names (:data:`MAKOV_PAYNE_SCRIPT`), its run script
-    and its header, and the coordinates file a call's deck reads
-    (:data:`COORDINATES_FILE`, `engines/vibration.md` § 5.11 § 4).  What
-    prep renders beside the deck, what a launch brings into a run
-    (`materialize.bring_files`), and what a run's own plan step brings into
-    a call it opens (`spectra.siesta_vibration`); the calculation's shared
-    package (`JobSet.shared`, the pseudopotentials) comes beside them."""
-    return (*bundle_names(engine, finish), MAKOV_PAYNE_SCRIPT,
-            names.name(".run.sh"), names.name(".sbatch"), COORDINATES_FILE)
 
 
 #: Ordered as `job-contracts.md` § 2.2 lists them: inputs, the wrapper, the
@@ -989,27 +1178,23 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="prep (`script_emit.prepare_deck`), in the stage's "
                     "folder; a copy in each run",
              door="runfiles.find_by_role",
-             listed_by="engine_index", counted_by=("siesta",)),
+             listed_by="engine_index", counted_by=("siesta",),
+             reads=(("contract", "molbuilder.parse.engines.siesta_contract:"
+                                 "contract_fields"),)),
     Artifact(".py", "the PySCF script this rung runs", engine="pyscf",
              when="prep", level="stage", kind="derived",
              writer="prep (`script_emit.prepare_deck`), in the stage's "
                     "folder; a copy in each run",
              door="runfiles.find_by_role",
              listed_by="engine_index", counted_by=("pyscf", "geometric")),
-    # THE SUFFIX IS SPELLED, NOT IMPORTED, and that is the LAYERING rule
-    # rather than a lapse: this module is L1 and `template` is L2, so
-    # importing it here is the upward import review refuses
-    # (`process/code-audit.md` § 1c (e)).  The cost is real --
-    # the glob view answers *"did the engine leave this, or did we write
-    # it"* by subtraction, so a suffix that silently stops matching hands a
-    # person their own input back as engine state.
-    Artifact(".template.toml", "every parameter, with the value it was given",
+    Artifact(ROLE_TEMPLATE, "every parameter, with the value it was given",
              staged=False,
              when="setup", level="calculation", kind="source",
              writer="`molbuilder describe` and the Transport tab's describe "
                     "door (`describe.write_description`); the hand-over, "
-                    "which the browser writes; `jobset migrate` -- each "
-                    "naming it with `template_file.template_path`",
+                    "which the browser writes -- each naming it with "
+                    "`template_file.template_filename`; `jobset migrate`, "
+                    "over the file `template_file.of` found",
              door="template_file.of"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).
@@ -1018,14 +1203,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # validated dot-free, so this is a name no engine output can take.
     # `{label}.xyz` is the ENGINE's -- SIESTA's `WriteCoorXmol` writes it --
     # and it is deliberately absent from this table.
-    Artifact(".source.xyz", "the structure the calculation is of",
+    Artifact(ROLE_SOURCE, "the structure the calculation is of",
              staged=False,
              when="setup", level="calculation", kind="input",
              writer="the hand-over and `molbuilder describe` "
                     "(`StructureCodec.source_files`)",
              door="jobset.rung.structure_for",
              listed_by="user_index"),
-    Artifact(".source.molstruct.json", "its cell and its region labels",
+    Artifact(ROLE_SOURCE_SIDECAR, "its cell and its region labels",
              staged=False,
              when="setup", level="calculation", kind="input",
              writer="the hand-over and `molbuilder describe` "
@@ -1049,12 +1234,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
              listed_by="engine_index"),
     # ITS SIDECAR, the pair's other half -- written by the deck through the
     # codec (`StructureCodec.write_moved`, imported from `mb_pyscf.pyz`).
-    Artifact("_initial.molstruct.json", "the input geometry's cell and "
+    Artifact(ROLE_INITIAL_SIDECAR, "the input geometry's cell and "
                                         "labels",
              staged=False, engine="pyscf", kind="result",
              writer="the PySCF deck",
              listed_by="engine_index"),
-    Artifact("_optimized.molstruct.json", "the relaxed geometry's cell and "
+    Artifact(ROLE_OPTIMIZED_SIDECAR, "the relaxed geometry's cell and "
                                           "labels -- the sidecar of the "
                                           "restart file `_optimized.xyz`",
              staged=False, engine="pyscf", kind="result",
@@ -1065,15 +1250,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
              staged=False, engine="pyscf", kind="derived",
              writer="the PySCF deck", only="atoms are held",
              listed_by="engine_index", counted_by=("geometric",)),
-    # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
-    # finish after the force-constant run (`engines/vibration.md` § 5.5).
     # A RUN OF POINTS -- its index (`execution/runs-of-points.md` § 2.3):
     # every point of the run, what it needs and must hold, how it ended as
     # the job saw it -- a transport rung's points, a SIESTA vibration's calls.
     Artifact(ROLE_POINTS, "the run's index: every point, what it needs and "
                           "must hold, whether it was taken over, and how "
                           "each ended as the job saw it -- one per run",
-             engine="siesta",
+             engine="siesta", when="launch",
              calculation=("vibration", "transport"), kind="record",
              only="a run of points: a SIESTA vibration, a device or "
                   "transmission rung over several frames or voltages",
@@ -1082,6 +1265,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "planner's own step for the points it plans "
                     "(`spectra.siesta_vibration`)",
              door="runpoints.read_index"),
+    # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
+    # finish after the force-constant run (`engines/vibration.md` § 5.5).
     Artifact(ROLE_SPECTRA, "the spectrum this run computed: frequencies, "
                               "the strengths the engine computes, "
                               "thermochemistry",
@@ -1120,19 +1305,20 @@ WRITTEN: "tuple[Artifact, ...]" = (
              only="Raman asked, and a mode picked for it",
              listed_by="user_index"),
     # ---- the wrapper --------------------------------------------------
-    Artifact(".run.sh", "the run script — activates the environment, tees "
-                        "the output, catches a kill",
-             when="prep", level="stage", kind="derived",
+    Artifact(ROLE_RUN_SCRIPT, "the run script — activates the environment, "
+                              "tees the output, catches a kill",
+             when="prep", level="stage", kind="derived", travels=True,
              writer="prep (`runwrap.write_run_wrapper`), beside its deck; "
                     "a copy in each run"),
-    # ON A MACHINE WITH A QUEUE, whether the run is then submitted or not:
-    # the header is written whenever the target's record names a scheduler
-    # (`runwrap`).
-    Artifact(".sbatch", "the queue header — `sbatch` reads it",
-             when="prep", level="stage", kind="derived",
+    # ON A MACHINE WITH A QUEUE, whether the run is then submitted or not --
+    # unless prep is told `--no-sbatch`, and never for a run of points, which
+    # its walk's header sends (`jobset.prep`).
+    Artifact(ROLE_HEADER, "the queue header — `sbatch` reads it",
+             when="prep", level="stage", kind="derived", travels=True,
              writer="prep (`runwrap.write_run_wrapper`), beside the run "
                     "script; a copy in each run",
-             only="a machine with a queue"),
+             only="a machine with a queue, no `--no-sbatch`, and a stage run "
+                  "once -- a run of points is sent by its walk's header"),
     # ---- the canonical trajectory -------------------------------------
     # Written before the engine even starts.
     # SEEDED AT PREP, which is why it is `progress` and not `stdout`: it
@@ -1146,7 +1332,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "deck writes each step into its run's own, SIESTA "
                     "never does",
              door="parse.engines.molwatch.MolwatchLogFileParser",
-             listed_by="engine_index"),
+             listed_by="engine_index",
+             reads=(("ending", "molbuilder.parse.engines._run_ending:"
+                               "molwatch_reading"),
+                    ("live", "molbuilder.parse.engines.molwatch_reader:"
+                             "live_pass"),
+                    ("timing", "molbuilder.parse.instruments.scf_timing_rows:"
+                               "progress_log_timing_metrics"))),
     # ---- history: stdout and the logs ---------------------------------
     # THE RUN'S ACCOUNT OF ITSELF -- what a person goes back to read, each
     # file its run's alone, since a run folder is one start.  SIESTA's own
@@ -1155,21 +1347,39 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # (`job-contracts.md` § 2.2).
     #
     # `.out` IS SIESTA'S (`model/parse.md` § 5.5).
-    Artifact(".out", "the run's output as the engine printed it",
+    Artifact(ROLE_SIESTA_OUT, "the run's output as the engine printed it",
              engine="siesta", output="stdout",
              kind="result", writer="the run script, from the engine's "
                                    "stdout",
-             door="parse.engines._run_ending.ending_of"),
-    Artifact(".pyscf.log", "the same, for PySCF — it writes here and not "
-                           "to .out",
+             door="parse.engines._run_ending.ending_of",
+             stderr_apart=True,
+             reads=(("ending", "molbuilder.parse.engines._run_ending:"
+                               "siesta_reading"),
+                    ("stops", "molbuilder.parse.engines.siesta_grammar:STOPS"),
+                    ("live", "molbuilder.parse.engines.siesta_reader:"
+                             "live_pass"),
+                    ("loop_words", "molbuilder.parse.engines.tbtrans:"
+                                   "loop_words"),
+                    ("scf_rows", "molbuilder.parse.engines.siesta_grammar:"
+                                 "SCF_ROWS"),
+                    ("used_log", "molbuilder.parse.engines.siesta_fdflog:"
+                                 "used_log_of"),
+                    ("record", "molbuilder.parse.engines.siesta_record:"
+                               "out_fields"))),
+    Artifact(ROLE_PYSCF_STDOUT, "the same, for PySCF — it writes here and "
+                                "not to .out",
              engine="pyscf", output="stdout",
              kind="result", writer="the run script, from the engine's "
                                    "stdout",
-             door="parse.engines._run_ending.ending_of"),
+             door="parse.engines._run_ending.ending_of",
+             reads=(("ending", "molbuilder.parse.engines._run_ending:"
+                               "pyscf_reading"),)),
     # PYSCF'S OWN LOG (`mol.output`, `model/parse.md` § 5.5).
     Artifact(ROLE_PYSCF_LOG, "PySCF's own log", engine="pyscf",
              kind="result", writer="the PySCF deck",
-             door="parse.dirs.record.run_record"),
+             door="parse.dirs.record.run_record",
+             reads=(("record", "molbuilder.parse.engines.pyscf:"
+                               "record_fields"),)),
     # GEOMETRIC'S TRAJECTORY, `<label>_<stage>_geom_optim.xyz` -- the row the
     # deck's prefix for geomeTRIC is derived from (`pyscf.input.
     # geometric_prefix_expr`).  geomeTRIC writes no log file here: PySCF
@@ -1189,7 +1399,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # and a refused start write none -- so its being there is the start,
     # what a second start in the folder refuses on (`project-layout.md`
     # § 1.6.1, `job-contracts.md` § 2.6).
-    Artifact(".runwrap.log", "the run script's own session log — one per "
+    Artifact(ROLE_SESSION_LOG, "the run script's own session log — one per "
              "run",
              kind="record",
              writer="the run script, once the launch-door gate lets its "
@@ -1200,29 +1410,32 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # SIESTA-family ``.out`` (its row's ``cut_from``), and its engine is the
     # output's, worked out below -- so a PySCF rung's card never promises a
     # file no PySCF run writes.
-    Artifact(".monitor.log", "the monitor's rolling status",
+    Artifact(ROLE_MONITOR_LOG, "the monitor's rolling status",
              kind="record", writer="the monitor",
              door="parse.instruments.monitor.MonitorLogFileParser"),
-    Artifact(".util.csv", "processor and memory samples taken while it ran",
+    Artifact(ROLE_UTIL_CSV, "processor and memory samples taken while it ran",
              kind="record", writer="the monitor",
              door="parse.instruments.util_csv.UtilCsvFileParser"),
-    Artifact(".scf-timing.log", "wall time per SCF iteration — on a "
-                                "TranSIESTA device, both its SCF loops "
-                                "(SIESTA's, then TranSIESTA's)",
-             cut_from=".out", kind="record",
+    Artifact(ROLE_SCF_TIMING, "wall time per SCF iteration — on a "
+                              "TranSIESTA device, both its SCF loops "
+                              "(SIESTA's, then TranSIESTA's)",
+             cut_from=ROLE_SIESTA_OUT, kind="record",
              writer="the run script's tee of the output's SCF lines",
              door="parse.instruments.scf_timing_rows.timing_of",
+             reads=(("timing", "molbuilder.parse.instruments.scf_timing_rows:"
+                               "scf_timing_metrics"),),
              # THE TEE OPENS IT AT THE FIRST SCF ROW (`runwrap._mb_scf_tee`):
              # a run that stops before one has none.
              only="the engine printed an SCF iteration"),
     # MOLBUILDER'S OWN READING LOG, named off the file read: `<base>.out`
     # gives `<base>.parse.log` (`parse/_log.py`).  Off unless asked.
-    Artifact(".parse.log", "molbuilder's log of reading the run's output",
+    Artifact(ROLE_PARSE_LOG, "molbuilder's log of reading the run's output",
              kind="record",
              writer="molbuilder's parser, reading the output "
                     "(`parse._log.ParseLogger`)",
-             only="`MOLBUILDER_PARSE_LOG` set"),
-    Artifact(".molwatch.parse.log",
+             only="`MOLBUILDER_PARSE_LOG` set, beside a file whose name the "
+                  "catalogue reads back"),
+    Artifact(ROLE_MOLWATCH_PARSE_LOG,
              "the same, for the trajectory log",
              kind="record",
              writer="molbuilder's parser, reading the trajectory log "
@@ -1232,7 +1445,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # (`engines/transport.md` § 2a.12: "the transmission stage's output ...
     # everything else in the tree exists to make it trustworthy"), written
     # once at the calculation root -- which is what `staged=False` says.
-    Artifact(".transport.json", "the transport results, summarised by "
+    Artifact(ROLE_TRANSPORT_RECORD, "the transport results, summarised by "
                                 "`summarize task` from the transmission "
                                 "points that ran",
              staged=False, calculation="transport", when="summarize",
@@ -1242,7 +1455,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # THE SAME RESULTS AS DATA (`engines/transport.md` § 2a.12, *the data
     # file*): frame x voltage x energy, raw beside derived, every variable
     # defined -- written beside the record by the same verb.
-    Artifact(".transport.nc", "the transport results as data on their grid "
+    Artifact(ROLE_TRANSPORT_DATA, "the transport results as data on their grid "
                               "-- every point's raw outputs beside what is "
                               "derived from them, a frame set's definition "
                               "beside every frame's values (NetCDF-4)",
@@ -1256,7 +1469,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # device DOS per orbital averaged over the k-points, kept beside it per
     # version of the file -- on the person's word, never as a side effect of
     # looking; one beside each channel's data file.
-    Artifact(TBT_DIGEST,
+    Artifact(ROLE_TBT_DIGEST,
              "a transmission point's data file, read once: its device DOS "
              "per orbital averaged over the k-points, what the file states "
              "of its geometry and electrodes, and TBtrans's own k-averaged "
@@ -1269,7 +1482,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              door="parse.engines.tbtrans_nc.kept",
              only="its data file read",
              listed_by="engine_index"),
-    Artifact(TBT_DIGEST_CLAIM,
+    Artifact(ROLE_TBT_DIGEST_CLAIM,
              "the claim of a data file's reading under way: who reads, "
              "since when, how far -- one reading of a file at a time",
              fields=("tbt",), staged=False, calculation="transport",
@@ -1281,7 +1494,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # vibration.md` § 5.9): written at the calculation root by `summarize task`
     # when the ladder holds two or more force-constant stages -- a record of
     # results that exist, each stage's own files staying in its runs.
-    Artifact(".fc-sweep.json", "the force-constant stages compared, when "
+    Artifact(ROLE_FC_SWEEP, "the force-constant stages compared, when "
                                "the ladder has two or more (a displacement "
                                "sweep), by `summarize task`: each stage and "
                                "what it varied, every mode's frequency per "
@@ -1296,17 +1509,19 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # THE CONCLUSION MARKER -- the wrapper's last act on its main line, or
     # its exit trap's when the script fails on its own first
     # (`project-layout.md` § 1.6.3).
-    Artifact(".concluded", "the marker the run script writes when the job "
+    Artifact(ROLE_CONCLUDED, "the marker the run script writes when the job "
              "ends",
              kind="record",
              writer="the run script, its last act; or its exit trap, when "
                     "the script fails on its own before it",
              door="runrecord.ending"),
-    # ---- written on the label, beside any file of ours ---------------------
-    Artifact(".runtime_info.json", "what a file of the run says about the "
-                                   "run, as `molbuilder runtime-info` read it",
+    # ---- written on the stem of the file a person reads ------------------
+    Artifact(ROLE_RUNTIME_INFO, "what a file of the run says about the "
+                                "run, as `molbuilder runtime-info` read it -- "
+                                "one per run",
              kind="record",
-             writer="`molbuilder runtime-info`, beside the file it reads",
+             writer="`molbuilder runtime-info`, in the folder of the file it "
+                    "reads",
              only="a person runs `molbuilder runtime-info`",
              listed_by="engine_index"),
     # THE LAYOUT'S NAME stays in the name: every prep log on disk carries
@@ -1383,8 +1598,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
              engine="siesta", when="prep", level="calculation", kind="input",
              writer="`molbuilder describe --psml-lib`, loose at the "
                     "calculation root; the first prep moves them into "
-                    "`pseudos/` (`siesta.seam.pseudo_dir`), and "
-                    "`materialize` copies one beside each deck",
+                    "`pseudos/` (`siesta.seam.pseudo_dir`) -- a transport "
+                    "calculation's first prep copies those of the run it "
+                    "cites, or of the calculation it extends "
+                    "(`transport.rung.provide_pseudos`, "
+                    "`transport.reuse.carry_pseudos`) -- and `materialize` "
+                    "copies one beside each deck",
              door="pseudos.psml_sources"),
     Artifact(name=JUNCTION_FILE, what="the composed junction",
              calculation="transport", when="prep", level="calculation",
@@ -1430,7 +1649,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "panel, and `save_before` before every prep that "
                     "writes, Save and a group's first launch",
              door="checkpoint.Repo"),
-    Artifact(name=".git/", what="the folder's saved states",
+    Artifact(name=HISTORY_DIR + "/", what="the folder's saved states",
              when="setup", level="calculation", kind="record",
              writer="`checkpoint.Repo` -- `checkpoint init` and `save`, the "
                     "panel, and `save_before` before every prep that "
@@ -1452,7 +1671,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "block -- the structure's beside each phase's deck, a "
                   "call's own in its folder",
              when="prep", level="stage", kind="derived", engine="siesta",
-             calculation="vibration",
+             calculation="vibration", travels=True,
              writer="prep, beside each phase's deck "
                     "(`siesta.deck_lines.coordinates_text`); the run's own "
                     "python for each call (`spectra.siesta_vibration`, "
@@ -1476,7 +1695,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "run -- start, a step, the periodic report, its wall near, "
                   "a milestone, a failed part and its reason, finish -- and "
                   "when",
-             when="launch", level="run", kind="record",
+             when="run", level="run", kind="record",
              writer="`mb_monitor.pyz notify` (a run of points' start, "
                     "milestones, failed parts and finish, sent by its "
                     "points' report steps, `runrecord.note_notified`); a "
@@ -1509,7 +1728,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              door="calcdirs.where"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",
-             when="prep", level="stage", kind="derived", bundle=True,
+             when="prep", level="stage", kind="derived", travels=True,
              writer="prep, beside each run script "
                     "(`runwrap.write_run_wrapper`); a copy in each run"),
     Artifact(name=VIBRATION_BUNDLE,
@@ -1528,13 +1747,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "writer, the structure codec, the relaxation, a "
                   "vibration's rules",
              engine="pyscf",
-             when="prep", level="stage", kind="derived", bundle=True,
+             when="prep", level="stage", kind="derived", travels=True,
              writer="prep, beside the PySCF script "
                     "(`runwrap.write_run_wrapper`); a copy in each run"),
     Artifact(name=MAKOV_PAYNE_SCRIPT,
              what="the energy correction a charged, isolated deck asks a "
                   "person to run afterwards",
              engine="siesta", when="prep", level="stage", kind="derived",
+             travels=True,
              writer="prep (`siesta.makov_payne.emit_correction_script`); a "
                     "copy in each run",
              only="a charged, isolated deck"),
@@ -1577,13 +1797,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="the per-rank GPU launcher",
              level="run", kind="transient",
              writer="the run script, removed when it exits",
-             only="a GPU run"),
+             only="a GPU run with ranks"),
     Artifact(name=BENCH_RESULT_FILE,
              what="every trial's timing and the winner — the benchmark's "
                   "archival trace",
              when="summarize", level="bench", kind="record",
              writer="`jobset summarize` (`run_summarize_jobset`)"),
-    Artifact(name="{group}.run.sh",
+    Artifact(name=GROUP_RUN_SCRIPT,
              what="a launch group's sequencer: a benchmark's trials, a "
                   "run of points' walk (a vibration's calls, a bias "
                   "sweep's points), a task's stages sharing one job, or a "
@@ -1592,7 +1812,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "
                     "launch"),
-    Artifact(name="{group}.sbatch",
+    Artifact(name=GROUP_HEADER,
              what="its queue header — a task's group's, a run of points' "
                   "walk's, a benchmark's shelf's, a sequence of groups'",
              when="prep", level="launch", kind="derived",
@@ -1615,10 +1835,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the scheduler, as the group's header asks (its kind's "
                     "`stderr`, `scheduler/kinds.toml`)",
              only="launched to a queue"),
-    Artifact(name="{group}.log", what="every member's output, in order",
+    Artifact(name=GROUP_LOG, what="every member's output, in order",
              when="run", level="launch", kind="record",
              writer="the group's sequencer, as it runs"),
-    Artifact(name="{group}.launch.json",
+    Artifact(name=GROUP_LAUNCH_RECORD,
              what="a sequence of groups' launch record: its groups and "
                   "their stages, how its one job was sent, its id -- what "
                   "each run it sends records of that job",
@@ -1626,12 +1846,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="launch (`jobset/sequence.py`), before the job goes; "
                     "its id once the scheduler gives it",
              door="jobset.sequence.read_record"),
-    Artifact(name="{random}.tmp",
+    Artifact(name="{target}.{random}.tmp",
              what="a file being written; it replaces its target when the "
                   "write ends",
              when="run", level="transient", kind="transient",
              writer="`persist` and the codec, writing whole or not at all"),
-    Artifact(name="{random}.lock", what="a sidecar's lock",
+    Artifact(name="{target}.lock", what="a sidecar's lock",
              when="run", level="transient", kind="transient",
              writer="`sidecars.molstruct.with_lock`"),
 )
@@ -1655,6 +1875,378 @@ FIELDS["engine"] = Field(
 #: The rows NAMED ON THE LABEL -- the role rows every reader of the run-file
 #: grammar walks; the fixed names are the rest of :data:`WRITTEN`.
 ON_THE_LABEL: "tuple[Artifact, ...]" = tuple(a for a in WRITTEN if a.role)
+
+
+# --------------------------------------------------------------------- #
+#  THE CODE THAT READS A FILE OF A ROLE -- the rows' ``reads``            #
+#  (`job-contracts.md` § 2.2; `model/parse.md` § 5.5).                    #
+# --------------------------------------------------------------------- #
+
+#: THE QUESTIONS A ROW'S READERS ANSWER, and what each reader is:
+#: ``ending`` how the run ended, ``(path, stderr=None) -> (RunEnding,
+#: final)``; ``stops`` its family's stops, ``(wall causes, {cause: advice},
+#: {cause: words})``; ``live`` its reading pass for the monitor,
+#: ``(stage) -> pass``; ``loop_words`` its program's loop in words;
+#: ``scf_rows`` how it prints its SCF rows, ``(row ERE, prefix ERE)``;
+#: ``timing`` the timing figures in its text, ``(text) -> dict``;
+#: ``used_log`` the engine's log of what it read, ``(folder, head) -> path``;
+#: ``record`` the run record's fields it answers, ``(RunFiles) -> dict``;
+#: ``contract`` a deck's recorded settings, ``(deck path) -> dict``.
+READ_QUESTIONS: "tuple[str, ...]" = (
+    "ending", "stops", "live", "loop_words", "scf_rows", "timing",
+    "used_log", "record", "contract")
+#: THE QUESTIONS A JOB ASKS, beside it: their readers' modules travel in its
+#: bundle by their rows (`runwrap.monitor_companions`).
+READ_BESIDE_A_JOB: "tuple[str, ...]" = (
+    "ending", "stops", "live", "loop_words", "timing")
+
+
+def _asked(question: str) -> str:
+    """``question``, one of :data:`READ_QUESTIONS` -- else refused."""
+    if question not in READ_QUESTIONS:
+        raise RunFileError(f"{question!r} is no question a row's readers "
+                           f"answer ({', '.join(READ_QUESTIONS)}).")
+    return question
+
+
+def reads_of(role: str, question: str) -> Optional[str]:
+    """THE READER A FILE OF ``role`` GETS for ``question``
+    (:data:`READ_QUESTIONS`), ``module:NAME`` -- or ``None``, where its
+    row names none (a run output whose family keeps no stops); a role no
+    row declares is refused (:func:`declared`).  Resolved by
+    `runpoints.part`, on the machine and beside a job alike."""
+    _asked(question)
+    want = canonical_role(declared(role, door="reads_of"))[0]
+    for a in ON_THE_LABEL:
+        if a.role == want:
+            return dict(a.reads).get(question)
+    return None
+
+
+def reader(role: str, question: str) -> Any:
+    """THE READER ITSELF that :func:`reads_of` names, resolved where this
+    module was imported from -- the package on this machine, the module the
+    bundle holds beside a job (`runpoints.part`, the one resolver of a part
+    a record names) -- or ``None`` where the row names none.  Every reader
+    of an output asks this, never a table of its own (`model/parse.md`
+    § 5.5)."""
+    ref = reads_of(role, question)
+    if ref is None:
+        return None
+    try:                                    # inside molbuilder
+        from .runpoints import part
+    except ImportError:                     # beside a job
+        from runpoints import part  # type: ignore[no-redef]
+    try:
+        return part(ref)
+    except ValueError as exc:
+        raise RunFileError(f"runfiles.WRITTEN row {role!r}: its "
+                           f"{question!r} reader {exc}") from exc
+
+
+def stderr_apart(role: str) -> bool:
+    """Whether the run output in ``role`` leaves its engine's stderr apart
+    (:attr:`Artifact.stderr_apart`) -- the run script asks it to route the
+    stream, and the ending reader to read the session log beside it."""
+    want = canonical_role(declared(role, door="stderr_apart"))[0]
+    return any(a.role == want and a.stderr_apart for a in ON_THE_LABEL)
+
+
+def read_roles(question: str) -> "tuple[str, ...]":
+    """Every role whose row names a reader for ``question``, in the
+    catalogue's order."""
+    return tuple(a.role for a in ON_THE_LABEL
+                 if _asked(question) in dict(a.reads))
+
+
+def _check_reads(rows) -> None:
+    """Refuse a row whose readers do not say what the catalogue reads it by
+    -- at import, so the gap stops the first thing that loads this module,
+    not a job asking how its run ended: every run output names its
+    ``ending``; a row names only :data:`READ_QUESTIONS`, once each, as
+    ``molbuilder.<module>:NAME``; only a run output names ``ending`` or
+    ``stops`` or leaves its stderr apart; only a row named on the label
+    names readers, which are asked by role."""
+    for a in rows:
+        asked = [q for q, _ref in a.reads]
+        bad = sorted(set(asked) - set(READ_QUESTIONS))
+        twice = sorted({q for q in asked if asked.count(q) > 1})
+        refs = [ref for _q, ref in a.reads
+                if not (ref.startswith("molbuilder.") and ":" in ref)]
+        output_only = [q for q in asked if q in ("ending", "stops")] + (
+            ["stderr_apart"] if a.stderr_apart else [])
+        wrong = (bad and f"names no question of READ_QUESTIONS: {bad}"
+                 or twice and f"names a question twice: {twice}"
+                 or refs and f"names readers that are no "
+                             f"`molbuilder.<module>:NAME`: {refs}"
+                 or a.output and "ending" not in asked
+                 and "is a run output and names no `ending` reader"
+                 or not a.output and output_only
+                 and f"is no run output but names {output_only}"
+                 or a.reads and not a.role
+                 and "names readers but no role to ask them by")
+        if wrong:
+            raise RunFileError(f"runfiles.WRITTEN row {a.role or a.name!r} "
+                               f"{wrong}.")
+
+
+_check_reads(WRITTEN)
+
+
+# --------------------------------------------------------------------- #
+#  THE ENGINES' FILES MOLBUILDER NAMES -- the second table               #
+#  (`job-contracts.md` § 2.2; `project-layout.md` § 5.4).                #
+# --------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class EngineFile:
+    """One file an engine writes that molbuilder composes, reads, carries
+    or knows by name -- never complete: an engine's output is its version's
+    and its options' (`job-contracts.md` § 2.2), so *did the engine leave
+    this?* is still answered by subtraction from :data:`WRITTEN`.
+
+    ``role`` is its role on the label, as :func:`compose` takes it, or
+    ``name`` its whole name (SIESTA's ``MESSAGES``, ``fdf.{stamp}.log``) --
+    a row has one of the two; ``staged`` is ``True`` for a file named under
+    a stage's stem (geomeTRIC's scratch); ``door`` the reader of ours, a
+    dotted path under ``molbuilder``, ``""`` when none reads it.  Which of
+    them carry, and which are scratch, is the engine's restart-file list's
+    (`warmfiles`), checked against this table when the shipped list loads.
+
+    **Why `parse` needs the underscore ones.** A stage name may contain
+    ``_`` (`02_electrode_L`) and so may a role (`_optimized.xyz`), so the
+    separator cannot say where one ends and the other begins; knowing the
+    roles decides it, these beside :data:`WRITTEN`'s."""
+    engine: str
+    role: str = ""
+    name: str = ""
+    what: str = ""
+    door: str = ""
+    staged: bool = False
+
+
+ENGINE_FILES: "tuple[EngineFile, ...]" = (
+    # ---- SIESTA: what a run starts from, and what molbuilder reads ------
+    EngineFile("siesta", SIESTA_XV,
+               what="the geometry and velocities SIESTA saves at every step "
+                    "-- what a continued run starts from",
+               door="parse.coords.siesta_xv.SiestaXVFileParser"),
+    EngineFile("siesta", SIESTA_DM,
+               what="the density matrix -- a continued run's start"),
+    EngineFile("siesta", SIESTA_CG,
+               what="the conjugate-gradient optimizer's history"),
+    EngineFile("siesta", ".xyz",
+               what="the geometry, as SIESTA writes it for a viewer "
+                    "(`WriteCoorXmol`), read as any structure file with the "
+                    "box from the run's own deck",
+               door="workingcopy_structure.StructureCodec.load"),
+    EngineFile("siesta", name="fdf.{stamp}.log",
+               what="every setting SIESTA read, and the value it used",
+               door="parse.engines.siesta_fdflog.SiestaFdfLogParser"),
+    EngineFile("siesta", SIESTA_ORB_INDX,
+               what="the orbitals each atom carries -- what a transmission "
+                    "point's DOS per orbital is grouped by, at the device "
+                    "point the transmission gathered",
+               door="transport.record.selection_pdos"),
+    EngineFile("siesta", SIESTA_FC,
+               what="a force-constant run's forces at every displacement",
+               door="parse.engines.siesta_fc.read_fc"),
+    EngineFile("siesta", ".FCC",
+               what="the same, for the cell's displacements"),
+    EngineFile("siesta", SIESTA_EPSIMG,
+               what="an optical call's dielectric function",
+               door="parse.engines.siesta_epsimg.SiestaEpsimgFileParser"),
+    EngineFile("siesta", ".contrib.EPSIMG",
+               what="an optical call's dielectric function by transition -- "
+                    "the engine's scratch"),
+    # ---- SIESTA: the run's history, its own -----------------------------
+    EngineFile("siesta", SIESTA_MD_NC, what="the run's steps, as NetCDF",
+               door="parse.engines.siesta_mdnc.SiestaMdNcFileParser"),
+    EngineFile("siesta", SIESTA_MD, what="the run's steps"),
+    EngineFile("siesta", SIESTA_MDE, what="the run's steps' energies"),
+    EngineFile("siesta", SIESTA_ANI, what="the run's steps, as an animation"),
+    # ---- SIESTA: what it reads when present, under the same label -------
+    EngineFile("siesta", ".LWF", what="localized Wannier functions"),
+    EngineFile("siesta", ".ZM", what="the Z-matrix"),
+    EngineFile("siesta", ".BONDS", what="the bonds SIESTA found"),
+    EngineFile("siesta", ".PARTIAL", what="a partial charge density"),
+    EngineFile("siesta", ".EIG", what="the eigenvalues"),
+    EngineFile("siesta", SIESTA_HSX, what="the Hamiltonian and overlap"),
+    EngineFile("siesta", ".WFSX", what="the wavefunctions"),
+    EngineFile("siesta", ".STRUCT_NEXT_ITER",
+               what="the next step's structure"),
+    # ---- TranSIESTA and TBtrans ----------------------------------------
+    EngineFile("siesta", SIESTA_TSHS,
+               what="an electrode's Hamiltonian and overlap -- gathered into "
+                    "the rungs after it"),
+    EngineFile("siesta", SIESTA_TS_HSX,
+               what="the device's Hamiltonian and overlap -- read by TBtrans "
+                    "through the deck's `TBT.HS` line"),
+    EngineFile("siesta", SIESTA_TSDE,
+               what="the device's NEGF density -- handed along a bias sweep"),
+    EngineFile("siesta", SIESTA_TSGF,
+               what="a lead's surface Green's function at a voltage -- the "
+                    "engine's scratch, in the device run's `tsgf/`, its name "
+                    "the deck's (`transport.transiesta.lead_gf_file`)"),
+    EngineFile("siesta", TBTRANS_NC,
+               what="a transmission point's data file, per spin channel",
+               door="parse.engines.tbtrans_nc.kept"),
+    EngineFile("siesta", TBTRANS_CC,
+               what="the energy contour TBtrans integrates on "
+                    "(`m_tbt_contour.F90`)"),
+    EngineFile("siesta", TBTRANS_DOS,
+               what="the device's DOS at each k-point, per spin channel "
+                    "(`m_tbt_save.F90`)"),
+    EngineFile("siesta", TBTRANS_AVTRANS,
+               what="its transmission, averaged over the k-points",
+               door="parse.engines.tbtrans.read_averaged"),
+    EngineFile("siesta", TBTRANS_AVTEIG,
+               what="its eigenchannels, averaged over the k-points",
+               door="parse.engines.tbtrans.read_averaged"),
+    EngineFile("siesta", TBTRANS_AVDOS,
+               what="the device's DOS, averaged over the k-points",
+               door="parse.engines.tbtrans.read_averaged"),
+    EngineFile("siesta", TBTRANS_AVADOS,
+               what="a lead's spectral DOS, averaged over the k-points",
+               door="parse.engines.tbtrans.read_averaged"),
+    EngineFile("siesta", TBTRANS_AVBDOS,
+               what="a lead's bulk DOS, averaged over the k-points",
+               door="parse.engines.tbtrans.read_averaged"),
+    # ---- SIESTA: read by nothing of ours --------------------------------
+    EngineFile("siesta", name="0_NORMAL_EXIT",
+               what="SIESTA's own end mark -- the engine ended, not the job: "
+                    "the run's end is the conclusion marker's "
+                    "(`runrecord.ending`)"),
+    EngineFile("siesta", name="MESSAGES", what="SIESTA's warnings"),
+    EngineFile("siesta", name="CLOCK", what="SIESTA's own timings"),
+    EngineFile("siesta", name="FORCE_STRESS",
+               what="the last step's forces and stress"),
+    EngineFile("siesta", name="BASIS_ENTHALPY", what="the basis enthalpy"),
+    EngineFile("siesta", name="BASIS_HARRIS_ENTHALPY",
+               what="the basis Harris enthalpy"),
+    EngineFile("siesta", name="OUTVARS.yml", what="SIESTA's final values"),
+    EngineFile("siesta", name="PARALLEL_DIST",
+               what="how the work was spread over the ranks"),
+    EngineFile("siesta", name="NON_TRIMMED_KP_LIST",
+               what="every k-point before symmetry trimmed them"),
+    EngineFile("siesta", name="{species}.ion",
+               what="a species' basis, as SIESTA built it"),
+    EngineFile("siesta", name="{species}.ion.nc", what="the same, as NetCDF"),
+    EngineFile("siesta", name="{species}.ion.xml", what="the same, as XML"),
+    EngineFile("siesta", ".alloc", what="SIESTA's memory use"),
+    EngineFile("siesta", ".bib", what="what to cite"),
+    EngineFile("siesta", SIESTA_BASIS_ENTHALPY,
+               what="the basis enthalpy, on the label"),
+    EngineFile("siesta", ".BONDS_FINAL", what="the last step's bonds"),
+    EngineFile("siesta", ".FA", what="the last step's forces"),
+    EngineFile("siesta", ".FAC", what="the constrained forces"),
+    EngineFile("siesta", ".KP", what="the k-points"),
+    EngineFile("siesta", ".MD_CAR", what="the steps, in VASP's format"),
+    EngineFile("siesta", ".STRUCT_OUT", what="the last step's structure"),
+    # ---- PySCF and geomeTRIC --------------------------------------------
+    EngineFile("pyscf", PYSCF_CHK,
+               what="the checkpoint: the converged density and the molecule "
+                    "-- read back by the deck itself"),
+    EngineFile("pyscf", PYSCF_OPTIMIZED,
+               what="a relaxation's final geometry -- what a continued run "
+                    "starts from",
+               door="parse.coords.pyscf_geom.PySCFGeomFileParser"),
+    EngineFile("pyscf", PYSCF_CUBE,
+               what="a volume grid -- a density or an orbital -- PySCF's "
+                    "`cubegen` writes when a script asks; molbuilder's "
+                    "decks ask none"),
+    EngineFile("pyscf", GEOMETRIC_SCRATCH, staged=True,
+               what="geomeTRIC's scratch folder, under the prefix the deck "
+                    "hands it -- made empty, never read back"),
+)
+
+
+def _check_engine_files(rows) -> None:
+    """Refuse a row the two tables cannot both hold: an engine no row of
+    :data:`WRITTEN` names, a row with both or neither of ``role`` and
+    ``name``, a role without its separator, a name either table holds
+    twice -- the two tables never overlap (`job-contracts.md` § 2.2)."""
+    ours = {a.role or a.name for a in WRITTEN}
+    seen: "set[str]" = set()
+    for e in rows:
+        key = e.role or e.name
+        wrong = (e.engine not in _ENGINES
+                 and f"names the engine {e.engine!r}, which no row of "
+                     f"WRITTEN names ({', '.join(_ENGINES)})"
+                 or bool(e.role) == bool(e.name)
+                 and "states both a role and a name, or neither"
+                 or e.role and e.role[0] not in "._"
+                 and "has a role that does not begin with '.' or '_'"
+                 or key in ours and "is a file of ours too (WRITTEN)"
+                 or key in seen and "is in the table twice")
+        if wrong:
+            raise RunFileError(f"runfiles.ENGINE_FILES row {key!r} {wrong}.")
+        seen.add(key)
+
+
+_check_engine_files(ENGINE_FILES)
+
+
+def engine_roles(engine: str) -> "tuple[str, ...]":
+    """The roles of ``engine``'s rows of :data:`ENGINE_FILES`, in its
+    order -- a templated one as its template."""
+    return tuple(e.role for e in ENGINE_FILES
+                 if e.engine == engine and e.role)
+
+
+def names_made(template: str) -> "tuple[str, ...]":
+    """EVERY NAME ``template`` MAKES FOR A RUN OF OURS -- a role or a fixed
+    name, each field at every value molbuilder's runs give it
+    (:attr:`Field.values`), else at its example."""
+    import itertools
+    names = _fields_in(template)
+    return tuple(
+        _FIELD_RE.sub(lambda m: dict(zip(names, combo))[m.group(1)],
+                      template)
+        for combo in itertools.product(*[
+            FIELDS[f].values or (FIELDS[f].example,) for f in names]))
+
+
+def rows_ending_with(suffix: str) -> "tuple[str, ...]":
+    """THE ROWS OF EITHER TABLE A NAME OF WHICH ENDS IN ``suffix`` -- each
+    by its role, or its whole name -- in the catalogue's order: what the
+    family ``*<suffix>`` takes in.  A restart-file list's scratch suffix
+    takes in one engine row's names and no other's (`warmfiles`, as the
+    shipped lists load)."""
+    return tuple(dict.fromkeys(
+        r.role or r.name for r in (*WRITTEN, *ENGINE_FILES)
+        if any(n.endswith(suffix) for n in names_made(r.role or r.name))))
+
+
+@functools.lru_cache(maxsize=1)
+def _declared_roles() -> "frozenset[str]":
+    """Every role either table declares."""
+    return frozenset(roles())
+
+
+@functools.lru_cache(maxsize=1)
+def _templated_roles() -> "tuple[str, ...]":
+    """Every templated role, in the catalogue's order."""
+    return tuple(r for r in roles() if _FIELD_RE.search(r))
+
+
+def declared(role: str, roles: "tuple[str, ...]" = (), *,
+             door: str = "a name") -> str:
+    """``role``, when :data:`WRITTEN` or :data:`ENGINE_FILES` declares it --
+    itself, or a concrete name of a templated one (``.TBT_UP.nc``) -- or
+    ``roles`` holds it; else refused, naming the ``door`` that asked.  THE
+    ONE CHECK every door that takes a role asks (`job-contracts.md`
+    § 2.2a)."""
+    if role in _declared_roles() or role in roles:
+        return role
+    if any(_role_pattern(t).fullmatch(role) for t in _templated_roles()):
+        return role
+    raise RunFileError(
+        f"{door}({role!r}): no role molbuilder declares -- neither a row of "
+        f"`runfiles.WRITTEN` nor an engine file it names "
+        f"(`runfiles.ENGINE_FILES`)"
+        + (f", nor the vocabulary handed in ({', '.join(roles)})"
+           if roles else "") + ".")
 
 
 def _row_named(name: str) -> "Optional[Artifact]":
@@ -1685,14 +2277,15 @@ def counted_by_of(name: str) -> "tuple[str, ...]":
     row = _row_named(name)
     return row.counted_by if row is not None else ()
 
-def _row(role: str) -> "Artifact":
-    """The catalogue's row for ``role`` -- or refused: a name nothing
-    declares is a name nothing may compose."""
-    for a in ON_THE_LABEL:
-        if a.role == role:
-            return a
-    raise RunFileError(f"{role!r} is no role of the catalogue "
-                       f"(`runfiles.WRITTEN`).")
+def _staged(role: str, door: str) -> bool:
+    """Whether a file of ``role`` -- a role of either table, or a concrete
+    name of a templated one (:func:`declared`) -- is named on its stage's
+    stem: its row's ``staged``."""
+    want = canonical_role(declared(role, door=door))[0]
+    for row in (*ON_THE_LABEL, *ENGINE_FILES):
+        if row.role == want:
+            return row.staged
+    raise RunFileError(f"{door}({role!r}): no row names it on the label.")
 
 
 def _template(a: "Artifact", label: str, stage: Optional[str]) -> str:
@@ -1739,12 +2332,25 @@ class RunNames:
         return self.name(role, **fields)[len(self.label):]
 
     def name(self, role: str, **fields) -> str:
-        """``role``'s name in this stage's run -- on the stage's stem, or
-        on the label alone for a row that is not staged; ``fields`` fill a
-        templated role."""
-        a = _row(role)
-        return compose(self.label, role, self.stage if a.staged else None,
+        """``role``'s name in this stage's run -- a role of :data:`WRITTEN`
+        or of :data:`ENGINE_FILES` (:func:`declared`), on the stage's stem
+        or on the label alone as its row says (``staged``); ``fields`` fill
+        a templated role."""
+        staged = _staged(role, "RunNames.name")
+        return compose(self.label, role, self.stage if staged else None,
                        **fields)
+
+    @property
+    def run_script(self) -> str:
+        """The stage's run script -- the one file a stage's and a launch
+        group's names both name (:attr:`GroupNames.run_script`), so a header
+        is rendered alike for either (`runwrap.render_sbatch`)."""
+        return self.name(ROLE_RUN_SCRIPT)
+
+    @property
+    def header(self) -> str:
+        """The stage's queue header (:attr:`GroupNames.header`)."""
+        return self.name(ROLE_HEADER)
 
     def restaged(self, name: str, source: "RunNames") -> str:
         """``name``, a file of ``source``'s stage, named for this stage --
@@ -1765,9 +2371,10 @@ class GroupNames:
     task's group, a sequence of groups: the catalogue's launch-level rows
     ``{group}.run.sh``, ``{group}.sbatch``, ``{group}.log`` and a
     sequence's ``{group}.launch.json``, filled with the group's name
-    (`project-layout.md` § 5).  The same two questions :class:`RunNames` answers -- :attr:`stem`
-    and :meth:`name` -- so a header is rendered alike for a stage's run and
-    a group's (`runwrap.render_sbatch`)."""
+    (`project-layout.md` § 5).  The questions :class:`RunNames` answers too
+    -- :attr:`stem`, :attr:`run_script`, :attr:`header` -- so a header is
+    rendered alike for a stage's run and a group's
+    (`runwrap.render_sbatch`)."""
     group: str
 
     def __post_init__(self):
@@ -1807,31 +2414,45 @@ class GroupNames:
     def stem(self) -> str:
         return self.group
 
-    def name(self, tail: str) -> str:
-        """The group's file ending ``tail``, from its catalogue row."""
-        template = "{group}" + tail
-        if not any(a.level == "launch" and a.name == template
-                   for a in WRITTEN):
+    @property
+    def run_script(self) -> str:
+        """The group's sequencer (:data:`GROUP_RUN_SCRIPT`) -- what a stage's
+        names call its run script (:attr:`RunNames.run_script`)."""
+        return self.name(GROUP_RUN_SCRIPT)
+
+    @property
+    def header(self) -> str:
+        """The group's queue header (:data:`GROUP_HEADER`)."""
+        return self.name(GROUP_HEADER)
+
+    def name(self, row: str) -> str:
+        """The group's file of the launch-level row ``row``
+        (:data:`GROUP_RUN_SCRIPT`, :data:`GROUP_HEADER`, :data:`GROUP_LOG`,
+        :data:`GROUP_LAUNCH_RECORD`), composed by :func:`fixed_name`: a
+        launch-level row named by the group alone."""
+        if not any(a.level == "launch" and a.name == row
+                   and _fields_in(row) == ("group",) for a in WRITTEN):
             raise RunFileError(
-                f"no launch-level row {template!r} in runfiles.WRITTEN -- a "
-                f"group's files are the catalogue's")
-        return template.format(group=self.group)
+                f"{row!r} is no launch-level row of runfiles.WRITTEN named "
+                f"by its group -- a group's files are the catalogue's")
+        return fixed_name(row, group=self.group)
 
 
 def roles(*, engines: bool = True) -> "tuple[str, ...]":
     """Every role this module knows -- the catalogue, read as a vocabulary.
 
-    :data:`WRITTEN`'s roles, plus the engines' own (:data:`_ENGINE_ROLES`)
-    unless ``engines=False``.  The address layer (`ref`) validates against this, which
-    is what makes an undeclared role a catalogue question rather than something
-    a caller can slip past by spelling it (`plans/plan.md` § 5l.2: extensibility
-    is a catalogue row, never a new function).
+    :data:`WRITTEN`'s roles, then the engines' files molbuilder names
+    (:data:`ENGINE_FILES`) unless ``engines=False``: what :func:`declared`
+    checks every role against, which makes an undeclared role a catalogue
+    question rather than something a caller can slip past by spelling it
+    (`plans/plan.md` § 5l.2: extensibility is a catalogue row, never a new
+    function).
 
     Ordered and de-duplicated, so it is stable to compare against.
     """
     out = [a.role for a in ON_THE_LABEL]
     if engines:
-        out += [r for r in _ENGINE_ROLES if r not in out]
+        out += [e.role for e in ENGINE_FILES if e.role]
     seen, uniq = set(), []
     for r in out:
         if r not in seen:
@@ -1945,7 +2566,7 @@ def prepared_roles() -> "tuple[str, ...]":
     their engine and molbuilder's provenance: what marks a folder as
     somebody's working directory, and what a reader asks a folder's
     engine."""
-    return (*deck_roles(), ".run.sh")
+    return (*deck_roles(), ROLE_RUN_SCRIPT)
 
 
 def engine_of_role(role: str) -> Optional[str]:
@@ -2024,10 +2645,8 @@ def manifest(label: str, stage: Optional[str], *,
         # A FIELD HAS NO VALUE UNTIL THE FILE IS WRITTEN, so the card shows
         # the field's NAME: `<label>_<stage>.<tbt>.digest.nc` -- but the
         # engine, which the description names.
-        name = _FIELD_RE.sub(
-            lambda m: (engine if m.group(1) == "engine" and engine
-                       else f"<{m.group(1)}>"),
-            _template(a, label, stage))
+        name = shown(_template(a, label, stage),
+                     **({"engine": engine} if engine else {}))
         rows.append({"name": name,
                      "what": a.what,
                      "when": a.when,
@@ -2035,6 +2654,16 @@ def manifest(label: str, stage: Optional[str], *,
                      "where": LEVEL_WHERE.get(a.level, ""),
                      "only": a.only})
     return rows
+
+
+def shown(template: str, **fields) -> str:
+    """A NAME AS A PAGE OR A DESCRIPTION SHOWS IT -- ``template`` (a role, or
+    a name with its fields left open) with each field in ``fields`` written
+    as given and every other as ``<field>``: ``<label>.TBT.AVTEIG_<pair>``.
+    Words for a reader, never a name a file is given (:func:`compose`)."""
+    return _FIELD_RE.sub(lambda m: str(fields.get(m.group(1),
+                                                  f"<{m.group(1)}>")),
+                         template)
 
 
 def fixed_name(name: str, **fields) -> str:
@@ -2119,8 +2748,7 @@ def fixed(level: Optional[str] = None,
             continue
         if engine and a.engine and a.engine != engine:
             continue
-        rows.append({"name": _FIELD_RE.sub(lambda m: f"<{m.group(1)}>",
-                                           a.name),
+        rows.append({"name": shown(a.name),
                      "what": a.what, "when": a.when, "only": a.only})
     return rows
 

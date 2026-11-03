@@ -324,33 +324,34 @@ def open_scratch(base, folder, plan) -> Path:
     return folder
 
 
-def bring_files(jobset: JobSet, job, base, src_dir, run, names, plan
-                ) -> List[str]:
+def bring_files(calc, job, src_dir, run, names, plan) -> List[str]:
     """Copy into ``run`` what it runs from -- the deck, its wrappers, the
     shared package and the bundles that travel beside the deck -- from
     ``src_dir`` (where prep rendered them: the stage's folder, or a swept
     point's), else the calculation's root.  COPIED, never linked
     (`project-layout.md` § 1.0: the run directory "holds everything"; a
     synced-back bundle's links would dangle).  Returns what was brought.
+    ``calc`` is the calculation as the verb read it (A16): its plan, and
+    the kind whose deck it is.
 
     ONE COPY STEP for every run folder: a stage's attempt
     (:func:`prepare_attempt`) and a swept run's point
     (:func:`open_sweep_run`)."""
-    base, src_dir, run = Path(base), Path(src_dir), Path(run)
-    # THE BUNDLES THAT TRAVEL BESIDE THE DECK -- the monitor's, the job's
-    # finish, a PySCF script's code -- from the one list the wrapper's
-    # writer reads too (`runwrap.bundles_for`): one file each, so none can
-    # be half-shipped.  And makov_payne_correction.py: the post-run script a
-    # CHARGED deck's own header instructs the user to run "after SIESTA
-    # finishes" -- HERE, beside the .out.
+    jobset = calc.jobset
+    base, src_dir, run = Path(calc.base), Path(src_dir), Path(run)
     from ..runfiles import beside_the_deck
     from .planned import bring
-    # THE ONE LIST of what travels beside a deck (`runfiles.beside_the_deck`:
-    # the bundles, the post-run script, the run script, the header, a call's
-    # coordinates file -- a folder holding none of one brings none), and the
-    # calculation's shared package.
+    # THE ONE LIST of what travels beside a deck -- the catalogue's
+    # travelling rows for this engine and kind (`runfiles.beside_the_deck`,
+    # which the wrapper's writer renders from too, `runwrap.bundles_for`):
+    # the bundles, a charged SIESTA deck's post-run script, the run script,
+    # the header, a call's coordinates file -- a folder holding none of one
+    # brings none -- then the job's finish, and the calculation's shared
+    # package.
     names_ = ([job.script] + list(jobset.shared)
-              + list(beside_the_deck(jobset.engine, job.finish, names)))
+              + list(beside_the_deck(jobset.engine,
+                                     str(calc.task.calculation), job.finish,
+                                     names)))
     # THE ONE COPY STEP (`planned.bring`): from where prep rendered them,
     # else the calculation's root.
     return bring(plan, names_, into=run, from_dir=src_dir, also=(base,))
@@ -405,7 +406,7 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
         empty_run(run, plan)
     for pdir, pt in points:
         open_run(base, pdir, plan)
-        bring_files(jobset, job, base, sources[pt], pdir, rn, plan)
+        bring_files(calc, job, sources[pt], pdir, rn, plan)
     # THE CONTAINERS THE RUN HOLDS FOR ITS PLANNED POINTS, by its kind's
     # declaration (`points.PointsOf.containers`, `execution/runs-of-
     # points.md` § 1.1): a vibration's optical calls' (`engines/vibration.md`
@@ -558,7 +559,7 @@ def written_as_ended(folder, label: str, files) -> Dict[str, str]:
     from .. import runfiles as _rf
     from ..parse import detect
     folder = Path(folder)
-    logs = _rf.find(folder, label, role=".monitor.log")
+    logs = _rf.find(folder, label, role=_rf.ROLE_MONITOR_LOG)
     if not logs:
         return {}
     log = logs[0][0]
@@ -717,7 +718,7 @@ def prepare_attempt(calc, stage_name: str, *,
         open_scratch(base, calcdirs.RunPlace.of(attempt)
                      .scratch(job.scratch_dir), plan)
 
-    brought = bring_files(jobset, job, base, stage_dir, attempt, rn, plan)
+    brought = bring_files(calc, job, stage_dir, attempt, rn, plan)
 
     # WHAT IT CONTINUES FROM, ONE HAND-OVER (`job-system.md` § 5.4): the
     # files the run holds of what the stage takes, and the record of the
@@ -786,7 +787,8 @@ def continuation_files(calc, stage_name: str, continue_from: str, *,
             f"DM.UseSaveDM / MD.UseSaveCG, so files copied in would sit "
             f"there unread (run-identity.md § 4, *present but not "
             f"honoured*).  A stage continues when its `restart` is "
-            f"`continue` in task.json at its prep; or start it cold.")
+            f"`continue` in {runfiles.TASK_FILE} at its prep; or start it "
+            f"cold.")
     if not any((src / name).is_file() for name in names):
         raise ValueError(
             f"{said}: that attempt holds none "

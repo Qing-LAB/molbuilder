@@ -1516,8 +1516,8 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
         name = calculation_machine(bundle_dir) or target
         probe = (f"`{probe_command(None)}` here" if name in (None, LOCAL_TARGET)
                  else f"`{probe_command(name)}` {probe_steps(name)}")
-        return ("this calculation's environment.json, snapshotted at its "
-                "first prep",
+        return (f"this calculation's {FILENAME}, snapshotted at its "
+                f"first prep",
                 f"re-probe it -- {probe} -- then go back to the state saved "
                 f"before its first prep ({checkpoint_words(bundle_dir)}) "
                 f"and prep anew: a calculation is set to "

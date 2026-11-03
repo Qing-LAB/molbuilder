@@ -23,6 +23,7 @@ import click
 
 from ..config_dir import config_dir
 from ..diagnostics import get_capabilities
+from ..runfiles import MACHINE_RECORD_FILE
 from ..runtime_config import ACTIVATION_FORMS
 from . import builds as _builds
 from . import hints as _hints
@@ -2213,8 +2214,8 @@ def _ask_projects_root(auto_yes: bool,
                    "it into the record, and without it every prep for this "
                    "machine refuses (docs/configuration.md § 4).")
 @click.option("--no-probe", "probe", flag_value=False, default=True,
-              help="do not write environment.json; `molbuilder jobset probe "
-                   "--write` makes it later, copying `env_init` into it.")
+              help=f"do not write {MACHINE_RECORD_FILE}; `molbuilder jobset "
+                   "probe --write` makes it later, copying `env_init` into it.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="take the recommended activation without asking.  The "
                    "value chosen is printed either way.")

@@ -1615,7 +1615,7 @@ block.
 
 **What travels, and the env it needs.** The finish runs where molbuilder is
 not installed, so its modules travel beside the job as ONE file,
-`mb_vibration.pyz` (`runwrap.VIBRATION_BUNDLE`, built from
+`mb_vibration.pyz` (`runfiles.VIBRATION_BUNDLE`, built from
 `runwrap.VIBRATION_COMPANIONS` by the builder the monitor's bundle uses): each
 module's own file, imported two ways — from the package, or from the bundle —
 like the monitor's readers ([`execution/run-reports.md`](?doc=execution/run-reports.md)

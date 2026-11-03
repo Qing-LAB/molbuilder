@@ -74,9 +74,15 @@ def _kept_in_memory(first, scratch_dir: str) -> Optional[str]:
 
 
 def _voltage_of(name: str, label: str) -> str:
-    """The voltage token in ``<label>.<voltage>.TSGF<lead>``."""
-    rest = name[len(label) + 1:] if name.startswith(label + ".") else name
-    return rest.split(".TSGF", 1)[0]
+    """The bias token of a lead's Green's functions on ``label`` -- the
+    catalogue's ``bias`` field of ``<label>.<bias>.TSGF<lead>``
+    (`runfiles.SIESTA_TSGF`), read back by `runfiles.parse` -- or the whole
+    name for a file that is not one, so the line shows it."""
+    from ..runfiles import SIESTA_TSGF, parse
+    got = parse(name, label)
+    if got is None or got.role != SIESTA_TSGF:
+        return name
+    return dict(got.fields)["bias"]
 
 
 # ---- the estimate ------------------------------------------------------------
@@ -256,16 +262,18 @@ def _decks_per_voltage(base, task, stage_dir: Path) -> List[Tuple[float, Path]]:
     the same across frames."""
     from ..transport.stages import point_folders
     from ..jobset.naming import stage_home
+    from ..runfiles import deck_role
     names = stage_home(base, task, "device").names
+    deck = names.name(deck_role(task.engine))
     seen: Dict[float, Path] = {}
     pts = point_folders(base, task, "device")
     for d, pt in pts:
         v = pt.bias_v
-        p = Path(d) / names.name(".fdf")
+        p = Path(d) / deck
         if v not in seen and p.is_file():
             seen[v] = p
     if not pts:
-        p = stage_dir / names.name(".fdf")
+        p = stage_dir / deck
         if p.is_file():
             seen[0.0] = p
     return sorted(seen.items())

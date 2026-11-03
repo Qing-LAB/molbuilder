@@ -38,6 +38,10 @@ from .runstatus import jobset_status, render_stage_status, render_status
 
 #: A11: the name comes from the module that writes the file.
 from .model import FILENAME as _JOBSET_FILE
+# THE CATALOGUE'S NAMES the help lines and messages say
+# (`runfiles.WRITTEN`).
+from ..runfiles import (JOB_REQUEST_FILE, MACHINE_RECORD_FILE, ROLE_HEADER,
+                        ROLE_SESSION_LOG)
 # EVERY ENGINE MOLBUILDER KNOWS, the catalogue's (`runfiles.engines`) -- the
 # one list `--engine` offers, never restated here.
 from ..engine_table import engines as _engines
@@ -969,14 +973,14 @@ TIME_METAVAR = "DURATION"
 TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
              "number of minutes.  A run on a scheduler states one -- here, "
              "or `allocation.time` / the run card's `time` in "
-             "job-request.json -- "
+             f"{JOB_REQUEST_FILE} -- "
              "or prep refuses.  Never derived, never estimated "
              "(architecture.md § 5.2).")
 MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
             "a bare number of GB.  `0` asks for all of the node's.  A run "
             "on a scheduler states one -- here, or `allocation.mem` in "
-            "job-request.json -- or prep refuses (architecture.md "
+            f"{JOB_REQUEST_FILE} -- or prep refuses (architecture.md "
             "§ 5.2).")
 
 
@@ -1007,7 +1011,7 @@ def _resolve_stage_name(js, stage: str) -> str:
 @click.argument("words", nargs=-1)
 @click.option("--group", "groups", multiple=True, type=int, metavar="N",
               help="task: a group to prepare, by its number in "
-                   "job-request.json -- "
+                   f"{JOB_REQUEST_FILE} -- "
                    "repeated for several, each one job (engines/stages.md "
                    "2).  A group prepared and never launched is prepared "
                    "again.")
@@ -1041,7 +1045,7 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "the target's record -- a partition and a QOS together, "
                    "with its own limits).  On a scheduler a run names one "
                    "-- here, its run card's `domain`, or `allocation.domain` "
-                   "in job-request.json (a benchmark: here, or "
+                   f"in {JOB_REQUEST_FILE} (a benchmark: here, or "
                    "`allocation.domain`) "
                    "-- or prep refuses and lists them.")
 @click.option("--target", default=None, metavar="NAME",
@@ -1055,8 +1059,8 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "measures the cluster instead of the desk "
                    "(preparing-for-another-machine.md 4).")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
-              help="write the .sbatch headers (default on; withheld where "
-                   "the target's record names a kind with no queue, "
+              help=f"write the {ROLE_HEADER} headers (default on; withheld "
+                   "where the target's record names a kind with no queue, "
                    "`workstation` -- scheduler.md § 6a).  --no-sbatch "
                    "writes none, and then no queue, wall or memory is "
                    "asked for.")
@@ -1403,7 +1407,7 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                  "job per resource shelf):\n"
                  + block(launch_lines("bench", stage, base=base)))
         say_next("then -- a report to read; its `execution` block is "
-                 "yours to copy onto a run card in job-request.json:\n"
+                 f"yours to copy onto a run card in {JOB_REQUEST_FILE}:\n"
                  + block([command("summarize", "bench", stage,
                                   base=base)]))
         return
@@ -1774,7 +1778,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @click.argument("words", nargs=-1)
 @click.option("--group", "groups", multiple=True, type=int, metavar="N",
               help="task: the group to launch, by its number in "
-                   "job-request.json "
+                   f"{JOB_REQUEST_FILE} "
                    "-- its stages as one job (engines/stages.md 2).  A "
                    "group goes whole the first time.  Repeated: the groups "
                    "as ONE job that launches each in turn, when the one "
@@ -1850,8 +1854,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "leaving it running -- closing the terminal does not end "
                    "it, `molbuilder jobs stop` does -- and nothing is lost: "
                    "the run script copies everything it prints into its "
-                   ".runwrap log in the run folder, a walk appends each "
-                   "member's output to its log under launch/, and `jobset "
+                   f"{ROLE_SESSION_LOG} in the run folder, a walk appends "
+                   "each member's output to its log under launch/, and `jobset "
                    "status` follows the run.  Either way the question "
                    "offers the other one (job-system.md 6.0).")
 @click.option("--in-sequence", "in_sequence", default=None, metavar="NAME",
@@ -2255,11 +2259,13 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
     walks = ["  the walk's output: " + rel_to(base, s.log)
              for s in plan.submissions if s.direct and s.log]
     # WHERE A RUN HERE IS READ, in the background or not -- the question
-    # may choose either: its own folder, the run script's .runwrap log
-    # holding everything it prints, the engine's .out its own output.
+    # may choose either: its own folder, the run script's session log
+    # holding everything it prints, the engine's stdout its own output
+    # (`runfiles.stdout_roles`).
+    from ..runfiles import stdout_roles
     walks += ["  its output: " + rel_to(base, m.run_dir) + "/ -- the "
-              ".runwrap log holds everything the run script prints, "
-              "the .out the engine's own"
+              f"{ROLE_SESSION_LOG} holds everything the run script prints, "
+              f"the {stdout_roles(js.engine)[0]} the engine's own"
               for s in plan.submissions if s.direct and not s.log
               for m in s.members]
     footer = walks + (["  per-trial bound: "
@@ -2636,7 +2642,10 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
             f"{', '.join('--' + k.replace('_', '-') for k in stray)} ask a "
             f"vibration's Raman view; {_P(calc.base).name} is a "
             f"{calc.task.calculation} calculation")
-    name = module.name_of(calc, fmt)
+    try:
+        name = module.name_of(calc, fmt)
+    except ExportError as exc:
+        raise click.ClickException(str(exc)) from None
     dest = dest_dir / name
     if dest.exists():
         raise click.ClickException(
@@ -2799,8 +2808,8 @@ def _scheduler_kinds():
 
 @jobset_group.command("probe",
                      short_help="record a machine's capability -> "
-                                "environment.json (--name for a cluster you "
-                                "prep FOR)")
+                                f"{MACHINE_RECORD_FILE} (--name for a cluster "
+                                "you prep FOR)")
 @click.option("--write", "do_write", is_flag=True, default=False,
               help="write the probed record (shows a diff + confirms).")
 @click.option("--name", default=None, metavar="NAME",
@@ -2810,7 +2819,7 @@ def _scheduler_kinds():
                    "--name sol` on Sol's login node, copy the file it writes "
                    "to the directory `jobset machines` prints, and `prep "
                    "--target sol` sizes for Sol from there.  Without it the "
-                   "record is this machine's own environment.json.")
+                   f"record is this machine's own {MACHINE_RECORD_FILE}.")
 @click.option("--yes", is_flag=True, default=False,
               help="with --write: take every probed value without asking "
                    "(scripts).  Without it, each difference against an "

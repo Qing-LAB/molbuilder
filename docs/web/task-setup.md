@@ -997,7 +997,7 @@ distinction the names themselves draw (`job-contracts.md` § 2.3):
 |---|---|
 | **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger — the catalogue's calculation-level rows |
 | **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them — one that lands in each run (a vibration's result) says so on its line |
-| **one per rung** | everything stemmed on that rung's token, in the rung's directory and its first run's — and, for a run of points, its walk in `launch/` (its run script, header and log, `runfiles.GroupNames.of_points`) in place of a header of its own; a rung's file at the root (its prep's pipeline log) says where. A run's own records carry fixed names, `run.json` and `.continued-from`, the same in every run: they are on no rung's card, and listed with the run's files in `project-layout.md` § 5.3 |
+| **one per rung** | everything stemmed on that rung's token, in the rung's directory and its first run's — and, for a run of points, its walk in `launch/` (its run script, header and log, `runfiles.GroupNames.of_points`); a file written only sometimes is listed with its row's condition (`only`), as the stage's own header is — its row says a run of points sends the walk's; a rung's file at the root (its prep's pipeline log) says where. A run's own records carry fixed names, `run.json` and `.continued-from`, the same in every run: they are on no rung's card, and listed with the run's files in `project-layout.md` § 5.3 |
 
 **Each group folds** *(user, 2026-10-13: "the 'what this calculation writes'
 panel should have the organization of the files clear by foldable segments

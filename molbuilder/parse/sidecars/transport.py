@@ -17,6 +17,7 @@ from typing import Any, Dict
 from ..base import FileParser
 from ..errors import ParseError
 from ..types import SidecarResult
+from ...runfiles import ROLE_TRANSPORT_RECORD, role_of
 from ._helpers import build_sidecar_result
 
 
@@ -51,16 +52,16 @@ class TransportRecordFileParser(FileParser):
     """
 
     name   = "transport-json"
-    label  = "molbuilder .transport.json record"
-    hint   = ("a transport ladder's summarised result -- "
-              "<label>.transport.json, written by `jobset summarize task`")
+    label  = f"molbuilder {ROLE_TRANSPORT_RECORD} record"
+    hint   = (f"a transport ladder's summarised result -- "
+              f"<label>{ROLE_TRANSPORT_RECORD}, written by "
+              f"`jobset summarize task`")
     output = SidecarResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
         # THE SCHEMA, not the suffix alone.
-        from molbuilder.runfiles import role_of
-        if role_of(Path(path).name) != ".transport.json":
+        if role_of(Path(path).name) != ROLE_TRANSPORT_RECORD:
             return False
         try:
             _load(Path(path))

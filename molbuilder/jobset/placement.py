@@ -61,6 +61,7 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     and ``target`` say
     which record that was, for the refusal that finds it lists none.
     """
+    from ..runfiles import JOB_REQUEST_FILE
     from ..template import catalogue, select
     missing = []
     if shape:
@@ -109,15 +110,15 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
         # the refusal reaches the page and the terminal alike.
         if field in ("domain", "time"):
             card = (f'Task setup\'s "Where it runs" card ("allocation": '
-                    f'{{"{key}": ...}} in job-request.json)'
+                    f'{{"{key}": ...}} in {JOB_REQUEST_FILE})'
                     + (f' or this run\'s run card ("execution": '
                        f'{{"{key}": ...}})' if shape else ""))
         elif field == "mem":
             card = ('Task setup\'s "Where it runs" card ("allocation": '
-                    '{"mem": ...} in job-request.json)')
+                    f'{{"mem": ...}} in {JOB_REQUEST_FILE})')
         else:
             card = (f'the run card on Task setup ("execution": '
-                    f'{{"{key}": N}} in job-request.json)')
+                    f'{{"{key}": N}} in {JOB_REQUEST_FILE})')
         line = f"  {words:<15} {card}, or {flag}"
         if field == "domain":
             line += "\n" + _the_queues(asked, queues, engine)

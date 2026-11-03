@@ -13,6 +13,7 @@ from pathlib import Path
 from ..base import FileParser
 from ..errors import ParseError
 from ..types import SidecarResult
+from ...runfiles import NOTIFIED_RECORD_FILE
 from ._helpers import build_sidecar_result
 
 
@@ -25,14 +26,13 @@ class NotifiedFileParser(FileParser):
     Returns a :class:`SidecarResult` with ``schema = "run-notified/v1"``."""
 
     name   = "run-notified-json"
-    label  = "molbuilder notified.json record"
-    hint   = ("a run's notification record -- notified.json at a run's "
-              "root, written by the monitor's notify verb")
+    label  = f"molbuilder {NOTIFIED_RECORD_FILE} record"
+    hint   = (f"a run's notification record -- {NOTIFIED_RECORD_FILE} at a "
+              f"run's root, written by the monitor's notify verb")
     output = SidecarResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        from molbuilder.runfiles import NOTIFIED_RECORD_FILE
         from molbuilder.runrecord import LaunchRecordError, read_notified_file
         p = Path(path)
         if p.name != NOTIFIED_RECORD_FILE:

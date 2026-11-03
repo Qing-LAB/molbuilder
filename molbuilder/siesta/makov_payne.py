@@ -202,17 +202,19 @@ def render_correction_script(
     # `mb_pyscf.pyz` (`runwrap._zip_bundle`, `engines/pyscf.md` § 3).  That is
     # the moment, not before: a bundle is more moving parts than four lines
     # of arithmetic.
-    from ..runfiles import MONITOR_BUNDLE as monitor_bundle
+    from ..runfiles import (MAKOV_PAYNE_SCRIPT as script_name,
+                            MONITOR_BUNDLE as monitor_bundle,
+                            ROLE_SIESTA_OUT as output_role)
     return f'''#!/usr/bin/env python3
 """Makov-Payne post-process correction for SIESTA total energy.
 
 Run AFTER SIESTA has finished:
 
-    python3 makov_payne_correction.py
-    python3 makov_payne_correction.py --epsilon 4.0
-    python3 makov_payne_correction.py --out my-job.out
+    python3 {script_name}
+    python3 {script_name} --epsilon 4.0
+    python3 {script_name} --out my-job{output_role}
 
-Reads the converged total energy from the SIESTA .out file, then
+Reads the converged total energy from the SIESTA {output_role} file, then
 SIESTA's own monopole correction, `siesta: Emadel`.  SIESTA applies it
 itself for a molecule in a simple, face- or body-centred cubic cell, and
 it is then already in E_KS: this script adds NOTHING and says so.
@@ -315,7 +317,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", default=None,
-        help="SIESTA .out file to read (default: this run's)")
+        help="SIESTA {output_role} file to read (default: this run's)")
     p.add_argument("--epsilon", type=float, default=DEFAULT_EPS,
         help=f"Relative permittivity (default: {{DEFAULT_EPS}}, vacuum)")
     p.add_argument("--madelung", type=float, default=MADELUNG,

@@ -82,6 +82,7 @@ def structure_for(task, base: Path, pset):
     against a structure that has since changed would otherwise build a
     different calculation under the same id — § 1's second failure mode.
     """
+    from ..runfiles import TASK_FILE
     from ..structure_pair import GeometryChangedError
     from ..workingcopy_structure import StructureCodec
     codec = StructureCodec()
@@ -103,7 +104,7 @@ def structure_for(task, base: Path, pset):
     else:
         raise PrepError(
             f"the structure this calculation describes is not here: "
-            f"{task.structure.source!r}. `task.json` records a REFERENCE to it "
+            f"{task.structure.source!r}. `{TASK_FILE}` records a REFERENCE to it "
             f"(engines/stages.md § 6.3), so `prep` needs the file to be either "
             f"beside the calculation or still at that path.")
     if task.structure.fingerprint and codec.fingerprint_on_disk(
@@ -115,7 +116,7 @@ def structure_for(task, base: Path, pset):
         raise PrepError(
             f"the structure has changed since this calculation was "
             f"described: {candidate.name} is not the pair its description "
-            f"records (task.json's structure fingerprint) -- an atom, a "
+            f"records ({TASK_FILE}'s structure fingerprint) -- an atom, a "
             f"label, a held atom or the box was edited after it.  Every "
             f"stage of a calculation is of the one structure it was "
             f"described with: describe it again to build on the edit.")

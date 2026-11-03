@@ -283,6 +283,8 @@ def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(calc):
 _OLDER_RUNS = {
     "nothing more": ("renamed", None),
     "a second start": ("left", "started more than once"),
+    "an editor's backup beside it": ("left",
+                                     "names no file this molbuilder writes"),
     "reached through a link": ("renamed", None),
 }
 
@@ -295,9 +297,12 @@ def test_a_run_an_older_molbuilder_named_is_named_once(tmp_path,
     `jobset migrate`; the migration names a run that started once anew,
     every byte kept and each old name said, and the run reads as its files
     say again (`project-layout.md` § 1.6.1).  A run that started more than
-    once is left as it is, said with its reason, and still not read.  THE
-    SILENT FAILURE: an older run read *queued* for ever; a second start's
-    files folded into one run.  The road: H2's coarse run launched here,
+    once is left as it is, said with its reason, and still not read; so is
+    one holding a file this molbuilder does not name (`job-request.md` § 8,
+    its fifth reason).  THE SILENT FAILURE: an older run read *queued* for
+    ever; a second start's files folded into one run; the migration stopping
+    on a traceback at a file no row names, nothing migrated and nothing
+    said.  The road: H2's coarse run launched here,
     its env giving it no python -- a marker 2.59's main line wrote alike --
     its files then named as 2.59 named them."""
     from molbuilder.jobset.migrate import migrate_state
@@ -318,6 +323,8 @@ def test_a_run_an_older_molbuilder_named_is_named_once(tmp_path,
     if how == "a second start":
         older[f"{stem}-run1.concluded"] = was[marker.name]
         older[f"{stem}.runwrap-20261031-120500.log"] = was[log.name]
+    if how == "an editor's backup beside it":
+        older[f"{stem}-run0.concluded~"] = was[marker.name]
     for name, body in older.items():
         (run / name).write_bytes(body)
     st = concluded(run, names, base=bundle)

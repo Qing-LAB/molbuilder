@@ -167,7 +167,9 @@ def _monitor_ended(run_dir: Path, basename: str) -> bool:
     ended (`run-reports.md` § 2.4).  A node that dies takes the monitor with
     it, and then no file says the run is over.
     """
-    for log, _got in _rf.find(run_dir, basename, role=".monitor.log"):
+    label, stage = _rf.split_stem(basename)
+    for log, _got in _rf.find(run_dir, label, role=_rf.ROLE_MONITOR_LOG,
+                              stage=stage):
         try:
             with log.open(encoding="utf-8", errors="replace") as fh:
                 if any(MONITOR_ENDED_LINE.match(line) for line in fh):
@@ -352,8 +354,8 @@ def _output_endings(paths: List[Path], run_dir: Path,
     FAIL-SOFT ON A READ, and only on a read: a file that cannot be opened
     contributes nothing rather than taking the walk down.  A file whose ROLE
     has no reader is NOT absorbed -- `ending_of` raises, and it cannot happen
-    here because the roles come from the same catalogue view its `READERS`
-    are checked against.
+    here because the roles come from the catalogue rows that name an
+    ``ending`` reader, which the catalogue checks as it loads.
     """
     endings: "Dict[str, _re.RunEnding]" = {}
     for path in paths:
@@ -376,7 +378,7 @@ def _finish_started(run_dir: Path, path: Path, basename: str) -> bool:
 
 def _stderr_of(run_dir: Path, path: Path, basename: str) -> Optional[Path]:
     """Where the run that wrote ``path`` sent its stderr, when its output
-    keeps it apart (`_run_ending.stderr_apart`: a SIESTA-family output's):
+    keeps it apart (`runfiles.stderr_apart`: a SIESTA-family output's):
     the run's session log (`wrapper_log.log_of_run`), the one the run
     script's own ending question reads (`_mb_ending --stderr`).  SIESTA's
     ``die`` flushes stdout on node 0 alone, so a rank other than 0 that dies
@@ -384,7 +386,7 @@ def _stderr_of(run_dir: Path, path: Path, basename: str) -> Optional[Path]:
     takes its stderr in -- and for a run with no log.  ``basename`` is the
     run's stem."""
     got = _rf.parse(path.name, basename)
-    if got is None or not _re.stderr_apart(got.role):
+    if got is None or not _rf.stderr_apart(got.role):
         return None
     return _wl.log_of_run(run_dir, *_rf.split_stem(basename))
 

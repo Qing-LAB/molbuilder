@@ -15,6 +15,7 @@ from typing import Union
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.errors import ParseError
 from molbuilder.parse.types import StructureResult
+from molbuilder.runfiles import PYSCF_OPTIMIZED, ROLE_INITIAL, stem_before
 from molbuilder.structure import Structure
 
 from ._helpers import build_structure_result
@@ -52,8 +53,9 @@ class PySCFGeomFileParser(FileParser):
     """
 
     name   = "pyscf-geom"
-    label  = "PySCF / geomeTRIC final-geometry .xyz"
-    hint   = "files matching <job>_optimized.xyz"
+    label  = "PySCF / geomeTRIC geometry .xyz"
+    hint   = (f"a PySCF deck's geometry: <job>{PYSCF_OPTIMIZED}, the one it "
+              f"reached, or <job>{ROLE_INITIAL}, the one it started from")
     output = StructureResult
 
     @classmethod
@@ -66,9 +68,9 @@ class PySCFGeomFileParser(FileParser):
         # -- both single-frame pairs the PySCF deck writes, both this
         # reader's (the run's parts the trajectory inspector absorbs,
         # `web/trajectory.md`); the echo had no reader until 2026-10-19.
-        from ...runfiles import ROLE_INITIAL, ROLE_OPTIMIZED
-        return ((path.name.endswith(ROLE_OPTIMIZED)
-                 or path.name.endswith(ROLE_INITIAL)) and path.is_file())
+        return ((stem_before(path.name, PYSCF_OPTIMIZED) is not None
+                 or stem_before(path.name, ROLE_INITIAL) is not None)
+                and path.is_file())
 
     @classmethod
     def parse(cls, path: Path) -> StructureResult:

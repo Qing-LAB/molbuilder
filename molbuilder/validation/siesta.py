@@ -12,6 +12,7 @@ from typing import List, Optional
 import numpy as np
 
 from ..issues import Issue
+from ..runfiles import MAKOV_PAYNE_SCRIPT, PSEUDO_FILE, fixed_name
 from ..structure import Structure
 from .sidecar import _check_frozen_atoms_consumed
 
@@ -72,9 +73,11 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
         #     on a guess is the thing this whole path is being cleared of.
         return [Issue(
             "error" if dest_dir is not None else "warn",
-            ("cfg.psml_lib is not set -- SIESTA needs a .psml file for "
-             "every species, named for it (H.psml, Au1.psml, ...), and "
-             "will refuse to start without them."
+            (f"cfg.psml_lib is not set -- SIESTA needs a .psml file for "
+             f"every species, named for it "
+             f"({fixed_name(PSEUDO_FILE, species='H')}, "
+             f"{fixed_name(PSEUDO_FILE, species='Au1')}, ...), and "
+             f"will refuse to start without them."
              + _the_convention_covers(lacking, cfg, dest_dir=dest_dir,
                                       relativistic=relativistic)
              + "  Download from "
@@ -429,7 +432,7 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
          f"SIESTA applies the leading term itself when the cell is simple, "
          f"face- or body-centred cubic (``siesta: Emadel``, already in "
          f"E_KS), and not otherwise.  molbuilder emits a companion "
-         f"``makov_payne_correction.py`` beside the FDF; after SIESTA "
+         f"``{MAKOV_PAYNE_SCRIPT}`` beside the FDF; after SIESTA "
          f"finishes, run it: it reads ``Emadel`` first and adds only what "
          f"SIESTA did not.  See Makov & Payne, PRB 51, 4014 (1995)."),
         "config.net_charge.makov_payne",

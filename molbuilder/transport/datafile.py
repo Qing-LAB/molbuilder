@@ -34,6 +34,12 @@ import numpy as np
 
 from ..ncdata import Var, json_attr
 from ..parse.engines.tbtrans import PRINTED_HALF_DECIMAL_EV
+from ..runfiles import (ROLE_TBT_DIGEST, TBT_CHANNEL_TAGS, TBTRANS_AVADOS,
+                        TBTRANS_AVBDOS, TBTRANS_AVDOS, TBTRANS_AVTEIG,
+                        TBTRANS_AVTRANS, TBTRANS_NC, shown)
+
+#: The unpolarized channel's tag, which the variables' sources name.
+_TBT = TBT_CHANNEL_TAGS["unpolarized"]
 from .sort import REGION_BRIDGE, REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
 from .stages import same_volts
 
@@ -65,8 +71,8 @@ def _from(role: str) -> str:
 
 #: The eigenchannels are one channel's own -- never summed over spin: each
 #: spin channel's set, a non-polarized point's one.
-_EIG_SOURCE = ("<label>.TBT.AVTEIG_<L>-<R> -- each channel's own: TBT_UP and "
-               "TBT_DN polarized")
+_EIG_SOURCE = ("<label>" + shown(TBTRANS_AVTEIG, tbt=_TBT, pair="<L>-<R>")
+               + " -- each channel's own: TBT_UP and TBT_DN polarized")
 
 #: The regions molbuilder owns in the device, in order along z.
 _REGIONS = (REGION_LEFT_ELECTRODE, REGION_BRIDGE, REGION_RIGHT_ELECTRODE)
@@ -136,7 +142,8 @@ def _variables() -> Tuple[Var, ...]:
             "description's list, in its order, or 0 V"),
         Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
             "E - E_F: E_F the leads' Fermi level at 0 V; under a bias V the left lead's chemical potential sits at +V/2 on this axis and the right's at -V/2: the transmission's "
-            "grid, at the full precision of each point's .TBT.nc, ascending; "
+            "grid, at the full precision of each point's "
+            f"{shown(TBTRANS_NC, tbt=_TBT)}, ascending; "
             "TBtrans's text files, printed to 5 decimals, put on it within "
             "half that decimal"),
         Var("spin", ("spin",), "coordinate", "", "spin channel",
@@ -173,7 +180,9 @@ def _variables() -> Tuple[Var, ...]:
         Var("transmission_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
             "raw", "1", "transmission, by spin channel",
             "T(E), k-averaged, channel by channel",
-            source="<label>.TBT.AVTRANS_<L>-<R> (TBT_UP / TBT_DN polarized)"),
+            source=("<label>" + shown(TBTRANS_AVTRANS, tbt=_TBT,
+                                                       pair="<L>-<R>")
+                    + " (TBT_UP / TBT_DN polarized)")),
         Var("transmission", ("frame", "bias_v", "energy_ev"), "derived", "1",
             "transmission per spin channel",
             "the one channel, or (T_up + T_down) / 2 -- what G is computed "
@@ -236,29 +245,32 @@ def _variables() -> Tuple[Var, ...]:
         Var("dos_total", ("frame", "bias_v", "energy_ev"), "raw", "1/eV",
             "the device's density of states", "its Green-function DOS, "
             "k-averaged: a non-polarized point's one spin's, a polarized "
-            "point's up + down", source=_from(".TBT.AVDOS")),
+            "point's up + down",
+            source=_from(shown(TBTRANS_AVDOS, tbt=_TBT))),
         Var("dos_total_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
             "raw", "1/eV", "the device's density of states, by spin channel",
             "each channel's Green-function DOS, k-averaged -- a "
             "non-polarized point's one channel",
-            source="<label>.TBT.AVDOS (TBT_UP / TBT_DN polarized)"),
+            source=("<label>" + shown(TBTRANS_AVDOS, tbt=_TBT)
+                    + " (TBT_UP / TBT_DN polarized)")),
         Var("dos_region", ("frame", "bias_v", "region", "energy_ev"), "raw",
             "1/eV", "the device DOS by region",
             "summed over the region's atoms in the device: a non-polarized "
             "point's one spin's, a polarized point's up + down",
-            source=_from(".TBT.digest.nc, the data file's DOS per orbital")),
+            source=_from(shown(ROLE_TBT_DIGEST, tbt=_TBT)
+                         + ", the data file's DOS per orbital")),
         Var("lead_spectral_dos", ("frame", "bias_v", "lead", "energy_ev"), "raw",
             "1/eV", "the device's DOS from a lead's states",
             "TBT.DOS.A, k-averaged: the device's spectral DOS of the states "
             "coming in from this lead, not the lead's own (lead_bulk_dos); "
             "a non-polarized point's one spin's, a polarized point's up + "
             "down",
-            source=_from(".TBT.AVADOS_<lead>")),
+            source=_from(shown(TBTRANS_AVADOS, tbt=_TBT, lead="<lead>"))),
         Var("lead_bulk_dos", ("frame", "bias_v", "lead", "energy_ev"), "raw",
             "1/eV", "a lead's bulk DOS", "TBT.DOS.Elecs, k-averaged: a "
             "non-polarized point's one spin's, a polarized point's up + "
             "down",
-            source=_from(".TBT.AVBDOS_<lead>")),
+            source=_from(shown(TBTRANS_AVBDOS, tbt=_TBT, lead="<lead>"))),
         Var("eigenchannel_transmission",
             ("frame", "bias_v", "spin", "eigenchannel", "energy_ev"), "raw",
             "1", "eigenchannel transmission, by spin channel",
@@ -429,8 +441,8 @@ VARIABLES: Tuple[Var, ...] = _variables()
 def data_file_path(base_dir, label: str) -> Path:
     """The ONE spelling of the file's location, composed by the run-file
     catalogue (`runfiles.compose`), as `record.record_path` is."""
-    from ..runfiles import compose
-    return Path(base_dir) / compose(label, ".transport.nc")
+    from ..runfiles import ROLE_TRANSPORT_DATA, compose
+    return Path(base_dir) / compose(label, ROLE_TRANSPORT_DATA)
 
 
 def _voltages(volts) -> List[float]:

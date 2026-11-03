@@ -40,11 +40,11 @@ from typing import List
 
 from .. import script_emit as _sc
 from ..structure import Structure
-from .input import (emit_bundle_imports,
+from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
                     emit_run_settings_block, emit_runtime_facts,
                     emit_save_call, emit_script_head,
-                    run_file_expr, ROLE_INITIAL, ROLE_OPTIMIZED, ROLE_SPECTRA)
+                    run_file_expr, ROLE_INITIAL, PYSCF_OPTIMIZED, ROLE_SPECTRA)
 
 # The science emitters, composed here.
 from .vibration_emitters import (
@@ -321,7 +321,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
     if getattr(cfg, "write_trajectory", False):
         out += [
             "    # geomeTRIC streams its own multi-frame XYZ under this",
-            "    # prefix (<prefix>_optim.xyz) -- the same file the",
+            f"    # prefix (<prefix>{GEOMETRIC_APPENDS}) -- the same file the",
             "    # optimization deck's rungs write.",
         ]
         # THE PREFIX IS DERIVED FROM THE STAGE'S NAMES, exactly as the
@@ -361,7 +361,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
         '            f"curvature there, not at the minimum")',
     ]
     if getattr(cfg, "save_optimized_xyz", False):
-        out.append(emit_save_call("mol", ROLE_OPTIMIZED, names, indent="    "))
+        out.append(emit_save_call("mol", PYSCF_OPTIMIZED, names, indent="    "))
     out += [
         "    COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')",
         "    state['phase_relaxation'] = PHASE_COMPLETE",

@@ -67,7 +67,8 @@ from .model import (KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources,
 from .continuation import Continuation, relaunch
 from .planned import Plan, found
 from ..identity import jobs_as_typed
-from ..runfiles import LAUNCH_DIR, GroupNames, RunNames
+from ..runfiles import (GROUP_LOG, LAUNCH_DIR, ROLE_RUN_SCRIPT,
+                        ROLE_SESSION_LOG, GroupNames, RunNames)
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           gather_into, hand_over, latest_attempt,
                           newest_launched)
@@ -2296,11 +2297,12 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     head = f"[{tag}]"
     lines = [
         "#!/usr/bin/env bash",
-        f"# {GroupNames(name).name('.run.sh')} -- {where}, in sequence",
+        f"# {GroupNames(name).run_script} -- {where}, in sequence",
         "# (job-system.md § 6.0).  Regenerated at each launch.  THE TWO-LAYER",
         "# MODEL HOLDS (scheduler.md § 6a): this file is the launcher layer",
         "# only -- ordering, starts and bounds.  Env activation and the",
-        "# engine launch stay in each member's own .run.sh, exactly as when",
+        f"# engine launch stay in each member's own {ROLE_RUN_SCRIPT}, "
+        "exactly as when",
         "# it runs alone.  A walk whose own steps run molbuilder enters",
         "# molbuilder's environment by the same bootstrap (runwrap.env_bootstrap).",
         "set -u",
@@ -2472,7 +2474,7 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
                                     engine=jobset.engine)
         except TrialNotCold as e:
             raise SubmitError(str(e)) from e
-        run_name = m.names.name(".run.sh")
+        run_name = m.names.run_script
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, run_name)]
         pending.append(m)
@@ -2486,7 +2488,7 @@ def _walk_of(members: List[_Member], container: Path) -> list:
     tells each run; no start to copy.  One answer for a benchmark's walk
     here, a queue's shelf and a group."""
     return [(m.name, str(m.run_dir.relative_to(container)),
-             m.names.name(".run.sh"),
+             m.names.run_script,
              " ".join(_counts_of(m.job.resources)), ())
             for m in members]
 
@@ -2509,22 +2511,22 @@ def _send_as_one_job(plan: LaunchPlan, *, gn: GroupNames, container: Path,
     preview).  The submission is added to ``plan`` and returned."""
     base, mode = plan.base, plan.mode
     launch_dir = container / LAUNCH_DIR
-    walk = f"{LAUNCH_DIR}/{gn.name('.run.sh')}"
+    walk = f"{LAUNCH_DIR}/{gn.run_script}"
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
         plan.writes.text(container / walk, script)
     if mode == "direct":
         sub = Submission(gn.stem, ["bash", walk], container, True,
                          list(members),
-                         log=container / LAUNCH_DIR / gn.name(".log"),
+                         log=container / LAUNCH_DIR / gn.name(GROUP_LOG),
                          **extra)
         plan.submissions.append(sub)
         return sub
-    header = launch_dir / gn.name(".sbatch")
+    header = launch_dir / gn.header
     if _needs_header(mode, machine) and not header.is_file():
         raise SubmitError(
             missing_header if missing_header and machine.kind.queue
-            else _no_sbatch(what, f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
+            else _no_sbatch(what, f"{LAUNCH_DIR}/{gn.header}",
                             base=base, told=told, machine=machine,
                             redo=redo))
     if header.is_file():
@@ -2532,7 +2534,7 @@ def _send_as_one_job(plan: LaunchPlan, *, gn: GroupNames, container: Path,
     sent, placement, cmd, outputs_in = _sbatch_request(
         header=header, placement=_placed_by_prep(jobs), time_s=time_s,
         job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
+        script=f"{LAUNCH_DIR}/{gn.header}", run_args=(),
         machine=machine)
     sub = Submission(gn.stem, cmd, container, False, list(members),
                      placement=placement, sent=sent, header=header,
@@ -2560,7 +2562,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     script = _walk_script(
         gn.stem, _walk_of(pending, container),
         where="this benchmark's unlaunched trials, run here",
-        log=f"{LAUNCH_DIR}/{gn.name('.log')}", bound_s=trial_timeout_s,
+        log=f"{LAUNCH_DIR}/{gn.name(GROUP_LOG)}", bound_s=trial_timeout_s,
         walls=[_wall_s(m.job.resources) for m in pending])
     _send_as_one_job(plan, gn=gn, container=container, script=script,
                      members=pending, jobs=[m.job for m in pending],
@@ -2590,7 +2592,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     script = _walk_script(
         names.stem, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
-        log=f"{LAUNCH_DIR}/{names.name('.log')}", bound_s=trial_timeout_s)
+        log=f"{LAUNCH_DIR}/{names.name(GROUP_LOG)}", bound_s=trial_timeout_s)
     # A SHELF THE SCHEDULER REFUSES keeps its trials pending -- no launch
     # record -- so launching the benchmark again sends exactly them, the
     # record the launch writes as it sends a shelf keeping the next launch
@@ -2660,7 +2662,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     from .materialize import bring_files, open_run
     from .naming import stage_home
     from .points import points_of, record_of
-    jobset, base, task = calc.jobset, Path(calc.base), calc.task
+    base, task = Path(calc.base), calc.task
     job, names, stage = m.job, m.names, m.job.name
     stage_dir, run, prev = m.container, m.run_dir, m.ran
     cont = m.continuation
@@ -2794,8 +2796,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         if pt.rel not in is_planned:
             continue
         open_run(base, pdir, plan.writes)
-        bring_files(jobset, job, base, place.prepared(pt.prepared), pdir,
-                    names, plan.writes)
+        bring_files(calc, job, place.prepared(pt.prepared), pdir, names,
+                    plan.writes)
         for f in inputs.get(entry_of(prev_index, pt.rel)["planned_by"], ()):
             if (last.point(pt.rel) / f).is_file():
                 plan.writes.copy(last.point(pt.rel) / f, pdir / f)
@@ -2858,7 +2860,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     steps, said, needs = [], [], []
     # EACH WALKED POINT'S START, its session log -- the walk refuses where
     # one is there already: a run starts once (`_walk_script`).
-    started = [place.walked(pt.rel, names.name(".runwrap.log"))
+    started = [place.walked(pt.rel, names.name(ROLE_SESSION_LOG))
                for _p, pt in walked if pt.rel in is_planned]
     step_of: Dict[str, int] = {}
     needs_of: Dict[str, List[str]] = {}
@@ -2909,12 +2911,12 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                             if n.rel in walked_rels]
         step_of[pt.rel] = len(steps)
         steps.append((f"{stage}@{pt.rel}", place.walked(pt.rel),
-                      names.name(".run.sh"),
+                      names.run_script,
                       " ".join(_counts_of(job.resources)), before))
-        started.append(place.walked(pt.rel, names.name(".runwrap.log")))
+        started.append(place.walked(pt.rel, names.name(ROLE_SESSION_LOG)))
         said.append(pt.words() + words)
         plan.reads += [_as_found(place.prepared(pt.prepared) / f, base)
-                       for f in (job.script, names.name(".run.sh"))]
+                       for f in (job.script, names.run_script)]
     # A LOOP STEP PER CONTAINER whose planned points or planner this walk
     # runs: the folders there when it runs, each seeded just before it
     # runs, the ones taken over passed by name (§ 3, op. 2).
@@ -2928,7 +2930,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                            if n.rel in step_of))
         steps.append((f"{stage}@{c.point.rel}",
                       place.walked_all(c.point.rel),
-                      WalkLoop(run_sh=names.name(".run.sh"),
+                      WalkLoop(run_sh=names.run_script,
                                args=" ".join(_counts_of(job.resources)),
                                skip=tuple(Path(pt.rel).name
                                           for _p, pt in taken
@@ -3004,7 +3006,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     gn = GroupNames.of_points(names.stem)
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s run of points, {run.name}",
-        member_word="step", log=f"{LAUNCH_DIR}/{gn.name('.log')}",
+        member_word="step", log=f"{LAUNCH_DIR}/{gn.name(GROUP_LOG)}",
         needs=(needs if any(needs) else None),
         empties=empties, empty_at_end=scratch_at,
         walls=([_wall_s(job.resources)] * len(steps)
@@ -3254,7 +3256,7 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
             # "a run of points, its points"), its points told their walls
             # by it.
             w = _points_walk(plan, m, calc, mode=mode, inside=inside)
-            walk = f"{LAUNCH_DIR}/{w.gn.name('.run.sh')}"
+            walk = f"{LAUNCH_DIR}/{w.gn.run_script}"
             if mode != "ask":
                 open_container(base, w.stage_dir / LAUNCH_DIR, plan.writes)
                 plan.writes.text(w.stage_dir / walk, w.script)
@@ -3264,7 +3266,8 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
             walls.append(None)
         else:
             plan.reads += [_as_found(m.read_from / f, base)
-                           for f in (job.script, m.names.name(".run.sh"))]
+                           for f in (job.script,
+                                     m.names.run_script)]
             steps += _walk_of([m], base)
             walls.append(_wall_s(job.resources))
         members.append(m)
@@ -3275,7 +3278,7 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     script = _walk_script(
         gn.stem, steps,
         where="a group's one job: " + ", ".join(names),
-        member_word="stage", log=f"{LAUNCH_DIR}/{gn.name('.log')}",
+        member_word="stage", log=f"{LAUNCH_DIR}/{gn.name(GROUP_LOG)}",
         walls=walls if _own_walls(mode, inside) else None)
     # SENT AS ONE JOB (:func:`_send_as_one_job`), through the header the
     # group's prep wrote -- `--mode ask` asks over that line itself.
@@ -3397,7 +3400,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                                 f"builds on then"))
                 for i, g in enumerate(groups[1:])]
     plan = LaunchPlan(base, mode, [])
-    log = f"{LAUNCH_DIR}/{names.name('.log')}"
+    log = f"{LAUNCH_DIR}/{names.name(GROUP_LOG)}"
     rec_path = record_path(base, names)
     # THE WALK: each group's launch, in order, the first that does not
     # finish ending it -- molbuilder in its own environment, entered by the
@@ -3438,8 +3441,8 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
         what=f"groups {words}",
         missing_header=(
             f"groups {words} go as one job, and prep wrote no header for "
-            f"them ({LAUNCH_DIR}/{names.name('.sbatch')}) -- prepare them as "
-            f"one job first:\n"
+            f"them ({LAUNCH_DIR}/{names.header}) -- prepare them "
+            f"as one job first:\n"
             + block(prep_sequence_lines(numbers, base=base))
             + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)"),
         sequence=sequence, preview=preview)
@@ -3522,8 +3525,8 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
                                         engine=jobset.engine)
             except TrialNotCold as e:
                 raise SubmitError(str(e)) from e
-        run_name = m.names.name(".run.sh")
-        sbatch_name = m.names.name(".sbatch")
+        run_name = m.names.run_script
+        sbatch_name = m.names.header
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, run_name, sbatch_name)]
         if mode == "direct":

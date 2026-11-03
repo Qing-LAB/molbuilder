@@ -124,7 +124,7 @@ engine = "pyscf"
 run_sh = ['echo "how it ended: $_mb_ending_words"', 'ending "$_out_file" "$@"']
 run_sh_lacks = ['--stderr "$_runwrap_log"',
                 # its output's family names no stop at the wall and keeps no
-                # advice (`_run_ending.STOPS`), so neither is asked
+                # advice (its catalogue row's `stops` reader), so neither is asked
                 "if _mb_ending out-of-time; then", "_mb_advice=$(_mb_ending advice)"]
 
 [[case]]

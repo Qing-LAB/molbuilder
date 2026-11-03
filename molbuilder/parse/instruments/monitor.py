@@ -27,6 +27,7 @@ from typing import Any, Dict
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.dirs.job import MONITOR_ENDED_LINE as _ENDED
 from molbuilder.parse.types import InstrumentResult
+from molbuilder.runfiles import ROLE_MONITOR_LOG, role_of
 
 from ._helpers import build_instrument_result
 
@@ -103,13 +104,13 @@ class MonitorLogFileParser(FileParser):
     """The wrapper's utilisation monitor log."""
 
     name   = "monitor-log"
-    label  = "wrapper monitor log (.monitor.log)"
-    hint   = "files ending in .monitor.log"
+    label  = f"wrapper monitor log ({ROLE_MONITOR_LOG})"
+    hint   = f"files ending in {ROLE_MONITOR_LOG}"
     output = InstrumentResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return path.name.endswith(".monitor.log") and path.is_file()
+        return role_of(path.name) == ROLE_MONITOR_LOG and path.is_file()
 
     @classmethod
     def parse(cls, path: Path) -> InstrumentResult:

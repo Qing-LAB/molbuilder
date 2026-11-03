@@ -6,9 +6,10 @@ catalogue's own names (:data:`RECORDED_FIELDS`) — the structure's provenance,
 read by the Metadata pane, the vibration's `already_relaxed` check and the
 electronic-state resolution (`web/molview.md` § 8.4a, plan F28).
 
-Per engine, behind one door: the reader is the deck's role's
-(:data:`CONTRACT_READERS`), each in its family's module -- SIESTA's
-``.fdf`` read by `parse.engines.siesta_contract`, which says what it reads.
+Per engine, behind one door: the reader is the one the deck's catalogue row
+names for ``contract`` (`runfiles.reader`), in its family's module --
+SIESTA's ``.fdf`` read by `parse.engines.siesta_contract`, which says what it
+reads.
 A role that names no reader -- a PySCF ``.py`` deck -- answers ``None``.
 
 The deck is the run's own, handed by its caller (`runs.declared(run).deck`,
@@ -23,7 +24,7 @@ from typing import Any, Dict, List, Mapping, Optional
 def contract_of(deck) -> Optional[Dict[str, Any]]:
     """The recorded-contract block of a run's own ``deck``, or ``None``:
     no deck, a deck that states nothing, or a deck whose role has no reader
-    (:data:`CONTRACT_READERS` -- a PySCF script).
+    (its row names no ``contract`` -- a PySCF script).
 
     Shape (the ``info.calculation`` block):
     ``{"engine", "contract": {catalogue name -> value},
@@ -34,8 +35,8 @@ def contract_of(deck) -> Optional[Dict[str, Any]]:
         return None
     deck = Path(deck)
     # THE ROLE COMES FROM THE CATALOGUE, and so does its engine
-    # (`project-layout.md` § 4.5): the reader is the role's
-    # (:data:`CONTRACT_READERS`), never a suffix spelled here.
+    # (`project-layout.md` § 4.5): the reader is the one the role's row
+    # names, never a suffix spelled here.
     from ..runfiles import engine_of_role, role_of
     role = role_of(deck.name) if deck.is_file() else None
     contract = _read_contract(role, deck) if role else None
@@ -117,7 +118,7 @@ def contract_fields_of(cfg, *, kind: str, state=None,
                        axis_kind=None) -> Dict[str, Any]:
     """The level of theory a config is ABOUT TO RUN, in the names the
     recorded contract uses -- the catalogue's (:data:`RECORDED_FIELDS`), the
-    other half of a deck's reader (:data:`CONTRACT_READERS`).  A consumer comparing a
+    other half of a deck's ``contract`` reader.  A consumer comparing a
     structure's ``info.calculation`` against the calculation it is being
     handed to compares this dict field by field.  Only fields the config
     class has appear; an engine with no recorded contract (PySCF today)
@@ -311,21 +312,14 @@ def judged_force(rec: Mapping[str, Any]) -> Optional[float]:
     return free if free is not None else rec.get("max_force_ev_ang")
 
 
-#: WHICH READER A DECK'S STATED SETTINGS ARE READ BY is the deck's role --
-#: what the file IS (`runfiles.WRITTEN`), as `_run_ending.READERS`
-#: dispatches: a SIESTA deck's, its family's (`siesta_contract`).  A role
-#: with none -- a PySCF script -- records no contract.
-CONTRACT_READERS = {
-    ".fdf": "molbuilder.parse.engines.siesta_contract:contract_fields"}
-
-
 def _read_contract(role: str, deck: Path) -> Optional[Dict[str, Any]]:
-    """The settings ``deck`` states, by the reader its ``role`` names."""
-    ref = CONTRACT_READERS.get(role)
-    if ref is None:
-        return None
-    from ..kind_table import part
-    return part(ref, record="the contract readers", key=role)(deck)
+    """The settings ``deck`` states, by the reader its ``role``'s catalogue
+    row names for ``contract`` -- what the file IS (`runfiles.WRITTEN`): a
+    SIESTA deck's, its family's (`siesta_contract`).  A role with none -- a
+    PySCF script -- records no contract."""
+    from ..runfiles import reader
+    read = reader(role, "contract")
+    return read(deck) if read is not None else None
 
 
 # --------------------------------------------------------------------- #
@@ -433,8 +427,8 @@ def _declared_in_molwatch(directory: Path) -> set:
     """
     from molbuilder.parse.engines.molwatch_grammar import ENGINE as _ENGINE_RE
     out = set()
-    from ..runfiles import find_by_role
-    for f in find_by_role(directory, ".molwatch.log"):
+    from ..runfiles import ROLE_MOLWATCH, find_by_role
+    for f in find_by_role(directory, ROLE_MOLWATCH):
         try:
             with open(f, "r", encoding="utf-8", errors="replace") as fh:
                 for _ in range(40):

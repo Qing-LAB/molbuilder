@@ -37,13 +37,15 @@ if TYPE_CHECKING:
 try:                                        # inside molbuilder
     from ..persist import write_bytes as _write_bytes
     from ..runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,
-                            compose as _compose, role_of as _role_of)
+                            compose as _compose, role_of as _role_of,
+                            stem_before as _stem_before)
     from ..spectra.datafile import write_spectra_data as _write_spectra_data
     from ..spectra.derived import with_derived as _with_derived
 except ImportError:                         # beside a job, in a bundle
     from persist import write_bytes as _write_bytes
     from runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,  # type: ignore[no-redef]
-                          compose as _compose, role_of as _role_of)
+                          compose as _compose, role_of as _role_of,
+                          stem_before as _stem_before)
     from spectra_datafile import write_spectra_data as _write_spectra_data
     from derived import with_derived as _with_derived
 
@@ -136,7 +138,7 @@ def write_spectra_payload(payload: dict,
         raise ValueError(
             f"{p.name}: a vibration result is named <label>{ROLE_SPECTRA} "
             f"(runfiles.WRITTEN), and its data file follows from that name")
-    label = p.name[:-len(ROLE_SPECTRA)]
+    label = _stem_before(p.name, ROLE_SPECTRA)
 
     # EVERY MODE'S DERIVED VALUES, stated beside what they come from by the
     # one derivation (`spectra.derived`, `engines/vibration.md` § 6.6) -- in

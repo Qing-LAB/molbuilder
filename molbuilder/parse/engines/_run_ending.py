@@ -8,10 +8,12 @@ own emitters print, so each emitter declares its constant (§ 5.5).  This
 module owns the dispatch -- which is P-S4's "one reader per question" made
 structural rather than aspirational.
 
-**DISPATCH IS ON THE ROLE, never on the engine** (:data:`READERS`,
-:func:`ending_of`).  A directory whose engine is unknown, or which holds two
-engines' outputs, needs no special case: each file is read by the reader its
-own role names, and `model/parse.md` § 5.1 picks which of them speaks.
+**DISPATCH IS ON THE ROLE, never on the engine** (:func:`ending_of`): each
+run output's catalogue row names its reader (`runfiles.WRITTEN`'s ``reads``,
+``ending``; `runfiles.reader`).  A directory whose engine is unknown, or which
+holds two engines' outputs, needs no special case: each file is read by the
+reader its own role names, and `model/parse.md` § 5.1 picks which of them
+speaks.
 
 **No arrays, and deliberately.**  A caller that wants the ENDING does not
 want Frames -- positions and forces as numpy arrays: building one Frame per
@@ -25,9 +27,10 @@ its Frames from the same pass, so SIESTA's lines are read ONE way.
 **It travels beside every job** (`runwrap.monitor_companions`,
 `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
 this reader, through `parse/dirs/job.py`'s `run_status`.  So everything it
-imports is stdlib-only and travels too -- the SIESTA family's table, the
-molwatch log's grammar, the PySCF decks' end lines, `runfiles` -- and each is
-imported two ways, from the package or from beside the job.
+imports is stdlib-only and travels too -- the SIESTA reading pass, the
+molwatch log's grammar, the PySCF decks' end lines, `runfiles` (and the floor
+it resolves a row's reader through, `runpoints`) -- and each is imported two
+ways, from the package or from beside the job.
 """
 from __future__ import annotations
 
@@ -49,14 +52,12 @@ try:                                        # inside molbuilder
                                     as PYSCF_SPECTRUM_END_MARKER)
     from ... import runfiles as _rf
     from . import molwatch_grammar as _MG
-    from . import siesta_grammar as _G
     from .siesta_reader import SiestaReader, read_output
 except ImportError:                         # beside a job, as the monitor's
     from end_lines import (END_MARKER as PYSCF_END_MARKER,
                            SPECTRUM_END_MARKER as PYSCF_SPECTRUM_END_MARKER)
     import runfiles as _rf
     import molwatch_grammar as _MG
-    import siesta_grammar as _G
     from siesta_reader import SiestaReader, read_output
 
 #: The run is over and will produce nothing more -- § 2b P-S1's vocabulary
@@ -111,7 +112,7 @@ def _read(path) -> str:
 # ---- SIESTA: the family's one reading pass ------------------------------- #
 
 
-def _siesta_reading(path, stderr=None) -> "Tuple[RunEnding, bool]":
+def siesta_reading(path, stderr=None) -> "Tuple[RunEnding, bool]":
     """``(ending, final)`` -- the ``.out``'s ending, as the SIESTA reading
     pass reads it (`siesta_reader.SiestaReader`, `model/parse.md` § 4a), the
     one reader of the family's lines, which the registered parser builds its
@@ -192,7 +193,7 @@ PYSCF_TRACEBACK_MARKER = "traceback (most recent call last)"
 def _pyscf_ending(path) -> RunEnding:
     """How a PySCF run ended, from its stdout's markers -- one pass, no arrays.
 
-    The PySCF sibling of :func:`_siesta_reading`, and deliberately a much
+    The PySCF sibling of :func:`siesta_reading`, and deliberately a much
     shorter table: SIESTA's ``siesta_grammar.FATAL_MARKERS`` are **not**
     shared.  Measured 2026-09-18 over 135 real output files, its five
     out-of-memory markers fire 0 times and the three that do fire are
@@ -263,98 +264,51 @@ def _molwatch_ending(path) -> RunEnding:
                      relaxed=footer.get("relaxed"))
 
 
-#: ROLE -> the reading that knows how that file says it ended:
-#: ``(path, stderr) -> (ending, final)``, ``final`` when the output alone
-#: stated how it ended (:data:`_FINAL`).
-#:
-#: Keyed on the role and never on the engine, which is load-bearing (§ 5.5): a
-#: directory whose engine is unknown, or one holding both engines' outputs,
-#: needs no special case here.  The keys are exactly
-#: `runfiles.run_output_roles()` -- the catalogue declares WHICH files are run
-#: output, this declares HOW each is read -- and this module refuses to load
-#: when the two differ (:func:`_one_reader_per_role`), which is what keeps
-#: "adding an engine is two edits" true across the layer split.
 def _never_final(ending_of: Callable[[Path], RunEnding]) -> Callable:
     """The reading of an output read alone, never ``final``: its ending is
     kept by its version and its stderr's (:data:`_KEPT`)."""
     return lambda path, stderr=None: (ending_of(path), False)
 
 
-READERS: "Dict[str, Callable[..., Tuple[RunEnding, bool]]]" = {
-    ".out":          _siesta_reading,
-    ".pyscf.log":    _never_final(_pyscf_ending),
-    ".molwatch.log": _never_final(_molwatch_ending),
-}
+#: THE READINGS THE ROWS NAME (`runfiles.WRITTEN`'s ``reads``, ``ending``):
+#: ``(path, stderr) -> (ending, final)``, ``final`` when the output alone
+#: stated how it ended (:data:`_FINAL`) -- the SIESTA family's is
+#: :func:`siesta_reading`.
+pyscf_reading = _never_final(_pyscf_ending)
+molwatch_reading = _never_final(_molwatch_ending)
 
 
-#: THE OUTPUTS THAT LEAVE THEIR ENGINE'S STDERR APART -- the SIESTA
-#: family's: its run script keeps the engine's stderr in the session log, as
-#: ``die`` flushes stdout on node 0 alone and another rank may say why it
-#: died only there (`running-a-job.md` § 3.5).  Every other output takes its
-#: stderr in (``2>&1``).  The run script asks it to route the stream and to
-#: hand the session log to :func:`ending_of`.
-STDERR_APART: Tuple[str, ...] = (".out",)
-
-
-def stderr_apart(role: str) -> bool:
-    """Whether the output in ``role`` leaves its engine's stderr apart
-    (:data:`STDERR_APART`)."""
-    return role in STDERR_APART
-
-
-#: WHAT AN OUTPUT'S FAMILY TABLE SAYS OF A STOP, by the output's role:
-#: ``(the causes that are the job's wall, {cause: the advice for it},
-#: {cause: its words})`` -- the SIESTA family's (`siesta_grammar.WALL_CAUSES`,
-#: ``ADVICE``, ``CAUSE_WORDS``).  A role not
-#: here names none of the three: a PySCF deck stopped at its wall raises an error its
-#: run reads as any other failure (`running-a-job.md` § 3.6).  The run script
-#: asks ``out-of-time`` and ``advice`` only of an output whose role names
-#: them (`running-a-job.md` § 3.5).
-STOPS: Dict[str, Tuple[Tuple[str, ...], Dict[str, str], Dict[str, str]]] = {
-    ".out": (_G.WALL_CAUSES, _G.ADVICE, _G.CAUSE_WORDS),
-}
+def _stops(role: str) -> Tuple[Tuple[str, ...], Dict[str, str], Dict[str, str]]:
+    """WHAT AN OUTPUT'S FAMILY TABLE SAYS OF A STOP, by the output's role --
+    its row's ``stops``: ``(the causes that are the job's wall, {cause: the
+    advice for it}, {cause: its words})``, the SIESTA family's
+    (`siesta_grammar.STOPS`).  A role whose row names none says none of the
+    three: a PySCF deck stopped at its wall raises an error its run reads as
+    any other failure (`running-a-job.md` § 3.6).  The run script asks
+    ``out-of-time`` and ``advice`` only of an output whose role names them
+    (`running-a-job.md` § 3.5).  An output whose name says no role -- a
+    hand-started run's ``run.output`` -- says none either."""
+    if role not in _rf.read_roles("stops"):
+        return (), {}, {}
+    return _rf.reader(role, "stops")
 
 
 def wall_causes(role: str) -> Tuple[str, ...]:
-    """The causes that are the job's wall, for an output in ``role``
-    (:data:`STOPS`) -- empty where its family names none."""
-    return STOPS.get(role, ((), {}, {}))[0]
+    """The causes that are the job's wall, for an output in ``role`` --
+    empty where its family names none."""
+    return _stops(role)[0]
 
 
 def advice_of(role: str) -> Dict[str, str]:
-    """``{cause: advice}`` for an output in ``role`` (:data:`STOPS`) --
-    empty where its family keeps none."""
-    return STOPS.get(role, ((), {}, {}))[1]
+    """``{cause: advice}`` for an output in ``role`` -- empty where its
+    family keeps none."""
+    return _stops(role)[1]
 
 
 def cause_words(role: str) -> Dict[str, str]:
-    """``{cause: its words}`` for an output in ``role`` (:data:`STOPS`) --
-    how a stop's cause is said to a person; empty where its family names
-    none."""
-    return STOPS.get(role, ((), {}, {}))[2]
-
-
-def _one_reader_per_role(readers) -> None:
-    """Refuse a table that leaves a run-output role unread, or reads a file
-    the catalogue does not call run output.  At import, so the gap stops the
-    first thing that loads this module -- not a directory whose output
-    nothing can read, asked while its run is going."""
-    roles = set(_rf.run_output_roles())
-    unread, extra = sorted(roles - set(readers)), sorted(set(readers) - roles)
-    # THE ROLE TABLES BESIDE IT name run output, or they name nothing.
-    extra += sorted((set(STDERR_APART) | set(STOPS)) - roles)
-    if unread or extra:
-        raise ValueError(
-            "_run_ending.READERS: "
-            + "; ".join(
-                ([f"no reader for the run output {unread}"] if unread else [])
-                + ([f"a reader for {extra}, which `runfiles.WRITTEN`'s "
-                    f"`output` column does not call run output"]
-                   if extra else []))
-            + ".")
-
-
-_one_reader_per_role(READERS)
+    """``{cause: its words}`` for an output in ``role`` -- how a stop's
+    cause is said to a person; empty where its family names none."""
+    return _stops(role)[2]
 
 
 def verdict_of(endings) -> Optional[Tuple[str, bool]]:
@@ -452,26 +406,26 @@ def ending_of(path, *, stderr=None) -> RunEnding:
     comes from `runfiles.role_of`, which reads it off the name without a
     label, so a caller holding one path needs nothing else.
 
-    Refuses a file that is not run output rather than answering `unknown`: the
-    roles come from :data:`READERS`, whose keys are the catalogue's own
-    `run_output_roles()`, so reaching this raise means a caller asked about
-    the wrong file -- a mistake to hear about, not to absorb.  Read errors are
+    Refuses a file that is not run output rather than answering `unknown`:
+    every run-output row names its reader (the catalogue checks it as it
+    loads), so reaching this raise means a caller asked about the wrong file
+    -- a mistake to hear about, not to absorb.  Read errors are
     NOT absorbed here either; the collecting loop is where fail-soft belongs,
     and it catches `OSError` alone so a role mistake still surfaces.
     """
     role = _rf.role_of(Path(path).name)
-    reader = READERS.get(role)
+    reader = _rf.reader(role, "ending") if role else None
     if reader is None:
         raise ValueError(
             f"{Path(path).name!r} is not a run-output file: its role is "
             f"{role!r}, and the run-output roles are "
             f"{', '.join(_rf.run_output_roles())} (`runfiles.WRITTEN`'s `output` "
             f"column, `model/parse.md` § 5.5).")
-    if stderr is not None and not stderr_apart(role):
+    if stderr is not None and not _rf.stderr_apart(role):
         raise ValueError(
-            f"{Path(path).name!r} carries its engine's stderr itself; only "
-            f"{', '.join(STDERR_APART)} is read beside a separate one "
-            f"(`STDERR_APART`).")
+            f"{Path(path).name!r} carries its engine's stderr itself; only an "
+            f"output whose catalogue row leaves it apart is read beside a "
+            f"separate one (`runfiles.stderr_apart`).")
     # ONCE PER VERSION (:data:`_KEPT`): a file that has not changed is not
     # read again, and an output that stated its own end is kept by its own
     # version whatever the stderr (:data:`_FINAL`).
@@ -554,22 +508,22 @@ def _keep(table: "OrderedDict", key, ending: RunEnding) -> None:
 # job's own python and the markers keep their one home.
 
 def _family(output: str) -> str:
-    """The role of the output asked about -- whose family's :data:`STOPS`
-    answer for it."""
+    """The role of the output asked about -- whose row's ``stops`` answer
+    for it (:func:`_stops`)."""
     return _rf.role_of(Path(output).name)
 
 
 #: What a shell may ask, by what it MEANS, never by an engine's marker --
 #: each answered by the exit status (0 yes, 1 no), from the asked output's
 #: own family.  ``out-of-time``: the engine stopped itself at the job's wall
-#: (:data:`STOPS`).
+#: (:func:`wall_causes`).
 QUESTIONS: Dict[str, Callable[[RunEnding, str], bool]] = {
     "out-of-time": lambda e, output: e.cause in wall_causes(_family(output)),
 }
 
 #: What a shell may have SAID, printed, exit 0 where there are words and 1
 #: where there are none.  ``advice``: what to do about the cause, where its
-#: family's table gives more than its words (:data:`STOPS`), the output
+#: family's table gives more than its words (:func:`advice_of`), the output
 #: named.
 SAYS: Dict[str, Callable[[RunEnding, str], Optional[str]]] = {
     "advice": lambda e, output: (
@@ -597,7 +551,7 @@ def say(end: RunEnding) -> str:
 def main(argv=None) -> int:
     """``OUTPUT [--stderr FILE] [QUESTION]`` -- beside a job,
     ``"$_mb_py" mb_monitor.pyz ending ...`` (the bundle's entry hands ``ending``
-    here; `runwrap.MONITOR_BUNDLE`): with a question, the exit status answers
+    here; `runfiles.MONITOR_BUNDLE`): with a question, the exit status answers
     it (:data:`QUESTIONS`), or the words are printed, exit 0 where there are
     any (:data:`SAYS`); without one, the ending is printed as :func:`say`
     words it.  ``--stderr`` is :func:`ending_of`'s.  2 when the output cannot

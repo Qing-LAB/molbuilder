@@ -431,10 +431,11 @@ def describe(*, calculation: str, engine: Optional[str],
                 shutil.rmtree(staging, ignore_errors=True)
     pair = isinstance(cited, CitedPair)
     if finished is not None:
+        from ..runfiles import TASK_FILE
         headline = (f"Described {rec.noun} '{task.run.name}' in {dest} -- "
                     f"reuses {reuses_rel}.")
         after = ("Change what the new question asks -- on Task setup, or in "
-                 "its task.json and template -- then prepare it for the "
+                 f"its {TASK_FILE} and template -- then prepare it for the "
                  "machine that will run it; its first prep takes its "
                  "junction and the pseudopotentials "
                  f"{finished.base.name}'s runs read:",)

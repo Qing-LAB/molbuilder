@@ -34,8 +34,8 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
     from molbuilder.pyscf.input import (_sidecar_for, emit_bundle_imports,
                                         emit_run_settings_block,
                                         emit_script_head)
-    from molbuilder.runwrap import (PYSCF_BUNDLE, PYSCF_COMPANIONS,
-                                    pyscf_bundle)
+    from molbuilder.runfiles import PYSCF_BUNDLE
+    from molbuilder.runwrap import PYSCF_COMPANIONS, pyscf_bundle
     from molbuilder.spectra.selection import select_modes
     from molbuilder.structure import FROZEN_LABEL, Structure
     from molbuilder.workingcopy_structure import StructureCodec

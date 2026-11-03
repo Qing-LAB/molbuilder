@@ -45,6 +45,7 @@ try:                                        # inside molbuilder
                           json_attr, number_attr, read_variables, reading,
                           state, unnumber_attr, write_group)
     from ..persist import write_bytes
+    from ..runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose
     from ..structure import Structure as _Structure
     from .datafile import read_structure_group, write_structure_group
 except ImportError:                         # beside a job, in mb_vibration.pyz
@@ -53,6 +54,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                         in_memory, json_attr, number_attr, read_variables,
                         reading, state, unnumber_attr, write_group)
     from persist import write_bytes  # type: ignore[no-redef]
+    from runfiles import (  # type: ignore[no-redef]
+        ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose)
     from structure import Structure as _Structure  # type: ignore[no-redef]
     from spectra_datafile import (  # type: ignore[no-redef]
         read_structure_group, write_structure_group)
@@ -101,8 +104,8 @@ _SETTINGS_VARS = (
 
 
 def _frame_vars(label: str) -> Tuple[Var, ...]:
-    epsimg = f"{label}.EPSIMG"
-    out = f"the call's output, {label}_<stage>.out"
+    epsimg = compose(label, SIESTA_EPSIMG)
+    out = f"the call's output, {label}_<stage>{ROLE_SIESTA_OUT}"
     return (
         Var("frame", ("frame",), "coordinate", "1", "the optical call",
             "from 0: frame 0 the force-constant run's reference geometry, "

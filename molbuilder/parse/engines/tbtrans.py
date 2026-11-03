@@ -24,10 +24,18 @@ from typing import Any, Dict, List, Optional
 
 try:                                        # inside molbuilder
     from . import siesta_grammar as _G
+    from ... import runfiles as _rf
     from ...report_fields import pct_words, span_words
 except ImportError:                         # beside a job, as the monitor's
     import siesta_grammar as _G
+    import runfiles as _rf                  # type: ignore[no-redef]
     from report_fields import pct_words, span_words
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle, which it travels in by
+#: the SIESTA-family output's catalogue row (`runfiles.WRITTEN`'s ``reads``,
+#: ``loop_words``; `runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.parse.engines.siesta_grammar",
+                "molbuilder.runfiles", "molbuilder.report_fields")
 
 
 #: A pass's channel, in words -- one for each of `siesta_grammar.TBT_CHANNELS`'
@@ -39,6 +47,18 @@ if set(CHANNEL_WORDS) != {ch for ch, _tag in _G.TBT_CHANNELS}:
         f"tbtrans.CHANNEL_WORDS names {sorted(CHANNEL_WORDS)}, and "
         f"siesta_grammar.TBT_CHANNELS "
         f"{sorted(ch for ch, _tag in _G.TBT_CHANNELS)}: a channel each")
+#: TBtrans's K-AVERAGED TEXT FILES, by the quantity each holds, as the
+#: catalogue names them (`runfiles.ENGINE_FILES`): written beside the data
+#: file by ``state_cdf2ascii`` from the data file's own variables, averaged
+#: over the k-points with its weights (``m_tbt_save.F90`` ``name_save``;
+#: `model/parse.md` § 5e) -- the transmission, its eigenchannels, the
+#: device's DOS, the spectral DOS of a lead, the bulk DOS of a lead -- each
+#: written when the deck asks for it.
+AVERAGED = {"transmission": _rf.TBTRANS_AVTRANS,
+            "eigenchannels": _rf.TBTRANS_AVTEIG,
+            "dos": _rf.TBTRANS_AVDOS,
+            "lead_spectral": _rf.TBTRANS_AVADOS,
+            "lead_bulk": _rf.TBTRANS_AVBDOS}
 
 
 def is_tbtrans_output(head_lines) -> bool:
@@ -134,33 +154,30 @@ def averaged_files(directory, label: str, *, pair: str,
                    leads: "tuple[str, ...]") -> Dict[str, Dict[str, Any]]:
     """TBtrans's k-averaged text files in ``directory`` (`model/parse.md`
     § 5e), per channel -- the unpolarized one, or the two of a polarized run
-    (``siesta_grammar.TBT_CHANNELS``) -- by quantity
-    (``siesta_grammar.TBT_AVERAGED``): ``{channel: {"transmission": path,
-    "eigenchannels": path, "dos": path, "lead_spectral": {lead: path},
-    "lead_bulk": {lead: path}}}``, each one that is there; ``pair`` the
-    leads as their ``TS.Elecs`` blocks name them (``L-R``) and ``leads``
-    each of them, the caller's -- never the first of a glob -- found on the
-    label through the catalogue (`runfiles.find_on_label`)."""
-    try:                                    # inside molbuilder
-        from ...runfiles import find_on_label
-    except ImportError:                     # beside a job, in a bundle
-        from runfiles import find_on_label  # type: ignore[no-redef]
+    (``siesta_grammar.TBT_CHANNELS``) -- by quantity (:data:`AVERAGED`):
+    ``{channel: {"transmission": path, "eigenchannels": path, "dos": path,
+    "lead_spectral": {lead: path}, "lead_bulk": {lead: path}}}``, each one
+    that is there; ``pair`` the leads as their ``TS.Elecs`` blocks name them
+    (``L-R``) and ``leads`` each of them, the caller's -- never the first of
+    a glob -- found on the label through the catalogue
+    (`runfiles.find_on_label`)."""
     out: Dict[str, Dict[str, Any]] = {}
     for channel, tag in _G.TBT_CHANNELS:
         got: Dict[str, Any] = {}
-        for quantity, role in _G.TBT_AVERAGED.items():
+        for quantity, role in AVERAGED.items():
             if "{lead}" in role:
                 per = {}
                 for lead in leads:
-                    hits = find_on_label(directory, label, _G.tbt_averaged(
-                        tag, quantity, lead=lead))
+                    hits = _rf.find_on_label(directory, label, _rf.tail(
+                        role, tbt=tag, lead=lead))
                     if hits:
                         per[lead] = hits[-1]
                 if per:
                     got[quantity] = per
             else:
-                hits = find_on_label(directory, label, _G.tbt_averaged(
-                    tag, quantity, pair=pair))
+                fields = {"pair": pair} if "{pair}" in role else {}
+                hits = _rf.find_on_label(directory, label, _rf.tail(
+                    role, tbt=tag, **fields))
                 if hits:
                     got[quantity] = hits[-1]
         if got:

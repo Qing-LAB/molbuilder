@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path as _Path
 from typing import NamedTuple, Optional
 
-from .template import SUFFIX
+from .runfiles import JOB_REQUEST_FILE, ROLE_TEMPLATE, compose, find_by_role
 
 
 def template_filename(label: str) -> str:
@@ -23,7 +23,7 @@ def template_filename(label: str) -> str:
     would put the naming convention in two places, which is what this pair
     exists to prevent: :func:`template_path` is this joined to a directory.
     """
-    return f"{label}{SUFFIX}"
+    return compose(label, ROLE_TEMPLATE)
 
 
 def template_path(base, label: str) -> "_Path":
@@ -62,8 +62,7 @@ def of(base, label: str, *, raw: bool = False) -> Optional[TemplateFile]:
     # `.template.toml` IS a role `runfiles.WRITTEN` declares -- the answers
     # file, written once at the bundle root -- so the search is the
     # catalogue's too (`project-layout.md` § 4.5).
-    from .runfiles import find_by_role
-    found = find_by_role(base, SUFFIX)
+    found = find_by_role(base, ROLE_TEMPLATE)
     if not found:
         return None
     if len(found) > 1:
@@ -107,7 +106,7 @@ def _refuse_run_settings(path, text: str, base) -> None:
     # THE WAY ON: a calculation's migrate; a hand-over never saved has no
     # description to migrate -- it is sent again.
     way = (f"`{migrate_as_typed(base)}` takes them out, a value onto the "
-           f"calculation's run card in job-request.json, the old file kept "
+           f"calculation's run card in {JOB_REQUEST_FILE}, the old file kept "
            f"beside the new." if described(base) else
            "It is a hand-over written before 2.28.0, never saved: send the "
            "hand-over again from its tab.")

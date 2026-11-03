@@ -224,7 +224,7 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
             p, d.get("n_atoms_total") if isinstance(d, dict) else None)
     if role_of(name) == ROLE_MOLWATCH:
         return _of_log(p)
-    if p.suffix in deck_roles():
+    if role_of(name) in deck_roles():
         return _of_deck(p)
     return None
 

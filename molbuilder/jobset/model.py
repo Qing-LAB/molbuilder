@@ -39,6 +39,7 @@ SCHEMA = "molbuilder/job-set@1"
 #: `job-contracts.md` § 2.2: every file molbuilder writes is a row there, and
 #: a fixed name's owner takes it from the row).
 from ..runfiles import JOBSET_FILE as FILENAME  # noqa: E402
+from ..runfiles import JOB_REQUEST_FILE  # noqa: E402
 
 #: The two kinds, each a name with ONE home.  `KIND_SWEEP` is exported
 #: because a reader outside this module has to ask *is this a benchmark
@@ -231,7 +232,7 @@ class GpuRequestError(ValueError):
 _GPU_NO_COUNT = (
     "this run uses a GPU (`use_gpu` -- its run card, else the catalogue's "
     "default) and states no GPU count.  Write it on the run card -- "
-    "\"execution\": {\"gpu_count\": N} in job-request.json, the "
+    f"\"execution\": {{\"gpu_count\": N}} in {JOB_REQUEST_FILE}, the "
     "calculation's or this stage's -- "
     "or say it on the prep: --gpus N (docs/execution/gpu.md G5).")
 _GPU_NOT_USED = (
@@ -491,13 +492,17 @@ def warm_declaration(engine: str, label: str, kind: Optional[str] = None,
                      base=None) -> List[WarmFile]:
     """What a run of ``kind`` would take from a run it continues -- the warm
     list's carry rows (`warmfiles.warm_list`), each file named by the run's
-    ``label`` through the one composer (`runfiles.compose`, which refuses a
-    suffix that is no role) -- a job's ``warm``.  The one declaration every
-    engine's stages hand their jobs; :func:`warm_carry` interprets it."""
+    ``label`` through the one composer (`runfiles.compose`), the list's own
+    suffixes the vocabulary it is handed -- a calculation's own copy may
+    name a file no table of the catalogue declares -- a job's ``warm``.  The
+    one declaration every engine's stages hand their jobs; :func:`warm_carry`
+    interprets it."""
     from ..runfiles import compose
     from ..warmfiles import warm_list
-    return [WarmFile(compose(label, r.suffix), requires_same=r.requires_same)
-            for r in warm_list(engine, kind, base).carry_rules]
+    in_effect = warm_list(engine, kind, base)
+    return [WarmFile(compose(label, r.suffix, roles=in_effect.suffixes),
+                     requires_same=r.requires_same)
+            for r in in_effect.carry_rules]
 
 
 def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:

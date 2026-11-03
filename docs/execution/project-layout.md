@@ -1125,8 +1125,10 @@ one fact ([`architecture.md`](?doc=execution/architecture.md) § 3.2, rule A14;
 `python -m tools.manifest`: **a row is edited in the catalogue, never in this
 document** *(user, 2026-10-04)*; `python -m tools.manifest --check` fails when
 the two differ. The same rows answer the Task setup card and the Results tab's
-file card ([`web/results.md`](?doc=web/results.md) § 3b). § 5.4 is not ours to
-catalogue — an engine's output set is the engine's — and is written by hand.
+file card ([`web/results.md`](?doc=web/results.md) § 3b). § 5.4 is rendered the
+same way from `runfiles.ENGINE_FILES`: not what an engine writes — that is the
+engine's, by its version and options — but the engines' files molbuilder names,
+reads or carries ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2).
 
 **Names.** A run file is `<label>[_<stage>]<role>`, composed by
 `runfiles.compose` and read back by `runfiles.parse` with its run's label
@@ -1149,7 +1151,7 @@ pair's sidecar, never in a file of its own
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template_file.template_path` | `template_file.of` | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes -- each naming it with `template_file.template_filename`; `jobset migrate`, over the file `template_file.of` found | `template_file.of` | source |
 | `<label>.source.xyz` | the structure the calculation is of | the hand-over and `molbuilder describe` (`StructureCodec.source_files`) | `jobset.rung.structure_for` | input |
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `molbuilder describe` (`StructureCodec.source_files`) | `jobset.rung.structure_for` | input |
 | `<label>.transport.json` *(transport)* | the transport results, summarised by `summarize task` from the transmission points that ran | `jobset summarize task` (`transport.record.write_record`) | `parse.sidecars.transport.TransportRecordFileParser` | result |
@@ -1166,7 +1168,7 @@ pair's sidecar, never in a file of its own
 | `prepared-with.json` | what each prepared stage was prepared with — its settings, points and run card, merged per stage — which `status` compares with its records now | prep (`jobset.prepared_with.record`) | `jobset.prepared_with.changes` | record |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
 | `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
-| `<species>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | `molbuilder describe --psml-lib`, loose at the calculation root; the first prep moves them into `pseudos/` (`siesta.seam.pseudo_dir`), and `materialize` copies one beside each deck | `pseudos.psml_sources` | input |
+| `<species>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | `molbuilder describe --psml-lib`, loose at the calculation root; the first prep moves them into `pseudos/` (`siesta.seam.pseudo_dir`) -- a transport calculation's first prep copies those of the run it cites, or of the calculation it extends (`transport.rung.provide_pseudos`, `transport.reuse.carry_pseudos`) -- and `materialize` copies one beside each deck | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.recorded_junction` | derived |
 | `junction.molstruct.json` *(transport)* | its cell, its region labels and the citation's record | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.recorded_junction` | derived |
 | `junction.cited.fdf` *(transport)* — only: a run is cited | the deck the junction was cited from, as it was | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
@@ -1187,7 +1189,7 @@ pair's sidecar, never in a file of its own
 | `<base>.py` *(PySCF)* | the PySCF script this rung runs | prep (`script_emit.prepare_deck`), in the stage's folder; a copy in each run | `runfiles.find_by_role` | derived |
 | `<base>.validation.txt` | what the generator checked before it wrote the deck | prep (`script_emit.write_validation_report`), beside the deck | `runs.Run.report` | record |
 | `<base>.run.sh` | the run script — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each run | none | derived |
-| `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each run | none | derived |
+| `<base>.sbatch` — only: a machine with a queue, no `--no-sbatch`, and a stage run once -- a run of points is sent by its walk's header | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each run | none | derived |
 | `coordinates.fdf` *(SIESTA, vibration)* | the coordinate rows of one SIESTA call, which the deck beside it reads as its AtomicCoordinatesAndAtomicSpecies block -- the structure's beside each phase's deck, a call's own in its folder | prep, beside each phase's deck (`siesta.deck_lines.coordinates_text`); the run's own python for each call (`spectra.siesta_vibration`, the plan verb) | `parse.fdf.read_deck` | derived |
 | `calcdir.json` | what this folder is in its calculation — a container, a run, a run's scratch folder, or a transmission point's shared energies — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's run, a bias point's, a benchmark trial's, and the containers above each -- `naming.open_container`, a submission's `launch/`, `pseudos/` and a point's folder below its stage, and `materialize.open_scratch`, a device run's `tsgf/`; and `transport.reuse`, a transmission point's `shared/`) | `calcdirs.where` | record |
 | `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each run | none | derived |
@@ -1221,11 +1223,11 @@ a copy of each stage file it reads.
 | `<base>.monitor.log` | the monitor's rolling status | the monitor | `parse.instruments.monitor.MonitorLogFileParser` | record |
 | `<base>.util.csv` | processor and memory samples taken while it ran | the monitor | `parse.instruments.util_csv.UtilCsvFileParser` | record |
 | `<base>.scf-timing.log` *(SIESTA)* — only: the engine printed an SCF iteration | wall time per SCF iteration — on a TranSIESTA device, both its SCF loops (SIESTA's, then TranSIESTA's) | the run script's tee of the output's SCF lines | `parse.instruments.scf_timing_rows.timing_of` | record |
-| `<base>.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | molbuilder's log of reading the run's output | molbuilder's parser, reading the output (`parse._log.ParseLogger`) | none | record |
+| `<base>.parse.log` — only: `MOLBUILDER_PARSE_LOG` set, beside a file whose name the catalogue reads back | molbuilder's log of reading the run's output | molbuilder's parser, reading the output (`parse._log.ParseLogger`) | none | record |
 | `<base>.molwatch.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
 | `<label>.<tbt>.digest.nc` *(transport)* — only: its data file read | a transmission point's data file, read once: its device DOS per orbital averaged over the k-points, what the file states of its geometry and electrodes, and TBtrans's own k-averaged quantities -- every variable with its units (NetCDF-4) | the SIESTA family's parser (`parse.engines.tbtrans_nc`), on the person's word: the Results tab's DOS tab, `jobset summarize task` | `parse.engines.tbtrans_nc.kept` | derived |
 | `<base>.concluded` | the marker the run script writes when the job ends | the run script, its last act; or its exit trap, when the script fails on its own before it | `runrecord.ending` | record |
-| `<base>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
+| `<base>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it -- one per run | `molbuilder runtime-info`, in the folder of the file it reads | none | record |
 | `run.json` | the launch record: how, where and when the run was sent, and what it continued from | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
 | `notified.json` | the run's notification record: every event sent for the run -- start, a step, the periodic report, its wall near, a milestone, a failed part and its reason, finish -- and when | `mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps, `runrecord.note_notified`); a member monitor, for every event it sends (`monitor`) | `runrecord.read_notified` | record |
 | `.continued-from` — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a point's start (a walked point's, a planned point's), a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes; a planner's own step for each point it plans | `runrecord.read_continued_from` | record |
@@ -1233,29 +1235,99 @@ a copy of each stage file it reads.
 | `.copied-from` *(transport)* — only: a transport calculation that reuses a finished one | the finished calculation's run, or point, this one is a copy of, tree-relative | prep, copying a group in from the finished calculation it reuses (`transport.reuse.copy_in`), before the run's launch record; a rung of points' first launch, in each point it takes over (`transport.reuse.take_into`) and each point's `shared/`, written last (`transport.reuse.shared_into`) -- through `runrecord.write_copied_from` | `runrecord.read_copied_from` | record |
 | `<scheduler>.<jobid>.out` — only: launched to a queue | the scheduler's own stdout for the job | the scheduler, as the run's header asks (its kind's `stdout`, `scheduler/kinds.toml`) | none | record |
 | `<scheduler>.<jobid>.err` — only: launched to a queue | the scheduler's own stderr for the job | the scheduler, as the run's header asks (its kind's `stderr`, `scheduler/kinds.toml`) | none | record |
-| `.mb-rank-launch-<pid>.sh` — only: a GPU run | the per-rank GPU launcher | the run script, removed when it exits | none | transient |
+| `.mb-rank-launch-<pid>.sh` — only: a GPU run with ranks | the per-rank GPU launcher | the run script, removed when it exits | none | transient |
 <!-- /manifest -->
 
 ### 5.4 What the engines write
 
-None of these is ours to name. SIESTA names its files by `SystemLabel`, so they
-carry no stage — one set in each run, its history among them. PySCF writes
-nothing its deck does not name (§ 5.3).
+The engine names these, but for the few a deck of ours names for it (a lead's
+Green's functions, geomeTRIC's scratch prefix). SIESTA names its files by
+`SystemLabel`, so they carry no stage — one set in each run, its history among
+them. PySCF writes
+nothing its deck does not name (§ 5.3). The rows are the engines' files
+molbuilder names, reads or carries — `runfiles.ENGINE_FILES` — and never all
+an engine writes.
 
-| | SIESTA's files | the door |
-|---|---|---|
-| **read** | `<label>.XV` | the registry's `SiestaXVFileParser` (`read_xv_with_cell`) — the Results tab, the transport citation, `xv2xyz` |
-| | `<label>.xyz` | `StructureCodec.load`, the box from the run's own deck (`runs.declared`, [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) |
-| | `fdf.<stamp>.log` | the run record's setup, paired with the `.out` by its stamp (`parse.dirs.record`) |
-| | `<label>.ORB_INDX` | the transport record's PDOS, at the device point the transmission gathered (`transport.record`, through the run door's `Run.on_label`) |
-| | `<label>.FC` *(vibration)* | the force constants, read by the job's finish (`parse.engines.siesta_fc`; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
-| | `<label>.EPSIMG` *(an optical call)* | the call's dielectric function, read by the job's Raman step (`parse.engines.siesta_epsimg`; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |
-| | every row of `siesta/warm-files.toml` — `.XV`, `.DM`, `.LWF`, `.ZM`, `.BONDS`, `.PARTIAL`, `.EIG`, `.HSX`, `.WFSX`, `.STRUCT_NEXT_ITER`; `.CG`; `.TSHS`, `.TSDE`; `.FC`, `.FCC`; `.EPSIMG` | for presence: which engine a folder holds (`parse.contract.engine_of`), and the run script's restart line |
-| **carried** | `.XV`, `.DM`; `.CG` between stages of one optimiser; a device's `.TSDE` when it continues | `warmfiles.warm_list` (§ 2.3.4) |
-| **the run's history** | `<label>.MD.nc`, `.MD`, `.MDE`, `.ANI` — SIESTA's own names, the run's alone: no hand-over copies a history into a new run | the registry's readers, with the run's output |
-| **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending` reads the marker), `MESSAGES`, `<El>.ion`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS_FINAL`, `.FA`, `.FAC`, `.KP`, `.MD_CAR`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | — |
-| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (`transport.stages`) — never carried by a continuation; the device's `<label>.TSDE`, handed along a bias sweep from point to point (the transport section's `along`); a transmission point's `<label>.TBT.nc` and its k-averaged text files (`.TBT.AVTRANS_<pair>`, `.AVTEIG_<pair>`, `.AVDOS`, `.AVADOS_<lead>`, `.AVBDOS_<lead>`) | the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e), for `transport.record` — a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files too |
-| **the engine's scratch** | the device's leads' surface Green's functions, `<NN>_device/run-<n>/tsgf/<label>.<v>.TSGFL` and `.TSGFR` — recomputed by every run, emptied by the walk as each round begins and when it ends; an optical call's `<label>.contrib.EPSIMG`, beside the call's own files. Each is never carried and never taken over, in neither store of the saved history, and removed by a restore ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11, S1) | `warmfiles.is_scratch`, the one answer; `materialize.scratch_in` and `runstatus.scratch_answer` — `jobset scratch`, which lists them and with `--empty` removes what no running run keeps; `transport.gf_files.status_line`, the device row of `jobset status` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
+<!-- manifest:engines -->
+| file | what it is | the restart list | the door |
+|---|---|---|---|
+| `<label>.XV` *(SIESTA)* | the geometry and velocities SIESTA saves at every step -- what a continued run starts from | carried | `parse.coords.siesta_xv.SiestaXVFileParser` |
+| `<label>.DM` *(SIESTA)* | the density matrix -- a continued run's start | carried | none |
+| `<label>.CG` *(SIESTA)* | the conjugate-gradient optimizer's history | carried | none |
+| `<label>.xyz` *(SIESTA)* | the geometry, as SIESTA writes it for a viewer (`WriteCoorXmol`), read as any structure file with the box from the run's own deck | — | `workingcopy_structure.StructureCodec.load` |
+| `fdf.<stamp>.log` *(SIESTA)* | every setting SIESTA read, and the value it used | — | `parse.engines.siesta_fdflog.SiestaFdfLogParser` |
+| `<label>.ORB_INDX` *(SIESTA)* | the orbitals each atom carries -- what a transmission point's DOS per orbital is grouped by, at the device point the transmission gathered | — | `transport.record.selection_pdos` |
+| `<label>.FC` *(SIESTA)* | a force-constant run's forces at every displacement | listed | `parse.engines.siesta_fc.read_fc` |
+| `<label>.FCC` *(SIESTA)* | the same, for the cell's displacements | listed | none |
+| `<label>.EPSIMG` *(SIESTA)* | an optical call's dielectric function | listed | `parse.engines.siesta_epsimg.SiestaEpsimgFileParser` |
+| `<label>.contrib.EPSIMG` *(SIESTA)* | an optical call's dielectric function by transition -- the engine's scratch | scratch | none |
+| `<label>.MD.nc` *(SIESTA)* | the run's steps, as NetCDF | — | `parse.engines.siesta_mdnc.SiestaMdNcFileParser` |
+| `<label>.MD` *(SIESTA)* | the run's steps | — | none |
+| `<label>.MDE` *(SIESTA)* | the run's steps' energies | — | none |
+| `<label>.ANI` *(SIESTA)* | the run's steps, as an animation | — | none |
+| `<label>.LWF` *(SIESTA)* | localized Wannier functions | listed | none |
+| `<label>.ZM` *(SIESTA)* | the Z-matrix | listed | none |
+| `<label>.BONDS` *(SIESTA)* | the bonds SIESTA found | listed | none |
+| `<label>.PARTIAL` *(SIESTA)* | a partial charge density | listed | none |
+| `<label>.EIG` *(SIESTA)* | the eigenvalues | listed | none |
+| `<label>.HSX` *(SIESTA)* | the Hamiltonian and overlap | listed | none |
+| `<label>.WFSX` *(SIESTA)* | the wavefunctions | listed | none |
+| `<label>.STRUCT_NEXT_ITER` *(SIESTA)* | the next step's structure | listed | none |
+| `<label>.TSHS` *(SIESTA)* | an electrode's Hamiltonian and overlap -- gathered into the rungs after it | listed | none |
+| `<label>.TS.HSX` *(SIESTA)* | the device's Hamiltonian and overlap -- read by TBtrans through the deck's `TBT.HS` line | — | none |
+| `<label>.TSDE` *(SIESTA)* | the device's NEGF density -- handed along a bias sweep | carried | none |
+| `<label>.<bias>.TSGF<lead>` *(SIESTA)* | a lead's surface Green's function at a voltage -- the engine's scratch, in the device run's `tsgf/`, its name the deck's (`transport.transiesta.lead_gf_file`) | scratch | none |
+| `<label>.<tbt>.nc` *(SIESTA)* | a transmission point's data file, per spin channel | — | `parse.engines.tbtrans_nc.kept` |
+| `<label>.TBT.CC` *(SIESTA)* | the energy contour TBtrans integrates on (`m_tbt_contour.F90`) | — | none |
+| `<label>.<tbt>.DOS` *(SIESTA)* | the device's DOS at each k-point, per spin channel (`m_tbt_save.F90`) | — | none |
+| `<label>.<tbt>.AVTRANS_<pair>` *(SIESTA)* | its transmission, averaged over the k-points | — | `parse.engines.tbtrans.read_averaged` |
+| `<label>.<tbt>.AVTEIG_<pair>` *(SIESTA)* | its eigenchannels, averaged over the k-points | — | `parse.engines.tbtrans.read_averaged` |
+| `<label>.<tbt>.AVDOS` *(SIESTA)* | the device's DOS, averaged over the k-points | — | `parse.engines.tbtrans.read_averaged` |
+| `<label>.<tbt>.AVADOS_<lead>` *(SIESTA)* | a lead's spectral DOS, averaged over the k-points | — | `parse.engines.tbtrans.read_averaged` |
+| `<label>.<tbt>.AVBDOS_<lead>` *(SIESTA)* | a lead's bulk DOS, averaged over the k-points | — | `parse.engines.tbtrans.read_averaged` |
+| `0_NORMAL_EXIT` *(SIESTA)* | SIESTA's own end mark -- the engine ended, not the job: the run's end is the conclusion marker's (`runrecord.ending`) | — | none |
+| `MESSAGES` *(SIESTA)* | SIESTA's warnings | — | none |
+| `CLOCK` *(SIESTA)* | SIESTA's own timings | — | none |
+| `FORCE_STRESS` *(SIESTA)* | the last step's forces and stress | — | none |
+| `BASIS_ENTHALPY` *(SIESTA)* | the basis enthalpy | — | none |
+| `BASIS_HARRIS_ENTHALPY` *(SIESTA)* | the basis Harris enthalpy | — | none |
+| `OUTVARS.yml` *(SIESTA)* | SIESTA's final values | — | none |
+| `PARALLEL_DIST` *(SIESTA)* | how the work was spread over the ranks | — | none |
+| `NON_TRIMMED_KP_LIST` *(SIESTA)* | every k-point before symmetry trimmed them | — | none |
+| `<species>.ion` *(SIESTA)* | a species' basis, as SIESTA built it | — | none |
+| `<species>.ion.nc` *(SIESTA)* | the same, as NetCDF | — | none |
+| `<species>.ion.xml` *(SIESTA)* | the same, as XML | — | none |
+| `<label>.alloc` *(SIESTA)* | SIESTA's memory use | — | none |
+| `<label>.bib` *(SIESTA)* | what to cite | — | none |
+| `<label>.BASIS_ENTHALPY` *(SIESTA)* | the basis enthalpy, on the label | — | none |
+| `<label>.BONDS_FINAL` *(SIESTA)* | the last step's bonds | — | none |
+| `<label>.FA` *(SIESTA)* | the last step's forces | — | none |
+| `<label>.FAC` *(SIESTA)* | the constrained forces | — | none |
+| `<label>.KP` *(SIESTA)* | the k-points | — | none |
+| `<label>.MD_CAR` *(SIESTA)* | the steps, in VASP's format | — | none |
+| `<label>.STRUCT_OUT` *(SIESTA)* | the last step's structure | — | none |
+| `<label>.chk` *(PySCF)* | the checkpoint: the converged density and the molecule -- read back by the deck itself | carried | none |
+| `<label>_optimized.xyz` *(PySCF)* | a relaxation's final geometry -- what a continued run starts from | carried | `parse.coords.pyscf_geom.PySCFGeomFileParser` |
+| `<label>.cube` *(PySCF)* | a volume grid -- a density or an orbital -- PySCF's `cubegen` writes when a script asks; molbuilder's decks ask none | — | none |
+| `<base>_geom.tmp` *(PySCF)* | geomeTRIC's scratch folder, under the prefix the deck hands it -- made empty, never read back | — | none |
+<!-- /manifest -->
+
+**Which of them carry, and when, is the engine's restart-file list's**
+(`warmfiles.warm_list`, [`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 4.2a; § 2.3.4 here): `.XV` and `.DM`, `.CG` between stages of one optimiser, a
+device's `.TSDE` handed along a bias sweep; an electrode's `.TSHS` and the
+device's `.TS.HSX` are gathered into the rungs after them, never carried by a
+continuation (`transport.stages`). **The engine's scratch** — a lead's Green's
+functions in a device run's `tsgf/`, an optical call's `.contrib.EPSIMG` — is
+recomputed by every run, emptied by the walk as each round begins and when it
+ends, never carried or taken over, kept in neither store of the saved history
+and removed by a restore ([`checkpointing.md`](?doc=execution/checkpointing.md)
+§ 11, S1): `warmfiles.is_scratch`, the one answer, which `jobset scratch` and
+the device row of `jobset status` ask
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). A file read by
+nothing of ours is listed so that nothing guesses at it: SIESTA's own
+`0_NORMAL_EXIT` says the engine ended, never the job — the run's end is the
+conclusion marker's (`runrecord.ending`).
 
 ### 5.5 Benchmarks and launch groups
 
@@ -1296,8 +1368,8 @@ Each is removed when its write ends; only a kill in between leaves one.
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
 | `<label>.<tbt>.digest.nc.reading` *(transport)* — only: while its data file is read | the claim of a data file's reading under way: who reads, since when, how far -- one reading of a file at a time | the SIESTA family's parser, removed when its reading ends | `parse.engines.tbtrans_nc.kept_state` | transient |
-| `<random>.tmp` | a file being written; it replaces its target when the write ends | `persist` and the codec, writing whole or not at all | none | transient |
-| `<random>.lock` | a sidecar's lock | `sidecars.molstruct.with_lock` | none | transient |
+| `<target>.<random>.tmp` | a file being written; it replaces its target when the write ends | `persist` and the codec, writing whole or not at all | none | transient |
+| `<target>.lock` | a sidecar's lock | `sidecars.molstruct.with_lock` | none | transient |
 <!-- /manifest -->
 
 ---

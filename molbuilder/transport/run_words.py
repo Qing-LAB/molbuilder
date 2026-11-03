@@ -258,8 +258,10 @@ _SAID = {SCF: _ScfSays, PRODUCT: _ProductSays}
 
 #: WHAT TRAVELS WITH THESE WORDS beside the job, in its bundle
 #: (`runwrap.monitor_companions`): a round's conductance at E_F by the
-#: record's own rule, and a transmission point's energies joined.
+#: record's own rule, a transmission point's energies joined, and TBtrans's
+#: k-averaged files read.
 TRAVELS_WITH = ("molbuilder.transport.conductance",
-                "molbuilder.transport.energies")
+                "molbuilder.transport.energies",
+                "molbuilder.parse.engines.tbtrans")
 
 __all__ = ["SCF", "PRODUCT", "count_words", "round_outcome", "point_fact"]

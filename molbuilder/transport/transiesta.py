@@ -32,16 +32,17 @@ from .sort import (
     REGION_RIGHT_ELECTRODE,
 )
 from ..engine_atom_index import siesta_numbering, siesta_numbering_from_end
-from ..parse.engines import siesta_grammar as _G
 from ..identity import electrode_hs_stem
-from ..runfiles import compose
+from ..runfiles import OUR_LEADS, SIESTA_TSGF, SIESTA_TSHS, compose
 from ..structure import Structure
 
 
 #: Each lead's TranSIESTA name, the ``<name>`` of its ``%block
 #: TS.Elec.<name>``.  TranSIESTA takes any string there; these are the two
-#: the decks have always carried.
-_BLOCK_NAME = {REGION_LEFT_ELECTRODE: "L", REGION_RIGHT_ELECTRODE: "R"}
+#: the decks have always carried, the file catalogue's (`runfiles.OUR_LEADS`,
+#: left then right), which names a lead's files in a run of ours by them.
+_BLOCK_NAME = dict(zip((REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE),
+                       OUR_LEADS))
 
 #: THE TWO LEADS as TBtrans names them -- the ``TS.Elecs`` blocks, in
 #: `sort.ELECTRODE_LABELS`' order: what its outputs key each lead by.
@@ -73,7 +74,8 @@ def lead_gf_file(job_name: str, volts: float, lead: str) -> str:
     name (`LEAD_NAMES`); ``volts`` the deck's ``bias_voltage_v``, the
     point's (`transport.rung.at_point`)."""
     from ..task import bias_token
-    return f"{job_name}.{bias_token(float(volts))}.TSGF{lead}"
+    return compose(job_name, SIESTA_TSGF, bias=bias_token(float(volts)),
+                   lead=lead)
 
 
 #: TranSIESTA's floor: the continued-fraction branch stops a run whose
@@ -452,7 +454,7 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
         # THE ELECTRODE'S FILE, as the catalogue composes the name the
         # gather brings (`stages.stage_inputs`): one spelling.
         lines.append(f"  HS                 "
-                     f"{compose(electrode_hs_stem(cfg.system_label, label), _G.TSHS)}")
+                     f"{compose(electrode_hs_stem(cfg.system_label, label), SIESTA_TSHS)}")
         lines.append(f"  chem-pot           {cp}")
         lines.append(f"  used-atoms         {len(idxs)}")
         # ALWAYS, because the manual lists it among the four lines a

@@ -389,6 +389,30 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
                 f"{path}: section(s) {', '.join(stray)} name no kind "
                 f"{engine} runs and no role of one (the kind table: "
                 f"{', '.join(sorted(known))}) -- a section nothing asks.")
+        # EVERY FILE THE SHIPPED LIST NAMES IS ONE MOLBUILDER NAMES
+        # (`job-contracts.md` § 2.2: `runfiles.ENGINE_FILES`) -- a row by
+        # its role; a scratch family by the one engine row whose names it
+        # takes in (a lead's Green's functions at every voltage), and no
+        # other file's.  A calculation's own copy may add a file a new
+        # engine build writes; molbuilder's does not without its row.
+        from .runfiles import engine_roles, rows_ending_with
+        ours = engine_roles(engine)
+        unnamed = sorted({r.suffix for _, rows in sections for r in rows
+                          if r.suffix not in ours})
+        if unnamed:
+            raise WarmFilesError(
+                f"{path}: {', '.join(unnamed)} -- no file of "
+                f"`runfiles.ENGINE_FILES` for {engine}: a file molbuilder's "
+                f"own list carries is one it names, a row there first.")
+        for _, sfxs in scratch:
+            for sfx in sfxs:
+                took = rows_ending_with(sfx)
+                if len(took) != 1 or took[0] not in ours:
+                    raise WarmFilesError(
+                        f"{path}: scratch {sfx!r} takes in the names of "
+                        f"{', '.join(took) or 'no file'} -- a scratch family "
+                        f"is the names of one {engine} file of "
+                        f"`runfiles.ENGINE_FILES` and of no other file.")
     return WarmFilesDoc(engine=engine, sections=tuple(sections),
                         path=str(path), resumes=tuple(resumes),
                         along=tuple(along), scratch=tuple(scratch),

@@ -255,8 +255,9 @@ and it holds two keys and nothing else (`runtime_config._validate_checkpoint`):
   moving it changes where a file is kept, never whether it is kept (§ 2.1).
 - **`engines`** — per engine, the globs of families that are always large.
   Shipped: `generic` (none — every file is measured), `siesta` (`*.DM`, `*.HSX`,
-  `*.TSHS`, `*.TBT.AVTRANS_*`, `*.TBT.CC`, `*.TBT.DOS`) and `pyscf` (`*.chk`,
-  `*.cube`). An entry `molbuilder.json` names replaces the shipped entry of that
+  `*.TSHS`, `*.*.AVTRANS_*`, `*.TBT.CC`, `*.*.DOS`) and `pyscf` (`*.chk`,
+  `*.cube`) — each the family of an engine file the catalogue names
+  (`runfiles.ENGINE_FILES`, `runfiles.family`), every spin channel's. An entry `molbuilder.json` names replaces the shipped entry of that
   name; a new name adds an engine. Each glob matches a file's *name*: a pattern
   holding `/` is refused, since git would read it as a path the size check never
   matches, and that file would be in no store.

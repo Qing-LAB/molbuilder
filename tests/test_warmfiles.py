@@ -180,6 +180,45 @@ def test_a_missing_file_names_the_expected_home():
         W.warm_list("no_such_engine")
 
 
+@pytest.mark.parametrize("whose,edit,refused", [
+    ("molbuilder's", ("", '\n[[base.file]]\nsuffix = ".NOPE"\n'),
+     r"\.NOPE -- no file of `runfiles\.ENGINE_FILES` for siesta"),
+    ("molbuilder's", ('scratch = [".TSGFL", ".TSGFR"]',
+                      'scratch = [".TSGFL", ".TSGFR", ".nc"]'),
+     r"scratch '\.nc' takes in the names of \.spectra\.nc"),
+    ("molbuilder's", ('scratch = [".TSGFL", ".TSGFR"]',
+                      'scratch = [".TSGFL", ".TSGFR", ".chk"]'),
+     r"scratch '\.chk' takes in the names of \.chk -- a scratch family is "
+     r"the names of one siesta file"),
+    ("the calculation's own", ("", '\n[[base.file]]\nsuffix = ".NOPE"\n'),
+     None),
+], ids=["a-row-no-engine-file-names", "a-scratch-family-of-other-files",
+        "a-scratch-family-of-another-engines-file",
+        "a-calculations-own-copy"])
+def test_a_file_molbuilder_carries_is_one_its_catalogue_names(
+        whose, edit, refused, tmp_path, monkeypatch):
+    """`job-contracts.md` § 2.2: every file molbuilder's own restart-file
+    list carries is an engine file of `runfiles.ENGINE_FILES`, and each
+    scratch suffix takes in the names of one such file and of no other; a
+    calculation's own copy may name one a newer engine build writes.  THE
+    SILENT FAILURE: molbuilder's list carrying a file its catalogue does
+    not name -- absent from the table of engine files (`project-layout.md`
+    § 5.4) and from every name check -- or a scratch family (``*.nc``)
+    that takes in a run's results, which the checkpoint then never saves
+    and `jobset scratch` empties."""
+    shipped = W._rules_path("siesta").read_text()
+    old, new = edit
+    assert not old or shipped.count(old) == 1
+    text = shipped.replace(old, new) if old else shipped + new
+    if whose == "molbuilder's":
+        _write_rules(tmp_path, monkeypatch, text)
+        with pytest.raises(W.WarmFilesError, match=refused):
+            W.warm_list("siesta")
+    else:
+        W.path_of(tmp_path).write_text(text)
+        assert ".NOPE" in W.warm_list("siesta", base=tmp_path).suffixes
+
+
 # --------------------------------------------------------------------- #
 #  The two files that must name the same keywords                       #
 # --------------------------------------------------------------------- #
@@ -223,3 +262,21 @@ def test_the_restart_group_object_is_not_a_second_declaration():
     from molbuilder.script_emit import parameter
     assert tuple(SIESTA_RESTART_GROUP.keys) == parameter("restart",
                                                          "siesta").writes
+
+
+@pytest.mark.parametrize("role,said", [
+    (".XV", "carried"), (".LWF", "listed"), (".contrib.EPSIMG", "scratch"),
+    (".{bias}.TSGF{lead}", "scratch"), (".{tbt}.nc", ""),
+], ids=["carried", "listed", "the-engines-scratch", "a-templated-scratch",
+        "a-templated-file-the-list-does-not-name"])
+def test_the_contracts_restart_column_is_the_lists_own_answer(role, said):
+    """`project-layout.md` § 5.4's restart-list column, which
+    `tools.manifest` renders: each engine file as the engine's restart-file
+    list says -- the engine's scratch where `is_scratch` says so of a name
+    the row makes for a run of ours.  THE SILENT FAILURE: the rendered
+    contract calling TBtrans's data files scratch, a second answer beside
+    `is_scratch`'s, which a person reads to decide what to delete."""
+    from molbuilder.runfiles import ENGINE_FILES
+    from tools.manifest import _carried
+    (row,) = [e for e in ENGINE_FILES if e.role == role]
+    assert _carried(row) == said

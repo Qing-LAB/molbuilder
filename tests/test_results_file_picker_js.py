@@ -467,11 +467,11 @@ class TestAbsorbSatellites:
             # ...AND THE PARSER THAT CLAIMS IT, the registry's own name, as
             # `runs.file_row` asks `parse.registry.detect` of a real file:
             # the inspector claims and absorbs by it (`presenters.md` § 2).
-            from molbuilder.runfiles import (ROLE_GEOM_TRAJ, ROLE_INITIAL,
-                                             ROLE_MOLWATCH, ROLE_OPTIMIZED)
+            from molbuilder.runfiles import (PYSCF_OPTIMIZED, ROLE_GEOM_TRAJ,
+                                             ROLE_INITIAL, ROLE_MOLWATCH)
             parser = ({ROLE_MOLWATCH: "molwatch", ROLE_GEOM_TRAJ: "pyscf",
                        ROLE_INITIAL: "pyscf-geom",
-                       ROLE_OPTIMIZED: "pyscf-geom"}.get(rec.role)
+                       PYSCF_OPTIMIZED: "pyscf-geom"}.get(rec.role)
                       if rec else None)
             rows.append({"name": name, "path": p, "mtime": 1000,
                          "role": rec.role if rec else None,

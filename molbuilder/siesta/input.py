@@ -20,7 +20,10 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..runfiles import VIBRATION_BUNDLE, RunNames, compose as _rf
+from ..runfiles import (COORDINATES_FILE, MAKOV_PAYNE_SCRIPT, ROLE_SIESTA_OUT,
+                        SIESTA_BASIS_ENTHALPY, SIESTA_CG, SIESTA_DM, SIESTA_XV,
+                        VIBRATION_BUNDLE, RunNames, compose as _rf,
+                        deck_role)
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
@@ -1021,8 +1024,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # THE STAGE'S NAMES NAME THEM (`runfiles.RunNames`): the deck, its
         # wrapper; and the output a person's own `mpirun` writes, the
         # stage's `.out`.
-        _fdf_name  = names.name(".fdf")
-        _out_name  = names.name(".out")
+        _fdf_name  = names.name(deck_role("siesta"))
+        _out_name  = names.name(ROLE_SIESTA_OUT)
         if cfg.verbose_comments:
             out.append("# === Run with ===")
             # The stage by its NAME, through `command_stage`: the token
@@ -1083,8 +1086,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # ``restart``'s.
             if _vibration and part != _vib_deck.RELAX_PART:
                 out.append(
-                    "# This call reads the density (.DM) it finds and "
-                    "never the geometry (.XV): it")
+                    f"# This call reads the density ({SIESTA_DM}) it finds "
+                    f"and never the geometry ({SIESTA_XV}): it")
                 out.append(
                     "# starts from its own coordinates file (its "
                     "restart keys, below).")
@@ -1096,8 +1099,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 # default -- and a launch again, warm, those of its own latest
                 # run.
                 out.append(
-                    "# This stage CONTINUES: SIESTA reads any .XV / .DM "
-                    "under the same SystemLabel in the")
+                    f"# This stage CONTINUES: SIESTA reads any {SIESTA_XV} / "
+                    f"{SIESTA_DM} under the same SystemLabel in the")
                 out.append(
                     "# folder it runs in -- its first launch copies in "
                     "those of the run it continues from")
@@ -1107,7 +1110,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             else:
                 out.append(
                     "# This stage starts CLEAN: the restart group below is "
-                    "'.false.', so any .XV / .DM in this")
+                    f"'.false.', so any {SIESTA_XV} / {SIESTA_DM} in this")
                 out.append(
                     "# directory is left unread and the run starts from the "
                     "coordinates in this file.")
@@ -1131,7 +1134,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append(
                 # NO STAGE TOKEN.  SIESTA names this one itself, from the
                 # unsuffixed `SystemLabel` (above).
-                f"# — read {_rf(cfg.system_label, '.BASIS_ENTHALPY')} "
+                f"# — read {_rf(cfg.system_label, SIESTA_BASIS_ENTHALPY)} "
                 "in any post-processing.")
             out.append("")
 
@@ -1187,7 +1190,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # include): the structure's as prep wrote them, a call's own
             # where its python wrote them (the relaxed geometry, a displaced
             # frame) -- one deck for every call of a phase.
-            from ..runfiles import COORDINATES_FILE
             if cfg.verbose_comments:
                 out.append("# The rows are read from the file beside this "
                            "deck: the structure's as prep wrote them, or")
@@ -1312,9 +1314,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# Start from: the converged density under this SystemLabel is",
                 "# read when present -- the seed the run's walk copied in from",
                 "# the call before (the relaxation's, or the force-constant",
-                "# run's reference density).  The geometry (.XV) is NEVER read:",
+                "# run's reference density).  The geometry "
+                f"({SIESTA_XV}) is NEVER read:",
                 "# a force-constant run writes its last displacement there, and",
-                "# this call's geometry is its coordinates.fdf.",
+                f"# this call's geometry is its {COORDINATES_FILE}.",
                 "# Fixed by the kind -- the description's `restart` is not",
                 "# consulted here.",
             ]
@@ -1332,12 +1335,16 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         if v: out += [
             "",
             "# Start from: whether this run reads the state a previous one left",
-            "# under the same SystemLabel -- the geometry (.XV), the converged",
-            "# density (.DM) and, for a relaxation, the optimizer's own history",
-            "# (.CG).  One field decides all of them, `restart`",
+            "# under the same SystemLabel -- the geometry "
+            f"({SIESTA_XV}), the converged",
+            f"# density ({SIESTA_DM}) and, for a relaxation, the optimizer's "
+            "own history",
+            f"# ({SIESTA_CG}).  One field decides all of them, `restart`",
             "# (run-identity.md § 4), and every member is written either way:",
-            "# SIESTA reads a .DM it finds unless told .false., and an .XV or",
-            "# .CG only when told .true., so the deck states each answer.",
+            f"# SIESTA reads a {SIESTA_DM} it finds unless told .false., and "
+            f"an {SIESTA_XV} or",
+            f"# {SIESTA_CG} only when told .true., so the deck states each "
+            "answer.",
             f"# This run: {'continue' if continues(cfg) else 'clean'}.",
         ]
         out += _restart_group_lines(cfg)
@@ -1413,7 +1420,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                     out.append(f"#   Spin.Total {float(sc.spin):.1f}   {sc.label}")
             out += [
                 "#",
-                "# Workflow: one calculation per count (so .XV / .DM do not",
+                f"# Workflow: one calculation per count (so {SIESTA_XV} / "
+                f"{SIESTA_DM} do not",
                 "# stomp), compare the converged E_KS values, and verify the",
                 "# winner against Mossbauer / EPR / UV-Vis data -- the",
                 "# calculated minimum and the experimental ground state do not",
@@ -1461,9 +1469,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# E_KS (madelung.f).  Otherwise it prints \"Energy correction",
                 "# terms can not be applied\" and adds nothing.",
                 "#",
-                "# molbuilder emits ``makov_payne_correction.py`` next to",
+                f"# molbuilder emits ``{MAKOV_PAYNE_SCRIPT}`` next to",
                 "# this FDF.  After SIESTA finishes, run:",
-                "#     python3 makov_payne_correction.py",
+                f"#     python3 {MAKOV_PAYNE_SCRIPT}",
                 "# It reads `siesta: Emadel` first and adds only what SIESTA",
                 "# did not: nothing when SIESTA applied the term, and",
                 "# DeltaE_MP for the final lattice vectors when it did not.",

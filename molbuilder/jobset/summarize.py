@@ -85,6 +85,7 @@ def parse_point(label: str, run, device: str,
     # (`parse.md` § 5c).
     from molbuilder.parse import parse as _parse
     from molbuilder.parse.instruments import utilisation as _utilisation
+    from ..runfiles import ROLE_MONITOR_LOG, ROLE_UTIL_CSV
 
     def _metrics(path):
         """A registered parser's metrics, or ``{}``.
@@ -114,7 +115,7 @@ def parse_point(label: str, run, device: str,
                if run is not None else None)
     metrics.update(timing_of(_timing))
 
-    _mon = _metrics(run.file(".monitor.log") if run is not None else None)
+    _mon = _metrics(run.file(ROLE_MONITOR_LOG) if run is not None else None)
     bound = _mon.get("bound")
     machine: Dict = _mon.get("machine") or {}
 
@@ -122,7 +123,7 @@ def parse_point(label: str, run, device: str,
     # otherwise -- ONE resolver decides, so the two sources cannot
     # disagree here (`parse/instruments/utilisation.py` owns the why;
     # user ruling 2026-09-03).
-    util = run.file(".util.csv") if run is not None else None
+    util = run.file(ROLE_UTIL_CSV) if run is not None else None
     if util is not None:
         metrics.update(_utilisation(_mon, _metrics(util)))
 
@@ -367,6 +368,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     """
     if not res.choice.get("label"):
         return None
+    from ..runfiles import JOB_REQUEST_FILE
     choice = res.choice
     knobs = choice["knobs"]
     mech = choice.get("mechanism") or {}
@@ -421,13 +423,14 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
         out += [""]
 
     if block:
-        out += ["To run at it, put this in job-request.json and save:", ""]
+        out += [f"To run at it, put this in {JOB_REQUEST_FILE} and save:", ""]
         import json as _json
         body = _json.dumps(block, indent=2, sort_keys=True).split("\n")
         out += ['    "execution": ' + body[0]]
         out += ["    " + ln for ln in body[1:]]
         out += [""]
-    out += ["Until you do, `prep task` launches at what job-request.json states, and",
+    out += [f"Until you do, `prep task` launches at what {JOB_REQUEST_FILE} "
+            "states, and",
             "refuses a launch value it states nowhere (architecture.md 5.2) --",
             "a benchmark does not steer a run.",
             ""]
@@ -566,6 +569,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
     # the report says what, and nothing applies it for you (`job-system.md`
     # § 7).
     if res.choice.get("label"):
+        from ..runfiles import JOB_REQUEST_FILE
         stage_word = stage or "<stage>"
         # THE REPORT ITSELF, here on stdout: you asked the question, so the
         # answer belongs in the answer.
@@ -575,7 +579,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
             lines.append("")
         lines.append("  next:")
         lines.append(f"    1. put the `execution` block above in "
-                     f"job-request.json, as stages.{stage_word}.execution or "
+                     f"{JOB_REQUEST_FILE}, as stages.{stage_word}.execution or "
                      f"calculation-wide")
         # THE NEXT STEP IS THE ONE ANSWER'S (`job-system.md`, *The next
         # step*): the stage is then changed since prepared, and its group's

@@ -19,6 +19,7 @@ from typing import Any, Dict, Union
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
+from molbuilder.runfiles import ROLE_SPECTRA, role_of
 from molbuilder.spectra.results import (READABLE_SCHEMA_VERSIONS,
                                         SCHEMA_VERSION, SpectraResults)
 # Canonical home for the exception classes is the write-side
@@ -198,13 +199,12 @@ class SpectraSidecarFileParser(FileParser):
     ``schema = "spectra/v<N>"``."""
 
     name   = "spectra-json"
-    label  = "molbuilder .spectra.json sidecar"
-    hint   = "files ending in .spectra.json"
+    label  = f"molbuilder {ROLE_SPECTRA} sidecar"
+    hint   = f"files ending in {ROLE_SPECTRA}"
     output = SidecarResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        from ...runfiles import ROLE_SPECTRA, role_of
         return role_of(path) == ROLE_SPECTRA and path.is_file()
 
     @classmethod

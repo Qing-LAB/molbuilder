@@ -27,8 +27,7 @@ from ..config.pyscf import PySCFConfig
 # § 4 rule 2's reading of `restart`, shared with SIESTA -- one
 # field, one rule, one place that reads it.
 from ..identity import continues
-from ..runfiles import (compose as _rf, stdout_roles as _stdout_roles,
-                        tail as _rf_tail)
+from ..runfiles import TASK_FILE, deck_role, stdout_roles as _stdout_roles
 from ..structure import Structure
 
 #: THE ROLES THIS SCRIPT WRITES, spelled once (`job-contracts.md` § 2.2a).
@@ -39,9 +38,9 @@ from ..structure import Structure
 #: the other half of the rule.  The role vocabulary still has ONE home, so a
 #: role cannot be respelled in the emitted lines while the header, the
 #: warm-file declaration and the reader all say something else.
-from ..runfiles import (ROLE_CHK, ROLE_CONSTRAINTS, ROLE_GEOM_TRAJ,  # noqa: E402
-                        ROLE_INITIAL, ROLE_MOLWATCH, ROLE_OPTIMIZED,
-                        ROLE_SPECTRA)
+from ..runfiles import (PYSCF_CHK, PYSCF_OPTIMIZED,  # noqa: E402
+                        ROLE_CONSTRAINTS, ROLE_GEOM_TRAJ, ROLE_INITIAL,
+                        ROLE_MOLWATCH, ROLE_SPECTRA)
 from ..runfiles import ROLE_PYSCF_LOG as ROLE_LOG  # noqa: E402
 
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
@@ -56,25 +55,20 @@ from .end_lines import END_MARKER   # noqa: E402
 PYSCF_STDOUT_ROLE = _stdout_roles("pyscf")[0]
 
 #: geomeTRIC does not take a filename -- it takes a PREFIX and appends this
-#: for its trajectory.  Naming the tail is what lets the prefix be DERIVED
-#: from the role rather than assembled next to it.
-GEOMETRIC_APPENDS = "_optim.xyz"
+#: for its trajectory (the catalogue's, `runfiles.GEOMETRIC_APPENDS`).
+#: Naming the tail is what lets the prefix be DERIVED from the role rather
+#: than assembled next to it.
+from ..runfiles import GEOMETRIC_APPENDS  # noqa: E402
 
 
 def run_file_expr(names, role: str) -> str:
     """THE PYTHON EXPRESSION A DECK NAMES ONE OF ITS RUN'S FILES WITH: its
     ``JOB`` and the tail the stage's names give the role
     (`runfiles.RunNames.tail`) -- a file of the run, named once in its
-    run's folder (`project-layout.md` § 1.6.1).
-
-    PySCF's own restart files (``.chk``, ``_optimized.xyz`` --
-    `pyscf/warm-files.toml`, the one vocabulary) are no row of the
-    catalogue: named on the label alone, they carry across rungs
-    (`job-contracts.md` § 2.2a), and the composer's tail for them is the
-    suffix itself (`runfiles.tail`)."""
-    from ..warmfiles import warm_list
-    if role in warm_list("pyscf").suffixes:
-        return f"JOB + {_rf_tail(role)!r}"
+    run's folder (`project-layout.md` § 1.6.1) -- PySCF's own restart
+    files too (``.chk``, ``_optimized.xyz``, rows of
+    `runfiles.ENGINE_FILES`), which their rows name on the label alone, so
+    they carry across rungs (`job-contracts.md` § 2.2a)."""
     return f"JOB + {names.tail(role)!r}"
 
 
@@ -405,7 +399,7 @@ def spec_for(struct: Structure,
         # -- can answer whether to start from it.
         if continues(cfg):
             out.append(f'_opt_path = _mb_outfile('
-                       f'{run_file_expr(names, ROLE_OPTIMIZED)})')
+                       f'{run_file_expr(names, PYSCF_OPTIMIZED)})')
             out.append("if _os.path.exists(_opt_path):")
             out.append("    with open(_opt_path) as _mb_xyz_fh:")
             out.append("        _atom_block = _mb_Structure.from_xyz("
@@ -497,7 +491,7 @@ def spec_for(struct: Structure,
             out += _layout.hard_scf_hint(state)
         if cfg.chkfile:
             out.append(f'mf.chkfile = _mb_outfile('
-                       f'{run_file_expr(names, ROLE_CHK)})')
+                       f'{run_file_expr(names, PYSCF_CHK)})')
             # Continuation: a rung that says ``continue`` starts its SCF from the
             # density the rung before it converged, instead of MINAO / atom.  That
             # turns "full SCF from scratch" into "small refine on top of a
@@ -516,7 +510,7 @@ def spec_for(struct: Structure,
             # at the top of the script.
             if continues(cfg):
                 out.append(f'_chk_path = _mb_outfile('
-                           f'{run_file_expr(names, ROLE_CHK)})')
+                           f'{run_file_expr(names, PYSCF_CHK)})')
                 out.append("if _os.path.exists(_chk_path) and "
                            "_os.path.getsize(_chk_path) > 0:")
                 out.append('    mf.init_guess = "chkfile"')
@@ -619,7 +613,8 @@ def spec_for(struct: Structure,
                 out.append("# ============================================================")
                 out.append("# geomeTRIC is the one optimizer (translation-rotation-")
                 out.append("# invariant internal coords, robust on large steps).")
-                out.append("# This deck is one rung of the ladder in task.json; its")
+                out.append(f"# This deck is one rung of the ladder in "
+                           f"{TASK_FILE}; its")
                 out.append("# targets are the rung's, below.  docs/engines/tuning.md")
                 out.append("# sect. 2.4 has the shipped rungs and their citations.")
             # Frozen-atom constraints (three-stage contract carrier).  When
@@ -677,7 +672,7 @@ def spec_for(struct: Structure,
         # we only write the FINAL geometry.
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append("")
-            out.append(emit_save_call("mol_eq", ROLE_OPTIMIZED, names))
+            out.append(emit_save_call("mol_eq", PYSCF_OPTIMIZED, names))
         out.append("")
         out.append('print(f"\\n' + END_MARKER + ' {time.time() - t0:.1f} s")')
 
@@ -1063,7 +1058,8 @@ def _emit_optimization(cfg: PySCFConfig,
     out: List[str] = [""]
     if v:
         out.append("# One relaxation: this deck IS one rung of the ladder.")
-        out.append("# The ladder lives in task.json and runs as separate jobs,")
+        out.append(f"# The ladder lives in {TASK_FILE} and runs as separate "
+                   f"jobs,")
         out.append("# so that a person can look at this geometry before")
         out.append("# spending anything on the next rung.")
     # THE ONE RELAXATION FUNCTION both PySCF decks run (`relax_policy.relax`,
@@ -1094,7 +1090,7 @@ def _emit_optimization(cfg: PySCFConfig,
         # hand-over takes only a run the status door calls finished
         # (`job-system.md` § 5.4).
         out.append("        keep = lambda _m: _save_structure("
-                   f"_m, _mb_outfile({run_file_expr(names, ROLE_OPTIMIZED)}), "
+                   f"_m, _mb_outfile({run_file_expr(names, PYSCF_OPTIMIZED)}), "
                    "'Geometry reached (PySCF, relaxing)'),")
     # WHETHER THE RUN RESUMES IS `restart`'S ANSWER (`identity.continues`,
     # `run-identity.md` § 4), whatever is kept per step: a produce item
@@ -1179,7 +1175,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
         out.append("# script, writes one self-contained, marker-delimited")
         out.append("# record per accepted opt step to the molwatch log named in")
         out.append("# the manifest above (the rung's own")
-        out.append("# <JOB>_<NN>_<stage>.molwatch.log).  molwatch reads this")
+        out.append(f"# <JOB>_<NN>_<stage>{ROLE_MOLWATCH}).  molwatch reads "
+                   f"this")
         out.append("# file directly (no sibling-file discovery needed) and shows")
         out.append("# trajectory + energy + force + per-cycle SCF residual plots.")
         out.append("#")
@@ -1428,7 +1425,7 @@ def emit_bundle_path() -> List[str]:
     (``_MB_SCRIPT_DIR``, :func:`emit_outfile_helper`) -- put on the import
     path, or the run stopped right there with a sentence saying it is
     missing (`engines/pyscf.md` § 3)."""
-    from ..runwrap import PYSCF_BUNDLE
+    from ..runfiles import PYSCF_BUNDLE
     return ["# molbuilder's own code this script runs, from the file beside it",
             f"_MB_BUNDLE = _MB_SCRIPT_DIR / {PYSCF_BUNDLE!r}",
             "if not _MB_BUNDLE.is_file():",
@@ -1454,7 +1451,8 @@ def emit_bundle_imports(*objects) -> List[str]:
     § 3).
     """
     import types
-    from ..runwrap import PYSCF_BUNDLE, PYSCF_COMPANIONS
+    from ..runfiles import PYSCF_BUNDLE
+    from ..runwrap import PYSCF_COMPANIONS
     shipped = {module: name[:-len(".py")]
                for name, module in PYSCF_COMPANIONS.items()}
     out: List[str] = []
@@ -1496,7 +1494,7 @@ def emit_run_with(names) -> List[str]:
     out.append("Or drive PySCF yourself, with the bundles beside this deck:")
     # THE ROLE PySCF'S OWN STDOUT HAS, not SIESTA's: every reader
     # dispatches on the role (`model/parse.md` § 5.5).
-    out.append(f"    python {names.name('.py')} > "
+    out.append(f"    python {names.name(deck_role('pyscf'))} > "
                f"{names.name(PYSCF_STDOUT_ROLE)} 2>&1")
     out.append("")
     out.append("    Perfectly good, and the reason the plain invocation is")
@@ -1515,12 +1513,10 @@ def emit_outputs_block(names, *,
                        spectra: bool = False) -> List[str]:
     """The ``Outputs:`` block of a PySCF deck's header: exactly the files
     this run writes for its settings (`engines/pyscf.md` § 2), named as the
-    deck names them -- by the stage's names (`runfiles.RunNames`), the run's
-    for every try in it -- one list for both decks, each saying which of its
-    settings is on.  The engine's own
-    restart files (``.chk``, ``_optimized.xyz``) are the grammar's carried
-    names: they cross rungs, so they carry no stage and no run."""
-    label = names.label
+    deck names them -- by the stage's names (`runfiles.RunNames`), the
+    run's own -- one list for both decks, each saying which of its settings
+    is on.  The engine's own restart files (``.chk``, ``_optimized.xyz``)
+    are named on the label alone, as their rows say: they cross rungs."""
     out = ["Outputs:"]
     if spectra:
         out.append(f"    {names.name(ROLE_SPECTRA)}   -- the result, "
@@ -1528,12 +1524,12 @@ def emit_outputs_block(names, *,
     if log:
         out.append(f"    {names.name(ROLE_LOG)}   -- pyscf verbose log")
     if chk:
-        out.append(f"    {_rf(label, ROLE_CHK)}   -- checkpoint (DM, mol)")
+        out.append(f"    {names.name(PYSCF_CHK)}   -- checkpoint (DM, mol)")
     if initial:
         out.append(f"    {names.name(ROLE_INITIAL)} + .molstruct.json   -- "
                    f"the input coordinates, as a pair")
     if optimized:
-        out.append(f"    {_rf(label, ROLE_OPTIMIZED)} + .molstruct.json   -- the "
+        out.append(f"    {names.name(PYSCF_OPTIMIZED)} + .molstruct.json   -- the "
                    f"relaxed coordinates, as a pair")
     if trajectory:
         out.append(f"    {names.name(ROLE_GEOM_TRAJ)}   -- this rung's "
@@ -1568,8 +1564,8 @@ def emit_constraints_file(frozen, names, indent: str = "") -> List[str]:
 
 #: What each geometry a script saves says of itself on its ``.xyz`` comment
 #: line, by role: both decks save these two.
-_SAVED_AS = {ROLE_INITIAL:   "Initial geometry (input)",
-             ROLE_OPTIMIZED: "Optimized geometry (PySCF)"}
+_SAVED_AS = {ROLE_INITIAL:    "Initial geometry (input)",
+             PYSCF_OPTIMIZED: "Optimized geometry (PySCF)"}
 
 
 def emit_save_call(mol: str, role: str, names, indent: str = "") -> str:
@@ -1660,7 +1656,7 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
     out.append("# Geometry optimization oscillates:")
     out.append("#   * Go back to the state saved before this rung's prep,")
     out.append("#     loosen its gmax / grms, and prep it anew")
-    out.append("#   * Add a looser warm-up rung ahead of it in task.json")
+    out.append(f"#   * Add a looser warm-up rung ahead of it in {TASK_FILE}")
     out.append("#   * Raise this rung's geom_max_steps")
     out.append("#")
     out.append("# Charged / open-shell anions need diffuse functions:")

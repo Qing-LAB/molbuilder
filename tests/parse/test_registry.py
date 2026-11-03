@@ -90,3 +90,21 @@ def test_nothing_shipped_beside_a_job_is_claimed_as_its_output(tmp_path):
         except UnknownFormatError:
             pass
     assert not claimed, claimed
+
+
+@pytest.mark.parametrize("role", ["_initial.xyz", "_optimized.xyz"],
+                         ids=["the-input-echoed-back", "the-geometry-reached"])
+def test_a_pyscf_decks_geometry_pair_is_one_parsers(tmp_path, role):
+    """Each single-geometry pair a PySCF deck writes -- the input echoed
+    back, the geometry reached -- is the geometry reader's alone
+    (`pyscf-geom`), never also the trajectory reader's, so `detect`, which
+    is exactly-one-or-raise, opens it.  The file is the structure's own
+    writer's.  THE SILENT FAILURE: the Results folder row naming no parser
+    for the pair, which then cannot be opened on its own."""
+    from molbuilder.structure import Structure
+    water = Structure(elements=["O", "H", "H"],
+                      positions=[[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
+                                 [0.0, -0.757, -0.477]])
+    path = tmp_path / f"H2{role}"
+    path.write_text(water.to_xyz())
+    assert detect(str(path)).name == "pyscf-geom"

@@ -468,7 +468,8 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
     shipped monitor imports, reads the run through the SHIPPED readers, and
     answers how it ended as the package's own `run_status` does."""
     from molbuilder.parse.dirs import run_status
-    from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
+    from molbuilder.runfiles import MONITOR_BUNDLE
+    from molbuilder.runwrap import monitor_bundle
     there, _watched, _grow = replay(run, tmp_path, _whole(run))
     ran = _ran(run)
     (there / MONITOR_BUNDLE).write_bytes(monitor_bundle())

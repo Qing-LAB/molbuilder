@@ -51,6 +51,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from .config_dir import PRIVATE_FILE_MODE, config_dir
+from .runfiles import (JOB_REQUEST_FILE, PYSCF_CHK, PYSCF_CUBE, SIESTA_DM,
+                       SIESTA_HSX, SIESTA_TSHS, TBTRANS_AVTRANS, TBTRANS_CC,
+                       TBTRANS_DOS, family)
 
 if TYPE_CHECKING:                      # pragma: no cover - typing only
     # `get_routing` is annotated `List["Domain"]` and imports the real class
@@ -80,7 +83,7 @@ _SCHEDULER_RETIRED = (
     "delete the block.  Nothing in it may be set for every job:\n"
     "  * a job's queue, wall, memory, ranks and cores per rank are the JOB's "
     "own: its job request (`allocation`, or a run card `execution` in "
-    "job-request.json) or the prep flags (--domain, --time, --mem, --np, "
+    + JOB_REQUEST_FILE + ") or the prep flags (--domain, --time, --mem, --np, "
     "--cpus-per-task, --gpus) -- prep refuses one stated nowhere;\n"
     "  * a machine's scheduler and queues are its RECORD's: `{probe}` ON that "
     "machine -- with --name and the name you prep it by when it is not this "
@@ -102,7 +105,7 @@ _SCRIPT_GENERATION_RENAMED = (
 #: default queue (`domain`) every job without one received.
 _EXECUTION_RENAMED = (
     "{path}: 'execution' is now 'launch', so that "
-    "`execution` means only the run card in job-request.json.  Write\n"
+    "`execution` means only the run card in " + JOB_REQUEST_FILE + ".  Write\n"
     "    \"launch\": {launch}\n"
     "instead.{dropped}  (docs/configuration.md § 4)")
 
@@ -736,7 +739,7 @@ def _read_execution_renamed(raw: Mapping[str, Any]):
                   if k != "mode" and not _is_comment(k))
     dropped = (f"  {', '.join(map(repr, gone))} "
                f"{'has' if len(gone) == 1 else 'have'} no replacement: a job "
-               f"names its own queue (`allocation.domain` in job-request.json, or "
+               f"names its own queue (`allocation.domain` in {JOB_REQUEST_FILE}, or "
                f"--domain)." if gone else "")
     raise RuntimeConfigError(_EXECUTION_RENAMED.format(
         path=CONFIG_FILENAME, launch=launch, dropped=dropped))
@@ -1163,9 +1166,10 @@ _CHECKPOINT_DEFAULTS: Dict[str, Any] = {
     "size_limit_bytes": _CHECKPOINT_SIZE_LIMIT_DEFAULT,
     "engines": {
         "generic": [],
-        "siesta":  ["*.DM", "*.HSX", "*.TSHS",
-                    "*.TBT.AVTRANS_*", "*.TBT.CC", "*.TBT.DOS"],
-        "pyscf":   ["*.chk", "*.cube"],
+        "siesta":  [family(r) for r in (SIESTA_DM, SIESTA_HSX, SIESTA_TSHS,
+                                        TBTRANS_AVTRANS, TBTRANS_CC,
+                                        TBTRANS_DOS)],
+        "pyscf":   [family(r) for r in (PYSCF_CHK, PYSCF_CUBE)],
     },
 }
 
@@ -1228,7 +1232,7 @@ def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
                     raise RuntimeConfigError(
                         f"{CONFIG_FILENAME}: "
                         f"'checkpoint.engines.{name}' entry {pat!r} contains "
-                        f"'/'.  These name FAMILIES of files (`*.DM`), not "
+                        f"'/'.  These name FAMILIES of files (`{family(SIESTA_DM)}`), not "
                         f"paths: git would read the slash as a path while the "
                         f"size check reads only the file's name, and a file "
                         f"they disagree about is stored nowhere "

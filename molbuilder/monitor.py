@@ -12,7 +12,7 @@ notifies -- rarely, and only when the calculation's own policy says to.
 **It never runs inside molbuilder.**  A verbatim copy of this file ships
 beside the job inside ``mb_monitor.pyz`` -- one file, holding it as
 ``mb_monitor.py`` with the framework modules it reads through
-(`runwrap.MONITOR_BUNDLE`) -- and runs with the JOB's own python from
+(`runfiles.MONITOR_BUNDLE`) -- and runs with the JOB's own python from
 the working directory: molbuilder is deliberately never pip-installed into
 any env, so ``import molbuilder`` fails on the job's python.  It is
 stdlib-only because it is the instrument that reports a failure: it must
@@ -117,9 +117,6 @@ try:                                        # inside molbuilder
     from . import runfiles as _rf
     from . import runrecord as _rr
     from .parse.dirs.job import LIVE_STATES, MONITOR_ENDED, run_status
-    from .parse.engines.molwatch_reader import MolwatchReader
-    from .parse.engines.siesta_reader import SiestaReader
-    from .parse.engines.tbtrans import loop_words
     from .parse.instruments.scf_timing_rows import timing_file, timing_of
     from . import calcdirs as _cd
     from . import runpoints as _rp
@@ -133,9 +130,6 @@ except ImportError:                         # beside the job
     import runfiles as _rf
     import runrecord as _rr
     from job import LIVE_STATES, MONITOR_ENDED, run_status
-    from molwatch_reader import MolwatchReader
-    from siesta_reader import SiestaReader
-    from tbtrans import loop_words
     from scf_timing_rows import timing_file, timing_of
     import calcdirs as _cd
     import runpoints as _rp
@@ -152,7 +146,8 @@ class JobStatus:
     rest is the live reading: each field present only when the run's files
     state it, ``None`` otherwise -- a reader must be able to tell *not
     stated* from zero.  Each residual, the step and the finished steps are
-    the output's own parser's (`LIVE_READERS`); the monitor displays them.
+    the output's own parser's (its catalogue row's ``live`` reader); the
+    monitor displays them.
     """
     state: str = "running"
     elapsed_s: float = 0.0
@@ -197,7 +192,7 @@ class JobStatus:
     #: THE PROGRAM'S OWN LOOP beside the SCF -- TBtrans's k-point x energy
     #: loop -- as the output's reading pass states it (`model/parse.md`
     #: § 4a, ``loop``) -- not a report field: the summary line says it in
-    #: the words its output's family gives (:data:`LOOP_WORDS`).
+    #: the words its output's family gives (its row's ``loop_words``).
     loop: Optional[Dict[str, Any]] = None
     #: The role of the output the run's live state was read from -- what
     #: picks the words its loop is said in.
@@ -314,7 +309,8 @@ class JobStatus:
             bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
         if self.per_iter_s is not None and not ended["per_iter_s"]:
             bits.append(f"{self.per_iter_s:.2f} s/iter")
-        words = LOOP_WORDS.get(self.heard_from)
+        words = (_rf.reader(self.heard_from, "loop_words")
+                 if self.heard_from else None)
         loop = (words(self.loop, over=self.state not in LIVE_STATES)
                 if words is not None and self.loop else "")
         if loop:
@@ -353,23 +349,15 @@ class JobStatus:
 # run ended is reported the way the Results tab reads it -- `run_status`,
 # asked once the PID has said it is over (`run-reports.md` § 2.2).
 
-#: ROLE -> the reading pass of that file's ONE parser -- chosen by what the
-#: file IS, never by the engine, as `_run_ending.READERS` chooses how it
-#: ENDED.  A SIESTA-family `.out` is its own live channel; a PySCF run's is
-#: its progress log (its stdout is block-buffered and says nothing live).
-#: Each is built for the rung's stage: a staged progress log keys its targets
-#: by it.
-LIVE_READERS: Dict[str, Callable[[Optional[str]], Any]] = {
-    ".out":          lambda stage: SiestaReader(),
-    ".molwatch.log": lambda stage: MolwatchReader(stage=stage),
-}
-
-#: THE WORDS A PROGRAM'S OWN LOOP IS SAID IN, by the role of the output that
-#: accounts for it (`model/parse.md` § 4a): a SIESTA-family ``.out``'s,
-#: TBtrans's (`tbtrans.loop_words`).  So the summary line names no program.
-LOOP_WORDS: Dict[str, Callable[..., str]] = {
-    ".out": loop_words,
-}
+# THE READING PASS OF A FILE'S ONE PARSER is the one its catalogue row names
+# for ``live`` -- chosen by what the file IS, never by the engine, as its
+# ``ending`` reader says how it ENDED (`runfiles.reader`).  A SIESTA-family
+# `.out` is its own live channel; a PySCF run's is its progress log (its
+# stdout is block-buffered and says nothing live).  Each is built for the
+# rung's stage: a staged progress log keys its targets by it.  The words a
+# program's own loop is said in are the row's ``loop_words`` (a
+# SIESTA-family ``.out``'s, TBtrans's, `model/parse.md` § 4a), so the summary
+# line names no program.
 
 #: What a live reading must state to say where the run IS -- an SCF row, a
 #: step, TBtrans's loop (TBtrans states no SCF), or the words of where it
@@ -491,10 +479,14 @@ class WatchedRun:
         # SIESTA run's progress log is the prep's seed, whose mtime says
         # nothing about the run (a copied tree reorders it).
         heard = []
-        for role, path in files.items():
-            make = LIVE_READERS.get(role)
-            if make is None:
+        # THE FILES WHOSE ROW NAMES A LIVE READING PASS, by those rows
+        # (`runfiles.read_roles`) -- never a role read off a name in the
+        # folder, which may be no file of ours (an editor's ``.out~``).
+        for role in _rf.read_roles("live"):
+            path = files.get(role)
+            if path is None:
                 continue
+            make = _rf.reader(role, "live")
             grow = self._growth.get(path)
             if grow is None:
                 grow = self._growth[path] = _Growth(make(self.stage))
@@ -1359,7 +1351,7 @@ def _secrets_dir():
     Imported two ways because this file runs two ways: inside the package on
     a login node, and from `mb_monitor.pyz` on a compute node with no
     molbuilder installed, where `config_dir.py` travels with it in that one
-    file (`runwrap.MONITOR_BUNDLE`), so the SAME LINES answer on both
+    file (`runfiles.MONITOR_BUNDLE`), so the SAME LINES answer on both
     machines.
 
     Restating the rule here -- joining ``config_dir() / "secrets"`` -- would
@@ -2265,8 +2257,9 @@ def run_monitor(watched: "WatchedRun", *,
     (`run-reports.md` § 2): a step can take hours, and nothing in the output
     tells a slow one from a stuck one.
     """
-    log = watched.path(".monitor.log")
-    util_path: Optional[Path] = watched.path(".util.csv") if util else None
+    log = watched.path(_rf.ROLE_MONITOR_LOG)
+    util_path: Optional[Path] = (watched.path(_rf.ROLE_UTIL_CSV) if util
+                                 else None)
     start = clock() if start_epoch is None else start_epoch
 
     st0 = watched.read(start, clock())
@@ -2684,7 +2677,7 @@ def _sleep_until_stopped(seconds: float) -> None:
 
 def main(argv=None) -> int:
     """The entry of the SHIPPED bundle, ``mb_monitor.pyz``
-    (`runwrap.MONITOR_BUNDLE`): argparse for the monitor, and each verb that
+    (`runfiles.MONITOR_BUNDLE`): argparse for the monitor, and each verb that
     is no monitor -- ``ending``, ``point``, ``notify``, ``deck`` -- handed to
     its handler (:data:`BUNDLE_VERBS`), all travelling in the same file.
 
@@ -2786,7 +2779,7 @@ def main(argv=None) -> int:
         os.nice(max(0, a.nice_level))
     except (OSError, AttributeError):
         pass
-    register_notifier(make_log_notifier(watched.path(".monitor.log")))
+    register_notifier(make_log_notifier(watched.path(_rf.ROLE_MONITOR_LOG)))
     started = os.environ.get(JOB_STARTED_VAR, "")
     run_monitor(watched,
                 job_started=float(started) if started.isdigit() else None,
@@ -3075,7 +3068,7 @@ def _notify_main(argv) -> int:
     # THE RUN'S FOLDER, its log named on the stage's names as any run's.
     watched = WatchedRun(names=_rf.RunNames(a.label, a.stage),
                          directory=Path(a.directory))
-    log = watched.path(".monitor.log")
+    log = watched.path(_rf.ROLE_MONITOR_LOG)
     now = time.time()
     try:
         sent = watched.notified()
@@ -3163,8 +3156,6 @@ BUNDLE_VERBS: Dict[str, Callable[[List[str]], int]] = {
 __all__ = [
     "JobStatus",
     "WatchedRun",
-    "LIVE_READERS",
-    "LOOP_WORDS",
     "run_monitor",
     "register_notifier",
     "clear_notifiers",

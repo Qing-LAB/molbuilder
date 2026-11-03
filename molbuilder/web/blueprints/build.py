@@ -939,6 +939,7 @@ TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
 #: writing a premature one would make the folder claim to be a calculation root
 #: before it is one (`checkpointing.md` L1).
 from molbuilder.runfiles import TASK_HANDOVER_FILE as TASK_HANDOVER_NAME  # noqa: E402 -- the catalogue's name
+from molbuilder.runfiles import ROLE_TEMPLATE  # noqa: E402
 from molbuilder.job_request import FILENAME as _JOB_REQUEST_FILENAME  # noqa: E402
 from molbuilder.task import FILENAME as _TASK_FILENAME  # noqa: E402
 from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA_NOW  # noqa: E402
@@ -1219,10 +1220,11 @@ def api_task_setup_handover():
         # The SENDER is the calculation kind's tab (E-B9): both tabs post
         # through the same shared door (lib/task-handover.js).
         "_what":     f"A hand-over from the {_sender} tab, not a "
-                     "description. It carries the parameters (in the .template.toml "
+                     f"description. It carries the parameters (in the "
+                     f"{ROLE_TEMPLATE} "
                      "beside it) plus what this calculation is OF. It is missing "
                      f"`{awaiting}` on purpose -- Task setup asks for it, and "
-                     "on a successful save writes the real task.json "
+                     f"on a successful save writes the real {_TASK_FILENAME} "
                      "and deletes this file. Nothing runs from it. The structure it is OF is the "
                      "file `structure.source` names in this same folder, written "
                      "by the server's one codec: the .xyz, "
@@ -2250,11 +2252,10 @@ def api_task_setup_prep_plan():
                          calculation=task.calculation)
         if _runs_points(saved, st.name):
             # A RUN OF POINTS IS SENT AS ITS WALK (`execution/runs-of-points.md`
-            # § 2.4, the launch folder): its header is the walk's, in the
-            # stage's `launch/`, never one of its own.
-            sbatch = home.names.name(".sbatch")
-            files = ([f for f in files if f["name"] != sbatch]
-                     + _walk_files(home.names.stem))
+            # § 2.4, the launch folder): the walk's files, in the stage's
+            # `launch/`.  The stage's own header stays listed with its row's
+            # condition, which says a run of points sends the walk's.
+            files = files + _walk_files(home.names.stem)
         rows.append({"stage": st.name, "dir": home.token,
                      **({"need": needs[st.name].to_wire()} if needs else {}),
                      "ask": _ask_of(st.name),
@@ -2366,12 +2367,13 @@ def _walk_files(stem: str) -> list:
     (`runfiles.GroupNames.of_points`) and said in the catalogue's words,
     its row found as every reader finds a launch group's file
     (`runfiles.row_for`)."""
-    from molbuilder.runfiles import (LAUNCH_DIR, LEVEL_WHERE, GroupNames,
-                                     row_for)
+    from molbuilder.runfiles import (GROUP_HEADER, GROUP_LOG,
+                                     GROUP_RUN_SCRIPT, LAUNCH_DIR,
+                                     LEVEL_WHERE, GroupNames, row_for)
     gn = GroupNames.of_points(stem)
     out = []
-    for tail in (".run.sh", ".sbatch", ".log"):
-        name = f"{LAUNCH_DIR}/{gn.name(tail)}"
+    for row in (GROUP_RUN_SCRIPT, GROUP_HEADER, GROUP_LOG):
+        name = f"{LAUNCH_DIR}/{gn.name(row)}"
         a = row_for(name)
         out.append({"name": name, "what": a.what, "when": a.when,
                     "level": a.level, "where": LEVEL_WHERE[a.level],

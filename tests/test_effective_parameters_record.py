@@ -80,7 +80,8 @@ def test_siesta_s_fence_states_the_step_s_items_and_the_deck_as_launched(
     from molbuilder.script_emit import read_parameters_fence
 
     import sys
-    from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
+    from molbuilder.runfiles import MONITOR_BUNDLE
+    from molbuilder.runwrap import monitor_bundle
     # AS A RUN HAS IT: the monitor bundle beside the deck, read with the
     # job's python (`mb_monitor.pyz deck`), and the run script's log helper.
     (deck.parent / MONITOR_BUNDLE).write_bytes(monitor_bundle())

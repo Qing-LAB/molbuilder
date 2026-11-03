@@ -226,6 +226,7 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
     atom index map is not ``expected``, the composed junction's (F7)."""
     import numpy as np
     from ..parse.engines.tbtrans_nc import data_files, kept
+    from ..runfiles import SIESTA_ORB_INDX
     asked = sorted({int(a) for a in atoms})
     if not asked:
         raise TbtError("no atoms selected")
@@ -257,8 +258,8 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
             mask = np.isin(np.asarray(reading.atom), inside)
         else:
             if orb_indx is None or not Path(orb_indx).is_file():
-                raise TbtError("the device run's .ORB_INDX is not there, so "
-                               "its orbitals' types are not known")
+                raise TbtError(f"the device run's {SIESTA_ORB_INDX} is not "
+                               f"there, so its orbitals' types are not known")
             orbs = _orbitals_of(reading.firsto, Path(orb_indx), inside,
                                 orbitals, path.name)
             if not orbs:

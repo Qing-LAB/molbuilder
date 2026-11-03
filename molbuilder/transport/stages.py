@@ -44,7 +44,6 @@ from typing import Dict, List, Optional, Tuple
 from ..structure import frame_words
 from ..kind_table import kind as _kind, rung_label
 from ..paths import frame_token
-from ..parse.engines import siesta_grammar as _G
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
 #: dependency order.  ``molbuilder describe`` writes exactly these into
@@ -293,11 +292,11 @@ def stage_inputs(stage: str, task_label: str):
     ladder keeps its seed); the electrode and device rows are the physics
     (the self-energies, and the converged H the transmission reads).
     """
-    from ..runfiles import compose
-    elec = [(s, compose(rung_label(task_label, s), _G.TSHS))
+    from ..runfiles import SIESTA_DM, SIESTA_TS_HSX, SIESTA_TSHS, compose
+    elec = [(s, compose(rung_label(task_label, s), SIESTA_TSHS))
             for s in _kind("transport").leads]
     if stage == "device":
-        return [("seed", compose(task_label, _G.DM))] + elec
+        return [("seed", compose(task_label, SIESTA_DM))] + elec
     if stage == "transmission":
         # TBtrans reads the device's converged H -- which SIESTA 5.x
         # writes as <label>.TS.HSX (the sparse container that replaced
@@ -305,7 +304,7 @@ def stage_inputs(stage: str, task_label: str):
         # plus the electrode .TSHS the TS.Elec blocks in the (shared)
         # deck text reference.  The .TSDE is NOT consumed: the TS.HSX
         # already carries the bias point's converged potential.
-        return [("device", compose(task_label, _G.TS_HSX))] + elec
+        return [("device", compose(task_label, SIESTA_TS_HSX))] + elec
     return []
 
 
@@ -327,8 +326,12 @@ def hands_on(stage: str, task_label: str, base_dir) -> list:
     from ..runfiles import compose
     from ..warmfiles import warm_list
     own = {w.name for w in warm_declaration(stage, task_label, base_dir)}
-    return [f for f in (compose(task_label, suf) for suf
-                        in warm_list("siesta", "transport", base_dir).along)
+    # THE CALCULATION'S OWN LIST, handed in as the vocabulary its suffixes
+    # are declared in (`runfiles.declared`): a row it adds for a new engine
+    # build is composed too.
+    along = tuple(warm_list("siesta", "transport", base_dir).along)
+    return [f for f in (compose(task_label, suf, roles=along)
+                        for suf in along)
             if f in own]
 
 
@@ -338,20 +341,19 @@ def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
     way) -- for the transmission, which nothing downstream reads, its own
     deliverable: the ``.TBT.nc``, or a polarized point's ``.TBT_UP.nc`` and
     ``.TBT_DN.nc`` both, as TBtrans names its channels
-    (`siesta_grammar.TBT_CHANNELS`; one entry of alternative sets, which
+    (`runfiles.TBTRANS_NC`'s ``tbt``; one entry of alternative sets, which
     `continuation.done` reads) -- and, with ``base_dir``, what a point
     hands to the next point: the calculation's ``along`` row, of the files
     this rung itself declares (the device's ``.TSDE``; the transmission
     declares none).  The products a point must hold (:func:`must_hold`,
     which adds a shared point's ``shared/``) and the gather reads
     (`engines/transport.md` § 2a.11) -- here and nowhere else."""
-    from ..runfiles import compose
+    from ..runfiles import TBT_CHANNEL_TAGS, TBTRANS_NC, compose
     if stage == "transmission":
-        from ..parse.engines.siesta_grammar import TBT_CHANNELS
-        tag = dict(TBT_CHANNELS)
-        out = [((compose(task_label, _G.tbt_nc(tag["unpolarized"])),),
-                (compose(task_label, _G.tbt_nc(tag["up"])),
-                 compose(task_label, _G.tbt_nc(tag["down"]))))]
+        def nc(channel):
+            return compose(task_label, TBTRANS_NC,
+                           tbt=TBT_CHANNEL_TAGS[channel])
+        out = [((nc("unpolarized"),), (nc("up"), nc("down")))]
     else:
         out = sorted({fn for downstream in TRANSPORT_STAGES
                       for up, fn in stage_inputs(downstream, task_label)

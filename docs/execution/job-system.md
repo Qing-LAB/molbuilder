@@ -1167,8 +1167,10 @@ calculation's `launch/` folder; then the runs a reused calculation copies in;
 then `job-set.json` merged with each group's members, `prepared-with.json`, and
 `STAGE-PLAN.md` last (`prep._prep_groups`; `planned.Plan.carry_out` writes in
 that order). **Every file prep lays beside a deck is
-prep's** (`runfiles.beside_the_deck`, one list — its bundles, a charged deck's
-correction script, its run script and header, a call's coordinates file): one
+prep's** (`runfiles.beside_the_deck`, the catalogue's rows that travel, for
+the deck's engine and kind — its bundles, a charged SIESTA deck's correction
+script, its run script and header, a SIESTA vibration call's coordinates
+file): one
 an earlier prep wrote that this prep does not — a header for a queue since
 dropped, a correction script for a charge since made 0 — is taken away, never
 left to be sent, run or read as this prep's.

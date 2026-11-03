@@ -661,8 +661,8 @@ class StructureCodec:
         ask it: the hand-over and `molbuilder describe`.  Written AS GIVEN, its
         origin's record with it: prep decides how the calculation takes it
         (`cell.entering`, `jobset.rung.structure_for`)."""
-        from .runfiles import compose
-        return self.files(struct, compose(label, ".source.xyz"))
+        from .runfiles import ROLE_SOURCE, compose
+        return self.files(struct, compose(label, ROLE_SOURCE))
 
     # ---- write the pair to disk, atomically -------------------------- #
     def write(self, struct: Structure, target, *,

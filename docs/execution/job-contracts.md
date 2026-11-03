@@ -156,10 +156,14 @@ each *(user, 2026-10-04)*. A row says:
 | `kind` | source · input · derived · record · result · transient ([`project-layout.md`](?doc=execution/project-layout.md) § 5) |
 | `staged` · `engine` · `calculation` · `only` | whether its name carries the stage token; which engine and which kinds write it; the condition when it is written only sometimes |
 | `output` | whether it is evidence of how a run went ([`model/parse.md`](?doc=model/parse.md) § 5.5) |
-| `fields` · `listed_by` · `counted_by` · `bundle` | a templated name's fields; which atom index a file lists by; an engine input's numbering; whether it travels beside a deck |
+| `fields` · `listed_by` · `counted_by` · `travels` | a templated name's fields; which atom index a file lists by; an engine input's numbering; whether it travels beside a deck into every folder the deck runs in |
+| `reads` · `stderr_apart` | for a file a reader of ours reads by its role, the reader that answers each question about it, `module:NAME` — how a run ended, its stops, its live reading pass, its loop's words, its SCF rows, its timing, the engine's log of what it read, the run record's fields, a deck's recorded settings (the questions, `runfiles.READ_QUESTIONS`); for a run output, whether its engine's stderr stays apart ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) |
 
 A fixed name's owner takes its name from the catalogue — `task.json`'s from
-the row `task.py` reads — so a name is spelled once.
+the row `task.py` reads — so a name is spelled once; **a role is spelled once
+too**, as the catalogue's constant (`runfiles.ROLE_*`), which the rows and
+every reader and writer import — but a deck's, asked by its engine
+(`deck_role(engine)`), since shared code names no engine's deck.
 
 **Its readings, and nothing else may hold a copy:**
 
@@ -169,6 +173,12 @@ the row `task.py` reads — so a name is spelled once.
 - `about(path)`, on the run door — what one file is: its row, read back with
   its run's label, or *not written by molbuilder*, which the Results tab's
   file card shows ([`web/results.md`](?doc=web/results.md) § 3b);
+- `reads_of(role, question)` — the reader a role names for one question, which
+  every reader of an output asks, on the machine and beside a job, and by which
+  its module travels with the job (`runwrap.monitor_companions`,
+  [`architecture.md`](?doc=execution/architecture.md) § 3.3): a new engine's
+  output is one row *(the user, 2026-11-03: "One column on the catalogue
+  row")*;
 - the manifest, [`project-layout.md`](?doc=execution/project-layout.md) § 5,
   rendered from the rows by `tools/manifest.py`; a check fails when the two
   differ, so a row is edited in the catalogue and never in the document.
@@ -181,10 +191,21 @@ not ours came from the engine (§ 4.2). That makes an omission from the
 catalogue a defect — a file of ours it does not name is read as the
 engine's.
 
-**The engines' restart files are declared apart.** SIESTA's `.XV` / `.DM` /
-`.CG` and PySCF's `.chk` / `_optimized.xyz` are rows of each engine's
-`warm-files.toml` (§ 4.2a), and the two declarations never overlap
-(`tests/test_runfile_names.py`).
+**The engines' files molbuilder names are a second table, `runfiles.ENGINE_FILES`**
+*(the user, 2026-11-03: "One table in runfiles")* — a row each: the engine,
+the file's role on the label or its whole name, what it is, and the reader of
+ours that reads it, or none; each named in code by its constant
+(`runfiles.SIESTA_FC`, `runfiles.PYSCF_CHK`, …). **It is never complete**: it
+holds what molbuilder itself composes, reads, carries or knows by name — the
+rows [`project-layout.md`](?doc=execution/project-layout.md) § 5.4 is rendered
+from — and *did the engine leave this?* is still answered by subtraction from
+`WRITTEN`. **Which of them carry is the engine's restart-file list's**
+(§ 4.2a): every file a shipped list names is a row here, and each scratch
+suffix takes in the names of one row here and of no other file
+(`runfiles.rows_ending_with`), checked when the list loads; a calculation's
+own copy may add a file a new engine build writes, and the code composing a
+name from that list hands it in as the vocabulary (`roles=`). The two tables
+never overlap, checked when the catalogue loads.
 
 **SIESTA's history is the run's own, under SIESTA's names.** SIESTA appends
 every step to `<SystemLabel>.MD.nc`, `.MD`, `.MDE` and `.ANI`, and reads none
@@ -224,9 +245,9 @@ my-job_01_coarse.out              this rung's output, in its run folder
   after the label**, never inside the role: every per-stage file uses that
   position (`.py`, `.run.sh`, `.out`, `.molwatch.log`, `.validation.txt`,
   geomeTRIC's `_geom_optim.xyz` included) *(user ruling, 2026-09-07)*.
-- **`<role>`** is what the file is, and begins with `.` or `_`. An engine's
-  roles are declared once in its vocabulary; a role is never spelled at a
-  call site.
+- **`<role>`** is what the file is, and begins with `.` or `_`. A role is a
+  row of the catalogue — ours in `WRITTEN`, an engine's in `ENGINE_FILES` —
+  with its constant, and never spelled at a call site.
 
 **A carried file has no stage token, and that is what carrying means.**
 SIESTA's `.XV` / `.DM` / `.CG` and PySCF's `.chk` / `_optimized.xyz` hand one
@@ -261,9 +282,13 @@ right:
 |---|---|
 | a stage → the name each of its files has | `RunNames(label, stage)` → `.name(role, **fields)`; `.tail(role)` for a deck that names its files from its own `JOB` (`naming.run_names` builds a job's, `runs.Run.names` a run's) |
 | a label, a role, maybe a stage → the name | `compose(label, role, stage=None, **fields)` |
-| a filename → its segments back | `parse(filename, label, roles=())` — pass your engine's roles when one begins with `_` |
+| a filename → its segments back | `parse(filename, label, roles=())` — `roles` only for a vocabulary neither table holds (a calculation's own restart-file list) |
 | a label and a stage → the part every role attaches to | `stem(label, stage=None)` |
 | a role, the label known only at run time (emitted into a generated script) | `tail(role, stage=None)` |
+| a file's name → the name of another role's file beside it, on its stem | `named_beside(name, role)` |
+| a name → the fields its templated role carries (a lead's, a channel's) | `fields_of(name, role)`; the stem before a role, `stem_before(name, role)` |
+| a role → every name it makes, as a glob | `family(role)` |
+| a name as a page or a description shows it, a field left open | `shown(template, **fields)` |
 | a name → does it cross rungs? | `parse(name, label).stage is None` |
 | a label and a rung → every file that will appear, a line each | `manifest(label, stage, engine, when, calculation)` |
 | a folder and a label → which of its files are that label's | `find(directory, label, role=, stage=)`; which of them molbuilder wrote is `about`'s |
@@ -271,7 +296,10 @@ right:
 | a file → the run it belongs to, and that run's other files | `run_of(path)` → `Run`: `Run.file(role)`, `.on_label(role)`, `.deck`, `.stdout`, `.session_log` (`runs.on_label_at(folder, role)` at a run of points' root). The run door ([`architecture.md`](?doc=execution/architecture.md) § 3.2) reads the label from the description, never from a deck or a name |
 | a file → what it is | `about(path)`, on the run door |
 | a name known to be one of your run's outputs → its role | `role_of(name)` — never for a name met in a folder, which is read back with its label (`about`) |
-| a new kind of file | a row in `WRITTEN`; never its suffix spelled at the call |
+| a role, in code | its constant, `runfiles.ROLE_*`; a deck's, `deck_role(engine)` |
+| an engine's file, in code | its constant, a row of `ENGINE_FILES` (`SIESTA_XV`, `PYSCF_CHK`, …) |
+| a role → the code that reads it | `reader(role, question)` — the row's `reads`, resolved (`reads_of` its name) |
+| a new kind of file | a row in `WRITTEN` and its constant; an engine's file, a row in `ENGINE_FILES`; never its suffix spelled at the call |
 
 **Never do these**, each of which has cost a defect: build a name with
 `f"{label}_{token}{suffix}"`; write a role literal (`".molwatch.log"`,
@@ -293,24 +321,48 @@ assembled beside one.
 **The one module** is `molbuilder/runfiles.py`:
 
 ```python
-compose(label, role, stage=None, **fields)  -> str       # a field the role
-                                                         # does not carry is refused
+compose(label, role, stage=None, roles=(), **fields) -> str  # a role neither table
+                                                         # nor ``roles`` declares,
+                                                         # or a field the role does
+                                                         # not carry, is refused
 parse(filename, label, roles=())            -> RunFile | None
 stem(label, stage=None)                     -> str
-tail(role, stage=None, **fields)            -> str       # label known only at run time
+tail(role, stage=None, roles=(), **fields) -> str        # label known only at run time
 find(directory, label, role=, roles=, stage=) -> list[(Path, RunFile)]
+find_on_label(directory, label, role, roles=()) -> list[Path]  # named on the label alone
 find_by_role(directory, role)               -> list[Path]   # dotted roles only
 role_of(name)                               -> str | None
-RunNames(label, stage)                      -> RunNames     # .name / .tail
+stem_before(name, role, roles=())           -> str | None   # a templated role by its pattern
+named_beside(name, role)                    -> str | None   # role's name on name's stem
+fields_of(name, role)                       -> dict | None  # a templated role's fields
+family(role)                                -> str          # its names, as a glob
+shown(template, **fields)                   -> str          # words, a field as <field>
+RunNames(label, stage)                      -> RunNames     # .name / .tail / .run_script / .header
 WRITTEN                                     # the catalogue (§ 2.2)
+ENGINE_FILES                                # the engines' files it names (§ 2.2)
+reads_of(role, question)                    -> str | None  # `module:NAME`
+reader(role, question)                      -> the reader it names, resolved
+stderr_apart(role)                          -> bool
 manifest(label, stage, engine, when, calculation) -> list
 ```
+
+**Every door that takes a role asks one check** (`runfiles.declared`) —
+`compose`, `tail`, `find`'s `role`, `find_on_label`, `find_by_role`,
+`stem_before`, `named_beside`, `fields_of`, `family`, `RunNames.name`,
+`reads_of`, `reader`, `stderr_apart`: a role of `WRITTEN` or of `ENGINE_FILES`
+— a templated one, or a name of it — or of the vocabulary a caller hands in as
+`roles`, and nothing else. `RunNames.name` takes a role of the two tables, its
+row saying whether it is named on the stage's stem; `find_by_role` a dotted
+role of `WRITTEN` alone, the roles a name is read by without its label. A
+caller holding a role read off a name in a folder asks the rows first
+(`read_roles`): such a name may be no file of ours. `engine_of_role` and
+`cut_from_output` say what a row says, `None` for a role no row names.
 
 **The generator is the guarantee, and it is tested as one.**
 `tests/test_runfile_names.py` drives `compose` and `parse` over the product of
 their segments and asserts the round trip, and what each segment refuses: a
 label that could not be read back, a malformed stage, a stage *position*, a
-field its role does not carry, a counter. A name is correct because it came
+role neither table declares, a field its role does not carry, a counter. A name is correct because it came
 out of a checked generator, not because a search of the output found nothing
 wrong.
 
@@ -556,7 +608,7 @@ arranges files belongs to Python on the host.
 | **GPU<->CPU socket co-location** | *(a job that uses a GPU, its engine running ranks)* ranks pinned beside the GPU's NUMA node, each rank starting the job's program |
 | **Record resolved launch command + placement** | the command about to run, logged |
 | **Dry-run preview** | `--dry-run`: the resolved command and each value's source, nothing started |
-| **SCF per-iteration timing instrument** | *(where the file catalogue cuts a file from the output — the timing log's row names its `cut_from`, a SIESTA output — its rows recognised by the grammar's patterns, `scf_timing_rows.SCF_ROW_PATTERNS`)* the per-iteration timing log a benchmark reads |
+| **SCF per-iteration timing instrument** | *(where the file catalogue cuts a file from the output — the timing log's row names its `cut_from`, a SIESTA output — its rows recognised by the patterns the output's row names, its `reads`' `scf_rows`)* the per-iteration timing log a benchmark reads |
 | **How a run ended** | `_mb_ending`, the script's question to the framework's reader of endings, and the one ask `_mb_ending_able` — see below |
 | **Background job monitor** | `mb_monitor.pyz` at `nice 19`, watching the script's process ([`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6) |
 | **Can the job finish itself?** | *(a job with a finish)* the check that the finish bundle loads on the job's python ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
@@ -1029,7 +1081,7 @@ about: `.XV` (the geometry), `.DM` (the density) and `.CG` (the optimizer's
 history). The rest are inventory: SIESTA reads them when present, under the
 same label, with no help. Transport's `.TSHS` and `.TSDE` have their own
 section; the device's own `<label>.TS.HSX` (SIESTA 5) is in no list — tbtrans
-reads it through the deck's `TBT.HS` line (`siesta_grammar.TS_HSX`). A
+reads it through the deck's `TBT.HS` line (`runfiles.SIESTA_TS_HSX`). A
 force-constant run's `.FC` / `.FCC` are inventory under `[vibration]`. **One
 base row means something else there**: a force-constant run writes its last
 displacement to `.XV`, so its deck writes `MD.UseSaveXV .false.` whatever the

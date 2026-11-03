@@ -30,7 +30,8 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tupl
 
 from .diagnostics import get_capabilities
 from .envs import hints as _hints
-from .runfiles import RANK_LAUNCHER, deck_role
+from .runfiles import (RANK_LAUNCHER, ROLE_CONCLUDED, ROLE_SESSION_LOG,
+                       deck_role, stderr_apart as _stderr_apart, tail)
 # The channel-name rule, from the module that owns the file those names
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
@@ -557,7 +558,7 @@ def _one_start_block(names, trial: bool) -> str:
     conclusion marker's (`project-layout.md` § 1.6.3), which the exit trap
     may write before any later block runs.  ``trial``: a benchmark trial,
     which measures its point once."""
-    log = names.name(".runwrap.log")
+    log = names.name(ROLE_SESSION_LOG)
     way = (_TRIAL_ONCE if trial else
            next_run_words(command_stage(names.stage)))
     return (
@@ -568,7 +569,7 @@ def _one_start_block(names, trial: bool) -> str:
         "# the ending read over it (_mb_ending) among them --\n"
         "# resolves it wherever it runs from.\n"
         f'_runwrap_log="$PWD/{log}"\n'
-        f'_concluded="{names.name(".concluded")}"\n'
+        f'_concluded="{names.name(ROLE_CONCLUDED)}"\n'
         f'if [ "$_dry_run" = "0" ] && [ -e "$_runwrap_log" ]; then\n'
         f'    echo "ERROR: {holds_a_start(log, way)}." >&2\n'
         "    exit 2\n"
@@ -657,7 +658,8 @@ def _runtime_status_block(
     # is ``<JOB>_optimized.xyz`` does not announce a clean start).  BRACED:
     # a suffix may start with "_" (`_optimized.xyz`), and an unbraced
     # "$_warm_label_optimized.xyz" is one unbound variable under set -u.
-    warm_names = " ".join(f'"${{_warm_label}}{suf}"' for suf in warm)
+    warm_names = " ".join(f'"${{_warm_label}}{tail(suf, roles=tuple(warm))}"'
+                          for suf in warm)
     return (
         "# --- Runtime status banner --------------------------\n"
         "# Reports what the run starts from -- the restart files here, read\n"
@@ -1154,7 +1156,7 @@ def _ending_question_func(stderr_apart: bool) -> str:
     every job (:func:`monitor_companions`), so the run script runs it with
     the job's own python over the output -- read by the reader its role
     names -- and, where the output keeps its engine's stderr apart
-    (``stderr_apart``, `_run_ending.stderr_apart`: SIESTA's), over the
+    (``stderr_apart``, `runfiles.stderr_apart`: SIESTA's), over the
     session log that holds it; the markers keep their one home, each engine
     family's table.
 
@@ -2119,7 +2121,7 @@ def render_run_wrapper(script_path: Path, *,
     and asked by the output's role: whether the run script cuts a timing
     file from it (the file catalogue's `cut_from_output`), its SCF rows'
     patterns (`scf_timing_rows.scf_row_patterns`), and whether the engine's
-    stderr is kept apart from it (`_run_ending.stderr_apart`).
+    stderr is kept apart from it (`runfiles.stderr_apart`).
 
     ``engine`` is prep's -- the calculation's (`JobSet.engine`); the deck is
     one of its decks.  ``notes`` receives what the rendering has to say and
@@ -2139,7 +2141,6 @@ def render_run_wrapper(script_path: Path, *,
     """
     from .engine_table import EngineTableError, engine as _engine
     from .parse.engines._run_ending import (advice_of as _advice_of,
-                                            stderr_apart as _stderr_apart,
                                             wall_causes as _wall_causes)
     from .parse.instruments.scf_timing_rows import scf_row_patterns
     from .runfiles import cut_from_output
@@ -2341,7 +2342,7 @@ def render_run_wrapper(script_path: Path, *,
 
     basename = names.stem
     script_name = script_path.name
-    run_sh = names.name(".run.sh")
+    run_sh = names.run_script
     # Shell-safety: both basename and script_name are interpolated
     # raw into bash f-strings throughout this module (inside
     # ``"..."``, inside glob lists, inside ``$(...)``, etc.).
@@ -2392,7 +2393,7 @@ def render_run_wrapper(script_path: Path, *,
         _wall_decl is not None
         and _wall_decl.limit_applied_by[engine] == "deck")
     # ASKED ONLY OF AN OUTPUT WHOSE FAMILY NAMES A STOP AT THE WALL, and its
-    # advice for a cause (`_run_ending.STOPS`; `running-a-job.md` § 3.5).
+    # advice for a cause (its catalogue row's `stops`; `running-a-job.md` § 3.5).
     asks_wall = takes_wall and bool(_wall_causes(stdout_role))
     asks_advice = bool(_advice_of(stdout_role))
     # THE MEMORY CAP, by its item's declaration alone: the run script's
@@ -2878,7 +2879,7 @@ def render_run_wrapper(script_path: Path, *,
         f'        echo "how it ended: $_mb_ending_words" >&2\n'
         # THE ADVICE FOR ITS CAUSE, where the output's family keeps some --
         # SIESTA's propor: its two causes, in the order to check them
-        # (`running-a-job.md` § 3.5, `_run_ending.STOPS`).
+        # (`running-a-job.md` § 3.5, its catalogue row's `stops`).
         + ('        if _mb_advice=$(_mb_ending advice); then\n'
            "            printf '\\n%s\\n\\n' \"$_mb_advice\" >&2\n"
            '        fi\n' if asks_advice else "")
@@ -3043,20 +3044,20 @@ def render_run_wrapper(script_path: Path, *,
     )
 
 
-#: Every file that travels BESIDE a job for its monitor, as
-#: ``{name beside the job: the module whose source it is}``: the monitor, the
-#: one module it reads its channels through, and every framework module it
-#: reads the RUN through -- the names (`runfiles`, `identity`), the output's
-#: one parser (each engine family's reading pass, its grammar, the rule
-#: engine they run on, and the physical constants a grammar converts a
-#: residual with, `constants`), the timing instrument's rows, how a run ended (the
-#: PySCF end lines, `_run_ending`, and the run's own records whose door
-#: `run_status` builds its state on, `runrecord`), `run_status` itself,
-#: TBtrans's loop in words (`tbtrans`), and
-#: what a report may carry (`report_fields`) -- `execution/run-reports.md`
-#: § 2.3 -- and the one JSON writer, `persist`, with which the run's own
-#: steps write its notification record beside the job
-#: (`runrecord.note_notified`).
+#: THE MONITOR AND WHAT IT IMPORTS ITSELF, beside a job, as ``{name beside
+#: the job: the module whose source it is}``: the monitor, the one module it
+#: reads its channels through, and every framework module it reads the RUN
+#: through -- the names (`runfiles`, `identity`), how a run ended
+#: (`_run_ending`, with the SIESTA reading pass it holds -- `siesta_reader`,
+#: its grammar, the rule engine they run on, the physical constants a
+#: grammar converts a residual with -- and the PySCF end lines), the timing
+#: instrument's rows, the run's own records whose door `run_status` builds
+#: its state on (`runrecord`), `run_status` itself, what a report may carry
+#: (`report_fields`) -- `execution/run-reports.md` § 2.3 -- and the one JSON
+#: writer, `persist`, with which the run's own steps write its notification
+#: record beside the job (`runrecord.note_notified`).  Every other reader an
+#: output's row names for a question a job asks beside it travels by that
+#: row (:func:`_members_the_records_name`).
 #:
 #: **A verbatim copy of each module's own file**, not a copy of its logic:
 #: each imports the next two ways -- from the package, or from beside the job
@@ -3076,9 +3077,7 @@ _MONITOR_BASE: Dict[str, str] = {
     "identity.py":         "molbuilder.identity",
     "siesta_reader.py":    "molbuilder.parse.engines.siesta_reader",
     "siesta_grammar.py":   "molbuilder.parse.engines.siesta_grammar",
-    "tbtrans.py":          "molbuilder.parse.engines.tbtrans",
     "transiesta.py":       "molbuilder.parse.engines.transiesta",
-    "molwatch_reader.py":  "molbuilder.parse.engines.molwatch_reader",
     "molwatch_grammar.py": "molbuilder.parse.engines.molwatch_grammar",
     "_section_rules.py":   "molbuilder.parse.engines._section_rules",
     "scf_timing_rows.py":  "molbuilder.parse.instruments.scf_timing_rows",
@@ -3117,17 +3116,23 @@ def _members_the_records_name() -> Dict[str, str]:
     table's ``points.count`` and ``points.outcome`` -- a vibration's count, a
     transport rung's count and a round's outcome), and each engine's
     keyword reader, which reads its deck for its run script (the engine
-    table's ``keyword_reader``, `mb_monitor.pyz deck`) -- each with every
-    module it says it needs beside it (its own ``TRAVELS_WITH``).  So a new
-    kind or engine travels by its record, never an edit of this module."""
+    table's ``keyword_reader``, `mb_monitor.pyz deck`), and the readers of
+    each output's role a job asks -- how it ended, its stops, its live pass,
+    its loop's words, its timing (the file catalogue row's
+    ``reads``, `runfiles.READ_BESIDE_A_JOB`) -- each with every module it
+    says it needs beside it (its own ``TRAVELS_WITH``).  So a new kind,
+    engine or output travels by its record, never an edit of this module."""
     import importlib
     from .engine_table import engine as _engine, engines
     from .kind_table import kind as _kind, kinds, run_of_points
+    from .runfiles import READ_BESIDE_A_JOB, ON_THE_LABEL
     refs = [ref for k in kinds() for e in _kind(k).engines
             for points in [run_of_points(k, e)] if points is not None
             for ref in (points.count, points.outcome)]
     refs += [_engine(e).keyword_reader for e in engines()
              if _engine(e).keyword_reader]
+    refs += [ref for a in ON_THE_LABEL for question, ref in a.reads
+             if question in READ_BESIDE_A_JOB]
     todo = [str(ref).partition(":")[0] for ref in refs]
     out: Dict[str, str] = {}
     while todo:
@@ -3484,23 +3489,28 @@ def pyscf_bundle() -> bytes:
     return _zip_bundle(_PYSCF_MAIN, PYSCF_COMPANIONS)
 
 
-def bundles_for(engine: str, finish: Optional[str] = None
+def bundles_for(engine: str, calculation: str,
+                finish: Optional[str] = None
                 ) -> Tuple[Tuple[str, Callable[[], bytes]], ...]:
     """The bundles that travel beside a deck, each ``(its name, its
-    builder)`` -- THE ONE LIST: `render_wrappers` writes them beside the
-    deck and `materialize` brings them into every attempt.
+    builder)``: `render_wrappers` writes them beside the deck, and
+    `materialize` brings them into every attempt with the rest of what
+    travels (`runfiles.beside_the_deck`).
 
-    The file catalogue's bundles for every job and for the deck's engine
-    (`runfiles.bundle_names`, the rows' ``bundle``) -- the monitor's
+    The file catalogue's travelling rows for the deck's engine and kind that
+    are BUILT here (`runfiles.travelling`) -- the monitor's
     (:data:`MONITOR_BUNDLE`), and beside a PySCF script the molbuilder code
     it imports (:data:`PYSCF_BUNDLE`, `engines/pyscf.md` § 3) -- and the
     job's finish when it has one (`Job.finish`, `engines/vibration.md`
     § 5.5)."""
-    from .runfiles import bundle_names
+    from .runfiles import travelling
     builders = {MONITOR_BUNDLE: monitor_bundle, PYSCF_BUNDLE: pyscf_bundle,
                 **_FINISH_BUNDLES}
-    return tuple((name, builders[name])
-                 for name in bundle_names(engine, finish))
+    names = [a.name for a in travelling(engine, calculation)
+             if a.name in builders]
+    if finish is not None:
+        names.append(finish)
+    return tuple((name, builders[name]) for name in names)
 
 
 @dataclass(frozen=True)
@@ -3610,18 +3620,19 @@ def render_wrappers(script_path: Path, *,
         deck_text=deck_text, notes=_notes, point=point)
     _validate_rendered_wrapper(text, script_path)
     # THE STAGE'S NAMES NAME IT (`runfiles.RunNames`), as every file of it.
-    files = [(names.name(".run.sh"), text)]
+    files = [(names.run_script, text)]
 
     # THE MONITOR TRAVELS WITH EVERY JOB, and the framework it reads the run
     # through with it: it runs under the job's own python
     # (`running-a-job.md` § 4.1, `run-reports.md` § 2.3).
     #
-    # ONE FILE PER BUNDLE, AND ONE LIST OF THEM (`bundles_for`), which
-    # `materialize` asks too when it brings the bundles into the attempt.
+    # ONE FILE PER BUNDLE, the catalogue's travelling rows that have a
+    # builder (`bundles_for`, `runfiles.travelling`) -- the rows `materialize`
+    # brings into the attempt (`runfiles.beside_the_deck`).
     # `render_run_wrapper` has refused
     # a finish it cannot ship and a suffix it cannot run.
     blobs = tuple((name, build()) for name, build
-                  in bundles_for(engine, finish))
+                  in bundles_for(engine, calculation, finish))
 
     # The submission layer (`scheduler.md` § 6a): a ``.sbatch`` only when the
     # machine has a queue -- every value in it the job's own (its resources,
@@ -3634,7 +3645,7 @@ def render_wrappers(script_path: Path, *,
             one_process=_engine(engine).one_process)
         if sbatch is not None:
             _validate_rendered_wrapper(sbatch, script_path)
-            files.append((names.name(".sbatch"), sbatch))
+            files.append((names.header, sbatch))
 
     return RenderedWrapper(files=tuple(files), executable=(files[0][0],),
                            blobs=blobs, notes=tuple(_notes))
@@ -3794,7 +3805,7 @@ def walk_header(base: Path, names, *, resources: "Resources",
     scheduler.  ``names`` are the walk's own (`runfiles.GroupNames`)."""
     from .runfiles import LAUNCH_DIR
     return _render_sbatch_for(
-        Path(base) / names.name(".sbatch"), names=names,
+        Path(base) / names.header, names=names,
         resources=resources, domain_pq=domain_pq,
         machine_record=machine_record, one_process=one_process,
         where=f"{LAUNCH_DIR}/")
@@ -3942,7 +3953,7 @@ def render_sbatch(names, *, scheduler,
         + ("# hands it -- nothing: each member's counts are in the walk.\n"
            if where else
            "# hands the run script: its -np / -omp.\n")
-        + f"bash {where}{names.name('.run.sh')} \"$@\"\n"
+        + f"bash {where}{names.run_script} \"$@\"\n"
     )
     return "\n".join(lines) + "\n" + body
 

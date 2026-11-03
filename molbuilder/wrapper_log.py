@@ -149,11 +149,13 @@ def finish_started(path) -> bool:
         return False
 
 
-def log_of_run(directory, label: str, stage: str) -> Optional[Path]:
+def log_of_run(directory, label: str, stage: Optional[str]
+               ) -> Optional[Path]:
     """The session log of ``label``'s run at ``stage`` in ``directory`` --
-    every run's files carry its stage -- or ``None`` where the folder holds
-    no start (the module's note)."""
-    for path, got in _rf.find(directory, label, role=".runwrap.log"):
-        if got.stage == stage:
-            return path
-    return None
+    every run's files carry its stage; a name with none asks for a log with
+    none -- or ``None`` where the folder holds no start (the module's
+    note)."""
+    found = [p for p, rec in _rf.find(directory, label,
+                                      role=_rf.ROLE_SESSION_LOG)
+             if rec.stage == stage]
+    return found[0] if found else None

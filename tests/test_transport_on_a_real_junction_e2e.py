@@ -910,13 +910,13 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
     home = stage_home(walk.bundle, described, "device")
     names = home.names
     header = (home.dir / LAUNCH_DIR
-              / GroupNames.of_points(names.stem).name(".sbatch"))
+              / GroupNames.of_points(names.stem).header)
     walk.header = header.read_text() if header.is_file() else None
     # ...and the headers anywhere else below the stage: a point's own,
     # beside its deck, or a run's copy of one.
     walk.point_headers = sorted(
         str(h.relative_to(home.dir))
-        for h in home.dir.rglob(names.name(".sbatch")))
+        for h in home.dir.rglob(names.header))
     return walk
 
 

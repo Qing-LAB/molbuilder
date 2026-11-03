@@ -193,12 +193,12 @@ def _scratch_of_an_engine(run):
 
 def _temporary_files_of_molbuilders(run):
     """A TBtrans data file's reading's claim and the one writer's temp, as
-    the catalogue names them (`runfiles.TBT_DIGEST_CLAIM`, its `{random}.tmp`
+    the catalogue names them (`runfiles.ROLE_TBT_DIGEST_CLAIM`, its `{random}.tmp`
     row) -- the claim small, for git; the temp of a big digest big, for the
     archive's walk."""
-    from molbuilder.runfiles import TBT_DIGEST_CLAIM, compose
+    from molbuilder.runfiles import ROLE_TBT_DIGEST_CLAIM, compose
     run.mkdir(parents=True)
-    return {run / compose("job", TBT_DIGEST_CLAIM, tbt="TBT"): b"{}",
+    return {run / compose("job", ROLE_TBT_DIGEST_CLAIM, tbt="TBT"): b"{}",
             run / "job.TBT.digest.nc.k3j9x_2a.tmp": BIG}
 
 

@@ -256,11 +256,14 @@ class JobSetStatus:
 def _warm_present(run_dir: Path, label: str, engine: str,
                   base) -> List[str]:
     """Which engine warm-restart files exist in the run folder ``run_dir``
-    -- by the list in effect for the calculation in ``base``."""
+    -- by the list in effect for the calculation in ``base``, its own
+    suffixes the vocabulary the composer is handed (a calculation's own copy
+    may name a file no table of the catalogue declares)."""
     out: List[str] = []
     from ..runfiles import compose
-    for ext in _warm_files(engine, base):
-        f = run_dir / compose(label, ext)
+    carried = _warm_files(engine, base)
+    for ext in carried:
+        f = run_dir / compose(label, ext, roles=carried)
         if f.is_file():
             out.append(f.name)
     return out

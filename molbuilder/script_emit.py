@@ -1148,7 +1148,7 @@ class DeckSpec:
     #: for every deck but a SIESTA force-constant one.
     vibration: Optional[Mapping[str, Any]] = None
     #: The bundle the job runs after its engine to FINISH the calculation --
-    #: `runwrap.VIBRATION_BUNDLE` for a SIESTA force-constant deck, whose run
+    #: `runfiles.VIBRATION_BUNDLE` for a SIESTA force-constant deck, whose run
     #: leaves force constants and whose result the finish derives
     #: (`engines/vibration.md` § 5.5).  ``None`` when the engine's own run
     #: leaves the result.  A fact about this deck's run, read by `prep` onto
@@ -1522,7 +1522,14 @@ def write_validation_report(deck_path, findings, *, plan=None) -> "Path":
     script"* is the two together, not whichever the caller happened to hold.
     """
     deck = Path(deck_path)
-    out = deck.with_name(_rf.compose(deck.stem, _rf.ROLE_VALIDATION))
+    # ON THE DECK'S LABEL AND STAGE, read back from its name by its own role
+    # (`runfiles.named_beside`).
+    name = _rf.named_beside(deck.name, _rf.ROLE_VALIDATION)
+    if name is None:
+        raise _rf.RunFileError(
+            f"{deck.name}: a deck prep writes is named by its stage's names "
+            f"(`runfiles.RunNames`), and this name is none of the catalogue's")
+    out = deck.with_name(name)
     text = validation_report_text(deck.name, findings)
     if plan is not None:
         plan.text(out, text)

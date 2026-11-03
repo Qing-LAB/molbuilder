@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 SCHEMA = "molbuilder/job-request@1"
 #: Its name is the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2).
 from .runfiles import JOB_REQUEST_FILE as FILENAME  # noqa: E402
+from .runfiles import TASK_FILE  # noqa: E402
 
 
 _TOP_KEYS = ("schema", "allocation", "execution", "stages", "bench", "notify")
@@ -346,9 +347,9 @@ def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
 
 
 #: A key of the description written here, said where it belongs.
-_DESCRIPTION_NOTE = (". What is computed -- the stages' overrides, what "
-                     "varies, the structure -- is the description's, "
-                     "task.json (execution/job-request.md 1)")
+_DESCRIPTION_NOTE = (f". What is computed -- the stages' overrides, what "
+                     f"varies, the structure -- is the description's, "
+                     f"{TASK_FILE} (execution/job-request.md 1)")
 
 
 # --------------------------------------------------------------------- #
@@ -411,8 +412,8 @@ def _stages_from_obj(obj: Mapping[str, Any], description: "Task"
         where = f"stages {name!r}"
         body = _as_object(entries[name], where=where)
         _check_keys(body, _STAGE_KEYS, where=where,
-                    note=". A stage's overrides are the description's "
-                         "(task.json)")
+                    note=f". A stage's overrides are the description's "
+                         f"({TASK_FILE})")
         if "group" not in body:
             _refuse("no 'group' -- every stage states the job it runs in "
                     "(execution/job-request.md 3.3)", where=where)

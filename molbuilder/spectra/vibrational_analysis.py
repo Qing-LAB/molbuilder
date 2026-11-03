@@ -54,6 +54,7 @@ try:                                        # inside molbuilder
                                vibrational_modes, vibrational_only_thermo)
     from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                           SCHEMA_VERSION, ModeData, SpectraResults)
+    from ..runfiles import TASK_FILE
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import (AtomIndexMap, Permutation,  # type: ignore
                                   map_rows_to_user_order, map_to_user_index)
@@ -66,6 +67,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                               vibrational_modes, vibrational_only_thermo)
     from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                          SCHEMA_VERSION, ModeData, SpectraResults)
+    from runfiles import TASK_FILE  # type: ignore[no-redef]
 
 def vibrational_analysis(hessian, masses_amu: Sequence[float],
                          positions_ang, elements: Sequence[str],
@@ -268,7 +270,7 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
                     f"{launched_way_back(s)}{_RESTORE} -- every run made "
                     f"since, `{stage}`'s too, is left behind; then give "
                     f"`{s}` more relaxation steps (`relax_steps`, Task "
-                    f"setup's stage table or task.json), prepare its group "
+                    f"setup's stage table or {TASK_FILE}), prepare its group "
                     f"again and launch it, and `{stage}`'s first launch "
                     f"takes the new relaxation.  Or launch `{s}` again "
                     f"cold -- `{launch_as_typed(s)} --cold` "
@@ -278,14 +280,14 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
         return (f"If this stage was launched, first go back to "
                 f"{LAUNCHED_WAY_BACK}{_RESTORE}; then give `{s}` more "
                 f"relaxation steps (`relax_steps`, Task setup's stage table "
-                f"or task.json), prepare its group again and launch it -- "
+                f"or {TASK_FILE}), prepare its group again and launch it -- "
                 f"its run relaxes first; or launch it again cold -- "
                 f"`{launch_as_typed(s)} --cold` {LAUNCH_MODE_NOTE} -- "
                 f"every call of the run again, the relaxation from the "
                 f"structure at the steps it has.")
     return (f"Relax first -- if this stage was launched, first go back to "
             f"{LAUNCHED_WAY_BACK}{_RESTORE}; then untick `already_relaxed` "
-            f"(Task setup, or task.json) so the calculation relaxes first, "
+            f"(Task setup, or {TASK_FILE}) so the calculation relaxes first, "
             f"or relax "
             f"elsewhere at this level of theory and hand the result over -- "
             f"or keep this run knowing that.")

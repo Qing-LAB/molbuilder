@@ -51,8 +51,8 @@ from __future__ import annotations
 from typing import Optional
 
 from .. import script_emit as _sc
-from ..parse.engines import siesta_grammar as _G
-from ..runfiles import compose
+from ..runfiles import (SIESTA_DM, SIESTA_HSX, SIESTA_TS_HSX, SIESTA_TSDE,
+                        SIESTA_TSHS, compose, deck_role)
 from ..siesta import layout as _sl
 from ..structure import Structure
 from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
@@ -166,7 +166,8 @@ TBT_SECTION = _sc.Section(
     note=(
         "# Read by tbtrans, which runs no SCF: it takes the converged",
         "# Hamiltonian the device rung wrote (TBT.HS above) and the leads'",
-        "# .TSHS, and evaluates T(E) on the window above.  An item not set",
+        f"# {SIESTA_TSHS}, and evaluates T(E) on the window above.  An item "
+        "not set",
         "# is not written, and tbtrans applies its own rule there: its line",
         "# says which.  A 0 is written as 0 -- a value of its own.",
     ))
@@ -265,10 +266,11 @@ def _emit_device_header(struct, cfg) -> str:
     label = cfg.system_label
     return "\n".join([
         "# ================================================================== #",
-        f"#  TranSIESTA DEVICE .fdf — {label}",
+        f"#  TranSIESTA DEVICE {deck_role('siesta')} — {label}",
         "#  The open-boundary NEGF calculation on the composed junction, at",
         "#  one bias.  The leads are not solved here: each one's Hamiltonian",
-        "#  was computed by its own rung and is read from the .TSHS named in",
+        f"#  was computed by its own rung and is read from the {SIESTA_TSHS} "
+        "named in",
         "#  the TS.Elec blocks below, which is what makes this an OPEN",
         "#  boundary rather than a bigger periodic cell.",
         "#",
@@ -286,10 +288,11 @@ def _emit_transmission_header(struct, cfg) -> str:
     label = cfg.system_label
     return "\n".join([
         "# ================================================================== #",
-        f"#  TBtrans TRANSMISSION .fdf — {label}",
+        f"#  TBtrans TRANSMISSION {deck_role('siesta')} — {label}",
         "#  T(E) from the device rung's converged Hamiltonian, at the same",
         "#  bias.  No self-consistent run happens here: tbtrans reads the",
-        f"#  device's {label}.TS.HSX and the leads' .TSHS and evaluates the",
+        f"#  device's {compose(label, SIESTA_TS_HSX)} and the leads' "
+        f"{SIESTA_TSHS} and evaluates the",
         "#  transmission on the energy window below.",
         "#",
         "#  Read by tbtrans.  It reads the junction as TranSIESTA wrote it --",
@@ -326,7 +329,8 @@ def _emit_device_run(struct, cfg) -> str:
         "# NEGF Green's function is inverted.)",
         "",
         "# Start the NEGF SCF from a saved density when one is present: the",
-        "# seed rung leaves <SystemLabel>.DM beside this deck, and a .TSDE",
+        f"# seed rung leaves <SystemLabel>{SIESTA_DM} beside this deck, and a "
+        f"{SIESTA_TSDE}",
         "# is read through the same switch.  Written, though SIESTA's default",
         "# is true, so the deck states its answer.  With no file, SIESTA",
         "# starts from atomic densities.",
@@ -346,10 +350,11 @@ def _emit_transmission_run(struct, cfg) -> str:
         "# No SolutionMethod: tbtrans runs no SCF.",
         "",
         "# WHERE the device Hamiltonian is.  tbtrans would pick the first of",
-        f"# {label}.TS.HSX, .TSHS and .HSX that exists (m_tbt_hs.F90); naming it",
+        f"# {compose(label, SIESTA_TS_HSX)}, {SIESTA_TSHS} and {SIESTA_HSX} that "
+        "exists (m_tbt_hs.F90); naming it",
         "# says which one this transmission is of, rather than leaving that to",
         "# whichever file is present.",
-        f"TBT.HS                 {compose(label, _G.TS_HSX)}",
+        f"TBT.HS                 {compose(label, SIESTA_TS_HSX)}",
         "",
     ])
 
@@ -529,13 +534,14 @@ def _emit_electrode_header(struct, cfg) -> str:
     label = cfg.system_label
     return "\n".join([
         "# ================================================================== #",
-        f"#  TranSIESTA ELECTRODE (bulk lead) .fdf — {label}",
+        f"#  TranSIESTA ELECTRODE (bulk lead) {deck_role('siesta')} — {label}",
         "#  A single point on the lead region taken OUT of the cited",
         "#  junction by its label -- same atoms, same relaxation, a subset",
         "#  rather than a geometry derived from somewhere else.  That is what",
         "#  makes this lead and the device consistent by construction.",
         "#",
-        f"#  Writes {label}.TSHS, which the device deck's TS.Elec reference",
+        f"#  Writes {compose(label, SIESTA_TSHS)}, which the device deck's "
+        "TS.Elec reference",
         "#  reads to build this lead's self-energy.",
         "# ================================================================== #",
         "",
@@ -583,10 +589,11 @@ def _emit_seed_header(struct, cfg) -> str:
     label = cfg.system_label
     return "\n".join([
         "# ================================================================== #",
-        f"#  Transport SEED .fdf — {label}",
+        f"#  Transport SEED {deck_role('siesta')} — {label}",
         "#  An ordinary periodic SIESTA single point on the composed,",
         "#  SORTED junction (engines/transport.md 4.2, stage 1).  Its",
-        f"#  converged {label}.DM starts the device NEGF SCF; scaffolding",
+        f"#  converged {compose(label, SIESTA_DM)} starts the device NEGF "
+        "SCF; scaffolding",
         "#  for convergence, no effect on the converged answer.",
         "# ================================================================== #",
         "",
@@ -634,7 +641,8 @@ def _emit_restart_group(struct, cfg) -> str:
     return "\n".join([
         "# --- Restart: what this rung reads if it is there ---",
         "#",
-        "# Written in BOTH states on purpose: SIESTA reads <SystemLabel>.DM",
+        f"# Written in BOTH states on purpose: SIESTA reads "
+        f"<SystemLabel>{SIESTA_DM}",
         "# whenever the file exists, whatever the deck leaves out, so an",
         "# omitted group means 'warm-start from whatever is in this",
         "# directory' rather than 'start clean'.",
@@ -642,7 +650,7 @@ def _emit_restart_group(struct, cfg) -> str:
         "# For the SEED the file in question is its OWN previous attempt's",
         "# density, which is what `--from` carries and what makes re-running",
         "# an unconverged seed cheap.  It is never the device's: the arrow",
-        "# runs the other way (seed .DM -> device SCF).",
+        f"# runs the other way (seed {SIESTA_DM} -> device SCF).",
         *_restart_group_lines(cfg, relax_type="none"),
         "",
     ])
@@ -668,7 +676,8 @@ def _emit_solver_note(struct, cfg) -> str:
         "# self-energies defined, which is not what this deck is and not",
         "# what the ladder needs from it.",
         "#",
-        "# SIESTA writes <SystemLabel>.DM as this SCF converges, and that",
+        f"# SIESTA writes <SystemLabel>{SIESTA_DM} as this SCF converges, and "
+        "that",
         "# file -- nothing else from this rung -- is what the device stage",
         "# reads as its starting density.  There is no MD block anywhere in",
         "# this deck, and that absence is what makes it a single point: the",

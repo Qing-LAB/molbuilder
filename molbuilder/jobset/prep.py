@@ -48,7 +48,9 @@ from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from ..engine_table import read_deck
 from .plan import FILENAME as _PLAN_FILE
 from . import prepared_with
-from ..runfiles import RunNames, beside_the_deck
+from ..runfiles import (GROUP_HEADER, ROLE_HEADER, ROLE_MOLWATCH,
+                        ROLE_VALIDATION, RunNames, beside_the_deck,
+                        fixed_fields, role_of)
 from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
 from .engines import EngineSeam, engine_seam
@@ -240,19 +242,19 @@ def prep_jobset(jobset: JobSet, base_dir, *, calculation: str, plan,
                 # 0 -- and is taken away, never sent, run or read as this
                 # one's (`job-system.md` § 5.0, checkpoint 6;
                 # `scheduler.md` § 5.1, *every header is prep's*).
-                for _name in beside_the_deck(jobset.engine, job.finish,
-                                             _names):
+                for _name in beside_the_deck(jobset.engine, calculation,
+                                             job.finish, _names):
                     _left = _deck.parent / _name
                     if not plan.decides(_left) and _left.is_file():
                         plan.remove(_left)
         if log is not None:
             log.received(job.script, _flat_resources(job.resources)
                          + (f", env={env}" if env else ""))
-            for _w in (_names.name(".run.sh"), _names.name(".sbatch")):
+            for _w in (_names.run_script, _names.header):
                 if plan.is_file(_decks[0][0].parent / _w):
                     log.produced(_w, f"{len(plan.read_text(_decks[0][0].parent / _w).splitlines())}"
                                      f" lines")
-                elif _w.endswith(".sbatch"):
+                elif role_of(_w) == ROLE_HEADER:
                     log.note(f"{_w}: not written "
                              + ("(emit_sbatch off)" if not emit_sbatch
                                 else "(a run of points: its walk's header "
@@ -851,7 +853,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # deck's, written with it when the prep is.
         print(f"  (each warning shown once; {_once.dropped} repeat(s) "
               f"across this prep's other decks suppressed -- each deck's "
-              f"own .validation.txt, written with it when the prep is, "
+              f"own {ROLE_VALIDATION}, written with it when the prep is, "
               f"carries its full findings)", file=_sys.stderr)
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
@@ -1020,7 +1022,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # NO HEADER THIS TIME, so none an earlier prep wrote is left to
             # be sent as this one's.
             _left = (home.dir / LAUNCH_DIR / GroupNames.of_points(
-                run_names(js, job).stem).name(".sbatch"))
+                run_names(js, job).stem).header)
             if _left.is_file():
                 plan.remove(_left)
     elif kind == KIND_LADDER and stage:
@@ -1145,7 +1147,7 @@ def _taken_by_its_run(path, names, home) -> bool:
         p.relative_to(home)
     except ValueError:
         return False
-    if p.name == GroupNames.of_points(names.stem).name(".sbatch"):
+    if p.name == GroupNames.of_points(names.stem).header:
         return True
     row = row_for(p, names.label)
     return row is not None and (
@@ -1465,7 +1467,7 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     targets = {names.stage: leaf} if leaf else {}
     write_initial_preview(
         struct,
-        base / names.name(".molwatch.log"),
+        base / names.name(ROLE_MOLWATCH),
         job=names.label, engine=engine,
         convergence_targets=(targets or None),
         frame=frame,
@@ -2110,15 +2112,16 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     if kind == "bench":
         # EACH SHELF AS ITS HEADER CARRIES IT, read back from the text the
         # plan holds (`Directives.lines_of`), in the order they are sent.
-        from ..runfiles import LAUNCH_DIR, role_of
+        from ..runfiles import LAUNCH_DIR
         from ..scheduler.emit import Directives
         shelf_dir = resolved.record_dir(base) / LAUNCH_DIR
         out.shelves = []
         for w in plan.writes():
-            if w.parent == shelf_dir and role_of(w.name) == ".sbatch":
+            shelf = fixed_fields(GROUP_HEADER, w.name)
+            if w.parent == shelf_dir and shelf is not None:
                 lines = Directives.lines_of(plan.read_text(w),
                                             environment.kind)
-                out.shelves.append({"name": w.stem, "header": lines,
+                out.shelves.append({"name": shelf["group"], "header": lines,
                                     "said": Directives.said(lines),
                                     "fit": walks.get(w, "")})
     if kind != "task":
@@ -2184,10 +2187,10 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         # again, its walk's header written (`walks`) -- sends its walk.
         walked = bool(out.points or (out.launched and walks))
         sends = (stage_home(base, task, stage).dir / LAUNCH_DIR
-                 / GroupNames.of_points(names.stem).name(".sbatch")
-                 if walked else Path(run_dir) / names.name(".sbatch"))
+                 / GroupNames.of_points(names.stem).header
+                 if walked else Path(run_dir) / names.header)
         out.launch = _launch_as_written(
-            plan, sends, Path(run_dir) / names.name(".run.sh"),
+            plan, sends, Path(run_dir) / names.run_script,
             environment.kind)
         # A RUN OF POINTS' ONE JOB, in the words both doors print beside
         # its header (:func:`walk_words`).
@@ -2443,7 +2446,8 @@ def walk_header_of(where, names, request, environment, *, engine: str,
         where, names, resources=request, one_process=one_process,
         machine_record=environment,
         domain_pq=(placed_on["partition"], placed_on["qos"]))
-    return Walk(Path(where) / LAUNCH_DIR / names.name(".sbatch"), text, fit)
+    return Walk(Path(where) / LAUNCH_DIR / names.header, text,
+                fit)
 
 
 def group_header(base, task, number: int, jobs, environment, *,
@@ -2859,7 +2863,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 # sent as this one's (`job-system.md` § 5.0, checkpoint 6).
                 from .group import sequence_names
                 _left = base / LAUNCH_DIR / sequence_names(
-                    base, task, request, sequence).name(".sbatch")
+                    base, task, request, sequence).header
                 if _left.is_file():
                     the_plan.remove(_left)
                     seq_header = _left

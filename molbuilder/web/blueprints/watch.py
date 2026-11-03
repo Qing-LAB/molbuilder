@@ -137,6 +137,7 @@ def _refuse_if_not_a_trajectory(parser_cls):
     of failing at the first attribute that is missing.
     """
     from molbuilder.parse.types import answers_a_trajectory
+    from molbuilder.runfiles import ROLE_GEOM_TRAJ, ROLE_MOLWATCH
 
     if answers_a_trajectory(parser_cls):
         return None
@@ -147,8 +148,8 @@ def _refuse_if_not_a_trajectory(parser_cls):
         "error": (
             f"{parser_cls.label} is read by the {parser_cls.name!r} parser, "
             f"which answers a {kind} -- not a trajectory. This viewer shows "
-            f"a run's frames over time. Open the run's .molwatch.log (or a "
-            f"*_geom_optim.xyz) to see the trajectory this geometry came "
+            f"a run's frames over time. Open the run's {ROLE_MOLWATCH} (or a "
+            f"*{ROLE_GEOM_TRAJ}) to see the trajectory this geometry came "
             f"from."),
     }
 

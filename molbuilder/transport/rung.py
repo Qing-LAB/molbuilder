@@ -21,7 +21,7 @@ from typing import Optional
 from pathlib import Path
 
 from ..pseudos import PSEUDO_DIRNAME
-from ..runfiles import PSEUDO_FILE, fixed_name
+from ..runfiles import PSEUDO_FILE, find_fixed, fixed_name
 from ..siesta.seam import pseudo_dir, screen_pseudos
 from ..jobset.errors import PrepError, user_error_as_prep
 from ..jobset.naming import stage_home
@@ -60,7 +60,7 @@ def provide_pseudos(struct, cfg, base: Path,
             cited = Path(root) / citation
             if (cited / PSEUDO_DIRNAME).is_dir():
                 lib = cited / PSEUDO_DIRNAME
-            elif any(cited.glob("*.psml")):
+            elif find_fixed(cited, PSEUDO_FILE):
                 lib = cited
         missing = (copy_pseudopotentials(want, lib, pdir, plan=plan)
                    if lib is not None else list(want))

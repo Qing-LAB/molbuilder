@@ -1,9 +1,10 @@
 """Parse-activity log sidecar.
 
-The SIESTA .out and .molwatch.log parsers write a
-``<input-stem>.parse.log`` file in the same directory as
-its input, recording what it did and any problems it hit during
-the scan.  The file is the on-disk counterpart of
+The SIESTA .out and .molwatch.log parsers write a parse log -- the
+catalogue's ``<base>.parse.log``, ``<base>.molwatch.parse.log`` for a
+progress log, on the stem the input's own role leaves -- in the same
+directory as its input, recording what it did and any problems it hit
+during the scan; none beside a file whose name says no role.  The file is the on-disk counterpart of
 :class:`Trajectory.parse_warnings` -- the in-memory list goes
 to the browser inspector; the log file persists across browser
 sessions and is greppable from CLI / SSH.
@@ -43,6 +44,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from molbuilder.runfiles import (ROLE_MOLWATCH, ROLE_MOLWATCH_PARSE_LOG,
+                                 ROLE_PARSE_LOG, named_beside, role_of)
+
 
 _ENV_VAR = "MOLBUILDER_PARSE_LOG"
 
@@ -68,18 +72,25 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _sidecar_path(input_path: str) -> Path:
-    """Sidecar path: replace the final extension with ``.parse.log``.
+def _sidecar_path(input_path: str) -> Optional[Path]:
+    """Sidecar path: the catalogue's parse log on the stem of the file read
+    -- the trajectory log's own row for a ``.molwatch.log``
+    (`runfiles.WRITTEN`) -- or ``None``, no log, for a name the catalogue
+    does not read back.
 
     ``job.out``           -> ``job.parse.log``
     ``job.molwatch.log``  -> ``job.molwatch.parse.log``
-    ``job.transport.json``-> ``job.transport.parse.log``
     """
-    return Path(input_path).with_suffix(".parse.log")
+    p = Path(input_path)
+    name = named_beside(p.name, ROLE_MOLWATCH_PARSE_LOG
+                        if role_of(p.name) == ROLE_MOLWATCH
+                        else ROLE_PARSE_LOG)
+    return None if name is None else p.with_name(name)
 
 
 class ParseLogger:
-    """Per-scan logger writing to ``<input>.parse.log``.
+    """Per-scan logger writing to the input's parse log (:func:`_sidecar_path`
+    -- none for a name the catalogue does not read back).
 
     Use as a context manager so the summary line is written on exit
     even when the parser raises.  Methods return ``None`` and never

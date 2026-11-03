@@ -31,6 +31,7 @@ from typing import List, Optional
 from .. import script_emit as _sc
 from ..atom_permutation import SORT_HELD_FIRST
 from ..engine_atom_index import siesta_numbering
+from ..runfiles import ROLE_SPECTRA, SIESTA_EPSIMG, SIESTA_FC, compose
 from ..structure import Structure
 from .vibration_phases import IR_CHARGES, PHASES
 
@@ -83,7 +84,8 @@ def optical_block(struct: Structure, cfg, derived: dict) -> str:
             "# then SIESTA's optical calculation: eps2(w) for a field along",
             "# Optical.Vector, every occupied state coupled with every empty one",
             "# (OpticalCalculation; engines/vibration.md 5.11), written to",
-            f"# {cfg.system_label}.EPSIMG.  The run's Raman phase runs one such",
+            f"# {compose(cfg.system_label, SIESTA_EPSIMG)}.  The run's Raman "
+            "phase runs one such",
             "# call at the equilibrium and at +/-dQ along each selected mode;",
             "# the polarizability and the Raman strength are derived from",
             "# eps2 when the result is presented, at the laser and the width",
@@ -165,12 +167,14 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
             "# --- The force-constant run ---",
             "# MD.TypeOfRun FC nudges atoms FC.First..FC.Last by FC.Displacement",
             "# along x, y, z, both ways, and writes the force constants to",
-            f"# {cfg.system_label}.FC (engines/vibration.md § 5.4).  No atom is",
+            f"# {compose(cfg.system_label, SIESTA_FC)} (engines/vibration.md "
+            "§ 5.4).  No atom is",
             "# relaxed here: the coordinates are taken as the stationary point",
             "# -- the ones the run's relax call reached, or the input's when the",
             "# person stated them relaxed (already_relaxed) -- and the record",
             "# step after this call judges them with the forces of FC step 0,",
-            f"# then writes {cfg.system_label}.spectra.json at the run's root",
+            f"# then writes {compose(cfg.system_label, ROLE_SPECTRA)} at the "
+            "run's root",
             "# (engines/vibration.md 5.5, 5.11 3).",
             f"# The range is the {f['n_free']} FREE atom(s); the {f['n_held']} held",
             "# atom(s) come first in this deck's numbering because the structure",

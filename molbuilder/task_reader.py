@@ -30,6 +30,7 @@ from .parse.base import FileParser
 from .parse.errors import UnknownFormatError
 from .parse.sidecars._helpers import build_sidecar_result
 from .parse.types import SidecarResult
+from .runfiles import TASK_FILE
 
 #: The parse-side name of what came out: the description of a transport
 #: calculation, the report's handle.
@@ -43,7 +44,6 @@ class TaskReadError(ValueError):
 def _load_transport_task(path: Path) -> dict:
     """The description's JSON, or :class:`TaskReadError` saying why not --
     one reader for both halves of the parser."""
-    from .runfiles import TASK_FILE
     from .task import of as task_of
     p = Path(path)
     if p.name != TASK_FILE:
@@ -75,8 +75,8 @@ class TransportTaskFileParser(FileParser):
 
     name   = "transport-task"
     label  = "a transport calculation's description (its report's handle)"
-    hint   = ("task.json at a transport calculation's root -- the Results "
-              "panel opens the calculation's report through it")
+    hint   = (f"{TASK_FILE} at a transport calculation's root -- the "
+              f"Results panel opens the calculation's report through it")
     output = SidecarResult
 
     @classmethod

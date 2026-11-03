@@ -37,6 +37,8 @@ from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .atom_permutation import MAP_KEY
 from .engine_table import engines as _engines
 from .kind_table import kinds as _kinds
+from .runfiles import (CALCDIR_FILE, GITIGNORE_FILE, ROLE_RUNTIME_INFO,
+                       SIESTA_XV, TASK_FILE, WARM_FILES_FILE)
 from .structure import Structure, atom_words
 
 
@@ -1115,17 +1117,18 @@ def cmd_modify(input_path, output_path,
 
 
 @cli.command("xv2xyz",
-             short_help="translate a SIESTA .XV into a structure pair")
-@click.argument("xv_path", metavar="input.XV",
+             short_help=f"translate a SIESTA {SIESTA_XV} into a structure "
+                        f"pair")
+@click.argument("xv_path", metavar=f"input{SIESTA_XV}",
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("xyz_path", metavar="output.xyz", type=click.Path(path_type=Path))
 @click.option("--from-run", "from_run", is_flag=True, default=False,
-              help="Take what the run that wrote input.XV declared about "
-                   "its atoms -- its own deck's labels, held atoms and "
-                   "axis kinds -- and what it says about itself, its "
-                   "info.calculation and info.relaxation (a pair a "
-                   "transport calculation can cite).  Refused for a .XV no "
-                   "run of ours holds.")
+              help=f"Take what the run that wrote input{SIESTA_XV} declared "
+                   f"about its atoms -- its own deck's labels, held atoms and "
+                   f"axis kinds -- and what it says about itself, its "
+                   f"info.calculation and info.relaxation (a pair a "
+                   f"transport calculation can cite).  Refused for a "
+                   f"{SIESTA_XV} no run of ours holds.")
 def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     """Convert a SIESTA ``.XV`` final-coordinates file to a structure pair.
 
@@ -1157,7 +1160,8 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     except SiestaXVError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    note = "defaults (a bare .XV states only the geometry and the lattice)"
+    note = (f"defaults (a bare {SIESTA_XV} states only the geometry and the "
+            f"lattice)")
     if from_run:
         struct, note, restored = _apply_run_metadata(struct, xv_path)
         if restored:
@@ -1218,17 +1222,18 @@ def _file_atoms(path, traj) -> Optional[dict]:
     return AtomIndexMap.of_own_structure(n, why).to_dict()
 
 
-def _say_a_file_is_not_its_run(path) -> None:
+def _say_a_file_is_not_its_run(path):
     """A BARE FILE READER reads a file, not a run (`model/parse.md` § 5.3):
     of a run of ours in its engine's order it says so, on stderr -- the
     atoms it prints, and every atom index, are in that order -- and of a
     run whose deck predates the record, that nothing states its order
-    (I9)."""
+    (I9).  Returns what it found (:func:`_its_run`), for a verb that
+    names its output by the run."""
     if str(path) == "-":
-        return
+        return None
     found = _its_run(path)
     if found is None:
-        return
+        return None
     said = found[1]
     if said.atom_order is not None:
         click.echo(
@@ -1239,6 +1244,7 @@ def _say_a_file_is_not_its_run(path) -> None:
             err=True)
     elif said.order_unstated:
         click.echo(f"note: {said.order_unstated}", err=True)
+    return found
 
 
 def _refuse_a_reordered_run(xv_path: Path) -> None:
@@ -1295,9 +1301,10 @@ def _apply_run_metadata(struct, xv_path: Path):
     if run is None:
         raise click.ClickException(
             f"--from-run: no run of ours holds {xv_path} -- nothing marks its "
-            f"folder as part of a calculation (calcdir.json, or task.json "
+            f"folder as part of a calculation ({CALCDIR_FILE}, or {TASK_FILE} "
             f"above it; project-layout.md § 1.4a), so nothing declares its "
-            f"atoms.  Without --from-run the .XV converts on its own.")
+            f"atoms.  Without --from-run the {SIESTA_XV} converts on its "
+            f"own.")
     try:
         view = view_of(run, output=run.stdout, n_atoms=struct.n_atoms,
                        lattice=[[float(v) for v in row]
@@ -1991,8 +1998,11 @@ def cmd_frameset_from_mode(run, mode, temperature, nodes, out):
 @click.argument("input_path", metavar="input")
 @click.option("--out", "out_path", default=None,
               type=click.Path(dir_okay=False),
-              help="Output JSON path.  Default: ``<input-stem>.runtime_info.json`` "
-                   "next to the input.  Use ``-`` for stdout.")
+              help=f"Output JSON path.  Default: "
+                   f"``<base>{ROLE_RUNTIME_INFO}`` next to the input -- "
+                   f"``<base>`` the stem its own role leaves, one per run; "
+                   f"a name no role reads back needs --out.  Use ``-`` for "
+                   f"stdout.")
 
 @click.option("--pretty/--no-pretty", default=True, show_default=True,
               help="Indent the JSON output.")
@@ -2021,6 +2031,27 @@ def cmd_runtime_info(input_path, out_path, pretty):
     from .parse import ParseError
     detect_parser = _trajectory_parser_for
 
+    found = _say_a_file_is_not_its_run(input_path)
+    if out_path is None:
+        # Default: THE RUN'S `<base>.runtime_info.json`, the catalogue's row
+        # (`runfiles.ROLE_RUNTIME_INFO`) -- one per run: a file of a run of
+        # ours is named by the run's names (its engine's files on the label
+        # alone, ``H2.MD.nc``, too); any other beside it, on the stem its
+        # own role leaves (`runfiles.named_beside`): ``job.out``,
+        # ``job.molwatch.log`` and ``job_geom_optim.xyz`` all give
+        # ``job.runtime_info.json``.  A name no role reads back is refused
+        # before anything is read: ``--out`` names the file.
+        from .runfiles import named_beside
+        in_path = Path(input_path)
+        name = (found[0].names.name(ROLE_RUNTIME_INFO) if found is not None
+                else named_beside(in_path.name, ROLE_RUNTIME_INFO))
+        if name is None:
+            raise click.ClickException(
+                f"{in_path.name} is named by no role molbuilder reads back, "
+                f"so its runtime info has no name beside it -- name the file "
+                f"with --out")
+        out_path = str(in_path.with_name(name))
+
     with _resolve_input_path(input_path) as resolved:
         try:
             parser = detect_parser(resolved)
@@ -2031,7 +2062,6 @@ def cmd_runtime_info(input_path, out_path, pretty):
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
-    _say_a_file_is_not_its_run(input_path)
 
     # frozen_atoms is a Python set in-memory; convert to a sorted list
     # for JSON.  Any other non-JSON-native types should fail loudly so
@@ -2053,14 +2083,6 @@ def cmd_runtime_info(input_path, out_path, pretty):
         click.echo(payload)
         return
 
-    if out_path is None:
-        # Default: <stem>.runtime_info.json next to the input.  For
-        # ``job.out`` this writes ``job.runtime_info.json``; for
-        # ``job.molwatch.log`` it writes ``job.molwatch.runtime_info.json``
-        # (stem strip is intentionally single-suffix -- matches
-        # transport.json + molstruct.json conventions).
-        in_path = Path(input_path)
-        out_path = str(in_path.with_suffix("")) + ".runtime_info.json"
 
     out = Path(out_path)
     # Through the one writer: a later parse reads this file, and a half-written
@@ -3451,7 +3473,7 @@ def cmd_checkpoint_list(limit, check, path):
         # NOT WHAT THIS MOLBUILDER GENERATES -- edited by hand, or written by
         # one whose classification differed (I2b): the cause is not known
         # here, so it is not said.
-        click.echo("   note: .gitignore's generated block is not what this "
+        click.echo(f"   note: {GITIGNORE_FILE}'s generated block is not what this "
                    "molbuilder generates (edited, or written by another "
                    "release).  The next save rewrites it from the "
                    "classification.")
@@ -3576,8 +3598,8 @@ def cmd_checkpoint_config(path):
                "never saved,")
     click.echo("              and a restore removes them -- named by the "
                "engines' own")
-    click.echo("              warm-files.toml and molbuilder's file "
-               "catalogue, not by")
+    click.echo(f"              {WARM_FILES_FILE} and molbuilder's file "
+               f"catalogue, not by")
     click.echo("              molbuilder.json (checkpointing.md S1)")
     click.echo("\nedit molbuilder.json to change the size limit or the "
                "families (docs/execution/checkpointing.md § 4)")

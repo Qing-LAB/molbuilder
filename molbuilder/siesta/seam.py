@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List
 
 from ..pseudos import PSEUDO_DIRNAME
-from ..runfiles import PSEUDO_FILE, deck_role, fixed_name
+from ..runfiles import PSEUDO_FILE, deck_role, fixed_fields, fixed_name
 
 if TYPE_CHECKING:
     from ..jobset.engines import EngineSeam
@@ -87,7 +87,11 @@ def pseudo_dir(base: Path, plan=None) -> Path:
     # (`calcdirs.where`); that is read off its name, not stored.
     from ..jobset.naming import open_container
     pdir = open_container(base, base / PSEUDO_DIRNAME, plan)
-    for stray in plan.glob(base, "*.psml"):
+    # THE STRAYS ARE THE CATALOGUE'S FAMILY, `<species>.psml`
+    # (`runfiles.PSEUDO_FILE`): the names SIESTA opens.
+    strays = [p for p in plan.glob(base, "*")
+              if fixed_fields(PSEUDO_FILE, p.name) is not None]
+    for stray in strays:
         target = pdir / stray.name
         if not plan.is_file(target):
             plan.move(stray, target)
@@ -235,7 +239,8 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
     from ..jobset.planned import Plan
     view = plan if plan is not None else Plan()
     return sorted(f"{PSEUDO_DIRNAME}/{p.name}"
-                  for p in view.glob(base / PSEUDO_DIRNAME, "*.psml"))
+                  for p in view.glob(base / PSEUDO_DIRNAME, "*")
+                  if fixed_fields(PSEUDO_FILE, p.name) is not None)
 
 
 def siesta_seam() -> EngineSeam:

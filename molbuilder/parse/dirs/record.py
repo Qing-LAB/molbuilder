@@ -70,7 +70,7 @@ class RunFiles:
     engine_log: Optional[Path] = None
     #: THE ENGINE'S LOG OF THE SETTINGS IT READ, where it writes one --
     #: SIESTA's ``fdf.<stamp>.log``, paired by its output's start: found by
-    #: the output's family (:data:`USED_LOGS`, by the output's role).
+    #: the reader its output's catalogue row names (``used_log``).
     used_log: Optional[Path] = None
     #: The run's start, as its session log states it
     #: (`wrapper_log.read_wrapper_log`), and the log's text, for the fence.
@@ -89,6 +89,23 @@ class RunFiles:
     #: Whether the run's deck is still its stage's -- the run door's one
     #: answer (`runs.Run.current`); ``None`` with nothing to compare.
     current: Optional[bool] = None
+
+    @property
+    def over(self) -> bool:
+        """Whether the run's state is final (`job.FINAL_STATES`) -- an
+        ``unreadable`` run's is not: its state cannot be told."""
+        from .job import FINAL_STATES
+        return self.status is not None and self.status.state in FINAL_STATES
+
+    def head(self, path: Optional[Path]) -> str:
+        """The head of one of the run's files, as far as its launch, build,
+        solver and pseudopotential lines can sit (:data:`_HEAD`)."""
+        return _read(path, head=_HEAD)
+
+    def tail(self, path: Optional[Path]) -> str:
+        """The tail of one of the run's files, for its end lines
+        (:data:`_TAIL`)."""
+        return _read(path, tail=_TAIL)
 
 
 def _read(path: Optional[Path], *, head: Optional[int] = None,
@@ -125,6 +142,7 @@ def run_files(directory, *, names, launched_in, status, engine: str,
     ``launched_in`` is where the run's launch record lies, the run door's
     (`runs.Run.launched_in`).
     """
+    from ... import runfiles as _rf
     from ...runfiles import deck_roles, find, role_of, stdout_roles
     from ..instruments.scf_timing_rows import timing_file
 
@@ -148,53 +166,27 @@ def run_files(directory, *, names, launched_in, status, engine: str,
 
     out = first_of(stdout_roles(engine))
     out_head = _read(out, head=_HEAD)
-    # THE ENGINE'S LOG OF WHAT IT READ, by its output's family.
-    find_used = USED_LOGS.get(role_of(out.name)) if out is not None else None
+    # THE ENGINE'S LOG OF WHAT IT READ, by the reader its output's row names.
+    find_used = (_rf.reader(role_of(out.name), "used_log")
+                 if out is not None else None)
     used_log = find_used(d, out_head) if find_used is not None else None
 
     # THE RUN'S SESSION LOG -- its start, the log `run_status` reads
     # SIESTA's stderr in (`wrapper_log.log_of_run`) -- from the one
     # listing, which holds the stage's files alone, as that door matches.
     from ...wrapper_log import read_wrapper_log
-    log_text = _read(this_run(".runwrap.log"))
+    log_text = _read(this_run(_rf.ROLE_SESSION_LOG))
 
     return RunFiles(
         directory=d, engine=engine, status=status,
         deck=deck, names=names, stdout=out, stdout_head=out_head,
-        engine_log=this_run(".log"), used_log=used_log,
+        engine_log=this_run(_rf.ROLE_PYSCF_LOG), used_log=used_log,
         wrapper_start=read_wrapper_log(log_text), wrapper_text=log_text,
         timing=timing_file({rf.role: p for p, rf in reversed(listing)}),
-        monitor_log=this_run(".monitor.log"),
-        util_csv=this_run(".util.csv"),
+        monitor_log=this_run(_rf.ROLE_MONITOR_LOG),
+        util_csv=this_run(_rf.ROLE_UTIL_CSV),
         calculation=calculation, current=current,
         launched_in=Path(launched_in))
-
-
-def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
-    """SIESTA's ``fdf.<stamp>.log`` for the ``.out`` whose head this is.
-
-    THE FDF LOG IS PAIRED BY ITS STAMP: SIESTA opens it in the second it
-    prints ``>> Start of run`` -- exact on 122 of 122 real outputs, and
-    SIESTA's own naming, so it holds in a folder molbuilder did not write.
-    """
-    from ..engines import siesta_grammar as _G
-    facts: Dict[str, Any] = {}
-    for line in out_head.splitlines():
-        if _G.read_launch_line(line, facts) == "run_start_local":
-            break
-    start = facts.get("run_start_local")
-    if not start:
-        return None
-    from ..engines.siesta_fdflog import logs_in, stamp_of as _fdf_stamp
-    return next((p for p in logs_in(d) if _fdf_stamp(p) == start), None)
-
-
-#: THE ENGINE'S LOG OF THE SETTINGS IT READ, found from its output -- by the
-#: output's role, as `_run_ending.READERS` dispatches on what a file IS:
-#: a SIESTA-family ``.out``'s ``fdf.<stamp>.log``, paired by its start.
-USED_LOGS: Dict[str, Callable[[Path, str], Optional[Path]]] = {
-    ".out": _fdf_log_of,
-}
 
 
 # --------------------------------------------------------------------------- #
@@ -205,12 +197,25 @@ USED_LOGS: Dict[str, Callable[[Path, str], Optional[Path]]] = {
 class Contributor:
     """One row of :data:`CONTRIBUTORS`: the record fields it answers, the
     file it reads by its role (``None``: a file every run has), and the
-    read.  The engines whose runs have its file are that role's
-    (:attr:`engines`) -- never typed."""
+    read -- for a file of a role, the reader its catalogue row names for
+    ``record`` (`runfiles.reader`), never one typed here.  The engines whose
+    runs have its file are that role's (:attr:`engines`) -- never typed."""
     name: str
     fields: Tuple[str, ...]
     role: Optional[str]
-    read: Callable[[RunFiles], Dict[str, Any]]
+    read: Optional[Callable[[RunFiles], Dict[str, Any]]] = None
+
+    def reader(self) -> Callable[[RunFiles], Dict[str, Any]]:
+        """The read: this row's own, else its role's catalogue row's."""
+        if self.read is not None:
+            return self.read
+        from ... import runfiles as _rf
+        got = _rf.reader(self.role, "record")
+        if got is None:
+            raise ValueError(f"run record: the row {self.name!r} reads "
+                             f"{self.role!r}, whose catalogue row names no "
+                             f"`record` reader.")
+        return got
 
     @property
     def engines(self) -> Tuple[str, ...]:
@@ -219,69 +224,6 @@ class Contributor:
         from ...runfiles import engine_of_role
         engine = engine_of_role(self.role) if self.role else None
         return (engine,) if engine else ()
-
-
-def _out_fields(f: RunFiles) -> Dict[str, Any]:
-    """The ``.out``'s build, launch, solver and pseudopotential lines, through
-    its family's table (`siesta_grammar`), and a program's loop through its
-    reading pass (`tbtrans.loop_record`), said with the run's state -- over
-    once the run is in a final state (`job.FINAL_STATES`)."""
-    from .job import FINAL_STATES
-    from ..engines import siesta_grammar as _G
-    head = f.stdout_head
-    if not head:
-        return {}
-    build: Dict[str, Any] = {}
-    launch: Dict[str, Any] = {}
-    solver: Dict[str, Any] = {}
-    lines = head.splitlines()
-    for line in lines:
-        (_G.read_build_line(line, build) or _G.read_launch_line(line, launch)
-         or _G.read_diag_line(line, solver))
-    tail = _read(f.stdout, tail=_TAIL)
-    for line in tail.splitlines():
-        _G.read_launch_line(line, launch)
-    out: Dict[str, Any] = {"computation": {}}
-    comp = out["computation"]
-    if build:
-        exe = str(build.get("executable", "")).rsplit("/", 1)[-1]
-        comp["engine"] = {**({"program": exe} if exe else {}),
-                          **({"version": build["version"]}
-                             if "version" in build else {}),
-                          "build": {k: v for k, v in build.items()
-                                    if k not in ("executable", "version")}}
-    if solver:
-        comp["solver"] = solver
-    if "n_mpi_processes" in launch:
-        comp["launch"] = {"ranks": launch["n_mpi_processes"]}
-    time = {k: launch[k] for k in ("run_start_local", "run_end_local")
-            if k in launch}
-    from ..engines.tbtrans import loop_record
-    time.update(loop_record(
-        f.stdout, head=head,
-        # OVER only when the run's state is final: an `unreadable` run's
-        # loop is not said stopped -- its state cannot be told.
-        over=f.status is not None and f.status.state in FINAL_STATES))
-    if time:
-        comp["time"] = time
-    pseudos = []
-    for sp in _G.read_psml_lines(lines):
-        entry = dict(sp)
-        path = f.directory / sp["file"]
-        if path.is_file():
-            from ...persist import sha256_of
-            entry["sha256"] = sha256_of(path)
-            from ...pseudos import parse_psml_header
-            info = parse_psml_header(path)
-            for key in ("xc_family", "xc_authors", "relativistic",
-                        "generator"):
-                val = getattr(info, key, None)
-                if val and val != "unknown":
-                    entry[key] = val
-        pseudos.append(entry)
-    if pseudos:
-        out["setup"] = {"pseudopotentials": pseudos}
-    return out
 
 
 def _ending(f: RunFiles) -> Dict[str, Any]:
@@ -409,23 +351,6 @@ def scf_timing_of(run) -> Dict[str, Any]:
     return _timing_figures(path) if path is not None else {}
 
 
-def _log_fields(f: RunFiles) -> Dict[str, Any]:
-    """The engine's own report of itself, from its logger's file (`.log`),
-    through that file's family's reader (`parse.engines.pyscf`)."""
-    from ..engines.pyscf import read_pyscf_sys_info
-    info = read_pyscf_sys_info(_read(f.engine_log, head=_HEAD))
-    if not info:
-        return {}
-    engine = {"program": f.engine}
-    for key in ("version", "python"):
-        if key in info:
-            engine[key] = info[key]
-    comp: Dict[str, Any] = {"engine": engine}
-    if "threads" in info:
-        comp["launch"] = {"threads_engine": info["threads"]}
-    return {"computation": comp}
-
-
 def _launch_record(f: RunFiles) -> Dict[str, Any]:
     """``run.json`` -- how the run was launched: its own record
     (`runrecord.launch_record`), read where it lies -- a point's in its
@@ -509,6 +434,8 @@ def _setup(f: RunFiles) -> Dict[str, Any]:
 
 
 from ...engine_table import engines as _engines  # noqa: E402
+from ...runfiles import (ROLE_PYSCF_LOG as _ROLE_PYSCF_LOG,  # noqa: E402
+                         ROLE_SIESTA_OUT as _ROLE_SIESTA_OUT)
 from ..instruments.scf_timing_rows import PHASES as _PHASES  # noqa: E402
 
 #: The timing instrument's figures (§ 5c): the headline phase's, and each
@@ -532,7 +459,7 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                  "computation.time.run_end_local", "computation.time.progress",
                  "computation.time.estimated_at",
                  "setup.pseudopotentials"),
-                ".out", _out_fields),
+                _ROLE_SIESTA_OUT),
     Contributor("ending", ("verdict.ended", "verdict.state",
                            "verdict.detail", "verdict.converged",
                            "verdict.max_force_free_ev_ang",
@@ -557,7 +484,7 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                 ("computation.engine.program", "computation.engine.version",
                  "computation.engine.python",
                  "computation.launch.threads_engine"),
-                ".log", _log_fields),
+                _ROLE_PYSCF_LOG),
     Contributor("run-json",
                 ("computation.launch.mode", "computation.launch.command",
                  "computation.launch.job_id", "computation.launch.launched_at",
@@ -594,6 +521,24 @@ def _one_source(rows: Tuple[Contributor, ...]) -> None:
 
 
 _one_source(CONTRIBUTORS)
+
+
+def _a_row_per_record_reader(rows: Tuple[Contributor, ...]) -> None:
+    """Refuse a table that leaves out a file whose catalogue row names a
+    ``record`` reader, or reads a file whose row names none: the file's row
+    names the reader, this table the fields it answers -- one set of files
+    (`runfiles.read_roles`)."""
+    from ...runfiles import read_roles
+    here = {row.role for row in rows if row.role and row.read is None}
+    there = set(read_roles("record"))
+    if here != there:
+        raise ValueError(
+            f"run record: the table reads {sorted(here)} by their catalogue "
+            f"rows' `record` readers, and the rows name one for "
+            f"{sorted(there)} -- one set of files")
+
+
+_a_row_per_record_reader(CONTRIBUTORS)
 
 
 def _declared(part: Dict[str, Any], fields: Tuple[str, ...],
@@ -661,8 +606,9 @@ def run_record(directory, *, names, launched_in, status, engine: str,
         kept = kept_of(row.fields)
         if not kept:
             continue
+        read = row.reader()
         try:
-            part = _declared(row.read(f), kept)
+            part = _declared(read(f), kept)
         except (OSError, ValueError, ParseError):
             # A reporter degrades: one unreadable file costs its own fields,
             # never the record.  A defect in a reader is not caught.

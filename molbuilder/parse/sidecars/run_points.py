@@ -15,6 +15,7 @@ from pathlib import Path
 from ..base import FileParser
 from ..errors import ParseError
 from ..types import SidecarResult
+from ...runfiles import ROLE_POINTS, role_of
 from ._helpers import build_sidecar_result
 
 
@@ -29,14 +30,13 @@ class RunPointsFileParser(FileParser):
     :class:`SidecarResult` with ``schema = "run-points/v1"``."""
 
     name   = "run-points-json"
-    label  = "molbuilder .points.json index"
-    hint   = ("a run of points' index -- <label>_<stage>.points.json, "
-              "written by launch and the run's report steps")
+    label  = f"molbuilder {ROLE_POINTS} index"
+    hint   = (f"a run of points' index -- <label>_<stage>{ROLE_POINTS}, "
+              f"written by launch and the run's report steps")
     output = SidecarResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        from molbuilder.runfiles import ROLE_POINTS, role_of
         from molbuilder.runpoints import read_index
         if role_of(Path(path).name) != ROLE_POINTS:
             return False

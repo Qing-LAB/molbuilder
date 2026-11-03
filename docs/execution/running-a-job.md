@@ -89,8 +89,8 @@ section named in the last column.
 
 **One run script, every engine.** Which of these steps a run takes is a fact of its engine's record
 ([`architecture.md`](?doc=execution/architecture.md) § 3.3), of a catalogue item's declaration (`launch`,
-`limit_applied_by`; [`engines/template.md`](?doc=engines/template.md) § 5), of the parse layer's tables for its
-output's role (`_run_ending.STOPS` and `STDERR_APART`, the file catalogue's `cut_from`) and of its job —
+`limit_applied_by`; [`engines/template.md`](?doc=engines/template.md) § 5), of its output's file catalogue row (its
+columns `reads` — `stops`, `scf_rows` — `stderr_apart` and `cut_from`) and of its job —
 never the engine's name: an engine that runs one process has no ranks to place (steps 9 and 10 resolve its
 threads alone); one whose deck is a script — PySCF's — has no program to probe and runs `"$_mb_py" <deck>`, its
 deck sizing its own BLAS and threads ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3); a setting the deck applies
@@ -541,7 +541,7 @@ starts the engine a second time.
    markers are the engine family's table (SIESTA's `parse/engines/siesta_grammar.py`), and the run script
    types none.
 2. **The advice for that cause**, asked only of an output whose family keeps advice (`_mb_ending advice`;
-   `_run_ending.STOPS`): for SIESTA's `propor: IMAX = 0`, the two causes in the order to check them (§ 3.1a) and how to prepare the stage again at another rank
+   the output's row's `stops`): for SIESTA's `propor: IMAX = 0`, the two causes in the order to check them (§ 3.1a) and how to prepare the stage again at another rank
    count — words the family's table keeps beside its marker (`siesta_grammar.ADVICE`).
 3. **What a launch again will do**, from the facts the launch itself decides by, which prep bakes in — whether
    the stage continues (`Job.relaunch_continues`: its kind resumes, `warm-files.toml`'s `resumes`, and it takes
@@ -558,7 +558,7 @@ starts the engine a second time.
    | a benchmark trial | a trial measures its point once, and its benchmark's launch does not start it again (`submit._plan_trial`) |
 
    A stop at the wall — asked as such, `_mb_ending out-of-time`, never by the engine's own words for it, and
-   only of an output whose family names one (`_run_ending.STOPS`: a SIESTA output's) — says *stopped at its
+   only of an output whose family names one (its row's `stops`: a SIESTA output's) — says *stopped at its
    wall* in place of *what a launch again will do* (§ 3.6).
 
 **When the ending cannot be read**, no hint is printed and the log says so once. **The one ask**: the run script

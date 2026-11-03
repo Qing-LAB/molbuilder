@@ -10,7 +10,8 @@ file.
 
 **Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`):
 its imports -- the SIESTA family's table, the rule engine, the runtime-header
-reader -- are imported from the package here and from their copies there.
+reader, the held atoms' numbering, the file catalogue -- are imported from the
+package here and from their copies there.
 
 **What a step is, the output says.**  SIESTA opens every step with its own
 words for it and its own number (``Begin Broyden opt. move = 3``, ``Begin FC
@@ -37,6 +38,7 @@ try:                                        # inside molbuilder
     )
     from .molwatch_grammar import parse_runtime_line
     from ...engine_atom_index import convert_from_engine_numbering
+    from ... import runfiles as _rf
 except ImportError:                         # beside a job, as the monitor's
     import siesta_grammar as _G
     from _section_rules import (
@@ -46,6 +48,7 @@ except ImportError:                         # beside a job, as the monitor's
     )
     from molwatch_grammar import parse_runtime_line
     from engine_atom_index import convert_from_engine_numbering
+    import runfiles as _rf  # type: ignore[no-redef]
 
 
 # Validation vocabularies for the loose-capture build/diag probes.  We still
@@ -877,13 +880,13 @@ class SiestaReader:
 
     def _on_ts_gf_reused(self, line: str, line_no: int) -> None:
         """A lead's file found and read instead of computed (``Using
-        GF-file``): the lead named by the file's tail after ``TSGF``."""
+        GF-file``): the lead its name carries (`runfiles.SIESTA_TSGF`)."""
         m = _G.TS_GF_REUSED.match(line)
-        if not m or "TSGF" not in m.group(1):
+        got = _rf.fields_of(m.group(1), _rf.SIESTA_TSGF) if m else None
+        if got is None:
             return
-        lead = m.group(1).rsplit("TSGF", 1)[-1]
         self.ts_info.setdefault("electrodes", {}).setdefault(
-            lead, {})["gf_reused"] = True
+            got["lead"], {})["gf_reused"] = True
 
     def _part_begins(self, name: str):
         """The handler of a `siesta_grammar.PARTS` row's opening line: the
@@ -1596,3 +1599,10 @@ def read_output(path, *, warn: Optional[Callable[[int, str, str, str], None]]
         for line_no, raw in enumerate(fh, start=1):
             reader.feed(raw.rstrip("\n"), line_no)
     return reader
+
+
+def live_pass(stage: "Optional[str]" = None) -> SiestaReader:
+    """THE READING PASS THE MONITOR FEEDS a SIESTA-family ``.out`` as it
+    grows -- what the output's catalogue row names for ``live``
+    (`runfiles.WRITTEN`).  The output keys nothing by its stage."""
+    return SiestaReader()

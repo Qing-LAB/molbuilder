@@ -144,8 +144,8 @@ def record_path(base_dir, label: str) -> Path:
     inherits the label rule -- `compose` refuses `my.relax`, a name
     `runfiles.parse` cannot read back.
     """
-    from ..runfiles import compose as _rf
-    return Path(base_dir) / _rf(label, ".transport.json")
+    from ..runfiles import ROLE_TRANSPORT_RECORD, compose as _rf
+    return Path(base_dir) / _rf(label, ROLE_TRANSPORT_RECORD)
 
 
 def _ran(run_dir):
@@ -1384,9 +1384,10 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     _dev_at, dev = _at("device", run=gathered_device_run(base, task))
     # ITS ORBITAL INDEX, the engine's own file on the label, through the run
     # door (`runs.Run.on_label`).
+    from ..runfiles import SIESTA_ORB_INDX
     from ..runs import run_of
     dev_run = run_of(dev) if dev is not None else None
-    orb = dev_run.on_label(".ORB_INDX") if dev_run is not None else None
+    orb = dev_run.on_label(SIESTA_ORB_INDX) if dev_run is not None else None
     # THE SELECTION, each atom one of the junction's -- refused by name
     # otherwise, never wrapped (`model/overview.md` § 2.2a).
     try:

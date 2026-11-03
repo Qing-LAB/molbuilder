@@ -45,6 +45,8 @@ import numpy as np
 from molbuilder.frame import Frame, ParseWarning, Trajectory
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import TrajectoryResult
+from molbuilder.runfiles import (ROLE_MOLWATCH, ROLE_SIESTA_OUT, deck_role,
+                                 named_beside, role_of, stdout_roles)
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
@@ -89,8 +91,10 @@ from .siesta_reader import read_output
 
 class SiestaParser:
     name  = "siesta"
-    label = "SIESTA .out / .log"
-    hint  = "the main SIESTA run output (run.out, siesta.log, etc.)"
+    label = f"SIESTA {ROLE_SIESTA_OUT}"
+    hint  = (f"a SIESTA run's output -- <label>_<stage>{ROLE_SIESTA_OUT}, "
+             f"or SIESTA's output under a name of your own that ends in no "
+             f"role of molbuilder's")
 
     # `can_parse` is content-based, not banner-based.  SIESTA reshuffles
     # its header text across versions (v4.x had `Welcome to SIESTA`, v5
@@ -122,23 +126,16 @@ class SiestaParser:
 
     @classmethod
     def can_parse(cls, path: str) -> bool:
-        # ``.molwatch.log`` files have an unambiguous first-line
-        # header (``# molwatch trajectory log``) but can also carry
-        # legitimate ``siesta:`` / ``redata:`` lines inside step
-        # blocks (the engine echoes them).  Belongs strictly to
-        # MolwatchLogFileParser; reject by extension to keep the
-        # registry dispatch unambiguous.  Case-insensitive guard
-        # against filesystem-case quirks (Windows / case-insensitive
-        # mounts may surface ``.MOLWATCH.LOG``).
         # A DECLARED FILE THAT IS NOT SIESTA'S STDOUT IS NOT THIS PARSER'S
-        # -- the progress log (its own parser's), a PySCF script or log
+        # -- the progress log (its own parser's: it carries the engine's
+        # ``siesta:`` lines inside its step blocks), a PySCF script or log
         # (whose sources quote SIESTA's own lines): asked of the catalogue
         # (`runfiles.role_of`, `stdout_roles`), never of a suffix spelled
-        # here.  A name the catalogue does not know (a hand-started
-        # `job.out`) goes on to the content sniff below.
-        from ...runfiles import role_of as _role_of, stdout_roles as _stdout
-        _role = _role_of(path)
-        if _role is not None and _role not in _stdout("siesta"):
+        # here, so the registry's dispatch stays one parser per file.  A name
+        # the catalogue does not know (a hand-started ``run.output``) goes on
+        # to the content sniff below.
+        _role = role_of(path)
+        if _role is not None and _role not in stdout_roles("siesta"):
             return False
         try:
             with open(path, "r", errors="replace") as fh:
@@ -260,8 +257,7 @@ class SiestaParser:
 
 
 class SiestaOutFileParser(FileParser):
-    """Parse a SIESTA stdout-redirected output file (``.out`` /
-    ``.log``).  Returns a :class:`TrajectoryResult` with one Frame
+    """Parse a SIESTA stdout-redirected output file.  Returns a :class:`TrajectoryResult` with one Frame
     per geometry step + per-step SCF history."""
 
     name   = "siesta"
@@ -270,17 +266,16 @@ class SiestaOutFileParser(FileParser):
 
     @classmethod
     def footgun_hint_for(cls, filename: str):
-        lower = filename.lower()
-        if not lower.endswith(".fdf"):
+        if role_of(filename) != deck_role("siesta"):
             return None
-        stem = filename[:-len(".fdf")]
-        # The output a run of this deck writes, as the catalogue spells it.
-        from ...runfiles import compose
-        out = compose(stem, ".out")
+        # The output a run of this deck writes, as the catalogue spells it:
+        # on the label and the stage the deck's stem carries.
+        out = named_beside(filename, ROLE_SIESTA_OUT)
         return (
             f"{filename} is the SIESTA INPUT file, not its output. "
-            f"Point molbuilder at the run's output, {out}, or at the "
-            f".molwatch.log progress log beside it."
+            f"Point molbuilder at the run's output"
+            + (f", {out}," if out else f" ({ROLE_SIESTA_OUT})")
+            + f" or at the {ROLE_MOLWATCH} progress log beside it."
         )
     output = TrajectoryResult
 

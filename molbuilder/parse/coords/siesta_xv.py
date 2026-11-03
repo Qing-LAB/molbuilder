@@ -14,6 +14,7 @@ import numpy as np
 from molbuilder.chemistry import symbol_for_z
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import StructureResult
+from molbuilder.runfiles import SIESTA_XV, stem_before
 from molbuilder.structure import Structure, atom_words
 
 from ._helpers import build_structure_result
@@ -211,15 +212,15 @@ class SiestaXVFileParser(FileParser):
     """
 
     name   = "siesta-xv"
-    label  = "SIESTA .XV final-coordinates"
-    hint   = "files ending in .XV (capital X V)"
+    label  = f"SIESTA {SIESTA_XV} final-coordinates"
+    hint   = f"files ending in {SIESTA_XV} (capital X V)"
     output = StructureResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
         # Case-sensitive: SIESTA emits .XV (capital), not .xv.
         # Avoid claiming things like .xml.
-        return path.name.endswith(".XV") and path.is_file()
+        return stem_before(path.name, SIESTA_XV) is not None and path.is_file()
 
     @classmethod
     def parse(cls, path: Path) -> StructureResult:

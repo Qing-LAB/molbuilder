@@ -28,15 +28,17 @@ from .raman import ASK_KEYS
 ASKS = ASK_KEYS
 
 
-def _stem(calc) -> str:
-    return f"{calc.task.label}.vibration"
+def _stem(result: Path) -> str:
+    from ..runfiles import ROLE_SPECTRA, stem_before
+    return f"{stem_before(result, ROLE_SPECTRA)}.vibration"
 
 
 def name_of(calc, fmt: str) -> str:
     """What an export of ``calc`` as ``fmt`` is named -- the folder its files
-    lie in (`ncdata.export_name`), known before anything is composed."""
+    lie in (`ncdata.export_name`), on the label the result it is of
+    (:func:`result_path`) is named on, known before anything is composed."""
     from ..ncdata import export_name
-    return export_name(_stem(calc), fmt)
+    return export_name(_stem(result_path(calc)), fmt)
 
 
 def result_path(calc, folder=None) -> Path:
@@ -88,7 +90,8 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
     route, the view's own refusals, and a data file that does not read -- in
     its reader's words."""
     from ..ncdata import export_format, exported
-    from ..runfiles import ROLE_SPECTRA_DATA, compose
+    from ..runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA, compose,
+                            stem_before)
     from ..sidecars.spectra import (SpectraJsonError,
                                     parse_spectra_json)
     from .datafile import read_spectra_data
@@ -103,7 +106,9 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
         except ValueError as exc:
             raise ExportError(str(exc)) from None
     path = result_path(calc, folder)
-    label = calc.task.label
+    # THE LABEL THE RESULT IS NAMED ON, read off its own name: the label its
+    # run names its files on (`runs.on_label_at`), not the calculation's.
+    label = stem_before(path, ROLE_SPECTRA)
     try:
         result = parse_spectra_json(path)
     except SpectraJsonError as exc:
@@ -146,7 +151,7 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
         said = (f"the Raman view is not in it: its strengths depend on the "
                 f"laser -- name one (the page's laser box, `--laser-nm`) to "
                 f"add {label}{RAMAN_FILE}")
-    return exported(files, fmt, stem=_stem(calc), said=said)
+    return exported(files, fmt, stem=_stem(path), said=said)
 
 
 __all__ = ["ASKS", "export", "name_of", "result_path"]

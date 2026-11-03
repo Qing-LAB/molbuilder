@@ -225,9 +225,10 @@ def _relaxed(folder) -> Optional[bool]:
     never writes into and a PySCF run's output no parser reads."""
     from ..parse.contract import relaxation_of
     from ..parse.errors import ParseError
+    from ..runfiles import ROLE_MOLWATCH
     from ..runs import run_of
     _run = run_of(folder)
-    paths = ([_run.stdout, _run.file(".molwatch.log")]
+    paths = ([_run.stdout, _run.file(ROLE_MOLWATCH)]
              if _run is not None else [])
     for path in (q for q in paths if q is not None):
         try:
@@ -408,6 +409,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     # of run is said where it is taken, at the stage's launch
     # (`job-system.md` § 5.4).
     from ..identity import stage_key
+    from ..runfiles import JOB_REQUEST_FILE
     from .commands import block, launch_lines, launch_pending, run_first
     run_prev = block(run_first(prev, calc=calc))
     g_prev = calc.request.group_of(prev)
@@ -429,8 +431,8 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
              f"`{prev}` (--from) or the calculation's structure (--cold): a "
              f"launch says that for one stage, and `{stage}` is in group "
              f"{g_stage} with {', '.join(f'`{m}`' for m in mates)}, so give "
-             f"it a group of its own first (Task setup, or job-request.json) and "
-             f"prepare that group\n")
+             f"it a group of its own first (Task setup, or {JOB_REQUEST_FILE}) "
+             f"and prepare that group\n")
     rule = "(job-system.md § 5.4)"
     relation = _relation(task, stage, prev)
     lead = f"`{stage}` continues from {relation}, `{prev}`"

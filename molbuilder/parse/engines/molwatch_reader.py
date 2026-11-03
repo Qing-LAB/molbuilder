@@ -28,6 +28,13 @@ except ImportError:                         # beside a job, as the monitor's
     )
     from transiesta import scf_words as _scf_words
 
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle, which it travels in by
+#: the progress log's catalogue row (`runfiles.WRITTEN`'s ``reads``;
+#: `runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.parse.engines.molwatch_grammar",
+                "molbuilder.parse.engines._section_rules",
+                "molbuilder.parse.engines.transiesta")
+
 
 class MolwatchReader:
     """The one molwatch reading pass: :meth:`feed` it lines, ask :meth:`now`
@@ -378,3 +385,10 @@ class MolwatchReader:
                 "run_state": self.run_state,
                 "error_message": self.error_message,
                 "runtime_info": self.runtime_info}
+
+
+def live_pass(stage: "Optional[str]" = None) -> MolwatchReader:
+    """THE READING PASS THE MONITOR FEEDS a progress log as it grows -- what
+    its catalogue row names for ``live`` (`runfiles.WRITTEN`): a staged log
+    keys its targets by the rung's stage."""
+    return MolwatchReader(stage=stage)

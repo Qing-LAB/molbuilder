@@ -10,7 +10,7 @@ USED-BY each call's report steps (`mb_monitor.pyz point`), which run the
         kind's own steps in their place -- ``plan <deck>`` before SIESTA,
         ``record <deck> <output> --exit <rc>`` after it, ``finish-run
         <deck>`` once no call is left (`execution/runs-of-points.md` § 1.2;
-        `engines/vibration.md` § 5.11 § 3; `runwrap.VIBRATION_BUNDLE`); the
+        `engines/vibration.md` § 5.11 § 3; `runfiles.VIBRATION_BUNDLE`); the
         bundle's ``finish`` verb is the door, by hand, for anything holding
         a finished force-constant call (§ 5.5)
 TRAVELS in ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`)
@@ -95,7 +95,7 @@ try:                                        # inside molbuilder
     from ..jobset.planned import Plan, bring
     from ..persist import sha256_of
     from .optical_data import write_optical_data
-    from ..runfiles import (COORDINATES_FILE,
+    from ..runfiles import (CALCDIR_FILE, COORDINATES_FILE,
                             PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL, ROLE_SPECTRA,
                             VIBRATION_BUNDLE,
                             RunNames, beside_the_deck, find_fixed,
@@ -144,7 +144,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     import calcdirs
     from planned import Plan, bring
     from persist import sha256_of  # type: ignore[no-redef]
-    from runfiles import (COORDINATES_FILE,  # type: ignore[no-redef]
+    from runfiles import (CALCDIR_FILE,  # type: ignore[no-redef]
+                          COORDINATES_FILE,
                           PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL,
                           ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck,
                           find_fixed, fixed_name, parse)
@@ -347,7 +348,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
 
     # THE ENGINE'S NAME ON THE LABEL, composed by the one grammar
     # (`runfiles.compose`), which travels beside the job too.
-    fc_path = folder / compose(label, ".FC")
+    fc_path = folder / compose(label, phase(FC).products[0])
     if not fc_path.is_file():
         raise FinishError(f"no {fc_path.name} in {folder}: the "
                           f"force-constant run left no force constants")
@@ -634,7 +635,7 @@ def _here(deck) -> _CallHere:
     w = calcdirs.where(folder)
     if w.run_folder is None or w.root is None:
         raise FinishError(f"{folder} is no call of a run: its place record "
-                          f"names no run above it (calcdir.json)")
+                          f"names no run above it ({CALCDIR_FILE})")
     return _CallHere(folder=folder, deck=deck, label=label,
                      names=RunNames(label, rec.stage),
                      run_dir=Path(w.run_folder).resolve(),
@@ -871,7 +872,8 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     # `pseudos/`, the engine seam's rule (`jobset.engines`): SIESTA opens
     # `<label>.psml` in the folder it runs from and no other.
     files = [here.deck.name,
-             *beside_the_deck("siesta", VIBRATION_BUNDLE, here.names)]
+             *beside_the_deck("siesta", "vibration", VIBRATION_BUNDLE,
+                              here.names)]
     shared = sorted(f"{PSEUDO_DIR}/{p.name}" for p, _fields
                     in find_fixed(here.root / PSEUDO_DIR, PSEUDO_FILE))
     # EACH CALL'S START, recorded as every point's is (`runs-of-points.md`
@@ -1297,7 +1299,7 @@ def _say(level: str, message: str) -> None:
     sys.stderr.flush()
 
 
-_USAGE = ("vibration: usage: mb_vibration.pyz plan <deck> | record <deck> "
+_USAGE = (f"vibration: usage: {VIBRATION_BUNDLE} plan <deck> | record <deck> "
           "<output> --exit <rc> | finish-run <deck> | finish <deck> <output>")
 
 

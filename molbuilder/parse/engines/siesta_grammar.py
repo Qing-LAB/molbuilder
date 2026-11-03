@@ -9,7 +9,9 @@ wrapper's SCF-timing tee, being shell, gets its pattern rendered from here.
 Every pattern is read off SIESTA 5.4.2's own writer, named beside it.  The
 one older spelling kept, the 5.0 betas' ``Siesta Version``, is off that
 build's own output (a BDT run's, read 2026-09-26).
-Stdlib only, and nothing of ours: it travels beside every job.
+The standard library and two leaf modules of ours, both standard library
+only -- the trajectory log's keys and the file catalogue -- imported as package
+modules here and as flat companions beside a job: it travels beside every job.
 """
 from __future__ import annotations
 
@@ -43,6 +45,11 @@ def _either_case(word: str) -> str:
 SCF_PREFIX_ERE = (rf"^[ \t]*({_either_case(_NEGF_MARK)})?"
                   rf"{_either_case(_ROW_TAG)}[ \t]*")
 SCF_ROW_ERE = SCF_PREFIX_ERE + "[0-9]"
+#: HOW THE FAMILY'S OUTPUT PRINTS ITS SCF ROWS -- ``(a row's ERE, its
+#: prefix's ERE)``, what its ``.out`` row names for ``scf_rows``
+#: (`runfiles.WRITTEN`): its engine prints no time per row, so the run
+#: script stamps them as they print (`running-a-job.md` § 4.1).
+SCF_ROWS = (SCF_ROW_ERE, SCF_PREFIX_ERE)
 #: The row itself: group 1 the NEGF mark, 2 the iteration, 3 the columns.
 #: :func:`scf_row` is how a reader asks it.
 SCF_ROW = re.compile(SCF_PREFIX_ERE + r"([0-9]+)[ \t]+(.+)$")
@@ -670,6 +677,12 @@ ADVICE = {
         "   the way to change a setting is the line below."),
 }
 
+#: WHAT THE FAMILY'S TABLE SAYS OF A STOP -- ``(the causes that are the
+#: job's wall, {cause: the advice for it}, {cause: its words})``, what its
+#: ``.out`` row names for ``stops`` (`runfiles.WRITTEN`;
+#: `_run_ending.wall_causes`, `advice_of`, `cause_words`).
+STOPS = (WALL_CAUSES, ADVICE, CAUSE_WORDS)
+
 #: WHAT AN ENGINE'S STOP MESSAGE MAY MEAN, for the person reading the result
 #: (`engines/transport.md` § 6.3): ``(the message's words, lower case; the
 #: hint)``.  Said beside the engine's own words, never in their place: the
@@ -1196,8 +1209,9 @@ TS_GF_DONE = re.compile(r"^\s*Done creating\s+'([^']+)'", re.IGNORECASE)
 #: The file found and read instead (``Src/m_ts_gf.F90`` ``do_Green``, under
 #: ``GF.ReUse``): ``Using GF-file '<file>'`` -- a later frame's point at the
 #: same voltage (`engines/transport.md` § 2a.11); it prints no ``Calculating``
-#: and no ``Done creating`` for that lead.  The lead is the file's tail after
-#: ``TSGF``, the engine's own naming (`ts_electrode.F90`:373-377) and ours.
+#: and no ``Done creating`` for that lead.  The lead is the one its name
+#: carries as a deck of ours names the file, ``<label>.<bias>.TSGF<lead>``
+#: (`runfiles.SIESTA_TSGF`, `runfiles.fields_of`).
 TS_GF_REUSED = re.compile(r"^\s*Using GF-file\s+'([^']+)'", re.IGNORECASE)
 
 #: SIESTA's own Makov-Payne monopole term (``Src/write_subs.F``):
@@ -1313,51 +1327,17 @@ TBT_CURRENT = re.compile(
 TBT_POWER = re.compile(
     r"^\s*(\S+)\s*->\s*(\S+),\s*V \[V\] / P \[W\]:\s*(\S+)\s*V\s*/\s*(\S+)\s*W",
     re.IGNORECASE)
-#: The transmission files, per spin channel (``Util/TS/TBtrans/m_tbt_save.F90``
-#: ``name_save``): ``<label>.TBT.AVTRANS_<E1>-<E2>`` unpolarized, and
-#: ``<label>.TBT_UP.`` / ``<label>.TBT_DN.`` for the two channels of a
-#: polarized run -- which a reader globbing ``.TBT.`` alone never finds.
-#: Written beside the ``.TBT.nc`` by ``state_cdf2ascii`` when NetCDF-4 is
-#: built in, as it is in the packaged SIESTA.  A deck setting
-#: ``TBT.Directory`` would move them; molbuilder's decks set none.
-TBT_CHANNELS = (("unpolarized", ".TBT."), ("up", ".TBT_UP."),
-                ("down", ".TBT_DN."))
-
-#: THE FILES TRANSIESTA AND TBTRANS WRITE ON THE LABEL, by role -- spelled
-#: here, the engine's own vocabulary, and nowhere else (`job-contracts.md`
-#: § 2.2a: never a role literal at a call site).  The inventory of what a
-#: continued attempt carries is `siesta/warm-files.toml` `[transport]`.
-TS_HSX = ".TS.HSX"     # the device's Hamiltonian + overlap, read by tbtrans
-TSHS   = ".TSHS"       # an electrode's Hamiltonian + overlap
-DM     = ".DM"         # the seed's density matrix, the device's start
-
-
-def tbt_nc(channel_tag: str) -> str:
-    """TBtrans's ``.TBT.nc`` of a channel (its tag from
-    :data:`TBT_CHANNELS`): ``.TBT.nc``, ``.TBT_UP.nc``, ``.TBT_DN.nc``."""
-    return channel_tag + "nc"
-
-
-#: TBtrans's K-AVERAGED TEXT FILES, by the quantity each holds -- its role
-#: after a channel's tag (:data:`TBT_CHANNELS`): ``{pair}`` the two leads as
-#: their ``TS.Elecs`` blocks name them (``L-R``), ``{lead}`` one of them.
-#: Written beside the data file by ``state_cdf2ascii`` from the data file's
-#: own variables, averaged over the k-points with its weights
-#: (``m_tbt_save.F90`` ``name_save``; `model/parse.md` § 5e): the
-#: transmission, its eigenchannels, the device's DOS, the spectral DOS of a
-#: lead, the bulk DOS of a lead -- each written when the deck asks for it.
-TBT_AVERAGED = {"transmission": "AVTRANS_{pair}",
-                "eigenchannels": "AVTEIG_{pair}",
-                "dos": "AVDOS",
-                "lead_spectral": "AVADOS_{lead}",
-                "lead_bulk": "AVBDOS_{lead}"}
-
-
-def tbt_averaged(channel_tag: str, quantity: str, *, pair: str = "",
-                 lead: str = "") -> str:
-    """TBtrans's k-averaged text file of ``quantity`` (:data:`TBT_AVERAGED`)
-    for a channel -- ``.TBT.AVTRANS_L-R``, ``.TBT_UP.AVBDOS_R``."""
-    return channel_tag + TBT_AVERAGED[quantity].format(pair=pair, lead=lead)
+#: TBTRANS'S CHANNELS, ``(channel, tag)`` -- the tag a channel's files
+#: carry after the label, as the file catalogue names them
+#: (`runfiles.TBT_CHANNEL_TAGS`): ``<label>.TBT.nc`` unpolarized,
+#: ``<label>.TBT_UP.nc`` / ``<label>.TBT_DN.nc`` for the two channels of a
+#: polarized run.
+try:
+    from ... import runfiles as _rf  # noqa: E402
+except ImportError:  # pragma: no cover -- shipped flat beside the job
+    import runfiles as _rf  # type: ignore[no-redef]  # noqa: E402
+TBT_CHANNELS: Tuple[Tuple[str, str], ...] = tuple(
+    _rf.TBT_CHANNEL_TAGS.items())
 
 
 def tbt_channels(line: str) -> Optional[Tuple[str, ...]]:
@@ -1375,9 +1355,9 @@ def tbt_channels(line: str) -> Optional[Tuple[str, ...]]:
 
 
 def tbt_channel_of(name: str) -> Optional[str]:
-    """The channel a TBtrans file's name carries (:data:`TBT_CHANNELS`'
-    tags), or ``None``."""
-    return next((ch for ch, tag in TBT_CHANNELS if tag in name), None)
+    """The channel a TBtrans file's name carries -- its tag between two dots
+    (:data:`TBT_CHANNELS`) -- or ``None``."""
+    return next((ch for ch, tag in TBT_CHANNELS if f".{tag}." in name), None)
 
 
 #: THE FERMI LEVEL A SPIN CHANNEL HAS OF ITS OWN -- an SCF row's column

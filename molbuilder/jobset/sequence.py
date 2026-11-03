@@ -85,8 +85,8 @@ class Record:
 def record_path(base, names) -> Path:
     """Where a sequence's launch record lies: its name's, in the
     calculation's `launch/` (`runfiles.GroupNames.of_sequence`)."""
-    from ..runfiles import LAUNCH_DIR
-    return Path(base) / LAUNCH_DIR / names.name(".launch.json")
+    from ..runfiles import GROUP_LAUNCH_RECORD, LAUNCH_DIR
+    return Path(base) / LAUNCH_DIR / names.name(GROUP_LAUNCH_RECORD)
 
 
 def record_text(rec: Record) -> str:

@@ -21,6 +21,7 @@ from pathlib import Path
 
 from ..base import FileParser
 from ..types import DielectricResult, ParseResult
+from ...runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, stem_before
 from .siesta_epsimg_reader import is_epsimg, read_epsimg
 
 
@@ -28,15 +29,16 @@ class SiestaEpsimgFileParser(FileParser):
     """SIESTA's optical calculation's spectrum, ε₂(ħω) per spin channel."""
 
     name = "siesta-epsimg"
-    label = "SIESTA's optical spectrum (.EPSIMG)"
-    hint = ("the <label>.EPSIMG an optical calculation writes beside its "
-            ".out (OpticalCalculation true)")
+    label = f"SIESTA's optical spectrum ({SIESTA_EPSIMG})"
+    hint = (f"the <label>{SIESTA_EPSIMG} an optical calculation writes "
+            f"beside its {ROLE_SIESTA_OUT} (OpticalCalculation true)")
     output = DielectricResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
         p = Path(path)
-        return (p.name.endswith(".EPSIMG") and p.is_file()
+        return (stem_before(p.name, SIESTA_EPSIMG) is not None
+                and p.is_file()
                 and is_epsimg(p))
 
     @classmethod

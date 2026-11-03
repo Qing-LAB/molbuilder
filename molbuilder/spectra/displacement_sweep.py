@@ -60,8 +60,8 @@ class SweepError(Exception):
 
 def sweep_path(base_dir, label: str) -> Path:
     """The record's one spelling, composed through the run-file grammar."""
-    from ..runfiles import compose
-    return Path(base_dir) / compose(label, ".fc-sweep.json")
+    from ..runfiles import ROLE_FC_SWEEP, compose
+    return Path(base_dir) / compose(label, ROLE_FC_SWEEP)
 
 
 def match_modes(reference, other, masses_amu) -> "tuple[list, list]":
@@ -150,7 +150,7 @@ def collect_sweep(calc, *,
     from ..parse.errors import ParseError
     from ..runfiles import ROLE_SPECTRA, compose
     from ..runs import on_label_at
-    from ..siesta.vibration_phases import force_constants_call
+    from ..siesta.vibration_phases import FC, force_constants_call, phase
     from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
     from ..template import catalogue, one
 
@@ -223,7 +223,8 @@ def collect_sweep(calc, *,
         meta = dict(res.engine_metadata or {})
         # THE FORCE CONSTANTS the engine left: the `fc` call's, in its
         # folder below the run (`vibration_phases.force_constants_call`).
-        fc_file = on_label_at(force_constants_call(attempt), ".FC")
+        fc_file = on_label_at(force_constants_call(attempt),
+                              phase(FC).products[0])
         rx = dict(res.relaxation or {})
         f_eh = rx.get("max_force_eh_bohr")
         overrides = dict(getattr(by_name[name], "overrides", None) or {})

@@ -36,12 +36,13 @@ from typing import Any, Dict, List, Optional, Tuple
 try:                                       # inside molbuilder
     from ..calcdirs import RunPlace
     from ..paths import frame_index
-    from ..runfiles import compose
+    from ..runfiles import SIESTA_DM, SIESTA_EPSIMG, SIESTA_FC, compose
     from ..runpoints import AGAIN, CONTINUE
 except ImportError:                        # beside a job
     from calcdirs import RunPlace  # type: ignore[no-redef]
     from paths import frame_index  # type: ignore[no-redef]
-    from runfiles import compose  # type: ignore[no-redef]
+    from runfiles import (  # type: ignore[no-redef]
+        SIESTA_DM, SIESTA_EPSIMG, SIESTA_FC, compose)
     from runpoints import AGAIN, CONTINUE  # type: ignore[no-redef]
 
 #: The phases' names -- one spelling each, the folder below the stage and
@@ -114,11 +115,12 @@ PHASES: Tuple[PhaseRule, ...] = (
               verdict_counts=False, warm_kind="optimization", needs=(),
               relaunch=CONTINUE, carried=True),
     PhaseRule(FC, part="fc", role="force_constants", switch=None,
-              coordinates=RELAX, seed=(RELAX, ".DM"), products=(".FC",),
+              coordinates=RELAX, seed=(RELAX, SIESTA_DM),
+              products=(SIESTA_FC,),
               verdict_counts=True, warm_kind="vibration", needs=(RELAX,)),
     PhaseRule(OPTICAL, part="optical", role="optical",
               switch=("compute_raman", False),
-              coordinates=FC, seed=(FC, ".DM"), products=(".EPSIMG",),
+              coordinates=FC, seed=(FC, SIESTA_DM), products=(SIESTA_EPSIMG,),
               verdict_counts=True, warm_kind="optical", needs=(FC,),
               planned_by=FC),
 )
@@ -382,7 +384,7 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
                              / (broaden / 10.0))) + 1
             one = rows * (2 * EPSIMG_COLUMN_BYTES + 1) / 1e6
             more = rows * EPSIMG_COLUMN_BYTES / 1e6
-            calls += (f", each .EPSIMG about {one:.1f} MB ({rows:,} "
+            calls += (f", each {SIESTA_EPSIMG} about {one:.1f} MB ({rows:,} "
                       f"photon energies, one spin channel; {more:.1f} "
                       f"MB more with two)")
         parts.append(f"optical {calls}")

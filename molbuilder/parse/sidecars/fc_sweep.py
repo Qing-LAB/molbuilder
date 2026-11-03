@@ -19,6 +19,7 @@ from typing import Any, Dict
 from ..base import FileParser
 from ..errors import ParseError
 from ..types import SidecarResult
+from ...runfiles import ROLE_FC_SWEEP, role_of
 from ._helpers import build_sidecar_result
 
 
@@ -54,15 +55,14 @@ class FcSweepRecordFileParser(FileParser):
     ``schema = "fc-sweep/v1"``."""
 
     name   = "fc-sweep-json"
-    label  = "molbuilder .fc-sweep.json record"
-    hint   = ("a SIESTA vibration's displacement sweep -- <label>.fc-sweep.json, "
-              "written by `jobset summarize task`")
+    label  = f"molbuilder {ROLE_FC_SWEEP} record"
+    hint   = (f"a SIESTA vibration's displacement sweep -- "
+              f"<label>{ROLE_FC_SWEEP}, written by `jobset summarize task`")
     output = SidecarResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        from molbuilder.runfiles import role_of
-        if role_of(Path(path).name) != ".fc-sweep.json":
+        if role_of(Path(path).name) != ROLE_FC_SWEEP:
             return False
         try:
             _load(Path(path))

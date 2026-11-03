@@ -527,10 +527,11 @@ One line per fact; the detail is in the linked chapter.
 | the fact | its door | floor | detail |
 |---|---|---|---|
 | where a folder is | `calcdirs.where(folder)` → `Where`; a folder no calculation claims answers empty | 1 | [`project-layout.md`](?doc=execution/project-layout.md) § 1.4a |
-| what molbuilder writes, and what each file is | `runfiles.WRITTEN` — one row per file; a name composed by `runfiles.compose` and read back by `runfiles.parse` (A14) | 1 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1; [`project-layout.md`](?doc=execution/project-layout.md) § 5 |
+| what molbuilder writes, and what each file is | `runfiles.WRITTEN` — one row per file, its role a constant (`runfiles.ROLE_*`); the engines' files it names, `runfiles.ENGINE_FILES`; a name composed by `runfiles.compose` and read back by `runfiles.parse` (A14) | 1 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2, § 2.2a; [`project-layout.md`](?doc=execution/project-layout.md) § 5 |
 | what a calculation kind is, and what an engine is | `kind_table.kind(calculation)` → `CalculationKind`; `CalculationKind.on(engine)`, and why it does not run on one in the one sentence the engine tab, the web doors and `molbuilder describe` say (`why_not_on(engine)`, named by `engine_label`) — the description's reader keeps `on`'s own words, from the same record; `engine_table.engine(name)` → `Engine` | 1 | § 3.3 |
 | the order of a structure's atoms, and the way back | the structure's `atom_order`; `transport.sort.sort_by` into an engine's order, `Structure.restored()` back | 1 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
 | a run's order record | its deck's ATOM-METADATA block, through `runs.declared(run)` | 2 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
+| the code that reads a file of a role | `runfiles.reads_of(role, question)` — its catalogue row's `reads`, `module:NAME`, resolved by `runpoints.part` on the machine and beside a job | 1 | [`model/parse.md`](?doc=model/parse.md) § 5.5 |
 
 ### 3.3 The declarations — every situation is a record
 
@@ -548,7 +549,7 @@ through one door on floor 1:
 |---|---|---|
 | **the kind table** | the calculation kinds, each with its part on every engine it runs on | `molbuilder/data/kind_table.toml` · `kind_table.kind`, `CalculationKind.on` |
 | **the engine table** | the engines | `molbuilder/data/engine_table.toml` · `engine_table.engine` |
-| **the file catalogue** | every file molbuilder writes: its role, where it lies, who writes it and when, its reader, the calculations whose result it is, and whether it travels beside a deck as a bundle | `runfiles.WRITTEN` · `runfiles` (§ 3.2) |
+| **the file catalogue** | every file molbuilder writes: its role, where it lies, who writes it and when, the code that reads it, the calculations whose result it is, and whether it travels beside a deck; and, apart, the engines' files molbuilder names | `runfiles.WRITTEN`, `runfiles.ENGINE_FILES` · `runfiles` (§ 3.2) |
 | **the folder record** | what each folder is — a calculation's root by its description, any other folder by the record its creator stamps on it | `calcdir.json` · `calcdirs.where` ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) |
 
 **A fact that has a home keeps it.** The two tables hold what nothing else
@@ -759,22 +760,25 @@ describe` its `describe` part; prep and launch its `reuse`; the settings gate
 engine's reading of the same calculation; `jobset/engines.engine_seam`
 the seam; any floor the config class; and a run of points' `count` and
 `outcome` words beside the job by `runpoints.part`, and for `status` by
-`kind_table.part`. The part's module uses its floor and those below, never one
+`kind_table.part`; and an output's readers, its catalogue row's `reads`, by
+`runpoints.part` wherever they are asked — the one resolver that answers in the
+package and beside a job alike. The part's module uses its floor and those below, never one
 above; a module holding parts of two floors is two modules. **Each door says
 what it cannot answer**: a table's door refuses a kind, an engine or a key its
 file does not hold, naming the file and the key; the floor that resolves a part
 refuses a name that does not resolve, naming the record and the key.
 
 **A part read beside a job travels by its record.** The bundle beside every
-job (`mb_monitor.pyz`) carries each run of points' `count` and `outcome` words
-and each engine's keyword reader, each with the modules it says it needs
-beside it (its own `TRAVELS_WITH`), gathered from the two tables when the
-bundle is built (`runwrap.monitor_companions`) — so a new kind's parts and a
-new engine's keyword reader travel by their records, with no edit of the
-bundle's member list. The reader of an output's role — its live reading pass
-and its loop's words — is the monitor's own table (`monitor.LIVE_READERS`,
-`LOOP_WORDS`) and travels in the bundle's own list: a new engine's output is a
-row in each.
+job (`mb_monitor.pyz`) carries each run of points' `count` and `outcome` words,
+each engine's keyword reader, and the readers of each output's role that a
+job asks — how it ended, its stops, its live reading pass, its loop's words
+and its timing (the row's `reads`,
+`runfiles.READ_BESIDE_A_JOB`) — each with the modules it says it needs beside
+it (its own `TRAVELS_WITH`), gathered from the records when the bundle is
+built (`runwrap.monitor_companions`). So a new kind's parts, a new engine's
+keyword reader and a new output's readers travel by their records, with no
+edit of the bundle's member list *(the user, 2026-11-03: "One column on the
+catalogue row")*.
 
 **What stays code, deliberately**, by package, so it can be reviewed:
 
@@ -798,12 +802,11 @@ it asks the record. **So a new kind is** a record in the kind table, its own
 modules, its catalogue items, its file catalogue rows and its warm-file
 sections; **a new engine** is a record in the engine table, its config class,
 validator, reading of the same calculation and seam, its keyword reader where
-its deck states keywords, its catalogue items, its file catalogue rows and
-warm-file vocabulary, its outputs' rows in the parse layer's and the monitor's
-tables by role (with their modules in the bundle's own list), and the recipe of
-the environment its record names. Its run script is the one
+its deck states keywords, its catalogue items, its file catalogue rows — its
+outputs' naming their readers — its files in `ENGINE_FILES` and its warm-file
+vocabulary, and the recipe of the environment its record names. Its run script is the one
 every engine's run script is: the record decides each block, beside its catalogue
-items' declarations and the parse layer's tables for its outputs' roles
+items' declarations and its outputs' catalogue rows
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 1). A new folder is its creator's record
 (`calcdir.json`), a new file a catalogue row.
 
@@ -1279,7 +1282,7 @@ label.
 - **A4's unit is the function, not the module**: a second function building an
   object is the defect, even inside the owning file.
 - **A1 and A14 are two rules.** `identity` owns the stage token and the run id
-  (A1); the filename — label, token, counter, role — is `runfiles`' (A14). A
+  (A1); the filename — label, token, role — is `runfiles`' (A14). A
   name emitted into a generated script, where the label is a runtime variable,
   takes its tail from `runfiles.tail`.
 - **A10 has no fallback order.** Every `psml_lib` spelling names one folder

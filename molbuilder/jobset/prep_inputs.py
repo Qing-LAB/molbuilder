@@ -539,6 +539,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     note = notes.append if notes is not None else (lambda _text: None)
     from ..bench.grid import sweep_K, sweep_grid
     from ..resolve import MachineTranslation
+    from ..runfiles import JOB_REQUEST_FILE
     from .machine import machine_record
     base, task, request = Path(calc.base), calc.task, calc.request
     # A DESCRIPTION WITH NO BENCH is refused before any machine is read: a
@@ -687,7 +688,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
         said, left = (("mpi_np", "omp_threads")
                       if declared.get("mpi_np") else ("omp_threads", "mpi_np"))
         raise PrepError(
-            f"job-request.json's bench declares {said} and not {left} -- a "
+            f"{JOB_REQUEST_FILE}'s bench declares {said} and not {left} -- a "
             f"declared grid states both, the ranks and the cores per rank "
             f"(generator.md § 4.3a).  Declare {left}'s points too, or "
             f"neither, for the machine's proposal.")
@@ -717,8 +718,8 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
                   if declared.get("gpu_count") else None)
     if gpu_counts and not any(families):
         raise PrepError(
-            "job-request.json declares gpu_count, but this bench resolves to the "
-            "CPU family (use_gpu is false and not an axis) -- the "
+            f"{JOB_REQUEST_FILE} declares gpu_count, but this bench resolves "
+            "to the CPU family (use_gpu is false and not an axis) -- the "
             "device counts would be silently ignored.  Declare use_gpu "
             "= [true] (or the [true, false] axis), or drop gpu_count.")
 
@@ -745,7 +746,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
             raise PrepError(
                 "this machine's record does not say its cores per socket, "
                 "so it proposes no grid -- declare the bench's mpi_np and "
-                "omp_threads in job-request.json, or re-probe the machine "
+                f"omp_threads in {JOB_REQUEST_FILE}, or re-probe the machine "
                 "(`molbuilder jobset probe --write`).")
         # ONE enumeration, both grids (`bench/grid.py`: the single source
         # of truth for the sweep grid, so no two consumers can define it
@@ -871,9 +872,9 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
                     "no GPU cell is left"
                     + (" -- see the cells left out above"
                        if any(f for f, _c, _w in crossed) else "")
-                    + ".  Adjust mpi_np / gpu_count in job-request.json, name a "
-                      "queue whose GPU nodes hold them, or declare the cells "
-                      "whole -- mpi_np, omp_threads and gpu_count: a "
+                    + f".  Adjust mpi_np / gpu_count in {JOB_REQUEST_FILE}, "
+                      "name a queue whose GPU nodes hold them, or declare the "
+                      "cells whole -- mpi_np, omp_threads and gpu_count: a "
                       "declared cell is kept, its fit said.")
         cells.extend((fam, cell) for cell in fcells)
     # THE VALUE-AXIS CARTESIAN (§ 4.3a): every machine cell is crossed

@@ -56,8 +56,14 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.errors import ParseError
 from molbuilder.parse.types import ParseResult, TransmissionResult
+from molbuilder.runfiles import (ROLE_TBT_DIGEST, ROLE_TBT_DIGEST_CLAIM,
+                                 SIESTA_ORB_INDX, SIESTA_TS_HSX, TBTRANS_NC,
+                                 compose, find_on_label, stem_before, tail)
 from . import siesta_grammar as _G
 from .tbtrans import PRINTED_HALF_DECIMAL_EV, averaged_files, read_averaged
+
+#: An unpolarized point's data file, as the registry's words name it.
+_UNPOLARIZED_NC = tail(TBTRANS_NC, tbt=dict(_G.TBT_CHANNELS)["unpolarized"])
 
 #: The digest's schema, stated in it.
 DIGEST_SCHEMA = "molbuilder/tbt-digest@4"
@@ -118,7 +124,7 @@ def channel_of(path) -> Optional[str]:
     ``down`` -- or ``None`` for a name that is not one's."""
     name = Path(path).name
     for channel, tag in _G.TBT_CHANNELS:
-        if name.endswith(_G.tbt_nc(tag)):
+        if stem_before(name, tail(TBTRANS_NC, tbt=tag)) is not None:
             return channel
     return None
 
@@ -127,33 +133,30 @@ def _label_of(path: Path) -> str:
     """The label a data file is named on: its name before its channel's
     role."""
     tag = dict(_G.TBT_CHANNELS)[channel_of(path)]
-    return path.name[:-len(_G.tbt_nc(tag))]
+    return stem_before(path.name, tail(TBTRANS_NC, tbt=tag))
 
 
 def _beside(path, role: str) -> Path:
     """The file of catalogue ``role`` beside data file ``path``, on its
     label and its channel's tag (`runfiles.compose`)."""
-    from molbuilder.runfiles import compose
     path = Path(path)
-    tag = dict(_G.TBT_CHANNELS)[channel_of(path)].strip(".")
+    tag = dict(_G.TBT_CHANNELS)[channel_of(path)]
     return path.with_name(compose(_label_of(path), role, tbt=tag))
 
 
 def digest_of(path) -> Path:
     """The digest beside data file ``path``: ``<label>.TBT.nc`` ->
     ``<label>.TBT.digest.nc``, a channel's tag kept."""
-    from molbuilder.runfiles import TBT_DIGEST
-    return _beside(path, TBT_DIGEST)
+    return _beside(path, ROLE_TBT_DIGEST)
 
 
 def data_files(directory, label: str) -> Dict[str, Path]:
     """The data files in ``directory``, by channel -- ``{"unpolarized":
     …}`` or ``{"up": …, "down": …}`` -- each that is there, found on the
     label through the catalogue (`runfiles.find_on_label`)."""
-    from molbuilder.runfiles import find_on_label
     out: Dict[str, Path] = {}
     for channel, tag in _G.TBT_CHANNELS:
-        hits = find_on_label(directory, label, _G.tbt_nc(tag))
+        hits = find_on_label(directory, label, tail(TBTRANS_NC, tbt=tag))
         if hits:
             out[channel] = hits[-1]
     return out
@@ -167,8 +170,7 @@ def _version(path) -> Tuple[int, int]:
 # ---- the claim ------------------------------------------------------------ #
 
 def _claim_path(path) -> Path:
-    from molbuilder.runfiles import TBT_DIGEST_CLAIM
-    return _beside(path, TBT_DIGEST_CLAIM)
+    return _beside(path, ROLE_TBT_DIGEST_CLAIM)
 
 
 def _read_claim(cp: Path) -> Optional[Dict[str, Any]]:
@@ -442,8 +444,7 @@ def _elements_of(path: Path, geometry) -> Optional[List[str]]:
     import numpy as np
     import sisl
     from molbuilder.ncdata import NC_LOCK
-    from molbuilder.runfiles import compose
-    hsx = path.with_name(compose(_label_of(path), _G.TS_HSX))
+    hsx = path.with_name(compose(_label_of(path), SIESTA_TS_HSX))
     if not hsx.is_file():
         return None
     try:
@@ -467,11 +468,10 @@ def _digest_variables(path: Path, result: TransmissionResult,
     (`model/overview.md` § 2.2b)."""
     import numpy as np
     from molbuilder.ncdata import Var
-    from molbuilder.runfiles import compose
     data = path.name
     av = meta["averages"]
     files = av.get("files", {})
-    hsx = compose(_label_of(path), _G.TS_HSX)
+    hsx = compose(_label_of(path), SIESTA_TS_HSX)
     n_atoms = len(result.firsto) - 1
     if atoms.n_atoms != n_atoms:
         raise ValueError(f"{data}: its geometry holds {n_atoms} atoms; the "
@@ -642,9 +642,9 @@ def _write_digest(path: Path, result: TransmissionResult,
                           "own; a molbuilder point that shares energies "
                           "with a finished one holds the others in its "
                           "shared/ folder, beside their own digest"),
-        "orbital_types": ("not stated by the data file: the device run's "
-                          "<label>.ORB_INDX names each orbital's l and m, "
-                          "in the same order"),
+        "orbital_types": (f"not stated by the data file: the device "
+                          f"run's <label>{SIESTA_ORB_INDX} names each "
+                          f"orbital's l and m, in the same order"),
     }
     with NC_LOCK:
         ds = in_memory(digest_of(path).name)
@@ -666,8 +666,9 @@ class TBTransNcFileParser(FileParser):
     once and its reading kept (`model/parse.md` § 5e)."""
 
     name = "tbtrans-nc"
-    label = "TBtrans data file (.TBT.nc)"
-    hint = "a transmission run's <label>.TBT.nc, written by tbtrans"
+    label = f"TBtrans data file ({_UNPOLARIZED_NC})"
+    hint = (f"a transmission run's <label>{_UNPOLARIZED_NC}, "
+            f"written by tbtrans")
     output = TransmissionResult
     keeps_atom_index_map = True
 

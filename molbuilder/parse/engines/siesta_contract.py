@@ -3,8 +3,9 @@ reading for the recorded contract (`parse.contract.contract_of`,
 `model/parse.md` § 5b): the ``.fdf`` through the shipped parameter parser
 (``parse_fdf_params``) -- basis, energy shift, XC spelling, mesh cutoff,
 k-grid, electronic temperature, the electronic state, and how its SCF
-converged.  The role-keyed door (`contract.CONTRACT_READERS`) picks it for a
-deck in SIESTA's role.
+converged.  The deck's catalogue row names it for ``contract``
+(`runfiles.WRITTEN`), so the contract door picks it for a deck in SIESTA's
+role.
 """
 from __future__ import annotations
 

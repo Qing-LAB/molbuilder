@@ -86,7 +86,7 @@ class JobSetSweepFileParser(FileParser):
 
     name = "job-set-sweep"
     label = "molbuilder benchmark sweep plan"
-    hint = ("a benchmark sweep's job set -- job-set.json with "
+    hint = (f"a benchmark sweep's job set -- {FILENAME} with "
             "`kind: sweep`, written by `prep bench <stage>`")
     output = SidecarResult
 

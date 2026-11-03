@@ -50,7 +50,8 @@ def _bundle_head(folder, *objects) -> str:
     from molbuilder.pyscf.input import (emit_bundle_imports,
                                         emit_run_settings_block,
                                         emit_script_head)
-    from molbuilder.runwrap import PYSCF_BUNDLE, pyscf_bundle
+    from molbuilder.runfiles import PYSCF_BUNDLE
+    from molbuilder.runwrap import pyscf_bundle
     (folder / PYSCF_BUNDLE).write_bytes(pyscf_bundle())
     return "\n".join([*emit_run_settings_block(PySCFConfig()),
                       *emit_script_head(),

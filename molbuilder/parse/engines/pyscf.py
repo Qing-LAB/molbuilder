@@ -28,9 +28,12 @@ import os
 
 from ..errors import ParseError
 from ...runfiles import compose as _rf_compose, stem_before as _rf_stem_before
-from ...runfiles import (ROLE_GEOM_TRAJ as _ROLE_GEOM_TRAJ,
+from ...runfiles import named_beside as _rf_named_beside
+from ...runfiles import role_of as _rf_role_of
+from ...runfiles import (PYSCF_OPTIMIZED as _PYSCF_OPTIMIZED,
+                         ROLE_GEOM_TRAJ as _ROLE_GEOM_TRAJ,
+                         ROLE_INITIAL as _ROLE_INITIAL,
                          ROLE_MOLWATCH as _ROLE_MOLWATCH,
-                         ROLE_OPTIMIZED as _ROLE_OPTIMIZED,
                          ROLE_PYSCF_LOG as _ROLE_PYSCF_LOG)
 import re
 from pathlib import Path
@@ -445,6 +448,24 @@ def read_pyscf_sys_info(text: str) -> Dict[str, Any]:
     return out
 
 
+def record_fields(f) -> Dict[str, Any]:
+    """WHAT PYSCF'S OWN LOG ANSWERS OF THE RUN RECORD -- the engine's report
+    of itself, from its logger's file: what the log's catalogue row names for
+    ``record`` (`runfiles.WRITTEN`; `model/parse.md` § 5d.1b).  ``f`` is the
+    run's files as the run record found them (`parse.dirs.record.RunFiles`)."""
+    info = read_pyscf_sys_info(f.head(f.engine_log))
+    if not info:
+        return {}
+    engine = {"program": f.engine}
+    for key in ("version", "python"):
+        if key in info:
+            engine[key] = info[key]
+    comp: Dict[str, Any] = {"engine": engine}
+    if "threads" in info:
+        comp["launch"] = {"threads_engine": info["threads"]}
+    return {"computation": comp}
+
+
 class PySCFParser:
     """Body parser for PySCF + geomeTRIC ``*_optim.xyz`` trajectories.
     Returns legacy :class:`Trajectory` (dict-shaped via the JSON
@@ -479,22 +500,18 @@ class PySCFOutFileParser(FileParser):
 
     @classmethod
     def footgun_hint_for(cls, filename: str):
-        lower = filename.lower()
-        if not lower.endswith(".log") or "geom_optim" in lower:
+        # THE PYSCF RUN-TIME LOG'S ROLE, by the catalogue (`runfiles.role_of`:
+        # the longest declared role wins, so a ``.molwatch.log`` -- the
+        # MolwatchLogFileParser's -- is not this foot-gun).
+        if _rf_role_of(filename) != _ROLE_PYSCF_LOG:
             return None
-        # Strip both ``.molwatch.log`` and bare ``.log``; molwatch is
-        # the MolwatchLogFileParser's filename, this hint is for the
-        # PySCF run-time .log foot-gun.
-        if lower.endswith(_ROLE_MOLWATCH):
-            return None
-        stem = filename[:-len(_ROLE_PYSCF_LOG)]
+        traj = _rf_named_beside(filename, _ROLE_GEOM_TRAJ)
         return (
             f"PySCF runs write the run-time log to {filename} but "
             f"the trajectory lives in the file whose role is "
-            f"`{_ROLE_GEOM_TRAJ}` -- {_rf_compose(stem, _ROLE_GEOM_TRAJ)} for "
-            f"a single run, or the same with this rung's token after the "
-            f"label for a ladder (job-contracts.md § 2.2a). Point molbuilder "
-            f"at that instead."
+            f"`{_ROLE_GEOM_TRAJ}`"
+            + (f", {traj}, beside it" if traj else "")
+            + " (job-contracts.md § 2.2a). Point molbuilder at that instead."
         )
     label  = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
     hint   = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "
@@ -507,16 +524,18 @@ class PySCFOutFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        # `<job>_optimized.xyz` IS a valid XYZ, and it belongs to
-        # `pyscf-geom`; were both parsers to claim it, `detect()` -- which
-        # is exactly-one-or-raise -- would refuse it.
+        # `<job>_optimized.xyz` and `<job>_initial.xyz` ARE valid XYZ, and
+        # both belong to `pyscf-geom`; were both parsers to claim one,
+        # `detect()` -- which is exactly-one-or-raise -- would refuse it.
         #
-        # The split is right the way it is documented: `_optimized.xyz`
-        # is ONE converged geometry (`pyscf/warm-files.toml`: *"latest
-        # converged geometry"*), so a `StructureResult` is what it is;
-        # this parser answers `TrajectoryResult` and has nothing to say
-        # about a single frame that the sibling does not say better.
-        if path.name.endswith(_ROLE_OPTIMIZED):
+        # The split is right the way it is documented: each is ONE
+        # geometry -- the converged one (`pyscf/warm-files.toml`: *"latest
+        # converged geometry"*), the input echoed back -- so a
+        # `StructureResult` is what it is; this parser answers
+        # `TrajectoryResult` and has nothing to say about a single frame
+        # that the sibling does not say better.
+        if any(_rf_stem_before(path.name, role) is not None
+               for role in (_PYSCF_OPTIMIZED, _ROLE_INITIAL)):
             return False
         return _can_parse_xyz(str(path))
 

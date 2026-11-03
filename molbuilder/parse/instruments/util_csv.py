@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Tuple
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import InstrumentResult
+from molbuilder.runfiles import ROLE_UTIL_CSV, role_of
 
 from ._helpers import build_instrument_result
 
@@ -193,13 +194,13 @@ class UtilCsvFileParser(FileParser):
     """The wrapper monitor's sample table."""
 
     name   = "util-csv"
-    label  = "wrapper utilisation samples (.util.csv)"
-    hint   = "files ending in .util.csv"
+    label  = f"wrapper utilisation samples ({ROLE_UTIL_CSV})"
+    hint   = f"files ending in {ROLE_UTIL_CSV}"
     output = InstrumentResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return path.name.endswith(".util.csv") and path.is_file()
+        return role_of(path.name) == ROLE_UTIL_CSV and path.is_file()
 
     @classmethod
     def parse(cls, path: Path) -> InstrumentResult:

@@ -380,6 +380,7 @@ def joined_launched(calc, number: int, launched: str,
     it, put back beside the one launched with it; the one launched,
     launched again alone; or the group formed anew from the state saved
     before its first launch."""
+    from ..runfiles import JOB_REQUEST_FILE
     from .commands import block, launch_lines, redo_launched
 
     def said(names):
@@ -392,7 +393,7 @@ def joined_launched(calc, number: int, launched: str,
                     f"{'it' if one else 'them'}")
         ways.append(f"give {said(joined)} a group of "
                     f"{'its' if one else 'their'} own (Task setup, or "
-                    f"job-request.json)")
+                    f"{JOB_REQUEST_FILE})")
     if left:
         one = len(left) == 1
         what.append(f"`{launched}` was launched in one job with "

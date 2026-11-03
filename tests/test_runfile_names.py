@@ -18,8 +18,10 @@ import itertools
 import pytest
 
 from molbuilder.runfiles import (ON_THE_LABEL, RunFile, RunFileError,
-                                 find, find_by_role, compose, manifest,
-                                 parse)
+                                 RunNames, family, fields_of, find,
+                                 find_by_role, find_on_label, compose,
+                                 manifest, named_beside, parse, reader,
+                                 reads_of, stderr_apart, stem_before, tail)
 
 
 def expect(label, stage, role):
@@ -180,6 +182,120 @@ def test_a_field_the_role_does_not_carry_is_refused(field):
         compose(LABEL, ".out", "01_coarse", **field)
 
 
+#: EVERY DOOR THAT TAKES A ROLE (`job-contracts.md` § 2.2a), asked alike: a
+#: folder, a role, the caller's own vocabulary -- and what it answers for
+#: the label's file in that role, the folder holding it.
+DOORS = {
+    "compose": (lambda d, role, roles: compose(LABEL, role, roles=roles),
+                lambda role: LABEL + role),
+    "tail": (lambda d, role, roles: tail(role, roles=roles),
+             lambda role: role),
+    "find": (lambda d, role, roles: [p.name for p, _rf in
+                                     find(d, LABEL, role=role, roles=roles)],
+             lambda role: [LABEL + role]),
+    "find_on_label": (lambda d, role, roles: [
+        p.name for p in find_on_label(d, LABEL, role, roles=roles)],
+        lambda role: [LABEL + role]),
+    "stem_before": (lambda d, role, roles: stem_before(LABEL + role, role,
+                                                       roles=roles),
+                    lambda role: LABEL),
+}
+
+
+#: ...and the doors that take a role and answer of it -- every one of them
+#: asks the one check (`job-contracts.md` § 2.2a).
+REFUSING = {**{k: ask for k, (ask, _answer) in DOORS.items()},
+            "find_by_role": lambda d, role, roles: find_by_role(d, role),
+            "named_beside": lambda d, role, roles: named_beside("x.out", role),
+            "fields_of": lambda d, role, roles: fields_of("x.out", role),
+            "family": lambda d, role, roles: family(role),
+            "RunNames.name": lambda d, role, roles: RunNames(
+                LABEL, "01_coarse").name(role),
+            "reads_of": lambda d, role, roles: reads_of(role, "ending"),
+            "reader": lambda d, role, roles: reader(role, "ending"),
+            "stderr_apart": lambda d, role, roles: stderr_apart(role)}
+
+
+@pytest.mark.parametrize("door", REFUSING)
+def test_a_role_nothing_declares_is_refused_by_every_door(door, tmp_path):
+    """THE ONE CHECK (`runfiles.declared`): a role no row of the catalogue
+    and no engine file it names declares is refused by every door that
+    takes one, saying the role.  THE SILENT FAILURE: a mistyped role
+    composing a name no reader reads back, and a reader asked for it
+    answering *none here* -- which reads as *there are none of those*."""
+    (tmp_path / f"{LABEL}.outt").write_text("")
+    with pytest.raises(RunFileError,
+                       match=r"\('\.outt'\): no role molbuilder declares"):
+        REFUSING[door](tmp_path, ".outt", ())
+
+
+@pytest.mark.parametrize("role,roles", [
+    (".out", ()), (".XV", ()), (".TBT_UP.nc", ()),
+    ("_mine.txt", ("_mine.txt",)),
+], ids=["a-row-of-the-catalogue", "an-engine-file-it-names",
+        "a-name-of-a-templated-row", "the-callers-own-vocabulary"])
+@pytest.mark.parametrize("door", DOORS)
+def test_a_declared_role_is_answered_by_every_door(door, role, roles,
+                                                   tmp_path):
+    """What the one check takes, every door answers for: a row of
+    `runfiles.WRITTEN`, an engine's file of `runfiles.ENGINE_FILES`, a
+    concrete name of a templated one (a channel's data file), and a role
+    the caller hands in -- a calculation's own restart-file list.  THE
+    SILENT FAILURE: a door checking a narrower list than the others,
+    refusing at one call a name another door wrote."""
+    (tmp_path / f"{LABEL}{role}").write_text("")
+    ask, answer = DOORS[door]
+    assert ask(tmp_path, role, roles) == answer(role)
+
+
+@pytest.mark.parametrize("role,name", [
+    (".out", "my-job_01_coarse.out"),
+    (".XV", "my-job.XV"),
+    (".chk", "my-job.chk"),
+    ("_geom.tmp", "my-job_01_coarse_geom.tmp"),
+    (".TBT_UP.nc", "my-job.TBT_UP.nc"),
+], ids=["a-staged-row-of-ours", "SIESTA's-geometry", "PySCF's-checkpoint",
+        "geomeTRIC's-scratch-on-the-stage", "a-name-of-a-templated-row"])
+def test_a_stages_names_name_each_tables_file_as_its_row_says(role, name):
+    """`RunNames.name` asks the one check, and names a file of either table
+    on the stage's stem or on the label alone as its row says (``staged``).
+    THE SILENT FAILURE: a deck naming an engine's file its own way beside
+    the stage's names -- the restart list's answer to *named on the label
+    alone?* -- which drifts from the row that states it."""
+    assert RunNames(LABEL, "01_coarse").name(role) == name
+
+
+@pytest.mark.parametrize("name,role,beside", [
+    ("job.out", ".runtime_info.json", "job.runtime_info.json"),
+    ("H2_01_coarse.molwatch.log", ".runtime_info.json",
+     "H2_01_coarse.runtime_info.json"),
+    ("H2_01_coarse.fdf", ".validation.txt", "H2_01_coarse.validation.txt"),
+    ("H2_01_relax_geom_optim.xyz", ".runtime_info.json",
+     "H2_01_relax.runtime_info.json"),
+    ("H2_initial.xyz", ".parse.log", "H2.parse.log"),
+    ("H2.MD.nc", ".runtime_info.json", "H2.runtime_info.json"),
+    ("H2.TBT_UP.digest.nc", ".parse.log", "H2.parse.log"),
+    ("H2_01_relax.out", ".spectra.json", "H2.spectra.json"),
+    ("coordinates.fdf", ".validation.txt", None),
+    ("notes.txt", ".parse.log", None),
+    ("my.job.out", ".parse.log", None),
+], ids=["an-output", "a-stages-progress-log", "a-deck",
+        "geomeTRIC's-trajectory", "an-underscore-role-on-the-label",
+        "an-engine's-file", "a-templated-role", "a-row-on-the-label-alone",
+        "a-fixed-name", "a-name-no-role-reads-back",
+        "a-stem-that-is-no-label"])
+def test_the_file_beside_another_is_named_on_its_stem(name, role, beside):
+    """`runfiles.named_beside`: the name of a role's file beside a file, on
+    the stem the file's own role leaves -- the longest role of either table
+    that ends it, an underscore one and a templated one too -- on the label
+    alone where the role's row says so, or none for a name no role reads
+    back and for a fixed name.  THE SILENT FAILURE: a runtime record or a
+    parse log cut at the last dot (``job.molwatch.runtime_info.json``), or
+    none for geomeTRIC's trajectory or an engine's file -- a road file
+    refused, its record unwritten."""
+    assert named_beside(name, role) == beside
+
+
 @pytest.mark.parametrize("name,label", [
     ("my-job-v2.out", LABEL),
     ("my-job_01_coarse-run2.out", LABEL),
@@ -218,13 +334,17 @@ def _fields_for(a):
 
 
 def test_every_declared_examples_matches_its_own_shape():
-    """The example is load-bearing (see `_fields_for`), so it cannot rot."""
+    """The example and the values are load-bearing (see `_fields_for`,
+    `runfiles.names_made`), so they cannot rot: a value outside its shape
+    walks names nothing reads back, which the restart-file lists' check
+    then judges by."""
     import re
     from molbuilder.runfiles import FIELDS
     for name, f in FIELDS.items():
-        assert re.fullmatch(f.shape, f.example), (
-            f"field {name!r}: example {f.example!r} does not match its own "
-            f"shape {f.shape!r}")
+        for v in (f.example, *f.values):
+            assert re.fullmatch(f.shape, v), (
+                f"field {name!r}: {v!r} does not match its own shape "
+                f"{f.shape!r}")
 
 
 @pytest.mark.parametrize("art", ON_THE_LABEL, ids=lambda a: a.role)
@@ -263,21 +383,6 @@ def test_the_manifest_tells_a_run_about_its_own_engine_only(
     assert any(n.endswith(".py") for n in both)
     assert any(n.endswith(".fdf") for n in both)
     assert any(n.endswith("_01_coarse.out") for n in both)
-
-
-def test_the_catalogue_and_the_warm_vocabulary_do_not_overlap():
-    """WHAT MAKES THE SUBTRACTION WORK (`job-contracts.md` § 4.2): a file is
-    the engine's restart state OR one molbuilder wrote, never both.  A role on
-    both lists would make *"did the engine leave something here"* count an
-    engine's restart file as one molbuilder wrote.
-    """
-    from molbuilder.warmfiles import warm_list
-    ours = {a.role for a in ON_THE_LABEL}
-    for engine in ("siesta", "pyscf"):
-        warm = set(warm_list(engine).suffixes)
-        assert not (ours & warm), (
-            f"{engine}: {sorted(ours & warm)} is claimed by both the warm "
-            f"vocabulary and the catalogue of what molbuilder writes")
 
 
 def test_the_role_is_what_says_which_engine_wrote_a_file():
@@ -383,13 +488,6 @@ class TestFindingARoleWithNoLabel:
             find_by_role(tmp_path, "_geom_optim.xyz")
         assert "without a label" in str(exc.value)
         assert "find(dir, label" in str(exc.value)
-
-    def test_a_role_nothing_writes_is_refused_with_the_catalogue(self, tmp_path):
-        """A typo is a refusal here, not an empty list at the call site —
-        which reads as *there are none of those* and is a different answer."""
-        with pytest.raises(RunFileError) as exc:
-            find_by_role(tmp_path, ".fdff")
-        assert ".fdf" in str(exc.value)
 
     def test_a_directory_that_is_not_there_is_empty(self, tmp_path):
         assert find_by_role(tmp_path / "nope", ".fdf") == []

@@ -73,6 +73,7 @@ from .persist import check_schema, read_json, write_json
 SCHEMA = "molbuilder/task@2"
 #: Its name is the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2).
 from .runfiles import TASK_FILE as FILENAME  # noqa: E402
+from .runfiles import JOB_REQUEST_FILE  # noqa: E402
 
 #: § 6.7 — THE ONE LAYOUT, which every description states as its ``shape``
 #: (`project-layout.md` § 1): a folder per stage, a folder per run in it --
@@ -652,7 +653,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     for key in _JOB_KEYS:
         if key in obj:
             _refuse(f"{key!r} says how the calculation runs, which is its job "
-                    f"request's, job-request.json -- not the description's "
+                    f"request's, {JOB_REQUEST_FILE} -- not the description's "
                     f"(execution/job-request.md 1)", where=key)
     _check_keys(obj, _TOP_KEYS, where="")
 
@@ -796,7 +797,7 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     for key in _JOB_STAGE_KEYS:
         if key in obj:
             _refuse(f"{key!r} says how the stage runs, which is the job "
-                    f"request's, job-request.json -- its entry under "
+                    f"request's, {JOB_REQUEST_FILE} -- its entry under "
                     f"'stages' (execution/job-request.md 3.2, 3.3)",
                     where=where)
     _check_keys(obj, STAGE_FIELDS, where=where)
@@ -953,9 +954,9 @@ def _written_before(obj: Mapping[str, Any]) -> List[str]:
     voltages (2.16.3) -- or ``[]``."""
     out: List[str] = []
     if str(obj.get("schema") or "") == "molbuilder/task@1":
-        out.append("how it runs -- its queue, its run cards, its groups, a "
-                   "benchmark's plan, its reports -- in its job request, "
-                   "job-request.json (2.27.0)")
+        out.append(f"how it runs -- its queue, its run cards, its groups, a "
+                   f"benchmark's plan, its reports -- in its job request, "
+                   f"{JOB_REQUEST_FILE} (2.27.0)")
     if "calculation" not in obj:
         out.append("its `calculation` (2026-10-06)")
     stages = obj.get("stages")

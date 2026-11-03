@@ -53,7 +53,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .jobset.model import FILENAME as _JOBSET_FILENAME
 from .task import FILENAME as _TASK_FILENAME
-from .runfiles import GITIGNORE_FILE, SNAPSHOT_DIR
+from .runfiles import GITIGNORE_FILE, HISTORY_DIR, SNAPSHOT_DIR
 from .warmfiles import never_carried
 
 
@@ -77,7 +77,7 @@ ARCHIVE_DIR = SNAPSHOT_DIR
 #: for one directory are two things that can disagree, and the one that would
 #: go stale is the exclusion -- leaving the archive walkable by the save that
 #: is writing it.
-NEVER_STORED = (".git", ARCHIVE_DIR)
+NEVER_STORED = (HISTORY_DIR, ARCHIVE_DIR)
 
 #: The managed region of a calculation's ``.gitignore``.
 #:
@@ -419,7 +419,7 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
             if entry.name.startswith("."):    # .git, .binsnapshots, .venv, …
                 continue
             rel = str(entry.relative_to(path))
-            if (entry / ".git").is_dir():
+            if (entry / HISTORY_DIR).is_dir():
                 repos.append(rel)
                 continue                      # never descend into another repo
             try:
@@ -826,7 +826,7 @@ def _refuse_unstorable(root: Path, path: Path) -> str:
     except CheckpointError as exc:
         raise CheckpointError(
             f"{path} cannot go into the archive: {exc}\n\n"
-            f"This file is stored in `.binsnapshots/` rather than in git, and "
+            f"This file is stored in `{ARCHIVE_DIR}/` rather than in git, and "
             f"the archive's record (MANIFEST) is plain ASCII.  Either rename "
             f"the file, or adjust `checkpoint.size_limit_bytes` / "
             f"`checkpoint.engines` in molbuilder.json so it goes to git "
@@ -1230,7 +1230,7 @@ class Repo:
 
     @property
     def initialized(self) -> bool:
-        return (self.root / ".git").is_dir()
+        return (self.root / HISTORY_DIR).is_dir()
 
     def _require_init(self) -> None:
         if not self.initialized:

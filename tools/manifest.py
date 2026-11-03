@@ -2,10 +2,12 @@
 
 `docs/execution/project-layout.md` § 5 lists every file molbuilder writes into
 a calculation folder -- what it is for, who writes it, the one function its
-readers ask, what losing it costs.  Those rows are `runfiles.WRITTEN`'s: the
-catalogue is the ONE source (user, 2026-10-04: "Generate from catalogue"), the
-Task setup card and the Results tab's file card read it too, and this tool
-writes its tables into the document, between the markers it owns:
+readers ask, what losing it costs -- and the engines' files molbuilder names
+(§ 5.4).  Those rows are the catalogue's, `runfiles.WRITTEN` and
+`runfiles.ENGINE_FILES`: the ONE source (user, 2026-10-04: "Generate from
+catalogue"), the Task setup card and the Results tab's file card read it too,
+and this tool writes its tables into the document, between the markers it
+owns:
 
     <!-- manifest:<level> -->  ...  <!-- /manifest -->
 
@@ -25,32 +27,29 @@ import re
 import sys
 from pathlib import Path
 
-from molbuilder.runfiles import WRITTEN, Artifact
+from molbuilder.runfiles import (ENGINE_FILES, WRITTEN, Artifact, EngineFile,
+                                 names_made, shown)
 
 DOC = Path(__file__).resolve().parent.parent / "docs/execution/project-layout.md"
 
-#: The tables, in the order § 5 holds them: one per level.
+#: The tables, in the order § 5 holds them: one per level, and the engines'
+#: files molbuilder names (§ 5.4, `runfiles.ENGINE_FILES`).
 LEVELS = ("calculation", "stage", "run", "bench", "launch", "transient")
+ENGINES = "engines"
 
 _MARK = re.compile(r"(<!-- manifest:([a-z]+) -->\n)(.*?)(<!-- /manifest -->)",
                    re.S)
-_FIELD = re.compile(r"\{([a-z_]+)\}")
 
 _ENGINE = {"siesta": "SIESTA", "pyscf": "PySCF"}
 
 
-def _shown(text: str) -> str:
-    """A name with its fields shown by name: ``{element}.psml`` ->
-    ``<element>.psml``."""
-    return _FIELD.sub(lambda m: f"<{m.group(1)}>", text)
-
-
-def _name(a: Artifact) -> str:
-    """The file's name, one spelling."""
+def _name(a: "Artifact | EngineFile") -> str:
+    """The file's name, one spelling -- a row of either table, its fields
+    shown by name (`runfiles.shown`)."""
     if a.name:
-        return f"`{_shown(a.name)}`"
+        return f"`{shown(a.name)}`"
     head = "<base>" if a.staged else "<label>"
-    return f"`{head}{_shown(a.role)}`"
+    return f"`{head}{shown(a.role)}`"
 
 
 def _notes(a: Artifact) -> str:
@@ -83,6 +82,40 @@ def door_resolves(door: str) -> bool:
     return False
 
 
+def _carried(e: EngineFile) -> str:
+    """What the engine's shipped restart-file list says of it
+    (`warmfiles`): carried to a continuing run, known to the list, the
+    engine's scratch -- each name the row makes for a run of ours asked
+    (`runfiles.names_made`) -- or nothing."""
+    from molbuilder.warmfiles import is_scratch, warm_list
+    if not e.role:
+        return ""
+    if any(is_scratch("L" + m) for m in names_made(e.role)):
+        return "scratch"
+    listed = warm_list(e.engine)
+    if e.role in listed.carry:
+        return "carried"
+    if e.role in listed.suffixes:
+        return "listed"
+    return ""
+
+
+def engines_table() -> str:
+    """§ 5.4's rows: the engines' files molbuilder names."""
+    lines = ["| file | what it is | the restart list | the door |",
+             "|---|---|---|---|"]
+    for e in ENGINE_FILES:
+        if e.door and not door_resolves(e.door):
+            raise SystemExit(
+                f"runfiles.ENGINE_FILES: {e.role or e.name!r} names the "
+                f"door {e.door!r}, which does not exist -- a contract must "
+                f"not send a reader to a function the code lacks.")
+        door = f"`{e.door}`" if e.door else "none"
+        lines.append(f"| {_name(e)} *({_ENGINE.get(e.engine, e.engine)})* "
+                     f"| {e.what} | {_carried(e) or '—'} | {door} |")
+    return "\n".join(lines) + "\n"
+
+
 def table(level: str) -> str:
     """One level's rows, as the markdown table § 5 holds."""
     lines = ["| file | what it is for | written by | the door | kind |",
@@ -105,6 +138,8 @@ def render_into(doc: str) -> str:
     """``doc`` with every marked table rendered from the catalogue."""
     def one(m):
         level = m.group(2)
+        if level == ENGINES:
+            return m.group(1) + engines_table() + m.group(4)
         if level not in LEVELS:
             raise SystemExit(f"manifest marker for an unknown level: {level}")
         return m.group(1) + table(level) + m.group(4)
@@ -120,7 +155,8 @@ def main(argv=None) -> int:
     rendered = render_into(text)
     if args.check:
         if rendered != text:
-            print(f"{DOC}: § 5 differs from runfiles.WRITTEN -- run "
+            print(f"{DOC}: § 5 differs from the catalogue "
+                  f"(runfiles.WRITTEN, ENGINE_FILES) -- run "
                   f"`python -m tools.manifest`", file=sys.stderr)
             return 1
         return 0

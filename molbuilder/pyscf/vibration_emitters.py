@@ -84,6 +84,7 @@ from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
 from ..envs.hints import fix_cmd as _fix_cmd   # noqa: E402
 
 from ..atom_permutation import MAP_KEY
+from ..runfiles import PYSCF_BUNDLE
 from ..spectra.methods import frequency_range_words
 from ..spectra.results import (PHASE_COMPLETE, PHASE_EMPTY,
                                PHASE_NOT_REQUESTED, PHASE_RUNNING,
@@ -632,8 +633,8 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure,
     # Newton wrap ride the EQUILIBRIUM mf only (render-time branches
     # on the config -- self-documenting in the emitted text).
     if getattr(cfg, "chkfile", False):
-        from .input import ROLE_CHK, run_file_expr
-        out.append(f'mf.chkfile = _mb_outfile({run_file_expr(names, ROLE_CHK)})')
+        from .input import PYSCF_CHK, run_file_expr
+        out.append(f'mf.chkfile = _mb_outfile({run_file_expr(names, PYSCF_CHK)})')
     if getattr(cfg, "scf_soscf", False):
         out.append("# Second-order SCF (engines/pyscf.md § 7): Newton solver;")
         out.append("# DIIS/damp stop applying under it, by design.")
@@ -1254,7 +1255,8 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# polarizability has units of volume; PySCF reports a.u. (Bohr³),")
     out.append("# and the textbook Raman activity formula expects Å³.")
     out.append("# (Bohr/Å)^6 = BOHR_ANGSTROM^6  ≈ 0.021959 -- the one home's")
-    out.append("# factor, imported with the constants module from mb_pyscf.pyz.")
+    out.append(f"# factor, imported with the constants module from "
+               f"{PYSCF_BUNDLE}.")
     out.append("_RAMAN_AU2_TO_A4AMU = _mb_constants.BOHR_ANGSTROM ** 6")
     out.append("")
     out.append("for _n in range(len(modes_payload)):")

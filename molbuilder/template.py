@@ -59,13 +59,11 @@ from .engine_table import engine_of_config
 from .identity import migrate_as_typed, stage_key
 from . import kind_table as _kinds
 from .persist import check_schema
+from .runfiles import (JOB_REQUEST_FILE, PSEUDO_FILE, ROLE_PYSCF_LOG,
+                       SIESTA_XV, TASK_FILE, deck_role, fixed_name)
 
 
 SCHEMA = "molbuilder/template@2"
-
-#: The suffix of a template's filename; the stem is the ``SystemLabel``.
-#: ``<label>.template.toml`` (`job-contracts.md` § 6.3).
-SUFFIX = ".template.toml"
 
 #: § 6 — closed. An unknown ``kind`` is refused, never skipped, because a reader
 #: that quietly dropped an item it did not understand would emit a deck missing
@@ -213,24 +211,30 @@ def cards(kind: str) -> Tuple[Card, ...]:
 #: shared panel the folder alone, for a cited structure pair.
 SETUP_WORDS = {
     frozenset({"system_label", "psml_lib"}):
-        "Give the run a name and pick its pseudopotential folder.  The name "
-        "begins every file the run writes -- for example water, so its "
-        "files are water_01_<stage>.fdf, water.XV and so on.  "
-        "The folder holds one .psml file for each species of the structure, "
-        "named for it -- for example pseudopotential/, with O.psml and "
-        "H.psml for water.  "
-        "Nothing can be built until the folder is filled in.",
+        f"Give the run a name and pick its pseudopotential folder.  The name "
+        f"begins every file the run writes -- for example water, so its "
+        f"files are water_01_<stage>{deck_role('siesta')}, water{SIESTA_XV} "
+        f"and so on.  "
+        f"The folder holds one .psml file for each species of the structure, "
+        f"named for it -- for example pseudopotential/, with "
+        f"{fixed_name(PSEUDO_FILE, species='O')} and "
+        f"{fixed_name(PSEUDO_FILE, species='H')} for water.  "
+        f"Nothing can be built until the folder is filled in.",
     frozenset({"job_name"}):
-        "Give the run a name.  It begins every file the run writes -- for "
-        "example water, so its script is water_01_<stage>.py and its log "
-        "water_01_<stage>.log.",
+        f"Give the run a name.  It begins every file the run writes -- for "
+        f"example water, so its script is water_01_<stage>"
+        f"{deck_role('pyscf')} and its log "
+        f"water_01_<stage>{ROLE_PYSCF_LOG}.",
     frozenset({"psml_lib"}):
-        "Pick the pseudopotential folder: one .psml file for each species of "
-        "the junction, named for it -- for example pseudopotential/, with "
-        "Au.psml, C.psml, "
-        "H.psml and S.psml for a gold-benzenedithiol junction.  The structure "
-        "pair you cited brings none of its own, so the run takes them from "
-        "this folder.  Nothing can be built until it is filled in.",
+        f"Pick the pseudopotential folder: one .psml file for each species of "
+        f"the junction, named for it -- for example pseudopotential/, with "
+        f"{fixed_name(PSEUDO_FILE, species='Au')}, "
+        f"{fixed_name(PSEUDO_FILE, species='C')}, "
+        f"{fixed_name(PSEUDO_FILE, species='H')} and "
+        f"{fixed_name(PSEUDO_FILE, species='S')} for a gold-benzenedithiol "
+        f"junction.  The structure "
+        f"pair you cited brings none of its own, so the run takes them from "
+        f"this folder.  Nothing can be built until it is filled in.",
 }
 
 
@@ -2211,7 +2215,7 @@ def why_run_setting(name: str) -> str:
     """Why a run setting cannot be a column -- the clause a refusal puts
     after *"stage <s> overrides <name>"* or *"'varies' names <name>"*."""
     return (f"a run setting: the rung states it on its run card in "
-            f"job-request.json -- \"execution\": {{\"{name}\": ...}} on the "
+            f"{JOB_REQUEST_FILE} -- \"execution\": {{\"{name}\": ...}} on the "
             f"stage's entry, or on the calculation for every rung "
             f"(execution/job-request.md 2) -- never in the description")
 
@@ -2251,11 +2255,11 @@ def why_shared(name: str) -> str:
                 "a stage -- every stage's warm files are a density for one "
                 "state (science/chemistry-correctness.md § 2a, ES1)")
     if name in IDENTITY_ITEMS:
-        return ("a calculation has one name, one species table and one set "
-                "of pseudopotentials -- each stage reads what the one before "
-                "it wrote under that name, numbered by that table (the `.XV` "
-                "holds each atom's species index) and built on that set "
-                "(engines/template.md § 5, `shared`)")
+        return (f"a calculation has one name, one species table and one set "
+                f"of pseudopotentials -- each stage reads what the one before "
+                f"it wrote under that name, numbered by that table (the "
+                f"`{SIESTA_XV}` holds each atom's species index) and built on "
+                f"that set (engines/template.md § 5, `shared`)")
     if _scoped_shared(name) is not None:
         return ("they are the rungs that read it, and must not be able to "
                 "disagree about it (engines/template.md § 5, `shared` with "
@@ -2752,7 +2756,7 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
         return (f", which is not an execution setting of {engine}.  A run "
                 f"card says what the RUN uses -- ranks, threads, the device, "
                 f"the solver.  A physics value belongs in the template, and "
-                f"a per-stage one in that stage's `overrides` in task.json "
+                f"a per-stage one in that stage's `overrides` in {TASK_FILE} "
                 f"(engines/stages.md 6.2)")
     if home == "bench" and not run:
         return (f", which {engine} does not declare as an `execution` "
@@ -3392,7 +3396,7 @@ def why_not_an_item(name: str, *, value: Any = None,
 
 
 #: The module's public surface.
-__all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
+__all__ = ["SCHEMA", "KINDS", "TYPES", "CATEGORIES",
            "Item", "Template",
            "items_of", "help_for",
            "select", "one",

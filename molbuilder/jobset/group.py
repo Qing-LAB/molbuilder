@@ -348,7 +348,7 @@ def sequence_headers_holding(base, task, request,
     every = sorted(request.numbers)
     mine = set(numbers)
     return [Path(base) / LAUNCH_DIR / sequence_names(
-                base, task, request, seq).name(".sbatch")
+                base, task, request, seq).header
             for k in range(2, len(every) + 1)
             for seq in combinations(every, k) if mine & set(seq)]
 
@@ -416,7 +416,7 @@ def header_of(calc, job):
     jobs = [jobset.job(m) for m in members]
     return Path(base) / LAUNCH_DIR / GroupNames.of_stages(jobset.name, [
         run_names(jobset, j).stage
-        for j in jobs if j is not None]).name(".sbatch")
+        for j in jobs if j is not None]).header
 
 
 def names_for(base, task, members: Sequence[str]) -> GroupNames:

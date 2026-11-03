@@ -57,6 +57,8 @@ from molbuilder.frame import Frame
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import (
     ParseResult, ParseWarning, TrajectoryResult)
+from molbuilder.runfiles import (ROLE_SIESTA_OUT, SIESTA_MD, SIESTA_MD_NC,
+                                 RunFileError, compose, stem_before)
 from molbuilder.structure import Structure
 
 #: Unit conversions.  Keyed by the ``unit`` ATTRIBUTE the file carries on each
@@ -105,24 +107,24 @@ class SiestaMdNcFileParser(FileParser):
     """
 
     name = "siesta-mdnc"
-    label = "SIESTA netCDF MD history (.MD.nc)"
-    hint = ("a run's <SystemLabel>.MD.nc, written beside its .out when "
-            "WriteMDhistory is on")
+    label = f"SIESTA netCDF MD history ({SIESTA_MD_NC})"
+    hint = (f"a run's <SystemLabel>{SIESTA_MD_NC}, written beside its "
+            f"{ROLE_SIESTA_OUT} when WriteMDhistory is on")
     output = TrajectoryResult
 
     @classmethod
     def footgun_hint_for(cls, filename: str) -> Optional[str]:
-        if filename.endswith(".MD"):
+        if stem_before(filename, SIESTA_MD) is not None:
             return (f"{filename} is SIESTA's UNFORMATTED Fortran MD history "
                     f"-- its layout depends on the compiler that wrote it. "
-                    f"Point molbuilder at the sibling .MD.nc instead, which "
-                    f"holds the same data in netCDF.")
+                    f"Point molbuilder at the sibling {SIESTA_MD_NC} "
+                    f"instead, which holds the same data in netCDF.")
         return None
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
         path = Path(path)
-        if not path.name.endswith(".MD.nc") or not path.is_file():
+        if stem_before(path.name, SIESTA_MD_NC) is None or not path.is_file():
             return False
         try:
             with path.open("rb") as fh:
@@ -159,8 +161,8 @@ class SiestaMdNcFileParser(FileParser):
                 # Recorded so a composer can say WHY it trusted this file
                 # over the .out, and so the offset is visible in the result
                 # rather than buried in the code that applied it.
-                "mdnc_note": ("post-move geometries; frame k corresponds to "
-                              ".out frame k+1"),
+                "mdnc_note": (f"post-move geometries; frame k corresponds "
+                              f"to {ROLE_SIESTA_OUT} frame k+1"),
                 **{f"mdnc_{k}": v for k, v in series.items()},
             },
             parse_warnings=warnings,
@@ -192,7 +194,7 @@ def _frames_from(ds, path: Path):
     if iza is None:
         raise ValueError(
             f"{path.name}: no 'iza' variable, so the atoms cannot be named. "
-            f"This is not the .MD.nc layout SIESTA 5.4.2 writes.")
+            f"This is not the {SIESTA_MD_NC} layout SIESTA 5.4.2 writes.")
     elements = [symbol_for_z(int(z)) for z in iza]
 
     etot_v = _var(ds, "etot")
@@ -345,11 +347,10 @@ def sibling_md_nc(out_path: Path, label: Optional[str]) -> Optional[Path]:
     lone ``.MD.nc`` of a folder; an output that names no label, or one no
     file name can carry, reads only itself (§ 5.3).
     """
-    from molbuilder.runfiles import RunFileError, compose
     if not label:
         return None
     try:
-        nc = Path(out_path).parent / compose(label, ".MD.nc")
+        nc = Path(out_path).parent / compose(label, SIESTA_MD_NC)
     except RunFileError:
         return None
     return nc if nc.is_file() else None

@@ -60,6 +60,26 @@ _ORIGINAL = re.compile(r"^#\s*above item originally:\s*\S+\s+(.*?)\s*$",
                        re.IGNORECASE)
 
 
+def used_log_of(d: Path, out_head: str) -> Optional[Path]:
+    """SIESTA's ``fdf.<stamp>.log`` for the ``.out`` whose head this is --
+    what the output's catalogue row names for ``used_log``
+    (`runfiles.WRITTEN`).
+
+    THE FDF LOG IS PAIRED BY ITS STAMP: SIESTA opens it in the second it
+    prints ``>> Start of run`` -- exact on 122 of 122 real outputs, and
+    SIESTA's own naming, so it holds in a folder molbuilder did not write.
+    """
+    from . import siesta_grammar as _G
+    facts: Dict[str, Any] = {}
+    for line in out_head.splitlines():
+        if _G.read_launch_line(line, facts) == "run_start_local":
+            break
+    start = facts.get("run_start_local")
+    if not start:
+        return None
+    return next((p for p in logs_in(d) if stamp_of(p) == start), None)
+
+
 def read_fdf_log(text: str, source: str = "<text>"
                  ) -> Tuple[Dict[str, Dict[str, Any]],
                             Dict[str, List[str]],

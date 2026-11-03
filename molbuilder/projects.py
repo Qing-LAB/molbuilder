@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import List, Mapping, NamedTuple, Optional, Tuple
 
 from . import kind_table
+from .runfiles import PSEUDO_FILE, TASK_FILE, fixed_name
 
 _log = logging.getLogger(__name__)
 
@@ -345,8 +346,11 @@ _TOPIC_READMES: Mapping[str, str] = {
     "pseudopotential": (
         "# pseudopotential/\n\n"
         "SIESTA pseudopotentials for this project.  Drop `.psml`\n"
-        "files here, one per species, named for its label (`H.psml`,\n"
-        "`O.psml`, `Au1.psml`, ...): SIESTA opens `<label>.psml`.\n"
+        f"files here, one per species, named for its label "
+        f"(`{fixed_name(PSEUDO_FILE, species='H')}`,\n"
+        f"`{fixed_name(PSEUDO_FILE, species='O')}`, "
+        f"`{fixed_name(PSEUDO_FILE, species='Au1')}`, ...): SIESTA opens "
+        f"`<label>.psml`.\n"
         "A SIESTA calculation whose `psml_lib` is `pseudopotential`\n"
         "takes the files it lacks from here at prep.\n"
     ),
@@ -371,7 +375,7 @@ def _topic_readme(topic: str) -> str:
               if kind_table.kind(k).topic == topic)
     return (f"# {topic}/\n\n"
             f"Where this project keeps {of.with_article} -- a folder\n"
-            f"holding its description (`task.json`) and its runs, grouped\n"
+            f"holding its description (`{TASK_FILE}`) and its runs, grouped\n"
             f"in folders of your own as the work suits.\n")
 
 

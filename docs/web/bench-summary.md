@@ -229,6 +229,6 @@ this be read"*), the HTTP refusals, and JSON.
 never writes `bench-result.json`, and the report is `summarize`'s to print —
 because once it exists it is the *user's* file, possibly edited, and a page
 that polls every 15 s must not race it. It does not promise to touch nothing:
-`jobset_status` decodes each run directory, and every parser appends its own
-`<input>.parse.log` sidecar by design (`parse/_log.py` — the trajectory
-viewer's polling already does exactly this).
+`jobset_status` decodes each run directory, and with `MOLBUILDER_PARSE_LOG`
+set a parser appends its parse log beside the output it reads
+(`parse/_log.py`, off unless asked).

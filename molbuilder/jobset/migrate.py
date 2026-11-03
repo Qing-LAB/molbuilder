@@ -636,13 +636,14 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
     template records *not chosen* that is the catalogue's default now.  A
     `bench` row naming what is computed is refused by name."""
     from ..job_request import SCHEMA
+    from ..runfiles import JOB_REQUEST_FILE, TASK_FILE
     said: List[str] = []
     desc = _description_view(obj)
     bench = dict(obj.get("bench") or {})
     measured = sorted(set(bench) & set(_COMPUTED_ON_CARDS))
     if measured:
         raise MigrateError(
-            f"task.json's bench measures {', '.join(map(repr, measured))}, "
+            f"{TASK_FILE}'s bench measures {', '.join(map(repr, measured))}, "
             f"which say{'s' if len(measured) == 1 else ''} what is computed, "
             f"never how fast -- a benchmark measures run settings alone "
             f"(execution/job-request.md § 2).  Remove "
@@ -674,9 +675,9 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
                "stages": stages,
                **({"bench": bench} if bench else {}),
                **({"notify": obj["notify"]} if obj.get("notify") else {})}
-    said.insert(0, "how it runs -- its allocation, run cards, groups, bench "
-                   "and reports -- moved into job-request.json, a record of "
-                   "its own")
+    said.insert(0, f"how it runs -- its allocation, run cards, groups, bench "
+                   f"and reports -- moved into {JOB_REQUEST_FILE}, a record of "
+                   f"its own")
     return desc, request, said
 
 
@@ -691,6 +692,7 @@ def _onto_the_card(rec: "_Records", task, card: dict) -> List[str]:
     template, what is computed.  What the file holds decides, never its
     version."""
     from .. import template as _T
+    from ..runfiles import JOB_REQUEST_FILE
     template = rec.template_for(task.label)
     if template is None:
         return []
@@ -709,7 +711,7 @@ def _onto_the_card(rec: "_Records", task, card: dict) -> List[str]:
             continue
         card[it.name] = it.value
         said.append(f"{it.name} = {_T.shown(it.value)}: out of the template, "
-                    f"onto the calculation's run card in job-request.json")
+                    f"onto the calculation's run card in {JOB_REQUEST_FILE}")
     return said
 
 
@@ -1196,7 +1198,10 @@ def _migrate_runs(base: Path) -> Tuple[List[str], List["_Rename"]]:
     from ..joblist import going_of
     said: List[str] = []
     moves: List[_Rename] = []
-    known = set(_rf.roles())
+    # THE FILES THIS MOLBUILDER WRITES -- the catalogue's own rows: an
+    # older run's file is renamed onto one of them, an engine's file keeps
+    # the name its engine gave it.
+    known = set(_rf.roles(engines=False))
     for run, folders in _runs_with_folders(base).items():
         found = [(folder, stage, _rf.older_named(folder, stage))
                  for folder, stage in folders]
@@ -1228,13 +1233,14 @@ def _migrate_runs(base: Path) -> Tuple[List[str], List["_Rename"]]:
         for folder, stage, older in found if not stuck else ():
             names = []
             for o in older:
-                new = o.path.with_name(o.anew(stage))
-                got = _rf.parse(new.name, o.label)
-                if (o.staged and o.kept is None
-                        and (got is None or got.role not in known)):
+                # ONE CHECK, a kept copy's and a file's alike: a file named
+                # on the stage is one of the catalogue's own rows; SIESTA's
+                # history keeps the name SIESTA gives it.
+                if o.staged and _rf.canonical_role(o.role)[0] not in known:
                     stuck.append(f"{o.path.name} names no file this "
                                  f"molbuilder writes")
                     continue
+                new = o.path.with_name(o.anew(stage))
                 # SIESTA'S NAME FOR ITS HISTORY, still pointing at the
                 # numbered file where its run script stopped before its
                 # exit: the rename takes its place.
@@ -1435,6 +1441,7 @@ def _decide_template(rec: "_Records", task):
 
     from .. import template as _T
     from ..engine_table import config_class
+    from ..runfiles import TASK_FILE
 
     engine = task.engine
     kind = task.calculation
@@ -1488,7 +1495,7 @@ def _decide_template(rec: "_Records", task):
             if new_name is not None and new_name in st.overrides \
                     and st.overrides[new_name] != v:
                 raise _renamed_conflict(k, v, new_name, st.overrides[new_name],
-                                        f"stage {st.name!r} in task.json")
+                                        f"stage {st.name!r} in {TASK_FILE}")
     if stage_renamed or varies_renamed:
         task = dataclasses.replace(
             task, varies=tuple(dict.fromkeys(
@@ -1500,8 +1507,8 @@ def _decide_template(rec: "_Records", task):
         renamed_at += [_T.RENAMED_ITEMS[k][2] for _s, k, _v in stage_renamed]
         renamed_at += [_T.RENAMED_ITEMS[k][2] for k in varies_renamed]
         renamed += ([f"stage {st!r} {k} = {v!r} -> {renamed_to[k]} in "
-                     f"task.json (renamed)" for st, k, v in stage_renamed]
-                    + [f"{k} -> {renamed_to[k]} in task.json's varies "
+                     f"{TASK_FILE} (renamed)" for st, k, v in stage_renamed]
+                    + [f"{k} -> {renamed_to[k]} in {TASK_FILE}'s varies "
                        f"(renamed)" for k in varies_renamed])
     # AN ITEM A RELEASE RETIRED is taken out -- of the template, and of a
     # stage's own values and `varies` -- when its value runs as before
@@ -1548,9 +1555,9 @@ def _decide_template(rec: "_Records", task):
     retired_said = (
         [(f"{it.name} = {it.value!r}" if it.is_set else f"{it.name} (blank)")
          + f" removed ({_T.RETIRED_ITEMS[it.name].why})" for it in retired]
-        + [f"stage {st!r} {k} = {v!r} removed from task.json "
+        + [f"stage {st!r} {k} = {v!r} removed from {TASK_FILE} "
            f"({_T.RETIRED_ITEMS[k].why})" for st, k, v in stage_retired]
-        + [f"{k} removed from task.json's varies "
+        + [f"{k} removed from {TASK_FILE}'s varies "
            f"({_T.RETIRED_ITEMS[k].why})" for k in varies_retired])
     retired_at = [_T.RETIRED_ITEMS[n].at for n in _T.RETIRED_ITEMS
                   if any(it.name == n for it in retired)
@@ -1585,7 +1592,7 @@ def _decide_template(rec: "_Records", task):
             for st in task.stages))
     zero_said = ([f"{name} = 0 -> not set" for name in zeros]
                  + [f"stage {st!r} {name} = 0 -> not set (the override "
-                    f"taken out of task.json; the template's {name} is "
+                    f"taken out of {TASK_FILE}; the template's {name} is "
                     f"written blank, since only that rung reads it)"
                     for st, name in stage_zeros])
     zeros = list(dict.fromkeys(zeros + [name for _st, name in stage_zeros]))
@@ -1630,7 +1637,7 @@ def _decide_template(rec: "_Records", task):
             f"warm files are a density for one state "
             f"(science/chemistry-correctness.md § 2a, ES1).  Decide which "
             f"value the whole calculation carries, put it in the template, "
-            f"remove the override from task.json, and run the migration "
+            f"remove the override from {TASK_FILE}, and run the migration "
             f"again.")
 
     state, said = (_map_state(engine, vals) if state_said else ({}, []))
