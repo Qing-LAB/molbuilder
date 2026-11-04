@@ -177,10 +177,8 @@ class Field:
     shape: str
     example: str
     #: EVERY VALUE MOLBUILDER'S OWN RUNS GIVE IT -- the TBtrans channels,
-    #: the leads its decks name -- so a check can walk every name a
-    #: templated row makes for a run of ours; ``()`` where the example
-    #: stands for them.  The shape is what reads back, which an engine run
-    #: prepared elsewhere may fill otherwise (a lead named ``Left``).
+    #: the leads its decks name -- so the names a templated row makes for a
+    #: run of ours can be walked; ``()`` where the example stands for them.
     values: "tuple[str, ...]" = ()
 
 
@@ -217,15 +215,16 @@ FIELDS: "dict[str, Field]" = {
         shape=r"v-?[0-9][0-9.e+-]*",
         example="v0.2"),
     "lead": Field(
-        what="a lead as a deck's `TS.Elecs` block names it -- molbuilder's "
-             "decks :data:`OUR_LEADS`, another deck's any word "
-             "(`m_tbt_save.F90` `name_save`)",
-        shape=r"[^.\s/-]+",
+        what="a lead as molbuilder's decks name it in their `TS.Elecs` "
+             "block, :data:`OUR_LEADS` -- the name TranSIESTA and TBtrans "
+             "give its files (`m_tbt_save.F90` `name_save`)",
+        shape="(?:" + "|".join(OUR_LEADS) + ")",
         example=OUR_LEADS[0], values=OUR_LEADS),
     "pair": Field(
         what="the two leads a TBtrans quantity runs between, as its file "
              "names them",
-        shape=r"[^.\s/-]+-[^.\s/-]+",
+        shape="(?:" + "|".join(OUR_LEADS) + ")-(?:" + "|".join(OUR_LEADS)
+              + ")",
         example="-".join(OUR_LEADS)),
     "stamp": Field(
         what="the moment SIESTA opened its fdf log, as it names the file",
@@ -710,8 +709,7 @@ def find(directory, label: str, *,
     return out
 
 
-def find_on_label(directory, label: str, role: str,
-                  roles: "tuple[str, ...]" = ()) -> "list[Path]":
+def find_on_label(directory, label: str, role: str) -> "list[Path]":
     """The label's files in ``role`` named on the label ALONE, no stage
     token -- as an engine names its own (SIESTA's ``<label>.FC``,
     TBtrans's ``<label>.TBT.nc``) and a run its result
@@ -719,8 +717,8 @@ def find_on_label(directory, label: str, role: str,
     `runs.Run.on_label` and every reader of an engine file on the label
     (`job-contracts.md` § 2.2a): a reader that copied it answered the same
     question a second way."""
-    declared(role, roles, door="find_on_label")
-    return [p for p, rec in find(directory, label, role=role, roles=roles)
+    declared(role, door="find_on_label")
+    return [p for p, rec in find(directory, label, role=role)
             if rec.stage is None]
 
 
@@ -822,18 +820,17 @@ def longest_tail(engine_names: "tuple[str, ...]") -> str:
     return out
 
 
-def stem_before(name, role: str, roles: "tuple[str, ...]" = ()
-                ) -> Optional[str]:
+def stem_before(name, role: str) -> Optional[str]:
     """What precedes ``role`` in ``name`` -- the stem every other file of
     that run is named on -- or ``None`` when ``name`` does not end in it, or
     is nothing but it.  ``role`` is one of this module's (the constant,
-    never a literal at the call site), a concrete name of a templated one
-    (``.TBT_UP.nc``) or one of ``roles`` (:func:`declared`) -- a templated
-    role read by its pattern, so a role :func:`role_of` answers cuts the name
+    never a literal at the call site) or a concrete name of a templated
+    one (``.TBT_UP.nc``) (:func:`declared`) -- a templated role read by its
+    pattern, so a role :func:`role_of` answers cuts the name
     it was read off; the cut is one place, so a reader handed a path and no
     label (`parse.engines.pyscf`, geomeTRIC's trajectory) does not split the
     name by hand."""
-    declared(role, roles, door="stem_before")
+    declared(role, door="stem_before")
     base = str(name).rsplit("/", 1)[-1]
     if _FIELD_RE.search(role):
         m = _role_pattern(role).search(base)
@@ -2000,8 +1997,9 @@ _check_reads(WRITTEN)
 
 @dataclass(frozen=True)
 class EngineFile:
-    """One file an engine writes that molbuilder composes, reads, carries
-    or knows by name -- never complete: an engine's output is its version's
+    """One file an engine writes that molbuilder composes, reads or
+    carries, or explains by name to a person reading a run's folder --
+    never complete: an engine's output is its version's
     and its options' (`job-contracts.md` § 2.2), so *did the engine leave
     this?* is still answered by subtraction from :data:`WRITTEN`.
 
@@ -2206,16 +2204,6 @@ def names_made(template: str) -> "tuple[str, ...]":
         for combo in itertools.product(*[
             FIELDS[f].values or (FIELDS[f].example,) for f in names]))
 
-
-def rows_ending_with(suffix: str) -> "tuple[str, ...]":
-    """THE ROWS OF EITHER TABLE A NAME OF WHICH ENDS IN ``suffix`` -- each
-    by its role, or its whole name -- in the catalogue's order: what the
-    family ``*<suffix>`` takes in.  A restart-file list's scratch suffix
-    takes in one engine row's names and no other's (`warmfiles`, as the
-    shipped lists load)."""
-    return tuple(dict.fromkeys(
-        r.role or r.name for r in (*WRITTEN, *ENGINE_FILES)
-        if any(n.endswith(suffix) for n in names_made(r.role or r.name))))
 
 
 @functools.lru_cache(maxsize=1)
@@ -2798,3 +2786,8 @@ def row_for(path, label: Optional[str] = None) -> Optional[Artifact]:
         if not a.name.endswith("/") and _role_pattern(a.name).match(base):
             return a
     return None
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.runpoints",)

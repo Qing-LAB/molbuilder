@@ -31,8 +31,8 @@ except ImportError:                         # beside a job, as the monitor's
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle, which it travels in by
 #: the progress log's catalogue row (`runfiles.WRITTEN`'s ``reads``;
 #: `runwrap.monitor_companions`).
-TRAVELS_WITH = ("molbuilder.parse.engines.molwatch_grammar",
-                "molbuilder.parse.engines._section_rules",
+TRAVELS_WITH = ("molbuilder.parse.engines._section_rules",
+                "molbuilder.parse.engines.molwatch_grammar",
                 "molbuilder.parse.engines.transiesta")
 
 

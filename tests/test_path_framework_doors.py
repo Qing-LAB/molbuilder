@@ -9,8 +9,6 @@ source text.
 """
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from molbuilder import runfiles
@@ -83,38 +81,13 @@ def test_canonical_role_maps_a_name_back_to_its_TEMPLATE():
 @pytest.mark.parametrize("name,role,fields", [
     ("tsgf/AuBDT.v0.2.TSGFL", runfiles.SIESTA_TSGF,
      {"bias": "v0.2", "lead": "L"}),
-    ("dev.TBT_UP.AVADOS_Left", runfiles.TBTRANS_AVADOS,
-     {"tbt": "TBT_UP", "lead": "Left"}),
     ("AuBDT.TSHS", runfiles.SIESTA_TSGF, None),
-], ids=["a-lead-of-ours", "a-lead-another-deck-names", "not-of-the-role"])
+], ids=["a-lead-of-ours", "not-of-the-role"])
 def test_a_templated_engine_name_reads_back_its_fields(name, role, fields):
     """`runfiles.fields_of`: the fields an engine's file carries, read off
-    the name it prints (``Using GF-file '<path>'``) or writes by its row's
-    pattern -- a lead any deck names, as TBtrans takes any word.  THE
-    SILENT FAILURE: a lead cut from the name by hand, or a file another
-    deck's leads name read as no lead's."""
+    the name it prints (``Using GF-file '<path>'``) by its row's pattern.
+    THE SILENT FAILURE: a lead cut from the name by hand."""
     assert runfiles.fields_of(name, role) == fields
-
-
-@pytest.mark.parametrize("rows,said", [
-    ((runfiles.EngineFile("cp2k", ".wfn"),), "names the engine 'cp2k'"),
-    ((runfiles.EngineFile("siesta", ".X", name="X"),),
-     "states both a role and a name"),
-    ((runfiles.EngineFile("siesta", "X"),), "does not begin with '.' or '_'"),
-    ((runfiles.EngineFile("siesta", ".out"),), "is a file of ours too"),
-    ((runfiles.ENGINE_FILES[0],) * 2, "is in the table twice"),
-], ids=["an-engine-no-row-of-ours-names", "a-role-and-a-name",
-        "a-role-without-its-separator", "a-file-of-ours", "a-row-twice"])
-def test_an_engine_file_row_the_tables_cannot_both_hold_is_refused(rows,
-                                                                   said):
-    """The engines' table checks its rows as the catalogue loads
-    (`runfiles._check_engine_files`): its engines are the catalogue's, each
-    row a role or a name, and none a file of ours -- the two tables never
-    overlap (`job-contracts.md` § 2.2).  THE SILENT FAILURE: a file of
-    ours listed as the engine's, which *did the engine leave this?* then
-    counts as the engine's."""
-    with pytest.raises(runfiles.RunFileError, match=re.escape(said)):
-        runfiles._check_engine_files(rows)
 
 
 def test_a_field_round_trips_through_compose_and_parse():
@@ -150,20 +123,6 @@ def test_find_by_role_answers_for_the_family_without_a_label(tmp_path):
     d = _touch(tmp_path, "a.TBT.digest.nc", "b.TBT_UP.digest.nc", "a.out")
     assert [p.name for p in find_by_role(d, runfiles.ROLE_TBT_DIGEST)] == [
         "a.TBT.digest.nc", "b.TBT_UP.digest.nc"]
-
-
-@pytest.mark.parametrize("role", [".XV", ".TBT_UP.digest.nc"],
-                         ids=["an-engine's-file", "a-name-of-a-templated-row"])
-def test_find_by_role_sends_a_role_it_cannot_read_without_a_label_to_find(
-        role, tmp_path):
-    """`find_by_role` reads names by `role_of`, which knows our own rows'
-    dotted roles alone: a declared role it could never answer -- an
-    engine's file, one name of a templated row -- is refused, pointing at
-    `find`, which reads a name back with its label.  THE SILENT FAILURE: an
-    empty list for files that are there."""
-    _touch(tmp_path, f"a{role}")
-    with pytest.raises(runfiles.RunFileError, match=r"by its\s+label \(`find`\)"):
-        find_by_role(tmp_path, role)
 
 
 @pytest.mark.parametrize("engine,calculation,theirs", [

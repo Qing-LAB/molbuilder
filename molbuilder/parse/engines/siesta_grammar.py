@@ -1379,3 +1379,8 @@ def fermi_levels(cycle: Dict[str, Any],
     return tuple(cycle[own] if (own := _OWN_FERMI.get(ch)) in cycle
                  else cycle.get("ef") for ch in channels)
 
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.trajectory_log.keys",
+                "molbuilder.runfiles")

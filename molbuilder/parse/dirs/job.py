@@ -769,3 +769,9 @@ def _build_status(out_paths: List[Path],
                      by_wall=bool(state == "failed" and over))
 
 
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
+                "molbuilder.runfiles",
+                "molbuilder.runrecord",
+                "molbuilder.wrapper_log")

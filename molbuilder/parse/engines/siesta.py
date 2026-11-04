@@ -92,9 +92,7 @@ from .siesta_reader import read_output
 class SiestaParser:
     name  = "siesta"
     label = f"SIESTA {ROLE_SIESTA_OUT}"
-    hint  = (f"a SIESTA run's output -- <label>_<stage>{ROLE_SIESTA_OUT}, "
-             f"or SIESTA's output under a name of your own that ends in no "
-             f"role of molbuilder's")
+    hint  = f"a SIESTA run's output, <label>_<stage>{ROLE_SIESTA_OUT}"
 
     # `can_parse` is content-based, not banner-based.  SIESTA reshuffles
     # its header text across versions (v4.x had `Welcome to SIESTA`, v5
@@ -132,8 +130,7 @@ class SiestaParser:
         # (whose sources quote SIESTA's own lines): asked of the catalogue
         # (`runfiles.role_of`, `stdout_roles`), never of a suffix spelled
         # here, so the registry's dispatch stays one parser per file.  A name
-        # the catalogue does not know (a hand-started ``run.output``) goes on
-        # to the content sniff below.
+        # the catalogue does not know goes on to the content sniff below.
         _role = role_of(path)
         if _role is not None and _role not in stdout_roles("siesta"):
             return False

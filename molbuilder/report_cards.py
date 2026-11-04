@@ -240,3 +240,9 @@ def _receiver(kind: str, spec: Any, refuse) -> Receiver:
                      f"nobody can ever see")
     return Receiver(inline=spec["inline"], limit=limit,
                     summary=spec["summary"], order=order)
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.config_dir",
+                "molbuilder.report_fields")

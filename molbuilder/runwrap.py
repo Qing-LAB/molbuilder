@@ -3044,20 +3044,11 @@ def render_run_wrapper(script_path: Path, *,
     )
 
 
-#: THE MONITOR AND WHAT IT IMPORTS ITSELF, beside a job, as ``{name beside
-#: the job: the module whose source it is}``: the monitor, the one module it
-#: reads its channels through, and every framework module it reads the RUN
-#: through -- the names (`runfiles`, `identity`), how a run ended
-#: (`_run_ending`, with the SIESTA reading pass it holds -- `siesta_reader`,
-#: its grammar, the rule engine they run on, the physical constants a
-#: grammar converts a residual with -- and the PySCF end lines), the timing
-#: instrument's rows, the run's own records whose door `run_status` builds
-#: its state on (`runrecord`), `run_status` itself, what a report may carry
-#: (`report_fields`) -- `execution/run-reports.md` § 2.3 -- and the one JSON
-#: writer, `persist`, with which the run's own steps write its notification
-#: record beside the job (`runrecord.note_notified`).  Every other reader an
-#: output's row names for a question a job asks beside it travels by that
-#: row (:func:`_members_the_records_name`).
+#: THE MONITOR, beside a job, as ``{name beside the job: the module whose
+#: source it is}`` -- the one member named apart, ``mb_monitor.py``.  Every
+#: other member travels because a member states it needs it beside it (its
+#: ``TRAVELS_WITH``: the monitor its own imports, each of those theirs) or a
+#: record names it (:func:`_members`): no module is listed here by hand.
 #:
 #: **A verbatim copy of each module's own file**, not a copy of its logic:
 #: each imports the next two ways -- from the package, or from beside the job
@@ -3069,49 +3060,13 @@ def render_run_wrapper(script_path: Path, *,
 #:
 #: They travel as ONE file, :data:`MONITOR_BUNDLE`, which `render_wrappers`
 #: writes next to the wrapper and `materialize` brings into every attempt.
-_MONITOR_BASE: Dict[str, str] = {
-    "mb_monitor.py":       "molbuilder.monitor",
-    "config_dir.py":       "molbuilder.config_dir",
-    "constants.py":        "molbuilder.constants",
-    "runfiles.py":         "molbuilder.runfiles",
-    "identity.py":         "molbuilder.identity",
-    "siesta_reader.py":    "molbuilder.parse.engines.siesta_reader",
-    "siesta_grammar.py":   "molbuilder.parse.engines.siesta_grammar",
-    "transiesta.py":       "molbuilder.parse.engines.transiesta",
-    "molwatch_grammar.py": "molbuilder.parse.engines.molwatch_grammar",
-    "_section_rules.py":   "molbuilder.parse.engines._section_rules",
-    "scf_timing_rows.py":  "molbuilder.parse.instruments.scf_timing_rows",
-    "end_lines.py":        "molbuilder.pyscf.end_lines",
-    "keys.py":             "molbuilder.trajectory_log.keys",
-    "_run_ending.py":      "molbuilder.parse.engines._run_ending",
-    "report_fields.py":    "molbuilder.report_fields",
-    "report_cards.py":     "molbuilder.report_cards",
-    "job.py":              "molbuilder.parse.dirs.job",
-    "runrecord.py":        "molbuilder.runrecord",
-    # THE JOB'S CLOCK'S NAMES (`runtime_info.JOB_STARTED_VAR`), which the
-    # monitor reads.
-    "runtime_info.py":     "molbuilder.runtime_info",
-    # THE WALL'S ONE READER, for the wall a launch record states
-    # (`runrecord.sent_wall_s`).
-    "quantities.py":       "molbuilder.scheduler.quantities",
-    "persist.py":          "molbuilder.persist",
-    "wrapper_log.py":      "molbuilder.wrapper_log",
-    # THE ATOMS A RUN HELD, 0-based through the one numbering door, which
-    # the SIESTA reading pass states for every reader of it.
-    "engine_atom_index.py": "molbuilder.engine_atom_index",
-    # A RUN OF POINTS -- its index, its stamps and its one rule each
-    # (`runpoints`, `execution/runs-of-points.md` § 2.3, § 4), read and
-    # written by each point's report steps and a member's line; the way up
-    # from a point to its run, its folder's record (`calcdirs`, with the
-    # layout's names it reads, `paths`).
-    "runpoints.py":        "molbuilder.runpoints",
-    "calcdirs.py":         "molbuilder.calcdirs",
-    "paths.py":            "molbuilder.paths",
-}
+_MONITOR_BASE: Dict[str, str] = {"mb_monitor.py": "molbuilder.monitor"}
 
 
-def _members_the_records_name() -> Dict[str, str]:
-    """THE MEMBERS THE RECORDS NAME (`execution/architecture.md` § 3.3):
+def _members() -> Dict[str, str]:
+    """EVERY MEMBER BUT THE MONITOR -- what the monitor imports beside the job
+    (its ``TRAVELS_WITH``), and the members the records name
+    (`execution/architecture.md` § 3.3):
     each kind's words, the run-of-points parts its pair names (the kind
     table's ``points.count`` and ``points.outcome`` -- a vibration's count, a
     transport rung's count and a round's outcome), and each engine's
@@ -3134,6 +3089,9 @@ def _members_the_records_name() -> Dict[str, str]:
     refs += [ref for a in ON_THE_LABEL for question, ref in a.reads
              if question in READ_BESIDE_A_JOB]
     todo = [str(ref).partition(":")[0] for ref in refs]
+    # ...AND WHAT THE MONITOR ITSELF IMPORTS beside the job, by its own word.
+    todo += list(importlib.import_module(
+        _MONITOR_BASE["mb_monitor.py"]).TRAVELS_WITH)
     out: Dict[str, str] = {}
     while todo:
         module = todo.pop()
@@ -3159,8 +3117,8 @@ def monitor_companions() -> Dict[str, str]:
     """EVERY MODULE THAT TRAVELS IN :data:`MONITOR_BUNDLE`, ``{name beside
     the job: the module whose source it is}`` -- the monitor and the
     framework's readers it imports, and the members the records name
-    (:func:`_members_the_records_name`)."""
-    return {**_MONITOR_BASE, **_members_the_records_name()}
+    (:func:`_members`)."""
+    return {**_MONITOR_BASE, **_members()}
 
 
 #: THE ONE FILE that travels beside every job for its monitor: a Python zip

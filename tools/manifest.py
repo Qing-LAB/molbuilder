@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 from molbuilder.runfiles import (ENGINE_FILES, WRITTEN, Artifact, EngineFile,
-                                 names_made, shown)
+                                 compose, names_made, shown)
 
 DOC = Path(__file__).resolve().parent.parent / "docs/execution/project-layout.md"
 
@@ -40,7 +40,6 @@ ENGINES = "engines"
 _MARK = re.compile(r"(<!-- manifest:([a-z]+) -->\n)(.*?)(<!-- /manifest -->)",
                    re.S)
 
-_ENGINE = {"siesta": "SIESTA", "pyscf": "PySCF"}
 
 
 def _name(a: "Artifact | EngineFile") -> str:
@@ -56,7 +55,7 @@ def _notes(a: Artifact) -> str:
     """Which engine, which calculation, and when only sometimes."""
     bits = []
     if a.engine:
-        bits.append(_ENGINE.get(a.engine, a.engine))
+        bits.append(_engine_words(a.engine))
     if a.calculation:
         bits.append(", ".join(a.calculations))
     out = f" *({', '.join(bits)})*" if bits else ""
@@ -90,7 +89,7 @@ def _carried(e: EngineFile) -> str:
     from molbuilder.warmfiles import is_scratch, warm_list
     if not e.role:
         return ""
-    if any(is_scratch("L" + m) for m in names_made(e.role)):
+    if any(is_scratch(compose("L", m)) for m in names_made(e.role)):
         return "scratch"
     listed = warm_list(e.engine)
     if e.role in listed.carry:
@@ -100,19 +99,31 @@ def _carried(e: EngineFile) -> str:
     return ""
 
 
+def _engine_words(engine: str) -> str:
+    """The engine's name as a person reads it -- its record's words."""
+    from molbuilder.engine_table import engine as _engine
+    return _engine(engine).words
+
+
+def _door(row, table: str) -> str:
+    """The row's door as the table shows it -- refused when it names a
+    function the code lacks: a contract must not send a reader to one."""
+    if row.door and not door_resolves(row.door):
+        raise SystemExit(
+            f"runfiles.{table}: {row.role or row.name!r} names the door "
+            f"{row.door!r}, which does not exist -- a contract must not "
+            f"send a reader to a function the code lacks.")
+    return f"`{row.door}`" if row.door else "none"
+
+
 def engines_table() -> str:
     """§ 5.4's rows: the engines' files molbuilder names."""
     lines = ["| file | what it is | the restart list | the door |",
              "|---|---|---|---|"]
     for e in ENGINE_FILES:
-        if e.door and not door_resolves(e.door):
-            raise SystemExit(
-                f"runfiles.ENGINE_FILES: {e.role or e.name!r} names the "
-                f"door {e.door!r}, which does not exist -- a contract must "
-                f"not send a reader to a function the code lacks.")
-        door = f"`{e.door}`" if e.door else "none"
-        lines.append(f"| {_name(e)} *({_ENGINE.get(e.engine, e.engine)})* "
-                     f"| {e.what} | {_carried(e) or '—'} | {door} |")
+        lines.append(f"| {_name(e)} *({_engine_words(e.engine)})* "
+                     f"| {e.what} | {_carried(e) or '—'} "
+                     f"| {_door(e, 'ENGINE_FILES')} |")
     return "\n".join(lines) + "\n"
 
 
@@ -123,14 +134,8 @@ def table(level: str) -> str:
     for a in WRITTEN:
         if a.level != level:
             continue
-        if a.door and not door_resolves(a.door):
-            raise SystemExit(
-                f"runfiles.WRITTEN: {a.role or a.name!r} names the door "
-                f"{a.door!r}, which does not exist -- a contract must not "
-                f"send a reader to a function the code lacks.")
-        door = f"`{a.door}`" if a.door else "none"
         lines.append(f"| {_name(a)}{_notes(a)} | {a.what} | {a.writer} "
-                     f"| {door} | {a.kind} |")
+                     f"| {_door(a, 'WRITTEN')} | {a.kind} |")
     return "\n".join(lines) + "\n"
 
 

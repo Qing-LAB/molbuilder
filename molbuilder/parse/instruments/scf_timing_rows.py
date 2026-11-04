@@ -127,11 +127,6 @@ def progress_log_timing_metrics(text: str) -> Dict[str, Any]:
     return timing_figures(rows)
 
 
-# WHICH ROW READER A FILE GETS is what the file IS -- the reader its
-# catalogue row names for ``timing`` (`runfiles.WRITTEN`): the run script's
-# tee, a progress log's stamped rows.
-
-
 def timing_roles() -> Tuple[str, ...]:
     """The roles :func:`timing_file` chooses among: the timing files' own
     (the rows naming a ``timing`` reader) and every output the run script
@@ -209,3 +204,10 @@ def _phase_figures(rows: List[Row], phase: str) -> Dict[str, Any]:
                            if measured else None),
             "iters_measured": len(measured),
             "rows": sum(1 for r in rows if r[1] == phase)}
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.parse.engines.molwatch_grammar",
+                "molbuilder.runfiles",
+                "molbuilder.parse.engines.siesta_grammar")

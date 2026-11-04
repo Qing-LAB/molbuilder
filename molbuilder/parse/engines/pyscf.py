@@ -453,7 +453,7 @@ def record_fields(f) -> Dict[str, Any]:
     of itself, from its logger's file: what the log's catalogue row names for
     ``record`` (`runfiles.WRITTEN`; `model/parse.md` § 5d.1b).  ``f`` is the
     run's files as the run record found them (`parse.dirs.record.RunFiles`)."""
-    info = read_pyscf_sys_info(f.head(f.engine_log))
+    info = read_pyscf_sys_info(f.head(f.of(_ROLE_PYSCF_LOG)))
     if not info:
         return {}
     engine = {"program": f.engine}
@@ -464,6 +464,13 @@ def record_fields(f) -> Dict[str, Any]:
     if "threads" in info:
         comp["launch"] = {"threads_engine": info["threads"]}
     return {"computation": comp}
+
+
+#: THE RUN RECORD'S FIELDS THIS READER ANSWERS, and no others
+#: (`parse.dirs.record`, § 5d.1b's one source per quantity).
+record_fields.fields = (
+    "computation.engine.program", "computation.engine.version",
+    "computation.engine.python", "computation.launch.threads_engine")
 
 
 class PySCFParser:

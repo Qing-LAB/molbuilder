@@ -34,8 +34,11 @@ except ImportError:                         # beside a job, as the monitor's
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle, which it travels in by
 #: the SIESTA-family output's catalogue row (`runfiles.WRITTEN`'s ``reads``,
 #: ``loop_words``; `runwrap.monitor_companions`).
-TRAVELS_WITH = ("molbuilder.parse.engines.siesta_grammar",
-                "molbuilder.runfiles", "molbuilder.report_fields")
+TRAVELS_WITH = ("molbuilder.parse.dirs.job",
+                "molbuilder.report_fields",
+                "molbuilder.runfiles",
+                "molbuilder.parse.engines.siesta_grammar",
+                "molbuilder.parse.engines.siesta_reader")
 
 
 #: A pass's channel, in words -- one for each of `siesta_grammar.TBT_CHANNELS`'

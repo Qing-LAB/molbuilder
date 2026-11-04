@@ -16,20 +16,14 @@ from molbuilder.parse.engines.tbtrans import averaged_files
       "other.TBT.AVTRANS_L-R"), "L-R", ("L", "R"),
      {"up": {"transmission": "dev.TBT_UP.AVTRANS_L-R"},
       "down": {"transmission": "dev.TBT_DN.AVTRANS_L-R"}}),
-    (("dev.TBT.AVTRANS_Left-Right", "dev.TBT.AVADOS_Left"), "Left-Right",
-     ("Left", "Right"),
-     {"unpolarized": {"transmission": "dev.TBT.AVTRANS_Left-Right",
-                      "lead_spectral": {"Left": "dev.TBT.AVADOS_Left"}}}),
-], ids=["a-polarized-run's-two-channels", "the-leads-another-deck-names"])
+], ids=["a-polarized-run's-two-channels"])
 def test_a_points_averaged_files_are_found_by_tbtrans_own_names(
         tmp_path, files, pair, leads, found):
     """TBtrans names its k-averaged files by the channel and by the leads
     the deck's ``TS.Elecs`` block names (``name_save``): a polarized run
-    writes ``.TBT_UP.`` and ``.TBT_DN.`` files and no ``.TBT.`` one, and a
-    deck another hand wrote may call its leads ``Left`` and ``Right``.
-    THE SILENT FAILURE: a reader globbing ``.TBT.`` alone, finding nothing
-    of a polarized run; a data file another deck made refused whole, its
-    leads no names molbuilder's decks give."""
+    writes ``.TBT_UP.`` and ``.TBT_DN.`` files and no ``.TBT.`` one.  THE
+    SILENT FAILURE: a reader globbing ``.TBT.`` alone, finding nothing of a
+    polarized run."""
     for name in files:
         (tmp_path / name).write_text("")
     got = averaged_files(tmp_path, "dev", pair=pair, leads=leads)

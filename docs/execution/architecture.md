@@ -775,10 +775,13 @@ job asks — how it ended, its stops, its live reading pass, its loop's words
 and its timing (the row's `reads`,
 `runfiles.READ_BESIDE_A_JOB`) — each with the modules it says it needs beside
 it (its own `TRAVELS_WITH`), gathered from the records when the bundle is
-built (`runwrap.monitor_companions`). So a new kind's parts, a new engine's
+built (`runwrap.monitor_companions`). The monitor travels the same way: it is
+the one member named apart (`mb_monitor.py`), and what it imports beside the
+job is its own `TRAVELS_WITH`, every member stating in turn the modules it
+imports there — no module is listed in the bundle by hand. So a new kind's parts, a new engine's
 keyword reader and a new output's readers travel by their records, with no
 edit of the bundle's member list *(the user, 2026-11-03: "One column on the
-catalogue row")*.
+catalogue row"; "Finish bundle by row")*.
 
 **What stays code, deliberately**, by package, so it can be reviewed:
 

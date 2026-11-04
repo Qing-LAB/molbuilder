@@ -260,8 +260,13 @@ _SAID = {SCF: _ScfSays, PRODUCT: _ProductSays}
 #: (`runwrap.monitor_companions`): a round's conductance at E_F by the
 #: record's own rule, a transmission point's energies joined, and TBtrans's
 #: k-averaged files read.
-TRAVELS_WITH = ("molbuilder.transport.conductance",
+TRAVELS_WITH = ("molbuilder.calcdirs",
+                "molbuilder.transport.conductance",
                 "molbuilder.transport.energies",
+                "molbuilder.runpoints",
+                "molbuilder.runrecord",
+                "molbuilder.parse.engines.siesta_grammar",
+                "molbuilder.parse.engines.siesta_reader",
                 "molbuilder.parse.engines.tbtrans")
 
 __all__ = ["SCF", "PRODUCT", "count_words", "round_outcome", "point_fact"]

@@ -1128,7 +1128,8 @@ the two differ. The same rows answer the Task setup card and the Results tab's
 file card ([`web/results.md`](?doc=web/results.md) § 3b). § 5.4 is rendered the
 same way from `runfiles.ENGINE_FILES`: not what an engine writes — that is the
 engine's, by its version and options — but the engines' files molbuilder names,
-reads or carries ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2).
+reads or carries, and the other files of a run it explains by name
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2).
 
 **Names.** A run file is `<label>[_<stage>]<role>`, composed by
 `runfiles.compose` and read back by `runfiles.parse` with its run's label
@@ -1245,8 +1246,8 @@ Green's functions, geomeTRIC's scratch prefix). SIESTA names its files by
 `SystemLabel`, so they carry no stage — one set in each run, its history among
 them. PySCF writes
 nothing its deck does not name (§ 5.3). The rows are the engines' files
-molbuilder names, reads or carries — `runfiles.ENGINE_FILES` — and never all
-an engine writes.
+molbuilder names, reads or carries, and the other files of a run it explains by
+name — `runfiles.ENGINE_FILES` — and never all an engine writes.
 
 <!-- manifest:engines -->
 | file | what it is | the restart list | the door |

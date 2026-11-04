@@ -349,16 +349,6 @@ class JobStatus:
 # run ended is reported the way the Results tab reads it -- `run_status`,
 # asked once the PID has said it is over (`run-reports.md` § 2.2).
 
-# THE READING PASS OF A FILE'S ONE PARSER is the one its catalogue row names
-# for ``live`` -- chosen by what the file IS, never by the engine, as its
-# ``ending`` reader says how it ENDED (`runfiles.reader`).  A SIESTA-family
-# `.out` is its own live channel; a PySCF run's is its progress log (its
-# stdout is block-buffered and says nothing live).  Each is built for the
-# rung's stage: a staged progress log keys its targets by it.  The words a
-# program's own loop is said in are the row's ``loop_words`` (a
-# SIESTA-family ``.out``'s, TBtrans's, `model/parse.md` § 4a), so the summary
-# line names no program.
-
 #: What a live reading must state to say where the run IS -- an SCF row, a
 #: step, TBtrans's loop (TBtrans states no SCF), or the words of where it
 #: is (`model/parse.md` § 2b, ``doing``: a device's set-up until its first
@@ -479,9 +469,9 @@ class WatchedRun:
         # SIESTA run's progress log is the prep's seed, whose mtime says
         # nothing about the run (a copied tree reorders it).
         heard = []
-        # THE FILES WHOSE ROW NAMES A LIVE READING PASS, by those rows
-        # (`runfiles.read_roles`) -- never a role read off a name in the
-        # folder, which may be no file of ours (an editor's ``.out~``).
+        # THE FILES WHOSE ROW NAMES A LIVE READING PASS (`runfiles.
+        # read_roles`): a PySCF run's is its progress log, its stdout being
+        # block-buffered and saying nothing live.
         for role in _rf.read_roles("live"):
             path = files.get(role)
             if path is None:
@@ -3177,3 +3167,20 @@ __all__ = [
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
+                "molbuilder.calcdirs",
+                "molbuilder.config_dir",
+                "molbuilder.parse.dirs.job",
+                "molbuilder.trajectory_log.keys",
+                "molbuilder.report_cards",
+                "molbuilder.report_fields",
+                "molbuilder.runfiles",
+                "molbuilder.runpoints",
+                "molbuilder.runrecord",
+                "molbuilder.runtime_info",
+                "molbuilder.parse.instruments.scf_timing_rows",
+                "molbuilder.wrapper_log")

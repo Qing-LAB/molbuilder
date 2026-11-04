@@ -159,3 +159,8 @@ def log_of_run(directory, label: str, stage: Optional[str]
                                       role=_rf.ROLE_SESSION_LOG)
              if rec.stage == stage]
     return found[0] if found else None
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.runfiles",)

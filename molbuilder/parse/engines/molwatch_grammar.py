@@ -340,3 +340,9 @@ def scf_history_row(line: str) -> Optional[Dict[str, Any]]:
             "gnorm": maybe_float(parts[3]), "ddm": maybe_float(parts[4]),
             "wall_clock_s": (maybe_float(parts[5])
                              if len(parts) >= 6 else None)}
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.trajectory_log.keys")

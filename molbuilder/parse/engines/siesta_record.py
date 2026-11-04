@@ -2,8 +2,8 @@
 launch, solver and pseudopotential lines, and TBtrans's loop, read through
 the family's table: the reader the ``.out``'s catalogue row names for
 ``record`` (`runfiles.WRITTEN`; `model/parse.md` § 5d.1b), asked by the run
-record's table (`parse.dirs.record.CONTRIBUTORS`), which names the fields it
-answers.
+record (`parse.dirs.record`), with the fields it answers
+(:attr:`out_fields.fields`).
 """
 from __future__ import annotations
 
@@ -71,3 +71,13 @@ def out_fields(f) -> Dict[str, Any]:
     if pseudos:
         out["setup"] = {"pseudopotentials": pseudos}
     return out
+
+
+#: THE RUN RECORD'S FIELDS THIS READER ANSWERS, and no others
+#: (`parse.dirs.record`, § 5d.1b's one source per quantity).
+out_fields.fields = (
+    "computation.engine.program", "computation.engine.version",
+    "computation.engine.build", "computation.solver",
+    "computation.launch.ranks", "computation.time.run_start_local",
+    "computation.time.run_end_local", "computation.time.progress",
+    "computation.time.estimated_at", "setup.pseudopotentials")

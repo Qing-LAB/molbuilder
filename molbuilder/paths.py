@@ -245,3 +245,8 @@ __all__ = [
     # a frame's folder
     "frame_token",
 ]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.identity",)

@@ -28,9 +28,11 @@ from .raman import ASK_KEYS
 ASKS = ASK_KEYS
 
 
-def _stem(result: Path) -> str:
+def _stem(calc, result: Path) -> str:
+    """An export's stem, ``<label>.<kind>``: the label the result is named
+    on, and the calculation's kind."""
     from ..runfiles import ROLE_SPECTRA, stem_before
-    return f"{stem_before(result, ROLE_SPECTRA)}.vibration"
+    return f"{stem_before(result, ROLE_SPECTRA)}.{calc.task.calculation}"
 
 
 def name_of(calc, fmt: str) -> str:
@@ -38,7 +40,7 @@ def name_of(calc, fmt: str) -> str:
     lie in (`ncdata.export_name`), on the label the result it is of
     (:func:`result_path`) is named on, known before anything is composed."""
     from ..ncdata import export_name
-    return export_name(_stem(result_path(calc)), fmt)
+    return export_name(_stem(calc, result_path(calc)), fmt)
 
 
 def result_path(calc, folder=None) -> Path:
@@ -107,7 +109,7 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
             raise ExportError(str(exc)) from None
     path = result_path(calc, folder)
     # THE LABEL THE RESULT IS NAMED ON, read off its own name: the label its
-    # run names its files on (`runs.on_label_at`), not the calculation's.
+    # run names its files on (`runs.on_label_at`).
     label = stem_before(path, ROLE_SPECTRA)
     try:
         result = parse_spectra_json(path)
@@ -151,7 +153,7 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
         said = (f"the Raman view is not in it: its strengths depend on the "
                 f"laser -- name one (the page's laser box, `--laser-nm`) to "
                 f"add {label}{RAMAN_FILE}")
-    return exported(files, fmt, stem=_stem(path), said=said)
+    return exported(files, fmt, stem=_stem(calc, path), said=said)
 
 
 __all__ = ["ASKS", "export", "name_of", "result_path"]

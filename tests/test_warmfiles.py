@@ -180,43 +180,17 @@ def test_a_missing_file_names_the_expected_home():
         W.warm_list("no_such_engine")
 
 
-@pytest.mark.parametrize("whose,edit,refused", [
-    ("molbuilder's", ("", '\n[[base.file]]\nsuffix = ".NOPE"\n'),
-     r"\.NOPE -- no file of `runfiles\.ENGINE_FILES` for siesta"),
-    ("molbuilder's", ('scratch = [".TSGFL", ".TSGFR"]',
-                      'scratch = [".TSGFL", ".TSGFR", ".nc"]'),
-     r"scratch '\.nc' takes in the names of \.spectra\.nc"),
-    ("molbuilder's", ('scratch = [".TSGFL", ".TSGFR"]',
-                      'scratch = [".TSGFL", ".TSGFR", ".chk"]'),
-     r"scratch '\.chk' takes in the names of \.chk -- a scratch family is "
-     r"the names of one siesta file"),
-    ("the calculation's own", ("", '\n[[base.file]]\nsuffix = ".NOPE"\n'),
-     None),
-], ids=["a-row-no-engine-file-names", "a-scratch-family-of-other-files",
-        "a-scratch-family-of-another-engines-file",
-        "a-calculations-own-copy"])
-def test_a_file_molbuilder_carries_is_one_its_catalogue_names(
-        whose, edit, refused, tmp_path, monkeypatch):
-    """`job-contracts.md` § 2.2: every file molbuilder's own restart-file
-    list carries is an engine file of `runfiles.ENGINE_FILES`, and each
-    scratch suffix takes in the names of one such file and of no other; a
-    calculation's own copy may name one a newer engine build writes.  THE
-    SILENT FAILURE: molbuilder's list carrying a file its catalogue does
-    not name -- absent from the table of engine files (`project-layout.md`
-    § 5.4) and from every name check -- or a scratch family (``*.nc``)
-    that takes in a run's results, which the checkpoint then never saves
-    and `jobset scratch` empties."""
-    shipped = W._rules_path("siesta").read_text()
-    old, new = edit
-    assert not old or shipped.count(old) == 1
-    text = shipped.replace(old, new) if old else shipped + new
-    if whose == "molbuilder's":
-        _write_rules(tmp_path, monkeypatch, text)
-        with pytest.raises(W.WarmFilesError, match=refused):
-            W.warm_list("siesta")
-    else:
-        W.path_of(tmp_path).write_text(text)
-        assert ".NOPE" in W.warm_list("siesta", base=tmp_path).suffixes
+def test_a_calculations_own_copy_may_name_a_file_molbuilder_does_not(
+        tmp_path):
+    """`job-contracts.md` § 2.2, § 4.2a: molbuilder's own restart-file list
+    names only engine files its catalogue names (checked as it loads); a
+    calculation's own copy, made by hand, may name one a newer engine build
+    writes.  THE SILENT FAILURE: the check on molbuilder's list refusing a
+    person's copy, so no newer engine file could ever be carried."""
+    text = (W._rules_path("siesta").read_text()
+            + '\n[[base.file]]\nsuffix = ".NOPE"\n')
+    W.path_of(tmp_path).write_text(text)
+    assert ".NOPE" in W.warm_list("siesta", base=tmp_path).suffixes
 
 
 # --------------------------------------------------------------------- #

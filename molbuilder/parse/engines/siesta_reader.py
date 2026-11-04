@@ -1606,3 +1606,13 @@ def live_pass(stage: "Optional[str]" = None) -> SiestaReader:
     grows -- what the output's catalogue row names for ``live``
     (`runfiles.WRITTEN`).  The output keys nothing by its stage."""
     return SiestaReader()
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.parse.engines._section_rules",
+                "molbuilder.engine_atom_index",
+                "molbuilder.parse.engines.molwatch_grammar",
+                "molbuilder.runfiles",
+                "molbuilder.parse.engines.siesta_grammar",
+                "molbuilder.parse.engines.transiesta")

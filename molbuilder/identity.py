@@ -714,3 +714,8 @@ __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
            "render_stage_choices",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",
            "stage_token", "way_back_words"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.runfiles",)

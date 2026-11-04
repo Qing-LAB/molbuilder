@@ -173,9 +173,10 @@ every reader and writer import — but a deck's, asked by its engine
 - `about(path)`, on the run door — what one file is: its row, read back with
   its run's label, or *not written by molbuilder*, which the Results tab's
   file card shows ([`web/results.md`](?doc=web/results.md) § 3b);
-- `reads_of(role, question)` — the reader a role names for one question, which
-  every reader of an output asks, on the machine and beside a job, and by which
-  its module travels with the job (`runwrap.monitor_companions`,
+- the row's `reads`, the reader it names for each question —
+  `reader(role, question)`, which every reader of an output asks, on the
+  machine and beside a job, resolves it; by the rows the readers' modules
+  travel with the job (`runwrap.monitor_companions`,
   [`architecture.md`](?doc=execution/architecture.md) § 3.3): a new engine's
   output is one row *(the user, 2026-11-03: "One column on the catalogue
   row")*;
@@ -196,13 +197,14 @@ engine's.
 the file's role on the label or its whole name, what it is, and the reader of
 ours that reads it, or none; each named in code by its constant
 (`runfiles.SIESTA_FC`, `runfiles.PYSCF_CHK`, …). **It is never complete**: it
-holds what molbuilder itself composes, reads, carries or knows by name — the
+holds what molbuilder itself composes, reads or carries, and the other files
+of a run it explains by name (SIESTA's `MESSAGES`, `CLOCK`, …) *(the user,
+2026-11-03: kept)* — the
 rows [`project-layout.md`](?doc=execution/project-layout.md) § 5.4 is rendered
 from — and *did the engine leave this?* is still answered by subtraction from
 `WRITTEN`. **Which of them carry is the engine's restart-file list's**
-(§ 4.2a): every file a shipped list names is a row here, and each scratch
-suffix takes in the names of one row here and of no other file
-(`runfiles.rows_ending_with`), checked when the list loads; a calculation's
+(§ 4.2a): every file a shipped list names is a row here, checked when the list
+loads; a calculation's
 own copy may add a file a new engine build writes, and the code composing a
 name from that list hands it in as the vocabulary (`roles=`). The two tables
 never overlap, checked when the catalogue loads.
@@ -329,10 +331,10 @@ parse(filename, label, roles=())            -> RunFile | None
 stem(label, stage=None)                     -> str
 tail(role, stage=None, roles=(), **fields) -> str        # label known only at run time
 find(directory, label, role=, roles=, stage=) -> list[(Path, RunFile)]
-find_on_label(directory, label, role, roles=()) -> list[Path]  # named on the label alone
+find_on_label(directory, label, role)       -> list[Path]   # named on the label alone
 find_by_role(directory, role)               -> list[Path]   # dotted roles only
 role_of(name)                               -> str | None
-stem_before(name, role, roles=())           -> str | None   # a templated role by its pattern
+stem_before(name, role)                     -> str | None   # a templated role by its pattern
 named_beside(name, role)                    -> str | None   # role's name on name's stem
 fields_of(name, role)                       -> dict | None  # a templated role's fields
 family(role)                                -> str          # its names, as a glob

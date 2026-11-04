@@ -405,3 +405,11 @@ __all__ = ["RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES", "phase",
            "must_hold",
            "point_entry", "count_words", "run_size_words",
            "force_constants_call"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.calcdirs",
+                "molbuilder.paths",
+                "molbuilder.runfiles",
+                "molbuilder.runpoints")

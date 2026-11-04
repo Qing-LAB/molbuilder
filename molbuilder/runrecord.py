@@ -659,3 +659,10 @@ def copied_in(stage_dir) -> Optional[str]:
 
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "run_output",
            "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.persist",
+                "molbuilder.scheduler.quantities",
+                "molbuilder.runfiles")

@@ -56,7 +56,8 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.errors import ParseError
 from molbuilder.parse.types import ParseResult, TransmissionResult
-from molbuilder.runfiles import (ROLE_TBT_DIGEST, ROLE_TBT_DIGEST_CLAIM,
+from molbuilder.runfiles import (OUR_LEADS, ROLE_TBT_DIGEST,
+                                 ROLE_TBT_DIGEST_CLAIM,
                                  SIESTA_ORB_INDX, SIESTA_TS_HSX, TBTRANS_NC,
                                  compose, find_on_label, stem_before, tail)
 from . import siesta_grammar as _G
@@ -398,6 +399,13 @@ def _read(path: Path, progress: Callable[[int, int], None]
     # files that are not one run's are refused before minutes of reading,
     # not after.
     elecs = facts["electrodes"]
+    # A DECK MOLBUILDER DID NOT WRITE names its leads its own way; its
+    # files are no run of ours, said as such.
+    if any(e not in OUR_LEADS for e in elecs):
+        raise ParseError(
+            f"{path.name} names its leads {', '.join(elecs)}; molbuilder's "
+            f"decks name them {' and '.join(OUR_LEADS)} -- a data file of a "
+            f"deck molbuilder did not write is not read")
     averages = (point_averages(
         path.parent, _label_of(path), pair="-".join(elecs[:2]),
         leads=tuple(elecs)).get(channel_of(path), {})

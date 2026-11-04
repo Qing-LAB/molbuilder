@@ -4,7 +4,8 @@ The SIESTA .out and .molwatch.log parsers write a parse log -- the
 catalogue's ``<base>.parse.log``, ``<base>.molwatch.parse.log`` for a
 progress log, on the stem the input's own role leaves -- in the same
 directory as its input, recording what it did and any problems it hit
-during the scan; none beside a file whose name says no role.  The file is the on-disk counterpart of
+during the scan; none beside a file whose name says no role, and a line on
+stderr says so.  The file is the on-disk counterpart of
 :class:`Trajectory.parse_warnings` -- the in-memory list goes
 to the browser inspector; the log file persists across browser
 sessions and is greppable from CLI / SSH.
@@ -39,6 +40,7 @@ the parse's job.  We swallow IOError + OSError and continue.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -110,6 +112,12 @@ class ParseLogger:
         self.input_path  = input_path
         self.parser_name = parser_name
         self.path        = _sidecar_path(input_path) if _enabled() else None
+        if _enabled() and self.path is None:
+            # ASKED FOR AND NOT WRITTEN: said, never absorbed in silence.
+            sys.stderr.write(
+                f"molbuilder: no parse log for {Path(input_path).name}: its "
+                f"name is none molbuilder writes, so the log has no name "
+                f"beside it\n")
         self._fh         = None
         self._t0         = None
         self._warn_count = 0

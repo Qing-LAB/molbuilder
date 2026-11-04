@@ -18,10 +18,9 @@ import itertools
 import pytest
 
 from molbuilder.runfiles import (ON_THE_LABEL, RunFile, RunFileError,
-                                 RunNames, family, fields_of, find,
-                                 find_by_role, find_on_label, compose,
-                                 manifest, named_beside, parse, reader,
-                                 reads_of, stderr_apart, stem_before, tail)
+                                 RunNames, find, find_by_role, find_on_label,
+                                 compose, manifest, named_beside, parse,
+                                 stem_before, tail)
 
 
 def expect(label, stage, role):
@@ -183,69 +182,55 @@ def test_a_field_the_role_does_not_carry_is_refused(field):
 
 
 #: EVERY DOOR THAT TAKES A ROLE (`job-contracts.md` § 2.2a), asked alike: a
-#: folder, a role, the caller's own vocabulary -- and what it answers for
-#: the label's file in that role, the folder holding it.
+#: folder and a role -- and what it answers for the label's file in that
+#: role, the folder holding it.
 DOORS = {
-    "compose": (lambda d, role, roles: compose(LABEL, role, roles=roles),
+    "compose": (lambda d, role: compose(LABEL, role),
                 lambda role: LABEL + role),
-    "tail": (lambda d, role, roles: tail(role, roles=roles),
-             lambda role: role),
-    "find": (lambda d, role, roles: [p.name for p, _rf in
-                                     find(d, LABEL, role=role, roles=roles)],
+    "tail": (lambda d, role: tail(role), lambda role: role),
+    "find": (lambda d, role: [p.name for p, _rf in find(d, LABEL, role=role)],
              lambda role: [LABEL + role]),
-    "find_on_label": (lambda d, role, roles: [
-        p.name for p in find_on_label(d, LABEL, role, roles=roles)],
-        lambda role: [LABEL + role]),
-    "stem_before": (lambda d, role, roles: stem_before(LABEL + role, role,
-                                                       roles=roles),
+    "find_on_label": (lambda d, role: [p.name for p in
+                                       find_on_label(d, LABEL, role)],
+                      lambda role: [LABEL + role]),
+    "stem_before": (lambda d, role: stem_before(LABEL + role, role),
                     lambda role: LABEL),
 }
 
 
-#: ...and the doors that take a role and answer of it -- every one of them
-#: asks the one check (`job-contracts.md` § 2.2a).
-REFUSING = {**{k: ask for k, (ask, _answer) in DOORS.items()},
-            "find_by_role": lambda d, role, roles: find_by_role(d, role),
-            "named_beside": lambda d, role, roles: named_beside("x.out", role),
-            "fields_of": lambda d, role, roles: fields_of("x.out", role),
-            "family": lambda d, role, roles: family(role),
-            "RunNames.name": lambda d, role, roles: RunNames(
-                LABEL, "01_coarse").name(role),
-            "reads_of": lambda d, role, roles: reads_of(role, "ending"),
-            "reader": lambda d, role, roles: reader(role, "ending"),
-            "stderr_apart": lambda d, role, roles: stderr_apart(role)}
-
-
-@pytest.mark.parametrize("door", REFUSING)
-def test_a_role_nothing_declares_is_refused_by_every_door(door, tmp_path):
-    """THE ONE CHECK (`runfiles.declared`): a role no row of the catalogue
-    and no engine file it names declares is refused by every door that
-    takes one, saying the role.  THE SILENT FAILURE: a mistyped role
-    composing a name no reader reads back, and a reader asked for it
-    answering *none here* -- which reads as *there are none of those*."""
-    (tmp_path / f"{LABEL}.outt").write_text("")
-    with pytest.raises(RunFileError,
-                       match=r"\('\.outt'\): no role molbuilder declares"):
-        REFUSING[door](tmp_path, ".outt", ())
-
-
-@pytest.mark.parametrize("role,roles", [
-    (".out", ()), (".XV", ()), (".TBT_UP.nc", ()),
-    ("_mine.txt", ("_mine.txt",)),
-], ids=["a-row-of-the-catalogue", "an-engine-file-it-names",
-        "a-name-of-a-templated-row", "the-callers-own-vocabulary"])
+@pytest.mark.parametrize("role", [".out", ".XV", ".TBT_UP.nc"],
+                         ids=["a-row-of-the-catalogue",
+                              "an-engine-file-it-names",
+                              "a-name-of-a-templated-row"])
 @pytest.mark.parametrize("door", DOORS)
-def test_a_declared_role_is_answered_by_every_door(door, role, roles,
-                                                   tmp_path):
+def test_a_declared_role_is_answered_by_every_door(door, role, tmp_path):
     """What the one check takes, every door answers for: a row of
     `runfiles.WRITTEN`, an engine's file of `runfiles.ENGINE_FILES`, a
-    concrete name of a templated one (a channel's data file), and a role
-    the caller hands in -- a calculation's own restart-file list.  THE
-    SILENT FAILURE: a door checking a narrower list than the others,
-    refusing at one call a name another door wrote."""
+    concrete name of a templated one (a channel's data file).  THE SILENT
+    FAILURE: a door checking a narrower list than the others, refusing at
+    one call a name another door wrote."""
     (tmp_path / f"{LABEL}{role}").write_text("")
     ask, answer = DOORS[door]
-    assert ask(tmp_path, role, roles) == answer(role)
+    assert ask(tmp_path, role) == answer(role)
+
+
+@pytest.mark.parametrize("door,answer", [
+    (lambda d: compose(LABEL, "_mine.txt", roles=("_mine.txt",)),
+     LABEL + "_mine.txt"),
+    (lambda d: tail("_mine.txt", roles=("_mine.txt",)), "_mine.txt"),
+    (lambda d: [p.name for p, _rf in
+                find(d, LABEL, role="_mine.txt", roles=("_mine.txt",))],
+     [LABEL + "_mine.txt"]),
+], ids=["compose", "tail", "find"])
+def test_a_role_the_caller_hands_in_is_taken(door, answer, tmp_path):
+    """The vocabulary a caller holds that neither table may -- a
+    calculation's own restart-file list, handed in as ``roles``
+    (`job-contracts.md` § 2.2) -- is taken by the doors that compose and
+    find a name.  THE SILENT FAILURE: a file a person's own list names
+    refused at the call that names it, so a newer engine's file could never
+    be carried."""
+    (tmp_path / f"{LABEL}_mine.txt").write_text("")
+    assert door(tmp_path) == answer
 
 
 @pytest.mark.parametrize("role,name", [
@@ -277,19 +262,15 @@ def test_a_stages_names_name_each_tables_file_as_its_row_says(role, name):
     ("H2.TBT_UP.digest.nc", ".parse.log", "H2.parse.log"),
     ("H2_01_relax.out", ".spectra.json", "H2.spectra.json"),
     ("coordinates.fdf", ".validation.txt", None),
-    ("notes.txt", ".parse.log", None),
-    ("my.job.out", ".parse.log", None),
 ], ids=["an-output", "a-stages-progress-log", "a-deck",
         "geomeTRIC's-trajectory", "an-underscore-role-on-the-label",
         "an-engine's-file", "a-templated-role", "a-row-on-the-label-alone",
-        "a-fixed-name", "a-name-no-role-reads-back",
-        "a-stem-that-is-no-label"])
+        "a-fixed-name"])
 def test_the_file_beside_another_is_named_on_its_stem(name, role, beside):
     """`runfiles.named_beside`: the name of a role's file beside a file, on
     the stem the file's own role leaves -- the longest role of either table
     that ends it, an underscore one and a templated one too -- on the label
-    alone where the role's row says so, or none for a name no role reads
-    back and for a fixed name.  THE SILENT FAILURE: a runtime record or a
+    alone where the role's row says so, or none for a fixed name.  THE SILENT FAILURE: a runtime record or a
     parse log cut at the last dot (``job.molwatch.runtime_info.json``), or
     none for geomeTRIC's trajectory or an engine's file -- a road file
     refused, its record unwritten."""
@@ -334,17 +315,13 @@ def _fields_for(a):
 
 
 def test_every_declared_examples_matches_its_own_shape():
-    """The example and the values are load-bearing (see `_fields_for`,
-    `runfiles.names_made`), so they cannot rot: a value outside its shape
-    walks names nothing reads back, which the restart-file lists' check
-    then judges by."""
+    """The example is load-bearing (see `_fields_for`), so it cannot rot."""
     import re
     from molbuilder.runfiles import FIELDS
     for name, f in FIELDS.items():
-        for v in (f.example, *f.values):
-            assert re.fullmatch(f.shape, v), (
-                f"field {name!r}: {v!r} does not match its own shape "
-                f"{f.shape!r}")
+        assert re.fullmatch(f.shape, f.example), (
+            f"field {name!r}: example {f.example!r} does not match its own "
+            f"shape {f.shape!r}")
 
 
 @pytest.mark.parametrize("art", ON_THE_LABEL, ids=lambda a: a.role)

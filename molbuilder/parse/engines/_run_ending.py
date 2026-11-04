@@ -286,8 +286,8 @@ def _stops(role: str) -> Tuple[Tuple[str, ...], Dict[str, str], Dict[str, str]]:
     three: a PySCF deck stopped at its wall raises an error its run reads as
     any other failure (`running-a-job.md` § 3.6).  The run script asks
     ``out-of-time`` and ``advice`` only of an output whose role names them
-    (`running-a-job.md` § 3.5).  An output whose name says no role -- a
-    hand-started run's ``run.output`` -- says none either."""
+    (`running-a-job.md` § 3.5).  An output whose name says no role
+    says none either."""
     if role not in _rf.read_roles("stops"):
         return (), {}, {}
     return _rf.reader(role, "stops")
@@ -605,3 +605,10 @@ def main(argv=None) -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.pyscf.end_lines",
+                "molbuilder.parse.engines.molwatch_grammar",
+                "molbuilder.runfiles",
+                "molbuilder.parse.engines.siesta_reader")

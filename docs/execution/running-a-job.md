@@ -90,7 +90,7 @@ section named in the last column.
 **One run script, every engine.** Which of these steps a run takes is a fact of its engine's record
 ([`architecture.md`](?doc=execution/architecture.md) § 3.3), of a catalogue item's declaration (`launch`,
 `limit_applied_by`; [`engines/template.md`](?doc=engines/template.md) § 5), of its output's file catalogue row (its
-columns `reads` — `stops`, `scf_rows` — `stderr_apart` and `cut_from`) and of its job —
+columns `reads` — `stops`, `scf_rows` — and `stderr_apart`), of the timing log's row's `cut_from`, and of its job —
 never the engine's name: an engine that runs one process has no ranks to place (steps 9 and 10 resolve its
 threads alone); one whose deck is a script — PySCF's — has no program to probe and runs `"$_mb_py" <deck>`, its
 deck sizing its own BLAS and threads ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3); a setting the deck applies

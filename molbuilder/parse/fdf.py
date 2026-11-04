@@ -567,7 +567,8 @@ KEYWORDS = SimpleNamespace(key=fdf_key, true=fdf_true, read=read_fdf,
 
 #: WHAT TRAVELS WITH THIS READER beside the job
 #: (`runwrap.monitor_companions`): the units a value converts in.
-TRAVELS_WITH = ("molbuilder.units",)
+TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.units")
 
 __all__ = ["DeckAtoms", "FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS",
            "GEOMETRY_KEYS", "KEYWORDS", "deck_atoms", "fdf_key", "fdf_true",

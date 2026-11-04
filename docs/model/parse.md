@@ -1201,8 +1201,10 @@ file's parser rather than assuming.
 
 One `runfiles.WRITTEN` row (`engine=`, `output="stdout"`) naming its readers
 (`reads`: its `ending`, and its `live` pass, `loop_words`, `stops`, `scf_rows`
-where it has them), each reader in the engine's own module, importing that
-engine's emitter constants. Nothing else is touched for *how the run ended*,
+where it has them), each `module:NAME` — every `ending` reader is in the
+shared `_run_ending` (the SIESTA family's reading pass beside it, the PySCF
+deck's end lines and the progress log's grammar imported), every `timing`
+reader in `scf_timing_rows`, a live pass in its family's reader. Nothing else is touched for *how the run ended*,
 and the readers travel beside the job by that row
 ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3); the
 engine's parser and its reading pass are § 6's recipe *(the user, 2026-11-03:
@@ -1214,9 +1216,7 @@ engine's parser and its reading pass are § 6's recipe *(the user, 2026-11-03:
 an `ending` reader; a row names only the questions `runfiles.READ_QUESTIONS`
 lists, once each, each `module:NAME`; only a run output names `ending`,
 `stops` or `stderr_apart`; and only a row named on the label names readers,
-which are asked by its role. The run record's table checks, as it loads,
-that the files it reads by their rows' `record` readers are the rows that name
-one (§ 5d.1b). A row left unread, or a reader named for a question nobody asks, stops
+which are asked by its role. A row left unread, or a reader named for a question nobody asks, stops
 the first import with the row named — which keeps "one row" true across the
 layer split; whether each name resolves is its test's, on the machine and
 from the bundle beside a job (`tests/test_the_rows_readers.py`). The rest of R-RO1 is a review
@@ -1638,7 +1638,7 @@ deck was gathered from are as the run's records state them, said as words.
 ### 5d.1b How it is composed — a declared table, one reader per file
 
 **The record is not written per engine.** `parse/dirs/record.py` holds one
-table, `CONTRIBUTORS`: each row names the record fields it answers, the file it
+table, `contributors()`: each row names the record fields it answers, the file it
 reads by its role — its engines are those that write that role
 (`runfiles.engine_of_role`), never typed — and the reader it asks, the file's
 family's own — the shape of
@@ -1654,18 +1654,18 @@ only the rows that answer one of those paths are read, and only those paths
 kept — the memory a stage needs reads a run's peak, the ranks and threads its
 wrapper launched and its node, never its output
 ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.1a); with no
-`fields`, every row, as the Results tab asks. The rows that read a file by its
-role (`out`, `log`) take the reader that file's catalogue row names for
-`record`, and the table is checked as it loads to read exactly the files whose
-rows name one (`_a_row_per_record_reader`).
+`fields`, every row, as the Results tab asks. A run output's row is its
+catalogue row's: the reader that row names for `record`, stating the fields it
+answers (its `fields`), so a new engine's output is one catalogue row and
+nothing here (`record.contributors`).
 
 | row | the file | its reader, beside its format (§ 1a) | engines | answers |
 |---|---|---|---|---|
-| `out` | `<base>.out`, head and tail; a TBtrans output whole | its row's `record` reader, `parse/engines/siesta_record.out_fields` — its family's grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and its loop's own account (`tbtrans.loop_record`, `tbtrans.loop_words`) | the `.out`'s: SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
+| `.out` | `<base>.out`, head and tail; a TBtrans output whole | its row's `record` reader, `parse/engines/siesta_record.out_fields` — its family's grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and its loop's own account (`tbtrans.loop_record`, `tbtrans.loop_words`) | the `.out`'s: SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
 | `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged` · `max_force_free_ev_ang` · `max_force_held_ev_ang` · `stress_voigt_kbar` · `forces_not_computed` (§ 5d.6) |
 | `wrapper-log` | `<base>.runwrap.log`, the run's session log | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | the run's timing file (`scf_timing_rows.timing_file`: `.scf-timing.log`, a PySCF run its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
-| `log` | `<base>.log`, PySCF's own logger | its row's `record` reader, `parse/engines/pyscf.record_fields` — its family's reader, `read_pyscf_sys_info` | the `.log`'s: PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
+| `.log` | `<base>.log`, PySCF's own logger | its row's `record` reader, `parse/engines/pyscf.record_fields` — its family's reader, `read_pyscf_sys_info` | the `.log`'s: PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — started_from, a point's own `.continued-from` (`runrecord.read_continued_from`), present only where the marker is — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
 | `concluded` | `<base>.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
@@ -1676,9 +1676,10 @@ that states a fact and the reader that reads it; the files are one run's
 aspects and do not disagree (the top of this document), so the table decides
 *where each fact is read*, never *which of two answers wins*. That is § 5c.1's
 "one source per quantity" made a property of the declaration: a row
-contributes the fields it declares and no others, and `record.py` refuses to
-load a table in which two rows are given one field (or one inside another's)
-for an engine both serve — a mistake in the table, caught where it is made.
+contributes the fields it declares and no others, and `record.py` refuses a
+table in which two rows are given one field (or one inside another's) for an
+engine both serve, the first time the table is asked (`contributors()`) — a
+mistake in the table, caught before any record is read.
 
 **The bench summary is a different report**, a comparison of trials
 (`web/bench-summary.md`): it builds each trial's row from that trial's files

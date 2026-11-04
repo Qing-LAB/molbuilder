@@ -386,3 +386,11 @@ class RunPlace:
         """Every folder below the container ``rel``, as the walk's loop step
         names them from the stage's folder: ``run-1/optical/*/``."""
         return self.walked(rel) + "/*/"
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.identity",
+                "molbuilder.paths",
+                "molbuilder.persist",
+                "molbuilder.runfiles")

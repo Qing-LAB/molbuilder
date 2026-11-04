@@ -544,3 +544,12 @@ __all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN",
            "not_done_words",
            "run_state", "reason", "round_ended", "round_outcome", "said",
            "outcomes", "count", "part"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
+                "molbuilder.calcdirs",
+                "molbuilder.persist",
+                "molbuilder.runfiles",
+                "molbuilder.runrecord")

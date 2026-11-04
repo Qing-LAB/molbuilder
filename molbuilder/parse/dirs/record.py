@@ -1,9 +1,10 @@
 """`run_record` — one run's record: what ran, with what, and how it went.
 
 Contract: `model/parse.md` § 5d — and § 5d.1b for the shape of this module:
-**a declared table, one reader per file.**  :data:`CONTRIBUTORS` names, for
+**a declared table, one reader per file.**  :func:`contributors` names, for
 each file a run can leave, the record fields it answers and the reader that
-answers them; the composer walks the table and merges what each row returns.
+answers them -- a run output's from its catalogue row, the reader stating its
+fields; the composer walks the table and merges what each row returns.
 Engines differ only in which files exist, so a run of any kind gets every
 fact its files state, and a new engine or a new file is a row, not a path
 through this module.  No row reads a format itself: each asks the reader that
@@ -30,6 +31,7 @@ the ``.out`` by its stamp; the run's session log.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,8 +68,10 @@ class RunFiles:
     #: THE ENGINE'S OUTPUT -- its stdout, the role its record's engine
     #: writes it in (`runfiles.stdout_roles`).
     stdout: Optional[Path] = None
-    #: The engine's own logger's file (`.log`), where it writes one.
-    engine_log: Optional[Path] = None
+    #: THE RUN'S FILES BY ROLE -- the first by name, the run door's rule
+    #: (`runs.Run.file`): what a run output's own reader asks for the file
+    #: of its role (:meth:`of`), never a slot this floor names per engine.
+    files: Dict[str, Path] = field(default_factory=dict)
     #: THE ENGINE'S LOG OF THE SETTINGS IT READ, where it writes one --
     #: SIESTA's ``fdf.<stamp>.log``, paired by its output's start: found by
     #: the reader its output's catalogue row names (``used_log``).
@@ -96,6 +100,10 @@ class RunFiles:
         ``unreadable`` run's is not: its state cannot be told."""
         from .job import FINAL_STATES
         return self.status is not None and self.status.state in FINAL_STATES
+
+    def of(self, role: str) -> Optional[Path]:
+        """The run's file in ``role`` (:attr:`files`), or ``None``."""
+        return self.files.get(role)
 
     def head(self, path: Optional[Path]) -> str:
         """The head of one of the run's files, as far as its launch, build,
@@ -156,10 +164,14 @@ def run_files(directory, *, names, launched_in, status, engine: str,
         return None
     deck = decks[0]
 
+    # THE RUN'S FILES BY ROLE -- the first by name, the run door's rule
+    # (`runs.Run.file`).
+    files: Dict[str, Path] = {}
+    for p, rf in listing:
+        files.setdefault(rf.role, p)
+
     def this_run(role: str) -> Optional[Path]:
-        """The run's file in ``role`` -- the first by name, the run door's
-        rule (`runs.Run.file`) -- or ``None``."""
-        return next((p for p, rf in listing if rf.role == role), None)
+        return files.get(role)
 
     def first_of(roles) -> Optional[Path]:
         return next((p for p, rf in listing if rf.role in roles), None)
@@ -180,9 +192,9 @@ def run_files(directory, *, names, launched_in, status, engine: str,
     return RunFiles(
         directory=d, engine=engine, status=status,
         deck=deck, names=names, stdout=out, stdout_head=out_head,
-        engine_log=this_run(_rf.ROLE_PYSCF_LOG), used_log=used_log,
+        files=files, used_log=used_log,
         wrapper_start=read_wrapper_log(log_text), wrapper_text=log_text,
-        timing=timing_file({rf.role: p for p, rf in reversed(listing)}),
+        timing=timing_file(files),
         monitor_log=this_run(_rf.ROLE_MONITOR_LOG),
         util_csv=this_run(_rf.ROLE_UTIL_CSV),
         calculation=calculation, current=current,
@@ -195,27 +207,14 @@ def run_files(directory, *, names, launched_in, status, engine: str,
 
 @dataclass(frozen=True)
 class Contributor:
-    """One row of :data:`CONTRIBUTORS`: the record fields it answers, the
-    file it reads by its role (``None``: a file every run has), and the
-    read -- for a file of a role, the reader its catalogue row names for
-    ``record`` (`runfiles.reader`), never one typed here.  The engines whose
-    runs have its file are that role's (:attr:`engines`) -- never typed."""
+    """One row of the record (:func:`contributors`): the record fields it
+    answers, the file it reads by its role (``None``: a file every run has),
+    and the read.  The engines whose runs have its file are that role's
+    (:attr:`engines`) -- never typed."""
     name: str
     fields: Tuple[str, ...]
     role: Optional[str]
-    read: Optional[Callable[[RunFiles], Dict[str, Any]]] = None
-
-    def reader(self) -> Callable[[RunFiles], Dict[str, Any]]:
-        """The read: this row's own, else its role's catalogue row's."""
-        if self.read is not None:
-            return self.read
-        from ... import runfiles as _rf
-        got = _rf.reader(self.role, "record")
-        if got is None:
-            raise ValueError(f"run record: the row {self.name!r} reads "
-                             f"{self.role!r}, whose catalogue row names no "
-                             f"`record` reader.")
-        return got
+    read: Callable[[RunFiles], Dict[str, Any]]
 
     @property
     def engines(self) -> Tuple[str, ...]:
@@ -434,8 +433,6 @@ def _setup(f: RunFiles) -> Dict[str, Any]:
 
 
 from ...engine_table import engines as _engines  # noqa: E402
-from ...runfiles import (ROLE_PYSCF_LOG as _ROLE_PYSCF_LOG,  # noqa: E402
-                         ROLE_SIESTA_OUT as _ROLE_SIESTA_OUT)
 from ..instruments.scf_timing_rows import PHASES as _PHASES  # noqa: E402
 
 #: The timing instrument's figures (§ 5c): the headline phase's, and each
@@ -446,20 +443,12 @@ _TIMING = tuple(f"computation.time.{k}" for k in ("s_per_iter",
     for k in ("s_per_iter", "iters_measured", "rows")
     for phase in _PHASES)
 
-#: THE TABLE (§ 5d.1b).  ``fields`` are the record paths a row answers, and
-#: the declaration is the mechanism: a row contributes those fields and no
-#: others (:func:`_declared`), and this module refuses to load when two rows
-#: answer one field for one engine (:func:`_one_source`) -- § 5c.1's "one
+#: THE FILES EVERY RUN HAS (§ 5d.1b).  ``fields`` are the record paths a row
+#: answers, and the declaration is the mechanism: a row contributes those
+#: fields and no others (:func:`_declared`), and the record refuses two rows
+#: answering one field for one engine (:func:`_one_source`) -- § 5c.1's "one
 #: source per quantity".
-CONTRIBUTORS: Tuple[Contributor, ...] = (
-    Contributor("out",
-                ("computation.engine.program", "computation.engine.version",
-                 "computation.engine.build", "computation.solver",
-                 "computation.launch.ranks", "computation.time.run_start_local",
-                 "computation.time.run_end_local", "computation.time.progress",
-                 "computation.time.estimated_at",
-                 "setup.pseudopotentials"),
-                _ROLE_SIESTA_OUT),
+_EVERY_RUN: Tuple[Contributor, ...] = (
     Contributor("ending", ("verdict.ended", "verdict.state",
                            "verdict.detail", "verdict.converged",
                            "verdict.max_force_free_ev_ang",
@@ -480,11 +469,6 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
     Contributor("instruments",
                 _TIMING + ("computation.memory", "computation.host.machine"),
                 None, _instruments),
-    Contributor("log",
-                ("computation.engine.program", "computation.engine.version",
-                 "computation.engine.python",
-                 "computation.launch.threads_engine"),
-                _ROLE_PYSCF_LOG),
     Contributor("run-json",
                 ("computation.launch.mode", "computation.launch.command",
                  "computation.launch.job_id", "computation.launch.launched_at",
@@ -498,6 +482,21 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
     Contributor("setup", ("setup.rows", "setup.engine_only",
                           "verdict.findings"), None, _setup),
 )
+
+
+@functools.lru_cache(maxsize=1)
+def contributors() -> Tuple[Contributor, ...]:
+    """THE RECORD'S ROWS: a run output's, by the reader its catalogue row
+    names for ``record`` -- the reader stating the fields it answers (its
+    ``fields``) -- then the files every run has.  A new engine's output is
+    its row (`runfiles.WRITTEN`) and nothing here *(the user, 2026-11-03:
+    "One column on the catalogue row")*."""
+    from ... import runfiles as _rf
+    rows = tuple(Contributor(role, read.fields, role, read)
+                 for role in _rf.read_roles("record")
+                 for read in [_rf.reader(role, "record")]) + _EVERY_RUN
+    _one_source(rows)
+    return rows
 
 
 def _one_source(rows: Tuple[Contributor, ...]) -> None:
@@ -518,27 +517,6 @@ def _one_source(rows: Tuple[Contributor, ...]) -> None:
                             f"{other!r} ({name}) answer one field for "
                             f"{engine} -- one source per quantity (§ 5d.1b)")
                 owner[(field_, engine)] = row.name
-
-
-_one_source(CONTRIBUTORS)
-
-
-def _a_row_per_record_reader(rows: Tuple[Contributor, ...]) -> None:
-    """Refuse a table that leaves out a file whose catalogue row names a
-    ``record`` reader, or reads a file whose row names none: the file's row
-    names the reader, this table the fields it answers -- one set of files
-    (`runfiles.read_roles`)."""
-    from ...runfiles import read_roles
-    here = {row.role for row in rows if row.role and row.read is None}
-    there = set(read_roles("record"))
-    if here != there:
-        raise ValueError(
-            f"run record: the table reads {sorted(here)} by their catalogue "
-            f"rows' `record` readers, and the rows name one for "
-            f"{sorted(there)} -- one set of files")
-
-
-_a_row_per_record_reader(CONTRIBUTORS)
 
 
 def _declared(part: Dict[str, Any], fields: Tuple[str, ...],
@@ -579,7 +557,7 @@ def run_record(directory, *, names, launched_in, status, engine: str,
     them.
 
     ``fields`` -- the record's paths a caller asks for (a path names
-    everything under it): only the rows of :data:`CONTRIBUTORS` that answer
+    everything under it): only the rows of :func:`contributors` that answer
     one of them are read, and only those paths kept -- the memory a stage
     needs reads a run's peak and ranks, never its whole record
     (`execution/job-request.md` § 3.1a)."""
@@ -600,15 +578,14 @@ def run_record(directory, *, names, launched_in, status, engine: str,
             + [a for a in fields
                if any(a.startswith(fd + ".") for fd in declared)]))
     record: Dict[str, Any] = {}
-    for row in CONTRIBUTORS:
+    for row in contributors():
         if row.engines and f.engine not in row.engines:
             continue
         kept = kept_of(row.fields)
         if not kept:
             continue
-        read = row.reader()
         try:
-            part = _declared(read(f), kept)
+            part = _declared(row.read(f), kept)
         except (OSError, ValueError, ParseError):
             # A reporter degrades: one unreadable file costs its own fields,
             # never the record.  A defect in a reader is not caught.

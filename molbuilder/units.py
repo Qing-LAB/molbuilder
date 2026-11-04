@@ -212,3 +212,8 @@ def temperature_k(value, unit=None, *, what="a temperature",
     """A temperature in kelvin, from a temperature OR an energy."""
     return convert(value, unit, TEMPERATURE_K, what=what, source=source,
                    default=default)
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.monitor_companions`).
+TRAVELS_WITH = ("molbuilder.constants",)

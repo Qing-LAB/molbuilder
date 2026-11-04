@@ -18,7 +18,6 @@ ROLE    :func:`export` -- the one composition the transport report's Export
 """
 from __future__ import annotations
 
-from pathlib import PurePath
 from typing import Dict
 
 from ..ncdata import ExportError, Exported
@@ -32,11 +31,12 @@ def _data_file_name(calc) -> str:
     return data_file_path(calc.base, calc.task.label).name
 
 
-def _stem(name: str) -> str:
-    """An export's stem: the data file's name less its NetCDF extension --
-    ``<label>.transport`` -- which `ncdata.export_name` gives each format's
-    ending (``<label>.transport-csv``)."""
-    return PurePath(name).stem
+def _stem(calc, name: str) -> str:
+    """An export's stem, ``<label>.<kind>``: the label the data file is
+    named on, and the calculation's kind -- which `ncdata.export_name` gives
+    each format's ending (``<label>.transport-csv``)."""
+    from ..runfiles import ROLE_TRANSPORT_DATA, stem_before
+    return f"{stem_before(name, ROLE_TRANSPORT_DATA)}.{calc.task.calculation}"
 
 
 def name_of(calc, fmt: str) -> str:
@@ -45,7 +45,7 @@ def name_of(calc, fmt: str) -> str:
     anything is composed."""
     from ..ncdata import export_name
     name = _data_file_name(calc)
-    return export_name(_stem(name), fmt, name)
+    return export_name(_stem(calc, name), fmt, name)
 
 
 def missing_dos_said(record: Dict) -> str:
@@ -90,7 +90,7 @@ def export(calc, fmt: str) -> Exported:
             ValueError) as exc:
         raise ExportError(str(exc)) from exc
     return exported({name: data}, fmt,
-                    stem=_stem(name),
+                    stem=_stem(calc, name),
                     one_file=True, said=missing_dos_said(record))
 
 

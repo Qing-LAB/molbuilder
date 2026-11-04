@@ -10,7 +10,7 @@ no ``ended``.  THE SILENT FAILURE: a record that copied the output's
 ``running`` there, and a panel saying *Ended: running* of a run still going.
 
 **Category: API** -- the record's ``ending`` row (`parse.dirs.record.
-CONTRIBUTORS`, § 5d.1b) read with what the run's state door answers: its one
+contributors`, § 5d.1b) read with what the run's state door answers: its one
 scan, one `RunEnding` per output (`RunStatus.endings`), the output's
 ``run_state`` in P-S1's vocabulary.  Each case is a row of the table below,
 its expectation from the contract.  How an output's text becomes its ending
@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.parse.dirs.job import RunStatus
-from molbuilder.parse.dirs.record import CONTRIBUTORS, RunFiles, _declared
+from molbuilder.parse.dirs.record import RunFiles, _declared, contributors
 from molbuilder.parse.engines._run_ending import RunEnding
 from molbuilder.runfiles import RunNames
 
@@ -52,7 +52,7 @@ def test_the_verdict_says_ended_once_the_output_states_an_ending(
                        endings={output.name: RunEnding(run_state)})
     files = RunFiles(directory=tmp_path, engine=engine, launched_in=tmp_path,
                      status=status, names=names, **{field: output})
-    row = next(r for r in CONTRIBUTORS if r.name == "ending")
+    row = next(r for r in contributors() if r.name == "ending")
     # AS THE RECORD CARRIES IT: the row's reading cut to the fields it
     # declares, which is all the record and the Run panel ever see.
     verdict = _declared(row.read(files), row.fields)["verdict"]
