@@ -25,22 +25,7 @@ const C = NS.constants || {};
 // path, never by a name cut from it (`web/results.md` § 0.3).
 const shown = { dir: "", files: [], path: "" };
 
-/* The catalogue's text keeps a command in backticks -- `jobset init` --
- * so it reads as one; shown as code, not as a backtick. */
-function words(text) {
-    const out = document.createDocumentFragment();
-    String(text || "").split("`").forEach((part, i) => {
-        if (!part) return;
-        if (i % 2) {
-            const c = document.createElement("code");
-            c.textContent = part;
-            out.appendChild(c);
-        } else {
-            out.appendChild(document.createTextNode(part));
-        }
-    });
-    return out;
-}
+const { codeWords } = NS.dom;
 
 function render() {
     const host = document.getElementById("results-file-card");
@@ -57,9 +42,9 @@ function render() {
     line.appendChild(name);
     if (about.ours) {
         line.appendChild(document.createTextNode(" — "));
-        line.appendChild(words(about.what));
+        line.appendChild(codeWords(about.what));
         line.appendChild(document.createTextNode(". Written by "));
-        line.appendChild(words(about.writer));
+        line.appendChild(codeWords(about.writer));
         line.appendChild(document.createTextNode("."));
     } else if (about.unread) {
         // A CALCULATION'S FOLDER WHOSE DESCRIPTION DOES NOT READ: whose file
@@ -67,7 +52,7 @@ function render() {
         // out (`web/results.md` § 3b).
         line.appendChild(document.createTextNode(
             " — whose file this is cannot be said here: "));
-        line.appendChild(words(about.unread));
+        line.appendChild(codeWords(about.unread));
     } else {
         line.appendChild(document.createTextNode(
             " — not written by molbuilder."));

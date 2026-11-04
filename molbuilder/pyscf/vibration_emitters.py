@@ -156,7 +156,7 @@ def _emit_header_docstring(struct: Structure,
     if _solvent:
         from .scf_setup import SOLVENTS
         out.append(f"Solvent   : {_solvent}, "
-                   f"{getattr(cfg, 'solvent_method', '') or 'IEF-PCM'} "
+                   f"{cfg.solvent_method} "
                    f"(dielectric constant {SOLVENTS[_solvent]:g})")
     out.append(f"Atoms     : {getattr(struct, 'n_atoms', len(struct.elements))}")
     out.append(f"Job name  : {cfg.job_name}")
@@ -651,7 +651,7 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure,
     # objects hold -- the optimization deck's own emitter, so the two decks
     # cannot record differently.
     from .input import _emit_effective_parameters
-    out.extend(_emit_effective_parameters(cfg, cfg.is_dft,
+    out.extend(_emit_effective_parameters(cfg,
                                           calculation="vibration",
                                           state=cfg.state))
     out.append("E_eq = mf.kernel()")
@@ -1477,11 +1477,10 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     solvent = str(getattr(cfg, "solvent", "") or "").lower()
     if solvent:
         from .scf_setup import SOLVENTS
-        solvent_method = str(getattr(cfg, "solvent_method", "") or "IEF-PCM")
         parts.append(
             f"The solvent, {solvent} (dielectric constant "
             f"{SOLVENTS[solvent]:g}), was modelled as a polarizable "
-            f"continuum ({solvent_method}) at every self-consistent field "
+            f"continuum ({cfg.solvent_method}) at every self-consistent field "
             f"of the run, the Hessian including the solvent's own "
             f"response, in the equilibrium-solvation approximation "
             f"[Tomasi2005, Cances1997]."

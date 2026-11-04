@@ -77,7 +77,7 @@ def _structure_declares_a_box(struct: Structure) -> bool:
         # means "no gap, deliberately" and is a real (and unusable) box rather
         # than an absence.
         return True
-    return any(k != "isolated" for k in (struct.axis_kind or ()))
+    return any(k != "isolated" for k in struct.axis_kind)
 
 
 def structure_findings(struct: Structure, *,

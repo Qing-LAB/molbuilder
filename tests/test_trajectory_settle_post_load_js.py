@@ -38,8 +38,8 @@ def _run(state, live):
 #: (case, the run the server sent, the file's own ending, the transition the
 #: settle makes, the badge's kind).  The badge's words for its kinds, from
 #: `web/trajectory.md` § 4: `finished` Finished, `stopped` Stopped, `queued`
-#: Queued, `pending` Not launched, `unreadable` Record unreadable, `running`
-#: Running.
+#: Queued, `pending` Not launched, `not run` Not run, `unreadable` Record
+#: unreadable, `running` Running.
 CASES = [
     ("a live run is followed",
      _run("running", True), "running", "WATCHING", "running"),
@@ -57,6 +57,8 @@ CASES = [
      _run("failed", False), "stopped", "ERROR", "stopped"),
     ("a run never launched is not followed -- nothing arrives until it is",
      _run("pending", False), None, "LOADED", "pending"),
+    ("a point its run's walk ended before starting is over, and is not running",
+     _run("not run", False), None, "LOADED", "not run"),
     ("a run whose launch record does not read is never followed, and says so",
      _run("unreadable", False), "running", "LOADED", "unreadable"),
     ("an upload that stopped settles on its own ending",

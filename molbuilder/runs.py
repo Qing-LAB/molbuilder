@@ -942,8 +942,8 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
     if not got.get("listed"):
         return {"asked_on": asked_on, "listed": False,
                 "say": "the scheduler here no longer lists it"}
-    words = [got["state"] + (f" ({got['reason']})" if got.get("reason")
-                             else "")]
+    from molbuilder.scheduler.queue import state_said
+    words = [state_said(got["state"], got.get("reason"))]
     if got.get("start"):
         words.append(f"expected to start {got['start']}")
     else:

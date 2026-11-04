@@ -6,8 +6,12 @@
  * cannot become markup.  The benchmark-sweep, transport and displacement-
  * sweep viewers and the Run panel use this one copy.
  *
+ * `codeWords(text)`: the server's words, a command in them kept in backticks
+ * (`jobset init`), with that command shown as code and not as a backtick.
+ *
  * Exports (on window.molbuilder.dom):
  *   el(tag, cls, text) -> Element
+ *   codeWords(text)    -> DocumentFragment
  */
 (function (root) {
     "use strict";
@@ -19,6 +23,17 @@
         return e;
     }
 
+    function codeWords(text) {
+        const out = root.document.createDocumentFragment();
+        String(text == null ? "" : text).split("`").forEach((part, i) => {
+            if (!part) return;
+            out.appendChild(i % 2 ? el("code", "", part)
+                                  : root.document.createTextNode(part));
+        });
+        return out;
+    }
+
     root.molbuilder = root.molbuilder || {};
-    root.molbuilder.dom = Object.assign(root.molbuilder.dom || {}, { el: el });
+    root.molbuilder.dom = Object.assign(root.molbuilder.dom || {},
+                                        { el: el, codeWords: codeWords });
 })(typeof window !== "undefined" ? window : this);

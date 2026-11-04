@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.scheduler.queue import listed
+from molbuilder.scheduler.queue import listed, standing
 from molbuilder.scheduler.record import read_environment
 
 RECORD = Path(os.environ.get("MOLBUILDER_FIELD_RECORD", "")).expanduser()
@@ -102,6 +102,17 @@ def test_a_job_the_scheduler_lists_ended_says_how_it_ended(scheduler):
         pytest.skip("the scheduler lists no ended job that held still")
     (job, state, reason), got = seen
     assert got == (False, _said(state, reason)), job
+
+
+def test_a_job_the_scheduler_lists_ended_no_longer_stands(scheduler):
+    """Both readers agree: the job's standing, which the Results ladder shows,
+    does not call a job listed that `jobs status` says has ended."""
+    seen = _settled(scheduler, _ENDED[scheduler.kind],
+                    lambda job: standing(scheduler, job))
+    if seen is None:
+        pytest.skip("the scheduler lists no ended job that held still")
+    (job, _state, _reason), got = seen
+    assert got == {"listed": False}, job
 
 
 def test_a_job_the_scheduler_has_forgotten_is_no_longer_listed(scheduler):

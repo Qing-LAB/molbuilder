@@ -168,10 +168,8 @@ def emit_solvent_lines(cfg) -> List[str]:
     needs -- analytic gradient, analytic Hessian (RKS and UKS, with and
     without density fitting), and the CPHF polarizability WITH the
     solvent in the response (measured: the tensor shifts, it is not a
-    gas-phase number under a solvent label).  SMD is compiled out of
-    this build (-DENABLE_SMD) and ddCOSMO has no analytic Hessian --
-    both refuse upstream in the kind validator with the reason and the
-    references; only PCM reaches this emitter for a vibration deck.
+    gas-phase number under a solvent label).  The models are the
+    catalogue's choices (`solvent_method`).
     Empty ``solvent`` -> the gas phase, said in one comment where the
     decoration would be (`engines/template.md` § 6.6 obligation 4).
     """
@@ -183,11 +181,10 @@ def emit_solvent_lines(cfg) -> List[str]:
     if eps is None:
         raise ValueError(
             f"unknown solvent {solvent!r}; valid: {sorted(SOLVENTS)}")
-    method = str(getattr(cfg, "solvent_method", "IEF-PCM") or "IEF-PCM")
     return [
-        "# PCM solvation -- continuum model (cheaper than ddCOSMO).",
+        "# PCM solvation -- continuum model.",
         "mf = mf.PCM()",
-        f'mf.with_solvent.method = "{method}"',
+        f'mf.with_solvent.method = "{cfg.solvent_method}"',
         f"mf.with_solvent.eps = {eps}    # {solvent} dielectric",
     ]
 

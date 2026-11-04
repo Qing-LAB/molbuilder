@@ -581,7 +581,7 @@ kept = ["01_coarse/run-0/H2_01_coarse.fdf", "01_coarse/run-0/run.json"]
 # a log with no closing line reads as a run still going.
 made_lacks = ["01_coarse/run-1", "01_coarse/H2_01_coarse.molwatch.log"]
 said = ["prepared coarse again: launched -- its runs are kept", "mpi_np 4",
-        "at its next launch: launched again, it continues from its own latest run"]
+        "at its next launch: launched again, it continues from its own latest run, or `--cold` starts it over"]
 
 [[case]]
 name = "...and a change to what it computes is refused at Save -- naming the stage, what differs and the way back, nothing saved or written (task-setup.md 8; the user, 2026-10-27)"

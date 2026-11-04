@@ -35,7 +35,7 @@ from .runfiles import (RANK_LAUNCHER, ROLE_CONCLUDED, ROLE_SESSION_LOG,
 # The channel-name rule, from the module that owns the file those names
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
-from .config_dir import is_channel_name
+from .config_dir import CHANNEL_NAME_RULE, is_channel_name
 # The way back a refusal names: the checkpoint commands, the folder in them;
 # and the one door a run script takes a start from.
 from .identity import (command_stage, holds_a_start, next_run_words,
@@ -2181,7 +2181,7 @@ def render_run_wrapper(script_path: Path, *,
         if bad:
             raise WrapperError(
                 f"notify channel name(s) {', '.join(map(repr, bad))}: only "
-                f"letters, digits, '-' and '_'.  A name is written into a "
+                f"{CHANNEL_NAME_RULE}.  A name is written into a "
                 f"description and rendered into the monitor's command line, "
                 f"and anything else would mean one thing in the file and "
                 f"another in the shell.")

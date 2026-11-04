@@ -214,7 +214,7 @@ def _reset_to_derived(s: Structure, what: str,
     here would deliver the same sentence twice."""
     if s.n_atoms:
         ext = s.positions.max(axis=0) - s.positions.min(axis=0)
-        kinds = s.axis_kind or ("isolated",) * 3
+        kinds = s.axis_kind
         eff = s.effective_vacuum()
         for i, kind in enumerate(kinds):
             pad = 2.0 * float(eff[i]) if kind == "isolated" else 0.0
@@ -380,7 +380,7 @@ def apply_edit(struct: Structure, op: str,
     # the answer, so the flag arrives from the one place that decides it.
     s.mark_contract_outdated()
     notices: List[dict] = []
-    kinds = s.axis_kind or ("isolated",) * 3
+    kinds = s.axis_kind
 
     if op == "block":
         return _apply_block(s, payload, notices), notices

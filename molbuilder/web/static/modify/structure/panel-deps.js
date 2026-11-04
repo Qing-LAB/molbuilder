@@ -18,7 +18,8 @@
  * for a panel whose input is a line of text (`generateText`: SMILES, name).
  * A panel keeps what is its own: checking its input and naming its request.
  *
- * Exports (on window.molbuilder.panelDeps): make(root) -> a per-panel slot.
+ * Exports (on window.molbuilder.panelDeps): make(root) -> a per-panel slot;
+ * strandCore(text) -> a nucleic strand's letters, for a panel's own letter check.
  */
 (function (root) {
     "use strict";
@@ -183,7 +184,26 @@
         };
     }
 
-    var api = { make: make, BUILD_URL: BUILD_URL };
+    /**
+     * Extract a strand's CORE 5'->3' sequence, honouring direction markers:
+     *   "ATGC"       -> "ATGC"
+     *   "5'-ATGC-3'" -> "ATGC"      (default direction)
+     *   "3'-ATGC-5'" -> "CGTA"      (reversed to internal 5'->3')
+     */
+    function strandCore(str) {
+        var s = String(str == null ? "" : str).trim();
+        var m = s.match(/^\s*([53])'\s*-\s*([\s\S]*?)\s*-\s*([53])'\s*$/);
+        var core;
+        if (m) {
+            core = m[2].replace(/[^A-Za-z]/g, "").toUpperCase();
+            if (m[1] === "3") core = core.split("").reverse().join("");
+        } else {
+            core = s.replace(/[^A-Za-z]/g, "").toUpperCase();
+        }
+        return core;
+    }
+
+    var api = { make: make, BUILD_URL: BUILD_URL, strandCore: strandCore };
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     }

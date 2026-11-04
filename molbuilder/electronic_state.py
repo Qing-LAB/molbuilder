@@ -51,9 +51,6 @@ from .structure import Structure
 TREATMENTS = ("restricted", "restricted-open", "unrestricted",
               "non-collinear", "spin-orbit")
 
-#: Which theory.  SIESTA is DFT; PySCF writes ``dft.`` or ``scf.``.
-METHODS = ("DFT", "HF")
-
 #: A floating moment: the count is whatever the SCF finds (ES6).
 FREE = "free"
 

@@ -196,10 +196,18 @@ def check_junction_boundary(struct: Structure, cell=None, *,
     return []
 
 
+def _engine_said(name) -> str:
+    """An engine as a person reads it (`engine_table`, ``words``); a name its
+    table does not hold, as the record states it."""
+    from ..engine_table import engine, engines
+    return engine(name).words if name in engines() else str(name)
+
+
 def _ev(x) -> str:
-    """A measured force in eV/Å, readable at both ends of the range: four
-    decimals down to half a milli-eV/Å, an exponent below that.  A
-    tolerance prints as the person typed it (``:g``)."""
+    """A force in eV/Å, readable at both ends of the range: four decimals down
+    to half a milli-eV/Å, an exponent below that -- a measured one, and a
+    tolerance the record converted.  A tolerance the person typed on this form
+    prints as they typed it (``:g``)."""
     x = float(x)
     return f"{x:.4f}" if x >= 5e-4 else f"{x:.1e}"
 
@@ -377,8 +385,9 @@ def check_relaxation_record(struct: Structure, *, calculation: str,
         issues.append(Issue(
             severity=disagree,
             message=(
-                f"This structure was relaxed on {rec_engine}; this is a "
-                f"{engine} calculation -- a different level of theory, so "
+                f"This structure was relaxed on {_engine_said(rec_engine)}; "
+                f"this is a {_engine_said(engine)} calculation -- a different "
+                f"level of theory, so "
                 f"the geometry is not a stationary point here."
                 + ("  " + _remedy if already_relaxed else
                    f"  {_first()} relaxes it at this level "
@@ -420,8 +429,8 @@ def check_relaxation_record(struct: Structure, *, calculation: str,
     from ..parse.contract import judged_force
     judged = judged_force(rec)
     rec_tol = rec.get("force_tolerance_ev_ang")
-    who = (f"relaxed on {rec_engine or 'an engine the record does not name'}"
-           + (f" to {float(rec_tol):g} eV/Å" if rec_tol is not None else "")
+    who = (f"relaxed on {_engine_said(rec_engine) if rec_engine else 'an engine the record does not name'}"
+           + (f" to {_ev(rec_tol)} eV/Å" if rec_tol is not None else "")
            + f" in {rec.get('n_steps', '?')} geometry step(s)")
     if judged is None:
         issues.append(Issue(severity="info", where=where,

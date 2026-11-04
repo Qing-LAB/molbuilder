@@ -259,7 +259,7 @@ def _check_periodic_structure_in_a_gas_phase_script(
     into the same True as `periodic`.  Both are wrong for a gas-phase script,
     and both are named here for what they are.
     """
-    kinds = tuple(struct.axis_kind or ("isolated", "isolated", "isolated"))
+    kinds = tuple(struct.axis_kind)
     repeating = [("abc"[i], k) for i, k in enumerate(kinds) if k != "isolated"]
     if not repeating:
         return []
@@ -385,17 +385,6 @@ def validate_pyscf(struct: Structure, cfg,
                 f"at prep -- this is that refusal, at preflight.)",
                 "config.solvent",
             ))
-        if "SMD" in str(getattr(cfg, "solvent_method", "") or "").upper():
-            issues.append(Issue(
-                "error",
-                "solvent_method = SMD: this PySCF build was compiled "
-                "without the SMD module (probe: RuntimeError 'compile "
-                "with -DENABLE_SMD=ON', 2026-08-21).  Use a PCM variant "
-                "(IEF-PCM / C-PCM / COSMO), or rebuild PySCF with SMD "
-                "enabled.  SMD reference: Marenich, Cramer & Truhlar, "
-                "J. Phys. Chem. B 113, 6378 (2009) [Marenich2009].",
-                "config.solvent_method",
-            ))
 
     # gpu4pyscf'S OWN LIMITS, SAID -- every kind (`execution/gpu.md` G11;
     # the user, 2026-10-21: "a hint and information is enough").
@@ -428,29 +417,6 @@ def validate_pyscf(struct: Structure, cfg,
     # override against the ``range`` / ``choices`` the schema declares.  This
     # validator sees ONE
     # rung's resolved config and cannot see the ladder at all.
-
-    # A SETTING THAT ENTERS NOTHING IS NOT LEFT SILENT (engines/pyscf.md
-    # § 7a, engines/vibration.md § 3.1, § 4.10): Hartree-Fock has no
-    # functional (`PySCFConfig.is_dft`), so one changed from its default
-    # under HF is said to do nothing -- on both kinds, since the deck
-    # sets no `mf.xc` for either.  The value is still RECORDED (the deck's
-    # parameter record, the result's `config`), as every value is.  The
-    # dispersion correction is NOT among them: HF takes it like any method.
-    # Placed after every finding a DFT run can raise and before the grid
-    # check, which says nothing under Hartree-Fock (it has no grid either)
-    # -- so no count-by-position caller sees a shift.
-    if not cfg.is_dft:
-        from ..config.pyscf import PySCFConfig
-        _default = PySCFConfig.__dataclass_fields__["functional"].default
-        _v = getattr(cfg, "functional", None)
-        if _v not in (None, _default):
-            issues.append(Issue(
-                "warn",
-                f"functional = {_v!r} has no effect here: the method is "
-                f"Hartree-Fock, which has no functional -- the deck sets "
-                f"no `mf.xc`",
-                "config.functional",
-            ))
 
     # Meta-GGA / hybrid with grid_level < 4: the τ-dependent semi-local XC is
     # grid-sensitive, so forces become noisy at the ~1e-4 Ha/Bohr scale the

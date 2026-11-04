@@ -1787,9 +1787,10 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
         # nothing reads it.
         p = default_notify_path()
         try:
-            from .config_dir import is_channel_name   # inside the package
+            from .config_dir import (CHANNEL_NAME_RULE,  # inside the package
+                                     is_channel_name)
         except ImportError:                            # in the shipped bundle
-            from config_dir import is_channel_name
+            from config_dir import CHANNEL_NAME_RULE, is_channel_name
     except ImportError:
         # The shipped monitor could not find `config_dir.py` beside it, so
         # WHERE the channels live cannot be answered.  Absent is off
@@ -1813,7 +1814,7 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
              f"machine tab), where the monitor reads them")
         return {}
     except ValueError as exc:
-        _say(f"{p}: not valid JSON ({exc}); not notifying")
+        _say(f"{p}: {_persist.unread_words(exc)}; not notifying")
         return {}
     if not isinstance(obj, dict):
         _say(f"{p}: needs a JSON object; not notifying")
@@ -1836,8 +1837,8 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     for name, spec in chans.items():
         name = str(name)
         if not is_channel_name(name):
-            _say(f"{p}: channel name {name!r} is not letters, digits, '-' "
-                 f"or '_'; skipping it")
+            _say(f"{p}: channel name {name!r} is not {CHANNEL_NAME_RULE}; "
+                 f"skipping it")
             continue
         if not isinstance(spec, dict) or not isinstance(spec.get("url"), str) \
                 or not spec["url"]:

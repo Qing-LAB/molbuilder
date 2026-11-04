@@ -238,14 +238,13 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
     from outside.  Saying which is most of what this page is worth.
     """
     from ...monitor import read_channels_file
+    from ...persist import unread_words
     try:
         obj = read_channels_file()
-    except UnicodeDecodeError as exc:
-        return f"{_dest_path().name} is not text ({exc})"
     except OSError:
         return ""
     except ValueError as exc:
-        return f"not valid JSON ({exc})"
+        return f"{_dest_path().name}: {unread_words(exc)}"
     if not isinstance(obj, dict):
         return "needs a JSON object"
     if not isinstance(obj.get("channels"), dict):
@@ -262,17 +261,21 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
     skipped = sorted(set(stored) - usable)
     if skipped:
         return ("the monitor will skip "
-                + "; ".join(f"{n!r} — {_why_skipped(stored[n])}"
+                + "; ".join(f"{n!r} — {_why_skipped(n, stored[n])}"
                             for n in skipped)
                 + ".  Nothing is sent to a skipped channel and the monitor "
                   "log says why.")
     return ""
 
 
-def _why_skipped(spec) -> str:
+def _why_skipped(name, spec) -> str:
     """Why the monitor's reader skips one stored channel, in its words: the
-    address rule's (`monitor.address_refusal`), else the shape's."""
+    name's rule, the address rule's (`monitor.address_refusal`), else the
+    shape's."""
+    from ...config_dir import CHANNEL_NAME_RULE, is_channel_name
     from ...monitor import address_refusal
+    if not is_channel_name(name):
+        return f"its name is not {CHANNEL_NAME_RULE}"
     if isinstance(spec, dict) and isinstance(spec.get("url"), str) \
             and spec["url"]:
         why = address_refusal(spec["url"], spec.get("kind"))
@@ -334,12 +337,12 @@ def save_channel(name: str):
 
     Removing something deliberately is `DELETE`.
     """
-    from ...config_dir import is_channel_name
+    from ...config_dir import CHANNEL_NAME_RULE, is_channel_name
     if not is_channel_name(name):
         return jsonify({"ok": False,
-                        "error": "a channel name is letters, digits, '-' "
-                                 "and '_' (up to 64) — it gets written into "
-                                 "a description and read back out"}), 400
+                        "error": f"a channel name is {CHANNEL_NAME_RULE} — "
+                                 "it gets written into a description and read "
+                                 "back out"}), 400
     body = request.get_json(silent=True) or {}
     url = str(body.get("url") or "").strip()
     key = str(body.get("key") or "").strip()
@@ -455,7 +458,7 @@ def test_channel(name: str):
             # save of the channel puts right.
             return jsonify({"ok": False,
                             "error": f"{name!r} is not sent to: "
-                                     f"{_why_skipped(stored)}",
+                                     f"{_why_skipped(name, stored)}",
                             **_state()}), 400
         return jsonify({"ok": False,
                         "error": f"no channel called {name!r} is set up "

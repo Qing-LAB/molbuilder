@@ -508,6 +508,7 @@ def calls_made(calls: Path):
 # (`card_written`: `{stage, moments}` each -- `_road_card_written`), the
 # atoms each of its progress logs states the run holds, read back by
 # the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
+# the targets they hand the Watch tab (`progress_log_targets`),
 # the files each stage's job declares it carries from a run it continues,
 # as the plan states it and its reader reads it -- the declaration, which
 # the launch's `warm_carry` then judges pair by pair (`plan_carries`,
@@ -903,6 +904,18 @@ def _road_progress_log_holds(want, bundle) -> None:
         assert got == list(want), (log.relative_to(bundle), got)
 
 
+def _road_progress_log_targets(want, bundle) -> None:
+    """The targets each progress log the prep wrote hands the Watch tab, as
+    its own reader reads them (`web/trajectory.md` § 3)."""
+    from molbuilder.parse import detect
+    logs = _road_runs(bundle, "*.molwatch.log")
+    assert logs, "the prep wrote no progress log"
+    for log in logs:
+        got = detect(log).parse(str(log)).runtime_info.get(
+            "convergence_targets") or {}
+        assert got == want, (log.relative_to(bundle), got)
+
+
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not -- or, given a row's
     `after_launch`, what its launch left: the folder's saved states, newest
@@ -932,6 +945,8 @@ def _road_after_prep(case, bundle) -> None:
         _road_card_written(case["card_written"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
+    if "progress_log_targets" in case:
+        _road_progress_log_targets(case["progress_log_targets"], bundle)
     if "plan_carries" in case:
         _road_plan_carries(case["plan_carries"], bundle)
     if "status_says" in case or "status_lacks" in case:

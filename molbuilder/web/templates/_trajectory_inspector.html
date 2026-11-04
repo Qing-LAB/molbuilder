@@ -23,7 +23,7 @@
      buried in the bottom status banner.  Three states + initial-
      blank; populated by core.js once the file is loaded.  Authoritative when the writer emitted
      end-of-run markers; defaults to "ongoing" otherwise. -->
-<div id="run-state-badge" class="trajectory-run-state trajectory-run-state-blank" hidden>
+<div id="run-state-badge" class="trajectory-run-state" hidden>
   <span class="trajectory-run-state-label" id="run-state-label"></span>
   <span class="trajectory-run-state-detail" id="run-state-detail"></span>
   <!-- Compact runtime line: small font, low-key, lives inside the
@@ -82,8 +82,6 @@
       class="convergence-summary-targets"></dl>
   <div id="convergence-summary-current"
        class="convergence-summary-current"></div>
-  <p id="convergence-summary-hint" class="convergence-summary-hint"
-     hidden></p>
 </section>
 
 <section class="card viewer-card">

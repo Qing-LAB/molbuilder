@@ -67,7 +67,7 @@ SCHEMA = "molbuilder/template@2"
 #: § 6 — closed. An unknown ``kind`` is refused, never skipped, because a reader
 #: that quietly dropped an item it did not understand would emit a deck missing
 #: a parameter and say nothing.
-KINDS = ("engine", "deck", "wrapper", "produce", "monitor")
+KINDS = ("engine", "deck", "wrapper", "produce")
 
 #: The closed CATEGORY vocabulary (`engines/template.md` § 6.2), in READING
 #: ORDER -- a surface presents panels top to bottom in this order, because it

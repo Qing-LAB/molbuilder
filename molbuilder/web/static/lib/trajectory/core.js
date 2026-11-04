@@ -44,7 +44,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * The FILE's ending -- read only for a file that belongs to no run (an
      * upload), and for the reason a stopped output states.  How the RUN is
      * doing is a different field: the STATUS state
-     * ("pending"|"queued"|"running"|"failed"|"finished", the one door,
+     * ("pending"|"queued"|"running"|"failed"|"finished"|"not run"|
+     * "unreadable", the one door,
      * parse/dirs/job.py), which the server sends with the file as `run` and
      * which the badge and the follow read (`fileState.run`,
      * web/results.md § 4.1). */
@@ -1009,7 +1010,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const ct = _convergenceTargets();
         const targets = $("convergence-summary-targets");
         const current = $("convergence-summary-current");
-        const hint = $("convergence-summary-hint");
         const sourceEl = $("convergence-summary-source");
 
         // Clear scrubbed inner state on each render — the parent
@@ -1017,23 +1017,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
         if (targets) targets.replaceChildren();
         if (current) current.replaceChildren();
         if (sourceEl) sourceEl.textContent = "";
-        if (hint) hint.hidden = true;
-        sec.classList.remove("is-off-target", "is-unknown");
+        sec.classList.remove("is-off-target");
 
+        // A RUN THAT CHASES NO TARGET HAS NO BAND (`web/trajectory.md` § 3).
         if (!ct) {
-            // No targets — show the "where to put them" hint.
-            sec.classList.add("is-unknown");
-            sec.hidden = false;
-            if (hint) {
-                hint.hidden = false;
-                hint.textContent = (
-                    "Convergence targets not found in source. "
-                    + "Load the source .fdf / .py file next to the run, "
-                    + "or rerun via molbuilder for self-describing output "
-                    + "— the molwatch.log header writes the targets "
-                    + "automatically."
-                );
-            }
+            sec.hidden = true;
             return;
         }
 
@@ -1043,7 +1031,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const sourceMap = {
             "siesta_input_echo": "from SIESTA input echo (redata:)",
             "molwatch_header":   "from molwatch log header",
-            "geomeTRIC_log":     "from geomeTRIC log",
         };
         if (sourceEl) {
             sourceEl.textContent =
@@ -1930,7 +1917,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const badgeDet  = $("run-state-detail");
         if (badge) {
             badge.classList.remove(
-                "trajectory-run-state-blank", "trajectory-run-state-finished",
+                "trajectory-run-state-not-run", "trajectory-run-state-finished",
                 "trajectory-run-state-ongoing", "trajectory-run-state-error",
             );
             badge.hidden = false;
@@ -1996,6 +1983,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 badgeLab.textContent = "Record unreadable";
                 badgeDet.textContent = (run && run.detail) || "";
                 badgeDet.removeAttribute("title");
+            } else if (kind === "not run") {
+                // Over, and never started: its run's walk ended first. The
+                // run's own words beneath (`runs-of-points.md` § 1.3).
+                badge.classList.add("trajectory-run-state-not-run");
+                badgeLab.textContent = "Not run";
+                badgeDet.textContent = (run && run.detail) || "";
+                badgeDet.removeAttribute("title");
             } else if (kind === "queued" || kind === "pending") {
                 // Launched with its start not begun, or prepared and never
                 // launched: the run's own words beneath -- "queued as job
@@ -2018,7 +2012,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
     }
 
-    /* Which badge: finished | stopped | queued | pending | unreadable |
+    /* Which badge: finished | stopped | queued | pending | not run | unreadable |
      * running -- the
      * run's state when the file belongs to one, else the file's own ending
      * (`run_state`, model/parse.md § 2b). */
@@ -2026,6 +2020,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         if (run) {
             return ({ finished: "finished", failed: "stopped",
                       queued: "queued", pending: "pending",
+                      "not run": "not run",
                       unreadable: "unreadable" })[run.state]
                 || "running";
         }

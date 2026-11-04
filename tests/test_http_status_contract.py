@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -62,6 +64,21 @@ class TestKnownAdvisorySitesAreHTTP200:
         body = r.get_json()
         assert body["citation"] is None
         assert body["summary"], "the refusal must NAME what is missing"
+
+
+@pytest.mark.parametrize("kind, text", [("dna", "5'-ATGC"), ("rna", "3'-UGCA"),
+                                        ("rna", "AC,GU")])
+def test_a_strand_the_build_does_not_read_is_the_requests_fault(web_client,
+                                                                kind, text):
+    """`web-api.md`, *Status codes*: a bad request is a 4xx, in the build's
+    own words -- not a crash on our side.
+
+    THE SILENT FAILURE: `5'-ATGC`, a typo, answered as a server fault, which
+    tells the person molbuilder broke when their label is one end short."""
+    r = web_client.post("/api/build/molecule",
+                        json={"kind": kind, "input": text})
+    assert r.status_code == 400, r.get_json()
+    assert r.get_json()["ok"] is False
 
 
 class TestKnownServerFaultSitesAreHTTP500:

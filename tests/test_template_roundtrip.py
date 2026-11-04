@@ -416,7 +416,7 @@ def test_read_by_filters_on_SEVERAL_layers_like_its_siblings():
     t = T.catalogue()
     one = [i.name for i in T.select(t, read_by="wrapper")]
     assert one, "no item declares read_by=wrapper -- the fixture is wrong"
-    many = [i.name for i in T.select(t, read_by=("wrapper", "monitor"))]
+    many = [i.name for i in T.select(t, read_by=("wrapper", "produce"))]
     assert many == one, (
         "asking for two layers must return at least what asking for one "
         "returns; an empty list here is the scalar-only bug")

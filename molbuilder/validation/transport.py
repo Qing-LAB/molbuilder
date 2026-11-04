@@ -159,7 +159,7 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
         # junction's rungs, while the electrode rung that sees it alone
         # refuses the same calculation; and two one-atom leads measure the
         # distance between the leads as a "bond".
-        kinds = getattr(struct, "axis_kind", None) or ("isolated",) * 3
+        kinds = struct.axis_kind
         named = ([label for label, idx in
                   (getattr(struct, "regions", None) or {}).items()
                   if label in ELECTRODE_LABELS and idx]

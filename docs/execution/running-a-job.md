@@ -791,7 +791,7 @@ The set is closed (`job.RUN_STATES`). Each state's **detail** is one line for a 
     N …* — a run whose job ended before its start began
   - *stopped before its end: nothing was written for longer than its wall (&lt;wall&gt;; last write &lt;when&gt;),
     so the job is over; how it ended was not recorded*
-- **`not run`** — *its run's walk ended without starting it*; why the walk passed it by is its run's rows'
+- **`not run`** — *its run ended without starting it*; why the walk passed it by is its run's rows'
   (*it builds on &lt;words&gt;, which failed*, or *the walk ended before it reached this point* —
   [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.5).
 

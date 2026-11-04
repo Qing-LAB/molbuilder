@@ -259,7 +259,7 @@ def test_a_matching_record_answers_the_ticked_box_with_its_numbers(relaxed):
     found = _record_findings(s, _cfg(already_relaxed=True,
                                      relax_force_tol=tol))
     assert len(found) == 1 and found[0].severity == "info", found
-    assert f"relaxed on siesta to {tol:g} eV/Å" in found[0].message
+    assert f"relaxed on SIESTA to {tol:.4f} eV/Å" in found[0].message
     assert (f"{_ev(rec['max_force_free_ev_ang'])} eV/Å, within this "
             f"calculation's tolerance of {tol:g}") in found[0].message
     s.info["relaxation"] = dict(rec, edited_by_hand="2026-10-03T12:00:00Z")
@@ -338,7 +338,7 @@ def test_a_record_at_another_level_of_theory_warns(relaxed):
     pfound = _record_findings(s, PySCFConfig(job_name="co2",
                                              already_relaxed=True))
     assert any(i.severity == "warn"
-               and "relaxed on siesta; this is a pyscf calculation"
+               and "relaxed on SIESTA; this is a PySCF calculation"
                in i.message for i in pfound), pfound
 
 

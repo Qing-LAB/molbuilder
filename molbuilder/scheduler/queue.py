@@ -27,6 +27,18 @@ _SLURM_ENDED = frozenset({
     "NODE_FAIL", "OUT_OF_MEMORY", "PREEMPTED", "REVOKED", "TIMEOUT"})
 
 
+def _slurm_any_standing(rows) -> bool:
+    """Is one row of ``squeue``'s answer for an id, split on its bars, in a
+    state that has not ended?"""
+    return any(r[0].strip() not in _SLURM_ENDED for r in rows)
+
+
+def state_said(state: str, reason: Optional[str]) -> str:
+    """A job's state with the scheduler's reason for it, its own words
+    (`scheduler.md` R6); a reason SLURM gives as ``None`` is none."""
+    return state if reason in (None, "", "None") else f"{state} ({reason})"
+
+
 def _slurm_cluster(stdout: str) -> Optional[str]:
     """``scontrol show config``'s ``ClusterName``."""
     for ln in stdout.splitlines():
@@ -51,8 +63,7 @@ def _slurm_listed(returncode: int, stdout: str,
     if not rows:
         return False, ""
     state, _bar, reason = (x.strip() for x in rows[0])
-    said = state if reason in ("", "None") else f"{state} ({reason})"
-    return any(s.strip() not in _SLURM_ENDED for s, _b, _r in rows), said
+    return _slurm_any_standing(rows), state_said(state, reason)
 
 
 def _slurm_standing(returncode: int, stdout: str,
@@ -60,13 +71,16 @@ def _slurm_standing(returncode: int, stdout: str,
     """``squeue``'s standing for one id, ``STATE|REASON|START|PRIORITY`` --
     ``{listed, state, reason, start, priority}``: ``start`` the time it
     expects to start, ``None`` while it states none (``N/A``); ``listed``
-    False, the rest absent, for an id it has forgotten; ``None`` for an
-    answer that says neither."""
+    False, the rest absent, for an id it has forgotten or whose every row has
+    ended, as :func:`_slurm_listed` reads them; ``None`` for an answer that
+    says neither."""
     if returncode != 0:
         return {"listed": False} if "Invalid job id" in stderr else None
     rows = [ln.split("|") for ln in stdout.split("\n") if ln.strip()]
     if not rows or len(rows[0]) < 4:
         return {"listed": False} if not rows else None
+    if not _slurm_any_standing(rows):
+        return {"listed": False}
     state, reason, start, priority = (x.strip() for x in rows[0][:4])
     return {"listed": True, "state": state,
             "reason": None if reason in ("", "None") else reason,
@@ -199,4 +213,4 @@ def ended(kind_name: str, stderr, job_id: str) -> Optional[str]:
     return readers.ended(text, str(job_id))
 
 
-__all__ = ["cancel", "cluster", "ended", "listed"]
+__all__ = ["cancel", "cluster", "ended", "listed", "standing", "state_said"]

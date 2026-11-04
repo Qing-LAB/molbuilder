@@ -560,7 +560,7 @@ named. Three readers say the same:
   its process gone, written once into its run's launch record), or its walk over as its run's row reads it — no job
   launched from this machine holds its run going (`joblist.going_of`) and, where the walk started no point it walks
   itself (the index's start stamps, `runpoints.walk_began`), the walk ended before a point
-  (`runs.ended_before_a_point`). Its words are *its run's walk ended without starting it* (`runs.state_of`); which
+  (`runs.ended_before_a_point`). Its words are *its run ended without starting it* (`runs.state_of`); which
   reason it was is its run's rows'.
 
 A point's *not run* is counted only once the walk has ended, so a member monitor's line, its own point running,

@@ -467,17 +467,7 @@ def api_files_read():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    # ``missing_ok`` -- read of an OPTIONAL file: absence is a valid answer, not an
-    # error.  Used for the ``.molstruct.json`` sidecar of a bare ``.xyz`` (no sidecar
-    # == empty metadata, a normal label-less load).  Return 200 with ``exists: False``
-    # so the browser logs NO failed-resource console error for the normal missing case.
-    missing_ok = str(request.args.get("missing_ok", "")).lower() in ("1", "true", "yes")
-
     if not resolved.exists():
-        if missing_ok:
-            return jsonify({
-                "ok": True, "path": str(resolved), "exists": False, "text": None,
-            })
         return jsonify({
             "ok": False,
             "error": f"path does not exist: {str(resolved)!r}",

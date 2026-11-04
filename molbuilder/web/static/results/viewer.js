@@ -318,8 +318,9 @@
         steps.forEach((g) => {
             const li = document.createElement("li");
             if (g.next) li.className = "is-next";
-            li.textContent = "group " + g.group + " (" + g.stages.join(", ")
-                + ") \u2014 " + g.words + (g.next ? " \u2014 next" : "");
+            li.append("group " + g.group + " (" + g.stages.join(", ")
+                      + ") \u2014 ", window.molbuilder.dom.codeWords(g.words),
+                      g.next ? " \u2014 next" : "");
             if (g.next && g.lines.length) {
                 const pre = document.createElement("pre");
                 pre.className = "results-ladder-steps-line";
@@ -377,6 +378,7 @@
             else c.appendChild(content);
             return c;
         };
+        const tdWords = (text) => td(window.molbuilder.dom.codeWords(text));
         stages.forEach((s, i) => {
             const tr = document.createElement("tr");
             if (s.name === ladder.first_incomplete) tr.className = "is-next";
@@ -387,7 +389,7 @@
             // A QUEUED RUNG SAYS ITS STANDING as its scheduler states it
             // here, or where to ask (results.md § 2.4) -- the server's
             // words, beside the detail.
-            tr.appendChild(td((s.detail || "")
+            tr.appendChild(tdWords((s.detail || "")
                 + (s.standing && s.standing.say ? " \u00b7 " + s.standing.say : "")
                 + (s.scratch ? " \u00b7 " + s.scratch : "")
                 // A RUN COPIED IN from a finished calculation this one
@@ -421,7 +423,7 @@
                 row.appendChild(td(name));
                 row.appendChild(td(chip(r.state)));
                 row.appendChild(td(r.converged || "\u2014"));
-                row.appendChild(td((r.detail || "")
+                row.appendChild(tdWords((r.detail || "")
                     + (r.copied_from ? " \u00b7 copied from " + r.copied_from
                        : "")));
                 const result = td("");

@@ -1312,6 +1312,7 @@ manual = "PySCF 2.13 pyscf.dft.rks.KohnShamDFT 'xc'"
 type = "str"
 value = "B3LYP"
 default = "B3LYP"
+active_when = { method = ["DFT"] }
 group = "profile"
 label = "Functional"
 help = """
@@ -1567,6 +1568,7 @@ type = "int"
 value = 4
 default = 4
 range = [0, 9]
+active_when = { method = ["DFT"] }
 group = "stage"
 label = "DFT grid level"
 tier = "advanced"
@@ -1663,7 +1665,7 @@ category = ["system"]
 engines = ["pyscf"]
 anchor = "mf"
 engine_key = "mf = mf.PCM()"
-manual = "PySCF 2.13 pyscf.solvent.pcm 'PCM()' (SMD is compiled out of this build -- -DENABLE_SMD; the gate refuses solvent_method=SMD by name)"
+manual = "PySCF 2.13 pyscf.solvent.pcm 'PCM()'"
 type = "str"
 group = "profile"
 label = "Solvent"
@@ -1674,8 +1676,11 @@ help = """
 Surround the molecule with an implicit solvent instead of vacuum: PySCF wraps the SCF in a polarizable continuum rather than placing real solvent molecules.  Name the liquid (water / methanol / dmso / chloroform / ...), or leave it blank for a gas-phase calculation.
 """
 
+# SMD is not a choice: this PySCF build has it compiled out (-DENABLE_SMD).
+# ddCOSMO is not a choice: PySCF 2.13 gives it no analytic Hessian, and a
+# vibration is one (both probed 2026-08-21).
 [item.solvent_method]
-refs = ["Marenich2009", "Lipparini2014"]
+refs = ["Tomasi2005", "Cances1997"]
 kind = "engine"
 category = ["system"]
 engines = ["pyscf"]
@@ -1818,7 +1823,7 @@ kind = "deck"
 category = ["procedure"]
 engines = ["pyscf", "siesta"]
 calculations = ["vibration"]
-expands = ["thermo.thermo(temperature=)", "the harmonic vibrational sums"]
+expands = ["the thermochemistry's temperature"]
 engine_key = "(molbuilder: the thermochemistry's temperature -- PySCF's thermo.thermo(temperature=) for a free molecule, the harmonic vibrational sums otherwise and in SIESTA's finish)"
 manual = "PySCF 2.13 pyscf.hessian.thermo 'thermo(temperature=)'"
 type = "float"
@@ -1865,7 +1870,7 @@ Nothing else takes it: with atoms held the thermochemistry is the vibrational pa
 [item.already_relaxed]
 kind = "deck"
 calculations = ["vibration"]
-expands = ["geomeTRIC relaxation (relax_policy.relax)", "gradient check"]
+expands = ["the relaxation before the force constants"]
 category = ["procedure"]
 engines = ["pyscf", "siesta"]
 engine_key = "(molbuilder: no engine keyword -- the ladder or the deck decides)"

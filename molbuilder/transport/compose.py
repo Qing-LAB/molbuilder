@@ -1018,7 +1018,7 @@ def junction_difference(recorded: Structure,
         if d > SAME_PLACE_ANG:
             return (f"its lattice vector index {i} stands {d:.2e} Å from "
                     f"the recorded one")
-    axes = [tuple(s.axis_kind or ()) for s in (recorded, composed)]
+    axes = [tuple(s.axis_kind) for s in (recorded, composed)]
     if axes[0] != axes[1]:
         return f"its axes are {axes[1]}, the record's {axes[0]}"
     labels_r = {k: sorted(v) for k, v in (recorded.regions or {}).items()}

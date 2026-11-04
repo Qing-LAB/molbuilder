@@ -64,11 +64,11 @@ def check_species_labels(struct: Structure, *, engine: str = ""
         named = ", ".join(repr(u) for u in unresolved)
         issues.append(Issue(
             "error",
-            (f"species {named} name no element, so {engine_label} has no "
-             f"atomic number to run them with.  A label may carry more than "
-             f"the symbol -- 'Au1' and 'Au2' are read as gold -- but it must "
-             f"start with one.  Fix the element column of the structure file, "
-             f"or rename the species"),
+            (f"species label(s) {named} name no element, so {engine_label} "
+             f"has no atomic number to run with.  A label is an element's "
+             f"symbol, with a number after it if you like -- 'Au1' and 'Au2' "
+             f"are read as gold.  Fix the element column of the structure "
+             f"file, or rename the species"),
             "chemistry.species_label",
         ))
     if labelled:

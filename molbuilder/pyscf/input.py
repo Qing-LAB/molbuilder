@@ -574,7 +574,7 @@ def spec_for(struct: Structure,
                    "      f\"({_RUNTIME_INFO['scf_conv_tol_grad_source']}); "
                    "solver {_RUNTIME_INFO['scf_solver_class']}.\")")
 
-        out += _emit_effective_parameters(cfg, is_dft,
+        out += _emit_effective_parameters(cfg,
                                           calculation=calculation,
                                           state=state)
         out += _emit_runtime_from_parameters()
@@ -756,7 +756,7 @@ def spec_for(struct: Structure,
     return spec
 
 
-def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
+def _emit_effective_parameters(cfg: PySCFConfig,
                                calculation: Optional[str] = None, *,
                                state) -> List[str]:
     """Record, at run time, **every** parameter this run is set to.
@@ -826,11 +826,10 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
                  if name in _resolved
                  else _sc.parameter(name, "pyscf", config=cfg))
         expr = _layout.readback(param)
-        if expr and not is_dft and name in ("functional", "grid_level"):
-            # No such attribute on a Hartree-Fock object.  `mf.disp` is one
-            # (`scf.hf.SCF.disp`), and HF takes the correction, so it is
-            # read back like any other setting (pyscf.md § 7a).
-            expr = None
+        # `functional` and `grid_level` wait on DFT (`active_when`): no such
+        # attribute on a Hartree-Fock object.  `mf.disp` is one
+        # (`scf.hf.SCF.disp`), and HF takes the correction, so it is read back
+        # like any other setting (pyscf.md § 7a).
         if name in _off:
             expr = None
         third = f"_mb_read(lambda: {expr})" if expr else "None"

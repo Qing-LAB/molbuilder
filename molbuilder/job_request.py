@@ -31,9 +31,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
 from . import report_fields as _report_fields
-from .config_dir import is_channel_name
+from .config_dir import CHANNEL_NAME_RULE, is_channel_name
 from .identity import stage_key
-from .persist import check_schema, json_text, read_json, write_json
+from .persist import (check_schema, json_text, read_json, unread_words,
+                      write_json)
 from .scheduler.quantities import canonical_mem, canonical_time
 
 if TYPE_CHECKING:
@@ -546,9 +547,9 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
     chans = _every_or_these(
         raw["channels"], "channels", "channel NAMES",
         lambda item: (None if is_channel_name(item) else
-                      f"{item!r} is not a channel name -- letters, digits, "
-                      f"'-' and '_'. A name is all that travels; the address "
-                      f"and key stay on the machine"))
+                      f"{item!r} is not a channel name -- {CHANNEL_NAME_RULE}. "
+                      f"A name is all that travels; the address and key stay "
+                      f"on the machine"))
     # THE ONE DECLARATION answers, for THIS calculation: a field its runs
     # can never state is refused by name (§ 3.5).
     report = _every_or_these(
@@ -655,11 +656,8 @@ def of(base, description: "Task") -> Optional[JobRequest]:
     try:
         try:
             obj = read_json(path)
-        except UnicodeDecodeError as exc:
-            _refuse(f"not UTF-8 text ({exc.reason} at byte {exc.start}) -- "
-                    f"save it as UTF-8")
         except ValueError as exc:
-            _refuse(f"not JSON -- {exc}")
+            _refuse(unread_words(exc))
         return from_dict(obj, description)
     finally:
         _SOURCE.reset(token)
@@ -675,7 +673,7 @@ def from_text(text: str, description: "Task",
         try:
             obj = json.loads(text)
         except ValueError as exc:
-            _refuse(f"not JSON -- {exc}")
+            _refuse(unread_words(exc))
         return from_dict(obj, description)
     finally:
         _SOURCE.reset(token)

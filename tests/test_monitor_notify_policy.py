@@ -525,7 +525,7 @@ def test_a_misconfigured_destination_says_so_where_it_can_be_READ(tmp_path, monk
 
     assert M.load_channels(log=log) == {}
     text = log.read_text()
-    assert "not valid JSON" in text
+    assert "invalid JSON" in text
     assert str(dest) in text, "the message must name the file to go and fix"
 
 

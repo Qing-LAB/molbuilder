@@ -45,6 +45,17 @@ stage_strategy = ""
 template = { relax_type = "FIRE", relax_steps = 42 }
 deck_says = { "MD.TypeOfRun" = "FIRE", "MD.Steps" = "42" }
 
+# WHAT NOTHING CHASES IS NOT STATED AS CHASED: with no relaxation the force
+# target and the step count enter nothing (`engines/template.md` § 5), and
+# neither the line saying what this stage computes nor the targets its progress
+# log hands the Watch tab name them.
+[[case]]
+name = "a single point's own line names no force target and no step count"
+stage_strategy = ""
+template = { relax_type = "none", relax_steps = 77 }
+deck_lacks = ["force tol ", "max 77 steps"]
+progress_log_targets = {}
+
 # EACH RUNG CONVERGES TO ITS TIER (`engines/tuning.md` § 2.3, the authority
 # for SIESTA's force tolerance, one per tier): loose preopt 0.05 eV/Å,
 # publishable 0.04, tight -- the crystal and surface number -- 0.01.  A rung

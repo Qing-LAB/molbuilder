@@ -109,7 +109,6 @@ the engine seam, and for the same reason.)*
 | **a run setting in a template is refused on read** | ✅ wired — the template file's door, `template_file.of`, naming `jobset migrate` | § 2, § 7 |
 | **`kind` lets a layer find its own items** | ⚠ **not a dispatch axis.** No caller filters `select` by `kind`. What `kind` does today is force `anchor` on an engine item and `expands` on a deck one — a completeness check on the catalogue — and tell a *reader* who owns the item | § 6, § 8 |
 | **`read_by` tells the wrapper which items it depends on** | ⚠ **declared, and read by nothing.** The one value it names reaches the wrapper another way: it rides `Resources.use_gpu` — the allocation that already travels to the wrapper whole (A8) — and every reader asks the job's GPU request (`jobset.model.gpu_request`, `execution/architecture.md` § 3.2). The wrapper reads no deck keyword for it, which is what lets a PySCF GPU run route at all; no code reads the `read_by` declaration itself (§ 12.1 row 4) | § 6.1, § 11.3, `execution/gpu.md` G7 |
-| **`kind = "monitor"`** | ⚠ **zero items carry it.** `monitor.py` reads a log; it is not a configured layer. The two molwatch switches are `kind="produce"`, which is correct — the *producer* decides what the script writes | § 6 |
 
 **Why the declarations were kept while unconsumed.** The wrapper's deck scan
 was the habit [`architecture.md`](?doc=execution/architecture.md) § 3, A4 (ask, never
@@ -520,8 +519,7 @@ read against the catalogue at review.
 The items are chosen to show **the three `kind`s a template's items carry** —
 `engine`, `deck`, `produce` — and both value states. The fourth, `wrapper`, is
 carried by run settings alone, which no template holds (§ 2): the catalogue's
-`mpi_np`, `wall_slack` (§ 6.4 shows one). (`monitor` is the
-fifth member of the vocabulary and no item carries it; § 12.1 row 5.)
+`mpi_np`, `wall_slack` (§ 6.4 shows one).
 
 ```toml
 # BDT on Au(111) — geometry relaxation.
@@ -1032,7 +1030,7 @@ when none is set, are the job's (§ 6.6, obligation 4).
 ## 6. `kind` — which layer owns the item
 
 A template holds more than the engine's own parameters. Some items shape the run
-wrapper, some shape what the producer does, some shape what the monitor writes.
+wrapper, some shape what the producer does.
 **A layer must be able to tell which without carrying a list of field names
 (G3)**, so every item declares it.
 
@@ -1042,7 +1040,6 @@ wrapper, some shape what the producer does, some shape what the monitor writes.
 | `deck` | molbuilder's own, and it **produces** keywords — one item becoming several, or one whose keyword is chosen by another value | yes, via `expands` | the deck writer, through molbuilder's rule rather than one keyword |
 | `wrapper` | shapes the run script | no | `runwrap` |
 | `produce` | shapes **how the script is written** without becoming a keyword itself | no | the producer |
-| `monitor` | shapes what the monitor writes | no | the monitor — **and no item carries this today** (§ 1.1a) |
 
 **The vocabulary is closed.** An unknown `kind` is an error a reader reports,
 never something it silently drops (§ 3).
@@ -1093,7 +1090,7 @@ shapes, and the `kind` each calls for:
 | **a bare keyword** | `MeshCutoff` | `MeshCutoff` | `engine`, with `anchor = "MeshCutoff"` |
 | **a conjunction** `A + B` | `Spin.Fix + Spin.Total (SIESTA) \| gto.M(spin=...) (PySCF)` (`unpaired_electrons`) | `Spin.Fix` | `deck` — and list every keyword in `expands` |
 | **an alternation** `A \| B` | `Diag.ELPA.GPU (SIESTA) \| mf = mf.to_gpu() (PySCF)` (`use_gpu`) | `Diag.ELPA.GPU` | `deck` — `expands` lists every keyword it *may* write |
-| **a note** `(molbuilder: …)` | `(molbuilder: .run.sh mpirun -np N only; not in .fdf)` (`mpi_np`) | none | anything but `engine` — `deck`, `wrapper`, `produce` or `monitor` |
+| **a note** `(molbuilder: …)` | `(molbuilder: .run.sh mpirun -np N only; not in .fdf)` (`mpi_np`) | none | anything but `engine` — `deck`, `wrapper` or `produce` |
 
 > **Why a conjunction and an alternation are both `deck`.** The difference is
 > whether the item writes *all* of them or *one* of them, and neither is a
@@ -1179,7 +1176,7 @@ help = "Net charge of the system, in units of |e|.  Blank auto-detects from phos
 its value.** They are different questions and one key cannot answer both.
 
 > **Both name LAYERS, so both draw from the same closed vocabulary** — § 6's
-> five: `engine` · `deck` · `wrapper` · `produce` · `monitor`. `read_by` is a
+> four: `engine` · `deck` · `wrapper` · `produce`. `read_by` is a
 > list because more than one layer may depend on a value, and it is checked on
 > read like every other closed set: an unknown layer is an error naming the
 > item, never something a reader drops.
@@ -2023,7 +2020,6 @@ flowchart TB
     DECK["<b>deck writer</b><br/>prep step 3"]
     WRAP["<b>wrapper writer</b><br/>prep step 4"]
     BENCH["<b>bench</b><br/>sweeps a set"]
-    MON["<b>monitor</b>"]
     T -->|"category ordered<br/>engines ∋ this engine"| UI
     UI -->|"values the user chose"| T
     T -->|"no filter — wants them all"| PREP
@@ -2032,7 +2028,6 @@ flowchart TB
     T -->|"kind ∈ engine, deck"| DECK
     T -->|"kind = wrapper<br/>+ read_by ∋ wrapper"| WRAP
     T -->|"category = execution"| BENCH
-    T -->|"kind = monitor"| MON
 ```
 
 Read the loop at the top as the design cycle: a surface shows what the file
@@ -2182,7 +2177,6 @@ no layer carries a field list — this is G3 in operation.
 | **validation** | its own contract | the resolved config object | none |
 | the **deck writer**, `prep` step 3 | 3 | the parameters it renders from | `kind` in `engine`, `deck` |
 | the **wrapper writer**, `prep` step 4 | 5 | what shapes the run script | `kind == "wrapper"`, plus every item whose `read_by` names it |
-| the **monitor** | — | what it should write | `kind == "monitor"` |
 
 **A reader never asks a second source.** That is what makes the folder portable
 in the sense that matters: the surface does not call an API to learn what a field
@@ -2226,7 +2220,6 @@ it*. The § 8 table above is then a table of **calls**, not of bespoke code:
 | the deck writer | `select(t, kind=("engine", "deck"), engine=e)` |
 | the wrapper writer | `select(t, kind="wrapper", engine=e)` + `select(t, read_by="wrapper", engine=e)` |
 | a benchmark | `select(t, category="execution", engine=e)` |
-| the monitor | `select(t, kind="monitor")` |
 
 **Asking for one item is the same function.** `one(t, "mesh_cutoff",
 engine="pyscf")` returns `None` — the item declares `engines = ["siesta"]`, so
@@ -2456,7 +2449,7 @@ file is what once made *"is the template lossless?"* unanswerable.
 | kind | what must hold | how it is checked |
 |---|---|---|
 | `engine` · `deck` | **round-trips exactly** — the deck is the calculation | render a stage's deck from the template and from the config a surface held; **the text is identical** |
-| `wrapper` · `produce` · `monitor` | **carried and legible** — the owning layer reads it from here | that layer reads the item rather than deriving it from someone else's artifact |
+| `wrapper` · `produce` | **carried and legible** — the owning layer reads it from here | that layer reads the item rather than deriving it from someone else's artifact |
 
 **Nothing is transcribed, so nothing can be lost in transcription (D3).** Each
 value is stored once, in the vocabulary the schema defines, and every reader
@@ -3025,7 +3018,6 @@ closing one is a visible act. Measured 2026-08-17.
 | ~~**2**~~ | ~~`frozen_indices` has no item for SIESTA~~ — **closed 2026-09-24**: the held set is a structure fact for every engine (the `frozen_atoms` region, [`engines/overview.md`](?doc=engines/overview.md) § 3, [`engines/vibration.md`](?doc=engines/vibration.md) § 2.3); no engine has a form item for it and none should — the form copy was the silent absorption, and it retired on 2026-08-21 | § 9.1 | — |
 | **3** | **`kind` steers no reader**; `select` is never called with it | § 6, § 8, § 1.1a | G3 is declared and checked, not dispatched on |
 | **4** | **`read_by` is declared and unconsumed** (the wrapper reads no deck keyword; the value is handed to it) | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency — plan TPL |
-| **5** | **`kind = "monitor"` has no items** | § 6 | either an item earns it or the member is retired; a vocabulary member nothing uses is the family § 10 retired `fingerprint` from |
 | ~~**6**~~ | ~~PySCF's `threads` is not flagged `allocation`~~ — **closed**: the PySCF `threads` item carries `allocation = true` (`data/catalogue.template.toml`, `[item.threads]`) | § 6.4 | — |
 | **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |
 | **8** | **`required` is not an item, by design** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | what a rung needs from the runs before it is the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at its first launch, or at a launch with `--gather` — never a field a description sets; a relaxation's warm files are the restart list's (§ 4.2a) |

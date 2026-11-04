@@ -60,7 +60,7 @@ def test_a_folder_that_is_not_a_calculation_is_refused_as_one_thing(
 
 @pytest.mark.parametrize("record", ["task.json", "job-request.json"])
 @pytest.mark.parametrize("ending, encoding, says", [
-    (",}", "utf-8", "not JSON"),
+    (",}", "utf-8", "invalid JSON"),
     (', "note": "café"}', "cp1252", "save it as UTF-8"),
 ], ids=["a slip of the hand", "an editor that does not save UTF-8"])
 def test_a_record_a_person_broke_is_refused_naming_it(

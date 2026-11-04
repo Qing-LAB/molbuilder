@@ -412,6 +412,20 @@ def _state_before(base, matches) -> Optional[str]:
     return None
 
 
+def relaunch_words(*, points: bool, continues: bool) -> str:
+    """What a launched stage's next launch takes (`job-system.md` § 5.4), in
+    the one sentence prep and `status` say it in: a run of points takes over
+    the points done; any other stage continues or starts over, its job's one
+    fact (`Job.relaunch_continues`)."""
+    if points:
+        return ("it takes over every point done in its own latest run, or "
+                "`--cold` runs them all again")
+    if continues:
+        return ("it continues from its own latest run, or `--cold` starts it "
+                "over")
+    return "it starts over, nothing handed on from a run of its own"
+
+
 def way_back(stage: str, *, calc, launched: bool) -> str:
     """How a prepared stage is made as its records give it now
     (`job-system.md`, *The task*) -- the one composer of a stage's way back:

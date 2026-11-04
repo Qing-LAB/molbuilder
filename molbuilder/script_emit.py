@@ -1444,7 +1444,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
             f"cell.to_engine and hands the frame over "
             f"(model/structure-periodicity.md § 6.0)")
     from .cell import require_placed as _require_placed
-    _kinds = tuple(getattr(struct, "axis_kind", None) or ("isolated",) * 3)
+    _kinds = tuple(struct.axis_kind)
     _require_placed(spec.engine_frame, struct)
     # An atom past a PERIODIC face is not refused -- the engine wraps it as an
     # image -- and `cell.check` has already said so in step 3.3, which is where

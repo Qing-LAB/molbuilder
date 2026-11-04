@@ -546,3 +546,21 @@ class TestSpeciesLabel:
 
         plain = Structure(elements=["Au", "S"], positions=np.zeros((2, 3)))
         assert check_species_labels(plain) == []
+
+    @pytest.mark.parametrize("label", ["Xx1", "Au_1"])
+    def test_a_label_naming_no_element_is_not_told_to_fetch_a_file(
+            self, tmp_path, label):
+        """A label that names no element is refused for that, once: no file
+        would make it run, so the pseudopotential check leaves it alone.
+
+        THE SILENT FAILURE: a person with a typo told to download a file for
+        an element that does not exist -- the file they would never find."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        bad = Structure(elements=[label], positions=np.zeros((1, 3)))
+        errors = [i.where for i in validate(bad, SiestaConfig(),
+                                            calculation="optimization",
+                                            dest_dir=tmp_path)
+                  if i.severity == "error"]
+        assert "chemistry.species_label" in errors
+        assert "config.psml_lib" not in errors, errors

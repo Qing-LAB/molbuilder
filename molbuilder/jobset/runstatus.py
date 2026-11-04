@@ -828,7 +828,8 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     finished is the next step; with every group finished, the last names
     `summarize task` where the task's result gathers its stages
     (`summarize.task_summary`)."""
-    from .commands import reason_of, redo_launched, said_lines, way_back
+    from .commands import (reason_of, redo_launched, relaunch_words, said_lines,
+                           way_back)
     from .summarize import task_summary
     base, task = Path(calc.base), calc.task
     by = {s.name: s for s in rows}
@@ -926,13 +927,8 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                 # `engines/vibration.md` § 5.11 § 6); any other stage
                 # continues from its own latest run or starts over -- its
                 # job's one fact (`Job.relaunch_continues`).
-                again = ("it takes over every point done in its own latest "
-                         "run, or `--cold` runs them all again"
-                         if bad.points else
-                         "it continues from its own latest run, or `--cold` "
-                         "starts it over" if bad.relaunch_continues else
-                         "it starts over, nothing handed on from a run of "
-                         "its own")
+                again = relaunch_words(points=bool(bad.points),
+                                       continues=bad.relaunch_continues)
                 # ...OR CHANGED FIRST, its way on the one composer's, whole
                 # (`commands.way_back`).
                 step = (bad.state,
@@ -1158,7 +1154,11 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
                      if s.gathered else
                      "nothing -- it started from the structure"))
     else:
-        rows.append(("launched", "no  (no launch record -- prepared, not started)"))
+        # NO LAUNCH RECORD READ: not launched where the run is `pending`; a
+        # record that does not read, or a folder gone, is said by its state
+        # and detail, as prepared-and-not-launched is
+        # (`running-a-job.md` § 4.2).
+        rows.append(("launched", "no" if s.state == "pending" else "-"))
     if s.copied_from:
         # A RUN COPIED IN from the finished calculation this one reuses
         # (`engines/transport.md` § 2a.16): a launched run of this one.

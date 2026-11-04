@@ -57,9 +57,10 @@ def check_schema(got: str, want: str, *, label: str = "") -> None:
             or schema_major(got) != schema_major(want)):
         prefix = f"{label} " if label else ""
         raise ValueError(
-            f"{prefix}schema mismatch: got {got!r}, need "
-            f"{schema_name(want)}@{schema_major(want)} "
-            f"(same name, same major; minors tolerated).")
+            f"{prefix}schema mismatch: "
+            + (f"it says {got!r}" if got else "it names no schema")
+            + f", this molbuilder reads "
+              f"{schema_name(want)}@{schema_major(want)}.")
 
 
 def check_keys(what: str, d, known, *, needed=None) -> None:
@@ -78,6 +79,16 @@ def check_keys(what: str, d, known, *, needed=None) -> None:
     gaps = [k for k in (known if needed is None else needed) if k not in d]
     if gaps:
         raise ValueError(f"{what}: no {', '.join(repr(k) for k in gaps)}")
+
+
+def unread_words(exc: ValueError) -> str:
+    """What is wrong with a file :func:`read_json` could not read, for a refusal
+    that names it -- one sentence on every surface -- with the way out where
+    there is one."""
+    if isinstance(exc, UnicodeDecodeError):
+        return (f"not UTF-8 text ({exc.reason} at byte {exc.start}) -- save it "
+                f"as UTF-8")
+    return f"invalid JSON ({exc})"
 
 
 def read_json(path) -> Any:
@@ -296,6 +307,6 @@ def sha256_of_bytes(data: bytes) -> str:
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "check_keys",
-           "read_json",
+           "read_json", "unread_words",
            "json_text", "write_json", "stage_bytes", "write_bytes",
            "sha256_of", "sha256_of_bytes"]

@@ -134,11 +134,9 @@ def _analyze_response(struct, body):
     kind = body.get("kind") or ""
     if not kind:
         return _unstated(kind=kind)
-    if kind not in kind_table.kinds():
-        return jsonify({"ok": False,
-                        "error": f"kind must be one of "
-                                 f"{', '.join(kind_table.kinds())}, "
-                                 f"not {kind!r}"}), 400
+    refused = _not_in_tables(calculation=kind)
+    if refused is not None:
+        return refused
     forms = body.get("forms")
     if forms is not None and not isinstance(forms, dict):
         return jsonify({"ok": False,
@@ -259,12 +257,14 @@ def api_build_molecule():
     except ImportError as exc:
         return jsonify({"ok": False,
                         "error": f"missing dependency: {exc}"}), 500
+    except ValueError as exc:
+        # Every builder says what it cannot read this way (a one-sided strand
+        # label, a letter its alphabet does not hold): the request's, in the
+        # builder's words.
+        return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
-        # web-api.md § 1, *Status codes* (server fault -> 5xx): an
-        # unhandled exception from the
-        # builder dispatch is server fault, not protocol error.
-        # The user's input passed shape validation (kind + input)
-        # before reaching here; whatever went wrong is on us.
+        # web-api.md § 1, *Status codes* (server fault -> 5xx): anything else
+        # a builder raises is a server fault, not protocol error.
         return jsonify({"ok": False, "error": str(exc)}), 500
     struct, backend_used = made.structure, made.backend
 
@@ -1778,21 +1778,18 @@ def api_task_setup_sweepable():
     Measure card offers what a benchmark row may hold.
     """
     engine = str(request.args.get("engine") or "").lower()
-    if not engine:
-        return _unstated(engine=engine)
-    try:
-        _engine(engine)
-    except EngineTableError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    kind = str(request.args.get("calculation") or "")
+    if not engine or not kind:
+        return _unstated(engine=engine, calculation=kind)
+    refused = _not_in_tables(calculation=kind, engine=engine)
+    if refused is not None:
+        return refused
 
     from molbuilder import template as _T
     parsed = _T.catalogue()
     # THE KIND NARROWS IT, as it narrows the columns: a kind's run card
     # offers only what that kind carries (`template.md` § 6.3's sibling
     # rule).
-    kind = str(request.args.get("calculation") or "")
-    if not kind:
-        return _unstated(calculation=kind)
     out = []
     for it in _T.select(parsed, engine=engine, calculation=kind):
         if not _T.is_run_setting(it):
@@ -2890,7 +2887,7 @@ def api_task_setup_commands():
     from molbuilder.scheduler.record import LOCAL_TARGET
     body = request.get_json(silent=True) or {}
     dest_raw = str(body.get("dest") or "")
-    kind = str(body.get("kind") or "task")
+    kind = body.get("kind")
     groups, stages = body.get("groups"), body.get("stages")
     picked = (isinstance(groups, list) and len(groups) >= 1
               and all(isinstance(g, int) and not isinstance(g, bool)
@@ -2939,8 +2936,11 @@ def api_task_setup_commands():
             groups = sorted({n for g in gs for n in g.prep_with})
     elif one_stage and kind == "bench":
         from molbuilder.calculation import open as open_calculation
-        prepared = stages[0] in _folder_prepared(
-            open_calculation(dest)).get(kind, {})
+        try:
+            calc = open_calculation(dest)
+        except (OSError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        prepared = stages[0] in _folder_prepared(calc).get(kind, {})
     return jsonify({"ok": True, "lines": stage_lines(
         kind, base=dest, groups=(groups if picked else ()),
         stages=(stages if one_stage and not picked else ()),
@@ -3034,10 +3034,9 @@ def api_task_setup_presets():
     kind = str(request.args.get("calculation") or "")
     if not engine or not kind:
         return _unstated(engine=engine, calculation=kind)
-    try:
-        _engine(engine)
-    except EngineTableError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    refused = _not_in_tables(calculation=kind, engine=engine)
+    if refused is not None:
+        return refused
     from molbuilder.jobset.ladder import engine_tiers
     out = [{"tier": tier, "name": name, "values": values}
            for tier, name, values in engine_tiers(engine)]

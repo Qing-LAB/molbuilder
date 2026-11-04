@@ -41,8 +41,11 @@
                 error: "Enter an RNA sequence first (ACGU).",
             });
         }
-        var trimmed = sequence.trim().toUpperCase().replace(/\s+/g, "");
-        if (!VALID_RNA.test(trimmed)) {
+        // The letters are checked here; the text goes to the server as typed,
+        // whose parser reads its end labels and refuses what it cannot
+        // (`residues.parse_rna_sequence`), as the DNA panel's does.
+        var typed = sequence.trim();
+        if (!VALID_RNA.test(root.molbuilder.panelDeps.strandCore(typed))) {
             return Promise.resolve({
                 ok:    false,
                 error: "Sequence must use ACGU only.  Got: "
@@ -68,9 +71,9 @@
             });
         }
         return _deps.generate(
-            { kind: "rna", input: trimmed, form: form, backend: backend },
+            { kind: "rna", input: typed, form: form, backend: backend },
             { kind: "rna",
-              generator_input: { sequence: trimmed, form: form,
+              generator_input: { sequence: typed, form: form,
                                  backend: backend } },
             "Building the RNA\u2026");
     }

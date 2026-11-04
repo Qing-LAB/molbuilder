@@ -151,18 +151,7 @@ function el(tag, attrs, ...kids) {
     return n;
 }
 
-/** SERVER WORDS, with what they keep in backticks -- a command, a file, a
- *  stage -- shown as code, never as a backtick, as the Results file card
- *  shows the catalogue's (`lib/results/file-card.js`). */
-function codeWords(text) {
-    const out = document.createDocumentFragment();
-    String(text == null ? "" : text).split("`").forEach((part, i) => {
-        if (!part) return;
-        out.appendChild(i % 2 ? el("code", {}, part)
-                              : document.createTextNode(part));
-    });
-    return out;
-}
+const { codeWords } = window.molbuilder.dom;
 
 function setState(kind, title, body) {
     $("ts-state").setAttribute("data-state", kind);

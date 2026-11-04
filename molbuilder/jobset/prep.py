@@ -1450,13 +1450,15 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # the run was chasing" (`web/trajectory.md` § 3), and a force-constant run
     # chases none: a threshold line over its steps called 115 nudges a
     # relaxation that never settles.  ``relaxes`` is the rung's render kind.
+    from ..template import inactive_settings
     from ..trajectory_log import keys as _K
+    off = inactive_settings(cfg, engine=engine) if relaxes else {}
     leaf = {}
     for key, attr in (() if not relaxes else
                       ((_K.MAX_FORCE_TOL, "relax_force_tol"),
                        (_K.MAX_GEOM_ITER, "relax_steps"))):
         value = getattr(cfg, attr, None)
-        if value is not None:
+        if value is not None and attr not in off:
             leaf[key] = value
     targets = {names.stage: leaf} if leaf else {}
     write_initial_preview(
@@ -2159,12 +2161,14 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     # WHAT ITS FIRST LAUNCH WILL TAKE, said before any run is read
     # (`job-system.md` § 5.0, *a preview*) -- a launched stage's next
     # launch is a launch again, from its own runs (§ 5.4).
+    from .commands import relaunch_words
     from .ready import at_launch
     out.takes = ([{"from": stage, "files": [],
-                   "line": "at its next launch: launched again, it continues "
-                           "from its own latest run or starts over as its "
-                           "job says -- --cold starts it over "
-                           "(job-system.md § 5.4)"}]
+                   "line": "at its next launch: launched again, "
+                           + relaunch_words(
+                               points=bool(_rung_pts),
+                               continues=job.relaunch_continues)
+                           + " (job-system.md § 5.4)"}]
                  if out.launched
                  else at_launch(pcalc, stage, job=job))
     if job is not None and run_dir is not None:

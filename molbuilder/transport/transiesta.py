@@ -211,10 +211,8 @@ def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
     cell = np.asarray(cell, dtype=float)
     # THE KIND, NOT THE BOOLEAN: `struct.pbc` flattens `transport` and
     # `periodic` to the same True, and the per-axis line below needs them
-    # apart.  The fallback answers `("isolated",) * 3`,
-    # as every other `axis_kind or ...` in the tree does (`__post_init__`
-    # always fills the kinds).
-    kinds = struct.axis_kind or ("isolated",) * 3
+    # apart.
+    kinds = struct.axis_kind
     vac = axis_vacuum(cell, struct.positions)
     lines += [
         "# Explicit lattice preserved from the structure (NOT",

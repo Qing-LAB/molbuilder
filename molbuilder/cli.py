@@ -2201,14 +2201,14 @@ def cmd_notify_token(user, host, route, channel, replace):
     """
     import json as _json
     from . import auth_setup as _as
-    from .config_dir import is_channel_name
+    from .config_dir import CHANNEL_NAME_RULE, is_channel_name
     from .monitor import default_notify_path, notify_keys_path
 
     if not is_channel_name(channel):
         raise click.UsageError(
-            f"{channel!r} is not a channel name. Letters, digits, '-' and "
-            f"'_' -- it is written into a description and rendered into the "
-            f"monitor's command line.")
+            f"{channel!r} is not a channel name: {CHANNEL_NAME_RULE} -- it is "
+            f"written into a description and rendered into the monitor's "
+            f"command line.")
     # NO --keys-file.  The key file has ONE home and the server reads only
     # that one (`web/app.py` asks `read_notify_keys()` with no path), so a flag
     # naming another would write a key nowhere that works.  A test that wants

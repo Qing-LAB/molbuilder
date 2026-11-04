@@ -64,9 +64,11 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     from ..runfiles import JOB_REQUEST_FILE
     from ..template import catalogue, select
     missing = []
+    row_of = {}
     if shape:
         items = [item for item in select(catalogue(), engine=engine)
                  if item.name in _SHAPE_ITEMS]
+        row_of = {item.name: item.label for item in items}
         for item in items:
             field = AS_RESOURCE.get(item.name, item.name)
             if getattr(allocation, field, None) in (None, ""):
@@ -117,8 +119,8 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
             card = ('Task setup\'s "Where it runs" card ("allocation": '
                     f'{{"mem": ...}} in {JOB_REQUEST_FILE})')
         else:
-            card = (f'the run card on Task setup ("execution": '
-                    f'{{"{key}": N}} in {JOB_REQUEST_FILE})')
+            card = (f'the run card\'s "{row_of[key]}" row on Task setup '
+                    f'("execution": {{"{key}": N}} in {JOB_REQUEST_FILE})')
         line = f"  {words:<15} {card}, or {flag}"
         if field == "domain":
             line += "\n" + _the_queues(asked, queues, engine)

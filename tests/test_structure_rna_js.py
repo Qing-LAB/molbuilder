@@ -156,6 +156,36 @@ class TestHappyPath:
         ''')
         assert out["form"] == "B"
 
+    def test_a_strand_goes_to_the_server_as_typed(self):
+        """A strand labelled with its ends passes the panel's letter check, as
+        the DNA panel's does, and the server's parser reads the labels.
+
+        THE SILENT FAILURE: the panel reading the labels itself and sending
+        the letters left: `3'-UGCA`, which the server refuses for its missing
+        end, built as if unlabelled -- the strand read the other way, nothing
+        said."""
+        out = _run_node('''
+            const sent = [];
+            rna.configure({
+                fetch: async (url, init) => {
+                    sent.push(JSON.parse(init.body).input);
+                    return {
+                        ok: true,
+                        json: async () => ({
+                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            n_atoms: 5,
+                        }),
+                    };
+                },
+                structurePage: {
+                    loadIntoCanvas: async () => ({ok: true}),
+                },
+            });
+            await rna.generate("5'-ACGU-3'");
+            await rna.generate("3'-UGCA");
+            console.log(JSON.stringify(sent));
+        ''')
+        assert out == ["5'-ACGU-3'", "3'-UGCA"]
 
 
 class TestErrorPaths:

@@ -127,6 +127,10 @@ INACTIVE_ROWS = [
     pytest.param("siesta", "optimization",
                  {"relax_type": "none", "relax_steps": 77}, "relax_steps",
                  "relax_type", 1, id="steps-without-a-relaxation"),
+    pytest.param("pyscf", "vibration", {"method": "HF", "functional": "PBE0"},
+                 "functional", "method", 1, id="a-functional-under-hartree-fock"),
+    pytest.param("pyscf", "optimization", {"method": "HF", "grid_level": 3},
+                 "grid_level", "method", 1, id="a-grid-under-hartree-fock"),
     # ...and a value at the kind's default is nobody's statement: nothing.
     pytest.param("pyscf", "vibration", {}, "solvent_method", "solvent", 0,
                  id="solvent-model-at-its-default-says-nothing"),

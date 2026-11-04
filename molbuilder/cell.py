@@ -143,7 +143,7 @@ def resolve(struct: Structure, *,
     (§ 8.2's two verdicts) instead of the caller catching exceptions to tell
     them apart.
     """
-    kinds = tuple(struct.axis_kind or ("isolated", "isolated", "isolated"))
+    kinds = tuple(struct.axis_kind)
     stated = (tuple(float(v) for v in struct.vacuum)
               if struct.vacuum is not None else None)
     eff = struct.effective_vacuum()
@@ -688,7 +688,7 @@ def engine_axis_kinds(engine: str, struct: Structure) -> Tuple[str, str, str]:
     keeps its kinds either way."""
     if not computes_in_cell(engine):
         return _CLUSTER
-    return tuple(struct.axis_kind or _CLUSTER)
+    return tuple(struct.axis_kind)
 
 
 def computes_in_cell(engine: str) -> bool:

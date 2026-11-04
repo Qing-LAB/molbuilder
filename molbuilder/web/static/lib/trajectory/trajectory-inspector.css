@@ -149,9 +149,6 @@
 .convergence-summary.is-off-target {
     border-left-color: var(--warn-soft);
 }
-.convergence-summary.is-unknown {
-    border-left-color: var(--text-muted);
-}
 .convergence-summary[hidden] { display: none; }
 
 .convergence-summary-header {
@@ -203,13 +200,6 @@
 .convergence-summary-current .at-target  { color: var(--success); }
 .convergence-summary-current .off-target { color: var(--warn-soft); }
 
-.convergence-summary-hint {
-    margin:         var(--space-xs) 0 0;
-    color:          var(--text-secondary);
-    font-size:      var(--text-xs);
-    line-height:    var(--line-snug);
-}
-.convergence-summary-hint[hidden] { display: none; }
 
 .trajectory-plots-row {
     display: grid;
@@ -359,7 +349,11 @@
     content: "\26A0";   /* ⚠ */
     color:   var(--error);
 }
-.trajectory-run-state.trajectory-run-state-blank    { display: none; }
+.trajectory-run-state.trajectory-run-state-not-run  { border-left-color: var(--text-muted); }
+.trajectory-run-state.trajectory-run-state-not-run  .trajectory-run-state-label::before {
+    content: "\25CB";   /* ○ */
+    color:   var(--text-muted);
+}
 /* Every component CSS rule that sets a non-none ``display`` pairs with
  * a ``[hidden]`` guard: the base ``.trajectory-run-state { display: flex; }`` ties
  * on specificity with the UA stylesheet's ``[hidden] { display: none }``

@@ -1004,8 +1004,7 @@ class Structure:
         Not a stored field: ``axis_kind`` contains this and more, so storing
         the boolean view as well would be two spellings of one fact.
         """
-        return tuple(k != "isolated" for k in
-                     (self.axis_kind or ("isolated",) * 3))
+        return tuple(k != "isolated" for k in self.axis_kind)
 
     def resolve_cell(self) -> Optional[np.ndarray]:
         """The 3x3 lattice for this structure (structure-periodicity.md § 3).
@@ -1088,9 +1087,8 @@ class Structure:
         vacuum."""
         if self.vacuum is not None:
             return tuple(float(v) for v in self.vacuum)
-        kinds = self.axis_kind or ("isolated", "isolated", "isolated")
         vac = [(_DEFAULT_ISOLATED_VACUUM if k == "isolated" else 0.0)
-               for k in kinds]
+               for k in self.axis_kind]
         return (vac[0], vac[1], vac[2])
 
     def defaulted_vacuum_axes(self) -> List[int]:
@@ -1147,8 +1145,7 @@ class Structure:
             # ...and whose it is -- written only beside an offset.
             "offset_by":    (self.offset_by
                              if self.engine_offset is not None else None),
-            "axis_kind":    (list(self.axis_kind)
-                             if self.axis_kind is not None else None),
+            "axis_kind":    list(self.axis_kind),
             "vacuum":       ([float(x) for x in self.vacuum]
                              if self.vacuum is not None else None),
             "annotations":  annotations_to_json(self.annotations),
@@ -1465,8 +1462,7 @@ class Structure:
                                          if self.engine_offset is not None else None),
                 "resolved_cell":        resolved_cell,
                 "box_corner":           box_corner,
-                "axis_kind":            (list(self.axis_kind)
-                                         if self.axis_kind is not None else None),
+                "axis_kind":            list(self.axis_kind),
                 "vacuum":               ([float(x) for x in self.vacuum]
                                          if self.vacuum is not None else None),
                 # The vacuum the derived box ACTUALLY uses: identical to

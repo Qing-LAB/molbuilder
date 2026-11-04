@@ -50,18 +50,18 @@ node_types = [{ cores = 64, nodes = 2 }]
 [[case]]
 name = "a SIESTA run states its rank count -- no width of the target"
 run_unset = ["mpi_np"]
-refused = 'the run card on Task setup ("execution": {"mpi_np": N} in job-request.json), or --np N'
+refused = '''the run card's "MPI ranks (np)" row on Task setup ("execution": {"mpi_np": N} in job-request.json), or --np N'''
 
 [[case]]
 name = "a SIESTA run states its cores per rank -- no thread count of one"
 run_unset = ["omp_threads"]
-refused = 'the run card on Task setup ("execution": {"omp_threads": N} in job-request.json), or --cpus-per-task N'
+refused = '''the run card's "OMP threads per rank" row on Task setup ("execution": {"omp_threads": N} in job-request.json), or --cpus-per-task N'''
 
 [[case]]
 name = "a PySCF run states its threads -- not the node's cores"
 engine = "pyscf"
 run_unset = ["threads"]
-refused = 'the run card on Task setup ("execution": {"threads": N} in job-request.json), or --cpus-per-task N'
+refused = '''the run card's "CPU threads" row on Task setup ("execution": {"threads": N} in job-request.json), or --cpus-per-task N'''
 
 [[case]]
 name = "a flag's count is a count: --np 0 is refused as it is typed, naming the flag and the item's reason"

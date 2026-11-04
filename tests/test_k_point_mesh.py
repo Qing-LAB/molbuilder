@@ -79,6 +79,42 @@ def test_a_relaxation_samples_every_axis_by_its_kind(isolated_projects_root):
     assert "kgrid_displacement[2]" not in report, report
 
 
+def test_the_room_along_a_lattice_vector_is_measured_along_it():
+    """The hint that k-points are sampling a direction with vacuum in it
+    (`engines/siesta.md` § 6.1) asks how much of the lattice vector the atoms
+    leave empty.  On a slanted cell the atoms' span across the x, y and z axes
+    does not answer that: atoms filling a slanted vector span little of y.
+
+    API-LEVEL: the shape is the point, and a slanted cell is one number away
+    from an upright one, so the check is asked of the two directly.
+
+    THE SILENT FAILURE: a filled, slanted slab warned of vacuum it does not
+    have, and told to use one k-point, which would be wrong for it."""
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from molbuilder import kmesh
+    from molbuilder.structure import Structure
+
+    a, b, c = np.array([10., 0, 0]), np.array([9., 4.4, 0]), np.array([0, 0, 30.])
+    kinds = ("periodic", "periodic", "isolated")
+
+    def said(share):
+        """The findings on atoms spread over ``share`` of a and of b."""
+        cell = np.array([a, b, c])
+        spread = [f * share for f in (0.0, 0.5, 1.0)]
+        struct = Structure(elements=["Au"] * 3,
+                           positions=np.array([f * a + f * b for f in spread]),
+                           cell=cell, axis_kind=kinds)
+        cfg = SimpleNamespace(kgrid=(4, 4, 1), kgrid_displacement=(0., 0., 0.))
+        mesh = kmesh.mesh_for(cfg, kinds, kind="optimization")
+        return [i.where for i in kmesh.check([mesh], struct, cell=cell)]
+
+    assert said(0.9) == []
+    assert said(0.3) == ["config.kgrid"] * 2
+
+
 def test_a_transport_meshs_start_and_its_one_point_warning():
     """`engines/transport.md` § 0.3b at the two doors that hold it --
     API-level, because a transport calculation cites a finished relaxation,

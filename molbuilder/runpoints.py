@@ -67,11 +67,11 @@ AGAIN, CONTINUE = "again", "continue"
 #: A POINT ITS ENDED WALK NEVER STARTED is :data:`NOT_RUN` -- spelled
 #: beside the run of points' state rule (`_run_ending.points_state`) --
 #: and its reason where no need up its chain failed: the walk stopped.
-NEVER_REACHED = "the walk ended before it reached this point"
+NEVER_REACHED = "the run ended before it reached this point"
 #: ...and what its own folder says of it, read alone (`runs.concluded`):
 #: the definition's words, true whichever the reason (`runs-of-points.md`
 #: § 1.3) -- its run's rows say which (:func:`why_not_run`).
-NOT_STARTED = "its run's walk ended without starting it"
+NOT_STARTED = "its run ended without starting it"
 
 # --------------------------------------------------------------------- #
 #  The file -- where it lies, read, written                              #

@@ -345,8 +345,7 @@ def write_structure_group(ds, structure, atoms: AtomIndexMap, *,
         held = [int(i) for i in (s.frozen_atoms or ())]
         if s.cell is not None:
             values["cell_ang"][:] = np.asarray(s.cell, dtype=float)
-        if s.axis_kind is not None:
-            values["axis_kind"][:] = [str(k) for k in s.axis_kind]
+        values["axis_kind"][:] = [str(k) for k in s.axis_kind]
     values["held"][:] = 0
     for i in held:
         values["held"][i] = 1

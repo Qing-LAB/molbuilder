@@ -158,7 +158,7 @@ def _calc_of(folder):
         raise click.ClickException(str(exc)) from None
 
 
-@click.group("jobset", short_help="run a job-set bundle (stage ladder / sweep)")
+@click.group("jobset", short_help="run a calculation (stage ladder / sweep)")
 def jobset_group() -> None:
     """The calculation's verbs, one grammar (job-system.md § 5.3).
     Describing is not one of them: ``describe``, molbuilder's own command,
@@ -853,7 +853,7 @@ def _check_kind(kind: str, js=None) -> None:
     actual = "bench" if js.kind == KIND_SWEEP else "task"
     if kind != actual:
         raise click.ClickException(
-            f"this bundle's job set is a {js.kind}, which the grammar calls "
+            f"this calculation's job set is a {js.kind}, which the grammar calls "
             f"{actual!r} -- and the command says {kind!r}.  The kind states "
             f"what the calculation IS, it does not switch modes "
             f"(job-system.md § 5.3).")

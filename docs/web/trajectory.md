@@ -112,12 +112,12 @@ from the run's own **output**. A SIESTA run echoes them into its `.out` (the
 `redata:` preamble), and a PySCF/geomeTRIC run — whose bare `*_optim.xyz` carries
 no targets — gets them from the sibling `*.molwatch.log` the builder writes next
 to it. A small label under the plot even says which of these it read them from
-("from SIESTA input echo", "from molwatch log header", "from geomeTRIC log").
-A run that relaxes nothing chases no force target, so none is drawn: a SIESTA
-force-constant run's seeded log carries no targets, because `prep` writes them
-only for a deck that relaxes (`jobset/prep._seed_trajectory_log`) — and a
-force-constant run nudges atoms, it relaxes nothing
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.1).
+("from SIESTA input echo", "from molwatch log header").
+A run that relaxes nothing chases no force target, so none is drawn and no band
+is shown: a SIESTA single point's or force-constant run's seeded log carries no
+targets, because `prep` writes them only for a deck that relaxes
+(`jobset/prep._seed_trajectory_log`) — and a force-constant run nudges atoms, it
+relaxes nothing ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.1).
 
 A summary band above the plots names the targets and the current distance. When a
 value sits far above its target, the plot switches to a **log y-axis** so the
@@ -169,7 +169,8 @@ sends with it ([`results.md`](?doc=web/results.md) § 4.1), the one the Run
 panel and `jobset status` read: *Finished*, *Stopped* (failed — the reason
 beneath: the output's own stop where it states one, else the run's own words,
 such as *stopped before its end: no exit recorded*), *Queued*, *Not launched*,
-*Record unreadable* (the reader's own words beneath, naming the file and the
+*Not run* (a point its run's walk ended before starting: over, and never
+started), *Record unreadable* (the reader's own words beneath, naming the file and the
 way out), else *Running*. A file that belongs to no run — an upload — is read by its own
 ending (`run_state`, [`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is
 *Finished*, `stopped` or `out_of_memory` *Stopped*, anything else *Running*.

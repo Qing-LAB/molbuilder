@@ -328,11 +328,14 @@ def _stage_science(cfg: "SiestaConfig") -> str:
     … Ry``, ``MD.MaxForceTol … eV/Ang``), so the comment and the keywords read
     as one document.
     """
-    bits = [f"MeshCutoff {cfg.mesh_cutoff} Ry",
-            f"force tol {cfg.relax_force_tol} eV/Ang"]
+    from ..template import inactive_settings
+    off = inactive_settings(cfg, engine="siesta")
+    bits = [f"MeshCutoff {cfg.mesh_cutoff} Ry"]
+    if "relax_force_tol" not in off:
+        bits.append(f"force tol {cfg.relax_force_tol} eV/Ang")
     if getattr(cfg, "relax_type", None):
         bits.append(str(cfg.relax_type))
-    if getattr(cfg, "relax_steps", None):
+    if getattr(cfg, "relax_steps", None) and "relax_steps" not in off:
         bits.append(f"max {cfg.relax_steps} steps")
     return " \u00b7 ".join(bits)
 
@@ -721,7 +724,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # vacuum" would be wrong advice for exactly the case that gets here.
         from molbuilder.cell import ZERO_VOLUME_TOL
         if abs(float(np.linalg.det(cell))) < ZERO_VOLUME_TOL:
-            _kinds = struct.axis_kind or ("isolated",) * 3
+            _kinds = struct.axis_kind
             # THE AXIS LENGTH IS THE VECTOR'S NORM, not its diagonal entry:
             # on a hexagonal or otherwise off-axis cell `cell[i, i]` is a
             # component, so a perfectly good b-vector could be named as the

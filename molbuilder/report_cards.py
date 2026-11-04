@@ -28,12 +28,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 try:                                        # inside molbuilder
     from . import data_dir as _data_dir, report_fields as _fields
     from .config_dir import config_dir as _config_dir
-    from .persist import check_schema
+    from .persist import check_schema, unread_words
     _HERE = _data_dir()
 except ImportError:                         # beside the job
     import report_fields as _fields
     from config_dir import config_dir as _config_dir
-    from persist import check_schema
+    from persist import check_schema, unread_words
     _HERE = Path(__file__).parent
 
 #: The file's name -- spelled here, in the module that owns it
@@ -163,8 +163,7 @@ def load(path: Optional[Path] = None) -> Layout:
         except OSError as exc:
             raise LayoutError(f"{path}: cannot be read -- {exc}") from None
         except UnicodeDecodeError as exc:
-            raise LayoutError(f"{path}: not UTF-8 text ({exc.reason} at byte "
-                              f"{exc.start}) -- save it as UTF-8") from None
+            raise LayoutError(f"{path}: {unread_words(exc)}") from None
         return parse(text, str(path))
     return parse(shipped_text(), str(SHIPPED))
 
@@ -178,7 +177,7 @@ def parse(text: str, source: str) -> Layout:
     try:
         doc = json.loads(text)
     except ValueError as exc:
-        raise refuse(f"not JSON -- {exc}") from None
+        raise refuse(unread_words(exc)) from None
     if not isinstance(doc, dict):
         raise refuse("the file is not a JSON object")
     try:

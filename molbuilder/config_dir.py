@@ -537,6 +537,10 @@ def session_runtime_dir() -> Optional[Path]:
 _CHANNEL_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+#: What a channel name is, in the words every refusal of one says.
+CHANNEL_NAME_RULE = "letters, digits, '-' and '_', up to 64"
+
+
 def is_channel_name(name) -> bool:
     """Is ``name`` a channel name a description may carry and the channel
     file may hold?"""

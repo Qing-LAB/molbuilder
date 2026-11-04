@@ -932,9 +932,10 @@ correction like any method.** Whether the method is a density functional is
 one answer — the `method` item, `DFT` or `HF` (`PySCFConfig.is_dft`) — asked by
 every deck line and check that depends on it
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.10). Under Hartree–Fock
-the deck sets no `mf.xc` and no `mf.grids.level`,
-`prep` warns about a functional changed from its default — on **both kinds**
-— and the grid advisory says nothing. The dispersion item is applied as
+the deck sets no `mf.xc` and no `mf.grids.level`, and both settings wait on
+`DFT` in the catalogue (`active_when`, `engines/template.md` § 5): the form
+greys them, and the settings check says once that either one changed from its
+default enters nothing — on **both kinds**. The grid advisory says nothing. The dispersion item is applied as
 written: Hartree–Fock has no electron correlation at all, so it misses
 London dispersion entirely; D3 and D4 carry damping parameters fitted for it
 (HF-D3(BJ) is a standard method); and PySCF applies `mf.disp` to an HF

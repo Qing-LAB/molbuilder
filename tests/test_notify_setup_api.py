@@ -302,7 +302,7 @@ def test_a_malformed_file_is_REPORTED_not_hidden(client):
     path.write_text("{not json")
     got = c.get(CH).get_json()
     assert got["channels"] == []
-    assert "not valid JSON" in got["problem"]
+    assert "invalid JSON" in got["problem"]
 
 
 def test_the_old_single_destination_file_is_named_as_such(client):

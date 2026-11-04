@@ -36,25 +36,6 @@
     var configure = _deps.configure;
 
     /**
-     * Extract a strand's CORE 5'->3' sequence, honouring direction markers:
-     *   "ATGC"       -> "ATGC"
-     *   "5'-ATGC-3'" -> "ATGC"      (default direction)
-     *   "3'-ATGC-5'" -> "CGTA"      (reversed to internal 5'->3')
-     */
-    function _strandCore(str) {
-        var s = String(str == null ? "" : str).trim();
-        var m = s.match(/^\s*([53])'\s*-\s*([\s\S]*?)\s*-\s*([53])'\s*$/);
-        var core;
-        if (m) {
-            core = m[2].replace(/[^A-Za-z]/g, "").toUpperCase();
-            if (m[1] === "3") core = core.split("").reverse().join("");
-        } else {
-            core = s.replace(/[^A-Za-z]/g, "").toUpperCase();
-        }
-        return core;
-    }
-
-    /**
      * Parse the DNA-panel notation CLIENT-SIDE (mirrors the server's
      * nucleic.parse_dna_notation) so the ACGT check runs on the CORE
      * sequence(s), not the raw "ds,ATGC" / "5'-ATGC-3'" text:
@@ -74,13 +55,13 @@
             var parts = s.split(",");
             return {
                 mode:      "ds",
-                core:      _strandCore(parts[0]),
-                strand2:   parts.length === 2 ? _strandCore(parts[1]) : null,
+                core:      root.molbuilder.panelDeps.strandCore(parts[0]),
+                strand2:   parts.length === 2 ? root.molbuilder.panelDeps.strandCore(parts[1]) : null,
                 twoStrand: true,
                 nParts:    parts.length,
             };
         }
-        return { mode: mode, core: _strandCore(s), strand2: null,
+        return { mode: mode, core: root.molbuilder.panelDeps.strandCore(s), strand2: null,
                  twoStrand: false, nParts: 1 };
     }
 

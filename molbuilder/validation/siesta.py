@@ -45,10 +45,14 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     (`science/chemistry-correctness.md` § 2a.3), ``scalar`` otherwise.  The
     caller reads it off the electronic state.
     """
+    from ..chemistry import names_an_element
     from ..pseudos import (CONVENTIONAL_LIBRARY, PsmlLibError, check_coverage,
                            ERROR_STATUSES, expected_xc_family, file_named_for,
                            psml_sources, resolve_psml_lib)
     labels = list(dict.fromkeys(str(e).strip() for e in struct.elements))
+    # A LABEL NAMING NO ELEMENT is the species check's refusal
+    # (`check_species_labels`), said once: no file would make it run.
+    labels = [el for el in labels if names_an_element(el)]
     found = (psml_sources(labels, dest_dir=dest_dir) if dest_dir is not None
              else dict.fromkeys(labels))
     lacking = [el for el in labels if found[el] is None]
@@ -466,7 +470,7 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
     needs far more vacuum (its image bias decays only as 1/L)."""
     q = int(charge)
     min_vac = _VACUUM_MIN_CHARGED if q else _VACUUM_MIN_NEUTRAL
-    kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
+    kinds = struct.axis_kind
 
     # MANUAL REGIME: an explicit cell IS the box, and vacuum is reference-only
     # (structure-periodicity.md § 6.2).  Reading a vacuum here would report a
@@ -643,8 +647,8 @@ def validate_siesta(struct: Structure, cfg,
     # ONE derivation, `kmesh.mesh_for`.
     from .. import kmesh as _kmesh
     meshes = tuple(m for m in (k_meshes if k_meshes is not None else (
-        _kmesh.mesh_for(cfg, getattr(struct, "axis_kind", None),
-                        kind=calculation),)) if m is not None)
+        _kmesh.mesh_for(cfg, struct.axis_kind, kind=calculation),))
+        if m is not None)
     issues += _kmesh.check(meshes, struct, cell=cell, refused=refused)
 
     # THE BIAS WINDOW'S LINE (`engines/transport.md` § 2a.11, *The levers*):

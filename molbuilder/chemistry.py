@@ -446,11 +446,15 @@ def every_label_resolves(struct: Structure) -> bool:
     over the WHOLE structure -- one unresolvable label leaves no partial
     answer -- so this is all-or-nothing by nature.
     """
-    for el in struct.elements:
-        try:
-            resolve_element(str(el).strip())
-        except KeyError:
-            return False
+    return all(names_an_element(str(el).strip()) for el in struct.elements)
+
+
+def names_an_element(label: str) -> bool:
+    """Does this species label name an element (:func:`resolve_element`)?"""
+    try:
+        resolve_element(label)
+    except KeyError:
+        return False
     return True
 
 

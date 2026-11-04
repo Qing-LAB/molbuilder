@@ -105,7 +105,7 @@ def validate_geometry(struct: Structure,
     # Which axis an image belongs to decides whether it is a defect
     # (structure-periodicity.md 2): only an ISOLATED axis has images that
     # are an artefact of the box.
-    _kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
+    _kinds = struct.axis_kind
 
     # Cell volume vs atom-bounding-volume: warn when the cell is so
     # tight that the molecule fills most of it (= guaranteed

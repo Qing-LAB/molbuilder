@@ -307,8 +307,11 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
         import numpy as np
         box = np.asarray(cell, dtype=float)
         lengths = [float(np.linalg.norm(box[i])) for i in range(3)]
+        # THE ATOMS' SPAN ALONG EACH LATTICE VECTOR, as a share of it: on a
+        # skewed cell a span across the Cartesian axes says nothing of the
+        # room left along the vector.
         pos = np.asarray(getattr(struct, "positions", ()), dtype=float)
-        extent = ((pos.max(axis=0) - pos.min(axis=0)) if pos.size
+        extent = (np.ptp(pos @ np.linalg.pinv(box), axis=0) if pos.size
                   else np.zeros(3))
     for mesh in judged:
         for i, axis in enumerate(mesh.axes):
@@ -359,7 +362,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                     where))
             elif (axis.role == "sampled" and axis.count > 1
                   and lengths is not None):
-                gap = max(0.0, lengths[i] - float(extent[i]))
+                gap = max(0.0, lengths[i] * (1.0 - float(extent[i])))
                 if gap >= VACUUM_HINT_A:
                     out.append(Issue(
                         "warn",
