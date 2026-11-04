@@ -23,28 +23,8 @@ from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
     machine_brief, machine_census, mismatch_phrase, parse_effective_run,
 )
+from ..parse.dirs.record import SETUP_HEAD, read_part
 
-
-
-def _read(path: Path, *, head: Optional[int] = None) -> str:
-    """Whole file, or its first ``head`` bytes -- where a SIESTA ``.out``
-    announces its launch (the rank count)."""
-    try:
-        if head is not None:
-            with path.open("rb") as fh:
-                return fh.read(head).decode("utf-8", "replace")
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-#: How far into a SIESTA ``.out`` the setup lines can sit.  The launch
-#: header (``* Running on N nodes``) is in the first KB, but the parallel
-#: grid and the eigensolver are printed AFTER the basis and pseudopotential
-#: report -- ~49 KB into a real 42-atom run, and further for a bigger
-#: system.  A 16 KB head window (the one that reads the rank count) sees
-#: neither, so this is a deliberately generous but still bounded read.
-_SETUP_WINDOW = 512 * 1024
 
 
 def deck_item(deck: Path, item: str, engine: str) -> Optional[str]:
@@ -83,26 +63,9 @@ def parse_point(label: str, run, device: str,
     # The wrapper's three instruments -- the SCF-timing tee, the monitor
     # log and the utilisation samples -- are registered parsers
     # (`parse.md` § 5c).
-    from molbuilder.parse import parse as _parse
+    from molbuilder.parse.instruments import metrics_of as _metrics
     from molbuilder.parse.instruments import utilisation as _utilisation
     from ..runfiles import ROLE_MONITOR_LOG, ROLE_UTIL_CSV
-
-    def _metrics(path):
-        """A registered parser's metrics, or ``{}``.
-
-        Fail-soft like every other reader in this module: this is a
-        reporter, and a trial whose instrument file is truncated or
-        missing simply tells us less.
-        """
-        if path is None:
-            return {}
-        from molbuilder.parse.errors import ParseError
-        try:
-            return dict(_parse(Path(path)).metrics)
-        except (OSError, ValueError, ParseError):
-            # A REPORTER DEGRADES on a file it cannot read; a defect in a
-            # reader is not caught.
-            return {}
 
     # SECONDS PER ITERATION from the trial's stamped SCF rows, by the one
     # rule every surface uses (`scf_timing_rows.timing_of`, `model/parse.md`
@@ -130,7 +93,7 @@ def parse_point(label: str, run, device: str,
     # The .out answers THE RANK COUNT -- the "Running on N nodes" launch
     # banner, in the first KB; how the trial ended is the run door's.
     out = run.stdout if run is not None else None
-    out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
+    out_head = read_part(out, head=SETUP_HEAD)
     # THE TRIAL'S STATE IS THE RUN DOOR'S (`runs.state_of`, the one
     # rule every surface says): `finished` only when the job exited 0 after
     # its output ended, never "completed" read off the output alone -- a
@@ -150,7 +113,7 @@ def parse_point(label: str, run, device: str,
     # must not yield a row whose label describes a run that never happened.
     _wlog = run.session_log if run is not None else None
     effective = parse_effective_run(out_head,
-                                    _read(_wlog) if _wlog is not None else "")
+                                    read_part(_wlog))
     deck = run.deck if run is not None else None
     alg = (deck_item(deck, "diag_algorithm", engine) if deck is not None
            else None)
@@ -255,7 +218,7 @@ def _winner_mechanism(calc, jobset, label: str) -> Dict:
         return {}
     run = _trial_run(calc, jobset, label)
     deck = run.deck if run is not None else None
-    text = _read(deck) if deck is not None else ""
+    text = read_part(deck)
     if not text:
         return {}
     mech: Dict = {}

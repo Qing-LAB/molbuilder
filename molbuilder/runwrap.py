@@ -3400,6 +3400,9 @@ PYSCF_COMPANIONS: Dict[str, str] = {
     "pyscf_vibration.py":       "molbuilder.spectra.pyscf_vibration",
     "normal_modes.py":          "molbuilder.spectra.normal_modes",
     "spectra_sidecar.py":       "molbuilder.sidecars.spectra",
+    # THE RESULT'S RECORD, one with the SIESTA finish's: the script builds its
+    # whole shape and each mode by it (`engines/vibration.md` § 6.5).
+    "results.py":               "molbuilder.spectra.results",
     # THE RESULT'S TWO FILES (engines/vibration.md § 6.10.5): the data
     # file's writer, the variable record it shares with the transport data
     # file, the one atomic writer both files go through, and the catalogue

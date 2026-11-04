@@ -83,7 +83,7 @@ def engine_label(cfg) -> str:
 from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
 from ..envs.hints import fix_cmd as _fix_cmd   # noqa: E402
 
-from ..atom_permutation import MAP_KEY
+from ..deck_record import BUILD_NAME
 from ..runfiles import PYSCF_BUNDLE
 from ..spectra.methods import frequency_range_words
 from ..spectra.results import (PHASE_COMPLETE, PHASE_EMPTY,
@@ -375,7 +375,7 @@ def _emit_constants(struct: Structure,
     # a stub string.  Recorded in spectra.json under molbuilder_version
     # for run-provenance auditing (which release rendered this script).
     from .. import __version__ as _MB_VERSION
-    out.append(f"MOLBUILDER_VERSION = {_MB_VERSION!r}")
+    out.append(f"{BUILD_NAME} = {_MB_VERSION!r}")
     out.append("")
     return out
 
@@ -546,51 +546,58 @@ def _emit_initial_state() -> List[str]:
     out.append("    import pyscf as _pyscf")
     out.append("    ENGINE_VERSION = getattr(_pyscf, '__version__', '?')")
     out.append("")
-    out.append("state = {")
-    out.append("    'schema_version':     SCHEMA_VERSION,")
-    out.append("    'engine':             'pyscf',")
-    out.append("    'engine_version':     ENGINE_VERSION,")
-    out.append("    'molbuilder_version': MOLBUILDER_VERSION,")
-    out.append("    'timestamp':          datetime.now(timezone.utc).isoformat()"
+    # THE RESULT'S SHAPE, FROM THE FIRST WRITE (`engines/vibration.md` § 6.5):
+    # the one record's own (`spectra.results.SpectraResults`), which the SIESTA
+    # finish builds too, so the file reads from its first write, during the
+    # relaxation, as § 4.2 promises.  The script fills it phase by phase.
+    out.append("state = _mb_SpectraResults(")
+    out.append("    schema_version=SCHEMA_VERSION,")
+    out.append("    engine='pyscf',")
+    out.append("    engine_version=ENGINE_VERSION,")
+    out.append(f"    molbuilder_version={BUILD_NAME},")
+    out.append("    timestamp=datetime.now(timezone.utc).isoformat()"
                ".replace('+00:00', 'Z'),")
-    out.append("    'n_atoms_total':      N_ATOMS,")
-    out.append("    'free_atom_idxs':     FREE_ATOM_IDXS,")
-    # LISTED BY USER INDEX, its engine index the same -- PySCF sorts nothing
-    # (`model/overview.md` § 2.2b, F2: a result for the user).
-    out.append(f"    {MAP_KEY!r}:     _mb_AtomIndexMap.of_engine_record("
-               "None, N_ATOMS).as_listed_by_user().to_dict(),")
+    out.append("    n_atoms_total=N_ATOMS,")
+    out.append("    free_atom_idxs=FREE_ATOM_IDXS,")
     # THE HELD ATOMS, as their own list until a geometry exists; the
     # structure states them from the equilibrium write on
     # (engines/vibration.md 6.10.2).
-    out.append("    'frozen_atom_idxs':   FROZEN_ATOM_IDXS,")
-    # ABSENT WHOLE UNTIL THE SCF STATES IT (`engines/vibration.md` § 6.5: a
-    # missing number is absent, never zero; the block travels whole or not
-    # at all) -- so the file reads from its first write, during the
-    # relaxation, as § 4.2 promises.  Placeholders (0.0, [], 0) stood here
-    # until 2026-10-18 and the reader refused every in-progress file.
-    out.append("    'equilibrium':        {")
-    out.append("        'scf_energy_eh':  None,")
-    out.append("        'mo_energies_eh': None,")
-    out.append("        'homo_idx':       None,")
-    out.append("    },")
-    out.append("    'modes':                    [],")
-    out.append("    'selected_mode_idxs_1based': [],")
-    out.append("    'config':                    CONFIG,")
-    out.append("    'methods_text':              METHODS_TEXT,")
-    out.append("    'bibliography_keys':         BIBLIOGRAPHY_KEYS,")
-    out.append("    'phase_frequencies':         PHASE_EMPTY,")
-    out.append("    'phase_raman':               (PHASE_EMPTY if COMPUTE_RAMAN else PHASE_NOT_REQUESTED),")
-    out.append("    'phase_ir':                  (PHASE_EMPTY if COMPUTE_IR else PHASE_NOT_REQUESTED),")
-    out.append("    'raman_route':               'none',")
-    out.append("    'raman_fd_step_ang':         None,")
-    out.append("    'phase_es':                  (PHASE_EMPTY if ES_MODE_SELECTION != 'skip' else PHASE_NOT_REQUESTED),")
-    out.append("    'engine_metadata':           {},")
+    out.append("    frozen_atom_idxs=FROZEN_ATOM_IDXS,")
+    # LISTED BY USER INDEX, its engine index the same -- PySCF sorts nothing
+    # (`model/overview.md` § 2.2b, F2: a result for the user).
+    out.append("    atom_index_map=_mb_AtomIndexMap.of_engine_record("
+               "None, N_ATOMS).as_listed_by_user().to_dict(),")
+    out.append("    equilibrium_scf_eh=None,")
+    out.append("    equilibrium_mo_energies_eh=None,")
+    out.append("    equilibrium_homo_idx=None,")
+    out.append("    modes=[],")
+    out.append("    selected_mode_idxs_1based=[],")
+    out.append("    config=CONFIG,")
+    out.append("    methods_text=METHODS_TEXT,")
+    out.append("    bibliography_keys=BIBLIOGRAPHY_KEYS,")
+    out.append("    phase_frequencies=PHASE_EMPTY,")
+    # THE RELAXATION IS A TRACKED PHASE; one the description never asked for
+    # -- the structure stated relaxed -- is `not requested` from the first
+    # write (vibration.md 4.9).
+    out.append("    phase_relaxation=(PHASE_NOT_REQUESTED if ALREADY_RELAXED "
+               "else PHASE_EMPTY),")
+    out.append("    relaxation={'enabled': (not ALREADY_RELAXED),")
+    out.append("                'already_relaxed': ALREADY_RELAXED,")
+    out.append("                'n_steps': 0, 'max_force_eh_bohr': None,")
+    out.append("                'max_force_all_atoms_eh_bohr': None,")
+    out.append("                'converged': None, 'warning': None},")
+    out.append("    phase_raman=(PHASE_EMPTY if COMPUTE_RAMAN else PHASE_NOT_REQUESTED),")
+    out.append("    phase_ir=(PHASE_EMPTY if COMPUTE_IR else PHASE_NOT_REQUESTED),")
+    out.append("    phase_es=(PHASE_EMPTY if ES_MODE_SELECTION != 'skip' else PHASE_NOT_REQUESTED),")
+    out.append("    ir_route='none',")
+    out.append("    raman_route='none',")
     out.append("    # Runtime facts collected by the deck's runtime-facts")
     out.append("    # and GPU-probe blocks (n_threads, gpu name, etc.).  Visible")
     out.append("    # on the /results page so users can verify the run")
     out.append("    # actually used the resources they expected.")
-    out.append("    'runtime_info':              dict(_RUNTIME_INFO),")
-    out.append("}")
+    out.append("    runtime_info=dict(_RUNTIME_INFO),")
+    out.append(").to_dict()")
+    out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("")
     return out
 
@@ -668,13 +675,9 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure,
     # homo_index` is the one implementation and the one the tests call.
     out.append("HOMO_IDX = _mb_homo_index(_mb_as_numpy(mf.mo_occ))")
     out.append("")
-    out.append("state['equilibrium'] = {")
-    out.append("    'scf_energy_eh':  float(E_eq),")
-    out.append("    'mo_energies_eh': _mb_finite_or_none(MO_ENERGIES_EQ),")
-    out.append("    'homo_idx':       HOMO_IDX,")
-    out.append("    # THE MASSES THE MODES ARE WEIGHTED BY, beside the structure (I3).")
-    out.append("    'masses_amu':     MASSES_AMU.tolist(),")
-    out.append("}")
+    out.append("state['equilibrium'] = _mb_equilibrium_block(")
+    out.append("    float(E_eq), _mb_finite_or_none(MO_ENERGIES_EQ), HOMO_IDX,")
+    out.append("    MASSES_AMU.tolist())")
     out.append("# THE STRUCTURE THE RESULT STATES (engines/vibration.md 6.10.1): the")
     out.append("# geometry the Hessian is taken at -- the relaxed one when this deck")
     out.append("# relaxed, the input otherwise (COORDS_EQ_ANG is rebound by the")
@@ -913,34 +916,24 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("#       Dimensionless.  USE FOR: 3D animation in the viewer")
     out.append("#       and the fixed-amplitude electron-phonon probe in Phase 4.")
     out.append("#       Do NOT plug into physical-amplitude formulas.")
-    out.append("modes_payload = []")
-    out.append("for _i, _f in enumerate(FREQ_CM1):")
-    out.append("    _L_canonical = NORM_MODES_CANONICAL[_i]")
-    out.append("    _L_display   = NORM_MODES_DISPLAY[_i]")
-    out.append("    # Serialise each eigenvector exactly once -- _mb_finite_or_none")
-    out.append("    # converts NaN/Inf to JSON-safe None and returns a plain list.")
-    out.append("    _evec_canon_json = _mb_finite_or_none(_L_canonical)")
-    out.append("    _evec_disp_json  = _mb_finite_or_none(_L_display)")
-    out.append("    modes_payload.append({")
-    out.append("        'index_1based':          int(_i + 1),")
-    out.append("        'frequency_cm1':         float(_f),")
-    out.append("        'raman_activity_a4_amu': None,")
-    out.append("        'ir_intensity_km_mol':   None,")
-    out.append("        'dipole_derivative_d_per_ang_amu12': None,")
-    out.append("        'eigenvector_canonical': _evec_canon_json,")
-    out.append("        'eigenvector_display':   _evec_disp_json,")
-    out.append("        'has_imag':              bool(HAS_IMAG[_i]),")
-    out.append("        'electronic_structure':  None,")
-    out.append("    })")
+    # A MODE'S RECORD IS THE ONE RECORD's (`spectra.results.ModeData`), as
+    # the SIESTA finish builds it; the sweeps fill its strengths and probe.
+    out.append("modes_payload = [")
+    out.append("    _mb_ModeData(")
+    out.append("        index_1based=_i + 1,")
+    out.append("        frequency_cm1=_f,")
+    out.append("        raman_activity_a4_amu=None,")
+    out.append("        ir_intensity_km_mol=None,")
+    out.append("        eigenvector_canonical=NORM_MODES_CANONICAL[_i],")
+    out.append("        eigenvector_display=NORM_MODES_DISPLAY[_i],")
+    out.append("        has_imag=HAS_IMAG[_i],")
+    out.append("    ).to_dict() for _i, _f in enumerate(FREQ_CM1)]")
     out.append("state['modes'] = modes_payload")
     out.append("# What was removed, beside what was kept (R7): the count and the")
     out.append("# Cartesian patterns over the free atoms, so a reader can see that")
     out.append("# a mode list of 3*N_FREE - N_RIGID is complete and what the")
     out.append("# difference was.")
-    out.append("state['removed_motions'] = {")
-    out.append("    'count':    N_RIGID,")
-    out.append("    'patterns': [_mb_finite_or_none(_p) for _p in RIGID_PATTERNS],")
-    out.append("}")
+    out.append("state['removed_motions'] = _mb_removed_motions_of(RIGID_PATTERNS)")
     out.append("state['phase_frequencies'] = PHASE_COMPLETE")
     out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("print(f'Phase 2 done: {len(modes_payload)} modes; "
@@ -1374,16 +1367,16 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("    _mos_m = _mos_m[:_n_win] if len(_mos_m) >= _n_win else (")
     out.append("        np.concatenate([_mos_m, np.full(_n_win - len(_mos_m), np.nan)])")
     out.append("    )")
-    out.append("    modes_payload[_mode_pos]['electronic_structure'] = {")
-    out.append("        'amplitude_ang':        float(DISPLACEMENT_AMPLITUDE_ANG),")
-    out.append("        'mo_energies_eq_eh':    _mb_finite_or_none(_mos_eq),")
-    out.append("        'mo_energies_minus_eh': _mb_finite_or_none(_mos_m),")
-    out.append("        'mo_energies_plus_eh':  _mb_finite_or_none(_mos_p),")
-    out.append("        'homo_index_in_window': int(_homo_in_eq),")
-    out.append("        'scf_energy_eq_eh':     float(E_eq),")
-    out.append("        'scf_energy_minus_eh':  float(_mfm.e_tot),")
-    out.append("        'scf_energy_plus_eh':   float(_mfp.e_tot),")
-    out.append("    }")
+    out.append("    modes_payload[_mode_pos]['electronic_structure'] = _mb_ModeElectronicStructure(")
+    out.append("        amplitude_ang=DISPLACEMENT_AMPLITUDE_ANG,")
+    out.append("        mo_energies_eq_eh=_mos_eq,")
+    out.append("        mo_energies_minus_eh=_mos_m,")
+    out.append("        mo_energies_plus_eh=_mos_p,")
+    out.append("        homo_index_in_window=_homo_in_eq,")
+    out.append("        scf_energy_eq_eh=E_eq,")
+    out.append("        scf_energy_minus_eh=_mfm.e_tot,")
+    out.append("        scf_energy_plus_eh=_mfp.e_tot,")
+    out.append("    ).to_dict()")
     out.append("    # Per-mode checkpoint -- live-watch can show ES")
     out.append("    # incrementally as each mode completes.")
     out.append("    state['modes'] = modes_payload")

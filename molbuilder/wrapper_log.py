@@ -24,6 +24,8 @@ none (`job-contracts.md` § 2.6).
 from __future__ import annotations
 
 import re
+import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -72,6 +74,14 @@ NODE_LINE = ("molbuilder: detected phys_cores={phys}, n_sockets={sockets}, "
 RANKS_OMP_LINE = "ranks / omp     : {ranks} ranks x {threads} OMP threads"
 #: The engine's own wall, launch to exit.
 WALL_LINE = "benchmark: {program} wall {seconds}s"
+
+
+def say(level: str, message: str) -> None:
+    """One line of the wrapper's own, from a step the job runs in Python: the
+    run script sends stderr to its session log."""
+    sys.stderr.write(LOG_LINE % (time.strftime(LOG_CLOCK), level, message)
+                     + "\n")
+    sys.stderr.flush()
 
 
 def _pattern(template: str, **groups: str) -> "re.Pattern":

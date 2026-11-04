@@ -53,7 +53,8 @@ try:                                        # inside molbuilder
     from .normal_modes import (display_form, frequencies_cm1,
                                vibrational_modes, vibrational_only_thermo)
     from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
-                          SCHEMA_VERSION, ModeData, SpectraResults)
+                          SCHEMA_VERSION, ModeData, SpectraResults,
+                          removed_motions_of)
     from ..runfiles import TASK_FILE
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import (AtomIndexMap, Permutation,  # type: ignore
@@ -66,7 +67,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from normal_modes import (display_form, frequencies_cm1,
                               vibrational_modes, vibrational_only_thermo)
     from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
-                         SCHEMA_VERSION, ModeData, SpectraResults)
+                         SCHEMA_VERSION, ModeData, SpectraResults,
+                         removed_motions_of)
     from runfiles import TASK_FILE  # type: ignore[no-redef]
 
 def vibrational_analysis(hessian, masses_amu: Sequence[float],
@@ -217,8 +219,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
                           else PHASE_NOT_REQUESTED),
         relaxation=relaxation,
         thermo=thermo,
-        removed_motions={"count": n_rigid,
-                         "patterns": [p.tolist() for p in patterns]},
+        removed_motions=removed_motions_of(patterns),
         hessian_scope=("free" if held_b else "all"),
         n_atoms_in_hessian=len(free_b),
         hessian_density_fit=None,

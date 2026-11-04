@@ -20,16 +20,17 @@ from typing import Any, Dict, List, Optional
 
 try:                                        # inside molbuilder
     from ...constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from ...trajectory_log.keys import (FOOTER_CONCLUDED, FOOTER_ERROR,
-                                        FOOTER_RELAXED)
+    from ...trajectory_log import keys as _k
 except ImportError:                         # beside a job, in mb_monitor.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from keys import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
+    import keys as _k
 
 # ---- The header ---------------------------------------------------------------
-HEADER = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
-ENGINE = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
-RUNTIME = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+HEADER = re.compile("^" + re.escape(_k.LOG_TITLE), re.IGNORECASE)
+ENGINE = re.compile("^" + re.escape(_k.ENGINE_LINE) + r"\s*(\S+)",
+                    re.IGNORECASE)
+RUNTIME = re.compile("^" + re.escape(_k.RUNTIME_LINE)
+                     + r"([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 #: One segment of a convergence key -- DIGIT-FIRST INCLUDED, because the
 #: nested form's first segment is a stage token and those lead with the
 #: zero-padded ordinal (``01_coarse``, `job-contracts.md` § 6.3).  The ONE
@@ -37,33 +38,30 @@ RUNTIME = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 CONV_KEY = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?"
 #: ``# convergence.<leaf>: <v>`` (single-stage) or
 #: ``# convergence.<stage>.<leaf>: <v>`` (staged, #534).
-CONVERGENCE = re.compile(r"^#\s*convergence\.(" + CONV_KEY + r"):\s*(.*)$")
+CONVERGENCE = re.compile("^" + re.escape(_k.CONVERGENCE_LINE)
+                         + "(" + CONV_KEY + r"):\s*(.*)$")
 #: ``# frozen_atoms: 0 3`` -- the atoms the run holds, 0-based in the
 #: structure's own order.  The progress log is the run's own output, so it
 #: states them as a SIESTA run's ``.out`` does in its constraints echo,
 #: and its reader reads them as its own content (`model/parse.md`
 #: § 5.3).  Written by prep's preview and by the script's writer
 #: (`trajectory_log`); absent when the run holds nothing.
-FROZEN_ATOMS = re.compile(r"^#\s*frozen_atoms:\s*(.*)$")
+FROZEN_ATOMS = re.compile("^" + re.escape(_k.FROZEN_ATOMS_LINE) + r"\s*(.*)$")
 #: ``# atom_index_map: {…}`` -- which index the log's atoms are listed by,
 #: and both indices of each, as one JSON object (`model/overview.md`
 #: § 2.2b); written by every writer of a log's start.
-ATOM_INDEX_MAP = re.compile(r"^#\s*atom_index_map:\s*(.*)$")
+ATOM_INDEX_MAP = re.compile("^" + re.escape(_k.ATOM_INDEX_MAP_LINE)
+                            + r"\s*(.*)$")
 
 # ---- The step block -------------------------------------------------------------
-BLOCK_BEGIN = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")
-BLOCK_END = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+end\s*====")
-#: The block's one-value lines, as `trajectory_log.emitter` writes them.
-KIND = "kind:"
-ENERGY = "energy (eV):"
-MAX_FORCE = "max_force (eV/Ang):"
-WALL_TIME = "wall_time:"
-SCF_HISTORY_BEGIN = "scf_history begin"
-SCF_HISTORY_END = "scf_history end"
-#: The ``kind`` of the step-0 block the writer puts down before the run
-#: starts (`trajectory_log`: prep seeds it, the emitter writes it on
-#: construction) -- a preview of the input, not a step the run took.
-PREVIEW_KIND = "initial_preview"
+BLOCK_BEGIN = re.compile(re.escape(_k.STEP_BEGIN).replace(r"\{\}", r"(\d+)"))
+BLOCK_END = re.compile(re.escape(_k.STEP_END).replace(r"\{\}", r"(\d+)"))
+#: The block's lines, the words the writer writes them in.
+KIND, ENERGY, MAX_FORCE, WALL_TIME = (_k.KIND, _k.ENERGY, _k.MAX_FORCE,
+                                      _k.WALL_TIME)
+COORDINATES, FORCES = _k.COORDINATES, _k.FORCES
+SCF_HISTORY_BEGIN, SCF_HISTORY_END = _k.SCF_HISTORY_BEGIN, _k.SCF_HISTORY_END
+PREVIEW_KIND = _k.PREVIEW_KIND
 #: EVERY STEP OF THE LOG MOVES THE GEOMETRY: a block is written when a
 #: geometry step ends -- an optimization's, or the relaxation a vibration
 #: runs first; the Hessian after it writes none (`run-reports.md` § 2.2).
@@ -72,10 +70,11 @@ STEPS_MOVE_GEOMETRY = True
 
 # ---- The footer -----------------------------------------------------------------
 #: Rendered from the log's own vocabulary (`trajectory_log.keys`).
-ERROR = re.compile("^" + re.escape(FOOTER_ERROR) + r"\s*(.+)$", re.IGNORECASE)
-CONCLUDED = re.compile("^" + re.escape(FOOTER_CONCLUDED) + r"\s*(.+)$",
+ERROR = re.compile("^" + re.escape(_k.FOOTER_ERROR) + r"\s*(.+)$",
+                   re.IGNORECASE)
+CONCLUDED = re.compile("^" + re.escape(_k.FOOTER_CONCLUDED) + r"\s*(.+)$",
                        re.IGNORECASE)
-RELAXED = re.compile("^" + re.escape(FOOTER_RELAXED) + r"\s*(yes|no)\s*$",
+RELAXED = re.compile("^" + re.escape(_k.FOOTER_RELAXED) + r"\s*(yes|no)\s*$",
                      re.IGNORECASE)
 
 

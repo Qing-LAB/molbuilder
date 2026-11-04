@@ -37,7 +37,6 @@ what it is"*).
 from __future__ import annotations
 
 import os
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,11 +52,13 @@ try:                                        # inside molbuilder
     # happens to be importable, an absolute import would bind this file to
     # the package while the monitor reads with the shipped copies -- two
     # versions of one reader in one process.
+    from ...monitor_log import MONITOR_ENDED_LINE
     from ... import runfiles as _rf
     from ... import runrecord as _rr
     from ... import wrapper_log as _wl
     from ..engines import _run_ending as _re
 except ImportError:                         # beside a job, as the monitor's
+    from monitor_log import MONITOR_ENDED_LINE
     import runfiles as _rf
     import runrecord as _rr
     import wrapper_log as _wl
@@ -143,21 +144,9 @@ FINISH_CANNOT_LOAD = "finish cannot load"
 NO_ENV_PYTHON = "no env python"
 
 
-#: The monitor log's closing record of a run whose process has gone
-#: (`execution/run-reports.md` § 2.5) -- written by the monitor, which
-#: imports it from here, and read by :func:`_monitor_ended`.
-MONITOR_ENDED = "[MONITOR] job ended"
-#: That record as its line reads -- ``[<time>] [MONITOR] job ended (<why>);
-#: ...`` -- its time, the run's end (`run-reports.md` § 2.5), and its words:
-#: THE ONE READING of the line, which :func:`_monitor_ended` and the monitor
-#: log's parser (`parse/instruments/monitor.py`, ``ended_at``) ask.
-MONITOR_ENDED_LINE = re.compile(r"^\[([^\]]+)\]\s+" + re.escape(MONITOR_ENDED)
-                                + r"\s*\(([^)]*)\)")
-
-
 def _monitor_ended(run_dir: Path, basename: str) -> bool:
     """Did the run's monitor see its process go: its log's closing record,
-    :data:`MONITOR_ENDED`?
+    :data:`monitor_log.MONITOR_ENDED`?
 
     What a FORCED STOP leaves when the monitor outlives it: a walltime,
     ``scancel`` or a kill never reaches the wrapper's main line, so no
@@ -772,6 +761,7 @@ def _build_status(out_paths: List[Path],
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.monitor_companions`).
 TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
+                "molbuilder.monitor_log",
                 "molbuilder.runfiles",
                 "molbuilder.runrecord",
                 "molbuilder.wrapper_log")

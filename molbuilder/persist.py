@@ -276,9 +276,16 @@ def write_json(path, obj: Any, *, mode: Optional[int] = None) -> Path:
 def sha256_of(path) -> str:
     """The sha256 of the file at ``path``, hex -- the one digest a record
     states of a file it names (a run of points' index: each call's deck
-    and coordinates, `engines/vibration.md` § 5.11 § 7)."""
-    from pathlib import Path
-    return sha256_of_bytes(Path(path).read_bytes())
+    and coordinates, `engines/vibration.md` § 5.11 § 7), and a checkpoint of
+    what it stores.  Read in chunks: the files a checkpoint stores are the
+    large ones, and a folder of density matrices would otherwise need as much
+    memory as it needs disk."""
+    import hashlib
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def sha256_of_bytes(data: bytes) -> str:

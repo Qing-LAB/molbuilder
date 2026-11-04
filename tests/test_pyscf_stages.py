@@ -225,32 +225,50 @@ def test_both_engines_build_a_ladder_through_the_same_shape():
         assert not any("restart" in x.overrides for x in p + s)
 
 
-def test_a_field_the_structure_reader_retires_is_no_difference(
-        tmp_path, monkeypatch):
-    """A PySCF deck carries its structure as the structure reader's payload
-    (`pyscf.input.SIDECAR_NAME`).  A field that reader retires --
-    `selection_rules`, which 2.65.7 still wrote, empty -- and the record's
-    version number (16 then, 17 now) say nothing of what PySCF computes, so
-    the deck a run ran under 2.65.7 and the deck its stage renders now are
-    the same calculation (`execution/job-request.md` § 5–6: *the test is the
-    engine's input*).  THE SILENT FAILURE: every PySCF
-    stage launched before the field retired refused at its next prep for
-    its job request, over a line that changed nothing."""
+def _as_2_65_7_wrote_it(now):
+    """The same structure, at version 16, a field the structure reader retires
+    in it: `selection_rules`, which 2.65.7 still wrote, empty."""
     import ast
-    from molbuilder.deck_record import same_calculation
     from molbuilder.pyscf.input import SIDECAR_NAME
-    from molbuilder.runfiles import deck_role
-    from support.road import prepared_here
-    _bundle, run, names = prepared_here(tmp_path, monkeypatch,
-                                        "conda activate", engine="pyscf")
-    now = (run / names.name(deck_role("pyscf"))).read_text()
     head = f"{SIDECAR_NAME} = "
     line = next(ln for ln in now.splitlines() if ln.startswith(head))
     payload = ast.literal_eval(line[len(head):])
     assert "selection_rules" not in payload
-    # AS 2.65.7 WROTE IT: the same structure, at version 16, the retired
-    # field in it.
-    ran = now.replace(line, head + repr({**payload, "schema_version": 16,
-                                         "selection_rules": {}}))
+    return now.replace(line, head + repr({**payload, "schema_version": 16,
+                                          "selection_rules": {}}))
+
+
+def _as_another_release_wrote_it(now):
+    """The line a vibration script names the release that wrote it by, for its
+    result (`deck_record.BUILD_NAME`)."""
+    from molbuilder import __version__
+    from molbuilder.deck_record import BUILD_NAME
+    line = f"{BUILD_NAME} = {__version__!r}"
+    assert line in now
+    return now.replace(line, f"{BUILD_NAME} = '0.0.0'")
+
+
+@pytest.mark.parametrize(
+    "calculation, stage, as_ran",
+    [("optimization", "coarse", _as_2_65_7_wrote_it),
+     ("vibration", "freq", _as_another_release_wrote_it)],
+    ids=["a field the structure reader retires", "the release that wrote it"])
+def test_what_says_nothing_of_the_computation_is_no_difference(
+        tmp_path, monkeypatch, calculation, stage, as_ran):
+    """`execution/job-request.md` § 5–6: *the test is the engine's input*.  A
+    PySCF deck carries its structure as the structure reader's payload, and a
+    vibration's names the release that wrote it; neither a retired field, nor
+    the record's version number, nor the release says what PySCF computes.
+    THE FAILURE: a launched PySCF stage refused when prepared again for its job
+    request, over a line that changed nothing -- every vibration, at every
+    version move."""
+    from molbuilder.deck_record import same_calculation
+    from molbuilder.runfiles import deck_role
+    from support.road import prepared_here
+    _bundle, run, names = prepared_here(
+        tmp_path, monkeypatch, "conda activate", calculation=calculation,
+        stage=stage, engine="pyscf")
+    now = (run / names.name(deck_role("pyscf"))).read_text()
+    ran = as_ran(now)
     assert ran != now
     assert same_calculation("pyscf", ran, now) == []

@@ -27,6 +27,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from molbuilder.monitor_log import PEAK_KERNEL, PEAK_SAMPLED
+
 
 def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
     """Merge a `monitor-log` result's metrics over a `util-csv` result's.
@@ -57,9 +59,9 @@ def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
     sampled = out.pop("mem_peak_sampled_gb", None)
     kernel = mon.get("mem_peak_kernel_gb")
     if kernel is not None:
-        out["mem_peak_gb"], out["mem_peak_from"] = kernel, "kernel counter"
+        out["mem_peak_gb"], out["mem_peak_from"] = kernel, PEAK_KERNEL
     elif sampled is not None:
-        out["mem_peak_gb"], out["mem_peak_from"] = sampled, "largest sample"
+        out["mem_peak_gb"], out["mem_peak_from"] = sampled, PEAK_SAMPLED
     cpu = mon.get("stated_cpu_mean_pct")
     gpu = mon.get("stated_gpu_sm_mean_pct")
     if cpu is None and gpu is None:

@@ -49,8 +49,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
-# TWO WAYS, because this module travels beside the SIESTA finish
-# (`runwrap.VIBRATION_COMPANIONS`).
+# TWO WAYS, because this module travels beside the SIESTA finish and the PySCF
+# script (`runwrap.VIBRATION_COMPANIONS`, `PYSCF_COMPANIONS`).
 try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
     from .normal_modes import display_form
@@ -151,6 +151,15 @@ PHASE_NOT_REQUESTED = "not requested"
 
 _VALID_PHASE_STATES = (PHASE_EMPTY, PHASE_RUNNING, PHASE_COMPLETE,
                        PHASE_NOT_REQUESTED)
+
+
+def finite_or_none(values):
+    """``values`` -- orbital energies -- as a list, each NaN or infinity as
+    ``None``: what a result holds where one is not finite
+    (`engines/vibration.md` § 6.4), since
+    `sidecars.spectra.write_spectra_payload` refuses one."""
+    return [float(x) if math.isfinite(x) else None
+            for x in np.asarray(values, dtype=float)]
 
 
 def _reject_complex_then_asarray(value, *, field: str) -> np.ndarray:
@@ -490,9 +499,11 @@ class ModeElectronicStructure:
         :func:`from_dict` is byte-equal modulo float formatting."""
         return {
             "amplitude_ang":        float(self.amplitude_ang),
-            "mo_energies_eq_eh":    self.mo_energies_eq_eh.tolist(),
-            "mo_energies_minus_eh": self.mo_energies_minus_eh.tolist(),
-            "mo_energies_plus_eh":  self.mo_energies_plus_eh.tolist(),
+            # A DISPLACED WINDOW SHORTER THAN THE EQUILIBRIUM'S is padded with
+            # NaN by the script: written null (`engines/vibration.md` § 6.4).
+            "mo_energies_eq_eh":    finite_or_none(self.mo_energies_eq_eh),
+            "mo_energies_minus_eh": finite_or_none(self.mo_energies_minus_eh),
+            "mo_energies_plus_eh":  finite_or_none(self.mo_energies_plus_eh),
             "homo_index_in_window": int(self.homo_index_in_window),
             "scf_energy_eq_eh":     float(self.scf_energy_eq_eh),
             "scf_energy_minus_eh":  float(self.scf_energy_minus_eh),
@@ -780,6 +791,25 @@ def motion_share_by_element(elements: List[str],
 # --------------------------------------------------------------------- #
 
 
+def equilibrium_block(scf_energy_eh, mo_energies_eh, homo_idx,
+                      masses_amu=None) -> Dict[str, Any]:
+    """The result's equilibrium block (`engines/vibration.md` § 6.2): its
+    energy subgroup, which travels whole or not at all, and the masses the
+    modes are weighted by, beside the structure -- stated where they are
+    known."""
+    return {"scf_energy_eh": scf_energy_eh, "mo_energies_eh": mo_energies_eh,
+            "homo_idx": homo_idx,
+            **({"masses_amu": masses_amu} if masses_amu is not None else {})}
+
+
+def removed_motions_of(patterns) -> Dict[str, Any]:
+    """What the harmonic analysis removed before diagonalising, as the result
+    states it (`engines/vibration.md` § 6.2): the count and the Cartesian
+    patterns over the free atoms -- both engines' record."""
+    rows = [np.asarray(p, dtype=float).tolist() for p in patterns]
+    return {"count": len(rows), "patterns": rows}
+
+
 @dataclass(eq=False)
 class SpectraResults:
     """Engine-agnostic result of a Spectra run.
@@ -845,7 +875,8 @@ class SpectraResults:
     #:   "charges"           -- SIESTA: the force-constant run's partial
     #:                          charges, stored; the infrared derived from
     #:                          them on request (`spectra.infrared`);
-    #:   "none"              -- IR was not requested.
+    #:   "none"              -- no route has produced it: not requested, or
+    #:                          on PySCF, before its Hessian.
     #: Older sidecars predate the field and parse as "" -- absence of a
     #: record, which the viewer must not render as a claim either way.
     ir_route:                  str = ""
@@ -862,8 +893,9 @@ class SpectraResults:
     #:                          -dQ along each picked mode, the strength
     #:                          derived on request at a laser
     #:                          (`spectra.raman`);
-    #:   "none"              -- Raman was not requested, or the engine
-    #:                          computes no intensities.
+    #:   "none"              -- Raman was not requested, the engine computes
+    #:                          no intensities, or on PySCF, before its sweep
+    #:                          has ended.
     #: Older sidecars parse as "" -- absence of a record.
     raman_route:               str = ""
     #: The step of that difference, in Angstrom, when the route ran.
@@ -1283,18 +1315,17 @@ class SpectraResults:
                else {"frozen_atom_idxs":
                      [int(i) for i in self.frozen_atom_idxs]}),
 
-            "equilibrium": {
-                "scf_energy_eh":     (None if self.equilibrium_scf_eh is None
-                                      else float(self.equilibrium_scf_eh)),
-                "mo_energies_eh":    (None if self.equilibrium_mo_energies_eh is None
-                                      else self.equilibrium_mo_energies_eh.tolist()),
-                "homo_idx":          (None if self.equilibrium_homo_idx is None
-                                      else int(self.equilibrium_homo_idx)),
-                # THE MASSES THE MODES ARE WEIGHTED BY stay the analysis's
-                # own, beside the structure (§ 6.10.1).
-                **({"masses_amu":    self.equilibrium_masses_amu.tolist()}
-                   if self.equilibrium_masses_amu is not None else {}),
-            },
+            # THE MASSES THE MODES ARE WEIGHTED BY stay the analysis's own,
+            # beside the structure (§ 6.10.1).
+            "equilibrium": equilibrium_block(
+                (None if self.equilibrium_scf_eh is None
+                 else float(self.equilibrium_scf_eh)),
+                (None if self.equilibrium_mo_energies_eh is None
+                 else self.equilibrium_mo_energies_eh.tolist()),
+                (None if self.equilibrium_homo_idx is None
+                 else int(self.equilibrium_homo_idx)),
+                (None if self.equilibrium_masses_amu is None
+                 else self.equilibrium_masses_amu.tolist())),
 
             # THE DERIVED VALUES ride WITH the modes, through the one
             # derivation (`spectra.derived`): the activity classes -- a

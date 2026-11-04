@@ -663,7 +663,7 @@ flowchart LR
   report sent at 3 a.m. cannot say different things about one file.
 * **Stdlib only, and it travels.** The grammars, the passes, `_section_rules`,
   `scf_timing_rows`, `_run_ending`, `tbtrans` (TBtrans's loop in words, § 5d.5),
-  `wrapper_log` and `dirs/job.py` import
+  `wrapper_log`, `monitor_log` and `dirs/job.py` import
   nothing of ours but each other, `runfiles`, `identity`, `report_fields` (the
   span rule's words), `engine_atom_index` (the held atoms' numbering),
   `pyscf/end_lines`, and the floor every reader a catalogue row names is
@@ -672,6 +672,10 @@ flowchart LR
   `mb_monitor.pyz` beside every job (`runwrap.monitor_companions`), each
   importing the next from the package or from the bundle; what the monitor
   reads through them is [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3's.
+* **A format of ours keeps its words in one module.** Its writer renders them and
+  its reader's patterns are built on them, so a word reworded is reworded for its
+  reader too: `trajectory_log.keys` for the progress log, `wrapper_log` for the
+  session log, `monitor_log` for the monitor's two files (§ 5c).
 * **The deck's echo is not the run speaking.** SIESTA copies its input between
   `*** Dump of input data file ***` and `*** End of input data file ***`,
   comments included, and every reader skips it (`siesta_grammar.input_echo_edge`);
@@ -1664,7 +1668,7 @@ nothing here (`record.contributors`).
 | `.out` | `<base>.out`, head and tail; a TBtrans output whole | its row's `record` reader, `parse/engines/siesta_record.out_fields` — its family's grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and its loop's own account (`tbtrans.loop_record`, `tbtrans.loop_words`) | the `.out`'s: SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
 | `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged` · `max_force_free_ev_ang` · `max_force_held_ev_ang` · `stress_voigt_kbar` · `forces_not_computed` (§ 5d.6) |
 | `wrapper-log` | `<base>.runwrap.log`, the run's session log | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
-| `instruments` | the run's timing file (`scf_timing_rows.timing_file`: `.scf-timing.log`, a PySCF run its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
+| `instruments` | the run's timing file (`scf_timing_rows.timing_file`: `.scf-timing.log`, a PySCF run its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments, through `instruments.metrics_of` — a file that does not read tells less, a defect in a reader is not caught — and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `.log` | `<base>.log`, PySCF's own logger | its row's `record` reader, `parse/engines/pyscf.record_fields` — its family's reader, `read_pyscf_sys_info` | the `.log`'s: PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — started_from, a point's own `.continued-from` (`runrecord.read_continued_from`), present only where the marker is — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
 | `concluded` | `<base>.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
@@ -1683,7 +1687,7 @@ mistake in the table, caught before any record is read.
 
 **The bench summary is a different report**, a comparison of trials
 (`web/bench-summary.md`): it builds each trial's row from that trial's files
-through the same readers (the instruments, `utilisation`, the ending) and is
+through the same readers (the instruments' `metrics_of`, `utilisation`, the ending) and is
 not composed from this table *(user, 2026-09-26: a benchmark's presentation is
 different by nature)*.
 

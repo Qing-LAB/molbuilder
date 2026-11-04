@@ -52,7 +52,6 @@ not so shaped is refused rather than read.
 from __future__ import annotations
 
 import sys
-import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Tuple
@@ -70,7 +69,7 @@ try:                                        # inside molbuilder
                                            fc_block_asymmetry,
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
-    from ..parse.engines.siesta_reader import SiestaReader
+    from ..parse.engines.siesta_reader import read_output
     from ..parse.fdf import (GEOMETRY_KEYS, SPIN_COMPONENTS, deck_atoms,
                              fdf_key, parse_fdf_params, read_deck, read_fdf,
                              system_label)
@@ -84,8 +83,7 @@ try:                                        # inside molbuilder
     from ..engine_atom_index import convert_from_engine_numbering, siesta_numbering
     from ..identity import command_stage
     from ..sidecars.spectra import dump_spectra_json
-    from ..wrapper_log import (LOG_CLOCK, LOG_LINE, log_of_run,
-                               read_wrapper_log)
+    from ..wrapper_log import log_of_run, read_wrapper_log, say
     from .methods import (extract_citation_keys, siesta_methods_text,
                           with_siesta_raman_route)
     from .results import (FC_STEP_PATTERN, PHASE_COMPLETE,
@@ -120,7 +118,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
-    from siesta_reader import SiestaReader
+    from siesta_reader import read_output
     from fdf import (GEOMETRY_KEYS,  # type: ignore[no-redef]
                      SPIN_COMPONENTS, deck_atoms, fdf_key, parse_fdf_params,
                      read_deck, read_fdf, system_label)
@@ -134,8 +132,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from engine_atom_index import convert_from_engine_numbering, siesta_numbering
     from identity import command_stage  # type: ignore[no-redef]
     from spectra_sidecar import dump_spectra_json
-    from wrapper_log import (LOG_CLOCK, LOG_LINE,  # type: ignore[no-redef]
-                             log_of_run, read_wrapper_log)
+    from wrapper_log import (log_of_run,  # type: ignore[no-redef]
+                             read_wrapper_log, say)
     from methods import (extract_citation_keys,  # type: ignore[no-redef]
                          siesta_methods_text, with_siesta_raman_route)
     from results import (FC_STEP_PATTERN, PHASE_COMPLETE,  # type: ignore[no-redef]
@@ -335,8 +333,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     cell = (box_of_run(offset) or {}).get("cell")
 
     # THE RUN'S OWN ACCOUNT: FC step 0, and the version SIESTA states.
-    reading = SiestaReader().feed_text(
-        output.read_text(encoding="utf-8", errors="replace")).finish()
+    reading = read_output(output).finish()
     step = reference_frame_of(reading, name=output.name)
     said = tuple(str(r[0]) for r in step["coords"])
     if said != elements:
@@ -649,12 +646,6 @@ def _species_index(deck_text: str) -> Mapping[str, int]:
     return {str(r[2]): int(r[0]) for r in rows}
 
 
-def _reading(output: Path):
-    """SIESTA's one reading pass over ``output`` (`SiestaReader`)."""
-    return SiestaReader().feed_text(
-        Path(output).read_text(encoding="utf-8", errors="replace")).finish()
-
-
 def _call_of(here: _CallHere, index: dict) -> "Call":
     """The call this folder is, as the run's index lists it -- refused by
     name where it lists none."""
@@ -704,7 +695,7 @@ def plan_call(deck) -> None:
             raise FinishError(f"{source_dir.name} left no output in "
                               f"{source_dir}: {call.words()} has no "
                               f"geometry to take")
-        reading = _reading(out)
+        reading = read_output(out).finish()
         steps = reading.get("steps") or []
         last = next((s for s in reversed(steps) if s.get("coords")), None)
         if last is None:
@@ -731,8 +722,8 @@ def plan_call(deck) -> None:
                         else f"its own warm files, from {continued}"
                         if continued is not None else None))
     _rp.write_index(here.index, index)
-    _say("INFO", f"vibration: {call.words()} planned -- coordinates from "
-                 f"{came_from}")
+    say("INFO", f"vibration: {call.words()} planned -- coordinates from "
+        f"{came_from}")
 
 
 def _relaxation_record(output: Path) -> Optional[dict]:
@@ -742,7 +733,7 @@ def _relaxation_record(output: Path) -> Optional[dict]:
     forces and the engine's own Max lines; ``None`` for a run that relaxed
     nothing."""
     from types import SimpleNamespace
-    reading = _reading(output)
+    reading = read_output(output).finish()
     frames = [
         SimpleNamespace(
             structure=Structure(
@@ -991,7 +982,7 @@ def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
            else None)
     if out is None:
         return {}
-    reading = _reading(out)
+    reading = read_output(out).finish()
     facts: dict = {"siesta_version": ((reading.get("runtime_info") or {})
                                       .get("siesta_build") or {})
                    .get("version")}
@@ -1185,8 +1176,8 @@ def finish_run(deck) -> None:
     if got is None:
         # NO FORCE CONSTANTS DONE -- the call failed, or what it builds on
         # did not run -- so no result (§ 5).
-        _say("INFO", "vibration: the force-constant call is short of done "
-                     "-- no result to write")
+        say("INFO", "vibration: the force-constant call is short of done "
+            "-- no result to write")
         return
     run, res = got
     out = here.run_dir / compose(here.label, ROLE_SPECTRA)
@@ -1195,7 +1186,7 @@ def finish_run(deck) -> None:
     optical = _write_optical(here, index, res)
     dump_spectra_json(_with_raman_phase(res, run, optical, PHASE_COMPLETE),
                       out)
-    _say("INFO", f"vibration: the finish wrote {out.name}")
+    say("INFO", f"vibration: the finish wrote {out.name}")
 
 
 def record_call(deck, output, exit_code: int) -> None:
@@ -1216,7 +1207,7 @@ def record_call(deck, output, exit_code: int) -> None:
 
     def _record_failed(what: str, exc: Exception) -> None:
         nonlocal failed
-        _say("ERROR", f"vibration: {what} -- {type(exc).__name__}: {exc}")
+        say("ERROR", f"vibration: {what} -- {type(exc).__name__}: {exc}")
         _rp.stamp_step_error(index, call.rel, what,
                              f"{type(exc).__name__}: {exc}")
         _rp.write_index(here.index, index)
@@ -1240,8 +1231,8 @@ def record_call(deck, output, exit_code: int) -> None:
                                else None)))
                 _rp.write_index(here.index, index)
             except Exception as exc:                    # noqa: BLE001
-                _say("WARN", f"vibration: the relaxation's outcome was not "
-                             f"put in words -- {type(exc).__name__}: {exc}")
+                say("WARN", f"vibration: the relaxation's outcome was not "
+                    f"put in words -- {type(exc).__name__}: {exc}")
     if call.phase == FC and int(exit_code) == 0:
         try:
             # THE ANALYSIS, read once by the run's one reading of its force
@@ -1253,8 +1244,8 @@ def record_call(deck, output, exit_code: int) -> None:
                 # so nothing to analyse; the call's row says why (§ 5).
                 why = next(r["why"] for r in _rp.rows_of(index, here.run_dir)
                            if r["rel"] == call.rel)
-                _say("INFO", f"vibration: {call.words()} is not done -- "
-                             f"{why}: nothing to analyse")
+                say("INFO", f"vibration: {call.words()} is not done -- "
+                    f"{why}: nothing to analyse")
             else:
                 run, res = got
                 out = here.run_dir / compose(here.label, ROLE_SPECTRA)
@@ -1268,9 +1259,9 @@ def record_call(deck, output, exit_code: int) -> None:
                 _rp.note(index, call.rel, modes=len(res.modes),
                          outcome=_force_constants_outcome(res, planned))
                 _rp.write_index(here.index, index)
-                _say("INFO", f"vibration: {len(res.modes)} mode(s) from "
-                             f"{Path(run.fc.path).name}; {planned} optical "
-                             f"call(s) planned; wrote {out.name}")
+                say("INFO", f"vibration: {len(res.modes)} mode(s) from "
+                    f"{Path(run.fc.path).name}; {planned} optical "
+                    f"call(s) planned; wrote {out.name}")
         except Exception as exc:                        # noqa: BLE001
             # THE ANALYSIS FAILED after a clean engine exit: nothing after
             # the force constants can run, and the run's finish says so.
@@ -1290,13 +1281,6 @@ def record_call(deck, output, exit_code: int) -> None:
             _record_failed("the optical calls' record was not written", exc)
     if failed is not None:
         raise failed
-
-
-def _say(level: str, message: str) -> None:
-    """One line in the wrapper's session log, in its own format."""
-    sys.stderr.write(LOG_LINE % (time.strftime(LOG_CLOCK), level, message)
-                     + "\n")
-    sys.stderr.flush()
 
 
 _USAGE = (f"vibration: usage: {VIBRATION_BUNDLE} plan <deck> | record <deck> "
@@ -1326,21 +1310,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             finish_run(args[1])
             return 0
         if verb != "finish" or len(args) != 3:
-            _say("ERROR", _USAGE)
+            say("ERROR", _USAGE)
             return 2
         deck, output = args[1:]
         run, res, out = _finished(deck, output)
     except Exception as exc:                            # noqa: BLE001
         import traceback
-        _say("ERROR", f"vibration: {verb or 'the step'} failed -- "
-                      f"{type(exc).__name__}: {exc}")
+        say("ERROR", f"vibration: {verb or 'the step'} failed -- "
+            f"{type(exc).__name__}: {exc}")
         traceback.print_exc()
         return 1
-    _say("INFO", f"vibration: {len(res.modes)} mode(s) from "
-                 f"{Path(run.fc.path).name}; "
-                 f"{res.removed_motions['count']} whole-body motion(s) "
-                 f"removed before diagonalising; the Hessian over "
-                 f"{res.n_atoms_in_hessian} of {res.n_atoms_total} atoms")
+    say("INFO", f"vibration: {len(res.modes)} mode(s) from "
+        f"{Path(run.fc.path).name}; "
+        f"{res.removed_motions['count']} whole-body motion(s) "
+        f"removed before diagonalising; the Hessian over "
+        f"{res.n_atoms_in_hessian} of {res.n_atoms_total} atoms")
     rx = res.relaxation or {}
     if rx.get("max_force_eh_bohr") is not None:
         f_ev = rx["max_force_eh_bohr"] * HARTREE_BOHR_EV_ANGSTROM_ASE
@@ -1348,12 +1332,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         verdict = ("stationary" if rx.get("converged")
                    else "NOT stationary" if rx.get("converged") is False
                    else "no criterion")
-        _say("INFO" if rx.get("converged") is not False else "WARN",
-             f"vibration: the reference geometry's largest force on the "
-             f"free atoms is {f_ev:.4f} eV/Å"
-             + (f" against {float(crit):g} eV/Å" if crit is not None else "")
-             + f" -> {verdict}")
+        say("INFO" if rx.get("converged") is not False else "WARN",
+            f"vibration: the reference geometry's largest force on the "
+            f"free atoms is {f_ev:.4f} eV/Å"
+            + (f" against {float(crit):g} eV/Å" if crit is not None else "")
+            + f" -> {verdict}")
         if rx.get("converged") is False:
-            _say("WARN", f"vibration: {rx.get('warning')}")
-    _say("INFO", f"vibration: wrote {out.name}")
+            say("WARN", f"vibration: {rx.get('warning')}")
+    say("INFO", f"vibration: wrote {out.name}")
     return 0

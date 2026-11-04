@@ -1,7 +1,8 @@
 """The molbuilder record a generated deck carries -- its fenced blocks, and the one reader of a block's JSON.
 
-MODULE  deck_record (L1, the job as described; the standard library at load,
-        and the order record's class where a deck's is read)
+MODULE  deck_record (L1, the job as described; beside a job the standard
+        library and the progress log's words at load, and the order record's
+        class where a deck's is read)
 ROLE    the grammar of every molbuilder block in a generated file -- the block
         names, the BEGIN/END fences (:func:`begin_marker`,
         :func:`end_marker`, :data:`MARKER_RE`) -- and the ONE reader of a
@@ -17,14 +18,18 @@ TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
 
 `execution/job-contracts.md` § 3.1 owns the grammar.  Its own module because
 a job reads blocks where the template does not exist: the grammar and its
-reader are the part a job needs, and they need nothing but the standard
-library.
+reader are the part a job needs.
 """
 from __future__ import annotations
 
 import json
 import re
 from typing import Any, Dict, List, Optional
+
+try:                                        # inside molbuilder
+    from .trajectory_log.keys import WALL_TIME as _WALL_TIME
+except ImportError:                         # beside a job, in a bundle
+    from keys import WALL_TIME as _WALL_TIME
 
 
 # Block names used in the markers.  Centralised so a typo doesn't
@@ -79,16 +84,22 @@ MARKER_RE = re.compile(
 )
 
 
+#: The name a PySCF vibration script gives the release that wrote it, for its
+#: result (`engines/vibration.md` § 6.2).
+BUILD_NAME = "MOLBUILDER_VERSION"
+
 #: THE STAMPS a file molbuilder writes carries -- WHEN it was written and BY
 #: WHICH BUILD -- which say nothing of what it computes: every ISO date-time
 #: (a deck's and a wrapper's ``generated-at``, the atom-metadata fence's
 #: ``created_at``, the pipeline log's banner), the ``generator-version``
-#: line's value (``git <sha>``, ``unknown`` when git did not answer in time)
-#: and the progress seed's ``wall_time``.
+#: line's value (``git <sha>``, ``unknown`` when git did not answer in time),
+#: the line of a PySCF vibration script naming the release that wrote it
+#: (:data:`BUILD_NAME`), and the progress seed's ``wall_time``.
 _STAMPS = re.compile(
     rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
     rb"|^(?:#[ \t]*generator-version[ \t]).*$"
-    rb"|wall_time: [0-9.]+", re.M)
+    rb"|^" + BUILD_NAME.encode() + rb" = .*$"
+    rb"|" + re.escape(_WALL_TIME.encode()) + rb" [0-9.]+", re.M)
 
 
 def without_stamps(data: bytes) -> bytes:
@@ -308,7 +319,11 @@ def same_calculation(engine: str, a: str, b: str) -> List[str]:
     return list(reading(a, b))
 
 
-__all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle (`runwrap._members`).
+TRAVELS_WITH = ("molbuilder.trajectory_log.keys",)
+
+
+__all__ = ["BUILD_NAME", "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
            "MARKER_RE", "same_calculation",

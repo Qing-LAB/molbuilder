@@ -1,11 +1,13 @@
-"""The trajectory log's VOCABULARY -- the convergence-target keys a
-``.molwatch.log`` header states, their rows as a page says them, and the one
-reader of a parsed block -- standard library only.
+"""The trajectory log's VOCABULARY -- the words of a ``.molwatch.log``'s lines,
+the convergence-target keys its header states, their rows as a page says
+them, and the one reader of a parsed block -- standard library only.
 
 MODULE  trajectory_log.keys (L1; stdlib)
-ROLE    the keys, named once; every producer and reader imports them
-        (`pyscf/input.py`, `jobset/prep.py`, `siesta_grammar.TARGET_LINES`,
-        `parse/contract.py`, the Results tab's rows)
+ROLE    the words and keys, named once; every producer and reader imports them
+        (`emitter.py`, which renders the lines; `molwatch_grammar`, whose
+        patterns are built on the same text; `siesta/input.py`, `pyscf/input.py`,
+        `jobset/prep.py`, `siesta_grammar.TARGET_LINES`, `parse/contract.py`,
+        `deck_record`, the Results tab's rows)
 TRAVELS beside every job's monitor (`runwrap.monitor_companions`: the
         SIESTA grammar reads its echo of these targets with it), beside a
         PySCF deck and a vibration finish (the emitter imports it there) --
@@ -84,6 +86,40 @@ def targets_said(convergence_targets) -> "list":
     return out
 
 
+#: THE LOG'S LINES, each word as it is written: the writer renders these
+#: (`emitter.py`) and the reader's patterns are built on them
+#: (`molwatch_grammar`), so a word reworded is reworded for its reader too.
+#: A line nothing reads back -- ``# job:``, ``step_index:`` -- is the writer's
+#: alone.
+#:
+#: The header's: the title, and each line's opening.
+LOG_TITLE = "# molwatch trajectory log"
+LOG_VERSION = "v1"
+ENGINE_LINE = "# engine:"
+FROZEN_ATOMS_LINE = "# frozen_atoms:"
+ATOM_INDEX_MAP_LINE = "# atom_index_map:"
+RUNTIME_LINE = "# runtime."
+CONVERGENCE_LINE = "# convergence."
+#: The step block's edges, ``{}`` the step's index.
+STEP_BEGIN = "==== molwatch step {} begin ===="
+STEP_END = "==== molwatch step {} end ===="
+#: The block's lines.  Its two tables open with a word, the unit after it.
+KIND = "kind:"
+WALL_TIME = "wall_time:"
+COORDINATES = "coordinates"
+COORDINATES_LINE = f"{COORDINATES} (Ang):"
+ENERGY = "energy (eV):"
+FORCES = "forces"
+FORCES_LINE = f"{FORCES} (eV/Ang):"
+MAX_FORCE = "max_force (eV/Ang):"
+SCF_HISTORY_BEGIN = "scf_history begin"
+SCF_HISTORY_END = "scf_history end"
+#: The ``kind`` of the step-0 block the writer puts down before the run
+#: starts (prep seeds it, the emitter writes it on construction) -- a preview
+#: of the input, not a step the run took.
+PREVIEW_KIND = "initial_preview"
+
+
 #: The progress log's FOOTER, which a PySCF deck's exit hook appends to its
 #: `.molwatch.log` (`pyscf/input.py`) and `molwatch_grammar` reads: the error
 #: line when the run raised, then the concluded line.  Declared here, in the
@@ -101,4 +137,9 @@ FOOTER_RELAXED = "# relaxed:"
 __all__ = ["MAX_FORCE_TOL", "RMS_FORCE_TOL", "MAX_DISPL", "RMS_DISPL",
            "ENERGY_STEP_TOL", "MAX_SCF_ITER", "MAX_GEOM_ITER",
            "LEAF_ROWS", "LEAF_KEYS", "targets_of", "targets_said",
+           "LOG_TITLE", "LOG_VERSION", "ENGINE_LINE", "FROZEN_ATOMS_LINE",
+           "ATOM_INDEX_MAP_LINE", "RUNTIME_LINE", "CONVERGENCE_LINE",
+           "STEP_BEGIN", "STEP_END", "KIND", "WALL_TIME", "COORDINATES",
+           "COORDINATES_LINE", "ENERGY", "FORCES", "FORCES_LINE", "MAX_FORCE",
+           "SCF_HISTORY_BEGIN", "SCF_HISTORY_END", "PREVIEW_KIND",
            "FOOTER_ERROR", "FOOTER_CONCLUDED", "FOOTER_RELAXED"]

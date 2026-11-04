@@ -320,6 +320,28 @@ def vibrational_thermo_grid(freqs_cm1, temperatures_K, e_ref_eh):
     return grid
 
 
+def thermo_block(regime, temperature_K, pressure_atm, grid, *, n_modes,
+                 n_imag_excluded, n_rigid, note):
+    """A RESULT'S THERMOCHEMISTRY BLOCK (`engines/vibration.md` § 6.2), on both
+    routes: the headline is a row of ``grid``, every number of it, at
+    ``temperature_K``."""
+    k = grid["temperatures_K"].index(float(temperature_K))
+    return {
+        "regime": regime,
+        "temperature_K": float(temperature_K),
+        "pressure_atm": pressure_atm,
+        "zpe_eh": grid["zpe_eh"][k],
+        "h_eh": grid["h_eh"][k],
+        "s_eh_k": grid["s_eh_k"][k],
+        "g_eh": grid["g_eh"][k],
+        "n_modes": int(n_modes),
+        "n_imag_excluded": int(n_imag_excluded),
+        "n_rigid_removed": int(n_rigid),
+        "note": note,
+        "grid": grid,
+    }
+
+
 def vibrational_only_thermo(freqs_cm1, has_imag, temperature_K, *,
                             e_ref_eh=None, n_rigid, why):
     """THE VIBRATIONAL-ONLY THERMOCHEMISTRY BLOCK of a result
@@ -334,20 +356,13 @@ def vibrational_only_thermo(freqs_cm1, has_imag, temperature_K, *,
     kept = [float(f) for f, imag in zip(freqs_cm1, has_imag) if not imag]
     grid = vibrational_thermo_grid(kept, thermo_temperatures(temperature_K),
                                    0.0 if e_ref_eh is None else e_ref_eh)
-    k = grid["temperatures_K"].index(float(temperature_K))
     above = "" if e_ref_eh is None else ", above the electronic energy"
-    return {
-        "regime": "vibrational-only",
-        "temperature_K": float(temperature_K),
-        "pressure_atm": None,
-        "zpe_eh": grid["zpe_eh"][k],
-        "h_eh": grid["h_eh"][k],
-        "s_eh_k": grid["s_eh_k"][k],
-        "g_eh": grid["g_eh"][k],
-        "n_modes": len(list(freqs_cm1)),
-        "n_imag_excluded": sum(1 for imag in has_imag if imag),
-        "n_rigid_removed": int(n_rigid),
-        "note": (f"The harmonic VIBRATIONAL contributions of the free atoms "
+    return thermo_block(
+        "vibrational-only", temperature_K, None, grid,
+        n_modes=len(list(freqs_cm1)),
+        n_imag_excluded=sum(1 for imag in has_imag if imag),
+        n_rigid=n_rigid,
+        note=(f"The harmonic VIBRATIONAL contributions of the free atoms "
                  f"at this temperature{above} -- ZPE, U_vib, S_vib and F_vib "
                  f"= ZPE + U_vib - T*S_vib -- the headline and the grid "
                  f"alike, because {why}.  Good for the zero-point and "
@@ -358,9 +373,7 @@ def vibrational_only_thermo(freqs_cm1, has_imag, temperature_K, *,
                  f"cm-1 are anharmonic in practice and carry most of S_vib, "
                  f"so the entropy is the least reliable number; the "
                  f"whole-body motions of the free atoms were removed before "
-                 f"diagonalising"),
-        "grid": grid,
-    }
+                 f"diagonalising"))
 
 
 #: The temperatures the viewer's curves run over -- a documented

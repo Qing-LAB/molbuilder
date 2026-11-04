@@ -535,7 +535,7 @@ class DeckAtoms:
 
 
 def deck_atoms(text: str) -> DeckAtoms:
-    """THE ONE READER OF A DECK'S SPECIES: each row of
+    """THE ATOMS A DECK LISTS, BY THEIR SPECIES: each row of
     ``AtomicCoordinatesAndAtomicSpecies`` names, by its species index, a
     ``(Z, label)`` pair in ``ChemicalSpeciesLabel``, read through
     :func:`read_fdf`.  Asked by the SIESTA vibration's finish beside a job

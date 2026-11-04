@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 # TWO WAYS, because this module travels beside the job in both bundles.
 try:                                        # inside molbuilder
     from ..persist import json_text as _json_text
+    from ..persist import sha256_of_bytes as _sha256_of_bytes
     from ..persist import write_bytes as _write_bytes
     from ..runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,
                             compose as _compose, role_of as _role_of,
@@ -44,6 +45,7 @@ try:                                        # inside molbuilder
     from ..spectra.derived import with_derived as _with_derived
 except ImportError:                         # beside a job, in a bundle
     from persist import json_text as _json_text  # type: ignore[no-redef]
+    from persist import sha256_of_bytes as _sha256_of_bytes  # type: ignore[no-redef]
     from persist import write_bytes as _write_bytes
     from runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,  # type: ignore[no-redef]
                           compose as _compose, role_of as _role_of,
@@ -124,8 +126,9 @@ def write_spectra_payload(payload: dict,
         payload;
       * a non-finite scalar anywhere in the payload raises
         :class:`ValueError` BEFORE any bytes hit disk (``engines/vibration.md``
-        § 6.8: *no NaN*), so the engine is forced to filter or null out
-        NaN/Inf SCF energies explicitly (:func:`finite_or_none`);
+        § 6.8: *no NaN*): what may stand as null is written so by the record
+        (the orbital energies, `spectra.results.finite_or_none`), and anything
+        else stops the writer;
       * the bytes are the one shape of every JSON file molbuilder writes
         (`persist.json_text`): UTF-8 without a BOM, indented, cm⁻¹ / Å
         verbatim, a trailing newline;
@@ -133,7 +136,6 @@ def write_spectra_payload(payload: dict,
         prior version or the new one, never a half-written file; the data
         file states the sha256 of the JSON bytes written with it.
     """
-    import hashlib
     p = Path(os.fspath(path))
     role = _role_of(p.name)
     if role != ROLE_SPECTRA:
@@ -153,7 +155,7 @@ def write_spectra_payload(payload: dict,
     data = _json_text(payload, refuse_non_finite=True).encode("utf-8")
     _write_bytes(p, data)
     _write_spectra_data(payload, p.with_name(_compose(label, ROLE_SPECTRA_DATA)),
-                        json_sha256=hashlib.sha256(data).hexdigest(),
+                        json_sha256=_sha256_of_bytes(data),
                         label=label)
 
 
@@ -163,24 +165,6 @@ def dump_spectra_json(results: "SpectraResults",
     ``to_dict()``, so a results object and a payload built field by field
     (the PySCF script's, phase by phase) are written by the one writer."""
     write_spectra_payload(results.to_dict(), path)
-
-
-def finite_or_none(values):
-    """``values`` -- a number array of any shape -- as nested lists, each
-    NaN or infinity as ``None``: what an optional field of the payload
-    holds where a number is not finite, since :func:`write_spectra_payload`
-    refuses one.  The PySCF vibration script scrubs every array it records
-    with it (imported from ``mb_pyscf.pyz``)."""
-    import math
-
-    import numpy as np
-    a = np.asarray(values, dtype=float)
-    if np.isfinite(a).all():
-        return a.tolist()
-    flat = [float(x) if math.isfinite(x) else None for x in a.flat]
-    if a.ndim == 1:
-        return flat
-    return np.asarray(flat, dtype=object).reshape(a.shape).tolist()
 
 
 # --------------------------------------------------------------------- #
@@ -333,7 +317,6 @@ def parse_spectra_json_dict(d: Dict[str, Any]) -> "SpectraResults":
 __all__ = [
     "write_spectra_payload",
     "dump_spectra_json",
-    "finite_or_none",
     "parse_spectra_json",
     "parse_spectra_json_dict",
     "SpectraJsonError",

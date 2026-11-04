@@ -40,20 +40,13 @@ import numpy as np
 # `mb_pyscf.pyz` beside the job (`runwrap.PYSCF_COMPANIONS`), where the
 # package is not installed.  The force factor is the ASE convention, as the
 # log's reader converts with (`constants` says why there are two).
+# THE VOCABULARY IS `keys` (stdlib, travels with the monitor).
 try:                                        # inside molbuilder
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from .keys import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
+    from . import keys as _k
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from keys import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
-
-
-# THE VOCABULARY IS `keys` (stdlib, travels with the monitor); this writer
-# imports it the two ways a travelling module does.
-try:                                        # inside molbuilder
-    from .keys import LEAF_KEYS as _LEAF_KEYS
-except ImportError:                         # beside a job, in a bundle
-    from keys import LEAF_KEYS as _LEAF_KEYS
+    import keys as _k
 
 
 def _convergence_lines(targets) -> list:
@@ -61,9 +54,9 @@ def _convergence_lines(targets) -> list:
     TOKEN (``{"01_coarse": {key: value}}`` -- digit-first, `job-contracts.md`
     6.3, which the reader's key grammar accepts), as header lines."""
     def flat(prefix, leaf):
-        return [f"# convergence.{prefix}{k}: "
+        return [f"{_k.CONVERGENCE_LINE}{prefix}{k}: "
                 + str(leaf[k]).replace("\n", " ").replace("\r", " ")
-                for k in _LEAF_KEYS if leaf.get(k) is not None]
+                for k in _k.LEAF_KEYS if leaf.get(k) is not None]
     if any(isinstance(v, dict) for v in targets.values()):
         return [line for stage, leaf in targets.items()
                 if isinstance(leaf, dict) for line in flat(f"{stage}.", leaf)]
@@ -86,41 +79,41 @@ def header_and_preview(*, job, engine, generator, elements, coords_ang,
     map's own block (`model/overview.md` § 2.2b) -- one
     ``# atom_index_map: {…}`` line, the log's atoms' indices said.
     """
-    lines = ["# molwatch trajectory log v1",
+    lines = [f"{_k.LOG_TITLE} {_k.LOG_VERSION}",
              f"# generator: {generator}",
-             f"# engine: {engine}",
+             f"{_k.ENGINE_LINE} {engine}",
              f"# job: {job}",
              "# units: energy=eV, force=eV/Ang, coords=Ang",
              f"# created: {time.strftime('%Y-%m-%dT%H:%M:%S')}"]
     if frozen_atoms:
-        lines.append("# frozen_atoms: " + " ".join(
+        lines.append(f"{_k.FROZEN_ATOMS_LINE} " + " ".join(
             str(int(i)) for i in sorted(frozen_atoms)))
     if atom_index_map is not None:
         import json
-        lines.append("# atom_index_map: "
+        lines.append(f"{_k.ATOM_INDEX_MAP_LINE} "
                      + json.dumps(atom_index_map, separators=(",", ":")))
     for k, v in (runtime_info or {}).items():
         # a value cannot break the line-oriented parse
-        lines.append(f"# runtime.{k}: "
+        lines.append(f"{_k.RUNTIME_LINE}{k}: "
                      + str(v).replace("\n", " ").replace("\r", " "))
     if convergence_targets:
         lines += _convergence_lines(convergence_targets)
     lines += ["",
-              "==== molwatch step 0 begin ====",
+              _k.STEP_BEGIN.format(0),
               "step_index: 0",
-              "kind: initial_preview",
-              f"wall_time: {time.time():.3f}",
+              f"{_k.KIND} {_k.PREVIEW_KIND}",
+              f"{_k.WALL_TIME} {time.time():.3f}",
               f"n_atoms: {len(elements)}",
-              "coordinates (Ang):"]
+              _k.COORDINATES_LINE]
     for el, (x, y, z) in zip(elements, coords_ang):
         lines.append(f"   {el:<2s}  {float(x):14.8f}  {float(y):14.8f}  "
                      f"{float(z):14.8f}")
-    lines += ["energy (eV): None",
-              "forces (eV/Ang):",
-              "max_force (eV/Ang): None",
-              "scf_history begin",
-              "scf_history end",
-              "==== molwatch step 0 end ====",
+    lines += [f"{_k.ENERGY} None",
+              _k.FORCES_LINE,
+              f"{_k.MAX_FORCE} None",
+              _k.SCF_HISTORY_BEGIN,
+              _k.SCF_HISTORY_END,
+              _k.STEP_END.format(0),
               ""]
     return "\n".join(lines) + "\n"
 
@@ -213,21 +206,21 @@ class MolwatchEmitter:
         cycles   = list(self._scf_buf)
         idx      = self._step
         with open(self.path, 'a') as fh:
-            fh.write(f"==== molwatch step {idx} begin ====\n")
+            fh.write(f"{_k.STEP_BEGIN.format(idx)}\n")
             fh.write(f"step_index: {idx}\n")
-            fh.write(f"wall_time: {time.time():.3f}\n")
+            fh.write(f"{_k.WALL_TIME} {time.time():.3f}\n")
             fh.write(f"n_atoms: {mol.natm}\n")
-            fh.write("coordinates (Ang):\n")
+            fh.write(f"{_k.COORDINATES_LINE}\n")
             for i, el in enumerate(elements):
                 x, y, z = coords_A[i]
                 fh.write(f"   {el:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}\n")
-            fh.write(f"energy (eV): {e_eV:.8f}\n")
-            fh.write("forces (eV/Ang):\n")
+            fh.write(f"{_k.ENERGY} {e_eV:.8f}\n")
+            fh.write(f"{_k.FORCES_LINE}\n")
             for i, el in enumerate(elements):
                 fx, fy, fz = F[i]
                 fh.write(f"   {el:<2s}  {fx:14.8f}  {fy:14.8f}  {fz:14.8f}\n")
-            fh.write(f"max_force (eV/Ang): {max_f:.8f}\n")
-            fh.write("scf_history begin\n")
+            fh.write(f"{_k.MAX_FORCE} {max_f:.8f}\n")
+            fh.write(f"{_k.SCF_HISTORY_BEGIN}\n")
             fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV)                ddm        wall_time(s)\n")
             for c in cycles:
                 g_str = (f"{c['gnorm']:.8e}" if c['gnorm'] is not None
@@ -244,8 +237,8 @@ class MolwatchEmitter:
                     f"  {c['delta_E']:18.8f}  {g_str:>20s}  {d_str:>16s}"
                     f"  {w_str:>16s}\n"
                 )
-            fh.write("scf_history end\n")
-            fh.write(f"==== molwatch step {idx} end ====\n")
+            fh.write(f"{_k.SCF_HISTORY_END}\n")
+            fh.write(f"{_k.STEP_END.format(idx)}\n")
             fh.write("\n")
             fh.flush()
         self._step += 1
@@ -258,7 +251,8 @@ class MolwatchEmitter:
         log's ending reads as the run's geometry verdict."""
         try:
             with open(self.path, 'a') as fh:
-                fh.write(f"{FOOTER_RELAXED} {'yes' if converged else 'no'}\n")
+                fh.write(f"{_k.FOOTER_RELAXED} "
+                         f"{'yes' if converged else 'no'}\n")
         except Exception:
             pass    # never break the run on a logging issue
 
@@ -286,9 +280,9 @@ class MolwatchEmitter:
                 with open(self.path, 'a') as fh:
                     ts = time.strftime('%Y-%m-%dT%H:%M:%S')
                     if error:
-                        fh.write(f"{FOOTER_ERROR} "
+                        fh.write(f"{_k.FOOTER_ERROR} "
                                  f"{error[-1].replace(chr(10), ' ')}\n")
-                    fh.write(f"{FOOTER_CONCLUDED} {ts}\n")
+                    fh.write(f"{_k.FOOTER_CONCLUDED} {ts}\n")
             except Exception:
                 pass    # never break the person's exit on a logging issue
 

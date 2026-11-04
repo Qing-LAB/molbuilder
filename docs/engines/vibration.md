@@ -660,8 +660,8 @@ every deck uses — `pyscf.input.spec_for(struct, cfg, calculation="vibration")`
 and no molbuilder function is copied into it: the relaxation, the HOMO rule and
 its orbital window, the Hessian rule, the harmonic path and the steps after it
 (the wavenumbers, the display form, the thermochemistry and its grid), the
-infrared strength, the structure the result states, the result's writer and
-its scrub, the mode selector (§ 4.8), the
+infrared strength, the structure the result states, the result's record, its
+writer and its scrub, the mode selector (§ 4.8), the
 progress-log writer and the structure codec it imports from `mb_pyscf.pyz`
 beside it ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3 lists what stays
 written as text). It writes `<label>.spectra.json` beside itself after every
@@ -680,13 +680,15 @@ phase.
 # dipole_derivatives, as_numpy, equilibrium_structure, vibrational_modes,
 # signed_omega, frequencies_cm1, display_form, thermo_temperatures,
 # vibrational_only_thermo, ir_strength_km_mol,
-# write_spectra_payload, finite_or_none, select_modes, stop_if_past_wall,
+# write_spectra_payload, finite_or_none, SpectraResults, ModeData,
+# ModeElectronicStructure, equilibrium_block, removed_motions_of, thermo_block,
+# select_modes, stop_if_past_wall,
 # wall_deadline, AtomIndexMap, MolwatchEmitter, StructureCodec, and the
 # constants module — each from its one home
 
 mol = gto.M(atoms = EVERY atom, held ones included; basis, charge, spin, ...)
 _mb_configure_scf / _mb_configure_theory   # the generated dressers (§ 4.3)
-state = {schema_version: SCHEMA_VERSION, engine: 'pyscf', phases: empty, ...}; write the artifact
+state = SpectraResults(schema_version=SCHEMA_VERSION, engine='pyscf', phases empty, ...).to_dict(); write the artifact
 
 # Phase 0 — relaxation (§ 4.2)
 if not ALREADY_RELAXED:
@@ -701,7 +703,7 @@ check  max|F_a| over a ∈ FREE  <  GEOM_GMAX        # R5 — warns with the num
 HESS, DMU_DR, IR_ROUTE = dipole_derivatives(mf_for_hess, FREE_ATOM_IDXS, want_analytic_ir)
 λ, L, patterns = vibrational_modes(HESS, MASSES_AMU, COORDS_EQ_ANG, FROZEN_ATOM_IDXS, axis_kind)
                                    # cell= is optional and omitted: an isolated molecule
-FREQ_CM1 = sign(λ)·√|λ|·5140.487 ;  state['modes'], state['removed_motions']
+FREQ_CM1 = sign(λ)·√|λ|·5140.487 ;  state['modes'] (ModeData), state['removed_motions'] (removed_motions_of)
 
 # thermochemistry (§ 4.7)
 state['thermo'] = RRHO (nothing held) | vibrational sums above E_eq (atoms held), headline + grid
@@ -783,7 +785,7 @@ thermochemistry, so no policy makes it optional.
 
 It records the **equilibrium block**: `scf_energy_eh` (the SCF's return value,
 stored as is), `mo_energies_eh` (a non-finite entry written as null by
-`sidecars.spectra.finite_or_none`) and `homo_idx` (derived by `homo_index`: sum the
+`spectra.results.finite_or_none`) and `homo_idx` (derived by `homo_index`: sum the
 two spin channels of a 2-D `mo_occ`, take the highest index with occupancy
 above 0.5 — a rule with a branch whose failure would be silent and would
 affect only open-shell work, which is why it was lifted out of inline script
@@ -2751,8 +2753,9 @@ the run asked, and why it carries none is the door's (`infrared_absent`);
 load from what the run stored (the free atoms' charges at the light and
 partition applied; the Raman at the laser applied),
 `analytic`, `finite-difference` PySCF's. A PySCF run states `ir_route` from
-its Hessian on, and `raman_route` once its sweep has ended — `none` while
-it sweeps, beside its phase `running` — so a result reads as asked. **The
+its Hessian on — `none` until then — and `raman_route` once its sweep has ended
+— `none` while it sweeps, beside its phase `running` — so a result reads as
+asked. **The
 probe** is PySCF's alone: by its `es_mode_selection`, which a SIESTA
 `config` never holds, so on SIESTA it is *not computed on this route* — the
 one capability one route lacks. A SIESTA result's `config` carries the
@@ -3214,7 +3217,7 @@ tests can meaningfully guard:
 | key | the engine reports | what molbuilder does | units |
 |---|---|---|---|
 | `equilibrium.scf_energy_eh` | `mf.kernel()`'s return | stored as is | Hartree |
-| `equilibrium.mo_energies_eh` | `mf.mo_energy` | a non-finite entry written as null (`sidecars.spectra.finite_or_none`) | Hartree |
+| `equilibrium.mo_energies_eh` | `mf.mo_energy` | a non-finite entry written as null (`spectra.results.finite_or_none`) | Hartree |
 | `equilibrium.homo_idx` | `mf.mo_occ` | **derived** — `homo_index` (§ 4.3) | index |
 | `equilibrium.positions_ang` | the relaxed (or asserted) geometry | the Hessian's geometry, `COORDS_EQ_ANG` | Å |
 | `equilibrium.masses_amu` | — | **stated** by molbuilder at prep — `chemistry.atomic_mass`, the isotope-averaged standard weights — in the deck (the PySCF deck's `MASSES_AMU`, the SIESTA deck's `vibration` block), and written as the analysis used them (I3) | amu |
@@ -3229,7 +3232,7 @@ tests can meaningfully guard:
 | `engine_metadata.fc_asymmetry_max_ev_ang2` (SIESTA) | the `.FC` file | **derived** — $\max\lvert H_{ij} - H_{ji}\rvert$ over the free block before symmetrisation (§ 5.5) | eV/Å² |
 | `engine_metadata.reference_force_criterion_ev_ang` (SIESTA) | the tolerance the reference geometry was relaxed to (§ 5.5) | **read** by the finish from the deck's `vibration` block — the criterion the verdict used, so the verdict carries its provenance (§ 5.5) | eV/Å |
 | `modes[].electronic_structure.amplitude_ang` | — | the push $A$ of § 4.8, molbuilder's own choice (`displacement_amplitude_ang`), recorded with the probe it produced | Å |
-| `modes[].electronic_structure.mo_energies_*_eh`, `scf_energy_*_eh` | `mf.mo_energy`, $E$ at $\pm A$ | a non-finite entry written as null (`sidecars.spectra.finite_or_none`); the shift and the coupling $\Delta E/(2A)$ are the viewer's arithmetic | Hartree |
+| `modes[].electronic_structure.mo_energies_*_eh`, `scf_energy_*_eh` | `mf.mo_energy`, $E$ at $\pm A$ | an orbital energy not finite written as null (`spectra.results.finite_or_none`), an SCF energy not finite refused by the writer (§ 6.8); the shift and the coupling $\Delta E/(2A)$ are the viewer's arithmetic | Hartree |
 | `removed_motions` | — | **derived** by the one rule (§ 4.5), on both engines | count · (count, n_free, 3) |
 | `thermo` | PySCF's `thermo.thermo` (rrho) or the one home's vibrational sums | the deck computes, the viewer draws; the headline is a row of the grid (§ 4.7) | Eh, Eh/K |
 | `relaxation.max_force_eh_bohr` (PySCF) | the nuclear gradient at the judged geometry | the largest force over the **free** atoms; the all-atom figure beside it | Eh/Bohr |
@@ -3270,6 +3273,15 @@ way `homo_index` did.
 | `engine_metadata` | `{}` | `fc_file`, `fc_displacement_ang`, `fc_range_engine_1based` (SIESTA's numbering), `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` |
 | `partial_charges` | `null` — the infrared is the dipole's own | every atom's charge at every force-constant step (v11): the free atoms' infrared along a direction is derived from them when asked (§ 5.10 ②), `ir_intensity_km_mol` staying `null` |
 | what the viewer shows | the spectrum of the strengths computed, the modes table, the animation, the probe's level diagrams, the thermochemistry | **the mode positions** — one line of one height at each mode, picked like a stick, with no width ([`web/spectrumchart.md`](?doc=web/spectrumchart.md) § 6.2) — and, where the result states its charges, the free atoms' infrared lane and columns ([`web/spectra.md`](?doc=web/spectra.md) § 3.2); on a run with optical calls, the laser and width boxes, the Raman column and lane at the laser named, and the export of its data files ([`web/spectra.md`](?doc=web/spectra.md) § 3.3); the modes table and the animation; the electronic-structure tab says the route's electronic response is the projected density of states along a mode, planned (§ 5.10); the thermochemistry as vibrational contributions ([`web/spectra.md`](?doc=web/spectra.md) § 2, § 9b.3) |
+
+**One record, both engines.** Both build the file by `spectra/results.py`
+(`SpectraResults`, `ModeData`, `ModeElectronicStructure`, `equilibrium_block`,
+`removed_motions_of`) and `spectra/normal_modes.py` (`thermo_block`), the PySCF
+script importing them from `mb_pyscf.pyz`. So a key its route or its phase gives
+no value is stated from the run's first write: `null`, `none` for a route, empty
+for `hessian_scope`, `thermo`, `removed_motions`. Only what the geometry states
+comes later: `structure`, in place of `frozen_atom_idxs` (§ 6.10.2), and
+`equilibrium.masses_amu`.
 
 **A missing number is absent, never zero.** A key an engine cannot produce is
 `null`, and a reader treats it as *not computed* — a different statement from
@@ -3770,9 +3782,9 @@ Each names where it holds and what pins it.
 
 | file | role |
 |---|---|
-| `molbuilder/spectra/normal_modes.py` | `rigid_motions`, `vibrational_modes`, `vibrational_thermo`, `vibrational_thermo_grid`, `vibrational_only_thermo`, `THERMO_GRID_K` — the one harmonic path, the thermo sums and the vibrational-only block both routes write; travels in both bundles, `mb_pyscf.pyz` and `mb_vibration.pyz` |
+| `molbuilder/spectra/normal_modes.py` | `rigid_motions`, `vibrational_modes`, `vibrational_thermo`, `vibrational_thermo_grid`, `thermo_block`, `vibrational_only_thermo`, `THERMO_GRID_K` — the one harmonic path, the thermo sums and the vibrational-only block both routes write; travels in both bundles, `mb_pyscf.pyz` and `mb_vibration.pyz` |
 | `molbuilder/spectra/pyscf_vibration.py` | `homo_index`, `mo_window`, `dipole_derivatives`, `as_numpy` — the PySCF route's rules, which the vibration script calls inside its run, imported from `mb_pyscf.pyz` |
-| `molbuilder/spectra/results.py` | `SpectraResults`, `ModeData`, `ModeElectronicStructure`; the schema and its history; the reader's gates; the activity classes at serialisation; `motion_share_by_element` |
+| `molbuilder/spectra/results.py` | `equilibrium_block`, `removed_motions_of`, `finite_or_none`, `SpectraResults`, `ModeData`, `ModeElectronicStructure`; the schema and its history; the reader's gates; the activity classes at serialisation; `motion_share_by_element` |
 | `molbuilder/spectra/activity.py` | the active/inactive decision per channel (§ 6.6); travels in both bundles |
 | `molbuilder/spectra/derived.py` | the derived per-mode values — the activity classes and the zero-point amplitude and displacement — computed once for both writers and the reader's check (§ 6.6); travels in both bundles |
 | `molbuilder/spectra/selection.py` | the mode selectors and the window (§ 4.8) |
@@ -3789,7 +3801,7 @@ Each names where it holds and what pins it.
 | `molbuilder/jobset/submit.py` · `jobset/materialize.py` · `monitor.py` | the one walk of a run of points (`_points_walk`, `_walk_script`); the run and its calls opened, a warm launch's take-over (`open_sweep_run`, `HandOver`); each call's member monitor, its report steps (`_point_main`) and the run's `notify` (§ 5.11 §§ 3, 6, 7a) |
 | `molbuilder/spectra/displacement_sweep.py` | a SIESTA displacement sweep's summary: `match_modes` (by shape), `collect_sweep`, `sweep_path`, `write_sweep`, `sweep_table_text` — `<label>.fc-sweep.json` (§ 5.9); which stages take part is `sweep_stages` |
 | `molbuilder/parse/engines/siesta_fc.py` | `read_fc`, `hessian_from_fc` — the `.FC` reader (§ 5.4) |
-| `molbuilder/sidecars/spectra.py` | `write_spectra_payload` (the one writer of the file: a payload built phase by phase, as the PySCF script does) and `dump_spectra_json` (a results object, through it), `finite_or_none`, `parse_spectra_json` |
+| `molbuilder/sidecars/spectra.py` | `write_spectra_payload` (the one writer of the file: a payload built phase by phase, as the PySCF script does) and `dump_spectra_json` (a results object, through it), `parse_spectra_json` |
 | `molbuilder/pyscf/vibration_deck.py` | the PySCF deck composer, the `VibrationConfigView`, the relaxation / gradient / thermo / IR-only blocks |
 | `molbuilder/pyscf/vibration_emitters.py` | the emitted blocks: constants, the molecule, the equilibrium SCF, the Hessian, the Raman sweep, the IR projection, the electronic-structure loop, the Methods fragment |
 | `molbuilder/pyscf/scf_setup.py` | the generated SCF and DFT dressers (I9) |

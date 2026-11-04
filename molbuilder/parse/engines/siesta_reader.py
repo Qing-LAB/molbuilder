@@ -1595,7 +1595,7 @@ def read_output(path, *, warn: Optional[Callable[[int, str, str, str], None]]
     of a file are the same reading -- which is what lets the ending reuse a
     parse's (`_run_ending.keep_reading`)."""
     reader = SiestaReader(warn=warn)
-    with open(path, "r", errors="replace") as fh:
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line_no, raw in enumerate(fh, start=1):
             reader.feed(raw.rstrip("\n"), line_no)
     return reader

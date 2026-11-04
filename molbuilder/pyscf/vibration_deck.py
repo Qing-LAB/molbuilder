@@ -132,10 +132,14 @@ def _vib_constants(cfg, names) -> List[str]:
     """The vibration deck's own constants, beside the lifted ones; its
     result's name through the stage's ``names`` (`input.run_file_expr`)."""
     from ..atom_permutation import AtomIndexMap
-    from ..sidecars.spectra import finite_or_none, write_spectra_payload
+    from ..sidecars.spectra import write_spectra_payload
+    from ..spectra.results import (ModeData, ModeElectronicStructure,
+                                   SpectraResults, equilibrium_block,
+                                   finite_or_none, removed_motions_of)
     from .. import constants
     from ..spectra.normal_modes import (display_form, frequencies_cm1,
-                                        signed_omega, thermo_temperatures,
+                                        signed_omega, thermo_block,
+                                        thermo_temperatures,
                                         vibrational_modes,
                                         vibrational_only_thermo)
     from ..spectra.pyscf_vibration import (as_numpy, dipole_derivatives,
@@ -181,7 +185,9 @@ def _vib_constants(cfg, names) -> List[str]:
                thermo_temperatures, vibrational_only_thermo,
                equilibrium_structure,
                write_spectra_payload, finite_or_none, select_modes,
-               ir_strength_km_mol, constants, AtomIndexMap),
+               ir_strength_km_mol, constants, AtomIndexMap,
+               SpectraResults, ModeData, ModeElectronicStructure,
+               equilibrium_block, thermo_block, removed_motions_of),
            f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
            # THE WALL (`engines/pyscf.md` § 3.9): the deadline this deck
            # keeps -- its relaxation stops at it, its displaced SCFs refuse
@@ -189,28 +195,6 @@ def _vib_constants(cfg, names) -> List[str]:
            "_MB_WALL_DEADLINE = _mb_wall_deadline()",
            ]
     return out
-
-
-def _vib_state_init() -> List[str]:
-    """v5's state keys + the first write: the relaxation is a TRACKED
-    step from the first byte the viewer polls."""
-    return [
-        "",
-        "# The relaxation is a tracked phase; one the description never",
-        "# asked for -- the structure stated relaxed -- is `not requested`",
-        "# from the first write (vibration.md 4.9).",
-        "state['phase_relaxation'] = (PHASE_NOT_REQUESTED if ALREADY_RELAXED",
-        "                             else PHASE_EMPTY)",
-        "state['relaxation'] = {'enabled': (not ALREADY_RELAXED),",
-        "                       'already_relaxed': ALREADY_RELAXED,",
-        "                       'n_steps': 0, 'max_force_eh_bohr': None,",
-        "                       'converged': None}",
-        "state['thermo'] = {}",
-        "# What the harmonic analysis removes before diagonalising, filled",
-        "# beside the modes (science/normal-modes.md R7).",
-        "state['removed_motions'] = {}",
-        "_mb_write_spectra_payload(state, JSON_PATH)",
-    ]
 
 
 def _vib_relax_block(cfg, names) -> List[str]:
@@ -470,18 +454,12 @@ def _vib_thermo_block() -> List[str]:
         "            _grid['h_eh'].append(_h)",
         "            _grid['s_eh_k'].append(_s)",
         "            _grid['g_eh'].append(_g)",
-        "        _k = _grid['temperatures_K'].index(float(THERMO_T_K))",
-        "        state['thermo'] = {",
-        "            'regime': 'rrho',",
-        "            'temperature_K': THERMO_T_K, 'pressure_atm': THERMO_P_ATM,",
-        "            # THE HEADLINE IS A ROW OF THE GRID, every number of it.",
-        "            'zpe_eh': _grid['zpe_eh'][_k], 'h_eh': _grid['h_eh'][_k],",
-        "            's_eh_k': _grid['s_eh_k'][_k], 'g_eh': _grid['g_eh'][_k],",
-        "            'n_modes': int(len(state['modes'])),",
-        "            'n_imag_excluded': int(sum(1 for m in state['modes']",
-        "                                       if m['has_imag'])),",
-        "            'n_rigid_removed': N_RIGID,",
-        "            'note': (",
+        "        state['thermo'] = _mb_thermo_block(",
+        "            'rrho', THERMO_T_K, THERMO_P_ATM, _grid,",
+        "            n_modes=len(state['modes']),",
+        "            n_imag_excluded=sum(1 for m in state['modes'] if m['has_imag']),",
+        "            n_rigid=N_RIGID,",
+        "            note=(",
         "                'Full rigid-rotor harmonic-oscillator (RRHO) thermochemistry of '",
         "                'the free molecule as an ideal gas at this temperature and '",
         "                'pressure -- electronic, translational, rotational and '",
@@ -489,9 +467,7 @@ def _vib_thermo_block() -> List[str]:
         "                'alike.  Good for gas-phase reaction and binding free energies '",
         "                'against species computed the same way; the vibrations are '",
         "                'harmonic, so modes below about 100 cm-1 (torsions, hindered '",
-        "                'rotations) make the entropy the least reliable number'),",
-        "            'grid': _grid,",
-        "        }",
+        "                'rotations) make the entropy the least reliable number'))",
         "    except Exception as _e:",
         "        print(f'full-RRHO thermo unavailable ({_e}); '",
         "              'vibrational-only values recorded')",
@@ -583,7 +559,7 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         # THE COMPOSITION: the Methods prose, the shared
         # runtime/threading/GPU glue, the aliasing block, with the
         # vibration insertions at their run positions: the kind's constants,
-        # the v5 state, the hoisted displaced helpers (pure defs; the
+        # the hoisted displaced helpers (pure defs; the
         # relaxation's driver needs `_build_mf_at` early), the relaxation
         # before the equilibrium SCF, the gradient check after it, the
         # thermochemistry after the Hessian, and the IR-only arm.
@@ -688,7 +664,6 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
                 frozen_atoms=list(view.frozen_indices))
         out += _emit_frozen_mask()
         out += _emit_initial_state()
-        out += _vib_state_init()
         out += _emit_displaced_scf_helpers(view)
         # The VIEW, not the raw config: the relax block needs the frozen
         # set (a structure-side fact the view lifted), and the view

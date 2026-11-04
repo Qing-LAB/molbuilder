@@ -810,7 +810,8 @@ record names (`same_calculation`, [`architecture.md`](?doc=execution/architectur
   settings write (their `anchor`, or their `expands`). It reads keywords by
   name, so it holds of any deck molbuilder wrote.
 - **PySCF** — `pyscf.script_input`: the script with its run-settings block, its
-  comments and molbuilder's stamps aside
+  comments and molbuilder's stamps aside — when it was written and by which
+  release (`deck_record.without_stamps`)
   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1, § 3.2), and its
   structure line (`pyscf.input.SIDECAR_NAME`) compared by what it holds — a field
   the structure reader retires and the record's version number set aside, since

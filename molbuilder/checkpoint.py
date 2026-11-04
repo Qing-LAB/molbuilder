@@ -52,6 +52,7 @@ from molbuilder.runfiles import find_by_role as _rf_find_by_role
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .calcdirs import described
+from .persist import sha256_of
 from .task import FILENAME as _TASK_FILENAME
 from .runfiles import GITIGNORE_FILE, HISTORY_DIR, SNAPSHOT_DIR
 from .warmfiles import never_carried
@@ -751,11 +752,6 @@ def _atomic_write_bytes(target: Path, data: bytes) -> None:
     write_bytes(target, data)
 
 
-#: Big enough that the syscall overhead disappears, small enough that a 2 GB
-#: density matrix never becomes a 2 GB allocation.
-_HASH_CHUNK = 1024 * 1024
-
-
 #: How many large files are fingerprinted at once: the hash releases the
 #: interpreter while it works, so files hash side by side (measured: one at
 #: a time 0.14 GB/s, eight 1.1 GB/s on a CPU without SHA instructions).
@@ -776,21 +772,6 @@ def sha256_all(paths: Sequence[Path]) -> List[str]:
         # A FILE THAT DOES NOT READ ends the read: the files not yet begun
         # are never read.
         pool.shutdown(wait=True, cancel_futures=True)
-
-
-def sha256_of(path: Path) -> str:
-    """The sha256 of a file, read in chunks.
-
-    Every hash in this module goes through here.  ``read_bytes()`` would load
-    the whole file first, and the files this system exists for are the large
-    ones: a folder of density matrices would need as much memory as it needs
-    disk, on a save, on a verify, and on every exact status.
-    """
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(_HASH_CHUNK), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _refuse_unstorable(root: Path, path: Path) -> str:

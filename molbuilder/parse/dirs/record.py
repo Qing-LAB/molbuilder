@@ -32,7 +32,6 @@ the ``.out`` by its stamp; the run's session log.
 from __future__ import annotations
 
 import functools
-import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -40,8 +39,9 @@ from ..errors import ParseError
 
 #: How much of a ``.out`` the launch, build, solver and pseudopotential lines
 #: can sit in -- the solver is printed after the basis report, ~49 KB into a
-#: 42-atom run (`jobset/summarize.py`'s ``_SETUP_WINDOW``, the same measure).
-_HEAD = 512 * 1024
+#: 42-atom run, and further for a bigger system -- the record's and the bench
+#: summary's one window.
+SETUP_HEAD = 512 * 1024
 #: The tail, for ``>> End of run``.
 _TAIL = 16 * 1024
 
@@ -107,17 +107,17 @@ class RunFiles:
 
     def head(self, path: Optional[Path]) -> str:
         """The head of one of the run's files, as far as its launch, build,
-        solver and pseudopotential lines can sit (:data:`_HEAD`)."""
-        return _read(path, head=_HEAD)
+        solver and pseudopotential lines can sit (:data:`SETUP_HEAD`)."""
+        return read_part(path, head=SETUP_HEAD)
 
     def tail(self, path: Optional[Path]) -> str:
         """The tail of one of the run's files, for its end lines
         (:data:`_TAIL`)."""
-        return _read(path, tail=_TAIL)
+        return read_part(path, tail=_TAIL)
 
 
-def _read(path: Optional[Path], *, head: Optional[int] = None,
-          tail: Optional[int] = None) -> str:
+def read_part(path: Optional[Path], *, head: Optional[int] = None,
+              tail: Optional[int] = None) -> str:
     """Text of ``path`` -- all of it, or its head, or its tail -- or ``""``."""
     if path is None:
         return ""
@@ -177,7 +177,7 @@ def run_files(directory, *, names, launched_in, status, engine: str,
         return next((p for p, rf in listing if rf.role in roles), None)
 
     out = first_of(stdout_roles(engine))
-    out_head = _read(out, head=_HEAD)
+    out_head = read_part(out, head=SETUP_HEAD)
     # THE ENGINE'S LOG OF WHAT IT READ, by the reader its output's row names.
     find_used = (_rf.reader(role_of(out.name), "used_log")
                  if out is not None else None)
@@ -187,7 +187,7 @@ def run_files(directory, *, names, launched_in, status, engine: str,
     # SIESTA's stderr in (`wrapper_log.log_of_run`) -- from the one
     # listing, which holds the stage's files alone, as that door matches.
     from ...wrapper_log import read_wrapper_log
-    log_text = _read(this_run(_rf.ROLE_SESSION_LOG))
+    log_text = read_part(this_run(_rf.ROLE_SESSION_LOG))
 
     return RunFiles(
         directory=d, engine=engine, status=status,
@@ -296,19 +296,9 @@ def _wrapper(f: RunFiles) -> Dict[str, Any]:
 def _instruments(f: RunFiles) -> Dict[str, Any]:
     """What the wrapper measured (§ 5c): seconds per iteration by phase, the
     utilisation and memory through the one door, the node."""
-    from ..registry import parse as _parse
-    from ..instruments import utilisation
-
-    def metrics(path):
-        if path is None:
-            return {}
-        try:
-            return dict(_parse(Path(path)).metrics)
-        except Exception:                                  # noqa: BLE001
-            return {}
-
-    mon = metrics(f.monitor_log)
-    util = utilisation(mon, metrics(f.util_csv)) if f.util_csv else {}
+    from ..instruments import metrics_of, utilisation
+    mon = metrics_of(f.monitor_log)
+    util = utilisation(mon, metrics_of(f.util_csv)) if f.util_csv else {}
     comp: Dict[str, Any] = {}
     # THE RUN'S STAMPED SCF ROWS (§ 5c): its timing file, the one choice
     # (`scf_timing_rows.timing_file`), read by the one rule.
@@ -405,13 +395,11 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
     gathered from: its run's gather, at ``run-<n>/`` where the run's points
     share it, then what a point took alone (§ 5d.1; `engines/transport.md`
     § 2a.11)."""
+    from ...persist import sha256_of
     from ...runrecord import read_gathered_from
     if f.deck is None:
         return {}
-    text = _read(f.deck)
-    deck: Dict[str, Any] = {
-        "path": str(f.deck),
-        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+    deck: Dict[str, Any] = {"path": str(f.deck), "sha256": sha256_of(f.deck)}
     if f.current is not None:
         deck["current"] = f.current
     gathered = list(read_gathered_from(f.launched_in))

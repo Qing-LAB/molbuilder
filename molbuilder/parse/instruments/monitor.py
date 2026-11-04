@@ -20,33 +20,15 @@ is why nothing here raises on its absence.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any, Dict
 
+from molbuilder import monitor_log as _ML
 from molbuilder.parse.base import FileParser
-from molbuilder.parse.dirs.job import MONITOR_ENDED_LINE as _ENDED
 from molbuilder.parse.types import InstrumentResult
 from molbuilder.runfiles import ROLE_MONITOR_LOG, role_of
 
 from ._helpers import build_instrument_result
-
-_MACHINE = re.compile(
-    r"\[MACHINE\]\s+node=(\S+)\s+cores=(\S+)\s+mem_gb=(\S+)\s+gpu=(.+)$")
-_VERDICT = re.compile(r"->\s*(GPU-bound|host/CPU-bound|mixed)")
-_BOUND_MAP = {"GPU-bound": "gpu", "host/CPU-bound": "host", "mixed": "mixed"}
-#: ``cpu mean=NN% (mm-MM); gpu0 sm mean=NN% (mm-MM) -> verdict``
-_SUMMARY_CPU = re.compile(r"cpu mean=(\d+(?:\.\d+)?)%")
-_SUMMARY_GPU = re.compile(r"gpu\d+ sm mean=(\d+(?:\.\d+)?)%")
-
-
-#: The closing ``[UTIL-BASIS]`` line (`monitor.measurement_provenance`):
-#: ``...; mem [<source>]; peak <X> GB (kernel counter); limit <Y> GB`` -- what
-#: the memory figures are fractions of, the kernel's own peak where it keeps
-#: one, and the limit (`model/parse.md` § 5c.1).
-_BASIS_MEM = re.compile(r"mem \[([^\]]+)\]")
-_BASIS_PEAK = re.compile(r"peak ([0-9.]+) GB \(kernel counter\)")
-_BASIS_LIMIT = re.compile(r"limit ([0-9.]+) GB")
 
 
 def monitor_metrics(text: str) -> Dict[str, Any]:
@@ -64,36 +46,36 @@ def monitor_metrics(text: str) -> Dict[str, Any]:
     text = text or ""
     out: Dict[str, Any] = {"machine": {}, "bound": None}
     for ln in text.splitlines():
-        m = _MACHINE.search(ln)
+        m = _ML.MACHINE_LINE.search(ln)
         if m:
-            out["machine"] = {"node": m.group(1), "cores": m.group(2),
-                              "mem_gb": m.group(3), "gpu": m.group(4).strip()}
+            out["machine"] = dict(zip(_ML.MACHINE_FIELDS,
+                                      (g.strip() for g in m.groups())))
             break
     line = ""
     for ln in text.splitlines():
-        m = _ENDED.match(ln)
+        m = _ML.MONITOR_ENDED_LINE.match(ln)
         if m:
             out["ended_at"], out["ended_why"] = m.group(1), m.group(2)
     for ln in text.splitlines():
-        if "[UTIL-SUMMARY]" in ln:
+        if _ML.UTIL_SUMMARY_TAG in ln:
             line = ln                                # last one wins
-    v = _VERDICT.search(line)
-    out["bound"] = _BOUND_MAP.get(v.group(1)) if v else None
-    cpu = _SUMMARY_CPU.search(line)
+    v = _ML.VERDICT.search(line)
+    out["bound"] = _ML.BOUND_OF.get(v.group(1)) if v else None
+    cpu = _ML.SUMMARY_CPU.search(line)
     if cpu:
         out["stated_cpu_mean_pct"] = float(cpu.group(1))
-    gpu = [float(x) for x in _SUMMARY_GPU.findall(line)]
+    gpu = [float(x) for x in _ML.SUMMARY_GPU.findall(line)]
     if gpu:
         # MAX across devices -- the same rule the csv path uses, or the two
         # sources would answer differently on a multi-GPU node.
         out["stated_gpu_sm_mean_pct"] = max(gpu)
     basis = ""
     for ln in text.splitlines():
-        if "[UTIL-BASIS]" in ln:
+        if _ML.UTIL_BASIS_TAG in ln:
             basis = ln                               # last one wins
-    for key, pat, cast in (("mem_basis", _BASIS_MEM, str),
-                           ("mem_peak_kernel_gb", _BASIS_PEAK, float),
-                           ("mem_limit_gb", _BASIS_LIMIT, float)):
+    for key, pat, cast in (("mem_basis", _ML.BASIS_MEM_READ, str),
+                           ("mem_peak_kernel_gb", _ML.BASIS_PEAK_READ, float),
+                           ("mem_limit_gb", _ML.BASIS_LIMIT_READ, float)):
         m = pat.search(basis)
         if m:
             out[key] = cast(m.group(1))

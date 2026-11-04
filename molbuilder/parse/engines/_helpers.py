@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from molbuilder.frame import Trajectory
-from molbuilder.parse.types import ParseResult, ParseWarning, TrajectoryResult
+from molbuilder.parse.types import (SCHEMA_VERSION, ParseResult, ParseWarning,
+                                    TrajectoryResult)
 from molbuilder.persist import json_safe
 
 
@@ -284,7 +285,7 @@ def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
         # DELIBERATELY NOT `ParseResult.envelope`: this is a shim that
         # never parsed a file, so it must not stamp a real timestamp or
         # resolve a path.  The empty strings say "there was no parse".
-        schema_version=1,
+        schema_version=SCHEMA_VERSION,
         parsed_at="",
         parser_name="legacy-adapter",
         source="",

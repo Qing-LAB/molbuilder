@@ -16,23 +16,16 @@ that is the trial a benchmark most needs to read.
 from __future__ import annotations
 
 import math
-import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from molbuilder import monitor_log as _ML
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import InstrumentResult
 from molbuilder.runfiles import ROLE_UTIL_CSV, role_of
 
 from ._helpers import build_instrument_result
 
-
-#: util.csv columns -> metric keys.  ``gpu<N>_sm`` / ``gpu<N>_vram_gb``
-#: are matched per GPU index; the metric takes the max across GPUs
-#: (mean per GPU first for sm%, peak anywhere for VRAM).
-_CSV_GPU_SM = re.compile(r"^gpu\d+_sm$")
-
-_CSV_GPU_VRAM = re.compile(r"^gpu\d+_vram_gb$")
 
 def _time_weighted(series: List[Tuple[float, float]]) -> Optional[float]:
     """The mean of a ``(epoch, value)`` series over TIME, not over samples.
@@ -161,12 +154,13 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
 
     def _series(h: str) -> List[Tuple[float, float]]:
         """The column paired with its own epochs, holes excluded."""
-        return [(r["epoch"], r[h]) for r in rows if h in r and "epoch" in r]
+        return [(r[_ML.CSV_EPOCH], r[h]) for r in rows
+                if h in r and _ML.CSV_EPOCH in r]
 
     cols: Dict[str, List[float]] = {h: _values(h) for h in header}
     out: Dict[str, float] = {}
-    epochs = cols.get("epoch") or []
-    if cols.get("mem_gb"):
+    epochs = cols.get(_ML.CSV_EPOCH) or []
+    if cols.get(_ML.CSV_MEM):
         # The job's OWN memory: the monitor reads its cgroup
         # (`monitor._read_mem_used_gb`), so this is the calculation rather
         # than the machine.
@@ -174,18 +168,19 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
         # Still the max of a sampled series, so it is bounded below by the
         # true peak; the kernel's own counter, where the monitor states one,
         # is exact, and `utilisation` prefers it.
-        out["mem_peak_sampled_gb"] = max(cols["mem_gb"])
+        out["mem_peak_sampled_gb"] = max(cols[_ML.CSV_MEM])
     if len(epochs) >= 2 and epochs[-1] > epochs[0]:
         out["monitored_elapsed_s"] = round(epochs[-1] - epochs[0], 1)
-    cpu_mean = _time_weighted(_series("cpu_pct"))
+    cpu_mean = _time_weighted(_series(_ML.CSV_CPU))
     if cpu_mean is not None:
         out["cpu_mean_pct"] = round(cpu_mean, 1)
     sm_means = [m for m in (_time_weighted(_series(h)) for h, v in cols.items()
-                            if _CSV_GPU_SM.fullmatch(h) and v) if m is not None]
+                            if _ML.CSV_GPU_SM_READ.fullmatch(h) and v)
+                if m is not None]
     if sm_means:
         out["gpu_sm_mean_pct"] = round(max(sm_means), 1)
     vram_peaks = [max(v) for h, v in cols.items()
-                  if _CSV_GPU_VRAM.fullmatch(h) and v]
+                  if _ML.CSV_GPU_VRAM_READ.fullmatch(h) and v]
     if vram_peaks:
         out["gpu_vram_peak_gb"] = round(max(vram_peaks), 2)
     return out

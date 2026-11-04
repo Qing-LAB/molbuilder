@@ -25,6 +25,7 @@ from ..runfiles import (COORDINATES_FILE, MAKOV_PAYNE_SCRIPT, ROLE_SIESTA_OUT,
                         VIBRATION_BUNDLE, RunNames, compose as _rf,
                         deck_role)
 from ..structure import Structure
+from ..trajectory_log.keys import RUNTIME_LINE
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
 # molbuilder.config.siesta (the canonical location) or from
@@ -1144,9 +1145,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # load time.  SIESTA itself ignores comment lines.  Per the
         # cross-cutting "every script declares what it wanted" rule.
         if cfg.omp_threads is not None:
-            out.append(f"# runtime.omp_threads_requested: {int(cfg.omp_threads)}")
+            out.append(f"{RUNTIME_LINE}omp_threads_requested: "
+                       f"{int(cfg.omp_threads)}")
         if cfg.max_memory_mb is not None:
-            out.append(f"# runtime.max_memory_mb: {int(cfg.max_memory_mb)}")
+            out.append(f"{RUNTIME_LINE}max_memory_mb: "
+                       f"{int(cfg.max_memory_mb)}")
         if (cfg.omp_threads is not None) or (cfg.max_memory_mb is not None):
             out.append("")
 

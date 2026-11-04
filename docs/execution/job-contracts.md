@@ -805,7 +805,8 @@ script:
   § 2), so a transport gather that meets an upstream deck written by another
   version refuses, naming both and the
   [changelog](?doc=process/changelog.md). A file written before 2.0.0 names
-  only its commit. The field is masked when two decks are compared
+  only its commit. A PySCF vibration script states the version again, for its
+  result (`deck_record.BUILD_NAME`). Both are masked when two decks are compared
   (`deck_record.without_stamps`): which build wrote a deck is not what it
   computes.
 - **`generated-at`** is ISO-8601 with its time zone.

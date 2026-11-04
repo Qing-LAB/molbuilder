@@ -29,6 +29,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
+from ..monitor_log import PEAK_KERNEL, PEAK_SAMPLED
+
 #: The record's paths the door reads of a run -- its peak and where the peak
 #: was read, the ranks and threads its wrapper launched, the node it ran on
 #: -- and nothing more (`runs.record_of`'s ``fields``): no row that reads the
@@ -39,8 +41,8 @@ FIELDS = ("computation.memory.mem_peak_gb", "computation.memory.mem_peak_from",
 
 #: Where a peak was read, in words (`utilisation`'s ``mem_peak_from``):
 #: under a scheduler the kernel's counter is the job's, since the job began.
-_FROM_WORDS = {"kernel counter": "the kernel's counter, the job's",
-               "largest sample": "the largest sample"}
+_FROM_WORDS = {PEAK_KERNEL: "the kernel's counter, the job's",
+               PEAK_SAMPLED: "the largest sample"}
 
 
 @dataclass(frozen=True)
@@ -148,7 +150,7 @@ class Need:
             # AT MOST from a peak the kernel counted, which is the job's and
             # errs high; ABOUT from the largest sample, which may be under a
             # run's true peak (`execution/job-request.md` § 3.1a).
-            bound = ("at most" if self.held.read_from == "kernel counter"
+            bound = ("at most" if self.held.read_from == PEAK_KERNEL
                      else "about")
             said = f"{bound} {_up(self.gb)}G{at} -- {self.held.words()}"
         if self.of_job and (self.held is not None or self.unread):

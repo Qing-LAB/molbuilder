@@ -116,13 +116,14 @@ try:                                        # inside molbuilder
     from .runtime_info import JOB_STARTED_VAR
     from . import runfiles as _rf
     from . import runrecord as _rr
-    from .parse.dirs.job import LIVE_STATES, MONITOR_ENDED, run_status
+    from . import monitor_log as _ML
+    from .parse.dirs.job import LIVE_STATES, run_status
     from .parse.instruments.scf_timing_rows import timing_file, timing_of
     from . import calcdirs as _cd
     from . import persist as _persist
     from . import runpoints as _rp
     from .trajectory_log import keys as _K
-    from .wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
+    from .wrapper_log import FINISH_STARTED, say
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_cards as _cards
@@ -130,13 +131,14 @@ except ImportError:                         # beside the job
     from runtime_info import JOB_STARTED_VAR
     import runfiles as _rf
     import runrecord as _rr
-    from job import LIVE_STATES, MONITOR_ENDED, run_status
+    import monitor_log as _ML
+    from job import LIVE_STATES, run_status
     from scf_timing_rows import timing_file, timing_of
     import calcdirs as _cd
     import persist as _persist
     import runpoints as _rp
     import keys as _K
-    from wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
+    from wrapper_log import FINISH_STARTED, say
 
 
 @dataclass
@@ -1156,8 +1158,7 @@ def machine_line() -> str:
     line as the model list.
     """
     m = machine_identity()
-    return (f"node={m['node']} cores={m['cores']} "
-            f"mem_gb={m['mem_gb']} gpu={m['gpu']}")
+    return " ".join(f"{k}={m[k]}" for k in _ML.MACHINE_FIELDS)
 
 
 def _sample_gpus() -> List[Tuple[int, float, float, float]]:
@@ -1239,30 +1240,28 @@ class UtilAccum:
     def summary(self) -> str:
         bits = []
         if self.cpu_n:
-            bits.append(f"cpu mean={self.cpu_sum / self.cpu_n:.0f}% "
+            bits.append(f"{_ML.CPU_MEAN}{self.cpu_sum / self.cpu_n:.0f}% "
                         f"({self.cpu_min:.0f}-{self.cpu_max:.0f})")
         gpu_means = []
         for idx in sorted(self.gpu_n):
             m = self.gpu_sum[idx] / self.gpu_n[idx]
             gpu_means.append(m)
-            bits.append(f"gpu{idx} sm mean={m:.0f}% "
+            bits.append(f"gpu{idx}{_ML.GPU_MEAN}{m:.0f}% "
                         f"({self.gpu_min[idx]:.0f}-{self.gpu_max[idx]:.0f})")
         verdict = ""
         if gpu_means:
             mx = max(gpu_means)
-            if mx >= 85:
-                verdict = " -> GPU-bound (GPU saturated)"
-            elif mx <= 60:
-                verdict = " -> host/CPU-bound (GPU starved)"
-            else:
-                verdict = " -> mixed (GPU not saturated)"
+            verdict = _ML.verdict_said(
+                _ML.GPU_BOUND if mx >= 85 else
+                _ML.HOST_BOUND if mx <= 60 else _ML.MIXED_BOUND)
         return "; ".join(bits) + verdict
 
 
 def _util_csv_header(ngpu: int) -> str:
-    cols = ["epoch", "iso", "cpu_pct", "mem_gb"]
+    cols = [_ML.CSV_EPOCH, _ML.CSV_ISO, _ML.CSV_CPU, _ML.CSV_MEM]
     for i in range(ngpu):
-        cols += [f"gpu{i}_sm", f"gpu{i}_memutil", f"gpu{i}_vram_gb"]
+        cols += [t.format(i) for t in (_ML.CSV_GPU_SM, _ML.CSV_GPU_MEMUTIL,
+                                       _ML.CSV_GPU_VRAM)]
     return ",".join(cols)
 
 
@@ -2272,7 +2271,7 @@ def run_monitor(watched: "WatchedRun", *,
     # clock() for both lines: they describe the same moment, and the fake
     # clocks tests inject are counted.
     t0 = _iso(clock())
-    _append(log, f"[{t0}] [MACHINE] {machine_line()}")
+    _append(log, f"[{t0}] {_ML.MACHINE_TAG} {machine_line()}")
     _append(log, f"[{t0}] [MONITOR] start "
                  f"(interval={interval:.0f}s watch_pid={watch_pid}) "
                  f"{st0.as_text()}")
@@ -2435,17 +2434,15 @@ def run_monitor(watched: "WatchedRun", *,
             # `run_status` reads -- a forced stop leaves no other word
             # (`run-reports.md` § 2.4) -- and HOW IT ENDED, asked next, is
             # the Results tab's own reading of the run's files.
-            _append(log, f"[{_iso(now)}] {MONITOR_ENDED} "
-                         + (f"(stopped by {_STOPPED_BY}); "
-                            if _STOPPED_BY else
-                            f"(watched pid {watch_pid} gone); ")
-                         + "final notify + exit")
+            _append(log, f"[{_iso(now)}] " + _ML.ended_record(
+                f"stopped by {_STOPPED_BY}" if _STOPPED_BY
+                else f"watched pid {watch_pid} gone"))
             st = watched.conclude(st)
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
             if util_path is not None:
-                _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
+                _append(log, f"[{_iso(now)}] {_ML.UTIL_SUMMARY_TAG} "
                              f"{util_accum.summary()}")
-                _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
+                _append(log, f"[{_iso(now)}] {_ML.UTIL_BASIS_TAG} "
                              f"{measurement_provenance(basis)}")
             if not member:
                 _said(st, "finish", now)
@@ -2551,13 +2548,13 @@ def measurement_provenance(basis: Optional[_Basis] = None) -> str:
     mem = b.mem_gb()
     bits = [f"cpu% of {b.cores} core(s) [{b.cores_from}]",
             f"cpu time [{cpu_from}]",
-            f"mem [{mem[1] if mem else 'unavailable'}]"]
+            _ML.BASIS_MEM.format(mem[1] if mem else "unavailable")]
     # The kernel's peak and limit are a CGROUP's: a process tree has neither.
     peak = _read_mem_peak_gb() if b.tree is None else None
     if peak is not None:
-        bits.append(f"peak {peak:g} GB (kernel counter)")
+        bits.append(_ML.BASIS_PEAK.format(f"{peak:g}"))
     lim = _read_mem_limit_gb() if b.tree is None else None
-    bits.append(f"limit {lim:g} GB" if lim is not None
+    bits.append(_ML.BASIS_LIMIT.format(f"{lim:g}") if lim is not None
                 else "limit not stated")
     return "; ".join(bits)
 
@@ -2836,14 +2833,6 @@ def _deck_main(args) -> int:
 #: script renders them (`runwrap._point_block`).
 POINT_VERB, POINT_STARTED, POINT_ENDED = "point", "started", "ended"
 
-def _point_say(level: str, message: str) -> None:
-    """One line in the point's session log, in the wrapper's own format."""
-    import sys
-    sys.stderr.write(LOG_LINE % (time.strftime(LOG_CLOCK), level, message)
-                     + "\n")
-    sys.stderr.flush()
-
-
 def _point_of(folder: Path) -> "Tuple[Optional[Path], Optional[str]]":
     """THE RUN A POINT'S FOLDER LIES IN, AND WHICH POINT IT IS -- its path
     below the run -- by the folder door (`calcdirs.where`: ``run_folder``,
@@ -2870,8 +2859,8 @@ def _kind_step(bundle: Optional[str], verb: str, *args: str) -> int:
     import subprocess
     import sys
     if not bundle or not Path(bundle).is_file():
-        _point_say("ERROR", f"report step: {bundle or 'the job bundle'} is "
-                            f"not beside the deck -- its {verb} step not run")
+        say("ERROR", f"report step: {bundle or 'the job bundle'} is "
+            f"not beside the deck -- its {verb} step not run")
         return 1
     return subprocess.run([sys.executable, bundle, verb, *args]).returncode
 
@@ -2927,9 +2916,9 @@ def _point_main(argv) -> int:
     names = _rf.RunNames(a.label, a.stage)
     run_dir, rel = _point_of(here)
     if run_dir is None:
-        _point_say("WARN", f"report step: {here} lies below no run (the "
-                           f"folders' records) -- the run's index not "
-                           f"stamped")
+        say("WARN", f"report step: {here} lies below no run (the "
+            f"folders' records) -- the run's index not "
+            f"stamped")
     path = _rp.index_path(run_dir, names) if run_dir is not None else None
 
     def _write(change) -> Optional[Dict[str, Any]]:
@@ -2943,8 +2932,8 @@ def _point_main(argv) -> int:
             _rp.write_index(path, index)
             return index
         except (OSError, ValueError, KeyError) as exc:
-            _point_say("WARN", f"report step: the run's index not stamped "
-                               f"-- {exc}")
+            say("WARN", f"report step: the run's index not stamped "
+                f"-- {exc}")
             return None
     said_as = (["--label", a.label, "--stage", a.stage, "--dir",
                 str(run_dir)] if run_dir is not None else None)
@@ -2961,8 +2950,8 @@ def _point_main(argv) -> int:
             _notify_main(["start"] + said_as)
         return rc
     if a.exit_code is None:
-        _point_say("WARN", "report step: point ended is told the engine's "
-                           "exit (--exit)")
+        say("WARN", "report step: point ended is told the engine's "
+            "exit (--exit)")
         return 0
     verdict = None
     out = here / a.output if a.output else None
@@ -2970,14 +2959,14 @@ def _point_main(argv) -> int:
         try:
             verdict = _ending.verdict_of([_ending.ending_of(out)])
         except Exception as exc:                       # noqa: BLE001
-            _point_say("WARN", f"report step: {out.name}'s verdict not read "
-                               f"-- {exc}")
+            say("WARN", f"report step: {out.name}'s verdict not read "
+                f"-- {exc}")
     _write(lambda index: _rp.stamp_end(index, rel, _rr.stamp(), a.exit_code,
                                        verdict))
     rc = 0
     if a.after:
-        _point_say("INFO", f"{FINISH_STARTED} {a.bundle} {a.after} {a.deck} "
-                           f"{a.output or ''}")
+        say("INFO", f"{FINISH_STARTED} {a.bundle} {a.after} {a.deck} "
+            f"{a.output or ''}")
         rc = _kind_step(a.bundle, a.after, a.deck, a.output or "", "--exit",
                         str(a.exit_code))
         if rc != 0 and a.exit_code == 0:
@@ -2993,7 +2982,7 @@ def _point_main(argv) -> int:
         index = _rp.read_index(path)
         rows = _rp.rows_of(index, run_dir)
     except (OSError, ValueError, KeyError) as exc:
-        _point_say("WARN", f"report step: the run's index not read -- {exc}")
+        say("WARN", f"report step: the run's index not read -- {exc}")
         return back
     outcome = None
     if _rp.round_ended(rows, rel):
@@ -3002,8 +2991,8 @@ def _point_main(argv) -> int:
         try:
             outcome = _rp.round_outcome(index, rows, rel, run_dir, names)
         except Exception as exc:                       # noqa: BLE001
-            _point_say("WARN", f"report step: the round's outcome not put in "
-                               f"words -- {type(exc).__name__}: {exc}")
+            say("WARN", f"report step: the round's outcome not put in "
+                f"words -- {type(exc).__name__}: {exc}")
     got = _rp.said(rows, rel, outcome)
     if got is None:
         return back
@@ -3185,6 +3174,7 @@ if __name__ == "__main__":
 #: imports there by their bare names (`runwrap.monitor_companions`).
 TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
                 "molbuilder.calcdirs",
+                "molbuilder.monitor_log",
                 "molbuilder.config_dir",
                 "molbuilder.parse.dirs.job",
                 "molbuilder.persist",

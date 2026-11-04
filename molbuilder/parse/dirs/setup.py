@@ -138,7 +138,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     from ... import script_emit as _sc
     from ...engine_table import engines as _engines, keywords
     from ..registry import parse as _parse
-    from .record import _read
+    from .record import read_part
 
     if f.engine not in _engines():
         return {}
@@ -151,7 +151,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     # which writes it from inside itself (`model/parse.md` § 5d.3a).
     block = {r["item"]: r for r in
              _sc.read_parameters_fence(f.wrapper_text)
-             + (_sc.read_parameters_fence(_read(f.stdout)) if kw is None
+             + (_sc.read_parameters_fence(read_part(f.stdout)) if kw is None
                 else [])}
     # THE DECK WHOLE, its coordinates file inlined (the reader's
     # ``read_deck``).

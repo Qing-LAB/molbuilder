@@ -302,7 +302,8 @@ array bridge and the structure the result states (`spectra/pyscf_vibration.py`,
 wavenumbers, the display form and the thermochemistry with its temperature
 grid (`spectra/normal_modes.py`) — the steps the SIESTA route takes too; the
 infrared strength (`spectra/activity.py`, `ir_strength_km_mol`); the
-result's writer and its non-finite scrub
+result's record and its non-finite scrub (`spectra/results.py`, and
+`thermo_block` in `spectra/normal_modes.py`: the SIESTA finish's too), its writer
 (`sidecars/spectra.py`), with the derived values the writer states beside
 every mode and the activity rule they ask (`spectra/derived.py`,
 `spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6);
@@ -331,8 +332,9 @@ as text is its anchor — the folder it sits in, found from its own path when it
 starts, before PySCF or geomeTRIC can change directory, and `_mb_outfile`, which
 puts every output there: the bundle is found through it, so it cannot come from
 the bundle — and the run itself: its values, the SCF and theory dressers built
-from its settings (§ 7a), a vibration's per-run helpers and its choice of
-gpu4pyscf's classes, and the IR and Raman formulas, which have no branch
+from its settings (§ 7a), a vibration's per-run helpers, its choice of
+gpu4pyscf's classes and the relaxation's block, which it fills step by step,
+and the IR and Raman formulas, which have no branch
 ([`vibration.md`](?doc=engines/vibration.md) § 6.4). **Each import from the
 bundle is bound as `_mb_<its name>`** (`_mb_StructureCodec`, `_mb_constants`),
 so an import of ours can never take a name the engine owns (`gto`, `scf`); the
