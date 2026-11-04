@@ -362,6 +362,25 @@ class TestPdbAltLocDedup:
         assert s.n_atoms == 3
 
 
+class TestPdbBlankElementColumn:
+    """A PDB a person brings may leave its element column blank (cols 77-78), and
+    the element is then read from the atom name's columns.  THE SILENT FAILURE:
+    a four-letter hydrogen read as a metal, with no word.  Measured on a real
+    tleap peptide with that column blanked: `HG21` and its kind, 14 of 71 atoms,
+    read as mercury.  tleap's own file fills the column and reads right.  A
+    one-letter element's name starts at col 14."""
+
+    @pytest.mark.parametrize("name, element", [
+        ("HG21", "H"), ("HE21", "H"), ("HO5'", "H"), ("1HG2", "H"),
+        ("HG  ", "Hg"), ("FE  ", "Fe"), ("MG  ", "Mg"), ("CL  ", "Cl"),
+        (" CA ", "C"), (" N  ", "N"), (" O5'", "O"), (" H1 ", "H"),
+    ])
+    def test_the_element_is_read_from_the_name(self, name, element):
+        text = (f"ATOM      1 {name} ALA A   1       0.000   0.000   0.000"
+                "  1.00  0.00\n")
+        assert Structure.from_pdb(text).elements == [element]
+
+
 class TestElementCaseCanonicalization:
     """PDB cols 77-78 (element symbol) carry NO case convention --
     PDB Bank canonical files emit ``FE`` / ``CL`` / ``NA`` upper-cased.

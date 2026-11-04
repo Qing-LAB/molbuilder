@@ -448,6 +448,10 @@ def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(opt):
         float(_deck_value(deck, "MeshCutoff")), "Ry", False), mesh
     for name in blocks:
         assert name in res.blocks, (name, sorted(res.blocks))
+    # A BLOCK'S ROWS AND NOTHING ELSE: `LatticeConstant`, looked up while
+    # SIESTA reads `LatticeVectors`, is a setting read, never a row of it.
+    assert len(res.blocks[fdf_key("LatticeVectors")]) == 3, res.blocks
+    assert fdf_key("LatticeConstant") in res.params
 
 
 # --------------------------------------------------------------------- #

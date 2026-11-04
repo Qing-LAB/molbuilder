@@ -1267,7 +1267,7 @@ name — `runfiles.ENGINE_FILES` — and never all an engine writes.
 | `<label>.CG` *(SIESTA)* | the conjugate-gradient optimizer's history | carried | none |
 | `<label>.xyz` *(SIESTA)* | the geometry, as SIESTA writes it for a viewer (`WriteCoorXmol`), read as any structure file with the box from the run's own deck | — | `workingcopy_structure.StructureCodec.load` |
 | `fdf.<stamp>.log` *(SIESTA)* | every setting SIESTA read, and the value it used | — | `parse.engines.siesta_fdflog.SiestaFdfLogParser` |
-| `<label>.ORB_INDX` *(SIESTA)* | the orbitals each atom carries -- what a transmission point's DOS per orbital is grouped by, at the device point the transmission gathered | — | `transport.record.selection_pdos` |
+| `<label>.ORB_INDX` *(SIESTA)* | the orbitals each atom carries -- what a transmission point's DOS per orbital is grouped by, at the device point the transmission gathered | — | `parse.engines.tbtrans_nc.read_orbitals` |
 | `<label>.FC` *(SIESTA)* | a force-constant run's forces at every displacement | listed | `parse.engines.siesta_fc.read_fc` |
 | `<label>.FCC` *(SIESTA)* | the same, for the cell's displacements | listed | none |
 | `<label>.EPSIMG` *(SIESTA)* | an optical call's dielectric function | listed | `parse.engines.siesta_epsimg.SiestaEpsimgFileParser` |

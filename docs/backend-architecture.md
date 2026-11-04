@@ -129,7 +129,7 @@ validation pass (that gate is at generation time).
 
 The construction surfaces are in [`engines/builders.md`](?doc=engines/builders.md).
 
-**Assessment: clean, with three consistency nits.** Every builder returns a
+**Assessment: clean, with two consistency nits.** Every builder returns a
 `molbuilder.Structure`; none persists to the workspace (backends only write
 scratch files into a `TemporaryDirectory` to feed an external tool). Build-time
 chemistry (H-addition, phosphate protonation, backbone-connectivity self-check,
@@ -138,15 +138,12 @@ not the scientific *gate*; what a build finds is said by the one check after it
 (`validation.builders.check_built`, through the build door `builders.build`), and `modify.py` documents the boundary (it defers
 zero-offset enforcement to `validate_geometry`). The nits, all minor:
 
-1. **Duplicate PDB codec.** `builders/backends/_common.py::parse_pdb_to_structure`
-   is a second PDB reader independent of the unified `parse/` stack — small
-   codec logic embedded in the construction layer.
-2. **Non-uniform external-tool gating.** Four tools, four idioms: `_threedna` (a
+1. **Non-uniform external-tool gating.** Four tools, four idioms: `_threedna` (a
    bespoke filesystem detection chain), `_amber` (defers to `diagnostics` +
    `envs.run_tool`), `_rdkit` (`importlib.util.find_spec`), OpenBabel-in-`smiles`
    (inline `try/import`). Only `_amber` reaches into the execution/env layer,
    and only for external-process routing — not `jobset` / `runwrap`.
-3. **One return-type wart.** `smiles.build_from_smiles(…, return_backend=True)`
+2. **One return-type wart.** `smiles.build_from_smiles(…, return_backend=True)`
    returns an ad-hoc `(Structure, str)` tuple instead of a bare `Structure`.
 
 ---

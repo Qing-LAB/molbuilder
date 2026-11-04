@@ -2253,6 +2253,20 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
             r"about [0-9.]+ (B|KiB|MiB|GiB) a lead at 0 V", line), line
 
 
+def test_a_leads_used_atoms_is_a_setting_the_engine_read(junction):
+    """`model/parse.md` § 5d.3: SIESTA looks `TS.Elec.L.UsedAtoms` up as it reads
+    `%block TS.Elec.L`, and its log says so at column 0.  THE SILENT FAILURE: the
+    line kept as a row of the block, and the key lost from the settings the engine
+    read."""
+    from molbuilder import runs
+    from molbuilder.calculation import register_readers
+    register_readers()
+    record = runs.record_of(runs.run_of(_point(junction.from_pair, "device",
+                                               _BIAS[0], frame=1)))
+    read = {e["key"] for e in record["setup"]["engine_only"]}
+    assert {"TS.Elec.L.UsedAtoms", "TS.Elec.R.UsedAtoms"} <= read, sorted(read)
+
+
 def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
         junction):
     """§ 2a.11: each transmission point gathers the device's Hamiltonian of

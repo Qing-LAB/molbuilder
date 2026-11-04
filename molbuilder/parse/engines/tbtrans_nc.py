@@ -75,6 +75,15 @@ _READING_HERE: "set[Tuple[str, float]]" = set()
 _MAGIC = b"\x89HDF"
 
 
+def read_orbitals(path) -> Any:
+    """A device run's ``<label>.ORB_INDX``: the basis each atom carries, one
+    entry per atom in the run's order, by sisl's reader -- what the data file
+    does not state (:class:`TBTransNcFileParser`).  Each entry's ``orbitals``
+    say their ``l`` and ``m``."""
+    import sisl
+    return sisl.get_sile(str(path)).read_basis()
+
+
 class ReadingClaimed(ParseError):
     """Another reading holds the data file's claim -- ``claim`` says whose,
     since when and how far (`model/parse.md` § 5e)."""
@@ -789,5 +798,6 @@ def point_averages(folder, label: str, *, pair: str,
 
 
 __all__ = ["TBTransNcFileParser", "ReadingClaimed", "Kept", "DIGEST_SCHEMA",
+           "read_orbitals",
            "channel_of", "digest_of", "data_files", "kept_state", "kept",
            "claim_words", "energies", "point_averages"]

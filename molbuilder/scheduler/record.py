@@ -778,7 +778,8 @@ def detect_topology(scheduler: Scheduler, *,
         if n is not None:
             topo.gpus_per_node, topo.gpu_type = n, gt
         if topo.mem_total_gb is None:
-            topo.mem_total_gb = _read_mem_total_gb()
+            from ..runtime_info import mem_total_gb
+            topo.mem_total_gb = mem_total_gb()
 
     if overrides:
         applied = False
@@ -790,17 +791,6 @@ def detect_topology(scheduler: Scheduler, *,
             source = "flag" if source == "unknown" else f"{source}+flag"
 
     return topo, source
-
-
-def _read_mem_total_gb() -> Optional[float]:
-    try:
-        with open("/proc/meminfo", encoding="ascii") as fh:
-            for line in fh:
-                if line.startswith("MemTotal:"):
-                    return round(int(line.split()[1]) / 1048576.0, 1)
-    except (OSError, ValueError, IndexError):
-        pass
-    return None
 
 
 def detect_site(scheduler: Scheduler) -> Tuple[Site, str]:

@@ -19,7 +19,6 @@ the package here, from its copy there; reading a deck stays the package's.
 from __future__ import annotations
 
 import bisect
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -56,12 +55,6 @@ def grid(emin: float, emax: float, points: int) -> List[float]:
     return [float(emin) + (i + 0.5) * h for i in range(int(points))]
 
 
-#: A transmission deck's own window (`transport.deck._emit_tbt_window`).
-_WINDOW_LINE = re.compile(
-    r"%block[ \t]+TBT\.Contour\.window.*?from[ \t]+(\S+)[ \t]+eV[ \t]+to"
-    r"[ \t]+(\S+)[ \t]+eV.*?points[ \t]+(\d+)", re.S | re.I)
-
-
 def deck_window(text: str) -> Optional[Tuple[float, float, int]]:
     """The grid a transmission deck describes -- ``(from, to, points)``, the
     numbers tbtrans computed its energies from: its sharing record's
@@ -70,9 +63,12 @@ def deck_window(text: str) -> Optional[Tuple[float, float, int]]:
     c = Contours.of_deck(text)
     if c is not None:
         return c.window
-    m = _WINDOW_LINE.search(text)
-    return ((float(m.group(1)), float(m.group(2)), int(m.group(3)))
-            if m else None)
+    from ..parse.fdf import fdf_key, read_fdf
+    rows = {r[0].lower(): r
+            for r in read_fdf(text)[1].get(fdf_key("TBT.Contour.window")) or ()}
+    return ((float(rows["from"][1]), float(rows["from"][4]),
+             int(rows["points"][1]))
+            if "from" in rows and "points" in rows else None)
 
 
 def _index(sorted_energies: Sequence[float], e: float) -> Optional[int]:

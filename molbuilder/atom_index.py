@@ -270,8 +270,10 @@ def _of_pair(geometry: Path, sidecar: Path) -> Optional[AtomIndexMap]:
         if run_of(read_with(geometry.parent)) is not None:
             return None
         from .structure import Structure
+        from .workingcopy_structure import StructureCodec
         text = geometry.read_text(encoding="utf-8-sig")
-        n = (Structure.from_pdb(text) if geometry.suffix.lower() == ".pdb"
+        n = (Structure.from_pdb(text)
+             if StructureCodec.format_named(geometry) == "pdb"
              else Structure.from_xyz(text)).n_atoms
         return replace(AtomIndexMap.of_user_structure(
             n, "the user's own file: its order is the user order"),

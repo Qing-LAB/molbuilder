@@ -55,51 +55,14 @@ def rdkit_mol_to_structure(mol, *, title: Optional[str] = None) -> Structure:
     )
 
 
-def parse_pdb_to_structure(pdb_text: str, *, title: Optional[str] = None) -> Structure:
-    """Parse standard PDB ATOM records into a Structure."""
-    elements = []
-    positions = []
-    atom_names = []
-    residue_ids = []
-    residue_names = []
-    chain_ids = []
-    for line in pdb_text.splitlines():
-        if not line.startswith(("ATOM  ", "HETATM")):
-            continue
-        atom_name = line[12:16].strip()
-        res_name  = line[17:20].strip()
-        chain_id  = (line[21:22].strip() or "A")
-        try:
-            res_id = int(line[22:26])
-            x = float(line[30:38]); y = float(line[38:46]); z = float(line[46:54])
-        except ValueError:
-            continue
-        element = line[76:78].strip()
-        if not element:
-            element = "".join(c for c in atom_name if c.isalpha())[:1].upper()
-        elements.append(element)
-        positions.append((x, y, z))
-        atom_names.append(atom_name)
-        residue_ids.append(res_id)
-        residue_names.append(res_name)
-        chain_ids.append(chain_id)
-    return Structure(
-        elements=elements,
-        positions=np.asarray(positions, dtype=float),
-        atom_names=atom_names,
-        residue_ids=residue_ids,
-        residue_names=residue_names,
-        chain_ids=chain_ids,
-        title=title or "",
-    )
-
-
 def verify_backbone_connectivity(struct: Structure, kind: str,
                                  max_O3_P: float = 1.80,
                                  ) -> Optional[str]:
-    """Return None if the inter-residue P-O3' distances are all under
-    `max_O3_P` Angstrom (implies the backbone is bonded), else a
-    string describing the worst violation.
+    """Return None if the inter-residue P-O3' distances within each chain are
+    all under `max_O3_P` Angstrom (implies the backbone is bonded), else a
+    string describing the worst violation.  A duplex's strands number their
+    residues on, so a residue's neighbour by number may be the other strand's,
+    which no backbone joins.
 
     Used as a self-check at the end of every backend run.  If it fails
     the backend should raise rather than ship a broken structure.
@@ -107,25 +70,25 @@ def verify_backbone_connectivity(struct: Structure, kind: str,
     P_pos:  dict = {}
     O3_pos: dict = {}
     for i in range(struct.n_atoms):
-        rid = struct.residue_ids[i]
+        where = (struct.chain_ids[i], struct.residue_ids[i])
         n = struct.atom_names[i]
         if n == "P":
-            P_pos[rid] = struct.positions[i]
+            P_pos[where] = struct.positions[i]
         elif n == "O3'":
-            O3_pos[rid] = struct.positions[i]
+            O3_pos[where] = struct.positions[i]
     worst = None
     worst_d = 0.0
-    for r in sorted(P_pos):
-        if r - 1 in O3_pos:
-            d = float(np.linalg.norm(P_pos[r] - O3_pos[r - 1]))
+    for chain, r in sorted(P_pos):
+        if (chain, r - 1) in O3_pos:
+            d = float(np.linalg.norm(P_pos[chain, r] - O3_pos[chain, r - 1]))
             if d > max_O3_P and d > worst_d:
-                worst = (r - 1, r, d)
+                worst = (chain, r - 1, r, d)
                 worst_d = d
     if worst is None:
         return None
-    a, b, d = worst
-    return (f"residue {a} O3' -> residue {b} P distance = {d:.2f} A "
-            f"(should be <= {max_O3_P}); backbone is broken")
+    chain, a, b, d = worst
+    return (f"chain {chain} residue {a} O3' -> residue {b} P distance = "
+            f"{d:.2f} A (should be <= {max_O3_P}); backbone is broken")
 
 
 def select_chain(struct: Structure, chain: str) -> Structure:

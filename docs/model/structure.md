@@ -915,11 +915,12 @@ the Modify tab, which asks.
 > periodic `pbc=` was also adopted as the cell; the comment line is no longer
 > metadata at all, above.)*
 >
-> `from_pdb` is still ours: PDB carries residue, chain and atom-name columns
-> this model owns. **A second PDB reader does exist**, in the builders —
-> `builders/backends/_common.py::parse_pdb_to_structure`, which reads a blank
-> element column as the name's first letter (`Mg → M`, `Cl → C`); it is plan
-> A1.14's. *(This said no comparable second reader existed until 2026-09-29.)*
+> `from_pdb` is still ours, and the one reader of a PDB, what the builders' tools
+> write included: PDB carries residue, chain and atom-name columns this model owns.
+> An element column left blank is read from the name by the format's columns: a
+> two-letter element where cols 13-14 spell one (`FE`, `MG`), except a four-letter
+> name beginning `H`, which fills the columns and is a hydrogen (`HG21`), and a
+> digit there is the name's (`1HG2`).
 
 ### 2.4 The paired-file door — `StructureCodec` (L2)
 
@@ -935,7 +936,10 @@ copy of any of them:
 2. **the format choice** — plain XYZ, one block per frame the structure
    holds (§ 2.2e), its comment line the title and nothing else (§ 2.3, *the
    comment line is never metadata*); `.pdb` when the destination names it, a
-   frame set written to a `.pdb` refused, PDB holding one geometry;
+   frame set written to a `.pdb` refused, PDB holding one geometry
+   (`format_named`); and for a text with no name, pasted or piped in, XYZ when
+   its first non-blank line is a positive integer, its atom count, else PDB
+   (`format_of_text`);
 3. **the sidecar envelope** — `schema_version`, the `geometry_hash` pinning it
    to its geometry and checked on every read (`structure-molstruct.md` § 3),
    and the one serialisation (`molstruct.dumps`);

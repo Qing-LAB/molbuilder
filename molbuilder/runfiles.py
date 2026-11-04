@@ -2046,7 +2046,7 @@ ENGINE_FILES: "tuple[EngineFile, ...]" = (
                what="the orbitals each atom carries -- what a transmission "
                     "point's DOS per orbital is grouped by, at the device "
                     "point the transmission gathered",
-               door="transport.record.selection_pdos"),
+               door="parse.engines.tbtrans_nc.read_orbitals"),
     EngineFile("siesta", SIESTA_FC,
                what="a force-constant run's forces at every displacement",
                door="parse.engines.siesta_fc.read_fc"),

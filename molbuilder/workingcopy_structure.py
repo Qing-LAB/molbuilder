@@ -596,6 +596,23 @@ class StructureCodec:
         what makes write->read a round trip rather than a coincidence."""
         return "pdb" if Path(target).suffix.lower() == ".pdb" else "xyz"
 
+    @staticmethod
+    def format_of_text(text: str) -> str:
+        """The container a text with no name holds, by the format's own
+        first-line rule: an XYZ's first non-blank line is its atom count, a
+        positive integer; anything else is a PDB, whose header lines can push
+        its first atom far into the file.  A text misjudged fails in its
+        reader, which says it could not parse."""
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                return "xyz" if int(line) > 0 else "pdb"
+            except ValueError:
+                return "pdb"
+        return "pdb"
+
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #
     def files(self, struct: Structure, target, *,
               fmt: "str | None" = None) -> List[Tuple[Path, bytes]]:

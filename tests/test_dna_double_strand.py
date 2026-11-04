@@ -145,6 +145,22 @@ def test_ds_both_strands_get_5prime_OH_by_default(_x3dna):
         f"strands); got {p_count}")
 
 
+@pytest.mark.parametrize("sequence", ["ds,ATGC", "ATGC,GCAT"],
+                         ids=["the complement", "two strands given"])
+@pytest.mark.parametrize("terminal", ["5P", "PP"])
+def test_a_duplex_keeps_its_5prime_phosphates_when_asked(_x3dna, sequence,
+                                                         terminal):
+    """`engines/builders.md`: 3DNA builds a `5P`, and a `PP` as 5'-P.  A duplex's
+    strands number their residues on, and the build's check of its backbone
+    took chain A's last residue for chain B's first's neighbour: every such
+    duplex refused, *backbone is broken*, sending the person after a
+    configuration fault there was none of.  Every residue holds its P."""
+    ds = build_dna(sequence, terminal=terminal)
+    assert sorted(set(ds.chain_ids)) == ["A", "B"]
+    assert sum(1 for e in ds.elements if e == "P") == len(
+        set(zip(ds.chain_ids, ds.residue_ids)))
+
+
 # --------------------------------------------------------------------- #
 #  Explicit / arbitrary two-strand duplex via X3DNA `rebuild`           #
 # --------------------------------------------------------------------- #

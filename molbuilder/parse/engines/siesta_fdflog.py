@@ -10,9 +10,12 @@ The fdf library writes one line per key SIESTA looks up: ``<key> <value>
 [<unit>] [# default value]`` -- the marker saying the deck does not carry the
 label -- followed by ``# above item originally: <key> <value> [<unit>]`` when
 it converted the spelling it was given.  ``#:block?`` / ``#:defined?`` lines
-are its own lookups and carry no value; ``%block`` ... ``%endblock`` hold
-blocks verbatim, and a block echoed with no ``%endblock`` ends at the next
-lookup line.
+are its own lookups and carry no value.  A block's rows are the lines it writes
+with one leading space (libfdf's ``fdf_bline``), between ``%block`` and
+``%endblock`` at column 0; a line at column 0 inside a block is a lookup of its
+own (``LatticeConstant`` inside ``%block LatticeVectors``, which SIESTA looks up
+as it reads the block), and a block echoed with no ``%endblock`` holds the rows
+it wrote.
 
 **A key may be read more than once, and not always to the same value.**  Each
 call site passes its own default, so a key the deck does not set can read
@@ -92,28 +95,30 @@ def read_fdf_log(text: str, source: str = "<text>"
     last = None
     block = None
     block_line = 0
+    in_rows = False
     for line_no, raw in enumerate(text.splitlines(), start=1):
         line = raw.rstrip()
         if not line.strip():
             continue
-        low = line.lstrip().lower()
-        if block is not None:
-            if low.startswith("%endblock"):
-                block = None
-                continue
-            if not low.startswith("#:"):
+        # ONE LEADING SPACE IS A BLOCK'S ROW, or libfdf's own note on reading
+        # one (``#:(Backspace to)``); every other line starts at column 0.
+        if line.startswith(" "):
+            if block is not None and not line.lstrip().startswith("#:"):
                 blocks[block].append(line)
-                continue
-            # A BLOCK ECHOED WITH NO ``%endblock`` (``Optical.Vector``):
-            # fdf's next lookup line ends it -- a lookup is never a row.
+                in_rows = True
+            continue
+        in_rows = False
+        low = line.lower()
+        if low.startswith("%endblock"):
             block = None
+            continue
         if low.startswith("%block"):
             parts = line.split(None, 1)
             block = fdf_key(parts[1].strip()) if len(parts) > 1 else ""
             block_line = line_no
             blocks[block] = []
             continue
-        if line.lstrip().startswith("#"):
+        if line.startswith("#"):
             m = _ORIGINAL.match(line.strip())
             if m and last is not None:
                 last["original"] = m.group(1)
@@ -137,7 +142,9 @@ def read_fdf_log(text: str, source: str = "<text>"
         spelled.setdefault(label, key)
         read.setdefault(label, []).append(reading)
         last = reading
-    if block is not None:
+    # A LOG THAT STOPS AMONG A BLOCK'S ROWS is cut short; one that went on to
+    # other lookups read as many rows as it wanted (``Optical.Vector``).
+    if block is not None and in_rows:
         warnings.append(ParseWarning(source=source, line_no=block_line,
                                      snippet=block,
                                      error=f"block {block!r} never closed",

@@ -1759,9 +1759,12 @@ reading or readings.
 | `original` | the deck's spelling, from `# above item originally:` |
 | `readings` | instead of one reading: every distinct one, in order, for a key read to several values |
 
-`blocks[label]` holds each `%block` verbatim — a block echoed with no
-`%endblock` (`Optical.Vector`) ends at fdf's next lookup line, never a row
-of it. An example, from a TranSIESTA device's log:
+`blocks[label]` holds each `%block`'s rows, verbatim: the lines libfdf writes with
+one leading space. A line at column 0 inside a block is a lookup of its own, and
+goes in `params` — `LatticeConstant` inside `%block LatticeVectors`,
+`TS.Elec.L.UsedAtoms` inside `%block TS.Elec.L` — and a block echoed with no
+`%endblock` (`Optical.Vector`) holds the rows it wrote. An example, from a
+TranSIESTA device's log:
 
 ```text
 MeshCutoff          150.0000000             Ry

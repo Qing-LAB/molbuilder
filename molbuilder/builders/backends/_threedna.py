@@ -93,7 +93,7 @@ import numpy as np
 from ... import repo_root as _repo_root
 from ...structure import Structure
 from . import DEFAULT_FORM, Built
-from ._common import (parse_pdb_to_structure, select_chain,
+from ._common import (select_chain,
                       verify_backbone_connectivity)
 
 
@@ -391,7 +391,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if not pdb_text.strip():
         raise RuntimeError("fiber produced an empty PDB.")
 
-    struct = parse_pdb_to_structure(
+    struct = Structure.from_pdb(
         pdb_text,
         title=title or f"{kind} {seq} (3DNA fiber, {form}-form)",
     )
@@ -625,7 +625,7 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     if not pdb_text.strip():
         raise RuntimeError("rebuild produced an empty PDB.")
 
-    struct = parse_pdb_to_structure(
+    struct = Structure.from_pdb(
         pdb_text,
         title=title or f"dna {strand1}/{strand2} (3DNA rebuild, B-form duplex)")
     # KEEP both chains -- that IS the duplex.  Strip the spurious 5'-terminal

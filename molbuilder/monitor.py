@@ -113,7 +113,7 @@ try:                                        # inside molbuilder
     from .parse.engines import _run_ending as _ending
     from . import report_cards as _cards
     from . import report_fields as _fields
-    from .runtime_info import JOB_STARTED_VAR
+    from .runtime_info import JOB_STARTED_VAR, mem_total_gb
     from . import runfiles as _rf
     from . import runrecord as _rr
     from . import monitor_log as _ML
@@ -128,7 +128,7 @@ except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_cards as _cards
     import report_fields as _fields
-    from runtime_info import JOB_STARTED_VAR
+    from runtime_info import JOB_STARTED_VAR, mem_total_gb
     import runfiles as _rf
     import runrecord as _rr
     import monitor_log as _ML
@@ -1136,16 +1136,8 @@ def machine_identity() -> Dict[str, str]:
     except (AttributeError, OSError):
         ident["node"] = "?"
     ident["cores"] = str(os.cpu_count() or 0)
-    mem = ""
-    try:
-        with open("/proc/meminfo", encoding="ascii") as fh:
-            for line in fh:
-                if line.startswith("MemTotal:"):
-                    mem = f"{int(line.split()[1]) / 1048576.0:.1f}"
-                    break
-    except (OSError, ValueError, IndexError):
-        pass
-    ident["mem_gb"] = mem or "?"
+    mem = mem_total_gb()
+    ident["mem_gb"] = f"{mem:.1f}" if mem is not None else "?"
     ident["gpu"] = ", ".join(_gpu_models()) or "none"
     return ident
 

@@ -2290,7 +2290,7 @@ class Structure:
                 #  * cols 13-14 hold the element symbol when the first
                 #    character is non-blank (typical for two-letter
                 #    elements like Zn, Fe, Cl);
-                #  * cols 14-15 hold the element when col 13 is blank
+                #  * col 14 holds the element when col 13 is blank
                 #    (one-letter elements like C, N, O on protein
                 #    backbones; "CA" = alpha carbon, not calcium).
                 #
@@ -2305,11 +2305,18 @@ class Structure:
                 # dependency) raises here.  It is the table
                 # `chemistry.atomic_number` reads too; this module sits
                 # below `chemistry` and asks the table itself.
+                #
+                # A FOUR-LETTER NAME BEGINNING H FILLS COLS 13-16, so col 13 starts
+                # a hydrogen's name, not a two-letter element: tleap names a
+                # threonine's hydrogens HG21, HG22, HG23, which are not mercury.
+                # A digit in cols 13-14 is the name's (1HG2).
                 from ase.data import atomic_numbers as _known
-                raw = (line[12:14] if len(line) >= 14 else "").strip()
+                raw = "".join(c for c in line[12:14] if c.isalpha())
                 cand2 = raw[:2].capitalize() if len(raw) >= 2 else ""
                 cand1 = raw[:1].upper() if raw else ""
-                if cand2 and cand2 in _known:
+                if len(atom_name) == 4 and atom_name[0] == "H":
+                    element = "H"
+                elif cand2 and cand2 in _known:
                     element = cand2
                 elif cand1:
                     element = cand1

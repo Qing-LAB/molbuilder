@@ -281,10 +281,10 @@ def _orbitals_of(firsto: Sequence[int], orb_indx: Path,
     one entry per atom, in the run's order).  Its orbital counts must be the
     data file's, atom by atom (its reading's ``firsto``), or the two are not
     of one run and the answer is refused."""
-    import sisl
+    from ..parse.engines.tbtrans_nc import read_orbitals
     l_want, m_want = ORBITAL_TYPES[kind]
     try:
-        basis = sisl.get_sile(str(orb_indx)).read_basis()
+        basis = read_orbitals(orb_indx)
     except Exception as exc:                                  # noqa: BLE001
         raise TbtError(f"{orb_indx.name} does not read: {exc}") from exc
     firsto = [int(x) for x in firsto]

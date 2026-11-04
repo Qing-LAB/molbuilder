@@ -39,7 +39,7 @@ from ...diagnostics import get_capabilities
 from ...envs import run_tool
 from ...structure import Structure
 from . import Built
-from ._common import (parse_pdb_to_structure, select_chain,
+from ._common import (select_chain,
                       verify_backbone_connectivity)
 
 
@@ -124,7 +124,7 @@ quit
         with open(pdb_path) as fh:
             pdb_text = fh.read()
 
-    struct = parse_pdb_to_structure(
+    struct = Structure.from_pdb(
         pdb_text,
         title=title or f"{kind} {seq} (tleap, extended chain)",
     )

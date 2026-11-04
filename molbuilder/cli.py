@@ -56,23 +56,17 @@ def _resolve_input_path(path: str) -> Iterator[str]:
     temp file with the right extension, and yield the temp path.  The
     temp file is removed on context exit.
 
-    Sniff rule:
-      * first non-blank line is an integer (atom count) -> XYZ
-      * anything else -> PDB
-    Both sniff branches handle the realistic stdin sources -- a
+    The format by the one rule for a text with no name
+    (`StructureCodec.format_of_text`).  It handles the realistic stdin sources -- a
     ``molbuilder dna ATGC`` upstream pipes XYZ; a hand-cat'd PDB
     starts with HEADER / TITLE / REMARK / ATOM / HETATM.
     """
     if path != "-":
         yield path
         return
+    from .workingcopy_structure import StructureCodec
     text = sys.stdin.read()
-    first = ""
-    for line in text.splitlines():
-        if line.strip():
-            first = line.strip()
-            break
-    ext = ".xyz" if first.isdigit() else ".pdb"
+    ext = f".{StructureCodec.format_of_text(text)}"
     with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False,
                                      prefix="molbuilder_stdin_") as f:
         f.write(text)
@@ -806,14 +800,6 @@ def _struct_to_text(struct, fmt):
     return struct.to_pdb() if fmt == "pdb" else struct.to_xyz()
 
 
-def _infer_output_format(path):
-    """Default output format from the file extension; xyz fallback."""
-    p = str(path).lower()
-    if p.endswith(".pdb"):
-        return "pdb"
-    return "xyz"
-
-
 @cli.command("modify",
              short_help="edit a structure: one operation per call "
                         "(delete / orient / rotate / electrode)")
@@ -1098,8 +1084,10 @@ def cmd_modify(input_path, output_path,
     except (ValueError, IndexError) as exc:
         raise click.ClickException(str(exc)) from exc
 
+    from .workingcopy_structure import StructureCodec
     fmt = output_format or (
-        "xyz" if str(output_path) == "-" else _infer_output_format(output_path)
+        "xyz" if str(output_path) == "-" else StructureCodec.format_named(
+            output_path)
     )
     if str(output_path) == "-":
         click.echo(_struct_to_text(struct, fmt), nl=False)
@@ -1108,7 +1096,6 @@ def cmd_modify(input_path, output_path,
         # held atoms and explicit cell travel in the sidecar.  The codec owns the pairing rule and the both-or-neither write; the
         # format is the one the user asked for, which may not be the one the
         # extension implies.
-        from .workingcopy_structure import StructureCodec
         StructureCodec().write(struct, output_path, fmt=fmt)
         click.echo(
             f"Wrote {output_path}: {struct.n_atoms} atoms (input had {n_in})",

@@ -70,6 +70,19 @@ WALL_SLACK_VAR = "MB_WALL_SLACK_S"
 NODE_CORES_VAR = "MB_NODE_PHYS_CORES"
 
 
+def mem_total_gb() -> Optional[float]:
+    """The node's memory in GB, to a tenth, from ``/proc/meminfo`` -- what the
+    machine record and a run's machine line both state -- or ``None``."""
+    try:
+        with open("/proc/meminfo", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return round(int(line.split()[1]) / 1048576.0, 1)
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
 def physical_core_count() -> int:
     """Return the host's physical (not logical) core count -- the run
     script's measurement (:data:`NODE_CORES_VAR`) where it ran the script;
@@ -294,6 +307,7 @@ def to_gpu(mf):
 
 
 __all__ = [
+    "mem_total_gb",
     "GPU4PYSCF_MIN_COMPUTE_CAPABILITY",
     "RUNTIME_INFO_KEYS",
     "THREAD_SOURCES",

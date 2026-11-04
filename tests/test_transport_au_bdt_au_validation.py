@@ -522,6 +522,12 @@ def test_the_transmission_window_carries_the_configured_point_count():
                                "TBT.Contour.window")
     assert lo == pytest.approx(cfg.transmission_emin_ev)
     assert hi == pytest.approx(cfg.transmission_emax_ev)
+    # AS MOLBUILDER READS IT BACK, for a sharing point's grid (§ 2a.16).
+    from molbuilder.transport.energies import deck_window
+    assert deck_window(_live_device_deck(cfg.system_label,
+                                         rung="transmission")) == (
+        cfg.transmission_emin_ev, cfg.transmission_emax_ev,
+        cfg.transmission_n_points)
 
 
 # --------------------------------------------------------------------- #

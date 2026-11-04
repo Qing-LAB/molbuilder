@@ -83,29 +83,6 @@ from .files import _resolve_within_roots, _PickerError
 bp = Blueprint("build", __name__)
 
 
-def _sniff_structure_format(text: str) -> str:
-    """Return ``"xyz"`` or ``"pdb"`` for raw structure text.
-
-    Relies on the format's own first-line rule instead of a byte-window
-    scan: a real PDB file's HEADER / TITLE / REMARK lines can push the
-    first ATOM record far into the file.
-
-    Rule: XYZ's first non-blank line is an atom count (positive int).
-    Anything else (PDB headers, plain text, empty) is treated as PDB.
-    Caller still wraps ``Structure.from_pdb`` in try/except, so a
-    misclassified blob fails with a clear "could not parse" 400.
-    """
-    for line in (text or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            return "xyz" if int(line) > 0 else "pdb"
-        except ValueError:
-            return "pdb"
-    return "pdb"
-
-
 @bp.route("/api/structure/analyze", methods=["POST"])
 def api_structure_analyze():
     """The electronic state of a structure, for exactly what a form says.
@@ -664,8 +641,7 @@ def api_build_load():
                 f"there, set the origin again on the Cell page.",
                 "cell.origin_retired")])
         return ok_structure_response(struct, extra={
-            "source_format": ("pdb" if str(_resolved).lower().endswith(".pdb")
-                              else "xyz"),
+            "source_format": StructureCodec.format_named(_resolved),
             "title": struct.title or _resolved.name,
             "n_frames": whole.n_frames,
             **({"notices": said} if said else {}),
@@ -714,11 +690,8 @@ def api_build_load():
         if ext in ("xyz", "pdb"):
             fmt = ext
         else:
-            # Sniff by content -- the ONE shared rule (XYZ's first non-blank line is
-            # a POSITIVE atom count; anything else is PDB).  Delegate to the same
-            # helper the /api/build/molecule path uses so the two never disagree on an
-            # edge case (e.g. a leading "0" line: int("0")>0 is False -> pdb).
-            fmt = _sniff_structure_format(text)
+            from molbuilder.workingcopy_structure import StructureCodec
+            fmt = StructureCodec.format_of_text(text)
 
     try:
         if fmt == "xyz":
