@@ -1,6 +1,7 @@
 """A generated run wrapper never changes directory (`job-contracts.md` § 2.1)."""
 from __future__ import annotations
 
+from molbuilder.scheduler.record import write_environment
 import re
 
 import pytest
@@ -30,12 +31,12 @@ def _isolated(monkeypatch, tmp_path_factory):
     # unprobed machine, so a fixture that renders one probes first,
     # exactly as a person does:  molbuilder jobset probe --write
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
-    (cwd / "environment.json").write_text(
+    write_environment(
         _Env(machine="this", scheduler=SLURM,
              topology=_Topo(sockets=2, cores_per_socket=32),
              env_init={"activation": "conda activate",
-                                "preamble": "true"}).to_json()
-        + "\n")
+                                "preamble": "true"}),
+        (cwd / "environment.json"))
 
 
 ENGINES = (

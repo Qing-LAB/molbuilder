@@ -27,6 +27,7 @@ from .atom_permutation import (FIELD_ENGINE, FIELD_LISTED_BY, FIELD_USER,
 # THE FOLDER A FILE IS READ WITH -- a point's `shared/` folder, at any depth,
 # the point's (F3).
 from .calcdirs import read_with
+from .persist import read_json
 
 
 class AtomIndexUnknown(ValueError):
@@ -215,8 +216,7 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
     if p.suffix == ".nc":
         return _of_nc(p)
     if p.suffix == ".json":
-        d = json.loads(p.read_text(encoding="utf-8")) if p.stat().st_size \
-            else None
+        d = read_json(p) if p.stat().st_size else None
         block = d.get(MAP_KEY) if isinstance(d, dict) else None
         if isinstance(block, dict):
             return replace(map_of_block(block, name), stated_by=str(p))

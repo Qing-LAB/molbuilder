@@ -58,6 +58,29 @@ def test_a_folder_that_is_not_a_calculation_is_refused_as_one_thing(
     assert way in str(err.value), str(err.value)
 
 
+@pytest.mark.parametrize("record", ["task.json", "job-request.json"])
+@pytest.mark.parametrize("ending, encoding, says", [
+    (",}", "utf-8", "not JSON"),
+    (', "note": "café"}', "cp1252", "save it as UTF-8"),
+], ids=["a slip of the hand", "an editor that does not save UTF-8"])
+def test_a_record_a_person_broke_is_refused_naming_it(
+        tmp_path, monkeypatch, record, ending, encoding, says):
+    """`execution/job-request.md` § 7: *"A person may edit either file; a
+    reader refuses what does not read, naming the file."*  THE SILENT FAILURE:
+    a slip of the hand in one of them answered as `Expecting value: line 1
+    column 12`, with no word of which file to open; a file an editor saved in
+    its own code page was called *not JSON*, sending the person to look for a
+    comma, with no word of the way out."""
+    bundle = describe_calculation(tmp_path, monkeypatch)
+    broken = bundle / record
+    kept = broken.read_text(encoding="utf-8").rstrip().rstrip("}")
+    broken.write_bytes((kept + ending).encode(encoding))
+    with pytest.raises(ValueError) as err:
+        C.open(bundle)
+    assert record in str(err.value), str(err.value)
+    assert says in str(err.value), str(err.value)
+
+
 def test_each_records_door_answers_none_for_a_record_that_is_not_there(
         tmp_path):
     folder = tmp_path / "bare"

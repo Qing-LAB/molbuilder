@@ -1,6 +1,6 @@
 """Tests for the ``.spectra.json`` sidecar door
-(``molbuilder.sidecars.spectra``: the write side, plus the read side it
-re-exports from ``molbuilder.parse.sidecars.spectra``).
+(``molbuilder.sidecars.spectra``: its writer and its reader; the parse
+registry's parser, ``molbuilder.parse.sidecars.spectra``, asks the reader).
 
 Pin the schema_version gate, the malformed-input handling, the
 field-error wrapping, and the missing-file case so the live-watch
@@ -227,20 +227,15 @@ class TestParseSpectraJsonForwardCompat:
 
 
 class TestParseSpectraJsonDict:
-    """parse_spectra_json_dict is the in-memory cousin used by the
-    web /api/spectra/load endpoint when the JSON arrived over the
-    wire as a Python dict (already decoded by Flask)."""
+    """parse_spectra_json_dict, the reader's in-memory door: a result from
+    an already-decoded dict."""
 
     def test_round_trip_dict(self):
         """PLUMBING. The in-memory door (`parse_spectra_json_dict`) reconstitutes a
         result from an already-decoded dict.
 
-        Catches the two doors drifting: `/api/spectra/load` accepts either a
-        `path` or an inline `json` object, and the inline arm never touches the
-        filesystem or `json.loads`. It is a SEPARATE function with its own copy of
-        the schema check, so nothing in the file-path tests above covers it.
-
-        Contract: `web/spectra.md` § 6 (the door takes `{'json': {...}}` too).
+        It is a SEPARATE function with its own copy of the schema check, so
+        nothing in the file-path tests above covers it.
         """
         original = _make_minimal_results()
         loaded = parse_spectra_json_dict(original.to_dict())
@@ -263,8 +258,7 @@ class TestParseSpectraJsonDict:
     def test_missing_schema_version_rejected(self):
         """PLUMBING. The in-memory door runs the schema-version gate too.
 
-        Catches the inline arm of `/api/spectra/load` skipping the version check.
-        The dict path duplicates that check in `_parse_spectra_json_dict` rather
+        The dict path duplicates that check in `parse_spectra_json_dict` rather
         than sharing it with the file path, so it can be deleted from one and not
         the other, and a v6 payload posted inline would then be reconstituted by a
         v5 reader -- silently, with whatever fields happened to still line up.
@@ -455,16 +449,6 @@ class TestDumpSpectraJson:
         assert first_three != b"\xef\xbb\xbf"
         # And the first char is actually the JSON opening brace.
         assert p.read_bytes()[:1] == b"{"
-
-    def test_indent_zero_compact_form(self, tmp_path):
-        """indent=0 gives the compact wire form -- useful when the
-        file is large and human-readability is less important."""
-        original = _make_minimal_results()
-        p = tmp_path / "compact.spectra.json"
-        dump_spectra_json(original, p, indent=0)
-        # Compact form has no two-space indentation on field names.
-        raw = p.read_text(encoding="utf-8")
-        assert '\n  "engine"' not in raw
 
     def test_pathlike_accepted(self, tmp_path):
         """PLUMBING. The writer takes an `os.PathLike` destination.

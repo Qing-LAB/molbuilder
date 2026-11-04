@@ -143,7 +143,7 @@ class SidecarResult(ParseResult):
     (molstruct, spectra, transport, etc.).
 
     ``payload`` is the validated JSON body.  ``schema`` carries
-    the discriminator (e.g. ``"molstruct/v3"``) so consumers can
+    the discriminator (e.g. ``"molstruct/v17"``) so consumers can
     type-narrow further.
     """
     payload: Dict[str, Any] = field(default_factory=dict)

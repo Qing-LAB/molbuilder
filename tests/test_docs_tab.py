@@ -72,6 +72,7 @@ def test_toc_build_survives_readonly_docs(tmp_path):
     not take the sidebar down: the repaired tree is served from memory
     and the persist is silently skipped."""
     import os as _os
+    from molbuilder.persist import read_json
     from molbuilder.web.blueprints.docs import _build_toc_tree
 
     (tmp_path / "process").mkdir()
@@ -87,7 +88,7 @@ def test_toc_build_survives_readonly_docs(tmp_path):
 
     _os.chmod(tmp_path, 0o555)
     try:
-        tree = _build_toc_tree(tmp_path)      # must not raise
+        tree = _build_toc_tree(tmp_path, read_json(toc_path))  # must not raise
     finally:
         _os.chmod(tmp_path, 0o755)
     assert [n["path"] for n in tree[0]["children"]] == [
@@ -225,6 +226,7 @@ def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
     Asserting the FIRST call is the whole point: asserting the second passes
     against the bug.
     """
+    from molbuilder.persist import read_json
     from molbuilder.web.blueprints.docs import _build_toc_tree
     root = _isolated_docs(tmp_path)
     (root / "archive" / "9999-01-01-brand-new.md").write_text(
@@ -238,7 +240,7 @@ def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
                 if "path" in n:
                     out.append(n["path"])
                 collect(n.get("children", []))
-        collect(_build_toc_tree(root))
+        collect(_build_toc_tree(root, read_json(root / "toc.json")))
         return out
 
     first = paths_of()
@@ -268,6 +270,7 @@ def test_two_groups_over_one_directory_do_not_each_append_it(tmp_path):
     unnecessary.
     """
     import json
+    from molbuilder.persist import read_json
     from molbuilder.web.blueprints.docs import _build_toc_tree
     root = tmp_path / "docs"
     (root / "notes").mkdir(parents=True)
@@ -285,7 +288,7 @@ def test_two_groups_over_one_directory_do_not_each_append_it(tmp_path):
             if "path" in n:
                 paths.append(n["path"])
             collect(n.get("children", []))
-    collect(_build_toc_tree(root))
+    collect(_build_toc_tree(root, read_json(root / "toc.json")))
 
     assert paths.count("notes/unlisted.md") == 1, (
         f"an unlisted file in a directory curated by TWO groups was appended "

@@ -683,7 +683,8 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure,
     out.append("# and a mode's eigenvectors belong to THIS geometry, not the input's.")
     out.append("# The held atoms are its label from here on.")
     out.append("state['structure'] = _mb_equilibrium_structure(")
-    out.append("    ELEMENTS, COORDS_EQ_ANG, _MB_SIDECAR)")
+    from .input import SIDECAR_NAME
+    out.append(f"    ELEMENTS, COORDS_EQ_ANG, {SIDECAR_NAME})")
     out.append("state.pop('frozen_atom_idxs', None)")
     out.append("# THE EQUILIBRIUM SCF OPENS THE FREQUENCIES' PHASE, which the")
     out.append("# harmonic analysis closes (engines/vibration.md 4.9).")

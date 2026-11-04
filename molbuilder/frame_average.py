@@ -825,6 +825,13 @@ def with_meanings(variables: Tuple[Any, ...], structure) -> Tuple[Any, ...]:
         if v.name in said and said[v.name][1] else v for v in variables)
 
 
+#: THE FRAME PART'S ATTRIBUTES WRITTEN AS JSON TEXT (`ncdata.json_attr`,
+#: :func:`fill_data_file` below) -- read back as the blocks they hold by the
+#: data file's door (`transport.datafile.read_data_file`,
+#: `ncdata.unjson_attr`).
+JSON_ATTRS = ("structure_rows", "frame_warnings", "average_assumptions")
+
+
 def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
                    structure, average: Dict, biases: List[float],
                    index: Callable[[float, List[float]], int]) -> None:
@@ -890,6 +897,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
 
 
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
+           "JSON_ATTRS",
            "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
            "answer", "at_voltage", "average_block", "average_said",
            "citation_block",

@@ -305,6 +305,37 @@ class TestTheConfigFileIsRefusedAtTheDoor:
             f"2026-08-12) -- an operator with several config files is told "
             f"nothing: {msg}")
 
+    #: (the file's bytes as an editor saved them, what its refusal says --
+    #: ``None`` where it reads)
+    SAVED = [
+        # Windows' Notepad saving UTF-8: a byte-order mark first, read past
+        # as every JSON file molbuilder reads (`job-contracts.md` § 6.1).
+        ("\ufeff{}".encode("utf-8"), None),
+        # Saved as Windows-1252 rather than UTF-8: refused, by its path.
+        ('{"_note": "café"}'.encode("cp1252"), ["not UTF-8"]),
+    ]
+
+    @pytest.mark.parametrize("data,must_say", SAVED,
+                             ids=["a byte-order mark", "not UTF-8"])
+    def test_a_config_file_an_editor_saved_reads_or_is_refused_by_name(
+            self, tmp_path, data, must_say):
+        """`molbuilder.json` is the person's own file, edited by hand; an
+        editor decides how its bytes are saved.  The mark it may add is read
+        past; text that is not UTF-8 is refused naming the file, never a
+        traceback.  THE SILENT FAILURE: a server that will not start over an
+        invisible character, or that dies with no word of which file."""
+        cfg = tmp_path / "molbuilder.json"
+        cfg.write_bytes(data)
+        if must_say is None:
+            read_config(cfg)
+            return
+        with pytest.raises(RuntimeConfigError) as exc:
+            read_config(cfg)
+        msg = str(exc.value)
+        for frag in must_say:
+            assert frag in msg, f"refusal does not say {frag!r}: {msg}"
+        assert str(cfg) in msg, msg
+
     def test_a_config_with_no_auth_section_is_accepted_with_auth_off(
             self, tmp_path):
         """No `auth` section means no login -- the right shape for a personal

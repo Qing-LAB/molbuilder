@@ -119,6 +119,7 @@ try:                                        # inside molbuilder
     from .parse.dirs.job import LIVE_STATES, MONITOR_ENDED, run_status
     from .parse.instruments.scf_timing_rows import timing_file, timing_of
     from . import calcdirs as _cd
+    from . import persist as _persist
     from . import runpoints as _rp
     from .trajectory_log import keys as _K
     from .wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
@@ -132,6 +133,7 @@ except ImportError:                         # beside the job
     from job import LIVE_STATES, MONITOR_ENDED, run_status
     from scf_timing_rows import timing_file, timing_of
     import calcdirs as _cd
+    import persist as _persist
     import runpoints as _rp
     import keys as _K
     from wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
@@ -1410,9 +1412,8 @@ def read_notify_keys():
     listener is not registered, and no keys means it accepts nothing.  A
     misconfiguration here removes a capability; it never grants one.
     """
-    p = notify_keys_path()
     try:
-        obj = json.loads(p.read_text(encoding="utf-8"))
+        obj = _persist.read_json(notify_keys_path())
     except (OSError, ValueError):
         return None, {}
     if not isinstance(obj, dict):
@@ -1433,9 +1434,10 @@ def read_notify_keys():
 def notify_keys_document(route, keys):
     """The file's bytes, from the two things it holds.
 
-    One writer, so the shape cannot drift from :func:`read_notify_keys`.
+    One writer, so the shape cannot drift from :func:`read_notify_keys`;
+    its bytes every JSON file's one shape (`persist.json_text`).
     """
-    return json.dumps({"route": route, "keys": dict(keys)}, indent=2) + "\n"
+    return _persist.json_text({"route": route, "keys": dict(keys)})
 
 
 
@@ -1738,6 +1740,18 @@ def webhook_request(dest: Dict[str, Any],
     return body, head
 
 
+def read_channels_file() -> Any:
+    """The channels file as it stands (:func:`default_notify_path`), through
+    `persist`'s one JSON reader -- THE ONE READ of it: :func:`load_channels`
+    judges what it holds, and the This machine tab merges a save over it and
+    says what is wrong with it (`web/blueprints/notify_setup.py`).  The
+    person's own file, kept by hand as well as by the tab: a byte-order mark
+    an editor adds is read past (`persist.read_json`).  Raises what that reader
+    raises: `OSError` where there is no file to read, `ValueError` for one
+    that does not read -- not UTF-8 text, not JSON."""
+    return _persist.read_json(default_notify_path())
+
+
 def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     """The named webhook channels, or ``{}`` when none are set up.
 
@@ -1794,7 +1808,7 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
         _say("no config_dir.py beside the monitor -- reports off")
         return {}
     try:
-        raw = p.read_text(encoding="utf-8")
+        obj = read_channels_file()
     except OSError:
         # NO CHANNELS FILE ON THIS MACHINE is reports off -- and SAID, once,
         # for the same reason a named channel absent here is said
@@ -1807,8 +1821,6 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
              f"set them up on the machine that runs the job (its This "
              f"machine tab), where the monitor reads them")
         return {}
-    try:
-        obj = json.loads(raw)
     except ValueError as exc:
         _say(f"{p}: not valid JSON ({exc}); not notifying")
         return {}
@@ -3175,6 +3187,7 @@ TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
                 "molbuilder.calcdirs",
                 "molbuilder.config_dir",
                 "molbuilder.parse.dirs.job",
+                "molbuilder.persist",
                 "molbuilder.trajectory_log.keys",
                 "molbuilder.report_cards",
                 "molbuilder.report_fields",

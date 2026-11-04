@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 
+from molbuilder.persist import json_text
 from molbuilder.scheduler.record import Environment, Topology
 from support.machines import SLURM, WORKSTATION
 
@@ -36,7 +37,7 @@ def test_env_arch_round_trips():
     e = Environment(scheduler=SLURM,
                     conda_envs=["molbuilder", "molbuilder-siesta"],
                     env_arch="x86_64")
-    back = Environment.from_dict(json.loads(e.to_json()))
+    back = Environment.from_dict(json.loads(json_text(e.to_dict())))
     assert back.env_arch == "x86_64"
     assert back.conda_envs == ["molbuilder", "molbuilder-siesta"]
 
@@ -45,7 +46,7 @@ def test_the_field_is_absent_rather_than_null_when_unknown():
     """`to_dict` omits it entirely, the same way `conda_envs` and
     `env_init` are omitted: a key that is missing and a key that is
     null are different claims to anything testing for one."""
-    d = json.loads(Environment(scheduler=WORKSTATION).to_json())
+    d = json.loads(json_text(Environment(scheduler=WORKSTATION).to_dict()))
     assert "env_arch" not in d
 
 
@@ -53,5 +54,5 @@ def test_topology_arch_survives_the_round_trip():
     e = Environment(scheduler=SLURM,
                     topology=Topology(sockets=1, cores_per_socket=72,
                                       arch="aarch64"))
-    assert Environment.from_dict(json.loads(e.to_json())).topology.arch \
+    assert Environment.from_dict(json.loads(json_text(e.to_dict()))).topology.arch \
         == "aarch64"

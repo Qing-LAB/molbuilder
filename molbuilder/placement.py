@@ -29,8 +29,9 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 from .identity import jobs_as_typed
-from .config_dir import (PRIVATE_FILE_MODE, PRIVATE_DIR_MODE, SECRETS_DIRNAME,
-                         client_secret, config_dir,
+from .config_dir import (JUPYTER_PIDFILES, PRIVATE_FILE_MODE,
+                         PRIVATE_DIR_MODE, SECRETS_DIRNAME, SERVE_PIDFILES,
+                         client_secret, config_dir, pidfile_pattern,
                          jobs_dir, jupyter_lab_home, logs_dir,
                          reports_dir, runtime_dir, secrets_dir, session_key,
                          state_dir)
@@ -144,7 +145,7 @@ def places() -> Tuple[Place, ...]:
               "ours, and when $XDG_RUNTIME_DIR is absent it falls back inside "
               "the state root, where the default umask is not good enough"),
         Place("a serve pidfile", runtime_dir, False, None,
-              "an address, not a secret", "serve-*.pid"),
+              "an address, not a secret", pidfile_pattern(SERVE_PIDFILES)),
         # THE NOTEBOOK'S FOUR (`plan.md` § 5n.8): the newest credential in the
         # tree lives in two of them, and the audit exists because a file
         # "ARRIVES loose in ways no writer controls".
@@ -155,7 +156,7 @@ def places() -> Tuple[Place, ...]:
               "jupyter-*.log"),
         Place("a notebook pidfile", runtime_dir, False, None,
               "an address, not a secret -- the shepherd's, beside the "
-              "serve pidfile", "jupyter-*.pid"),
+              "serve pidfile", pidfile_pattern(JUPYTER_PIDFILES)),
         # NOT a credential_store, and the distinction is the whole definition:
         # this token is not KEPT.  It is regenerated at every start, deleted
         # at every clean stop, and meaningless without the live process it

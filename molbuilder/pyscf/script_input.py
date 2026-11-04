@@ -7,13 +7,20 @@ kinds of line say nothing of it, and are set aside: its RUN-SETTINGS block
 (`execution/job-contracts.md` § 3.1) -- the names the script gives its run
 settings, which every other line reads by name; a comment, molbuilder's
 blocks among them; and molbuilder's stamps (`deck_record.without_stamps`).
+The run's structure line (`pyscf.input.SIDECAR_NAME`) is compared by what it
+holds: a field the structure reader retires
+(`sidecars.molstruct.RETIRED_ENVELOPE_KEYS`), which nothing reads, and the
+record's version number, which says which fields a record may hold and
+nothing of the structure, are no difference (`execution/job-request.md`
+§ 5: *the test is the engine's input*).
 Every other line is compared as written: an edit that would compute the
 same thing written another way is called different, which is the safe
 direction.
 
-It reads with the deck record's grammar alone (`deck_record`), and is the
-part PySCF's engine record names (``same_calculation``), which the door
-resolves.
+It reads with the deck record's grammar (`deck_record`), and the structure
+line by the structure reader's own list of retired keys
+(`sidecars.molstruct`); it is the part PySCF's engine record names
+(``same_calculation``), which the door resolves.
 """
 from __future__ import annotations
 
@@ -41,8 +48,28 @@ def script_lines(text: str) -> List[str]:
             continue
         if in_block or not bare or bare.startswith("#"):
             continue
-        out.append(line.rstrip())
+        out.append(_as_read(line.rstrip()))
     return out
+
+
+def _as_read(line: str) -> str:
+    """``line`` as compared: the run's structure line without the envelope's
+    retired keys and its version number; any other line, and a structure
+    line that does not read as the literal molbuilder writes, as written."""
+    import ast
+    from ..sidecars.molstruct import RETIRED_ENVELOPE_KEYS
+    from .input import SIDECAR_NAME
+    head = f"{SIDECAR_NAME} = "
+    if not line.startswith(head):
+        return line
+    try:
+        payload = ast.literal_eval(line[len(head):])
+    except (ValueError, SyntaxError):
+        return line
+    if not isinstance(payload, dict):
+        return line
+    aside = {*RETIRED_ENVELOPE_KEYS, "schema_version"}
+    return head + repr({k: v for k, v in payload.items() if k not in aside})
 
 
 def script_differences(ran: str, now: str) -> List[str]:

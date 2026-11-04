@@ -65,12 +65,19 @@ def test_check_schema_label_prefixes_message():
 # --------------------------------------------------------------------- #
 
 def test_write_json_roundtrips_and_is_pretty(tmp_path):
-    obj = {"schema": "molbuilder/x@1", "jobs": [1, 2, 3]}
+    """THE one byte shape (`persist.json_text`): pretty, a trailing newline,
+    a character beyond ASCII as itself -- a region label's `α`, a unit's
+    `Å` -- and read back as it was.  THE SILENT FAILURE: two writers of one
+    format writing the same value two ways, so a file's bytes depend on
+    which door wrote it."""
+    obj = {"schema": "molbuilder/x@1", "jobs": [1, 2, 3],
+           "label": "α-helix", "unit": "Å"}
     p = persist.write_json(tmp_path / "d.json", obj)
     assert p.is_file()
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert text.endswith("\n")            # trailing newline
     assert "\n  " in text                 # indented (pretty)
+    assert '"α-helix"' in text and '"Å"' in text, text   # as themselves
     assert persist.read_json(p) == obj    # lossless
 
 

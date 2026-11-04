@@ -54,6 +54,14 @@ from .stages import same_volts
 #: file is refused by its version, and `summarize task` writes it again.
 DATA_SCHEMA = "molbuilder/transport-data@8"
 
+#: THE ROOT ATTRIBUTES THIS FILE WRITES AS JSON TEXT (`ncdata.json_attr`,
+#: :func:`data_file_bytes`; `engines/transport.md` § 2a.12 names each
+#: "JSON") -- read back as the blocks they hold by its door
+#: (:func:`read_data_file`, `ncdata.unjson_attr`).  The frames' part names
+#: its own (`frame_average.JSON_ATTRS`).
+JSON_ATTRS = ("current_means", "provenance_chain", "iv_notes",
+              "fermi_frames", "scf_criteria")
+
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
 #: point's is each spin's (↑ = ↓) and a polarized point's two channels are
@@ -873,9 +881,13 @@ def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
 def read_data_file(path) -> Dict[str, Any]:
     """``<label>.transport.nc`` as data: ``{"attrs": {...}, "variables":
     {name: {"dims", "data", "attrs"}}}`` -- each variable's values as numpy
-    arrays (the fill value NaN), its units, long name, definition and source.
-    The file's door (`runfiles.WRITTEN`); refuses another schema by name."""
-    from ..ncdata import read_variables, reading
+    arrays (the fill value NaN), its units, long name, definition and source;
+    each attribute written as JSON text (:data:`JSON_ATTRS`, the frames'
+    part's `frame_average.JSON_ATTRS`) as the block it holds, where the file
+    holds it.  The file's door (`runfiles.WRITTEN`); refuses another schema
+    by name."""
+    from ..frame_average import JSON_ATTRS as FRAME_JSON_ATTRS
+    from ..ncdata import read_variables, reading, unjson_attr
     with reading(path) as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") != DATA_SCHEMA:
@@ -883,4 +895,6 @@ def read_data_file(path) -> Dict[str, Any]:
                                 f"{attrs.get('schema')!r}, not {DATA_SCHEMA} "
                                 f"-- jobset summarize task writes it again")
         variables = read_variables(ds)
+    attrs.update({k: unjson_attr(attrs[k])
+                  for k in JSON_ATTRS + FRAME_JSON_ATTRS if k in attrs})
     return {"attrs": attrs, "variables": variables}

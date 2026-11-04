@@ -33,7 +33,7 @@ def _a_clock_that_does_not_tick_mid_test(monkeypatch):
 
     The property here is *the same structure produces the same bytes,
     whichever door it leaves by* -- and each door stamps the sidecar with the
-    wall clock as it goes.  `_now_iso_z` has ONE-SECOND resolution, so a save
+    wall clock as it goes.  `molstruct.stamp` has ONE-SECOND resolution, so a save
     and an export that straddle a tick differ by one character and the
     comparison fails for the one reason it does not care about.  Rare, timing
     dependent, and it never reproduces on a re-run: the shape of flake that
@@ -43,7 +43,7 @@ def _a_clock_that_does_not_tick_mid_test(monkeypatch):
     timestamp is a field the writer really emits, and a test that skipped it
     would stop noticing if one door ever stamped a field the other did not.
     """
-    monkeypatch.setattr("molbuilder.sidecars.molstruct._now_iso_z",
+    monkeypatch.setattr("molbuilder.sidecars.molstruct.stamp",
                         lambda: "2026-09-05T00:00:00Z")
 
 

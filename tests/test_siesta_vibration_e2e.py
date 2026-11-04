@@ -1505,7 +1505,7 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     from molbuilder.parse import detect
     kind = detect(str(bundle / "CO2.fc-sweep.json"))
     assert kind.name == "fc-sweep-json", kind
-    assert kind.parse(bundle / "CO2.fc-sweep.json").schema == "fc-sweep/v1"
+    assert kind.parse(bundle / "CO2.fc-sweep.json").schema == "fc-sweep/v2"
     assert [s["name"] for s in rec["stages"]] == ["freq", "freq_half"]
     # I25: each stage's files are NAMED where its run wrote them, and are its
     # own -- the record carries paths, not copies.

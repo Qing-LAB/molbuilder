@@ -23,7 +23,8 @@ class NotifiedRecordError(ParseError):
 
 class NotifiedFileParser(FileParser):
     """Parse a run's notification record — the events sent for the run.
-    Returns a :class:`SidecarResult` with ``schema = "run-notified/v1"``."""
+    Returns a :class:`SidecarResult` with ``schema = "run-notified/v<N>"``,
+    ``N`` the major of the schema its reader read it at."""
 
     name   = "run-notified-json"
     label  = f"molbuilder {NOTIFIED_RECORD_FILE} record"
@@ -51,7 +52,8 @@ class NotifiedFileParser(FileParser):
             sent = read_notified_file(Path(path))
         except LaunchRecordError as exc:
             raise NotifiedRecordError(str(exc)) from exc
+        payload = {"schema": NOTIFIED_SCHEMA, "sent": sent}
         return build_sidecar_result(
-            payload={"schema": NOTIFIED_SCHEMA, "sent": sent},
-            schema="run-notified/v1", parser_name=cls.name,
-            source=Path(path))
+            payload=payload,
+            kind="run-notified",
+            parser_name=cls.name, source=Path(path))

@@ -93,7 +93,7 @@ try:                                        # inside molbuilder
     from .vibrational_analysis import vibrational_analysis
     from .. import calcdirs
     from ..jobset.planned import Plan, bring
-    from ..persist import sha256_of
+    from ..persist import sha256_of, write_bytes
     from .optical_data import write_optical_data
     from ..runfiles import (CALCDIR_FILE, COORDINATES_FILE,
                             PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL, ROLE_SPECTRA,
@@ -143,7 +143,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from vibrational_analysis import vibrational_analysis
     import calcdirs
     from planned import Plan, bring
-    from persist import sha256_of  # type: ignore[no-redef]
+    from persist import sha256_of, write_bytes  # type: ignore[no-redef]
     from runfiles import (CALCDIR_FILE,  # type: ignore[no-redef]
                           COORDINATES_FILE,
                           PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL,
@@ -712,9 +712,9 @@ def plan_call(deck) -> None:
         text = read_deck(here.deck)
         labels = [str(r[0]) for r in last["coords"]]
         positions = [[float(x) for x in r[1:4]] for r in last["coords"]]
-        coords.write_text(coordinates_text(labels, positions,
-                                           _species_index(text)),
-                          encoding="utf-8")
+        write_bytes(coords, coordinates_text(labels, positions,
+                                             _species_index(text)
+                                             ).encode("utf-8"))
         came_from = f"{source}/{out.name}, its last geometry step"
     if not coords.is_file():
         raise FinishError(f"{coords.name} is not beside {here.deck.name}: "

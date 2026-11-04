@@ -27,7 +27,8 @@ class RunPointsFileParser(FileParser):
     """Parse a run of points' index — every point of the run, what it
     needs and must hold, how it ended as the job saw it; the kind's facts
     about the run; the finish step's entry.  Returns a
-    :class:`SidecarResult` with ``schema = "run-points/v1"``."""
+    :class:`SidecarResult` with ``schema = "run-points/v<N>"``, ``N`` the
+    major of the index's own ``schema``."""
 
     name   = "run-points-json"
     label  = f"molbuilder {ROLE_POINTS} index"
@@ -54,7 +55,8 @@ class RunPointsFileParser(FileParser):
         except ValueError as exc:
             raise RunPointsError(str(exc)) from exc
         return build_sidecar_result(
-            payload=payload, schema="run-points/v1",
+            payload=payload,
+            kind="run-points",
             parser_name=cls.name, source=Path(path))
 
 

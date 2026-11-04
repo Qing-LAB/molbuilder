@@ -32,7 +32,6 @@ share one deck -- and a frame on another grid is refused by name.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Tuple
 
@@ -43,7 +42,7 @@ try:                                        # inside molbuilder
     from ..atom_permutation import AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, empty, in_memory,
                           json_attr, number_attr, read_variables, reading,
-                          state, unnumber_attr, write_group)
+                          state, unjson_attr, unnumber_attr, write_group)
     from ..persist import write_bytes
     from ..runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose
     from ..structure import Structure as _Structure
@@ -52,7 +51,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, empty,  # type: ignore[no-redef]
                         in_memory, json_attr, number_attr, read_variables,
-                        reading, state, unnumber_attr, write_group)
+                        reading, state, unjson_attr, unnumber_attr,
+                        write_group)
     from persist import write_bytes  # type: ignore[no-redef]
     from runfiles import (  # type: ignore[no-redef]
         ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose)
@@ -321,9 +321,9 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
         sa = {k: g.getncattr(k) for k in g.ncattrs()}
         held = read_variables(g)
         out["settings"] = {
-            "keywords": json.loads(str(sa["keywords"])),
-            "direction": json.loads(str(sa["direction"])),
-            "selection": json.loads(str(sa["selection"])),
+            "keywords": unjson_attr(sa["keywords"]),
+            "direction": unjson_attr(sa["direction"]),
+            "selection": unjson_attr(sa["selection"]),
             "delta_ang": unnumber_attr(held["delta_ang"]["data"]
                                        if "delta_ang" in held
                                        else sa["delta_ang"]),

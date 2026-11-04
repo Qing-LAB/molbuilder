@@ -38,6 +38,9 @@ from typing import List, Optional, Tuple
 from .config_dir import (PRIVATE_FILE_MODE, ensure_private_dir,
                          ensure_runtime_dir, jupyter_log, jupyter_pidfile,
                          serve_log, serve_pidfile)
+# `persist` likewise: stdlib-only, and the one atomic writer of a whole file
+# -- the pidfile's (:func:`write_pidfile`).
+from .persist import write_bytes
 from .reload_protocol import RELOAD_EXIT_CODE, server_environment
 
 
@@ -170,6 +173,14 @@ def read_pidfile(path: Path) -> Optional[int]:
         return int(Path(path).read_text().strip())
     except (OSError, ValueError):
         return None
+
+
+def write_pidfile(path: Path) -> Path:
+    """This process's pid, written to the pidfile at ``path`` -- THE ONE
+    WRITER, the supervisor's and the notebook shepherd's, of the shape
+    :func:`read_pidfile` reads, through the one atomic writer
+    (`persist.write_bytes`)."""
+    return write_bytes(path, f"{os.getpid()}\n".encode("utf-8"))
 
 
 def read_pid(port: int) -> Optional[int]:
@@ -390,7 +401,7 @@ def supervise(port: int, child_argv: List[str], *,
     # $XDG_RUNTIME_DIR is absent this falls back INSIDE the state root, where
     # the default umask gives 0775.
     ensure_runtime_dir()
-    serve_pidfile(port).write_text(f"{os.getpid()}\n")
+    write_pidfile(serve_pidfile(port))
 
     # LAYER 3 (docs/web/jupyter.md § 3.3): a notebook server that outlived the
     # molbuilder that started it -- a machine crash, or a survivor re-parented

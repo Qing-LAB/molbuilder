@@ -53,7 +53,6 @@ is the trade.
 """
 from __future__ import annotations
 
-import json
 import time
 import urllib.error
 import urllib.parse
@@ -90,10 +89,12 @@ def _document() -> Dict[str, Any]:
 
     Unreadable or malformed reads as empty, which is the safe direction: a
     save then writes a fresh, valid file rather than refusing, and the
-    person is not stuck with a broken one they cannot fix from here.
+    person is not stuck with a broken one they cannot fix from here.  Read
+    through the monitor's one read of it (`monitor.read_channels_file`).
     """
+    from ...monitor import read_channels_file
     try:
-        obj = json.loads(_dest_path().read_text(encoding="utf-8"))
+        obj = read_channels_file()
     except (OSError, ValueError):
         return {}
     return dict(obj) if isinstance(obj, dict) else {}
@@ -236,15 +237,13 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
     A broken file and no file both mean nothing is sent and look identical
     from outside.  Saying which is most of what this page is worth.
     """
-    path = _dest_path()
+    from ...monitor import read_channels_file
     try:
-        raw = path.read_text(encoding="utf-8")
+        obj = read_channels_file()
     except UnicodeDecodeError as exc:
-        return f"{path.name} is not text ({exc})"
+        return f"{_dest_path().name} is not text ({exc})"
     except OSError:
         return ""
-    try:
-        obj = json.loads(raw)
     except ValueError as exc:
         return f"not valid JSON ({exc})"
     if not isinstance(obj, dict):
@@ -255,7 +254,7 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
                     "channel below and it becomes a named one")
         return "needs a 'channels' object"
     # PER-CHANNEL, FROM THE MONITOR'S READER.  The checks above are file-level
-    # and have to read the raw text, because `load_channels` returning {} does
+    # and judge the file as read, because `load_channels` returning {} does
     # not say WHY.  Per channel it does know, so its rules are not
     # re-implemented here.
     usable = _usable() if usable is None else usable

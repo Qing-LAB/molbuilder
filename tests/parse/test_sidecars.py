@@ -157,7 +157,7 @@ def test_a_transport_description_is_read_by_a_parser_so_the_root_opens_its_repor
     kind = detect(str(_task(tmp_path, "transport")))
     assert kind.name == "transport-task"
     got = kind.parse(_task(tmp_path, "transport"))
-    assert got.schema == "transport-task/v1"
+    assert got.schema == "transport-task/v2"   # the file's own version
     assert got.payload["calculation"] == "transport"
     with pytest.raises(UnknownFormatError):
         detect(str(_task(tmp_path, "optimization")))

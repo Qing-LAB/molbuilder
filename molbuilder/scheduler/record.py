@@ -30,7 +30,6 @@ reads a run through; this one imports `..persist`, `..config_dir`,
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -478,9 +477,6 @@ class Environment:
             "tool": self.tool,
             "machine": self.machine,
         }
-
-    def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Environment":
@@ -1246,8 +1242,9 @@ def read_environment(path) -> Optional["Environment"]:
     The narrowness of the second ``except`` is deliberate: a bad file earns
     tolerance; a bug does not.
     """
+    from ..persist import read_json
     try:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw = read_json(path)
     except (OSError, ValueError):
         return None
     try:
@@ -1272,12 +1269,12 @@ def _unread(path) -> Tuple[Optional[str], bool]:
     """``(why it does not read, whether an older molbuilder wrote it)`` --
     :func:`why_unread`'s answer, and whether its way out is `jobset
     migrate`, read once."""
-    from ..persist import schema_major, schema_name
+    from ..persist import read_json, schema_major, schema_name
     p = Path(path)
     if not p.exists():
         return None, False
     try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
+        raw = read_json(p)
     except OSError:
         return "it cannot be read here (permissions)", False
     except ValueError:

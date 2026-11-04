@@ -220,8 +220,8 @@ SHELL_CARRIED = ("BASH_ENV", "CONDA_PREFIX")
 
 def prepared_here(tmp_path, monkeypatch, activation: str,
                   name: str = "H2here", calculation: str = "optimization",
-                  stage: str = "coarse"):
-    """An H2 calculation prepared for this machine
+                  stage: str = "coarse", engine: str = "siesta"):
+    """An H2 calculation on ``engine`` prepared for this machine
     (:func:`describe_calculation`), whose record says a shell enters its
     environment with ``activation`` -- the line its run script runs once
     its session log is open, before anything else -- its ``stage``'s group
@@ -235,7 +235,7 @@ def prepared_here(tmp_path, monkeypatch, activation: str,
         monkeypatch.delenv(var, raising=False)
     write_machine_record(env_init={"activation": activation,
                                    "preamble": "true"})
-    bundle = describe_calculation(tmp_path, monkeypatch, engine="siesta",
+    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
                                   calculation=calculation, name=name)
     r = jobset("prep", "task", *group_words(bundle, stage),
                "--bundle", bundle, "--target", "this")

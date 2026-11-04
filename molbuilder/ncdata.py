@@ -39,7 +39,8 @@ USED-BY the transport data file (`transport.datafile`: written and read) and
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill; a boolean is an ``int8`` with
 ``flag_values 0 1`` (:func:`flag`); an empty list is a dimension of length
-0; a nested dict is JSON text (:func:`json_attr`).  Imports netCDF4 at load:
+0; a nested dict is JSON text (:func:`json_attr`, read back by
+:func:`unjson_attr`).  Imports netCDF4 at load:
 a job whose environment lacks it stops here, before the expensive part
 (`engines/vibration.md` § 6.10.6).
 """
@@ -325,6 +326,12 @@ def json_attr(value) -> str:
     as written."""
     return json.dumps(json_safe(value), ensure_ascii=False, allow_nan=False,
                       sort_keys=False)
+
+
+def unjson_attr(text) -> Any:
+    """:func:`json_attr` read back: the block its JSON text holds, a number
+    the writer could not hold ``None``."""
+    return json.loads(str(text))
 
 
 def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
@@ -814,6 +821,7 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "check_axes", "check_said", "state", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
            "read_atom_index_map", "size_of", "flag", "unflag", "number_attr",
            "reading", "OpenedTwice",
-           "unnumber_attr", "json_attr", "write_group", "in_memory",
+           "unnumber_attr", "json_attr", "unjson_attr", "write_group",
+           "in_memory",
            "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
            "Exported", "export_format", "export_name", "exported"]

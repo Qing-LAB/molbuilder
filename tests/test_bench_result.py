@@ -83,8 +83,9 @@ def test_choice_survives_a_json_round_trip_for_the_offer():
     the offer reads back, through a JSON round trip.
     """
     import json
+    from molbuilder.persist import json_text
     res = build_bench_result(_pts())
-    back = json.loads(res.to_json())
+    back = json.loads(json_text(res.to_dict()))
     knobs = (back.get("choice") or {}).get("knobs") or {}
     assert knobs, "choice.knobs is what prep-run's offer consumes"
 

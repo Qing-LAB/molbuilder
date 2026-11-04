@@ -13,6 +13,7 @@ per-side grouped submission, every shelf to the benchmark's one queue.
 """
 from __future__ import annotations
 
+from molbuilder.scheduler.record import write_environment
 import json
 
 import numpy as np
@@ -96,7 +97,7 @@ def sol_calc(tree):
         # how a shell enters an environment there -- the record's fact
         env_init={"activation": "conda activate",
                            "preamble": "true"})
-    (dest / "environment.json").write_text(env.to_json() + "\n")
+    write_environment(env, (dest / "environment.json"))
     return dest
 
 

@@ -6,7 +6,7 @@
 `structure-annotations.md` + `structure-periodicity.md` (the metadata this file
 carries), [`engines/overview.md`](?doc=engines/overview.md) § 3 (the
 **boundary-condition contract** — how the `frozen_atoms` / `regions` this file
-stores are delivered to an engine's input script; see § 7).
+stores are delivered to an engine's input script; see § 6).
 
 When a structure is saved, its geometry goes in the `.xyz` and everything the
 `.xyz` has no room for — region labels, frozen atoms, the cell, per-atom
@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 16,
+  "schema_version": 17,
   "n_atoms_total": 2,
   "n_frames_total": 2,
   "geometry_hash": "3b7e…(sha256 hex)",
@@ -54,9 +54,7 @@ plus the structure's **metadata fields** spread in alongside them.
   "atom_names": ["CA", "SG"],
   "residue_ids": [14, 14],
   "residue_names": ["CYS", "CYS"],
-  "chain_ids": ["B", "B"],
-
-  "selection_rules": {}
+  "chain_ids": ["B", "B"]
 }
 ```
 
@@ -67,8 +65,8 @@ resids ≠ 1 — `Structure.identity_to_dict` owns that judgment, beside the
 synthesis it mirrors). `title` is not among them: it is the geometry file's
 own comment line, and the sidecar does not carry it (`model/structure.md`
 § 2.2c).  An xyz-born pair carries none
-of them: its sidecar holds the envelope, the metadata fields and
-`selection_rules`, and no identity column.
+of them: its sidecar holds the envelope and the metadata fields, and no
+identity column.
 
 **The species labels** *(v16, 2026-10-31)* ride beside them on the same
 terms: `species_labels`, each atom's species label, written only when one is
@@ -86,7 +84,6 @@ atom; a sidecar that states none leaves the file's symbols as the labels.
 | `geometry_hash` | *(v13)* sha256 of the paired geometry's atom lines and the cell they sit in (hex) — the integrity pin (§ 3); a v7–v12 file carries `structure_hash`, a hash of the geometry file's bytes, read and never compared |
 | `created_by` / `created_at` | provenance stamp (`created_at` is ISO-8601 UTC, `…Z`) |
 | `atom_index_map` | *(v15)* which index the atoms are listed by and each atom's indices (`model/overview.md` § 2.2b) — written by the codec from the door that writes the pair, never a `Structure` field and never edited; read, it is checked against `atom_order` |
-| `selection_rules` | a sidecar-**only** pass-through, **not** a `Structure` field (§ 4) |
 
 **Three kinds of information, one contract** *(user, 2026-08-20; the third
 2026-10-09)*: a fact is **per-atom** — it rides the atom list, one entry per
@@ -188,12 +185,15 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v16. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14, 15, 16} and nothing else.**
+**Current schema: v17. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 16                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+SCHEMA_VERSION    = 17                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
 ```
+
+*(v17, 2026-11-04, plan F5.)* **`selection_rules` retired**: never written,
+read past (*Retired keys*). A v7–v16 file reads whole.
 
 *(v16, 2026-10-31, plan F0b.)* **Additive**: the optional
 **`species_labels`** (§ 1), each atom's species label where one is not the
@@ -261,8 +261,10 @@ refused, with an error naming what changed and what to do — never
 partially read.
 
 **Retired keys.** A key the schema once wrote and no longer does — `pbc` and
-`cell_origin` (metadata; the second by decision, v10), `title` (identity) and
-`structure_hash` (the envelope's, v13) — is listed in `RETIRED_METADATA_KEYS` /
+`cell_origin` (metadata; the second by decision, v10), `title` (identity),
+`structure_hash` (the envelope's, v13) and `selection_rules` (the envelope's,
+v17: how a region was selected, which no writer has filled since 2026-07-05
+and nothing read; the user, 2026-11-03) — is listed in `RETIRED_METADATA_KEYS` /
 `RETIRED_IDENTITY_KEYS` (`structure.py`) / `RETIRED_ENVELOPE_KEYS`
 (`sidecars/molstruct.py`) and passes **three gates**: tolerated
 on read, so a file already on disk is not refused as carrying a stray key;
@@ -293,7 +295,7 @@ gate**, because it converts a loud failure into a quiet one.
 
 | Surface | On a non-v7 payload |
 |---|---|
-| `molstruct.load` / `load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
+| `molstruct.load` / `parse.sidecars.molstruct.load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
 | the in-script `ATOM-METADATA` block, wherever it arrives from — a run directory, the transport composite, or `/api/build/load` — | **one reader**, `script_emit.apply_atom_metadata`. The block is read as written today: a retired layout is not translated, so whatever it spells the current way applies and the rest simply is not there. The run still opens. The one refusal is a block whose `n_atoms_total` disagrees with the structure — `MolstructPairingError`, the same name the sidecar's identical guard uses |
 
 The sidecar file's message names the specific difference and says what to do:
@@ -352,7 +354,8 @@ at any of them is refused, not upgraded.
 | v13 | *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
 | v14 | *(2026-10-14)* — the optional **`atom_order`**, the order record of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file is read as the user order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
 | v15 | *(2026-10-23)* — **`atom_index_map`**, which index the atoms are listed by and each atom's indices (§ 1; `model/overview.md` § 2.2b), written into every pair. **Additive, readable**: a v14 file's map is made from its `atom_order` as it is read; a v7–v13 file is read as listed by user index, warned (F4)
-| **v16** | **current** *(2026-10-31)* — the optional **`species_labels`**, each atom's species label where one is not the name the geometry file holds (§ 1; `model/chemistry.md` § 3). **Additive, readable**: a v7–v15 file's symbols are its labels
+| v16 | *(2026-10-31)* — the optional **`species_labels`**, each atom's species label where one is not the name the geometry file holds (§ 1; `model/chemistry.md` § 3). **Additive, readable**: a v7–v15 file's symbols are its labels
+| **v17** | **current** *(2026-11-04)* — **`selection_rules` retired**: never written, read past (*Retired keys* above). **Readable**: a v7–v16 file reads whole
 
 ### Changing the schema
 
@@ -442,23 +445,11 @@ as a cited run's files are (plan § 5z, Q17-c).
 
 ---
 
-## 4. `selection_rules` — a sidecar-only pass-through
+## 4. The codec (server, one home)
 
-`selection_rules` is **not** a `Structure` field and does not go through the
-metadata codec. It is a sidecar-only map, keyed by region label, that records
-*how* a region was selected (a rule, e.g. "all atoms within 3 Å of …") so the
-selection can be re-evaluated. It is validated by `normalise_selection_rules`
-(each target must name a real label — `frozen_atoms` is one, so it needs no
-clause of its own; a v6 rule targeting it keeps working unchanged) and
-**normalised** — each rule is re-parsed and re-serialised, so the stored form is
-canonical, not byte-for-byte. It rides in the envelope, alongside the metadata,
-not inside it.
-
----
-
-## 5. The codec (server, one home)
-
-All read/write of `.molstruct.json` goes through `sidecars/molstruct.py`:
+All read/write of `.molstruct.json` goes through `sidecars/molstruct.py`, its
+text read by its reader in `parse/` (`parse.sidecars.molstruct.load_text`,
+which asks the same one builder):
 
 ```mermaid
 flowchart LR
@@ -467,16 +458,17 @@ flowchart LR
     JSON[".molstruct.json<br/>on disk"]
     ST -- "metadata_to_dict()" --> MD
     MD -- "to_dict(+envelope) → save()" --> JSON
-    JSON -- "load()/load_text()" --> MD2["normalised dict"]
+    JSON -- "load() → parse/ load_text()" --> MD2["the payload"]
     MD2 -- "apply_to_structure()" --> ST
 ```
 
 | Function | Role |
 |---|---|
 | `sidecar_path_for(xyz)` | derive `<stem>.molstruct.json` from a geometry path — the one pairing rule |
-| `to_dict(fields, n_atoms_total, n_frames_total, geometry_hash, …)` | build the envelope + spread the validated metadata fields |
+| `to_dict(fields, n_atoms_total, n_frames_total, geometry_hash, …)` | THE ONE BUILDER — the envelope + the validated metadata fields spread in, for a payload written and one read alike |
 | `save(path, …)` | atomic write (temp sibling + `os.replace`) |
-| `load(path)` / `load_text(text)` | read + validate the version → a normalised metadata dict |
+| `load(path)` — its text read by `parse.sidecars.molstruct.load_text(text)` | read + validate the version → the payload, through the one builder |
+| `renewed(sidecar, …)` · `stamp()` | a payload renewed for its moved geometry · the moment a sidecar is written, its `created_at` |
 | `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` and `n_frames_total` |
 | `MolstructJsonError` / `MolstructPairingError` / `GeometryChangedError` — named once in `structure_pair` (L1, standard library, travelling with the codec and the structure), raised by the codec and, for a deck's block, by the structure | the payload is unreadable / the payload is for a **different structure** (its atom or frame count) / the payload is for **these atoms at other coordinates** (§ 3's geometry hash). Separate types because each gets its own answer: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing*, and the browser's load door opens a *changed geometry*, saying so, so it can be saved anew |
 
@@ -487,7 +479,7 @@ sole namers (`structure.md § 2.2`). The higher-level paired-file door
 
 ---
 
-## 6. Pairing — the sidecar follows its structure
+## 5. Pairing — the sidecar follows its structure
 
 The `.xyz` and its `.molstruct.json` are a unit; a file operation on one must
 carry the other, or the labels are orphaned (renaming `water.xyz` →
@@ -509,7 +501,7 @@ Engine generators load the sidecar through `apply_to_structure`, not these
 file-ops endpoints, so the sidecar-as-source-of-truth contract is unaffected by
 a rename.
 
-### 6.1 One sidecar, many frames *(user, 2026-09-24)*
+### 5.1 One sidecar, many frames *(user, 2026-09-24)*
 
 A coordinate document may hold **several frames** — a structure holding a
 frame set is written as one XYZ document, a block per frame (`structure.md`
@@ -547,7 +539,7 @@ structure or of that frame, saved with the pair (`web/molview.md` § 8.4a).
 
 ---
 
-## 7. What this file's metadata drives (pointer)
+## 6. What this file's metadata drives (pointer)
 
 Storing the labels is one thing; *delivering* them correctly to
 an engine's input script is the **boundary-condition contract**, which lives

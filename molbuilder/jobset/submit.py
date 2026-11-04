@@ -2649,9 +2649,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     from ..calcdirs import RunPlace
     from ..identity import next_run_words
     from ..kind_table import WALL_ONE, description_part
-    from ..persist import json_text
     from ..runpoints import (CONTINUE, add_point, empty_index, entry_of,
-                             index_of, index_path, planned_by, read_index)
+                             index_of, index_path, planned_by, read_index,
+                             write_index)
     from ..runrecord import launch_record
     from .continuation import point_done
     from .materialize import bring_files, open_run
@@ -2959,7 +2959,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                   planned_by=e.get("planned_by"),
                   taken_from=taken_from.get(pt.rel), facts=e["facts"],
                   outcome=e.get("outcome"))
-    plan.writes.text(index_path(run, names), json_text(index))
+    write_index(index_path(run, names), index, plan=plan.writes)
     walk = ((f"gathers {_gathered_from(m.took)}; " if m.took else "")
             + (f"takes over "
                f"{', '.join(pt.words() for _p, pt in taken if pt.rel not in carried_in)} "

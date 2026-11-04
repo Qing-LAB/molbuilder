@@ -179,8 +179,8 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
   **completes the block before applying it**, never patches the result; there
   is no partial door, and full-replace is what keeps *an absent key resets*
   legible.
-- **NOT in scope** (they sit *around* the contract): `selection_rules` (a
-  sidecar-only pass-through) and the sidecar **envelope** (`schema_version` /
+- **NOT in scope** (it sits *around* the contract): the sidecar **envelope**
+  (`schema_version` /
   `n_atoms_total` / `geometry_hash` / `created_by` / `created_at`) — see
   `structure-molstruct.md`.
 
@@ -1301,8 +1301,9 @@ putting back the structure it showed before the page was left — is
 every frame, and no frame chosen (`build.py:674-699`).
 
 **Where the sidecar schema lives** (server, one home):
-`sidecars/molstruct.py` — `apply_to_structure(struct, dict)` (`:596`),
-`load_text(text)`, `save(...)` (`:543`), `sidecar_path_for(xyz)` (`:188`). The
+`sidecars/molstruct.py` — `apply_to_structure(struct, dict)`, `load(path)`,
+`save(...)`, `sidecar_path_for(xyz)`, and its text's reader in `parse/`,
+`parse.sidecars.molstruct.load_text`. The
 byte layer knows the pair only as "which bytes travel together"; interpreting
 it (parse + apply the schema) happens only inside the server seam. Clicking a
 `.molstruct.json` in the sidebar shows its JSON via the `source` inspector —

@@ -13,6 +13,7 @@ cell look fine in one place and be refused in another.
 """
 from __future__ import annotations
 
+from molbuilder.scheduler.record import write_environment
 import numpy as np
 import pytest
 
@@ -94,7 +95,7 @@ def bundle(tmp_path):
                       # record's fact (`configuration.md` § 5 M-1)
                       env_init={"activation": "conda activate",
                                          "preamble": "true"})
-    (dest / "environment.json").write_text(env.to_json() + "\n")
+    write_environment(env, (dest / "environment.json"))
     # THE RUN ON THE GPU, and how many (`execution/gpu.md` G5), on the
     # calculation's run card; the bench takes its GPU from it, never its
     # count.
@@ -301,8 +302,8 @@ class TestPickingThisMachineIsAnAnswer:
                           domains=[Domain.from_row(
                               dict(r, name="sol-" + r["name"]))
                               for r in _DOMAINS])
-        machine_scope_path().write_text(env.to_json() + "\n")
-        named_environment_path("sol").write_text(env.to_json() + "\n")
+        write_environment(env, machine_scope_path())
+        write_environment(env, named_environment_path("sol"))
         return config_dir()
 
     @staticmethod

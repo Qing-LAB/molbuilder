@@ -2004,9 +2004,7 @@ def cmd_frameset_from_mode(run, mode, temperature, nodes, out):
                    f"a name no role reads back needs --out.  Use ``-`` for "
                    f"stdout.")
 
-@click.option("--pretty/--no-pretty", default=True, show_default=True,
-              help="Indent the JSON output.")
-def cmd_runtime_info(input_path, out_path, pretty):
+def cmd_runtime_info(input_path, out_path):
     """Parse a SIESTA / PySCF / .molwatch.log file and write its
     ``runtime_info`` dict to a JSON sidecar for offline / CLI consumers.
 
@@ -2025,8 +2023,8 @@ def cmd_runtime_info(input_path, out_path, pretty):
         molbuilder runtime-info job.out --out - | jq '.siesta_diag'
         # -> stream to jq for inspection
 
-        molbuilder runtime-info job.out --out /tmp/x.json --no-pretty
-        # -> compact single-line JSON to a specific path
+    The file and the stream are one text, the one shape of every JSON
+    file molbuilder writes (`persist.json_text`).
     """
     from .parse import ParseError
     detect_parser = _trajectory_parser_for
@@ -2076,19 +2074,17 @@ def cmd_runtime_info(input_path, out_path, pretty):
     if atoms is not None:
         runtime_info[MAP_KEY] = atoms
 
-    payload = json.dumps(runtime_info, indent=2 if pretty else None,
-                         sort_keys=True)
-
     if out_path == "-":
-        click.echo(payload)
+        from .persist import json_text
+        click.echo(json_text(runtime_info), nl=False)
         return
 
-
     out = Path(out_path)
-    # Through the one writer: a later parse reads this file, and a half-written
-    # one is a parse error pointing at the wrong thing (I7).
-    from .persist import write_bytes
-    write_bytes(out, (payload + "\n").encode("utf-8"))
+    # Through the one writer, in the one shape of a JSON file molbuilder
+    # writes (`persist.write_json`): a later parse reads this file, and a
+    # half-written one is a parse error pointing at the wrong thing (I7).
+    from .persist import write_json
+    write_json(out, runtime_info)
     click.echo(f"wrote {out}", err=True)
 
 
@@ -2980,9 +2976,9 @@ def cmd_jupyter_status(port):
 
 def _live_notebook_ports():
     """The serve ports that have a notebook of ours running."""
-    from .config_dir import ports_with_pidfile
+    from .config_dir import JUPYTER_PIDFILES, ports_with_pidfile
     from .jupyter import pid_state, read_pid
-    return [p for p in ports_with_pidfile("jupyter")
+    return [p for p in ports_with_pidfile(JUPYTER_PIDFILES)
             if pid_state(read_pid(p)) == "ours"]
 
 

@@ -81,8 +81,12 @@ def check_keys(what: str, d, known, *, needed=None) -> None:
 
 
 def read_json(path) -> Any:
-    """Read + parse a JSON file."""
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    """Read + parse a JSON file -- UTF-8, as the one writer writes it
+    (:func:`json_text`); a byte-order mark is read past, since it says nothing
+    of what a file holds (`job-contracts.md` § 6.1).  Text that is not UTF-8
+    raises :class:`UnicodeDecodeError`, text that is not JSON
+    :class:`json.JSONDecodeError` -- both a :class:`ValueError`."""
+    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
 
 def stage_bytes(target, data: bytes, *, mode: Optional[int] = None,
@@ -228,19 +232,30 @@ def json_safe(obj: Any) -> Any:
     return obj
 
 
-def json_text(obj: Any) -> str:
+def json_text(obj: Any, *, refuse_non_finite: bool = False) -> str:
     """THE byte shape of every JSON artifact this package writes —
-    pretty, 2-space indent, trailing newline, and JSON a browser reads
-    (:func:`json_safe`).  One spelling:
+    pretty, 2-space indent, trailing newline, a character beyond ASCII
+    written as itself (`Å`, a region label's `α`, never ``\\u00c5``), and
+    JSON a browser reads (:func:`json_safe`).  One spelling:
     :func:`write_json` writes it to disk, and a surface that hands the
     text to another writer reads it from here, so the two roads cannot
-    produce different bytes."""
+    produce different bytes.
+
+    A number JSON cannot hold is written ``null`` (:func:`json_safe`) -- or,
+    with ``refuse_non_finite``, refused with :class:`ValueError` before any
+    text is made, for a format whose contract refuses it (the spectra file,
+    the structure sidecar; `job-contracts.md` § 6.1)."""
+    def dumped(value):
+        return json.dumps(value, indent=2, ensure_ascii=False,
+                          allow_nan=False) + "\n"
     # The walk only when it is needed: almost every artifact holds no
     # number JSON cannot hold, and `allow_nan=False` says when one does.
     try:
-        return json.dumps(obj, indent=2, allow_nan=False) + "\n"
+        return dumped(obj)
     except ValueError:
-        return json.dumps(json_safe(obj), indent=2, allow_nan=False) + "\n"
+        if refuse_non_finite:
+            raise
+        return dumped(json_safe(obj))
 
 
 def write_json(path, obj: Any, *, mode: Optional[int] = None) -> Path:

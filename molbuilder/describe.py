@@ -295,8 +295,9 @@ def write_description(desc: Description, dest, *,
         # of its own and is written as its text.
         from .job_request import write as _write_request
         from .task import write_task
-        template_path(staging, desc.label).write_text(
-            desc.template, encoding="utf-8")
+        from .persist import write_bytes
+        write_bytes(template_path(staging, desc.label),
+                    desc.template.encode("utf-8"))
         write_task(staging, desc.task)
         _write_request(staging, desc.request)
         # The STRUCTURE travels with the calculation: the description records
@@ -306,7 +307,7 @@ def write_description(desc: Description, dest, *,
         # like the pseudos: the file is the calculation's
         # data, the PATH stays this machine's.
         for path, data in pair:
-            (staging / path.name).write_bytes(data)
+            write_bytes(staging / path.name, data)
         if psml_lib and desc.pseudo_species:
             from .siesta.input import copy_pseudopotentials
             from .pseudos import describe_psml_anchor, resolve_psml_lib

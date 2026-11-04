@@ -27,7 +27,7 @@ from molbuilder.postprocess import (parse, atom_index_map, read_structure,
 
 | name | answers |
 |---|---|
-| `read_transport_data(path)` | `<label>.transport.nc` — every result with its words — and its atom index map |
+| `read_transport_data(path)` | `<label>.transport.nc` — every result with its words, the attributes that hold records as data ([`model/datafiles.md`](?doc=model/datafiles.md) § 2) — and its atom index map |
 | `atom_index_map(path)` | which index a file's atoms are listed by, and both indices of each (§ 4) |
 | `read_structure(path)` | a structure pair — the calculation's `junction.xyz` among them — in the user order, every frame: `(structure, atoms, said)`, `atoms` the returned structure's atom index map (listed by user index, each atom's engine index beside) and `said` what its read says, a line each |
 | `parse(path)` | a file a run wrote that molbuilder's parsers read — an engine's output, a TBtrans data file (`.TBT.nc`), which answers its kept reading, reading it first where none is kept |

@@ -28,16 +28,19 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 try:                                        # inside molbuilder
     from . import data_dir as _data_dir, report_fields as _fields
     from .config_dir import config_dir as _config_dir
+    from .persist import check_schema
     _HERE = _data_dir()
 except ImportError:                         # beside the job
     import report_fields as _fields
     from config_dir import config_dir as _config_dir
+    from persist import check_schema
     _HERE = Path(__file__).parent
 
 #: The file's name -- spelled here, in the module that owns it
 #: (`configuration.md` § 3.1), and nowhere else.
 FILENAME = "report-cards.json"
-#: The schema a file must declare.
+#: The schema a file must declare -- its name and major, a same-major
+#: addition passing (`persist.check_schema`, `job-contracts.md` § 6.1).
 SCHEMA = "molbuilder/report-cards@1"
 #: The shipped file: the package's `data/` copy, or the bundle member.
 SHIPPED = _HERE / FILENAME
@@ -152,10 +155,16 @@ def load(path: Optional[Path] = None) -> Layout:
         if copy.is_file():
             path = copy
     if path is not None:
+        # READ AS EVERY JSON FILE IS (`persist.read_json`): UTF-8, the
+        # byte-order mark an editor adds read past; one that is not UTF-8
+        # refused by its path, as the monitor says a copy that does not read.
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8-sig")
         except OSError as exc:
             raise LayoutError(f"{path}: cannot be read -- {exc}") from None
+        except UnicodeDecodeError as exc:
+            raise LayoutError(f"{path}: not UTF-8 text ({exc.reason} at byte "
+                              f"{exc.start}) -- save it as UTF-8") from None
         return parse(text, str(path))
     return parse(shipped_text(), str(SHIPPED))
 
@@ -172,8 +181,10 @@ def parse(text: str, source: str) -> Layout:
         raise refuse(f"not JSON -- {exc}") from None
     if not isinstance(doc, dict):
         raise refuse("the file is not a JSON object")
-    if doc.get("schema") != SCHEMA:
-        raise refuse(f"schema {doc.get('schema')!r}, not {SCHEMA!r}")
+    try:
+        check_schema(doc.get("schema"), SCHEMA)
+    except ValueError as exc:
+        raise refuse(str(exc)) from None
 
     colors_in = doc.get("colors")
     if not isinstance(colors_in, dict) or OTHER not in colors_in:
@@ -245,4 +256,5 @@ def _receiver(kind: str, spec: Any, refuse) -> Receiver:
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.monitor_companions`).
 TRAVELS_WITH = ("molbuilder.config_dir",
+                "molbuilder.persist",
                 "molbuilder.report_fields")

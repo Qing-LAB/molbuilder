@@ -1,7 +1,7 @@
 """The author's regions, frozen atoms and cell reach the deck -- on the road.
 
 WHAT THIS IS FOR, in one sentence: a `.xyz` and the `.molstruct.json` beside
-it are one file (`model/structure-molstruct.md` § 6), so what a person set in
+it are one file (`model/structure-molstruct.md` § 5), so what a person set in
 the viewer -- which atoms are held, what the regions are called, the cell --
 must arrive in the input the engine runs.
 
@@ -67,8 +67,8 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     the bounding box, and loses the region names the Results tab shows.
     Nothing raises: every step is correct about the structure it was handed.
 
-    Contract: `model/structure-molstruct.md` § 6 (the pair is one unit) and
-    § 7 (SIESTA `frozen_atoms` -> `Geometry.Constraints`); `structure.md`
+    Contract: `model/structure-molstruct.md` § 5 (the pair is one unit) and
+    § 6 (SIESTA `frozen_atoms` -> `Geometry.Constraints`); `structure.md`
     § 2.4 (`StructureCodec` is the paired-file door); `job-system.md` § 5.1.
 
     MUTATION THIS MUST FAIL AGAINST: `molbuilder describe` -- or `prep`'s

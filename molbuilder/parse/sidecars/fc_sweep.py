@@ -12,7 +12,6 @@ suffix alone, so a record of another version is refused rather than misread.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict
 
@@ -29,22 +28,10 @@ class FcSweepRecordError(ParseError):
 
 def _load(path: Path) -> Dict[str, Any]:
     """The record as a dict, or raise — the one reader of this file."""
-    from molbuilder.persist import check_schema
     from molbuilder.spectra.displacement_sweep import SWEEP_SCHEMA
-    try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise FcSweepRecordError(f"{Path(path).name}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise FcSweepRecordError(
-            f"{Path(path).name}: a displacement sweep's record is a JSON "
-            f"object, got {type(payload).__name__}")
-    try:
-        check_schema(str(payload.get("schema", "")), SWEEP_SCHEMA,
-                     label=Path(path).name)
-    except ValueError as exc:
-        raise FcSweepRecordError(str(exc)) from exc
-    return payload
+    from ._helpers import read_record
+    return read_record(path, schema=SWEEP_SCHEMA, refused=FcSweepRecordError,
+                       what="a displacement sweep's record")
 
 
 class FcSweepRecordFileParser(FileParser):
@@ -52,7 +39,8 @@ class FcSweepRecordFileParser(FileParser):
     SIESTA vibration compared: each stage and what it varied, every mode's
     frequency per stage, the force-constant changes, the paths of each
     stage's files.  Returns a :class:`SidecarResult` with
-    ``schema = "fc-sweep/v1"``."""
+    ``schema = "fc-sweep/v<N>"``, ``N`` the major of the record's own
+    ``schema``."""
 
     name   = "fc-sweep-json"
     label  = f"molbuilder {ROLE_FC_SWEEP} record"
@@ -72,9 +60,10 @@ class FcSweepRecordFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
+        payload = _load(Path(path))
         return build_sidecar_result(
-            payload=_load(Path(path)),
-            schema="fc-sweep/v1",
+            payload=payload,
+            kind="fc-sweep",
             parser_name=cls.name,
             source=Path(path),
         )

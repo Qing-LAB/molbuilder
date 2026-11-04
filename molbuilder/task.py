@@ -911,7 +911,15 @@ def of(base) -> Optional[Task]:
     path = path_of(base)
     if not path.is_file():
         return None
-    return _from_obj(read_json(path), said_as=str(path), base=Path(base))
+    try:
+        obj = read_json(path)
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"{path}: not UTF-8 text ({exc.reason} at byte {exc.start}) -- "
+            f"save it as UTF-8") from None
+    except ValueError as exc:
+        raise ValueError(f"{path}: not JSON -- {exc}") from None
+    return _from_obj(obj, said_as=str(path), base=Path(base))
 
 
 def from_text(text: str, said_as: str = FILENAME) -> Task:

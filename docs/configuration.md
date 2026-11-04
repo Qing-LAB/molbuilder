@@ -319,9 +319,9 @@ strategy:
 | shape | why |
 |---|---|
 | an appended log (`serve_daemon.open_private`) | a log is added to, not replaced: there is nothing to preserve, and temp-and-rename would drop the file at every line. Its mode is `0600` on the descriptor, in a `0700` directory — a provider's `client_secret` can reach the server log |
-| the supervisor's pidfile | a few bytes rewritten at every start, holding an address; a truncated one is replaced at the next start |
 | a README molbuilder seeds (`envs init-config`, a new project's skeleton) | written into a directory the same call made, molbuilder's own text, no credential |
 | the monitor's two files on a compute node — `<stem>.util.csv`, `<stem>.monitor.log` | appended to as the run goes, with `pathlib`, because the monitor ships beside the job (below; [`run-reports.md`](?doc=execution/run-reports.md) § 2.5) |
+| a file a PySCF deck writes as it runs — geomeTRIC's constraints file | the deck writes it once, just before geomeTRIC reads it in the same process: a write cut short ends the run that would have read it |
 
 **What ships beside a job: *stdlib-only AND travels*.** Some of molbuilder's
 modules run on the compute node, by the job's own python, in an engine
@@ -371,7 +371,7 @@ responses.
 |---|---|---|
 | session key | `config_dir.read_session_key()` | bytes, or `None` when not yet made |
 | an OAuth client secret | `runtime_config.provider_client_secret(entry)` | the string, from its kind's fixed home, `config_dir.client_secret(kind)` |
-| notify channels | `monitor.load_channels()` | the channels, already judged |
+| notify channels | `monitor.load_channels()` — its one read of the file, `monitor.read_channels_file()`, which the This machine tab merges a save over | the channels, already judged |
 | run-report signing keys | `monitor.read_notify_keys()` | `(route, {user: key})` |
 
 The path resolvers — `config_dir.session_key()`, `config_dir.client_secret(kind)`,

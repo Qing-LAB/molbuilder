@@ -71,14 +71,14 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     return {"settings": settings, "points": points, "run_card": run_card}
 
 
-def _stages_in(read_text, path: Path) -> Dict[str, Dict[str, Any]]:
-    """The record's stages, by stage name, from its text as ``read_text``
-    reads it -- or ``ValueError`` naming ``path`` when it does not read as
-    this record: not text, not JSON, or another file's schema -- with the
-    way back."""
+def _stages_in(load, path: Path) -> Dict[str, Dict[str, Any]]:
+    """The record's stages, by stage name, from what ``load`` reads of it
+    -- or ``ValueError`` naming ``path`` when it does not read as this
+    record: not text, not JSON, or another file's schema -- with the way
+    back."""
     from ..persist import check_schema
     try:
-        d = json.loads(read_text(path))
+        d = load(path)
         check_schema(str(d.get("schema", "")), SCHEMA, label=str(path))
     except (ValueError, AttributeError) as exc:
         from ..identity import checkpoint_words
@@ -101,10 +101,11 @@ def read(base) -> Dict[str, Dict[str, Any]]:
     """Every stage's recorded values, by stage name -- ``{}`` before any prep
     recorded one; ``ValueError`` naming the file when it does not read
     (:func:`_stages_in`)."""
+    from ..persist import read_json
     path = path_of(base)
     if not path.is_file():
         return {}
-    return _stages_in(lambda p: p.read_text(encoding="utf-8"), path)
+    return _stages_in(read_json, path)
 
 
 def record(calc, stages, *, plan) -> Path:
@@ -115,7 +116,7 @@ def record(calc, stages, *, plan) -> Path:
     from ..persist import json_text
     from ..identity import stage_key
     path = path_of(calc.base)
-    held = (_stages_in(plan.read_text, path)
+    held = (_stages_in(lambda p: json.loads(plan.read_text(p)), path)
             if plan.is_file(path) else {})
     for st in stages:
         held = {k: v for k, v in held.items() if stage_key(k) != stage_key(st)}

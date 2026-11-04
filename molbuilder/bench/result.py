@@ -23,7 +23,6 @@ data, never by parsing names.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -291,9 +290,6 @@ class BenchResult:
             "choice": self.choice,
             "tool": self.tool,
         }
-
-    def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent)
 
     @classmethod
     def from_dict(cls, d: dict) -> "BenchResult":

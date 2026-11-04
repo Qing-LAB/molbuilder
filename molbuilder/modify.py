@@ -43,12 +43,12 @@ Geometry conventions for the nanojunction workflow:
 
 from __future__ import annotations
 
-import json as _json
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from . import cell as _cell, data_dir
+from .persist import read_json
 from .structure import (FROZEN_LABEL, Structure, atom_words, copy_annotations,
                         remap_annotations)
 
@@ -551,13 +551,13 @@ def load_fcc_lattice_full() -> dict:
     /api/modify/lattice-from-run``).
 
     The table is the package's own (`molbuilder.data_dir`, A10: one place,
-    never a search); one that does not read is refused with its path.
+    never a search), read through `persist`'s one JSON reader.  One that
+    does not read is refused with its path.
     """
     path = data_dir() / "fcc_lattice.json"
     try:
-        with open(path, encoding="utf-8-sig") as fh:
-            data = _json.load(fh)
-    except (_json.JSONDecodeError, OSError) as exc:
+        data = read_json(path)
+    except (ValueError, OSError) as exc:
         raise RuntimeError(
             f"failed to read FCC lattice table at {path!s}: {exc}") from exc
     if not isinstance(data, dict) or "metals" not in data:

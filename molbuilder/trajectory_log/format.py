@@ -58,6 +58,7 @@ def write_initial_preview(
     § 2.2b) -- stated in the header.
     """
     from ..cell import to_engine
+    from ..persist import write_bytes
     from .emitter import header_and_preview
     positions = (frame if frame is not None
                  else to_engine(struct)).positions  # (N, 3), Angstrom
@@ -72,7 +73,7 @@ def write_initial_preview(
         return
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text, encoding="utf-8")
+    write_bytes(p, text.encode("utf-8"))
 
 
 __all__ = ["write_initial_preview"]

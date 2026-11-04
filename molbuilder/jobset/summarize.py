@@ -319,10 +319,10 @@ def run_summarize_jobset(calc, jobset, *,
     res = bench_record(calc, jobset, now_iso=now_iso)
     # ITS NAME BY ITS WRITER (`architecture.md` A16), in the benchmark's
     # container -- the catalogue's `bench` level -- through the one writer.
-    from ..persist import write_bytes
+    from ..persist import write_json
     from ..runfiles import BENCH_RESULT_FILE
     out_path = Path(container) / BENCH_RESULT_FILE
-    write_bytes(out_path, (res.to_json() + "\n").encode("utf-8"))
+    write_json(out_path, res.to_dict())
     return res, out_path, recommendation_text(res, stage=stage)
 
 

@@ -51,6 +51,7 @@ from .abi import (
 )
 from . import hints as _hints
 from .recipes import BuildComponent, BuildSpec
+from ..persist import write_bytes
 
 
 # --------------------------------------------------------------------- #
@@ -348,7 +349,7 @@ def run_streaming(
         if log_file is not None:
             try:
                 log_file.parent.mkdir(parents=True, exist_ok=True)
-                log_file.write_text(msg, encoding="utf-8")
+                write_bytes(log_file, msg.encode("utf-8"))
             except OSError:
                 pass
         return None, msg
@@ -399,7 +400,7 @@ def run_streaming(
             if log_file is not None:
                 try:
                     log_file.parent.mkdir(parents=True, exist_ok=True)
-                    log_file.write_text(combined, encoding="utf-8")
+                    write_bytes(log_file, combined.encode("utf-8"))
                 except OSError:
                     pass
             return None, combined
@@ -414,7 +415,7 @@ def run_streaming(
     if log_file is not None:
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            log_file.write_text(combined, encoding="utf-8")
+            write_bytes(log_file, combined.encode("utf-8"))
         except OSError:
             pass
     return proc.returncode, combined
@@ -2198,14 +2199,13 @@ def run_build_spec(spec: BuildSpec,
         body = render_activate_hook(spec)
         if body:
             paths.activate_d.mkdir(parents=True, exist_ok=True)
-            paths.activate_hook.write_text(body, encoding="utf-8")
-            paths.activate_hook.chmod(0o755)
+            write_bytes(paths.activate_hook, body.encode("utf-8"), mode=0o755)
             activate_written = True
         body = render_deactivate_hook(spec)
         if body:
             paths.deactivate_d.mkdir(parents=True, exist_ok=True)
-            paths.deactivate_hook.write_text(body, encoding="utf-8")
-            paths.deactivate_hook.chmod(0o755)
+            write_bytes(paths.deactivate_hook, body.encode("utf-8"),
+                        mode=0o755)
             deactivate_written = True
 
     return BuildResult(

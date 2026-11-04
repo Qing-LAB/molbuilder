@@ -126,8 +126,9 @@ def _subtitle_of(path: str, root: Path) -> str:
         return ""
 
 
-def _build_toc_tree(root: Path) -> List[Dict]:
-    """Build the full document tree from ``toc.json``.
+def _build_toc_tree(root: Path, toc: Dict) -> List[Dict]:
+    """Build the full document tree from ``toc``, ``toc.json`` as its
+    caller read it once (`persist.read_json`).
 
     Returns a list of top-level tree nodes.  Each node is either a
     **directory** (has ``children``) or a **document** (has ``path``).
@@ -136,9 +137,6 @@ def _build_toc_tree(root: Path) -> List[Dict]:
     import json as _json
     from pathlib import PurePosixPath as _PurePosixPath
     toc_path = root / "toc.json"
-    if not toc_path.is_file():
-        return []   # fallback: empty tree
-    toc = _json.loads(toc_path.read_text(encoding="utf-8"))
     toc_before = _json.dumps(toc, sort_keys=True)
 
     # ``toc.json`` is updated while the server is running.  Keep the first
@@ -354,11 +352,9 @@ def _build_toc_tree(root: Path) -> List[Dict]:
         # correct for THIS response).  Unique per-process tmp name so
         # concurrent writers cannot os.replace() each other's file
         # out from under them.
-        from molbuilder.persist import write_bytes
+        from molbuilder.persist import write_json
         try:
-            write_bytes(toc_path, (_json.dumps(toc, indent=2,
-                                               ensure_ascii=False)
-                                   + "\n").encode("utf-8"))
+            write_json(toc_path, toc)
         except OSError:
             pass
 
@@ -384,13 +380,13 @@ def api_docs_toc():
     if not toc_path.is_file():
         return jsonify({"ok": True, "tree": [], "readme": None})
 
-    import json as _json
+    from molbuilder.persist import read_json
     # A corrupt toc.json (bad hand-edit, half-written file) degrades to
     # the documented empty-tree fallback -- never a 500 for the whole
-    # sidebar.
+    # sidebar.  Read ONCE, here, and handed to the tree's builder.
     try:
-        toc = _json.loads(toc_path.read_text(encoding="utf-8"))
-        tree = _build_toc_tree(root)
+        toc = read_json(toc_path)
+        tree = _build_toc_tree(root, toc)
     except (ValueError, OSError):
         return jsonify({"ok": True, "tree": [], "readme": None,
                         "note": "docs/toc.json is unreadable or invalid "

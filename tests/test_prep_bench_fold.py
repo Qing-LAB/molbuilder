@@ -7,6 +7,7 @@ grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · 
 """
 from __future__ import annotations
 
+from molbuilder.scheduler.record import write_environment
 from support.road import (group_words, read_request, shelf_headers,
                           write_request)
 
@@ -111,12 +112,13 @@ def calc(tree):
     write_pseudos(dest, sorted(set(struct.elements)))
     # The probe's answer, pre-seeded: machine.set_machine early-returns on an
     # existing environment.json, so the grid enumerates THIS topology.
-    (dest / "environment.json").write_text(
+    write_environment(
         Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
-                    env_init=_ENTERS).to_json() + "\n")
+                    env_init=_ENTERS),
+        (dest / "environment.json"))
     # A RUN STATES ITS LAUNCH SHAPE (`architecture.md` § 5.2), and a GPU run
     # how many GPUs (`execution/gpu.md` G5): the calculation's run card says
     # it once, for every rung that does not say otherwise -- the GPU and
@@ -973,12 +975,13 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / "environment.json").write_text(
+    write_environment(
         Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
-                    env_init=_ENTERS).to_json() + "\n")
+                    env_init=_ENTERS),
+        (dest / "environment.json"))
     r = CliRunner()
     # a bare bench owes a name here exactly as it does on three rungs
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
@@ -1221,10 +1224,11 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
                             name="JOB",
                             source=str(tree / "h2.xyz")),
         dest)
-    (dest / "environment.json").write_text(
+    write_environment(
         Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1,
-                                      cores_per_socket=4)).to_json() + "\n")
+                                      cores_per_socket=4)),
+        (dest / "environment.json"))
     with pytest.raises(PrepError) as e:
         bench_inputs(open_calculation(dest), None)
     msg = str(e.value)
@@ -1268,10 +1272,11 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
     req = read_request(dest)
     req["stages"]["only"]["execution"] = {"threads": 3}
     write_request(dest, req)
-    (dest / "environment.json").write_text(
+    write_environment(
         Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4),
-                    env_init=_ENTERS).to_json() + "\n")
+                    env_init=_ENTERS),
+        (dest / "environment.json"))
     r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
                                           str(dest), "--no-sbatch"])
     assert r.exit_code == 0, r.output

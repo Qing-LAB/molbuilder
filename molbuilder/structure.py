@@ -1124,10 +1124,9 @@ class Structure:
     # it to the dataclass + these two methods, and nowhere else.
     #
     # SCOPE = the dataclass's OWN metadata (periodicity + selection tags +
-    # annotations).  ``selection_rules`` is NOT a Structure field (a sidecar-only
-    # pass-through) and the JSON envelope (schema_version / n_atoms_total /
+    # annotations).  The JSON envelope (schema_version / n_atoms_total /
     # geometry_hash / created_by / created_at) belongs to the sidecar layer;
-    # both sit AROUND this contract, not inside it.
+    # it sits AROUND this contract, not inside it.
 
     def metadata_to_dict(self, *, view: bool = True) -> dict:
         """Serialize this structure's metadata to a JSON-friendly dict (the

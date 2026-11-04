@@ -653,7 +653,14 @@ def of(base, description: "Task") -> Optional[JobRequest]:
         return None
     token = _SOURCE.set(str(path))
     try:
-        return from_dict(read_json(path), description)
+        try:
+            obj = read_json(path)
+        except UnicodeDecodeError as exc:
+            _refuse(f"not UTF-8 text ({exc.reason} at byte {exc.start}) -- "
+                    f"save it as UTF-8")
+        except ValueError as exc:
+            _refuse(f"not JSON -- {exc}")
+        return from_dict(obj, description)
     finally:
         _SOURCE.reset(token)
 

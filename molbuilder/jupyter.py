@@ -153,7 +153,7 @@ def port_clash(serve_port: int) -> Optional[str]:
     """
     import socket
 
-    from .config_dir import ports_with_pidfile
+    from .config_dir import JUPYTER_PIDFILES, ports_with_pidfile
     from .serve_daemon import pid_state as serve_pid_state, read_pid as serve_pid
     nb = jupyter_port(serve_port)
 
@@ -161,7 +161,7 @@ def port_clash(serve_port: int) -> Optional[str]:
     # Is OUR OWN web port some other molbuilder's NOTEBOOK port?  Then this
     # server cannot bind at all, and the failure lands in the serve log after
     # the terminal is gone.
-    for other in ports_with_pidfile("jupyter"):
+    for other in ports_with_pidfile(JUPYTER_PIDFILES):
         if (jupyter_port(other) == serve_port
                 and pid_state(read_pid(other)) == "ours"):
             return (f"port {serve_port} is already the NOTEBOOK port of the "
@@ -250,12 +250,10 @@ def read_runtime(serve_port: int) -> Dict[str, object]:
     so this is read server-side and presented by the pass-through, never
     handed to the page (`web/jupyter.md` § 2).
     """
-    import json
-
     from .config_dir import jupyter_runtime
+    from .persist import read_json
     try:
-        doc = json.loads(
-            jupyter_runtime(serve_port).read_text(encoding="utf-8"))
+        doc = read_json(jupyter_runtime(serve_port))
     except (OSError, ValueError):
         return {}
     return doc if isinstance(doc, dict) else {}
@@ -679,10 +677,10 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
     table and never a stale file.  The other directories are only created;
     what Lab saves into them is the person's.
     """
-    import json
     import shutil
     from . import data_dir
     from .config_dir import ensure_private_dir, jupyter_lab_home
+    from .persist import write_json
     rules = load_rules()
     home = ensure_private_dir(jupyter_lab_home())
     _forget_workspace(home, rules, serve_port)
@@ -699,8 +697,7 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
         raise JupyterRulesError(
             f"{rules.path}: [lab.home] declares no "
             f"`LabApp.app_settings_dir`, and that is where the overrides go.")
-    (home / app_settings / "overrides.json").write_text(
-        json.dumps(rules.overrides, indent=2) + "\n", encoding="utf-8")
+    write_json(home / app_settings / "overrides.json", rules.overrides)
 
     # THE CONFIG IS A FILE IN THE PACKAGE, COPIED -- never a string literal
     # here.  `data/jupyter_server_config.py`'s own docstring says why it is a
@@ -781,6 +778,7 @@ def run_shepherd(serve_port: int) -> int:
     from .config_dir import (PRIVATE_FILE_MODE, ensure_runtime_dir,
                              jupyter_pidfile, jupyter_runtime)
     from .projects import projects_root
+    from .serve_daemon import write_pidfile
 
     _set_pdeathsig()
     if os.getppid() == 1:
@@ -822,7 +820,7 @@ def run_shepherd(serve_port: int) -> int:
                          root_dir=str(projects_root()), lab_dirs=lab_dirs)
     base = f"http://{LOOPBACK}:{port}{BASE_PATH}"
     ensure_runtime_dir()
-    jupyter_pidfile(serve_port).write_text(f"{os.getpid()}\n")
+    write_pidfile(jupyter_pidfile(serve_port))
     # 0600: the token authenticates a browser to a live kernel.
     write_json(jupyter_runtime(serve_port),
                {"url": f"{base}/lab", "base": base, "token": token},

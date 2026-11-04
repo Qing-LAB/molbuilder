@@ -2187,20 +2187,25 @@ run's frames).
 ## 6. Adding a parser
 
 The shape every parser follows — a real minimal `FileParser` (mirrors
-`parse/sidecars/spectra.py`): read a file, return a typed result via the
+`parse/sidecars/transport.py`): read a file, return a typed result via the
 sub-package's envelope helper. The file is a row of the catalogue first
 (`runfiles.WRITTEN`, its `ROLE_*` constant; [`job-contracts.md`](?doc=execution/job-contracts.md)
 § 2.2a), and the parser names it by that constant and claims it by its role.
 
 ```python
 # molbuilder/parse/sidecars/mykind.py
-import json
 from pathlib import Path
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
 from molbuilder.runfiles import ROLE_MYKIND, role_of   # ".mykind.json", its row
+from molbuilder.mykind import MYKIND_SCHEMA  # its record's `molbuilder/mykind@<major>`, its owner's
 from ._helpers import build_sidecar_result   # fills the envelope: schema_version,
                                              # parsed_at, parser_name, source
+from ._helpers import read_record            # persist's one reader, its schema checked
+
+
+class MyKindError(ValueError):
+    """A ``.mykind.json`` that does not read, naming the file."""
 
 class MyKindSidecarFileParser(FileParser):
     name   = "mykind-json"
@@ -2214,12 +2219,15 @@ class MyKindSidecarFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
-        return build_sidecar_result(
-            payload=payload, schema=f"mykind/v{payload.get('schema_version', 0)}",
-            parser_name=cls.name, source=path,
-        )
+        payload = read_record(path, schema=MYKIND_SCHEMA, refused=MyKindError,
+                              what="a mykind record")
+        return build_sidecar_result(payload=payload, kind="mykind",
+                                    parser_name=cls.name, source=path)
 ```
+
+**A result's tag is its format's name and the version of the record it was read from**
+(`build_sidecar_result` composes it from the record's own `schema`, or its integer
+`schema_version`) — never typed by hand, so it cannot fall behind the file.
 
 Then **register it at import** in the sub-package's `__init__.py`
 (`from .mykind import MyKindSidecarFileParser` → `register(MyKindSidecarFileParser)`)

@@ -32,10 +32,6 @@ from .parse.sidecars._helpers import build_sidecar_result
 from .parse.types import SidecarResult
 from .runfiles import TASK_FILE
 
-#: The parse-side name of what came out: the description of a transport
-#: calculation, the report's handle.
-RESULT_SCHEMA = "transport-task/v1"
-
 
 class TaskReadError(ValueError):
     """Why this file is not a transport calculation's description."""
@@ -71,7 +67,9 @@ def _load_transport_task(path: Path) -> dict:
 
 class TransportTaskFileParser(FileParser):
     """A transport calculation's ``task.json`` -- the handle of its report,
-    composed on read (`engines/transport.md` § 2a.12)."""
+    composed on read (`engines/transport.md` § 2a.12).  Returns a
+    :class:`SidecarResult` with ``schema = "transport-task/v<N>"``, ``N`` the
+    major of the description's own ``schema`` (`model/parse.md` § 6)."""
 
     name   = "transport-task"
     label  = "a transport calculation's description (its report's handle)"
@@ -95,10 +93,10 @@ class TransportTaskFileParser(FileParser):
             raise UnknownFormatError(str(exc)) from exc
         return build_sidecar_result(
             payload=payload,
-            schema=RESULT_SCHEMA,
+            kind="transport-task",
             parser_name=cls.name,
             source=Path(path),
         )
 
 
-__all__ = ["TaskReadError", "TransportTaskFileParser", "RESULT_SCHEMA"]
+__all__ = ["TaskReadError", "TransportTaskFileParser"]

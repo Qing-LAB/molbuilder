@@ -3217,7 +3217,7 @@ def test_the_data_file_holds_the_calculations_own_records(junction):
     assert attrs["template"] == template_path(run.bundle, label).read_text()
     assert attrs["job_request"] == request_path(run.bundle).read_text()
     rec = _record(run)
-    assert json.loads(attrs["provenance_chain"]) == rec["provenance"]["chain"]
+    assert attrs["provenance_chain"] == rec["provenance"]["chain"]
     V = {k: v["data"] for k, v in got["variables"].items()}
     for p in rec["points"]:
         b = list(_BIAS).index(p["bias_v"])

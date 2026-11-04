@@ -220,7 +220,7 @@ def test_the_layouts_limit_cuts_the_grid_and_the_web_has_none(tmp_path, monkeypa
     (lambda d: d["receivers"]["web"]["order"].update(stop=["energy"]),
      "stop: not an event"),
     (lambda d: d.update(schema="molbuilder/report-cards@2"),
-     "schema 'molbuilder/report-cards@2'"),
+     "'molbuilder/report-cards@2'"),
     (lambda d: d["colors"].pop("other"), "naming 'other'"),
 ])
 def test_a_copy_that_does_not_read_is_refused_by_its_reason(

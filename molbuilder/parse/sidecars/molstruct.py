@@ -1,8 +1,10 @@
-"""``.molstruct.json`` sidecar FileParser.
+"""``.molstruct.json`` sidecar FileParser, and the sidecar's text reader.
 
-The READ side; the write side -- ``save``, ``with_lock``,
-``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
-``geometry_hash`` -- is :mod:`molbuilder.sidecars.molstruct`.
+The READ side: :func:`load_text`, the one reader of a sidecar's text,
+which the read door -- ``load``, beside the write side (``save``,
+``with_lock``, ``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
+``geometry_hash``) in :mod:`molbuilder.sidecars.molstruct` -- asks with the
+file's text, and the registry's FileParser, which asks that door.
 
 The sidecar carries per-atom region + frozen-atom metadata that
 rides next to a structure file (``<stem>.molstruct.json``).
@@ -12,22 +14,20 @@ from __future__ import annotations
 
 import json as _json
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
-# ``SCHEMA_VERSION`` (the on-disk version constant) lives in the write-side
-# module, so read and write surfaces stay in lock-step; the pair's refusals
-# are `structure_pair`'s.
+# ``SCHEMA_VERSION`` (the on-disk version constant) and the payload's one
+# builder (``to_dict``) live in the write-side module, so read and write
+# surfaces stay in lock-step; the pair's refusals are `structure_pair`'s.
 from molbuilder.sidecars.molstruct import (
     READABLE_VERSIONS,
     SCHEMA_VERSION,
-    atom_columns_via_dataclass,
-    is_geometry_hash,
     known_keys,
     is_sidecar,
-    normalise_selection_rules,
-    structure_fields_via_dataclass,
+    load,
+    to_dict,
 )
 from molbuilder.atom_permutation import MAP_KEY
 from molbuilder.structure_pair import MolstructJsonError
@@ -39,109 +39,17 @@ from ._helpers import build_sidecar_result
 # imported above and used by `load_text` below.
 
 
-def _normalised_dict(
-    *,
-    schema_version: int,
-    n_atoms_total: int,
-    n_frames_total: Optional[int],
-    geometry_hash: Optional[str],
-    fields: Dict[str, Any],
-    selection_rules: Optional[Dict[str, Any]] = None,
-    identity: Optional[Dict[str, Any]] = None,
-    info: Optional[Dict[str, Any]] = None,
-    created_by: str = "molbuilder",
-    created_at: Optional[str] = None,
-    atom_index_map: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Re-validate + canonicalise sidecar fields -- keeping the version the
-    file STATES (``schema_version``), never this build's: a reader asks it
-    of the file (`model/overview.md` § 2.2b, F4), and the file's own atom
-    index map, read by the map's one reader (``atom_index_map``, v15).  Private read-side
-    helper; mirrors the write side's ``to_dict`` validation so an on-
-    disk sidecar that snuck past with hand-edited indices fails loudly
-    at load time (with the file path in the error message) rather than
-    at engine-load time.
-
-    Region membership is NOT mutually exclusive (an atom may carry
-    multiple labels); engines that need a disjoint partition validate
-    that separately at engine-load time.
-    """
-    if not isinstance(n_atoms_total, int) or n_atoms_total < 0:
-        raise MolstructJsonError(
-            f"n_atoms_total must be a non-negative int; got "
-            f"{n_atoms_total!r}"
-        )
-    if geometry_hash is not None and not is_geometry_hash(geometry_hash):
-        raise MolstructJsonError(
-            f"geometry_hash must be a sha256 hex string (got "
-            f"{geometry_hash!r})")
-
-    if n_frames_total is not None and (
-            isinstance(n_frames_total, bool)
-            or not isinstance(n_frames_total, int) or n_frames_total < 1):
-        raise MolstructJsonError(
-            f"n_frames_total must be a positive int; got {n_frames_total!r}")
-
-    # The Structure FIELDS -> validated + canonicalised through the ONE dataclass
-    # authority, SHARED byte-for-byte with the write validator (to_dict).  This
-    # is what closes the read/write drift: a field cannot exist on one side and
-    # not the other, because there is only one side.  ``selection_rules`` (a
-    # sidecar-only pass-through) shares its one validator too.  A file that
-    # states no frame count (v7-v10) holds nothing indexed by frame, so its
-    # fields are checked against one frame.
-    fields = structure_fields_via_dataclass(n_atoms_total, fields,
-                                            n_frames_total or 1)
-    normed_rules = normalise_selection_rules(
-        selection_rules, set(fields["regions"]))
-
-    # The per-atom columns (identity, schema 8; species labels, v16) --
-    # validated through the SAME dataclass authority as the write side, so a
-    # hand-edited sidecar whose residue_ids or labels no longer match the
-    # atom count fails HERE, with the file named, not at engine-load time.
-    identity = atom_columns_via_dataclass(n_atoms_total, identity)
-
-    # THE PAIR'S OWN MAP (v15), read by the map's one reader -- checked
-    # against `atom_order` where the pair is applied (`apply_to_structure`).
-    if atom_index_map is not None:
-        from molbuilder.atom_permutation import AtomIndexError, AtomIndexMap
-        try:
-            atom_index_map = AtomIndexMap.from_dict(
-                atom_index_map, n_atoms=n_atoms_total).to_dict()
-        except AtomIndexError as exc:
-            raise MolstructJsonError(str(exc)) from exc
-    return {
-        "schema_version":  int(schema_version),
-        "n_atoms_total":   n_atoms_total,
-        **({"n_frames_total": n_frames_total}
-           if n_frames_total is not None else {}),
-        # THE PIN, when the file states one (v13): a v7-v12 file has none,
-        # and its pair opens unchecked (`structure-molstruct.md` § 3).
-        **({"geometry_hash": geometry_hash}
-           if geometry_hash is not None else {}),
-        # SPREAD, not re-listed -- the same rule the write side follows, and for
-        # the same reason: a field added to (or removed from) the dataclass must
-        # ride onto both sides with no edit here.
-        **fields,
-        **identity,
-        # The `info` block (schema 9): carried whole when the file holds
-        # one -- the store is open by design, so nothing here enumerates
-        # its keys.
-        **({"info": dict(info)} if isinstance(info, dict) and info else {}),
-        "selection_rules": normed_rules,
-        "created_by":      str(created_by),
-        "created_at":      created_at,
-        **({MAP_KEY: atom_index_map}
-           if atom_index_map is not None else {}),
-    }
-
-
 def load_text(text: str, *, source: str = "<sidecar>",
               retired_out: "Dict[str, Any] | None" = None,
               stated_out: "set | None" = None) -> Dict[str, Any]:
-    """Parse + validate a sidecar JSON **string** (the same strict checks
-    as :func:`_load`, minus the file read).  Returns the normalised dict.
-    ``source`` names the origin for error messages (a path when called from
-    :func:`_load`, a placeholder for in-body content).
+    """Parse + validate a sidecar JSON **string** -- the text the read
+    door (``sidecars.molstruct.load``) read from the file.  Returns the
+    normalised dict, built by the payload's one builder
+    (``sidecars.molstruct.to_dict``) with the version the file STATES,
+    never this build's (`model/overview.md` § 2.2b, F4), so an on-disk
+    sidecar that snuck past with hand-edited indices fails loudly here, with
+    the file named, rather than at engine-load time.  ``source`` names the
+    origin for error messages (the path the read door read).
 
     ``retired_out``, when a dict is passed, receives each retired key the file
     carried WITH A VALUE (``structure.RETIRED_METADATA_KEYS``): read and
@@ -192,25 +100,6 @@ def load_text(text: str, *, source: str = "<sidecar>",
             f"anything the old format kept elsewhere has to be applied again."
         )
 
-    # `n_frames_total` is v11's, `geometry_hash` v13's: every writer of
-    # that version states it (§ 1, § 3).
-    required = (("n_atoms_total",)
-                + (("n_frames_total",) if sv >= 11 else ())
-                + (("geometry_hash",) if sv >= 13 else ()))
-    for key in required:
-        if key not in data:
-            raise MolstructJsonError(
-                f"sidecar {source} missing required field {key!r}"
-            )
-
-    n = data["n_atoms_total"]
-    if not isinstance(n, int) or n < 0:
-        raise MolstructJsonError(
-            f"sidecar {source}: n_atoms_total must be a non-"
-            f"negative int; got {n!r}"
-        )
-
-
     # A KEY NOBODY READS IS METADATA THE WRITER THINKS IT SAVED.  Checked
     # HERE, where the payload is still whole: this function reads the keys it
     # NAMES, so a stray one would be dropped before ``apply_to_structure``
@@ -236,48 +125,30 @@ def load_text(text: str, *, source: str = "<sidecar>",
     if stated_out is not None:
         stated_out.update(k for k in data if k in FILE_FIELDS)
 
-    # Re-validate the fields via _normalised_dict.  This
+    # The payload through its ONE BUILDER, with the file's version and its
+    # envelope as it states it -- the builder holds which envelope keys a
+    # version states and every check of them and of the fields.  This
     # catches malformed user-edited JSON BEFORE any consumer tries to
     # apply the data to a Structure (where the same checks would run
     # but with a less specific error message that doesn't mention
     # which file is at fault).
     try:
-        return _normalised_dict(
-            schema_version  = sv,
-            n_atoms_total   = n,
-            n_frames_total  = data.get("n_frames_total"),
-            geometry_hash   = data.get("geometry_hash"),
+        return to_dict(
             # SPREAD, never listed: every field the Structure names, read by
             # the same tuple the writer spreads (`model/structure.md` § 2.2).
-            fields          = {k: data.get(k) for k in FILE_FIELDS},
-            selection_rules = data.get("selection_rules"),
-            identity        = {k: data[k] for k in ATOM_COLUMNS
-                               if k in data},
-            info            = data.get("info"),
-            created_by      = data.get("created_by", "unknown"),
-            created_at      = data.get("created_at"),
-            atom_index_map  = data.get(MAP_KEY),
+            {k: data.get(k) for k in FILE_FIELDS},
+            identity       = {k: data[k] for k in ATOM_COLUMNS if k in data},
+            n_atoms_total  = data.get("n_atoms_total"),
+            n_frames_total = data.get("n_frames_total"),
+            geometry_hash  = data.get("geometry_hash"),
+            info           = data.get("info"),
+            created_by     = data.get("created_by", "unknown"),
+            created_at     = data.get("created_at"),
+            atom_index_map = data.get(MAP_KEY),
+            schema_version = sv,
         )
     except MolstructJsonError as exc:
         raise MolstructJsonError(f"sidecar {source}: {exc}") from exc
-
-
-def _load(sidecar_path: Union[str, Path], *,
-          retired_out: "Dict[str, Any] | None" = None,
-          stated_out: "set | None" = None) -> Dict[str, Any]:
-    """Read + validate a sidecar JSON from a PATH.  Reads the bytes, then
-    delegates to :func:`load_text` for the parse + strict validation."""
-    sidecar_path = Path(sidecar_path)
-    try:
-        # ``encoding="utf-8-sig"`` accepts an optional BOM (some
-        # Windows editors insert one) and decodes as UTF-8.
-        text = sidecar_path.read_text(encoding="utf-8-sig")
-    except OSError as exc:
-        raise MolstructJsonError(
-            f"failed to read sidecar {sidecar_path}: {exc}"
-        ) from exc
-    return load_text(text, source=str(sidecar_path), retired_out=retired_out,
-                     stated_out=stated_out)
 
 
 class MolstructSidecarFileParser(FileParser):
@@ -298,13 +169,10 @@ class MolstructSidecarFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
-        payload = _load(path)
-        # _load() has already validated schema_version against the
-        # readable set; read it strictly rather than defaulting.
-        sv = payload["schema_version"]
+        payload = load(path)
         return build_sidecar_result(
             payload=payload,
-            schema=f"molstruct/v{sv}",
+            kind="molstruct",
             parser_name=cls.name,
             source=path,
         )

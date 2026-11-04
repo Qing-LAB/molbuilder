@@ -13,6 +13,7 @@ then `jobset prep task`, then the deck on disk.  Per engine:
 """
 from __future__ import annotations
 
+from molbuilder.scheduler.record import write_environment
 from support.road import group_words, read_request, write_request
 
 import ast
@@ -101,12 +102,13 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     # The machine the calculation is prepared for, with how a shell enters an
     # environment there -- the record carries it for the generator
     # (`configuration.md` § 4).
-    (dest / "environment.json").write_text(
+    write_environment(
         Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4),
                     env_init={"activation": "conda activate",
                                        "preamble": "true"}
-                    ).to_json() + "\n")
+                    ),
+        (dest / "environment.json"))
     if before_prep is not None:
         before_prep(dest)
     stage = stage or stages[0].name

@@ -1481,6 +1481,20 @@ an infinity, which a reader decodes from an engine's overflowed Fortran field
 (`siesta_grammar.fortran_float`) — is written `null`, *not stated*, by the one
 rule `persist.json_safe`, which the file writer (`json_text`), the web app's
 JSON provider, the trajectory's wire form and the transport record all ask.
+Where a format states that such a number is refused instead — the spectra
+file ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.8), the
+structure sidecar ([`model/structure.md`](?doc=model/structure.md) § 2.4) —
+its writer refuses it before `json_text` writes.
+
+**One writer, one reader, for every JSON file molbuilder writes.** Written by
+`persist.json_text` (`write_json`): two-space indent, a trailing newline, a
+character beyond ASCII written as itself (`Å`, a region label's `α`). Read by
+`persist.read_json`: UTF-8, a byte-order mark read past, since it says nothing
+of what a file holds and an editor may add one to a file a person keeps
+(`molbuilder.json`, [`job-request.md`](?doc=execution/job-request.md)'s two
+records); text that is not UTF-8, or not JSON, does not read. A prep reads a
+record through its plan (`Plan.read_text`: what the prep has written so far,
+otherwise the file).
 
 **A run's status is not a file.** `run_status(run_dir)` answers it in memory
 (`parse/dirs/job.py`; its fields,

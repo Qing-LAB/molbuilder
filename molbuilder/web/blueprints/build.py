@@ -53,7 +53,6 @@ from __future__ import annotations
 
 import dataclasses
 
-import json
 import pathlib
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -73,6 +72,7 @@ from ._shared import (
 )
 
 from molbuilder.builders import GENERATORS, build
+from molbuilder.persist import json_text
 from molbuilder.engine_table import (EngineTableError, config_class,
                                      engine as _engine)
 from molbuilder.structure import Structure
@@ -1281,7 +1281,8 @@ def api_task_setup_handover():
         "template_name": _template_filename(label),
         "template_text": template_text,
         "handover_name": TASK_HANDOVER_NAME,
-        "handover_text": json.dumps(handover, indent=2) + "\n",
+        # THE BYTES THE BROWSER WRITES, in every JSON file's one shape.
+        "handover_text": json_text(handover),
         # A hand-over already in the folder is replaced by this one -- said,
         # so the page can say it.
         "handover_here": bool(dest_dir is not None

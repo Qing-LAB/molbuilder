@@ -10,7 +10,6 @@ instead of claiming a file it will then misread.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict
 
@@ -27,28 +26,17 @@ class TransportRecordError(ParseError):
 
 def _load(path: Path) -> Dict[str, Any]:
     """The record as a dict, or raise — the one reader of this file."""
-    from molbuilder.persist import check_schema
     from molbuilder.transport.record import TRANSPORT_RESULT_SCHEMA
-    try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise TransportRecordError(f"{Path(path).name}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise TransportRecordError(
-            f"{Path(path).name}: a transport record is a JSON object, "
-            f"got {type(payload).__name__}")
-    try:
-        check_schema(str(payload.get("schema", "")), TRANSPORT_RESULT_SCHEMA,
-                     label=Path(path).name)
-    except ValueError as exc:
-        raise TransportRecordError(str(exc)) from exc
-    return payload
+    from ._helpers import read_record
+    return read_record(path, schema=TRANSPORT_RESULT_SCHEMA, refused=TransportRecordError,
+                       what="a transport record")
 
 
 class TransportRecordFileParser(FileParser):
     """Parse a ``<label>.transport.json`` — the transport ladder's result:
     the I-V table, the per-bias points, the stage facts and the provenance
-    slot.  Returns a :class:`SidecarResult` with ``schema = "transport/v1"``.
+    slot.  Returns a :class:`SidecarResult` with ``schema =
+    "transport/v<N>"``, ``N`` the major of the record's own ``schema``.
     """
 
     name   = "transport-json"
@@ -74,7 +62,7 @@ class TransportRecordFileParser(FileParser):
         payload = _load(Path(path))
         return build_sidecar_result(
             payload=payload,
-            schema="transport/v1",
+            kind="transport",
             parser_name=cls.name,
             source=Path(path),
         )

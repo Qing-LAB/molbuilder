@@ -81,7 +81,7 @@ class TestSidecarPathFor:
 
         The suffix-replacement path has to handle "there is no suffix" without
         producing a name-less dotfile and without leaving the pair unmatched. Same
-        pairing rule as `test_plain_xyz` (`structure-molstruct.md` § 6); this is
+        pairing rule as `test_plain_xyz` (`structure-molstruct.md` § 5); this is
         the branch `Path.with_suffix` gets wrong in the opposite direction from the
         compound-suffix case beside it.
         """
@@ -111,9 +111,21 @@ class TestToDict:
         assert d["geometry_hash"] == "a" * 64
         assert d["regions"]        == {}
         assert "frozen_atoms" not in d      # one label store, one key
-        # Auto-generated timestamp + default created_by:
         assert d["created_by"] == "molbuilder"
-        assert d["created_at"].endswith("Z")
+
+    def test_the_writer_states_the_moment_it_writes(self):
+        """`created_at` is the moment the pair is written, ISO-8601 in UTC with
+        its ``Z`` -- stamped by the one writer (`StructureCodec.pair`), never
+        by the builder, which a read asks too.  THE SILENT FAILURE: a pair
+        written with no moment, or one in local time two files cannot be
+        compared by."""
+        import re
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        pair = StructureCodec().pair(
+            Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n"))
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+                            pair.sidecar["created_at"] or ""), pair.sidecar
 
     def test_regions_sorted_and_deduped(self):
         """Region indices are normalised to sorted, unique order at BUILD time.
@@ -543,7 +555,7 @@ class TestApplyToStructure:
 
 class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
-    schemas this build accepts: {7, ..., 14} (`structure-molstruct.md` § 5).
+    schemas this build accepts: {7, ..., 17} (`structure-molstruct.md` § 2).
     v8, v9, v11, v12 and v14 only ADDED optional keys, so an older file reads
     whole (an absent addition IS its default, which is exactly what the
     older version meant); v10 retired `cell_origin` and v13 `structure_hash`
@@ -578,6 +590,33 @@ class TestSchemaVersioning:
                 f"reads versions {sorted(msj.READABLE_VERSIONS)} only")):
             msj.load(p)
 
+    def test_a_pair_the_release_before_wrote_reads_whole(self, tmp_path):
+        """v17 retired `selection_rules`, so every pair on disk is a v16 file
+        holding it, empty.  It reads as the same structure, and a save drops
+        the key.  THE SILENT FAILURE: every structure a person has refused the
+        day the schema's version moved."""
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        struct = Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n")
+        geometry = tmp_path / "pair.xyz"
+        StructureCodec().write(struct, geometry)
+        sidecar = msj.sidecar_path_for(geometry)
+        written = _json.loads(sidecar.read_text(encoding="utf-8"))
+        assert "selection_rules" not in written
+        # AS 2.65.7 WROTE IT.
+        sidecar.write_text(_json.dumps(
+            {**written, "schema_version": 16, "selection_rules": {}}),
+            encoding="utf-8")
+        back = StructureCodec().load(geometry)
+        assert back.metadata_to_dict() == struct.metadata_to_dict()
+        assert back.elements == struct.elements
+        again = tmp_path / "again.xyz"
+        StructureCodec().write(back, again)
+        rewritten = _json.loads(
+            msj.sidecar_path_for(again).read_text(encoding="utf-8"))
+        assert rewritten["schema_version"] == msj.SCHEMA_VERSION
+        assert "selection_rules" not in rewritten
+
     def test_a_v7_file_reads_whole_under_v8(self, tmp_path):
         """The additive-bump rule (2026-08-20): v8 added only the OPTIONAL
         identity columns, so every fact a v7 file states lands in the same
@@ -609,90 +648,6 @@ class TestSchemaVersioning:
         assert d["regions"] == {"L-electrode": [0], "frozen_atoms": [1, 2]}
         assert "frozen_atoms" not in d
         assert "fixed_atoms" not in d
-
-
-class TestSelectionRules:
-    """Sidecar's optional ``selection_rules`` field round-trips a
-    JSON rule tree from :mod:`molbuilder.selection`; validation
-    re-parses via from_json so a malformed recipe surfaces at
-    sidecar-build time, not at engine-load time."""
-
-    def test_writes_and_reads_rule_tree(self, tmp_path):
-        """A `selection.py` rule tree survives the sidecar round-trip as JSON.
-
-        `selection_rules` is a sidecar-ONLY pass-through (`structure-molstruct.md`
-        section 4) -- not a `Structure` field, so nothing else in the load path would
-        notice it being dropped or flattened. What is at stake is re-evaluating a
-        saved selection ("the left electrode is the first 4 Au") against an edited
-        structure; `op` and `n` are what `selection.from_json` needs to rebuild it.
-        """
-        from molbuilder.selection import (
-            ByElement, FirstN, to_json as rule_to_json,
-        )
-        rule = FirstN(ByElement(("Au",)), 4)
-        payload = msj.to_dict(
-            {"regions": {"L-electrode": [0, 1, 2, 3]}},
-            n_atoms_total=6,
-            geometry_hash=_HASH,
-            selection_rules={"L-electrode": rule_to_json(rule)},
-        )
-        side = tmp_path / "out.molstruct.json"
-        msj.save(side, payload)
-        loaded = msj.load(side)
-        assert loaded["selection_rules"]["L-electrode"]["op"] == "first_n"
-        assert loaded["selection_rules"]["L-electrode"]["n"] == 4
-
-    def test_rule_for_unknown_target_raises(self, tmp_path):
-        """A rule aimed at a label that is not in the store is refused at BUILD time.
-
-        A rule whose target does not exist can never be applied, so accepting it
-        writes a sidecar describing a selection nothing will ever re-create --
-        discovered, if at all, months later when someone tries to refresh the labels.
-        `structure-molstruct.md` § 4: the rules are keyed by label, and the
-        labels are the ones in `regions`.
-        """
-        from molbuilder.selection import All, to_json as rule_to_json
-        with pytest.raises(MolstructJsonError, match="doesn't match"):
-            msj.to_dict(
-                {"regions": {"L-electrode": [0]}},
-                n_atoms_total=6,
-                geometry_hash=_HASH,
-                selection_rules={
-                    # 'bridge' isn't in regions and isn't 'frozen_atoms':
-                    "bridge": rule_to_json(All()),
-                },
-            )
-
-    def test_malformed_rule_raises(self, tmp_path):
-        """A malformed rule surfaces at sidecar-build time, not at engine-load time.
-
-        `to_dict` re-parses each rule through `selection.from_json`, so
-        `{"op": "not_a_real_op"}` is refused while the person is still looking at the
-        panel that produced it. Without the re-parse the bad recipe is written to disk
-        and raises when a generator later tries to re-evaluate it, far from the edit
-        that caused it. `structure-molstruct.md` § 4.
-        """
-        with pytest.raises(MolstructJsonError, match="invalid rule"):
-            msj.to_dict(
-                {"regions": {"L-electrode": [0]}},
-                n_atoms_total=6,
-                geometry_hash=_HASH,
-                selection_rules={"L-electrode": {"op": "not_a_real_op"}},
-            )
-
-    def test_rule_for_the_reserved_label_is_allowed(self, tmp_path):
-        """It needs no clause of its own: the rule targets a label, and the
-        reserved one is a label in the same store as the rest."""
-        from molbuilder.selection import ByElement, to_json as rule_to_json
-        d = msj.to_dict(
-            {"regions": {"frozen_atoms": [0, 1]}},
-            n_atoms_total=6,
-            geometry_hash=_HASH,
-            selection_rules={
-                "frozen_atoms": rule_to_json(ByElement(("Au",))),
-            },
-        )
-        assert "frozen_atoms" in d["selection_rules"]
 
 
 class TestPbcFollowsAxisKind:
@@ -831,7 +786,7 @@ class TestInfoBlock:
 
         `info` is free-form, so a caller can put anything in it. Failing later, inside
         `save`, leaves the structure written and no sidecar beside it -- the unpaired
-        state `structure-molstruct.md` § 6 exists to prevent -- plus a stray
+        state `structure-molstruct.md` § 5 exists to prevent -- plus a stray
         `.tmp` from the atomic-replace path. Refusing in `to_dict` means nothing has
         touched the disk yet.
         """
@@ -919,7 +874,9 @@ class TestARetiredKeyPassesEveryGate:
     #: to add one is a FAILURE, not a silent pass -- see the assert below.
     SAMPLES = {"pbc": [True, True, False], "cell_origin": [1.0, 2.0, 3.0],
                "title": "a name only the sidecar knows",
-               "structure_hash": "0" * 64}
+               "structure_hash": "0" * 64,
+               # empty, as every sidecar 2.65.7 wrote holds it
+               "selection_rules": {}}
 
     def _payload(self, key, n=2):
         return {"schema_version": 9, "n_atoms_total": n,

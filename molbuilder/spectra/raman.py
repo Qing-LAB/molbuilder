@@ -678,8 +678,7 @@ def read_raman_data(path) -> Dict[str, Any]:
     """``<label>.raman.nc`` back as data -- its attributes, its numbers,
     frame 0's alpha and each mode's row; a schema it does not read refused
     by name, with the way back: the view exported again."""
-    import json
-    from ..ncdata import read_variables, reading, unnumber_attr
+    from ..ncdata import read_variables, reading, unjson_attr, unnumber_attr
     with reading(path) as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") not in READABLE_RAMAN_SCHEMAS:
@@ -689,7 +688,7 @@ def read_raman_data(path) -> Dict[str, Any]:
                              f"the view again (jobset export)")
         out: Dict[str, Any] = {
             "label": str(attrs.get("label", "")),
-            **{k: json.loads(str(attrs[k]))
+            **{k: unjson_attr(attrs[k])
                for k in ("direction", "spins", "derived_from")},
             **{k: str(attrs.get(k, "")) for k in (
                 "run", "siesta_version", "molbuilder_version")}}

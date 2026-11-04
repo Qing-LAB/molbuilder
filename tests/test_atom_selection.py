@@ -370,10 +370,8 @@ class TestBooleanOps:
     def test_first_n_more_than_available(self, junction_struct):
         """Asking for more than exist returns what exists, and does not refuse.
 
-        `FirstN(ByElement(("C",)), 99)` is what a saved rule looks like after atoms
-        were deleted from the structure it was written against
-        (`structure-molstruct.md` § 4 keeps the rules for re-evaluation);
-        refusing would make such a sidecar unloadable rather than degrade. The
+        `FirstN(ByElement(("C",)), 99)` names more atoms than the structure
+        holds; the rule answers the ones there, never an error. The
         mechanism is a Python slice, so what this really pins is the DECISION not to
         bound `n` against the match count.
         """
@@ -438,12 +436,11 @@ class TestRoundTrip:
         """Every rule class survives `to_json` -> `from_json` unchanged, INCLUDING its
         equality and hash.
 
-        `selection_rules` is persisted in the `.molstruct.json` sidecar so a labelled
-        selection can be re-evaluated later (`structure-molstruct.md` § 4). The
+        The rule codec's two halves agree. The
         codec is table-driven -- `_RULE_CLASSES`, `_SUBRULE_FIELDS`,
         `_SUBRULE_LIST_FIELDS` -- so a class added without registering it, or a leaf
-        list not normalised back to a tuple, breaks re-evaluation of an ALREADY
-        SAVED rule long after the commit that caused it. Equality on frozen
+        list not normalised back to a tuple, breaks the reading of a rule long
+        after the commit that caused it. Equality on frozen
         dataclasses is what makes the tuple normalisation observable at all.
         """
         assert from_json(to_json(rule)) == rule

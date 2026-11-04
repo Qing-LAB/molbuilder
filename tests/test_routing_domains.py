@@ -220,7 +220,7 @@ def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
         domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
                                   "qos": "public",
                                   "max_tme": "1-00:00:00"})])
-    named_environment_path("sol").write_text(env.to_json())
+    write_environment(env, named_environment_path("sol"))
 
     sol = next(m for m in known_machines() if m["name"] == "sol")
     assert "max_tme" in sol["summary"], (
@@ -246,7 +246,7 @@ def test_a_record_the_reader_fully_understands_says_nothing_extra(tmp_path,
         domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
                                   "qos": "public",
                                   "max_time": "1-00:00:00"})])
-    named_environment_path("sol").write_text(env.to_json())
+    write_environment(env, named_environment_path("sol"))
 
     sol = next(m for m in known_machines() if m["name"] == "sol")
     assert "??" not in sol["summary"], (

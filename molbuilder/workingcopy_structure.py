@@ -581,6 +581,7 @@ class StructureCodec:
             geometry_hash  = molstruct.geometry_hash(
                 document, fmt, meta["cell"], meta["axis_kind"]),
             info           = dict(struct.info) if struct.info else None,
+            created_at     = molstruct.stamp(),
             atom_index_map = atoms.to_dict(),
         )
         return StructurePair(document=document, sidecar=payload,
@@ -730,19 +731,19 @@ class StructureCodec:
         """
         document = Structure(elements=list(elements),
                              positions=positions).to_xyz(comment=comment)
-        # THE ENVELOPE IS OF THIS WRITE: the geometry hash made over the
-        # document written, with the cell the payload states, and the time it
-        # was written -- `pair` stamped the moment the payload was made,
-        # which for a run's geometry is render time.
+        # THE ENVELOPE IS OF THIS WRITE, renewed by the sidecar's codec: the
+        # geometry hash made over the document written, with the cell the
+        # payload states, and the time it was written -- `pair` stamped the
+        # moment the payload was made, which for a run's geometry is render
+        # time.
         # A RUN'S OWN PAIR (`model/overview.md` § 2.2b, F2): listed by
         # engine index -- the user order, which PySCF keeps.
-        payload = dict(sidecar,
-                       geometry_hash=molstruct.geometry_hash(
-                           document, "xyz", sidecar["cell"],
-                           sidecar["axis_kind"]),
-                       created_at=molstruct._now_iso_z(),
-                       **{MAP_KEY: AtomIndexMap.of_engine_record(
-                           None, len(elements)).to_dict()})
+        payload = molstruct.renewed(
+            sidecar,
+            geometry_hash=molstruct.geometry_hash(
+                document, "xyz", sidecar["cell"], sidecar["axis_kind"]),
+            atom_index_map=AtomIndexMap.of_engine_record(
+                None, len(elements)).to_dict())
         return self._write_pair(Path(target), document, payload)
 
     @staticmethod

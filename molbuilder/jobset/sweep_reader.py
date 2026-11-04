@@ -30,12 +30,6 @@ from ..parse.sidecars._helpers import build_sidecar_result
 from ..parse.types import SidecarResult
 from .model import FILENAME, KIND_SWEEP, JobSet
 
-#: The discriminator consumers type-narrow on, in the sidecar convention
-#: (``"molstruct/v3"``, ``"spectra/v4"``, ``"transport/v1"``).  Derived
-#: from nothing here: the on-disk schema is `jobset.model.SCHEMA`, and
-#: this is the parse-side name for what came out of it.
-RESULT_SCHEMA = "job-set/v1"
-
 
 class JobSetReadError(ValueError):
     """Why this file is not a sweep's plan, in words -- surfaced
@@ -82,7 +76,9 @@ def _load_sweep(path: Path) -> dict:
 
 
 class JobSetSweepFileParser(FileParser):
-    """``job-set.json`` — a benchmark sweep's plan."""
+    """``job-set.json`` — a benchmark sweep's plan.  Returns a
+    :class:`SidecarResult` with ``schema = "job-set/v<N>"``, ``N`` the major
+    of the plan's own ``schema`` (`model/parse.md` § 6)."""
 
     name = "job-set-sweep"
     label = "molbuilder benchmark sweep plan"
@@ -108,7 +104,7 @@ class JobSetSweepFileParser(FileParser):
             raise UnknownFormatError(str(exc)) from exc
         return build_sidecar_result(
             payload=payload,
-            schema=RESULT_SCHEMA,
+            kind="job-set",
             parser_name=cls.name,
             source=Path(path),
         )

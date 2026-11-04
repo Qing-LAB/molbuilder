@@ -7,8 +7,7 @@ A *selection rule* describes WHICH atoms of a :class:`Structure` are
     intersection / difference / complement) so the user can express
     "all Au atoms except those tagged as bridge" in one expression;
   * **engine-agnostic** -- the rule tree is pure Python data with a
-    JSON round-trip, so it serialises into the ``.molstruct.json``
-    sidecar and survives a server round-trip / re-evaluation;
+    JSON round-trip, so it survives a server round-trip;
   * **UI-friendly** -- the JS selection panel can map UI rows
     one-to-one onto rule classes and round-trip the rule tree
     through ``POST /api/selection/eval`` for live atom-count

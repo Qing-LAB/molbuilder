@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from .config_dir import PRIVATE_FILE_MODE, config_dir
+from .persist import read_json, write_json
 from .runfiles import (JOB_REQUEST_FILE, PYSCF_CHK, PYSCF_CUBE, SIESTA_DM,
                        SIESTA_HSX, SIESTA_TSHS, TBTRANS_AVTRANS, TBTRANS_CC,
                        TBTRANS_DOS, family)
@@ -173,13 +174,18 @@ def _load_raw(path: Path) -> Dict[str, Any]:
     if not path.is_file():
         return {}
     try:
-        raw = json.loads(path.read_text())
+        raw = read_json(path)
     except OSError as exc:
         raise RuntimeConfigError(
             f"{path}: cannot be read ({exc.strerror})") from None
     except json.JSONDecodeError as exc:
         raise RuntimeConfigError(
             f"{path}: invalid JSON ({exc.msg} at line {exc.lineno})"
+        ) from None
+    except UnicodeDecodeError as exc:
+        raise RuntimeConfigError(
+            f"{path}: not UTF-8 text ({exc.reason} at byte {exc.start}) -- "
+            f"save it as UTF-8"
         ) from None
     if not isinstance(raw, dict):
         raise RuntimeConfigError(
@@ -1561,7 +1567,7 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
     :func:`_deep_merge`), preserving keys outside the patch.  A corrupt
     existing file REFUSES rather than being overwritten (R10).
     Files are written atomically
-    (persist.write_bytes) at mode 0600 -- a config file may carry
+    (persist.write_json) at mode 0600 -- a config file may carry
     the TLS key's path, deploy context, or per-cluster setup commands
     that aren't meant for casual inspection.  THE ONE WRITER of this
     file.
@@ -1611,15 +1617,14 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
     # the operator set up (`envs doctor` is).
     from .config_dir import ensure_private_dir
     ensure_private_dir(target.parent)
-    rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
-    # Through the ONE atomic writer (U8's shape): a crash mid-write must not
-    # leave a truncated config for every later read to refuse.
+    # Through the ONE atomic writer (U8's shape), in every JSON file's one
+    # byte shape (`persist.json_text`): a crash mid-write must not leave a
+    # truncated config for every later read to refuse.
     #
     # `mode=` rather than a chmod afterwards (D11): a chmod afterwards leaves
     # the temp loose with the content in it, the window `write_bytes`' own
     # `mode=` parameter exists to close.
-    from .persist import write_bytes
-    write_bytes(target, rendered.encode("utf-8"), mode=PRIVATE_FILE_MODE)
+    write_json(target, merged, mode=PRIVATE_FILE_MODE)
     return target
 
 

@@ -1534,7 +1534,8 @@ def write_validation_report(deck_path, findings, *, plan=None) -> "Path":
     if plan is not None:
         plan.text(out, text)
     else:
-        out.write_text(text, encoding="utf-8")
+        from .persist import write_bytes
+        write_bytes(out, text.encode("utf-8"))
     return out
 
 
@@ -1986,9 +1987,11 @@ def write_script(path, text: str, *, plan=None,
         plan.text(p, merge_user_custom(
             text, plan.read_text(p) if plan.is_file(p) else None), mode=mode)
         return p
-    p.write_text(merge_user_custom_from_target(text, p), encoding="utf-8")
-    if mode is not None:
-        p.chmod(mode)
+    # THE ONE WRITER (`persist.write_bytes`): whole or not at all, so a
+    # deck holding the person's USER-CUSTOM block is never left cut short.
+    from .persist import write_bytes
+    write_bytes(p, merge_user_custom_from_target(text, p).encode("utf-8"),
+                mode=mode)
     return p
 
 

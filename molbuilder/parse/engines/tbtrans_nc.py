@@ -44,7 +44,6 @@ nothing beside a job reads a data file.
 """
 from __future__ import annotations
 
-import json
 import os
 import socket
 import time
@@ -178,17 +177,14 @@ def _read_claim(cp: Path) -> Optional[Dict[str, Any]]:
     """The claim at ``cp`` -- ``{host, pid, started, started_at,
     updated_at, k, n}``, and ``alive`` -- or ``None`` when there is none.
     One that does not read is a claim nonetheless, its fields unknown."""
+    from molbuilder.persist import read_json
     try:
-        text = cp.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None
-    except OSError:
-        text = ""
-    try:
-        claim = json.loads(text)
+        claim = read_json(cp)
         if not isinstance(claim, dict):
             raise ValueError
-    except ValueError:
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
         claim = {}
     claim["alive"] = _alive(claim, cp)
     return claim
@@ -250,7 +246,7 @@ def _claimed(path, *, take_over: bool) -> Iterator[Callable[[int, int],
     cp = _claim_path(path)
     _clear_claim(cp, take_over=take_over)
     from molbuilder.joblist import started_of
-    from molbuilder.persist import write_bytes
+    from molbuilder.persist import json_text, write_bytes
     mine = {"host": socket.gethostname(), "pid": os.getpid(),
             "started": started_of(os.getpid()),
             "started_at": time.time(), "updated_at": time.time(),
@@ -261,7 +257,7 @@ def _claimed(path, *, take_over: bool) -> Iterator[Callable[[int, int],
     _READING_HERE.add(token)
     try:
         # THE ONE WRITER, exclusive: the name created whole, or refused.
-        write_bytes(cp, json.dumps(mine).encode("utf-8"), exclusive=True)
+        write_bytes(cp, json_text(mine).encode("utf-8"), exclusive=True)
     except FileExistsError:
         _READING_HERE.discard(token)
         raise ReadingClaimed(path, _read_claim(cp) or {}) from None
@@ -277,7 +273,7 @@ def _claimed(path, *, take_over: bool) -> Iterator[Callable[[int, int],
             # TAKEN OVER by another reading: this one stops.
             raise ReadingClaimed(path, now or {})
         mine.update(k=k, n=n, updated_at=time.time())
-        write_bytes(cp, json.dumps(mine).encode("utf-8"))
+        write_bytes(cp, json_text(mine).encode("utf-8"))
     try:
         yield update
     finally:

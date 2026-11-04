@@ -86,8 +86,15 @@ error to avoid.
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill (`empty`); a boolean an `int8`
 with `flag_values 0 1` (`flag`); an empty list a dimension of length 0; a
-nested record JSON text (`json_attr`). A result with parts is written in
-groups (the vibration result's `/structure`, `/equilibrium`, `/modes`).
+nested record JSON text (`json_attr`), read back as the record by `unjson_attr`.
+A result with parts is written in groups (the vibration result's `/structure`,
+`/equilibrium`, `/modes`).
+
+**Which attributes are records is the format's stated list** — the transport
+data file's `transport.datafile.JSON_ATTRS`, and its frames' part's
+`frame_average.JSON_ATTRS`. A name on the list is a record the file promises,
+and its reader hands it over as data; any other attribute is text, as written,
+and promises nothing *(the user, 2026-11-04)*.
 
 ## 2b. The file and each group say what they are
 

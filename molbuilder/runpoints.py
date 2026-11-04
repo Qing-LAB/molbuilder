@@ -107,8 +107,12 @@ def read_index(path) -> Dict[str, Any]:
     return d
 
 
-def write_index(path, index: Dict[str, Any]) -> Path:
-    """The index written whole, atomically (`persist.write_json`)."""
+def write_index(path, index: Dict[str, Any], *, plan=None) -> Path:
+    """The index written whole, atomically (`persist.write_json`) -- or,
+    given ``plan`` (`jobset.planned.Plan`, launch's), into the plan
+    instead of the disk, the same text (`persist.json_text`)."""
+    if plan is not None:
+        return plan.text(path, _persist.json_text(index))
     return _persist.write_json(path, index)
 
 

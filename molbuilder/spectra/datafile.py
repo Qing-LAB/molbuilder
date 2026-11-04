@@ -38,7 +38,6 @@ a fact the writer thinks it saved and this file would drop.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence, Tuple
 
@@ -50,7 +49,7 @@ try:                                        # inside molbuilder
     from ..ncdata import (NC_LOCK, Var, as_bytes, empty, flag, in_memory,
                           json_attr, number_attr, read_atom_index_map,
                           read_variables, reading, state, unflag,
-                          unnumber_attr, write_group)
+                          unjson_attr, unnumber_attr, write_group)
     from ..persist import write_bytes
     from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
@@ -59,7 +58,7 @@ except ImportError:                         # beside a job, in a bundle
     from ncdata import (NC_LOCK, Var, as_bytes, empty, flag,
                         in_memory, json_attr, number_attr,
                         read_atom_index_map, read_variables, reading, state,
-                        unflag, unnumber_attr, write_group)
+                        unflag, unjson_attr, unnumber_attr, write_group)
     from persist import write_bytes
 
 DATA_SCHEMA = "molbuilder/spectra-data@8"
@@ -241,7 +240,7 @@ def _decode(kind: str, value):
     if kind == "flag?":
         return unflag(value)
     if kind == "json":
-        return json.loads(str(value))
+        return unjson_attr(value)
     raise SpectraDataError(f"no encoding for kind {kind!r}")
 
 
@@ -365,7 +364,7 @@ def read_structure_group(group, *, source: str) -> Dict[str, Any]:
     ``atoms`` (its atom index map, or ``None`` for a file written before
     one), ``held`` (each atom's flag) and ``masses`` (NaN where none)."""
     sv = read_variables(group)
-    return {"structure": json.loads(str(group.getncattr("structure_json"))),
+    return {"structure": unjson_attr(group.getncattr("structure_json")),
             "atoms": read_atom_index_map(group, source=source),
             "held": sv["held"]["data"], "masses": sv["mass_amu"]["data"]}
 
@@ -857,7 +856,7 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
             gv = read_variables(gg)
             grid = {"temperatures_K": [float(t) for t in
                                        _axis(gv, "temperature_k")["data"]]}
-            for name in json.loads(str(gg.getncattr("curves"))):
+            for name in unjson_attr(gg.getncattr("curves")):
                 grid[name] = [float(x) for x in gv[name]["data"]]
             thermo["grid"] = grid
         out["thermo"] = thermo
@@ -866,7 +865,7 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
         if "partial_charges" in ds.groups:
             g = ds["partial_charges"]
             pv = read_variables(g)
-            partitions = json.loads(str(g.getncattr("partitions")))
+            partitions = unjson_attr(g.getncattr("partitions"))
             steps = []
             for i in range(int(pv["fc_step"]["data"].shape[0])):
                 atom = int(pv["displaced_atom"]["data"][i])

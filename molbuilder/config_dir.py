@@ -306,17 +306,34 @@ def jobs_dir() -> Path:
     return state_dir() / "jobs"
 
 
+#: THE PROCESSES MOLBUILDER KEEPS A PIDFILE FOR, each its file's family:
+#: the supervisor, and the notebook's shepherd.
+SERVE_PIDFILES, JUPYTER_PIDFILES = "serve", "jupyter"
+
+
+def pidfile_pattern(family: str) -> str:
+    """Every pidfile of ``family`` as a name pattern, ``<family>-*.pid``:
+    the one spelling of the shape -- each pidfile's name is it with its
+    port (:func:`serve_pidfile`, :func:`jupyter_pidfile`)."""
+    return f"{family}-*.pid"
+
+
+def _pidfile(family: str, port: int) -> Path:
+    return runtime_dir() / pidfile_pattern(family).replace("*", str(int(port)))
+
+
 def serve_pidfile(port: int) -> Path:
     """The supervisor's pidfile -- the address ``stop``/``restart`` act on."""
-    return runtime_dir() / f"serve-{port}.pid"
+    return _pidfile(SERVE_PIDFILES, port)
 
 
-def ports_with_pidfile(prefix: str = "serve") -> List[int]:
-    """Every port that has a pidfile -- `serve_pidfile` INVERTED.
+def ports_with_pidfile(family: str = SERVE_PIDFILES) -> List[int]:
+    """Every port that has a pidfile of ``family`` -- `serve_pidfile`
+    INVERTED.
 
-    One home for the ``<prefix>-<port>.pid`` shape, in both directions: a
-    second place that knows how to take the name apart drifts the day the
-    name changes.
+    One home for the ``<family>-<port>.pid`` shape, in both directions
+    (:func:`pidfile_pattern`): a second place that knows how to take the
+    name apart drifts the day the name changes.
 
     **This is what lets `serve status` answer without being told a port**:
     the port is on disk (`plan.md` § 5n, J14).
@@ -327,7 +344,7 @@ def ports_with_pidfile(prefix: str = "serve") -> List[int]:
     and really ours is `serve_daemon.pid_state`'s question, not this one's.
     """
     out: List[int] = []
-    for p in runtime_dir().glob(f"{prefix}-*.pid"):
+    for p in runtime_dir().glob(pidfile_pattern(family)):
         try:
             out.append(int(p.stem.split("-", 1)[1]))
         except (IndexError, ValueError):
@@ -362,7 +379,7 @@ def jupyter_pidfile(serve_port: int) -> Path:
     Beside the serve pidfile and for the same reason: it is an address, not a
     secret, and it lives where a per-user runtime file belongs.
     """
-    return runtime_dir() / f"jupyter-{serve_port}.pid"
+    return _pidfile(JUPYTER_PIDFILES, serve_port)
 
 
 def jupyter_log(serve_port: int) -> Path:

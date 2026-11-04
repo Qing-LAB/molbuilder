@@ -1,22 +1,22 @@
-"""``.spectra.json`` sidecar — write-side + exception classes.
+"""``.spectra.json`` sidecar — its writer, its reader and exception classes.
 
-The ONE DOOR for this sidecar: the write side lives here, and the read
-side is re-exported from :mod:`molbuilder.parse.sidecars.spectra`, so a
-caller needs one import for both.  The split is what
-``model/parse.md`` § 4 requires.
+The ONE DOOR for this sidecar: the writer (:func:`write_spectra_payload`)
+and the reader (:func:`parse_spectra_json`, the gates of
+``engines/vibration.md`` § 6.7) both live here, so a caller needs one import
+for both; the registry's FileParser in
+:mod:`molbuilder.parse.sidecars.spectra` asks the reader.
 
-This module is the canonical home for the spectra-JSON exception
-classes (``SpectraJsonError`` etc.); the read-side re-imports them
-so callers can ``except`` on either side without caring which
-module raised.
+This module is the home of the spectra-JSON reader and its exception
+classes (``SpectraJsonError`` etc.); the FileParser's module asks the reader.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Dict, Union
 
 # THIS MODULE TRAVELS, and imports only the standard library at load: the
 # SIESTA vibration's finish writes the file beside the job through it
@@ -29,12 +29,13 @@ if TYPE_CHECKING:
 
 
 # --------------------------------------------------------------------- #
-#  Exceptions (canonical home; read-side re-imports)                     #
+#  Exceptions                                                            #
 # --------------------------------------------------------------------- #
 
 
 # TWO WAYS, because this module travels beside the job in both bundles.
 try:                                        # inside molbuilder
+    from ..persist import json_text as _json_text
     from ..persist import write_bytes as _write_bytes
     from ..runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,
                             compose as _compose, role_of as _role_of,
@@ -42,6 +43,7 @@ try:                                        # inside molbuilder
     from ..spectra.datafile import write_spectra_data as _write_spectra_data
     from ..spectra.derived import with_derived as _with_derived
 except ImportError:                         # beside a job, in a bundle
+    from persist import json_text as _json_text  # type: ignore[no-redef]
     from persist import write_bytes as _write_bytes
     from runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,  # type: ignore[no-redef]
                           compose as _compose, role_of as _role_of,
@@ -100,9 +102,7 @@ class SpectraJsonFieldError(SpectraJsonError):
 
 
 def write_spectra_payload(payload: dict,
-                          path: Union[str, "os.PathLike[str]"],
-                          *,
-                          indent: int = 2) -> None:
+                          path: Union[str, "os.PathLike[str]"]) -> None:
     """Write the result to ``path`` -- ``<label>.spectra.json`` -- and, from
     the same payload, its data file ``<label>.spectra.nc`` beside it
     (`spectra.datafile.write_spectra_data`; `engines/vibration.md`
@@ -122,11 +122,13 @@ def write_spectra_payload(payload: dict,
         amplitude and displacement -- are stated beside its own keys by the
         one derivation (`spectra.derived`), whichever engine built the
         payload;
-      * ``payload`` is encoded with ``allow_nan=False`` -- a non-finite
-        scalar anywhere in the payload raises :class:`ValueError` BEFORE any
-        bytes hit disk, so the engine is forced to filter or null out
+      * a non-finite scalar anywhere in the payload raises
+        :class:`ValueError` BEFORE any bytes hit disk (``engines/vibration.md``
+        § 6.8: *no NaN*), so the engine is forced to filter or null out
         NaN/Inf SCF energies explicitly (:func:`finite_or_none`);
-      * UTF-8 without a BOM (cm⁻¹ / Å survive verbatim, ``ensure_ascii=False``);
+      * the bytes are the one shape of every JSON file molbuilder writes
+        (`persist.json_text`): UTF-8 without a BOM, indented, cm⁻¹ / Å
+        verbatim, a trailing newline;
       * atomic, both files: a reader opening either path mid-write sees the
         prior version or the new one, never a half-written file; the data
         file states the sha256 of the JSON bytes written with it.
@@ -146,12 +148,9 @@ def write_spectra_payload(payload: dict,
     if payload.get("modes"):
         payload = {**payload, "modes": _with_derived(payload["modes"])}
 
-    text = json.dumps(payload,
-                      indent=indent,
-                      ensure_ascii=False,
-                      allow_nan=False,
-                      sort_keys=False)
-    data = text.encode("utf-8")
+    # THE CONTRACT'S REFUSAL (§ 6.8) of a number JSON cannot hold, where
+    # every other file writes it null.
+    data = _json_text(payload, refuse_non_finite=True).encode("utf-8")
     _write_bytes(p, data)
     _write_spectra_data(payload, p.with_name(_compose(label, ROLE_SPECTRA_DATA)),
                         json_sha256=hashlib.sha256(data).hexdigest(),
@@ -159,13 +158,11 @@ def write_spectra_payload(payload: dict,
 
 
 def dump_spectra_json(results: "SpectraResults",
-                      path: Union[str, "os.PathLike[str]"],
-                      *,
-                      indent: int = 2) -> None:
+                      path: Union[str, "os.PathLike[str]"]) -> None:
     """Write ``results`` to ``path`` -- :func:`write_spectra_payload` of its
     ``to_dict()``, so a results object and a payload built field by field
     (the PySCF script's, phase by phase) are written by the one writer."""
-    write_spectra_payload(results.to_dict(), path, indent=indent)
+    write_spectra_payload(results.to_dict(), path)
 
 
 def finite_or_none(values):
@@ -186,21 +183,151 @@ def finite_or_none(values):
     return np.asarray(flat, dtype=object).reshape(a.shape).tolist()
 
 
-def parse_spectra_json(path):
-    """Read-side convenience re-export — delegates to
-    :func:`molbuilder.parse.sidecars.spectra._parse_spectra_json`
-    so callers have a single ``molbuilder.sidecars.spectra``
-    namespace for both read + write.  Local import avoids module-
-    load-time cycle (parse module imports exceptions from here)."""
-    from molbuilder.parse.sidecars.spectra import _parse_spectra_json
-    return _parse_spectra_json(path)
+# --------------------------------------------------------------------- #
+#  Read entry-point                                                      #
+#                                                                       #
+#  The results class is imported inside each reader, from the package:  #
+#  this module travels and imports only the standard library at load,   #
+#  and no module of either bundle asks the reader.                      #
+# --------------------------------------------------------------------- #
 
 
-def parse_spectra_json_dict(d):
-    """In-memory variant of :func:`parse_spectra_json`.  Re-exports
-    :func:`molbuilder.parse.sidecars.spectra._parse_spectra_json_dict`."""
-    from molbuilder.parse.sidecars.spectra import _parse_spectra_json_dict
-    return _parse_spectra_json_dict(d)
+def _reject_nonfinite_constant(token: str):
+    """``json.loads(..., parse_constant=...)`` hook.  Fires for symbolic
+    ``NaN`` / ``Infinity`` / ``-Infinity`` -- non-standard tokens that
+    Python accepts on input but downstream consumers (browsers, jq,
+    RFC-8259 parsers) reject."""
+    raise SpectraJsonMalformedError(
+        f"non-finite numeric literal {token!r} is not valid JSON; "
+        f"the engine must filter or null out NaN/Inf before "
+        f"writing (likely an SCF that failed to converge produced "
+        f"a divergent energy)"
+    )
+
+
+def _strict_finite_float(s: str) -> float:
+    """``json.loads(..., parse_float=...)`` hook.  Rejects overflow-
+    to-infinity from valid-syntax literals (``1e500``) that
+    ``parse_constant`` does not see.  Underflow to 0.0 is accepted."""
+    v = float(s)
+    if not math.isfinite(v):
+        raise SpectraJsonMalformedError(
+            f"numeric literal {s!r} overflows to non-finite {v!r}; "
+            f"the wire format requires finite IEEE 754 doubles "
+            f"(a divergent SCF or unit-mismatched energy is the "
+            f"common cause)"
+        )
+    return v
+
+
+def _validate_schema_version(actual: Any) -> None:
+    """Version check against the readable set -- ONE home for it:
+    `spectra/results.py` owns it (``READABLE_SCHEMA_VERSIONS``; per-version
+    read-time handling lives in the typed classes' ``from_dict`` methods).
+    Rejects bool (``True == 1`` would otherwise sneak past), non-int types,
+    and unsupported version numbers."""
+    from molbuilder.spectra.results import (READABLE_SCHEMA_VERSIONS,
+                                            SCHEMA_VERSION)
+    if not isinstance(actual, int) or isinstance(actual, bool):
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
+    if actual not in READABLE_SCHEMA_VERSIONS:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
+
+
+def _validate_dict_to_results(d: Dict[str, Any],
+                              where: str) -> "SpectraResults":
+    """Shared reconstitution + error-wrapping logic.  ``where`` is a
+    short label (path or ``"input dict"``) interpolated into the
+    FieldError message so callers can tell which input failed."""
+    from molbuilder.spectra.results import SpectraResults
+    try:
+        return SpectraResults.from_dict(d)
+    except KeyError as e:
+        raise SpectraJsonFieldError(
+            f"{where} is missing required field {e.args[0]!r}"
+        ) from e
+    except (TypeError, ValueError, AttributeError) as e:
+        raise SpectraJsonFieldError(
+            f"{where} has a malformed field: {e}"
+        ) from e
+
+
+def parse_spectra_json(
+        path: Union[str, "os.PathLike[str]"]) -> "SpectraResults":
+    """Read a ``<job>.spectra.json`` file and return a typed
+    :class:`SpectraResults` -- the file's one reader.  Raises
+    :class:`SpectraJsonNotFoundError` / :class:`SpectraJsonMalformedError`
+    / :class:`SpectraJsonSchemaError` / :class:`SpectraJsonFieldError`
+    on the corresponding failure modes."""
+    from molbuilder.spectra.results import SCHEMA_VERSION
+    p = os.fspath(path)
+
+    if not os.path.exists(p):
+        raise SpectraJsonNotFoundError(
+            f"spectra.json not found at {p!r} (engine hasn't "
+            f"written its first phase checkpoint yet, or the path "
+            f"is wrong)"
+        )
+
+    try:
+        with open(p, "r", encoding="utf-8-sig") as fh:
+            raw = fh.read()
+    except UnicodeDecodeError as e:
+        raise SpectraJsonMalformedError(
+            f"{p!r} is not valid UTF-8 ({e.reason} at byte {e.start})"
+        ) from e
+    except OSError as e:
+        raise SpectraJsonError(f"failed to read {p!r}: {e}") from e
+
+    try:
+        d = json.loads(
+            raw,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_strict_finite_float,
+        )
+    except json.JSONDecodeError as e:
+        raise SpectraJsonMalformedError(
+            f"{p!r} is not valid JSON ({e.msg} at line {e.lineno} "
+            f"col {e.colno})"
+        ) from e
+
+    if not isinstance(d, dict):
+        raise SpectraJsonMalformedError(
+            f"{p!r} top-level JSON value must be an object, got "
+            f"{type(d).__name__}"
+        )
+
+    if "schema_version" not in d:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, None)
+    _validate_schema_version(d["schema_version"])
+
+    return _validate_dict_to_results(d, repr(p))
+
+
+def parse_spectra_json_dict(d: Dict[str, Any]) -> "SpectraResults":
+    """In-memory variant of :func:`parse_spectra_json`, for a payload
+    already decoded into a dict.  Same validation pipeline
+    (schema_version + typed reconstitution) minus the filesystem +
+    JSON-decode layers.
+
+    NaN-rejection only fires at the json.loads layer, so this
+    in-memory path does NOT re-validate finiteness — if the caller
+    constructed the dict in Python they're responsible for not
+    putting non-finite floats in it.  The dataclass's
+    ``__post_init__`` is the second line of defence.
+
+    Raises the same exception hierarchy minus
+    :class:`SpectraJsonNotFoundError` (we have the dict; it's
+    necessarily present)."""
+    from molbuilder.spectra.results import SCHEMA_VERSION
+    if not isinstance(d, dict):
+        raise SpectraJsonMalformedError(
+            f"expected a JSON object, got {type(d).__name__}"
+        )
+    if "schema_version" not in d:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, None)
+    _validate_schema_version(d["schema_version"])
+    return _validate_dict_to_results(d, "input dict")
 
 
 __all__ = [
