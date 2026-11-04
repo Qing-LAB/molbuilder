@@ -187,34 +187,52 @@ def test_the_decision_log_prints_channel_names_readably():
     assert "notify_channels" not in _flat_resources(Resources(mpi_np=4))
 
 
-#: Where a run setting a release retired can lie, each with how a 2.59
-#: molbuilder wrote it there: ``(file, how to plant it)``.
+#: Where a key a release retired can lie, each with how the molbuilder
+#: before it wrote it there: ``(file, how to plant it, the rule the old
+#: file is kept under, what migrate says it did, whether the plan's groups
+#: are prepared again)`` -- a run setting 2.60.0 retired (2.59 wrote it),
+#: and a job's `asked` and `written_at`, which 2.41.0 and 2.42.0 retired
+#: and 2.65.7's reader refuses (2.40 wrote a stage's prep with no flag on a
+#: machine with no queue as ``{"allocation": {}, "env": null,
+#: "emit_sbatch": false}``, and a stage with no relaxation run null).
 _RETIRED_WHERE = {
     "a job's resources": ("job-set.json", lambda d: d["jobs"][0]["resources"]
-                          .__setitem__("continue_retries", 1)),
+                          .__setitem__("continue_retries", 1), "2.60.0",
+                          "continue_retries removed", True),
     "the calculation's run card": ("job-request.json", lambda d: d.setdefault(
-        "execution", {}).__setitem__("continue_retries", 2)),
+        "execution", {}).__setitem__("continue_retries", 2), "2.60.0",
+        "continue_retries removed", False),
     "a stage's run card": ("job-request.json", lambda d: d["stages"]["coarse"]
                            .setdefault("execution", {})
-                           .__setitem__("continue_retries", 2)),
+                           .__setitem__("continue_retries", 2), "2.60.0",
+                           "continue_retries removed", False),
+    "a job's asked": ("job-set.json", lambda d: d["jobs"][0]
+                      .__setitem__("asked", {"allocation": {}, "env": None,
+                                             "emit_sbatch": False}),
+                      "2.65.7", "`asked` removed", False),
+    "a job's written_at": ("job-set.json", lambda d: d["jobs"][0]
+                           .__setitem__("written_at", None), "2.65.7",
+                           "`written_at` removed", False),
 }
 
 
 @pytest.mark.parametrize("where", list(_RETIRED_WHERE))
 def test_a_retired_run_setting_comes_out_where_it_lies(calc, where):
-    """A run setting a release retired -- the run script's warm retry,
-    `continue_retries` (`template.RETIRED_ITEMS`, 2.60.0) -- is refused
-    where it lies, naming `jobset migrate`, which takes it out there and
-    keeps the rest of the file as it was, the old file beside the new
+    """A key a release retired -- the run script's warm retry,
+    `continue_retries` (`template.RETIRED_ITEMS`, 2.60.0), a job's `asked`
+    and `written_at` (`jobset.model.JOB_RETIRED_KEYS`) -- is refused where
+    it lies, naming `jobset migrate`, which takes it out there and keeps the
+    rest of the file as it was, the old file beside the new
     (`execution/job-request.md` § 8; `job-system.md`, the job set's
-    reader); a plan that held one was prepared by an older molbuilder, so
-    its groups' prep is named.  THE SILENT FAILURE: the key left in one
-    record that every later read refuses; or a stage prepared for the old
-    run script launched, and refused on the node after its queue wait."""
+    reader); a plan that held a retired run setting was prepared by an
+    older molbuilder, so its groups' prep is named.  THE SILENT FAILURE:
+    the key left in one record that every later read refuses, or read past
+    unsaid; or a stage prepared for the old run script launched, and
+    refused on the node after its queue wait."""
     import json
     from molbuilder.jobset.migrate import migrate_state
     _prep(calc)
-    name, plant = _RETIRED_WHERE[where]
+    name, plant, rule, removed, again_named = _RETIRED_WHERE[where]
     path = calc / name
     clean = json.loads(path.read_text())
     held = json.loads(path.read_text())
@@ -224,11 +242,11 @@ def test_a_retired_run_setting_comes_out_where_it_lies(calc, where):
         _prep(calc)
     said = migrate_state(calc)
     assert json.loads(path.read_text()) == clean, said
-    kept = calc / f"{name}.pre-2.60.0"
+    kept = calc / f"{name}.pre-{rule}"
     assert json.loads(kept.read_text()) == held
-    assert any("continue_retries removed" in s for s in said), said
+    assert any(removed in s for s in said), said
     again = [s for s in said if "prepare each group again" in s]
-    if name == "job-set.json":
+    if again_named:
         assert again and "prep task --group 1" in again[0], said
     else:
         assert not again, said

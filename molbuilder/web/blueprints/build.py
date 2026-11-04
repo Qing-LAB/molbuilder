@@ -934,14 +934,16 @@ TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
 #: `task.1st.json`, not `task.json.1st` -- so the editor's suffix map gives it
 #: JSON highlighting (`lib/codemirror-load.js`), and so nothing looking for
 #: `task.json` finds it.  That second half matters more than it looks:
-#: `checkpoint.py::_BUNDLE_DESCRIPTORS` treats a `task.json` as the marker that
+#: `calcdirs.described` treats a `task.json` as the marker that
 #: a folder "declares itself the root of one multi-directory unit of work", so
 #: writing a premature one would make the folder claim to be a calculation root
 #: before it is one (`checkpointing.md` L1).
 from molbuilder.runfiles import TASK_HANDOVER_FILE as TASK_HANDOVER_NAME  # noqa: E402 -- the catalogue's name
 from molbuilder.runfiles import ROLE_TEMPLATE  # noqa: E402
 from molbuilder.job_request import FILENAME as _JOB_REQUEST_FILENAME  # noqa: E402
+from molbuilder.job_request import path_of as _job_request_path_of  # noqa: E402
 from molbuilder.task import FILENAME as _TASK_FILENAME  # noqa: E402
+from molbuilder.task import path_of as _task_path_of  # noqa: E402
 from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA_NOW  # noqa: E402
 
 #: WHAT A HAND-OVER'S PROPOSAL IS BUILT FROM -- the keys the hand-over route
@@ -1185,12 +1187,13 @@ def api_task_setup_handover():
         return jsonify({"ok": False, "error": str(exc)}), 400
     structure_files = [{"name": path.name, "text": blob.decode("utf-8")}
                        for path, blob in made]
-    # `source` names the COORDINATE document only.  The sidecar beside it is
-    # found by the pairing rule, which has one home (`model/structure.md`
-    # § 2.4) and is the codec's -- naming it here would be a second copy of a
-    # rule this file does not own.
-    geometry_name = next((f["name"] for f in structure_files
-                          if not f["name"].endswith(".json")), "")
+    # `source` names the COORDINATE document only -- the pair's first half,
+    # as the codec answers it (`StructureCodec.source_files`), and as
+    # `molbuilder describe` records it.  The sidecar beside it is found by
+    # the pairing rule, which has one home (`model/structure.md` § 2.4) and
+    # is the codec's -- naming it here would be a second copy of a rule this
+    # file does not own.
+    geometry_name = made[0][0].name
 
     from molbuilder.jobset.group import fresh_groups
     from molbuilder.task import derive_run, fresh_varies
@@ -1502,7 +1505,7 @@ def api_task_setup_save():
                         "what it writes over is refused (task-setup.md § 8)"
                         }), 400
     on_disk = _read_as(dest)
-    stale = [name for which, name in _RECORD_NAMES
+    stale = [path_of(dest).name for which, path_of in _RECORDS
              if read_as.get(which) != on_disk[which]]
     if stale:
         return jsonify({"ok": False, "error":
@@ -1661,19 +1664,13 @@ def api_task_setup_save():
             return jsonify({"ok": False, "error": no_run}), 409
 
     # NOTHING TO SAVE (`task-setup.md` § 8; the user, 2026-10-23): the
-    # records sent, each read by its reader, are the files' own read the
-    # same way, whatever their spelling -- so a text the page holds
-    # unedited is one, as the page's own rule says (`edited`) -- no state
-    # saved, nothing written, and the page keeps what it shows.
-    from molbuilder.task import path_of as _task_path
-    _tp, _rp = _task_path(dest), _job_request.path_of(dest)
-    try:
-        _same = (_tp.is_file() and _rp.is_file()
-                 and from_text(_tp.read_text()) == task
-                 and _job_request.from_text(_rp.read_text(), task) == job_req)
-    except Exception:
-        _same = False              # a file its reader refuses is not this one
-    if _same:
+    # records sent, each read by its reader, are the calculation's own as
+    # its door read them above (`prior_calc`), whatever their spelling --
+    # so a text the page holds unedited is one, as the page's own rule says
+    # (`edited`) -- no state saved, nothing written, and the page keeps
+    # what it shows.
+    if (prior_calc is not None and prior_calc.task == task
+            and prior_calc.request == job_req):
         return jsonify({
             "ok": True, "unchanged": True, "saved": None, "wrote": [],
             "said": (f"Nothing to save -- {TASK_FILENAME} and "
@@ -2363,17 +2360,18 @@ def _runs_points(calc, stage: str) -> bool:
 def _walk_files(stem: str) -> list:
     """A RUN OF POINTS' WALK, in its stage's `launch/` -- the walk script,
     its header and its log (`execution/runs-of-points.md` § 2.4, the
-    launch folder): each named by the one composer
-    (`runfiles.GroupNames.of_points`) and said in the catalogue's words,
+    launch folder): each named from the stage's folder by the one composer
+    (`runfiles.GroupNames.of_points`, `.walked`) and said in the catalogue's
+    words,
     its row found as every reader finds a launch group's file
     (`runfiles.row_for`)."""
     from molbuilder.runfiles import (GROUP_HEADER, GROUP_LOG,
-                                     GROUP_RUN_SCRIPT, LAUNCH_DIR,
-                                     LEVEL_WHERE, GroupNames, row_for)
+                                     GROUP_RUN_SCRIPT, LEVEL_WHERE,
+                                     GroupNames, row_for)
     gn = GroupNames.of_points(stem)
     out = []
     for row in (GROUP_RUN_SCRIPT, GROUP_HEADER, GROUP_LOG):
-        name = f"{LAUNCH_DIR}/{gn.name(row)}"
+        name = gn.walked(row)
         a = row_for(name)
         out.append({"name": name, "what": a.what, "when": a.when,
                     "level": a.level, "where": LEVEL_WHERE[a.level],
@@ -2976,8 +2974,9 @@ def api_task_setup_commands():
         target=target, prepared=prepared)})
 
 
-#: Each record Save writes, by the key `read_as` names it with.
-_RECORD_NAMES = (("task", _TASK_FILENAME), ("request", _JOB_REQUEST_FILENAME))
+#: Each record Save writes, by the key `read_as` names it with -- and where
+#: its owner puts it in a folder (`task.path_of`, `job_request.path_of`).
+_RECORDS = (("task", _task_path_of), ("request", _job_request_path_of))
 
 
 def _read_as(folder) -> dict:
@@ -2986,8 +2985,8 @@ def _read_as(folder) -> dict:
     answer serves and Save compares (`web/task-setup.md` § 8)."""
     from ...persist import sha256_of
     out = {}
-    for which, name in _RECORD_NAMES:
-        path = pathlib.Path(folder) / name
+    for which, path_of in _RECORDS:
+        path = path_of(folder)
         out[which] = sha256_of(path) if path.is_file() else None
     return out
 

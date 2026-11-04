@@ -90,11 +90,18 @@ def _stages_in(read_text, path: Path) -> Dict[str, Dict[str, Any]]:
     return dict(d.get("stages") or {})
 
 
+def path_of(base) -> Path:
+    """``<base>/prepared-with.json`` -- for its writer and its reader
+    (`architecture.md` A16): the one place the record's name is joined to
+    the calculation's folder."""
+    return Path(base) / FILENAME
+
+
 def read(base) -> Dict[str, Dict[str, Any]]:
     """Every stage's recorded values, by stage name -- ``{}`` before any prep
     recorded one; ``ValueError`` naming the file when it does not read
     (:func:`_stages_in`)."""
-    path = Path(base) / FILENAME
+    path = path_of(base)
     if not path.is_file():
         return {}
     return _stages_in(lambda p: p.read_text(encoding="utf-8"), path)
@@ -107,7 +114,7 @@ def record(calc, stages, *, plan) -> Path:
     ``ValueError`` naming the file when what it holds does not read."""
     from ..persist import json_text
     from ..identity import stage_key
-    path = Path(calc.base) / FILENAME
+    path = path_of(calc.base)
     held = (_stages_in(plan.read_text, path)
             if plan.is_file(path) else {})
     for st in stages:

@@ -50,7 +50,7 @@ from .structure import Structure
 #: to what a file says among it -- each version with its line in
 #: `docs/process/changelog.md`; the first with a release the user declares
 #: (`process/conventions.md` § 2, *Versioning*).
-__version__ = "2.65.6"
+__version__ = "2.65.7"
 
 #: THE BUILDERS ARE NOT RE-EXPORTED HERE.  Python loads this module before
 #: any module inside the package, so whatever it imports loads under every
@@ -102,6 +102,15 @@ def repo_root() -> Path:
     that chain (``references.py``) may import it at module level.
     """
     return Path(__file__).resolve().parent.parent
+
+
+def data_dir() -> Path:
+    """**The package's own data folder**, ``molbuilder/data/`` -- the tables
+    and catalogues shipped with it (`pyproject.toml`'s ``data/*``): the one
+    place it is located (`execution/architecture.md` A11), beside
+    :func:`repo_root` for the same reason.  Callers inside the import chain
+    import it lazily, as :func:`repo_root`'s do."""
+    return Path(__file__).resolve().parent / "data"
 
 
 # THERE IS NO `load()` HERE, and that is the rule, not an omission.  Reading a

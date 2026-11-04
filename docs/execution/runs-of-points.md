@@ -210,7 +210,7 @@ shared code asks it and nothing else.
 | part | answers | transport | SIESTA vibration |
 |---|---|---|---|
 | `rung_points(calc, stage, read=None)` | the prepared points, in the listing order — `()` for a rung that runs once | a frame of the cited set × a voltage, where either varies (`transport.stages.rung_points`) | `relax` and `fc`, as the stage's job lists its phases (`Job.phases`) |
-| `points_in(run, task, stage, base)` | the points a run holds, each with its folder | the prepared points whose folders the run holds | the index's points; before the launch wrote one, the prepared points |
+| `points_in(run, calc, stage)` — the opened calculation whole, as `rung_points` takes it | the points a run holds, each with its folder | the prepared points whose folders the run holds | the index's points; before the launch wrote one, the prepared points of the plan the calculation holds |
 | `entry(calc, stage, point, deck)` | the kind's part of the point's index entry: its words, phase, round and facts — `deck` the path of the deck prep wrote for it | its words, the rung, its voltage, `{frame, frame_words, volts, bias_v, window}` | its words, its phase twice, `{name, mode, side, frequency_cm1, dq_amu12_ang}` |
 | `point_of(entry)` | the point an index entry is | a frame and a voltage | a call |
 | `must_hold(stage, label, base, point, folder, deck=None)` | what the point must hold to be done, each with the words its absence is said in — `deck` a prepared deck's path where no run holds the point's deck yet | the rung's products; `shared/` where its deck shares | its phase's products |

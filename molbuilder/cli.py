@@ -2794,8 +2794,9 @@ def _runtime_dir_dies_at_logout() -> str:
     """
     import os
     import subprocess
-    rt = os.environ.get("XDG_RUNTIME_DIR", "")
-    if not rt.startswith("/run/user/"):
+    from .config_dir import session_runtime_dir
+    rt = session_runtime_dir()
+    if rt is None:
         return ""                       # not session-scoped; nothing to say
     try:
         out = subprocess.run(
@@ -3331,7 +3332,7 @@ def cmd_checkpoint_init(engine, note, calculation, path):
 
     One repository per calculation.  A folder whose subdirectories are working
     dirs is accepted only when this folder carries its description --
-    task.json or job-set.json -- because without one,
+    task.json -- because without one,
     several independent calculations would share a history and rewind together.
     """
     from molbuilder.checkpoint import (

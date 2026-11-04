@@ -154,7 +154,9 @@ def _open(base) -> Optional[Calculation]:
 def refusal(base) -> str:
     """Why ``base`` is not a described calculation, in one sentence -- the
     one spelling every boundary shows: inside a calculation, its root;
-    else which of the two records is missing."""
+    else which of the two records is missing, each asked of its owner's
+    door (`task.of`, `job_request.of`), whose refusal of a record that
+    does not read is its own."""
     from . import calcdirs
     base = Path(base).resolve()
     root = calcdirs.root_of(base)
@@ -163,7 +165,7 @@ def refusal(base) -> str:
                 f"verbs work on the calculation -- name that folder (the "
                 f"command line's `--bundle`).")
     if calcdirs.described(base):
-        if not _job_request.path_of(base).is_file():
+        if _job_request.of(base, _task.of(base)) is None:
             return (f"{base} holds {_task.FILENAME} but no "
                     f"{_job_request.FILENAME} beside it -- a calculation is "
                     f"described by both (execution/job-request.md § 7); "

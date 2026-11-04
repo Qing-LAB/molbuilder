@@ -316,8 +316,7 @@ def point_readings(calc) -> List[Dict]:
     from ..jobset.continuation import read_points as points_reading
     from ..runs import run_of, state_of
     from .record import result_folders
-    base, task = Path(calc.base), calc.task
-    folders = result_folders(base, task, "transmission")
+    folders = result_folders(calc, "transmission")
     finished = set()
     for run in {r for _, w, r in folders if w is not None}:
         if not where(run).of_points:
@@ -329,14 +328,14 @@ def point_readings(calc) -> List[Dict]:
         # ITS ONE READING (`continuation.read_points`): a run not launched,
         # or one whose records do not read, holds no point finished -- the
         # stage's row says why.
-        got = points_reading(base, task, "transmission", run)
+        got = points_reading(calc, "transmission", run)
         if got.launch is None:
             continue
         place = RunPlace.of(run)
         finished |= {place.point(r["rel"]) for r in got.rows
                      if r["state"] == "finished"}
     return [{"point": pt, "folder": folder,
-             "readings": readings(folder, task.label)}
+             "readings": readings(folder, calc.task.label)}
             for pt, folder, _run in folders
             if folder is not None and Path(folder) in finished]
 

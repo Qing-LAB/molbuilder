@@ -461,9 +461,9 @@ One line per fact; the detail is in the linked chapter.
 | the description | `task.of(base)`; a text not yet a file, `task.from_text`; whether one is there, `calcdirs.described(base)` (floor 1) | 2 | [`engines/stages.md`](?doc=engines/stages.md) § 6 |
 | the job request | `job_request.of(base, description)` | 2 | [`job-request.md`](?doc=execution/job-request.md) |
 | the template | `template_file.of(base, label)` → `TemplateFile` | 2 | [`engines/template.md`](?doc=engines/template.md) |
-| the plan | `JobSet.of(folder, plan=)` — the root's ladder, or a sweep's in its bench container (`materialize.sweep_set_dirs`) | 3 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1 |
+| the plan | `JobSet.of(folder, plan=)` — the root's ladder, or a sweep's in its bench container (`materialize.sweep_set_dirs`); its path, `calcdirs.plan_path(folder)` (floor 1) | 3 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1 |
 | what a stage was prepared with, and what changed since | `prepared_with.values_of(calc, stage)`; `prepared_with.changes(calc, stage)` — renders and writes nothing | 4 | [`job-system.md`](?doc=execution/job-system.md), *Changed since prepared* |
-| the machine | `machine_for(base, target=)` — the record by its scopes, the calculation's copy first; that copy alone, `calculation_environment(base)`; its machine's name, `calculation_machine(base)` | 1 | [`configuration.md`](?doc=configuration.md) § 5 |
+| the machine | `machine_for(base, target=)` — the record by its scopes, the calculation's copy first, saying which scope answered (`Environment.scope`); that copy alone, `calculation_environment(base)`; its machine's name, `calculation_machine(base)` | 1 | [`configuration.md`](?doc=configuration.md) § 5 |
 | the same calculation | `deck_record.same_calculation(engine, a, b)` → each difference, the run settings aside | 1 | [`job-request.md`](?doc=execution/job-request.md) § 5 |
 
 **Stages and the plan**
@@ -500,6 +500,7 @@ One line per fact; the detail is in the linked chapter.
 | what a run carries | `runrecord.carried_gather(base, source)` — its own `.gathered-from`, then what each run it continued from gathered | 1 | [`job-system.md`](?doc=execution/job-system.md) § 5.4 |
 | a rung's inputs | the pair's `gather` part (`ready.gather_of`; a transport rung's, `transport.gather.gather_sources`, `transport_inputs`), handed over by `materialize.gather_into` | 4 | [`engines/transport.md`](?doc=engines/transport.md) § 6.1 |
 | what a folder is a copy of | `runrecord.copied_of(base, folder)` | 1 | [`engines/transport.md`](?doc=engines/transport.md) § 2a.16 |
+| a run's own records, and what a copy of the run does with each | `runrecord.RUN_RECORDS` — each one's name and the one function that forms its path | 1 | [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3 |
 | what was sent about a run | `runrecord.read_notified(where)` | 1 | [`run-reports.md`](?doc=execution/run-reports.md) § 2.5 |
 | a run's session log — its being there is the run's start | `wrapper_log.log_of_run(directory, label, stage)` | 1 | [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3 |
 | the run a file belongs to, and its files | `runs.run_of(path)` → `Run` (`Run.file`, `deck`, `prepared`, `stage_deck`, `current`, `report`, `on_label`, `stdout`, `session_log`); a stage's result wherever the run's shape puts it, `runs.on_label_at`; what a file is, `runs.about` | 2 | [`model/parse.md`](?doc=model/parse.md) § 5 |
@@ -519,7 +520,7 @@ One line per fact; the detail is in the linked chapter.
 | a run of points' index, and what the job judges by it | `runpoints` — `index_path`, `read_index`, `rows_of`, `still_to_run`, `run_state`, `taken_from` | 1 | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3 |
 | a run of points' state and count | `continuation.points_state` | 4 | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4 |
 | a run of points, as a reader sees it | `runstatus.points_view(calc, run, reading=)` — its state, the point at work, what the run opens | 6 | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4 |
-| the point a folder is | `points.point_of(folder, task=)` | 4 | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4 |
+| the point a folder is | `points.point_of(folder, calc)` — the opened calculation | 4 | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4 |
 | the views a folder is read with | `runstatus.views_of(folder)` → `{ladder, points, point}` | 6 | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
 
 **Folders, files, kinds, engines, structure**
@@ -527,6 +528,7 @@ One line per fact; the detail is in the linked chapter.
 | the fact | its door | floor | detail |
 |---|---|---|---|
 | where a folder is | `calcdirs.where(folder)` → `Where`; a folder no calculation claims answers empty | 1 | [`project-layout.md`](?doc=execution/project-layout.md) § 1.4a |
+| a launch group's files | `runfiles.GroupNames` — each one's name (`name`), where it lies (`path`), and as the walk names it from its container (`walked`) | 1 | [`project-layout.md`](?doc=execution/project-layout.md) § 5.5 |
 | what molbuilder writes, and what each file is | `runfiles.WRITTEN` — one row per file, its role a constant (`runfiles.ROLE_*`); the engines' files it names, `runfiles.ENGINE_FILES`; a name composed by `runfiles.compose` and read back by `runfiles.parse` (A14) | 1 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2, § 2.2a; [`project-layout.md`](?doc=execution/project-layout.md) § 5 |
 | what a calculation kind is, and what an engine is | `kind_table.kind(calculation)` → `CalculationKind`; `CalculationKind.on(engine)`, and why it does not run on one in the one sentence the engine tab, the web doors and `molbuilder describe` say (`why_not_on(engine)`, named by `engine_label`) — the description's reader keeps `on`'s own words, from the same record; `engine_table.engine(name)` → `Engine` | 1 | § 3.3 |
 | the order of a structure's atoms, and the way back | the structure's `atom_order`; `transport.sort.sort_by` into an engine's order, `Structure.restored()` back | 1 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
@@ -600,7 +602,9 @@ loads, and a name with no record is refused naming the file and the key.
   seeded for its run reads as its targets;
 - the science checks its decks run before they are written, where it has its
   own (`validator`, a part);
-- the module that exports its results, where it has one (`export`,
+- the module that exports its results, where it has one (`export`, a
+  module named whole, providing every door `kind_table.EXPORT_DOORS`
+  lists, refused naming a door it lacks as it resolves:
   `kind_table.export_of`; `jobset export`);
 - the results it gives, in the order a person decides them, each a card a form
   of the kind draws ([`engines/template.md`](?doc=engines/template.md) § 6.2a);
@@ -747,8 +751,8 @@ the one door, naming the engines it runs on.
 
 **A part that is code is named, and lives on the floor that resolves it.** A
 record names each as `module:NAME`, or as a module named whole (a kind's
-`export`; a description's `reuse`, with the doors it provides,
-`kind_table.WHOLE_MODULE_PARTS`), and the floor that asks resolves it — the
+`export`; a description's `describe` and `reuse`), each with the doors it
+provides (`kind_table.WHOLE_MODULE_PARTS`), and the floor that asks resolves it — the
 conductor a rung's builder; the run of points (floor 4) its declaration; the
 ladder (floor 3) a linked kind's inputs and the stage a stage continues from;
 the ready door its gather, which launch hands over
@@ -1235,12 +1239,15 @@ wish.
 
 **A16 in full.** The name of a record molbuilder writes into a calculation —
 `task.json`, `job-request.json`, `job-set.json`, the template, `run.json`, the
-warm files, the machine record, the pipeline log, the ledger — is the
+warm files, the machine record, what a stage was prepared with, the plan's
+notes, the pipeline log, the ledger — is the
 catalogue's (`runfiles.WRITTEN`), taken from it by the record's owner alone
 (`task`, `job_request`, `jobset.model`, `template_file`, `runrecord`,
-`warmfiles`, `scheduler.record`, `pipeline_log`, `jobset.ledger`). A path to one
+`warmfiles`, `scheduler.record`, `jobset.prepared_with`, `jobset.plan`,
+`pipeline_log`, `jobset.ledger`). A path to one
 is formed only by that owner (`task.path_of`, `JobSet.path_of`,
-`template_path`, `warmfiles.path_of`). A reader asks the owner's door with the
+`template_path`, `warmfiles.path_of`, `prepared_with.path_of`,
+`jobset.plan.path_of`, `runrecord.RUN_RECORDS`' paths). A reader asks the owner's door with the
 FOLDER — `task.of`, `job_request.of`, `JobSet.of`, `template_file.of` — and the
 door forms the path, reads, and answers `None` for a record that is not there:
 no caller joins the name to a folder, probes the path or reads its bytes. A
@@ -1250,7 +1257,10 @@ holds is the defect. A refusal is the door's, said once (`calculation.refusal`);
 a boundary translates the kind of exception and never re-words it. The one
 second open of a verb is the launch's send, which plans again from the folder as
 it is ([`job-system.md`](?doc=execution/job-system.md) § 6.0). Raw reads exist
-in `jobset/migrate` alone (`migrate._Records`).
+in `jobset/migrate` alone (`migrate._Records`); it writes through the
+owners' writers into one plan (`jobset.planned.Plan`), the template's text
+its own, and a write that fails is recorded in the ledger with how far the
+plan got (`planned.CutShort`).
 
 **How review checks A7, A8 and A12.**
 
@@ -1303,7 +1313,8 @@ label.
   prepared again only as the same calculation
   ([`job-request.md`](?doc=execution/job-request.md) § 5).
 - **A11 is A1 widened from names to roots.** The roots have one owner each —
-  the install root `molbuilder.repo_root`, the user's tree `projects.py`
+  the install root `molbuilder.repo_root`, the package's data folder
+  `molbuilder.data_dir`, the user's tree `projects.py`
   (`projects_root`, `find_projects_root`), the per-user config root
   `config_dir.config_dir()`. Taking `.parent` off a file's resolver
   (`record.machine_scope_path().parent`) is the climb A11 forbids. A11 is about

@@ -867,14 +867,13 @@ def _described_stage(stage, calc):
     in bash).  Asked by the verbs that name a stage the description holds
     whether or not it is prepared: the bench verbs and `status`.  ``None`` stays ``None``, and a folder with no description has
     no ladder to resolve against: its name stands."""
-    from ..identity import StageRef, resolve_stage_ref
+    from ..identity import resolve_stage_ref
     if stage is None:
         return stage
     try:
-        from .naming import ladder_homes
-        return resolve_stage_ref(
-            [StageRef(h.seq, h.name)
-             for h in ladder_homes(calc.base, calc.task)], stage).name
+        from .naming import described_refs
+        return resolve_stage_ref(described_refs(calc.base, calc.task),
+                                 stage).name
     except ValueError as e:
         raise click.ClickException(str(e))
 
@@ -1682,11 +1681,10 @@ def summarize_cmd(kind: str, words, bundle: str,
     # The container's job-set holds ONLY this stage's trials (U1), so the
     # SET is the scope and the verdict goes back where they live -- there
     # is no name filter anywhere (U12).
-    from ..runfiles import BENCH_RESULT_FILE
     from ..scheduler.record import UnknownTarget
     try:
         res, out_path, report = run_summarize_jobset(
-            calc, js, out=container / BENCH_RESULT_FILE,
+            calc, js, container=container,
             now_iso=stamp(), stage=stage)
     except UnknownTarget as exc:
         raise click.ClickException(str(exc)) from None
@@ -2638,10 +2636,15 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
                               ("broaden_ev", broaden_ev)) if v is not None}
     stray = [k for k in asks if k not in module.ASKS]
     if stray:
+        # WHOSE EXPORT ASKS IT, read from the kind table (A18).
+        from ..kind_table import export_of, kinds
+        asked_by = [k for k in kinds() if (m := export_of(k)) is not None
+                    and any(a in m.ASKS for a in stray)]
         raise click.ClickException(
-            f"{', '.join('--' + k.replace('_', '-') for k in stray)} ask a "
-            f"vibration's Raman view; {_P(calc.base).name} is a "
-            f"{calc.task.calculation} calculation")
+            f"{', '.join('--' + k.replace('_', '-') for k in stray)} "
+            f"{'is' if len(stray) == 1 else 'are'} asked by the export of a "
+            f"{' or a '.join(asked_by)} calculation; {_P(calc.base).name} "
+            f"is a {calc.task.calculation} calculation")
     try:
         name = module.name_of(calc, fmt)
     except ExportError as exc:
@@ -2975,17 +2978,18 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # machine's rather than replacing it (P2): a workstation holds both its own
     # capability and the cluster's, and `prep --target NAME` says which.
     # WHICH FILE, asked for -- not a directory plus a re-spelled name.
+    # ITS FOLDER FROM ITS OWNER, never climbed off the file (A11).
     if name:
         from ..scheduler import named_environment_path
-        record = named_environment_path(name)
+        from ..scheduler.record import environments_dir
+        record, folder = named_environment_path(name), environments_dir()
     else:
-        record = machine_scope_path()
-    target = record.parent
-    fname = record.name
+        from ..config_dir import config_dir
+        record, folder = machine_scope_path(), config_dir()
     # THE COPY IS WHOLE (user, 2026-10-02: "simply a copy"): a preamble
     # removed from molbuilder.json leaves the record too, asked about like
     # every other difference.
-    before = read_environment(target / fname)
+    before = read_environment(record)
 
     t = env.topology
     click.echo(f"\nMachine: scheduler={env.scheduler.said()}"
@@ -3016,7 +3020,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
                  + (f" --scheduler {scheduler_flag}" if scheduler_flag else "")
                  + (" --yes" if yes else ""))
         click.echo(f"\n(dry run -- nothing written.  To record this in "
-                   f"{target / fname}:)\n    {again}")
+                   f"{record}:)\n    {again}")
         return
 
     if before is None:
@@ -3024,7 +3028,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
         # IS there and does not read, which is said, never treated as absent
         # (`read_environment` answers both with `None`; `--yes` skips the
         # question, never this line).
-        dest = target / fname
+        dest = record
         if dest.exists() and not dest.is_file():
             # NOT A FILE AT ALL -- a directory: a record cannot replace it,
             # and the write would end in a traceback (the fix-6 review).
@@ -3054,8 +3058,8 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # command the seeded `environments/README` tells a person to run on a
     # target, so it may create the config directory every later secret lands in.
     from ..config_dir import ensure_private_dir
-    ensure_private_dir(target)
-    path = write_environment(env, target / fname)
+    ensure_private_dir(folder)
+    path = write_environment(env, record)
     if name:
         click.echo(f"wrote {path}\n"
                    f"  prep for that machine with `--target {name}`, "

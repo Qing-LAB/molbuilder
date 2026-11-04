@@ -31,7 +31,7 @@ def _run(calc, base, *, say) -> Summed:
     except RecordError as e:
         raise SumError(str(e)) from None
     try:
-        data = write_data_file(base, calc.task, rec, readings=readings)
+        data = write_data_file(calc, rec, readings=readings)
     except DataFileError as e:
         raise SumError(str(e)) from None
     out = write_record(base, rec)

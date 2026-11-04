@@ -2221,7 +2221,7 @@ run left in the background is then named by its pid, `kill -- -<pid>`.
 | `pid` · `started` | a run here: its process, and when the kernel started it (Linux's `/proc`) — together what tells the run from a later process given the same pid |
 | `job_id` · `cluster` | a queue job: the scheduler's id, and the cluster it was sent to as the scheduler names it (`ClusterName`) |
 | `calculation` | the calculation's folder |
-| `members` | each member's stage → its run (`runrecord.RunRef`), and that run's launch record, which its state is asked through — a sequence's, added by each group's launch inside it |
+| `members` | each member's stage → its run (`runrecord.RunRef`), whose launch record its state is asked through (`runrecord.launch_record`) — a sequence's, added by each group's launch inside it |
 | `sequence` | a sequence of groups: each group it launches, in order, with its stages, and the sequence's name; `null` otherwise |
 | `launched_at` | when it went — UTC, to the second, `…Z`: the run records' one clock (`runrecord.stamp`), so a run's launch record compares with it |
 

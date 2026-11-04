@@ -10,8 +10,8 @@ gives the monitor its boundary -- *"it observes and notifies. It never
 decides, and never mutates the calculation."*  The same holds one hop out.
 A message that arrives becomes a line in a file: it is not parsed into
 application state, does not touch a project, and cannot start, stop or
-alter a job.  So the worst a stolen key buys is noise in a file.  **No tab
-reads that file**: the reports are read with `tail`.
+alter a job.  So the worst a stolen key buys is noise in a file, which the
+This machine tab reads back as lines of text (`notify_setup.reports`).
 
 **Four gates, and only one of them is the control.**
 
@@ -70,6 +70,7 @@ import logging
 import logging.handlers
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any, Dict, NoReturn, Optional
 
 from ...report_fields import NAMES
@@ -198,6 +199,17 @@ def _resolve_user(presented: str, timestamp: str, body: bytes,
     return found
 
 
+def reports_path(user: str) -> Path:
+    """``<state dir>/reports/<user>.jsonl`` -- the record of ``user``'s
+    reports this listener keeps (`run-reports.md` § 4.1a).  Named here, on
+    `config_dir.reports_dir()`, because this module writes the format: the
+    module that owns a format owns its name (`config_dir`, A11).  ``user``
+    is a run-report user id (`monitor.is_notify_user`), asked by the
+    caller."""
+    from ...config_dir import reports_dir
+    return reports_dir() / f"{user}.jsonl"
+
+
 def _logger_for(user: str) -> logging.Logger:
     """A rotating logger per user, made once and reused."""
     lg = _loggers.get(user)
@@ -206,13 +218,12 @@ def _logger_for(user: str) -> logging.Logger:
     # At the umask, like any other file of yours: a scientific report, with
     # nothing in it to guard.
     from ...config_dir import reports_dir
-    root = reports_dir()
-    root.mkdir(parents=True, exist_ok=True)
+    reports_dir().mkdir(parents=True, exist_ok=True)
     lg = logging.getLogger(f"molbuilder.notify.{user}")
     lg.propagate = False          # these are records, not app logs
     lg.setLevel(logging.INFO)
     handler = logging.handlers.RotatingFileHandler(
-        root / f"{user}.jsonl", maxBytes=LOG_BYTES, backupCount=LOG_KEEP,
+        reports_path(user), maxBytes=LOG_BYTES, backupCount=LOG_KEEP,
         encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))
     lg.addHandler(handler)

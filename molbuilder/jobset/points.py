@@ -76,8 +76,11 @@ class PointsOf:
     #: its plan as the caller holds it; ``read`` reads a record's text
     #: where the file is a prep's plan's, not yet on disk.
     rung_points: Callable
-    #: ``(run_dir, task, stage, base) -> [(folder, point)]``: the points a
-    #: run holds, each with its folder below the run.
+    #: ``(run_dir, calc, stage) -> [(folder, point)]``: the points a run
+    #: holds, each with its folder below the run.  ``calc`` is the
+    #: calculation whole, as :attr:`rung_points` takes it: what a kind
+    #: reads of the calculation -- its plan, before a launch listed the
+    #: run's points -- is the caller's, never read a second time (A16).
     points_in: Callable
     #: ``(calc, stage, point, deck) -> {words, phase, round, facts}``: the
     #: kind's part of the point's entry in the run's index -- ``deck`` the
@@ -165,7 +168,7 @@ def carried_of(calc, stage: str) -> tuple:
             if pts is not None else ())
 
 
-def point_of(folder, task=None):
+def point_of(folder, calc):
     """THE POINT A FOLDER IS (`execution/architecture.md` § 3.2) -- by its
     kind's declaration, of the folder ``calcdirs.where`` places: a point's
     folder below a run of points, its point (the declaration's walk of the
@@ -175,9 +178,9 @@ def point_of(folder, task=None):
     table's role ``opens``), its one point (:attr:`PointsOf.one_point`) --
     every other run-once rung has none (`web/results.md` § 2.4).  ``None``
     for any other folder, a benchmark trial's, and a folder no calculation
-    claims.  ``task`` is the description when the caller holds it (an
-    answer reads it once); else it is read through its door (`task.of`).
-    The point object, served by its one wire form (``to_wire()``)."""
+    claims.  ``calc`` is the opened calculation the folder lies in, as the
+    caller holds it (A16).  The point object, served by its one wire form
+    (``to_wire()``)."""
     from .. import calcdirs
     from ..identity import parse_token
     from ..kind_table import kind
@@ -187,28 +190,21 @@ def point_of(folder, task=None):
     at = calcdirs.where(calcdirs.read_with(folder))
     if at.root is None or at.run_folder is None or at.trial is not None:
         return None
-    if task is None:
-        from ..task import of as task_of
-        try:
-            task = task_of(at.root)
-        except (OSError, ValueError):
-            return None
-    declared = points_of(task)
+    declared = points_of(calc.task)
     if declared is None:
         return None
     stage = parse_token(at.stage)[1]
     if at.what == calcdirs.POINT:
         try:
             return next((pt for _f, pt in declared.points_in(
-                at.run_folder, task, stage, at.root) if pt.rel == at.point),
-                None)
+                at.run_folder, calc, stage) if pt.rel == at.point), None)
         except LaunchRecordError:
             # ITS RUN'S RECORDS DO NOT READ -- an older molbuilder's index:
             # no point, the run's own row saying why (`continuation.
             # read_points`), never the whole answer.
             return None
     if (at.what == calcdirs.ATTEMPT and at.role == calcdirs.RUN
-            and kind(str(task.calculation)).opens_report(stage)):
+            and kind(str(calc.task.calculation)).opens_report(stage)):
         return declared.one_point(stage)
     return None
 

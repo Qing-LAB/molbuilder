@@ -20,10 +20,20 @@ from __future__ import annotations
 from ..runfiles import PLAN_FILE as FILENAME  # noqa: E402
 from .model import KIND_LADDER  # noqa: E402
 
+from pathlib import Path
 from typing import List, Optional
 
 from .naming import stage_refs
 from .model import JobSet
+
+
+def path_of(folder) -> Path:
+    """``<folder>/STAGE-PLAN.md`` -- for its writer, prep
+    (`architecture.md` A16): the one place the plan's notes' name is joined
+    to a folder, a calculation's root or a benchmark's container
+    (`project-layout.md` § 5.1, § 5.5) -- the plan itself,
+    ``job-set.json``, is `calcdirs.plan_path`'s."""
+    return Path(folder) / FILENAME
 
 
 def resources_text(r) -> str:
@@ -123,4 +133,4 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["FILENAME", "render_plan"]
+__all__ = ["FILENAME", "path_of", "render_plan"]

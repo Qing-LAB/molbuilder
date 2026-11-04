@@ -54,9 +54,13 @@ def _wrapper(tmp_path, engine, ext, body, warm=None, *,
     effect, and ``program``, the one its deck states, as prep hands them."""
     p = tmp_path / names.name(ext)
     p.write_text(body)
+    # THE RECORD PREP READ AND HANDS ON -- the probed machine's
+    # (`scheduler.machine_for`).
+    from molbuilder.scheduler import machine_for
     return runwrap.render_run_wrapper(
         p, names=names, engine=engine, calculation=calculation,
         program=program, env="molbuilder-siesta",
+        machine_record=machine_for(),
         warm=warm,
         resumes=True, relaunch_continues=True, trial=False,
         resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1,

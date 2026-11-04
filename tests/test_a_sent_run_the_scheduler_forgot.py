@@ -44,12 +44,29 @@ def sent(tmp_path, monkeypatch):
     return bundle, run, names
 
 
-def test_the_schedulers_answer_is_written_once_and_read_everywhere(sent):
+#: (what the scheduler said of job 4242, how the run then reads, whether
+#: that is the whole sentence or how it starts) -- a job it no longer lists,
+#: said nothing of; and one it lists ended, in its words.
+_ANSWERS = [
+    ("", "never started: the scheduler no longer listed job 4242 "
+         "(asked on sol at {at})", True),
+    ("FAILED (NonZeroExitCode)",
+     "the scheduler listed job 4242 ended: FAILED (NonZeroExitCode) "
+     "(asked on sol at ", False),
+]
+
+
+@pytest.mark.parametrize("said, reads, whole", _ANSWERS,
+                         ids=["forgotten", "listed ended"])
+def test_the_schedulers_answer_is_written_once_and_read_everywhere(
+        sent, said, reads, whole):
     """The launch record holds `ended` null at launch; `record_ended` fills
     it with the machine asked, when, and the scheduler's words; the run
     door reads that record before anything else, so the run reads `failed`
     with those words -- a forgotten job, and one listed ended, each in its
-    own sentence.
+    own sentence.  Its start never began -- no session log -- so a
+    forgotten job is said so, never *stopped before its end*
+    (`running-a-job.md` § 4.2).
 
     MUTATION THIS MUST FAIL AGAINST: the door not reading `ended` (the run
     stays *queued as job 4242*); the writer dropping the scheduler's words
@@ -61,23 +78,31 @@ def test_the_schedulers_answer_is_written_once_and_read_everywhere(sent):
     st = run_state_of(run, names)
     assert (st.state, st.detail) == ("queued", "queued as job 4242"), st
 
-    record_ended(run, asked_on="sol", said="")
+    record_ended(run, asked_on="sol", said=said)
     rec = launch_record(run)["ended"]
     assert rec["asked_on"] == "sol" and rec["listed"] is False, rec
-    assert rec["said"] == "" and rec["asked_at"].endswith("Z"), rec
+    assert rec["said"] == said and rec["asked_at"].endswith("Z"), rec
     st = run_state_of(run, names)
+    want = reads.format(at=rec["asked_at"])
     assert st.state == "failed", st
-    # ITS START NEVER BEGAN -- no session log -- so it is said so, never
-    # *stopped before its end* (`running-a-job.md` § 4.2).
-    assert st.detail == (
-        f"never started: the scheduler no longer listed job 4242 "
-        f"(asked on sol at {rec['asked_at']})"), st.detail
+    assert (st.detail == want if whole else st.detail.startswith(want)), \
+        st.detail
 
+
+def test_a_second_answer_leaves_the_first(sent):
+    """`ended` is written once (`project-layout.md` § 1.6.3): the first
+    answer about the job stands, and a later one -- another reader on the
+    machine asking again -- changes nothing the run reads.
+
+    THE SILENT FAILURE: a run that read *never started* turning into one
+    the scheduler *listed ended*, its record rewritten by whichever reader
+    asked last."""
+    from molbuilder.runrecord import launch_record, record_ended
+    _bundle, run, _names = sent
+    record_ended(run, asked_on="sol", said="")
+    first = launch_record(run)["ended"]
     record_ended(run, asked_on="sol", said="FAILED (NonZeroExitCode)")
-    st = run_state_of(run, names)
-    assert st.state == "failed" and st.detail.startswith(
-        "the scheduler listed job 4242 ended: FAILED (NonZeroExitCode) "
-        "(asked on sol at "), st.detail
+    assert launch_record(run)["ended"] == first
 
 
 def test_the_door_asks_nothing_where_the_scheduler_cannot_be_asked(sent):

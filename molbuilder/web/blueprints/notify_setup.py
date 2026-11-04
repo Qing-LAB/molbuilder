@@ -573,10 +573,10 @@ def reports():
     ``{ok: true, total: 0}``."""
     from flask import g
 
-    from ...config_dir import reports_dir
-    from ...monitor import card, read_notify_keys
+    from ...monitor import card, is_notify_user, read_notify_keys
     from ...parse.instruments.reports import read_reports
     from ...report_cards import LayoutError, load as load_layout
+    from .notify import reports_path
     _route, keys = read_notify_keys()
     # THE SIGNED-IN PERSON is the session's user as the sign-in stores it
     # (`auth.authenticate`: a record, its ``email`` the id a report names).
@@ -588,7 +588,10 @@ def reports():
         return jsonify({"ok": True, "user": None, "total": 0, "skipped": 0,
                         "reports": [], "note": "no user to read reports "
                         "for: sign in, or name one with ?user=<name>"})
-    if user not in keys and not (reports_dir() / f"{user}.jsonl").is_file():
+    # A NAME NO USER ID CAN BE (`monitor.is_notify_user`, the rule's one
+    # home) names no file of the listener's -- never a path formed from it.
+    if not is_notify_user(user) or (user not in keys
+                                    and not reports_path(user).is_file()):
         return jsonify({"ok": True, "user": user, "total": 0, "skipped": 0,
                         "reports": [], "note": f"this server holds no key "
                         f"for {user!r} and no reports of theirs; the users "
@@ -600,7 +603,7 @@ def reports():
     except ValueError:
         return jsonify({"ok": False, "error": "limit is a count and since "
                         "an epoch second"}), 400
-    path = reports_dir() / f"{user}.jsonl"
+    path = reports_path(user)
     got = read_reports(path, since=since_f, limit=limit)
     # THE LAYOUT ONCE for the page, the server's own (`run-reports.md`
     # § 4.1c); one that does not read is this answer.

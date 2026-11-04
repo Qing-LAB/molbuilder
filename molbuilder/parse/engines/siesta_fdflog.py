@@ -1,5 +1,7 @@
 """SIESTA's own ``fdf.<timestamp>.log`` -- every key the engine read, with the
-value it read.
+value it read.  Its name is the catalogue's (`runfiles.SIESTA_FDF_LOG`),
+read back through the catalogue's doors: SIESTA 5 names the log after the
+moment it opened it (``fdf.20260925T194936.695.log``, ``Src/reinit_m.F90``).
 
 `model/parse.md` § 5d.3: the run record's third column, *what the engine
 used*, is read here and never echoed from the deck.
@@ -31,29 +33,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.fdf import fdf_key
 from molbuilder.parse.types import EngineParamsResult, ParseResult, ParseWarning
-
-#: SIESTA 5 names the log after the moment it opened it
-#: (``fdf.20260925T194936.695.log``, ``Src/reinit_m.F90``); SIESTA 4 wrote
-#: ``fdf.log``.
-_NAME = re.compile(r"^fdf(?:\.(\d{8}T\d{6})\.\d+)?\.log$")
+from molbuilder.runfiles import SIESTA_FDF_LOG, find_fixed, fixed_fields
 
 
-def logs_in(directory) -> "list[Path]":
-    """Every fdf log in ``directory``, by the one name pattern above, sorted
-    -- the door `parse/dirs/record` asks instead of a glob of its own."""
-    d = Path(directory)
-    return sorted(p for p in d.iterdir() if _NAME.match(p.name))
-
-
-def stamp_of(path) -> Optional[str]:
-    """``fdf.20260925T194936.695.log`` -> ``2026-09-25T19:49:36``, the moment
-    SIESTA opened the log; ``None`` for ``fdf.log`` or any other name."""
+def _opened_at(stamp: str) -> Optional[str]:
+    """A log's ``stamp`` field (``20260925T194936.695``) as the moment
+    SIESTA opened it, to the second: ``2026-09-25T19:49:36``."""
     from datetime import datetime
-    m = _NAME.match(Path(path).name)
-    if not m or not m.group(1):
-        return None
     try:
-        return datetime.strptime(m.group(1), "%Y%m%dT%H%M%S").isoformat()
+        return datetime.strptime(stamp.split(".")[0],
+                                 "%Y%m%dT%H%M%S").isoformat()
     except ValueError:
         return None
 _ORIGINAL = re.compile(r"^#\s*above item originally:\s*\S+\s+(.*?)\s*$",
@@ -77,7 +66,8 @@ def used_log_of(d: Path, out_head: str) -> Optional[Path]:
     start = facts.get("run_start_local")
     if not start:
         return None
-    return next((p for p in logs_in(d) if stamp_of(p) == start), None)
+    return next((p for p, f in find_fixed(d, SIESTA_FDF_LOG)
+                 if _opened_at(f["stamp"]) == start), None)
 
 
 def read_fdf_log(text: str, source: str = "<text>"
@@ -178,7 +168,7 @@ class SiestaFdfLogParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return bool(_NAME.match(Path(path).name))
+        return fixed_fields(SIESTA_FDF_LOG, Path(path).name) is not None
 
     @classmethod
     def parse(cls, path: Path) -> EngineParamsResult:

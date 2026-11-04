@@ -20,8 +20,7 @@ def _sent(tmp_path, cluster: str, name: str):
     calc.mkdir()
     job = joblist.queue_job(
         job_id="4242", cluster=cluster, calculation=calc,
-        members={"coarse": {"run": "01_coarse/run-0",
-                            "launch_record": "01_coarse/run-0/run.json"}})
+        members={"coarse": {"run": "01_coarse/run-0"}})
     joblist.write(job)
     return calc
 

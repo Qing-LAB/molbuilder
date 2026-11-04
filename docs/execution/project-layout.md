@@ -594,7 +594,7 @@ stopped by force. A run's own small records answer each question:
 - **`ended` is the answer about how the job went, written once** by the first
   reader on the machine that holds the job, for a run with no marker: a sent
   job's scheduler no longer listing it, or listing it ended; a run here, its
-  process gone (`runrecord.record_ended`;
+  process gone (`runrecord.record_ended`, which keeps a first answer;
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2, *Asked once,
   written once*).
 - **A `run.json` that does not read** — not JSON, or not a
@@ -610,6 +610,15 @@ stopped by force. A run's own small records answer each question:
   and a kill nothing can catch leaves nothing. How the run script behaves at its
   end is [`running-a-job.md`](?doc=execution/running-a-job.md) § 3 (after a
   failure § 3.5, at the wall § 3.6).
+- **These are the run's own records, one table** (`runrecord.RUN_RECORDS`):
+  each one's name and the one function that forms its path, and what a copy
+  of the run ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16)
+  does with it — `run.json` copied as it lies, the copy's last act, so a copy
+  cut short reads as never launched; `.copied-from` written for the copy;
+  `.continued-from` and `.gathered-from`, which name runs by their folders,
+  carried as they lie where the copy keeps the run's folders and written anew
+  where it lies elsewhere; `notified.json` carried. The session log and the
+  marker are the run's files, copied with them.
 - **`.continued-from` carries the provenance** because `run.json` cannot exist
   before the launch — its presence marks the run launched — and a point of a run
   of points has none of its own. `run.json`'s `continued_from` is the launch's
@@ -662,7 +671,7 @@ run record reads them as its launch and its exit
 
 | what | how it gets into the run | when |
 |---|---|---|
-| the deck, the run script, the monitor and other bundles, the pseudopotentials | copied from the stage's folder (`materialize.bring_files`) | by prep into the first run; by the launch that fills or opens a run |
+| the deck, the run script, the monitor and other bundles, the pseudopotentials | the deck and the files beside it from the stage's folder (a point's, from its prepared folder) and nowhere else; the shared package from prep's copy beside the deck, else the calculation's root (`materialize.bring_files`) | by prep into the first run; by the launch that fills or opens a run |
 | what the run continues from | copied from the run it names (`materialize.hand_over`) | by the launch, before it sends anything |
 | everything the run writes | made in place — it is the working folder | as it runs |
 
@@ -1092,6 +1101,7 @@ door ([`architecture.md`](?doc=execution/architecture.md) § 3.2):
 | what is a trial's label? | `paths.trial_label` |
 | which runs exist? | `paths.attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `newest_launched`, `resolve_attempt`; the run a path a record names lies in, `paths.run_folder_of` |
 | a run of points' folders | `calcdirs.RunPlace` ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4) |
+| a launch group's files | `runfiles.GroupNames` — in its container's `launch/` (`path`), as the walk names it from there (`walked`) (§ 5.5) |
 
 **What `paths` must never do**: read `task.json` — it is stdlib-only and travels
 beside a job (`mb_vibration.pyz`), so callers pass what they read from the

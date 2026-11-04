@@ -164,7 +164,7 @@ terminal prints it among the tree's findings
 - **No `molbuilder` is appended to the override.** `XDG_CONFIG_HOME` names a
   root shared by every application, so ours adds its name beneath it;
   `MOLBUILDER_CONFIG_DIR` names *our* directory. It is spelled like
-  `MOLBUILDER_DATA_DIR` and `MOLBUILDER_PROJECTS`.
+  `MOLBUILDER_PROJECTS`.
 - **It is an override, not a search step.** Set, it is the root entire, and the
   other two places are not consulted — a fallback would recreate the shadowing
   § 2.1a warns about.

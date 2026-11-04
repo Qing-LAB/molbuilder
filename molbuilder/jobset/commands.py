@@ -464,8 +464,8 @@ def target_flags(base, target: Optional[str]) -> tuple:
     does not change (`configuration.md` M-3); none for this machine when it
     is the only one on file; the name otherwise."""
     from ..scheduler import choice_required, known_machines
-    from ..scheduler.record import LOCAL_TARGET, calculation_record
-    if not target or calculation_record(base).is_file():
+    from ..scheduler.record import LOCAL_TARGET, calculation_machine
+    if not target or calculation_machine(base) is not None:
         return ()
     if target == LOCAL_TARGET:
         return (("--target", LOCAL_TARGET)

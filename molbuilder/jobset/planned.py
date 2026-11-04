@@ -224,25 +224,7 @@ class Plan:
         lines exactly when they would write the same thing -- what
         :meth:`identity` names, and what `launch`'s send compares line by
         line (`job-system.md` § 6.0, step 4)."""
-        out: List[str] = []
-        for op in self._ops:
-            if isinstance(op, _Folder):
-                out.append(f"makes the folder {op.path}")
-            elif isinstance(op, _Unfolder):
-                out.append(f"removes the folder {op.path}")
-            elif isinstance(op, _Remove):
-                out.append(f"removes {op.path}")
-            elif isinstance(op, _Put):
-                digest = hashlib.sha256(without_stamps(op.data)).hexdigest()
-                out.append(f"writes {op.path} (its text {digest[:16]}"
-                           + ("" if op.mode is None else f", mode {op.mode:o}")
-                           + ")")
-            else:
-                out.append(("copies " if isinstance(op, _Copy) else "moves ")
-                           + f"{op.src} to {op.path} "
-                           + (f"({op.stamp})" if op.stamp
-                              else "(as this plan holds it)"))
-        return out
+        return [_said(op) for op in self._ops]
 
     def identity(self) -> str:
         """What this plan IS, less the moment it was made -- its
@@ -274,37 +256,78 @@ class Plan:
 
     def carry_out(self) -> None:
         """Write the plan, in its order.  Nothing here decides or refuses:
-        a write that fails (a full disk) is the only error, and the state
-        saved before it is the way back (`job-system.md` § 5.0, 6)."""
+        a write that fails (a full disk) is the only error, :class:`CutShort`
+        saying how far it got, and the state saved before it is the way back
+        (`job-system.md` § 5.0, 6)."""
+        done: List[str] = []
         for op in self._ops:
-            if isinstance(op, _Folder):
-                op.path.mkdir(parents=True, exist_ok=True)
-                continue
-            if isinstance(op, _Unfolder):
-                if op.path.is_dir():
-                    op.path.rmdir()
-                continue
-            if isinstance(op, _Remove):
-                if op.path.is_symlink() or op.path.is_file():
-                    op.path.unlink()
-                continue
-            op.path.parent.mkdir(parents=True, exist_ok=True)
-            if isinstance(op, _Put):
-                # THE PACKAGE'S ONE WRITER: a unique temp, renamed into
-                # place -- a reader never sees half a file, and a link at
-                # the path is replaced, never written through
-                # (`persist.write_bytes`).
-                write_bytes(op.path, op.data, mode=op.mode)
-                continue
-            # A LINK IS REPLACED, never written through: the file a link
-            # points at is someone else's.
-            if op.path.is_symlink():
-                op.path.unlink()
-            if isinstance(op, _Copy):
-                shutil.copy2(op.src, op.path)
-            else:
-                os.replace(op.src, op.path)
+            try:
+                _carry(op)
+            except OSError as exc:
+                raise CutShort(done, _said(op), exc) from exc
+            done.append(_said(op))
         self._ops.clear()
+
+
+class CutShort(OSError):
+    """A plan's carrying out stopped at a write that failed -- a full disk,
+    a folder it may not write: :attr:`done`, each operation carried out
+    before it, in :meth:`Plan.described`'s words and order; :attr:`failed`,
+    the one that failed, and :attr:`cause`, why.  What a ledger line that
+    says how far a write got records (`jobset migrate`)."""
+
+    def __init__(self, done: List[str], failed: str, cause: OSError):
+        super().__init__(
+            f"{failed} failed ({cause}) -- {len(done)} operation(s) of the "
+            f"plan carried out before it")
+        self.done, self.failed, self.cause = list(done), failed, cause
+
+
+def _said(op) -> str:
+    """One operation of a plan in words (:meth:`Plan.described`)."""
+    if isinstance(op, _Folder):
+        return f"makes the folder {op.path}"
+    if isinstance(op, _Unfolder):
+        return f"removes the folder {op.path}"
+    if isinstance(op, _Remove):
+        return f"removes {op.path}"
+    if isinstance(op, _Put):
+        digest = hashlib.sha256(without_stamps(op.data)).hexdigest()
+        return (f"writes {op.path} (its text {digest[:16]}"
+                + ("" if op.mode is None else f", mode {op.mode:o}") + ")")
+    return (("copies " if isinstance(op, _Copy) else "moves ")
+            + f"{op.src} to {op.path} "
+            + (f"({op.stamp})" if op.stamp else "(as this plan holds it)"))
+
+
+def _carry(op) -> None:
+    """One operation of a plan, carried out (:meth:`Plan.carry_out`)."""
+    if isinstance(op, _Folder):
+        op.path.mkdir(parents=True, exist_ok=True)
+        return
+    if isinstance(op, _Unfolder):
+        if op.path.is_dir():
+            op.path.rmdir()
+        return
+    if isinstance(op, _Remove):
+        if op.path.is_symlink() or op.path.is_file():
+            op.path.unlink()
+        return
+    op.path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(op, _Put):
+        # THE PACKAGE'S ONE WRITER: a unique temp, renamed into place -- a
+        # reader never sees half a file, and a link at the path is
+        # replaced, never written through (`persist.write_bytes`).
+        write_bytes(op.path, op.data, mode=op.mode)
+        return
+    # A LINK IS REPLACED, never written through: the file a link points at
+    # is someone else's.
+    if op.path.is_symlink():
+        op.path.unlink()
+    if isinstance(op, _Copy):
+        shutil.copy2(op.src, op.path)
+    else:
+        os.replace(op.src, op.path)
 
 
 def bring(plan: "Plan", names, *, into, from_dir, also=()) -> List[str]:
@@ -333,4 +356,4 @@ def bring(plan: "Plan", names, *, into, from_dir, also=()) -> List[str]:
     return brought
 
 
-__all__ = ["Plan", "bring", "found"]
+__all__ = ["Plan", "CutShort", "bring", "found"]

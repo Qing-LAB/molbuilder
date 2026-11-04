@@ -261,11 +261,15 @@ def test_a_failure_while_writing_publishes_nothing(struct, cfg, tmp_path,
     the staging directory is really doing the work rather than the happy path
     merely never failing.
     """
+    import molbuilder.job_request as jr
     desc = _describe(struct, cfg)
-    real = D.Description.files
-    monkeypatch.setattr(D.Description, "files",
-                        lambda self: {**real(self), "task.json": None})
-    with pytest.raises(TypeError):
+
+    def fails(*_a, **_k):
+        raise OSError("the disk filled")
+    # THE JOB REQUEST'S WRITER FAILS, after the template and the description
+    # were staged: nothing of either may reach the target.
+    monkeypatch.setattr(jr, "write", fails)
+    with pytest.raises(OSError, match="the disk filled"):
         D.write_description(desc, tmp_path / "calc")
     assert list((tmp_path / "calc").iterdir()) == []
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".calc.")]
@@ -280,19 +284,6 @@ def test_a_name_that_cannot_normalise_is_a_clean_refusal(struct, cfg):
     narrow.  A name outside it must be refused by name, not crash."""
     with pytest.raises((ValueError, D.DescribeError)):
         _describe(struct, cfg, name="Über")
-
-
-# --------------------------------------------------------------------- #
-#  The two surfaces write the same bytes                                #
-# --------------------------------------------------------------------- #
-
-def test_the_producer_is_pure_so_two_surfaces_cannot_disagree(struct, cfg):
-    """§ 4.1's Promotion A: one producer, two writers.  A browser that built
-    its own description would be a second place for the bytes to differ, and
-    § 6.4 is the rule that they must not."""
-    a = _describe(struct, cfg, engine_ladder("siesta", "publishable"))
-    b = _describe(struct, cfg, engine_ladder("siesta", "publishable"))
-    assert a.files() == b.files()
 
 
 def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,

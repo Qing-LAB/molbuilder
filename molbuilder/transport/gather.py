@@ -67,8 +67,7 @@ class ReadOnce:
         key = (stage, run)
         if key not in self._runs:
             from ..jobset.continuation import read_points
-            self._runs[key] = read_points(self.calc.base, self.calc.task,
-                                          stage, run)
+            self._runs[key] = read_points(self.calc, stage, run)
         return self._runs[key]
 
 
@@ -184,8 +183,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                         + block(launch_lines("task", upstream, base=base))
                         + q2)
         else:
-            c, st, _v, d = (read_run(base, task, upstream, newest,
-                                     verdict=False)
+            c, st, _v, d = (read_run(calc, upstream, newest, verdict=False)
                             if newest is not None
                             else (None, "pending", None, None))
             if not usable(st):

@@ -62,6 +62,24 @@ def check_schema(got: str, want: str, *, label: str = "") -> None:
             f"(same name, same major; minors tolerated).")
 
 
+def check_keys(what: str, d, known, *, needed=None) -> None:
+    """A record's keys against ``known``, the keys its reader reads: one
+    not there is refused naming the known ones, and one of ``needed``
+    (every known key, unless said) left out is refused -- a
+    :class:`ValueError` prefixed ``what``: a record that does not read,
+    never read past.  Asked beside :func:`check_schema` by a reader that
+    holds every key it reads (`jobset.model`, `bench.result`)."""
+    unknown = [k for k in d if k not in known]
+    if unknown:
+        raise ValueError(
+            f"{what}: unknown key(s) "
+            + ", ".join(repr(k) for k in sorted(unknown))
+            + f" (known keys: {', '.join(known)})")
+    gaps = [k for k in (known if needed is None else needed) if k not in d]
+    if gaps:
+        raise ValueError(f"{what}: no {', '.join(repr(k) for k in gaps)}")
+
+
 def read_json(path) -> Any:
     """Read + parse a JSON file."""
     return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -255,6 +273,7 @@ def sha256_of_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-__all__ = ["schema_major", "schema_name", "check_schema", "read_json",
+__all__ = ["schema_major", "schema_name", "check_schema", "check_keys",
+           "read_json",
            "json_text", "write_json", "stage_bytes", "write_bytes",
            "sha256_of", "sha256_of_bytes"]

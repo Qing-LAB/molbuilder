@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 # IT TRAVELS BESIDE EVERY JOB (`runwrap.monitor_companions`): the monitor
 # reports how a run ended with `parse.dirs.job.run_status`, whose state is
@@ -424,13 +424,16 @@ def record_ended(where, *, asked_on: str, said: str) -> Path:
     scheduler's answer, ``asked_on`` its cluster and ``said`` its own words
     for a job it lists ended, empty for one it has forgotten
     (`scheduler.queue.listed`); a run here's process gone, ``asked_on`` its
-    machine and ``said`` empty.  Written through `persist`, whole; a run
-    with no record cannot be concluded and is refused."""
+    machine and ``said`` empty.  Written through `persist`, whole, and
+    once: a record that holds its answer keeps it.  A run with no record
+    cannot be concluded and is refused."""
     body = launch_record(where)
     if body is None:
         raise LaunchRecordError(
             f"{launch_record_path(where)} is not there: a run with no launch "
             f"record cannot be concluded by the answer about its job.")
+    if body.get("ended") is not None:
+        return launch_record_path(where)
     body["ended"] = {
         "asked_on": asked_on,
         "asked_at": stamp(),
@@ -505,6 +508,12 @@ def sent_wall_s(record: Optional[dict]) -> Optional[int]:
 # (:func:`read_gathered_from`, `model/parse.md` § 5d.4).
 
 
+def gathered_from_path(where) -> Path:
+    """Where the run in ``where`` records what it gathered
+    (`project-layout.md` § 1.6.3): its ``.gathered-from``."""
+    return Path(where) / _rf.GATHERED_FROM_FILE
+
+
 def write_gathered_from(attempt_dir, gathered: "List[Tuple[RunRef, str]]",
                         *, plan=None) -> None:
     """THE ONE WRITER of what a run gathered -- a hand-over's record beside
@@ -514,9 +523,9 @@ def write_gathered_from(attempt_dir, gathered: "List[Tuple[RunRef, str]]",
     (`jobset.planned.Plan`)."""
     data = "".join(f"{fn} <- {src}\n" for src, fn in gathered).encode("utf-8")
     if plan is not None:
-        plan.bytes(Path(attempt_dir) / _rf.GATHERED_FROM_FILE, data)
+        plan.bytes(gathered_from_path(attempt_dir), data)
         return
-    _persist().write_bytes(Path(attempt_dir) / _rf.GATHERED_FROM_FILE, data)
+    _persist().write_bytes(gathered_from_path(attempt_dir), data)
 
 
 def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
@@ -526,7 +535,7 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     does not read -- a line not ``<file> <- <run>``, or no line -- is a
     :class:`LaunchRecordError` naming it, as every run record's reader
     says one."""
-    p = Path(attempt_dir) / _rf.GATHERED_FROM_FILE
+    p = gathered_from_path(attempt_dir)
     try:
         text = p.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -592,12 +601,18 @@ def carried_gather(base, source) -> "List[Tuple[RunRef, str]]":
 # § 2a.16).
 
 
+def copied_from_path(where) -> Path:
+    """Where the run -- or the point, or a point's ``shared/`` -- in
+    ``where`` records what it is a copy of (`project-layout.md` § 1.6.3):
+    its ``.copied-from``."""
+    return Path(where) / _rf.COPIED_FROM_FILE
+
+
 def write_copied_from(run_dir, source: str, *, plan) -> None:
     """THE ONE WRITER of what a run is a copy of: ``source``, the finished
     calculation's run, tree-relative, as the run's ``.copied-from``, into
     ``plan`` (`jobset.planned.Plan`)."""
-    plan.bytes(Path(run_dir) / _rf.COPIED_FROM_FILE,
-               (source + "\n").encode("utf-8"))
+    plan.bytes(copied_from_path(run_dir), (source + "\n").encode("utf-8"))
 
 
 def read_copied_from(run_dir) -> Optional[str]:
@@ -605,7 +620,7 @@ def read_copied_from(run_dir) -> Optional[str]:
     as :func:`write_copied_from` wrote it -- ``None`` for a run made here.
     A record that is there and does not read is a :class:`LaunchRecordError`
     naming it."""
-    p = Path(run_dir) / _rf.COPIED_FROM_FILE
+    p = copied_from_path(run_dir)
     try:
         said = p.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
@@ -657,8 +672,45 @@ def copied_in(stage_dir) -> Optional[str]:
     return read_copied_from(attempt_dir(stage_dir, runs[0])) if runs else None
 
 
+#: WHAT A COPY OF A RUN DOES WITH ONE OF ITS RECORDS (:class:`RunRecordFile`).
+COPY_LAST, COPY_ANEW, COPY_RUNS, COPY_CARRIED = "last", "anew", "runs", "carried"
+
+
+@dataclass(frozen=True)
+class RunRecordFile:
+    """ONE OF A RUN'S OWN RECORDS (`project-layout.md` § 1.6.3): its name,
+    the catalogue's; the one function that forms its path in a run's
+    folder; and what a COPY of the run does with it (`engines/transport.md`
+    § 2a.16, *A group copied in*) --
+
+    - :data:`COPY_LAST`: copied as it lies, the copy's last act, so a copy cut
+      short reads as a run never launched;
+    - :data:`COPY_ANEW`: written for the copy, naming what it is a copy of;
+    - :data:`COPY_RUNS`: it names runs by their folders -- carried as it lies by a
+      copy that keeps the run's folders, written anew where this
+      calculation keeps those runs by one laid out otherwise, and not taken
+      with a point taken over, whose run is the one taking it;
+    - :data:`COPY_CARRIED`: carried as it lies.
+
+    Who writes and reads each is its catalogue row's (`runfiles.WRITTEN`)."""
+    name: str
+    path: "Callable[[object], Path]"
+    copy: str
+
+
+#: A RUN'S OWN RECORDS, one row each -- the one list of them a copy asks
+#: (`transport.reuse`).
+RUN_RECORDS = (
+    RunRecordFile(_rf.LAUNCH_RECORD_FILE, launch_record_path, COPY_LAST),
+    RunRecordFile(_rf.NOTIFIED_RECORD_FILE, notified_path, COPY_CARRIED),
+    RunRecordFile(_rf.CONTINUED_FROM_FILE, continued_from_marker, COPY_RUNS),
+    RunRecordFile(_rf.GATHERED_FROM_FILE, gathered_from_path, COPY_RUNS),
+    RunRecordFile(_rf.COPIED_FROM_FILE, copied_from_path, COPY_ANEW),
+)
+
+
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "run_output",
-           "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]
+           "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in", "gathered_from_path", "copied_from_path", "notified_path", "read_notified", "read_notified_file", "note_notified", "RunRecordFile", "RUN_RECORDS", "COPY_LAST", "COPY_ANEW", "COPY_RUNS", "COPY_CARRIED"]
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it

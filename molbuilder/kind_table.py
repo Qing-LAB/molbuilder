@@ -39,13 +39,13 @@ import importlib
 import tomllib
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
+from . import data_dir
 from .identity import electrode_hs_stem
 
 #: The file, beside the parameter catalogue.
-TABLE_FILE = Path(__file__).resolve().parent / "data" / "kind_table.toml"
+TABLE_FILE = data_dir() / "kind_table.toml"
 
 #: What a rung computes: an SCF, or a product that runs none.  Each is also
 #: a named set of roles a catalogue item's ``stages`` may cite
@@ -101,11 +101,17 @@ REUSE_DOORS = ("decide", "copy_in", "takes_over", "take_into",
 #: `molbuilder describe`: the describe itself, what it does not take, and
 #: its refusal.
 DESCRIBE_DOORS = ("describe", "not_taken", "NotDescribed")
-#: THE DESCRIPTION PARTS NAMED AS A MODULE WHOLE, each with the doors it
-#: provides -- read as the table loads (named whole, never
-#: ``module:NAME``) and as the part resolves (every door there,
-#: :func:`description_part`); every other part is ``module:NAME``.
-WHOLE_MODULE_PARTS = {"describe": DESCRIBE_DOORS, "reuse": REUSE_DOORS}
+#: THE DOORS AN ``export`` PART PROVIDES, asked by `jobset export`: the
+#: export itself, the name it writes, and the options it asks beyond the
+#: form (``ASKS``).
+EXPORT_DOORS = ("export", "name_of", "ASKS")
+#: THE PARTS NAMED AS A MODULE WHOLE -- a description's ``describe`` and
+#: ``reuse``, a kind's ``export`` -- each with the doors it provides: read
+#: as the table loads (named whole, never ``module:NAME``) and as the part
+#: resolves (every door there, :func:`description_part`,
+#: :func:`export_of`); every other part is ``module:NAME``.
+WHOLE_MODULE_PARTS = {"describe": DESCRIBE_DOORS, "reuse": REUSE_DOORS,
+                      "export": EXPORT_DOORS}
 
 #: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): when its
 #: run is finished -- every point DONE, or every point RAN, the words the
@@ -690,7 +696,7 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
             ("no_benchmark", "a sentence", bool),
             ("handover", "the tab's name", bool),
             ("validator", "a part, \"module:NAME\"", lambda v: ":" in v),
-            ("export", "a module's name", bool),
+            ("export", "a module, named whole", lambda v: ":" not in v),
             ("description_checks", "a part, \"module:NAME\"",
              lambda v: ":" in v)):
         if key in body and not (isinstance(body[key], str) and body[key]
@@ -842,21 +848,30 @@ def description_part(calculation: str, key: str) -> Any:
     ref = kind(calculation).description.parts.get(key)
     if ref is None:
         return None
-    doors = WHOLE_MODULE_PARTS.get(key)
-    if doors is None:
+    if key not in WHOLE_MODULE_PARTS:
         return part(ref, record=f"{calculation}'s description", key=key)
+    return _whole_module(ref, record=f"{calculation}'s description", key=key)
+
+
+def _whole_module(ref: str, *, record: str, key: str) -> Any:
+    """A PART NAMED AS A MODULE WHOLE (:data:`WHOLE_MODULE_PARTS`),
+    imported now, and refused -- naming ``record`` and ``key`` -- when it
+    does not import, or provides not every door its key lists."""
+    doors = WHOLE_MODULE_PARTS[key]
     try:
         module = importlib.import_module(ref)
     except ImportError as exc:
         raise KindTableError(
-            f"{calculation}'s description's {key}, {ref!r}, does not "
-            f"import: {exc}") from exc
-    lacks = [d for d in doors if not callable(getattr(module, d, None))]
+            f"{record}'s {key}, {ref!r}, does not import: {exc}") from exc
+    # A DOOR IS CODE -- a function or a class -- or, as an export's
+    # ``ASKS``, the tuple of names it asks.
+    lacks = [d for d in doors
+             if not (callable(v := getattr(module, d, None))
+                     or isinstance(v, tuple))]
     if lacks:
         raise KindTableError(
-            f"{calculation}'s description's {key}, {ref!r}, provides no "
-            f"{', '.join(lacks)} -- a {key} part provides "
-            f"{', '.join(doors)}")
+            f"{record}'s {key}, {ref!r}, provides no {', '.join(lacks)} -- "
+            f"a {key} part provides {', '.join(doors)}")
     return module
 
 
@@ -919,17 +934,12 @@ def part_of(calculation: str, engine: str, key: str) -> Any:
 def export_of(calculation: str) -> Any:
     """THE MODULE THAT EXPORTS ``calculation``'s results -- its kind's
     ``export``, imported now by the floor that asks -- or ``None``: the
-    kind exports nothing.  A module that does not import is refused naming
-    the kind."""
+    kind exports nothing.  A module that does not import, or provides not
+    every door :data:`EXPORT_DOORS` lists, is refused naming the kind."""
     ref = kind(calculation).export
     if ref is None:
         return None
-    try:
-        return importlib.import_module(ref)
-    except ImportError as exc:
-        raise KindTableError(
-            f"{calculation}'s export, {ref!r}, does not import: "
-            f"{exc}") from exc
+    return _whole_module(ref, record=calculation, key="export")
 
 
 def part(ref: str, *, record: str, key: str) -> Any:
@@ -951,4 +961,4 @@ __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
            "RunOfPoints", "run_of_points", "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
            "pair", "lead_of", "rung_label", "role_set", "part_of", "part",
-           "export_of", "Region", "DESCRIPTION_PARTS", "DESCRIBE_DOORS", "REUSE_DOORS", "WHOLE_MODULE_PARTS", "own_structure", "atom_order", "labels", "description_part"]
+           "export_of", "Region", "DESCRIPTION_PARTS", "DESCRIBE_DOORS", "REUSE_DOORS", "EXPORT_DOORS", "WHOLE_MODULE_PARTS", "own_structure", "atom_order", "labels", "description_part"]

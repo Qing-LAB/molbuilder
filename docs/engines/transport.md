@@ -2560,7 +2560,7 @@ below (taken over whole, never run again) is a run of points'.
 
 **One door for each place.** A rung's runs are `paths.attempts_in`'s, as every
 stage's; a swept run's points are the ones it holds —
-`transport.stages.points_in(run, task, stage)`'s: a point the description
+`transport.stages.points_in(run, calc, stage)`'s: a point the description
 gained after the run was opened is not the run's
 ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*),
 and a launch opens the points prep wrote; the prepared point decks
@@ -3223,7 +3223,8 @@ treatment and what it means
 (`low_bias_approximation`, 1 or 0), what each spin's current means (`current_means`, JSON),
 the calculation's own records as they read when it was written —
 `description` (its `task.json`), `template` (its `<label>.template.toml`)
-and `job_request` (its `job-request.json`), each the file's text — the
+and `job_request` (its `job-request.json`), each as its reader read it from
+the calculation the writing verb opened (`summarize task`, an export) — the
 provenance chain (`provenance_chain`, JSON: each rung's run and what it was
 gathered from, a run of points' points), the citation and its
 kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
@@ -5659,8 +5660,8 @@ with its state.
 > **It consumes the calculation-root reader that exists and writes no
 > second one.** That reader is the run door's `runs.place_of`, which reads
 > the description through `task.of` (`calcdirs.container_or_run` from
-> 2026-09-19 until 2026-10-04, plan B14); `plan.md` § 5c.3's proposed owner, `checkpoint._is_bundle_root`,
-> is superseded and still private with one caller. § 5c.3's warning that a
+> 2026-09-19 until 2026-10-04, plan B14); the saved history asks `calcdirs.described` for its
+> root. § 5c.3's warning that a
 > second copy *"would be instance 14"* of a known duplication stands, and an
 > earlier draft of this section designed exactly that parallel enumerator.
 

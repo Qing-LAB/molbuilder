@@ -1188,10 +1188,8 @@ def test_junction_stepped_contacts_via_two_calls():
 
 def test_modify_module_import_does_not_eagerly_load_fcc_table(monkeypatch):
     """SP-C: the FCC lattice-constant table loads on first call to
-    ``_get_fcc_lattice``, NOT at module import.  This way a broken
-    ``MOLBUILDER_DATA_DIR`` doesn't cascade into ``import molbuilder``
-    failing -- only operations that actually consume a lattice
-    constant surface the error, and only when the user runs them."""
+    ``_get_fcc_lattice``, NOT at module import -- only an operation that
+    consumes a lattice constant reads it."""
     import importlib
     import molbuilder.modify as mod
     # Reset the cache and re-import the module.  Right after import
@@ -1208,27 +1206,6 @@ def test_modify_module_import_does_not_eagerly_load_fcc_table(monkeypatch):
     # Public closed list of metals is hardcoded so a missing JSON
     # doesn't take it down.
     assert mod.SUPPORTED_FCC_ELEMENTS == ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
-
-
-def test_modify_module_falls_back_to_packaged_data_when_env_var_broken(
-        tmp_path, monkeypatch):
-    """SP-C: even when ``MOLBUILDER_DATA_DIR`` points at a directory
-    without ``fcc_lattice.json``, the loader falls back to the
-    packaged ``molbuilder/data/`` so the operation still succeeds."""
-    monkeypatch.setenv("MOLBUILDER_DATA_DIR", str(tmp_path / "nonexistent"))
-    import importlib
-    import molbuilder.modify as mod
-    mod._FCC_LATTICE_A_CACHE = None
-    importlib.reload(mod)
-    # Import didn't crash even with a broken env var.
-    assert mod.SUPPORTED_FCC_ELEMENTS == ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
-    # Lookup falls back to the packaged data dir.
-    table = mod._get_fcc_lattice()
-    assert "Au" in table
-    # Reset for the rest of the suite.
-    monkeypatch.delenv("MOLBUILDER_DATA_DIR", raising=False)
-    mod._FCC_LATTICE_A_CACHE = None
-    importlib.reload(mod)
 
 
 # --------------------------------------------------------------------- #

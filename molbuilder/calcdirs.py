@@ -166,6 +166,20 @@ def described(directory) -> bool:
     return description_path(directory).is_file()
 
 
+def plan_path(folder) -> Path:
+    """``<folder>/job-set.json`` -- THE ONE PLACE the plan's name, the
+    catalogue's (`runfiles.JOBSET_FILE`), is joined to a folder: a
+    calculation's root, or a benchmark's container (`project-layout.md`
+    § 5.1, § 5.5).  The ground floor's, so the run door asks it without
+    reaching the plan's floor; the plan's writer, its door and `jobset
+    migrate` reach it through its owner (`JobSet.path_of`)."""
+    try:                                    # inside molbuilder
+        from .runfiles import JOBSET_FILE
+    except ImportError:                     # beside a job
+        from runfiles import JOBSET_FILE
+    return Path(folder) / JOBSET_FILE
+
+
 def root_of(directory) -> Optional[Path]:
     """The calculation root this directory belongs to, or ``None``.
 

@@ -2089,8 +2089,7 @@ def render_run_wrapper(script_path: Path, *,
                        resources: "Resources",
                        program: Optional[str] = None,
                        env: Optional[str] = None,
-                       project_dir: Optional[Path] = None,
-                       machine_record=None,
+                       machine_record,
                        finish: Optional[str] = None,
                        resumes: bool,
                        relaunch_continues: bool,
@@ -2645,14 +2644,6 @@ def render_run_wrapper(script_path: Path, *,
     # switching.  If anything fails, ``set -euo pipefail`` aborts with the
     # real bash error.  The activation has no default: no record stating
     # one, no wrapper.
-    # The BUNDLE'S scope, stated by the caller (roadmap 7.10 M1): the
-    # script is born in its job directory, and
-    # a scope derived from its parent would look for environment.json in
-    # the job dir -- one level below the file.  The
-    # parent stays as the fallback for a caller that points at a script
-    # sitting wherever its bundle root is (tests).
-    _project_dir = project_dir if project_dir is not None else (
-        script_path.parent if script_path.parent.exists() else None)
     # WHOSE MACHINE IS THIS SCRIPT FOR?
     #
     # (The parameter is `machine_record`, NOT `target_env`: this function
@@ -2673,11 +2664,8 @@ def render_run_wrapper(script_path: Path, *,
     # fact -- which machine is this for -- answered out of two files.
     # THE RECORD IS WHAT THIS READS -- this machine's too (`configuration.md`
     # § 4): a machine declares its `env_init` in its own `molbuilder.json`,
-    # and `jobset probe` copies it into the record it writes.
-    _rec_sg = machine_record
-    if _rec_sg is None and _project_dir is not None:
-        from .scheduler import machine_for
-        _rec_sg = machine_for(_project_dir)
+    # and `jobset probe` copies it into the record it writes.  Prep hands
+    # the one it read (A16): read once, never again here.
 
     env_activation = (
         "# Structured log helper.\n"
@@ -2788,7 +2776,7 @@ def render_run_wrapper(script_path: Path, *,
         f'_log INFO "log file:   $_runwrap_log"\n'
         + _scheduler_context_block()
         + "\n"
-        + env_bootstrap(_rec_sg, target_env)
+        + env_bootstrap(machine_record, target_env)
     )
 
     # THE LAUNCH -- the same block for every engine.  The command is run,
@@ -3510,8 +3498,7 @@ def render_wrappers(script_path: Path, *,
                     program: Optional[str] = None,
                     env: Optional[str] = None,
                     emit_sbatch: bool = True,
-                    project_dir: Optional[Path] = None,
-                    machine_record=None,
+                    machine_record,
                     domain_pq: Optional[Tuple[str, str]] = None,
                     finish: Optional[str] = None,
                     resumes: bool,
@@ -3572,7 +3559,7 @@ def render_wrappers(script_path: Path, *,
         script_path, names=names, engine=engine, calculation=calculation,
         resources=r,
         program=program, env=env,
-        project_dir=project_dir, machine_record=machine_record,
+        machine_record=machine_record,
         finish=finish, resumes=resumes,
         relaunch_continues=relaunch_continues, trial=trial, warm=warm,
         deck_text=deck_text, notes=_notes, point=point)
@@ -3631,8 +3618,7 @@ def write_run_wrapper(script_path: Path, *,
                       program: Optional[str] = None,
                       env: Optional[str] = None,
                       emit_sbatch: bool = True,
-                      project_dir: Optional[Path] = None,
-                      machine_record=None,
+                      machine_record,
                       domain_pq: Optional[Tuple[str, str]] = None,
                       finish: Optional[str] = None,
                       resumes: bool,
@@ -3671,7 +3657,7 @@ def write_run_wrapper(script_path: Path, *,
                                machine_record=machine_record,
                                domain_pq=domain_pq,
                                env=env, emit_sbatch=emit_sbatch,
-                               project_dir=project_dir, finish=finish,
+                               finish=finish,
                                resumes=resumes,
                                relaunch_continues=relaunch_continues,
                                trial=trial, warm=warm,
@@ -3760,13 +3746,15 @@ def walk_header(base: Path, names, *, resources: "Resources",
     shelf -- its walk script and the scheduler's own output in `launch/`
     beside it
     -- or ``None`` where the target's record (``machine_record``) names no
-    scheduler.  ``names`` are the walk's own (`runfiles.GroupNames`)."""
-    from .runfiles import LAUNCH_DIR
+    scheduler.  ``names`` are the walk's own (`runfiles.GroupNames`): the
+    header's path and its folder, named from ``base``, are theirs
+    (`GroupNames.path`)."""
+    from .runfiles import GROUP_HEADER
     return _render_sbatch_for(
-        Path(base) / names.header, names=names,
+        names.path(base, GROUP_HEADER), names=names,
         resources=resources, domain_pq=domain_pq,
         machine_record=machine_record, one_process=one_process,
-        where=f"{LAUNCH_DIR}/")
+        where=f"{names.walked()}/")
 
 
 # --------------------------------------------------------------------- #

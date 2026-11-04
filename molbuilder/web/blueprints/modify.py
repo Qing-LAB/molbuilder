@@ -193,13 +193,11 @@ def api_modify_spacings():
             "error": f"unsupported surface {plane!r}; this builder makes "
                      f"{', '.join(SUPPORTED_FCC_PLANES)}"}), 400
 
-    # AND THE SAME METALS.  The element list is CLOSED and the lattice table
-    # is user-overridable, so the two are not the same question: an `Fe`
-    # entry with `"system": "bcc"` in `$MOLBUILDER_DATA_DIR`'s copy -- a
-    # documented customization -- would get a spacing from the bcc rule for
-    # a metal `/api/modify/slab` refuses outright.  A spacing for a slab that
-    # cannot be built is a plausible number with nothing to use it on, which
-    # is worse than a refusal.
+    # AND THE SAME METALS.  The element list is CLOSED (code) and the lattice
+    # table is data, so the two are not the same question: a metal the table
+    # carries and `/api/modify/slab` refuses would get a spacing for a slab
+    # that cannot be built -- a plausible number with nothing to use it on,
+    # which is worse than a refusal.
     if element not in SUPPORTED_FCC_ELEMENTS:
         return jsonify({
             "ok": False,

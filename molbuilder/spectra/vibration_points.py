@@ -47,21 +47,20 @@ def _declared_rung_points(calc, stage: str, *, read=None
     return _prepared(_job_phases(calc, stage))
 
 
-def _declared_points_in(run, task, stage: str, base) -> List[Tuple[Path, Call]]:
+def _declared_points_in(run, calc, stage: str) -> List[Tuple[Path, Call]]:
     """A run's calls -- those its index lists, each with its folder below
     the run; before launch wrote the index, the calls prep opened (the
-    plan's row's phases, `Job.phases`).  The index is the run's one,
-    written by the launch that opened the run (`runpoints.index_of`, which
-    refuses an older molbuilder's naming `jobset migrate`)."""
+    plan's row's phases as ``calc`` holds the plan, :func:`_job_phases`).
+    The index is the run's one, written by the launch that opened the run
+    (`runpoints.index_of`, which refuses an older molbuilder's naming
+    `jobset migrate`)."""
     from ..jobset.naming import stage_home
     place = RunPlace.of(run)
-    path = index_of(place.run_dir, stage_home(base, task, stage).names)
+    path = index_of(place.run_dir,
+                    stage_home(calc.base, calc.task, stage).names)
     if path is None:
-        from ..jobset.model import JobSet
-        plan = JobSet.of(base)
-        job = plan.job(stage) if plan is not None else None
         return [(place.point(c.rel), c)
-                for c in _prepared(getattr(job, "phases", None) or ())]
+                for c in _prepared(_job_phases(calc, stage))]
     return [(place.point(c.rel), c) for c in calls_of(read_index(path))]
 
 

@@ -264,17 +264,19 @@ def point_folders(base, task, stage: str, *, frames: Optional[int] = None
             for pt in rung_points(task, stage, frames=n)]
 
 
-def points_in(run, task, stage: str, *, base) -> List[Tuple[Path, Point]]:
+def points_in(run, calc, stage: str) -> List[Tuple[Path, Point]]:
     """A run's points -- ``[(run-<n>/<point>, Point)]`` -- or ``[]`` for a
     run of a rung that runs once (`engines/transport.md` § 2a.11): the
     points it HOLDS, each opened at its launch -- a point the description
     gained after the run was opened is not the run's (`job-system.md`,
-    *Changed since prepared*).  The frames are the record's of the
-    calculation at ``base``."""
+    *Changed since prepared*).  ``calc`` is the calculation whole
+    (`calculation.Calculation`): its description's points, at the frames
+    its folder's record states (:func:`frames_of`)."""
     from ..calcdirs import RunPlace
     place = RunPlace.of(run)
     return [(place.point(pt.rel), pt)
-            for pt in rung_points(task, stage, frames=frames_of(base))
+            for pt in rung_points(calc.task, stage,
+                                  frames=frames_of(calc.base))
             if place.point(pt.rel).is_dir()]
 
 
@@ -378,12 +380,13 @@ def must_hold(stage: str, task_label: str, folder, *, base_dir,
     run's index."""
     from ..parse.engines._run_ending import product_words
     from ..runfiles import COPIED_FROM_FILE
+    from ..runrecord import copied_from_path
     from .energies import SHARED_DIR, Contours, sharing_of
     out = [(p, product_words(p))
            for p in products_of(stage, task_label, base_dir=base_dir)]
     if (Contours.of_deck(deck_text) if deck_text is not None
             else sharing_of(Path(folder))) is not None:
-        out.append((f"{SHARED_DIR}/{COPIED_FROM_FILE}",
+        out.append((copied_from_path(SHARED_DIR).as_posix(),
                     f"the energies it shares ({SHARED_DIR}/ holds no "
                     f"{COPIED_FROM_FILE})"))
     return out

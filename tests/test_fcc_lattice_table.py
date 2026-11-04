@@ -1,7 +1,6 @@
 """The packaged fcc lattice table (`molbuilder/data/fcc_lattice.json`,
 `molbuilder/data/README.md`): its two literature references per metal, as the
-loader every consumer reads answers them; the formats it accepts and refuses;
-an override honoured or refused by name; and the spacing door built on it.
+loader every consumer reads answers them, and the spacing door built on it.
 
 A lattice constant measured in the user's own SIESTA+PSML setup belongs to
 ONE optimization run, not to a table every project shares, so it is read from
@@ -10,7 +9,6 @@ tests/test_lattice_from_run.py).
 """
 from __future__ import annotations
 
-import json
 import tomllib
 from pathlib import Path
 
@@ -23,11 +21,10 @@ from molbuilder.modify import (
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-JSON_PATH = REPO_ROOT / "molbuilder" / "data" / "fcc_lattice.json"
 ROWS = REPO_ROOT / "tests" / "data" / "fcc_lattice.toml"
 
 
-def test_each_metal_answers_its_two_literature_references(monkeypatch):
+def test_each_metal_answers_its_two_literature_references():
     """`data/README.md`'s table, through the loader every consumer reads: the
     six metals the slab builder makes, no more and no fewer, each with
     Wyckoff's room-temperature lattice constant and Zhang et al.'s PBE one
@@ -40,7 +37,6 @@ def test_each_metal_answers_its_two_literature_references(monkeypatch):
 
     MUTATIONS THIS MUST FAIL AGAINST: a PBE value a digit off; an
     experimental value a digit off; a metal gone from the table."""
-    monkeypatch.delenv("MOLBUILDER_DATA_DIR", raising=False)
     rows = tomllib.loads(ROWS.read_text())["metal"]
     table = load_fcc_lattice_full()
     assert sorted(table) == sorted(r["symbol"] for r in rows), sorted(table)
@@ -48,46 +44,6 @@ def test_each_metal_answers_its_two_literature_references(monkeypatch):
         got = table[r["symbol"]]
         assert (got["a_experimental"], got["a_pbe"]) == pytest.approx(
             (r["a_experimental"], r["a_pbe"]), abs=1e-9), (r, got)
-
-
-def test_a_v2_file_still_loads(tmp_path, monkeypatch):
-    """A user's overriding data dir must not stop working because a column
-    they never filled went away.
-
-    Pinned rather than assumed: the loader's format check is a substring
-    test, so "accepts v2 as well as v3" is one easily-broken character.
-    """
-    import json as _json
-    from molbuilder import modify as _mod
-
-    doc = _json.loads(JSON_PATH.read_text())
-    doc["_format"] = "molbuilder.data.fcc_lattice v2"
-    for entry in doc["metals"].values():
-        entry["a_pbe_siesta_psml"] = None          # as a v2 file carries it
-    (tmp_path / "fcc_lattice.json").write_text(_json.dumps(doc))
-    monkeypatch.setattr(_mod, "_data_dir_candidates", lambda: (tmp_path,))
-
-    table = _mod.load_fcc_lattice_full()
-    assert abs(table["Au"]["a_experimental"] - 4.0782) < 1e-9
-    assert "a_pbe_siesta_psml" not in table["Au"], (
-        "a v2 file's dropped column must not come back through the loader")
-
-
-def test_a_v1_file_is_still_refused(tmp_path, monkeypatch):
-    """The 'a'-only schema carries one number per metal with no XC attached,
-    which is the ambiguity v2 existed to end.  Loosening the version check to
-    admit v3 must not have loosened it to admit v1."""
-    import json as _json
-    import pytest as _pytest
-    from molbuilder import modify as _mod
-
-    (tmp_path / "fcc_lattice.json").write_text(_json.dumps({
-        "_format": "molbuilder.data.fcc_lattice v1",
-        "metals": {"Au": {"a": 4.0782}},
-    }))
-    monkeypatch.setattr(_mod, "_data_dir_candidates", lambda: (tmp_path,))
-    with _pytest.raises(RuntimeError, match="neither v2 nor v3"):
-        _mod.load_fcc_lattice_full()
 
 
 def test_meta_endpoint_exposes_lattice_table(web_client):
@@ -110,68 +66,6 @@ def test_meta_endpoint_lattice_error_is_none_on_happy_path(web_client):
     r = web_client.get("/api/modify/meta")
     j = r.get_json()
     assert j.get("lattice_error") in (None, "")
-
-
-class TestAnOverrideIsHonouredOrRefused:
-    """PINS: a data file the user PUT there is a statement of intent.
-
-    `data/README.md` tells people to copy the JSON to
-    ``$MOLBUILDER_DATA_DIR`` and edit it — for a strained lattice, a
-    low-temperature value, a constant measured on their own bulk run. So the
-    only two honest answers to such a file are *use it* and *refuse by name*.
-
-    PREVENTS: the third answer, measured 2026-09-22. An override with one
-    trailing comma returned Au = 4.0782 to a person who had typed 4.20 — no
-    warning, no log — and the Modify panel then displayed 4.0782 under a radio
-    labelled "Experimental". Consistent-looking, and not the number they set.
-    Two of the four malformations already raised (a bad ``_format``, a
-    malformed metal entry); a JSON syntax error and a missing ``metals`` key
-    fell through to the packaged table instead.
-    """
-
-    @staticmethod
-    def _override(tmp_path, text: str) -> Path:
-        (tmp_path / "fcc_lattice.json").write_text(text)
-        return tmp_path
-
-    def _load_with(self, monkeypatch, data_dir):
-        import molbuilder.modify as mod
-        monkeypatch.setenv("MOLBUILDER_DATA_DIR", str(data_dir))
-        monkeypatch.setattr(mod, "_FCC_LATTICE_A_CACHE", None)
-        return mod.load_fcc_lattice_full()
-
-    def test_a_valid_override_is_used(self, monkeypatch, tmp_path):
-        good = json.loads(
-            (Path(__file__).resolve().parents[1]
-             / "molbuilder/data/fcc_lattice.json").read_text())
-        good["metals"]["Au"]["a_experimental"] = 4.20
-        d = self._override(tmp_path, json.dumps(good, indent=2))
-        assert self._load_with(monkeypatch, d)["Au"]["a_experimental"] == 4.20
-
-    def test_a_syntax_error_refuses_instead_of_falling_back(
-            self, monkeypatch, tmp_path):
-        good = json.loads(
-            (Path(__file__).resolve().parents[1]
-             / "molbuilder/data/fcc_lattice.json").read_text())
-        good["metals"]["Au"]["a_experimental"] = 4.20
-        broken = json.dumps(good, indent=2).replace(
-            '"a_pbe": 4.157', '"a_pbe": 4.157,', 1)     # one trailing comma
-        d = self._override(tmp_path, broken)
-        with pytest.raises(RuntimeError, match="failed to read"):
-            self._load_with(monkeypatch, d)
-
-    def test_a_missing_metals_key_refuses_too(self, monkeypatch, tmp_path):
-        d = self._override(tmp_path, json.dumps(
-            {"_format": "molbuilder.data.fcc_lattice v3"}, indent=2))
-        with pytest.raises(RuntimeError, match="missing required 'metals'"):
-            self._load_with(monkeypatch, d)
-
-    def test_an_ABSENT_override_still_falls_back(self, monkeypatch, tmp_path):
-        """Absence is not malformation. A data dir that simply does not hold
-        this file is a legitimate state, and the packaged table is the
-        answer — that path must not become a refusal."""
-        table = self._load_with(monkeypatch, tmp_path / "not-there")
-        assert table["Au"]["a_experimental"] == pytest.approx(4.0782)
 
 
 class TestTheSpacingsDoorAnswersTheSurface:
@@ -224,36 +118,6 @@ class TestTheSpacingsDoorAnswersTheSurface:
                            "&reference=pbe")
         assert r.status_code == 400
         assert "Xx" in r.get_json()["error"]
-
-    def test_a_metal_the_builder_cannot_make_is_refused(self, monkeypatch,
-                                                        tmp_path, web_client):
-        """The element list is CLOSED; the lattice table is user-overridable.
-        Two different questions, and only the plane was being asked.
-
-        `data/README.md` invites people to copy the JSON to
-        `$MOLBUILDER_DATA_DIR` and edit it. Adding an `Fe` entry with
-        `"system": "bcc"` made this door answer `d(110) = 2.0269` from the
-        bcc rule — genuinely correct crystallography — for a metal
-        `/api/modify/slab` refuses outright. A spacing for a slab that
-        cannot be built is a plausible number with nothing to use it on.
-        """
-        import molbuilder.modify as mod
-        good = json.loads(
-            (Path(__file__).resolve().parents[1]
-             / "molbuilder/data/fcc_lattice.json").read_text())
-        good["metals"]["Fe"] = {"name": "Iron", "system": "bcc",
-                                "a_experimental": 2.8665, "a_pbe": 2.83}
-        (tmp_path / "fcc_lattice.json").write_text(json.dumps(good, indent=2))
-        monkeypatch.setenv("MOLBUILDER_DATA_DIR", str(tmp_path))
-        monkeypatch.setattr(mod, "_FCC_LATTICE_A_CACHE", None)
-
-        # The table carries it...
-        assert "Fe" in mod.load_fcc_lattice_full()
-        # ...and the door still refuses it, the way the builder does.
-        r = web_client.get("/api/modify/spacings?element=Fe&plane=110"
-                           "&reference=experimental")
-        assert r.status_code == 400, r.get_json()
-        assert "Fe" in r.get_json()["error"]
 
     def test_a_surface_the_builder_cannot_make_is_refused(self, web_client):
         """`interplanar_spacing` answers (999) correctly — it is general

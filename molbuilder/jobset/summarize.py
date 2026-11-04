@@ -295,10 +295,11 @@ def bench_record(calc, jobset, *, now_iso: Optional[str] = None
 
 
 def run_summarize_jobset(calc, jobset, *,
-                         out, now_iso: Optional[str] = None,
+                         container, now_iso: Optional[str] = None,
                          stage: Optional[str] = None):
     """Summarize a described sweep: write ``bench-result.json`` (the
-    archival record) and RETURN the report for the caller to print.
+    archival record) into the benchmark's ``container`` and RETURN the
+    report for the caller to print.
 
     Returns ``(BenchResult, out_path, report_text)``, where ``report_text``
     is ``None`` when there is no verdict to report.
@@ -316,10 +317,11 @@ def run_summarize_jobset(calc, jobset, *,
     IS a use"*, `job-system.md` § 7.1).
     """
     res = bench_record(calc, jobset, now_iso=now_iso)
-    # WHERE IT LIVES is the caller's to say -- the benchmark's container,
-    # the catalogue's `bench` level -- and it is written by the one writer.
+    # ITS NAME BY ITS WRITER (`architecture.md` A16), in the benchmark's
+    # container -- the catalogue's `bench` level -- through the one writer.
     from ..persist import write_bytes
-    out_path = Path(out)
+    from ..runfiles import BENCH_RESULT_FILE
+    out_path = Path(container) / BENCH_RESULT_FILE
     write_bytes(out_path, (res.to_json() + "\n").encode("utf-8"))
     return res, out_path, recommendation_text(res, stage=stage)
 

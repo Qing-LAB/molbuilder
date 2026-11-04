@@ -28,10 +28,6 @@ def _declared_rung_points(calc, stage: str, *, read=None):
     return rung_points(calc.task, stage, frames=frames_had(calc, read=read))
 
 
-def _declared_points_in(run, task, stage: str, base):
-    return points_in(run, task, stage, base=base)
-
-
 def _entry(calc, stage: str, point: Point, deck) -> dict:
     """The point's entry in the run's index (`runs-of-points.md` § 2.3):
     its words, the rung its one phase, its voltage its round, and what it
@@ -97,7 +93,7 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
 #: ``points.declaration``): a transport rung's points are a frame of the
 #: cited set and a voltage each, decided at prep.
 POINTS = PointsOf(rung_points=_declared_rung_points,
-                  points_in=_declared_points_in,
+                  points_in=points_in,
                   entry=_entry,
                   point_of=Point.from_entry,
                   must_hold=_must_hold,

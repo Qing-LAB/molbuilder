@@ -1007,8 +1007,8 @@ itself in the bundle — read through `__loader__.get_data`, which serves a zip 
 reads the same shipped file for the tab.
 
 **A copy replaces it whole**: `<config dir>/report-cards.json` ([`configuration.md`](?doc=configuration.md) § 3.1,
-`report_cards.layout_path()`). The config dir, not `$MOLBUILDER_DATA_DIR`, because the config dir travels with the
-monitor (`config_dir.py`) and the data dir does not. The monitor reads the copy on the machine that runs the job;
+`report_cards.layout_path()`). The config dir, because it travels with the
+monitor (`config_dir.py`). The monitor reads the copy on the machine that runs the job;
 the tab and the Test button read the server's. Each is the person's own file, never written by molbuilder, not a
 secret, any mode. A file that does not read is refused by its reason: the monitor at its start, in its log's line
 (§ 2.6), and the monitor stops there; the reports route and the Test button in their answer.

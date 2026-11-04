@@ -51,7 +51,7 @@ from pathlib import Path
 from molbuilder.runfiles import find_by_role as _rf_find_by_role
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from .jobset.model import FILENAME as _JOBSET_FILENAME
+from .calcdirs import described
 from .task import FILENAME as _TASK_FILENAME
 from .runfiles import GITIGNORE_FILE, HISTORY_DIR, SNAPSHOT_DIR
 from .warmfiles import never_carried
@@ -374,22 +374,6 @@ def _run_git(argv: List[str], cwd: str, *,
         raise CheckpointError(
             f"git {' '.join(argv[:3])}... failed: {msg}"
         ) from e
-
-
-#: A directory holding one of these declares itself **one unit of work whose
-#: subdirectories are its own parts** -- a staged calculation's stages, a
-#: job-set's job directories, a benchmark's trials.  Each is already an entry in
-#: the persisted-artifact registry (job-contracts.md § 6.1), so this reuses the
-#: system's existing self-description instead of inventing a marker file.
-#: A11: both names come from the modules that write them -- `task.FILENAME`
-#: and `jobset.model.FILENAME` -- never re-spelled here.
-_BUNDLE_DESCRIPTORS = (_TASK_FILENAME, _JOBSET_FILENAME)
-
-
-def _is_bundle_root(path: Path) -> bool:
-    """Does ``path`` declare itself the root of one multi-directory unit of
-    work?  See :data:`_BUNDLE_DESCRIPTORS`."""
-    return any((path / name).is_file() for name in _BUNDLE_DESCRIPTORS)
 
 
 def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
@@ -1271,12 +1255,15 @@ class Repo:
                 f"{self.path}: cannot init -- these subdirectories are already "
                 f"checkpoint folders: {inner}.  A history inside a history "
                 f"cannot be restored consistently (L1).")
-        if working and not _is_bundle_root(self.root):
+        # A CALCULATION'S ROOT IS WHERE ITS DESCRIPTION IS (`calcdirs.
+        # described`): the description is what says the subdirectories are
+        # its stages, so they share one history.
+        if working and not described(self.root):
             raise NestedRepoRefusedError(
                 f"{self.path}: cannot init -- nested working dirs present: "
                 f"{working}, and nothing here says they belong to one "
                 f"calculation.  Its root should carry the description that "
-                f"says so ({', '.join(_BUNDLE_DESCRIPTORS)}) (L1).")
+                f"says so ({_TASK_FILENAME}) (L1).")
         name = check_calculation_name(calculation or self.root.name)
         _run_git(["init", "-q"], cwd=self.path)
         _run_git(["config", "molbuilder.calculation", name], cwd=self.path)

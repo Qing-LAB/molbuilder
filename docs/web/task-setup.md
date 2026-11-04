@@ -156,17 +156,15 @@ only ever addresses the first.
 > was no `AbortController` anywhere among the twelve, so the late-answer half
 > was unguarded entirely.
 
-### 2.2 What this page asks, and what `_is_bundle_root` asks
+### 2.2 What this page asks, and what `calcdirs.described` asks
 
-*Corrected 2026-08-16.* This section used to say the check **is**
-`checkpoint.py::_is_bundle_root` and "must not be written a second time". That
-was wrong in a way worth keeping: **the two answer different questions**, and
-the tab neither uses nor duplicates it.
+**The two answer different questions**, and the tab neither uses nor duplicates
+the other.
 
 | | asks | answers |
 |---|---|---|
-| `checkpoint.py::_is_bundle_root` | *does this path declare itself the root of one multi-directory unit of work?* | one boolean, over `task.json` **or** `job-set.json` — enough to decide the folder owns its subdirectories (`checkpointing.md` **L1**) |
-| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* (a transport folder is always the FIRST state: the composite describes directly and never produces a hand-over — its `task.json` arrives finished, and this page opens it as an ordinary description and edits it, its rungs fixed by the kind, § 5.3) | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
+| `calcdirs.described` (the saved history's root, `checkpoint.Repo.init`) | *is this folder a calculation's root?* | one boolean, over `task.json` — enough to decide the folder owns its subdirectories (`checkpointing.md` **L1**) |
+| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* (a transport folder is always the FIRST state: the composite describes directly and never produces a hand-over — its `task.json` arrives finished, and this page opens it as an ordinary description and edits it, its rungs fixed by the kind, § 5.3) | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `calcdirs.described` does not make and has no reason to |
 
 **The invariant that does bind them**, and it holds today: a folder this page
 treats as a described calculation is one the checkpoint system also covers.

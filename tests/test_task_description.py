@@ -336,20 +336,6 @@ def test_the_description_names_no_machine(example, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  a calculation is recognised by its description                       #
-# --------------------------------------------------------------------- #
-
-def test_checkpoint_recognises_a_calculation_by_its_description(tmp_path,
-                                                                example):
-    """A written description is what checkpoint.py's ``_is_bundle_root``
-    recognises a calculation by."""
-    from molbuilder.checkpoint import _is_bundle_root
-    assert not _is_bundle_root(tmp_path)
-    write_task(tmp_path, Task.from_dict(example))
-    assert _is_bundle_root(tmp_path)
-
-
-# --------------------------------------------------------------------- #
 #  run.id is derived, and the label is what is on disk                   #
 #  (run-identity.md § 2.0a and § 3 rule 1, decision 26 -- 2026-08-09)    #
 # --------------------------------------------------------------------- #

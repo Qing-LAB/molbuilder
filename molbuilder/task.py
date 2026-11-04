@@ -67,7 +67,7 @@ from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
                     Tuple)
 
 from .identity import normalise_id, run_id, stage_key
-from .persist import check_schema, read_json, write_json
+from .persist import check_schema, json_text, read_json, write_json
 
 
 SCHEMA = "molbuilder/task@2"
@@ -1034,9 +1034,12 @@ def _task_to_dict(task: Task) -> dict:
     return out
 
 
-def write_task(base, task: Task):
+def write_task(base, task: Task, *, plan=None):
     """Write the folder's ``task.json`` atomically (``persist.write_json``)
-    -- the path the owner forms (:func:`path_of`)."""
+    -- the path the owner forms (:func:`path_of`) -- or into ``plan``
+    (`jobset.planned.Plan`), which writes it when it is carried out."""
+    if plan is not None:
+        return plan.text(path_of(base), json_text(task.to_dict()))
     return write_json(path_of(base), task.to_dict())
 
 

@@ -1189,7 +1189,7 @@ indexes is not a calculation anybody can check
 cost).
 
 **Why not just write `task.json` early and fill it in.** Its *presence* is a
-claim, not a convenience: `checkpoint.py::_BUNDLE_DESCRIPTORS` treats a
+claim, not a convenience: `calcdirs.described` treats a
 `task.json` as the marker that a folder **declares itself the root of one
 multi-directory unit of work** (`checkpointing.md` L1). A premature one makes a
 folder claim to be a calculation root before it is one. The same shape as

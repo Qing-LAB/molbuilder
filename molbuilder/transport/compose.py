@@ -73,17 +73,13 @@ def record_files(kind: str) -> Tuple[str, ...]:
     the provenance, and a cited run's deck (the electronic contract IS the
     file).
 
-    The geometry's label file is not named literally: it is whatever
-    the codec pairs with :data:`JUNCTION_GEOMETRY`, asked of the codec's
-    own rule (`sidecars.molstruct.sidecar_path_for`).
+    Each name is the catalogue's (`runfiles`, A11).
     """
-    from ..sidecars.molstruct import sidecar_path_for
+    from ..runfiles import JUNCTION_SIDECAR_FILE
     if kind not in CITATION_KINDS:
         raise ValueError(f"record_files: a citation is one of "
                          f"{', '.join(CITATION_KINDS)}, not {kind!r}")
-    return ((JUNCTION_GEOMETRY,
-             sidecar_path_for(Path(JUNCTION_GEOMETRY)).name,
-             PROVENANCE_FILE)
+    return ((JUNCTION_GEOMETRY, JUNCTION_SIDECAR_FILE, PROVENANCE_FILE)
             + ((JUNCTION_DECK,) if kind == "run" else ()))
 
 

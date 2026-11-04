@@ -117,6 +117,7 @@ SIESTA_MD          = ".MD"
 SIESTA_MDE         = ".MDE"
 SIESTA_ANI         = ".ANI"
 SIESTA_BASIS_ENTHALPY = ".BASIS_ENTHALPY"
+SIESTA_FDF_LOG     = "fdf.{stamp}.log"     # every setting SIESTA read
 SIESTA_TSHS        = ".TSHS"               # an electrode's Hamiltonian
 SIESTA_TS_HSX      = ".TS.HSX"             # the device's, read by TBtrans
 SIESTA_TSDE        = ".TSDE"               # the device's NEGF density
@@ -2038,7 +2039,7 @@ ENGINE_FILES: "tuple[EngineFile, ...]" = (
                     "(`WriteCoorXmol`), read as any structure file with the "
                     "box from the run's own deck",
                door="workingcopy_structure.StructureCodec.load"),
-    EngineFile("siesta", name="fdf.{stamp}.log",
+    EngineFile("siesta", name=SIESTA_FDF_LOG,
                what="every setting SIESTA read, and the value it used",
                door="parse.engines.siesta_fdflog.SiestaFdfLogParser"),
     EngineFile("siesta", SIESTA_ORB_INDX,
@@ -2425,6 +2426,25 @@ class GroupNames:
                 f"by its group -- a group's files are the catalogue's")
         return fixed_name(row, group=self.group)
 
+    # WHERE THE GROUP'S FILES LIE -- the launch folder of the folder the group
+    # is launched from (a calculation's root for a task's group or sequence,
+    # a stage's folder for a run of points' walk, a benchmark's container for
+    # its trials; `project-layout.md` § 5.5), composed here alone, as
+    # `calcdirs.RunPlace` composes a run's folders.
+    def path(self, container, row: Optional[str] = None) -> Path:
+        """The group's launch folder in ``container`` -- its ``launch/`` --
+        or, with ``row``, the group's file of that row in it."""
+        folder = Path(container) / LAUNCH_DIR
+        return folder / self.name(row) if row is not None else folder
+
+    def walked(self, row: Optional[str] = None) -> str:
+        """The group's file of ``row`` as named from its container -- by the
+        walk, the scheduler's line and every sentence that names it:
+        ``launch/<group><tail>`` -- or, with no ``row``, its launch folder,
+        ``launch``."""
+        return (f"{LAUNCH_DIR}/{self.name(row)}" if row is not None
+                else LAUNCH_DIR)
+
 
 def roles(*, engines: bool = True) -> "tuple[str, ...]":
     """Every role this module knows -- the catalogue, read as a vocabulary.
@@ -2659,7 +2679,8 @@ def fixed_name(name: str, **fields) -> str:
     :data:`WRITTEN` row's name with fields, as :data:`PSEUDO_FILE`
     (``{species}.psml``) -- composed: every field filled, each checked
     against its declared shape (:data:`FIELDS`).  The counterpart of
-    :func:`fixed_fields`; a name no row writes is :class:`RunFileError`."""
+    :func:`fixed_fields`; a name the catalogue does not name is
+    :class:`RunFileError`."""
     _a_fixed_name(name, "fixed_name")
     wanted = _fields_in(name)
     if set(wanted) != set(fields):
@@ -2676,12 +2697,15 @@ def fixed_name(name: str, **fields) -> str:
 
 
 def _a_fixed_name(name: str, door: str) -> None:
-    """Refuse ``name`` unless a :data:`WRITTEN` row writes it as a FIXED
-    name -- the one check every fixed-name door makes first."""
-    if not any(a.name == name and not a.role for a in WRITTEN):
+    """Refuse ``name`` unless the catalogue names it as a FIXED name -- a
+    :data:`WRITTEN` row's, or an engine's file named whole
+    (:data:`ENGINE_FILES`' ``name``, SIESTA's :data:`SIESTA_FDF_LOG`) --
+    the one check every fixed-name door makes first."""
+    if not (any(a.name == name and not a.role for a in WRITTEN)
+            or any(e.name == name for e in ENGINE_FILES)):
         raise RunFileError(
             f"{door}({name!r}): not a fixed name molbuilder's catalogue "
-            f"writes (`runfiles.WRITTEN`).")
+            f"names (`runfiles.WRITTEN`, `runfiles.ENGINE_FILES`).")
 
 
 def fixed_fields(name: str, filename: str) -> "Optional[dict]":
@@ -2689,7 +2713,8 @@ def fixed_fields(name: str, filename: str) -> "Optional[dict]":
     family ``name``, by their declared shapes (:data:`FIELDS`) --
     ``{"species": "Au1"}`` for ``Au1.psml`` as :data:`PSEUDO_FILE` -- or
     ``None`` when it is no name of that family.  The counterpart of
-    :func:`fixed_name`; a name no row writes is :class:`RunFileError`."""
+    :func:`fixed_name`; a name the catalogue does not name is
+    :class:`RunFileError`."""
     _a_fixed_name(name, "fixed_fields")
     m = _role_pattern(name).match(filename)
     return m.groupdict() if m else None

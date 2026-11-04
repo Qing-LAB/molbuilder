@@ -50,14 +50,13 @@ import re
 import tomllib
 import types
 import typing
-from pathlib import Path as _Path
 from dataclasses import dataclass, field
 from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
                     Optional, Sequence, Tuple, Union)
 
 from .engine_table import engine_of_config
 from .identity import migrate_as_typed, stage_key
-from . import kind_table as _kinds
+from . import data_dir, kind_table as _kinds
 from .persist import check_schema
 from .runfiles import (JOB_REQUEST_FILE, PSEUDO_FILE, ROLE_PYSCF_LOG,
                        SIESTA_XV, TASK_FILE, deck_role, fixed_name)
@@ -1079,7 +1078,7 @@ def _item_payload(it: Item) -> Dict[str, Any]:
 
 #: The MASTER file — every parameter both engines declare (§ 4.3).  Shipped
 #: with the package; authored as TOML, never generated.
-CATALOGUE = _Path(__file__).resolve().parent / "data" / "catalogue.template.toml"
+CATALOGUE = data_dir() / "catalogue.template.toml"
 
 
 def load_catalogue() -> str:

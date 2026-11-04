@@ -919,8 +919,10 @@ calculation's copy of its machine's record, a run's files and the template.
   never written over: a migration that would is refused, nothing written. A file
   it only names anew keeps every byte, and nothing is kept beside it.
 - **Each change is said, with its rule**, and written in the calculation's
-  ledger. A migration stopped by a rename that failed says so and writes, in the
-  ledger, what it had done.
+  ledger. Its writes are one plan, carried out in order — each kept file, each
+  rewrite through its record's own writer, then each rename; a migration
+  stopped by a write or a rename that failed says so and writes, in the
+  ledger, what it had done and where it stopped.
 - **A calculation holding nothing an older molbuilder wrote is current, and said
   so** — `<calc> is current -- nothing to migrate: …`, what was checked, no
   failure; the ledger records `migrate` `current` *(the user, 2026-10-22:
@@ -934,6 +936,7 @@ calculation's copy of its machine's record, a run's files and the template.
 | a run setting in the template | onto the calculation's run card (2) |
 | `restart` or `density_fit` on a run card | into the description (3) |
 | a run setting a release retired | taken off (4) |
+| a job key nothing reads — `asked`, `written_at` | taken off (4a) |
 | older keys of `task.json` and `job-set.json` | written with the meaning their absence had (5) |
 | the calculation's copy of its machine's record | today's shape (6) |
 | a run named by the try (`<stem>-run0<role>`) | each file named once (7) |
@@ -954,6 +957,11 @@ calculation's copy of its machine's record, a run's files and the template.
    out of each job's resources in `job-set.json`, saying why. A job set that
    held one names each group's prep again — a benchmark's prep anew where a
    trial is not yet launched.
+4a. `jobset.model.JOB_RETIRED_KEYS`: a job's `asked`, which 2.41.0 retired,
+   and its `written_at`, which 2.42.0 retired — read by nothing since, and
+   left in place by the migrations before 2.65.7. The job set's reader
+   refuses a job holding either, naming this command, which takes it out of
+   each job, saying so, the old file kept as written before 2.65.7.
 5. Among them each stage's `group`, the program onto the job (`Job.program`),
    and a placement's source `description` as `allocation`.
 6. Its scheduler as a block — the word it held becomes its kind, each command

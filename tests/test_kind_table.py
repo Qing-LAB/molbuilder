@@ -51,6 +51,27 @@ def test_every_part_a_kind_s_description_names_resolves(calculation, key):
     assert kind_table.description_part(calculation, key) is not None
 
 
+_KIND_PARTS = [(k, key) for k in kind_table.kinds()
+               for key in ("validator", "description_checks", "export")
+               if getattr(kind_table.kind(k), key) is not None]
+
+
+@pytest.mark.parametrize("calculation, key", _KIND_PARTS,
+                         ids=[f"{k}-{key}" for k, key in _KIND_PARTS])
+def test_every_part_a_kind_names_resolves(calculation, key):
+    """Every code part a kind names of its own -- its science checks, its
+    description's checks, the module that exports its results with every
+    door `jobset export` asks of it (`kind_table.EXPORT_DOORS`) -- resolves
+    on the floor that asks (`execution/architecture.md` § 3.3).  THE SILENT
+    FAILURE: a kind's export or check moved, found only when a person
+    exports or prepares."""
+    if key == "export":
+        assert kind_table.export_of(calculation) is not None
+    else:
+        ref = getattr(kind_table.kind(calculation), key)
+        assert kind_table.part(ref, record=calculation, key=key) is not None
+
+
 #: (calculation, engine, stage, the order its deck lists atoms in) -- the
 #: pair's word (`execution/architecture.md` § 3.3: a SIESTA vibration's held
 #: atoms first, a transport calculation's TranSIESTA order), none on a lead

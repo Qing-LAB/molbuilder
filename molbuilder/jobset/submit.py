@@ -67,8 +67,9 @@ from .model import (KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources,
 from .continuation import Continuation, relaunch
 from .planned import Plan, found
 from ..identity import jobs_as_typed
-from ..runfiles import (GROUP_LOG, LAUNCH_DIR, ROLE_RUN_SCRIPT,
-                        ROLE_SESSION_LOG, GroupNames, RunNames)
+from ..runfiles import (GROUP_HEADER, GROUP_LOG, GROUP_RUN_SCRIPT,
+                        ROLE_RUN_SCRIPT, ROLE_SESSION_LOG, GroupNames,
+                        RunNames)
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           gather_into, hand_over, latest_attempt,
                           newest_launched)
@@ -2024,14 +2025,11 @@ def _ride(inside: Inside, s: "Submission") -> Optional[str]:
 
 def _job_members(s: "Submission") -> Dict[str, Dict[str, str]]:
     """Each member's run as a job's address names it (`joblist.Job`): as a
-    record names a run (`runrecord.RunRef`), its folder -- and its launch
-    record's path from the calculation's folder, which its state is asked
-    through (`job-system.md` § 6.0a)."""
-    from ..runrecord import RunRef, launch_record_path
-    return {m.name: {
-        "run": str(RunRef.at(m.base, m.run_dir)),
-        "launch_record": _rel(launch_record_path(m.run_dir), m.base)}
-        for m in s.members}
+    record names a run (`runrecord.RunRef`), its folder -- whose launch
+    record its state is asked through (`job-system.md` § 6.0a)."""
+    from ..runrecord import RunRef
+    return {m.name: {"run": str(RunRef.at(m.base, m.run_dir))}
+            for m in s.members}
 
 
 def _ended_within(proc) -> bool:
@@ -2510,23 +2508,20 @@ def _send_as_one_job(plan: LaunchPlan, *, gn: GroupNames, container: Path,
     fields (its ``rides``, a refusal's hint, a sequence's record and
     preview).  The submission is added to ``plan`` and returned."""
     base, mode = plan.base, plan.mode
-    launch_dir = container / LAUNCH_DIR
-    walk = f"{LAUNCH_DIR}/{gn.run_script}"
     if mode != "ask":
-        open_container(base, launch_dir, plan.writes)
-        plan.writes.text(container / walk, script)
+        open_container(base, gn.path(container), plan.writes)
+        plan.writes.text(gn.path(container, GROUP_RUN_SCRIPT), script)
     if mode == "direct":
-        sub = Submission(gn.stem, ["bash", walk], container, True,
-                         list(members),
-                         log=container / LAUNCH_DIR / gn.name(GROUP_LOG),
-                         **extra)
+        sub = Submission(gn.stem, ["bash", gn.walked(GROUP_RUN_SCRIPT)],
+                         container, True, list(members),
+                         log=gn.path(container, GROUP_LOG), **extra)
         plan.submissions.append(sub)
         return sub
-    header = launch_dir / gn.header
+    header = gn.path(container, GROUP_HEADER)
     if _needs_header(mode, machine) and not header.is_file():
         raise SubmitError(
             missing_header if missing_header and machine.kind.queue
-            else _no_sbatch(what, f"{LAUNCH_DIR}/{gn.header}",
+            else _no_sbatch(what, gn.walked(GROUP_HEADER),
                             base=base, told=told, machine=machine,
                             redo=redo))
     if header.is_file():
@@ -2534,7 +2529,7 @@ def _send_as_one_job(plan: LaunchPlan, *, gn: GroupNames, container: Path,
     sent, placement, cmd, outputs_in = _sbatch_request(
         header=header, placement=_placed_by_prep(jobs), time_s=time_s,
         job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.header}", run_args=(),
+        script=gn.walked(GROUP_HEADER), run_args=(),
         machine=machine)
     sub = Submission(gn.stem, cmd, container, False, list(members),
                      placement=placement, sent=sent, header=header,
@@ -2562,7 +2557,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     script = _walk_script(
         gn.stem, _walk_of(pending, container),
         where="this benchmark's unlaunched trials, run here",
-        log=f"{LAUNCH_DIR}/{gn.name(GROUP_LOG)}", bound_s=trial_timeout_s,
+        log=gn.walked(GROUP_LOG), bound_s=trial_timeout_s,
         walls=[_wall_s(m.job.resources) for m in pending])
     _send_as_one_job(plan, gn=gn, container=container, script=script,
                      members=pending, jobs=[m.job for m in pending],
@@ -2592,7 +2587,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     script = _walk_script(
         names.stem, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
-        log=f"{LAUNCH_DIR}/{names.name(GROUP_LOG)}", bound_s=trial_timeout_s)
+        log=names.walked(GROUP_LOG), bound_s=trial_timeout_s)
     # A SHELF THE SCHEDULER REFUSES keeps its trials pending -- no launch
     # record -- so launching the benchmark again sends exactly them, the
     # record the launch writes as it sends a shelf keeping the next launch
@@ -2932,7 +2927,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                       place.walked_all(c.point.rel),
                       WalkLoop(run_sh=names.run_script,
                                args=" ".join(_counts_of(job.resources)),
-                               skip=tuple(Path(pt.rel).name
+                               skip=tuple(place.point(pt.rel).name
                                           for _p, pt in taken
                                           if pt.rel in is_planned
                                           and entries[pt.rel]["planned_by"]
@@ -3006,7 +3001,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     gn = GroupNames.of_points(names.stem)
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s run of points, {run.name}",
-        member_word="step", log=f"{LAUNCH_DIR}/{gn.name(GROUP_LOG)}",
+        member_word="step", log=gn.walked(GROUP_LOG),
         needs=(needs if any(needs) else None),
         empties=empties, empty_at_end=scratch_at,
         walls=([_wall_s(job.resources)] * len(steps)
@@ -3080,8 +3075,8 @@ def _all_done(calc, stage: str, prev: Path, names, record, launch) -> None:
     naming `--cold` (§ 3, op. 17)."""
     from .continuation import points_state
     base = Path(calc.base)
-    state, _detail, _rows = points_state(prev, names, calc.task, stage,
-                                         launch=launch, base=base)
+    state, _detail, _rows = points_state(prev, names, calc, stage,
+                                         launch=launch)
     if state != "finished":
         return
     raise SubmitError(
@@ -3256,10 +3251,11 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
             # "a run of points, its points"), its points told their walls
             # by it.
             w = _points_walk(plan, m, calc, mode=mode, inside=inside)
-            walk = f"{LAUNCH_DIR}/{w.gn.run_script}"
+            walk = w.gn.walked(GROUP_RUN_SCRIPT)
             if mode != "ask":
-                open_container(base, w.stage_dir / LAUNCH_DIR, plan.writes)
-                plan.writes.text(w.stage_dir / walk, w.script)
+                open_container(base, w.gn.path(w.stage_dir), plan.writes)
+                plan.writes.text(w.gn.path(w.stage_dir, GROUP_RUN_SCRIPT),
+                                 w.script)
             m = w.member
             steps.append((m.name, str(w.stage_dir.relative_to(base)), walk,
                           "", ()))
@@ -3278,7 +3274,7 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     script = _walk_script(
         gn.stem, steps,
         where="a group's one job: " + ", ".join(names),
-        member_word="stage", log=f"{LAUNCH_DIR}/{gn.name(GROUP_LOG)}",
+        member_word="stage", log=gn.walked(GROUP_LOG),
         walls=walls if _own_walls(mode, inside) else None)
     # SENT AS ONE JOB (:func:`_send_as_one_job`), through the header the
     # group's prep wrote -- `--mode ask` asks over that line itself.
@@ -3358,7 +3354,6 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     (`sequence.Record`), both before the job goes, since the job reads
     them."""
     import shlex
-    from ..runfiles import LAUNCH_DIR
     from .commands import block, prep_sequence_lines
     from .group import sequence_names
     from .ready import held_by_sequence
@@ -3400,7 +3395,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                                 f"builds on then"))
                 for i, g in enumerate(groups[1:])]
     plan = LaunchPlan(base, mode, [])
-    log = f"{LAUNCH_DIR}/{names.name(GROUP_LOG)}"
+    log = names.walked(GROUP_LOG)
     rec_path = record_path(base, names)
     # THE WALK: each group's launch, in order, the first that does not
     # finish ending it -- molbuilder in its own environment, entered by the
@@ -3441,7 +3436,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
         what=f"groups {words}",
         missing_header=(
             f"groups {words} go as one job, and prep wrote no header for "
-            f"them ({LAUNCH_DIR}/{names.header}) -- prepare them "
+            f"them ({names.walked(GROUP_HEADER)}) -- prepare them "
             f"as one job first:\n"
             + block(prep_sequence_lines(numbers, base=base))
             + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)"),

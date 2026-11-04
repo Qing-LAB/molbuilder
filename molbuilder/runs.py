@@ -1119,7 +1119,7 @@ def _container_product(folder: Path, place: Place, label: str,
             attempts.append(f"*{_rf.TASK_FILE}: {rec.with_article}'s "
                             f"report, composed on read from this folder")
             return str(handle)
-    sweep = folder / _rf.JOBSET_FILE
+    sweep = calcdirs.plan_path(folder)
     if claimed(str(sweep)):
         attempts.append(f"*{_rf.JOBSET_FILE}: a benchmark's sweep, its "
                         f"trials compared")

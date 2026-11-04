@@ -27,8 +27,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from . import data_dir
+
 #: The file, beside the parameter catalogue.
-TABLE_FILE = Path(__file__).resolve().parent / "data" / "engine_table.toml"
+TABLE_FILE = data_dir() / "engine_table.toml"
 
 #: What an engine computes the atoms in: the structure's own cell, or one
 #: molecule in free space whatever the cell.

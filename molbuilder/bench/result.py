@@ -297,12 +297,16 @@ class BenchResult:
 
     @classmethod
     def from_dict(cls, d: dict) -> "BenchResult":
-        from ..persist import check_schema
+        from ..persist import check_keys, check_schema
         check_schema(str(d.get("schema", "")), SCHEMA,
                            label="bench-result")
-        pt_fields = {f for f in BenchPoint.__dataclass_fields__}
-        points = [BenchPoint(**{k: v for k, v in p.items() if k in pt_fields})
-                  for p in (d.get("points") or [])]
+        # A KEY THIS READER DOES NOT READ is refused, at the top and in each
+        # trial, as the plan's readers refuse one (`jobset.model`).
+        check_keys("bench-result", d, tuple(cls().to_dict()), needed=())
+        pt_fields = tuple(BenchPoint.__dataclass_fields__)
+        for p in (d.get("points") or []):
+            check_keys("bench-result's trial", p, pt_fields, needed=())
+        points = [BenchPoint(**p) for p in (d.get("points") or [])]
         return cls(
             environment=d.get("environment") or {},
             system=d.get("system") or {},

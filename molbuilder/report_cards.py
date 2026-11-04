@@ -26,9 +26,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:                                        # inside molbuilder
-    from . import report_fields as _fields
+    from . import data_dir as _data_dir, report_fields as _fields
     from .config_dir import config_dir as _config_dir
-    _HERE = Path(__file__).parent / "data"
+    _HERE = _data_dir()
 except ImportError:                         # beside the job
     import report_fields as _fields
     from config_dir import config_dir as _config_dir

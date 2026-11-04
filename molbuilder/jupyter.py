@@ -451,7 +451,8 @@ class JupyterRules:
 
 def rules_path() -> Path:
     """Where the table lives.  Shipped by `pyproject.toml`'s ``data/*.toml``."""
-    return Path(__file__).resolve().parent / "data" / "jupyter.toml"
+    from . import data_dir
+    return data_dir() / "jupyter.toml"
 
 
 def load_rules() -> JupyterRules:
@@ -680,6 +681,7 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
     """
     import json
     import shutil
+    from . import data_dir
     from .config_dir import ensure_private_dir, jupyter_lab_home
     rules = load_rules()
     home = ensure_private_dir(jupyter_lab_home())
@@ -707,12 +709,13 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
     # not have).  An ABSOLUTE `config_file` is then loaded INSTEAD of
     # searching the config path, so the framed server does not read a personal
     # `~/.jupyter/jupyter_server_config.py` either.
+    data = data_dir()
     for opt, name in rules.lab_config.items():
-        src = rules_path().parent / name
+        src = data / name
         if not src.is_file():
             raise JupyterRulesError(
                 f"{rules.path}: [lab.config] names {name!r}, which is not in "
-                f"{src.parent}.  It ships with molbuilder (`pyproject.toml`, "
+                f"{data}.  It ships with molbuilder (`pyproject.toml`, "
                 f"`data/*.py`).")
         dst = home / name
         shutil.copyfile(src, dst)
@@ -770,6 +773,7 @@ def run_shepherd(serve_port: int) -> int:
     Runs in the foreground of its own process; the SUPERVISOR is what puts it
     in the background, and what it is parented to.
     """
+    from . import repo_root
     from .diagnostics import get_capabilities
     from .envs.builds import dispatch_into_env
     from .envs.recipes import effective_name, recipe_by_name
@@ -854,7 +858,7 @@ def run_shepherd(serve_port: int) -> int:
     # imports the molbuilder that wrote the files it reads
     # (`molbuilder.postprocess`), nothing installed into this env
     # (`web/jupyter.md` § 7).
-    source = str(Path(__file__).resolve().parent.parent)
+    source = str(repo_root())
     env["PYTHONPATH"] = os.pathsep.join(
         [source] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep)
                     if p and p != source])

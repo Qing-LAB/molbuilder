@@ -85,7 +85,7 @@ def export(calc, fmt: str) -> Exported:
         # WHAT EXISTS, as the Results tab reads a ladder in progress: a
         # point not done is the fill value (`done` 0).
         record = collect_record(calc, partial=True)
-        name, data = data_file_bytes(calc.base, calc.task, record)
+        name, data = data_file_bytes(calc, record)
     except (RecordError, ComposeError, DataFileError, OSError,
             ValueError) as exc:
         raise ExportError(str(exc)) from exc

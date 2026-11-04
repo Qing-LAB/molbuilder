@@ -465,21 +465,22 @@ def _index(v: float, voltages: Sequence[float]) -> int:
     return k
 
 
-def write_data_file(base_dir, task, record: Dict, *,
+def write_data_file(calc, record: Dict, *,
                     readings: Sequence[Dict] = ()) -> Path:
     """Write ``<label>.transport.nc`` from ``record`` (:func:`data_file_bytes`,
     ``readings`` as it takes them) beside the calculation's record; returns
     its path -- `summarize task`'s deliverable."""
     from ..persist import write_bytes
-    name, data = data_file_bytes(base_dir, task, record, readings=readings)
-    out = Path(base_dir) / name
+    name, data = data_file_bytes(calc, record, readings=readings)
+    out = Path(calc.base) / name
     write_bytes(out, data)
     return out
 
 
-def data_file_bytes(base_dir, task, record: Dict, *,
+def data_file_bytes(calc, record: Dict, *,
                     readings: Sequence[Dict] = ()) -> "Tuple[str, bytes]":
-    """``<label>.transport.nc`` from ``record`` -- the composition
+    """``<label>.transport.nc`` of the opened calculation ``calc`` from
+    ``record`` -- the composition
     `record.collect_record` answers -- and the calculation's composed
     junction, as ``(its name, its bytes)``, written nowhere: `summarize
     task` writes them (:func:`write_data_file`), an export hands them out
@@ -497,7 +498,7 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     from .stages import (TRANSPORT_STAGES, frames_of,
                          per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
-    base = Path(base_dir)
+    base, task = Path(calc.base), calc.task
     # A READING JUST TRIED AND NOT KEPT, in its outcome's words -- never
     # read as one not tried (`tbtnc.read_points`).
     tried = {o["file"]: o["said"] for o in readings
@@ -725,8 +726,8 @@ def data_file_bytes(base_dir, task, record: Dict, *,
             (record.get("provenance") or {}).get("chain") or []),
         # THE CALCULATION'S OWN RECORDS, as they read when the file was
         # written -- its description, its template, its job request -- each
-        # through its door's path, the file's text.
-        **_records_of(base, task),
+        # from its owner (`_records_of`).
+        **_records_of(calc),
     }
     slot = ((record.get("provenance") or {}).get("slot") or {})
     for key in ("citation", "kind"):
@@ -774,21 +775,16 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     return data_file_path(base, attrs["label"]).name, data
 
 
-def _records_of(base: Path, task) -> Dict[str, str]:
-    """``{description, template, job_request}`` -- the calculation's own
-    records' texts, each found by its owner's door (`task.path_of`,
-    `template_file.template_path`, `job_request.path_of`); one not there is
-    not stated."""
-    from ..job_request import path_of as request_path
-    from ..task import path_of as task_path
-    from ..template_file import template_path
-    out = {}
-    for name, path in (("description", task_path(base)),
-                       ("template", template_path(base, task.label)),
-                       ("job_request", request_path(base))):
-        if Path(path).is_file():
-            out[name] = Path(path).read_text(encoding="utf-8")
-    return out
+def _records_of(calc) -> Dict[str, str]:
+    """``{description, template, job_request}`` -- the opened calculation's
+    own records as read (`architecture.md` A16): its description and its job
+    request in the text their writers write (`persist.json_text`, as
+    `task.write_task` and `job_request.write` write them), so a hand edit's
+    spacing is not kept; its template's text."""
+    from ..persist import json_text
+    return {"description": json_text(calc.task.to_dict()),
+            "template": calc.template.text,
+            "job_request": json_text(calc.request.to_dict())}
 
 
 def _device_facts(device: Dict, runs: Sequence[Dict],

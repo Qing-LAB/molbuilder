@@ -196,7 +196,7 @@ def held_by(calc, stage: str) -> List[Held]:
     if home.dir is None or not home.dir.is_dir():
         return []
     out: List[Held] = []
-    for _n, folder, pt in run_folders(base, task, home.dir, home.name):
+    for _n, folder, pt in run_folders(calc, home.dir, home.name):
         run = run_of(folder)
         if run is None:
             continue

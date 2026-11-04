@@ -44,13 +44,11 @@ Geometry conventions for the nanojunction workflow:
 from __future__ import annotations
 
 import json as _json
-import os as _os
-from pathlib import Path as _Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from . import cell as _cell
+from . import cell as _cell, data_dir
 from .structure import (FROZEN_LABEL, Structure, atom_words, copy_annotations,
                         remap_annotations)
 
@@ -521,10 +519,9 @@ def rotate_around_axis(
 # Supported FCC metals for electrode construction.
 #
 # The actual lattice-constant values live in ``molbuilder/data/fcc_lattice.json``
-# (with the citation chain in ``molbuilder/data/README.md``); this module
-# loads them at import time.  Keeping the values out of source code means a
-# user can edit the JSON to override a constant (or pass an in-tree DFT-
-# equilibrium value) without touching code.
+# (with the citation chain in ``molbuilder/data/README.md``) -- the package's
+# one table, read where it is first needed: two literature references a
+# reviewer checks against their sources without reading code.
 #
 # The list is **deliberately closed** to the canonical metal-electrode
 # materials used in single-molecule junction / NEGF transport DFT work.
@@ -536,21 +533,6 @@ def rotate_around_axis(
 # parallel data file (``bcc_lattice.json`` / ``hcp_lattice.json``) and a
 # sibling ``add_slab_bcc`` / ``..._hcp`` function rather than
 # overloading this one.  Same closed-list rule applies.
-
-
-def _data_dir_candidates() -> List[_Path]:
-    """Search order for fundamental-data files.
-
-    1. ``$MOLBUILDER_DATA_DIR`` if set (user override that survives
-       ``pip install --upgrade``).  See ``molbuilder/data/README.md``.
-    2. The packaged ``molbuilder/data/`` directory.
-    """
-    candidates: List[_Path] = []
-    env = _os.environ.get("MOLBUILDER_DATA_DIR")
-    if env:
-        candidates.append(_Path(env))
-    candidates.append(_Path(__file__).parent / "data")
-    return candidates
 
 
 def load_fcc_lattice_full() -> dict:
@@ -568,74 +550,43 @@ def load_fcc_lattice_full() -> dict:
     read from that run's result instead (``POST
     /api/modify/lattice-from-run``).
 
-    **v2 files load too**, carrying a column this returns nothing for: a
-    user's overriding data dir must not stop working over a column they
-    never filled.  v1 ("a" only) raises.
+    The table is the package's own (`molbuilder.data_dir`, A10: one place,
+    never a search); one that does not read is refused with its path.
     """
-    for candidate_dir in _data_dir_candidates():
-        path = candidate_dir / "fcc_lattice.json"
-        if not path.is_file():
-            continue
-        # A FILE THAT IS THERE AND UNREADABLE IS A REFUSAL, NEVER A FALLBACK.
-        #
-        # Only ABSENCE continues to the next candidate (above): the env dir
-        # not holding this file is a legitimate state, and the packaged table
-        # is the answer.  A file that EXISTS is a statement of intent -- the
-        # README tells people to copy the JSON to `$MOLBUILDER_DATA_DIR` and
-        # edit it -- so failing to read it and quietly using the packaged
-        # numbers answers a question they did not ask: an override with one
-        # trailing comma would hand somebody who typed 4.20 the packaged
-        # Au = 4.0782, with no warning, under a radio labelled "Experimental"
-        # (measured 2026-09-22).  Every malformation raises, with the path.
+    path = data_dir() / "fcc_lattice.json"
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            data = _json.load(fh)
+    except (_json.JSONDecodeError, OSError) as exc:
+        raise RuntimeError(
+            f"failed to read FCC lattice table at {path!s}: {exc}") from exc
+    if not isinstance(data, dict) or "metals" not in data:
+        raise RuntimeError(
+            f"FCC lattice table at {path!s} missing required 'metals' key")
+    fmt = data.get("_format", "")
+    if "v3" not in fmt:
+        raise RuntimeError(
+            f"FCC lattice table at {path!s} is not v3 (got {fmt!r}).  Each "
+            f"metal carries a_experimental and a_pbe.")
+    metals: dict = {}
+    for sym, entry in data["metals"].items():
         try:
-            with open(path, encoding="utf-8-sig") as fh:
-                data = _json.load(fh)
-        except (_json.JSONDecodeError, OSError) as exc:
+            a_exp = float(entry["a_experimental"])
+            a_pbe = float(entry["a_pbe"])
+        except (KeyError, TypeError, ValueError) as exc:
             raise RuntimeError(
-                f"failed to read FCC lattice table at {path!s}: {exc}.  "
-                f"This file was found and could not be used -- fix it or "
-                f"remove it; molbuilder will not fall back to the packaged "
-                f"table and use numbers you did not ask for."
+                f"FCC lattice entry {sym!r} in {path!s} is malformed: {exc}"
             ) from exc
-        if not isinstance(data, dict) or "metals" not in data:
-            raise RuntimeError(
-                f"FCC lattice table at {path!s} missing required 'metals' "
-                f"key.  Fix it or remove it; molbuilder will not fall back "
-                f"to the packaged table and use numbers you did not ask for."
-            )
-        fmt = data.get("_format", "")
-        if not ("v2" in fmt or "v3" in fmt):
-            raise RuntimeError(
-                f"FCC lattice table at {path!s} is neither v2 nor v3 (got "
-                f"{fmt!r}).  Each metal must carry a_experimental and "
-                f"a_pbe."
-            )
-        metals: dict = {}
-        for sym, entry in data["metals"].items():
-            try:
-                a_exp = float(entry["a_experimental"])
-                a_pbe = float(entry["a_pbe"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise RuntimeError(
-                    f"FCC lattice entry {sym!r} in {path!s} is malformed: {exc}"
-                ) from exc
-            metals[sym] = {
-                "a_experimental": a_exp,
-                "a_pbe":          a_pbe,
-                "name":           entry.get("name", sym),
-                "system":         entry.get("system", "fcc"),
-            }
-        if not metals:
-            raise RuntimeError(
-                f"FCC lattice table at {path!s} contains zero entries"
-            )
-        return metals
-    # NOT FOUND ANYWHERE is the only way out of the loop: every other
-    # failure raises where it happens, with the path that caused it.
-    raise RuntimeError(
-        f"could not locate fcc_lattice.json under any of: "
-        f"{[str(p) for p in _data_dir_candidates()]}"
-    )
+        metals[sym] = {
+            "a_experimental": a_exp,
+            "a_pbe":          a_pbe,
+            "name":           entry.get("name", sym),
+            "system":         entry.get("system", "fcc"),
+        }
+    if not metals:
+        raise RuntimeError(f"FCC lattice table at {path!s} contains zero "
+                           f"entries")
+    return metals
 
 
 def _load_fcc_lattice() -> dict:
@@ -649,9 +600,8 @@ def _load_fcc_lattice() -> dict:
 
 
 # Closed list of supported FCC electrode metals.  Hardcoded (rather
-# than derived from ``fcc_lattice.json``) so a missing or
-# misconfigured ``MOLBUILDER_DATA_DIR`` doesn't crash module import
-# (SP-C).  The JSON file holds the lattice CONSTANTS for these
+# than derived from ``fcc_lattice.json``) so the table is read only where
+# a lattice constant is needed, never at module import (SP-C).  The JSON file holds the lattice CONSTANTS for these
 # elements; membership in the closed list is a design decision
 # (Au / Ag / Cu / Ni / Pt / Pd are the typical molecular-electronics
 # choices) and lives here.  Adding a new metal is a two-step change:

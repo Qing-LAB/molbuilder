@@ -114,14 +114,11 @@ silently-chosen one produces an answer that cannot be checked without reading
 the source. The gap must use **the same $a$ the slab was built with**, which
 is why the derivation reads the built slab rather than a table.
 
-**A data file the user placed is honoured or refused, never half-read.**
-`$MOLBUILDER_DATA_DIR/fcc_lattice.json` overrides the packaged table. If it is
-absent, the packaged table answers. If it is *present and unreadable* — a
-syntax error, a missing `metals` key — loading **refuses by name**. It used to
-fall through to the packaged numbers for two of the four malformations:
-measured 2026-09-22, an override with one trailing comma returned Au = 4.0782
-to someone who had typed 4.20, with no warning, and the panel then showed
-4.0782 under a radio labelled "Experimental".
+**The table is read whole or refused, never half-read.** The package's
+`fcc_lattice.json` is the one table (`molbuilder.data_dir`, A10); one that does
+not read — a syntax error, a missing `metals` key, not v3 — is refused by its
+path. A lattice constant of your own comes from your relaxed bulk run, read by
+the Modify tab (`POST /api/modify/lattice-from-run`).
 
 ---
 

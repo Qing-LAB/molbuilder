@@ -81,9 +81,8 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     from dataclasses import replace
     from ..scheduler.record import LOCAL_TARGET
     env = replace(environment, machine=target or LOCAL_TARGET)
-    from ..persist import json_text
-    plan.text(out, json_text(env.to_dict()))
-    return out
+    from ..scheduler.record import write_environment
+    return write_environment(env, out, plan=plan)
 
 
 def _no_record() -> PrepError:
@@ -128,23 +127,25 @@ def require_activation(target: Optional[str], environment,
     a path that exists only here (2026-08-24).
     """
     from ..identity import checkpoint_words
-    from ..scheduler.record import (LOCAL_TARGET, calculation_record,
-                                    probe_command, probe_steps)
+    from ..scheduler.record import (CALCULATION_SCOPE, LOCAL_TARGET,
+                                    calculation_record, probe_command,
+                                    probe_steps)
     if (getattr(environment, "env_init", None) or {}).get("activation"):
         return
     here = target in (None, LOCAL_TARGET)
-    own = calculation_record(base) if base is not None else None
-    if own is not None and own.is_file():
-        # THE CALCULATION'S OWN COPY ANSWERED (`configuration.md` § 5 M-3):
-        # taken at its first prep and never replaced, so no probe reaches it.
+    if (base is not None
+            and getattr(environment, "scope", None) == CALCULATION_SCOPE):
+        # THE CALCULATION'S OWN COPY ANSWERED (`configuration.md` § 5 M-3),
+        # as `machine_for` says with the record: taken at its first prep and
+        # never replaced, so no probe reaches it.
+        own = calculation_record(base)
         raise PrepError(
             f"this calculation's record of its machine, {own}, does not say "
             f"how a shell enters an environment there -- it was copied at the "
             f"calculation's first prep and is never replaced, so a probe does "
-            f"not reach it (a copy taken before 2026-10-02 names it "
-            f"`script_generation`).  Rename that key to `env_init` in it, or "
-            f"go back to the state saved before the calculation's first prep "
-            f"({checkpoint_words(base)}) and prep anew."
+            f"not reach it.  Go back to the state saved before the "
+            f"calculation's first prep ({checkpoint_words(base)}) and prep "
+            f"anew."
             + ("" if here else f"  Name the machine again: --target {target}."))
     whose = "this machine's record" if here else f"the record of {target!r}"
     raise PrepError(

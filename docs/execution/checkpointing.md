@@ -1448,8 +1448,10 @@ root and every stage beneath it. Three reasons it sits there:
   own without a history of their own.
 
 A folder whose subfolders hold working directories is accepted only when it
-carries its description — `task.json` or `job-set.json`, which say *these are my
-stages* — so a topic folder of independent calculations is refused, since they
+carries its description — `task.json`, which says *these are my stages*
+(`calcdirs.described`); a plan alone marks no root — a benchmark's container
+holds its own plan, and its history is its calculation's — so a topic folder
+of independent calculations is refused, since they
 would share a history and rewind together. A subfolder that is already a
 repository is refused: a history inside a history cannot be restored
 consistently.

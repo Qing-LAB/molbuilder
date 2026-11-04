@@ -36,7 +36,7 @@ import shutil
 import subprocess
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Mapping, Optional, Tuple
 
 from ..identity import checkpoint_words, migrate_as_typed
 
@@ -428,6 +428,14 @@ class Environment:
     #: it (`configuration.md` M-3; user, 2026-10-02: *"when a machine is set
     #: for a job, it is set, no changing"*).
     machine:   Optional[str] = None
+    #: WHERE :func:`machine_for` FOUND IT -- the label of the scope that
+    #: answered (:func:`record_scopes`: :data:`CALCULATION_SCOPE`,
+    #: ``"target:<name>"``, ``"machine"``), set on the record it hands out,
+    #: so a refusal says whose record it read without a second look
+    #: (`configuration.md` § 5); ``None`` for a record read by its path.
+    #: Where it was found, not what it says: no field of the record, so
+    #: nothing writes, compares or prints it.
+    scope: ClassVar[Optional[str]] = None
 
     def __post_init__(self):
         # THE SCHEDULER IS STATED -- a kind `kinds.toml` holds, and where its
@@ -987,6 +995,8 @@ def calculation_environment(bundle_dir) -> Optional["Environment"]:
     env = read_environment(path)
     if env is None and path.is_file():
         raise UnknownTarget.unreadable_copy(bundle_dir)
+    if env is not None:
+        env.scope = CALCULATION_SCOPE
     return env
 
 
@@ -1191,6 +1201,11 @@ def choice_required(machines=None) -> bool:
     return any(m["kind"] == "target" for m in ms)
 
 
+#: The scope label of the calculation's own copy of its machine's record
+#: (:func:`record_scopes`, :attr:`Environment.scope`).
+CALCULATION_SCOPE = "calculation"
+
+
 def record_scopes(bundle_dir=None,
                   target: Optional[str] = None) -> List[Tuple[str, Path]]:
     """**Where a machine record may live, in precedence order** — the one
@@ -1207,7 +1222,7 @@ def record_scopes(bundle_dir=None,
     """
     scopes: List[Tuple[str, Path]] = []
     if bundle_dir is not None:
-        scopes.append(("calculation", calculation_record(bundle_dir)))
+        scopes.append((CALCULATION_SCOPE, calculation_record(bundle_dir)))
     if target is not None:
         known = named_environments()
         if target in known:
@@ -1294,16 +1309,19 @@ def older_record(raw) -> bool:
         return False
 
 
-def write_environment(env: "Environment", path) -> Path:
+def write_environment(env: "Environment", path, *, plan=None) -> Path:
     """The record to ONE path, atomically.  Returns the path written.
 
     Through ``persist.write_json``, the shared writer: 2-space indent,
     trailing newline, and the unique-temp + ``os.replace`` that keeps two
-    writers from colliding.
+    writers from colliding -- or into ``plan`` (`jobset.planned.Plan`),
+    which writes it when it is carried out.
 
     Takes the **file** for the same reason the reader does.
     """
-    from ..persist import write_json
+    from ..persist import json_text, write_json
+    if plan is not None:
+        return plan.text(Path(path), json_text(env.to_dict()))
     return write_json(Path(path), env.to_dict())
 
 
@@ -1532,7 +1550,8 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None
                 ) -> Optional["Environment"]:
     """**The precedence, entire** — the one function a caller asks.
 
-    Walks :func:`record_scopes` and returns the first record that reads.  The
+    Walks :func:`record_scopes` and returns the first record that reads,
+    saying which scope answered (:attr:`Environment.scope`).  The
     first one found is the whole answer: **there is no field-level merge**, and
     that is the rule rather than an omission.  Two partial records blended at
     read time would describe a machine that exists in no file, and it would
@@ -1605,20 +1624,21 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None
         if env is None:
             # THE CALCULATION'S OWN COPY, there and unreadable, is an error,
             # not a miss: the next scope is another machine's answer.
-            if label == "calculation" and Path(path).is_file():
+            if label == CALCULATION_SCOPE and Path(path).is_file():
                 raise UnknownTarget.unreadable_copy(bundle_dir)
             continue
-        if label == "calculation" and env.machine is None:
+        if label == CALCULATION_SCOPE and env.machine is None:
             # A COPY THAT NAMES NO MACHINE is no answer to *which machine*:
             # an explicit error, never any target's (the user, 2026-10-25).
             raise UnknownTarget.unnamed_copy(bundle_dir)
-        if label == "calculation" and target is not None \
+        if label == CALCULATION_SCOPE and target is not None \
                 and env.machine != target:
             # SET AT ITS FIRST PREP, AND IT DOES NOT CHANGE (M-3; user,
             # 2026-10-02).  The copy names its machine, so the check is a
             # name: `this` is checked like any other, and a re-probe of the
             # calculation's own machine is no conflict.
             raise UnknownTarget.conflict(target, env.machine, bundle_dir)
+        env.scope = label
         return env
     return None
 

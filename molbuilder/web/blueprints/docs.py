@@ -27,6 +27,8 @@ from typing import Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 
+from ... import repo_root
+
 bp = Blueprint("docs", __name__)
 
 # The only file types /api/docs/img will serve (second belt after the
@@ -42,8 +44,7 @@ def _docs_root() -> Optional[Path]:
     repo root, whose ``docs/`` holds the design docs + guides.  Computed,
     not configured -- the docs live at a fixed spot in the source tree.
     """
-    import molbuilder
-    root = molbuilder.repo_root() / "docs"
+    root = repo_root() / "docs"
     return root if root.is_dir() else None
 
 
@@ -400,7 +401,7 @@ def api_docs_toc():
     readme_info = toc.get("root_readme")
     readme = None
     if readme_info:
-        repo_readme = (root.parent / "README.md")
+        repo_readme = repo_root() / "README.md"
         if repo_readme.is_file():
             readme = {
                 "path":     "../README.md",
@@ -463,7 +464,7 @@ def api_docs_read():
     root_document = root_documents.get(raw_path)
     if root_document:
         filename, title = root_document
-        resolved = root.parent / filename
+        resolved = repo_root() / filename
         if not resolved.is_file():
             return jsonify({"ok": False, "error": f"{filename} not found"}), 404
         try:

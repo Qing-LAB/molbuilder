@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Sequence, Set, Tuple
 
-from ..runfiles import GroupNames
+from ..runfiles import GROUP_HEADER, GroupNames
 
 if TYPE_CHECKING:
     from .model import Resources
@@ -344,11 +344,9 @@ def sequence_headers_holding(base, task, request,
     groups*).  Every set of the request's groups is named: a calculation
     holds a handful."""
     from itertools import combinations
-    from ..runfiles import LAUNCH_DIR
     every = sorted(request.numbers)
     mine = set(numbers)
-    return [Path(base) / LAUNCH_DIR / sequence_names(
-                base, task, request, seq).header
+    return [sequence_names(base, task, request, seq).path(base, GROUP_HEADER)
             for k in range(2, len(every) + 1)
             for seq in combinations(every, k) if mine & set(seq)]
 
@@ -406,17 +404,15 @@ def header_of(calc, job):
     rows in ``calc``'s plan (`naming.run_names`) -- or ``None`` for a
     job of one.  What a prep removes when that job is formed again, or when
     a member's row leaves the plan."""
-    from pathlib import Path
-    from ..runfiles import LAUNCH_DIR
     from .naming import run_names
     base, jobset = calc.base, calc.jobset
     members = members_of(job)
     if len(members) < 2:
         return None
     jobs = [jobset.job(m) for m in members]
-    return Path(base) / LAUNCH_DIR / GroupNames.of_stages(jobset.name, [
+    return GroupNames.of_stages(jobset.name, [
         run_names(jobset, j).stage
-        for j in jobs if j is not None]).header
+        for j in jobs if j is not None]).path(base, GROUP_HEADER)
 
 
 def names_for(base, task, members: Sequence[str]) -> GroupNames:

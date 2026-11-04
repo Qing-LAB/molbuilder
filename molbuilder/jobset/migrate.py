@@ -88,11 +88,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from dataclasses import dataclass, field
+from functools import partial
 from typing import (TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional,
                     Tuple)
 
 if TYPE_CHECKING:                      # annotations only
     from ..template_file import TemplateFile
+    from .model import JobSet
 
 
 #: What a calculation holding nothing an older molbuilder wrote IS -- said
@@ -110,9 +112,10 @@ class MigrateError(ValueError):
 
 
 class MigrationStopped(MigrateError):
-    """A migration stopped partway, at a rename that failed -- written in
-    the calculation's ledger by the migration itself, with what it had
-    done, so its caller writes nothing more."""
+    """A migration stopped partway, at a write or a rename that failed --
+    written in the calculation's ledger by the migration itself, with what
+    it had done (`jobset.planned.CutShort`), so its caller writes nothing
+    more."""
 
 
 #: PySCF's old ``method`` was the SCF class: (method, spin treatment).
@@ -272,16 +275,18 @@ _NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
 _JOB_ABSENT = {"point": ({}, "w57"), "finish": (None, "w57"),
                "resumes": (True, "w57"), "placement": (None, "w57"),
                "members": (None, "2026-10-07"),
-               # A PREP BEFORE 2.42.0 knew no run in phases.  (A row's
-               # `asked`, written 2.7.0-2.40.2, and its `written_at`,
-               # written 2.7.0-2.41.0 -- each read by nothing since -- are
-               # left as they lie: `Job.from_dict` reads past them.)
+               # A PREP BEFORE 2.42.0 knew no run in phases.
                "phases": (None, "2.42.0"),
                # A PREP BEFORE 2.22.0 kept no scratch folder: its device
                # deck names the leads' files loose in the run, and a launch
                # again of it empties nothing (`engines/transport.md`
                # § 2a.11); a prep again gives the stage the folder.
                "scratch_dir": (None, "2.22.0")}
+#: THE RELEASE WHOSE READER REFUSES A JOB'S KEY NOTHING READS
+#: (`jobset.model.JOB_RETIRED_KEYS`): a job set holding one was written
+#: before it, by the release that wrote the key or by a migration that left
+#: the key in place.
+_READ_PAST_UNTIL = "2.65.7"
 #: A job's key an older file wrote under another name -- renamed, its value
 #: kept: the members of the job it was prepared in (2.7.0).
 _JOB_RENAMED = {"group": ("members", "2.7.0")}
@@ -329,15 +334,18 @@ def _kept_as(path: Path, rules) -> Path:
 
 
 class _Writes(dict):
-    """EVERY FILE THIS MIGRATION REWRITES, once: ``{path: (new text, the
-    rules it was written before)}``.  Two steps rewriting one file -- the
-    records step and the template a description -- give one write: the later step's text is
-    built on the body the earlier decided, and the rules gather, so the old
-    file is kept once, under the earliest (:func:`_kept_as`)."""
+    """EVERY FILE THIS MIGRATION REWRITES, once: ``{path: (its write, the
+    rules it was written before)}`` -- its write its owner's writer, taking
+    the plan it writes into (`jobset.planned.Plan`; the template, which has
+    no writer of its own, its text into the plan: A16 leaves raw writes to
+    migrate).  Two steps rewriting one file -- the records step and the
+    template a description -- give one write: the later step's is built on
+    the body the earlier decided, and the rules gather, so the old file is
+    kept once, under the earliest (:func:`_kept_as`)."""
 
-    def add(self, path: Path, text: str, rules) -> None:
+    def add(self, path: Path, write, rules) -> None:
         _old, had = self.get(path, (None, frozenset()))
-        self[path] = (text, had | frozenset(rules))
+        self[path] = (write, had | frozenset(rules))
 
 
 def _refused_rewrite(path: Path, exc: Exception) -> "MigrateError":
@@ -727,8 +735,8 @@ def _migrate_records(rec: "_Records"):
 
     from ..persist import json_text
     from ..task import FILENAME as TASK_FILENAME
-    from ..task import Task, never_as_zero, path_of
-    from .model import JobSet
+    from ..task import Task, never_as_zero, path_of, write_task
+    from .model import JOB_RETIRED_KEYS, JobSet
     base = rec.base
     said: List[str] = []
     writes = _Writes()
@@ -899,7 +907,7 @@ def _migrate_records(rec: "_Records"):
     except ValueError as exc:
         raise _refused_rewrite(task_path, exc) from None
     if lines:
-        writes.add(task_path, json_text(task.to_dict()),
+        writes.add(task_path, partial(write_task, base, task),
                    {rule for _ln, rule in lines})
         said += [f"{TASK_FILENAME}: {ln}" for ln, _rule in lines]
     if request_body is not None:
@@ -916,7 +924,8 @@ def _migrate_records(rec: "_Records"):
             rec.request = _jr.from_dict(request_body, task)
         except ValueError as exc:
             raise _refused_rewrite(jr_path, exc) from None
-        writes.add(jr_path, json_text(rec.request.to_dict()), frozenset())
+        writes.add(jr_path, partial(_jr.write, base, rec.request),
+                   frozenset())
         said.append(f"{jr_path.name}: written -- how the calculation runs, "
                     f"a record of its own ({_SPLIT})")
         said += _cards_said(jr_path.name, off_cards)
@@ -969,7 +978,7 @@ def _migrate_records(rec: "_Records"):
         except ValueError as exc:
             raise _refused_rewrite(jr_path, exc) from None
         if changed:
-            writes.add(jr_path, json_text(rec.request.to_dict()), rules)
+            writes.add(jr_path, partial(_jr.write, base, rec.request), rules)
         said += [f"{ln} ({_RUN_OUT})" for ln in moved]
         said += [f"stage {n!r}'s row dropped with the stage ({since})"
                  for n, since in folded.items()]
@@ -979,7 +988,7 @@ def _migrate_records(rec: "_Records"):
     again: List[Tuple[bool, str]] = []
     for folder, d in rec.jobsets.items():
         js_path = JobSet.path_of(folder)
-        missing, renamed = set(), set()
+        missing, renamed, dropped = set(), set(), set()
         split = 0
         retired_res: set = set()
         touched = 0
@@ -1010,6 +1019,13 @@ def _migrate_records(rec: "_Records"):
                    if o in job and n not in job}
             for o, n in old.items():
                 job[n] = job.pop(o)
+            # A KEY NOTHING READS, out of the job (`Job.from_dict` refuses
+            # it): `asked` and `written_at`.  Written before the release
+            # whose reader refuses them (:data:`_READ_PAST_UNTIL`) -- an
+            # earlier migration left them in place.
+            for k in [k for k in JOB_RETIRED_KEYS if k in job]:
+                job.pop(k)
+                dropped.add(k)
             gaps = {k: v for k, (v, _rule) in _JOB_ABSENT.items()
                     if k not in job}
             if gaps or old:
@@ -1020,12 +1036,13 @@ def _migrate_records(rec: "_Records"):
         if not touched:
             continue
         try:
-            body = JobSet.from_dict(d).to_dict()
+            rewritten = JobSet.from_dict(d)
         except (ValueError, KeyError, TypeError) as exc:
             raise _refused_rewrite(js_path, exc) from None
-        writes.add(js_path, json_text(body),
+        writes.add(js_path, partial(rewritten.write, folder),
                    {_JOB_ABSENT[k][1] for k in missing}
                    | {_JOB_RENAMED[o][1] for o in renamed}
+                   | ({_READ_PAST_UNTIL} if dropped else set())
                    | ({_SPLIT} if split else set())
                    | {_T.RETIRED_ITEMS[k].at for k in retired_res})
         said.append(f"{js_path.relative_to(base)}: "
@@ -1036,6 +1053,9 @@ def _migrate_records(rec: "_Records"):
                          if missing else [])
                         + [f"`{o}` renamed `{_JOB_RENAMED[o][0]}`"
                            for o in sorted(renamed)]
+                        + [f"`{k}` removed, which nothing reads since "
+                           f"{JOB_RETIRED_KEYS[k]} ({_READ_PAST_UNTIL})"
+                           for k in sorted(dropped)]
                         + ([f"the program onto the job, a placement's source "
                             f"`description` said `allocation` ({_SPLIT})"]
                            if split else [])
@@ -1048,7 +1068,7 @@ def _migrate_records(rec: "_Records"):
         # computes unchanged (`execution/job-request.md` § 8); a
         # benchmark's trials by their benchmark's prep anew.
         if retired_res:
-            way = _prepare_again(folder, body, rec, base)
+            way = _prepare_again(folder, rewritten, rec, base)
             if way:
                 again.append((folder == base, way))
     # A BENCHMARK'S WAY BACK FIRST: the state it restores is older than
@@ -1058,10 +1078,10 @@ def _migrate_records(rec: "_Records"):
     return said, writes, task
 
 
-def _prepare_again(folder: Path, d: dict, rec: "_Records",
+def _prepare_again(folder: Path, js: "JobSet", rec: "_Records",
                    base: Path) -> Optional[str]:
     """The way on for a job set an older molbuilder prepared (a run setting
-    it carried retired since), ``d`` as this migration rewrites it: its
+    it carried retired since), ``js`` as this migration rewrites it: its
     groups prepared again; a benchmark's prep anew where a trial is not yet
     launched -- a launched one its launch passes over (`submit._plan_trial`,
     the same test), so nothing for a benchmark measured whole.  The one
@@ -1075,7 +1095,6 @@ def _prepare_again(folder: Path, d: dict, rec: "_Records",
     head = (f"{where}: prepared by an older molbuilder, whose run scripts "
             f"take what this one's launch no longer hands them -- ")
     if folder != base:
-        js = JobSet.from_dict(d)
         dirs = job_dir_names(js)
         try:
             waiting = any(
@@ -1089,8 +1108,8 @@ def _prepare_again(folder: Path, d: dict, rec: "_Records",
         return (head + "a trial not yet launched would be refused at its "
                 "start: " + rollback("the benchmark's prep", base=base)
                 + " -- running the migration again after the restore")
-    groups = sorted({g for g in (rec.request.group_of(j.get("name", ""))
-                                 for j in d.get("jobs") or [])
+    groups = sorted({g for g in (rec.request.group_of(j.name)
+                                 for j in js.jobs)
                      if g is not None})
     return (head + "prepare each group again before its next launch (a "
             "launched group keeps its runs):\n"
@@ -1106,10 +1125,9 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
     2026-10-02, under its name now, ``env_init`` -- one block at two values
     refused by name.  Returns what changed and the file to write; nothing
     for a copy that reads, or none."""
-    from ..persist import json_text
     from ..scheduler.kinds import KindError, kind
     from ..scheduler.record import (SCHEMA, Environment, calculation_record,
-                                    older_record)
+                                    older_record, write_environment)
     writes = _Writes()
     path = calculation_record(base)
     if not path.is_file():
@@ -1142,7 +1160,7 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
         env = Environment.from_dict(raw)
     except (ValueError, TypeError, KeyError) as exc:
         raise _refused_rewrite(path, exc) from None
-    writes.add(path, json_text(env.to_dict()), rules)
+    writes.add(path, partial(write_environment, env, path), rules)
     return ([f"{path.name}: scheduler {word!r} -> {env.scheduler.said()} "
              f"(2.10.1: the kind and where its commands are; each run "
              f"from PATH, as before)"] + renamed, writes)
@@ -1290,8 +1308,8 @@ def migrate_state(base) -> List[str]:
     said, writes, task = _migrate_records(rec)
     m_said, m_writes = _migrate_machine_record(base)
     said += m_said
-    for path, (text, rules) in m_writes.items():
-        writes.add(path, text, rules)
+    for path, (write, rules) in m_writes.items():
+        writes.add(path, write, rules)
     try:
         decision = _migrate_template(rec, task)
     except MigrateError:
@@ -1305,14 +1323,15 @@ def migrate_state(base) -> List[str]:
     t_said: List[str] = []
     if decision is not None:
         t_said = list(decision.said)
-        writes.add(decision.path, decision.text, decision.rules)
+        writes.add(decision.path,
+                   lambda *, plan, d=decision: plan.text(d.path, d.text),
+                   decision.rules)
         if decision.task_rules:
             # THE DESCRIPTION AS EVERY STEP LEFT IT: the stages' old zeros,
             # renamed and retired items taken out of the records step's.
-            from ..persist import json_text
-            from ..task import path_of
+            from ..task import path_of, write_task
             writes.add(path_of(base),
-                       json_text(_edited(task, decision).to_dict()),
+                       partial(write_task, base, _edited(task, decision)),
                        decision.task_rules)
     if not writes and not moves:
         # NOTHING TO MIGRATE is an answer, not a refusal -- a run left as it
@@ -1326,7 +1345,7 @@ def migrate_state(base) -> List[str]:
     # file was before an earlier migration.
     # A NEW FILE -- the job request a split writes -- keeps nothing.
     kept = {path: _kept_as(path, rules)
-            for path, (_text, rules) in writes.items()
+            for path, (_write, rules) in writes.items()
             if path.exists()}
     held = [k for k in kept.values() if k.exists()]
     if held:
@@ -1336,32 +1355,32 @@ def migrate_state(base) -> List[str]:
             f"a kept file is never written over; nothing was written.  Move "
             f"{'it' if len(held) == 1 else 'them'} aside and run the "
             f"migration again.")
-    # THE PACKAGE'S ONE WRITER for every file a migration rewrites
-    # (`persist.write_bytes`, `execution/architecture.md` § 2.1).
-    from ..persist import write_bytes
-    for path, (text, _rules) in writes.items():
+    # ONE PLAN, CARRIED OUT IN ITS ORDER (`jobset.planned.Plan`): each old
+    # file kept, then its rewrite by its owner's writer; then each run's
+    # file renamed, after every record is written -- a rename rewrites no
+    # byte, so nothing is kept beside it: its old name is said, and the
+    # ledger keeps it.
+    from .planned import CutShort, Plan
+    plan = Plan()
+    for path, (write, _rules) in writes.items():
         if path in kept:
-            write_bytes(kept[path], path.read_bytes())
-        write_bytes(path, text.encode("utf-8"))
-    # EACH RUN'S FILE RENAMED, after every record is written: a rename
-    # rewrites no byte, so nothing is kept beside it -- its old name is
-    # said, and the ledger keeps it.
-    import os
-    done: List[str] = []
+            plan.bytes(kept[path], path.read_bytes())
+        write(plan=plan)
     for m in moves:
-        try:
-            os.replace(m.old, m.new)
-        except OSError as exc:
-            from . import ledger
-            ledger.record(base, "migrate", "a calculation an older "
-                          "molbuilder wrote, rewritten -- stopped at a "
-                          "rename that failed", changes=said + done,
-                          failed=f"{m.old} -> {m.new.name}: {exc}")
-            raise MigrationStopped(
-                f"{m.old} could not be named {m.new.name} ({exc}); the "
-                f"records were rewritten and {len(done)} file(s) named "
-                f"anew before it -- each written in the ledger") from None
-        done.append(f"{m.old.relative_to(base)} -> {m.new.name}")
+        plan.move(m.old, m.new)
+    try:
+        plan.carry_out()
+    except CutShort as exc:
+        # HOW FAR IT GOT, in the ledger: what was carried out before the
+        # write that failed, and that write.
+        from . import ledger
+        ledger.record(base, "migrate", "a calculation an older "
+                      "molbuilder wrote, rewritten -- stopped at a write "
+                      "that failed", changes=said + exc.done,
+                      failed=f"{exc.failed}: {exc.cause}")
+        raise MigrationStopped(
+            f"{exc}; each one carried out before it is written in the "
+            f"ledger") from None
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
              for path in writes if path in kept]
     said += t_said + r_said

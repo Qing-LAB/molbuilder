@@ -73,7 +73,7 @@ def sent(tmp_path, monkeypatch):
     from molbuilder import joblist
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runrecord import RunRef, launch_record_path, write_launch
+    from molbuilder.runrecord import RunRef, write_launch
     from molbuilder.scheduler.queue import cluster
     from molbuilder.task import of as task_of
     home = stage_home(flat, task_of(flat), "coarse")
@@ -84,9 +84,7 @@ def sent(tmp_path, monkeypatch):
                  placed_on={"domain": None, "partition": None, "qos": None,
                             "time": "0-00:05:00", "mem": None},
                  scheduler={"kind": env.scheduler.kind, "stderr": None})
-    member = {"run": str(RunRef.at(flat, run)),
-              "launch_record": str(launch_record_path(run)
-                                   .relative_to(flat))}
+    member = {"run": str(RunRef.at(flat, run))}
     joblist.write(joblist.queue_job(
         job_id=_FORGOTTEN, cluster=cluster(env.scheduler),
         calculation=flat, members={"coarse": member}))

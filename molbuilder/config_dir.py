@@ -30,7 +30,7 @@ import os
 import re
 import stat
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 __all__ = [
     # The directories.  A format owner asks for one of these and joins its
@@ -64,8 +64,8 @@ DIRNAME = "molbuilder"
 #: Name this and it IS the root, exactly as given
 #: (`archive/2026-09-01-config-access-plan.md` § 3.1).
 #:
-#: Spelled like ``MOLBUILDER_DATA_DIR`` and ``MOLBUILDER_PROJECTS``, which are
-#: already the convention for "the program's own <thing> directory".
+#: Spelled like ``MOLBUILDER_PROJECTS``, the convention for "the program's
+#: own <thing> directory".
 CONFIG_DIR_ENV = "MOLBUILDER_CONFIG_DIR"
 
 
@@ -495,6 +495,20 @@ def ensure_runtime_dir() -> Path:
                 f"in every shell you run `molbuilder serve` from.") from None
         raise RuntimeDirError(
             f"the pidfile directory {d} cannot be made ({why}).") from None
+
+
+def session_runtime_dir() -> Optional[Path]:
+    """The login session's directory :func:`runtime_dir` sits in, or
+    ``None`` -- asked by `serve start`, which detaches and so must outlive
+    the terminal (`cli._runtime_dir_dies_at_logout`).
+
+    ``$XDG_RUNTIME_DIR`` when it names logind's per-user ``/run/user/...``,
+    which the session manager removes at the last logout: the tension
+    :func:`runtime_dir` names.  ``None`` when the variable is unset -- the
+    pidfile is then in the state directory -- or names a directory no session
+    owns."""
+    xdg = os.environ.get("XDG_RUNTIME_DIR", "")
+    return Path(xdg) if xdg.startswith("/run/user/") else None
 
 
 #: A channel NAME: letters, digits, ``-`` or ``_``, up to 64.  It names an

@@ -55,11 +55,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .job_request import FILENAME as JOB_REQUEST_FILENAME
 from .job_request import JobRequest
 from .task import FILENAME as TASK_FILENAME
 from .task import Stage, StructureRef, Task, derive_run, varies_for
-from .template_file import template_filename as _template_filename
+from .template_file import template_path
 from .template import template_with_values
 from .workingcopy_structure import StructureCodec
 
@@ -108,34 +107,6 @@ class Description:
         """The ``SystemLabel``, and the stem of every file. Derived by
         :class:`~molbuilder.task.Task` through the one normaliser."""
         return self.task.label
-
-    def files(self) -> Dict[str, str]:
-        """``{filename: text}`` — the three files a calculation's start
-        *is*.
-
-        The template's name comes from the label and one constant; the
-        description's and the job request's from the codecs that own them.
-        None is spelled out here, because exactly one module owns each name.
-        """
-        import json
-        return {
-            _template_filename(self.label): self.template,
-            TASK_FILENAME: _task_json_text(self.task),
-            JOB_REQUEST_FILENAME: json.dumps(self.request.to_dict(),
-                                             indent=2) + "\n",
-        }
-
-
-def _task_json_text(task: Task) -> str:
-    """``task.json``'s bytes, through the codec that owns them.
-
-    Written via the codec rather than ``json.dumps`` here so that key order,
-    which keys are omitted, and the schema string all stay in the one module
-    that reads and writes ``task.json`` (``task.py``; `engines/stages.md`
-    § 6.4 -- *"a single reader is how"*).
-    """
-    import json
-    return json.dumps(task.to_dict(), indent=2) + "\n"
 
 
 # --------------------------------------------------------------------- #
@@ -318,8 +289,16 @@ def write_description(desc: Description, dest, *,
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
                                     dir=out_dir.parent))
     try:
-        for filename, text in desc.files().items():
-            (staging / filename).write_text(text, encoding="utf-8")
+        # THE TWO RECORDS THROUGH THEIR OWNERS' WRITERS (`architecture.md`
+        # A16), into the staging folder -- the writers Save takes too, so
+        # the two surfaces write the same bytes; the template has no writer
+        # of its own and is written as its text.
+        from .job_request import write as _write_request
+        from .task import write_task
+        template_path(staging, desc.label).write_text(
+            desc.template, encoding="utf-8")
+        write_task(staging, desc.task)
+        _write_request(staging, desc.request)
         # The STRUCTURE travels with the calculation: the description records
         # a reference plus a witness (stages.md § 6.3), and `prep` looks
         # "beside the calculation FIRST" -- a relative source recorded from

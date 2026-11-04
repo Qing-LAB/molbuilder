@@ -40,6 +40,7 @@ SCHEMA = "molbuilder/job-set@1"
 #: a fixed name's owner takes it from the row).
 from ..runfiles import JOBSET_FILE as FILENAME  # noqa: E402
 from ..runfiles import JOB_REQUEST_FILE  # noqa: E402
+from ..persist import check_keys  # noqa: E402
 
 #: The two kinds, each a name with ONE home.  `KIND_SWEEP` is exported
 #: because a reader outside this module has to ask *is this a benchmark
@@ -214,12 +215,8 @@ class Resources:
             raise WrittenBefore(
                 "resources: " + ", ".join(f"{k!r} -- {gone[k].why}"
                                           for k in sorted(gone)))
-        if unknown:
-            raise ValueError(
-                "resources: unknown key(s) "
-                + ", ".join(repr(k) for k in sorted(unknown))
-                + f" (known keys: {', '.join(sorted(known))})")
-        return cls(**{k: v for k, v in d.items() if k in known})
+        check_keys("resources", d, sorted(known), needed=())
+        return cls(**d)
 
 
 class GpuRequestError(ValueError):
@@ -333,6 +330,11 @@ class WarmFile:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "WarmFile":
+        """A key this class does not know is refused, as
+        :meth:`Resources.from_dict` refuses one, and so is a file with no
+        ``name``."""
+        check_keys("warm file", d, ("name", "requires_same"),
+                    needed=("name",))
         return cls(name=d["name"], requires_same=d.get("requires_same"))
 
 
@@ -449,6 +451,17 @@ class Job:
             raise WrittenBefore(
                 f"job {d.get('name', '?')!r} has no "
                 f"{', '.join(repr(k) for k in missing)}")
+        # A KEY AN OLDER MOLBUILDER WROTE that nothing reads is a file
+        # written before, which `jobset migrate` takes it out of; any other
+        # key this class does not know is refused, as `Resources`' is.
+        older = [k for k in d if k in JOB_RETIRED_KEYS]
+        if older:
+            raise WrittenBefore(
+                f"job {d['name']!r} holds "
+                + ", ".join(f"{k!r} (retired in {JOB_RETIRED_KEYS[k]})"
+                            for k in older)
+                + ", which nothing reads")
+        check_keys(f"job {d['name']!r}", d, JOB_KEYS, needed=())
         try:
             res = Resources.from_dict(d["resources"])
         except WrittenBefore as exc:
@@ -459,7 +472,7 @@ class Job:
             name=d["name"],
             script=d["script"],
             resources=res,
-            warm=[WarmFile.from_dict(w) for w in d["warm"]],
+            warm=_warm_of(d),
             traits=dict(d["traits"]),
             point=dict(d["point"]),
             finish=(str(d["finish"]) if d["finish"] is not None else None),
@@ -554,10 +567,21 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 
 
 #: Every key a job in `job-set.json` carries, always (`job-contracts.md`
-#: § 6.1) -- the one list the writer's dict and the reader's check share.
-JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
-            "finish", "resumes", "scratch_dir", "placement", "members",
-            "phases", "program")
+#: § 6.1) -- its writer's own (:meth:`Job.to_dict`), which the reader checks
+#: a job against.
+JOB_KEYS = tuple(Job(name="", script="").to_dict())
+
+#: A job's keys an older molbuilder wrote that nothing reads, each with the
+#: release that retired it -- the reader refuses a job holding one, and
+#: `jobset migrate` removes it (`job-request.md` § 8).
+JOB_RETIRED_KEYS = {"asked": "2.41.0", "written_at": "2.42.0"}
+
+def _warm_of(d: Dict[str, Any]) -> "List[WarmFile]":
+    """A job's warm files, read -- a refusal naming the job."""
+    try:
+        return [WarmFile.from_dict(w) for w in d["warm"]]
+    except ValueError as exc:
+        raise ValueError(f"job {d['name']!r}: {exc}") from None
 
 
 class WrittenBefore(ValueError):
@@ -600,6 +624,7 @@ class JobSet:
         # scheduler/record.py + bench/result.py use.
         from ..persist import check_schema
         check_schema(str(d.get("schema") or ""), SCHEMA, label="job-set")
+        check_keys("job-set", d, JOBSET_KEYS)
         return cls(
             name=d["name"],
             engine=d["engine"],
@@ -623,10 +648,12 @@ class JobSet:
 
     @staticmethod
     def path_of(folder) -> Path:
-        """``<folder>/job-set.json`` -- the one place the plan's name is
-        joined to its folder (`architecture.md` A16): for its writer, and
-        for `jobset migrate`, which reads it raw."""
-        return Path(folder) / FILENAME
+        """``<folder>/job-set.json`` -- for its writer, its door and `jobset
+        migrate`, which reads it raw (`architecture.md` A16): the ground
+        floor's join of the plan's name to a folder
+        (`calcdirs.plan_path`)."""
+        from ..calcdirs import plan_path
+        return plan_path(folder)
 
     @classmethod
     def of(cls, folder, *, plan=None) -> "Optional[JobSet]":
@@ -650,9 +677,10 @@ class JobSet:
                 return None
         elif not path.is_file():
             return None
+        body = (json.loads(plan.read_text(path)) if plan is not None
+                else read_json(path))
         try:
-            return cls.from_dict(json.loads(plan.read_text(path))
-                                 if plan is not None else read_json(path))
+            return cls.from_dict(body)
         except WrittenBefore as exc:
             # THE CALCULATION ROOT through its one door (`calcdirs.root_of`).
             from ..calcdirs import root_of
@@ -665,6 +693,8 @@ class JobSet:
             raise WrittenBefore(
                 f"{path}: {exc} -- written by an older molbuilder; "
                 f"{way}.") from None
+        except ValueError as exc:
+            raise ValueError(f"{path}: {exc}") from None
 
     def job(self, stage: str) -> "Optional[Job]":
         """The job ``stage`` is prepared as -- matched as every reader
@@ -716,6 +746,11 @@ class JobSet:
                         f"never be carried")
             seen.add(j.name)
         return errors
+
+
+#: Every key `job-set.json` carries at its top -- its writer's own
+#: (:meth:`JobSet.to_dict`), which the reader checks the file against.
+JOBSET_KEYS = tuple(JobSet(name="", engine="", kind="").to_dict())
 
 
 __all__ = ["FILENAME", "Resources", "WarmFile", "Job", "JobSet", "SCHEMA"]

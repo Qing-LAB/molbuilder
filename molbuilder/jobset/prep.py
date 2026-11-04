@@ -40,13 +40,13 @@ from typing import (TYPE_CHECKING, Dict, List, NamedTuple, Set,
 from .. import calcdirs
 from .. import script_emit as _sc
 from .materialize import materialize
-from .naming import (job_dir_names, ladder_homes, open_container,
+from .naming import (described_refs, job_dir_names, open_container,
                      run_names, stage_home)
 from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from ..engine_table import read_deck
-from .plan import FILENAME as _PLAN_FILE
+from .plan import FILENAME as _PLAN_FILE, path_of as _plan_path
 from . import prepared_with
 from ..runfiles import (GROUP_HEADER, ROLE_HEADER, ROLE_MOLWATCH,
                         ROLE_VALIDATION, RunNames, beside_the_deck,
@@ -191,11 +191,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, calculation: str, plan,
                 program=job.program,
                 env=env,
                 emit_sbatch=emit_sbatch and not _pts,
-                # The BUNDLE'S scope, explicitly: the script is born in its
-                # job directory now, and the renderer's parent-derived
-                # fallback would read the record one level below the
-                # bundle's environment.json (roadmap 7.10 M1).
-                project_dir=base,
                 # WHICH MACHINE THIS IS FOR, carried rather than re-derived.
                 # The record always travels, so the wrapper reads that
                 # machine's own activation off it instead of this machine's
@@ -279,11 +274,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, calculation: str, plan,
     # every member it prepares (`job-system.md`: "STAGE-PLAN.md once").
     if jobset.kind == KIND_SWEEP:
         plan_dir = Path(record_dir) if record_dir is not None else base
-        plan.text(plan_dir / _PLAN_FILE,
+        plan.text(_plan_path(plan_dir),
                   stage_plan_text(jobset, None, base=base,
                                   provenance=provenance, plan=plan))
         if log is not None:
-            log.produced(_PLAN_FILE, str(plan_dir / _PLAN_FILE))
+            log.produced(_PLAN_FILE, str(_plan_path(plan_dir)))
     return dirs
 
 
@@ -965,7 +960,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # a folder per point inside it holding copies of the point's
         # prepared files -- the points of the junction composed in THIS
         # plan, whose record may not be on disk yet.
-        from ..paths import bench_container
+        from ..paths import BENCH_DIRNAME
         from ..runfiles import LAUNCH_DIR
         from .materialize import empty_old_points, ever_launched
         # A POINT THE DESCRIPTION NO LONGER HOLDS leaves no folder below the
@@ -973,7 +968,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         home = stage_home(base, task, stage)
         gone = empty_old_points(
             home.dir, [pt.prepared for _d, pt in rung.points], plan,
-            keep=(LAUNCH_DIR, Path(bench_container(home.token)).name))
+            keep=(LAUNCH_DIR, BENCH_DIRNAME))
         planned = calc.with_plan(js)
         if not copied and ever_launched(planned, planned.job(stage)):
             # A LAUNCHED RUNG OF POINTS, prepared again for its job request
@@ -1007,22 +1002,22 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         from .group import envelope
         from .points import walls_of
         job = js.job(stage)
+        walk_names = GroupNames.of_points(run_names(js, job).stem)
         walk = walk_header_of(
-            home.dir, GroupNames.of_points(run_names(js, job).stem),
+            home.dir, walk_names,
             envelope([job] * walls_of(task, len(_points))), environment,
             engine=task.engine, jobs=[job], emit_sbatch=emit_sbatch,
             what=f"stage {stage!r}, "
                  f"{walk_words(planned, stage, read=plan.read_text)}")
         if walk is not None:
-            open_container(base, home.dir / LAUNCH_DIR, plan)
+            open_container(base, walk_names.path(home.dir), plan)
             plan.text(walk.path, walk.text)
             if walks is not None:
                 walks[walk.path] = walk.fit
         else:
             # NO HEADER THIS TIME, so none an earlier prep wrote is left to
             # be sent as this one's.
-            _left = (home.dir / LAUNCH_DIR / GroupNames.of_points(
-                run_names(js, job).stem).header)
+            _left = walk_names.path(home.dir, GROUP_HEADER)
             if _left.is_file():
                 plan.remove(_left)
     elif kind == KIND_LADDER and stage:
@@ -1035,7 +1030,6 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # benchmark's one queue (`generator.md` § 4.3a, `job-system.md`
         # § 6.0): its trials' shared request -- launch walks the trials
         # still to run and sends it as it is.
-        from ..runfiles import LAUNCH_DIR
         from .shelves import ShelfError, shelf_request, shelves_of
         try:
             shelves = [(names, shelf_request(trials), trials)
@@ -1049,7 +1043,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                 what=(f"the benchmark's shelf {names.stem} ({len(trials)} "
                       f"trial(s), one after another)"))
             if got is not None:
-                open_container(base, record_dir / LAUNCH_DIR, plan)
+                open_container(base, names.path(record_dir), plan)
                 plan.text(got.path, got.text)
                 if walks is not None:
                     walks[got.path] = got.fit
@@ -1147,7 +1141,7 @@ def _taken_by_its_run(path, names, home) -> bool:
         p.relative_to(home)
     except ValueError:
         return False
-    if p.name == GroupNames.of_points(names.stem).header:
+    if p == GroupNames.of_points(names.stem).path(home, GROUP_HEADER):
         return True
     row = row_for(p, names.label)
     return row is not None and (
@@ -2112,9 +2106,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     if kind == "bench":
         # EACH SHELF AS ITS HEADER CARRIES IT, read back from the text the
         # plan holds (`Directives.lines_of`), in the order they are sent.
-        from ..runfiles import LAUNCH_DIR
+        from ..runfiles import GroupNames
         from ..scheduler.emit import Directives
-        shelf_dir = resolved.record_dir(base) / LAUNCH_DIR
+        shelf_dir = GroupNames.of_trials().path(resolved.record_dir(base))
         out.shelves = []
         for w in plan.writes():
             shelf = fixed_fields(GROUP_HEADER, w.name)
@@ -2179,15 +2173,15 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                          "cpus_per_task": r.cpus_per_task,
                          "max_memory_mb": r.max_memory_mb}
         out.deck = Path(job.script).name
-        from ..runfiles import LAUNCH_DIR, GroupNames
+        from ..runfiles import GroupNames
         names = run_names(js, job)
         # THE HEADER ITS LAUNCH SENDS: a run of points', the walk's one
         # (:func:`prep_calculation`); every other run's, its own.
         # A RUNG OF POINTS -- its points opened, or, launched and prepared
         # again, its walk's header written (`walks`) -- sends its walk.
         walked = bool(out.points or (out.launched and walks))
-        sends = (stage_home(base, task, stage).dir / LAUNCH_DIR
-                 / GroupNames.of_points(names.stem).header
+        sends = (GroupNames.of_points(names.stem).path(
+                     stage_home(base, task, stage).dir, GROUP_HEADER)
                  if walked else Path(run_dir) / names.header)
         out.launch = _launch_as_written(
             plan, sends, Path(run_dir) / names.run_script,
@@ -2256,7 +2250,6 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
             # machine or written (W52).  THE STAGES IT TAKES are offered: one
             # it refuses is not (2a).
             from .commands import name_a_stage
-            from .naming import described_refs
             takes = [r for r in described_refs(base, task)
                      if not prepared_already(described.calc, r.name)]
             raise PrepError(
@@ -2268,10 +2261,8 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
         # 2 · THE STAGE GRAMMAR (user-settled 2026-08-21): named by its
         #     NAME, or by `#N` -- the NN of its directory -- through the ONE
         #     resolver, so `prep bench '#2'` and `status #2` cannot disagree.
-        from ..identity import StageRef, resolve_stage_ref
-        stage = resolve_stage_ref([StageRef(h.seq, h.name)
-                                   for h in ladder_homes(base, task)],
-                                  stage).name
+        from ..identity import resolve_stage_ref
+        stage = resolve_stage_ref(described_refs(base, task), stage).name
         # 2a · NOT PREPARED AGAIN (user, 2026-10-02: "refuse it, redo via
         #      rollback"), before anything is read of the machine.
         why = prepared_already(described.calc, stage)
@@ -2425,7 +2416,6 @@ def walk_header_of(where, names, request, environment, *, engine: str,
     is read off the members' own placements (``jobs``), each source any
     member states it in; ``what`` names the walk in a refusal for a queue
     stated nowhere or not on the record.  Launch sends it as it is."""
-    from ..runfiles import LAUNCH_DIR
     if not (emit_sbatch and environment.kind.queue):
         return None
     from ..engine_table import engine as _engine_rec
@@ -2446,8 +2436,7 @@ def walk_header_of(where, names, request, environment, *, engine: str,
         where, names, resources=request, one_process=one_process,
         machine_record=environment,
         domain_pq=(placed_on["partition"], placed_on["qos"]))
-    return Walk(Path(where) / LAUNCH_DIR / names.header, text,
-                fit)
+    return Walk(names.path(where, GROUP_HEADER), text, fit)
 
 
 def group_header(base, task, number: int, jobs, environment, *,
@@ -2801,7 +2790,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     #      members' shared allocation, which is placed as a run's is; the
     #      header of a job formed again, taken away; and each member's row
     #      naming its group.
-    from ..runfiles import LAUNCH_DIR
+    from .group import names_for, sequence_names
     headers: Dict[int, Optional[Path]] = {}
     #: THE SEQUENCE'S ONE HEADER this prep writes, or one an earlier prep
     #: wrote that it takes away -- ``None`` for neither.
@@ -2819,7 +2808,9 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                                environment, emit_sbatch=emit_sbatch)
             had = set(the_plan.writes())
             if got is not None:
-                open_container(base, base / LAUNCH_DIR, the_plan)
+                open_container(base, names_for(
+                    base, task, [a.job.name for a in previews[n]]).path(base),
+                    the_plan)
                 headers[n] = got.path
                 the_plan.text(got.path, got.text)
             said[n] = {
@@ -2853,17 +2844,16 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             got, less = sequence_header(base, task, request, sequence,
                                         jobs_of, points_of, environment,
                                         emit_sbatch=emit_sbatch)
+            seq_names = sequence_names(base, task, request, sequence)
             if got is not None:
-                open_container(base, base / LAUNCH_DIR, the_plan)
+                open_container(base, seq_names.path(base), the_plan)
                 the_plan.text(got.path, got.text)
                 seq_header = got.path
             else:
                 # NO HEADER THIS TIME (a machine with no queue,
                 # `--no-sbatch`), so none an earlier prep wrote is left to be
                 # sent as this one's (`job-system.md` § 5.0, checkpoint 6).
-                from .group import sequence_names
-                _left = base / LAUNCH_DIR / sequence_names(
-                    base, task, request, sequence).header
+                _left = seq_names.path(base, GROUP_HEADER)
                 if _left.is_file():
                     the_plan.remove(_left)
                     seq_header = _left
@@ -3046,7 +3036,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         answers[-1].sequence = sequence_said
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,
     #      and what every member's first launch takes.
-    the_plan.text(base / _PLAN_FILE, stage_plan_text(
+    the_plan.text(_plan_path(base), stage_plan_text(
         js, [ln for a in answers for ln in this_prep_lines(a.stage, a.takes)]
         + (reuse.lines(base) if reuse is not None else []),
         base=base, provenance=answers[0].provenance, plan=the_plan))

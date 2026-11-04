@@ -47,17 +47,16 @@ def _wrapper(tmp_path, engine="siesta", activation="conda activate"):
     deck.write_text(text)
     # A PROBED MACHINE, its record saying how a shell enters an environment
     # there -- the activation the generator reads (`configuration.md` § 4); a
-    # wrapper is not rendered without one.  Its shape is STATED, as every
-    # run's is (`architecture.md` § 5.2), and it carries the run settings
-    # every job carries (`engines/template.md` § 5.4).
+    # wrapper is not rendered without one, and prep hands it the record it
+    # read.  Its shape is STATED, as every run's is (`architecture.md`
+    # § 5.2), and it carries the run settings every job carries
+    # (`engines/template.md` § 5.4).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
-    (tmp_path / "environment.json").write_text(
-        _Env(machine="this", scheduler=SLURM,
-             topology=_Topo(sockets=2, cores_per_socket=32),
-             env_init={"activation": activation,
-                       "preamble": "true"}).to_json()
-        + "\n")
+    record = _Env(machine="this", scheduler=SLURM,
+                  topology=_Topo(sockets=2, cores_per_socket=32),
+                  env_init={"activation": activation, "preamble": "true"})
     return write_run_wrapper(deck, env="e", names=names, engine=engine,
+                             machine_record=record,
                              calculation="optimization",
                              resources=Resources(
                                  mpi_np=2 if engine == "siesta" else None,

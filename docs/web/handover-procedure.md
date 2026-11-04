@@ -144,7 +144,7 @@ doing work (`stages.md` § 6.5a is the contract):
 | | |
 |---|---|
 | **its own schema** | never `molbuilder/task@2`. It has no `shape` and no settled `stages`, so it would fail that reader — and `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident |
-| **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is by suffix, so the second spelling is plain text in the editor a person reads it in — and nothing looking for `task.json` matches it, which matters because `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder **declares itself a calculation root** |
+| **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is by suffix, so the second spelling is plain text in the editor a person reads it in — and nothing looking for `task.json` matches it, which matters because `calcdirs.described` treats that name as the marker that a folder **declares itself a calculation root** |
 | **it says what it is** | JSON has no comments, so it opens with a `_what` line and an `awaiting` list naming the keys it lacks. A person reads it, in an editor, and should not need a document open beside it |
 
 **It names the structure, it does not summarise it.** `structure.source` is a

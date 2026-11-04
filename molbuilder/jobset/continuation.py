@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..calcdirs import RunPlace, where
-from ..runrecord import LaunchRecordError, RunRef
+from ..runrecord import LaunchRecordError
 from .ladder import independent, inputs_of, stage_before
 
 
@@ -165,12 +165,12 @@ def done(folder, names, *, launch=None, must_hold=(),
     return True, "done"
 
 
-def read_run(base: Path, task, stage: str, attempt: Path,
-             *, verdict: bool = True
+def read_run(calc, stage: str, attempt: Path, *, verdict: bool = True
              ) -> Tuple[Optional[str], Optional[str], Optional[bool],
                         Optional[str]]:
     """``(concluded, state, converged, detail)`` of one run of ``stage``
-    -- ``detail`` the status door's own words for the state -- the
+    of ``calc``, the calculation whole as the verb opened it (A16) --
+    ``detail`` the status door's own words for the state -- the
     line its conclusion said, through the one door (`runrecord.ending`;
     ``None`` when it has not ended on its own), its state through the one
     door (`parse.dirs.run_status`) and its relaxation's verdict
@@ -188,19 +188,19 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from ..runs import concluded as _concluded
     from ..runrecord import ending
     from .naming import stage_home
-    home = stage_home(base, task, stage)
+    base = Path(calc.base)
+    home = stage_home(base, calc.task, stage)
     names = home.names
     if where(attempt).of_points:
         from ..parse.dirs.job import FINAL_STATES
         from .points import points_of
-        got = read_points(base, task, stage, attempt, names)
+        got = read_points(calc, stage, attempt, names)
         state, detail = got.state, got.detail
         said = []
         if verdict:
-            declared = points_of(task)
+            declared = points_of(calc.task)
             said = [v for v in (_relaxed(pdir) for pdir, pt
-                                in declared.points_in(attempt, task, stage,
-                                                      base)
+                                in declared.points_in(attempt, calc, stage)
                                 if declared.carried(pt))
                     if v is not None]
         return ((detail if state in FINAL_STATES else None), state,
@@ -284,11 +284,11 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
         return None, None
     if from_attempt:
         # A RUN NAMED is taken as said -- what it was is reported and
-        # recorded.
+        # recorded; its stage, the one its folder lies in (`calcdirs.where`).
         attempt = base / from_attempt
-        named = command_stage(RunRef.read(str(from_attempt)).stage)
+        named = command_stage(where(attempt).stage)
         concluded, state, converged, _ = read_run(
-            base, task, named, attempt, verdict=verdict)
+            calc, named, attempt, verdict=verdict)
         return Continuation(stage=named, source=str(Path(from_attempt)),
                             by_default=False, concluded=concluded, state=state,
                             converged=converged), None
@@ -365,14 +365,14 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
             return (f"--from {from_attempt!r}: no such attempt in this "
                     f"calculation.  Name an attempt directory that has "
                     f"already run, e.g. '01_coarse/run-0'.")
-        head = RunRef.read(str(from_attempt)).stage
-        try:
-            named = command_stage(head)
-        except ValueError:
-            named = None
+        # THE STAGE IT LIES IN, as its folder states its place
+        # (`calcdirs.where`): none for a folder in no stage's, or one that
+        # states no place.
+        head = where(base / from_attempt).stage
+        named = command_stage(head) if head is not None else None
         if named not in {s.name for s in task.stages}:
-            return (f"--from {from_attempt!r}: {head!r} is not a stage "
-                    f"folder of this calculation -- name a run as "
+            return (f"--from {from_attempt!r}: not a run in a stage folder "
+                    f"of this calculation -- name a run as "
                     f"<NN>_<stage>/run-<n>.")
         # A RUN THAT WAS NEVER LAUNCHED holds nothing to continue from -- and
         # one opened by a refused send is the very run this launch fills.
@@ -443,7 +443,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
                       f"first --\n{run_prev}\n{clean}{rule}")
     source = str(attempt.relative_to(base))
     concluded, state, converged, detail = read_run(
-        base, task, prev, attempt, verdict=verdict)
+        calc, prev, attempt, verdict=verdict)
     if usable(state):
         return Continuation(stage=prev, source=source, by_default=True,
                             concluded=concluded, state=state,
@@ -463,7 +463,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     # build on, typed out -- never a placeholder.  Its ending is the
     # question, not its relaxation.
     other = (earlier_run(base, container, attempt, lambda a: usable(
-                 read_run(base, task, prev, a, verdict=False)[1]))
+                 read_run(calc, prev, a, verdict=False)[1]))
              if not bench and alone else None)
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
            + block(_taking("--from", other)) + "\n"
@@ -520,7 +520,7 @@ def carried_points(calc, stage: str, cont: Continuation) -> list:
     names = stage_home(base, task, cont.stage).names
     launch = launch_record(run)
     return [(pdir, pt)
-            for pdir, pt in declared.points_in(run, task, cont.stage, base)
+            for pdir, pt in declared.points_in(run, calc, cont.stage)
             if pt.rel in wanted
             and point_done(declared, run, pdir, pt, names, task=task,
                            stage=cont.stage, base=base, launch=launch)[0]]
@@ -538,11 +538,11 @@ def relaunch(calc, job, *, ran, cold: bool = False
     nothing, continues from nothing: ``None``.  How that run ended is read
     in the run door's order (:func:`read_run`) and said, never judged.
     ``calc`` is the calculation as the launch opened it (A16)."""
-    base, task = Path(calc.base), calc.task
+    base = Path(calc.base)
     stage = job.name
     if cold or not job.relaunch_continues:
         return None
-    concluded, state, converged, _ = read_run(base, task, stage, ran)
+    concluded, state, converged, _ = read_run(calc, stage, ran)
     return Continuation(stage=stage, source=str(Path(ran).relative_to(base)),
                         by_default=True, concluded=concluded, state=state,
                         converged=converged, own=True)
@@ -599,7 +599,7 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     for n in (reversed(attempts_in(container)) if container.is_dir()
               else ()):
         a = _adir(container, n)
-        c, s, _v, d = read_run(base, task, prev, a, verdict=False)
+        c, s, _v, d = read_run(calc, prev, a, verdict=False)
         runs.append({"source": str(a.relative_to(base)),
                      "what": _what_it_is(c, s, d)})
     return {"from_stage": prev,
@@ -625,10 +625,11 @@ def point_done(declared, run, pdir, pt, names, *, task, stage: str, base,
                 verdict_counts=declared.verdict_counts(stage, pt), st=st)
 
 
-def point_rows(run, names, task, stage: str, *, launch, base, index=None):
+def point_rows(run, names, calc, stage: str, *, launch, index=None):
     """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
-    rows for ``run``: the folder each ran in, whether it is done, what it
-    started from (its `.continued-from`), what it is a copy of -- a point
+    rows for ``run``, a run of ``calc``, the calculation whole: the folder
+    each ran in, whether it is done, what it started from (its
+    `.continued-from`), what it is a copy of -- a point
     taken over from the finished calculation this one reuses, or of a run
     copied in whole (`runrecord.copied_of`, `engines/transport.md`
     § 2a.16) -- and what it alone took (its `.gathered-from`, beyond the
@@ -651,12 +652,13 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
     from ..runs import concluded
     from ..runrecord import copied_of, read_continued_from
     from .points import points_of
+    base, task = Path(calc.base), calc.task
     declared = points_of(task)
     gathered = gathered_lines(run)
     if index is None:
         index = index_at(run, names) or {}
     pts, running = [], False
-    for pdir, pt in declared.points_in(run, task, stage, base):
+    for pdir, pt in declared.points_in(run, calc, stage):
         # ITS RUN'S STATE AND VERDICT, through the one door every reader of
         # a run's state asks (`runs.concluded`: the run's record, and its
         # job where this machine holds it, the answer written once) --
@@ -810,11 +812,12 @@ def never_reached(pts) -> list:
     return out
 
 
-def points_state(run, names, task, stage: str, *, launch, base
+def points_state(run, names, calc, stage: str, *, launch
                  ) -> "Tuple[str, str, list]":
     """A LAUNCHED RUN OF POINTS' STATE -- ``(state, detail, rows)``, the one
     rule the status door and the gather ask (`engines/transport.md`
-    § 2a.11): ``running`` while a point runs, or between two points while a
+    § 2a.11), of ``run``, a run of ``calc``, the calculation whole:
+    ``running`` while a point runs, or between two points while a
     job launched from this machine that holds the run is going
     (`joblist.going_of`); ``queued`` while nothing the run walks itself has
     started (a run that walks none -- a run copied in whole -- is read by
@@ -829,10 +832,11 @@ def points_state(run, names, task, stage: str, *, launch, base
     from ..runpoints import index_at
     from ..runs import ended_before_a_point
     from .points import points_of, record_of
+    base, task = Path(calc.base), calc.task
     declared, record = points_of(task), record_of(task)
     index = index_at(run, names) or {}
-    pts, running = point_rows(run, names, task, stage, launch=launch,
-                              base=base, index=index)
+    pts, running = point_rows(run, names, calc, stage, launch=launch,
+                              index=index)
     summary = count_of(task, run, names, pts, index)
     if running:
         return "running", summary, pts
@@ -898,8 +902,7 @@ def stage_run_state(calc, stage: str, run) -> "Tuple[str, str]":
     DOOR for a run's state, whichever kind (:func:`read_run`: a run of
     points by :func:`read_points`, any other run by the run door).
     Asked by `jobset scratch` of each run that holds an engine's scratch."""
-    _ended, state, _conv, detail = read_run(calc.base, calc.task, stage, run,
-                                            verdict=False)
+    _ended, state, _conv, detail = read_run(calc, stage, run, verdict=False)
     return state, detail
 
 
@@ -932,8 +935,9 @@ class PointsReading:
     launch: Optional[dict] = None
 
 
-def read_points(base, task, stage: str, run, names=None) -> PointsReading:
-    """THE RUN OF POINTS IN ``run``, READ ONCE -- the one reading every
+def read_points(calc, stage: str, run, names=None) -> PointsReading:
+    """THE RUN OF POINTS IN ``run``, a run of ``calc`` -- the calculation
+    whole, as the verb opened it (A16) -- READ ONCE: the one reading every
     reader of a run of points asks (`status`, the views, the gather, the
     transport record and its digest, a reuse): *pending* before its launch
     record, its points as prepared (:func:`pending_words`); once launched,
@@ -946,10 +950,10 @@ def read_points(base, task, stage: str, run, names=None) -> PointsReading:
     from ..runs import older_run
     from .naming import stage_home
     from .errors import PrepError
-    base = Path(base)
+    base = Path(calc.base)
     try:
         if names is None:
-            names = stage_home(base, task, stage).names
+            names = stage_home(base, calc.task, stage).names
         launch = launch_record(run)
     except (LaunchRecordError, PrepError, OSError) as exc:
         return PointsReading("unreadable", str(exc))
@@ -959,11 +963,11 @@ def read_points(base, task, stage: str, run, names=None) -> PointsReading:
         return PointsReading("unreadable", older, launch=launch)
     try:
         if launch is None:
-            rows, _running = point_rows(run, names, task, stage, base=base,
+            rows, _running = point_rows(run, names, calc, stage,
                                         launch=None)
             return PointsReading("pending", pending_words(run), tuple(rows))
-        state, detail, rows = points_state(run, names, task, stage,
-                                           launch=launch, base=base)
+        state, detail, rows = points_state(run, names, calc, stage,
+                                           launch=launch)
     except (LaunchRecordError, OSError) as exc:
         return PointsReading("unreadable", str(exc), launch=launch)
     return PointsReading(state, detail, tuple(rows), launch)

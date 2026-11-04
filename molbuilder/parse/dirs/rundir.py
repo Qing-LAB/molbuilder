@@ -10,7 +10,6 @@ run door's (`molbuilder.runs`, floor 2), which asks these with what it read.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 
@@ -107,7 +106,8 @@ def run_state_of(directory, names, launched_in=None):
     (`engines/transport.md` § 2a.11), and the scheduler's file it names is
     named from there (`running-a-job.md` § 4.2) -- settled once here, and
     handed to `run_status` as it is."""
-    from molbuilder.runrecord import LaunchRecordError, launch_record
+    from molbuilder.runrecord import (LaunchRecordError, launch_record,
+                                      launch_record_path)
     from .job import RunStatus, run_status
     if launched_in is None:
         launched_in = directory
@@ -122,10 +122,8 @@ def run_state_of(directory, names, launched_in=None):
         # A RECORD THAT READS, ONE OF WHOSE VALUES DOES NOT -- the wall it
         # was sent with (`runrecord.sent_wall_s`): the same state, the file
         # named (`project-layout.md` § 1.6.3).
-        from molbuilder.runfiles import LAUNCH_RECORD_FILE
         return RunStatus(state="unreadable",
-                         detail=f"{Path(launched_in) / LAUNCH_RECORD_FILE}: "
-                                f"{e}")
+                         detail=f"{launch_record_path(launched_in)}: {e}")
 
 
 __all__ = ["claimed", "openable_in", "run_state_of"]

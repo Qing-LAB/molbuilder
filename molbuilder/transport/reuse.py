@@ -73,11 +73,15 @@ def reused(raw, *, tree_root):
     the calculation door (`calculation.open`), and its folder tree-relative,
     as the new description's ``reuses`` records it.
 
-    Refused (:class:`ReuseError`): a folder outside the tree; one that is
-    not a described calculation, in the door's words; one whose description
-    does not read, in its reader's; another kind of calculation."""
+    Refused (:class:`ReuseError`): a calculation in no projects tree
+    (``tree_root`` ``None``); a folder outside the tree; one that is not a
+    described calculation, in the door's words; one whose description does
+    not read, in its reader's; another kind of calculation."""
     from .. import calculation
     from ..projects import OutsideRoot, contain
+    if tree_root is None:
+        raise ReuseError(f"{raw} cannot be found: the calculation that "
+                         f"reuses it is not inside a projects tree")
     root = Path(tree_root).expanduser().resolve()
     path = Path(raw).expanduser()
     try:
@@ -734,18 +738,30 @@ class Reuse:
                            for d in self.groups]}
 
 
+def tree_of(base) -> Path:
+    """THE PROJECTS TREE the calculation in ``base`` lies in -- where the
+    finished calculation it reuses, and what that holds, is found
+    tree-relative (`engines/transport.md` § 2a.16) -- refused by name
+    (:class:`ReuseError`) for a folder in none."""
+    from ..projects import find_projects_root
+    root = find_projects_root(Path(base))
+    if root is None:
+        raise ReuseError(f"{base} is not inside a projects tree, so what it "
+                         f"reuses cannot be found")
+    return Path(root).resolve()
+
+
 def finished_of(calc):
     """``(the finished calculation, why)`` -- the calculation ``calc``'s
     description reuses, opened through the one door that opens it
     (:func:`reused`: inside the tree, a transport calculation
     whose description reads); ``(None, why)`` when its folder is not there
     or that door refuses it, every group then prepared here, saying so."""
-    from ..projects import find_projects_root
-    root = find_projects_root(Path(calc.base))
-    if root is None:
-        return None, (f"{calc.base} is not inside a projects tree, so "
-                      f"{calc.task.reuses} cannot be found")
-    if not (Path(root) / calc.task.reuses).is_dir():
+    try:
+        root = tree_of(calc.base)
+    except ReuseError as exc:
+        return None, str(exc)
+    if not (root / calc.task.reuses).is_dir():
         return None, f"{calc.task.reuses} is not there"
     try:
         return reused(calc.task.reuses, tree_root=root)[0], None
@@ -760,13 +776,11 @@ def origin(base, folder) -> str:
     hold the same computation exactly when their origins are one -- what a
     point taken over is matched by, and what a copy's ``.copied-from``
     says, one hop."""
-    from ..projects import find_projects_root
     from ..runrecord import copied_of
     said = copied_of(base, folder)
     if said:
         return said
-    tree = Path(find_projects_root(Path(base))).resolve()
-    return Path(folder).resolve().relative_to(tree).as_posix()
+    return Path(folder).resolve().relative_to(tree_of(base)).as_posix()
 
 
 def point_key(pt) -> Tuple[int, float]:
@@ -1071,10 +1085,8 @@ def _shared_size(calc, contours) -> int:
     """What a point's ``shared/`` will hold, in bytes: the finished point's
     files (:func:`_shared_files`) and its own ``shared/``
     (:func:`shared_into`)."""
-    from ..projects import find_projects_root
     from .energies import SHARED_DIR
-    src = (Path(find_projects_root(Path(calc.base))).resolve()
-           / contours.source)
+    src = tree_of(calc.base) / contours.source
     files = (_shared_files(src, calc.task.label)
              + (_files(src / SHARED_DIR) if (src / SHARED_DIR).is_dir()
                 else []))
@@ -1139,7 +1151,6 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
     the new one adding at least one.  The contours ``None`` when it shares
     none, its words saying why."""
     from ..deck_record import same_calculation
-    from ..projects import find_projects_root
     from ..runs import run_of
     from .energies import (deck_window, grid, held,
                                       shared_contours)
@@ -1163,7 +1174,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
                       f"than {shown}: {'; '.join(differs)}")
     window = deck_window(now)
     theirs = held(src, calc.task.label)
-    tree = Path(find_projects_root(fbase)).resolve()
+    tree = tree_of(fbase)
     c = shared_contours(grid(*window), theirs, window=window,
                         source=src.resolve().relative_to(tree).as_posix())
     asked = (f"{window[0]:g}…{window[1]:g} eV at {window[2]} points")
@@ -1302,7 +1313,7 @@ def _member(calc, finished, stage: str, once, copied: set
         # describes held, done, in its newest run -- a rung run once here
         # takes its first frame at 0 V (`point_key`) -- and that run not
         # still going, so what is copied is what it left.
-        got = read_points(fbase, ftask, stage, newest, names)
+        got = read_points(finished, stage, newest, names)
         launch = got.launch
         if launch is None and got.state != "unreadable":
             return no(f"{stage}: {shown} was never launched")
@@ -1322,7 +1333,7 @@ def _member(calc, finished, stage: str, once, copied: set
                           f"is short of done -- {said}")
             pairs.append((pt, src))
     else:
-        _c, state, _v, detail = read_run(fbase, ftask, stage, newest,
+        _c, state, _v, detail = read_run(finished, stage, newest,
                                          verdict=False)
         if not usable(state):
             return no(f"{stage}: {shown} is {state}"
@@ -1567,8 +1578,8 @@ def copy_in(calc, decision: Decision, plan) -> None:
     its launch record last, so a copy cut short reads as a run never
     launched."""
     from ..paths import attempt_dir, attempts_in
-    from ..runfiles import COPIED_FROM_FILE
-    from ..runrecord import launch_record_path, write_copied_from
+    from ..runrecord import (COPY_ANEW, COPY_LAST, RUN_RECORDS,
+                             launch_record_path, write_copied_from)
     from ..jobset.materialize import empty_run
     from ..jobset.naming import stage_home, stamp_containers
     base, task = Path(calc.base), calc.task
@@ -1588,14 +1599,17 @@ def copy_in(calc, decision: Decision, plan) -> None:
         if c.points:
             _copy_relaid(calc, c, record, plan)
             continue
+        # THE RUN'S OWN RECORDS a copy writes itself (`runrecord.RUN_RECORDS`:
+        # its `.copied-from` anew, its launch record last), below -- at the
+        # run's own top only: a point's `shared/` keeps its own.
+        written = {r.path(c.source) for r in RUN_RECORDS
+                   if r.copy in (COPY_LAST, COPY_ANEW)}
         for f in _files(c.source):
-            # THE RUN'S OWN RECORDS are written for the copy, below; a
-            # point's `shared/` keeps its own.
-            if f in (record, c.source / COPIED_FROM_FILE):
+            if f in written:
                 continue
             plan.copy(f, c.run / f.relative_to(c.source))
         write_copied_from(c.run, c.copied_from, plan=plan)
-        plan.copy(record, c.run / record.name)
+        plan.copy(record, launch_record_path(c.run))
 
 
 def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
@@ -1610,16 +1624,18 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
     the run the results come from, last, so a copy cut short reads as a run
     never launched."""
     from .. import calcdirs
-    from ..runfiles import (CALCDIR_FILE, CONTINUED_FROM_FILE,
-                            COPIED_FROM_FILE, GATHERED_FROM_FILE,
-                            LAUNCH_RECORD_FILE)
-    from ..runrecord import (RunRef, write_continued_from, write_copied_from,
-                             write_gathered_from)
+    from ..runfiles import CALCDIR_FILE
+    from ..runrecord import (COPY_CARRIED, RUN_RECORDS, RunRef,
+                             launch_record_path, write_continued_from,
+                             write_copied_from, write_gathered_from)
     from ..warmfiles import never_carried
     from ..jobset.materialize import open_scratch
     base = Path(calc.base)
-    records = {CALCDIR_FILE, CONTINUED_FROM_FILE, COPIED_FROM_FILE,
-               GATHERED_FROM_FILE, LAUNCH_RECORD_FILE}
+    # NEVER COPIED AS THEY LIE: each folder's stamp, and the run's own
+    # records a copy writes itself or names runs by (`runrecord.RUN_RECORDS`,
+    # every one but those carried as they lie).
+    records = {CALCDIR_FILE,
+               *(r.name for r in RUN_RECORDS if r.copy != COPY_CARRIED)}
     of_points = any(rel for _src, rel, _made in c.points)
     plan.text(*calcdirs.record(
         c.run, role=calcdirs.CONTAINER if of_points else calcdirs.RUN,
@@ -1649,7 +1665,7 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
         if continued is not None:
             write_continued_from(dest, RunRef.read(continued), plan=plan)
     write_copied_from(c.run, c.copied_from, plan=plan)
-    plan.copy(record, c.run / record.name)
+    plan.copy(record, launch_record_path(c.run))
 
 
 def takes_over(calc, stage: str, points, took) -> Optional[Takes]:
@@ -1755,13 +1771,11 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
     folder's stamp, a launch record, the engine's scratch, or the files
     the gather gave this point (``given``), which are this run's; then its
     ``.copied-from``."""
-    from ..runfiles import (CALCDIR_FILE, CONTINUED_FROM_FILE,
-                            COPIED_FROM_FILE, GATHERED_FROM_FILE,
-                            LAUNCH_RECORD_FILE)
-    from ..runrecord import write_copied_from
+    from ..runfiles import CALCDIR_FILE
+    from ..runrecord import COPY_CARRIED, RUN_RECORDS, write_copied_from
     from ..warmfiles import never_carried
-    records = {CALCDIR_FILE, CONTINUED_FROM_FILE, COPIED_FROM_FILE,
-               GATHERED_FROM_FILE, LAUNCH_RECORD_FILE, *given}
+    records = {CALCDIR_FILE,
+               *(r.name for r in RUN_RECORDS if r.copy != COPY_CARRIED), *given}
     folder_of = {point_key(pt): pdir for pdir, pt in points}
     for t in takes:
         pdir = folder_of[point_key(t.point)]
@@ -1781,22 +1795,23 @@ def carry_shared(src: Path, dest: Path, plan, *, root) -> bool:
     folder of it stamped anew with its role where it now lies in the
     calculation at ``root``, its ``.copied-from`` last, so a copy cut short
     reads as none (`engines/transport.md` § 2a.16); nothing where ``src``
-    holds no ``shared/`` whole.  Whether it carried one.  The one place a
-    point's ``shared/`` is composed (`execution/runs-of-points.md` § 2.4,
-    *shared*)."""
+    holds no ``shared/`` whole.  Whether it carried one
+    (`execution/runs-of-points.md` § 2.4, *shared*)."""
     from .. import calcdirs
-    from ..runfiles import CALCDIR_FILE, COPIED_FROM_FILE
+    from ..runfiles import CALCDIR_FILE
+    from ..runrecord import copied_from_path
     from .energies import SHARED_DIR
     src, dest = Path(src) / SHARED_DIR, Path(dest) / SHARED_DIR
-    if not (src / COPIED_FROM_FILE).is_file():
+    record = copied_from_path(src)
+    if not record.is_file():
         return False
     for f in _files(src):
         if f.name == CALCDIR_FILE:
             plan.text(*calcdirs.record(dest / f.parent.relative_to(src),
                                        role=calcdirs.SHARED, root=root))
-        elif f.name != COPIED_FROM_FILE or f.parent != src:
+        elif f != record:
             plan.copy(f, dest / f.relative_to(src))
-    plan.copy(src / COPIED_FROM_FILE, dest / COPIED_FROM_FILE)
+    plan.copy(record, copied_from_path(dest))
     return True
 
 
@@ -1812,7 +1827,6 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     ``.copied-from`` last.  Refused, :class:`ValueError`, when neither is
     there."""
     from .. import calcdirs
-    from ..projects import find_projects_root
     from ..runrecord import write_copied_from
     from .energies import SHARED_DIR, Contours
     contours = (Contours.of_deck(read_deck(deck)) if deck.is_file() else None)
@@ -1821,8 +1835,7 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     dest = Path(pdir) / SHARED_DIR
     if held is not None and carry_shared(held, pdir, plan, root=calc.base):
         return
-    tree = Path(find_projects_root(Path(calc.base))).resolve()
-    src = tree / contours.source
+    src = tree_of(calc.base) / contours.source
     files = _shared_files(src, calc.task.label)
     if not files:
         raise ValueError(

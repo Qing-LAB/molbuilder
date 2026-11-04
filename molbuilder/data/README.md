@@ -6,17 +6,16 @@ rather than in the source modules has two purposes:
 
 1. **Auditable provenance.**  Every value is cited in this README; reviewers
    can check the entry against the cited source without reading code.
-2. **User-updatable.**  An end user can edit a file in this directory to
-   override a value (for example, to use a strained-lattice constant or a
-   non-room-temperature value) without touching molbuilder's Python source.
+2. **One place.**  Each file is read here and nowhere else
+   (`molbuilder.data_dir`; `execution/architecture.md` A10, A11).  A value of
+   your own is not an edit of a shared table: a lattice constant measured in
+   your own setup is read from your run (`POST
+   /api/modify/lattice-from-run`), and a report card layout's copy lives in
+   the config dir (`report-cards.json` below).
 
 Each file in this directory is paired with a section below that lists every
 value, its source, and any caveats.  When you add or change a value, update
 this README in the same commit.
-
-If you reinstall the molbuilder package, your in-place edits will be
-overwritten by the package's pristine copy.  To make local overrides
-durable, see *§ Local overrides* at the bottom of this file.
 
 ---
 
@@ -57,7 +56,7 @@ calculation.
 | `contact_distance.json` | — | `molbuilder.modify` | live |
 | `catalogue.template.toml` | `molbuilder/template@2` | `molbuilder.template.read_template` | **new 2026-08-14 — the parameter catalogue** |
 | `jupyter.toml` | `molbuilder/jupyter@1` | `molbuilder.jupyter.load_rules` | **new 2026-09-15 — the framed notebook's settings** |
-| `report-cards.json` | `molbuilder/report-cards@1` | `molbuilder.report_cards.load` — and the monitor beside a job, from its bundle | **2026-10-19 — the chat card's layout per receiver**. Its override is `<config dir>/report-cards.json`, NOT `$MOLBUILDER_DATA_DIR`: the config dir travels with the monitor, the data dir does not (`run-reports.md` § 4.1c) |
+| `report-cards.json` | `molbuilder/report-cards@1` | `molbuilder.report_cards.load` — and the monitor beside a job, from its bundle | **2026-10-19 — the chat card's layout per receiver**. Its override is `<config dir>/report-cards.json`: the config dir travels with the monitor (`run-reports.md` § 4.1c) |
 | `jupyter_server_config.py` | — (executed Python) | **nothing imports it** — `molbuilder.jupyter.prepare_lab_home` COPIES it into the Lab home at every notebook start | **new 2026-09-15** |
 
 > **Two of these are not "fundamental physical data", and that is deliberate.**
@@ -134,12 +133,12 @@ Table II (all-electron, BAND), for the three metals it computes: Cu 3.628,
 Pd 3.942, Ag 4.147 — within 0.004 Å, the spread between two all-electron codes
 for the same functional.
 
-### When to override
+### When to state your own
 
 These are literature values — a room-temperature measurement and a PBE
-calculation at zero temperature.  Override (either by
-editing the JSON or by passing `lattice_constant=` to
-`add_slab` per call) when:
+calculation at zero temperature.  State your own value for the slab you build
+(`lattice_constant=` to `add_slab`, or the Modify tab's value), never an edit of
+this shared file, when:
 
 * You want a strained-lattice slab (epitaxial growth on a different
   substrate).
@@ -188,7 +187,7 @@ entry was added.
 v2 carried a third column, `a_pbe_siesta_psml` — "the lattice constant
 **your** SIESTA and **your** pseudopotential produce". It was `null` for
 all six metals, and **nothing in molbuilder could ever write it**: its
-only homes were this packaged file and a `MOLBUILDER_DATA_DIR` copy, so
+only home was this packaged file and a person's copy of it, so
 the "Your bulk run" control that read it greyed itself out — correctly —
 from the day it shipped.
 
@@ -200,31 +199,8 @@ measures the nearest-neighbour distance and reports
 `a = √2 · d`, along with what looks wrong (`POST
 /api/modify/lattice-from-run`).
 
-**A v2 file still loads.** If you have an overriding copy, it keeps
-working; the extra column is ignored. Only the v1 `"a"`-only schema is
-refused, because a single number with no exchange-correlation functional
-attached is the ambiguity v2 existed to end.
-
----
-
-## Local overrides
-
-If you want your edits to survive `pip install --upgrade molbuilder`,
-export an environment variable pointing at a directory that mirrors
-this layout:
-
-```bash
-export MOLBUILDER_DATA_DIR="$HOME/.config/molbuilder/data"
-mkdir -p "$MOLBUILDER_DATA_DIR"
-cp /path/to/installed/molbuilder/data/fcc_lattice.json \
-   "$MOLBUILDER_DATA_DIR/"
-# edit the copy as needed
-```
-
-molbuilder will look there *first*, then fall back to the bundled
-`molbuilder/data/` files.  When you read this README from a deployed
-copy and the override directory exists, log lines should mention the
-override path.
+**The loader reads v3 alone**, the shape this file has: a table that is
+not v3, or does not read, is refused with its path.
 
 ---
 
@@ -235,5 +211,4 @@ override path.
 3. Cite the source for every numeric value you add.
 4. Update the `## Files` table at the top.
 5. Wire it into the relevant Python module via a `_load_*()` helper that
-   reads through the `MOLBUILDER_DATA_DIR` override path before falling
-   back to this directory.
+   reads it at `molbuilder.data_dir()`, and nowhere else.

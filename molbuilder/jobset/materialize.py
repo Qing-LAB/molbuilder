@@ -325,10 +325,11 @@ def open_scratch(base, folder, plan) -> Path:
 
 
 def bring_files(calc, job, src_dir, run, names, plan) -> List[str]:
-    """Copy into ``run`` what it runs from -- the deck, its wrappers, the
-    shared package and the bundles that travel beside the deck -- from
-    ``src_dir`` (where prep rendered them: the stage's folder, or a swept
-    point's), else the calculation's root.  COPIED, never linked
+    """Copy into ``run`` what it runs from -- the deck and the files that
+    travel beside it (its wrappers, the bundles) from ``src_dir`` alone,
+    where prep rendered them (the stage's folder, or a swept point's); then
+    the calculation's shared package, ``src_dir``'s copy, else the
+    calculation's root.  COPIED, never linked
     (`project-layout.md` § 1.0: the run directory "holds everything"; a
     synced-back bundle's links would dangle).  Returns what was brought.
     ``calc`` is the calculation as the verb read it (A16): its plan, and
@@ -346,15 +347,20 @@ def bring_files(calc, job, src_dir, run, names, plan) -> List[str]:
     # which the wrapper's writer renders from too, `runwrap.bundles_for`):
     # the bundles, a charged SIESTA deck's post-run script, the run script,
     # the header, a call's coordinates file -- a folder holding none of one
-    # brings none -- then the job's finish, and the calculation's shared
-    # package.
-    names_ = ([job.script] + list(jobset.shared)
+    # brings none -- then the job's finish.
+    names_ = ([job.script]
               + list(beside_the_deck(jobset.engine,
                                      str(calc.task.calculation), job.finish,
                                      names)))
-    # THE ONE COPY STEP (`planned.bring`): from where prep rendered them,
-    # else the calculation's root.
-    return bring(plan, names_, into=run, from_dir=src_dir, also=(base,))
+    # THE ONE COPY STEP (`planned.bring`), in two, as a vibration call's
+    # folder is filled (`spectra.siesta_vibration`): the deck and what
+    # travels beside it from where prep rendered them alone -- one prep did
+    # not write there is not this run's, and is never taken from the root
+    # instead; then the shared package, prep's copy there, else the
+    # calculation's root.
+    return (bring(plan, names_, into=run, from_dir=src_dir)
+            + bring(plan, list(jobset.shared), into=run, from_dir=src_dir,
+                    also=(base,)))
 
 
 @dataclass(frozen=True)

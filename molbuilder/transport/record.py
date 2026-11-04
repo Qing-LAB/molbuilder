@@ -439,11 +439,12 @@ def _output_of(where: Path) -> Optional[Path]:
     return run.stdout if run is not None else None
 
 
-def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
+def result_folders(calc, stage: str, run: Optional[Path] = None
                    ) -> List[Tuple["Point", Optional[Path], Optional[Path]]]:
-    """``(point, folder, run)`` of each result ``stage`` holds now: a rung
-    that runs per point (`stages.rung_points`: a frame, a voltage, or both),
-    its latest run's point folders; any other rung's latest run, as the one
+    """``(point, folder, run)`` of each result ``stage`` of ``calc`` -- the
+    calculation whole -- holds now: a rung that runs per point
+    (`stages.rung_points`: a frame, a voltage, or both), its latest run's
+    point folders; any other rung's latest run, as the one
     point ``Point()`` at 0 V -- ``folder`` ``None`` while no run is open
     (`engines/transport.md` § 2a.11).  ``run`` is where the launch record
     lies; given, that run is read instead of the latest (the device run
@@ -451,14 +452,14 @@ def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
     from ..jobset.materialize import latest_attempt
     from ..jobset.naming import stage_home
     from .stages import Point, frames_of, points_in, rung_points
+    base, task = Path(calc.base), calc.task
     if run is None:
         run = latest_attempt(stage_home(base, task, stage).dir)
     pts = rung_points(task, stage, frames=frames_of(base))
     if pts:
         if run is None:
             return [(pt, None, None) for pt in pts]
-        return [(pt, p, run)
-                for p, pt in points_in(run, task, stage, base=base)]
+        return [(pt, p, run) for p, pt in points_in(run, calc, stage)]
     return [(Point(), run, run)]
 
 
@@ -498,7 +499,7 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
     # THE DEVICE RUN THE TRANSMISSION READ, when it has one -- the device
     # facts shown beside T(E) are that run's, never the newest by itself
     # (`engines/transport.md` § 2a.12).
-    device_run = gathered_device_run(base, task)
+    device_run = gathered_device_run(calc)
     out: List[Dict] = []
     for name in TRANSPORT_STAGES:
         s = by_name.get(name)
@@ -546,7 +547,7 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
             from ..jobset.continuation import read_points
             points_run = run
             try:
-                got = read_points(base, task, name, run)
+                got = read_points(calc, name, run)
             except Exception as exc:              # noqa: BLE001 -- said, never hidden
                 got = None
                 fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
@@ -577,9 +578,8 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
             # A RUNG THAT RUNS PER POINT, POINT BY POINT -- the report's
             # convergence card follows the selected point (`web/results.md`
             # § 2.5); the rung's own facts are its first point's.
-            fact["by_point"] = _rung_points(base, task, name, answers,
-                                            run=run, rung=fact,
-                                            rows=points)
+            fact["by_point"] = _rung_points(calc, name, answers, run=run,
+                                            rung=fact, rows=points)
             _bridge_charge_from_0v(fact["by_point"])
             # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
             # reading of the point's `.continued-from` and `.gathered-from`
@@ -665,8 +665,8 @@ def _periodic_shift(base: Path, folder: Path) -> Optional[Dict]:
     return None
 
 
-def gathered_device_run(base: Path, task) -> Optional[Path]:
-    """The device run the transmission's newest run gathered its
+def gathered_device_run(calc) -> Optional[Path]:
+    """The device run ``calc``'s transmission's newest run gathered its
     Hamiltonians from -- read from the transmission's first point's own
     ``.gathered-from`` (`runrecord.read_gathered_from`), the run above the
     point named there -- or ``None`` while the transmission has gathered
@@ -676,14 +676,14 @@ def gathered_device_run(base: Path, task) -> Optional[Path]:
     # THE DEVICE'S FILE, as the DAG names it (`stage_inputs`), and THE RUN
     # its folder lies in -- a point's folder lies below it
     # (`RunRef.run_folder`).
-    device = {fn for up, fn in inputs_of(task, "transmission")
+    device = {fn for up, fn in inputs_of(calc.task, "transmission")
               if up == "device"}
-    for _pt, where, _run in result_folders(base, task, "transmission"):
+    for _pt, where, _run in result_folders(calc, "transmission"):
         if where is None:
             continue
         for src, fn in _gathered(where):
             if fn in device:
-                return src.run_folder().path(base)
+                return src.run_folder().path(Path(calc.base))
     return None
 
 
@@ -825,12 +825,13 @@ def _contour_facts(contours: Dict) -> Dict:
     return out
 
 
-def _rung_points(base: Path, task, name: str, answers: str,
+def _rung_points(calc, name: str, answers: str,
                  run: Optional[Path] = None, *, rung: Dict,
                  rows=()) -> List[Dict]:
     """``[{frame, bias_v, point, attempt, state, detail, ...science}]`` --
-    each point of a rung that runs per point, its state the status door's
-    row (``rows``, read once per answer: `architecture.md` § 3.2) -- the
+    each point of ``calc``'s rung ``name`` that runs per point (``calc``
+    the calculation whole), its state the status door's row (``rows``,
+    read once per answer: `architecture.md` § 3.2) -- the
     run door's (`runs.concluded`) only for a run the status door has no
     rows for -- and its own answer (:func:`_science`); ``run`` names the
     run to read instead of the latest.  A point with no folder yet -- no run
@@ -841,10 +842,11 @@ def _rung_points(base: Path, task, name: str, answers: str,
     never one still to come, never failed."""
     from ..jobset.naming import stage_home
     from ..runs import concluded
-    names = stage_home(base, task, name).names
+    base = Path(calc.base)
+    names = stage_home(base, calc.task, name).names
     said = {r["folder"]: r for r in rows or ()}
     out: List[Dict] = []
-    for pt, where, run in result_folders(base, task, name, run=run):
+    for pt, where, run in result_folders(calc, name, run=run):
         entry: Dict = {**pt.to_wire(), "point": pt.words()}
         if where is None or not where.is_dir():
             entry.update(state=rung["state"], detail=rung["detail"])
@@ -1000,7 +1002,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         if key not in averaged:
             averaged[key] = point_averages_of(folder, task.label)
         return averaged[key]
-    for pt, where, run in result_folders(base, task, "transmission"):
+    for pt, where, run in result_folders(calc, "transmission"):
         # WHICH POINT, on every entry: its frame (``None`` with no frame
         # axis), its folder below the run, and in words.
         at = {**pt.to_wire(), "tokens": pt.rel, "point": pt.words()}
@@ -1353,7 +1355,7 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
         # every point, one that runs per frame every voltage (a single
         # bias, the low-bias approximation).  ``(point, folder)``.
         return next(((pt, w) for pt, w, _r in result_folders(
-                         base, task, stage, run=run)
+                         calc, stage, run=run)
                      if (pt.frame is None or pt.frame == want.frame)
                      and (pt.volts is None
                           or same_volts(pt.bias_v, want.bias_v))),
@@ -1381,7 +1383,7 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     junction = recorded.structure if recorded is not None else None
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
-    _dev_at, dev = _at("device", run=gathered_device_run(base, task))
+    _dev_at, dev = _at("device", run=gathered_device_run(calc))
     # ITS ORBITAL INDEX, the engine's own file on the label, through the run
     # door (`runs.Run.on_label`).
     from ..runfiles import SIESTA_ORB_INDX

@@ -83,9 +83,9 @@ class Job:
     host: str
     #: The calculation's folder.
     calculation: str
-    #: Each member's stage -> ``{"run", "launch_record"}``: its run as a
-    #: record names it (`runrecord.RunRef`), and its launch record's path
-    #: from the calculation's folder -- what its state is asked through.
+    #: Each member's stage -> ``{"run"}``: its run as a record names it
+    #: (`runrecord.RunRef`) -- whose own launch record its state is asked
+    #: through (`runrecord.launch_record`).
     members: Dict[str, Dict[str, str]]
     launched_at: str
     #: A run here: left in the background, or waited on.
@@ -213,12 +213,10 @@ class Asked:
 def scheduler_of(job):
     """The scheduler a queue job was sent to: the one its calculation's copy
     of its machine's record names (`configuration.md` M-3) -- ``None`` when
-    that copy does not read here (`record.calculation_environment`)."""
-    from .scheduler.record import UnknownTarget, calculation_environment
-    try:
-        rec = calculation_environment(job.calculation)
-    except UnknownTarget:
-        return None
+    that copy is not there; a copy there that does not read is its door's
+    refusal (`record.calculation_environment`, `UnknownTarget`)."""
+    from .scheduler.record import calculation_environment
+    rec = calculation_environment(job.calculation)
     return rec.scheduler if rec is not None else None
 
 
@@ -246,14 +244,14 @@ def asked_here(job: "Job", here: "Asked") -> "Tuple[Optional[Any], str]":
     to, as the scheduler names it -- else ``(None, why not)``: THE ONE RULE
     `molbuilder jobs` and the run door ask by (`job-system.md` § 6.0a;
     `running-a-job.md` § 4.2)."""
-    scheduler = scheduler_of(job)
+    from .scheduler.record import UnknownTarget
+    try:
+        scheduler = scheduler_of(job)
+    except UnknownTarget as exc:
+        # THERE AND NOT READ, in the door's own words -- an older
+        # molbuilder's copy naming `jobset migrate`.
+        return None, " ".join(str(exc).split())
     if scheduler is None:
-        from .scheduler.record import UnknownTarget, calculation_record
-        if calculation_record(job.calculation).is_file():
-            # THERE AND NOT READ, said as the record's own refusal says it
-            # -- an older molbuilder's copy naming `jobset migrate`.
-            return None, " ".join(
-                str(UnknownTarget.unreadable_copy(job.calculation)).split())
         return None, ("its calculation's record of its machine is not here, "
                       "so its scheduler cannot be asked")
     if job.cluster is None:
@@ -398,8 +396,9 @@ def read(path: Path) -> Job:
         here = d["how"] == "here"
         return Job(id=d["id"], how=d["how"], host=d["host"],
                    calculation=d["calculation"],
-                   members={k: {"run": v["run"],
-                                "launch_record": v["launch_record"]}
+                   # EACH MEMBER BY ITS RUN, all an address keeps of it;
+                   # a key beside it is read past.
+                   members={k: {"run": v["run"]}
                             for k, v in d["members"].items()},
                    launched_at=d["launched_at"],
                    background=bool(d.get("background")) if here else False,
