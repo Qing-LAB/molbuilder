@@ -754,8 +754,8 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
     `generator.md` § 4.3 — *a sweep and an allocation are both inputs to `prep`,
     never fields of the description* — and § 10's class 3 puts `mpi_np`,
     `omp_threads` and `max_memory_mb` at prep, *"never floor 2"*.  So this test
-    does NOT write points into `task.json`; it writes a description and asks
-    `prep bench` to enumerate.
+    does NOT write points into `task.json`; it states them in the job request,
+    as the Measure card does (§ 4.3a), and asks `prep bench`.
 
     **What the description DOES answer is the GPU**, and that is equally
     settled: `web/task-setup.md` § 6.2, *"use GPU or not is set up only at the
@@ -798,7 +798,9 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
                      "structure": over["structure"], "varies": [],
                      "stages": [{"name": "coarse", "overrides": {}}]}
         s = save_both(d, described, {"schema": over["job_request_schema"],
-                                     "stages": {"coarse": {"group": 1}}},
+                                     "stages": {"coarse": {"group": 1}},
+                                     "bench": {"mpi_np": [1, 2],
+                                               "omp_threads": [1]}},
                       web_client)
         assert s.status_code == 200, s.get_json()
         _pseudos_for(d, ["H"])

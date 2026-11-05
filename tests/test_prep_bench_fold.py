@@ -128,8 +128,11 @@ def calc(tree):
                    gpu_count=1)
     # ...and the wall and memory a job handed to a scheduler states, which
     # the benchmark's trials share: these tests launch them in submit mode.
+    # WHAT TO MEASURE IS STATED (`generator.md` § 4.3a): three shapes the
+    # machine's one GPU node holds.
     req = read_request(dest)
     req["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    req["bench"] = {"mpi_np": [1, 2, 4], "omp_threads": [1], "gpu_count": [1]}
     write_request(dest, req)
     return dest
 
@@ -275,8 +278,8 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
         if not l.startswith("  "):
             break
         listed.append(l.strip())
-    assert len(listed) == 5, (
-        "five trials were prepared, so five are listed; got: " + repr(listed))
+    assert len(listed) == 3, (
+        "three trials were prepared, so three are listed; got: " + repr(listed))
     assert all("/" in l for l in listed), (
         "each trial must be named by its path from the bundle, not the bare "
         "attempt name; got: " + repr(listed))
@@ -982,6 +985,9 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
                                       gpu_type="a100"),
                     env_init=_ENTERS),
         (dest / "environment.json"))
+    req = read_request(dest)
+    req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
+    write_request(dest, req)
     r = CliRunner()
     # a bare bench owes a name here exactly as it does on three rungs
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
@@ -1108,7 +1114,8 @@ def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
     _describe_cpu(calc)                       # template says use_gpu=false
     _declare_bench(calc, {"use_gpu": [True],
                           "diag_algorithm": ["ELPA-2STAGE"],
-                          "mpi_np": [4], "omp_threads": [1]})
+                          "mpi_np": [4], "omp_threads": [1],
+                          "gpu_count": [1]})
     sweep, pins, _tr = bench_inputs(open_calculation(calc), None)
     assert pins["use_gpu"] is True
     assert pins["diag_algorithm"] == "ELPA-2STAGE"
@@ -1121,7 +1128,8 @@ def test_a_declared_pin_reaches_the_trial_deck(calc):
     """Executed, not assumed: the pinned eigensolver lands in the rendered
     trial deck, replacing the template's (`ELPA-1STAGE` in the fixture)."""
     _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"],
-                          "mpi_np": [4], "omp_threads": [1]})
+                          "mpi_np": [4], "omp_threads": [1],
+                          "gpu_count": [1]})
     _prep_bench(calc)
     decks = list((calc / "01_coarse" / "bench").glob("bench-*/**/*.fdf"))
     assert decks, "no trial decks rendered"
@@ -1147,13 +1155,13 @@ def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
 
 
 def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
-    """On a GPU description with no gpu_count, G ranges over the divisors
-    of each declared rank count (the proposal), each trial running the
-    declared mpi_np, N, exactly."""
-    _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1]})
+    """Every (mpi_np, gpu_count) pair is a cell, each trial running the
+    declared mpi_np, N, exactly, whatever the record says of the node."""
+    _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1],
+                          "gpu_count": [1, 2]})
     sweep, _pins, _tr = bench_inputs(open_calculation(calc), None)
     assert all(p["N"] == 4 for p in sweep)
-    assert {p["G"] for p in sweep} == {1}          # fixture probes one a100
+    assert {p["G"] for p in sweep} == {1, 2}       # fixture probes one a100
 
 
 # --------------------------------------------------------------------- #

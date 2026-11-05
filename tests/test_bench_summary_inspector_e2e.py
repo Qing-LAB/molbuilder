@@ -71,6 +71,8 @@ def sweep(isolated_projects_root, monkeypatch):
     req = read_request(calc)
     req["execution"] = {"use_gpu": True, "diag_algorithm": "ELPA-1STAGE",
                         "gpu_count": 1}
+    req["bench"] = {"mpi_np": [1, 2, 4], "omp_threads": [1, 2],
+                    "gpu_count": [1]}
     write_request(calc, req)
     write_machine_record(
         scheduler=WORKSTATION,

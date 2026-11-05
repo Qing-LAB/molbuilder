@@ -295,6 +295,21 @@ bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2], omp_threads = [1] 
 bench_gres = ["gpu:1", "gpu:2"]
 
 [[case]]
+name = "a GPU benchmark states its device counts, nothing proposed for it (generator.md 4.3a)"
+bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1] }
+refused = ['does not state "GPUs (G)" (gpu_count)']
+
+[[case]]
+name = "...a CPU-versus-GPU one too"
+bench = { use_gpu = [true, false], mpi_np = [8], omp_threads = [1] }
+refused = ['does not state "GPUs (G)" (gpu_count)']
+
+[[case]]
+name = "...and device counts alone state no ranks and no cores per rank"
+bench = { use_gpu = [true], gpu_count = [2] }
+refused = ['does not state "MPI ranks (np)" (mpi_np) and "OMP threads per rank" (omp_threads)']
+
+[[case]]
 name = "a benchmark's GPU ask bounds its trials, as its rank ask does: a declared cell past it is left out by name (generator.md 4.1, 4.3a)"
 bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2], omp_threads = [1] }
 prep = ["--gpus", "1"]
@@ -302,11 +317,17 @@ said = ["2 GPUs is over this prep's --gpus (1 GPU)"]
 bench_gres = ["gpu:1"]
 
 [[case]]
-name = "...and a cell the machine proposed past it, the same way -- the prep is not refused over a cell nobody declared"
-bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1] }
-prep = ["--gpus", "2"]
-said = ["4 GPUs is over this prep's --gpus (2 GPUs)"]
-bench_gres = ["gpu:1", "gpu:2"]
+name = "...and when that leaves no GPU cell, the prep is refused, naming what to change"
+bench = { use_gpu = [true], mpi_np = [8], gpu_count = [2], omp_threads = [1] }
+prep = ["--gpus", "1"]
+refused = ["2 GPUs is over this prep's --gpus (1 GPU)", "no GPU cell is left", "Raise this prep's ask"]
+
+[[case]]
+name = "...while a CPU-versus-GPU benchmark measures its CPU family alone, and says so"
+bench = { use_gpu = [true, false], mpi_np = [8], gpu_count = [2], omp_threads = [1] }
+prep = ["--gpus", "1"]
+said = ["no GPU cell is left -- this sweep measures only the CPU family"]
+bench_header_lacks = ["--gres"]
 
 [[case]]
 name = "...and a trial on the CPU asks no GPU, whatever the benchmark was allowed"
@@ -321,11 +342,9 @@ bench = { use_gpu = [true], mpi_np = [8], gpu_count = [2], omp_threads = [1] }
 bench_gres = ["gpu:2"]
 bench_header_lacks = ["enforce-binding"]
 
-# A BENCHMARK NAMED ON A QUEUE WITH NO GPUs, on a record whose other queue
-# has them: its GPU cells are enumerated for the record's GPUs and each is fit
-# on that queue -- a declared one kept, a proposed one left out by that
-# queue's numbers, its CPU cells kept: a cell that fits is never denied by a
-# sibling that does not (`generator.md` § 4.3a).
+# A BENCHMARK NAMED ON A QUEUE WITH NO GPUs: each stated cell is fit on that
+# queue and kept, its fit saying so -- the scheduler decides (`generator.md`
+# § 4.3a).
 [[case]]
 name = "a benchmark named on a queue with no GPUs keeps its declared GPU cells, each cell's fit saying so (scheduler.md R6)"
 allocation = { domain = "cpu" }
@@ -342,27 +361,9 @@ said = ["1 kept", "1 GPU is over the target's probed node's GPUs (0 GPUs)"]
 said_lacks = ["kept on"]
 
 [[case]]
-name = "...and a GPU cell whose device count the machine proposed -- none declared -- is the machine's proposal: left out there by that queue's numbers, its declared CPU cell kept"
-allocation = { domain = "cpu" }
-bench = { use_gpu = [true, false], mpi_np = [8], omp_threads = [1] }
-said = ["1 kept on cpu", "left out (3)", "1 GPU is over cpu's most GPUs on a node (0 GPUs); its record lists no GPUs"]
-bench_header_lacks = ["--gres"]
-
-[[case]]
-name = "...and declared device counts in a grid whose ranks the machine proposed: no node holds 8 GPUs, so nothing is proposed, and the refusal says how to keep them -- declare the cells whole"
-bench = { use_gpu = [true], gpu_count = [8] }
-refused = ["8 GPUs is over gpu's most GPUs on a node (4 GPUs)", "no GPU cell is left", "or declare the cells whole"]
-
-[[case]]
-name = "...and a cell the machine proposed there is left out by that queue's numbers, its CPU cells kept"
-allocation = { domain = "cpu" }
-bench = { use_gpu = [true, false] }
-said = ["left out (", "1 GPU is over cpu's most GPUs on a node (0 GPUs); its record lists no GPUs"]
-bench_header_lacks = ["--gres"]
-
-[[case]]
-name = "a benchmark on GPUs where no queue lists any is refused"
+name = "...and so does a record where no queue lists any GPU: what is stated is kept"
 queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 128 }]
 allocation = { domain = "cpu" }
-bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1] }
-refused = "no queue with recorded GPUs"
+bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1], gpu_count = [1] }
+said = ["1 kept on cpu"]
+bench_gres = ["gpu:1"]

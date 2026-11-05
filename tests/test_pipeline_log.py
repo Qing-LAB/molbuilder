@@ -343,6 +343,10 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     dest, stages = _calculation(tmp_path, "siesta")
     with pytest.raises(TypeError) as caught:
         if hook == "relabel":
+            from support.road import read_request, write_request
+            request = read_request(dest)
+            request["bench"] = {"mpi_np": [1], "omp_threads": [1]}
+            write_request(dest, request)
             prep_bench(open_calculation(dest), stages[0],
                        allocation=Resources(mpi_np=8))
         else:

@@ -454,9 +454,19 @@ name = "...and a description without one leaves the run script without one"
 run_sh_lacks = ["--notify-"]
 
 [[case]]
-name = "a benchmark's declared grid states its ranks and its cores per rank -- one alone is refused, never filled"
+name = "a benchmark's grid states its ranks and its cores per rank -- one alone is refused, never filled"
 bench = { mpi_np = [1, 2] }
-refused = ["declares mpi_np and not omp_threads", "Declare omp_threads's points too"]
+refused = ['does not state "OMP threads per rank" (omp_threads)', "molbuilder proposes none", '''on Task setup's "What to measure" card''', "job-request.json's bench"]
+
+[[case]]
+name = "...the other alone the same"
+bench = { omp_threads = [1] }
+refused = ['does not state "MPI ranks (np)" (mpi_np)']
+
+[[case]]
+name = "...and with neither, a value to vary is not a grid: nothing is made up for it"
+bench = { diag_algorithm = ["ELPA-1STAGE", "ELPA-2STAGE"] }
+refused = ['does not state "MPI ranks (np)" (mpi_np) and "OMP threads per rank" (omp_threads)']
 
 # ===================================================================== #
 #  A GROUP: STAGES THAT SHARE ONE JOB -- `engines/stages.md` § 2        #

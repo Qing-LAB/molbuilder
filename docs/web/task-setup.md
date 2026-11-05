@@ -634,18 +634,16 @@ would actually **run**, and it updates as the points are edited *(user,
 2026-08-30: "can't this list be just updated in the same card where the
 parameters are set… this does not need to be a message with a window")*.
 
-The heading counts them — *"6 combination(s) — 4 kept, 2 left out"* — and
-each kept cell shows its label (the same token its trial directory will
+The heading counts them — *"6 combination(s)"* — and
+each cell shows its label (the same token its trial directory will
 carry), its shape, and its fit on the benchmark's queue — the one picked
 on the page, as the description will name it
 ([`generator.md`](?doc=execution/generator.md) § 4.3a) — or, while none is
 picked, on each queue of the target's record, so the person sees every
 queue's while choosing one. **The target's queues, not "this machine":**
-preparing for a machine you are not standing on is ordinary here. A declared
-cell is kept whatever its fit says ([`scheduler.md`](?doc=execution/scheduler.md)
-R6); a proposed cell no node holds is shown **struck, with the numbers**
-rather than dropped: a point that silently
-vanished is the thing that sent someone to the CLI to find out why.
+preparing for a machine you are not standing on is ordinary here. A cell is
+kept whatever its fit says ([`scheduler.md`](?doc=execution/scheduler.md) R6),
+and the fit is shown under it.
 
 Three rules make it trustworthy rather than merely convenient:
 
@@ -1682,14 +1680,14 @@ from the same answer:
   ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 
 **A refusal shows what it had found** — the preflight's notes and what the
-inputs said — beside its own sentence: a bench refused because *no cell is
-left* points at its cells left out and those dropped, and they are there. A refused prep
+inputs said — beside its own sentence. A refused prep
 wrote nothing ([`job-system.md`](?doc=execution/job-system.md) § 5.0, agreement 3).
 
-**The bench is offered on every stage `prep bench` takes**, with or without
-declared axes: with none, the target machine proposes the grid, as the command
-line does ([`generator.md`](?doc=execution/generator.md) § 4.3a); a one-point
-declaration is that one cell. A description `prep bench` refuses outright — a
+**The bench is offered on every stage `prep bench` takes.** Its grid is stated
+in *What to measure*, and a Prep with none stated is refused by the door, naming
+what to state, as the command line's is
+([`generator.md`](?doc=execution/generator.md) § 4.3a); a one-point declaration
+is that one cell. A description `prep bench` refuses outright — a
 transport calculation, an engine the bench lane does not speak — has no
 Measure step: the folder answer carries the entry's own reason
 (`bench_refusal`, [`job-system.md`](?doc=execution/job-system.md) § 5.3) — a

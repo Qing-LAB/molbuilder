@@ -1279,9 +1279,9 @@ for what is the person's to fix is refused the same way on both doors; a
 
 **Where `prep bench` refuses the description itself** — a transport
 calculation, an engine the bench lane does not speak — one function says so
-for every door (`prep_inputs.bench_refusal`). A bench with no declared axes is
-the machine's proposal ([`generator.md`](?doc=execution/generator.md)
-§ 4.3a).
+for every door (`prep_inputs.bench_refusal`). A bench that does not state its
+grid is refused too, naming what to state
+([`generator.md`](?doc=execution/generator.md) § 4.3a).
 
 #### After prep
 
@@ -2358,8 +2358,8 @@ flowchart LR
   [`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md)).
 - **The trials** are the stage's science made measurable: each deck rendered
   from the description with the benchmark's pins laid over it, on a
-  `(G, N, c)` grid — GPUs, ranks in all, cores per rank — declared in the job
-  request or proposed from the machine. The pins are
+  `(G, N, c)` grid — GPUs, ranks in all, cores per rank — stated in the job
+  request. The pins are
   [`generator.md`](?doc=execution/generator.md) § 4.2's; the grid and its
   folder names § 4.3a's.
 - **A trial executes only through `jobset launch bench`** — a rider of its

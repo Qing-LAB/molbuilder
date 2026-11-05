@@ -496,7 +496,7 @@ complemntary and use should know that's not part of contract and it's a customiz
 | I2-119 | inventory | `exclusive`, a request field nothing sets | OPEN | unchecked |
 | I2-120 | inventory | the named-queue check in two doors | OPEN | unchecked |
 | I2-121 | inventory | one `proxy.trust` setting, ruled 2026-10-02, not built | **moved to AFTER-FEATURE** *(the user, 2026-11-04: "Leave it for now")*: nothing goes wrong behind the one proxy we run | confirmed |
-| I2-122 | inventory | a benchmark's grid the machine proposes, against the 2026-10-02 ruling | OPEN | unchecked |
+| I2-122 | inventory | a benchmark's grid the machine proposes, against the 2026-10-02 ruling | **closed 2.65.12** — *(the user, 2026-11-04: "Refuse, you state it")*: a benchmark states its ranks and cores per rank, on the GPU its device counts too, or is refused naming each and where; `bench/grid.py` gone; every cell kept with its fit, only one past this prep's own ask left out | unchecked |
 | I2-139 | inventory | `read_by` declared and read by nothing | **left 2.65.11** — `template.md` § 6.1 keeps the declaration on purpose, and says why | unchecked |
 | I2-140 | inventory | `kind = "monitor"` has no items | **closed 2.65.11** — the member retired, `template.md` with it | confirmed |
 | I2-198 | inventory | the electronic state resolved at many call sites per prep | OPEN — 13 calls now (12 on 2026-10-28) | unchecked |
@@ -1864,6 +1864,17 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | D-BANNER | **closed 2.63.0** | the run script's banner, header comment and failure line still say *wrapper* (`runwrap.py`; `running-a-job.md` quotes the banner) while the deck's text says *the run script* | the run script F2 rewrites to name no engine |
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
+
+## Found by 2.65.12's review round (2026-11-04), by the release that owns each
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2612-1 | **closed 2.65.12** | the What to measure card labelled the rows the refusal calls *yours to state* as what the machine answers | *a shape to try*; the picker's note gone |
+| K2612-2 | **closed 2.65.12** | a row's class was not painted while the grid was unstated: a wait mark that never ended | the refusal carries `rows` |
+| K2612-3 | **closed 2.65.12** | the Measure hint and the fold's count spoke beside the refusal, in their own words | one neutral sentence; the fold counts settings |
+| K2612-4 | **closed 2.65.12** | documents and two comments still said the machine proposes | swept |
+| K2612-5 | **closed 2.65.12** | new cases written as a function beside two tables, and a test its claim had left | rows; retired |
+| K2612-6 | → F8 | Results says *still running* of a benchmark prepared and never launched | not this release's page; found in passing |
 
 ## Found by 2.65.11's review rounds (2026-11-04), by the release that owns each
 

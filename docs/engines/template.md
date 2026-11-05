@@ -2945,9 +2945,8 @@ written down once, and the axis being swept was never part of it.
 **What a benchmark is MEANT to read from the template is
 `category="execution"`** — the knobs that change speed and not the answer
 (§ 6.2). That is the sweepable set, and it is a filter rather than a maintained
-list. *(Today the sweep grid comes from the machine's topology rather than from
-this filter — § 1.1a. `category="execution"` is a correct and complete claim
-about which items are safe to sweep; it is not yet what selects them.)*
+list. *(What a benchmark sweeps is what its job request's `bench` states, a row naming
+anything else refused: `category="execution"` is which items may be stated.)*
 
 ### 11.5 You open the file before submitting a week of compute
 

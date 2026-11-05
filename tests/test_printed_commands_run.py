@@ -100,6 +100,9 @@ def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch):
     line; a sweep's status read from its bench folder, or worded as a
     ladder's."""
     bundle = _described(tmp_path, monkeypatch)
+    request = read_request(bundle)
+    request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
+    write_request(bundle, request)
     r = jobset("prep", "bench", "medium", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output

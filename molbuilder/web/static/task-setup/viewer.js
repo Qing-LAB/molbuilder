@@ -90,15 +90,15 @@ function machineAnswers(name) {
 /* The second line under a row's name — DERIVED, never a table here.
  *
  * The catalogue already carries each item's `label`, and the server already
- * ships it (`/api/task-setup/sweepable`).  Whether the scheduler answers it is
- * the `machine_answers` flag beside it.  So the note is those two facts read
- * together, and there is nothing to keep in step.
+ * ships it (`/api/task-setup/sweepable`).  Whether it is one of the grid's
+ * shapes is the `machine_answers` flag beside it.  So the note is those two
+ * facts read together, and there is nothing to keep in step.
  */
 function rowNote(name) {
     const it = (_sweep || []).find(i => i.name === name);
     if (!it) return "";
     return it.machine_answers
-        ? `${it.label || name} — the scheduler answers`
+        ? `${it.label || name} — a shape to try`
         : `${it.label || name} — yours to choose`;
 }
 
@@ -674,17 +674,17 @@ async function refreshFit() {
     }
     if (seq !== _fitSeq) return;
 
+    // EACH ROW'S CLASS is the door's word (`rows`), a grid not yet stated or
+    // not; the card repaints its rows with it and decides none itself.
+    _rowKinds = (body && body.rows) || {};
+    paintRowKinds();
     /* A LIST THAT CANNOT LOAD SAYS SO: a blank where a verdict belongs
      * reads as *nothing objected*. */
     if (!body || !body.ok || !Array.isArray(body.cells)) {
         sayUnknownFit(host, body && body.error);
         return;
     }
-    // EACH ROW'S CLASS is the door's word (`rows`); the card repaints its
-    // rows with it and decides none itself.
-    _rowKinds = body.rows || {};
     paintFit(host, body);
-    paintRowKinds();
 }
 
 /** SAY WHAT IS NOT KNOWN.  A check that could not run shows that it could
@@ -709,46 +709,25 @@ function sayUnknownFit(host, why) {
 
 
 function paintFit(host, body) {
-    const cells   = body.cells;
-    const kept    = cells.filter((c) => !(c.why || []).length);
-    const crossed = cells.filter((c) => (c.why || []).length);
+    const cells = body.cells;
     host.textContent = "";
     host.hidden = false;
 
+    /* "this machine" would be wrong: the queue these are fit on is the
+     * TARGET's, and preparing for another machine is an ordinary thing to do
+     * here. */
     host.appendChild(el("div", { class: "ts-fit-head" },
-        /* "this machine" would be wrong: the queue these are fit on is the
-         * TARGET's, and preparing for another machine is an ordinary thing
-         * to do here. */
-        cells.length + " combination(s) \u2014 " + kept.length + " kept"
-        + (crossed.length ? ", " + crossed.length + " left out" : "")));
+        cells.length + " combination(s)"));
 
-    for (const c of kept) {
+    for (const c of cells) {
         // EACH CELL'S FIT on its queue -- the server's lines, one per queue
-        // it was fit on (`scheduler.md` R4): a declared cell is kept
-        // whatever they say.
+        // it was fit on (`scheduler.md` R4): the cell is kept whatever they
+        // say.
         host.appendChild(el("div", { class: "ts-fit-row" },
             el("code", { class: "ts-fit-label" }, c.label),
             el("span", { class: "ts-fit-shape" }, c.shape),
             el("span", { class: "ts-fit-where" },
                ...(c.fit || []).map((f) => el("div", {}, f.line)))));
-    }
-    for (const c of crossed) {
-        host.appendChild(el("div", { class: "ts-fit-row ts-fit-row--out" },
-            el("code", { class: "ts-fit-label" }, c.label),
-            el("span", { class: "ts-fit-shape" }, c.shape),
-            // THE NUMBERS, not a verdict word (scheduler.md R4): the reason
-            // says what to change, which is the whole point of showing the
-            // struck rows rather than silently dropping them.
-            el("span", { class: "ts-fit-why" }, (c.why || []).join("; "))));
-    }
-    /* A `note` means the grid resolved this far and then stopped -- the
-     * rows above are still the honest answer, and the reason belongs with
-     * them rather than swallowed.  Its own words, never a paraphrase. */
-    if (body.note) {
-        host.appendChild(el("p", { class: "status warn" }, body.note));
-    } else if (!kept.length) {
-        host.appendChild(el("p", { class: "status warn" },
-            "None of these is kept \u2014 each row above says why."));
     }
 }
 
@@ -2415,8 +2394,7 @@ function fillPicker(sel, items, taken, empty) {
         }, i.name
            + (i.label && i.label !== i.name ? "  \u2014  " + i.label : "")
            + (d ? "  [" + d + "]" : "")
-           + (readers.length ? "  \u00b7 read by " + readers.join(", ") : "")
-           + (i.machine_answers ? "  (the machine answers this)" : "")));
+           + (readers.length ? "  \u00b7 read by " + readers.join(", ") : "")));
     }
 }
 
@@ -3084,22 +3062,20 @@ function renderNext(task) {
          * uses is what you then write in the card below
          * (`architecture.md` § 5.2).
          *
-         * OFFERED WITH NO AXES TOO: the target machine then proposes the grid
-         * (`generator.md` § 4.3a), as `prep bench` does at the terminal --
-         * the two doors are one prep (`job-system.md` § 5.0).
+         * OFFERED WITH NO AXES TOO: its Prep is refused, naming what to
+         * state (`generator.md` § 4.3a), as `prep bench` is at the terminal
+         * -- the two doors are one prep (`job-system.md` § 5.0).
          * And offered only where that prep takes it: the entry's own
          * refusal (a transport calculation, an engine the bench lane does
          * not speak) comes with the folder, and hides the block. */
         if (!_fs.benchRefusal) {
             block.appendChild(el("p", { class: "hint" },
-                (benchVarying.length
-                    ? "Measure a stage \u2014 varying "
-                      + benchVarying.join(", ") + ". "
-                    : benchKeys.length
-                    ? "Measure a stage \u2014 at the one declared cell. "
-                    : "Measure a stage \u2014 no axes are declared, so the "
-                      + "target machine proposes the grid from its own "
-                      + "record. ")
+                "Measure a stage \u2014 "
+                + (benchVarying.length
+                    ? "varying " + benchVarying.join(", ") + ". "
+                    : "what it tries is stated in What to measure: the "
+                      + "ranks, the cores per rank and, on the GPU, the GPU "
+                      + "counts. ")
                 + "Measure where the expensive stage's shape is cheapest; "
                 + "summarize reports a verdict you type into the card "
                 + "below."));
@@ -4815,9 +4791,8 @@ async function proposeHandover() {
     const fs = _fs;
     const engine = _handoverEngine(null);
     // NO BENCH IS PROPOSED (`task-setup.md` § 6.2a-b): a run needs no
-    // benchmark, and a grid is the target machine's to enumerate at
-    // `prep bench`, never the page's.  The sweep vocabulary is loaded
-    // for the pickers.
+    // benchmark, and a grid is the person's to state.  The sweep vocabulary
+    // is loaded for the pickers.
     //
     // UNDER THE FENCE, as every write is (§ 7a): the proposal lands
     // after two fetches, and another folder taken meanwhile would have it
@@ -4967,11 +4942,7 @@ function paintHeads() {
     const axes = Object.values(
         req.bench && typeof req.bench === "object" ? req.bench : {});
     _sum("ts-machine-card", axes.length
-        ? _count(axes.length, "setting") + " \u00b7 "
-          + _count(axes.reduce((n, pts) =>
-                n * ((Array.isArray(pts) && pts.length) || 1), 1),
-                   "combination")
-        : "nothing to measure");
+        ? _count(axes.length, "setting") : "nothing to measure");
     _sum("ts-groups-card", stages.length ? _count(groups.size, "group") : "");
     const gs = (_fs.groups && _fs.groups.groups) || [];
     _sum("ts-prep-card", (_fs.groups && _fs.groups.error)

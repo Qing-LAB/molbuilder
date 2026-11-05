@@ -50,6 +50,7 @@ USERS_MATRIX = {
     "mpi_np": [32, 64, 128],
     "omp_threads": [1],
     "use_gpu": [True, False],
+    "gpu_count": [1, 2, 4],
     "diag_algorithm": ["ELPA-1STAGE", "ELPA-2STAGE"],
     "block_size": [64, 128, 256],
 }
@@ -112,41 +113,37 @@ def _declare(calc, axes):
 # --------------------------------------------------------------------- #
 
 def test_the_users_matrix_enumerates_both_families(sol_calc):
-    """The acceptance matrix on `general`: 18 CPU trials, every declared
-    rank count kept whatever the record says (declared whole, `generator.md`
-    § 4.3a), and 18 GPU trials -- the device count is the machine's
-    proposal here, its divisors 1/2/4 of the inventory's four GPUs, so only
-    np32 is proposed: np64 and np128 are over the GPU nodes' 48 cores, left
-    out with the numbers (`scheduler.md` R4).  Both prep doors show these
-    notes (`prep.prep_bench`)."""
+    """The acceptance matrix on `general`: 18 CPU trials and 54 GPU trials,
+    every stated cell kept whatever the record says, its fit said under it
+    (`generator.md` § 4.3a): np64 and np128 are over the GPU nodes' 48 cores,
+    and the scheduler decides (`scheduler.md` R4, R6).  Both prep doors show
+    these notes (`prep.prep_bench`)."""
     _declare(sol_calc, USERS_MATRIX)
     notes: list = []
     points, pins, tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
 
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
-    assert len(cpu) == 18 and len(gpu) == 18
+    assert len(cpu) == 18 and len(gpu) == 54
     assert sorted({p["N"] for p in cpu}) == [32, 64, 128]
-    assert all(p["N"] == 32 for p in gpu), \
-        "np64/np128 GPU cells exceed the GPU nodes' 48 cores"
+    assert sorted({p["N"] for p in gpu}) == [32, 64, 128]
     assert {p["G"] for p in gpu} == {1, 2, 4}
     assert all(p["use_gpu"] is False for p in cpu)
     assert all(p["use_gpu"] is True for p in gpu)
     # every point carries the full value coordinate
     assert all({"diag_algorithm", "block_size"} <= set(p) for p in points)
     out = "\n".join(notes)
-    assert "left out (6)" in out, out
+    assert "left out" not in out, out
     assert "G1N64C1" in out and "G1N128C1" in out
     assert "64 cores is over general's largest machine (48 cores)" in out
     # an axis is never a pin; the measurement pins still ride
     assert "block_size" not in pins and pins["max_scf_iter"] == 3
 
 
-def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
-    """The fixture's TOPOLOGY has no GPU (a login node) — the family's
-    device count comes from the menu's recorded inventory, which is what
-    lets a login node enumerate for the cluster behind it; the ask is a
-    count, and names no card (`scheduler.md` R2a)."""
+def test_a_trial_asks_the_device_count_it_states(sol_calc):
+    """The fixture's TOPOLOGY has no GPU (a login node), and a stated count
+    does not ask it: a trial asks what it states, a count naming no card
+    (`scheduler.md` R2a)."""
     _declare(sol_calc, USERS_MATRIX)
     points, _pins, tr = bench_inputs(open_calculation(sol_calc), None)
     g2 = next(p for p in points if p["G"] == 2)
@@ -159,50 +156,13 @@ def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
     assert "gres" not in res_c and res_c["mpi_np"] == c["N"]
 
 
-def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
-        sol_calc):
-    """A queue whose record lists two cards is no question to refuse: the
-    GPU count a node can hold is the most any of its nodes holds -- here
-    the 16 of the second -- and no card is chosen (`scheduler.md` R2a)."""
-    env = json.loads((sol_calc / "environment.json").read_text())
-    env["domains"][1]["gpu"] = {"a100": 4, "a100.20gb": 16}
-    (sol_calc / "environment.json").write_text(json.dumps(env))
-    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
-                        "use_gpu": [True], "gpu_count": [8]})
-    points, _pins, tr = bench_inputs(open_calculation(sol_calc), None)
-    assert [p["G"] for p in points] == [8], points
-    assert tr.to_resources(points[0], None)["gres"] == "gpu:8"
-
-
-def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
-    """No local GPU and no recorded inventory: the family cannot be
-    enumerated, and the refusal names the probe AND the menu -- and the
-    two steps a re-probed record takes to reach a calculation
-    (`configuration.md` M-3: it is set to the record of its first prep, so
-    a re-probe alone re-reads the same copy; W52)."""
-    env = json.loads((sol_calc / "environment.json").read_text())
-    del env["domains"][1]["gpu"]
-    (sol_calc / "environment.json").write_text(json.dumps(env))
-    _declare(sol_calc, USERS_MATRIX)
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(sol_calc), None)
-    said = str(e.value)
-    assert "no queue with recorded GPUs" in said, said
-    # the record that answered is the calculation's own snapshot, named as
-    # such whatever the flag said (the fix-6 review), with its two steps
-    assert "this calculation's environment.json" in said, said
-    assert "`molbuilder jobset probe --write` here" in said, said
-    assert "then go back to the state saved before its first prep" \
-        in said, said
-
-
 # --------------------------------------------------------------------- #
 #  the coordinates reach the decks and the record                        #
 # --------------------------------------------------------------------- #
 
 def _small_matrix():
     return {"mpi_np": [4], "omp_threads": [1],
-            "use_gpu": [True, False],
+            "use_gpu": [True, False], "gpu_count": [1, 2, 4],
             "diag_algorithm": ["ELPA-1STAGE"],
             "block_size": [64, 128]}
 
@@ -444,17 +404,6 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
     assert "64 cores is over general's largest machine (48 cores)" in out
     for cell in ("G1N64C1", "G2N64C1", "G4N64C1"):
         assert cell in out, f"the kept cell {cell} must be named"
-
-
-def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
-    """gpu_count without mpi_np does NOT invent a rank grid: the ranks
-    and cores stay the machine's proposal, filtered to the declared device
-    counts."""
-    _declare(sol_calc, {"use_gpu": [True], "gpu_count": [2]})
-    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None)
-    assert points, "the probed ladder must survive the filter"
-    assert {p["G"] for p in points} == {2}
-    assert len({p["N"] for p in points}) > 1,         "N must still range over the machine's proposal"
 
 
 # --------------------------------------------------------------------- #

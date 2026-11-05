@@ -497,7 +497,8 @@ class TestTheContractEndpoint:
         is transport's own case, on the minimal junction (plan Q5–Q7).)*
         """
         from conftest import write_machine_record
-        from support.road import describe_calculation, jobset
+        from support.road import (describe_calculation, jobset, read_request,
+                                  write_request)
         root, client = isolated
         write_machine_record()
         bundle = describe_calculation(tmp_path, monkeypatch)
@@ -530,6 +531,9 @@ class TestTheContractEndpoint:
         assert about["H2_01_coarse.fdf"]["ours"] is True, about
         assert about["calcdir.json"]["ours"] is True, about
 
+        request = read_request(bundle)
+        request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
+        write_request(bundle, request)
         got = jobset("prep", "bench", "coarse", "--bundle", bundle,
                      "--target", "this")
         assert got.exit_code == 0, got.output
@@ -576,10 +580,14 @@ class TestTheContractEndpoint:
         from fnmatch import fnmatch
         from pathlib import Path
         from conftest import write_machine_record
-        from support.road import describe_calculation, jobset
+        from support.road import (describe_calculation, jobset, read_request,
+                                  write_request)
         _root, client = isolated
         write_machine_record()
         bundle = describe_calculation(tmp_path, monkeypatch)
+        request = read_request(bundle)
+        request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
+        write_request(bundle, request)
         for verb in (("task", "--group", "1"), ("bench", "coarse")):
             got = jobset("prep", *verb, "--bundle", bundle, "--target", "this")
             assert got.exit_code == 0, got.output

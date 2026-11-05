@@ -148,7 +148,7 @@ class TestTheDoorServesTheOneEnumerator:
         assert d["cells"], "a resolvable grid must answer its cells"
         one = d["cells"][0]
         assert set(one) >= {"label", "shape", "family", "ranks",
-                            "cores_each", "gpus", "fit", "why"}
+                            "cores_each", "gpus", "fit"}
         assert _queues(one) == {"short": True, "public": True, "cpu": True}, (
             f"every queue holds a 48-rank CPU cell; got {one['fit']}")
 
@@ -183,7 +183,6 @@ class TestTheDoorServesTheOneEnumerator:
         cells = {c["label"]: c for c in d["cells"]}
         assert _queues(cells["G4N48C1"]) == {"short": True}, cells
         wide = cells["G4N128C1"]
-        assert not wide["why"], f"a declared cell was left out: {wide}"
         assert _queues(wide) == {"short": False}, wide
         assert "the 128-core machines have no GPU" in wide["fit"][0]["line"]
 
@@ -192,19 +191,14 @@ class TestTheDoorServesTheOneEnumerator:
         """A benchmark measures on one queue, the one its description names
         (`allocation.domain`, `generator.md` § 4.3a), and the card fits each
         cell on that queue alone, by the one fold prep asks
-        (`prep_inputs.fold_allocation`) -- so a cell the card keeps is one
-        prep keeps.  `public`'s GPU nodes are 48 cores wide: a GPU cell the
-        machine proposes wider than that is left out by `public`'s own
-        numbers, and the narrower ones are kept."""
+        (`prep_inputs.fold_allocation`) -- so the card's fit is the one prep
+        says.  `public`'s GPU nodes are 48 cores wide."""
         _with_queue(bundle, "public")
-        d = _post(client, bundle, {"use_gpu": [True], "gpu_count": [1]})
+        d = _post(client, bundle, {"mpi_np": [48, 96], "omp_threads": [1],
+                                   "use_gpu": [True], "gpu_count": [1]})
         assert d["ok"] is True, d
-        assert all(_queues(c) == {"public": not c["why"]}
-                   for c in d["cells"]), d["cells"]
-        left = [c for c in d["cells"] if c["why"]]
-        assert left and all(c["ranks"] * c["cores_each"] > 48
-                            for c in left), left
-        assert any(not c["why"] for c in d["cells"]), d["cells"]
+        assert {c["label"]: _queues(c) for c in d["cells"]} == {
+            "G1N48C1": {"public": True}, "G1N96C1": {"public": False}}, d
 
     def test_the_card_fits_the_queue_picked_on_the_page(self, client,
                                                         bundle):
@@ -229,16 +223,6 @@ class TestTheDoorServesTheOneEnumerator:
         assert d["ok"] is True, d
         assert all(set(_queues(c)) == {"short", "public", "cpu"}
                    for c in d["cells"]), d
-
-    def test_nothing_left_is_a_result_not_an_error(self, client, bundle):
-        """*Nothing here fits* is the answer, and the rows left out are how
-        the person sees why.  A 400 would throw them away.  The machine's
-        GPU proposal on `cpu`, whose record lists no GPUs, holds nothing."""
-        _with_queue(bundle, "cpu")
-        d = _post(client, bundle, {"use_gpu": [True]})
-        assert d["ok"] is True and d["kept"] == 0, d
-        assert d["cells"] and all(c["why"] for c in d["cells"])
-        assert all(_queues(c) == {"cpu": False} for c in d["cells"])
 
     def test_a_bench_that_is_not_an_object_is_refused(self, client, bundle):
         r = client.post("/api/task-setup/bench-grid",
@@ -441,6 +425,9 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
 
     def test_a_bench_preview_carries_no_launch(self, client, bundle):
         _runnable(bundle)
+        req = read_request(bundle)
+        req["bench"] = {"mpi_np": [4], "omp_threads": [1], "gpu_count": [1]}
+        write_request(bundle, req)
         r = client.post("/api/task-setup/prep", json={
             "dest": str(bundle), "kind": "bench", "stages": ["coarse"],
             "plan": True})

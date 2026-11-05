@@ -927,17 +927,6 @@
 /* ITS FIT on each queue it was fit on -- the server's lines
  * (scheduler.md R4). */
 .ts-fit-where { color: var(--text-muted); font-size: var(--text-xs); }
-/* A struck cell stays READABLE.  It is the row the person most needs to
- * read -- it carries the number to change -- so it is marked, not faded
- * into unreadability. */
-.ts-fit-row--out {
-    background: transparent;
-    border-left: 2px solid var(--error);
-    padding-left: calc(var(--space-sm) - 2px);
-}
-.ts-fit-row--out .ts-fit-label,
-.ts-fit-row--out .ts-fit-shape { text-decoration: line-through; }
-.ts-fit-why { color: var(--error); font-size: var(--text-xs); }
 
 /* ---------- what a prep will write, by name (job-contracts.md 4.2) --- */
 /* The rows themselves are `.ts-files`, unchanged: a row is (filename, what

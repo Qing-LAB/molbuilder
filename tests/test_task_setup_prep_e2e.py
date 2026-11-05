@@ -350,19 +350,17 @@ def test_the_tab_saves_the_folder_first_and_says_so(
         lines
 
 
-def test_a_stage_with_no_axes_offers_the_machines_proposal(
+def test_a_stage_with_no_axes_says_to_state_them(
         page, flask_server, calc_dir):
-    """`generator.md` § 4.3a, on this door too: with no bench axes declared
-    the target machine proposes the grid -- as `prep bench` does at the
-    terminal -- so the measure block and its Prep bench button are offered,
-    saying so."""
+    """`generator.md` § 4.3a, on this door too: a benchmark states its grid,
+    so the measure block says so, beside its Prep bench button."""
     _open(page, flask_server, calc_dir)
     panel = "[id^=ts-steppanel]"
     page.wait_for_selector(f"{panel} .ts-prep", state="attached",
                            timeout=20000)
     hints = page.eval_on_selector_all(
         "p.hint", "els => els.map(e => e.textContent).join('\\n')")
-    assert "no axes are declared" in hints, hints
+    assert "what it tries is stated in What to measure" in hints, hints
     assert page.locator(
         f"{panel} .ts-prep button:has-text('Prep bench here')").count(), (
         "no Prep bench button on a stage with no declared axes")

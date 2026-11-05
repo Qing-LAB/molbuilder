@@ -521,22 +521,19 @@ half, and since 2026-08-21 that includes the device count itself
 devices; both solvers rendered into every trial's input file. `mpi_np` is
 always the TOTAL rank count, N. The rules around `gpu_count` are
 refusals and fits said, never silent repairs: a device count past what the record says a node carries is
-**kept** when the cell is declared whole — its `mpi_np` and `omp_threads`
-declared too — its fit saying so, the scheduler deciding
-([`execution/scheduler.md`](?doc=execution/scheduler.md) R6), and left out
-by its numbers in a cell whose ranks the machine proposed; a
+**kept**, its fit saying so, the scheduler deciding
+([`execution/scheduler.md`](?doc=execution/scheduler.md) R6); a
 `(mpi_np, gpu_count)` pair that does not split into equal shares is **a
 trial like any other**, its split said at prep — 32 ranks on 3 GPUs, two
 devices carrying one rank more — the sentence a run's prep says
 (`ask.gpu_share_notes`); ELPA's advice below, equal shares, is about speed,
 which is what a benchmark measures, never a reason to refuse a cell; `gpu_count` on a bench whose `use_gpu` resolves to false
-**refuses** rather than being silently ignored; and with `gpu_count`
-absent, the machine *proposes* — G ranges over each declared rank count's
-divisors, bounded by the recorded device count. The device count itself
-comes from `environment.json`: the hardware record probed where the GPUs
-are, or — behind a login node that has none — the partition's GPU
-inventory (`gpu: {"a100": 4}`) that `jobset probe` reads from the
-scheduler and stores on the domain row.
+**refuses** rather than being silently ignored; and a GPU benchmark with
+`gpu_count` absent **refuses**, naming it. What a node of a queue holds comes
+from `environment.json`: the hardware record probed where the GPUs are, or —
+behind a login node that has none — the partition's GPU inventory
+(`gpu: {"a100": 4}`) that `jobset probe` reads from the scheduler and stores on
+the domain row.
 
 **The whole picture, one diagram:**
 
@@ -545,7 +542,7 @@ flowchart TD
     subgraph YOU["job-request.json — what YOU declare (portable, no machine facts)"]
         MP["bench.mpi_np = [32, 64]<br/>TOTAL ranks per trial"]
         EG["bench.use_gpu = [true, false]<br/>run the bench on CPU, GPU, or both"]
-        GC["bench.gpu_count = [1, 2, 4]<br/>devices per trial — EXPLICIT<br/>(absent → machine proposes divisors)"]
+        GC["bench.gpu_count = [1, 2, 4]<br/>devices per trial — EXPLICIT<br/>(absent → refused, naming it)"]
         VA["bench.diag_algorithm, block_size, …<br/>value settings → every trial's input file"]
     end
     subgraph MACHINE["environment.json — what the machine RECORDS"]
@@ -557,11 +554,11 @@ flowchart TD
     EG --> PREP
     GC --> PREP
     VA --> PREP
-    TOPO -->|"device count + type<br/>(on a login node: the inventory answers)"| PREP
+    TOPO -->|"what a node holds, for each cell's fit<br/>(on a login node: the inventory answers)"| PREP
     DOM -->|"which partitions have GPUs?<br/>how many cores per node?"| PREP
     PREP --> CPU["CPU trials (G = 0)<br/>one per mpi_np × omp_threads"]
     PREP --> GPU["GPU trials<br/>G = your gpu_count, exactly<br/>N = mpi_np, the ranks in all —<br/>an uneven split over the G devices said<br/>C = omp_threads, declared beside mpi_np"]
-    GPU -->|"each cell's fit on the queue said;<br/>a cell declared whole kept whatever it says"| GPU
+    GPU -->|"each cell's fit on the queue said;<br/>a cell kept whatever it says"| GPU
     CPU --> TRIALS["× the value settings = the trials,<br/>each input file carrying its own values"]
     GPU --> TRIALS
     TRIALS --> SHELF["submit: trials with the SAME resource ask<br/>share one scheduler job sized to fit them<br/>exactly — independent jobs, biggest first,<br/>CPU jobs hold no GPU"]
@@ -614,9 +611,7 @@ declaration measures the full-node layouts: `mpi_np: [24, 48]` ×
 over one, two and four GPUs — `G4N48`, `G2N48`, `G1N48` (48 ranks on one
 device, at the MPS ceiling) among them — with one and two threads each, every cell declared
 and kept with its fit (a 48-rank, two-thread cell on a 48-core GPU node is
-said to fit no node there); without `gpu_count` the machine proposes the
-device counts, and a cell no GPU node holds is left out with its numbers —
-and the verdict, not the ceiling, picks.
+said to fit no node there) — and the verdict, not the ceiling, picks.
 
 **Memory on the card is usually not the limit.** A ~440-heavy-atom
 junction with a DZP basis is roughly a 6–7 thousand orbital problem; one

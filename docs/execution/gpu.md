@@ -115,9 +115,7 @@ language, [`scheduler.md`](?doc=execution/scheduler.md) § 6a).
 
 > **The ask and what a node offers are different variables, and the names hide
 > it.** `gpu_count` is what a run or a trial asks for; `Device.per_node` is what
-> one node of a queue carries. The fit reads them together (G4), and a bench that
-> names no `gpu_count` proposes device counts **up to what one node of its queue
-> holds** (§ 3.1). A reader who takes `gpu_count` for what a node offers will
+> one node of a queue carries. The fit reads them together (G4). A reader who takes `gpu_count` for what a node offers will
 > size a run to the hardware and call it a request.
 
 ---
@@ -310,12 +308,8 @@ resource ask, so **a CPU trial never holds a device**.
 **The device counts a GPU family tries** — the grid is
 [`generator.md`](?doc=execution/generator.md) § 4.3a's (*The grid*):
 
-- **a declared `gpu_count`** — exactly those counts, every `(mpi_np, G)` pair a
-  cell;
-- **a declared rank grid and no `gpu_count`** — each rank count's divisors, up
-  to what one node of the queue holds;
-- **nothing declared** — the machine proposes each count from one to what a node
-  of the queue holds, with ranks per device from its record's cores per socket.
+exactly the counts `gpu_count` states, every `(mpi_np, G)` pair a cell; a GPU
+benchmark that states none is refused, naming it.
 
 With **one point** it is the trials' value, applied at prep as a pin for the
 bench's trials, over the calculation's run card; the run's GPU choice is its run

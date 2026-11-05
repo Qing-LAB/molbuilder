@@ -489,14 +489,28 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
         stamped + "saving the description$", notes[0]), notes
 
 
-def test_a_bench_with_no_axes_is_the_machines_proposal_on_both_doors(
-        web_client, described):
-    """`generator.md` § 4.3a: an absent declaration keeps the machine's
-    enumeration.  The tab refused it -- "declares nothing to measure" --
-    while the command line prepared it."""
+def test_a_benchmark_is_answered_alike_on_both_doors(web_client, described):
+    """`generator.md` § 4.3a: a benchmark that states no grid is refused in
+    one sentence on both doors, naming what to state, and stated, each
+    prepares the same trials, the grid in its notes.
+
+    THE SILENT FAILURE: one door refusing what the other prepares -- the tab
+    once refused what the command line took."""
     calc = Path(described)
     _make_preppable(calc)
     twin = _twin(calc, "calc-cli")
+    st, j = _prep(web_client, dest=str(calc), kind="bench", stage="coarse",
+                  target=LOCAL_TARGET)
+    r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
+             "--target", LOCAL_TARGET)
+    assert st == 400 and "(mpi_np)" in j["error"], j
+    assert r.exit_code != 0, r.output
+    assert " ".join(j["error"].split()) in " ".join(r.output.split()), r.output
+
+    for folder in (calc, twin):
+        req = read_request(folder)
+        req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
+        write_request(folder, req)
     st, j = _prep(web_client, dest=str(calc), kind="bench", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 200, j

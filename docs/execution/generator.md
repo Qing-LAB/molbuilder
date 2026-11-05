@@ -48,7 +48,7 @@ prints a report (§ 4.3a, § 4.4b).
 |---|---|
 | `ParameterSet`, and why it is a list | where a value comes from, rung by rung ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 | what bounds a sweep, and from which source | the `bench` block's keys and what may be swept ([`job-request.md`](?doc=execution/job-request.md) § 3.4) |
-| the grid: declared and proposed cells, value axes, the GPU family | whether a request fits a queue ([`scheduler.md`](?doc=execution/scheduler.md) R6) |
+| the grid: its stated cells, value axes, the GPU family | whether a request fits a queue ([`scheduler.md`](?doc=execution/scheduler.md) R6) |
 | the trial pins | the bench verbs' grammar ([`job-system.md`](?doc=execution/job-system.md) § 7) |
 | the shelves, and the order they are sent in | sending itself ([`submission.md`](?doc=execution/submission.md) S4) |
 | measuring, the winner and the mismatch rule, `bench-result.json`, record-and-present | the file's schema string ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1) |
@@ -112,8 +112,8 @@ flowchart TB
 **The catalogue is the single source of every parameter's bound**
 ([`template.md`](?doc=engines/template.md) § 2.1), so a sweep needs no bounds of
 its own. **This prep's ask bounds a benchmark's grid** (§ 4.1). **The target's
-record never bounds what you declare**: it shapes only the machine's own
-proposal, and each cell's fit on the queue is shown, never a veto
+record never bounds a cell**: each cell's fit on the queue is shown, never a
+veto
 ([`scheduler.md`](?doc=execution/scheduler.md) R6).
 
 ### 3.1 The form is built from the catalogue
@@ -147,8 +147,7 @@ A benchmark's **value** axes are only what its `bench` block declares, and only
 run settings — the catalogue's `execution` category, *knobs that change speed
 and not the answer* ([`job-request.md`](?doc=execution/job-request.md) § 3.4).
 Its **machine** axes are the grid's three, `mpi_np`, `omp_threads` and
-`gpu_count` (`template.GRID_AXES`): declared in `bench`, or, where nothing is
-declared, proposed by the machine from its record (§ 4.3a, *The grid*).
+`gpu_count` (`template.GRID_AXES`), each stated in `bench` (§ 4.3a, *The grid*).
 
 **A bound that spans both families is computed once, where both values are in
 hand.** `block_size`'s useful ceiling is orbitals ÷ ranks, and ranks are a
@@ -171,10 +170,10 @@ rank, GPUs) and the allocation, as this prep holds them:
   never a run card, which is the run's own.
 
 **The sweep — the cells a benchmark tries — fits inside that ask.** A cell past
-this prep's own `--np`, `--cpus-per-task` or `--gpus` is left out by name,
-proposed or declared: that is two of your statements disagreeing. Nothing is
-clamped, and the prep is refused only when no cell is left. The record bounds
-nothing you declare; each cell's fit on the queue is shown (§ 4.3a).
+this prep's own `--np`, `--cpus-per-task` or `--gpus` is left out by name: that
+is two of your statements disagreeing. Nothing is clamped, and the prep is
+refused only when no cell is left. The record bounds no cell; each cell's fit on
+the queue is shown (§ 4.3a).
 
 **Which ask:** the one for *this* prep. A benchmark and the run it informs are
 two preps, usually on two queues (§ 4.4a), each with its own.
@@ -270,7 +269,7 @@ Two kinds of tuning nest, one inside the other:
 | act | where | what it is |
 |---|---|---|
 | **what to measure** | `job-request.json`'s `bench` — `{"mpi_np": [4, 8, 16], "omp_threads": [1, 2]}` | declared, portable; one block for the calculation |
-| **which stage, on which queue** | `jobset prep bench <stage>`, its queue `--domain` or `allocation.domain` | resolved for the target, from its record: the cells, the trials, the shelves' headers |
+| **which stage, on which queue** | `jobset prep bench <stage>`, its queue `--domain` or `allocation.domain` | resolved for the target: each cell's fit from its record, the trials, the shelves' headers |
 | **the run** | `jobset launch bench <stage>` | one job per shelf on a queue; one walk here |
 | **what was fastest** | `jobset summarize bench <stage>` → `<NN>_<stage>/bench/bench-result.json` | measured; a report a person reads |
 
@@ -303,7 +302,7 @@ what the run uses would destroy the plan to measure, so the run reads
 lanes end in the same pipeline — `resolve()`, the `ParameterSet`, the
 renderers — and a run's machine values reach its `Resources` by a direct map
 from the catalogue's names (`prep_inputs.declared_run_shape`), never through
-the grid enumerator, which exists to invent the axes a sweep does not state.
+the grid's cells.
 
 ##### The grid
 
@@ -311,25 +310,17 @@ A **cell** is a machine shape — `G` GPUs, `N` ranks in all, `C` cores per
 rank — and its trials carry that shape in their names, `bench-G0N8C2`. Every
 trial carries `G`, `G0` for a CPU trial (`resolve.point_token`).
 
-- **A declared grid states both its axes**, `mpi_np` and `omp_threads`; one
-  alone is refused, never filled. `mpi_np` is the total rank count, as
-  everywhere. Its cells are every pair.
-- **On the GPU, the device count is declared with `gpu_count`**: exactly those
-  counts, and every `(mpi_np, G)` pair is a cell, its ranks spread over its
+- **A benchmark states its grid** *(the user, 2026-11-04: "Refuse, you state
+  it")*: its ranks, `mpi_np`, the total rank count as everywhere, and its cores
+  per rank, `omp_threads`; on the GPU, its device counts, `gpu_count`, too.
+  What it leaves unstated is refused, naming what to state and where, and
+  nothing is proposed for it: what a benchmark tries is what you mean to run,
+  and a grid made up from the machine's record measures neither.
+- **Its cells are every combination**: every `(mpi_np, omp_threads)` pair, and
+  on the GPU every such pair at each `gpu_count`, its ranks spread over its
   devices as a run spreads them — an uneven split said
   (`ask.gpu_share_notes`, the sentence a run's prep says). A `gpu_count` on a
   CPU benchmark is refused.
-- **With no declaration, the machine proposes**, from what its record says
-  (`bench/grid.py`): rank counts from the divisors of the probed cores per
-  socket, each with a bracket of cores per rank — one, a socket's share, twice
-  that; on the GPU, each device count from one to the GPUs a node holds — the
-  named queue's, else the most any GPU queue in the record holds, and the
-  probed node's own only where the benchmark goes to no queue — with those rank
-  counts per device. A declared rank grid with no
-  `gpu_count` takes as its device counts each rank count's divisors, up to what
-  a node holds — a proposal, so fit like one. A record that does not state its
-  cores per socket proposes no grid; a GPU benchmark whose record states no GPU
-  count, and that declares none, is refused, naming the probe that writes it.
 - **A value axis multiplies the grid.** A non-machine entry with several points
   — `"diag_algorithm": ["ELPA-1STAGE", "ELPA-2STAGE"]` — crosses every cell,
   in declaration order; each trial carries its coordinates on its point, and
@@ -351,9 +342,8 @@ runs where it is launched.
 
 | a cell that is… | outcome |
 |---|---|
-| **declared** — every coordinate stated: ranks, cores per rank, and on the GPU its device count | **kept**, whatever the record says, its fit printed under it — the scheduler decides (R6) |
-| **proposed** by the machine, and no node of the queue holds it | **left out**, with the numbers that rule it out; a cell that fits is never denied by a sibling that does not |
-| past this prep's own ask (§ 4.1) | **left out by name**, proposed or declared |
+| **stated**, whatever the record says | **kept**, its fit printed under it — the scheduler decides (R6) |
+| past this prep's own ask (§ 4.1) | **left out by name** |
 
 Before its grid, a benchmark states its queue, wall and memory like any run on
 a scheduler; a queue the target's record does not list, or a record that lists
@@ -617,7 +607,6 @@ floor is [`architecture.md`](?doc=execution/architecture.md) § 2.1.
 |---|---|
 | `resolve.py` | `ParameterSet`, `ResolvedConfig`, `MachineTranslation`, `point_token`, `MACHINE_AXES` |
 | `jobset/prep_inputs.py` | the two assemblies (§ 6.0a), the declared bench split, the cell fit and the printed grid |
-| `bench/grid.py` | the machine's proposal |
 | `template.py` | `TRIAL_PINS`, `GRID_AXES` |
 | `jobset/shelves.py` | sides, shelves, a shelf's one request |
 | `jobset/prep.py` | `walk_header_of` — each shelf's header at prep |

@@ -1984,9 +1984,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
 
     #     THE INPUTS -- one assembly per kind (`prep_inputs`, A12).  A bench
     #     measures ONE stage's configuration, and there is always a stage to
-    #     name (§ 6.5); its grid is enumerated from the record read, on the
-    #     one queue it states -- so the queue, wall and memory are asked of
-    #     it first.
+    #     name (§ 6.5); its cells are fit on the record read, on the one
+    #     queue it states -- so the queue, wall and memory are asked of it
+    #     first.
     sweep = pins = translation = None
     chosen: dict = {}
     if kind == "bench":

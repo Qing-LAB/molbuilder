@@ -2051,10 +2051,8 @@ def api_task_setup_bench_grid():
     the cells are fit on in place of the description's
     (`prep_inputs.bench_inputs`, ``queue``).
 
-    Answers 200 with ``cells`` even when none is kept: *nothing here fits*
-    is a result to show, not a failure.  400 is for a description this
-    cannot resolve at all (a bad axis name, an engine with no bench lane),
-    and carries the reader's own words.
+    400 is for a description this cannot resolve: a bad axis name, a grid
+    not stated yet, an engine with no bench lane, in the reader's own words.
     """
     body = request.get_json(silent=True) or {}
     dest_raw = str(body.get("dest") or "")
@@ -2099,24 +2097,16 @@ def api_task_setup_bench_grid():
                      **({"queue": domain or None} if "domain" in body
                         else {}))
     except Exception as exc:                      # noqa: BLE001
-        # A grid where nothing is left raises, and its report is still the
-        # answer worth showing -- the rows left out say why.  The COUNT
-        # is computed, never assumed: `bench_inputs` fills the report
-        # before its last few refusals, so a raise can follow cells that
-        # were kept, and writing 0 here would report them as left out.
-        if rows:
-            return jsonify({"ok": True, "cells": rows,
-                            "kept": sum(1 for r in rows if not r["why"]),
-                            "rows": _row_kinds(calc.request, bench),
-                            "note": str(exc)})
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        # A grid not stated yet is the usual case here, mid-edit: its rows
+        # are still classed.
+        return jsonify({"ok": False, "error": str(exc),
+                        "rows": _row_kinds(calc.request, bench)}), 400
     # EACH ROW'S CLASS, by the one rule prep splits the lane with
     # (`prep_inputs._declared_execution_pins`, `generator.md` § 4.3a): a
     # one-point non-machine entry is CHOSEN (the trials' value), a
     # machine-answered one the grid's axis, a multi-point one MEASURED.  The
     # page paints what this says and decides nothing (2026-10-19).
     return jsonify({"ok": True, "cells": rows,
-                    "kept": sum(1 for r in rows if not r["why"]),
                     "rows": _row_kinds(calc.request, bench)})
 
 

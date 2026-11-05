@@ -380,9 +380,8 @@ def derive_domains(
         kw: Dict[str, Any] = {}
         # The partition's GPU INVENTORY rides the row (`generator.md`
         # § 4.3a, 2026-08-21): sinfo's gres column is a measurement, and
-        # without it a login node could not enumerate the GPU grid family
-        # for the cluster behind it.  Facts only -- which type a run WANTS
-        # stays the person's.
+        # without it a login node could not fit a GPU cell on the cluster
+        # behind it.  Facts only -- which type a run WANTS stays the person's.
         if part.gpu_types:
             kw["gpu"] = dict(part.gpu_types)
         # EVERY MACHINE THIS DOMAIN HOLDS, not a number derived from them

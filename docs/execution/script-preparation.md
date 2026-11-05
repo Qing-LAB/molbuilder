@@ -198,8 +198,8 @@ is [`job-system.md`](?doc=execution/job-system.md) § 5.0.
   which config files answered noted (`config_provenance`); at the calculation's
   first prep it is copied in as `environment.json`.
 - **(b)** `resolve` turns the description into a `ParameterSet` — a run is one
-  element, a benchmark's grid N, its points from the declared axes or the
-  machine's proposal ([`generator.md`](?doc=execution/generator.md) § 4.3a). A
+  element, a benchmark's grid N, its points from the stated axes
+  ([`generator.md`](?doc=execution/generator.md) § 4.3a). A
   run is placed on the queue it names, with the request it resolved to
   (`placement.placed`), recorded on its job, its fit said.
 - **(c)** The very text that will be written: the reader's own section is
@@ -264,7 +264,7 @@ Every adjacent pair is a data dependency, not a convention:
 
 | this must precede this | because |
 |---|---|
-| 1 → 2 | step 2 places a run on a queue of the record and says its fit; a benchmark's proposed grid comes from the record's topology |
+| 1 → 2 | step 2 places a run on a queue of the record and says its fit; a benchmark's cells are fit on the same |
 | **step 2 → identity** | the stage token and the trial coordinate that name a file come from the resolved set |
 | **load → data files** | the structure's elements say which data files are needed |
 | **validate → structure** | refuse an unsound calculation before writing a line of it |
