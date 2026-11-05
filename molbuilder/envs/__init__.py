@@ -18,7 +18,6 @@ from .recipes import (
     Recipe,
     builtin_recipes,
     recipe_by_name,
-    recipe_for_category,
 )
 
 __all__ = [
@@ -28,5 +27,4 @@ __all__ = [
     "Recipe",
     "builtin_recipes",
     "recipe_by_name",
-    "recipe_for_category",
 ]

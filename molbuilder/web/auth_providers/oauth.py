@@ -22,6 +22,7 @@ from typing import Mapping, Optional, Tuple
 
 from flask import url_for
 
+from ...runtime_config import provider_client_secret
 from ..auth import authenticate
 
 
@@ -71,18 +72,6 @@ def _get_oauth(app):
     return app.extensions[_OAUTH_CLIENTS_EXT_KEY]
 
 
-def _read_secret(entry: Mapping) -> str:
-    """The provider's client secret, from the one door that owns it.
-
-    `runtime_config` owns the provider entry's schema and answers the only
-    question this module actually has: *what is the secret for this
-    provider*.  Nothing here learns whether
-    a file was involved (`configuration.md` § 2.3).
-    """
-    from ...runtime_config import provider_client_secret
-    return provider_client_secret(entry)
-
-
 def _ensure_client(app, entry: Mapping):
     """Register the Authlib client for this provider if not already.
 
@@ -110,7 +99,7 @@ def _ensure_client(app, entry: Mapping):
     if authlib_name in registered:
         client = getattr(oauth, authlib_name)
         try:
-            current = _read_secret(entry)
+            current = provider_client_secret(entry)
         except Exception as exc:
             logging.warning(
                 "molbuilder auth: the client secret for provider %r could "
@@ -137,7 +126,7 @@ def _ensure_client(app, entry: Mapping):
     oauth.register(
         name=authlib_name,
         client_id=entry["client_id"],
-        client_secret=_read_secret(entry),
+        client_secret=provider_client_secret(entry),
         **register_kwargs,
     )
     registered.add(authlib_name)

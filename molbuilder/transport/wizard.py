@@ -130,12 +130,9 @@ class ElectrodeModel:
         renderer with no ``regions``, no ``annotations``, no ``info`` and no
         identity columns.  The partition is right to drop -- a bulk lead has
         no lead/bridge/buffer division to state, and the electrode deck emits
-        no ``%block TS.Elec``.  **The other three are an open question, not a
-        decision**: `model/structure.md` § 2.2a says a strip must be explicit
-        and names a silent one a defect, and the recorded contract in ``info``
-        is exactly what the citation warnings read.  Recorded here rather than
-        quietly fixed, because whether a lead inherits the junction's recorded
-        contract is a contract question (`plans/plan.md`, 2026-09-23).
+        no ``%block TS.Elec``.  The other three are not carried either: a
+        lead's deck and its gate read none of them (measured 2026-11-04), and
+        a junction's record does not describe a lead.
         """
         cell = np.array([self.lat_a, self.lat_b,
                          [0.0, 0.0, float(self.z_period)]], dtype=float)

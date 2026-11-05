@@ -104,7 +104,7 @@ def test_what_write_puts_on_disk_is_what_files_hands_over(tmp_path, make, name):
 
 def test_a_non_ascii_label_survives_both_paths_identically(tmp_path):
     """The concrete drift this closes: `files()` used `json.dumps` without
-    `ensure_ascii=False` while `save()` had it, so "α-helix" was `\\u03b1-helix`
+    `ensure_ascii=False` while the sidecar's other writer had it, so "α-helix" was `\\u03b1-helix`
     in one and literal in the other. Same structure, two different files.
     """
     struct = _with_metadata()
@@ -328,7 +328,7 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
     alone = read_format[suffix]((tmp_path / f"a{suffix}").read_text())
     assert alone.elements == ["Au", "S", "C"]
 
-    back = StructureCodec().read(tmp_path / f"a{suffix}")
+    back = StructureCodec().load(tmp_path / f"a{suffix}")
     assert back.elements == ["Au1", "S", "C1"]
     # A record about these coordinates names each atom by its element, so
     # it matches the pair and the file read alone (`model/parse.md` § 5b.1).
@@ -350,13 +350,13 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
         (tmp_path / "a.molstruct.json").read_bytes())
     with pytest.raises(MolstructPairingError,
                        match=r"'Au1' for atom 0 names Au.*holds Ag"):
-        StructureCodec().read(tmp_path / f"c{suffix}",
+        StructureCodec().load(tmp_path / f"c{suffix}",
                               opened=(GEOMETRY_CHANGED,), said_out=[])
 
     # The edit: drop the Au anchor.  Per-atom facts must follow their atoms.
     edited = delete_atoms(back, [0])
     StructureCodec().write(edited, tmp_path / f"b{suffix}")
-    again = StructureCodec().read(tmp_path / f"b{suffix}")
+    again = StructureCodec().load(tmp_path / f"b{suffix}")
     assert again.elements == ["S", "C1"]
     assert again.atom_names == ["SG", "CA"]
     assert again.residue_ids == [14, 14]

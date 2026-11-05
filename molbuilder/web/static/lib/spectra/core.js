@@ -948,10 +948,6 @@
     let _viewer = null;
     function useViewer(handle) { _viewer = (handle && handle.ok) ? handle : null; }
 
-    function getTheStructure() {
-        return _viewer ? _viewer.data.getStructure() : null;
-    }
-
     /* THE STRUCTURE THIS TAB WOULD HAND OVER, as the envelope the server's
      * doors read -- ONE READ OF THE VIEWER (molview.md § 9.3): `exportFile()`
      * is the viewer's own producer, and it carries atoms, positions at the

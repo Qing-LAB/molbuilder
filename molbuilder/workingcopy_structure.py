@@ -20,7 +20,7 @@ nothing else in the system may hold a second copy of:
 SHAPE: one generator, and one adapter per destination.  :meth:`StructureCodec.pair`
 is the generator; :meth:`~StructureCodec.write` puts it on disk,
 :meth:`~StructureCodec.files` hands it over as bytes WITH THE NAMES THEY BELONG
-UNDER, and :meth:`~StructureCodec.read` brings it back.
+UNDER, and :meth:`~StructureCodec.load` brings it back.
 
 THE RULE (model/structure.md § 2.4): *every structure-to-bytes translation goes
 through this codec, and every adapter has exactly one door.*  An adapter with no
@@ -28,7 +28,7 @@ door is either RETIRED or UNBUILT, and those have opposite fixes -- which is why
 the question gets asked rather than answered by counting callers.
 
 USED BY: ``/api/structure/save`` -> ``write`` · ``/api/structure/export`` ->
-``files`` · ``/api/build/load`` -> ``read`` (web/blueprints/build.py) · and
+``files`` · ``/api/build/load`` -> ``load`` (web/blueprints/build.py) · and
 the task hand-over doors -> ``files``/``write`` · the PySCF script, from
 inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``).
 
@@ -72,7 +72,7 @@ class StructurePair(NamedTuple):
     ``suffix`` is ``.xyz`` unless the destination named ``.pdb``: one frame or
     many, the document is plain XYZ, a block per frame.  The CONTAINER is the
     one axis the caller names -- ``write`` reads it off the target's suffix,
-    which is the same suffix ``read`` dispatches on.
+    which is the same suffix ``load`` dispatches on.
 
     Either way it is carried here rather than assumed by each caller, because
     the pairing rule is the codec's -- a caller that appends its own extension
@@ -533,7 +533,7 @@ class StructureCodec:
         # so there is one .json beside a frame set, not one per frame.  Its
         # geometry hash pins it to the document actually written.
         # WHICH CONTAINER.  `fmt` is the format the DESTINATION names, not a
-        # preference: `write` reads it off the target's suffix and `read`
+        # preference: `write` reads it off the target's suffix and `load`
         # dispatches the same way.
         if struct.atom_order is not None:
             raise ValueError(f"a structure file is written in the user order: "
@@ -791,26 +791,3 @@ class StructureCodec:
                 if tmp.exists():
                     tmp.unlink()
         return target
-
-    # ---- read the pair from disk (alias of load, symmetric name) ----- #
-    def read(self, source_path, *,
-             frame: "int | None" = None,
-             frames: bool = False,
-             retired_out: "dict | None" = None,
-             stated_out: "set | None" = None,
-             said_out: "list | None" = None,
-             opened: "tuple | frozenset" = (),
-             in_user_order: bool = False) -> Structure:
-        """Symmetric read-side name for :meth:`load` -- parse the geometry +
-        apply its paired sidecar into a Structure (missing sidecar => empty
-        metadata, not an error -- except an engine's own file where its
-        run is recorded, which reads with that run's frame; see `load`).
-        ``frame`` / ``frames`` choose which frame (:meth:`frame_choice`);
-        ``retired_out`` collects the retired keys it carried, ``stated_out``
-        the metadata fields it states, ``said_out`` what the read says,
-        ``opened`` what a viewer opens rather than refuses,
-        ``in_user_order`` the read of an editor or a builder (see `load`)."""
-        return self.load(source_path, frame=frame, frames=frames,
-                         retired_out=retired_out, stated_out=stated_out,
-                         said_out=said_out, opened=opened,
-                         in_user_order=in_user_order)

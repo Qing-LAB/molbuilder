@@ -99,8 +99,9 @@ Two related counters:
   - **Edge cases (must not crash)**: empty structure → `(struct, 0)`; a P with
     a single non-bridging O (a lone `P=O`) → no protonation; mixed protonation
     → the alphabetically-first bare O stays as `P=O`, the rest get H.
-- **`add_hydrogens(struct)` → Structure** — general H-addition for any built
-  structure (correct sp3/sp2/sp geometry). **OpenBabel first**
+- **`add_hydrogens(struct)` → Structure** — a builder's step: general H-addition
+  for what a backend returned (correct sp3/sp2/sp geometry), carrying its
+  identity columns and title and nothing else (`model/structure.md` § 2.2a). **OpenBabel first**
   (`OBMol.AddHydrogens()`, no ghost-coordinate failure mode), **RDKit fallback**
   (`Chem.AddHs(mol, addCoords=True)`). This is what nucleic/3DNA builds route
   through (see `engines/builders.md`). **A nucleobase's bond orders are its

@@ -1869,7 +1869,7 @@ what it does in the kind:
 **One door asks it, for every kind** — `template.reads(item, engine, kind,
 stage, role=)` (`role`, the one role a point of a run of points plays — a
 SIESTA vibration's phase), and for a rung's overrides
-`template.unread_overrides`: the
+`template.why_not_in`: the
 description's own check (at every describe and at `prep`) and `resolve` refuse
 an override on a rung that does not read the item — or of an item the kind does
 not carry at all — by name, with `template.why_unread`'s reason, instead of

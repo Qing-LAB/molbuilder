@@ -197,27 +197,6 @@ def test_the_marker_rejects_what_is_not_a_block_marker(line):
     assert MARKER_RE.match(line) is None
 
 
-def test_both_spellings_of_optional_are_understood():
-    """``Optional[int]`` and ``int | None`` are the same annotation.
-
-    They report DIFFERENT origins -- ``typing.Union`` and ``types.UnionType`` --
-    so a check for one silently misses the other.  Nothing in the configs uses
-    the newer spelling today, which is why this is a trap rather than a live
-    bug: the first field written that way would be declared NOT optional and
-    then fail to get a type at all, with the error pointing at the annotation
-    instead of at the check that could not read it (audit § 1.1).
-    """
-    import typing as _t
-    from molbuilder.template import _unwrap_optional
-    assert _unwrap_optional(_t.Optional[int]) == (int, True)
-    assert _unwrap_optional(int | None) == (int, True)
-    assert _unwrap_optional(_t.Optional[str]) == (str, True)
-    assert _unwrap_optional(str | None) == (str, True)
-    # A union that is not an Optional stays un-unwrapped, both ways round.
-    assert _unwrap_optional(int | str) == (int | str, False)
-    assert _unwrap_optional(int) == (int, False)
-
-
 # --------------------------------------------------------------------- #
 #  The help-authoring convention `deck_note` depends on                  #
 # --------------------------------------------------------------------- #

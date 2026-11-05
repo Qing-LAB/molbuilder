@@ -15,9 +15,13 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); ``reaveraged`` -- a frame set's
         transport calculation averaged over another motion
-        (`frame_average.motion_weights`); and ``outermost_move`` -- how far
+        (`frame_average.motion_weights`); ``outermost_move`` -- how far
         a mode's frame set at a temperature moves its atom that moves most
-        (`spectra.mode_frames`)
+        (`spectra.mode_frames`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
+        own ``.XV``, IN THE ENGINE'S ORDER, as its docstring says; and where
+        a calculation is: ``projects_root``, ``project_dir``, ``topic_dir``,
+        ``structure_dir``, ``list_projects``, ``list_topics``,
+        ``list_structures`` (`projects`)
 USED-BY a notebook's kernel, which imports the molbuilder its server runs
         (`web/jupyter.md` § 7), and the post-processing documents' examples
 
@@ -34,6 +38,9 @@ from typing import Any, Dict
 
 from .atom_index import AtomIndexUnknown, atom_index_map
 from .atom_permutation import MAP_KEY, AtomIndexMap
+from .parse.coords import read_xv, read_xv_cell
+from .projects import (list_projects, list_structures, list_topics,
+                       project_dir, projects_root, structure_dir, topic_dir)
 
 
 def parse(path, **kwargs):
@@ -244,4 +251,6 @@ def outermost_move(path, *, mode: int, temperature_k: float,
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map",
            "infrared_view", "parse", "raman_view", "read_optical_data",
            "read_raman_data", "read_spectra_data", "read_structure",
-           "read_transport_data", "reaveraged", "outermost_move"]
+           "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
+           "outermost_move", "projects_root", "project_dir", "topic_dir",
+           "structure_dir", "list_projects", "list_topics", "list_structures"]

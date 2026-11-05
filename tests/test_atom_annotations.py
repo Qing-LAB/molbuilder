@@ -52,6 +52,22 @@ def test_channels_unify_every_label_and_the_extras():
     assert ch["charge"].kind == "value" and ch["charge"].data == {0: -1.0, 1: 0.5}
 
 
+@pytest.mark.parametrize("channel, says", [
+    (AtomChannel("tag", ["1"]), "must be an int"),
+    (AtomChannel("flag", [1.7]), "must be an int"),
+    (AtomChannel("flag", [True]), "must be an int"),
+    (AtomChannel("value", {"1": 0.5}), "must be an int"),
+    (AtomChannel("tag", [9]), "out of range"),
+])
+def test_a_channel_states_real_atom_indices_as_a_label_does(channel, says):
+    """One rule for an atom's index, a label's and a channel's: a string, a
+    float or a bool is refused, where a value channel kept ``"1"`` as a key no
+    atom asks for, and deleting or reordering atoms lost it without a word."""
+    s = Structure(elements=["H", "H"], positions=np.zeros((2, 3)))
+    with pytest.raises(ValueError, match=says):
+        s.set_channel("mine", channel)
+
+
 def test_a_refused_channel_leaves_the_one_it_would_have_replaced():
     """THE SILENT FAILURE: a channel naming an atom that isn't there, refused
     after it was set, so the good one is gone and every later copy of the

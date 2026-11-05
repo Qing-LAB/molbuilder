@@ -1224,8 +1224,8 @@ only inside it**; `viewState` and `uiPrefs` are the two an event handler may
 touch directly, because a frame scrub and a hide-frozen toggle are not state
 transitions.
 
-> **Both shapes exist in the source, on purpose.** About 3,000 lines of render
-> code still read the flat `state.X` names, and the buckets carry
+> **Both shapes exist in the source, on purpose.** The render code still reads
+> the flat `state.X` names, and the buckets carry
 > getter/setter aliases so those keep working — the storage moved, the callers
 > did not. It is a bridge, not a second design: there is one home for each
 > value and the alias reads it.

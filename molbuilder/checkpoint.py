@@ -609,10 +609,6 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SIZE_RE   = re.compile(r"^(0|[1-9][0-9]*)$")
 _SEP       = "\t"
 
-#: sha256 of b"" -- the archive every state with no big files points at.
-EMPTY_MANIFEST_DIGEST = hashlib.sha256(b"").hexdigest()
-
-
 def _bad(where: str, why: str) -> "CheckpointError":
     return CheckpointError(f"malformed MANIFEST in {where}: {why} "
                            f"(job-contracts.md § 6.1).")

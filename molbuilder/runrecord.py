@@ -710,6 +710,8 @@ RUN_RECORDS = (
 
 
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "run_output",
+           "conclude_line", "NOTIFIED_SCHEMA", "stamp", "stamp_time",
+           "record_ended",
            "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in", "gathered_from_path", "copied_from_path", "notified_path", "read_notified", "read_notified_file", "note_notified", "RunRecordFile", "RUN_RECORDS", "COPY_LAST", "COPY_ANEW", "COPY_RUNS", "COPY_CARRIED"]
 
 

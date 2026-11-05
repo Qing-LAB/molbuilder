@@ -88,12 +88,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 
 from ... import repo_root as _repo_root
 from ...structure import Structure
 from . import DEFAULT_FORM, Built
-from ._common import (select_chain,
+from ._common import (first_chain,
                       verify_backbone_connectivity)
 
 
@@ -279,13 +278,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             raise ValueError(
                 "explicit two-strand duplexes are DNA-only (got kind="
                 f"{kind!r}).")
-        found = _resolve()
-        if found is None:
-            from ...chemistry import BackendUnavailable
-            raise BackendUnavailable(_unavailable_message(), missing="threedna")
-        seq = "".join(c for c in sequence.upper() if c.isalpha())
-        if not seq:
-            raise ValueError("Empty sequence")
+        found, seq = _located(sequence)
         return _build_arbitrary_duplex(found, seq, strand2, form, terminal, title)
 
     # THE FORM BUILT (:func:`_form_built`): RNA in fiber's A-form whatever
@@ -299,14 +292,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             f"valid: {sorted(_FIBER_FLAGS)}"
         )
 
-    found = _resolve()
-    if found is None:
-        from ...chemistry import BackendUnavailable
-        raise BackendUnavailable(_unavailable_message(), missing="threedna")
-
-    seq = "".join(c for c in sequence.upper() if c.isalpha())
-    if not seq:
-        raise ValueError("Empty sequence")
+    found, seq = _located(sequence)
 
     # Z-DNA: fiber's `-z` only builds poly-d(GC), so any other sequence is
     # refused upfront with an actionable message.
@@ -351,45 +337,9 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             # -b / -a flag in _FIBER_FLAGS).
             cmd.append("-single")
 
-    # fiber needs $X3DNA in the env at runtime so its auxiliary scripts
-    # / config look-ups resolve.  Inject ours regardless of what the
-    # caller's shell has set.
-    env = os.environ.copy()
-    env["X3DNA"] = found.root
-    env["PATH"]  = os.path.join(found.root, "bin") + os.pathsep + env.get("PATH", "")
-
     with tempfile.TemporaryDirectory(prefix="molbuilder_3dna_") as workdir:
         pdb_path = os.path.join(workdir, "out.pdb")
-        cmd_full = cmd + [pdb_path]
-        try:
-            result = subprocess.run(
-                cmd_full,
-                capture_output=True, text=True,
-                cwd=workdir, env=env,
-                # Pin stdin to /dev/null so an unanticipated fiber-side
-                # interactive prompt (e.g. an invalid flag combination
-                # that drops into the "Number of repeats" loop) fails
-                # FAST instead of stalling for the full timeout reading
-                # from the parent's inherited stdin.
-                stdin=subprocess.DEVNULL,
-                timeout=60,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(
-                f"fiber did not finish within 60 s -- likely hung.  "
-                f"Command: {' '.join(cmd_full)}"
-            ) from exc
-        if result.returncode != 0 or not os.path.isfile(pdb_path):
-            raise RuntimeError(
-                f"fiber failed (exit {result.returncode}).\n"
-                f"Command: {' '.join(cmd_full)}\n"
-                f"--- stdout ---\n{result.stdout}\n"
-                f"--- stderr ---\n{result.stderr}"
-            )
-        pdb_text = Path(pdb_path).read_text()
-
-    if not pdb_text.strip():
-        raise RuntimeError("fiber produced an empty PDB.")
+        pdb_text = _pdb_made(cmd + [pdb_path], pdb_path, found, workdir)
 
     struct = Structure.from_pdb(
         pdb_text,
@@ -399,18 +349,17 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     # fiber's default output is a DUPLEX (chains 'A' + 'B'); `-single` gives one
     # chain.  For a single strand, pin to the first chain (fiber can still emit a
     # 2nd).  For a DOUBLE strand, KEEP BOTH chains -- that IS the duplex.
-    chains = sorted(set(struct.chain_ids))
-    if not double_strand and len(chains) > 1:
-        struct = select_chain(struct, chains[0])
+    if not double_strand:
+        struct = first_chain(struct)
 
     # Strip the spurious 5'-terminal phosphate when the end built is a
-    # 5'-OH (:data:`_TERMINAL_BUILT`).  Done AFTER select_chain so the
+    # 5'-OH (:data:`_TERMINAL_BUILT`).  Done AFTER first_chain so the
     # 5'-terminal residue is unambiguous.  See `_PHOSPHATE_ATOM_NAMES`
     # for the exact atom set we remove.
     if _TERMINAL_BUILT[terminal] == "OH":
         struct = _strip_5prime_phosphate(struct)
 
-    err = verify_backbone_connectivity(struct, kind, max_O3_P=1.80)
+    err = verify_backbone_connectivity(struct)
     if err is not None:
         raise RuntimeError(
             f"fiber output failed connectivity check: {err}.  This is "
@@ -423,6 +372,51 @@ def build(kind: str, sequence: str, form: str, terminal: str,
 # --------------------------------------------------------------------- #
 #  5'-terminal phosphate strip                                          #
 # --------------------------------------------------------------------- #
+
+
+def _located(sequence: str):
+    """``(found, seq)``: the 3DNA install and the sequence's letters, either
+    missing refused."""
+    found = _resolve()
+    if found is None:
+        from ...chemistry import BackendUnavailable
+        raise BackendUnavailable(_unavailable_message(), missing="threedna")
+    seq = "".join(c for c in sequence.upper() if c.isalpha())
+    if not seq:
+        raise ValueError("Empty sequence")
+    return found, seq
+
+
+def _pdb_made(cmd, pdb_path: str, found, workdir: str) -> str:
+    """The PDB text a 3DNA program wrote, run in ``workdir``.  A run that hangs,
+    fails or writes nothing is refused, saying so."""
+    name = os.path.basename(cmd[0])
+    # The program needs $X3DNA at run time so its auxiliary scripts and config
+    # look-ups resolve.  Inject ours regardless of what the caller's shell has
+    # set.
+    env = os.environ.copy()
+    env["X3DNA"] = found.root
+    env["PATH"]  = os.path.join(found.root, "bin") + os.pathsep + env.get("PATH", "")
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=workdir, env=env,
+            # Pin stdin to /dev/null so an unanticipated interactive prompt
+            # (e.g. an invalid flag combination that drops fiber into its
+            # "Number of repeats" loop) fails FAST instead of stalling for the
+            # full timeout reading from the parent's inherited stdin.
+            stdin=subprocess.DEVNULL, timeout=60)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{name} did not finish within 60 s -- likely hung.  "
+                           f"Command: {' '.join(cmd)}") from exc
+    if result.returncode != 0 or not os.path.isfile(pdb_path):
+        raise RuntimeError(f"{name} failed (exit {result.returncode}).\n"
+                           f"Command: {' '.join(cmd)}\n"
+                           f"--- stdout ---\n{result.stdout}\n"
+                           f"--- stderr ---\n{result.stderr}")
+    pdb_text = Path(pdb_path).read_text()
+    if not pdb_text.strip():
+        raise RuntimeError(f"{name} produced an empty PDB.")
+    return pdb_text
 
 
 def _strip_5prime_phosphate(struct: Structure) -> Structure:
@@ -438,45 +432,17 @@ def _strip_5prime_phosphate(struct: Structure) -> Structure:
     PDB listing order.  fiber writes residues in 5'->3' order, so
     `residue_ids[0]` (paired with `chain_ids[0]`) identifies it.
     """
-    if struct.residue_ids is None or struct.atom_names is None:
-        # Defensive: fiber always populates these, but if a caller
-        # ever feeds a stripped Structure, do nothing rather than
-        # crash.
-        return struct
-
     # The 5'-terminal residue is the FIRST residue of EACH chain (fiber writes
     # each chain 5'->3').  A duplex has TWO 5' termini (one per strand), so strip
     # per chain -- not just the very first residue.
-    chain_ids = struct.chain_ids
     first_rid_of = {}       # chain -> its first residue_id (5' terminus)
-    for i in range(struct.n_atoms):
-        ch = chain_ids[i] if chain_ids is not None else None
-        if ch not in first_rid_of:
-            first_rid_of[ch] = struct.residue_ids[i]
-
-    keep = np.ones(struct.n_atoms, dtype=bool)
-    for i in range(struct.n_atoms):
-        ch = chain_ids[i] if chain_ids is not None else None
-        if (struct.residue_ids[i] == first_rid_of.get(ch)
-                and struct.atom_names[i] in _PHOSPHATE_ATOM_NAMES):
-            keep[i] = False
-
-    if keep.all():
-        return struct          # no 5'-phosphate found (already OH)
-
-    return Structure(
-        elements      = [e for k, e in zip(keep, struct.elements)      if k],
-        positions     = struct.positions[keep],
-        atom_names    = ([a for k, a in zip(keep, struct.atom_names)    if k]
-                         if struct.atom_names    is not None else None),
-        residue_ids   = ([r for k, r in zip(keep, struct.residue_ids)   if k]
-                         if struct.residue_ids   is not None else None),
-        residue_names = ([n for k, n in zip(keep, struct.residue_names) if k]
-                         if struct.residue_names is not None else None),
-        chain_ids     = ([c for k, c in zip(keep, struct.chain_ids)     if k]
-                         if struct.chain_ids     is not None else None),
-        title         = struct.title,
-    )
+    gone = []
+    for i, (chain, rid, name) in enumerate(zip(
+            struct.chain_ids, struct.residue_ids, struct.atom_names)):
+        if (first_rid_of.setdefault(chain, rid) == rid
+                and name in _PHOSPHATE_ATOM_NAMES):
+            gone.append(i)
+    return struct.without(gone)
 
 
 # --------------------------------------------------------------------- #
@@ -598,32 +564,14 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     # `_copy_standard_bases`.
     rebuild     = os.path.join(found.root, "bin", "rebuild")
 
-    env = os.environ.copy()
-    env["X3DNA"] = found.root
-    env["PATH"]  = os.path.join(found.root, "bin") + os.pathsep + env.get("PATH", "")
-
     with tempfile.TemporaryDirectory(prefix="molbuilder_3dna_") as workdir:
         Path(os.path.join(workdir, "bp_step.par")).write_text(par_text)
-        pdb_path = os.path.join(workdir, "out.pdb")
         # `rebuild -atomic` needs the standard B-DNA atomic templates in the CWD
         # first.  We COPY THEM OURSELVES rather than shelling out to
         # `x3dna_utils cp_std BDNA` -- see `_copy_standard_bases`.
         _copy_standard_bases(found.root, workdir, "BDNA")
-        cmd = [rebuild, "-atomic", "bp_step.par", "out.pdb"]
-        res = subprocess.run(
-            cmd, capture_output=True, text=True,
-            cwd=workdir, env=env, stdin=subprocess.DEVNULL, timeout=60)
-        if res.returncode != 0:
-            raise RuntimeError(
-                f"X3DNA {os.path.basename(cmd[0])} failed (exit "
-                f"{res.returncode}).\nCommand: {' '.join(cmd)}\n"
-                f"--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}")
-        if not os.path.isfile(pdb_path):
-            raise RuntimeError("rebuild produced no output PDB.")
-        pdb_text = Path(pdb_path).read_text()
-
-    if not pdb_text.strip():
-        raise RuntimeError("rebuild produced an empty PDB.")
+        pdb_text = _pdb_made([rebuild, "-atomic", "bp_step.par", "out.pdb"],
+                             os.path.join(workdir, "out.pdb"), found, workdir)
 
     struct = Structure.from_pdb(
         pdb_text,
@@ -633,7 +581,7 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     # always emits a 5'-P); H is added downstream by chemistry.add_hydrogens.
     if _TERMINAL_BUILT[terminal] == "OH":
         struct = _strip_5prime_phosphate(struct)
-    err = verify_backbone_connectivity(struct, "dna", max_O3_P=1.80)
+    err = verify_backbone_connectivity(struct)
     if err is not None:
         raise RuntimeError(
             f"rebuild output failed connectivity check: {err} "

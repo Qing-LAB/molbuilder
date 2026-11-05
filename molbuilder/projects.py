@@ -14,11 +14,13 @@ Categories of work in this module:
     aren't accepted.
   * **Path resolution** — :func:`project_dir` / :func:`topic_dir` /
     :func:`structure_dir`.  Pure functions; no I/O.
-  * **Directory creation** — :func:`ensure_structure_dir` and the
-    project skeleton (:func:`create_project_skeleton`) are the functions
-    here that write.
+  * **Directory creation** — :func:`ensure_structure_dir` and the project
+    skeleton (:func:`populate_project_skeleton`) are the functions here that
+    write.
   * **Discovery** — :func:`list_projects` / :func:`list_topics` /
-    :func:`list_structures`; read-only.
+    :func:`list_structures`; read-only.  With the path functions, what a
+    person's script or notebook asks to find a calculation
+    (`execution/job-contracts.md` § 2.5; `molbuilder.postprocess`).
 
 This module does not know about scripts, conda envs, run wrappers, or
 the web UI.  Those concerns live in their own modules
@@ -304,31 +306,35 @@ def find_projects_root(start: Path) -> Optional[Path]:
 
 
 def project_dir(project: str, *, base: Optional[Path] = None) -> Path:
+    """The folder of ``project``, under :func:`projects_root`; the name is
+    checked (:func:`validate_name`).  Says nothing of whether it exists."""
     return projects_root(base) / validate_name(project, kind="project")
 
 
 def topic_dir(project: str, topic: str, *,
               base: Optional[Path] = None) -> Path:
+    """``<project>/<topic>``, each name checked (:func:`validate_topic`: one of
+    :data:`CANONICAL_TOPICS`).  Says nothing of whether it exists."""
     return project_dir(project, base=base) / validate_topic(topic)
 
 
 def structure_dir(project: str, topic: str, structure: str, *,
                   base: Optional[Path] = None) -> Path:
+    """``<project>/<topic>/<structure>``: a calculation's folder, the
+    ``structure`` level being the calculation's own name
+    (`execution/job-contracts.md` § 2.5).  Each name checked; says nothing of
+    whether it exists."""
     return topic_dir(project, topic, base=base) / \
            validate_name(structure, kind="structure")
 
 
 def ensure_structure_dir(project: str, topic: str, structure: str, *,
                           base: Optional[Path] = None) -> Path:
-    """Create ``<base>/projects/<project>/<topic>/<structure>/`` and
-    return its path.  Idempotent (existing dirs OK)."""
+    """Create ``<project>/<topic>/<structure>/`` under :func:`projects_root`
+    and return its path.  Idempotent (existing dirs OK)."""
     d = structure_dir(project, topic, structure, base=base)
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-class ProjectExists(InvalidName):
-    """A project with this name already exists.  Strict-create only."""
 
 
 # The README of each storage topic and of ``user``, written into a new
@@ -339,7 +345,7 @@ _TOPIC_READMES: Mapping[str, str] = {
     "structure": (
         "# structure/\n\n"
         "Curated input structure files for this project.\n\n"
-        "Drop `.xyz`, `.pdb`, `.cif` files here.  Flat directory --\n"
+        "Drop `.xyz`, `.pdb` files here.  Flat directory --\n"
         "no subdirs by convention.  Use these as starting points for\n"
         "the calculations in the other topics.\n"
     ),
@@ -404,62 +410,19 @@ def populate_project_skeleton(proj: Path, *, project_name: str) -> None:
     Writes the project-level ``README.md`` then creates every
     :data:`CANONICAL_TOPICS` subdir with its own ``README.md``.
 
-    Caller-supplied ``proj`` MUST already exist and be empty.  Callers
-    are responsible for the existence check (whether they got there via
-    :func:`create_project_skeleton` or by some other path -- e.g., the
-    web blueprint resolves the path against the picker root and creates
-    the empty dir first, then calls this).
-
-    Atomic-ish: this function does NOT rollback on partial failure --
-    that's the caller's responsibility (it knows whether the dir
-    pre-existed).  See :func:`create_project_skeleton` for the
-    rollback-on-failure wrapper.
+    Caller-supplied ``proj`` MUST already exist and be empty: the web
+    blueprint resolves the path against the picker root, creates the empty
+    dir, then calls this.  It does NOT roll back on partial failure -- that's
+    the caller's (it knows whether the dir pre-existed).
     """
     # Plain writes, deliberately (`configuration.md` § 2.3's list): every one of
-    # these lands in a directory THIS CALL just made, and
-    # `create_project_skeleton` removes the lot if anything fails.  There is no
-    # previous content to protect and no credential in them.
+    # these lands in a directory its caller just made and removes if anything
+    # fails.  There is no previous content to protect and no credential in them.
     (proj / "README.md").write_text(_project_root_readme(project_name))
     for topic in CANONICAL_TOPICS:
         sub = proj / topic
         sub.mkdir(parents=False, exist_ok=False)
         (sub / "README.md").write_text(_topic_readme(topic))
-
-
-def create_project_skeleton(project: str, *,
-                            base: Optional[Path] = None) -> Path:
-    """Bootstrap a new project under ``<base>/projects/`` with the full skeleton.
-
-    Combines :func:`project_dir` path resolution + the existence check +
-    :func:`populate_project_skeleton` + rollback-on-failure.
-
-    Strict: the project dir must NOT already exist.  Raises
-    :class:`ProjectExists` when it does -- callers translate to
-    HTTP 409 / a user-facing message.
-
-    For the web blueprint's path-resolution flow (which uses the
-    picker root, not ``base/projects/``), call
-    :func:`populate_project_skeleton` directly with a pre-created
-    empty dir instead.
-
-    Returns the absolute path of the new project root.
-    """
-    validate_name(project, kind="project")
-    proj = project_dir(project, base=base)
-    if proj.exists():
-        raise ProjectExists(
-            f"project {project!r} already exists at {proj!s}.  "
-            f"Pick a different name; use *New folder* inside the "
-            f"existing project to add to it."
-        )
-    proj.mkdir(parents=True, exist_ok=False)
-    try:
-        populate_project_skeleton(proj, project_name=project)
-    except OSError:
-        import shutil
-        shutil.rmtree(proj, ignore_errors=True)
-        raise
-    return proj
 
 
 # ---------------------------------------------------------------- #
@@ -470,17 +433,21 @@ def create_project_skeleton(project: str, *,
 def list_projects(*, base: Optional[Path] = None) -> List[str]:
     """Sorted list of project names, or ``[]`` if no ``projects/`` dir.
 
-    Directories whose names fail :func:`validate_name` (would clash
-    with the SIESTA basename rule -- spaces, dots, etc.) are skipped
-    with a warning logged at WARNING level so the user can tell why
-    something they created by hand isn't appearing.
+    The tree's own folders are no project: its pseudopotential library
+    (`job-contracts.md` § 2.5a) and a hidden folder of molbuilder's.  Other
+    directories whose names fail :func:`validate_name` (would clash with the
+    SIESTA basename rule -- spaces, dots, etc.) are skipped with a warning
+    logged at WARNING level so the user can tell why something they created by
+    hand isn't appearing.
     """
+    from .pseudos import CONVENTIONAL_LIBRARY
     root = projects_root(base)
     if not root.is_dir():
         return []
     valid: List[str] = []
     for p in root.iterdir():
-        if not p.is_dir():
+        if (not p.is_dir() or p.name.startswith(".")
+                or p.name == CONVENTIONAL_LIBRARY):
             continue
         if _NAME_PATTERN.fullmatch(p.name):
             valid.append(p.name)
@@ -510,7 +477,8 @@ def list_topics(project: str, *,
 
 def list_structures(project: str, topic: str, *,
                      base: Optional[Path] = None) -> List[str]:
-    """Sorted structure names under ``project/topic/``, or ``[]``."""
+    """Sorted names under ``project/topic/``: the calculations of a run topic,
+    or ``[]``."""
     td = topic_dir(project, topic, base=base)
     if not td.is_dir():
         return []
@@ -522,7 +490,6 @@ __all__ = [
     "PROJECTS_ROOT_NAME",
     "CANONICAL_TOPICS",
     "InvalidName",
-    "ProjectExists",
     "validate_name",
     "validate_topic",
     "projects_root",
@@ -530,7 +497,6 @@ __all__ = [
     "topic_dir",
     "structure_dir",
     "ensure_structure_dir",
-    "create_project_skeleton",
     "populate_project_skeleton",
     "list_projects",
     "list_topics",

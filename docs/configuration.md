@@ -319,7 +319,10 @@ strategy:
 | shape | why |
 |---|---|
 | an appended log (`serve_daemon.open_private`) | a log is added to, not replaced: there is nothing to preserve, and temp-and-rename would drop the file at every line. Its mode is `0600` on the descriptor, in a `0700` directory — a provider's `client_secret` can reach the server log |
-| a README molbuilder seeds (`envs init-config`, a new project's skeleton) | written into a directory the same call made, molbuilder's own text, no credential |
+| a README molbuilder seeds (`envs init-config`, a new project's skeleton) | molbuilder's own text, written again by the next call, no credential |
+| a scratch file in a temporary place the call made and removes | nothing to preserve |
+| a copy (`planned._Copy`, a restore, the browser's Copy, the notebook's config, a staged pseudopotential) | the source stays, and a file too big to hold in memory is not one `write_bytes` can take |
+| a run's own logs (an install's log; a PySCF run's progress log, whose first write replaces prep's seed) | as the appended log above; a run killed in its first instant leaves nothing to keep, and a re-run is a new `run-<n>/` |
 | the monitor's two files on a compute node — `<stem>.util.csv`, `<stem>.monitor.log` | appended to as the run goes, with `pathlib`, because the monitor ships beside the job (below; [`run-reports.md`](?doc=execution/run-reports.md) § 2.5) |
 | a file a PySCF deck writes as it runs — geomeTRIC's constraints file | the deck writes it once, just before geomeTRIC reads it in the same process: a write cut short ends the run that would have read it |
 

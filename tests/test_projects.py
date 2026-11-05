@@ -163,6 +163,19 @@ def test_list_projects_skips_invalid_names_with_warning(tmp_path, caplog):
     assert "another.bad"          in skipped
 
 
+def test_the_trees_own_folders_are_no_project(tmp_path, caplog):
+    """The tree's pseudopotential library and molbuilder's hidden workspace
+    folder sit beside the projects: neither is listed as one, and neither is
+    warned about, since nobody named them wrongly."""
+    import logging
+    root = tmp_path / "projects"
+    for name in ("pseudopotential", ".molbuilder_workspace", "mine"):
+        (root / name).mkdir(parents=True)
+    with caplog.at_level(logging.WARNING, logger="molbuilder.projects"):
+        assert list_projects(base=tmp_path) == ["mine"]
+    assert not caplog.records
+
+
 def test_list_topics_returns_canonical_order(tmp_path):
     """Topics come back in CANONICAL_TOPICS order, regardless of mkdir order."""
     ensure_structure_dir("p", "transport", "s", base=tmp_path)

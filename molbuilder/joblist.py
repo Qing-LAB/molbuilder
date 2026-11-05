@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from .config_dir import jobs_dir
 from .runrecord import stamp
 
 #: Every job's file, at one major (`persist.check_schema`).
@@ -168,11 +169,6 @@ def signal_here(job: Job) -> None:
         raise NotGoing(f"{job.id} has ended") from None
 
 
-def _dir() -> Path:
-    from .config_dir import jobs_dir
-    return jobs_dir()
-
-
 def _file_of(job: "Job") -> Path:
     """Where a job's address is written first: a run here by its id
     (``<host>-<pid>``); a queue job by the cluster it was sent to and its
@@ -182,7 +178,7 @@ def _file_of(job: "Job") -> Path:
     written again where it was read from."""
     name = (f"{job.cluster}-{job.job_id}" if job.how == "queue"
             and job.cluster else job.id)
-    return _dir() / f"{name}.json"
+    return jobs_dir() / f"{name}.json"
 
 
 #: THE CLUSTER EACH SCHEDULER HERE ANSWERS FOR, once it has said: a
@@ -370,7 +366,7 @@ def add_members(job_id: str, members: Dict[str, Dict[str, str]]) -> Job:
     import dataclasses
     job = find(job_id)
     if job is None:
-        raise JobFileError(f"{_dir()}: no job {job_id} is on file")
+        raise JobFileError(f"{jobs_dir()}: no job {job_id} is on file")
     grown = dataclasses.replace(job, members={**job.members, **members})
     write(grown)
     return grown
@@ -383,7 +379,7 @@ def write(job: Job) -> Path:
     :func:`_file_of`."""
     from .config_dir import ensure_private_dir
     from .persist import write_json
-    ensure_private_dir(_dir())
+    ensure_private_dir(jobs_dir())
     return write_json(job.path or _file_of(job), job.to_dict())
 
 
@@ -426,7 +422,7 @@ def _sequence_of(raw) -> Optional[dict]:
 def every() -> List[Union[Job, JobFileError]]:
     """Every job's file, in the order the jobs went -- each the job, or why
     its file does not read."""
-    d = _dir()
+    d = jobs_dir()
     got: List[Union[Job, JobFileError]] = []
     for f in sorted(d.glob("*.json")) if d.is_dir() else []:
         try:

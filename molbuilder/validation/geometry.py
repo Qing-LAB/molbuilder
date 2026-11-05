@@ -156,7 +156,6 @@ def validate_geometry(struct: Structure,
 
 def _min_image_distance(positions: np.ndarray,
                         cell: np.ndarray,
-                        inv:  np.ndarray = None,
                         *,
                         axes: Optional[Sequence[int]] = None) -> float:
     """Closest distance between any atom and any atom in a NEIGHBOURING
@@ -225,8 +224,6 @@ def _min_image_distance(positions: np.ndarray,
 
 
 def _check_polymer_orientation(struct: Structure) -> List[Issue]:
-    if struct.residue_ids is None or struct.atom_names is None:
-        return []
     # Locate P and O3' positions per residue.  If neither is present
     # this isn't a nucleic-acid polymer (or it's a heavy-atom-only
     # build with no backbone atoms named) -- silently skip.
@@ -260,7 +257,7 @@ def _check_polymer_orientation(struct: Structure) -> List[Issue]:
         # If the structure has a single chain_id this is a polymer
         # integrity issue worth surfacing; multi-chain inputs (e.g.,
         # a duplex) get a pass.
-        if struct.chain_ids is not None and len(set(struct.chain_ids)) <= 1:
+        if len(set(struct.chain_ids)) <= 1:
             return [Issue(
                 "warn",
                 f"polymer has {len(five_prime_ends)} residues with no "

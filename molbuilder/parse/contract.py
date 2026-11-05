@@ -90,28 +90,6 @@ SCF_RECORD_KEYS = ("mixing_weight", "pulay_history", "dm_tolerance",
                    "scf_energy_converge")
 
 
-import functools as _functools
-
-
-@_functools.lru_cache(maxsize=None)
-def _every_cited_item_is_read_back() -> None:
-    """THE CATALOGUE'S `citation` TAG IS THE ONE SOURCE of what a citation
-    takes (`engines/template.md` § 5); the three tuples above partition it
-    by role.  An item tagged there and listed in none of them would be
-    written to the deck record by `template` and read back by nothing --
-    the citation silently short -- so the partition is checked against the
-    tag here, once, when this module loads (2026-10-18)."""
-    from ..template import catalogue, select
-    tagged = {it.name for it in select(catalogue(), citation="transport")}
-    read = set(RECORDED_FIELDS) | set(SCF_RECORD_KEYS) | set(K_MESH_RECORD_KEYS)
-    missing = sorted(tagged - read)
-    if missing:
-        raise ImportError(
-            f"parse/contract.py reads back no citation value for "
-            f"{', '.join(missing)}, which the catalogue tags `citation`: "
-            f"add each to RECORDED_FIELDS, SCF_RECORD_KEYS or "
-            f"K_MESH_RECORD_KEYS")
-
 
 
 def contract_fields_of(cfg, *, kind: str, state=None,
@@ -406,12 +384,7 @@ def _declared_in_provenance(directory: Path) -> set:
                     f.read_text(encoding="utf-8", errors="replace"))
             except OSError:
                 continue
-            # Case-insensitive on the KEY as well as the value.
-            name = ""
-            for key, val in (block or {}).items():
-                if key.strip().lower() == "engine":
-                    name = str(val).strip().lower()
-                    break
+            name = str((block or {}).get("engine", "")).strip().lower()
             if name in _ENGINES:
                 out.add(name)
     return out

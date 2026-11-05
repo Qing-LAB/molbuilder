@@ -325,7 +325,8 @@ doors ask (`model/parse.md` § 3, *One layer*): `read_transport_data`,
 `read_raman_data` for an exported Raman view, `infrared_view` and
 `raman_view` for the spectrum viewer's two derivations, `atom_index_map(path)`,
 `read_structure(path)` for a structure pair in the user order with the map
-of the structure it returns, `parse(path)` for an engine's file. A notebook's kernel imports the molbuilder its server
+of the structure it returns, `parse(path)` for an engine's file, `read_xv(path)`
+for SIESTA's own `.XV`, in the engine's order. A notebook's kernel imports the molbuilder its server
 runs ([`web/jupyter.md`](?doc=web/jupyter.md) § 7).
 
 ## 7. The transport calculation — what the framework serves, file by file

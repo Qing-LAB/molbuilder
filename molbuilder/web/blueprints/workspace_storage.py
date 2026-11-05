@@ -78,18 +78,6 @@ _residue_warned = False
 SCRATCH_DIR = ".molbuilder_workspace"
 
 
-def _default_draft_dir():
-    """Home for the workspace state files.  The contract persists ANY in-memory
-    data -- a project dir is NOT required (workspace.md) -- so state files live at
-    the top-level ``projects_root()``, keyed by ``workspace_id``.
-
-    A test that wants these files somewhere else patches ``projects_root`` on
-    THIS module -- the name is bound at import, so rebinding it on
-    ``molbuilder.projects`` would not reach here.
-    """
-    return projects_root()
-
-
 def _bad(msg, status=400):
     return jsonify({"ok": False, "error": msg}), status
 
@@ -100,7 +88,10 @@ def _body():
 
 def _state_dir():
     """The storage home -- a ``states/`` SUBDIR of the workspace dir."""
-    return _default_draft_dir() / SCRATCH_DIR / "states"
+    # THE WORKSPACE'S STATE FILES live at the top-level ``projects_root()``, keyed
+    # by ``workspace_id``: the contract persists ANY in-memory data, and a project
+    # dir is not required (workspace.md).
+    return projects_root() / SCRATCH_DIR / "states"
 
 
 def _valid_ws_id(ws_id) -> bool:

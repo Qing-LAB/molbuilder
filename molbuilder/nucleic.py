@@ -82,7 +82,7 @@ def build_dna(
     backend: str = "auto",
     form: str = DEFAULT_FORM["dna"],
     terminal: str = DEFAULT_TERMINAL,
-    add_hydrogens: "bool | str" = "auto",
+    add_hydrogens: str = "auto",
     protonate_phosphates: bool = True,
     relax_clashes: bool = False,
     title: Optional[str] = None,
@@ -223,7 +223,7 @@ def build_rna(
     backend: str = "auto",
     form: str = DEFAULT_FORM["rna"],
     terminal: str = DEFAULT_TERMINAL,
-    add_hydrogens: "bool | str" = "auto",
+    add_hydrogens: str = "auto",
     protonate_phosphates: bool = True,
     title: Optional[str] = None,
 ) -> Structure:
@@ -242,26 +242,17 @@ def build_rna(
     return _maybe_protonate(struct, protonate_phosphates)
 
 
-def normalise_h_mode(value: "bool | str") -> str:
-    """Map the user's ``add_hydrogens`` argument to {auto, on, off}.
-
-    Accepts ``"auto"`` / ``"on"`` / ``"off"`` and a bool (True -> "auto",
-    False -> "off").  Raises ValueError on anything else.
-    """
-    if value is True:
-        return "auto"
-    if value is False:
-        return "off"
+def normalise_h_mode(value: str) -> str:
+    """The user's ``add_hydrogens`` argument as one of {auto, on, off}; a
+    ValueError on anything else."""
     if isinstance(value, str) and value.lower() in ("auto", "on", "off"):
         return value.lower()
-    raise ValueError(
-        f"add_hydrogens must be 'auto'/'on'/'off' (or bool); "
-        f"got {value!r}"
-    )
+    raise ValueError(f"add_hydrogens must be 'auto', 'on' or 'off'; "
+                     f"got {value!r}")
 
 
 def _maybe_add_hydrogens(struct: Structure,
-                         mode: "bool | str") -> Structure:
+                         mode: str) -> Structure:
     """Apply chemistry.add_hydrogens based on the user's ``mode``.
 
     Tri-state semantics (see ``build_dna`` for the user-facing kwarg):

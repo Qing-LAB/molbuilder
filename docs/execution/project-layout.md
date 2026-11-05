@@ -1380,7 +1380,6 @@ Each is removed when its write ends; only a kill in between leaves one.
 |---|---|---|---|---|
 | `<label>.<tbt>.digest.nc.reading` *(transport)* — only: while its data file is read | the claim of a data file's reading under way: who reads, since when, how far -- one reading of a file at a time | the SIESTA family's parser, removed when its reading ends | `parse.engines.tbtrans_nc.kept_state` | transient |
 | `<target>.<random>.tmp` | a file being written; it replaces its target when the write ends | `persist` and the codec, writing whole or not at all | none | transient |
-| `<target>.lock` | a sidecar's lock | `sidecars.molstruct.with_lock` | none | transient |
 <!-- /manifest -->
 
 ---

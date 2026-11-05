@@ -90,7 +90,6 @@ def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
     and the optional floats were silently never widened (audit § 25.3).
     """
     import typing
-    from molbuilder import template as _T
     cat = _catalogue()
     hints = typing.get_type_hints(cls)
     bad = []
@@ -98,7 +97,9 @@ def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
         item = cat.get(f.name)
         if item is None:
             continue
-        inner, _opt = _T._unwrap_optional(hints[f.name])
+        args = typing.get_args(hints[f.name])
+        inner = (next(a for a in args if a is not type(None))
+                 if len(args) == 2 and type(None) in args else hints[f.name])
         expected = {float: "float", int: "int", str: "str", bool: "bool"}.get(inner)
         if expected is None:
             continue                      # tuples, lists, enums — typed by rule

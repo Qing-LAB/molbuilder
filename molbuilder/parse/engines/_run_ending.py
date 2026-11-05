@@ -256,8 +256,8 @@ def _molwatch_ending(path) -> RunEnding:
     A molwatch log is SEEDED at prep (`jobset/prep.py::_seed_trajectory_log`),
     so it exists before the engine does: it speaks only once its footer
     concludes, which is what `runfiles.Artifact.output == "progress"` says and
-    why an empty one must not outrank a real result.  `scan_conclusion`
-    returns `"running"` for exactly that case.
+    why an empty one must not outrank a real result.  `read_conclusion`
+    states nothing for exactly that case, and it reads as `"running"` here.
     """
     footer = _MG.read_conclusion(path)
     return RunEnding(footer.get("run_state", "running"),

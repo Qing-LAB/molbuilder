@@ -117,12 +117,12 @@ def _spectra_cfg(struct: "Structure" = None, **overrides):
     actually read at run time.
 
     This builds the real thing: `PySCFConfig` seen through
-    `pyscf.vibration_deck.science_view`, which is the object the emitters
+    `pyscf.vibration_deck.VibrationConfigView`, which is the object the emitters
     and the kind's validation both receive.  A test written against this
     cannot pass on a shape production never sees.
     """
     from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.pyscf.vibration_deck import science_view
+    from molbuilder.pyscf.vibration_deck import VibrationConfigView
     from molbuilder.structure import FROZEN_LABEL
 
     if struct is None:
@@ -142,4 +142,4 @@ def _spectra_cfg(struct: "Structure" = None, **overrides):
         struct = type(struct)(elements=list(struct.elements),
                               positions=struct.positions.copy(),
                               regions=regions)
-    return science_view(PySCFConfig(**overrides), struct)
+    return VibrationConfigView(PySCFConfig(**overrides), struct)

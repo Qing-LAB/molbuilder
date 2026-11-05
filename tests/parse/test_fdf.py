@@ -113,7 +113,6 @@ class TestTheCoordinateFormatsAreConverted:
         assert p.coords_ang is not None, f"{fmt} produced no coordinates"
         assert p.coords_ang[1][2] == pytest.approx(2.5, abs=1e-9), (
             f"{fmt}: 2.5 A came back as {p.coords_ang[1][2]}")
-        assert p.atom_z_span_ang == pytest.approx(2.5, abs=1e-9)
 
     def test_a_format_that_cannot_be_converted_is_REFUSED_not_guessed(self):
         """`ScaledCartesian` scales by the lattice CONSTANT, which this

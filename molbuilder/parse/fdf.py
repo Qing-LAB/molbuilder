@@ -213,9 +213,7 @@ class FdfParams:
     basis_size: Optional[str] = None
     cell_ang: Optional[List[List[float]]] = None      # 3 lattice vectors
     z_len_ang: Optional[float] = None
-    atom_z_span_ang: Optional[float] = None           # max_z - min_z
     solution_method: Optional[str] = None
-    saves_ts_hs: bool = False
     n_atoms: Optional[int] = None
     #: The deck's own START positions in Ang, deck order — the frozen
     #: gate's baseline under the § 4.1b citation condition (form A:
@@ -420,12 +418,7 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
     _read_state(sc, p)
     _read_scf(sc, p, source)
 
-    # TS.HS.Save / TS.SaveHS / SaveHS  (any truthy => writes .TSHS)
-    for k in ("tshssave", "tssavehs", "savehs"):
-        if k in sc and fdf_true(sc[k]):
-            p.saves_ts_hs = True
-
-    # ----- geometry: cell + atom z-span -----
+    # ----- geometry: the cell and the coordinates -----
     lat_const = 1.0
     if "latticeconstant" in sc and sc["latticeconstant"]:
         v = _to_float(sc["latticeconstant"][0])
@@ -482,22 +475,6 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
                 xyz = []           # an unknown format is not guessed at
         if xyz:
             p.coords_ang = xyz
-            zs = [f[2] for f in xyz]
-            p.atom_z_span_ang = max(zs) - min(zs)
-        else:
-            zs = []
-            for row in coords:
-                if len(row) >= 3:
-                    z = _to_float(row[2])
-                    if z is None:
-                        continue
-                    if fmt.startswith("frac") and p.z_len_ang:
-                        z *= p.z_len_ang
-                    elif fmt.startswith("bohr"):
-                        z *= _BOHR_ANG
-                    zs.append(z)
-            if zs:
-                p.atom_z_span_ang = max(zs) - min(zs)
     return p
 
 

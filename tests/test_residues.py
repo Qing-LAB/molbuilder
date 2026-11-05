@@ -103,9 +103,9 @@ def test_build_dna_3to5_label_produces_same_polymer_as_bare():
     must produce the same atomic structure (modulo title)."""
     pytest.importorskip("rdkit")
     from molbuilder.nucleic import build_dna
-    s_bare = build_dna("ATGC", backend="rdkit", add_hydrogens=False,
+    s_bare = build_dna("ATGC", backend="rdkit", add_hydrogens="off",
                        protonate_phosphates=False)
-    s_rev  = build_dna("3'-CGTA-5'", backend="rdkit", add_hydrogens=False,
+    s_rev  = build_dna("3'-CGTA-5'", backend="rdkit", add_hydrogens="off",
                        protonate_phosphates=False)
     assert s_bare.elements == s_rev.elements, (
         "Reverse-direction label should produce the same residue order "

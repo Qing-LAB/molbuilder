@@ -31,7 +31,6 @@ from molbuilder.spectra.results import (
 from molbuilder.sidecars.spectra import (
     dump_spectra_json,
     parse_spectra_json,
-    parse_spectra_json_dict,
     SpectraJsonError,
     SpectraJsonFieldError,
     SpectraJsonMalformedError,
@@ -224,68 +223,6 @@ class TestParseSpectraJsonForwardCompat:
 # --------------------------------------------------------------------- #
 #  In-memory variant                                                    #
 # --------------------------------------------------------------------- #
-
-
-class TestParseSpectraJsonDict:
-    """parse_spectra_json_dict, the reader's in-memory door: a result from
-    an already-decoded dict."""
-
-    def test_round_trip_dict(self):
-        """PLUMBING. The in-memory door (`parse_spectra_json_dict`) reconstitutes a
-        result from an already-decoded dict.
-
-        It is a SEPARATE function with its own copy of the schema check, so
-        nothing in the file-path tests above covers it.
-        """
-        original = _make_minimal_results()
-        loaded = parse_spectra_json_dict(original.to_dict())
-        assert loaded.engine == "pyscf"
-        assert len(loaded.modes) == 1
-
-    def test_non_dict_rejected(self):
-        """PLUMBING. A JSON array handed to the in-memory door is Malformed.
-
-        Catches the dict door indexing into a list and raising `TypeError` from
-        inside `from_dict` -- which would surface as a FieldError ("malformed
-        field") for what is actually a wrong top-level shape, sending the user to
-        look for a bad field in a document that has none.
-
-        Contract: `web/spectra.md` § 6.
-        """
-        with pytest.raises(SpectraJsonMalformedError):
-            parse_spectra_json_dict([1, 2, 3])  # type: ignore[arg-type]
-
-    def test_missing_schema_version_rejected(self):
-        """PLUMBING. The in-memory door runs the schema-version gate too.
-
-        The dict path duplicates that check in `parse_spectra_json_dict` rather
-        than sharing it with the file path, so it can be deleted from one and not
-        the other, and a v6 payload posted inline would then be reconstituted by a
-        v5 reader -- silently, with whatever fields happened to still line up.
-
-        Contract: `web/spectra.md` § 6 (wrong schema -> 422) + `spectra/results.py`.
-        """
-        original = _make_minimal_results()
-        d = original.to_dict()
-        del d["schema_version"]
-        with pytest.raises(SpectraJsonSchemaError):
-            parse_spectra_json_dict(d)
-
-    def test_field_error_wrapped(self):
-        """PLUMBING. A missing required field on the in-memory path is a FieldError,
-        not a bare `KeyError`.
-
-        Catches the dict door's error wrapping being dropped: `KeyError('engine')`
-        escaping `except SpectraJsonError` at the route means a 500 and an HTML
-        body where the UI expects `{ok, error, kind}`.
-
-        Contract: `web/spectra.md` § 6.
-        """
-        original = _make_minimal_results()
-        d = original.to_dict()
-        del d["engine"]
-        with pytest.raises(SpectraJsonFieldError):
-            parse_spectra_json_dict(d)
 
 
 # --------------------------------------------------------------------- #

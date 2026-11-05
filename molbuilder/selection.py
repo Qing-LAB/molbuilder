@@ -13,19 +13,9 @@ A *selection rule* describes WHICH atoms of a :class:`Structure` are
     through ``POST /api/selection/eval`` for live atom-count
     feedback.
 
-This module is the L1 (pure-Python) layer of the selection system.
-The L2 web API (``/api/selection/eval``), L3 JS state holder
-(``lib/selection/core.js``) and L4 UI card (``lib/selection-panel.js``)
-all consume / produce the JSON form defined here.
-
-Design notes
-------------
-
-Each rule is a frozen dataclass with a ``KIND`` class variable that
-labels it in the JSON form.  Boolean ops carry sub-rules in their
-fields, so a tree of rules is just a nested object.  Evaluation
-walks the tree and returns a :class:`frozenset` of 0-based atom
-indices; everything composes off this single shape.
+This module is the L1 (pure-Python) layer of the selection system: the web API
+(``POST /api/selection/eval``) reads the JSON form the page's filter rows build
+(``lib/molview/stores.js``).
 
 The grammar is intentionally small.  The eight "primitive" rules
 (``All``, ``ByElement``, ``ByResidueName``, ``ByIndexRange``,
@@ -36,8 +26,9 @@ cover every composition pattern in our requirements (e.g. "first 12
 Au atoms = left electrode" is ``FirstN(ByElement(['Au']), 12)``).
 
 Adding a new primitive: add a frozen dataclass with a ``KIND`` and a
-handler in :func:`evaluate`; register it in :data:`_KIND_TO_CLS`.
-The JSON round-trip + the equality / hashing properties come for
+handler in :func:`evaluate`; register it in :data:`_RULE_CLASSES`, its fields
+in :data:`_FIELD_KINDS`.
+The reading from JSON + the equality / hashing properties come for
 free from the dataclass.
 """
 
@@ -278,25 +269,22 @@ def _evaluate(rule: Rule, struct, n: int) -> FrozenSet[int]:
 
     if isinstance(rule, ByResidueName):
         wanted = set(rule.names)
-        # residue_names is a list; missing on synthetic Structures
-        # built without PDB metadata, but the dataclass default is
-        # an empty list per element (not None), so this is safe.
         return frozenset(
-            i for i, r in enumerate(struct.residue_names or [])
+            i for i, r in enumerate(struct.residue_names)
             if r in wanted
         )
 
     if isinstance(rule, ByAtomName):
         wanted = set(rule.names)
         return frozenset(
-            i for i, a in enumerate(struct.atom_names or [])
+            i for i, a in enumerate(struct.atom_names)
             if a in wanted
         )
 
     if isinstance(rule, ByChainId):
         wanted = set(rule.ids)
         return frozenset(
-            i for i, c in enumerate(struct.chain_ids or [])
+            i for i, c in enumerate(struct.chain_ids)
             if c in wanted
         )
 
@@ -304,13 +292,12 @@ def _evaluate(rule: Rule, struct, n: int) -> FrozenSet[int]:
         return frozenset(parse_index_list(rule.expression, count=n))
 
     if isinstance(rule, ByRegion):
-        regions = getattr(struct, "regions", {}) or {}
-        if rule.name not in regions:
+        if rule.name not in struct.regions:
             raise SelectionError(
                 f"ByRegion: structure has no region labelled "
-                f"{rule.name!r} (known: {sorted(regions)!r})"
+                f"{rule.name!r} (known: {sorted(struct.regions)!r})"
             )
-        return frozenset(regions[rule.name])
+        return frozenset(struct.regions[rule.name])
 
     if isinstance(rule, ByClick):
         for idx in rule.indices:
@@ -362,28 +349,16 @@ def _evaluate(rule: Rule, struct, n: int) -> FrozenSet[int]:
 
 
 # --------------------------------------------------------------------- #
-
-#: ASCII digits alone (``re.ASCII``): the browser's one door shifts the
-#: number a person types (`_atom.js` `shiftExpression`, which reads every
-#: digit form as one), so a digit it did not see is refused, never read
-#: unshifted.
-
-
-# --------------------------------------------------------------------- #
-#  JSON round-trip                                                      #
+#  A rule as JSON, both ways                                            #
 # --------------------------------------------------------------------- #
 #
 # The on-the-wire form is::
 #
 #     {"op": "<KIND>", "<field>": <value>, ...}
 #
-# with nested rules serialised the same way.  Tuples become lists in
-# JSON (json.dumps handles that automatically); on the way back in we
-# normalise lists -> tuples so the round-tripped rule equals the
-# original (frozen dataclasses use tuple-of-fields hashing).
+# with nested rules the same way.  JSON's lists become tuples, which keeps a
+# frozen dataclass hashable.
 
-# Discovery happens here so adding a new rule class only requires
-# editing this list:
 _RULE_CLASSES: Tuple[type, ...] = (
     All, ByElement, ByResidueName, ByAtomName, ByChainId,
     ByIndexRange, ByRegion, ByClick,
@@ -393,67 +368,23 @@ _RULE_CLASSES: Tuple[type, ...] = (
 _KIND_TO_CLS: Dict[str, type] = {cls.KIND: cls for cls in _RULE_CLASSES}
 
 
-# Sub-rule field names per class -- ``to_json`` recurses into these
-# when building the JSON form.  Anything not listed here is treated
-# as a leaf (tuples become lists, scalars pass through).
-_SUBRULE_FIELDS: Dict[type, Tuple[str, ...]] = {
-    Or:     ("operands",),
-    And:    ("operands",),
-    Minus:  ("a", "b"),
-    Not:    ("rule",),
-    FirstN: ("rule",),
-}
-
-# Within sub-rule fields, which are SEQUENCES of rules vs single
-# rules.  Used to decide whether to map to_json over the field or
-# call to_json on it directly.
-_SUBRULE_LIST_FIELDS: Dict[type, Tuple[str, ...]] = {
-    Or:  ("operands",),
-    And: ("operands",),
-}
-
-
-def to_json(rule: Rule) -> Dict[str, Any]:
-    """Serialise a rule (or rule tree) into the JSON-able dict form.
-
-    Tuples are written as lists (json.dumps does this implicitly,
-    but we keep the shape explicit so a non-JSON consumer reading
-    this dict isn't surprised by tuples)."""
-    if type(rule) not in _KIND_TO_CLS.values():
-        raise SelectionError(
-            f"to_json: unknown rule type {type(rule).__name__}"
-        )
-    out: Dict[str, Any] = {"op": rule.KIND}
-    subrule_fields      = _SUBRULE_FIELDS.get(type(rule), ())
-    subrule_list_fields = _SUBRULE_LIST_FIELDS.get(type(rule), ())
-    for f in fields(rule):
-        v = getattr(rule, f.name)
-        if f.name in subrule_list_fields:
-            out[f.name] = [to_json(r) for r in v]
-        elif f.name in subrule_fields:
-            out[f.name] = to_json(v)
-        elif isinstance(v, tuple):
-            out[f.name] = list(v)
-        else:
-            out[f.name] = v
-    return out
-
-
-#: What each LEAF field of a rule must be, declared rather than inferred --
-#: the third table beside :data:`_SUBRULE_FIELDS` and
-#: :data:`_SUBRULE_LIST_FIELDS`, and for their reason: the annotation on a
-#: frozen dataclass is documentation, and nothing was checking it.
+#: What each field of a rule must be, declared rather than inferred: the
+#: annotation on a frozen dataclass is documentation, and nothing was checking
+#: it.
 #:
-#: WHY THIS EXISTS.  Without it ``from_json`` accepts any JSON value for a
-#: leaf, and the wrong type raises a bare :class:`TypeError` -- from
-#: ``tuple(from_json(r) for r in raw)`` when a sub-rule LIST is a scalar, and
-#: from ``set(rule.elements)`` / ``rule.n < 0`` deep inside :func:`evaluate`.
-#: ``web/blueprints/selection.py`` catches :class:`SelectionError` and only
-#: that, so each of those escapes as Flask's HTML 500 page WITH A STACK TRACE
-#: where `web-api.md` § 1 requires a JSON 400 -- on a route the filter panel
-#: calls on every keystroke.  A malformed rule is a bad REQUEST, and it is refused here,
-#: at the boundary where untrusted JSON becomes a rule.
-_LEAF_KINDS: Dict[str, str] = {
+#: WHY THIS EXISTS.  Without it ``from_json`` accepts any JSON value, and the
+#: wrong type raises a bare :class:`TypeError` -- from ``set(rule.elements)``
+#: deep inside :func:`evaluate`.  ``web/blueprints/selection.py`` catches
+#: :class:`SelectionError` and only that, so each of those escapes as Flask's
+#: HTML 500 page WITH A STACK TRACE where `web-api.md` § 1 requires a JSON 400
+#: -- on a route the filter panel calls on every keystroke.  A malformed rule
+#: is a bad REQUEST, and it is refused here, at the boundary where untrusted
+#: JSON becomes a rule.
+_FIELD_KINDS: Dict[str, str] = {
+    "operands":   "rule-seq",
+    "a":          "rule",
+    "b":          "rule",
+    "rule":       "rule",
     "elements":   "str-seq",
     "names":      "str-seq",
     "ids":        "str-seq",
@@ -464,44 +395,60 @@ _LEAF_KINDS: Dict[str, str] = {
 }
 
 
-def _check_leaf(op: str, name: str, raw: Any) -> Any:
-    """Refuse a leaf value the rule cannot hold, naming both.
+def to_json(rule: Rule) -> Dict[str, Any]:
+    """A rule (or rule tree) as the JSON-able dict :func:`from_json` reads back
+    equal: ``{"op": <KIND>, <field>: <value>}``, nested rules the same way and
+    tuples as lists -- a selection a script keeps in a file or sends to
+    ``/api/selection/eval``."""
+    out: Dict[str, Any] = {"op": rule.KIND}
+    for f in fields(rule):
+        kind = _FIELD_KINDS[f.name]
+        value = getattr(rule, f.name)
+        out[f.name] = (to_json(value) if kind == "rule"
+                       else [to_json(r) for r in value] if kind == "rule-seq"
+                       else list(value) if kind.endswith("-seq")
+                       else value)
+    return out
 
-    Returns the value to store -- a sequence becomes a tuple, which is what
-    keeps the frozen dataclass hashable.
-    """
-    kind = _LEAF_KINDS.get(name)
-    if kind is None:                       # a leaf nothing declares: pass it on
-        return tuple(raw) if isinstance(raw, list) else raw
-    if kind.endswith("-seq"):
-        if not isinstance(raw, (list, tuple)) or isinstance(raw, (str, bytes)):
+
+def _read_field(op: str, name: str, raw: Any) -> Any:
+    """The value a rule holds for this field, or refused naming both."""
+    kind = _FIELD_KINDS[name]
+    if kind == "rule":
+        return from_json(raw)
+    if kind == "str":
+        if not isinstance(raw, str):
             raise SelectionError(
-                f"from_json[{op!r}]: {name!r} must be a list, got "
+                f"from_json[{op!r}]: {name!r} must be a str, got "
                 f"{type(raw).__name__}")
-        want = str if kind == "str-seq" else int
-        for i, v in enumerate(raw):
-            # bool is an int subclass; a rule holding True as an index is a
-            # mistake that would evaluate to atom 1.
-            if not isinstance(v, want) or (want is int and isinstance(v, bool)):
-                raise SelectionError(
-                    f"from_json[{op!r}]: {name}[{i}] must be "
-                    f"{want.__name__}, got {type(v).__name__}")
-        return tuple(raw)
+        return raw
     if kind == "int":
+        # bool is an int subclass; True as a count is a mistake.
         if not isinstance(raw, int) or isinstance(raw, bool):
             raise SelectionError(
                 f"from_json[{op!r}]: {name!r} must be an int, got "
                 f"{type(raw).__name__}")
         return raw
-    if not isinstance(raw, str):
+    if not isinstance(raw, (list, tuple)):
+        what = "a list of rules" if kind == "rule-seq" else "a list"
         raise SelectionError(
-            f"from_json[{op!r}]: {name!r} must be a str, got "
+            f"from_json[{op!r}]: {name!r} must be {what}, got "
             f"{type(raw).__name__}")
-    return raw
+    if kind == "rule-seq":
+        return tuple(from_json(r) for r in raw)
+    want = str if kind == "str-seq" else int
+    for i, v in enumerate(raw):
+        # bool is an int subclass; a rule holding True as an index is a
+        # mistake that would evaluate to atom 1.
+        if not isinstance(v, want) or (want is int and isinstance(v, bool)):
+            raise SelectionError(
+                f"from_json[{op!r}]: {name}[{i}] must be "
+                f"{want.__name__}, got {type(v).__name__}")
+    return tuple(raw)
 
 
 def from_json(payload: Dict[str, Any]) -> Rule:
-    """Deserialise a JSON-able dict back into a rule (or rule tree).
+    """A JSON-able dict read into a rule (or rule tree).
 
     Raises :class:`SelectionError` on unknown ``op``, missing required
     fields, or malformed nested rules.
@@ -523,8 +470,6 @@ def from_json(payload: Dict[str, Any]) -> Rule:
         )
 
     kwargs: Dict[str, Any] = {}
-    subrule_fields      = _SUBRULE_FIELDS.get(cls, ())
-    subrule_list_fields = _SUBRULE_LIST_FIELDS.get(cls, ())
     for f in fields(cls):
         if f.name not in payload:
             # ``All`` has no fields; every other rule has at least
@@ -533,20 +478,7 @@ def from_json(payload: Dict[str, Any]) -> Rule:
             raise SelectionError(
                 f"from_json[{op!r}]: missing required field {f.name!r}"
             )
-        raw = payload[f.name]
-        if f.name in subrule_list_fields:
-            if not isinstance(raw, (list, tuple)):
-                raise SelectionError(
-                    f"from_json[{op!r}]: {f.name!r} must be a list of rules, "
-                    f"got {type(raw).__name__}")
-            kwargs[f.name] = tuple(from_json(r) for r in raw)
-        elif f.name in subrule_fields:
-            kwargs[f.name] = from_json(raw)
-        else:
-            # Leaf-level lists (e.g. ByElement.elements) round-trip back to
-            # tuples to keep the frozen dataclass hashable, and the TYPE is
-            # checked here rather than left to blow up inside `evaluate`.
-            kwargs[f.name] = _check_leaf(op, f.name, raw)
+        kwargs[f.name] = _read_field(op, f.name, payload[f.name])
     return cls(**kwargs)
 
 
@@ -558,7 +490,7 @@ __all__ = [
     "ByIndexRange", "ByRegion", "ByClick",
     # Operators:
     "Or", "And", "Minus", "Not", "FirstN",
-    # Evaluator + round-trip:
+    # Evaluator + the JSON form, both ways:
     "evaluate", "to_json", "from_json",
     # The index-list grammar (atoms here; the vibration's explicit modes):
     "parse_index_list",

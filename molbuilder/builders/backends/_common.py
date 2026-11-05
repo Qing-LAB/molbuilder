@@ -55,7 +55,7 @@ def rdkit_mol_to_structure(mol, *, title: Optional[str] = None) -> Structure:
     )
 
 
-def verify_backbone_connectivity(struct: Structure, kind: str,
+def verify_backbone_connectivity(struct: Structure,
                                  max_O3_P: float = 1.80,
                                  ) -> Optional[str]:
     """Return None if the inter-residue P-O3' distances within each chain are
@@ -91,18 +91,9 @@ def verify_backbone_connectivity(struct: Structure, kind: str,
             f"{d:.2f} A (should be <= {max_O3_P}); backbone is broken")
 
 
-def select_chain(struct: Structure, chain: str) -> Structure:
-    """Return a new Structure with only atoms whose chain_id matches."""
-    keep = [i for i in range(struct.n_atoms) if struct.chain_ids[i] == chain]
-    if not keep:
-        raise ValueError(f"chain {chain!r} not present in structure "
-                         f"(have {sorted(set(struct.chain_ids))})")
-    return Structure(
-        elements      = [struct.elements[i]      for i in keep],
-        positions     = struct.positions[keep],
-        atom_names    = [struct.atom_names[i]    for i in keep],
-        residue_ids   = [struct.residue_ids[i]   for i in keep],
-        residue_names = [struct.residue_names[i] for i in keep],
-        chain_ids     = [struct.chain_ids[i]     for i in keep],
-        title         = struct.title,
-    )
+def first_chain(struct: Structure) -> Structure:
+    """The atoms of the structure's first chain, by name: a backend returns
+    one chain, whatever its program emitted."""
+    first = min(struct.chain_ids, default=None)
+    return struct.without(i for i, chain in enumerate(struct.chain_ids)
+                          if chain != first)

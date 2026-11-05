@@ -200,7 +200,7 @@ else `13.*` (`_resolve_cuda_version`). `molbuilder-pySCF`'s `cupy-cuda<N>x` and
 `gpu4pyscf-cuda<N>x`, and `molbuilder-siesta-gpu`'s `cuda-version=` pin and the
 driver its precondition names, carry it — so those two recipes are functions
 of it, and the registry is **`builtin_recipes()`, built on its first ask** and
-kept for the process (`recipe_by_name` and `recipe_for_category` ask it). The
+kept for the process (`recipe_by_name` asks it). The
 probe runs for a command that reads a recipe — `envs`, the notebook's start —
 and once at the server's start, so no request pays it; any other command runs
 none of it. It ran at import until 2026-09-29, on every command (plan W36 ⑥).

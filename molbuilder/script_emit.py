@@ -1,7 +1,7 @@
 """molbuilder.script_emit — writes the script-contract blocks.
 
 **One format, its grammar below.**  This module writes the reserved blocks
-(HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM); their
+(PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM); their
 grammar and their readers are `deck_record`'s, because a job and the floors
 below this one read them.  It reads back only the person's USER-CUSTOM zone,
 to carry it across a generation.  `parse/`'s registry answers *"which parser
@@ -16,7 +16,7 @@ Public surface
   :mod:`molbuilder.deck_record`'s, which this module imports.
 * Bench declarations — :class:`BenchField`; each engine's fields are its
   own deck writer's (SIESTA's ``siesta.input.BENCH_FIELDS``).
-* Block emitters — :func:`emit_header`, :func:`emit_provenance`,
+* Block emitters — :func:`emit_provenance`,
   :func:`emit_bench_marks`, :func:`emit_atom_metadata`,
   :func:`emit_user_custom_placeholder`.
 * USER-CUSTOM round-trip — :func:`replace_user_custom_inner`,
@@ -51,7 +51,7 @@ from . import runfiles as _rf
 # blocks beside itself, where this module (whose bench declarations are built
 # against the template at import) cannot be imported.
 from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
-                          BLOCK_ENGINE_OFFSET, BLOCK_HEADER,
+                          BLOCK_ENGINE_OFFSET,
                           BLOCK_PROVENANCE, BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
                           MARKER_RE, PARAMETER_ROW_PREFIX, PARAMETERS_KEY,
                           begin_marker, end_marker)
@@ -178,25 +178,9 @@ class BenchField:
 # --------------------------------------------------------------------- #
 
 
-def emit_header(lines: List[str]) -> str:
-    """Wrap the given comment-prefixed lines in a HEADER block.
-
-    Caller is responsible for prefixing each line with the engine's
-    comment character (``#`` for .fdf / .py / .run.sh — the only
-    comment char in scope here).  Empty list produces an empty block.
-    """
-    body = "\n".join(lines)
-    return (
-        begin_marker(BLOCK_HEADER) + "\n"
-        + (body + "\n" if body else "")
-        + end_marker(BLOCK_HEADER)
-    )
-
-
 def emit_provenance(generator_version: str,
                     generated_at: str,
                     resolved_defaults: Optional[Dict[str, str]] = None,
-                    form_config_hash: Optional[str] = None,
                     engine: Optional[str] = None,
                     parameters: Optional[Sequence[Tuple[str, str]]] = None,
                     parameters_unrecorded: bool = False) -> str:
@@ -229,8 +213,6 @@ def emit_provenance(generator_version: str,
         out.append(f"#   engine               {engine}")
     out.append(f"#   generator-version    {generator_version}")
     out.append(f"#   generated-at         {generated_at}")
-    if form_config_hash:
-        out.append(f"#   form-config-hash     {form_config_hash}")
     if parameters:
         out.append(f"#   {PARAMETERS_KEY}:          who set each value this "
                    f"deck is rendered from")
@@ -252,8 +234,7 @@ def emit_provenance(generator_version: str,
 
 def emit_bench_marks(metadata: Dict[str, Any],
                      fields: List[BenchField],
-                     defaults: Dict[str, Any],
-                     version: str = "v1") -> str:
+                     defaults: Dict[str, Any]) -> str:
     """Emit the BENCH-MARKS block.
 
     ``metadata`` — informational top-level keys (n_atoms,
@@ -263,7 +244,7 @@ def emit_bench_marks(metadata: Dict[str, Any],
         appended to the field line as ``default=...``.
     """
     out: List[str] = [begin_marker(BLOCK_BENCH_MARKS)]
-    out.append(f"#   version {version}")
+    out.append("#   version v1")
     if metadata:
         max_key = max(len(k) for k in metadata.keys())
         for key in metadata.keys():
@@ -280,18 +261,12 @@ def emit_bench_marks(metadata: Dict[str, Any],
     return "\n".join(out)
 
 
-def decl_line(f: "BenchField", *, value=None, default=None,
-              indent: str = "#   ") -> str:
+def decl_line(f: "BenchField", *, default=None) -> str:
     """Render one ``field …`` declaration line — `job-contracts.md § 3.3`/§ 3.7.
 
     **One renderer**, so a declaration line has one dialect.
-
-    ``value`` is the item's current value and ``default`` what it would be
-    untouched. Both are rendered when given: the pair is what tells a surface
-    whether the user set this field or left it alone, without a second marker
-    saying so.
     """
-    line = f"{indent}field {f.name}  anchor={f.anchor}  type={f.type_}"
+    line = f"#   field {f.name}  anchor={f.anchor}  type={f.type_}"
     if f.range_ is not None:
         line += f"  range=[{f.range_[0]},{f.range_[1]}]"
     if f.unit:
@@ -304,8 +279,6 @@ def decl_line(f: "BenchField", *, value=None, default=None,
         line += f"  group={f.group}"
     if default is not None:
         line += f"  default={_scalar(default)}"
-    if value is not None:
-        line += f"  value={_scalar(value)}"
     return line
 
 
@@ -551,7 +524,7 @@ __all__ = [
     # Bench declarations
     "BenchField",
     # Emitters
-    "emit_header", "emit_provenance", "emit_bench_marks",
+    "emit_provenance", "emit_bench_marks",
     "write_validation_report",
     "emit_atom_metadata", "emit_user_custom_placeholder",
     # An item nobody set, said where its line would be
@@ -582,14 +555,6 @@ __all__ = [
 # --------------------------------------------------------------------- #
 
 
-def _catalogue():
-    """The parsed catalogue, through its one door: ``template.catalogue``,
-    which caches for everybody.
-    """
-    from . import template as _T
-    return _T.catalogue()
-
-
 def deck_note(item_name, engine, *lead, extra=()):
     """One item's catalogue note as deck comment lines: ``["", "# ...", ...]``.
 
@@ -612,7 +577,7 @@ def deck_note(item_name, engine, *lead, extra=()):
     import textwrap
     from . import template as _T
     try:
-        it = _T.one(_catalogue(), item_name, engine=engine)
+        it = _T.one(_T.catalogue(), item_name, engine=engine)
     except KeyError:
         it = None
     out = [""]
@@ -738,7 +703,7 @@ def declarations(engine: str = None, *, calculation: str = None,
     offer, and that is how a second way of reading a declaration starts.
     """
     from . import template as _T
-    items = _T.select(_catalogue(), engine=engine, calculation=calculation)
+    items = _T.select(_T.catalogue(), engine=engine, calculation=calculation)
     if stage is None:
         return list(items)
     from .identity import parse_token
@@ -770,7 +735,7 @@ def parameter(name: str, engine: str, *, config=None,
     """
     from . import template as _T
     try:
-        decl = _T.one(_catalogue(), name, engine=engine)
+        decl = _T.one(_T.catalogue(), name, engine=engine)
     except KeyError:
         decl = None
     if value is not _UNSET:
@@ -872,7 +837,7 @@ def deck_values(name: str, engine: str, deck_text: str) -> Dict[str, Any]:
     item writes.  :func:`parameter`'s ``value`` is the first of them."""
     from . import template as _T
     try:
-        decl = _T.one(_catalogue(), name, engine=engine)
+        decl = _T.one(_T.catalogue(), name, engine=engine)
     except KeyError:
         decl = None
     return (_deck_answers(decl, deck_text, engine) if decl is not None

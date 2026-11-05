@@ -461,9 +461,8 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     A description written since the split (`task@2`) holds no group -- its
     groups are its job request's (`execution/job-request.md` § 3.3)."""
     stages = obj.get("stages")
-    if (str(obj.get("schema") or "") != _TASK_AT_1
-            or not isinstance(stages, list) or all(
-                not isinstance(st, dict) or "group" in st for st in stages)):
+    if not isinstance(stages, list) or all(
+            not isinstance(st, dict) or "group" in st for st in stages):
         return []
     from ..identity import stage_key
     from ..task import Task
@@ -573,13 +572,6 @@ def _cards_view(obj: dict, task):
         engine=str(task.engine), calculation=str(task.calculation))
 
 
-def _retired_here(name: str, engine: str) -> bool:
-    """Whether ``engine``'s schema retired ``name`` -- an item one engine
-    keeps is another's to retire (`template.Retired.engines`)."""
-    from .. import template as _T
-    return _T.retired(name, engine) is not None
-
-
 def _retired_stuck(said_of: str, name: str) -> "MigrateError":
     """The refusal of an item a release retired, held at a value that no
     longer runs: taking it out would change the calculation, and what it
@@ -599,7 +591,7 @@ def _retired_off(values: dict, engine: str, said_of: str) -> List[str]:
     running as before without it; any other value refused by name
     (:func:`_retired_stuck`).  The names taken out, in order."""
     from .. import template as _T
-    gone = [k for k in values if _retired_here(k, engine)]
+    gone = [k for k in values if _T.retired(k, engine) is not None]
     for k in gone:
         if not _T.RETIRED_ITEMS[k].runs_without(values[k]):
             raise _retired_stuck(f"{said_of} says {k} = {values[k]!r}", k)
@@ -657,19 +649,17 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
             f"(execution/job-request.md § 2).  Remove "
             f"{'it' if len(measured) == 1 else 'them'} from the bench, then "
             f"run the migration again; nothing was written.")
-    card = {k: v for k, v in (obj.get("execution") or {}).items()
-            if k not in _COMPUTED_ON_CARDS}
+    # WHAT A STAGE'S CARD SAID OF WHAT IS COMPUTED is already among its overrides
+    # in ``desc`` (`_description_view`); the calculation's came off its card
+    # before the split (`_migrate_description`).
+    card = dict(obj.get("execution") or {})
     stages: Dict[str, dict] = {}
     for st, raw in zip(desc["stages"], obj.get("stages") or []):
         own = dict(raw.get("execution") or {})
         moved = {k: own.pop(k) for k in _COMPUTED_ON_CARDS if k in own}
-        if moved:
-            st["overrides"] = {**(st.get("overrides") or {}), **moved}
-            desc["varies"] = list(dict.fromkeys(
-                [*(desc.get("varies") or []), *moved]))
-            said += [f"stage {st['name']!r} {k} = {v!r}: off its run card, "
-                     f"into its overrides -- it says what is computed"
-                     for k, v in moved.items()]
+        said += [f"stage {st['name']!r} {k} = {v!r}: off its run card, "
+                 f"into its overrides -- it says what is computed"
+                 for k, v in moved.items()]
         stages[st["name"]] = {"group": raw.get("group"),
                               **({"execution": own} if own else {})}
     said += [f"{k} = {v!r}: off the calculation's run card, into the "
@@ -828,7 +818,7 @@ def _migrate_description(rec: "_Records", said: List[str], writes: "_Writes"):
             lines.append(("notify.every_hours = None (0 was never)", "w57"))
     from ..resolve import ResolveError
     try:
-        grouped = _migrate_groups(rec, obj)
+        grouped = _migrate_groups(rec, obj) if before_split else []
     except MigrateError:
         raise
     except (ValueError, ResolveError) as exc:
@@ -1562,7 +1552,7 @@ def _decide_template(rec: "_Records", task):
     # ...ON THIS ENGINE: an item one engine keeps is another's to retire
     # (`template.Retired.engines`).
     def _gone(name: str) -> bool:
-        return _retired_here(name, engine)
+        return _T.retired(name, engine) is not None
 
     retired = [it for it in mine if _gone(it.name)]
     stage_retired = [(st.name, k, v) for st in (task.stages or ())

@@ -126,11 +126,6 @@ def _ran(run_dir):
     return parse_fdf_params(read_deck(deck), source=deck.name)
 
 
-def deck_spin(run_dir) -> str:
-    """The spin the run's own deck states (:func:`spin_of`)."""
-    return spin_of(_ran(run_dir))
-
-
 def point_transmission(where, label: str, spin: str, *,
                        av: Optional[Dict] = None) -> Dict:
     """What TBtrans wrote at one point, read through the SIESTA family's
@@ -381,7 +376,7 @@ def result_folders(calc, stage: str, run: Optional[Path] = None
     return [(Point(), run, run)]
 
 
-def _stage_facts(calc, label: str, *, status) -> List[Dict]:
+def _stage_facts(calc, *, status) -> List[Dict]:
     """One entry per rung of the ladder: where it stands, and its own answer.
 
     **A transport result is FIVE calculations, and the record says so**, so
@@ -496,7 +491,7 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
             # A RUNG THAT RUNS PER POINT, POINT BY POINT -- the report's
             # convergence card follows the selected point (`web/results.md`
             # § 2.5); the rung's own facts are its first point's.
-            fact["by_point"] = _rung_points(calc, name, answers, run=run,
+            fact["by_point"] = _rung_points(calc, name, run=run,
                                             rung=fact, rows=points)
             _bridge_charge_from_0v(fact["by_point"])
             # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
@@ -548,7 +543,7 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
         if output is None:
             out.append(fact)
             continue
-        fact.update(_science(output, answers))
+        fact.update(_science(output))
         if name == "device":
             fact["periodic"] = (
                 {**fact["periodic"], "from": fact.get("attempt")}
@@ -571,7 +566,7 @@ def _periodic_shift(base: Path, folder: Path) -> Optional[Dict]:
     while folder is not None and folder.is_dir() and folder not in seen:
         seen.add(folder)
         output = _output_of(folder)
-        shift = (_science(output, "scf").get("periodic")
+        shift = (_science(output).get("periodic")
                  if output is not None else None)
         if shift:
             return {**shift, "from": str(folder.relative_to(base))}
@@ -617,7 +612,7 @@ def _gathered(folder):
         raise RecordError(str(exc)) from None
 
 
-def _science(out: Path, answers: str) -> Dict:
+def _science(out: Path) -> Dict:
     """A rung run's own answer, read from its engine output: its SCF as it
     ran (every row of its last step, phase-tagged, with each phase's
     criteria and how it ended), whether it converged and at what energy,
@@ -743,8 +738,7 @@ def _contour_facts(contours: Dict) -> Dict:
     return out
 
 
-def _rung_points(calc, name: str, answers: str,
-                 run: Optional[Path] = None, *, rung: Dict,
+def _rung_points(calc, name: str, run: Optional[Path] = None, *, rung: Dict,
                  rows=()) -> List[Dict]:
     """``[{frame, bias_v, point, attempt, state, detail, ...science}]`` --
     each point of ``calc``'s rung ``name`` that runs per point (``calc``
@@ -784,7 +778,7 @@ def _rung_points(calc, name: str, answers: str,
             entry.update(state=st.state, detail=st.detail)
         output = _output_of(where)
         if output is not None:
-            entry.update(_science(output, answers))
+            entry.update(_science(output))
         out.append(entry)
     return out
 
@@ -899,7 +893,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     # every part of the record (`runstatus.jobset_status`).
     from ..jobset.runstatus import jobset_status
     status = jobset_status(calc)
-    stages = _stage_facts(calc, task.label, status=status)
+    stages = _stage_facts(calc, status=status)
     # A POINT NOT OPENED stands where its rung does -- the ready door's
     # `ready` / `waiting` and what for, on the rung's row (prep opens every
     # point at once).

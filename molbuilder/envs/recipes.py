@@ -79,11 +79,6 @@ def _env_default(var: str, default: str) -> str:
     return val.strip() if (val and val.strip()) else default
 
 
-# Source-build refs.  These are the heads of the truth chain for what
-# gets cloned + compiled; users can bump any one without editing the
-# recipe.
-_ELPA_REPO   = _env_default("MOLBUILDER_ELPA_REPO",
-                            "https://gitlab.mpcdf.mpg.de/elpa/elpa.git")
 _ELPA_TAG    = _env_default("MOLBUILDER_ELPA_TAG",
                             # ELPA version (bare version string, used in
                             # the tarball URL + fingerprint).
@@ -2686,13 +2681,6 @@ def builtin_recipes() -> Tuple[Recipe, ...]:
 def recipe_by_name(name: str) -> Optional[Recipe]:
     """Look up a recipe by its canonical (default) env name."""
     return next((r for r in builtin_recipes() if r.name == name), None)
-
-
-def recipe_for_category(category: str) -> Optional[Recipe]:
-    """Look up the recipe that serves a routing category (the host recipe
-    has none, so ``None`` finds nothing)."""
-    return next((r for r in builtin_recipes()
-                 if r.category is not None and r.category == category), None)
 
 
 def effective_name(recipe: Recipe, caps: Capabilities) -> str:

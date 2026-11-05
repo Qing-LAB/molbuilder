@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import contextvars
 import json
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
@@ -235,12 +235,6 @@ class JobRequest:
     def numbers(self) -> List[int]:
         """Every group, in order."""
         return sorted({e.group for e in self.stages.values()})
-
-    def with_groups(self, groups: Mapping[str, int]) -> "JobRequest":
-        """This request with every stage's group as ``groups`` says -- the
-        numbers a writer gives a ladder (`group.default_groups`)."""
-        return replace(self, stages={
-            n: replace(e, group=int(groups[n])) for n, e in self.stages.items()})
 
     # ----- the run card (§ 3.2) ---------------------------------------- #
 

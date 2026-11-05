@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from ..calcdirs import root_of
 from ..identity import checkpoint_words
 
 
@@ -30,14 +31,6 @@ def _bench_anew(folder) -> str:
     return ("a prepared benchmark is not prepared again (job-system.md "
             "§ 5.0): go back to the state saved before its prep -- "
             + checkpoint_words(folder) + " -- and prep it anew.")
-
-
-def _calculation_of(job_dir):
-    """The calculation a job's folder belongs to, by the folder's own marks
-    (`calcdirs.root_of`) -- ``None`` when it says none, and a way back then
-    names no folder rather than the wrong one."""
-    from ..calcdirs import root_of
-    return root_of(job_dir)
 
 
 def check_trial_starts_cold(job_dir, job, *, engine: str) -> None:
@@ -76,11 +69,11 @@ def check_trial_starts_cold(job_dir, job, *, engine: str) -> None:
         raise TrialNotCold(
             f"trial {job.name!r}: {deck.name} carries no restart group at "
             f"all, so its cold start cannot be vouched for (prep always "
-            f"writes the clean group).  " + _bench_anew(_calculation_of(job_dir)))
+            f"writes the clean group).  " + _bench_anew(root_of(job_dir)))
     warm = [k for k, reads in saves.items() if reads]
     if warm:
         raise TrialNotCold(
             f"trial {job.name!r}: {deck.name} would WARM-start "
             f"({', '.join(warm)} true) -- that measures a continued run, "
             f"not its point (generator.md § 4.3a).  For the cold deck, "
-            + _bench_anew(_calculation_of(job_dir)))
+            + _bench_anew(root_of(job_dir)))

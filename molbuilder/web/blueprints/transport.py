@@ -518,12 +518,8 @@ def _transport_calc(raw: str):
     the projects tree or not a transport calculation's, 404 for nothing
     there."""
     from molbuilder.calculation import NotACalculation, at
-    from .files import _PickerError, _resolve_within_roots
-    try:
-        path = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        return None, (jsonify({"ok": False, "error": exc.message}),
-                      exc.status)
+    from .files import _resolve_within_roots
+    path = _resolve_within_roots(raw)
     try:
         calc = at(path)
     except FileNotFoundError:

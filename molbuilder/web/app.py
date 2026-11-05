@@ -482,6 +482,15 @@ def create_app(*, config=None) -> Flask:
     def _periodicity_refused(exc):
         return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # A PATH REFUSED, by the file picker's fence (`files._resolve_within_roots`)
+    # or a file route, in its words and with its status, once -- a route that
+    # asks inherits the answer.
+    from .blueprints.files import _PickerError
+
+    @app.errorhandler(_PickerError)
+    def _outside_the_fence(exc):
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
     # A RUN'S DECK WHOSE MOLBUILDER BLOCK CANNOT BE READ is refused by the run
     # door (`runs.declared`), naming the deck and the way out; it leaves every
     # route as a 400 with that sentence, here, once -- a route that reads a

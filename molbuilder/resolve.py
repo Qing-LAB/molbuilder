@@ -236,11 +236,6 @@ class ParameterSet:
     def __getitem__(self, i):
         return self.elements[i]
 
-    @property
-    def is_sweep(self) -> bool:
-        return len(self.elements) > 1
-
-
 # --------------------------------------------------------------------- #
 #  The sweep                                                            #
 # --------------------------------------------------------------------- #

@@ -705,13 +705,6 @@ def env_for_step(env_prefix: Optional[str],
     return env
 
 
-def _probe_command() -> str:
-    """The command that records this machine, as the record's door spells
-    it (`configuration.md` § 5 M-4) -- named by the note, never re-typed."""
-    from ..scheduler.record import probe_command
-    return probe_command()
-
-
 def dispatch_into_env(argv: Sequence[str],
                       env_prefix: Optional[str],
                       *,
@@ -779,6 +772,7 @@ def dispatch_into_env(argv: Sequence[str],
         # reported, and a quiet dispatch (`doctor`'s verify, the presence
         # gate, a tool call) passes no sink.  Once per process, because the
         # flag is.
+        from ..scheduler.record import probe_command
         sys.stderr.write(
             f"    note: `{Path(argv[0]).name} run` does not work on this "
             f"machine: it stopped before the command started, bash "
@@ -789,7 +783,7 @@ def dispatch_into_env(argv: Sequence[str],
             + (f"Saved in this machine's record ({saved}), so no later "
                f"command measures it again.\n" if saved else
                f"This machine has no record to save it in, so each command "
-               f"measures it until `{_probe_command()}` writes one.\n"))
+               f"measures it until `{probe_command()}` writes one.\n"))
         sys.stderr.flush()
 
     return run_streaming(activation_wrapper(argv, env_prefix), cwd=cwd,
@@ -848,8 +842,7 @@ def _run_capture(argv: Sequence[str], *, env: Optional[Mapping[str, str]] = None
     )
 
 
-def _detect_cuda_home(env_prefix: Optional[str],
-                      env_overrides: Mapping[str, str]) -> Optional[str]:
+def _detect_cuda_home(env_prefix: Optional[str]) -> Optional[str]:
     """Find the CUDA toolkit root.
 
     Per the molbuilder design (2026-06-15), the CUDA TOOLKIT lives
@@ -1001,7 +994,7 @@ def probe_toolchain(env_prefix: str) -> ToolchainProbe:
     env_prefix
         Absolute path to the conda env (``$CONDA_PREFIX``).
     """
-    cuda_home = _detect_cuda_home(env_prefix, {})
+    cuda_home = _detect_cuda_home(env_prefix)
     cuda_version = _detect_cuda_version(cuda_home) if cuda_home else None
     cuda_cc = _detect_compute_cap()
     gcc = _detect_gcc_version(env_prefix)
@@ -1803,7 +1796,6 @@ class BuildResult:
     preflight_errors: Tuple[str, ...]
     steps: Tuple[BuildStepResult, ...]
     activate_hook_written: bool
-    deactivate_hook_written: bool
     succeeded: bool
 
 
@@ -2081,7 +2073,6 @@ def run_build_spec(spec: BuildSpec,
             preflight_errors=report.errors,
             steps=(),
             activate_hook_written=False,
-            deactivate_hook_written=False,
             succeeded=False,
         )
 
@@ -2095,7 +2086,6 @@ def run_build_spec(spec: BuildSpec,
                 ) + report.warnings,
                 steps=(),
                 activate_hook_written=False,
-                deactivate_hook_written=False,
                 succeeded=False,
             )
 
@@ -2194,7 +2184,6 @@ def run_build_spec(spec: BuildSpec,
         write_sentinel(step.sentinel)
 
     activate_written = False
-    deactivate_written = False
     if not failed:
         body = render_activate_hook(spec)
         if body:
@@ -2206,14 +2195,12 @@ def run_build_spec(spec: BuildSpec,
             paths.deactivate_d.mkdir(parents=True, exist_ok=True)
             write_bytes(paths.deactivate_hook, body.encode("utf-8"),
                         mode=0o755)
-            deactivate_written = True
 
     return BuildResult(
         spec=spec, env_prefix=env_prefix,
         preflight_errors=(),
         steps=tuple(executed),
         activate_hook_written=activate_written,
-        deactivate_hook_written=deactivate_written,
         succeeded=not failed,
     )
 

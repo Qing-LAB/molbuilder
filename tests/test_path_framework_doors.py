@@ -147,22 +147,8 @@ def test_what_travels_beside_a_deck_is_its_engines_and_its_kinds(
 
 
 # --------------------------------------------------------------------------- #
-# 3.  The sidecar's finder and its composer.                                   #
+# 3.  The sidecar's composer.                                                  #
 # --------------------------------------------------------------------------- #
-
-def test_sidecars_in_finds_what_sidecar_path_for_composes(tmp_path):
-    """The § 4.5 pairing, asserted as a round trip rather than as two lists."""
-    from molbuilder.sidecars.molstruct import (is_sidecar, sidecar_path_for,
-                                               sidecars_in)
-    for stem in ("relaxed", "bridge.spectra"):
-        sidecar_path_for(tmp_path / f"{stem}.xyz").write_text("{}",
-                                                             encoding="utf-8")
-    found = sidecars_in(tmp_path)
-    assert [p.name for p in found] == ["bridge.spectra.molstruct.json",
-                                       "relaxed.molstruct.json"]
-    assert all(is_sidecar(p) for p in found)
-    assert not is_sidecar(tmp_path / "relaxed.xyz")
-
 
 # --------------------------------------------------------------------------- #
 # 4.  The other callers, asked for their answers.                              #

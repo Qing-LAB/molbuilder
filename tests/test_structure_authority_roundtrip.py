@@ -109,7 +109,7 @@ def test_read_write_pair_round_trip_preserves_all_metadata(tmp_path):
     xyz = tmp_path / "m.xyz"
     StructureCodec().write(s, xyz)
     assert (tmp_path / "m.molstruct.json").exists(), "sidecar half not written"
-    r = StructureCodec().read(xyz)
+    r = StructureCodec().load(xyz)
     _assert_metadata_preserved(r, s)
     # ON DISK, not only after a read: the stated offset is written as stated,
     # and the retired corner never is (plan § 5q.8, D2: "make sure no old
@@ -185,7 +185,7 @@ def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
                   vacuum=(3.0, 3.0, 3.0))
     codec = StructureCodec()
     codec.write(s, tmp_path / "d.xyz")
-    back = codec.read(tmp_path / "d.xyz")
+    back = codec.load(tmp_path / "d.xyz")
     assert back.cell is None and back.engine_offset is None
     assert back.vacuum == (3.0, 3.0, 3.0)
 
@@ -231,7 +231,7 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
         side = _json.loads((sdir / "m.molstruct.json").read_text())
         assert "cell_origin" not in side
         assert side["engine_offset"] is None
-        back = StructureCodec().read(sdir / "m.xyz")
+        back = StructureCodec().load(sdir / "m.xyz")
         assert np.allclose(back.to_wire()["periodicity"]["box_corner"],
                            [7.5, 6.5, 6.5])
     finally:

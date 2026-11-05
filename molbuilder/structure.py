@@ -34,8 +34,7 @@ docs/design.md):
       Named groups of atom indices for transport-style partition
       (keys are user-facing labels like ``"L-electrode"`` /
       ``"R-electrode"`` / ``"bridge"``; values are 0-based atom
-      indices).  A DICT, not a list of lists.  Validated as
-      pairwise-disjoint at ``__post_init__``.
+      indices).  A DICT, not a list of lists.  Labels may overlap.
 
 These two attributes are the load-bearing carriers for the
 boundary-conditions axis of the three-stage contract.  Any emitter
@@ -53,7 +52,8 @@ import re as _re
 from dataclasses import dataclass, field, fields as _fields
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import (Any, Dict, Iterable, List, Mapping, Optional, Sequence,
+                    Tuple, Union)
 
 import numpy as np
 
@@ -176,6 +176,20 @@ FILE_FIELDS = tuple(f for f in METADATA_FIELDS if f not in VIEW_FIELDS)
 BOX_FIELDS = ("cell", "engine_offset", "offset_by", "axis_kind", "vacuum")
 ATOM_METADATA_FIELDS = tuple(f for f in FILE_FIELDS
                              if f not in BOX_FIELDS)
+
+
+def _atom_index(raw: Any, n: int, said: str) -> int:
+    """An atom's index, as a label or a channel states it: a REAL int, in
+    ``[0, n)``.  `int(raw)` would accept "3" (a string index from a JSON round
+    trip that lost its typing), truncate 3.7 to 3 without telling anyone, and
+    take True as atom 1."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, np.integer)):
+        raise ValueError(f"{said}: atom index must be an int; got "
+                         f"{type(raw).__name__} ({raw!r})")
+    idx = int(raw)
+    if not 0 <= idx < n:
+        raise ValueError(f"{said}: atom index {idx} out of range [0, {n})")
+    return idx
 
 
 def atom_metadata_has_something(payload: Optional[Mapping[str, Any]]) -> bool:
@@ -540,9 +554,8 @@ class AtomChannel:
       * ``"value"`` — a per-atom scalar; ``data`` is ``Dict[int, Any]``
         mapping atom index -> value (sparse; absent atoms have no value).
 
-    ``color`` / ``fdf`` are optional hints: a presentation color and the
-    id of the fdf emit-strategy this channel maps to (a channel with no
-    strategy is carried but not emitted -- § 4).
+    ``color`` / ``fdf`` are optional, carried as written: a presentation color
+    and a word no deck reads (`structure-annotations.md` § 4b).
     """
     kind: str
     data: Any = None
@@ -937,8 +950,8 @@ class Structure:
         # ``axis_kind`` does not.
         #
         # The boolean view is :meth:`pbc`, which is an INTEROP
-        # accessor and nothing more -- ASE takes booleans and the extxyz
-        # header writes `pbc="T T F"`.  Nothing inside molbuilder reads it.
+        # accessor and nothing more -- ASE takes booleans.  Nothing inside
+        # molbuilder reads it.
         if self.axis_kind is None:
             # A stated cell means a lattice; no cell means a vacuum box.
             # `transport` is never guessed -- a builder says it.
@@ -1546,23 +1559,9 @@ class Structure:
                 raise ValueError(
                     f"Structure.regions[{region_name!r}] must be a list of "
                     f"atom indices; got {type(idxs).__name__}")
-            unique: set = set()
-            for raw in idxs:
-                # A REAL int.  `int(raw)` would accept "3" (a string index from
-                # a JSON round-trip that lost its typing), truncate 3.7 to 3
-                # without telling anyone, and take True as atom 1.
-                if isinstance(raw, bool) or not isinstance(raw, (int, np.integer)):
-                    raise ValueError(
-                        f"Structure.regions[{region_name!r}]: atom index must "
-                        f"be an int; got {type(raw).__name__} ({raw!r})")
-                idx = int(raw)
-                if not 0 <= idx < n:
-                    raise ValueError(
-                        f"Structure.regions[{region_name!r}]: atom "
-                        f"index {idx} out of range [0, {n})"
-                    )
-                unique.add(idx)
-            normalised[region_name] = sorted(unique)
+            normalised[region_name] = sorted({
+                _atom_index(raw, n, f"Structure.regions[{region_name!r}]")
+                for raw in idxs})
         self.regions = normalised
 
     def _validate_annotations(self, n: int, channels=None) -> None:
@@ -1579,14 +1578,12 @@ class Structure:
                 raise ValueError(
                     f"Structure.annotations[{name!r}] must be an "
                     f"AtomChannel; got {type(ch).__name__}")
-            idxs = ch.data.keys() if ch.kind == "value" else ch.data
-            for idx in idxs:
-                if not 0 <= int(idx) < n:
-                    raise ValueError(
-                        f"Structure.annotations[{name!r}]: atom index "
-                        f"{idx} out of range [0, {n})")
-            if ch.kind != "value":
-                ch.data = sorted({int(i) for i in ch.data})
+            said = f"Structure.annotations[{name!r}]"
+            if ch.kind == "value":
+                ch.data = {_atom_index(i, n, said): v
+                           for i, v in ch.data.items()}
+            else:
+                ch.data = sorted({_atom_index(i, n, said) for i in ch.data})
 
     # ------------------------------------------------------------------ #
     #  Unified annotation channels (model/structure-annotations.md § 2)  #
@@ -1865,6 +1862,21 @@ class Structure:
             raise ValueError(REMAPPED_NOT_EDITED)
         return self._reordered(order)
 
+    def without(self, indices: Iterable[int]) -> "Structure":
+        """These atoms gone, the rest in their order: every per-atom field
+        follows its atom, and a label's or a channel's index falls with its
+        atom (``model/structure-annotations.md`` § 2.1).  Naming no atom here
+        is a copy.  An atom edit's refusals apply (:meth:`_refuse_atom_edit`).
+
+        It says nothing of the recorded calculation: a person's edit is
+        :func:`molbuilder.modify.delete_atoms`, which marks it outdated."""
+        gone = {int(i) for i in indices}
+        keep = [i for i in range(self.n_atoms) if i not in gone]
+        if len(keep) == self.n_atoms:
+            return self.copy()
+        self._refuse_atom_edit()
+        return self._of_atoms(keep)
+
     def restored(self) -> "Structure":
         """This structure in the user order (``model/overview.md``
         § 2.2a) -- THE ONE WAY BACK from an engine's order.  Every per-atom
@@ -1933,15 +1945,21 @@ class Structure:
             raise ValueError(
                 f"take: the order names each of the {n} atoms once; got "
                 f"{len(idx)} indices")
+        return self._of_atoms(idx, **also)
+
+    def _of_atoms(self, idx: List[int], **also) -> "Structure":
+        """This structure's atoms ``idx``, in that order: what a reorder and
+        a deletion share.  A label or a channel left with no atom goes."""
         old_to_new = {old: new for new, old in enumerate(idx)}
+        regions = {label: [old_to_new[i] for i in members if i in old_to_new]
+                   for label, members in self.regions.items()}
         changes: Dict[str, Any] = dict(
             elements=[self.elements[i] for i in idx],
             atom_names=[self.atom_names[i] for i in idx],
             residue_ids=[self.residue_ids[i] for i in idx],
             residue_names=[self.residue_names[i] for i in idx],
             chain_ids=[self.chain_ids[i] for i in idx],
-            regions={label: sorted(old_to_new[i] for i in members)
-                     for label, members in self.regions.items()},
+            regions={label: kept for label, kept in regions.items() if kept},
             annotations=remap_annotations(self.annotations, old_to_new),
         )
         if self.n_frames > 1:
@@ -2544,18 +2562,21 @@ class Structure:
         that is gone cannot carry one.  ``customized`` rides for the same
         reason (``model/structure.md`` § 2.2d).
 
-        A FRAME SET IS REFUSED HERE (:data:`FRAME_SET_NOT_EDITED`): every
-        atom edit that rebuilds a Structure takes its non-atom facts from
-        this door, so this is where an edit of a frame set is stopped -- one
-        place, before a rebuild could keep frame 0 and drop the rest.
+        Every atom edit that rebuilds a Structure takes its non-atom facts
+        from this door, so its refusals stand here (:meth:`_refuse_atom_edit`).
         """
+        self._refuse_atom_edit()
+        return self._nonatom()
+
+    def _refuse_atom_edit(self) -> None:
+        """A FRAME SET IS REFUSED (:data:`FRAME_SET_NOT_EDITED`), before an
+        edit could keep frame 0 and drop the rest; A REMAPPED STRUCTURE TOO
+        (:data:`REMAPPED_NOT_EDITED`): its order record holds only for the
+        atom list as it stands."""
         if self.n_frames > 1:
             raise ValueError(FRAME_SET_NOT_EDITED)
-        # A REMAPPED STRUCTURE IS REFUSED HERE TOO, for the same reason: its
-        # order record holds only for the atom list as it stands.
         if self.atom_order is not None:
             raise ValueError(REMAPPED_NOT_EDITED)
-        return self._nonatom()
 
     def _nonatom(self) -> dict:
         """The non-per-atom facts, copied -- what :meth:`replace` derives with

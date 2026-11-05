@@ -127,11 +127,13 @@ def _atoms_from(lines: List[str], name: str):
 def read_xv_with_cell(path: Union[str, Path]):
     """``(Structure, cell_ang)`` from ONE pass over the file.
 
-    THE DOOR FOR CALLERS THAT WANT BOTH.  Strict, like `read_xv`: a malformed file raises.
+    THE DOOR FOR CALLERS THAT WANT BOTH.  Strict, like :func:`read_xv`: a
+    malformed file raises, and its atoms are in the engine's order, as
+    :func:`read_xv` says.
 
     THE STRUCTURE CARRIES THE CELL, and the tuple's second element is the
     same matrix for the two callers that want it bare (the FileParser fills
-    `StructureResult.cell`; `read_xv_cell` answers the matrix alone).  A
+    `StructureResult.cell`; :func:`read_xv_cell` answers the matrix alone).  A
     file that states a lattice produces a structure that has one, so
     `Structure.__post_init__` applies ITS default (a stated cell means
     periodic on every axis) in the one place that owns that rule.
@@ -154,8 +156,27 @@ def read_xv_with_cell(path: Union[str, Path]):
                      engine_offset=[0.0, 0.0, 0.0], offset_by="engine"), cell
 
 
-def _read_xv(path: Union[str, Path]) -> Structure:
-    """Read a SIESTA ``.XV`` file and return a :class:`Structure`.
+def read_xv(path: Union[str, Path]) -> Structure:
+    """A SIESTA ``.XV`` file as a :class:`Structure` -- **ITS ATOMS IN THE
+    ENGINE'S ORDER, LISTED BY ENGINE INDEX.**
+
+    ``.XV`` is SIESTA's own file, so row ``i`` is SIESTA's atom ``i``, and that
+    is not your atom ``i`` wherever the run sorted them: a transport
+    calculation's seed, device and transmission runs, and a SIESTA vibration's
+    runs, whose held atoms it moves.  The file says nothing of it, and this
+    reads the file alone (`model/overview.md` § 2.2b).  To ask about your
+    atoms, take the map of the run that wrote it::
+
+        from molbuilder.postprocess import atom_index_map, read_xv
+        struct = read_xv(xv)
+        atoms = atom_index_map(xv)                # from the run's own deck
+        atoms.listed_by                           # 'engine_index'
+        mine, _ = atoms.map_rows_to_user_order(struct.positions)
+        struct.elements[atoms.map_to_engine_index([0])[0]]   # your atom 0
+
+    Every index here counts from 0.  On the command line,
+    ``molbuilder xv2xyz --from-run`` writes the pair in your order, and a bare
+    ``xv2xyz`` refuses a run that sorted its atoms.
 
     File format (SIESTA manual, ``siesta/Src/iofa.f``)::
 
@@ -174,17 +195,17 @@ def _read_xv(path: Union[str, Path]) -> Structure:
 
     Positions come back in Å.  Velocities are discarded.  The returned
     Structure carries the cell and states the engine's origin (offset 0);
-    :func:`_read_xv_cell` reads the cell alone for callers that need only
-    it.
+    :func:`read_xv_cell` reads the cell alone for callers that need only it.
     """
     return read_xv_with_cell(path)[0]
 
 
-def _read_xv_cell(path: Union[str, Path]) -> Optional[np.ndarray]:
+def read_xv_cell(path: Union[str, Path]) -> Optional[np.ndarray]:
     """Read JUST the 3 cell-vector rows from a .XV file and return
     them in Å as a 3x3 ndarray.  Returns None on parse failure;
-    the structure portion is :func:`_read_xv`'s responsibility (it
-    will raise SiestaXVError on the same file).
+    the structure portion is :func:`read_xv`'s responsibility (it
+    will raise SiestaXVError on the same file).  A cell has no atom order to
+    mind.
 
     TOLERANT ON PURPOSE: a caller asking for the cell ALONE is answered
     from a file whose cell rows are sound and whose atom list is corrupt.
@@ -194,7 +215,7 @@ def _read_xv_cell(path: Union[str, Path]) -> Optional[np.ndarray]:
     Cell rows are in Bohr per SIESTA convention; we convert to Å here.
     Velocity columns (the trailing 3 floats) are discarded.
     """
-    p = Path(path)   # accept str (public alias read_xv_cell)
+    p = Path(path)
     try:
         lines = _nonblank_lines(p)
         if len(lines) < 3:
@@ -232,13 +253,6 @@ class SiestaXVFileParser(FileParser):
             source=path,
             source_format="siesta-xv",
         )
-
-
-# --------------------------------------------------------------------- #
-#  Public-API re-exports                                                #
-# --------------------------------------------------------------------- #
-read_xv = _read_xv
-read_xv_cell = _read_xv_cell
 
 
 __all__ = [

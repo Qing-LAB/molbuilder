@@ -487,7 +487,7 @@ carry the other, or the labels are orphaned (renaming `water.xyz` →
 losing the user's labels).
 
 `POST /api/files/{rename,move,copy}` (`web/blueprints/files.py`, via
-`_paired_sidecar_path` `:246` / `_existing_paired_sidecar` `:258`) move or copy
+`sidecar_path_for` / `_existing_paired_sidecar`) move or copy
 both files in lockstep:
 
 | Concern | Behaviour |

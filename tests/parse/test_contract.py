@@ -61,3 +61,31 @@ def test_the_record_speaks_the_catalogues_names(tmp_path):
     assert not stray, (
         f"contract_of records {sorted(stray)}, which are not the settings' "
         f"own names")
+
+
+def test_a_deck_prep_writes_answers_everything_a_citation_takes(tmp_path):
+    """The reader's half of `test_what_a_citation_takes_is_read_back`
+    (`tests/test_template_citation_marker.py`): the three lists name what a
+    citation reads back, and this is the reader.  A name in a list that the
+    reader does not give is the citation silently short, the same as a name in
+    no list: the setting takes its default, and every run still finishes."""
+    import numpy as np
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.parse.contract import (K_MESH_RECORD_KEYS, RECORDED_FIELDS,
+                                           SCF_RECORD_KEYS)
+    from molbuilder.runfiles import RunNames
+    from molbuilder.script_emit import render_deck
+    from molbuilder.siesta.input import spec_for
+    from molbuilder.structure import Structure
+
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0., 0., 0.], [0., 0., 0.74]]))
+    cfg = SiestaConfig(system_label="Relax")
+    deck = tmp_path / "Relax.fdf"
+    deck.write_text(render_deck(
+        spec_for(struct, cfg, names=RunNames("Relax", "01_coarse"),
+                 calculation="optimization"),
+        struct, cfg))
+    answered = set(contract_of(deck)["contract"])
+    assert {*RECORDED_FIELDS, *SCF_RECORD_KEYS, *K_MESH_RECORD_KEYS} \
+        - answered == set()

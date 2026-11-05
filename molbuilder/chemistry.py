@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import (Dict, Iterable, List, Optional, Tuple)
+from typing import (Iterable, List, Optional, Tuple)
 
 import numpy as np
 
@@ -100,11 +100,6 @@ PERIODIC_TABLE: List[str] = [
     "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf",
     "Es", "Fm", "Md", "No", "Lr",
 ]
-
-#: Symbol -> atomic number, derived so the two directions cannot disagree.
-SYMBOL_TO_Z: Dict[str, int] = {
-    sym: z for z, sym in enumerate(PERIODIC_TABLE) if sym}
-
 
 def symbol_for_z(z: int) -> str:
     """The element symbol for atomic number *z*.
@@ -745,8 +740,6 @@ def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
     user often actually wants.  Never raises; never
     silently mutates the input.
     """
-    if struct.residue_names is None or struct.residue_ids is None:
-        return None
     # Collect one residue-name per residue id (atoms in the same
     # residue contribute to the count once, not per atom).
     seen: dict[int, str] = {}
@@ -1143,11 +1136,10 @@ def _protonate_rdkit(struct: Structure, Chem) -> Structure:
     Caveat (see module-header comment): for PDB-parsed inputs with
     ambiguous-valence sites (exocyclic -NH2 on bases, peptide
     N-terminal -NH3+), AddHs(addCoords=True) can leave H at parent
-    coordinates.  ``_drop_overlapping_hydrogens`` removes those
-    ghosts -- which is correct for peptides (the dropped H were
-    extras, not load-bearing) but loses 4 Watson-Crick H on a typical
-    DNA chain.  Use OpenBabel-first ordering to avoid landing here
-    for nucleic-acid inputs.
+    coordinates.  ``_drop_overlapping_hydrogens`` removes those ghosts, and
+    with them real hydrogens: a peptide's and a nucleic acid's count comes
+    out short of OpenBabel's (measured 2026-11-04).  The environment ships
+    OpenBabel, so the road we support does not land here.
     """
     mol = Chem.MolFromPDBBlock(struct.to_pdb(), removeHs=False, sanitize=False)
     if mol is None:
@@ -1220,19 +1212,7 @@ def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
                 break
     if keep.all():
         return struct
-    return Structure(
-        elements      = [e for k, e in zip(keep, elements)             if k],
-        positions     = pos[keep],
-        atom_names    = ([a for k, a in zip(keep, struct.atom_names)    if k]
-                         if struct.atom_names    is not None else None),
-        residue_ids   = ([r for k, r in zip(keep, struct.residue_ids)   if k]
-                         if struct.residue_ids   is not None else None),
-        residue_names = ([n for k, n in zip(keep, struct.residue_names) if k]
-                         if struct.residue_names is not None else None),
-        chain_ids     = ([c for k, c in zip(keep, struct.chain_ids)     if k]
-                         if struct.chain_ids     is not None else None),
-        title         = struct.title,
-    )
+    return struct.without(np.flatnonzero(~keep))
 
 
 # --------------------------------------------------------------------- #
@@ -1259,13 +1239,10 @@ def min_nonbonded_contact(struct: Structure, search_radius: float = 2.5):
     backbone (~1.6 A), so any inter-residue pair well below that is an overlap --
     e.g. a mismatched base pair whose two bases interpenetrate.
     """
-    if struct.residue_ids is None:
-        return (None, None, None)
     P = np.asarray(struct.positions, dtype=float)
     if P.shape[0] < 2:
         return (None, None, None)
-    chains = struct.chain_ids if struct.chain_ids is not None else [None] * len(P)
-    keys = list(zip(chains, struct.residue_ids))
+    keys = list(zip(struct.chain_ids, struct.residue_ids))
     from scipy.spatial import cKDTree
     tree = cKDTree(P)
     best = (None, None, None)

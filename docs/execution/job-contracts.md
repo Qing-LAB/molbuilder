@@ -464,8 +464,8 @@ calculation moved to a cluster where you may install nothing still runs
 The tree's API is `molbuilder/projects.py`: `validate_name`,
 `validate_topic`, `project_dir` / `topic_dir` / `structure_dir`,
 `ensure_structure_dir`, `projects_root` / `find_projects_root`, `contain`,
-and `list_projects` / `list_topics` / `list_structures` (the `structure_*`
-names mean the calculation level).
+`populate_project_skeleton`, and `list_projects` / `list_topics` /
+`list_structures` (the `structure_*` names mean the calculation level).
 
 #### 2.5a `psml_lib` is a path inside the projects tree
 
@@ -757,9 +757,6 @@ engine body ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
   with another request and its script stay the same calculation
   ([`job-request.md`](?doc=execution/job-request.md) § 6). A SIESTA deck needs
   no such block: its door reads keywords by name.
-- **HEADER** is reserved and not written: `script_emit.emit_header` exists and
-  no generator calls it, and the slot stays so a parser that looks for it
-  degrades cleanly.
 - **BENCH-MARKS is SIESTA's alone** *(user, 2026-09-03)*: the benchmark lane
   speaks SIESTA ([`job-request.md`](?doc=execution/job-request.md) § 3.4), so a
   PySCF block would advertise something nothing can use.
@@ -854,8 +851,7 @@ Which engine-body fields a benchmark may override, and within what limits:
 # === molbuilder bench-marks END ===
 ```
 
-- **`version v1`** is the block's format; a higher one makes an old parser
-  refuse rather than guess.
+- **`version v1`** is the block's format, recorded for a tool that reads it.
 - **The top keys are a record**: `n_atoms`, `n_orbitals_est`
   (`10 × n_atoms`, a rough double-zeta-polarised estimate), `gpu_mode`, and
   `mpi_np`, the rank count the deck was rendered for. Nothing reads them as a

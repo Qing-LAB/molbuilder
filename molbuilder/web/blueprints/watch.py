@@ -426,11 +426,8 @@ def api_load():
     # ``_resolve_within_roots`` helper like every other path-taking
     # endpoint, per web-api.md § 2.1: it constrains to the picker roots
     # (Capabilities.file_picker_roots()).
-    from .files import _resolve_within_roots, _PickerError
-    try:
-        raw_path = str(_resolve_within_roots(raw_path))
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    from .files import _resolve_within_roots
+    raw_path = str(_resolve_within_roots(raw_path))
 
     # If the user passed a directory, the run door picks the file to load
     # (`runs.openable`); a regular file is loaded as it is.

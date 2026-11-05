@@ -65,14 +65,10 @@ from molbuilder.structure import Structure
 #: variable, never by position — ``md_out.F90`` writes ``xa`` in Bohr while
 #: ``volume`` is already Ang**3, so a blanket assumption is wrong in the same
 #: file.  An unrecognised unit REFUSES (see :func:`_to`), because a future
-#: SIESTA that writes Angstrom would otherwise be scaled by 1.89 in silence.
+#: SIESTA that writes Angstrom would otherwise be scaled by 1.89 in silence; a
+#: missing ``units`` means the file did not say, refused rather than defaulted
+#: (`_to`'s ``default=None``).
 from molbuilder.units import ENERGY_EV, LENGTH_ANGSTROM, convert
-
-#: The dialects, from the one home.  netCDF variables carry their unit in a
-#: `units` attribute, so a missing one means the file did not say -- refused
-#: rather than defaulted, which is what `_to`'s `default=None` asks for.
-_LENGTH = LENGTH_ANGSTROM
-_ENERGY = ENERGY_EV
 
 
 #: netCDF classic files begin with "CDF" + a version byte; netCDF-4 is HDF5
@@ -186,7 +182,7 @@ def _unit_of(var) -> str:
 def _frames_from(ds, path: Path):
     warnings: List[ParseWarning] = []
     xa_v = _var(ds, "xa")
-    xa = _to(np.array(xa_v[:], dtype=float), _unit_of(xa_v), _LENGTH,
+    xa = _to(np.array(xa_v[:], dtype=float), _unit_of(xa_v), LENGTH_ANGSTROM,
              what="xa (atomic coordinates)", source=path)
 
     iza = np.array(_var(ds, "iza")[:], dtype=int) \
@@ -198,7 +194,7 @@ def _frames_from(ds, path: Path):
     elements = [symbol_for_z(int(z)) for z in iza]
 
     etot_v = _var(ds, "etot")
-    etot = _to(np.array(etot_v[:], dtype=float), _unit_of(etot_v), _ENERGY,
+    etot = _to(np.array(etot_v[:], dtype=float), _unit_of(etot_v), ENERGY_EV,
                what="etot (total energy)", source=path)
     # eks and etot differ once there is smearing entropy (F = E - TS): on a
     # metal at raised ElectronicTemperature they are NOT the same number.
@@ -206,14 +202,14 @@ def _frames_from(ds, path: Path):
     eks = None
     if "eks" in ds.variables:
         eks_v = _var(ds, "eks")
-        eks = _to(np.array(eks_v[:], dtype=float), _unit_of(eks_v), _ENERGY,
+        eks = _to(np.array(eks_v[:], dtype=float), _unit_of(eks_v), ENERGY_EV,
                   what="eks (Kohn-Sham energy)", source=path)
 
     cell_v = _var(ds, "cell") if "cell" in ds.variables else None
     lattice = None
     if cell_v is not None:
         cell = _to(np.array(cell_v[:], dtype=float), _unit_of(cell_v),
-                   _LENGTH, what="cell (cell vectors)", source=path)
+                   LENGTH_ANGSTROM, what="cell (cell vectors)", source=path)
         if cell.ndim == 3 and len(cell):
             # Trajectory.lattice is the run's cell; per-frame cells are
             # reserved for variable-cell MD no consumer draws yet, so the

@@ -39,10 +39,8 @@ def test_the_field_exists_with_ui_metadata():
     f = items_of(PySCFConfig)["scf_conv_tol_grad"]
     assert f.engine_key == "mf.conv_tol_grad"
     assert f.label
-    # The help lives in the CATALOGUE -- one home, asked
-    # through `template.help_for`, which is what every surface reads.
-    from molbuilder.template import help_for
-    assert help_for("scf_conv_tol_grad")
+    # The help lives in the CATALOGUE -- one home.
+    assert f.help
     # Tightens stage-to-stage, exactly like the energy tolerance it
     # qualifies -- not a one-off profile choice.
     assert f.group == "stage"
@@ -57,10 +55,8 @@ def test_soscf_field_exists_with_ui_metadata():
     f = items_of(PySCFConfig)["scf_soscf"]
     assert f.engine_key == "mf.newton()"
     assert f.label
-    # The help lives in the CATALOGUE -- one home, asked
-    # through `template.help_for`, which is what every surface reads.
-    from molbuilder.template import help_for
-    assert help_for("scf_soscf")
+    # The help lives in the CATALOGUE -- one home.
+    assert f.help
     # An SCF-algorithm choice made with the system, like level_shift.
     assert f.group == "profile"
 

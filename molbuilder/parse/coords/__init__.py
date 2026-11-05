@@ -27,7 +27,7 @@ __all__ = [
     "SiestaXVFileParser",
     "PySCFGeomFileParser",
     "PdbFileParser",
-    "read_xv",          # .XV -> Structure (Å)
-    "read_xv_cell",     # .XV -> 3x3 cell (Å)
+    "read_xv",            # .XV -> Structure (Å), in the ENGINE's order
+    "read_xv_cell",       # .XV -> 3x3 cell (Å)
     "read_xv_with_cell",  # .XV -> (Structure, cell) in ONE pass -- the door
 ]

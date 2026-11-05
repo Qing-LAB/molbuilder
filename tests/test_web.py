@@ -98,7 +98,7 @@ def test_build_response_carries_validation_issues(web_client):
     r = web_client.post("/api/build/molecule",
                         json={"kind": "dna", "input": "ATGC",
                               "backend": "threedna",
-                              "add_hydrogens": False,
+                              "add_hydrogens": "off",
                               "protonate_phosphates": False})
     body = r.get_json()
     assert body["ok"] is True

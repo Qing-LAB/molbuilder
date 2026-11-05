@@ -10,7 +10,7 @@ This module holds two facts and the renders that follow from them:
 * **The per-rung bags, as stages** (:func:`stages_for_transport`).  Which
   rung READS an override is the catalogue's ``stages`` declaration, asked
   through the one door every kind's description check and ``resolve`` ask
-  (``template.unread_overrides``, `engines/template.md` § 6.4) -- what puts
+  (``template.why_not_in``, `engines/template.md` § 6.4) -- what puts
   a person's T(E) window into the deck ``tbtrans`` runs rather than the one
   ``siesta`` runs.
 
@@ -492,7 +492,7 @@ def stages_for_transport(engine: str, bags=None):
     **Ownership is not decided here.**  The per-rung form asks the question
     per rung (`engines/transport.md` § 3.8.2a), so a bag arrives already
     placed, and the description's own check and ``resolve`` refuse a value
-    on a rung that does not read it (``template.unread_overrides``).
+    on a rung that does not read it (``template.why_not_in``).
     """
     from ..jobset.ladder import fresh_stages
     from ..task import Stage

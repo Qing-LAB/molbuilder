@@ -34,14 +34,8 @@ JSON shape:
                              keeps the backend's existing H placement.
         "on"              -- always invoke chemistry.add_hydrogens.
         "off"              -- skip H addition entirely.
-        true              -- back-compat alias for "auto" (NOT "on").
-        false             -- back-compat alias for "off".
 
-  /api/build/load     -- body: multipart with "file" field
-                         OR JSON {"text": "...", "format": "auto"|"xyz"|"pdb",
-                                  "filename": "<optional>"}
-                         returns: same shape as /api/build/molecule
-                                  plus "source_format": "xyz"|"pdb"
+  /api/build/load     -- `web-api.md` § 2's row.
 
   The preflight reads the structure
   through ``_shared.struct_from_body`` -- the atoms as NUMBERS with their
@@ -77,7 +71,7 @@ from molbuilder.engine_table import (EngineTableError, config_class,
                                      engine as _engine)
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
-from .files import _resolve_within_roots, _PickerError
+from .files import _resolve_within_roots
 
 
 bp = Blueprint("build", __name__)
@@ -210,8 +204,7 @@ def api_build_molecule():
         if flag in takes and flag in body:
             asked[flag] = bool(body[flag])
     if "add_hydrogens" in takes:
-        # add_hydrogens is tri-state: auto / on / off.  The web form sends a
-        # string ("auto" by default); a bool is read as auto / off.
+        # add_hydrogens is tri-state: auto / on / off ("auto" by default).
         from molbuilder.nucleic import normalise_h_mode
         try:
             h_mode_used = normalise_h_mode(body.get("add_hydrogens", "auto"))
@@ -419,7 +412,6 @@ def api_structure_save():
     (409, drives the tab's overwrite dialog) | ``{ok:false, error}`` -- and the
     periodicity gate runs here exactly as on export: the same
     refusal is the same 400, the same verdicts ride ``notices``."""
-    from molbuilder.web.blueprints.files import _resolve_within_roots, _PickerError
     from molbuilder.workingcopy_structure import StructureCodec
     body = request.get_json(silent=True) or {}
     path = body.get("path")
@@ -440,10 +432,7 @@ def api_structure_save():
     # refused; the verdicts ride the response as `notices`.
     from ._shared import for_writing
     struct, notices = for_writing(struct)
-    try:
-        resolved = _resolve_within_roots(path)   # save-as target need not exist yet
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(path)   # save-as target need not exist yet
     # Overwrite gate: the GEOMETRY file's existence drives the tab's overwrite dialog
     # (mirrors the /api/files/write 409 contract) -- refuse unless the caller confirmed.
     if resolved.exists() and not overwrite:
@@ -544,7 +533,7 @@ def api_build_load():
     """Accept one of three JSON bodies:
       * {"path": "<project-relative structure file>"} -- the FILE-ONLY
         load: the SERVER reads the .xyz(/.pdb) + its paired
-        .molstruct.json through StructureCodec.read (the ONE authority
+        .molstruct.json through StructureCodec.load (the ONE authority
         owns the file access AND the pairing).  This is how a project
         file is opened -- no raw text, no browser-side sidecar path.  A
         lone file is atoms and coordinates, said in a
@@ -569,22 +558,21 @@ def api_build_load():
     """
     # FILE-ONLY load through the ONE authority (``model/structure.md`` § 2.4): a project
     # ``path`` means the SERVER reads the .xyz + paired .molstruct.json via
-    # StructureCodec.read -- Python owns the file access + the .xyz<->.molstruct
+    # StructureCodec.load -- Python owns the file access + the .xyz<->.molstruct
     # pairing, so there is NO raw-text hand-crafting and NO browser-side sidecar
     # derivation.  ``to_wire`` (via ok_structure_response) emits the enriched atoms
     # + periodicity + annotations in one response.
-    _pbody = request.get_json(silent=True) or {}
-    _path = _pbody.get("path")
-    if _path:
-        from molbuilder.web.blueprints.files import (
-            _resolve_within_roots, _PickerError)
-        from molbuilder.workingcopy_structure import StructureCodec
-        try:
-            _resolved = _resolve_within_roots(_path)
-        except _PickerError as exc:
-            return jsonify({"ok": False, "error": exc.message}), exc.status
-        if not _resolved.exists():
-            return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
+    from molbuilder.sidecars.molstruct import is_geometry
+    from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED, LONE_FILE,
+                                                  ORDER_UNSTATED,
+                                                  StructureCodec,
+                                                  lone_xyz_said, read_notice)
+    body = request.get_json(silent=True) or {}
+    path = body.get("path")
+    if path:
+        resolved = _resolve_within_roots(path)
+        if not resolved.exists():
+            return jsonify({"ok": False, "error": f"no such file: {path}"}), 404
         retired: Dict[str, Any] = {}
         read_said: list = []
         # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
@@ -595,21 +583,19 @@ def api_build_load():
         # nothing states is refused it -- as the transport report's drawing
         # does, its selections named in the user order; any other viewer is
         # answered the file as it is, its order record attached.
-        from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
-                                                      ORDER_UNSTATED)
-        restore = _pbody.get("restore") is True
+        restore = body.get("restore") is True
         try:
-            whole = StructureCodec().read(
-                _resolved, frames=True, retired_out=retired,
+            whole = StructureCodec().load(
+                resolved, frames=True, retired_out=retired,
                 said_out=read_said,
                 opened=((GEOMETRY_CHANGED,) if restore
                         else (GEOMETRY_CHANGED, ORDER_UNSTATED)),
                 in_user_order=restore)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
-                {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
+                {"ok": False, "error": f"could not load {path}: {exc}"}), 400
         try:
-            struct = _chosen_frame(whole, _pbody)
+            struct = _chosen_frame(whole, body)
         except (TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         # The conditions for THIS structure are produced on the way out by
@@ -633,8 +619,8 @@ def api_build_load():
                 f"there, set the origin again on the Cell page.",
                 "cell.origin_retired")])
         return ok_structure_response(struct, extra={
-            "source_format": StructureCodec.format_named(_resolved),
-            "title": struct.title or _resolved.name,
+            "source_format": StructureCodec.format_named(resolved),
+            "title": struct.title or resolved.name,
             "n_frames": whole.n_frames,
             **({"notices": said} if said else {}),
         })
@@ -645,12 +631,12 @@ def api_build_load():
     # answer a file load gives, so a restored viewer is indistinguishable from a
     # freshly-loaded one.  Nothing is parsed: the one deserialiser rebuilds it,
     # and refuses a malformed envelope rather than half-building a structure.
-    if isinstance(_pbody.get("structure"), dict):
+    if isinstance(body.get("structure"), dict):
         from ._shared import struct_from_body
         # `exportFile`'s EXACT INVERSE: the envelope comes back whole -- a
         # frame set with every frame -- and asks for no frame.
         try:
-            whole = struct = struct_from_body(_pbody)
+            whole = struct = struct_from_body(body)
         except (ValueError, TypeError) as exc:
             return jsonify({"ok": False,
                             "error": f"could not restore structure: {exc}"}), 400
@@ -666,34 +652,21 @@ def api_build_load():
             "n_frames": whole.n_frames,
         })
 
-    text: str = ""
-    fmt: str = "auto"
-    filename: str = ""
     # THE TEXT CARRIES ATOMS, AND ONLY ATOMS (plan § 5q D15).
-    body: Dict[str, Any] = request.get_json(silent=True) or {}
     text = body.get("text") or ""
     filename = body.get("filename") or ""
 
     if not text.strip():
         return jsonify({"ok": False, "error": "empty input"}), 400
 
-    if fmt == "auto":
-        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-        if ext in ("xyz", "pdb"):
-            fmt = ext
-        else:
-            from molbuilder.workingcopy_structure import StructureCodec
-            fmt = StructureCodec.format_of_text(text)
+    # The name's suffix when it names a structure file, else the text's own
+    # first line.
+    fmt = (StructureCodec.format_named(filename) if is_geometry(filename)
+           else StructureCodec.format_of_text(text))
 
     try:
-        if fmt == "xyz":
-            whole = Structure.from_xyz(text, title=filename or None)
-        elif fmt == "pdb":
-            whole = Structure.from_pdb(text, title=filename or None)
-        else:
-            return jsonify({"ok": False,
-                            "error": f"unknown format {fmt!r}; "
-                                     "expected xyz or pdb"}), 400
+        reader = Structure.from_xyz if fmt == "xyz" else Structure.from_pdb
+        whole = reader(text, title=filename or None)
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
@@ -707,29 +680,16 @@ def api_build_load():
     said: list = []
     if fmt == "xyz":
         from molbuilder.periodicity_gate import notices_for_report
-        from molbuilder.workingcopy_structure import (LONE_FILE,
-                                                      lone_xyz_said,
-                                                      read_notice)
         said = notices_for_report([read_notice(
             LONE_FILE, lone_xyz_said(filename or "The pasted text", text))])
 
-    # Route through the canonical ``ok_structure_response`` helper.
-    # Per-atom payload, legacy aliases, validate-pass issues, and the
-    # ``extra`` sub-dict all come from the helper in a single call.  Endpoint extras (pdb, summary, the
-    # actual parsed format, title fallback) override the
-    # canonical defaults at both the top level and the canonical
-    # ``extra`` sub-dict — same threading rule for every key.
     return ok_structure_response(struct, extra={
-        # /api/build/load's legacy contract: title defaults to the
-        # filename (or format name) when the input carries none.
-        # Override via extra so downstream code that reuses the
-        # Structure sees the canonical (possibly empty) title.
+        # The title shown defaults to the filename (or format name) when the
+        # input carries none; the Structure keeps its own.
         "title":         struct.title or (filename or fmt),
         "pdb":           struct.to_pdb(),
         "summary":       struct.summary(),
-        # Override the canonical XYZ default with the actually-
-        # parsed format; the helper threads this through to both
-        # the top level and the ``extra`` sub-dict.
+        # The format actually parsed, over the helper's default.
         "source_format": fmt,
         "n_frames":      whole.n_frames,
         **({"notices": said} if said else {}),
@@ -915,9 +875,9 @@ from molbuilder.runfiles import TASK_HANDOVER_FILE as TASK_HANDOVER_NAME  # noqa
 from molbuilder.runfiles import ROLE_TEMPLATE  # noqa: E402
 from molbuilder.job_request import FILENAME as _JOB_REQUEST_FILENAME  # noqa: E402
 from molbuilder.job_request import path_of as _job_request_path_of  # noqa: E402
-from molbuilder.task import FILENAME as _TASK_FILENAME  # noqa: E402
+from molbuilder.task import FILENAME as TASK_FILENAME  # noqa: E402
 from molbuilder.task import path_of as _task_path_of  # noqa: E402
-from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA_NOW  # noqa: E402
+from molbuilder.job_request import SCHEMA as JOB_REQUEST_SCHEMA  # noqa: E402
 
 #: WHAT A HAND-OVER'S PROPOSAL IS BUILT FROM -- the keys the hand-over route
 #: writes beside the parameters, each with its type, which Task setup reads
@@ -1036,10 +996,7 @@ def api_task_setup_handover():
     if body.get("dest"):
         from molbuilder.describe import DescribeError, refuse_described
         from .files import calculation_folder_refusal
-        try:
-            dest_dir = _resolve_within_roots(str(body["dest"]))
-        except _PickerError as exc:
-            return jsonify({"ok": False, "error": exc.message}), exc.status
+        dest_dir = _resolve_within_roots(str(body["dest"]))
         too_high = calculation_folder_refusal(dest_dir)
         if too_high:
             return jsonify({"ok": False, "error": too_high}), 400
@@ -1177,7 +1134,6 @@ def api_task_setup_handover():
     awaiting = "stages"
     groups = fresh_groups(proposed, engine=engine, calculation=calculation,
                           template_text=template_text)
-    from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA
     from molbuilder.task import LAYOUT as _TASK_LAYOUT
     from molbuilder.task import SCHEMA as _TASK_SCHEMA
     handover = {
@@ -1189,7 +1145,7 @@ def api_task_setup_handover():
         # § 4).
         "task_schema": _TASK_SCHEMA,
         "task_shape": _TASK_LAYOUT,
-        "job_request_schema": _JOB_REQUEST_SCHEMA,
+        "job_request_schema": JOB_REQUEST_SCHEMA,
         # JSON has no comments, so the file carries a line that says what it
         # is.  It IS read by a person -- Task setup shows it in the editor --
         # and a file whose whole job is to be handed between two surfaces
@@ -1201,7 +1157,7 @@ def api_task_setup_handover():
                      f"{ROLE_TEMPLATE} "
                      "beside it) plus what this calculation is OF. It is missing "
                      f"`{awaiting}` on purpose -- Task setup asks for it, and "
-                     f"on a successful save writes the real {_TASK_FILENAME} "
+                     f"on a successful save writes the real {TASK_FILENAME} "
                      "and deletes this file. Nothing runs from it. The structure it is OF is the "
                      "file `structure.source` names in this same folder, written "
                      "by the server's one codec: the .xyz, "
@@ -1347,10 +1303,7 @@ def api_task_setup_prep():
     if not dest_raw:
         return jsonify({"ok": False,
                         "error": "no calculation folder given"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    dest = _resolve_within_roots(dest_raw)
     if not dest.is_dir():
         return jsonify({"ok": False,
                         "error": f"not a directory: {dest_raw}"}), 400
@@ -1459,10 +1412,7 @@ def api_task_setup_save():
                         "the two are written together "
                         "(execution/job-request.md § 7)"}), 400
 
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    dest = _resolve_within_roots(dest_raw)
     if not dest.is_dir():
         return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
     # A FILE CHANGED ON DISK SINCE THE PAGE READ IT IS NEVER WRITTEN OVER
@@ -1492,7 +1442,6 @@ def api_task_setup_save():
     # (`task-description.md` § 6.4 -- one reader, so the two surfaces cannot
     # produce different files).
     from molbuilder import job_request as _job_request
-    from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import from_text, write_task
     from molbuilder.task import of as task_of
 
@@ -1511,11 +1460,11 @@ def api_task_setup_save():
     # refused here rather than at prep, on the cluster.  Same function the CLI runs (`validation.task.preflight`),
     # so the two surfaces cannot disagree; the template beside the
     # description adds the sequence findings when it is already there.
-    from molbuilder.template_file import of as _template_of
+    from molbuilder.template_file import of as template_of
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
     try:
-        _tpl_file = _template_of(dest, task.label)
+        _tpl_file = template_of(dest, task.label)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     _pf = _task_preflight(
@@ -2053,10 +2002,7 @@ def api_task_setup_bench_grid():
     dest_raw = str(body.get("dest") or "")
     if not dest_raw:
         return jsonify({"ok": False, "error": "no folder given"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    dest = _resolve_within_roots(dest_raw)
     if not dest.is_dir():
         return jsonify({"ok": False,
                         "error": f"not a directory: {dest_raw}"}), 400
@@ -2164,10 +2110,7 @@ def api_task_setup_prep_plan():
     # plan names the folders prep will write, not the description's places.
     folder = None
     if body.get("dest"):
-        try:
-            folder = _resolve_within_roots(str(body["dest"]))
-        except _PickerError as exc:
-            return jsonify({"ok": False, "error": exc.message}), exc.status
+        folder = _resolve_within_roots(str(body["dest"]))
 
     # THE CALCULATION THE FOLDER HOLDS, as saved: what its runs held (the
     # memory need) and which of its stages run as a run of points (the
@@ -2422,15 +2365,11 @@ def api_task_setup_folder():
     of failing the answer: a malformed template must not cost you the
     description beside it.
     """
-    from molbuilder.task import FILENAME as TASK_FILENAME
 
     dir_raw = str(request.args.get("dir") or "")
     if not dir_raw:
         return jsonify({"ok": False, "error": "no folder given"}), 400
-    try:
-        folder = _resolve_within_roots(dir_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    folder = _resolve_within_roots(dir_raw)
     if not folder.is_dir():
         return jsonify({"ok": False,
                         "error": f"not a directory: {dir_raw}"}), 400
@@ -2558,7 +2497,7 @@ def api_task_setup_folder():
         # THE FILES' NAMES, said here so the page spells none.
         "task_name": TASK_FILENAME,
         "request_name": _JOB_REQUEST_FILENAME,
-        "request_schema": _JOB_REQUEST_SCHEMA_NOW,
+        "request_schema": JOB_REQUEST_SCHEMA,
         "handover_name": TASK_HANDOVER_NAME,
         # WHICH FILES ARE HERE -- names only.  The "what gets written" card
         # asks *is the file this description names actually present*, which
@@ -2644,9 +2583,9 @@ def _default_groups_of(folder, task) -> dict:
     (`group.default_groups`), against the template beside it when it
     reads."""
     from molbuilder.jobset.group import default_groups
-    from molbuilder.template_file import of as _template_of
+    from molbuilder.template_file import of as template_of
     try:
-        tf = _template_of(folder, task.label)
+        tf = template_of(folder, task.label)
     except ValueError:
         tf = None
     groups = default_groups(task, None, tf.text if tf is not None else None)
@@ -2742,7 +2681,7 @@ def _folder_ladder(calc) -> dict:
             # launched group above is the page's to apply, from `launched`
             # and `why_fixed`, to every row as edited (`task-setup.md` § 5).
             above = [s.name for j, s in enumerate(task.stages[:i])
-                     if i and number[j] == number[i - 1]]
+                     if number[j] == number[i - 1]]
             why_same = (why_not_join(task, job_req, st.name, above, text)
                         if above else None)
             rows.append({"stage": st.name, "group": number[i],
@@ -2866,17 +2805,14 @@ def api_task_setup_commands():
                         "error": "dest, kind (task|bench) and groups (group "
                                  "numbers) or stages (one name) are "
                                  "required"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    dest = _resolve_within_roots(dest_raw)
     target = _machine_named(body.get("target") or None)
     prepared = False
     if picked and kind == "task":
-        from molbuilder.calculation import open as open_calculation
+        from molbuilder.calculation import open as open_calc
         from molbuilder.jobset.ready import task_state
         try:
-            calc = open_calculation(dest)
+            calc = open_calc(dest)
             state = task_state(calc)
         except (OSError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
@@ -2898,9 +2834,9 @@ def api_task_setup_commands():
         if not prepared:
             groups = sorted({n for g in gs for n in g.prep_with})
     elif one_stage and kind == "bench":
-        from molbuilder.calculation import open as open_calculation
+        from molbuilder.calculation import open as open_calc
         try:
-            calc = open_calculation(dest)
+            calc = open_calc(dest)
         except (OSError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         prepared = stages[0] in _folder_prepared(calc).get(kind, {})

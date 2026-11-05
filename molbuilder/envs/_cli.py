@@ -46,24 +46,12 @@ from .recipes import builtin_recipes, effective_name, recipe_by_name
 # the install and again at the end.
 
 
-def _log_root() -> Path:
-    """The install log directory, resolved WHEN ASKED, not at import.
-
-    A path that depends on the environment is a QUESTION, and a question is
-    asked when it is asked: a module constant would freeze the real home
-    before a test isolates ``HOME``.  Asked of `config_dir`, which is the one
-    module that answers "where is X" for every per-user file
-    (`configuration.md` § 2.1d).
-    """
-    from ..config_dir import logs_dir
-    return logs_dir()
-
-
 def _resolve_install_log_path(recipe_name: str) -> Path:
     """Compose the log filename for one install run."""
     ts = time.strftime("%Y%m%d-%H%M%S", time.localtime())
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in recipe_name)
-    return _log_root() / f"install-{safe}-{ts}.log"
+    from ..config_dir import logs_dir
+    return logs_dir() / f"install-{safe}-{ts}.log"
 
 
 class _TeeStream:

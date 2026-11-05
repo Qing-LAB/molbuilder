@@ -1119,12 +1119,6 @@ description living only in a browser tab.
   into decks from either. That is what makes "the web is additive on top of the
   CLI" checkable — the two must produce the same bytes for the same description,
   and a single reader is how.
-- **A deck can be traced back to what asked for it.** PROVENANCE
-  (`job-contracts.md § 3.2`) already reserves an optional `form-config-hash` key
-  and this is its use: the hash of the description that produced the deck. Any
-  deck in a project then names its origin, and a deck someone edited by hand can
-  be told apart from one the description would reproduce. PROVENANCE stays exactly
-  what it is — a generation snapshot, not a config.
 - **Descriptions diff.** Two calculations that differ can be compared as *intent*
   — one file against one file — rather than by reading two directories of decks
   and inferring what was deliberate.

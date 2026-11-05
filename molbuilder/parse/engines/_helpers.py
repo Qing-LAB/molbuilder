@@ -32,8 +32,8 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
     :class:`TrajectoryResult`.
 
     The frames/lattice/run_state/etc. fields pass through unchanged.
-    parse_warnings get normalised from the legacy ``Warning``
-    dataclass into :class:`ParseWarning`.
+    parse_warnings get normalised from a frame's ``ParseWarning``
+    (`frame.ParseWarning`) into :class:`ParseWarning`.
 
     Source path is resolved to an absolute path.
     """
@@ -277,8 +277,7 @@ def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
     minimal :class:`TrajectoryResult` envelope and routes through
     :func:`trajectory_result_to_legacy_dict`.  Used where a
     :class:`Trajectory` is built directly (via
-    :class:`SiestaParser`/:class:`PySCFParser`/:class:`MolwatchLogParser`
-    body parsers) and needs the JSON-friendly dict shape without
+    a family's body parsers) and needs the JSON-friendly dict shape without
     materialising a full :class:`TrajectoryResult`.
     """
     return trajectory_result_to_legacy_dict(TrajectoryResult(

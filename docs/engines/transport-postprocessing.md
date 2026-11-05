@@ -30,6 +30,8 @@ from molbuilder.postprocess import (parse, atom_index_map, read_structure,
 | `read_transport_data(path)` | `<label>.transport.nc` — every result with its words, the attributes that hold records as data ([`model/datafiles.md`](?doc=model/datafiles.md) § 2) — and its atom index map |
 | `atom_index_map(path)` | which index a file's atoms are listed by, and both indices of each (§ 4) |
 | `read_structure(path)` | a structure pair — the calculation's `junction.xyz` among them — in the user order, every frame: `(structure, atoms, said)`, `atoms` the returned structure's atom index map (listed by user index, each atom's engine index beside) and `said` what its read says, a line each |
+| `read_xv(path)` | SIESTA's own `.XV`, **in the engine's order** — row `i` is engine index `i` (§ 4) |
+| `project_dir`, `list_projects`, `list_topics`, `list_structures`, … | where a calculation is, by name, in the tree `projects_root()` answers |
 | `parse(path)` | a file a run wrote that molbuilder's parsers read — an engine's output, a TBtrans data file (`.TBT.nc`), which answers its kept reading, reading it first where none is kept |
 
 Everything else is the libraries you know: xarray and netCDF4 for the data
@@ -152,6 +154,16 @@ ds.engine_atom_index.sel(atom=[0, 5]).values
 # the junction, in the user order, with the map of the structure returned
 junction, junction_atoms, said = read_structure("junction.xyz")
 junction_atoms.listed_by            # 'user_index', as the structure now is
+```
+
+**A file SIESTA itself wrote is the engine's**: `read_xv` of a run's `.XV` lists
+its atoms by engine index, as the file does. Row 0 of a transport run's `.XV` is
+engine atom 0, which is not your atom 0:
+
+```python
+struct = read_xv("01_seed/run-0/T.XV")        # engine order, as SIESTA wrote it
+atoms = atom_index_map("01_seed/run-0/T.XV")  # that run's map, from its deck
+mine, _ = atoms.map_rows_to_user_order(struct.positions)   # row i: your atom i
 ```
 
 On the command line: `molbuilder atom-index <file or run folder>` prints the

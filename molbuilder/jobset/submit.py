@@ -1060,7 +1060,6 @@ def _first_launch(calc, job, *, member, container: Path,
     first run filled: prep's run, emptied whole, prep's own files put back
     as they lie (:func:`_prep_files_back`), and given what it takes now,
     with its record (`project-layout.md` § 1.6.3)."""
-    from ..kind_table import description_part
     from .materialize import open_sweep_run, prepare_attempt
     from .ready import first_launch_takes
     base = Path(calc.base)
@@ -1098,15 +1097,19 @@ def _first_launch(calc, job, *, member, container: Path,
     _prep_files_back(opened.dir, writes)
     inputs = [(src, fn) for _pt, ins in (got or ()) for src, fn in ins]
     gathered = gather_into(base, opened.dir, inputs, writes)
-    _shares(calc, description_part(str(calc.task.calculation), "reuse"),
-            job, container, opened.dir, None, None, writes)
+    _shares(calc, job, container, opened.dir, None, None, writes)
     # READ FROM THE STAGE'S OWN FILES, prep's -- what its run is emptied and
     # filled from at the send -- as a launch again reads them.
     return member(job, container, opened.dir, container,
                   first=True, cold=cold, continuation=cont,
                   hands=_hands(opened.hand, gathered),
-                  took=[{"file": fn, "from": src, "point": None}
-                        for src, fn in inputs])
+                  took=_took(inputs))
+
+
+def _took(inputs, point=None) -> List[dict]:
+    """What a run took from upstream, a row per file: ``(source, file)`` pairs
+    as a member records them -- at ``point``, or the run whole."""
+    return [{"file": fn, "from": src, "point": point} for src, fn in inputs]
 
 
 def _warm_impossible(stage: str, source, why, *, base) -> "SubmitError":
@@ -1147,7 +1150,6 @@ def _launch_again(calc, job, *, member, container: Path,
     asked -- ``--from`` a run of the stage it builds on, ``--gather`` a
     rung's upstream -- checked against the description as a first launch
     is."""
-    from ..kind_table import description_part
     from .materialize import open_sweep_run, prepare_attempt
     base = Path(calc.base)
     stage = job.name
@@ -1224,13 +1226,11 @@ def _launch_again(calc, job, *, member, container: Path,
     if inputs is not None:
         inputs = [(src, fn) for src, fn in inputs if fn not in own]
         gathered = gather_into(base, opened.dir, inputs, writes)
-        took = [{"file": fn, "from": src, "point": None}
-                for src, fn in inputs]
+        took = _took(inputs)
     else:
         gathered = _carry_the_gather(ran, opened.dir, writes, base=base,
                                      stage=stage, keep=own)
-    _shares(calc, description_part(str(calc.task.calculation), "reuse"),
-            job, container, opened.dir, None, ran, writes)
+    _shares(calc, job, container, opened.dir, None, ran, writes)
     # READ FROM THE STAGE'S OWN FILES, prep's -- what the new run is filled
     # from (`materialize.prepare_attempt`), so the deck checked, the header
     # shown and the line sent are one.
@@ -2792,7 +2792,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     # EVERY WALKED POINT THAT SHARES ENERGIES is given them (`_shares`).
     for pdir, pt in walked:
         if pt.rel not in is_planned:
-            _shares(calc, reuse, job, place.prepared(pt.prepared), pdir, pt,
+            _shares(calc, job, place.prepared(pt.prepared), pdir, pt,
                     last.point(pt.rel) if last is not None else None,
                     plan.writes)
     # EACH WALKED PREPARED POINT'S START, round by round: a point whose
@@ -3066,17 +3066,19 @@ def _all_done(calc, stage: str, prev: Path, names, record, launch) -> None:
         + block(launch_lines("task", stage, base=base, flags=("--cold",))))
 
 
-def _shares(calc, reuse, job, prepared: Path, folder: Path, pt, held,
+def _shares(calc, job, prepared: Path, folder: Path, pt, held,
             writes) -> None:
     """WHAT A POINT SHARES, given it at a launch that walks it -- a rung
     that runs once, its one point (``None``), the run itself
     (`engines/transport.md` § 2a.16): nothing where its kind reuses no
-    finished calculation (``reuse``, its description's part, ``None``) or
+    finished calculation (its description's ``reuse`` part) or
     the deck its prep wrote in ``prepared`` shares nothing (the part's
     ``shared_into``, which answers it); else from ``held`` -- the newest run
     here, at the point -- when its ``shared/`` holds them whole, or from the
     point that deck names -- refused, in the launch's words, when neither is
     there."""
+    from ..kind_table import description_part
+    reuse = description_part(str(calc.task.calculation), "reuse")
     if reuse is None:
         return
     try:
@@ -3118,8 +3120,7 @@ def _gather_sweep(base: Path, run: Path, points, got, writes
                         writes)
     for pdir, pt in points:
         gather_into(base, pdir, by_point.get(pt, []), writes)
-    return ([{"file": fn, "from": src, "point": pt}
-             for pt, inputs in got for src, fn in inputs],
+    return ([row for pt, inputs in got for row in _took(inputs, pt)],
             _hands(whole))
 
 

@@ -54,6 +54,7 @@ from typing import Dict, List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 
 from molbuilder import diagnostics
+from molbuilder.sidecars.molstruct import sidecar_path_for
 from molbuilder.projects import (
     CANONICAL_TOPICS, InvalidName, OutsideRoot,
     contain, populate_project_skeleton,
@@ -77,8 +78,9 @@ _MAX_READ_BYTES     = 16 * 1024 * 1024   # hard ceiling per request
 
 
 class _PickerError(Exception):
-    """Internal: raised by _resolve_within_roots, caught at the route
-    boundary and translated to a JSON 400."""
+    """A path refused, by the fence or a file route: `web.app`'s handler
+    answers it, ``{"ok": false, "error": message}`` with its status, so a route
+    that asks inherits the answer."""
 
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
@@ -170,7 +172,7 @@ def _is_canonical_topic_dir(resolved, rel_parts) -> bool:
 
 def _rel_parts_inside_root(resolved) -> "Optional[Tuple[str, ...]]":
     """The path's segments RELATIVE to the root that contains it, or
-    ``None`` when no root does.
+    ``None`` when no root does (a root's own parent).
 
     Every endpoint with a depth rule needs this: depth 1 is a project,
     depth 2 a topic, and what is legal to rename, move, copy or delete
@@ -261,28 +263,32 @@ def _next_free_name(path: Path) -> Optional[Path]:
     return None
 
 
+def _must_exist(path: Path) -> None:
+    """Refuse a path that is not there: 404, in the file routes' one sentence."""
+    if not path.exists():
+        raise _PickerError(404, f"path does not exist: {str(path)!r}")
+
+
 def _is_basename(name: str) -> bool:
     """A file's name alone: no folder in it, no way out of its own."""
     return not ("/" in name or "\\" in name or name in (".", ".."))
 
 
 def _replace_pair(src: Path, dst: Path, src_sidecar, dst_sidecar, *,
-                  verb: str, past: str):
+                  verb: str, past: str) -> None:
     """A structure file moved to ``dst`` with its sidecar, as one
     (`web/projects.md`: *a structure and its sidecar move as one*): the
     sidecar's failure puts the structure back, so a person ends where they
-    started -- ``None`` when both went, else the answer that says what did
-    not."""
+    started, and is refused saying what did not go."""
     try:
         os.replace(str(src), str(dst))
     except OSError as exc:
         # Cross-device, permission denied, quota: the errno tells them what
         # to do.
-        return jsonify({"ok": False,
-                        "error": f"{verb} failed: {exc.strerror or str(exc)}"
-                        }), 500
+        raise _PickerError(
+            500, f"{verb} failed: {exc.strerror or str(exc)}") from exc
     if src_sidecar is None or dst_sidecar is None:
-        return None
+        return
     try:
         os.replace(str(src_sidecar), str(dst_sidecar))
     except OSError as exc:
@@ -290,32 +296,15 @@ def _replace_pair(src: Path, dst: Path, src_sidecar, dst_sidecar, *,
         try:
             os.replace(str(dst), str(src))
         except OSError:
-            return jsonify({
-                "ok": False,
-                "error": (f"{verb} partially failed: structure {past} to "
-                          f"{str(dst)!r} but sidecar {verb} failed ({why}) "
-                          f"AND rollback also failed.  The sidecar is still "
-                          f"at {str(src_sidecar)!r} -- manual cleanup "
-                          f"needed."),
-            }), 500
-        return jsonify({
-            "ok": False,
-            "error": (f"{verb} failed: sidecar {verb} failed ({why}); "
-                      f"structure {verb} rolled back."),
-        }), 500
-    return None
-
-
-def _paired_sidecar_path(structure_path: Path) -> Path:
-    """The canonical sidecar path next to ``structure_path``, whether or not
-    it exists -- used both to FIND one to move and to COMPUTE a destination.
-
-    **Asked of the module that owns the pairing**, not spelled here: a copy
-    a change to the suffix missed would make the file browser silently stop
-    recognising the file that carries a structure's labels.
-    """
-    from molbuilder.sidecars.molstruct import sidecar_path_for
-    return sidecar_path_for(structure_path)
+            raise _PickerError(
+                500, f"{verb} partially failed: structure {past} to "
+                     f"{str(dst)!r} but sidecar {verb} failed ({why}) "
+                     f"AND rollback also failed.  The sidecar is still "
+                     f"at {str(src_sidecar)!r} -- manual cleanup "
+                     f"needed.") from exc
+        raise _PickerError(
+            500, f"{verb} failed: sidecar {verb} failed ({why}); "
+                 f"structure {verb} rolled back.") from exc
 
 
 def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
@@ -331,7 +320,7 @@ def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
     from molbuilder.sidecars.molstruct import is_geometry
     if not is_geometry(structure_path):
         return None
-    sidecar = _paired_sidecar_path(structure_path)
+    sidecar = sidecar_path_for(structure_path)
     return sidecar if sidecar.exists() else None
 
 
@@ -429,16 +418,9 @@ def api_files_list():
     """
     raw_path = request.args.get("path", "")
     raw_ext  = request.args.get("ext", "")
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(raw_path)
 
-    if not resolved.exists():
-        return jsonify({
-            "ok": False,
-            "error": f"path does not exist: {str(resolved)!r}",
-        }), 404
+    _must_exist(resolved)
     if not resolved.is_dir():
         return jsonify({
             "ok": False,
@@ -485,16 +467,9 @@ def api_files_list():
 def api_files_stat():
     """Metadata for a single path (file or directory)."""
     raw_path = request.args.get("path", "")
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(raw_path)
 
-    if not resolved.exists():
-        return jsonify({
-            "ok": False,
-            "error": f"path does not exist: {str(resolved)!r}",
-        }), 404
+    _must_exist(resolved)
 
     entry = _entry_dict(resolved)
     return jsonify({
@@ -514,16 +489,9 @@ def api_files_read():
     if a real need shows up.
     """
     raw_path = request.args.get("path", "")
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(raw_path)
 
-    if not resolved.exists():
-        return jsonify({
-            "ok": False,
-            "error": f"path does not exist: {str(resolved)!r}",
-        }), 404
+    _must_exist(resolved)
     if not resolved.is_file():
         return jsonify({
             "ok": False,
@@ -607,15 +575,8 @@ def api_files_download():
     from flask import send_file as _send_file
 
     raw_path = request.args.get("path", "")
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not resolved.exists():
-        return jsonify({
-            "ok": False,
-            "error": f"path does not exist: {str(resolved)!r}",
-        }), 404
+    resolved = _resolve_within_roots(raw_path)
+    _must_exist(resolved)
     if not resolved.is_file():
         return jsonify({
             "ok": False,
@@ -662,24 +623,22 @@ def _archive_excluded_dirs() -> frozenset:
 _ARCHIVE_EXCLUDED = _archive_excluded_dirs()
 
 
-def _zip_target_refusals(resolved: Path):
-    """What may not be archived, answered as ``(ok, error, status)``.
+def _refuse_what_may_not_be_zipped(resolved: Path) -> None:
+    """What may not be archived, refused.
 
     Named rather than inlined because it is a RULE about targets, not a
     step of the prepare call: the stream half does not repeat it (it is
     addressed by token, and the bytes already exist), so this is the one
     and only place a path is judged zippable."""
-    if not resolved.exists():
-        return False, f"path does not exist: {str(resolved)!r}", 404
+    _must_exist(resolved)
     if not resolved.is_dir():
-        return (False,
-                f"path is not a directory: {str(resolved)!r} -- "
-                f"/api/files/download is the single-file door", 400)
+        raise _PickerError(
+            400, f"path is not a directory: {str(resolved)!r} -- "
+                 f"/api/files/download is the single-file door")
     if _depth_inside_root(resolved) == 0:
-        return (False,
-                "refusing to zip a projects root -- pick the "
-                "calculation folder itself", 400)
-    return True, None, 200
+        raise _PickerError(
+            400, "refusing to zip a projects root -- pick the "
+                 "calculation folder itself")
 
 
 def _archive_plan(resolved: Path) -> dict:
@@ -819,13 +778,8 @@ def api_files_zip_prepare():
 
     body = request.get_json(silent=True) or {}
     raw_path = body.get("path", "")
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    ok, err, status = _zip_target_refusals(resolved)
-    if not ok:
-        return jsonify({"ok": False, "error": err}), status
+    resolved = _resolve_within_roots(raw_path)
+    _refuse_what_may_not_be_zipped(resolved)
 
     _sweep_prepared_zips()
     try:
@@ -952,16 +906,9 @@ def api_files_read_range():
                         client uses this to disable "Load more".
     """
     raw_path = request.args.get("path", "")
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(raw_path)
 
-    if not resolved.exists():
-        return jsonify({
-            "ok": False,
-            "error": f"path does not exist: {str(resolved)!r}",
-        }), 404
+    _must_exist(resolved)
     if not resolved.is_file():
         return jsonify({
             "ok": False,
@@ -1085,13 +1032,7 @@ def _validate_subdir_name(parent_abs: Path, name: str) -> None:
 
     Raises :class:`molbuilder.projects.InvalidName` on rejection.
     """
-    rel_parts = _rel_parts_inside_root(parent_abs)
-    if rel_parts is None:
-        raise InvalidName(
-            f"parent {parent_abs!s} is outside the picker's roots; "
-            f"the picker shouldn't have surfaced it."
-        )
-    depth = len(rel_parts)
+    depth = len(_rel_parts_inside_root(parent_abs))
     if depth == 1:
         # Parent is projects/<project>/ -- the new name is a topic.
         validate_topic(name)
@@ -1126,10 +1067,7 @@ def api_files_mkdir():
     parent_raw = body.get("parent", "")
     name = body.get("name", "")
 
-    try:
-        parent = _resolve_within_roots(parent_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    parent = _resolve_within_roots(parent_raw)
     if not parent.is_dir():
         return jsonify({
             "ok": False,
@@ -1274,7 +1212,6 @@ def api_projects_create():
         populate_project_skeleton(project_path, project_name=name)
     except OSError as exc:
         # Rollback on partial failure so the user can retry cleanly.
-        import shutil
         shutil.rmtree(project_path, ignore_errors=True)
         return jsonify({
             "ok": False,
@@ -1376,10 +1313,7 @@ def api_files_upload():
         }), 400
 
     # Validate the destination directory.
-    try:
-        target_dir = _resolve_within_roots(target_dir_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    target_dir = _resolve_within_roots(target_dir_raw)
 
     if not target_dir.is_dir():
         return jsonify({
@@ -1534,10 +1468,7 @@ def api_files_write():
             "error": "'text' must be a string",
         }), 400
 
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(raw_path)
 
     # Depth check: the file's PARENT must be at depth >= 1 inside
     # the picker's root.  i.e., write to projects/<proj>/<...>/file
@@ -1739,27 +1670,13 @@ def api_files_rename():
             ),
         }), 400
 
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(raw_path)
 
-    if not resolved.exists():
-        return jsonify({
-            "ok":   False,
-            "error": f"path does not exist: {str(resolved)!r}",
-        }), 404
+    _must_exist(resolved)
 
     # Depth check + canonical-topic protection.  Same shape as
     # delete's check.
     rel_parts = _rel_parts_inside_root(resolved)
-
-    if rel_parts is None:
-        return jsonify({
-            "ok":   False,
-            "error": f"path {str(resolved)!r} not inside any picker root",
-        }), 400
-
     depth = len(rel_parts)
 
     if depth == 0:
@@ -1812,7 +1729,7 @@ def api_files_rename():
     # the sidecar from the new stem; the user's labels silently
     # disappear.  See `web/projects.md` § 4.1.
     src_sidecar = _existing_paired_sidecar(resolved)
-    dst_sidecar = _paired_sidecar_path(dst) if src_sidecar else None
+    dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
     if dst_sidecar is not None and dst_sidecar.exists():
         return jsonify({
             "ok":    False,
@@ -1823,10 +1740,8 @@ def api_files_rename():
             ),
         }), 409
 
-    failed = _replace_pair(resolved, dst, src_sidecar, dst_sidecar,
-                           verb="rename", past="renamed")
-    if failed is not None:
-        return failed
+    _replace_pair(resolved, dst, src_sidecar, dst_sidecar,
+                  verb="rename", past="renamed")
 
     return jsonify({
         "ok":   True,
@@ -1853,10 +1768,8 @@ def api_files_rename():
 # shell.
 
 
-def _resolve_dst_dir(raw_dest: str, op: str) -> Tuple[Optional[Path], Optional["Tuple[dict, int]"]]:
-    """Resolve ``raw_dest`` to a path inside an allowed root + verify
-    it's an existing directory.  Returns ``(resolved, None)`` on OK
-    or ``(None, (error_envelope, status))`` on failure.
+def _dest_dir(raw_dest: str) -> Path:
+    """``raw_dest``, resolved inside an allowed root, an existing directory.
 
     The destination MUST already exist (move/copy don't auto-mkdir;
     use /api/files/mkdir first if needed).  Refusing this on the
@@ -1864,51 +1777,32 @@ def _resolve_dst_dir(raw_dest: str, op: str) -> Tuple[Optional[Path], Optional["
     create a sibling directory.
     """
     if not isinstance(raw_dest, str) or not raw_dest.strip():
-        return None, ({
-            "ok":    False,
-            "error": "missing 'dest_dir' in request body",
-        }, 400)
-    try:
-        dst_dir = _resolve_within_roots(raw_dest)
-    except _PickerError as exc:
-        return None, ({"ok": False, "error": exc.message}, exc.status)
+        raise _PickerError(400, "missing 'dest_dir' in request body")
+    dst_dir = _resolve_within_roots(raw_dest)
     if not dst_dir.exists():
-        return None, ({
-            "ok":    False,
-            "error": f"destination directory does not exist: {str(dst_dir)!r}",
-        }, 404)
+        raise _PickerError(
+            404, f"destination directory does not exist: {str(dst_dir)!r}")
     if not dst_dir.is_dir():
-        return None, ({
-            "ok":    False,
-            "error": f"destination is not a directory: {str(dst_dir)!r}",
-        }, 400)
-    return dst_dir, None
+        raise _PickerError(
+            400, f"destination is not a directory: {str(dst_dir)!r}")
+    return dst_dir
 
 
-def _resolve_new_name(
-    raw_new_name: object, src_name: str,
-) -> Tuple[Optional[str], Optional["Tuple[dict, int]"]]:
+def _new_name(raw_new_name: object, src_name: str) -> str:
     """``new_name`` is optional on move/copy (defaults to the source's
     basename = "same name, different dir").  When provided, runs the
     same basename-only validation as rename.
     """
     if raw_new_name in (None, ""):
-        return src_name, None
+        return src_name
     if not isinstance(raw_new_name, str) or not raw_new_name.strip():
-        return None, ({
-            "ok":    False,
-            "error": "'new_name' must be a non-empty string when provided",
-        }, 400)
+        raise _PickerError(
+            400, "'new_name' must be a non-empty string when provided")
     new_name = raw_new_name.strip()
     if not _is_basename(new_name):
-        return None, ({
-            "ok":    False,
-            "error": (
-                "invalid 'new_name': must be a basename only "
-                "(no '/', no '..', no '.')"
-            ),
-        }, 400)
-    return new_name, None
+        raise _PickerError(400, "invalid 'new_name': must be a basename only "
+                                "(no '/', no '..', no '.')")
+    return new_name
 
 
 @bp.route("/api/files/move", methods=["POST"])
@@ -1953,16 +1847,9 @@ def api_files_move():
             "error": "missing 'path' in request body",
         }), 400
 
-    try:
-        src = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    src = _resolve_within_roots(raw_path)
 
-    if not src.exists():
-        return jsonify({
-            "ok":    False,
-            "error": f"path does not exist: {str(src)!r}",
-        }), 404
+    _must_exist(src)
 
     if src.is_dir():
         return jsonify({
@@ -1974,17 +1861,7 @@ def api_files_move():
         }), 400
 
 
-    dst_dir, derr = _resolve_dst_dir(raw_dest_dir, "move")
-    if derr is not None:
-        body_, status = derr
-        return jsonify(body_), status
-
-    new_name, nerr = _resolve_new_name(raw_new_name, src.name)
-    if nerr is not None:
-        body_, status = nerr
-        return jsonify(body_), status
-
-    dst = dst_dir / new_name
+    dst = _dest_dir(raw_dest_dir) / _new_name(raw_new_name, src.name)
 
     # No-op move: same path -> short-circuit (matches rename's no-op).
     if dst.resolve() == src.resolve():
@@ -2001,7 +1878,7 @@ def api_files_move():
 
     # Sidecar pairing (see rename).
     src_sidecar = _existing_paired_sidecar(src)
-    dst_sidecar = _paired_sidecar_path(dst) if src_sidecar else None
+    dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
     if dst_sidecar is not None and dst_sidecar.exists():
         return jsonify({
             "ok":    False,
@@ -2012,10 +1889,8 @@ def api_files_move():
             ),
         }), 409
 
-    failed = _replace_pair(src, dst, src_sidecar, dst_sidecar,
-                           verb="move", past="moved")
-    if failed is not None:
-        return failed
+    _replace_pair(src, dst, src_sidecar, dst_sidecar,
+                  verb="move", past="moved")
 
     return jsonify({"ok": True, "path": str(dst)})
 
@@ -2050,16 +1925,9 @@ def api_files_copy():
             "error": "missing 'path' in request body",
         }), 400
 
-    try:
-        src = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    src = _resolve_within_roots(raw_path)
 
-    if not src.exists():
-        return jsonify({
-            "ok":    False,
-            "error": f"path does not exist: {str(src)!r}",
-        }), 404
+    _must_exist(src)
 
     if src.is_dir():
         return jsonify({
@@ -2076,17 +1944,7 @@ def api_files_copy():
     # matters, which we get by virtue of src being a file (the root
     # is a directory).
 
-    dst_dir, derr = _resolve_dst_dir(raw_dest_dir, "copy")
-    if derr is not None:
-        body_, status = derr
-        return jsonify(body_), status
-
-    new_name, nerr = _resolve_new_name(raw_new_name, src.name)
-    if nerr is not None:
-        body_, status = nerr
-        return jsonify(body_), status
-
-    dst = dst_dir / new_name
+    dst = _dest_dir(raw_dest_dir) / _new_name(raw_new_name, src.name)
 
     if dst.resolve() == src.resolve():
         return jsonify({
@@ -2108,7 +1966,7 @@ def api_files_copy():
         }), 409
 
     src_sidecar = _existing_paired_sidecar(src)
-    dst_sidecar = _paired_sidecar_path(dst) if src_sidecar else None
+    dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
     if dst_sidecar is not None and dst_sidecar.exists():
         return jsonify({
             "ok":    False,
@@ -2193,33 +2051,15 @@ def api_files_delete():
             "error": "missing 'path' in request body",
         }), 400
 
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    resolved = _resolve_within_roots(raw_path)
 
-    if not resolved.exists():
-        return jsonify({
-            "ok":   False,
-            "error": f"path does not exist: {str(resolved)!r}",
-        }), 404
+    _must_exist(resolved)
 
     # Depth check + canonical-topic protection.  We need both the
     # depth (for the root-protection + recursive-flag rules) AND
     # the path parts (for the canonical-topic name lookup at depth
     # 2).
     rel_parts = _rel_parts_inside_root(resolved)
-
-    if rel_parts is None:
-        # _resolve_within_roots already verified containment, so
-        # this branch is defensive (could only fire if roots
-        # changed mid-request, which the Capabilities snapshot
-        # prevents).
-        return jsonify({
-            "ok":   False,
-            "error": f"path {str(resolved)!r} not inside any picker root",
-        }), 400
-
     depth = len(rel_parts)
 
     if depth == 0:

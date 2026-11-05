@@ -783,7 +783,7 @@ POST /api/build/load      Content-Type: application/json
 ```
 
 The server resolves the path *inside* the allowed roots, reads the `.xyz` and
-its paired `.molstruct.json` through `StructureCodec.read` (the one authority),
+its paired `.molstruct.json` through `StructureCodec.load` (the one authority),
 and returns the canonical envelope:
 
 ```json

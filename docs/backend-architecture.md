@@ -78,10 +78,10 @@ builds geometry, or runs a job.
 | `trajectory_log/` | L1 | the molwatch progress-log format, its vocabulary + writer | `format`, `keys`, `emitter` |
 | `persist.py` | L1 | versioned-doc schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_json`, `write_json` |
 | `parse/` | L2 | the single **read-side** stack: File / Text → typed `ParseResult` (the Dir tier is specified but unbuilt, `model/parse.md` § 5) | `parse.registry.{parse,parse_text}`; `parse.dirs.job.run_status` — see [`model/parse.md`](?doc=model/parse.md) |
-| `sidecars/` | L2 | write-side `.molstruct` / `.spectra` / `.transport` JSON | `molstruct.{to_dict,save,load,apply_to_structure}` |
-| `workingcopy_structure.py` | L2 | the paired `.xyz`+`.molstruct.json` file door — one generator, one adapter per destination | `StructureCodec.{pair,files,write,read}` — see [`model/structure.md`](?doc=model/structure.md) § 2.4 |
-| `script_emit.py` | L2 | write-side of the generated-script reserved blocks | `emit_header` / `emit_provenance` / `emit_bench_marks` / `emit_atom_metadata` |
-| `projects.py` | L2 | filesystem layout / naming authority | `validate_name`, `project_dir`, `list_structures` |
+| `sidecars/` | L2 | write-side `.molstruct` / `.spectra` / `.transport` JSON | `molstruct.{to_dict,dumps,load,apply_to_structure}` |
+| `workingcopy_structure.py` | L2 | the paired `.xyz`+`.molstruct.json` file door — one generator, one adapter per destination | `StructureCodec.{pair,files,write,load}` — see [`model/structure.md`](?doc=model/structure.md) § 2.4 |
+| `script_emit.py` | L2 | write-side of the generated-script reserved blocks | `emit_provenance` / `emit_bench_marks` / `emit_atom_metadata` |
+| `projects.py` | L2 | filesystem layout / naming authority | `validate_name`, `projects_root`, `project_dir`, `list_structures` |
 
 **Assessment: clean.** No data module imports execution, validation, or
 construction code; every dependency points *down* to the L1

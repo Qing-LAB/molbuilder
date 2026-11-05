@@ -57,10 +57,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from flask import Blueprint, current_app, jsonify, request
+
+from ...monitor import default_notify_path
 
 bp = Blueprint("notify_setup", __name__)
 
@@ -72,16 +73,6 @@ TEST_TIMEOUT_S = 8.0
 #: at a glance, far too little to use.  Slack's own UI shows a comparable
 #: tail for the same reason.
 MASK_TAIL = 4
-
-
-def _dest_path() -> Path:
-    """The channel file, from the **monitor's own** function.
-
-    Imported rather than restated, so this page and the process that reads
-    the file on a compute node cannot name different directories.
-    """
-    from ...monitor import default_notify_path
-    return default_notify_path()
 
 
 def _document() -> Dict[str, Any]:
@@ -119,7 +110,7 @@ def _write(doc: Dict[str, Any]) -> None:
     The bytes are `persist.json_text`'s, every JSON artifact's one shape."""
     from ...auth_setup import write_secret_file
     from ...persist import json_text
-    write_secret_file(_dest_path(), json_text(doc))
+    write_secret_file(default_notify_path(), json_text(doc))
 
 
 def _mask(url: str) -> str:
@@ -219,7 +210,7 @@ def _state() -> Dict[str, Any]:
 
     A response is the state, or it is a trap for the next painter.
     """
-    path = _dest_path()
+    path = default_notify_path()
     try:
         file_mode = oct(path.stat().st_mode & 0o777)
     except OSError:
@@ -244,7 +235,7 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
     except OSError:
         return ""
     except ValueError as exc:
-        return f"{_dest_path().name}: {unread_words(exc)}"
+        return f"{default_notify_path().name}: {unread_words(exc)}"
     if not isinstance(obj, dict):
         return "needs a JSON object"
     if not isinstance(obj.get("channels"), dict):
@@ -404,7 +395,7 @@ def save_channel(name: str):
         _write(doc)
     except OSError as exc:
         return jsonify({"ok": False,
-                        "error": f"could not write {_dest_path()}: {exc}"}), 500
+                        "error": f"could not write {default_notify_path()}: {exc}"}), 500
     return jsonify({"ok": True, "channel": _row(name, spec), **_state()})
 
 

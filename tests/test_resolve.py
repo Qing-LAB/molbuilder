@@ -59,7 +59,7 @@ def test_a_run_is_a_parameter_set_of_length_one(template):
     which is the branch `architecture.md` § 0 forbids."""
     ps = resolve(template, _task(), allocation=ALLOC, stage=STAGE)
     assert isinstance(ps, ParameterSet) and len(ps) == 1
-    assert not ps.is_sweep and ps[0].point == {}
+    assert ps[0].point == {}
 
 
 def test_a_sweep_of_n_gives_n_elements_through_the_same_call(template):
@@ -247,7 +247,7 @@ def test_explicit_points_are_taken_verbatim_in_order(template):
     ps = resolve(template, _task(), allocation=ALLOC,
                  sweep=[{"G": 1, "N": 4, "C": 4}, {"G": 1, "N": 8, "C": 2}],
                  translation=_GNC, stage=STAGE)
-    assert len(ps) == 2 and ps.is_sweep
+    assert len(ps) == 2
     assert [e.point for e in ps] == [{"G": 1, "N": 4, "C": 4},
                                      {"G": 1, "N": 8, "C": 2}]
     assert ps.axes == ("G", "N", "C")

@@ -741,6 +741,16 @@
           "label": "audits",
           "children": [
             {
+              "path": "archive/audits/2026-11-05-2.65.17-removals.md",
+              "label": "Audit of what 2.65.17 removes (2026-11-05)",
+              "subtitle": "Audit of what 2.65.17 removes (2026-11-05)"
+            },
+            {
+              "path": "archive/audits/2026-11-05-postprocessing-api.md",
+              "label": "The post-processing API, evaluated on real runs (2026-11-05)",
+              "subtitle": "The post-processing API, evaluated on real runs (2026-11-05)"
+            },
+            {
               "label": "2026-11-02-test-audit",
               "children": [
                 {

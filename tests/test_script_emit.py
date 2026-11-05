@@ -45,27 +45,6 @@ def test_marker_re_rejects_non_markers():
 
 
 # --------------------------------------------------------------------- #
-#  emit_header                                                          #
-# --------------------------------------------------------------------- #
-
-
-def test_emit_header_wraps_given_lines():
-    block = sc.emit_header(["# line one", "# line two"])
-    assert block.splitlines()[0]  == "# === molbuilder header BEGIN ==="
-    assert block.splitlines()[-1] == "# === molbuilder header END ==="
-    assert "# line one" in block
-    assert "# line two" in block
-
-
-def test_emit_header_empty_list_produces_empty_block():
-    block = sc.emit_header([])
-    lines = block.splitlines()
-    assert lines[0]  == "# === molbuilder header BEGIN ==="
-    assert lines[-1] == "# === molbuilder header END ==="
-    assert len(lines) == 2  # no body
-
-
-# --------------------------------------------------------------------- #
 #  emit_provenance                                                      #
 # --------------------------------------------------------------------- #
 
@@ -551,7 +530,6 @@ def test_read_provenance_block_round_trips_emit_output():
     block = sc.emit_provenance(
         generator_version="molbuilder git abc123",
         generated_at="2026-06-17T12:00:00-07:00",
-        form_config_hash="hash-deadbeef",
         resolved_defaults={
             "BlockSize":   "auto -> 256 (10 * 212 atoms / mpi_np)",
             "MeshCutoff":  "350.0 Ry (default)",
@@ -561,7 +539,6 @@ def test_read_provenance_block_round_trips_emit_output():
     assert got is not None
     assert got["generator-version"] == "molbuilder git abc123"
     assert got["generated-at"]      == "2026-06-17T12:00:00-07:00"
-    assert got["form-config-hash"]  == "hash-deadbeef"
     assert got["resolved-defaults.BlockSize"]  == "auto -> 256 (10 * 212 atoms / mpi_np)"
     assert got["resolved-defaults.MeshCutoff"] == "350.0 Ry (default)"
 

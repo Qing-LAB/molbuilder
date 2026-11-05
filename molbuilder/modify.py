@@ -49,8 +49,7 @@ import numpy as np
 
 from . import cell as _cell, data_dir
 from .persist import read_json
-from .structure import (FROZEN_LABEL, Structure, atom_words, copy_annotations,
-                        remap_annotations)
+from .structure import FROZEN_LABEL, Structure, atom_words, copy_annotations
 
 
 # --------------------------------------------------------------------- #
@@ -58,62 +57,18 @@ from .structure import (FROZEN_LABEL, Structure, atom_words, copy_annotations,
 # --------------------------------------------------------------------- #
 
 
-def _reindex_transport_metadata(
-    struct: Structure, keep: Sequence[int],
-) -> Tuple["dict[str, List[int]]", "dict"]:
-    """Remap ``struct.regions`` and the extensible ``struct.annotations``
-    channels after a slice/delete operation, dropping any index that fell off
-    and renumbering survivors to their new 0-based position
-    (``model/structure-annotations.md`` § 2.1).
-
-    ONE pass over the label store -- reserved labels (frozen among them) are in
-    it and remap by the same rule.
-
-    Used by ``delete_atoms`` (the only modify-op that changes the index space).
-    Pure-passthrough ops (translate / rotate / orient) carry labels through
-    verbatim without this.
-    """
-    old_to_new = {old: new for new, old in enumerate(keep)}
-    new_regions = {}
-    for label, idxs in struct.regions.items():
-        remapped = [old_to_new[i] for i in idxs if i in old_to_new]
-        if remapped:
-            new_regions[label] = remapped
-    new_annotations = remap_annotations(struct.annotations, old_to_new)
-    return new_regions, new_annotations
-
-
 def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
-    """Return a new ``Structure`` with the given atom indices removed.
+    """A person's deletion: :meth:`Structure.without`, and the record marked.
 
-    Indices may be in any order; duplicates are tolerated.  All per-atom
-    metadata arrays are sliced consistently.  ``frozen_atoms`` and
-    ``regions`` are reindexed to the post-delete atom-numbering: a
-    frozen atom that survives keeps its frozen flag but at a possibly
-    smaller index; a frozen atom that was deleted is dropped.
+    Indices may be in any order; duplicates are tolerated, and one naming no
+    atom changes nothing.
     """
-    keep = sorted(set(range(struct.n_atoms)) - set(int(i) for i in indices))
-    if len(keep) == struct.n_atoms:
-        # No-op (or all indices were out of range / already absent).
-        return struct.copy()
-    new_regions, new_annotations = _reindex_transport_metadata(
-        struct, keep)
-    out = Structure(
-        elements=     [struct.elements[i]      for i in keep],
-        positions=    struct.positions[keep].copy(),
-        atom_names=   [struct.atom_names[i]    for i in keep],
-        residue_ids=  [struct.residue_ids[i]   for i in keep],
-        residue_names=[struct.residue_names[i] for i in keep],
-        chain_ids=    [struct.chain_ids[i]     for i in keep],
-        title=struct.title,
-        regions=new_regions,
-        annotations=new_annotations,
-        **struct._carry_nonatom(),   # deleting atoms keeps the lattice
-    )
+    out = struct.without(indices)
     # AN EDIT OUTDATES THE RECORD, it does not erase it
     # (`model/structure.md` § 2.2a; the same mark
     # `molview/model.js` sets on every `applyOp`).
-    out.mark_contract_outdated()
+    if out.n_atoms != struct.n_atoms:
+        out.mark_contract_outdated()
     return out
 
 

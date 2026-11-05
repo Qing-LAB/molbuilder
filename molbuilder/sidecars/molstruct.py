@@ -32,66 +32,28 @@ Public surface here
 * :func:`renewed`                   — a payload's envelope renewed for a
   geometry whose atoms moved (``StructureCodec.write_moved``).
 * :func:`dumps`                     — the one serialisation.
-* :func:`with_lock`                 — POSIX advisory lock context-
-  manager for read-modify-write cycles.  No-op on Windows.
-* :func:`save`                      — atomic write of a canonical
-  dict via tempfile + ``os.replace`` + ``fsync``.
 * :func:`load`                      — the read door: a sidecar file back
   as its normalised payload.
 * :func:`apply_to_structure`        — copy loaded sidecar payload
   onto a Structure (validates atom-count match).
-
-Concurrency contract
---------------------
-
-Two concurrent ``/api/selection/save`` calls otherwise hit a lost-
-update race: A reads X, B reads X, A writes X+a, B writes X+b →
-A's update is silently lost.  Wrap the entire read-modify-write
-cycle in :func:`with_lock`:
-
-    with sidecars.molstruct.with_lock(sidecar_path):
-        existing = sidecars.molstruct.load(sidecar_path) \\
-                   if sidecar_path.exists() else {}
-        new = {**existing, ...}
-        sidecars.molstruct.save(sidecar_path, new)
-
-The lock target is a sibling file ``<sidecar>.lock`` (NOT the
-sidecar itself) because :func:`save` swaps inodes via
-``os.replace``; a lock held on the old sidecar's fd does NOT
-carry to the new file.
 """
 
 from __future__ import annotations
 
-import contextlib
 import datetime as _dt
 import hashlib as _hashlib
 import json as _json
-import os
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
-# POSIX-only flock.  When fcntl is unavailable (Windows), the
-# ``with_lock`` context manager degrades to a no-op so the rest of
-# the module still works -- correctness of concurrent saves is only
-# guaranteed where ``fcntl`` is present.  Web-server deployments are
-# POSIX in practice; the fallback path exists so unit tests / dev
-# tools running on Windows don't fail to import.
 # THE MAP'S KEY, named once (`atom_permutation.MAP_KEY`) -- this module
 # travels beside a job with the map's module.
 try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY
-    from ..persist import json_text, write_bytes
+    from ..persist import json_text
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
-    from persist import json_text, write_bytes  # type: ignore[no-redef]
-
-try:
-    import fcntl as _fcntl
-    _HAVE_FLOCK = True
-except ImportError:                  # pragma: no cover - Windows branch
-    _fcntl = None
-    _HAVE_FLOCK = False
+    from persist import json_text  # type: ignore[no-redef]
 
 
 #: The on-disk sidecar schema, READ STRICTLY (:data:`READABLE_VERSIONS`).
@@ -232,7 +194,7 @@ def known_keys() -> frozenset:
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 #: PUBLIC: a suffix with a composer (:func:`sidecar_path_for`) has a public
-#: name and a finder (:func:`sidecars_in`, `project-layout.md` § 4.5).
+#: name (`project-layout.md` § 4.5).
 SUFFIX = ".molstruct.json"
 
 #: THE GEOMETRY FILES A SIDECAR PAIRS WITH -- the two formats the one read
@@ -276,20 +238,6 @@ def sidecar_path_for(structure_path: Union[str, Path]) -> Path:
     """
     p = Path(structure_path)
     return p.with_name(p.stem + SUFFIX)
-
-
-def sidecars_in(directory: Union[str, Path]) -> "List[Path]":
-    """Every sidecar in *directory*, sorted by name — the finder half.
-
-    :func:`sidecar_path_for` composes the name.  **For every name it
-    composes, the framework owns the search** (`project-layout.md` § 4.5).
-    """
-    d = Path(directory)
-    try:
-        return sorted(p for p in d.iterdir()
-                      if p.is_file() and p.name.endswith(SUFFIX))
-    except OSError:
-        return []
 
 
 def is_geometry(path: Union[str, Path]) -> bool:
@@ -541,7 +489,7 @@ def to_dict(
     ``atom_index_map`` -- which index the atoms are listed by, and each
     atom's indices (`model/overview.md` § 2.2b) -- the codec's, from the door
     that writes the pair, or the file's; read by the map's one reader.
-    Doesn't write anywhere; use :func:`save` for that.
+    Doesn't write anywhere; ``StructureCodec.write`` writes the pair.
     """
     if not isinstance(n_atoms_total, int) or n_atoms_total < 0:
         raise MolstructJsonError(
@@ -640,64 +588,10 @@ def renewed(sidecar: Dict[str, Any], *, geometry_hash: str,
                 created_at=stamp(), **{MAP_KEY: atom_index_map})
 
 
-# --------------------------------------------------------------------- #
-#  Concurrency                                                          #
-# --------------------------------------------------------------------- #
-
-
-@contextlib.contextmanager
-def with_lock(sidecar_path: Union[str, Path]) -> "Iterator[None]":
-    """Serialise concurrent read-modify-write cycles on a sidecar.
-
-    Implementation notes:
-
-    * The lock target is a sibling file ``<sidecar>.lock`` (NOT the
-      sidecar itself).  :func:`save` atomic-replaces the sidecar via
-      ``os.replace``, which swaps inodes — a lock held on the OLD
-      sidecar's fd does NOT carry to the new file, so subsequent
-      readers would re-race.  Locking a separate file that nobody
-      replaces keeps the serialisation honest across saves.
-    * ``flock`` is process-wide and advisory; both processes must
-      voluntarily acquire it.  Every writer in the codebase is
-      responsible for entering this CM; other readers / writers that
-      don't participate can race.
-    * The lock file is created on demand + left behind after the
-      block exits.  No cleanup: another save is likely to follow
-      and need the same file.  An empty 0-byte ``.lock`` file in
-      the sidecar dir is the visible cost.
-    * On platforms without ``fcntl`` (Windows), the CM is a no-op
-      and concurrent saves remain racy.
-    """
-    sidecar_path = Path(sidecar_path).resolve()
-    if not _HAVE_FLOCK:
-        yield
-        return
-    sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = sidecar_path.with_suffix(sidecar_path.suffix + ".lock")
-    # ``O_RDWR | O_CREAT`` so the file exists when we lock it; nothing
-    # is written.  ``O_CLOEXEC`` so a forked child doesn't inherit
-    # the lock (which would let a runaway subprocess hold up the
-    # parent's next save indefinitely).
-    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o644)
-    try:
-        _fcntl.flock(fd, _fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            _fcntl.flock(fd, _fcntl.LOCK_UN)
-    finally:
-        os.close(fd)
-
-
-# --------------------------------------------------------------------- #
-#  Save                                                                 #
-# --------------------------------------------------------------------- #
-
-
 def dumps(payload: Dict[str, Any]) -> str:
     """The canonical on-disk TEXT for a sidecar payload -- the ONE serialisation.
 
-    :func:`save` writes exactly this, and anything that needs the same bytes
+    ``StructureCodec.write`` writes exactly this, and anything that needs the same bytes
     without writing them (a download, a comparison, a preview) asks for it here.
     The text is the byte shape of every JSON file molbuilder writes
     (`persist.json_text`): a non-ASCII region label ("α-helix") a literal,
@@ -708,29 +602,6 @@ def dumps(payload: Dict[str, Any]) -> str:
     (`model/structure.md` § 2.4).
     """
     return json_text(payload, refuse_non_finite=True)
-
-
-def save(
-    sidecar_path: Union[str, Path],
-    payload: Dict[str, Any],
-) -> Path:
-    """Write a canonical sidecar to disk.  Returns the resolved path.
-
-    Through the one atomic writer (`persist.write_bytes`: a unique temp
-    beside it, synced, then renamed), so a crash mid-write doesn't leave a
-    partial JSON the next reader chokes on and two writers never share a
-    temp.  ``encoding`` UTF-8, so a non-ASCII region label ("α-helix")
-    survives; the canonical serialiser (:func:`dumps`) refuses NaN.
-
-    NB: this function does NOT take the sidecar lock — if you're
-    doing a read-modify-write cycle, wrap the entire cycle in
-    :func:`with_lock`.  Calling :func:`save` in isolation (one
-    writer, no concurrent updates) is safe without the lock.
-    """
-    sidecar_path = Path(sidecar_path).resolve()
-    sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-    write_bytes(sidecar_path, dumps(payload).encode("utf-8"), sync=True)
-    return sidecar_path
 
 
 # --------------------------------------------------------------------- #
@@ -934,8 +805,6 @@ __all__ = [
     "load",
     "renewed",
     "stamp",
-    "save",
     "sidecar_path_for",
     "to_dict",
-    "with_lock",
 ]

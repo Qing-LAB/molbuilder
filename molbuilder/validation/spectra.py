@@ -706,8 +706,8 @@ def validate_vibration_kind(struct: Structure, cfg, cell, *, engine: str,
     engine (this module is the kind's own, `execution/architecture.md`
     § 3.3), chosen by ``engine``, the config's as the gate found it."""
     if engine == "pyscf":
-        from ..pyscf.vibration_deck import science_view
-        return list(spectra_render_checks(struct, science_view(cfg, struct),
+        from ..pyscf.vibration_deck import VibrationConfigView
+        return list(spectra_render_checks(struct, VibrationConfigView(cfg, struct),
                                           inactive=inactive))
     if engine == "siesta":
         return list(siesta_vibration_checks(struct, cfg, state=state,

@@ -1725,8 +1725,6 @@ class PrepAnswer:
     #: prep checks its members' shared allocation by, before anything is
     #: written (`group.envelope`).
     job: Optional[object] = None
-    #: A PREVIEW'S PLAN, whole (`jobset.planned.Plan`).  Not on the wire.
-    plan: Optional[object] = None
     #: WHERE EACH VALUE CAME FROM, the one fold's answer
     #: (`prep_inputs.fold_allocation`) -- what a prep that writes no header
     #: says in place of a placement (`placement.stated_line`).
@@ -2078,15 +2076,13 @@ def plan_stage(described: Described, kind: str, stage: str, *,
         provenance=described.provenance,
         # THE MACHINE, by name: the one named, else the one the
         # calculation's copy of its record names, else this one.
-        machine=(target or getattr(environment, "machine", None)
-                 or LOCAL_TARGET))
+        machine=target or environment.machine or LOCAL_TARGET)
     # THE PIPELINE LOG, which every prep writes (`script-preparation.md`
     # § 4.5): where this one is, by the rule its writer asks.
     out.pipeline_log = resolved.log_path(described.calc)
     out.placement = resolved.placement
     out.fit = resolved.fit
     out.sources = resolved.sources
-    out.plan = plan
     out.writes = [str(Path(w).relative_to(base))
                   for w in plan.writes() if w not in had]
     if kind == "bench":
@@ -2204,11 +2200,10 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
     written, deciding nothing; then the record.  A refusal can only come
     before the save, and writes nothing but its line in
     ``jobset-decisions.log`` (§ 5.0, rule 3)."""
-    base = Path(calc.base)
     from .ledger import record as ledger
     from .planned import Plan
     from .prep_inputs import bench_refusal
-    base = Path(base).resolve()
+    base = Path(calc.base).resolve()
     described: Optional[Described] = None
     notes: List[str] = []
 
@@ -2526,11 +2521,10 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     differs.  Then the folder is saved ONCE, the plan is written as it was
     made -- deciding nothing, refusing nothing (§ 5.0, rule 3) -- and each
     member's record and each group's written down after it."""
-    base = Path(calc.base)
     from ..checkpoint import CheckpointError, save_before
     from ..identity import stage_key
     from .ledger import record as ledger
-    base = Path(base).resolve()
+    base = Path(calc.base).resolve()
 
     def _asked():
         # THE QUESTION THAT PICKED THE GROUPS, written once -- after the

@@ -89,13 +89,13 @@ classDiagram
 ### 2.1 Index stability — channels remap on structure edits (load-bearing)
 
 Channels are **keyed by atom index**, so any structure mutation (add/delete
-atom) MUST remap every channel or metadata silently corrupts. Every
-atom-count-changing modify op carries the remap: the labels via
-`modify.py::_reindex_transport_metadata(struct, keep)` (`:75`, ONE pass over the
-label store against the survivor-index list — reserved labels remap by the same
-rule because they are in it), and the extensible channels via `remap_annotations`
-(`structure.py:204`) — drop indices
-that vanished, translate the rest; `value` channels remap their key set.
+atom) MUST remap every channel or metadata silently corrupts. A deletion and a
+reorder carry the remap in one place, `Structure._of_atoms` (`Structure.without`,
+`Structure.take`): the labels in ONE pass over the label store against the
+surviving atoms — reserved labels remap by the same rule because they are in
+it — and the extensible channels via `remap_annotations` — drop indices that
+vanished, translate the rest; a label or a channel left with no atom goes;
+`value` channels remap their key set.
 This is a correctness requirement, not an add-on.
 
 ---
@@ -228,7 +228,10 @@ registered strategy `(channel, struct) → engine lines` is invoked during
 assembly (e.g. a future `initspin` value channel → `%block DM.InitSpin`). A
 channel with **no** strategy is not translated — it still persists (§ 4a), it
 just isn't a simulation parameter. No emitter rewrite, no risk to the proven
-`frozen_atoms`/region built-ins.
+`frozen_atoms`/region built-ins. **A strategy is registered in the process that
+renders the deck** (`annotations_fdf.register_fdf_strategy`), so it belongs in
+molbuilder's own code: none is registered today, so no deck holds such a line,
+and a registration in a notebook reaches no `jobset prep`.
 
 ---
 

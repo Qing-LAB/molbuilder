@@ -881,7 +881,7 @@ def api_modify_lattice_from_run():
     is simply wrong), and **more than one element with none named**.
     Everything else is a note.
     """
-    from .files import _PickerError, _resolve_within_roots
+    from .files import _resolve_within_roots
 
     body = request.get_json(silent=True) or {}
     raw = body.get("path")
@@ -889,10 +889,7 @@ def api_modify_lattice_from_run():
         return _err("missing 'path'", 400)
     # THE FENCE IS AT THE ROUTE (web-api.md § 2.1): an untrusted path is
     # resolved through the one primitive before anything opens it.
-    try:
-        path = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        return _err(exc.message, exc.status)
+    path = _resolve_within_roots(raw)
     if not (path.is_file() or path.is_dir()):
         return _err(f"{path.name} is not there", 400)
 
@@ -993,7 +990,7 @@ def _read_relaxed_result(path):
                          f"run's folder (run-<n>, launched through jobset) "
                          f"or a structure pair's .xyz")
     from molbuilder.workingcopy_structure import StructureCodec
-    struct = StructureCodec().read(path)
+    struct = StructureCodec().load(path)
     return list(struct.elements), struct.positions, struct.cell
 
 

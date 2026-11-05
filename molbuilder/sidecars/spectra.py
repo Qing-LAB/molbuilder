@@ -288,37 +288,10 @@ def parse_spectra_json(
     return _validate_dict_to_results(d, repr(p))
 
 
-def parse_spectra_json_dict(d: Dict[str, Any]) -> "SpectraResults":
-    """In-memory variant of :func:`parse_spectra_json`, for a payload
-    already decoded into a dict.  Same validation pipeline
-    (schema_version + typed reconstitution) minus the filesystem +
-    JSON-decode layers.
-
-    NaN-rejection only fires at the json.loads layer, so this
-    in-memory path does NOT re-validate finiteness — if the caller
-    constructed the dict in Python they're responsible for not
-    putting non-finite floats in it.  The dataclass's
-    ``__post_init__`` is the second line of defence.
-
-    Raises the same exception hierarchy minus
-    :class:`SpectraJsonNotFoundError` (we have the dict; it's
-    necessarily present)."""
-    from molbuilder.spectra.results import SCHEMA_VERSION
-    if not isinstance(d, dict):
-        raise SpectraJsonMalformedError(
-            f"expected a JSON object, got {type(d).__name__}"
-        )
-    if "schema_version" not in d:
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, None)
-    _validate_schema_version(d["schema_version"])
-    return _validate_dict_to_results(d, "input dict")
-
-
 __all__ = [
     "write_spectra_payload",
     "dump_spectra_json",
     "parse_spectra_json",
-    "parse_spectra_json_dict",
     "SpectraJsonError",
     "SpectraJsonNotFoundError",
     "SpectraJsonMalformedError",

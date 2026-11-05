@@ -105,7 +105,7 @@ def resolve_transport(task, stage: str, allocation, *, template_text,
     # (`template.shared_by_every_stage` + `why_shared`; `fixed_by_role` +
     # `why_role`), which also lays each rung's own answers on its config.
     # AND THE RUNG THAT READS A VALUE (`stages`, the same § 6.4) is asked at
-    # that one door too, for every kind (`template.unread_overrides`, plan
+    # that one door too, for every kind (`template.why_not_in`, plan
     # § 5w K4): a transmission window on the seed's rung is refused there
     # by name.
 

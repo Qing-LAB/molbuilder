@@ -1,7 +1,7 @@
 """The chat card's layout, per receiver -- read from its data file
 (`execution/run-reports.md` § 4.1c).
 
-ONE file says how the one picture (`monitor._card`) is laid out for each
+ONE file says how the one picture (`monitor.card`) is laid out for each
 receiver -- Slack, Discord, the This machine tab: whether the fields sit side
 by side, how many at most, whether the summary line shows, and which fields a
 card shows for each event, in what order.  The title stays the code's.

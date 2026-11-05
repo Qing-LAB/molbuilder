@@ -2,7 +2,7 @@
 
 REGRESSION (task #75, the save->reload breaker): the browser used to write the
 ``.molstruct.json`` sidecar itself -- a blob with NO ``schema_version`` and an EMPTY
-``structure_hash`` -- which the strict file-only load door (``StructureCodec.read`` ->
+``structure_hash`` -- which the strict file-only load door (``StructureCodec.load`` ->
 ``molstruct.load_text``) then REJECTED, so every save produced a pair the app could no
 longer open.  The fix routes the save through the SERVER, which reconstructs the Structure
 from the wire envelope (``_shared.struct_from_body``) and writes the pair via
@@ -69,7 +69,7 @@ def test_a_saved_browser_payload_reads_back_whole(web):
     assert r.status_code == 200 and r.get_json()["ok"], r.get_json()
     side = json.loads(path.with_suffix(".molstruct.json").read_text())
     assert "cell_origin" not in side
-    back = StructureCodec().read(path)
+    back = StructureCodec().load(path)
     assert back.frozen_atoms == [1] and back.regions["anchor"] == [0]
     assert np.allclose(back.engine_offset, [3.0, 4.0, 5.0])
     assert back.to_wire()["periodicity"]["box_corner"] == [-3.0, -4.0, -5.0]

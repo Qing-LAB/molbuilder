@@ -298,6 +298,10 @@ SILENT.** Every seam that derives one `Structure` from another carries
 the geometry ops, `to_dict`/`from_dict`, the sidecar codec. A caller who
 wants it gone states that; a rebuild that simply did not list the field
 is a **defect**, not a default.
+A builder's own steps — `add_hydrogens`, `protonate_phosphate_oxygens`,
+`_patch_residue` — run on what the backend returned, before the structure holds
+any non-atom fact, and carry only its identity columns and title. Handed a
+labelled structure they lose the rest.
 
 Two clusters ship today, both recorded by the Results tab from the run
 directory ([`model/parse.md` § 5b, § 5b.1](?doc=model/parse.md)):
@@ -407,11 +411,7 @@ no rule anywhere.
 #### It is not carried by the door that carries the others
 
 `title` is **not** in `_carry_nonatom()`. Every op-helper that rebuilds a
-Structure therefore spells `title=struct.title` by hand — **ten sites**:
-`modify.py` ×5 (`:122`, `:250`, `:911`, `:1177`, `:1296`) and `chemistry.py`
-×5 (`:1493`, `:1638`, `:1667`, `:1734`, `:1842`). That is § 0a's condition:
-one fact, ten hand-written carries, and nothing that fails if the eleventh
-forgets.
+Structure therefore spells `title=struct.title` by hand, beside what it carries.
 
 #### Six measured defects — measured before the rule, all closed by it
 
@@ -1176,7 +1176,7 @@ task #75).
 
 | Door | Does | Server seam |
 |---|---|---|
-| `openMolecule(path, {confirmDiscard?, restore?})` | dirty-gate → `molview.data.installMolecule({path, restore, enforce: true})` — `restore` asks for a file in an engine's order put back in the user order ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` (`build.py:596`) → `StructureCodec.read` |
+| `openMolecule(path, {confirmDiscard?, restore?})` | dirty-gate → `molview.data.installMolecule({path, restore, enforce: true})` — `restore` asks for a file in an engine's order put back in the user order ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` (`build.py:596`) → `StructureCodec.load` |
 | *(saving)* `projects.molviewFiles.save("project", stem, exportFile(range))` | asks WHERE (`chooseSavePath`) → POST → confirms an overwrite → refreshes the sidebar | `POST /api/structure/save` → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + the `geometry_hash` of what it writes) |
 
 `openMolecule` is **only** for a project-file path. A generated structure
@@ -1224,7 +1224,7 @@ sequenceDiagram
     U->>D: commit path (+confirmDiscard if dirty)
     D->>IM: { path }
     IM->>BL: POST { path }
-    BL-->>IM: StructureCodec.read (.xyz + paired .molstruct.json) → atoms + periodicity + annotations
+    BL-->>IM: StructureCodec.load (.xyz + paired .molstruct.json) → atoms + periodicity + annotations
     Note over IM: ONE synchronous write — model SETTLED. getNAtoms() = ready gate.
     IM->>IM: await _anchorTimeline() (prune + persist)
     D-->>U: resolve — NO second store write
@@ -1284,7 +1284,7 @@ flowchart TB
     B --> DOORS
     DOORS -->|"install / serialise"| MV
     BYTES --> SRV
-    IM -->|"parse (StructureCodec.read)"| SRV
+    IM -->|"parse (StructureCodec.load)"| SRV
 ```
 
 | Layer | Owns | Never |

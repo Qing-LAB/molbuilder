@@ -337,7 +337,7 @@ touch it. The parts:
 
 ### 4.1 Two rules the file operations follow, and why
 
-**A structure and its sidecar move as one.** Rename, move and copy check for the
+**A structure and its sidecar move as one.** Rename, move, copy and delete check for the
 paired `.molstruct.json` and take both. If the second half fails, the first is
 rolled back, so you end up where you started rather than with `bridge.xyz`
 beside `water.molstruct.json` — a pairing the next load cannot find, which

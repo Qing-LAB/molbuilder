@@ -41,6 +41,7 @@ import os
 from flask import Blueprint, Response, jsonify, request
 
 from ...jupyter import BASE_PATH
+from ..app import serve_port
 from ...reload_protocol import SUPERVISED_ENV
 
 bp = Blueprint("jupyter", __name__)
@@ -63,7 +64,7 @@ def _supervised() -> bool:
     if os.environ.get(SUPERVISED_ENV) != "1":
         return False
     from ...serve_daemon import pid_state, read_pid
-    return pid_state(read_pid(_serve_port())) == "ours"
+    return pid_state(read_pid(serve_port())) == "ours"
 
 
 def _may_control() -> bool:
@@ -149,15 +150,6 @@ def _asked_by_a_loopback_name() -> bool:
         return False
 
 
-def _serve_port() -> int:
-    """The port THIS server is on -- the notebook's is derived from it.
-
-    ONE HOME, in `web.app`.
-    """
-    from ..app import serve_port
-    return serve_port()
-
-
 @bp.get("/api/jupyter/status")
 def api_jupyter_status():
     """What the tab needs to draw itself, and nothing it does not.
@@ -186,7 +178,7 @@ def api_jupyter_status():
     from ...envs.recipes import effective_name, recipe_by_name
     from ...jupyter import status
 
-    port = _serve_port()
+    port = serve_port()
     # ONE CALL EACH.  `_supervised()` reads a pidfile and stats /proc, on a
     # polling endpoint.
     supervised = _supervised()
@@ -313,7 +305,7 @@ def api_jupyter_start():
         read_config()
     except RuntimeConfigError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
-    ok, msg = signal_supervisor(_serve_port(), signal.SIGUSR1)
+    ok, msg = signal_supervisor(serve_port(), signal.SIGUSR1)
     return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
 
 
@@ -331,7 +323,7 @@ def api_jupyter_stop():
     refused = _refuse()
     if refused is not None:
         return refused
-    ok, msg = signal_supervisor(_serve_port(), signal.SIGUSR2)
+    ok, msg = signal_supervisor(serve_port(), signal.SIGUSR2)
     return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
 
 
@@ -362,7 +354,7 @@ def pass_through(rest):
     if refused is not None:
         return refused
     from ...jupyter import jupyter_port
-    return _forward(jupyter_port(_serve_port()))
+    return _forward(jupyter_port(serve_port()))
 
 
 # A WEBSOCKET IS ITS OWN ROUTE: the router answers a WebSocket handshake
@@ -378,7 +370,7 @@ def pass_through_websocket(rest):
     if refused is not None:
         return refused
     from ...jupyter import jupyter_port
-    return _join(jupyter_port(_serve_port()))
+    return _join(jupyter_port(serve_port()))
 
 
 def _target() -> str:
@@ -419,7 +411,7 @@ def _headers_for_jupyter():
                 continue
             value = ";".join(kept).strip()
         out.append((name, value))
-    token = str(read_runtime(_serve_port()).get("token") or "")
+    token = str(read_runtime(serve_port()).get("token") or "")
     if token:
         out.append(("Authorization", f"token {token}"))
     out.append(("X-Forwarded-Proto", request.scheme))

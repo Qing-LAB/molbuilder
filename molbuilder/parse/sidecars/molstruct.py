@@ -1,8 +1,8 @@
 """``.molstruct.json`` sidecar FileParser, and the sidecar's text reader.
 
 The READ side: :func:`load_text`, the one reader of a sidecar's text,
-which the read door -- ``load``, beside the write side (``save``,
-``with_lock``, ``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
+which the read door -- ``load``, beside the write side (``dumps``,
+``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
 ``geometry_hash``) in :mod:`molbuilder.sidecars.molstruct` -- asks with the
 file's text, and the registry's FileParser, which asks that door.
 

@@ -170,7 +170,6 @@ class _IPState:
     errors_4xx_buf: Deque[float] = field(default_factory=deque)
     blocked_until:  Optional[float] = None
     block_reason:   Optional[str] = None
-    last_touched:   float = 0.0
 
 
 class RateLimiter:
@@ -253,7 +252,7 @@ class RateLimiter:
             return None
         now = time.monotonic()
         with self._lock:
-            st = self._touch(ip, now)
+            st = self._touch(ip)
 
             # Already blocked?
             if st.blocked_until is not None:
@@ -309,7 +308,7 @@ class RateLimiter:
             return
         now = time.monotonic()
         with self._lock:
-            st = self._touch(ip, now)
+            st = self._touch(ip)
             if st.blocked_until is not None:
                 # Already blocked — no point growing the buffer.
                 return
@@ -360,7 +359,7 @@ class RateLimiter:
 
     # -- internals -------------------------------------------------------
 
-    def _touch(self, ip: str, now: float) -> _IPState:
+    def _touch(self, ip: str) -> _IPState:
         """Get-or-create the per-IP state; refresh LRU position."""
         st = self._states.get(ip)
         if st is None:
@@ -372,7 +371,6 @@ class RateLimiter:
             self._states[ip] = st
         else:
             self._states.move_to_end(ip)
-        st.last_touched = now
         return st
 
     def _block_locked(

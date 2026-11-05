@@ -6,7 +6,7 @@
  * Python owns the file access, the pairing, AND the sidecar schema:
  *
  *   * openMolecule(viewer, path) -> viewer.data.installMolecule({path}) -> POST /api/build/load
- *     (the server reads the .xyz + paired .molstruct.json via StructureCodec.read).
+ *     (the server reads the .xyz + paired .molstruct.json via StructureCodec.load).
  *
  * Saving a structure is `projects.molviewFiles.save("project", ...)`, which asks
  * WHERE and owns the overwrite flow (`tabs.md` § 6).
@@ -37,7 +37,7 @@ function _modelOf(viewer) {
  * FILE-ONLY load (model/structure.md § 2.4): hand the PATH to the model install
  * primitive (`molview.data.installMolecule({path})`), which POSTs it to `/api/build/load`
  * where the SERVER reads the `.xyz` AND its paired `.molstruct.json` via
- * `StructureCodec.read` and installs the whole model in ONE write.  The browser reads no
+ * `StructureCodec.load` and installs the whole model in ONE write.  The browser reads no
  * bytes and derives no sidecar path -- Python owns the file access + the pairing.  A
  * missing sidecar is NOT an error (a lone file loads as atoms and coordinates, and
  * the answer says so -- model/structure.md § 2.3); format (.xyz vs
@@ -65,7 +65,7 @@ export async function openMolecule(viewer, path, opts) {
     if (!proceed) return { ok: false, cancelled: true };
   }
   // FILE-ONLY load (model/structure.md § 2.4): hand the PATH to the model; the SERVER
-  // reads the .xyz + paired .molstruct.json through StructureCodec.read -- Python owns
+  // reads the .xyz + paired .molstruct.json through StructureCodec.load -- Python owns
   // the file access AND the .xyz<->.molstruct pairing.  The browser does not read the
   // bytes or derive the sidecar path.  The cell is the sidecar's -- the .xyz's comment
   // line is never metadata (model/structure.md § 2.3) -- and is never overridden at

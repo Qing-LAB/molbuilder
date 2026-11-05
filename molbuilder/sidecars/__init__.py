@@ -12,10 +12,10 @@ The two halves are intentionally split:
   no network, no global mutable state.  Returns typed
   :class:`molbuilder.parse.types.SidecarResult` envelopes for
   uniform consumption by the registry + monitor.
-* ``molbuilder/sidecars/`` (this package) — write-side: atomic
-  save / canonical-dict builders / sidecar-path conventions /
-  POSIX advisory locking / consumer-helper ``apply_to_structure``
-  that maps a loaded sidecar payload back onto a Structure object.
+* ``molbuilder/sidecars/`` (this package) — write-side: canonical-dict
+  builders / sidecar-path conventions / consumer-helper
+  ``apply_to_structure`` that maps a loaded sidecar payload back onto a
+  Structure object.
 
 Exception classes live HERE as their canonical home; the read-side
 modules re-import them so callers can ``except`` on either side.

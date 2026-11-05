@@ -20,7 +20,6 @@ from molbuilder.envs.recipes import (
     _PYTHON_SPEC,
     builtin_recipes,
     recipe_by_name,
-    recipe_for_category,
 )
 
 
@@ -100,6 +99,13 @@ def test_recipe_names_are_unique():
 # at import.  The reverse direction below is not covered by that: a category
 # added to `DEFAULT_ENV_NAMES` with no recipe is still writable.
 
+def test_no_two_recipes_serve_one_category():
+    """A category names one environment (`effective_name`): two recipes on it
+    would install into one env, the second over the first."""
+    categories = [r.category for r in builtin_recipes() if r.category]
+    assert sorted(categories) == sorted(set(categories))
+
+
 def test_default_env_names_all_have_recipes():
     """Reverse direction: every category in ``DEFAULT_ENV_NAMES``
     must have a recipe.  Without one, ``envs install <category-env>``
@@ -120,13 +126,3 @@ def test_recipe_by_name_finds_every_recipe():
 def test_recipe_by_name_returns_none_for_unknown():
     assert recipe_by_name("nope-not-a-real-env") is None
 
-
-def test_recipe_for_category_finds_every_routed_recipe():
-    for r in builtin_recipes():
-        if r.category is None:
-            continue
-        assert recipe_for_category(r.category) is r
-
-
-def test_recipe_for_category_returns_none_for_unknown():
-    assert recipe_for_category("not-a-category") is None

@@ -49,13 +49,10 @@ def api_bench_summary():
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.materialize import bench_owner
     from molbuilder.jobset.summarize import sweep_view
-    from .files import _PickerError, _resolve_within_roots
+    from .files import _resolve_within_roots
 
     raw = request.args.get("path", "")
-    try:
-        path = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    path = _resolve_within_roots(raw)
 
     if not path.is_file():
         return jsonify({"ok": False, "error": f"no such file: {raw}"}), 404

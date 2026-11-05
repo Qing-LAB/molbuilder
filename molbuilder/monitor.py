@@ -1535,11 +1535,13 @@ EVENT_TITLE = {"part_failed": "a point short of done",
                "milestone": "a round ended"}
 
 
-def _card(report: Dict[str, Any],
-          items: "Optional[Tuple[str, ...]]",
-          receiver: str,
-          layout: "Optional[_cards.Layout]") -> Dict[str, Any]:
-    """The report as a CHAT CARD, before either vocabulary is chosen.
+def card(report: Dict[str, Any],
+         items: "Optional[Tuple[str, ...]]" = None,
+         receiver: str = "web",
+         layout: "Optional[_cards.Layout]" = None) -> Dict[str, Any]:
+    """The report as a CHAT CARD, before either vocabulary is chosen -- laid
+    out for ``receiver``, the This machine tab's by default (`this-machine.md`
+    § 4.1).  A page drawing many reads the layout once and passes it.
 
     Discord embeds, Slack attachments and the This machine tab's card are
     the same picture -- a coloured bar, a title, a summary, a grid of
@@ -1574,17 +1576,6 @@ def _card(report: Dict[str, Any],
             "color": lay.color(state),
             "fields": lay.fields(receiver, report, items),
             "inline": rc.inline}
-
-
-def card(report: Dict[str, Any],
-         items: "Optional[Tuple[str, ...]]" = None,
-         receiver: str = "web",
-         layout: "Optional[_cards.Layout]" = None) -> Dict[str, Any]:
-    """The chat card's picture for ``report`` -- what Slack and Discord are
-    sent (:func:`_card`) -- laid out for ``receiver``, the This machine
-    tab's by default (`this-machine.md` § 4.1).  A page drawing many reads
-    the layout once and passes it."""
-    return _card(report, items, receiver, layout)
 
 
 #: The three wire formats.  `run-reports.md` § 4.1b.
@@ -1691,7 +1682,7 @@ def webhook_request(dest: Dict[str, Any],
     head = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
 
     if kind in ("slack", "discord"):
-        card = _card(report, items, kind, layout)
+        said = card(report, items, kind, layout)
 
         if kind == "slack":
             # `attachments` rather than a bare `text`: same picture as the
@@ -1699,28 +1690,28 @@ def webhook_request(dest: Dict[str, Any],
             # the notification/fallback line, which is what a phone shows.
             # The field count is the layout's, capped at Slack's own ten
             # when it is read (`report_cards.WIRE_LIMIT`).
-            att = {"color": "#%06X" % card["color"],
-                   "title": card["title"],
-                   "text": card["text"],
-                   "fallback": card["title"]}
-            if card["fields"]:
+            att = {"color": "#%06X" % said["color"],
+                   "title": said["title"],
+                   "text": said["text"],
+                   "fallback": said["title"]}
+            if said["fields"]:
                 att["fields"] = [{"title": n, "value": v,
-                                  "short": card["inline"]}
-                                 for n, v in card["fields"]]
-            return json.dumps({"text": card["title"],
+                                  "short": said["inline"]}
+                                 for n, v in said["fields"]]
+            return json.dumps({"text": said["title"],
                                "attachments": [att]}).encode(), head
 
         # DISCORD IGNORES `text` ENTIRELY.  Execute Webhook wants at least one
         # of content / embeds / components / file / poll, and a body with none
         # of them is refused 400.  The field count is the layout's, capped at
         # Discord's own twenty-five when it is read.
-        embed = {"title": card["title"],
-                 "description": card["text"][:4096],
-                 "color": card["color"]}
-        if card["fields"]:
+        embed = {"title": said["title"],
+                 "description": said["text"][:4096],
+                 "color": said["color"]}
+        if said["fields"]:
             embed["fields"] = [{"name": n, "value": v,
-                                "inline": card["inline"]}
-                               for n, v in card["fields"]]
+                                "inline": said["inline"]}
+                               for n, v in said["fields"]]
         return json.dumps({"embeds": [embed]}).encode(), head
 
     # A molbuilder listener: the `run-reports.md` § 4.1a record, whole,

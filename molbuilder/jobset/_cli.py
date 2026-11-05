@@ -30,6 +30,8 @@ from typing import Optional
 import click
 
 from .ledger import record as _ledger
+from ..scheduler.emit import Directives
+from ..scheduler.kinds import names as scheduler_kinds
 from ..ncdata import EXPORT_FORMATS as _EXPORT_FORMATS
 from .model import JobSet
 from .errors import PrepError
@@ -1318,13 +1320,6 @@ def _ask_which_groups(calc, named) -> tuple:
     return answer, asked
 
 
-def _header_said(lines) -> str:
-    """A header's request in one line -- `Directives.said`, the one
-    rendering both doors show."""
-    from ..scheduler.emit import Directives
-    return Directives.said(lines)
-
-
 def _echo_prep_answer(ans, base, *, first: bool = True,
                       last: bool = True, ladder_next: bool = False) -> None:
     """The prep report, from the entry's answer -- `job-system.md` § 5.0,
@@ -1751,7 +1746,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                          + (f"   -> domain {r.domain}" if r.domain else ""))
             lines.append(f"    {' '.join(r.command)}")
             if r.request:
-                lines.append(f"    {_header_said(r.request)}")
+                lines.append(f"    {Directives.said(r.request)}")
         elif r.status == "takes":
             lines.append(f"  {r.name}: {r.said}")
     # WHAT THE REQUEST MEANS -- a GPU's ranks, a queue's job cap -- was said
@@ -2235,7 +2230,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
                            + (f"   -> domain {r.domain}" if r.domain else "")
                            + f"\n    {' '.join(r.command)}")
                 if r.request:
-                    click.echo(f"    {_header_said(r.request)}")
+                    click.echo(f"    {Directives.said(r.request)}")
             click.echo("  to send it, when the answer suits you:\n"
                        + block([launch_with(kind, *words, base=base,
                                             mode="submit", typed=typed,
@@ -2328,7 +2323,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
         click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.shown}] {tail}".rstrip())
         if r.request:
-            click.echo(f"  {'':9}  {_header_said(r.request)}")
+            click.echo(f"  {'':9}  {Directives.said(r.request)}")
     # A PARTIAL SUBMISSION SAYS SO, LOUDLY.  One shelf refused by the
     # scheduler does not cancel the others, so the run can end with some
     # jobs queued and some not; the refused shelves' trials stay pending,
@@ -2803,12 +2798,6 @@ def cmd_machines() -> None:
         click.echo(f"    --target {LOCAL_TARGET}   # this machine")
 
 
-def _scheduler_kinds():
-    """The kinds ``--scheduler`` may name: `scheduler/kinds.toml`'s."""
-    from ..scheduler.kinds import names
-    return names()
-
-
 @jobset_group.command("probe",
                      short_help="record a machine's capability -> "
                                 f"{MACHINE_RECORD_FILE} (--name for a cluster "
@@ -2837,7 +2826,7 @@ def _scheduler_kinds():
                    "scheduler.submit=PATH.  Repeatable; wins over "
                    "detection; the record's source says 'flag'.")
 @click.option("--scheduler", "scheduler_flag", default=None,
-              type=click.Choice(list(_scheduler_kinds())),
+              type=click.Choice(list(scheduler_kinds())),
               help="name the scheduler's kind instead of detecting it "
                    "(source 'flag'); its commands are still looked for on "
                    "PATH (scheduler/kinds.toml).")

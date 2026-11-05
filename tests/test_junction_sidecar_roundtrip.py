@@ -147,7 +147,7 @@ def test_the_second_write_is_byte_identical_to_the_first(tmp_path, junction):
     second = tmp_path / "second.xyz"
 
     StructureCodec().write(junction, first)
-    back = StructureCodec().read(first)
+    back = StructureCodec().load(first)
     StructureCodec().write(back, second)
 
     assert second.read_text(encoding="utf-8") == first.read_text(encoding="utf-8"), (
@@ -179,7 +179,7 @@ def test_every_label_survives_the_round_trip_including_the_reserved_one(
     through the one accessor rather than looked up by name at each call site."""
     target = tmp_path / "junction.xyz"
     StructureCodec().write(junction, target)
-    back = StructureCodec().read(target)
+    back = StructureCodec().load(target)
 
     assert back.regions == junction.regions, (
         f"labels did not survive:\n  wrote {junction.regions}\n  read  {back.regions}")
@@ -197,7 +197,7 @@ def test_the_cell_and_its_axis_kinds_survive(tmp_path, junction):
     the engine writes. It has to come back as it went in."""
     target = tmp_path / "junction.xyz"
     StructureCodec().write(junction, target)
-    back = StructureCodec().read(target)
+    back = StructureCodec().load(target)
 
     assert back.axis_kind == ("periodic", "periodic", "transport")
     assert np.allclose(np.asarray(back.cell), np.asarray(junction.cell))
@@ -234,7 +234,7 @@ def test_a_sidecar_from_an_older_schema_is_refused_not_half_read(
     side.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(MolstructJsonError, match="schema_version"):
-        StructureCodec().read(target)
+        StructureCodec().load(target)
 
 
 def test_a_key_this_version_does_not_read_is_refused_rather_than_dropped(
@@ -255,4 +255,4 @@ def test_a_key_this_version_does_not_read_is_refused_rather_than_dropped(
 
     with pytest.raises(MolstructJsonError,
                        match="something_the_writer_believed_in"):
-        StructureCodec().read(target)
+        StructureCodec().load(target)

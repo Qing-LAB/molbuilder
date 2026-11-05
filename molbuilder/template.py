@@ -48,8 +48,6 @@ import dataclasses
 import functools
 import re
 import tomllib
-import types
-import typing
 from dataclasses import dataclass, field
 from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
                     Optional, Sequence, Tuple, Union)
@@ -836,31 +834,6 @@ class Template:
 # --------------------------------------------------------------------- #
 #  From the schema — the edge that makes this data-driven               #
 # --------------------------------------------------------------------- #
-
-#: The two spellings of a union.  ``Optional[X]`` and ``X | None`` mean the same
-#: thing and report DIFFERENT origins -- ``typing.Union`` and ``types.UnionType``
-#: -- so a check for one silently misses the other.  Nothing in the configs uses
-#: the newer spelling today, which is exactly why this is worth naming: the first
-#: field written that way would be declared NOT optional and then fail to get a
-#: type at all, and the error would point at the annotation rather than at the
-#: check that could not read it (audit § 1.1).
-_UNION_ORIGINS = (typing.Union, types.UnionType)
-
-
-def _unwrap_optional(ann) -> Tuple[Any, bool]:
-    """``Optional[X]`` / ``X | None`` → ``(X, True)``; anything else → ``(ann, False)``.
-
-    ``X`` may itself be a union: ``Optional[Union[int, str]]`` -- the
-    electronic state's count, a whole number or ``free`` -- is optional with
-    ``Union[int, str]`` inside.
-    """
-    if typing.get_origin(ann) in _UNION_ORIGINS:
-        args = [a for a in typing.get_args(ann) if a is not type(None)]
-        if len(args) < len(typing.get_args(ann)):
-            return (args[0] if len(args) == 1
-                    else typing.Union[tuple(args)]), True
-    return ann, False
-
 
 _BARE_ANCHOR = re.compile(r"^\s*(%block\s+[A-Za-z][\w.-]*|[A-Za-z][\w.-]*)")
 
@@ -2107,35 +2080,6 @@ def _item_from(name: str, body: Any) -> Item:
     )
 
 
-@functools.lru_cache(maxsize=1)
-def _help_index() -> Dict[str, str]:
-    """``{item name: help}`` from the master catalogue, read once."""
-    try:
-        return {i.name: (i.help or "") for i in catalogue().items}
-    except Exception:                                        # noqa: BLE001
-        return {}          # a broken catalogue must not break a form or --help
-
-
-def help_for(name: str, *, first_paragraph: bool = False) -> str:
-    """The catalogue's help for one item — **the one home for what a user reads.**
-
-    Every surface that shows a person what a setting means asks this, rather
-    than reading the copy in a config dataclass's ``metadata["help"]``.
-
-    ``first_paragraph`` takes the opening sentence only, which is what a CLI
-    option line wants — the catalogue's entries carry per-tier tables and
-    worked consequences below that, and a `--help` screen is not where those
-    belong. Item names are unique across the catalogue, so no engine argument
-    is needed to resolve one.
-
-    Returns ``""`` for a name the catalogue does not declare.
-    """
-    text = _help_index().get(name, "")
-    if first_paragraph and text:
-        return text.split("\n\n", 1)[0].strip()
-    return text
-
-
 def template_fields(config_cls) -> set:
     """The field names a value may be LAID on as a parameter -- the schema
     minus the machine facts: what `resolve` gates a pin, an override and a
@@ -2329,18 +2273,6 @@ def reads(item: "Item", engine: str, kind: str, stage: Optional[str], *,
     roles = (role,) if role is not None else stage_roles(engine, kind, stage)
     return (roles is None or not item.stages
             or bool(set(roles) & set(item.stages)))
-
-
-def unread_overrides(engine: str, kind: str, stage: str, names) -> List[str]:
-    """The names among a rung's overrides that the rung does not read -- the
-    one door the description's own check and ``resolve`` ask (§ 6.4, plan
-    § 5w K4), so an override nothing reads is refused by name rather than
-    written into a deck that ignores it.  A name no catalogue item of the
-    engine carries is the name check's, and an item the rung FIXES is
-    :func:`why_role`'s; both are left to them."""
-    items = {it.name: it for it in select(catalogue(), engine=engine)}
-    return [n for n in names if n in items and kind not in items[n].role
-            and not reads(items[n], engine, kind, stage)]
 
 
 def why_unread(name: str, engine: str, kind: str, stage: str, *,
@@ -3388,8 +3320,7 @@ def why_not_an_item(name: str, *, value: Any = None,
 #: The module's public surface.
 __all__ = ["SCHEMA", "KINDS", "TYPES", "CATEGORIES",
            "Item", "Template",
-           "items_of", "help_for",
-           "select", "one",
+           "items_of", "select", "one",
            "CATALOGUE", "catalogue", "load_catalogue",
            "template_with_values",
            "read_template", "config_from_template",

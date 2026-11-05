@@ -39,7 +39,7 @@ from ...diagnostics import get_capabilities
 from ...envs import run_tool
 from ...structure import Structure
 from . import Built
-from ._common import (select_chain,
+from ._common import (first_chain,
                       verify_backbone_connectivity)
 
 
@@ -82,7 +82,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
         raise ValueError("Empty sequence")
 
     leaprc      = "leaprc.DNA.OL15" if kind == "dna" else "leaprc.RNA.OL3"
-    res_codes   = _residue_codes_for_sequence(seq, kind, terminal)
+    res_codes   = _residue_codes_for_sequence(seq, kind)
     seq_block   = " ".join(res_codes)
 
     with tempfile.TemporaryDirectory(prefix="molbuilder_tleap_") as workdir:
@@ -132,11 +132,9 @@ quit
     # A backend returns ONE chain.  tleap emits a single chain, so this is
     # normally a no-op; it is kept because the guarantee is the backend's,
     # not tleap's, and a multi-chain emission must not leak downstream.
-    chains = sorted(set(struct.chain_ids))
-    if len(chains) > 1:
-        struct = select_chain(struct, chains[0])
+    struct = first_chain(struct)
 
-    err = verify_backbone_connectivity(struct, kind, max_O3_P=1.80)
+    err = verify_backbone_connectivity(struct)
     if err is not None:
         raise RuntimeError(
             f"tleap output failed connectivity check: {err}.  "
@@ -258,15 +256,7 @@ def _fix_methylene_hydrogens(struct):
     if fixed == 0:
         return struct
 
-    return Structure(
-        elements      = list(struct.elements),
-        positions     = positions,
-        atom_names    = list(struct.atom_names),
-        residue_ids   = list(struct.residue_ids),
-        residue_names = list(struct.residue_names),
-        chain_ids     = list(struct.chain_ids),
-        title         = struct.title,
-    )
+    return struct.replace(positions=positions)
 
 
 # --------------------------------------------------------------------- #
@@ -304,9 +294,9 @@ def built(kind: str, form: str, terminal: str) -> Built:
                        "structure")
 
 
-def _residue_codes_for_sequence(seq: str, kind: str, terminal: str) -> List[str]:
-    # ONLY 5'-OH / 3'-OH TERMINI are written, whatever ``terminal`` asks; the
-    # check after the build says so (`built`).
+def _residue_codes_for_sequence(seq: str, kind: str) -> List[str]:
+    # ONLY 5'-OH / 3'-OH TERMINI are written, whatever is asked; the check
+    # after the build says so (`built`).
     n = len(seq)
     out: List[str] = []
     for i, letter in enumerate(seq):

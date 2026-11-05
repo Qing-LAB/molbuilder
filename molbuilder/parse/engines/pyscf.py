@@ -227,9 +227,8 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     except OSError:
         pass
     else:
-        # A LOG THAT IS THERE AND STATES NO FOOTER IS RUNNING -- the word
-        # `scan_conclusion` gives the same file (`model/parse.md` § 2b),
-        # never "unknown".
+        # A LOG THAT IS THERE AND STATES NO FOOTER IS RUNNING -- as the ending
+        # reader says of the same file (`model/parse.md` § 2b), never "unknown".
         out.setdefault("run_state", "running")
     return out
 
@@ -471,30 +470,6 @@ def record_fields(f) -> Dict[str, Any]:
 record_fields.fields = (
     "computation.engine.program", "computation.engine.version",
     "computation.engine.python", "computation.launch.threads_engine")
-
-
-class PySCFParser:
-    """Body parser for PySCF + geomeTRIC ``*_optim.xyz`` trajectories.
-    Returns legacy :class:`Trajectory` (dict-shaped via the JSON
-    round-trip); use :class:`PySCFOutFileParser` for a typed
-    :class:`TrajectoryResult`.
-
-    ``can_parse(path) -> bool`` + ``parse(path) -> Trajectory``,
-    plus ``name`` / ``label`` / ``hint`` class attributes."""
-
-    name  = "pyscf"
-    label = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
-    hint  = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "
-             "<job>_geom_optim.xyz (NOT the PySCF .log).  Generic XYZ "
-             "with any comment-line format is also accepted; energies "
-             "are extracted only when the comment matches the geomeTRIC "
-             "`Iteration K Energy E` pattern.")
-
-    @classmethod
-    def can_parse(cls, path):
-        return PySCFOutFileParser.can_parse(Path(path))
-
-    parse = staticmethod(_parse_pyscf_xyz)
 
 
 class PySCFOutFileParser(FileParser):

@@ -60,8 +60,8 @@ def _resolve_path(raw: Optional[str]) -> Path:
     allowed roots.
 
     Raises ``ValueError`` (caught by the route handler and surfaced as
-    HTTP 400) when ``raw`` is None, empty, outside every allowed root, or
-    not an existing dir.
+    HTTP 400) when ``raw`` is None, empty, or not an existing dir; the fence
+    refuses a path outside every allowed root.
 
     **The fence belongs here, not in `molbuilder/checkpoint.py`**
     (web-api.md § 2.1).  That module is generic on purpose: like `git
@@ -74,11 +74,8 @@ def _resolve_path(raw: Optional[str]) -> Path:
     """
     if not raw:
         raise ValueError("missing required parameter: path")
-    from .files import _PickerError, _resolve_within_roots
-    try:
-        p = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        raise ValueError(exc.message) from exc
+    from .files import _resolve_within_roots
+    p = _resolve_within_roots(raw)
     if not p.is_dir():
         raise ValueError(f"path is not a directory: {p}")
     return p

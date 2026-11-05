@@ -84,12 +84,6 @@ class PySCFGeomFileParser(FileParser):
         )
 
 
-# --------------------------------------------------------------------- #
-#  Public-API re-exports                                                #
-# --------------------------------------------------------------------- #
-read_optimized_xyz = _read_optimized_xyz
-
 __all__ = [
     "PySCFGeomFileParser",
-    "read_optimized_xyz",
 ]

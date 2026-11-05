@@ -174,7 +174,7 @@ def _applied(answer, *, machine, path, held, movie=False):
                 "\n    function ")}
         {lifted(MODULE, "    function _latticeEqual(a, b) {",
                 "\n    // Compare frame")}
-        {lifted(MODULE, "    function _frameEqualAt(", "\n    // Fingerprint")}
+        {lifted(MODULE, "    function _frameEqualAt(", "\n    function _scfFingerprint(")}
         {lifted(MODULE, "    function _scfFingerprint(data) {",
                 "\n    function ")}
         {lifted(MODULE, "    function applyNewData(r) {", "\n    function ")}

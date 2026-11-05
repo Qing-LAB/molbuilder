@@ -291,23 +291,6 @@ def read_conclusion(path) -> Dict[str, Any]:
     return out
 
 
-def scan_conclusion(path) -> str:
-    """The run-state a molwatch log's FOOTER states, without building a
-    Trajectory -- ``"running"`` when it carries no footer.
-
-    The cheap door onto :func:`parse_conclusion_line`, for a caller that
-    wants only how the run ended (`model/parse.md` § 2b) -- what
-    ``_run_ending.ending_of`` asks of a progress log.  A status probe over a
-    whole directory must not full-parse to reach one string.
-
-    **Every line, in file order**, because the grammar's rule is *error
-    outranks concluded and the LAST error wins* -- a tail-only read would
-    answer ``"ended"`` for a log whose earlier attempt failed.  Only lines
-    opening with ``#`` are offered, which is all either pattern can match.
-    """
-    return read_conclusion(path).get("run_state") or "running"
-
-
 #: The ``scf_history`` header of a log whose orbital-gradient norm was
 #: written as norm x Hartree/Bohr->eV/Ang, and the factor that makes it eV:
 #: the norm is an energy (Hartree over dimensionless orbital rotations), so

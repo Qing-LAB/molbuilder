@@ -379,7 +379,7 @@ def test_detect_cuda_home_prefers_env_over_system(tmp_path, monkeypatch):
     (env / "bin" / "nvcc").chmod(0o755)
     # Even if $CUDA_HOME is set to a different path, the env wins.
     monkeypatch.setenv("CUDA_HOME", "/usr/local/cuda")
-    result = B._detect_cuda_home(str(env), {})
+    result = B._detect_cuda_home(str(env))
     assert result == str(env), (
         f"env's nvcc must win over $CUDA_HOME; got {result!r}"
     )

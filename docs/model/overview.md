@@ -432,7 +432,7 @@ gives it:
 | the trajectory log a run writes · `runtime-info`'s and `watch parse`'s answers | engine index | both, from its run's deck — engine alone for a file no run of ours holds |
 | an electrode rung's files | engine index | engine alone — a structure of its own |
 | a lead's `.TSHS` / `.TSDE` gathered into a device or transmission run | — | the electrode cell's own (I6): refused, naming the electrode run that answers it |
-| an engine's own file | engine index | its run's deck (F3) |
+| an engine's own file — a run's `.XV` through `read_xv` among them, which says so | engine index | its run's deck (F3) |
 | geomeTRIC's constraints file | engine index | its run's deck — an engine's input, its own text counting from 1 as geomeTRIC counts (F5), said |
 
 **A folder written before this rule** reads as it did, each file by F3 and

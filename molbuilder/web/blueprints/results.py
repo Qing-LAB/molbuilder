@@ -109,15 +109,12 @@ def api_results_contract():
     cannot come to disagree about what a directory records."""
     from pathlib import Path
 
-    from .files import _PickerError, _resolve_within_roots
+    from .files import _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
     if not raw:
         return jsonify({"ok": False, "error": "no path given"}), 400
-    try:
-        p = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    p = _resolve_within_roots(raw)
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
     # THE RUN THAT FOLDER SPEAKS FOR: its contract from its own deck, its
     # record of the file the Results tab opens there -- both the run door's,
@@ -155,15 +152,12 @@ def api_results_dir():
 
     from molbuilder.jobset.runstatus import views_of
     from molbuilder.runs import folder_answer
-    from .files import _PickerError, _resolve_within_roots
+    from .files import _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
     if not raw:
         return jsonify({"ok": False, "error": "no path given"}), 400
-    try:
-        p = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    p = _resolve_within_roots(raw)
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
     if not directory.is_dir():
         return jsonify({"ok": False,

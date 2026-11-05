@@ -74,23 +74,6 @@ class TestComputeCorrection:
 
 
 # --------------------------------------------------------------------- #
-#  effective_L                                                           #
-# --------------------------------------------------------------------- #
-
-
-class TestEffectiveL:
-    def test_cubic_returns_side(self):
-        cell = [[15.0, 0, 0], [0, 15.0, 0], [0, 0, 15.0]]
-        assert pytest.approx(15.0, abs=1e-9) == effective_L(cell)
-
-    def test_non_cubic_returns_volume_cube_root(self):
-        # V = 10 * 12 * 18 = 2160 → V^1/3 ≈ 12.93
-        cell = [[10.0, 0, 0], [0, 12.0, 0], [0, 0, 18.0]]
-        assert pytest.approx(2160 ** (1 / 3), rel=1e-9) == \
-            effective_L(cell)
-
-
-# --------------------------------------------------------------------- #
 #  Script generation                                                     #
 # --------------------------------------------------------------------- #
 
@@ -98,6 +81,26 @@ class TestEffectiveL:
 #: A stage's names, as prep hands them over -- the script reads that stage's
 #: output through the catalogue's names (`runfiles.RunNames`).
 _NAMES = RunNames("job", "01_relax")
+
+
+class TestTheLengthTheScriptUses:
+    """The correction scales as 1/L, and L is computed by the script a run
+    carries and by `effective_L` for a person's own: a wrong length is a wrong
+    energy with nothing to show for it, and the two are never to differ."""
+
+    @pytest.mark.parametrize("cell, length", [
+        pytest.param([[15.0, 0, 0], [0, 15.0, 0], [0, 0, 15.0]], 15.0,
+                     id="a cubic cell: its side"),
+        pytest.param([[10.0, 0, 0], [0, 12.0, 0], [0, 0, 18.0]],
+                     2160 ** (1 / 3), id="any other: the volume's cube root"),
+    ])
+    def test_L_is_the_cube_root_of_the_volume(self, cell, length):
+        script = render_correction_script(system_label="job", q=1,
+                                          stage=_NAMES.stage)
+        made: dict = {"__name__": "the_script"}
+        exec(compile(script, "makov_payne_correction.py", "exec"), made)
+        assert made["effective_length_angstrom"](cell) == pytest.approx(length)
+        assert effective_L(cell) == pytest.approx(length)
 
 
 class TestScriptGeneration:

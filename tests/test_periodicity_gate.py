@@ -830,7 +830,7 @@ class TestLoaderGate:
         """
         from molbuilder.workingcopy_structure import StructureCodec
         xyz = self._write_pair_stating_no_offset(tmp_path, v9_corner)
-        out = StructureCodec().read(xyz)
+        out = StructureCodec().load(xyz)
         assert out.engine_offset is None, "an offset was invented on the read"
         assert cellmod.resolve(out).contains_atoms, (
             "the box is not drawn round the atoms")
@@ -1050,7 +1050,7 @@ class TestReadingDoesNotJudge:
         """
         from molbuilder.workingcopy_structure import StructureCodec
         path = self._pair(tmp_path, [[7, 0, 0], [0, 7, 0], [0, 0, -7]])
-        struct = StructureCodec().read(path)          # must not raise
+        struct = StructureCodec().load(path)          # must not raise
         assert len(struct.elements) == 2
         assert dict(struct.regions) == {"frozen_atoms": [0]}, (
             "the labels were lost on the way in, so 'open it and fix it' costs "

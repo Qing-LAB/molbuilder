@@ -9,7 +9,7 @@
  *   * ``*_optim.xyz`` — PySCF / geomeTRIC's multi-frame
  *     trajectory XYZ (the geom-opt wrapper writes
  *     ``<job>_geom_optim.xyz``; older PySCF runs may use
- *     ``<job>_optim.xyz``).  PySCFParser handles both shapes via
+ *     ``<job>_optim.xyz``).  `PySCFOutFileParser` handles both shapes via
  *     ``can_parse`` content-sniff in ``parse/engines/pyscf.py``.
  *
  * Registration order in results.html puts this BEFORE the

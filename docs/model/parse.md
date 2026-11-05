@@ -85,6 +85,13 @@ registry refuses a directory by name.
 
 ---
 
+Two optional parts of a parser beside its `name`, `label`, `hint` and `output`:
+`keeps_atom_index_map` — `True` on a parser whose kept reading states its atoms'
+indices: its `parse` takes `atoms=`, the run's atom index map, from the caller
+that knows the run (`postprocess.parse`, § 5e); `footgun_hint_for(filename)` —
+when no parser claims a file the registry asks each, and any answer joins
+`UnknownFormatError`'s message; `None` by default.
+
 ### 1a. `parse/` is for FOREIGN formats — a block we wrote is its writer's
 
 **The boundary, and why the module has a registry at all.** `parse/` reads
@@ -176,6 +183,10 @@ the legacy-dict shim stamps empty strings, because it never parsed a file.
 Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
 `line_no`, `snippet`, `error`, `category`) any parser can attach to its result
 instead of raising.
+
+**A frame's `lattice`** is kept for a cell that changes step by step; no reader
+fills it. The cell a run states is the trajectory's `lattice`, and a run's box
+is the last step's, or else the trajectory's (`runs.steps_of`).
 
 - **The discriminator.** Each concrete subclass sets `result_kind` to a fixed
   string (`"trajectory"`, `"structure"`, `"sidecar"`, `"instrument"`,
@@ -474,6 +485,8 @@ gathers what is already there, one import for a person's script:
 | `parse(path)` | this registry's: an engine's file, a run's file → its result — a TBtrans data file handed its run's atom index map by the layer, which knows the run (`atom_index_map`), so the reading it keeps states both columns (§ 5e) |
 | `read_structure(path)` | a structure pair through the codec's read, **in the user order** — an engine's record (a calculation's `junction.xyz`) put back through its order record — as `(structure, atoms, said)`: `atoms` the atom index map of the structure returned (an engine's record's map relisted by user index, `AtomIndexMap.as_listed_by_user`), `said` what the read says, a line each ([`model/overview.md`](?doc=model/overview.md) § 2.2a, I8; § 2.2b) |
 | `atom_index_map(path)` | the run door's floor: which index a file's atoms are listed by, and both indices of each ([`model/overview.md`](?doc=model/overview.md) § 2.2b) |
+| `read_xv(path)` · `read_xv_cell(path)` | SIESTA's own `.XV`, read alone: the structure **in the engine's order, listed by engine index** — row `i` is SIESTA's atom `i`, not your atom `i` where the run sorted them (a transport calculation's seed, device and transmission runs; a SIESTA vibration's runs) — and the cell, tolerating a corrupt atom list. `atom_index_map(path)` is the way to your atoms |
+| `projects_root()` · `project_dir` · `topic_dir` · `structure_dir` · `list_projects()` · `list_topics(project)` · `list_structures(project, topic)` | where a calculation is: the tree's own functions ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5), each name checked; `structure` means the calculation level |
 | `read_transport_data(path)` | a transport calculation's data file, `<label>.transport.nc` (`transport.datafile.read_data_file`), with its atom index map |
 | `read_spectra_data(path)` | a vibration result's data file, `<label>.spectra.nc` (`spectra.datafile.read_spectra_data`), with its atom index map |
 | `infrared_view(path, *, direction="z", partition=None)` | the infrared the spectrum viewer derives: on a SIESTA result, the free atoms' — the atoms the vibration moved — from their charges, by partition (Hirshfeld when unsaid); on a PySCF result, the whole system's, from the dipole change it stored — along the direction where atoms are held, its orientation average where none is — no partition named (`spectra.infrared`, [`engines/vibration.md`](?doc=engines/vibration.md) § 4.6, § 5.10 ②) |
@@ -594,6 +607,7 @@ molbuilder/parse/
 │   └── _helpers.py            # StructureResult envelope
 │
 ├── instruments/   # what the WRAPPER measured → InstrumentResult (FileParsers, § 5c)
+│   ├── reports.py  # registered reports-log: the listener's reports/<user>.jsonl; read_reports answers GET /api/notify/reports
 │   ├── scf_timing.py · monitor.py · util_csv.py
 │   ├── scf_timing_rows.py     # the timing log's rows, by phase — stdlib, travels (§ 4a)
 │   ├── utilisation.py         # the § 5a resolver: monitor's means over the csv's
@@ -1441,6 +1455,7 @@ sidecar what molbuilder serialised — not the shape of the payload.
 | `*.molwatch.log` — a PySCF run's stamped `scf_history` rows | `scf_timing_rows.progress_log_timing_metrics` | the same figures, in the run's one phase, `scf` |
 | `*.monitor.log` | `monitor-log` · `monitor_metrics` | `machine` {`node`, `cores`, `mem_gb`, `gpu`} from `[MACHINE]` (`scheduler.md` R12); `bound` (`gpu` / `host` / `mixed`), `stated_cpu_mean_pct` and `stated_gpu_sm_mean_pct` from `[UTIL-SUMMARY]`; `mem_basis`, `mem_peak_kernel_gb`, `mem_limit_gb` from `[UTIL-BASIS]` |
 | `*.util.csv` | `util-csv` · `util_csv_metrics` | the samples' `mem_peak_sampled_gb` (the largest sample of the job's memory), `monitored_elapsed_s`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb` |
+| `reports/<user>.jsonl` | `reports-log` · `read_reports` | reports (newest first), total, skipped — the reports a run's monitor sent, as the listener received them |
 
 **Seconds per iteration: one rule, each engine's stamped rows**
 (`scf_timing_rows.timing_figures`; `timing_of(path)` picks the row reader by

@@ -164,6 +164,16 @@ def test_maybe_add_hydrogens_on_forces_add_regardless_of_ratio():
     assert called["n"] == 1
 
 
+@pytest.mark.parametrize("said", [True, False, "maybe"])
+def test_add_hydrogens_says_one_of_its_three_words(said):
+    """`True` once meant `auto` here and *always* for a peptide: one word, two
+    meanings, so a person states `auto`, `on` or `off`, and anything else is
+    refused naming them (`engines/builders.md`)."""
+    from molbuilder.nucleic import normalise_h_mode
+    with pytest.raises(ValueError, match="'auto', 'on' or 'off'"):
+        normalise_h_mode(said)
+
+
 def test_maybe_add_hydrogens_off_never_calls():
     """``mode="off"`` is the user explicitly opting out -- never
     call the engine.  Used when inspecting X3DNA's heavy skeleton
@@ -177,27 +187,6 @@ def test_maybe_add_hydrogens_off_never_calls():
         restore()
     assert called["n"] == 0
     assert out is s
-
-
-def test_maybe_add_hydrogens_legacy_bool_back_compat():
-    """Pre-tri-state callers passed bool: True = "auto", False = "off".
-    Back-compat must hold so existing scripts and the smoke-test
-    fixtures don't break."""
-    from molbuilder.nucleic import _maybe_add_hydrogens
-    s_low  = _h_add_spy_struct(n_heavy=10, n_h=2)   # ratio 0.2
-    s_high = _h_add_spy_struct(n_heavy=10, n_h=8)   # ratio 0.8
-
-    called, restore = _spy_add_hydrogens()
-    try:
-        _maybe_add_hydrogens(s_low, mode=True)      # True -> auto -> add
-        _maybe_add_hydrogens(s_high, mode=True)     # True -> auto -> skip
-        _maybe_add_hydrogens(s_low, mode=False)     # False -> off -> no call
-    finally:
-        restore()
-    assert called["n"] == 1, (
-        f"True+low should add (1 call); True+high should skip; "
-        f"False+anything should not call.  Got {called['n']} total."
-    )
 
 
 @pytest.mark.parametrize("backend", _BACKENDS)
@@ -295,7 +284,7 @@ def test_dna_add_hydrogens_false_returns_heavy_skeleton():
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
     s = build_dna("ATGC", backend="threedna",
-                  add_hydrogens=False, protonate_phosphates=False)
+                  add_hydrogens="off", protonate_phosphates=False)
     n_h = sum(1 for e in s.elements if e == "H")
     # X3DNA fiber emits a few H on the terminal phosphate / 3'-OH but
     # nothing on the bases or sugars -- nowhere near a simulation-
@@ -402,7 +391,7 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
 
     # Single nucleotide -- a free deoxyadenosine, no phosphate.
     s_a = build_dna("A", backend="threedna", terminal="OH",
-                    add_hydrogens=False, protonate_phosphates=False)
+                    add_hydrogens="off", protonate_phosphates=False)
     assert s_a.elements.count("P") == 0, (
         f"single dA with terminal=OH should have 0 phosphates, "
         f"got {s_a.elements.count('P')}"
@@ -410,7 +399,7 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
 
     # 4-mer -- 3 phosphates (only the internal A-T, T-G, G-C bridges).
     s_atgc = build_dna("ATGC", backend="threedna", terminal="OH",
-                       add_hydrogens=False, protonate_phosphates=False)
+                       add_hydrogens="off", protonate_phosphates=False)
     assert s_atgc.elements.count("P") == 3, (
         f"ATGC with terminal=OH should have 3 phosphate bridges, "
         f"got {s_atgc.elements.count('P')}"

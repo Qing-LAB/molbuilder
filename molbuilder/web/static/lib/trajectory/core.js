@@ -244,6 +244,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // the metadata, and carried on every summary line the tab
             // writes (`_withRunNotes`), so a poll does not wipe it.
             notices: null,
+            // THE RUN'S TARGETS, as the server says them (`targets`: the rows
+            // said, the force threshold, their source) -- the page spells no
+            // key.
+            targets: null,
         },
 
         viewState: {
@@ -368,6 +372,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.structure    = null;
             state.fileState.run          = null;
             state.fileState.notices      = null;
+            state.fileState.targets      = null;
             // Reset viewState per matrix: refit the camera on the next render.  The
             // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
             // there (setData lands on frame 0).
@@ -399,6 +404,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.structure    = null;
             state.fileState.run          = null;
             state.fileState.notices      = null;
+            state.fileState.targets      = null;
             state.viewState.firstFit     = true;
             state.machine = "IDLE";
             return;
@@ -513,6 +519,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 state.fileState.run = payload.run;
             if (payload.notices !== undefined)
                 state.fileState.notices = payload.notices;
+            if (payload.targets !== undefined)
+                state.fileState.targets = payload.targets;
             return true;
         }
         // Unknown target: silent no-op.  Future targets (the
@@ -978,7 +986,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // SIESTA's flat echo, both the door's to read.  The page keeps no copy
     // of the keys, the units or the shape rule (2026-10-18).
     function _convergenceTargets() {
-        return state.targets || null;
+        return state.fileState.targets || null;
     }
 
     // THE SCF'S CRITERIA -- `{phase: {residual: {tolerance, unit,
@@ -1844,17 +1852,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         return true;
     }
 
-    // Fingerprint of the EXCLUDED (frozen) atom set -- if it changes between polls
-    // (e.g. a reload of a log whose held atoms differ), the excluded arrows change
-    // for EVERY frame, so the incremental arrow-append must fall back to a full
-    // rebuild.  Stable string so ordering doesn't produce false diffs.
-    function _frozenFingerprint(data) {
-        const rt = data && data.runtime_info;
-        const arr = rt && rt.frozen_atoms;
-        return Array.isArray(arr)
-            ? arr.slice().sort(function (a, b) { return a - b; }).join(",") : "";
-    }
-
     function _scfFingerprint(data) {
         // Compact stable string over the SCF-history fields that
         // makePlots/renderScfProgress branch on.  Used by
@@ -2032,9 +2029,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }
 
     function applyNewData(r) {
-        // THE RUN'S TARGETS, as the server says them (`targets`: the rows
-        // said, the force threshold, their source) -- the page spells no key.
-        state.targets = (r && r.targets) || null;
         // Decide poll path: strict-tail-append (cheap; keeps playback
         // running) vs full rebuild (structure changed or frames
         // shrank).  Strict-tail criteria: existing data present, new
@@ -2105,7 +2099,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // transition().  noNewContent only updates the
             // fields that can change on a same-content tick.
             if (!transition("APPLY", { path: r.path, mtime: r.mtime,
-                                       data: r.data, run: r.run })) return;
+                                       data: r.data, run: r.run,
+                                       targets: r.targets })) return;
             _renderRuntimeInfo(state.data.runtime_info);
             _renderParseWarnings(state.data.parse_warnings);
             if (runStateChanged || scfChanged) makePlots();
@@ -2158,6 +2153,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // What the load said of the run (I9) -- on the load only; a poll
             // leaves it out, which keeps it.
             notices:      r.notices,
+            targets:      r.targets,
         });
         // AN ANSWER REFUSED DRAWS NOTHING: its frames are another file's.
         if (!written) return;

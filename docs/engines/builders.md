@@ -356,8 +356,8 @@ timeout → `RuntimeError`), pulls the canonical SMILES, and defers to
 
 Two independent controls decide the H content of a built nucleic acid:
 
-- **`add_hydrogens`** — tri-state (`"auto"` / `"on"` / `"off"`; legacy `True`→auto,
-  `False`→off, `nucleic.normalise_h_mode`). `"auto"` is a size-aware
+- **`add_hydrogens`** — tri-state (`"auto"` / `"on"` / `"off"`,
+  `nucleic.normalise_h_mode`). `"auto"` is a size-aware
   heuristic: **skip if H/heavy ≥ 0.5** (amber ≈ 0.63, rdkit ≈ 0.72 arrive complete),
   otherwise add (X3DNA's fiber skeleton sits at ≈ 0.05, so it gets protonated). The
   0.5 cutoff is a convenience default, **not a correctness check** — for a structure

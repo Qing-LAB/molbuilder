@@ -6,8 +6,8 @@ Three contracts:
       Structure with predictable shape.
   2.  Boolean operators compose correctly (Or = union, And =
       intersection, Minus = a\\b, Not = complement).
-  3.  Every rule round-trips through to_json -> from_json unchanged
-      (equality on frozen dataclasses).
+  3.  Every rule round-trips through to_json -> from_json unchanged, and
+      reads from the JSON the page sends (equality on frozen dataclasses).
 """
 
 from __future__ import annotations
@@ -437,8 +437,8 @@ class TestRoundTrip:
         equality and hash.
 
         The rule codec's two halves agree. The
-        codec is table-driven -- `_RULE_CLASSES`, `_SUBRULE_FIELDS`,
-        `_SUBRULE_LIST_FIELDS` -- so a class added without registering it, or a leaf
+        codec is table-driven -- `_RULE_CLASSES`, `_FIELD_KINDS` -- so a class added
+        without registering it, or a leaf
         list not normalised back to a tuple, breaks the reading of a rule long
         after the commit that caused it. Equality on frozen
         dataclasses is what makes the tuple normalisation observable at all.
@@ -476,11 +476,34 @@ class TestRoundTrip:
         assert d["op"] == "by_element"
         assert d["elements"] == ["Au"]   # list, not tuple (JSON-able)
 
+    @pytest.mark.parametrize("sent, rule", [
+        ({"op": "all"}, All()),
+        ({"op": "by_element", "elements": ["Au", "C"]}, ByElement(("Au", "C"))),
+        ({"op": "by_residue_name", "names": ["ALA", "GLY"]},
+         ByResidueName(("ALA", "GLY"))),
+        ({"op": "by_index_range", "expression": "0-35, 100"},
+         ByIndexRange("0-35, 100")),
+        ({"op": "by_region", "name": "L-electrode"}, ByRegion("L-electrode")),
+        ({"op": "or", "operands": [{"op": "by_element", "elements": ["Au"]},
+                                   {"op": "by_region", "name": "bridge"}]},
+         Or((ByElement(("Au",)), ByRegion("bridge")))),
+        ({"op": "and", "operands": [{"op": "by_element", "elements": ["Au"]},
+                                    {"op": "by_index_range",
+                                     "expression": "0-5"}]},
+         And((ByElement(("Au",)), ByIndexRange("0-5")))),
+        ({"op": "not", "rule": {"op": "by_element", "elements": ["Au"]}},
+         Not(ByElement(("Au",)))),
+    ])
+    def test_what_the_page_sends_reads_as_its_rule(self, sent, rule):
+        """What `rowToRule` in `lib/molview/stores.js` builds by hand, kind by
+        kind: `to_json`'s round trip does not hold the page's own dicts."""
+        assert from_json(sent) == rule
+
     def test_from_json_unknown_op_raises(self):
         """An unknown `op` raises `SelectionError` -- the ONE exception type the route
         turns into a 400.
 
-        `_load_rule_from_payload` (`web/blueprints/selection.py`) catches
+        The eval route (`web/blueprints/selection.py`) catches
         `SelectionError` and nothing else, so a `KeyError` or `TypeError` from here
         reaches the browser as a 500 with a stack trace. The rule tree comes straight
         off the wire, so a stale JS build sending a retired kind name is the ordinary

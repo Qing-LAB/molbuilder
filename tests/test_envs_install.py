@@ -683,7 +683,6 @@ def test_build_phases_carry_the_verdict_builds_gave_them(monkeypatch):
                             spec=recipe.build_spec,
                             env_prefix=f"{ENVS}/x",
                             activate_hook_written=False,
-                            deactivate_hook_written=False,
                             succeeded=False,
                             steps=(
                                 B.BuildStepResult(step=mkstep("elpa", "clone"),
@@ -815,7 +814,7 @@ def _home_is_not_the_developers(monkeypatch, tmp_path):
     even when ``run_install`` is stubbed -- the tee is the CLI's, opened
     around the stub.  Untouched, every bootstrap test dropped real-named
     zero-byte logs into the developer's actual home (found 2026-08-28).
-    ``_log_root`` resolves lazily now, so isolating HOME here is enough."""
+    The log folder resolves lazily now, so isolating HOME here is enough."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
 

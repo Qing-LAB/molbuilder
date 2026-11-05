@@ -1849,9 +1849,6 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "write ends",
              when="run", level="transient", kind="transient",
              writer="`persist` and the codec, writing whole or not at all"),
-    Artifact(name="{target}.lock", what="a sidecar's lock",
-             when="run", level="transient", kind="transient",
-             writer="`sidecars.molstruct.with_lock`"),
 )
 
 # A ROW CUT FROM AN OUTPUT IS THAT OUTPUT'S ENGINE'S: said once, by the

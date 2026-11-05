@@ -129,6 +129,20 @@ def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
         "run, and what a person edits afterwards")
 
 
+def test_what_a_citation_takes_is_read_back():
+    """`engines/template.md` § 5: the catalogue's `citation` tag is the one
+    source of what a citation takes, and `parse/contract.py`'s three tuples
+    say how each is read back.  An item tagged and listed in none of them is
+    written to the deck record and read by nothing: the citation silently
+    short, with every run still finishing."""
+    from molbuilder.parse.contract import (K_MESH_RECORD_KEYS, RECORDED_FIELDS,
+                                           SCF_RECORD_KEYS)
+    tagged = {it.name for it in T.select(T.catalogue(), citation="transport")}
+    read = {*RECORDED_FIELDS, *SCF_RECORD_KEYS, *K_MESH_RECORD_KEYS}
+    assert tagged - read == set(), (
+        "add each to RECORDED_FIELDS, SCF_RECORD_KEYS or K_MESH_RECORD_KEYS")
+
+
 def test_select_can_ask_which_items_the_citation_answers():
     """So `prep` asks the template instead of carrying its own name list."""
     items = [_decl(n) for n in ("mesh", "basis", "ranks")]

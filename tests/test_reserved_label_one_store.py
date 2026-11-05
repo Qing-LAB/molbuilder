@@ -234,7 +234,7 @@ def test_a_saved_structure_comes_back_the_same(tmp_path):
     target = tmp_path / "round.xyz"
     StructureCodec().write(_labelled(), target)
 
-    back = StructureCodec().read(target)
+    back = StructureCodec().load(target)
 
     assert back.regions == {"L-electrode": [0], FROZEN_LABEL: [1, 2]}
     assert back.frozen_atoms == [1, 2]

@@ -348,8 +348,8 @@ five transport rungs, PySCF, the molwatch preview), each deck's record, the
 stated offset (`Structure.engine_offset`, sidecar v10), the retirement of
 `cell_origin`, the readers of engine output, the wire and MolView, and the Cell
 page's origin (plan § 5q.6, P1–P3); one offset for a frame set followed on
-2026-10-09 (`Structure.frame_at`, below). Not yet built: the design-frame
-exports plan § 5q.5 still marks open. *(The transport deck viewer, W30 ④,
+2026-10-09 (`Structure.frame_at`, below). `to_ase` carries the offset; `to_pyscf`
+states no box, so it needs none. *(The transport deck viewer, W30 ④,
 was built 2026-10-11 on the Results ladder, for every calculation —
 [`web/results.md`](?doc=web/results.md) § 2.4.)* The scope and the order of work are
 [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33). The clauses this section
@@ -484,7 +484,7 @@ as the person's, kept as stated, and *Automatic* on the Cell page centres it.
   every read of an engine's own structure file — SIESTA's `<label>.xyz` and
   `<label>.XV`, written with no sidecar, take their run's frame from what that
   run declared, `declared(run)` (`execution/architecture.md` § 3.2): the codec
-  (`StructureCodec.read`), the Results tab's trajectory door and `xv2xyz
+  (`StructureCodec.load`), the Results tab's trajectory door and `xv2xyz
   --from-run`, which also takes the run's labels and held atoms from it — its
   own deck's records, never a sidecar looked for beside the file *(plan B12,
   D19; until 2026-10-04 the composer was `parse/dirs/atom_metadata.engine_frame_for_run_dir`
@@ -1206,10 +1206,10 @@ fixed their box that it was still broken.
 
 ### 8.2 One way in, and two verdicts — the contract (decided 2026-08-03)
 
-**Every structure enters the same way, whatever door it knocks on.** Four things
+**Every structure enters the same way, whatever door it knocks on.** Three things
 can carry a box — the `.molstruct.json` sidecar on disk, the labels package
-recovered from a run's input script, a `periodicity` field in the request, and
-the metadata inside a structure envelope — and before this was written down,
+recovered from a run's input script, and the metadata inside a structure
+envelope — and before this was written down,
 which one you used decided whether the box was checked at all.
 
 **The sequence, in this order, with no step optional:**
@@ -1218,11 +1218,10 @@ which one you used decided whether the box was checked at all.
 |---|---|---|
 | 1 | **Get the geometry** | from exactly ONE source: a file path, raw text, or a structure envelope. A request carrying two is a caller mistake and is refused — never silently resolved by precedence |
 | 2 | **Apply the facts that travelled with it** | at most ONE metadata document — a sidecar *or* a trusted labels package, never both. Applying is whole-replace, so a second document does not merge with the first, it erases it |
-| 3 | **Apply what the caller stated** | the request's own `periodicity` block, which beats the document, because stating it is a deliberate act |
-| 4 | **Check once, at the end, on the structure** | never on the field the box arrived in. This is what makes the route irrelevant: whichever of the four carried it, the same check sees the same assembled structure |
-| 5 | **Answer** | refuse or report — see below |
+| 3 | **Check once, at the end, on the structure** | never on the field the box arrived in. This is what makes the route irrelevant: whichever of the four carried it, the same check sees the same assembled structure |
+| 4 | **Answer** | refuse or report — see below |
 
-Step 4 is the load-bearing one. A check attached to a *field* only guards the
+Step 3 is the load-bearing one. A check attached to a *field* only guards the
 callers who use that field; a check attached to the *structure*, immediately
 before the door answers, cannot be walked around. It is the same property that
 makes seam 2 work for the seven edit ops.
@@ -1266,7 +1265,7 @@ and that is refused at every door that would act on one:
 
 | Door | What it does with a left-handed cell |
 |---|---|
-| `StructureCodec.read` — opening a file | opens it; says nothing (the answer reports, at seam 2) |
+| `StructureCodec.load` — opening a file | opens it; says nothing (the answer reports, at seam 2) |
 | `script_emit.render_deck` — every deck, SIESTA's and PySCF's | **refuses** — `validate()` calls it an `error`, and `render_deck` runs `report(validate(…))` before a line of the deck exists |
 | `/api/build/preflight` · the hand-over to Task setup · transport · export | **refuses** — 400, at the request seam |
 

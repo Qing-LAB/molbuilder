@@ -117,7 +117,7 @@ def _holds_the_engines_frame(saved, cell, positions):
     recorded as the person's, *Entering a new calculation* would keep the
     0 instead of centring it."""
     from molbuilder.workingcopy_structure import StructureCodec
-    back = StructureCodec().read(saved)
+    back = StructureCodec().load(saved)
     assert back.engine_offset is not None, (
         "the saved pair states no origin, so its next treatment re-derives "
         "one and moves the box off where the engine had it")

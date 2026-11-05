@@ -277,7 +277,7 @@ the last of them. Four keys went that day because nothing read them any more:
 unread since the click bridge's deletion on 2026-09-17; and `optional`, which
 the template takes from the field's `Optional[...]` type and the form from
 the catalogue — 136 declarations. `help` left the classes the same day: the
-catalogue is its one home, read through `template.help_for`.)*
+catalogue is its one home.)*
 
 **Group 1 — the form's own tags.** They describe *how a field is presented*,
 and this document owns them. **The form reads them from the catalogue** (§ 1),

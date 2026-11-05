@@ -147,7 +147,9 @@ def effective_L(cell: List[List[float]]) -> float:
     """Effective supercell side length L = V^(1/3) in Å for use
     with the cubic Madelung constant.  For a strictly cubic cell
     this is the side length; for a slightly distorted cell it
-    gives the best-shape-matched estimate."""
+    gives the best-shape-matched estimate.  What :func:`compute_correction`
+    takes as its length; the script a run carries computes the same
+    (``effective_length_angstrom``), holding no molbuilder."""
     V = _cell_volume_angstrom3(cell)
     if V <= 0:
         raise ValueError("Lattice volume must be positive")
@@ -307,6 +309,12 @@ def lattice_volume_angstrom3(cell):
     return abs(a[0] * bx + a[1] * by + a[2] * bz)
 
 
+def effective_length_angstrom(cell):
+    """L = V^(1/3): the side for the cubic Madelung constant; for a strictly
+    cubic cell its side, for a slightly distorted one the best-shape match."""
+    return lattice_volume_angstrom3(cell) ** (1.0 / 3.0)
+
+
 def compute_correction(q, L_angstrom, epsilon_r, madelung):
     L_bohr = L_angstrom / BOHR_ANGSTROM
     dE_hartree = madelung * (q * q) / (2.0 * epsilon_r * L_bohr)
@@ -359,8 +367,7 @@ def main():
             print(f"error: could not parse 'outcell: Unit cell vectors' "
                   f"from {{out_path}}", file=sys.stderr)
             sys.exit(1)
-        V = lattice_volume_angstrom3(cell)
-        L = V ** (1.0 / 3.0)
+        L = effective_length_angstrom(cell)
         dE = compute_correction(NET_CHARGE, L, args.epsilon, args.madelung)
         # Cell-shape sanity: warn if the cell is markedly non-cubic
         # (the cubic Madelung loses validity).  Heuristic: max/min of

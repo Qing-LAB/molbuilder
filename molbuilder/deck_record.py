@@ -34,9 +34,6 @@ except ImportError:                         # beside a job, in a bundle
     from keys import WALL_TIME as _WALL_TIME
 
 
-# Block names used in the markers.  Centralised so a typo doesn't
-# silently produce a file the parser refuses.
-BLOCK_HEADER        = "header"
 BLOCK_PROVENANCE    = "provenance"
 BLOCK_BENCH_MARKS   = "bench-marks"
 BLOCK_ATOM_METADATA = "atom-metadata"
@@ -447,7 +444,7 @@ def read_bench_marks_block(text: str) -> Optional[Dict[str, Any]]:
 TRAVELS_WITH = ("molbuilder.trajectory_log.keys",)
 
 
-__all__ = ["BUILD_NAME", "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
+__all__ = ["BUILD_NAME", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
            "MARKER_RE", "same_calculation",

@@ -75,7 +75,7 @@ def test_write_then_read_restores_structure_labels_and_annotations(project):
     s.frozen_atoms = [4]
     s.set_channel("spin", AtomChannel("value", {2: 0.5}))
     CODEC.write(s, project / "mol.xyz")
-    s2 = CODEC.read(project / "mol.xyz")
+    s2 = CODEC.load(project / "mol.xyz")
     assert s2.n_atoms == 5
     assert s2.frozen_atoms == [4]
     assert s2.get_channel("spin").data == {2: 0.5}
@@ -139,5 +139,30 @@ def test_a_sidecar_that_cannot_be_written_leaves_the_pair_as_it_was(tmp_path):
     moved = s.replace(positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.80]]))
     moved.set_info("relaxation", {"energy_ev": float("nan")})
     with pytest.raises(ValueError):
+        CODEC.write(moved, target)
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+
+
+def test_a_half_that_cannot_be_staged_leaves_the_pair_as_it_was(
+        tmp_path, monkeypatch):
+    """`model/structure.md` § 2.4, both or neither, the disk's half: both are
+    staged before either lands, so a full disk or a quota at the second leaves
+    the old pair byte for byte, and neither temp file beside it."""
+    import molbuilder.workingcopy_structure as W
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]))
+    target = tmp_path / "h2.xyz"
+    CODEC.write(s, target)
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    stage = W.stage_bytes
+
+    def _second_fails(path, data, **kw):
+        if path != target:
+            raise OSError("no space left on device")
+        return stage(path, data, **kw)
+
+    monkeypatch.setattr(W, "stage_bytes", _second_fails)
+    moved = s.replace(positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.80]]))
+    with pytest.raises(OSError):
         CODEC.write(moved, target)
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before

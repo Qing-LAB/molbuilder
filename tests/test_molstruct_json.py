@@ -45,6 +45,11 @@ def _toy_xyz_text(n: int = 4) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _on_disk(side: Path, payload: dict) -> None:
+    """A sidecar in the file, in the one serialisation (`dumps`)."""
+    side.write_text(msj.dumps(payload), encoding="utf-8")
+
+
 def _write_xyz(tmp_path: Path, n: int = 4) -> Path:
     p = tmp_path / "synthetic.xyz"
     p.write_text(_toy_xyz_text(n))
@@ -221,9 +226,9 @@ class TestToDict:
 # --------------------------------------------------------------------- #
 
 
-class TestSaveLoadRoundTrip:
+class TestWrittenThenLoaded:
     def test_round_trip_identity(self, tmp_path):
-        """Every field except the generated timestamp survives save then load.
+        """Every field except the generated timestamp survives being written and loaded.
 
         The sidecar carries the region labels and frozen atoms that XYZ cannot
         represent (`structure-molstruct.md` § 1), and there is no second copy to
@@ -239,51 +244,12 @@ class TestSaveLoadRoundTrip:
             geometry_hash=_HASH,
         )
         side = msj.sidecar_path_for(xyz)
-        msj.save(side, payload)
+        _on_disk(side, payload)
         loaded = msj.load(side)
         # Everything except created_at (timestamp) should match:
         for key in ("schema_version", "n_atoms_total", "geometry_hash",
                     "regions", "created_by"):
             assert loaded[key] == payload[key]
-
-    def test_atomic_write_no_partial_on_disk(self, tmp_path):
-        """``save`` should leave no ``.tmp`` next to the sidecar after
-        a successful write -- the atomic-replace path runs to completion."""
-        xyz = _write_xyz(tmp_path)
-        payload = msj.to_dict(
-            n_atoms_total=4,
-            geometry_hash=_HASH,
-        )
-        side = msj.sidecar_path_for(xyz)
-        msj.save(side, payload)
-        leftover = list(tmp_path.glob("*.tmp"))
-        assert leftover == [], f"left behind: {leftover}"
-
-    def test_save_emits_utf8_bytes_for_unicode_region_label(self, tmp_path):
-        """Regression for 2026-06-09 audit BLOCKER: ``save`` previously
-        called ``open(tmp, "w")`` without ``encoding="utf-8"``, so a
-        region label with non-ASCII characters mojibaked on systems with
-        a non-UTF-8 platform locale (cp1252, latin-1).  Pin that the
-        bytes on disk decode as UTF-8 regardless of the runner's locale.
-        """
-        xyz = _write_xyz(tmp_path, n=4)
-        payload = msj.to_dict(
-            {"regions": {"α-helix": [0, 1], "β-sheet": [2, 3]}},
-            n_atoms_total=4,
-            geometry_hash=_HASH,
-        )
-        side = msj.sidecar_path_for(xyz)
-        msj.save(side, payload)
-        # Read the raw bytes and decode as UTF-8 — must succeed and
-        # round-trip the non-ASCII labels verbatim.
-        raw = side.read_bytes()
-        text = raw.decode("utf-8")
-        assert "α-helix" in text
-        assert "β-sheet" in text
-        # And the load() path must also see them.
-        loaded = msj.load(side)
-        assert "α-helix" in loaded["regions"]
-        assert "β-sheet" in loaded["regions"]
 
     def test_load_accepts_utf8_bom(self, tmp_path):
         """Regression for the same audit: ``load`` used to call
@@ -306,104 +272,6 @@ class TestSaveLoadRoundTrip:
         side.write_text(bom + _json.dumps(payload), encoding="utf-8")
         loaded = msj.load(side)
         assert loaded["regions"] == {"L-electrode": [0, 1]}
-
-
-# --------------------------------------------------------------------- #
-#  with_lock(): serialises concurrent read-modify-write cycles          #
-# --------------------------------------------------------------------- #
-
-
-class TestWithLockSerialisation:
-    """``with_lock`` MUST hold an exclusive flock for the duration of
-    the context block so two concurrent read-modify-write cycles can't
-    lose one update.  Verified via threading: each thread does a
-    canonical RMW (load existing -> tag in a key -> save), and after
-    both threads complete the file holds the merged state."""
-
-    def _rmw_in_thread(self, tmp_path, key, hold_time_s):
-        """Worker: lock, read existing, add ``key``, sleep (to widen
-        the race window), save, release.  ``hold_time_s`` is the
-        between-load-and-save delay -- with the lock it doesn't matter
-        how long; without it, longer delay makes the race more
-        reliably reproducible."""
-        import time
-        side = tmp_path / "race.molstruct.json"
-        with msj.with_lock(side):
-            existing = msj.load(side) if side.exists() else None
-            if existing is None:
-                regions = {}
-            else:
-                regions = dict(existing.get("regions") or {})
-            time.sleep(hold_time_s)
-            # Each thread tags its OWN key in regions; if both reads
-            # see the original (empty) state and both writes happen,
-            # the second writer clobbers the first and only its tag
-            # lands on disk.
-            regions[key] = [0, 1, 2]
-            payload = msj.to_dict(
-                {"regions": regions},
-                n_atoms_total=4,
-                geometry_hash=_HASH,
-            )
-            msj.save(side, payload)
-
-    def test_two_concurrent_rmw_cycles_both_land(self, tmp_path):
-        """Run two RMW workers in parallel.  Each tags a different
-        region key.  If ``with_lock`` serialises correctly, the
-        final sidecar contains BOTH keys.  Without serialisation,
-        the second writer clobbers the first and only one survives."""
-        import threading
-        t1 = threading.Thread(
-            target=self._rmw_in_thread,
-            args=(tmp_path, "alpha", 0.05),
-        )
-        t2 = threading.Thread(
-            target=self._rmw_in_thread,
-            args=(tmp_path, "beta", 0.05),
-        )
-        t1.start()
-        t2.start()
-        t1.join(timeout=10)
-        t2.join(timeout=10)
-        assert not t1.is_alive(), "rmw thread #1 still running"
-        assert not t2.is_alive(), "rmw thread #2 still running"
-
-        side = tmp_path / "race.molstruct.json"
-        final = msj.load(side)
-        regions = final.get("regions") or {}
-        assert "alpha" in regions, (
-            f"lock failed to serialise: alpha lost from final state; "
-            f"got regions={regions!r}"
-        )
-        assert "beta" in regions, (
-            f"lock failed to serialise: beta lost from final state; "
-            f"got regions={regions!r}"
-        )
-
-    def test_lock_file_created_in_sidecar_dir(self, tmp_path):
-        """``with_lock`` creates a ``.lock`` sibling file in the
-        sidecar's directory; left in place after the block exits so
-        a subsequent save can reuse it (no cleanup overhead in the
-        hot path)."""
-        side = tmp_path / "lock-creation.molstruct.json"
-        lock = side.with_suffix(side.suffix + ".lock")
-        assert not lock.exists()
-        with msj.with_lock(side):
-            assert lock.exists(), "lock file should be created on entry"
-        # Left behind on exit; next caller reuses it.
-        assert lock.exists()
-
-    def test_lock_does_not_create_the_sidecar_itself(self, tmp_path):
-        """The lock is a SIBLING file -- entering the block on a path
-        whose sidecar doesn't exist yet must NOT create the sidecar."""
-        side = tmp_path / "missing-sidecar.molstruct.json"
-        assert not side.exists()
-        with msj.with_lock(side):
-            pass
-        assert not side.exists(), (
-            "with_lock created the sidecar; should only create the "
-            "sibling .lock file"
-        )
 
 
 # --------------------------------------------------------------------- #
@@ -785,7 +653,7 @@ class TestInfoBlock:
         written.
 
         `info` is free-form, so a caller can put anything in it. Failing later, inside
-        `save`, leaves the structure written and no sidecar beside it -- the unpaired
+        the write, leaves the structure written and no sidecar beside it -- the unpaired
         state `structure-molstruct.md` § 5 exists to prevent -- plus a stray
         `.tmp` from the atomic-replace path. Refusing in `to_dict` means nothing has
         touched the disk yet.

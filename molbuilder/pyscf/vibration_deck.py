@@ -19,7 +19,7 @@ THE EMITTERS.  The science emitters live in this package
 
 THE ADAPTER.  The kind's science and the emitters both read one view, so
 a check and the deck it checks cannot disagree about a value
-(`science_view`'s contract).  :class:`VibrationConfigView` feeds the
+(the kind's validation step).  :class:`VibrationConfigView` feeds the
 frozen indices from the STRUCTURE's own label store (the sidecar
 three-stage contract, `engines/overview.md` § 3) and everything else
 straight through.
@@ -118,14 +118,6 @@ class VibrationConfigView:
 
     def __getattr__(self, name):
         return getattr(self._cfg, name)
-
-
-def science_view(cfg, struct: Structure) -> "VibrationConfigView":
-    """The vibration deck's config view, for the KIND's validation step
-    (`validation.spectra.validate_vibration_kind`).  One adapter, two
-    readers: the emitters and the science speak the same vocabulary,
-    so a check and the deck it checks cannot disagree about a value."""
-    return VibrationConfigView(cfg, struct)
 
 
 def _vib_constants(cfg, names) -> List[str]:

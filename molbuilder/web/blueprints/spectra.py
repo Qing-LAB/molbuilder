@@ -353,11 +353,8 @@ def api_spectra_load():
     # here, which is filesystem enumeration.  The rate limiter's
     # attack-string screen reads the URL, and this path arrives in a
     # JSON body, so nothing else stands here.
-    from .files import _PickerError, _resolve_within_roots
-    try:
-        path = _resolve_within_roots(path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    from .files import _resolve_within_roots
+    path = _resolve_within_roots(path)
     # THE RUN'S END IS READ BEFORE THE FILE'S LAST READ (`web/results.md`
     # § 4.1): the run this file belongs to is asked after the file is
     # read, and when it is no longer live the file is read again if it
@@ -404,14 +401,11 @@ def api_spectra_frameset():
     words (400)."""
     from molbuilder.spectra.mode_frames import FrameSetError, frameset_from_mode
     from molbuilder.projects import projects_root
-    from .files import _PickerError, _resolve_within_roots
+    from .files import _resolve_within_roots
     body = request.get_json(silent=True) or {}
-    try:
-        # THE RUN IS THE RESULT'S FOLDER, derived here as the export's is.
-        run = _resolve_within_roots(str(body.get("path") or "")).parent
-        out = _resolve_within_roots(str(body.get("out") or ""))
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+    # THE RUN IS THE RESULT'S FOLDER, derived here as the export's is.
+    run = _resolve_within_roots(str(body.get("path") or "")).parent
+    out = _resolve_within_roots(str(body.get("out") or ""))
     try:
         mode = int(body.get("mode"))
         rule = ({} if body.get("nodes") is None
@@ -448,7 +442,7 @@ def api_spectra_export():
     from molbuilder.spectra.export import export
     from molbuilder.spectra.raman import ASK_KEYS
     from ._shared import finite_float, sent_export
-    from .files import _PickerError, _resolve_within_roots
+    from .files import _resolve_within_roots
     raw_path = str(request.args.get("path") or "")
     try:
         path = _resolve_within_roots(raw_path)
@@ -457,8 +451,6 @@ def api_spectra_export():
                  for key in ASK_KEYS if request.args.get(key) not in (None, "")}
         got = export(calc, str(request.args.get("format") or ""),
                      folder=path if path.is_dir() else path.parent, **asked)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
     except FileNotFoundError:
         return jsonify({"ok": False, "error": f"nothing at {raw_path}"}), 404
     except (NotACalculation, ExportError, ValueError, OSError) as exc:
