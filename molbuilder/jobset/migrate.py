@@ -233,7 +233,7 @@ def _map_raman(vals: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     window -- and its charges were always written.  An ``explicit`` list of
     modes is refused by name: mode numbers have no range to become."""
     from ..spectra.methods import frequency_range_words
-    from ..spectra.selection import parse_index_list
+    from ..selection import parse_index_list
     sel = vals.get("es_mode_selection", "skip")
     listed = str(vals.get("es_explicit_indices") or "")
     out: Dict[str, Any] = {"compute_ir": True}

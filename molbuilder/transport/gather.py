@@ -422,14 +422,13 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     engine input in the run and now.  A transport deck records no machine
     sizing, so no allocation is needed to render it."""
     from ..jobset.model import Resources
-    from ..jobset.prep_inputs import run_inputs
+    from ..resolve import card_settings
     base, task = calc.base, calc.task
-    # THE RUNG'S RUN SETTINGS, as `prep task` takes them from its card
-    # (`run_inputs`).
-    _shape, settings = run_inputs(calc.request, stage)
+    # THE RUNG'S RUN SETTINGS, as `prep task` takes them from its card.
+    settings = card_settings(calc.request, stage)
     struct, config, state, _element = transport_rung(
         task, stage, composed, Resources(), template_text=calc.template_text,
-        run_settings=settings or None)
+        run_settings=settings)
     struct = at_frame(struct, point)
     # A TRANSMISSION POINT WHOSE GRID IS A FINISHED POINT'S OWN renders that
     # point's contours (`reuse.that_point`; `engines/transport.md` § 2a.16).

@@ -6,12 +6,12 @@ Two tuples, one per kind:
     bench_inputs     ->  (points, pins, translation)      a benchmark sweep
 
 and the pieces they are made of: the run's condition (`JobRequest.
-run_condition`, read by `declared_run_shape`, `run_inputs`), the bench's
-declared pins and axes (`_declared_execution_pins`), and the bench grid --
+run_condition`, read by `resolve.declared_run_shape`, `resolve.card_settings`),
+the bench's declared pins and axes (`_declared_execution_pins`), and the bench grid --
 enumerated, fit cell by cell on the benchmark's queue, and reported
 (`_cells_on_the_queue`, `_local_over`, `_past_the_ask`, `_cell_*`).
 
-**The conductor's own assembly, beside it** (`architecture.md` § 2.1's note:
+**The conductor's own assembly, beside it** (`architecture.md` § 2.2:
 only a surface imports the conductor, and its own modules).  A refusal is a
 `PrepError`, which each surface shows as it is, and what a person is TOLD
 comes back through the ``notes`` list a caller hands in -- the command line
@@ -21,7 +21,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..resolve import (MACHINE_AXES, MachineTranslation, card_settings,
+                       declared_run_shape, point_token)
 from .errors import PrepError
+from .model import Resources
 
 
 def _declared_execution_pins(request, bench_override=None):
@@ -31,8 +34,8 @@ def _declared_execution_pins(request, bench_override=None):
     as a pin for them alone (the run's values are its own card's,
     `job-request.md` § 3.2).  Nothing migrates between files: the request
     stays exactly as edited, and prep is where a declaration is resolved.
-    The run's condition is handed through here too (:func:`run_inputs`), so
-    the two lanes split a name by one rule.
+    The run's condition is split by the same rule
+    (`resolve.declared_run_shape`, `resolve.card_settings`).
 
     Returns ``(pins, axes, value_axes)``: the one-point non-machine values
     as a pins dict, the machine-answered entries untouched (the grid's
@@ -188,116 +191,22 @@ def _cell_label(g, n, c) -> str:
     value axes crosses each cell with them, so its trials' names go on past
     this one (``G0N48C1ELPA1stage``): the fit list names the cell, the
     directories its trials."""
-    from ..resolve import MACHINE_AXES, point_token
     return point_token(dict(zip(MACHINE_AXES, (g, n, c))))
+
+
+def _cell_resources(point, _environment) -> dict:
+    """What a trial asks the machine for: N ranks of C cores, and its device
+    count where it has one -- G=0 is a CPU trial, with NO gres, which is what
+    lets `launch` put a CPU group on an allocation that holds no device
+    (`generator.md` § 4.3a's split submission)."""
+    asked = {"mpi_np": point["N"], "cpus_per_task": point["C"]}
+    return {**asked, "gres": f"gpu:{point['G']}"} if point["G"] else asked
 
 
 def _cell_shape(g, n, c) -> str:
     """What a cell ASKS FOR, in words -- ranks, cores each, and GPUs."""
     bit = f"{n} rank(s) x {c} core(s)"
     return bit + (f" + {g} GPU(s)" if g else "")
-
-
-# THE CATALOGUE'S WORDS FOR A LAUNCH FIELD are mapped to `Resources`' own by
-# the one name map, `model.AS_RESOURCE`; an item whose name maps to no field
-# is DROPPED by `declared_run_shape`.  The run's own wall and queue
-# (`job-request.md` § 3.2a) are `Resources` fields under their own names.
-from .model import AS_RESOURCE
-
-
-def declared_run_shape(request, stage=None):
-    """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
-    fields.  ``{}`` when the condition states none.
-
-    **A DIRECT MAP, because there is nothing to work out.** The template
-    carries the physics (`template.md` § 5), the cards how the run runs; a
-    launch value no card names is stated as a flag, or prep refuses the
-    run (`architecture.md` § 5.2) -- nothing fills one in.  Not the grid's
-    cells: `bench_inputs` is a sweep's own machinery.
-
-    The device ask is a COUNT -- ``gpu:N`` -- and names no card: which card
-    a node carries is the machine's business (`scheduler.md` R2a).  The count is the run card's
-    own ``gpu_count``, on every engine, carried as stated: whether the run
-    uses the GPU is its resolved ``use_gpu``, and the two are asked together
-    by the prep entry, of the job it resolves (`prep.plan_stage`,
-    `execution/gpu.md` G5).
-    """
-    from .model import Resources
-    known = {f.name for f in __import__("dataclasses").fields(Resources)}
-    out = {}
-    for name, (it, val) in sorted(_card_values(request, stage).items()):
-        if it is None:
-            # THE RUN'S OWN SCHEDULER ASK (`job-request.md` § 3.2a), spelled
-            # by the job request's reader: not a catalogue item, and dropping
-            # it would DROP a value a person typed.
-            out[name] = val
-            continue
-        if not it.allocation or val is None:
-            continue                    # a parameter, or unset on this rung
-        field = AS_RESOURCE.get(name, name)
-        if field == "gres":
-            out["gres"] = f"gpu:{val}"  # the count, as the scheduler spells it
-        elif field in known:
-            out[field] = val
-    return out
-
-
-def _card_values(request, stage=None):
-    """``{name: (item, value)}`` -- the run card a rung runs at (the
-    calculation's with the rung's over it, `JobRequest.run_condition`),
-    each value asked of the setting door in the run card's home and
-    spelled by it (`engines/template.md` § 5.4); a scheduler ask (`time`,
-    `domain`) with no item, as its reader spelled it.  Refused BY NAME, the
-    first refusal as a `PrepError`: the preflight has listed them all
-    before prep asks, so this is the backstop for a direct caller."""
-    from .. import template as _T
-    from ..job_request import LANE_ASKS
-    engine, kind = str(request.engine), str(request.calculation)
-    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)}
-    out = {}
-    for name, val in request.run_condition(stage).items():
-        if name in LANE_ASKS:
-            out[name] = (None, val)
-            continue
-        it = items.get(name)
-        why = (f", which is not a setting of {engine}" if it is None else
-               _T.accepts(it, val, "run_card", engine=engine, kind=kind,
-                          stage=stage))
-        if why:
-            raise PrepError(f"the run card sets {name} = "
-                            f"{_T.shown(val)}{why}.")
-        out[name] = (it, _T.spell(it, val))
-    return out
-
-
-def card_settings(request, stage=None):
-    """The run settings a run takes from the job request's cards --
-    ``{name: (value, "stage_card" | "calc_card")}``: the condition's
-    NON-machine items (`declared_run_shape` takes the machine's), each with
-    the card it came from (`job-request.md` § 4) -- ``None`` where a card
-    leaves an optional one unset (§ 3.2).  With no ``stage``, the
-    calculation's card alone -- what a benchmark's trials take (§ 3.4)."""
-    entry = request.entry(stage) if stage is not None else None
-    own = dict(entry.execution or {}) if entry is not None else {}
-    return {k: (v, "stage_card" if k in own else "calc_card")
-            for k, (it, v) in _card_values(request, stage).items()
-            if it is not None and not it.allocation}
-
-
-def run_inputs(request, stage=None):
-    """The run's two halves from its condition — ``(chosen, settings)``.
-
-    One block, two destinations, split by the catalogue's own answer: a
-    machine-answered item is the launch SHAPE (`declared_run_shape`), anything
-    else is a run setting over the catalogue's default (`card_settings`) --
-    each value read through the setting door in the run card's home
-    (`_card_values`), so the two halves cannot disagree about what a name
-    means.
-    """
-    # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a card whose `use_gpu` is on
-    # with no count is a device run asking for none, refused, unstated, by
-    # the prep entry of the job it resolves (`gpu.md` G5).
-    return declared_run_shape(request, stage), card_settings(request, stage)
 
 
 def prep_run_inputs(request, stage, allocation=None):
@@ -325,7 +234,6 @@ def prep_run_inputs(request, stage, allocation=None):
 
     A flag beats it and is already in ``allocation`` when it arrives.
     """
-    from .model import Resources
 
     # NEVER NONE (§ 6.0a's contract): the run card and the allocation are
     # folded UNDER this field by field (step 2), and there is no
@@ -337,7 +245,11 @@ def prep_run_inputs(request, stage, allocation=None):
     #     under a flag (`architecture.md` § 5.2) -- folded where the rest of
     #     the allocation is, once, at step 2 (:func:`fold_allocation`: a
     #     flag, then the run card, then the allocation).
-    chosen, settings = run_inputs(request, stage)
+    # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a card whose `use_gpu` is on with
+    # no count is a device run asking for none, refused, unstated, by the
+    # prep entry of the job it resolves (`gpu.md` G5).
+    chosen = declared_run_shape(request, stage)
+    settings = card_settings(request, stage)
     # WHETHER A GPU RUN STATES HOW MANY, AND A CPU RUN NONE (`execution/
     # gpu.md` G5) is the prep entry's to ask, of the job it resolves from
     # this assembly, beside the launch values' refusal -- and the Task
@@ -416,8 +328,7 @@ def fold_allocation(flags, declared, chosen=None):
     whole-object precedence would make ``--np 8`` erase a memory ask
     nobody mentioned.  ``declared`` is the job request's ``allocation``
     (`job-request.md` § 3.1); ``chosen``, the run card's launch shape
-    (§ 3.2, :func:`declared_run_shape`)."""
-    from .model import Resources
+    (§ 3.2, `resolve.declared_run_shape`)."""
     out = flags or Resources()
     import dataclasses as _dc
     known = {f.name for f in _dc.fields(Resources)}
@@ -514,7 +425,6 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # the command line prints it, the Task setup tab shows it
     # (`prep.prep_task`, `job-system.md` § 5.0).
     note = notes.append if notes is not None else (lambda _text: None)
-    from ..resolve import MachineTranslation
     from ..runfiles import JOB_REQUEST_FILE
     from .machine import machine_record
     base, task, request = Path(calc.base), calc.task, calc.request
@@ -769,7 +679,6 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
         combos = [{**c, name: v} for c in combos for v in vals]
 
     points = []
-    from ..resolve import MACHINE_AXES
     for fam, cell in cells:
         # EVERY TRIAL CARRIES G -- ``G0`` for a CPU trial, on every
         # machine.
@@ -778,28 +687,8 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
             coord["use_gpu"] = fam
         points.extend({**coord, **vc} for vc in combos)
 
-    if mixed:
-        # ONE translation serves both families: N ranks each, G=0 with NO
-        # gres, G>=1 with the device ask -- which is what lets `launch` put
-        # the CPU group on an allocation that holds no device (§ 4.3a's
-        # split submission).
-        translation = MachineTranslation(
-            axes=MACHINE_AXES,
-            to_resources=lambda p, _env: (
-                {"mpi_np": p["N"], "cpus_per_task": p["C"],
-                 "gres": f"gpu:{p['G']}"} if p["G"] else
-                {"mpi_np": p["N"], "cpus_per_task": p["C"]}))
-    elif on_gpu:
-        translation = MachineTranslation(
-            axes=MACHINE_AXES,
-            to_resources=lambda p, _env: {
-                "mpi_np": p["N"], "cpus_per_task": p["C"],
-                "gres": f"gpu:{p['G']}"})
-    else:
-        translation = MachineTranslation(
-            axes=MACHINE_AXES,
-            to_resources=lambda p, _env: {
-                "mpi_np": p["N"], "cpus_per_task": p["C"]})
+    translation = MachineTranslation(axes=MACHINE_AXES,
+                                     to_resources=_cell_resources)
     # The trial pins -- schema values resolved like any other (`template.md`
     # § 8.1: rebuild and render, never splice): capped SCF, single point,
     # forced cold -- and ``scf_must_converge: False``, the switch that makes

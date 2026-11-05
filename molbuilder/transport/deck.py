@@ -54,6 +54,7 @@ from .. import script_emit as _sc
 from ..runfiles import (SIESTA_DM, SIESTA_HSX, SIESTA_TS_HSX, SIESTA_TSDE,
                         SIESTA_TSHS, compose, deck_role)
 from ..siesta import layout as _sl
+from ..siesta.engine_input import unit_word
 from ..structure import Structure
 from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
 
@@ -441,8 +442,8 @@ def _emit_tbt_window(struct, cfg) -> str:
         # ITS ENDS AT FULL PRECISION: tbtrans computes its energies from
         # them, and an end rounded is another energy (`engines/transport.md`
         # § 2a.16).
-        f"   from {float(lo.value)!r} {_sl.unit_word('transmission_emin_ev')}"
-        f" to {float(hi.value)!r} {_sl.unit_word('transmission_emax_ev')}",
+        f"   from {float(lo.value)!r} {unit_word('transmission_emin_ev')}"
+        f" to {float(hi.value)!r} {unit_word('transmission_emax_ev')}",
         f"    points {int(n.value)}",
         "     method mid-rule",
         "%endblock TBT.Contour.window",
@@ -462,8 +463,7 @@ def _tbt_energies(contours):
 
     def emit(struct, cfg) -> str:
         import json
-        from ..deck_record import begin_marker, end_marker
-        from .energies import BLOCK_SHARED
+        from ..deck_record import BLOCK_SHARED, begin_marker, end_marker
         names = [f"computed{i + 1}" for i in range(len(contours.lines))]
         out = [
             "",
@@ -484,7 +484,7 @@ def _tbt_energies(contours):
             *(f"  {name}" for name in names),
             "%endblock TBT.Contours",
         ]
-        unit = _sl.unit_word("transmission_emin_ev")
+        unit = unit_word("transmission_emin_ev")
         for name, (a, b, n) in zip(names, contours.lines):
             out += ["", f"%block TBT.Contour.{name}", "  part line",
                     f"   from {a!r} {unit} to {b!r} {unit}",

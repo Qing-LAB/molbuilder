@@ -232,6 +232,6 @@ def test_the_transmission_window_must_reach_the_bias_window(junction):
     assert not _find(issues(0.3, "device"), "config.transmission_emax_ev")
     # THE ENERGIES TBTRANS SAMPLES, not the window's edges: four mid-rule
     # points on ±0.4 eV sit at ±0.3 eV, short of 0.329 eV -- refused here,
-    # as the record would leave that voltage out (record.sampled_window).
+    # as the record would leave that voltage out (energies.sampled_window).
     assert _find(issues(0.4, "transmission", n=4),
                  "config.transmission_emax_ev", "error")

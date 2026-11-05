@@ -1,7 +1,7 @@
 """``molbuilder describe`` — the portable description, and what it must never write.
 
 Contract: ``docs/execution/architecture.md`` § 4 (the route: *ask → check →
-write*, **floor 2 only**) · ``docs/execution/job-system.md`` § 5.1 (the command)
+write*, **2, asking 3 and 4 about the description itself**) · ``docs/execution/job-system.md`` § 5.1 (the command)
 · ``docs/execution/project-layout.md`` § 2.1 (what makes the folder portable) ·
 ``docs/engines/stages.md`` § 6.3 (the structure is a reference), § 6.5 (a
 calculation with one parameter set), § 6.6 (the split preflight).
@@ -54,7 +54,7 @@ def _describe(struct, cfg, stages=_ONE_STAGE, *, name="relax", source="structure
 
 
 # --------------------------------------------------------------------- #
-#  Floor 2 only — what it must NOT write                                #
+#  What it must NOT write                                               #
 # --------------------------------------------------------------------- #
 
 def test_describing_writes_no_deck(struct, cfg, tmp_path):

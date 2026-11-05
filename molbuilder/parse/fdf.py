@@ -8,9 +8,9 @@ one keyword.  :func:`fdf_key` is that rule.
 **Why it is HERE.**  The fdf format is SIESTA's, not molbuilder's, so reading
 it is `parse/`'s by `model/parse.md` § 1a — the same footing as every other
 SIESTA file `parse/` reads.  *(§ 1a's rule
-that "a block belongs to its writer" governs molbuilder's OWN reserved blocks
-— provenance, USER-CUSTOM, atom metadata — which `script_emit` both writes and
-reads.  A SIESTA keyword is not one of those.)*
+that "a block belongs to its grammar" governs molbuilder's OWN reserved blocks
+— provenance, USER-CUSTOM, atom metadata.  A SIESTA keyword is not one of
+those.)*
 """
 
 from __future__ import annotations

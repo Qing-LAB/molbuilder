@@ -1,5 +1,6 @@
 """A TRANSMISSION POINT'S ENERGIES (`engines/transport.md` § 2a.16, *A
-transmission point's energies*): its grid (:func:`grid`); the contours a
+transmission point's energies*): its grid (:func:`grid`); the rule of whether
+a window reaches a bias (:func:`window_short_of`); the contours a
 point computes when it shares energies with a finished point, and their
 record in its deck (:class:`Contours`); and **the one door that reads a
 point's energies and every value on them** -- from its own run and its
@@ -34,9 +35,9 @@ SHARED_DIR = "shared"
 #: which finished point, the grid, and the contours -- its name the deck
 #: record's (`deck_record`).
 try:                                        # inside molbuilder
-    from ..deck_record import BLOCK_SHARED  # noqa: E402
+    from ..deck_record import BLOCK_SHARED, read_json_block  # noqa: E402
 except ImportError:                         # beside a job
-    from deck_record import BLOCK_SHARED  # type: ignore[no-redef]  # noqa: E402
+    from deck_record import BLOCK_SHARED, read_json_block  # type: ignore[no-redef]  # noqa: E402
 
 
 def spacing(window: Tuple[float, float, int]) -> float:
@@ -45,6 +46,48 @@ def spacing(window: Tuple[float, float, int]) -> float:
     the current (`m_integrate.f90`, `m_tbt_save.F90`)."""
     lo, hi, n = window
     return (float(hi) - float(lo)) / int(n)
+
+
+#: HOW FAR PAST THE BIAS WINDOW the transmission must reach for a current
+#: computed from T(E, 0) to be whole: the Fermi functions' tails, in kT
+#: (`engines/transport.md` § 2a.10; the window gate, plan § 5x P2).
+WINDOW_TAILS_KT = 5.0
+
+
+def window_short_of(emin_ev: float, emax_ev: float, volts: float,
+                    kt_ev: float) -> Optional[str]:
+    """ONE RULE for the transmission window against a bias
+    (`engines/transport.md` § 2a.10, P2): the window must reach
+    ±(|V|/2 + :data:`WINDOW_TAILS_KT`·kT) -- both leads' Fermi tails at
+    μ = ±V/2 -- or the current integrated over it is cut short without a
+    word from TBtrans.  ``None`` when it reaches; else the sentence naming
+    the reach and the fix, said alike by the record (a voltage it does not
+    integrate), the transmission deck's gate and the description's
+    preflight."""
+    half = abs(float(volts)) / 2.0
+    reach = half + WINDOW_TAILS_KT * float(kt_ev)
+    lo, hi = float(emin_ev), float(emax_ev)
+    if reach > hi or -reach < lo:
+        return (f"the transmission's sampled window [{lo:g}, {hi:g}] eV "
+                f"does not reach "
+                f"±{reach:.3f} eV for {float(volts):g} V (V/2 + "
+                f"{WINDOW_TAILS_KT:g} kT at kT = {float(kt_ev):.4f} eV); "
+                f"widen it -- transmission_emin_ev / transmission_emax_ev")
+    return None
+
+
+def sampled_window(emin_ev: float, emax_ev: float,
+                   n_points: int) -> Tuple[float, float]:
+    """The first and last energy TBtrans samples on a window of ``n_points``
+    -- the mid-rule's points, half a spacing inside each edge
+    (`m_integrate.f90`; the deck's ``method mid-rule``): what
+    :func:`window_short_of` is asked with by the transmission deck's gate
+    and the description's preflight, as the record asks it with the energies
+    the run wrote -- one rule, on the energies the current is integrated
+    over."""
+    lo, hi = float(emin_ev), float(emax_ev)
+    h = spacing((lo, hi, n_points))
+    return lo + h / 2.0, hi - h / 2.0
 
 
 def grid(emin: float, emax: float, points: int) -> List[float]:
@@ -136,10 +179,6 @@ class Contours:
     def of_deck(cls, text: str) -> Optional["Contours"]:
         """The sharing a deck records, or ``None`` for a deck that computes
         its window whole."""
-        try:                                # inside molbuilder
-            from ..deck_record import read_json_block
-        except ImportError:                 # beside a job
-            from deck_record import read_json_block  # type: ignore[no-redef]
         rec = read_json_block(text, BLOCK_SHARED)
         return cls.of_record(rec) if rec is not None else None
 
@@ -160,7 +199,7 @@ def shared_contours(energies: Sequence[float], held: Sequence[float], *,
     common = len(mine) - len(new)
     if not common or not new:
         return None
-    h = (window[1] - window[0]) / window[2]
+    h = spacing(window)
     step = 1
     if len(held_sorted) > 1:
         ratio = (held_sorted[1] - held_sorted[0]) / h
@@ -318,7 +357,8 @@ def held(folder: Path, label: str) -> List[float]:
 #: deck record.
 TRAVELS_WITH = ("molbuilder.deck_record",)
 
-__all__ = ["SAME_ENERGY_EV", "SHARED_DIR", "BLOCK_SHARED", "spacing",
-           "grid", "deck_window", "same_grid", "in_common",
+__all__ = ["SAME_ENERGY_EV", "SHARED_DIR", "WINDOW_TAILS_KT", "spacing",
+           "window_short_of", "sampled_window", "grid", "deck_window",
+           "same_grid", "in_common",
            "Contours", "shared_contours", "joined", "sharing_of",
            "window_of", "held"]

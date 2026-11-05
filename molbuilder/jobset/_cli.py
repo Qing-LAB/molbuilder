@@ -451,7 +451,7 @@ def _bias_of(bias_opt: str) -> tuple:
 
 @click.command("describe",
                short_help="describe a calculation: its description and "
-                          "its job request (floor 2 only)")
+                          "its job request")
 @_bundle_option(must_exist=False)
 @click.option("--structure", "structure", default=None, metavar="PATH",
               callback=_resolve_structure,
@@ -538,7 +538,7 @@ def describe_cmd(structure, bundle: str,
     asked yet), and the data files.  Describing is not a job verb, so it is
     not under `molbuilder jobset` (execution/job-request.md 9).
 
-    **Floor 2 only -- it renders no deck.**  A deck carries values that depend
+    **It writes no deck.**  A deck carries values that depend
     on how it will be launched, so rendering belongs to ``prep``, for the
     machine that will run it (job-system.md § 5.0).  What this writes names no
     machine and therefore means the same thing wherever you copy it.

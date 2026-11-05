@@ -205,7 +205,7 @@ assumed is that reach.
   - `joblist` — each launch's address and whether that job is going (`write`, `every`, `going_here`, `signal_here`, `is_going`, `holding`, `inside`, `Asked`, `scheduler_of`; [`job-system.md`](?doc=execution/job-system.md) § 6.0a).
   - `jobset/ledger` (`record`) · `jobset/errors` (`PrepError`) · `jobset/machine` (`machine_record`, `set_machine`, `require_activation`) · `jobset/planned` (a plan's writes as values, `Plan`) · `jobset/sequence` (a sequence of groups' launch record: `write_record`, `read_record`, `sent`).
 - **Floor 2 — description.** `task` (`of`, `from_text`, `write_task`) · `job_request` (`of`) · `template_file` (`of`) · `runs`, the run door (`run_of`, `place_of`, `state_of`, `record_of`, `on_label_at`, `about`, `openable`, `declared`, `view_of`, `folder_answer`) · `task_reader` (the Results tab's reader of a transport calculation's description).
-- **Floor 3 — plan & render.** `calculation` (`open`, `at`, `Calculation.job`) · `resolve` · `jobset/model` (`JobSet.of`, `write`, `validate`, `gpu_request`) · `jobset/naming` (`stage_home`, `job_dir_names`, `stage_refs`, `run_names`, `open_container`) · `jobset/ladder` (`independent`, `inputs_of`, `upstream_of`, `stage_before`, `fresh_stages`) · `jobset/engines` (`engine_seam`) and each engine's seam (`siesta/seam`, `pyscf/seam`) · `jobset/placement` (`placed`, `queue_table`, `launch_refusal`) · `jobset/group` · `jobset/shelves` · `jobset/rung` (`Rung`, `described_rung`, `structure_for`, `citation_of`) and the SIESTA vibration's rung builder (`spectra/siesta_rung`) · `jobset/plan` · `jobset/commands` · `jobset/sweep_reader` · `siesta/stages` · `pyscf/stages` · `siesta/input` · `pyscf/input` · `script_emit` (`render_deck`, `prepare_deck`) · `runwrap` (`render_wrappers`, `write_run_wrapper`, `render_sbatch`).
+- **Floor 3 — plan & render.** `calculation` (`open`, `at`, `Calculation.job`) · `resolve` · `jobset/model` (`JobSet.of`, `write`, `validate`, `gpu_request`) · `jobset/naming` (`stage_home`, `job_dir_names`, `stage_refs`, `run_names`, `open_container`) · `jobset/ladder` (`independent`, `inputs_of`, `upstream_of`, `stage_before`, `fresh_stages`) · `jobset/engines` (`engine_seam`) and each engine's seam (`siesta/seam`, `pyscf/seam`) · `jobset/placement` (`placed`, `queue_table`, `launch_refusal`) · `jobset/group` · `jobset/shelves` · `jobset/rung` (`Rung`, `described_rung`, `structure_for`, `citation_of`) and the SIESTA vibration's rung builder (`spectra/siesta_rung`) · `transport/stages` · `describe` (§ 4) · `jobset/plan` · `jobset/commands` · `jobset/sweep_reader` · `siesta/stages` · `pyscf/stages` · `siesta/input` · `pyscf/input` · `script_emit` (`render_deck`, `prepare_deck`) · `runwrap` (`render_wrappers`, `write_run_wrapper`, `render_sbatch`).
 - **Floor 4 — layout.** `jobset/materialize` (`open_run`, `prepare_attempt`, `hand_over`, `gather_into`, `latest_attempt`, `newest_launched`, `ever_launched`, `job_folder`, `scratch_in`) · `jobset/continuation` (`continuation_answer`, `usable`, `relaunch`, `point_rows`, `points_state`) · the transport calculation's gather (`transport/gather`: `gather_sources`, `composed_for_prep`) and rung builder (`transport/rung`), on this floor by what they hold — the composed junction and a launched rung's records · `jobset/ready` (`task_state`, `readiness`, `first_launch_takes`, `launched_without`, `regrouped`, `held_by_sequence`) · the transport calculation's reuse of a finished one (`transport/reuse`: the doors `kind_table.REUSE_DOORS` lists, and the writer of an extension, `write_reusing`) and the one way it is described (`transport/describe`: the doors `kind_table.DESCRIBE_DOORS` lists) · `jobset/points` (`points_of`, `point_of`) and each kind's declaration (`transport/points`, `spectra/vibration_points`) · `jobset/prepared_with` (what a stage was prepared with, and what changed since: `values_of`, `changes`).
 - **Floor 5 — launch.** `jobset/submit` (the one sender, `_go`; launch's entry, `plan_launch` and `send_launch`, lives in this module and is a conductor, § 2.2) · `jobset/agreement` (`check_trial_starts_cold`) · `jobset/ask`.
 - **Floor 6 — observe.** `jobset/runstatus` (`jobset_status`, `every_run`, `points_view`, `views_of`, `run_answer`, `render_status`, `render_stage_status`, `job_members`, `run_folders`, `scratch_answer`) · `jobset/summarize` (`run_summarize_jobset`) · `jobset/memory` (`need`, `largest`) · each kind's sum (`transport/sum`, `spectra/vibration_sum`).
@@ -231,10 +231,13 @@ judged — the lists above name each; the conductors and prep's assembly are
 and imports no kind and no engine — a part that is code is named in a record
 and resolved by the floor it lives on (§ 3.3). **A kind's own modules sit on
 floors by what they hold**: a run of points' declaration is floor 4's, whichever
-kind's it is; what travels beside a job and lower floors read — a transport
-rung's points (`transport/stages`), a SIESTA vibration's phases
-(`siesta/vibration_phases`), a run of points' index (`runpoints`) — is floor
-1's. **`parse/` is floor 1**: a reader turns a file, or a run folder's files,
+kind's it is; a transport ladder — its rungs, what each takes, its points
+(`transport/stages`) — is floor 3's, which the ladder asks; what travels beside
+a job — a SIESTA vibration's phases (`siesta/vibration_phases`), a run of points'
+index (`runpoints`), its words (`transport/run_words`) — is floor 1's; an
+engine's deck modules and `transport/deck` are floor 3's; what a kind's sum
+composes — `transport/record`, `tbtnc`, `datafile`,
+`spectra/displacement_sweep` — floor 6's. **`parse/` is floor 1**: a reader turns a file, or a run folder's files,
 into facts and knows no calculation, which is what lets launch and the layout
 ask how a run ended without reaching up. The readers of a calculation's own
 records — a transport calculation's `task.json`, a benchmark's `job-set.json` —
@@ -824,14 +827,18 @@ A route owns **an order**, not a floor.
 
 | route | you type | the job it does | its order | floors it visits |
 |---|---|---|---|---|
-| **describe** | `molbuilder describe`, or Task setup's Save | write the portable description and its job request — the template, `task.json`, `job-request.json`, the data files | ask → check → write | **2 only** |
+| **describe** | `molbuilder describe`, or Task setup's Save | write the portable description and its job request — the template, `task.json`, `job-request.json`, the data files | ask → check → write | 2, asking 3 and 4 about the description itself |
 | **prep** | `jobset prep` | assemble a runnable folder for the machine that will run it, from that machine's record ([`job-system.md`](?doc=execution/job-system.md) § 5.0) | plan → save → write → record; the plan is prep's steps, decided with nothing written | 1 → 2 → 3 → 4 |
 | **launch** | `jobset launch` | one job becomes one running program | plan → show → ask → send → record ([`job-system.md`](?doc=execution/job-system.md) § 6.0); the send saves the folder's state first at a group's first launch, and sends the header prep wrote | 3 (the calculation, opened once) → 1 → 4 → 5 |
 | **status** | `jobset status`, `jobset summarize` | answer *where has this got to*, and add up what has landed | newest run → read it → add up | 3 (the calculation, opened once) → 4 → 6 |
 
-**Describing stops at floor 2.** Rendering is prep's, so describing renders
-nothing — which makes *the description names no machine* a structural fact
-rather than a rule to remember.
+**Describing writes no deck and reads no machine.** It writes floor 2's records
+and asks the floors above about the description itself: floor 3's ladder, for
+the numbers a new calculation's stages take and whether the stated ones keep it;
+floor 4's transport describe, which renders a reusing calculation's points in
+memory to compare each with the finished run. The decks a run takes are prep's —
+which makes *the description names no machine* a structural fact rather than a
+rule to remember.
 
 **Where each route runs.** Describing and prepping may run on any machine:
 prep reads the target's record, the one the calculation was first prepared for
@@ -1223,7 +1230,7 @@ wish.
 | **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | **review** — a `StageRef` only by its resolver, an `Attempt` in one named function |
 | **A5** | **a stage's number is worked out, never stored** — read off the disk by `stage_home` | **review** |
 | **A6** | **once a run has started, its folder never changes** | **review** |
-| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N; every `jobset` module has a floor (§ 2.1); only a surface imports a conductor or prep's assembly (§ 2.2) | **review**, both halves (below); the upward imports found today are [`plans/plan.md`](?doc=plans/plan.md) F7's work |
+| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N; every `jobset` module has a floor (§ 2.1); only a surface imports a conductor or prep's assembly (§ 2.2) | **review**, both halves (below); four stand on purpose: `parse/dirs/setup` asking `script_emit`'s read API, `submit._go` asking `runstatus.job_members` at a stop, `parse/coords`' two readers through the structure codec, `transport/reuse` reading a finished point's energies through `energies.held` |
 | **A8** | **an object travels whole** (§ 3.1): a door that consumes one of § 3's objects takes the object, never also its fields; no caller destructures one to call it | **review**, by hand (below) |
 | **A9** | **two artifacts of one object agree.** Where one object is rendered into more than one file, the files are checked against each other | `tests/data/launch_values.toml` — one prep's `.sbatch` header and `.run.sh` carry the same stated ranks and cores |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against the anchor its own spelling names; no resolver tries candidates | `tests/test_psml_anchor.py` — one row per spelling, and the refusal names the one place it looked |

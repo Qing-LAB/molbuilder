@@ -800,7 +800,7 @@ script:
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2.
 - **`generator-version`** is molbuilder's version and its git commit
   (`script_emit.generator_version`). A later molbuilder compares versions
-  (`script_emit.written_by`): the version moves with every change to what
+  (`deck_record.written_by`): the version moves with every change to what
   molbuilder writes ([`process/conventions.md`](?doc=process/conventions.md)
   § 2), so a transport gather that meets an upstream deck written by another
   version refuses, naming both and the
@@ -936,19 +936,19 @@ it. The payload is the sidecar's schema
   (`structure.BOX_FIELDS` / `ATOM_METADATA_FIELDS`, `structure.VIEW_FIELDS`;
   the writer `script_emit.emit_atom_metadata`).
 - **One reader**, `deck_record.extract_atom_metadata` with the order record's
-  `deck_record.order_record_of`, used by `apply_atom_metadata`,
-  `runs.declared`, the vibration finish beside the job and prep's run script,
+  `deck_record.order_record_of`, used by `runs.declared`, the vibration finish
+  beside the job and prep's run script,
   which states the atoms the deck holds on its banner (`runwrap._held_words`). **It applies no
   version gate**: a block is read as written, nothing retired is translated.
   Each piece refuses what it owns — the block reader a block that does not
   read (`DeckRecordUnreadable`), the order-record reader a record that is not
-  one (`atom_permutation.PermutationError`), and `apply_atom_metadata` a block
+  one (`atom_permutation.PermutationError`), and `Structure.apply_atom_metadata` a block
   whose `n_atoms_total` disagrees with the structure (`MolstructPairingError`).
   The `.molstruct.json` file keeps its own version gate.
 - **Older decks still read.** A deck written before every deck carried the
   block wrote it only when one predicate found something to say — a label, a
   channel, a named value or an order record
-  (`script_emit.atom_metadata_has_something`), which its readers still ask: a
+  (`structure.atom_metadata_has_something`), which its readers still ask: a
   block with nothing to say reads as a deck that labels nothing and never
   hides a sidecar. Such a deck, for a kind that reorders, states no
   `atom_order`: a door that builds from its run refuses it by name, and a door
@@ -1026,7 +1026,7 @@ not read, and the run opens without it.
 
 Given a conforming file, a tool may assume: PROVENANCE says what wrote it;
 BENCH-MARKS lists the overridable fields and their bounds; ATOM-METADATA
-round-trips through `apply_atom_metadata`; USER-CUSTOM survives a generation
+round-trips through `Structure.apply_atom_metadata`; USER-CUSTOM survives a generation
 on the roads § 3.5 marks kept.
 
 ### 3.7 The template — `engines/template.md`

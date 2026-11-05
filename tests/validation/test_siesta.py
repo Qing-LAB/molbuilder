@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.siesta import SiestaConfig
+from molbuilder.config.siesta import SiestaConfig
 from molbuilder.validation import validate
 from ._helpers import _peptide_struct
 

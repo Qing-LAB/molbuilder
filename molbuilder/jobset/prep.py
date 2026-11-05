@@ -419,7 +419,7 @@ def _resolve_stage(stage, *, task, request, template, template_text,
     # not object by object: `--np 8` alone must not erase the file's
     # memory ask, which a whole-object override would do silently.
     # AND THE SHAPE IT DECIDES, when it decides one.  It arrives as an
-    # argument because its producer, `prep_inputs.declared_run_shape` -- a
+    # argument because its producer, `resolve.declared_run_shape` -- a
     # DIRECT MAP of the condition's machine items, never the grid
     # enumerator -- runs with the rest of the inputs before the five steps
     # (A12), so `prep` folds what it is handed and owns no second
@@ -1990,7 +1990,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     sweep = pins = translation = None
     chosen: dict = {}
     if kind == "bench":
-        from .prep_inputs import card_settings, fold_allocation
+        from .prep_inputs import fold_allocation
+        from ..resolve import card_settings
         ask = fold_allocation(allocation, described.calc.request.allocation)[0]
         stated_or_refused(ask, bench_asks(ask), shape=False)
         sweep, pins, translation = bench_inputs(

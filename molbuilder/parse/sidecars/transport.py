@@ -17,18 +17,22 @@ from ..base import FileParser
 from ..errors import ParseError
 from ..types import SidecarResult
 from ...runfiles import ROLE_TRANSPORT_RECORD, role_of
-from ._helpers import build_sidecar_result
+from ._helpers import build_sidecar_result, read_record
 
 
 class TransportRecordError(ParseError):
     """A ``.transport.json`` that is not one, or is not this version."""
 
 
+#: The record's schema (`execution/job-contracts.md` § 6.1): an older record is
+#: refused by its version, and `summarize task` writes it again.
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@16"
+
+
 def _load(path: Path) -> Dict[str, Any]:
     """The record as a dict, or raise — the one reader of this file."""
-    from molbuilder.transport.record import TRANSPORT_RESULT_SCHEMA
-    from ._helpers import read_record
-    return read_record(path, schema=TRANSPORT_RESULT_SCHEMA, refused=TransportRecordError,
+    return read_record(path, schema=TRANSPORT_RESULT_SCHEMA,
+                       refused=TransportRecordError,
                        what="a transport record")
 
 

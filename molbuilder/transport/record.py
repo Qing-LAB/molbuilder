@@ -41,45 +41,12 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
-from .conductance import at_fermi, per_spin_channel
+from .conductance import at_fermi, per_spin_channel, spin_of
+from .energies import window_short_of
 from .run_words import PRODUCT
 
 if TYPE_CHECKING:
     from .stages import Point
-
-#: ``order_way``: ``order_unstated``'s way on alone, for the report, whose
-#: drawing states the fact; a reader takes it where present.
-#: ``@14``: ``frame_set`` is ``null`` where the citation is no frame set --
-#: one structure -- never a block naming a run as one.
-#: ``@13``: ``frame_set`` -- the frame set the average is taken over, cited
-#: whole: the citation and its files' sha256, the structure's rows as
-#: written with their meanings, ``info.vibration`` and every atom's
-#: ``mass_amu`` in the user order (`frame_average.citation_block`).
-#: ``@10``: each finished point's ``digest`` -- what is kept of each data
-#: file's reading, its own and its ``shared/``'s: its state, size and claim
-#: (`model/parse.md` § 5e); the DOS by region from the kept readings alone.
-#: ``@9``: ``current_from`` on every point -- ``tbtrans`` (the junction's
-#: total from the printed figures) or ``joined`` (a point that shares energies
-#: with a finished calculation's, its current the record's over the joined
-#: grid, its printed figure none; `engines/transport.md` § 2a.16).
-#: ``@7``: ``order_unstated`` -- the sentence a junction whose sidecar states
-#: no order record is said with, and its way on (I9), or ``None``.
-#: ``@6``: the provenance names no ``atom_permutation`` file -- the junction
-#: (``junction_file``) carries its order record in its sidecar.
-#: ``@5``: the ``average`` carries no slope or curvature, and states the
-#: structure's rows of a mode's frame set by their own names
-#: (`model/structure.md` § 2.2f).
-#: ``@4``: a point is a frame and a voltage -- every point, pending and
-#: failed entry carries its ``frame`` (``None`` on a calculation with no
-#: frame axis) and its folder ``tokens``, a point its frame's
-#: ``customized`` rows whole; the I-V carries a ``frame`` column; the
-#: ``average`` block is the mode's average over a frame set (§ 2a.12).
-#: ``@3``: each rung's ``state`` is the status door's word with its
-#: ``detail``; a point without a transmission is ``pending`` or ``failed``;
-#: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
-#: beside it.  An older record is refused by its version, and `summarize
-#: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@16"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -126,12 +93,6 @@ _SCF_FIELDS = ("cycle", "energy", "delta_E", "dDmax", "dHmax", "ef",
                "phase", "dq", "vha_ev", "charges")
 
 
-#: HOW FAR PAST THE BIAS WINDOW the transmission must reach for a current
-#: computed from T(E, 0) to be whole: the Fermi functions' tails, in kT
-#: (`engines/transport.md` § 2a.10; the window gate, plan § 5x P2).
-WINDOW_TAILS_KT = 5.0
-
-
 class RecordError(Exception):
     """The record cannot be built — the message names what to run or
     fix first, ready to surface verbatim."""
@@ -163,15 +124,6 @@ def _ran(run_dir):
                           f"run, so what it ran cannot be read")
     from ..parse.fdf import read_deck
     return parse_fdf_params(read_deck(deck), source=deck.name)
-
-
-def spin_of(params) -> str:
-    """The spin a deck's parameters state (`parse.fdf.parse_fdf_params`) --
-    ``non-polarized`` or ``polarized`` -- in any word SIESTA accepts for it,
-    SIESTA's own default, non-polarized, where the deck states none: the
-    one rule the record and a transport run's index read it by."""
-    return ("polarized" if params.spin_treatment == "unrestricted"
-            else "non-polarized")
 
 
 def deck_spin(run_dir) -> str:
@@ -304,43 +256,6 @@ def deck_temperature_k(run_dir) -> float:
     return temperature_k_of(_ran(run_dir))
 
 
-def window_short_of(emin_ev: float, emax_ev: float, volts: float,
-                    kt_ev: float) -> Optional[str]:
-    """ONE RULE for the transmission window against a bias
-    (`engines/transport.md` § 2a.10, P2): the window must reach
-    ±(|V|/2 + :data:`WINDOW_TAILS_KT`·kT) -- both leads' Fermi tails at
-    μ = ±V/2 -- or the current integrated over it is cut short without a
-    word from TBtrans.  ``None`` when it reaches; else the sentence naming
-    the reach and the fix, said alike by the record (a voltage it does not
-    integrate), the transmission deck's gate and the description's
-    preflight."""
-    half = abs(float(volts)) / 2.0
-    reach = half + WINDOW_TAILS_KT * float(kt_ev)
-    lo, hi = float(emin_ev), float(emax_ev)
-    if reach > hi or -reach < lo:
-        return (f"the transmission's sampled window [{lo:g}, {hi:g}] eV "
-                f"does not reach "
-                f"±{reach:.3f} eV for {float(volts):g} V (V/2 + "
-                f"{WINDOW_TAILS_KT:g} kT at kT = {float(kt_ev):.4f} eV); "
-                f"widen it -- transmission_emin_ev / transmission_emax_ev")
-    return None
-
-
-def sampled_window(emin_ev: float, emax_ev: float,
-                   n_points: int) -> Tuple[float, float]:
-    """The first and last energy TBtrans samples on a window of ``n_points``
-    -- the mid-rule's points, half a spacing inside each edge
-    (`m_integrate.f90`; the deck's ``method mid-rule``): what
-    :func:`window_short_of` is asked with by the transmission deck's gate
-    and the description's preflight, as the record asks it with the energies
-    the run wrote -- one rule, on the energies the current is integrated
-    over."""
-    from .energies import spacing
-    lo, hi = float(emin_ev), float(emax_ev)
-    h = spacing((lo, hi, n_points))
-    return lo + h / 2.0, hi - h / 2.0
-
-
 def landauer_current(energies: List[float], trans: List[float],
                      volts: float, kt_ev: float, spacing_ev: float) -> float:
     """**I(V) = (2e/h) ∫ T(E) [f(E − μ_L) − f(E − μ_R)] dE**, μ_L,R = ±V/2,
@@ -370,7 +285,7 @@ def low_bias_iv(energies: List[float], trans: List[float],
     one zero-bias slice, T(E, 0), at each listed voltage
     (`engines/transport.md` § 2a.10), on the grid of spacing
     ``spacing_ev`` the slice's deck states.  A voltage whose window plus
-    the Fermi tails (:data:`WINDOW_TAILS_KT`) reaches past the
+    the Fermi tails (`energies.WINDOW_TAILS_KT`) reaches past the
     transmission's energies gets ``None`` and a note naming the reach --
     the record never integrates a slice it does not have."""
     lo, hi = float(min(energies)), float(max(energies))
@@ -942,6 +857,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     the refusal -- unless ``partial``: the Results tab's read, where a
     ladder in progress has a report (`engines/transport.md` § 2a.12).
     """
+    from ..parse.sidecars.transport import TRANSPORT_RESULT_SCHEMA
     from ..jobset.naming import stage_home
     from ..parse.dirs.job import FINAL_STATES, NOT_ENDED_STATES
     from ..parse.engines.tbtrans import loop_record

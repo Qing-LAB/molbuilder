@@ -614,7 +614,7 @@ def selector_issues(cfg, *, none_means: str) -> List[Issue]:
         return issues
     if selector != "explicit":
         return issues
-    from ..spectra.selection import parse_index_list
+    from ..selection import parse_index_list
     text = str(getattr(cfg, "es_explicit_indices", "") or "")
     try:
         listed = parse_index_list(text, first=1)

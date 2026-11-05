@@ -13,7 +13,7 @@ The snapshot is therefore small, plus the singleton lifecycle.
 Routing tables
 --------------
 
-The routing data lives at module scope as three small
+The routing data lives at module scope as two small
 dicts, hand-written for clarity: `builtin_recipes()` is the list of envs,
 and these dicts route the subset that needs routing.  Renames go in
 ``molbuilder.json``;
@@ -23,7 +23,8 @@ they're rare.
 
 The split with :mod:`molbuilder.envs`: envs is *dispatch only*
 (:func:`~molbuilder.envs.run_in_env`, :func:`~molbuilder.envs.run_tool`).
-It imports from this module; never the reverse.
+It imports from this module at load; this module asks it one thing, inside
+:func:`local_facts`: the measurement of the manager's ``run``.
 
 Capabilities is ``frozen=True``: attribute reassignment is rejected.
 The ``runtime_config`` field is exposed as a ``dict`` and *treated as
@@ -53,9 +54,9 @@ from .projects import projects_root
 #
 # Categories name the envs a tool or an extension can be ROUTED to --
 # not every env there is (the host has no category, and nothing
-# dispatches into the notebook env).  Naming maps go in three
-# small dicts side-by-side; this is more legible at this scale than a
-# dataclass abstraction over four static rows.
+# dispatches into the notebook env).  Naming maps go in two small dicts
+# side-by-side; this is more legible at this scale than a dataclass
+# abstraction over them.
 #
 
 # Category name -> default conda env name (overridable per-machine via
@@ -495,8 +496,8 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
     Returns ``(environment, notes)`` -- the record with the facts on it, and
     the lines to show the operator: when it says nothing about how to enter
     an environment, and when it leaves out which environments exist here
-    and why (`configuration.md` M-2: the three are left out when empty, and
-    the probe says so -- user, 2026-10-03).
+    and why (`configuration.md` M-2: the four are left out when empty or not
+    measured, and the probe says so -- user, 2026-10-03).
 
     **HOW THIS MACHINE ENTERS ITS ENVIRONMENT TRAVELS WITH THE RECORD**
     (2026-08-24).  A wrapper is generated on one machine and executed on

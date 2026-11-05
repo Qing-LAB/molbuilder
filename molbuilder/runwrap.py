@@ -1413,13 +1413,13 @@ def _reads_words(words: str, reads: Dict[str, Tuple[str, bool]]) -> str:
 def _n_orbitals_est(text: Optional[str]) -> Optional[int]:
     """The deck's own orbital estimate -- its BENCH-MARKS block's
     ``n_orbitals_est`` (`job-contracts.md` § 3.3), read by the block's one
-    reader (`script_emit.read_bench_marks_block`) -- or ``None``: a deck with
+    reader (`deck_record.read_bench_marks_block`) -- or ``None``: a deck with
     no such block, or one that states none.  It feeds the occupancy NOTICE
     (:func:`_orbitals_per_rank_notice`) and clamps nothing (user ruling,
     2026-09-03)."""
     if not text:
         return None
-    from .script_emit import read_bench_marks_block
+    from .deck_record import read_bench_marks_block
     got = (read_bench_marks_block(text) or {}).get("n_orbitals_est")
     try:
         return int(got) if got is not None else None

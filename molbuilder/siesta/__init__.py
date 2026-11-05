@@ -1,16 +1,9 @@
 """molbuilder.siesta -- SIESTA deck description.
 
 Submodules:
-    input  -- spec_for / SiestaConfig: the deck's spec, which `jobset prep`
-              renders, writes and checks (`script_emit.prepare_deck`)
+    input  -- spec_for: the deck's spec, which `jobset prep` renders, writes
+              and checks (`script_emit.prepare_deck`)
 
-``SiestaConfig`` and the pseudopotential helpers of ``input`` are
-re-exported here, so ``from molbuilder.siesta import SiestaConfig`` reads it.
+It re-exports nothing, as `jobset/__init__` does, so a reader of what travels
+beside a job (`siesta.vibration_phases`) loads no deck writer.
 """
-
-from ..config.siesta import SiestaConfig
-from .input import copy_pseudopotentials
-__all__ = [
-    "SiestaConfig",
-    "copy_pseudopotentials",
-]

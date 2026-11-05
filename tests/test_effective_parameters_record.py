@@ -77,7 +77,7 @@ def test_siesta_s_fence_states_the_step_s_items_and_the_deck_as_launched(
     recorded no default for any item it set -- the record's first column for
     most of a deck."""
     import subprocess
-    from molbuilder.script_emit import read_parameters_fence
+    from molbuilder.deck_record import read_parameters_fence
 
     import sys
     from molbuilder.runfiles import MONITOR_BUNDLE

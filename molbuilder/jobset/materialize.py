@@ -229,14 +229,6 @@ def trial_run(trial: Path) -> Path:
     return attempt_dir(Path(trial), FIRST_ATTEMPT)
 
 
-def opened_by_refused_send(run) -> bool:
-    """Whether ``run`` -- a run not launched, a folder or its name -- was
-    opened by a launch whose send was refused: any run but a stage's first,
-    which prep opens; a later one is opened only by a launch
-    (:func:`newest_launched`; `project-layout.md` § 1.6.2)."""
-    return bool(attempt_index(Path(run).name))
-
-
 def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     """The run to prepare into, and whether it is a fresh one.
 

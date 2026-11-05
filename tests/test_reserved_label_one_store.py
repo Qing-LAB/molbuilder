@@ -476,13 +476,12 @@ def test_a_deck_label_block_is_validated_like_a_sidecar_one():
     second half of this test matters as much as the first.
     """
     import numpy as _np
-    from molbuilder.script_emit import apply_atom_metadata
     from molbuilder.structure import Structure as _S
 
     bad = _S(elements=["H", "H"], positions=_np.array([[0., 0, 0], [1., 0, 0]]))
     with pytest.raises(ValueError, match="out of range"):
-        apply_atom_metadata(bad, {"n_atoms_total": 2,
-                                  "regions": {"lead": [0, 99]}})
+        bad.apply_atom_metadata({"n_atoms_total": 2,
+                                 "regions": {"lead": [0, 99]}})
 
     # AND THE REST OF THE METADATA SURVIVES.  A full replace with a
     # labels-only block would have reset these to their defaults.
@@ -490,7 +489,7 @@ def test_a_deck_label_block_is_validated_like_a_sidecar_one():
                cell=_np.diag([9., 9, 9]), vacuum=(4.0, 4.0, 4.0),
                axis_kind=("periodic", "periodic", "transport"),
                engine_offset=_np.array([1.0, 1.0, 1.0]))
-    apply_atom_metadata(keeps, {"n_atoms_total": 2, "regions": {"lead": [0]}})
+    keeps.apply_atom_metadata({"n_atoms_total": 2, "regions": {"lead": [0]}})
     assert keeps.regions == {"lead": [0]}
     assert keeps.cell is not None
     assert _np.allclose(keeps.engine_offset, [1.0, 1.0, 1.0]), \

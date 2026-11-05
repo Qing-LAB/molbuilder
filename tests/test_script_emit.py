@@ -12,6 +12,7 @@ import pytest
 from molbuilder import deck_record as dr
 from molbuilder import script_emit as sc
 from molbuilder.siesta.input import BENCH_FIELDS
+from molbuilder.structure import atom_metadata_has_something
 from support.road import CO2, CO2_HELD_FIRST
 from molbuilder.structure_pair import MolstructPairingError
 
@@ -156,7 +157,7 @@ def test_every_deck_states_its_atoms_and_reads_as_labelling_nothing():
     hold."""
     payload = _atom_metadata_payload(sc.emit_atom_metadata(_atoms(100)))
     assert (payload["n_atoms_total"], payload["atom_order"]) == (100, None)
-    assert not sc.atom_metadata_has_something(payload)
+    assert not atom_metadata_has_something(payload)
 
 
 def test_emit_atom_metadata_with_regions_only():
@@ -293,7 +294,7 @@ def test_the_block_carries_every_field_but_the_box(row):
     read = dr.extract_atom_metadata(block)
     assert order_record_of(read) == struct.atom_order
     back = Structure(elements=struct.elements, positions=struct.positions)
-    assert sc.apply_atom_metadata(back, read) is True
+    assert back.apply_atom_metadata(read) is True
     sent, got = struct.metadata_to_dict(), back.metadata_to_dict()
     assert {f: got[f] for f in ATOM_METADATA_FIELDS} == {
         f: sent[f] for f in ATOM_METADATA_FIELDS}
@@ -463,7 +464,7 @@ def test_apply_atom_metadata_populates_the_label_store():
         _atoms(20, regions={"R-electrode": [10, 11, 12],
                             "frozen_atoms": [10, 12]}))
     text = "engine body\n" + emitted + "\nmore engine\n"
-    assert sc.apply_atom_metadata(struct, dr.extract_atom_metadata(text)) is True
+    assert struct.apply_atom_metadata(dr.extract_atom_metadata(text)) is True
     assert struct.regions == {"R-electrode": [10, 11, 12],
                               "frozen_atoms": [10, 12]}
     assert struct.frozen_atoms == [10, 12]
@@ -489,7 +490,7 @@ def test_apply_atom_metadata_normalises_indices():
         '#  "regions": {"r": [3, 1, 3, 2], "frozen_atoms": [2, 0, 2]}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
-    assert sc.apply_atom_metadata(struct, dr.extract_atom_metadata(text)) is True
+    assert struct.apply_atom_metadata(dr.extract_atom_metadata(text)) is True
     assert struct.regions == {"r": [1, 2, 3], "frozen_atoms": [0, 2]}
     assert struct.frozen_atoms == [0, 2]
 
@@ -556,7 +557,7 @@ def test_read_provenance_block_round_trips_emit_output():
             "MeshCutoff":  "350.0 Ry (default)",
         },
     )
-    got = sc.read_provenance_block(block + "\nengine body line\n")
+    got = dr.read_provenance_block(block + "\nengine body line\n")
     assert got is not None
     assert got["generator-version"] == "molbuilder git abc123"
     assert got["generated-at"]      == "2026-06-17T12:00:00-07:00"
@@ -566,7 +567,7 @@ def test_read_provenance_block_round_trips_emit_output():
 
 
 def test_read_provenance_block_returns_none_when_block_missing():
-    assert sc.read_provenance_block("SystemLabel siesta\n") is None
+    assert dr.read_provenance_block("SystemLabel siesta\n") is None
 
 
 def test_read_provenance_block_returns_empty_dict_for_present_but_empty():
@@ -579,7 +580,7 @@ def test_read_provenance_block_returns_empty_dict_for_present_but_empty():
         "# === molbuilder provenance END ===\n"
         "SystemLabel anything\n"
     )
-    got = sc.read_provenance_block(text)
+    got = dr.read_provenance_block(text)
     assert got == {}, f"expected empty dict, got {got!r}"
     assert got is not None
 
@@ -589,7 +590,7 @@ def test_read_provenance_block_handles_no_defaults_section():
         generator_version="vX",
         generated_at="2026-06-17T00:00:00Z",
     )
-    got = sc.read_provenance_block(block + "\n")
+    got = dr.read_provenance_block(block + "\n")
     assert got == {
         "generator-version": "vX",
         "generated-at":      "2026-06-17T00:00:00Z",
@@ -622,7 +623,6 @@ def _junction_parts():
 
 
 def test_a_current_block_applies():
-    from molbuilder import script_emit as sc
     from molbuilder.sidecars.molstruct import SCHEMA_VERSION
     from molbuilder.structure import Structure
     s, frozen, FROZEN = _junction_parts()
@@ -630,7 +630,7 @@ def test_a_current_block_applies():
                   "regions": {k: list(v) for k, v in s.regions.items()},
                   "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
-    assert sc.apply_atom_metadata(back, dr.extract_atom_metadata(blk)) is True
+    assert back.apply_atom_metadata(dr.extract_atom_metadata(blk)) is True
     assert len(back.regions[FROZEN]) == len(frozen)
 
 
@@ -642,7 +642,6 @@ def test_a_block_written_for_a_different_structure_is_refused():
     and says nothing, which is how a run ends up holding the wrong atoms
     fixed. So the reader refuses rather than applying part of it.
     """
-    from molbuilder import script_emit as sc
     from molbuilder.structure import Structure
     s, frozen, FROZEN = _junction_parts()
     blk = _block({"schema_version": 9, "n_atoms_total": s.n_atoms + 3,
@@ -650,7 +649,7 @@ def test_a_block_written_for_a_different_structure_is_refused():
                   "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
     with pytest.raises(MolstructPairingError):
-        sc.apply_atom_metadata(back, dr.extract_atom_metadata(blk))
+        back.apply_atom_metadata(dr.extract_atom_metadata(blk))
     assert not back.regions, "labels were applied before the guard fired"
 
 
@@ -703,9 +702,9 @@ NumberOfAtoms 5
 
 def test_bench_marks_extracts_version_and_fields():
     """The only coverage of bench-marks EXTRACTION -- the block `jobset
-    summarize` and `jobset/agreement.py` both depend on.
+    summarize` and the run script's orbital notice read.
     """
-    marks = sc.read_bench_marks_block(FULL_FDF)
+    marks = dr.read_bench_marks_block(FULL_FDF)
     assert marks is not None
     assert marks.get("version") == "v1"
     assert any(f.get("name") == "MeshCutoff" for f in marks.get("fields", []))

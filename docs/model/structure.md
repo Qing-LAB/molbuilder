@@ -175,7 +175,7 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
   to its default (absent `cell` → non-periodic; absent `regions` → none). It
   re-runs `__post_init__`, so validation is single-sourced. A caller holding
   only part of the block — `transport/compose.py` applying a sidecar over a
-  `.XV`, `script_emit.apply_atom_metadata` for a deck's label block —
+  `.XV`, `Structure.apply_atom_metadata` for a deck's label block —
   **completes the block before applying it**, never patches the result; there
   is no partial door, and full-replace is what keeps *an absent key resets*
   legible.

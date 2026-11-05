@@ -83,6 +83,7 @@ def geometric_prefix_expr(names) -> str:
 # ONE name for each of the two doors this writer opens, imported once at
 # module scope -- as `siesta/input.py` does.
 from .. import script_emit as _sc
+from .script_input import SIDECAR_NAME
 from ..envs.hints import fix_cmd as _fix_cmd
 from . import layout as _layout
 
@@ -781,7 +782,7 @@ def _emit_effective_parameters(cfg: PySCFConfig,
 
     **The rows are `script_emit`'s** (``parameter_row``, § 5d.3a of
     `model/parse.md`): one JSON array each, the format SIESTA's wrapper writes
-    and ``script_emit.read_parameters_fence`` reads.  ``calculation`` narrows
+    and ``deck_record.read_parameters_fence`` reads.  ``calculation`` narrows
     the items to the kind this deck runs.
 
     **The electronic state's four items record what was RESOLVED** (``state``,
@@ -841,11 +842,12 @@ def _emit_effective_parameters(cfg: PySCFConfig,
                    f"{said}, {third})")
     out.append("")
     out.append("import json as _mb_json")
-    from ..deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
+    from ..deck_record import (BLOCK_PARAMETERS, PARAMETER_ROW_PREFIX,
+                               begin_marker, end_marker)
     out.append('print("' + begin_marker(BLOCK_PARAMETERS) + '")')
     out.append(f"print({_sc.PARAMETER_COLUMNS_LINE!r})")
     out.append("for _k, (_d, _r, _e) in _MB_PARAMS.items():")
-    out.append(f"    print({_sc.PARAMETER_ROW_PREFIX!r} + _mb_json.dumps("
+    out.append(f"    print({PARAMETER_ROW_PREFIX!r} + _mb_json.dumps("
                f"[_k, _d, _r, _e], default=repr))")
     out.append('print("' + end_marker(BLOCK_PARAMETERS) + '")')
     return out
@@ -1575,12 +1577,6 @@ def emit_save_call(mol: str, role: str, names, indent: str = "") -> str:
     return (f'{indent}_save_structure({mol}, '
             f'_mb_outfile({run_file_expr(names, role)}), '
             f'"{_SAVED_AS[role]}")')
-
-
-#: THE NAME the run's structure line binds in a PySCF deck -- written by
-#: :func:`emit_sidecar_constant`, read back by the same-calculation reading
-#: (`pyscf.script_input`).
-SIDECAR_NAME = "_MB_SIDECAR"
 
 
 def emit_sidecar_constant(sidecar: dict) -> List[str]:

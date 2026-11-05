@@ -42,8 +42,7 @@ def provide_pseudos(struct, cfg, base: Path,
     actually here, same protocol, same blocking statuses.
     """
     from ..projects import find_projects_root
-    from ..pseudos import psml_sources
-    from ..siesta.input import copy_pseudopotentials
+    from ..pseudos import copy_pseudopotentials, psml_sources
     from ..chemistry import species_order
 
     species = species_order(struct.elements)

@@ -185,7 +185,7 @@ def test_a_calculation_wide_value_is_taken_by_the_rungs_that_read_it(
     on one GPU, while the transmission -- `tbtrans` runs on no GPU --
     resolves to a run on none, its other values kept, so prep's G5 has
     nothing to refuse there.  Read through prep's two steps for a rung
-    (`prep_inputs.run_inputs`, then `resolve`), not prep's files: a
+    (`resolve.declared_run_shape`, `resolve.card_settings`, then `resolve`), not prep's files: a
     transport rung is prepared on a finished relaxation, which only the
     engine makes, and the real junction's e2e runs on the CPU.  Without it
     the transmission was a GPU job, holding a device it never uses
@@ -196,8 +196,7 @@ def test_a_calculation_wide_value_is_taken_by_the_rungs_that_read_it(
     from molbuilder.calculation import open as open_calculation
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.jobset.model import Resources, gpu_request
-    from molbuilder.jobset.prep_inputs import run_inputs
-    from molbuilder.resolve import resolve
+    from molbuilder.resolve import card_settings, declared_run_shape, resolve
     from molbuilder.template import template_with_values
     from molbuilder.template_file import template_path
     d = isolated_projects_root / "J" / "transport" / "t"
@@ -211,7 +210,8 @@ def test_a_calculation_wide_value_is_taken_by_the_rungs_that_read_it(
     calc = open_calculation(d)
     asked = {}
     for rung in _RUNGS:
-        shape, settings = run_inputs(calc.request, rung)
+        shape = declared_run_shape(calc.request, rung)
+        settings = card_settings(calc.request, rung)
         assert (shape.get("mpi_np"), shape.get("cpus_per_task")) == (4, 1), \
             (rung, shape)
         ps = resolve(text, calc.task,

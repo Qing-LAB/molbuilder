@@ -918,8 +918,8 @@ REFUSED_OPEN = ("opened by a launch whose send was refused -- not launched; "
 def pending_words(run, detail: str = "prepared, not launched") -> str:
     """A run not launched, in words: prep's first run as ``detail`` says
     it; a later one, opened by a launch whose send was refused
-    (`materialize.opened_by_refused_send`)."""
-    from .materialize import opened_by_refused_send
+    (`paths.opened_by_refused_send`)."""
+    from ..paths import opened_by_refused_send
     return (REFUSED_OPEN if run is not None
             and opened_by_refused_send(run) else detail)
 

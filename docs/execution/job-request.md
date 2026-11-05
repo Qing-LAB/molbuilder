@@ -420,7 +420,7 @@ stated or left out.
 membership `bench` uses — plus `time` and `domain` (§ 3.2a). A machine-answered
 item becomes the launch shape; anything else is a run setting laid over the
 catalogue's default. The launch shape is a direct map of the block's machine
-items onto the run's request (`prep_inputs.declared_run_shape`), never the
+items onto the run's request (`resolve.declared_run_shape`), never the
 benchmark's grid enumerator, and that request is placed on its queue at prep,
 its fit said ([`scheduler.md`](?doc=execution/scheduler.md) R6).
 
@@ -813,7 +813,7 @@ record names (`same_calculation`, [`architecture.md`](?doc=execution/architectur
   comments and molbuilder's stamps aside — when it was written and by which
   release (`deck_record.without_stamps`)
   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1, § 3.2), and its
-  structure line (`pyscf.input.SIDECAR_NAME`) compared by what it holds — a field
+  structure line (`pyscf.script_input.SIDECAR_NAME`) compared by what it holds — a field
   the structure reader retires and the record's version number set aside, since
   neither says what PySCF computes *(the user, 2026-11-03: "Compare by meaning")*.
 

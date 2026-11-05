@@ -107,6 +107,14 @@ def attempt_index(name: str) -> Optional[int]:
     return int(tail) if tail.isdigit() else None
 
 
+def opened_by_refused_send(run) -> bool:
+    """Whether ``run`` -- a run not launched, a folder or its name -- was
+    opened by a launch whose send was refused: any run but a stage's first,
+    which prep opens; a later one is opened only by a launch
+    (`materialize.newest_launched`; `project-layout.md` § 1.6.2)."""
+    return bool(attempt_index(Path(run).name))
+
+
 def attempts_in(container) -> "list[int]":
     """Every attempt index present in *container*, ascending.
 
@@ -241,7 +249,7 @@ __all__ = [
     "BENCH_DIRNAME", "bench_containers_in",
     # the attempt -- composer, reader, finder (§ 4.5's pairing)
     "run_folder_of", "ATTEMPT_PREFIX", "FIRST_ATTEMPT", "attempt_name", "attempt_dir",
-    "attempt_index", "attempts_in",
+    "attempt_index", "opened_by_refused_send", "attempts_in",
     # a frame's folder
     "frame_token",
 ]

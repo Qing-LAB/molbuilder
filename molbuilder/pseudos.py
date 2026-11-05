@@ -1,4 +1,4 @@
-"""Pseudopotential file validation for SIESTA.
+"""Pseudopotential files for SIESTA: validating them, and copying them in.
 
 SIESTA needs one ``.psml`` file per species label in
 the structure, named for it (``<label>.psml``).  These files carry
@@ -28,6 +28,7 @@ Functions here:
     preflight + render so the user sees a clear "no .psml file for Fe"
     or "Fe.psml is for LDA but you picked GGA" Issue message
     before they run SIESTA.
+  * :func:`copy_pseudopotentials` -- copy the files a deck names beside it.
 
 Format reference: PSML 1.1 spec
 (https://siesta-project.org/SIESTA_MATERIAL/Pseudos/Code/psml-1.1.pdf).
@@ -38,8 +39,10 @@ from __future__ import annotations
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Union
 import re
+import shutil
+import sys
 import xml.etree.ElementTree as ET
 
 
@@ -1040,7 +1043,48 @@ def _generator_key(generator: str) -> str:
     return g.split("+", 1)[0].strip() or "unknown"
 
 
+def copy_pseudopotentials(species: Sequence[str], lib: Path,
+                          dest_dir: Path, *, plan=None,
+                          say: bool = True) -> List[str]:
+    """Copy psml files for each species. Returns list of missing species.
+
+    WHICH FILE is :func:`psml_sources`' rule, the one every check asks:
+    ``<label>.psml`` in ``lib``, verbatim -- SIESTA opens that name and no
+    other (`science/pseudopotentials.md` § C1a).
+
+    ``plan`` (`jobset.planned.Plan`) receives the copies instead of the
+    disk.  ``say`` false plans them silently: a question asked of the
+    folder as a prep will leave it, which copies nothing itself."""
+    def _said(line: str) -> None:
+        if say:
+            print(line, file=sys.stderr)
+    found = psml_sources(species, library=lib)
+    missing: List[str] = []
+    for s in species:
+        key = str(s).strip()
+        name = file_named_for(key) or f"{key} (no file can be named for it)"
+        if found[key] is None:
+            missing.append(s)
+            _said(f"  WARN: no {name} in {lib}")
+            continue
+        src = found[key] / name
+        dst = dest_dir / name
+        if src.resolve() == dst.resolve():
+            _said(f"  ok:   {dst.name} (already present)")
+            continue
+        if plan is not None:
+            # PLANNED, NOT COPIED: the plan is written after the save, or
+            # never -- a preview, a refusal (`job-system.md` § 5.0).
+            plan.copy(src, dst)
+            _said(f"  ok:   {src} -> {dst} (to copy)")
+        else:
+            shutil.copyfile(src, dst)
+            _said(f"  ok:   {src} -> {dst}")
+    return missing
+
+
 __all__ = [
+    "copy_pseudopotentials",
     "PsmlInfo", "CoverageEntry",
     "parse_psml_header", "scan_psml_directory", "check_coverage",
 ]

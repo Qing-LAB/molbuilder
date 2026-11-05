@@ -222,7 +222,7 @@ def _winner_mechanism(calc, jobset, label: str) -> Dict:
     if not text:
         return {}
     mech: Dict = {}
-    from ..script_emit import read_bench_marks_block
+    from ..deck_record import read_bench_marks_block
     marks = read_bench_marks_block(text) or {}
     if "gpu_mode" in marks:
         mech["use_gpu"] = str(marks["gpu_mode"]).lower() == "true"

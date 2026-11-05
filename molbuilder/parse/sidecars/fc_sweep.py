@@ -19,17 +19,22 @@ from ..base import FileParser
 from ..errors import ParseError
 from ..types import SidecarResult
 from ...runfiles import ROLE_FC_SWEEP, role_of
-from ._helpers import build_sidecar_result
+from ._helpers import build_sidecar_result, read_record
 
 
 class FcSweepRecordError(ParseError):
     """A ``.fc-sweep.json`` that is not one, or is not this version."""
 
 
+#: The record's schema (`execution/job-contracts.md` § 6.1).  ``@2``: each
+#: stage's force-constant range is named as SIESTA's numbering,
+#: ``fc_range_engine_1based`` (`model/overview.md` § 2.2a); a ``@1`` record is
+#: refused by its version, and `summarize task` writes it again.
+SWEEP_SCHEMA = "molbuilder/fc-displacement-sweep@2"
+
+
 def _load(path: Path) -> Dict[str, Any]:
     """The record as a dict, or raise — the one reader of this file."""
-    from molbuilder.spectra.displacement_sweep import SWEEP_SCHEMA
-    from ._helpers import read_record
     return read_record(path, schema=SWEEP_SCHEMA, refused=FcSweepRecordError,
                        what="a displacement sweep's record")
 

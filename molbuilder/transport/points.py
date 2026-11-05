@@ -71,12 +71,12 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
     """The run's facts, for its index (`runs-of-points.md` § 2.3): what its
     points compute (the kind table's ``computes``), the leads' pair and
     each lead as their ``TS.Elecs`` blocks name them, the spin the decks
-    state (`record.spin_of`) and the frames' weights, where the cited set
+    state (`conductance.spin_of`) and the frames' weights, where the cited set
     states them (`frameset.read`) -- what a round's outcome reads."""
     from ..frameset import read as read_frame_set
     from ..parse.fdf import parse_fdf_params
     from .compose import recorded_junction
-    from .record import spin_of
+    from .conductance import spin_of
     from .transiesta import LEAD_NAMES, LEAD_PAIR
     recorded = recorded_junction(Path(calc.base))
     rows = (read_frame_set(recorded.structure) if recorded is not None

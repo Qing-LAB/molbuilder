@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 
-from molbuilder.siesta import SiestaConfig
+from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset._cli import describe_cmd
 
 

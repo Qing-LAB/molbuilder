@@ -632,7 +632,7 @@ Every file has one reader; every side asks it.
 | `kind_table` | 1 | `run_of_points(kind, engine)` — the record of § 2.1; a part resolved on this machine, `part` |
 | `calcdirs` | 1, travels | the folders (§ 2.4): `where`, `read_with`, `RunPlace`, `prepared_folder` (below) |
 | `jobset.points` | 4 | `PointsOf`, `points_of(task)`, `record_of(task)`, `rung_points_of`, `carried_of` (the points a stage takes over from the run it continues from), `walls_of`, `point_of(folder)` (the point a folder is) |
-| `jobset.submit` | 4 | `_points_walk` — the one walk; `_take_over`, `_all_done`, `_walk_script` |
+| `jobset.submit` | 5 | `_points_walk` — the one walk; `_take_over`, `_all_done`, `_walk_script` |
 | `jobset.continuation` | 4 | the run's one reading, `read_points` → `PointsReading` (below); `point_done`, `point_rows`, `points_state`, `points_verdict`, `never_reached`; `carried_points` — what a run continuing from another stage's takes over |
 | `jobset.runstatus` | 6 | a run of points as a reader sees it: `points_view`, `every_run`, `views_of`, `run_answer` (below) |
 | `monitor` | travels | `point started`, `point ended`, `notify`; a member's line |

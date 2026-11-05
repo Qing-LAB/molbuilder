@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from molbuilder.pyscf import PySCFConfig
+from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
 from ._helpers import _peptide_struct

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.pyscf import PySCFConfig
+from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.validation import validate
 
 

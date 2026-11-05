@@ -11,7 +11,7 @@ a disk.
 **Contract:** [`execution/architecture.md`](?doc=execution/architecture.md) § 4
 — the `describe` route: *"**write** the portable description and its job
 request — the template, ``task.json``, ``job-request.json``, the data files ·
-ask → check → write · **floor 2 only**"* ·
+ask → check → write · **2, asking 3 and 4 about the description itself**"* ·
 [`execution/job-request.md`](?doc=execution/job-request.md) § 9 ·
 [`execution/job-system.md`](?doc=execution/job-system.md) § 5.1 (the command) ·
 [`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.1 (what
@@ -20,9 +20,8 @@ makes the folder portable) · [`engines/stages.md`](?doc=engines/stages.md) § 6
 
 WHAT IT WRITES, AND WHAT IT MUST NOT.  Three files: ``<label>.template.toml``,
 ``task.json`` and ``job-request.json`` -- each stage's group, nothing else
-asked yet -- plus whatever data files travel (pseudopotentials).  **It renders
-no deck.**  That is the whole of *floor 2 only*: rendering moved to ``prep``
-step 3 (`script-preparation.md` § 3.0) because a deck carries values that
+asked yet -- plus whatever data files travel (pseudopotentials).  **It writes
+no deck and reads no machine**: rendering moved to ``prep`` step 3 (`script-preparation.md` § 3.0) because a deck carries values that
 depend on how it will be launched (`project-layout.md` § 2.2), and a
 description that named a machine would stop
 meaning the same thing when you copied it.
@@ -309,8 +308,8 @@ def write_description(desc: Description, dest, *,
         for path, data in pair:
             write_bytes(staging / path.name, data)
         if psml_lib and desc.pseudo_species:
-            from .siesta.input import copy_pseudopotentials
-            from .pseudos import describe_psml_anchor, resolve_psml_lib
+            from .pseudos import (copy_pseudopotentials, describe_psml_anchor,
+                                  resolve_psml_lib)
             # THE SAME ANCHOR RULE AS EVERY OTHER SURFACE (job-contracts.md
             # § 2.5a): the bare name that means the tree everywhere else means
             # it here too.

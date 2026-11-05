@@ -1,13 +1,9 @@
 """molbuilder.pyscf -- PySCF deck description.
 
 Submodules:
-    input  -- spec_for / PySCFConfig: the deck's spec, which `jobset prep`
-              renders, writes and checks (`script_emit.prepare_deck`)
+    input  -- spec_for: the deck's spec, which `jobset prep` renders, writes
+              and checks (`script_emit.prepare_deck`)
 
-``PySCFConfig`` is re-exported here, so ``from molbuilder.pyscf import
-PySCFConfig`` reads it.
+It re-exports nothing, as `jobset/__init__` does, so a reader of what travels
+beside a job (`pyscf.end_lines`) loads no deck writer.
 """
-
-from .input import PySCFConfig
-
-__all__ = ["PySCFConfig"]

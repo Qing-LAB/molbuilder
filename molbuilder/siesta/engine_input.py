@@ -6,7 +6,7 @@ reading of *the same calculation* (`deck_record.same_calculation`,
 The SIESTA engine's own door, because every part of the answer is SIESTA's:
 what its fdf reader reads (`parse.fdf`), the value it takes for a keyword a
 deck leaves out (the catalogue's ``engine_default``, as a deck writes it --
-`siesta.layout.unit_word`), what it reads only under a condition, the
+:func:`unit_word`), what it reads only under a condition, the
 blocks it builds itself, what only steers its scratch -- each a fact of its
 source, named with its line below -- and where it places the atoms (the
 reader's geometry in Å, compared by the structure's one rule,
@@ -236,11 +236,10 @@ def run_setting_keywords() -> frozenset:
     """Every fdf keyword a SIESTA run setting writes -- the catalogue's
     `execution` items' ``anchor`` and ``expands`` (`template.md` § 6.2),
     asked, never listed."""
-    from ..template import catalogue, is_run_setting
+    from ..template import catalogue, is_run_setting, select
     out = set()
-    for it in catalogue().items:
-        if not is_run_setting(it) or (
-                it.engines and "siesta" not in it.engines):
+    for it in select(catalogue(), engine="siesta"):
+        if not is_run_setting(it):
             continue
         for word in ((it.anchor,) if it.anchor else ()) + tuple(
                 it.expands or ()):
@@ -248,16 +247,37 @@ def run_setting_keywords() -> frozenset:
     return frozenset(out)
 
 
+#: THE DECK'S UNIT WORD IS THE CATALOGUE'S `unit` -- one source (plan F27;
+#: `engines/template.md` § 6.4): a unit is part of the SPELLING, not of the
+#: value, so the deck writes the item's own unit next to the number.  Two
+#: spellings differ from the catalogue's: fdf reads ASCII, so Å is `Ang`;
+#: and the bias, held in volts, is written `eV` -- the energy an electron
+#: gains across V volts is V electron-volts, so the number is the same and
+#: only the word differs (its catalogue note says so to a reader of the
+#: deck).  An item added with a `unit` renders with it, instead of bare --
+#: which TranSIESTA read as rydberg, 13.6 times the value.
+_FDF_SPELLING = {"Å": "Ang", "eV/Å": "eV/Ang"}
+_UNIT_EXCEPTION = {"bias_voltage_v": "eV"}
+
+
+def unit_word(name: str) -> Optional[str]:
+    """The unit fdf reads beside ``name``'s value, or None for a bare number."""
+    if name in _UNIT_EXCEPTION:
+        return _UNIT_EXCEPTION[name]
+    from ..template import catalogue, one
+    item = one(catalogue(), name, engine="siesta")
+    unit = item.unit if item is not None else None
+    return _FDF_SPELLING.get(unit, unit) if unit else None
+
+
 def engine_defaults() -> Dict[str, List[str]]:
     """``{fdf keyword's key: [value, unit]}`` -- every SIESTA item whose
     catalogue row states the engine's own default (``engine_default``), as
     a deck states it: the value and the unit word fdf reads beside it."""
-    from ..template import catalogue
-    from .layout import unit_word
+    from ..template import catalogue, select
     out: Dict[str, List[str]] = {}
-    for it in catalogue().items:
-        if not it.engine_default or not it.anchor or (
-                it.engines and "siesta" not in it.engines):
+    for it in select(catalogue(), engine="siesta"):
+        if not it.engine_default or not it.anchor:
             continue
         word = unit_word(it.name)
         out[fdf_key(it.anchor)] = [str(it.engine_default[0])] + (
@@ -266,4 +286,4 @@ def engine_defaults() -> Dict[str, List[str]]:
 
 
 __all__ = ["engine_input_differences", "engine_defaults",
-           "run_setting_keywords"]
+           "run_setting_keywords", "unit_word"]

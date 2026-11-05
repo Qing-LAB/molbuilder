@@ -292,8 +292,8 @@ def carry_pseudos(struct, base: Path, reuses: str, *, plan,
     which copies nothing)."""
     from ..chemistry import species_order
     from ..projects import find_projects_root
-    from ..pseudos import PSEUDO_DIRNAME, psml_sources
-    from ..siesta.input import copy_pseudopotentials
+    from ..pseudos import (PSEUDO_DIRNAME, copy_pseudopotentials,
+                           psml_sources)
     from ..siesta.seam import pseudo_dir
     root = find_projects_root(Path(base))
     lib = (Path(root) / reuses / PSEUDO_DIRNAME) if root is not None else None

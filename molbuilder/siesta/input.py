@@ -6,17 +6,13 @@ its records -- for the framework to render, write and check
 § 4.3).
 
 Public API:
-    spec_for(...)               -- the deck's spec
-    copy_pseudopotentials(...)  -- copy the PSML files a deck names
+    spec_for(...)  -- the deck's spec
 """
 
 from __future__ import annotations
 
 import dataclasses
-import shutil
-import sys
-from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -26,10 +22,6 @@ from ..runfiles import (COORDINATES_FILE, MAKOV_PAYNE_SCRIPT, ROLE_SIESTA_OUT,
                         deck_role)
 from ..structure import Structure
 from ..trajectory_log.keys import RUNTIME_LINE
-# SiestaConfig is the L1 dataclass; this module imports it for use by
-# the generator below.  External callers can import it from either
-# molbuilder.config.siesta (the canonical location) or from
-# molbuilder.siesta (re-exported by siesta/__init__.py).
 from ..config.siesta import SiestaConfig
 from ..electronic_state import FREE, electronic_state
 # § 4 rule 2's reading of `restart`, shared with PySCF -- one field, one
@@ -219,47 +211,6 @@ def _block_size_bounds(n_atoms: int,
         lo = min(lo, int(emitted))
         hi = max(hi, int(emitted))
     return (lo, hi)
-
-
-def copy_pseudopotentials(species: Sequence[str], lib: Path,
-                          dest_dir: Path, *, plan=None,
-                          say: bool = True) -> List[str]:
-    """Copy psml files for each species. Returns list of missing species.
-
-    WHICH FILE is `pseudos.psml_sources`' rule, the one every check asks:
-    ``<label>.psml`` in ``lib``, verbatim -- SIESTA opens that name and no
-    other (`science/pseudopotentials.md` § C1a).
-
-    ``plan`` (`jobset.planned.Plan`) receives the copies instead of the
-    disk.  ``say`` false plans them silently: a question asked of the
-    folder as a prep will leave it, which copies nothing itself."""
-    def _said(line: str) -> None:
-        if say:
-            print(line, file=sys.stderr)
-    from ..pseudos import file_named_for, psml_sources
-    found = psml_sources(species, library=lib)
-    missing: List[str] = []
-    for s in species:
-        key = str(s).strip()
-        name = file_named_for(key) or f"{key} (no file can be named for it)"
-        if found[key] is None:
-            missing.append(s)
-            _said(f"  WARN: no {name} in {lib}")
-            continue
-        src = found[key] / name
-        dst = dest_dir / name
-        if src.resolve() == dst.resolve():
-            _said(f"  ok:   {dst.name} (already present)")
-            continue
-        if plan is not None:
-            # PLANNED, NOT COPIED: the plan is written after the save, or
-            # never -- a preview, a refusal (`job-system.md` § 5.0).
-            plan.copy(src, dst)
-            _said(f"  ok:   {src} -> {dst} (to copy)")
-        else:
-            shutil.copyfile(src, dst)
-            _said(f"  ok:   {src} -> {dst}")
-    return missing
 
 
 # --------------------------------------------------------------------- #

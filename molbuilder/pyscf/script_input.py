@@ -7,7 +7,7 @@ kinds of line say nothing of it, and are set aside: its RUN-SETTINGS block
 (`execution/job-contracts.md` § 3.1) -- the names the script gives its run
 settings, which every other line reads by name; a comment, molbuilder's
 blocks among them; and molbuilder's stamps (`deck_record.without_stamps`).
-The run's structure line (`pyscf.input.SIDECAR_NAME`) is compared by what it
+The run's structure line (:data:`SIDECAR_NAME`) is compared by what it
 holds: a field the structure reader retires
 (`sidecars.molstruct.RETIRED_ENVELOPE_KEYS`), which nothing reads, and the
 record's version number, which says which fields a record may hold and
@@ -52,13 +52,18 @@ def script_lines(text: str) -> List[str]:
     return out
 
 
+#: THE NAME the run's structure line binds in a PySCF deck -- written by
+#: `pyscf.input.emit_sidecar_constant`, read back by the same-calculation reading
+#: (:func:`_as_read`).
+SIDECAR_NAME = "_MB_SIDECAR"
+
+
 def _as_read(line: str) -> str:
     """``line`` as compared: the run's structure line without the envelope's
     retired keys and its version number; any other line, and a structure
     line that does not read as the literal molbuilder writes, as written."""
     import ast
     from ..sidecars.molstruct import RETIRED_ENVELOPE_KEYS
-    from .input import SIDECAR_NAME
     head = f"{SIDECAR_NAME} = "
     if not line.startswith(head):
         return line

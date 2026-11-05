@@ -1606,7 +1606,7 @@ def test_each_scf_stage_writes_its_own_mixer_and_the_transmission_none(
     played no part in."""
     from molbuilder.parse.fdf import parse_fdf_params
     from molbuilder.runs import run_of
-    from molbuilder.script_emit import read_parameters_fence
+    from molbuilder.deck_record import read_parameters_fence
     from molbuilder.template import catalogue, one, reads
     want = {**_OWN_MIXING, "electrode_R": RELAXED_WITH["mixing_weight"],
             "transmission": None}

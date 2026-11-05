@@ -207,7 +207,7 @@ class TestPrepRefusesWithTheRealPlace:
     def test_it_finds_the_library_that_is_really_there(
             self, calc, tmp_path, monkeypatch):
         """The other half: the rule must also SUCCEED from anywhere."""
-        from molbuilder.siesta.input import copy_pseudopotentials
+        from molbuilder.pseudos import copy_pseudopotentials
         lib = tmp_path / "projects" / "pseudopotential"
         lib.mkdir(parents=True)
         for el in ("H", "C", "S", "Au"):

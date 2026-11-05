@@ -139,8 +139,8 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     decides everything before it writes (`job-system.md` § 5.0).
     """
     from ..jobset.errors import PrepError
-    from ..pseudos import psml_sources, resolve_psml_lib
-    from .input import copy_pseudopotentials
+    from ..pseudos import (copy_pseudopotentials, psml_sources,
+                           resolve_psml_lib)
     from ..chemistry import species_order
 
     species = species_order(struct.elements)

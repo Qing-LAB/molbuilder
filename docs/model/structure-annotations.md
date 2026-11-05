@@ -165,7 +165,7 @@ The channels persist **identically wherever a structure is saved**:
   embedded in the generated script's comment area — the script's
   engine-agnostic copy of the data model (a PySCF script carries the identical
   block). `script_emit.emit_atom_metadata` (`:212`) writes it;
-  `apply_atom_metadata` reads it back.
+  `Structure.apply_atom_metadata` reads it back.
 
 This is **data**, not engine setup — it records what the user labelled, nothing
 about how a simulation runs.
@@ -177,7 +177,7 @@ belongs to what ITS OWN deck declared (`runs.declared(run).atom_metadata_for(n_a
 — never the first deck a search of the folder meets), guards the block against
 the trajectory's atom count (mismatch → `None`, never breaks the load), and
 surfaces it as `atom_metadata`, and the same load applies it to the structure
-it answers with, through the block's one reader (`script_emit.apply_atom_metadata`).
+it answers with, through the block's one reader (`Structure.apply_atom_metadata`).
 **Trusted fragment ≠ sidecar file:** the block omits the sidecar envelope's
 `geometry_hash`, so it is applied by that reader and never through
 `parse.sidecars.molstruct.load_text`, the validator for untrusted standalone files, which
@@ -196,9 +196,9 @@ axis kinds; whether the origin was stated), so no fact is stated twice in one
 deck; the split is named once (`structure.BOX_FIELDS` / `ATOM_METADATA_FIELDS`),
 and the writer takes the structure (`emit_atom_metadata(struct)`), spreading
 its serialiser's fields. **One predicate decides the block has something to
-say** (`script_emit.atom_metadata_has_something`), and one reader takes it —
+say** (`structure.atom_metadata_has_something`), and one reader takes it —
 the block's reader and the order record's dict reader — for
-`apply_atom_metadata`, `Declared.atom_metadata_for` and the finish alike
+`Structure.apply_atom_metadata`, `Declared.atom_metadata_for` and the finish alike
 (until 2026-10-14 `atom_metadata_for` counted only `regions` and
 `annotations`, so a deck stating only customized rows was dropped). A deck is
 one frame: read onto the several frames an engine wrote from it, its named

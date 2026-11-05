@@ -3,13 +3,15 @@ transmission on energies measured from E_F (`engines/transport.md` § 2a.4).
 
 MODULE  transport.conductance (stdlib only; travels in ``mb_monitor.pyz``,
         `runwrap.monitor_companions`)
-ROLE    the one rule, and the one rule of the transmission it is read on --
-        per spin channel (:func:`per_spin_channel`) -- asked by the record
+ROLE    the one rule, the one rule of the transmission it is read on -- per
+        spin channel (:func:`per_spin_channel`) -- and the spin a deck's
+        parameters state (:func:`spin_of`), asked by the record
         for every point (`transport.record`) and by a transmission run's
         report step for its round's milestone (`execution/run-reports.md`
         § 2.9): so the number a message says is the record's rule, on the
         values it is given.
-USED-BY `transport.record`, `transport.run_words`, `transport.tbtnc`
+USED-BY `transport.record`, `transport.run_words`, `transport.tbtnc`,
+        `transport.points`
 """
 from __future__ import annotations
 
@@ -61,4 +63,13 @@ def at_fermi(energies: Sequence[float], trans: Sequence[float]
     return t[i] + (t[j] - t[i]) * (0.0 - e[i]) / (e[j] - e[i])
 
 
-__all__ = ["SPIN_CHANNELS", "at_fermi", "per_spin_channel"]
+def spin_of(params) -> str:
+    """The spin a deck's parameters state (`parse.fdf.parse_fdf_params`) --
+    ``non-polarized`` or ``polarized`` -- in any word SIESTA accepts for it,
+    SIESTA's own default, non-polarized, where the deck states none: the
+    one rule the record and a transport run's index read it by."""
+    return ("polarized" if params.spin_treatment == "unrestricted"
+            else "non-polarized")
+
+
+__all__ = ["SPIN_CHANNELS", "at_fermi", "per_spin_channel", "spin_of"]

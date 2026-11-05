@@ -1,32 +1,24 @@
-"""molbuilder.script_emit — the script-contract blocks, BOTH directions.
+"""molbuilder.script_emit — writes the script-contract blocks.
 
-**One format, one owner.**  This module writes the reserved blocks
-(HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM) and
-reads them back: the emitters are in the first half, the extractors in the
-second.
-
-`parse/`'s registry answers *"which parser handles this file?"* for
-FOREIGN formats; these blocks are molbuilder's own, in a file molbuilder
-generated, and every caller already knows which block it wants -- so they
-are read here, beside the emitters.  `execution/job-contracts.md` § 3.1 owns
-the grammar.  The name `script_emit` understates the module: it emits AND
-reads.
+**One format, its grammar below.**  This module writes the reserved blocks
+(HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM); their
+grammar and their readers are `deck_record`'s, because a job and the floors
+below this one read them.  It reads back only the person's USER-CUSTOM zone,
+to carry it across a generation.  `parse/`'s registry answers *"which parser
+handles this file?"* for FOREIGN formats; these blocks are molbuilder's own, and
+every caller already knows which block it wants.
+`execution/job-contracts.md` § 3.1 owns the grammar.
 
 Public surface
 --------------
 
-* The block grammar — the names, the fences, the one JSON-block reader
-  and the ENGINE-OFFSET / VIBRATION readers — is :mod:`molbuilder.deck_record`'s,
-  which this module imports; it sits below this one so a job can read a
-  block beside itself (2026-09-28).
+* The block grammar and every block's reader are
+  :mod:`molbuilder.deck_record`'s, which this module imports.
 * Bench declarations — :class:`BenchField`; each engine's fields are its
   own deck writer's (SIESTA's ``siesta.input.BENCH_FIELDS``).
 * Block emitters — :func:`emit_header`, :func:`emit_provenance`,
   :func:`emit_bench_marks`, :func:`emit_atom_metadata`,
   :func:`emit_user_custom_placeholder`.
-* In-body application — :func:`apply_atom_metadata` (mutates
-  a Structure from the embedded ATOM-METADATA JSON; mirrors the
-  sidecar protocol minus the geometry_hash check).
 * USER-CUSTOM round-trip — :func:`replace_user_custom_inner`,
   :func:`merge_user_custom_from_target`.
 * Provenance helpers — :func:`molbuilder_git_sha`,
@@ -41,7 +33,6 @@ file).  Callers stitch block strings together themselves.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import dataclasses as _dataclasses
 from dataclasses import dataclass
@@ -55,15 +46,15 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Mapping,
 # imports nothing, so there is no cycle to worry about.
 from .issues import calling as _calling
 from . import runfiles as _rf
-# THE BLOCK GRAMMAR IS `deck_record`'s -- the names, the fences, the one JSON
-# reader -- which this module writes with.  It lives below this one because a
-# job reads three blocks beside itself (`deck_record`), where this module
-# (whose bench declarations are built against the template at import) cannot
-# be imported.
+# THE BLOCK GRAMMAR IS `deck_record`'s -- the names, the fences, the readers --
+# which this module writes with.  It lives below this one because a job reads
+# blocks beside itself, where this module (whose bench declarations are built
+# against the template at import) cannot be imported.
 from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
-                          BLOCK_ENGINE_OFFSET, BLOCK_HEADER, BLOCK_PARAMETERS,
+                          BLOCK_ENGINE_OFFSET, BLOCK_HEADER,
                           BLOCK_PROVENANCE, BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
-                          MARKER_RE, begin_marker, end_marker)
+                          MARKER_RE, PARAMETER_ROW_PREFIX, PARAMETERS_KEY,
+                          begin_marker, end_marker)
 
 if TYPE_CHECKING:                       # annotations only -- `issues`
     from .issues import Issue           # is L1 and imports nothing
@@ -71,20 +62,17 @@ if TYPE_CHECKING:                       # annotations only -- `issues`
 
 # ---- The effective-parameters block's rows (`model/parse.md` § 5d.3a) --------
 #
-# ONE FORMAT, BOTH ENGINES, AND ITS READER BESIDE IT (§ 1a): a row per
-# catalogue item, ``[item, default, asked, used]`` as one JSON array after
-# :data:`PARAMETER_ROW_PREFIX`.  JSON so a blank value, or one with spaces,
-# cannot shift a column.  ``None`` is "this writer cannot know":
-# SIESTA's wrapper prints its rows before SIESTA has started, so it states the
-# default and leaves ``asked`` to the deck and ``used`` to SIESTA's own fdf
-# log; PySCF's deck states all three, the last read off the live objects.
-
-#: What opens a row inside the block -- a comment in every engine's log.
-PARAMETER_ROW_PREFIX = "#   "
-_ROW_FIELDS = ("item", "default", "asked", "used")
+# ONE FORMAT, BOTH ENGINES (§ 1a): a row per catalogue item, ``[item, default,
+# asked, used]`` as one JSON array after
+# :data:`deck_record.PARAMETER_ROW_PREFIX`, which reads them.  JSON so a blank
+# value, or one with spaces, cannot shift a column.  ``None`` is "this writer
+# cannot know": SIESTA's wrapper prints its rows before SIESTA has started, so
+# it states the default and leaves ``asked`` to the deck and ``used`` to
+# SIESTA's own fdf log; PySCF's deck states all three, the last read off the
+# live objects.
 
 #: The block's first line, saying what each row's four columns are -- the
-#: block's prose, which its reader skips (:func:`read_parameters_fence`).
+#: block's prose, which its reader skips (`deck_record.read_parameters_fence`).
 PARAMETER_COLUMNS_LINE = (
     PARAMETER_ROW_PREFIX + "each row: item, catalogue default, asked (the "
     "deck), used (the engine) -- null: not known when this was written")
@@ -95,35 +83,6 @@ def parameter_row(item: str, default: Any = None, asked: Any = None,
     """One row of the block, as a writer prints it at render time."""
     return PARAMETER_ROW_PREFIX + json.dumps([item, default, asked, used],
                                              default=repr)
-
-
-def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
-    """Every row of every effective-parameters block in ``text``, in order:
-    ``{item, default, asked, used}``.  Lines in the block that are not rows --
-    SIESTA's wrapper echoes the deck there too -- are the block's prose and
-    are skipped."""
-    begin = begin_marker(BLOCK_PARAMETERS)
-    end = end_marker(BLOCK_PARAMETERS)
-    rows: List[Dict[str, Any]] = []
-    inside = False
-    for line in (text or "").splitlines():
-        stripped = line.strip()
-        if stripped == begin:
-            inside = True
-            continue
-        if stripped == end:
-            inside = False
-            continue
-        if not inside or not line.startswith(PARAMETER_ROW_PREFIX + "["):
-            continue
-        try:
-            arr = json.loads(line[len(PARAMETER_ROW_PREFIX):])
-        except ValueError:
-            continue
-        if (isinstance(arr, list) and len(arr) == len(_ROW_FIELDS)
-                and isinstance(arr[0], str)):
-            rows.append(dict(zip(_ROW_FIELDS, arr)))
-    return rows
 
 
 # --------------------------------------------------------------------- #
@@ -164,8 +123,7 @@ def benchmark_declarable_types() -> Tuple[str, ...]:
     Derived from ``template.TYPES`` at call time (both modules are L2 and
     neither imports the other at module scope; the lazy import keeps it that
     way).  So a type added to the catalogue is a type this rule answers for
-    automatically -- and `tests/test_type_vocabulary.py` fails if the answer
-    was never decided.
+    automatically.
 
     ⚠ ``str`` survives the rule and is declared by no ``field`` line either.
     A free string has no ordering, so no harness can sweep one -- but
@@ -274,13 +232,13 @@ def emit_provenance(generator_version: str,
     if form_config_hash:
         out.append(f"#   form-config-hash     {form_config_hash}")
     if parameters:
-        out.append(f"#   {_PARAMETERS_KEY}:          who set each value this "
+        out.append(f"#   {PARAMETERS_KEY}:          who set each value this "
                    f"deck is rendered from")
         w_name = max(len(r[0]) for r in parameters)
         for name, who in parameters:
             out.append(f"#     {name:<{w_name}}  {who}")
     elif parameters_unrecorded:
-        out.append(f"#   {_PARAMETERS_KEY}:          not recorded -- this "
+        out.append(f"#   {PARAMETERS_KEY}:          not recorded -- this "
                    f"deck was rendered without the description's record of "
                    f"who set each value")
     if resolved_defaults:
@@ -361,17 +319,6 @@ def _scalar(v) -> str:
     return str(v)
 
 
-def atom_metadata_has_something(payload: Optional[Dict[str, Any]]) -> bool:
-    """THE ONE PREDICATE for the ATOM-METADATA block (`job-contracts.md`
-    § 3.4; `model/overview.md` § 2.2a): it has something to say when any
-    field it carries does -- a label, a channel, a named value, an order
-    record (``structure.ATOM_METADATA_FIELDS``).  Asked of a block by its
-    reader and the run door: every deck writes one since 2.32.0, and one
-    with nothing to say reads as a deck that labels nothing."""
-    from molbuilder.structure import ATOM_METADATA_FIELDS
-    return bool(payload) and any(payload.get(f) for f in ATOM_METADATA_FIELDS)
-
-
 def emit_atom_metadata(struct: Any,
                        created_by: str = "molbuilder",
                        created_at: Optional[str] = None) -> str:
@@ -418,20 +365,8 @@ def emit_atom_metadata(struct: Any,
     payload["created_by"] = created_by
     if created_at:
         payload["created_at"] = created_at
-    return atom_metadata_block(payload)
-
-
-def atom_metadata_block(payload: Dict[str, Any]) -> str:
-    """THE ATOM-METADATA BLOCK'S FRAMING, of a payload as its one reader
-    reads it back (`deck_record.extract_atom_metadata`): the fences, the format
-    line naming the payload's own ``schema_version``, and the JSON one
-    top-level key a line.  :func:`emit_atom_metadata` writes every deck's
-    through it."""
-    out: List[str] = [begin_marker(BLOCK_ATOM_METADATA)]
-    out.append(f"# format: molstruct-json/v{payload['schema_version']}")
-    out.extend(f"# {line}" for line in _compact_json_lines(payload))
-    out.append(end_marker(BLOCK_ATOM_METADATA))
-    return "\n".join(out)
+    return _json_block(BLOCK_ATOM_METADATA,
+                       f"molstruct-json/v{payload['schema_version']}", payload)
 
 
 def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
@@ -462,11 +397,8 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
         # the rule's -- § 6.0, *A stated offset*.
         "stated": bool(getattr(frame, "stated", False)),
     }
-    out: List[str] = [begin_marker(BLOCK_ENGINE_OFFSET),
-                      "# format: molbuilder-engine-offset/v1"]
-    out.extend(f"# {line}" for line in _compact_json_lines(payload))
-    out.append(end_marker(BLOCK_ENGINE_OFFSET))
-    return "\n".join(out)
+    return _json_block(BLOCK_ENGINE_OFFSET, "molbuilder-engine-offset/v1",
+                       payload)
 
 
 def emit_vibration_record(payload: Mapping[str, Any]) -> str:
@@ -480,11 +412,17 @@ def emit_vibration_record(payload: Mapping[str, Any]) -> str:
     optical phase applies it -- ``None`` with Compute Raman off, v5).  Written by the framework
     from :attr:`DeckSpec.vibration`; read back by
     `deck_record.extract_vibration_record`, beside the job as on the host."""
-    out: List[str] = [begin_marker(BLOCK_VIBRATION),
-                      "# format: molbuilder-vibration/v5"]
-    out.extend(f"# {line}" for line in _compact_json_lines(dict(payload)))
-    out.append(end_marker(BLOCK_VIBRATION))
-    return "\n".join(out)
+    return _json_block(BLOCK_VIBRATION, "molbuilder-vibration/v5",
+                       dict(payload))
+
+
+def _json_block(name: str, format_line: str, payload: Dict[str, Any]) -> str:
+    """A JSON block's framing, as its one reader reads it back
+    (`deck_record.read_json_block`): the fences, the format line and the JSON
+    one top-level key a line."""
+    return "\n".join((begin_marker(name), f"# format: {format_line}",
+                      *(f"# {line}" for line in _compact_json_lines(payload)),
+                      end_marker(name)))
 
 
 def _compact_json_lines(payload: Dict[str, Any]) -> List[str]:
@@ -578,29 +516,6 @@ def generator_version() -> str:
     return f"{__version__} ({molbuilder_git_sha()})"
 
 
-#: The version a ``generator-version`` value names -- its first word, three
-#: numbers -- absent from a file written before 2.0.0, which named only its
-#: git commit.
-_VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+)\b")
-
-
-def written_by(text: str) -> Optional[str]:
-    """The molbuilder version that wrote a deck or run script, read from
-    its PROVENANCE block -- ``None`` for one written before 2.0.0, which
-    recorded only its git commit, or for a file with no block."""
-    block = read_provenance_block(text) or {}
-    m = _VERSION_RE.match(block.get("generator-version", ""))
-    return m.group(1) if m else None
-
-
-def molbuilder_words(version: Optional[str]) -> str:
-    """The molbuilder that wrote a file, as a person reads it --
-    ``molbuilder 2.9.6``, or ``a molbuilder from before 2.0.0`` for one that
-    named no version (:func:`written_by`).  Every door that names who wrote
-    a deck says it so."""
-    return f"molbuilder {version}" if version else "a molbuilder from before 2.0.0"
-
-
 def molbuilder_git_sha() -> str:
     """Return the molbuilder git SHA (short form), or ``"unknown"``.
 
@@ -639,19 +554,12 @@ __all__ = [
     "emit_header", "emit_provenance", "emit_bench_marks",
     "write_validation_report",
     "emit_atom_metadata", "emit_user_custom_placeholder",
-    "atom_metadata_block", "atom_metadata_has_something",
-    # In-body application
-    "apply_atom_metadata",
     # An item nobody set, said where its line would be
     "not_set_line",
     # USER-CUSTOM round-trip
     "replace_user_custom_inner", "merge_user_custom_from_target",
-    # The deck's own records, read back
-    "read_provenance_block",
-    "read_bench_marks_block",
     # Git / time
-    "molbuilder_git_sha", "generator_version", "written_by",
-    "molbuilder_words", "generated_at_now",
+    "molbuilder_git_sha", "generator_version", "generated_at_now",
 ]
 
 
@@ -1752,81 +1660,14 @@ def _log_spec(spec: "DeckSpec", log) -> None:
 
 
 # --------------------------------------------------------------------- #
-#  READING THE BLOCKS BACK                                              #
+#  THE USER-CUSTOM ZONE, READ BACK                                      #
 # --------------------------------------------------------------------- #
 #
-#  The inverse of the emitters above, and it lives HERE because a format
-#  has one owner.  The block names, the fences and the one JSON reader are
-#  `deck_record`'s, below both, so a job can read a block beside itself.
-#
-#  These functions take a STRING and do no I/O.  Reading the file is the
-#  caller's job.
+#  To carry the person's zone across a generation.  Every other block's reader
+#  is `deck_record`'s.  These take a STRING and do no I/O.
 #
 #  Contract: `execution/job-contracts.md` § 3.1 (the block grammar and the
 #  emit matrix).
-
-_PROVENANCE_KV_RE = re.compile(
-    r"^#\s+(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
-
-#: THE PROVENANCE BLOCK'S SUB-BLOCKS -- a ``<name>:`` header, then indented
-#: rows read as ``<name>.<key>``: what the auto-policy chose
-#: (``resolved-defaults``) and who set each value (``parameters``).  The
-#: header's own words, where it carries any, read as ``<name>``.
-_PARAMETERS_KEY = "parameters"
-_PROVENANCE_DEFAULTS_HDR = re.compile(
-    r"^#\s+(?P<sub>resolved-defaults|" + _PARAMETERS_KEY
-    + r")\s*:\s*(?P<note>.*?)\s*$")
-
-_PROVENANCE_DEFAULTS_KV_RE = re.compile(
-    r"^#\s{4,}(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
-
-def read_provenance_block(text: str) -> Optional[Dict[str, str]]:
-    """Find the PROVENANCE block and return its k/v payload as a flat
-    dict.  Returns ``None`` when no well-formed PROVENANCE block is
-    present.  Empty-but-present block returns ``{}`` (distinct from
-    None — `model/parse.md`'s absent-vs-empty rule)."""
-    lines = text.splitlines()
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m:
-            continue
-        if m.group(1) != BLOCK_PROVENANCE:
-            continue
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
-    if begin_idx is None or end_idx is None:
-        return None
-    out: Dict[str, str] = {}
-    sub = None
-    for raw in lines[begin_idx + 1: end_idx]:
-        hm = _PROVENANCE_DEFAULTS_HDR.match(raw)
-        if hm:
-            sub = hm.group("sub")
-            if hm.group("note"):
-                out[sub] = hm.group("note")
-            continue
-        if sub is not None:
-            dm = _PROVENANCE_DEFAULTS_KV_RE.match(raw)
-            if dm:
-                out[f"{sub}.{dm.group('key')}"] = dm.group("val")
-                continue
-            # A line not shaped as a row ends the sub-block; the
-            # top-level k/v matcher below may still pick it up.
-            sub = None
-        m = _PROVENANCE_KV_RE.match(raw)
-        if m:
-            out[m.group("key")] = m.group("val")
-    # Block present, no parseable k/v -> {} (NOT None).  Distinguished
-    # from "block absent" -- `model/parse.md`'s None-vs-empty-dict
-    # semantics.
-    return out
-
 
 def _user_custom_span(text: str) -> Optional[Tuple[int, int]]:
     """``(begin_idx, end_idx)`` of the USER-CUSTOM block, or ``None``.
@@ -1877,92 +1718,13 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
     return text.splitlines()[begin_idx + 1: end_idx]
 
 
-def _coerce_scalar(s: str) -> Any:
-    """Best-effort numeric coercion for BENCH-MARKS scalar values.
-    Returns the original string when neither int nor float parses."""
-    s = s.strip()
-    try:
-        if "." in s or "e" in s.lower():
-            return float(s)
-        return int(s)
-    except ValueError:
-        return s
-
-def read_bench_marks_block(text: str) -> Optional[Dict[str, Any]]:
-    """Find the BENCH-MARKS block and return its structured payload.
-
-    Returns ``None`` when no BENCH-MARKS block is present.
-    """
-    lines = text.splitlines()
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m or m.group(1) != BLOCK_BENCH_MARKS:
-            continue
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
-    if begin_idx is None or end_idx is None:
-        return None
-    out: Dict[str, Any] = {"fields": []}
-    for raw in lines[begin_idx + 1: end_idx]:
-        # Strip "#   " comment prefix.
-        s = raw.lstrip("#").strip()
-        if not s:
-            continue
-        # `field <name> anchor=<x> type=<y> ...` rows.
-        if s.startswith("field "):
-            tokens = s.split()
-            field: Dict[str, Any] = {"name": tokens[1]}
-            for tok in tokens[2:]:
-                if "=" not in tok:
-                    continue
-                k, _, v = tok.partition("=")
-                v = v.strip()
-                # Coerce numeric range / default values.
-                if k == "range" and v.startswith("[") and v.endswith("]"):
-                    try:
-                        a, b = v[1:-1].split(",")
-                        field["range"] = [_coerce_scalar(a), _coerce_scalar(b)]
-                    except ValueError:
-                        field["range"] = v
-                elif k == "default":
-                    field["default"] = _coerce_scalar(v)
-                else:
-                    field[k] = v
-            out["fields"].append(field)
-            continue
-        # Top-level `key value` scalars.
-        if " " in s and not s.startswith("field "):
-            k, _, v = s.partition(" ")
-            v = v.strip()
-            if k == "version":
-                out["version"] = v
-            elif v.lower() in ("true", ".true."):
-                out[k] = True
-            elif v.lower() in ("false", ".false."):
-                out[k] = False
-            else:
-                out[k] = _coerce_scalar(v)
-    return out
-
-
 # ===================================================================== #
-#  ROUND-TRIP — the operations that need BOTH halves                    #
+#  ROUND-TRIP — the one operation that needs BOTH halves                #
 # ===================================================================== #
 #
-#  The only things here that both read and write.  Neither emits a block:
-#
-#    * `merge_user_custom_from_target` reads the PREVIOUS OUTPUT to carry
-#      your USER-CUSTOM zone forward across a regeneration
-#      (`job-contracts.md` § 3.5).  It is the reason a regenerated deck
-#      does not lose what you typed into it.
-#    * `apply_atom_metadata` reads a block and writes onto a
-#      Structure -- a post-process; it produces no script at all.
+#  `merge_user_custom_from_target` reads the PREVIOUS OUTPUT to carry your
+#  USER-CUSTOM zone forward across a regeneration (`job-contracts.md` § 3.5).
+#  It is the reason a regenerated deck does not lose what you typed into it.
 
 def write_script(path, text: str, *, plan=None,
                  mode: Optional[int] = None) -> "Path":
@@ -1993,27 +1755,6 @@ def write_script(path, text: str, *, plan=None,
     write_bytes(p, merge_user_custom_from_target(text, p).encode("utf-8"),
                 mode=mode)
     return p
-
-
-# --------------------------------------------------------------------- #
-#  In-body atom-metadata: apply to Structure                            #
-# --------------------------------------------------------------------- #
-#
-# The in-body atom-metadata deliberately omits ``geometry_hash`` per the
-# contract (metadata + coordinates are written by the same generator pass
-# and cannot drift apart by construction), so the sidecar's loader, which
-# validates the hash, is the wrong entry point for in-body payloads.
-
-
-def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
-    """THE reader of an ATOM-METADATA payload -- the structure's own door
-    (``Structure.apply_atom_metadata``): every field the block carries, the
-    order record among them, applied through the structure's one
-    validator; ``True`` when the block had something to say.  A caller
-    holding a whole script extracts first
-    (``deck_record.extract_atom_metadata(text)``) and hands the payload here.
-    """
-    return bool(struct.apply_atom_metadata(payload))
 
 
 # --------------------------------------------------------------------- #

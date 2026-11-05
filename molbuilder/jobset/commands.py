@@ -474,9 +474,9 @@ def launch_pending(stage: str, group: Optional[int], attempt: Optional[str],
     """The launch that sends ``stage``'s run that is opened and not launched
     -- ``attempt``, its folder's name: prep's first run goes with its group,
     which goes whole the first time; a run a refused send opened for a stage
-    launched before (`materialize.opened_by_refused_send`) goes with the
+    launched before (`paths.opened_by_refused_send`) goes with the
     stage alone, launched again (D4)."""
-    from .materialize import opened_by_refused_send
+    from ..paths import opened_by_refused_send
     if group is None or (attempt and opened_by_refused_send(attempt)):
         return launch_lines(TASK, stage, base=base)
     return launch_lines(TASK, base=base, groups=[group])

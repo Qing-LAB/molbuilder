@@ -97,8 +97,9 @@ molbuilder writes it, into a file molbuilder generated, and every caller
 already knows which block it wants. There is nothing to detect, so applying
 detect-and-dispatch to a question with one possible answer buys ceremony and
 no safety: the retired `ProvenanceTextParser.parse` was one line building a
-ten-field result object to carry one dict. **A block belongs to its writer**
-— `script_emit` owns the emitting and the reading of what it emitted, and
+ten-field result object to carry one dict. **A block belongs to its grammar**
+— `script_emit` writes it, `deck_record` reads it (the person's USER-CUSTOM zone
+aside, which only a new generation reads back), and
 `execution/job-contracts.md` § 3.1 owns the format.
 
 *Established 2026-09-05 by retiring `parse/scripts/` — six `TextParser`
@@ -539,11 +540,10 @@ st.active_source             # "BDT_01_relax.out"
 
 **Extract the reserved blocks from a `.fdf` / `.py` body** — **not this
 package.** The blocks are molbuilder's own, read by their grammar's module,
-`deck_record` (which travels beside a job), and the provenance by its writer:
+`deck_record` (which travels beside a job):
 
 ```python
-from molbuilder.deck_record import extract_atom_metadata
-from molbuilder.script_emit import read_provenance_block
+from molbuilder.deck_record import extract_atom_metadata, read_provenance_block
 
 extract_atom_metadata(fdf_text)   # the block dict, or None if absent
 read_provenance_block(fdf_text)   # the PROVENANCE block, or None
@@ -1673,7 +1673,7 @@ nothing here (`record.contributors`).
 | `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — started_from, a point's own `.continued-from` (`runrecord.read_continued_from`), present only where the marker is — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
 | `concluded` | `<base>.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
-| `setup` | the parameters fence (§ 5d.3a) · the deck · the engine's log of what it read — SIESTA's `fdf.<stamp>.log`, paired by its output's start (found by the output's row, its `used_log`) | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
+| `setup` | the parameters fence (§ 5d.3a) · the deck · the engine's log of what it read — SIESTA's `fdf.<stamp>.log`, paired by its output's start (found by the output's row, its `used_log`) | `deck_record.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 
 **The table is configuration, not reconciliation.** Each row names the file
 that states a fact and the reader that reads it; the files are one run's
@@ -1784,9 +1784,9 @@ never picks one.
 
 ### 5d.3a The parameters fence — one block, both engines
 
-The `effective-parameters` block is `script_emit`'s (§ 1a): one format,
-written through one emitter and read by one reader (`script_emit.parameter_row`
-/ `read_parameters_fence`). A row per catalogue item the rung reads — its
+The `effective-parameters` block is one format (§ 1a), written through one
+emitter and read by one reader (`script_emit.parameter_row`,
+`deck_record.read_parameters_fence`). A row per catalogue item the rung reads — its
 engine's, its calculation's, read by its stage, or by the one role a point of
 a run of points plays, as a SIESTA vibration's call does (`script_emit.declarations`, by
 the one rule `template.reads`) — and the record's reader takes the stage's
@@ -2274,8 +2274,8 @@ Per parser kind, the specifics:
   formats** (forbidden pattern #1 below), never parse files inline, and know
   no calculation — the run they are about is named by their caller, the run
   door. The
-  reserved `.fdf` / `.py` blocks are not a parser kind: `script_emit`'s
-  extractors read them (§ 1a).
+  reserved `.fdf` / `.py` blocks are not a parser kind: `deck_record`'s
+  readers read them (§ 1a).
 
 ---
 

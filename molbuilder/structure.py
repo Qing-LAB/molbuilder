@@ -177,6 +177,17 @@ BOX_FIELDS = ("cell", "engine_offset", "offset_by", "axis_kind", "vacuum")
 ATOM_METADATA_FIELDS = tuple(f for f in FILE_FIELDS
                              if f not in BOX_FIELDS)
 
+
+def atom_metadata_has_something(payload: Optional[Mapping[str, Any]]) -> bool:
+    """THE ONE PREDICATE for the ATOM-METADATA block (`job-contracts.md`
+    § 3.4; `model/overview.md` § 2.2a): it has something to say when any
+    field it carries does -- a label, a channel, a named value, an order
+    record (:data:`ATOM_METADATA_FIELDS`).  Asked of a block by its reader
+    and the run door: every deck writes one since 2.32.0, and one with
+    nothing to say reads as a deck that labels nothing."""
+    return bool(payload) and any(payload.get(f) for f in ATOM_METADATA_FIELDS)
+
+
 #: WHOSE A STATED OFFSET IS (`model/structure-periodicity.md` § 6.0): an
 #: origin the person assigned on the Cell page, or the engine's own origin of
 #: coordinates read back from a run.  A new calculation keeps the person's
@@ -1321,9 +1332,9 @@ class Structure:
                 f"frozen-atom indices are positions in the atom list, so "
                 f"applying them here would label the wrong atoms; re-export "
                 f"the labels from the structure they belong to.")
-        carried = {f: payload[f] for f in ATOM_METADATA_FIELDS if f in payload}
-        if not any(v for v in carried.values()):
+        if not atom_metadata_has_something(payload):
             return False
+        carried = {f: payload[f] for f in ATOM_METADATA_FIELDS if f in payload}
         block = dict(self.metadata_to_dict())
         block.update(carried)
         custom, n_frames = block.get("customized"), self.n_frames

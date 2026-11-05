@@ -7,12 +7,14 @@ ROLE    the grammar of every molbuilder block in a generated file -- the block
         names, the BEGIN/END fences (:func:`begin_marker`,
         :func:`end_marker`, :data:`MARKER_RE`) -- and the ONE reader of a
         block's JSON payload (:func:`read_json_block`), with the readers of
-        the blocks a job reads beside itself -- ATOM-METADATA and its order
-        record (:func:`order_record_of`), ENGINE-OFFSET, VIBRATION
-USED-BY script_emit (writes every block and reads the rest through these),
+        each block -- ATOM-METADATA and its order record
+        (:func:`order_record_of`), ENGINE-OFFSET, VIBRATION, SHARED, PROVENANCE
+        and who wrote the file (:func:`written_by`), BENCH-MARKS, the
+        effective-parameters rows
+USED-BY script_emit (writes every block through these),
         the SIESTA vibration's finish (`spectra.siesta_vibration`, beside
-        the job), runs.declared, runwrap and
-        pyscf/input (the effective-parameters fence)
+        the job), runs.declared, parse (a folder's engine, a run's record),
+        runwrap and pyscf/input (the effective-parameters fence)
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
         (`runwrap.VIBRATION_COMPANIONS`)
 
@@ -24,7 +26,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:                                        # inside molbuilder
     from .trajectory_log.keys import WALL_TIME as _WALL_TIME
@@ -70,18 +72,9 @@ def end_marker(name: str) -> str:
     return f"# === molbuilder {name} END ==="
 
 
-# Regex matching either marker for any block.  Group 1: block name;
-# group 2: BEGIN | END.
-#
-# The name is one lowercase word (``header``, ``bench-marks``) OR two words
-# (``item mesh_cutoff``), underscores allowed in the second.  Every consumer
-# already filters on ``group(1) != BLOCK_<x>``, so widening the name pattern
-# cannot make a two-word block look like a reserved one (checked across all
-# six consumers, 2026-08-07).
+#: Either fence of any block.  Group 1: the block's name; group 2: BEGIN | END.
 MARKER_RE = re.compile(
-    r"^#\s*===\s+molbuilder\s+([a-z-]+(?:\s+[A-Za-z0-9_]+)?)"
-    r"\s+(BEGIN|END)\s+===\s*$"
-)
+    r"^#\s*===\s+molbuilder\s+([a-z-]+)\s+(BEGIN|END)\s+===\s*$")
 
 
 #: The name a PySCF vibration script gives the release that wrote it, for its
@@ -113,36 +106,6 @@ def without_stamps(data: bytes) -> bytes:
     return _STAMPS.sub(b"<stamp>", data)
 
 
-def _brace_delta(line: str) -> int:
-    """``{`` minus ``}`` on one line, counting only braces OUTSIDE strings.
-
-    Counting every brace would let a brace inside a JSON *string* close the
-    walk early: a region named ``a}b`` -- valid JSON on the wire, written
-    correctly by :func:`emit_atom_metadata` -- would make the whole
-    ATOM-METADATA block unreadable, and the labels AND the frozen set vanish
-    with no message.
-
-    JSON strings cannot contain a literal newline, so the in-string state
-    never has to carry across lines.
-    """
-    depth = 0
-    in_str = False
-    escaped = False
-    for ch in line:
-        if escaped:
-            escaped = False
-        elif ch == "\\":
-            escaped = True
-        elif ch == '"':
-            in_str = not in_str
-        elif not in_str:
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-    return depth
-
-
 class DeckRecordUnreadable(ValueError):
     """A deck carries the molbuilder block it names, and the block cannot be
     read: its fences are not a BEGIN/END pair, it holds no JSON object, or
@@ -159,10 +122,31 @@ def _unreadable(name: str, why: str) -> DeckRecordUnreadable:
         f"stage again")
 
 
+def _first_pair(text: str, name: str) -> Tuple[Optional[List[str]], bool]:
+    """The lines between the first complete BEGIN/END pair of the block
+    ``name`` in ``text`` (``None`` when there is none), and whether either of
+    its fences is there at all -- the scan every reader of a block by its
+    first pair asks.  USER-CUSTOM takes the outermost pair instead, on purpose
+    (`script_emit._user_custom_span`)."""
+    lines = text.splitlines()
+    begin: Optional[int] = None
+    seen = False
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m or m.group(1) != name:
+            continue
+        seen = True
+        if m.group(2) == "BEGIN":
+            begin = i
+        elif begin is not None:
+            return lines[begin + 1: i], True
+    return None, seen
+
+
 def read_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
     """Find the molbuilder block ``name`` in ``text`` and return its JSON
     payload as a dict -- the ONE reader for every JSON-payload block
-    (ATOM-METADATA, ENGINE-OFFSET, VIBRATION), so their parsing cannot
+    (ATOM-METADATA, ENGINE-OFFSET, VIBRATION, SHARED), so their parsing cannot
     drift.
 
     Returns ``None`` when no such block is present: the deck records
@@ -170,60 +154,22 @@ def read_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
     markers not a BEGIN/END pair, no JSON object between them, or JSON that
     fails to parse -- raises :class:`DeckRecordUnreadable`.
 
-    Comment-prefix-per-line is stripped before JSON parsing.
-    """
-    lines = text.splitlines()
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    seen = False
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m:
-            continue
-        if m.group(1) != name:
-            continue
-        seen = True
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
+    The object starts at the first line opening with ``{``, past the block's
+    ``# format:`` line, each line's comment prefix off; however its writer
+    laid it out, the JSON decoder finds where it ends."""
+    inner, seen = _first_pair(text, name)
     if not seen:
         return None
-    if begin_idx is None or end_idx is None:
+    if inner is None:
         raise _unreadable(name, "has no BEGIN/END pair of fences")
-    # Inner lines: strip leading "# " (or "#") to recover JSON.
-    inner: List[str] = []
-    for raw in lines[begin_idx + 1: end_idx]:
-        if raw.startswith("# "):
-            inner.append(raw[2:])
-        elif raw.startswith("#"):
-            inner.append(raw[1:])
-        else:
-            inner.append(raw)
-    # Brace-balance walk so the extractor accepts BOTH pretty-printed
-    # JSON (molbuilder's emit_atom_metadata via json.dumps indent=2)
-    # AND compact / single-line JSON.  The contract on the wire is
-    # "valid JSON inside the block"; how the writer formatted it isn't
-    # load-bearing.
-    json_lines: List[str] = []
-    saw_open = False
-    brace_depth = 0
-    for line in inner:
-        stripped = line.strip()
-        if not saw_open:
-            if not stripped or not stripped.startswith("{"):
-                continue
-            saw_open = True
-        json_lines.append(line)
-        brace_depth += _brace_delta(stripped)
-        if brace_depth <= 0:
-            break
-    if not json_lines:
+    lines = [re.sub(r"^# ?", "", raw) for raw in inner]
+    opens = next((i for i, line in enumerate(lines)
+                  if line.lstrip().startswith("{")), None)
+    if opens is None:
         raise _unreadable(name, "holds no JSON object")
     try:
-        return json.loads("\n".join(json_lines))
+        return json.JSONDecoder().raw_decode(
+            "\n".join(lines[opens:]).lstrip())[0]
     except json.JSONDecodeError as exc:
         raise _unreadable(name, f"holds JSON that does not parse ({exc})") \
             from exc
@@ -319,6 +265,184 @@ def same_calculation(engine: str, a: str, b: str) -> List[str]:
     return list(reading(a, b))
 
 
+# --------------------------------------------------------------------- #
+#  The effective-parameters block's rows (`model/parse.md` § 5d.3a)     #
+# --------------------------------------------------------------------- #
+
+#: What opens a row inside the block -- a comment in every engine's log.
+PARAMETER_ROW_PREFIX = "#   "
+_ROW_FIELDS = ("item", "default", "asked", "used")
+
+
+def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
+    """Every row of every effective-parameters block in ``text``, in order:
+    ``{item, default, asked, used}``.  Lines in the block that are not rows --
+    SIESTA's wrapper echoes the deck there too -- are the block's prose and
+    are skipped."""
+    begin = begin_marker(BLOCK_PARAMETERS)
+    end = end_marker(BLOCK_PARAMETERS)
+    rows: List[Dict[str, Any]] = []
+    inside = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == begin:
+            inside = True
+            continue
+        if stripped == end:
+            inside = False
+            continue
+        if not inside or not line.startswith(PARAMETER_ROW_PREFIX + "["):
+            continue
+        try:
+            arr = json.loads(line[len(PARAMETER_ROW_PREFIX):])
+        except ValueError:
+            continue
+        if (isinstance(arr, list) and len(arr) == len(_ROW_FIELDS)
+                and isinstance(arr[0], str)):
+            rows.append(dict(zip(_ROW_FIELDS, arr)))
+    return rows
+
+
+# --------------------------------------------------------------------- #
+#  The provenance block                                                 #
+# --------------------------------------------------------------------- #
+
+_PROVENANCE_KV_RE = re.compile(
+    r"^#\s+(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
+
+#: THE PROVENANCE BLOCK'S SUB-BLOCKS -- a ``<name>:`` header, then indented
+#: rows read as ``<name>.<key>``: what the auto-policy chose
+#: (``resolved-defaults``) and who set each value (``parameters``).  The
+#: header's own words, where it carries any, read as ``<name>``.
+PARAMETERS_KEY = "parameters"
+_PROVENANCE_DEFAULTS_HDR = re.compile(
+    r"^#\s+(?P<sub>resolved-defaults|" + PARAMETERS_KEY
+    + r")\s*:\s*(?P<note>.*?)\s*$")
+
+_PROVENANCE_DEFAULTS_KV_RE = re.compile(
+    r"^#\s{4,}(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
+
+def read_provenance_block(text: str) -> Optional[Dict[str, str]]:
+    """Find the PROVENANCE block and return its k/v payload as a flat
+    dict.  Returns ``None`` when no well-formed PROVENANCE block is
+    present.  Empty-but-present block returns ``{}`` (distinct from
+    None — `model/parse.md`'s absent-vs-empty rule)."""
+    inner = _first_pair(text, BLOCK_PROVENANCE)[0]
+    if inner is None:
+        return None
+    out: Dict[str, str] = {}
+    sub = None
+    for raw in inner:
+        hm = _PROVENANCE_DEFAULTS_HDR.match(raw)
+        if hm:
+            sub = hm.group("sub")
+            if hm.group("note"):
+                out[sub] = hm.group("note")
+            continue
+        if sub is not None:
+            dm = _PROVENANCE_DEFAULTS_KV_RE.match(raw)
+            if dm:
+                out[f"{sub}.{dm.group('key')}"] = dm.group("val")
+                continue
+            # A line not shaped as a row ends the sub-block; the
+            # top-level k/v matcher below may still pick it up.
+            sub = None
+        m = _PROVENANCE_KV_RE.match(raw)
+        if m:
+            out[m.group("key")] = m.group("val")
+    return out
+
+
+#: The version a ``generator-version`` value names -- its first word, three
+#: numbers -- absent from a file written before 2.0.0, which named only its
+#: git commit.
+_VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+)\b")
+
+
+def written_by(text: str) -> Optional[str]:
+    """The molbuilder version that wrote a deck or run script, read from
+    its PROVENANCE block -- ``None`` for one written before 2.0.0, which
+    recorded only its git commit, or for a file with no block."""
+    block = read_provenance_block(text) or {}
+    m = _VERSION_RE.match(block.get("generator-version", ""))
+    return m.group(1) if m else None
+
+
+def molbuilder_words(version: Optional[str]) -> str:
+    """The molbuilder that wrote a file, as a person reads it --
+    ``molbuilder 2.9.6``, or ``a molbuilder from before 2.0.0`` for one that
+    named no version (:func:`written_by`).  Every door that names who wrote
+    a deck says it so."""
+    return f"molbuilder {version}" if version else "a molbuilder from before 2.0.0"
+
+
+# --------------------------------------------------------------------- #
+#  The bench-marks block                                                #
+# --------------------------------------------------------------------- #
+
+
+def _coerce_scalar(s: str) -> Any:
+    """Best-effort numeric coercion for BENCH-MARKS scalar values.
+    Returns the original string when neither int nor float parses."""
+    s = s.strip()
+    try:
+        if "." in s or "e" in s.lower():
+            return float(s)
+        return int(s)
+    except ValueError:
+        return s
+
+
+def read_bench_marks_block(text: str) -> Optional[Dict[str, Any]]:
+    """Find the BENCH-MARKS block and return its structured payload.
+
+    Returns ``None`` when no BENCH-MARKS block is present.
+    """
+    inner = _first_pair(text, BLOCK_BENCH_MARKS)[0]
+    if inner is None:
+        return None
+    out: Dict[str, Any] = {"fields": []}
+    for raw in inner:
+        # Strip "#   " comment prefix.
+        s = raw.lstrip("#").strip()
+        if not s:
+            continue
+        # `field <name> anchor=<x> type=<y> ...` rows.
+        if s.startswith("field "):
+            tokens = s.split()
+            field: Dict[str, Any] = {"name": tokens[1]}
+            for tok in tokens[2:]:
+                if "=" not in tok:
+                    continue
+                k, _, v = tok.partition("=")
+                v = v.strip()
+                # Coerce numeric range / default values.
+                if k == "range" and v.startswith("[") and v.endswith("]"):
+                    try:
+                        a, b = v[1:-1].split(",")
+                        field["range"] = [_coerce_scalar(a), _coerce_scalar(b)]
+                    except ValueError:
+                        field["range"] = v
+                elif k == "default":
+                    field["default"] = _coerce_scalar(v)
+                else:
+                    field[k] = v
+            out["fields"].append(field)
+            continue
+        # Top-level `key value` scalars.
+        if " " in s and not s.startswith("field "):
+            k, _, v = s.partition(" ")
+            v = v.strip()
+            if k == "version":
+                out["version"] = v
+            elif v.lower() in ("true", ".true."):
+                out[k] = True
+            elif v.lower() in ("false", ".false."):
+                out[k] = False
+            else:
+                out[k] = _coerce_scalar(v)
+    return out
+
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle (`runwrap._members`).
 TRAVELS_WITH = ("molbuilder.trajectory_log.keys",)
 
@@ -330,4 +454,6 @@ __all__ = ["BUILD_NAME", "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS"
            "begin_marker", "end_marker", "order_record_of", "read_json_block",
            "DeckRecordUnreadable", "extract_atom_metadata",
            "extract_engine_offset", "extract_vibration_record",
-           "without_stamps"]
+           "PARAMETER_ROW_PREFIX", "PARAMETERS_KEY", "read_parameters_fence",
+           "read_provenance_block", "read_bench_marks_block", "written_by",
+           "molbuilder_words", "box_of_run", "BLOCK_SHARED", "without_stamps"]

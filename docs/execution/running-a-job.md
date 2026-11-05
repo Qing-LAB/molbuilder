@@ -408,7 +408,7 @@ lowered**.
 
 The orbital count is an **estimate and says so**: the deck's own, its BENCH-MARKS block's `n_orbitals_est`
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3) — `10 × n_atoms`, the rough double-zeta-polarised
-figure the `BlockSize` bound uses — read at prep by the block's reader (`script_emit.read_bench_marks_block`).
+figure the `BlockSize` bound uses — read at prep by the block's reader (`deck_record.read_bench_marks_block`).
 One estimate in one place, or the deck and the notice would disagree. The true count needs every species' basis
 and is known only once SIESTA starts. A deck whose block states none gets **no notice at all** rather than one
 built on an invented number.

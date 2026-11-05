@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from ..script_emit import Parameter, Section, not_set_line
+from ..script_emit import Parameter, Section, not_set_line, parameter
+from .engine_input import unit_word
 
 
 def is_elpa(algorithm: str) -> bool:
@@ -189,28 +190,6 @@ GEOMETRY_SECTION = Section(
 
 
 
-#: THE DECK'S UNIT WORD IS THE CATALOGUE'S `unit` -- one source (plan F27;
-#: `engines/template.md` § 6.4): a unit is part of the SPELLING, not of the
-#: value, so the deck writes the item's own unit next to the number.  Two
-#: spellings differ from the catalogue's: fdf reads ASCII, so Å is `Ang`;
-#: and the bias, held in volts, is written `eV` -- the energy an electron
-#: gains across V volts is V electron-volts, so the number is the same and
-#: only the word differs (its catalogue note says so to a reader of the
-#: deck).  An item added with a `unit` renders with it, instead of bare --
-#: which TranSIESTA read as rydberg, 13.6 times the value.
-_FDF_SPELLING = {"Å": "Ang", "eV/Å": "eV/Ang"}
-_UNIT_EXCEPTION = {"bias_voltage_v": "eV"}
-
-
-def unit_word(name: str) -> Optional[str]:
-    """The unit fdf reads beside ``name``'s value, or None for a bare number."""
-    if name in _UNIT_EXCEPTION:
-        return _UNIT_EXCEPTION[name]
-    from ..template import catalogue, one
-    item = one(catalogue(), name, engine="siesta")
-    unit = item.unit if item is not None else None
-    return _FDF_SPELLING.get(unit, unit) if unit else None
-
 #: Items whose keyword is padded so a related pair reads as a column.
 #: ``XC.functional`` names the family and ``XC.authors`` the parameterisation;
 #: they are one decision written on two lines, and the alignment says so.
@@ -249,6 +228,19 @@ _FMT = {"dm_tolerance": ".1e", "h_tolerance": ".1e",
 
 
 
+def _keyed(param, key: str, shown: str) -> str:
+    """A keyword line: one space unless the item is half of an aligned pair.
+    fdf does not care, but a reader diffing two generations should see the
+    values change, not the whitespace."""
+    pad = _PAD.get(param.name)
+    return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
+
+
+def _fdf_bool(value: bool) -> str:
+    """fdf's spelling of a boolean."""
+    return ".true." if value else ".false."
+
+
 def k_mesh_lines(mesh, *, notes: bool = True) -> list:
     """A k-point mesh as a SIESTA-family deck writes it
     (`engines/siesta.md` § 6.1): each item that answered an axis gives its
@@ -257,7 +249,6 @@ def k_mesh_lines(mesh, *, notes: bool = True) -> list:
     transmission's ``TBT.k`` all write their mesh through here, so the notes
     a deck carries are the items that decided it, never a fixed pair."""
     from .. import kmesh
-    from ..script_emit import parameter
     out: list = []
     if notes:
         names = []
@@ -333,10 +324,8 @@ def line(derived: dict):
         key = param.writes[0] if param.writes else None
         if key is None:
             return None
-        shown = (".true." if value else ".false.") if isinstance(value, bool) \
-            else f"{value}"
-        pad = _PAD.get(param.name)
-        return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
+        return _keyed(param, key, _fdf_bool(value)
+                      if isinstance(value, bool) else f"{value}")
 
     def _geometry(param):
         if not param.known:
@@ -352,9 +341,7 @@ def line(derived: dict):
         if key is None:
             return None
         unit = unit_word(param.name)
-        pad = _PAD.get(param.name)
-        shown = f"{value} {unit}" if unit else f"{value}"
-        return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
+        return _keyed(param, key, f"{value} {unit}" if unit else f"{value}")
 
     def _pair(param):
         keys = param.writes
@@ -369,9 +356,7 @@ def line(derived: dict):
         # omitted keyword is not a neutral silence, it is SIESTA's default
         # answering instead of the person who filled in the form.
         if isinstance(param.value, bool):
-            shown = ".true." if param.value else ".false."
-            pad = _PAD.get(param.name)
-            return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
+            return _keyed(param, key, _fdf_bool(param.value))
         if isinstance(param.value, (list, tuple)):
             # AN fdf LIST IS WRITTEN IN BRACKETS, and only then is it a list:
             # libfdf's tokenizer calls a token a list when it "starts with [
@@ -387,18 +372,12 @@ def line(derived: dict):
                 raise TypeError(
                     f"{param.name}: an fdf list holds numbers only, and "
                     f"this value is {param.value!r}")
-            shown = "[" + " ".join(str(v) for v in param.value) + "]"
-            pad = _PAD.get(param.name)
-            return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
+            return _keyed(param, key,
+                          "[" + " ".join(str(v) for v in param.value) + "]")
         fmt = _FMT.get(param.name)
         shown = format(param.value, fmt) if fmt else f"{param.value}"
         unit = unit_word(param.name)
-        value = f"{shown} {unit}" if unit else shown
-        # One space unless the item is half of an aligned pair.  fdf does not
-        # care, but a reader diffing two generations should see the values
-        # change, not the whitespace.
-        pad = _PAD.get(param.name)
-        return f"{key:<{pad}}{value}" if pad else f"{key} {value}"
+        return _keyed(param, key, f"{shown} {unit}" if unit else shown)
 
     def _spin(param):
         # THE ELECTRONIC STATE'S VALUES, never the raw fields: a blank item is

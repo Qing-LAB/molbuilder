@@ -10,8 +10,7 @@ import numpy as np
 import pytest
 
 from molbuilder.issues import ValidationError
-from molbuilder.pyscf import PySCFConfig
-from molbuilder.siesta import SiestaConfig
+from molbuilder.config.siesta import SiestaConfig
 from molbuilder.structure import Structure
 from molbuilder.validation import report, validate, validate_geometry
 from ._helpers import _vacuum_cell

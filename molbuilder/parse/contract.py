@@ -394,7 +394,7 @@ def _declared_in_provenance(directory: Path) -> set:
     both, and each states its engine (`script_emit.render_deck` writes the
     deck's, transport decks included).
     """
-    from molbuilder.script_emit import read_provenance_block
+    from molbuilder.deck_record import read_provenance_block
     # THE ROLES COME FROM THE CATALOGUE: what every prepared run carries
     # (`runfiles.prepared_roles`), so the search is the catalogue's.
     from ..runfiles import find_by_role, prepared_roles

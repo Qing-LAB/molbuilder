@@ -229,7 +229,7 @@ def _as_2_65_7_wrote_it(now):
     """The same structure, at version 16, a field the structure reader retires
     in it: `selection_rules`, which 2.65.7 still wrote, empty."""
     import ast
-    from molbuilder.pyscf.input import SIDECAR_NAME
+    from molbuilder.pyscf.script_input import SIDECAR_NAME
     head = f"{SIDECAR_NAME} = "
     line = next(ln for ln in now.splitlines() if ln.startswith(head))
     payload = ast.literal_eval(line[len(head):])

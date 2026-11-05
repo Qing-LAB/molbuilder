@@ -79,9 +79,8 @@ flowchart LR
   deck's `script_emit.DeckSpec` — its layout, how each setting is spelled, the
   values its record carries and the rules the finished deck must satisfy — and
   the framework renders it (`script_emit.render_deck`). The public surface is
-  `spec_for` and `SiestaConfig`; `molbuilder.siesta` exports `SiestaConfig`
-  and `copy_pseudopotentials`, which copies `<label>.psml` by the name SIESTA
-  opens and no other (`pseudos.psml_sources`, the rule every check asks). A deck reaches disk one way —
+  `spec_for` and `config.siesta.SiestaConfig`; `pseudos.copy_pseudopotentials`
+  copies `<label>.psml` by the name SIESTA opens and no other (`pseudos.psml_sources`, the rule every check asks). A deck reaches disk one way —
   `jobset prep`, which calls `spec_for` → `script_emit.prepare_deck` (validate
   → render → write → check) on the machine that will run it, and writes the
   siblings the deck's own text promises
@@ -178,7 +177,7 @@ class SiestaConfig: ...                                             # config/sie
 spec_for(struct, config=None, *, names, cell=None,
          calculation="optimization", vibration=None,
          part=None, state=None, trial=None) -> DeckSpec             # siesta/input.py
-copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the species labels whose <label>.psml was MISSING
+copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # pseudos.py → the species labels whose <label>.psml was MISSING
 ```
 
 A deck is made on the road: `molbuilder describe` describes the calculation, and `prep`

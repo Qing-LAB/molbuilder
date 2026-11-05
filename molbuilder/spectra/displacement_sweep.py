@@ -41,13 +41,6 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-#: The record's schema (`execution/job-contracts.md` § 6.1).  ``@2``: each
-#: stage's force-constant range is named as SIESTA's numbering,
-#: ``fc_range_engine_1based`` (`model/overview.md` § 2.2a); a ``@1`` record is
-#: refused by its version, and `summarize task` writes it again.
-SWEEP_SCHEMA = "molbuilder/fc-displacement-sweep@2"
-
-
 #: How far one atom may sit from the reference stage's for the two to be
 #: one geometry (`engines/vibration.md` § 6.10.3).
 SAME_GEOMETRY_ANG = 1e-6
@@ -137,6 +130,7 @@ def collect_sweep(calc, *,
     run wrote it, and the comparison.  Raises :class:`SweepError` when there
     is nothing a sweep can be: fewer than two force-constant stages, no stage with a result yet, or stages that describe different atoms or were
     measured at different geometries."""
+    from ..parse.sidecars.fc_sweep import SWEEP_SCHEMA
     from .. import __version__ as _mb_version
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from .results import mass_of
@@ -516,7 +510,7 @@ def sweep_table_text(record: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["SWEEP_SCHEMA", "SweepError", "sweep_path", "match_modes",
+__all__ = ["SweepError", "sweep_path", "match_modes",
            "why_no_sweep", "collect_sweep",
            "write_sweep",
            "sweep_table_text"]

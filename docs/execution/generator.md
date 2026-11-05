@@ -301,7 +301,7 @@ what the run uses would destroy the plan to measure, so the run reads
 `execution` ([`job-request.md`](?doc=execution/job-request.md) § 3.2). Both
 lanes end in the same pipeline — `resolve()`, the `ParameterSet`, the
 renderers — and a run's machine values reach its `Resources` by a direct map
-from the catalogue's names (`prep_inputs.declared_run_shape`), never through
+from the catalogue's names (`resolve.declared_run_shape`), never through
 the grid's cells.
 
 ##### The grid

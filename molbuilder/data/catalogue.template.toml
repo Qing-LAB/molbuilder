@@ -881,7 +881,7 @@ group = "staging"
 label = "GPUs (G)"
 help = """
 How many GPUs a run -- or one benchmark trial -- asks the scheduler for: a count, and no card; which card a node carries is that machine's business.  A run that uses the GPU states it; there is no default, and prep refuses a GPU run without one.
-SIESTA: a run spreads its mpi_np ranks over its G GPUs, mpi_np / G to a device; an uneven split is said at prep, never refused.  Declared in the bench block it is an axis: gpu_count = [1, 2, 4] measures exactly those counts, every (mpi_np, G) pair a cell.  Leave it out of the bench and prep proposes the counts: for a declared rank grid, each rank count's divisors up to the GPUs a node holds; with no rank grid declared, each count from 1 to the GPUs a node holds, with the machine's rank counts per GPU (generator.md § 4.3a).
+SIESTA: a run spreads its mpi_np ranks over its G GPUs, mpi_np / G to a device; an uneven split is said at prep, never refused.  Declared in the bench block it is an axis: gpu_count = [1, 2, 4] measures exactly those counts, every (mpi_np, G) pair a cell.  A benchmark on the GPU states its counts there, or prep refuses it: molbuilder proposes none (generator.md § 4.3a).
 PySCF: one process, on the GPUs the job is given.
 """
 

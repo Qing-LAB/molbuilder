@@ -203,7 +203,7 @@ def test_a_stages_unset_gpu_count_runs_that_stage_on_no_gpu():
 
     MUTATION THIS MUST FAIL AGAINST: the launch shape read without the
     door (``int(None)``, the traceback the 2.27.0 review found)."""
-    from molbuilder.jobset.prep_inputs import card_settings, declared_run_shape
+    from molbuilder.resolve import card_settings, declared_run_shape
     request = _request({"use_gpu": False, "gpu_count": None},
                        {"use_gpu": True, "gpu_count": 2, "mpi_np": 4})
     assert declared_run_shape(request, "coarse") == {"mpi_np": 4}

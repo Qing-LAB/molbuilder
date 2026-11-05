@@ -771,13 +771,13 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
 
 def _prepared_by_another(calc, job) -> Optional[str]:
     """The molbuilder that prepared ``job``'s files, in words, when it is
-    not this one -- read off its deck's own record (`script_emit.written_by`)
+    not this one -- read off its deck's own record (`deck_record.written_by`)
     where prep wrote it: the stage's folder, or a run of points' first
     point (`transport.stages.point_folders`) -- else ``None``: this one wrote
     it, or the deck is not there to say."""
     from .. import __version__
     from ..calcdirs import prepared_folder
-    from ..script_emit import molbuilder_words, written_by
+    from ..deck_record import molbuilder_words, written_by
     from .naming import job_dir_names
     from .points import rung_points_of
     try:

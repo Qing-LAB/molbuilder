@@ -296,7 +296,7 @@ gate**, because it converts a loud failure into a quiet one.
 | Surface | On a non-v7 payload |
 |---|---|
 | `molstruct.load` / `parse.sidecars.molstruct.load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
-| the in-script `ATOM-METADATA` block, wherever it arrives from — a run directory, the transport composite, or `/api/build/load` — | **one reader**, `script_emit.apply_atom_metadata`. The block is read as written today: a retired layout is not translated, so whatever it spells the current way applies and the rest simply is not there. The run still opens. The one refusal is a block whose `n_atoms_total` disagrees with the structure — `MolstructPairingError`, the same name the sidecar's identical guard uses |
+| the in-script `ATOM-METADATA` block, wherever it arrives from — a run directory, the transport composite, or `/api/build/load` — | **one reader**, `Structure.apply_atom_metadata`. The block is read as written today: a retired layout is not translated, so whatever it spells the current way applies and the rest simply is not there. The run still opens. The one refusal is a block whose `n_atoms_total` disagrees with the structure — `MolstructPairingError`, the same name the sidecar's identical guard uses |
 
 The sidecar file's message names the specific difference and says what to do:
 re-save the structure, or re-generate the script.

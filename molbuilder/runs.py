@@ -353,10 +353,10 @@ class Declared:
                           ) -> Optional[Dict[str, Any]]:
         """The atom-metadata block for a structure of ``n_atoms`` -- or
         ``None`` when it says nothing (the block's one predicate,
-        ``script_emit.atom_metadata_has_something``), or was written for
+        ``structure.atom_metadata_has_something``), or was written for
         another atom count: its labels are indices, and would name the
         wrong atoms."""
-        from molbuilder.script_emit import atom_metadata_has_something
+        from molbuilder.structure import atom_metadata_has_something
         md = self.atom_metadata
         if not atom_metadata_has_something(md):
             return None
@@ -546,7 +546,6 @@ class RunView:
         ``info`` record; and, for a run whose deck states no order (I9),
         the view's mark (``Structure.order_unstated``), so a file written
         from it says so (§ 2.2b, F4)."""
-        from molbuilder.script_emit import apply_atom_metadata
         per = self.periodicity or {}
         if per.get("cell") is not None:
             # The axis kinds the deck recorded, else the cell's own default.
@@ -558,7 +557,7 @@ class RunView:
         else:
             struct = struct.copy()
         if self.atom_metadata:
-            apply_atom_metadata(struct, self.atom_metadata)
+            struct.apply_atom_metadata(self.atom_metadata)
         if self.info:
             struct.apply_info_dict(self.info)
         if self.order_unstated:

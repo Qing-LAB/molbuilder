@@ -593,7 +593,7 @@ def resolve(template_text: str, task, *,
     # default (`template.default_of`), laid over whatever the config class
     # held -- until a run card states it, the stage's over the
     # calculation's: the values prep's card read took through the setting
-    # door (`prep_inputs.card_settings`, `engines/template.md` § 5.4).
+    # door (:func:`card_settings`, `engines/template.md` § 5.4).
     from .template import default_of, is_run_setting
     ours = {k for k in known if _items.get(k) is not None
             and is_run_setting(_items[k])}
@@ -1064,6 +1064,93 @@ def _flat(v: Any) -> str:
 _DROP_RE = re.compile(r"[^A-Za-z0-9_]")
 
 
-__all__ = ["ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
+def card_values(request, stage=None):
+    """``{name: (item, value)}`` -- the run card a rung runs at (the
+    calculation's with the rung's over it, `JobRequest.run_condition`),
+    each value asked of the setting door in the run card's home and
+    spelled by it (`engines/template.md` § 5.4); a scheduler ask (`time`,
+    `domain`) with no item, as its reader spelled it.  Refused BY NAME, the
+    first refusal as a `PrepError`: the preflight has listed them all
+    before prep asks, so this is the backstop for a direct caller."""
+    from . import template as _T
+    from .job_request import LANE_ASKS
+    from .jobset.errors import PrepError
+    engine, kind = str(request.engine), str(request.calculation)
+    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)}
+    out = {}
+    for name, val in request.run_condition(stage).items():
+        if name in LANE_ASKS:
+            out[name] = (None, val)
+            continue
+        it = items.get(name)
+        why = (f", which is not a setting of {engine}" if it is None else
+               _T.accepts(it, val, "run_card", engine=engine, kind=kind,
+                          stage=stage))
+        if why:
+            raise PrepError(f"the run card sets {name} = "
+                            f"{_T.shown(val)}{why}.")
+        out[name] = (it, _T.spell(it, val))
+    return out
+
+
+# THE RUN CARD'S TWO HALVES, split by the catalogue's own answer: a
+# machine-answered item is the launch SHAPE (:func:`declared_run_shape`), any
+# other a run setting over the catalogue's default (:func:`card_settings`) --
+# each value read through the setting door (:func:`card_values`), so the two
+# cannot disagree about what a name means.  The catalogue's words for a launch
+# field are mapped to `Resources`' own by the one name map, `model.AS_RESOURCE`;
+# an item whose name maps to no field is DROPPED.  The run's own wall and queue
+# (`job-request.md` § 3.2a) are `Resources` fields under their own names.
+def declared_run_shape(request, stage=None):
+    """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
+    fields.  ``{}`` when the condition states none.
+
+    **A DIRECT MAP, because there is nothing to work out.** The template
+    carries the physics (`template.md` § 5), the cards how the run runs; a
+    launch value no card names is stated as a flag, or prep refuses the
+    run (`architecture.md` § 5.2) -- nothing fills one in.  Not the grid's
+    cells: `bench_inputs` is a sweep's own machinery.
+
+    The device ask is a COUNT -- ``gpu:N`` -- and names no card: which card
+    a node carries is the machine's business (`scheduler.md` R2a).  The count is the run card's
+    own ``gpu_count``, on every engine, carried as stated: whether the run
+    uses the GPU is its resolved ``use_gpu``, and the two are asked together
+    by the prep entry, of the job it resolves (`prep.plan_stage`,
+    `execution/gpu.md` G5).
+    """
+    out = {}
+    for name, (it, val) in sorted(card_values(request, stage).items()):
+        if it is None:
+            # THE RUN'S OWN SCHEDULER ASK (`job-request.md` § 3.2a), spelled
+            # by the job request's reader: not a catalogue item, and dropping
+            # it would DROP a value a person typed.
+            out[name] = val
+            continue
+        if not it.allocation or val is None:
+            continue                    # a parameter, or unset on this rung
+        field = AS_RESOURCE.get(name, name)
+        if field == "gres":
+            out["gres"] = f"gpu:{val}"  # the count, as the scheduler spells it
+        elif field in _RESOURCE_FIELDS:
+            out[field] = val
+    return out
+
+
+def card_settings(request, stage=None):
+    """The run settings a run takes from the job request's cards --
+    ``{name: (value, "stage_card" | "calc_card")}``: the condition's
+    NON-machine items (:func:`declared_run_shape` takes the machine's), each
+    with the card it came from (`job-request.md` § 4) -- ``None`` where a card
+    leaves an optional one unset (§ 3.2).  With no ``stage``, the
+    calculation's card alone -- what a benchmark's trials take (§ 3.4)."""
+    entry = request.entry(stage) if stage is not None else None
+    own = dict(entry.execution or {}) if entry is not None else {}
+    return {k: (v, "stage_card" if k in own else "calc_card")
+            for k, (it, v) in card_values(request, stage).items()
+            if it is not None and not it.allocation}
+
+
+__all__ = ["card_settings", "card_values", "declared_run_shape",
+           "ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
            "MachineTranslation", "resolve", "point_token",
            "SET_AFTER", "BLANK_ANSWERED_BY", "BLANK_ENGINE", "said_by"]

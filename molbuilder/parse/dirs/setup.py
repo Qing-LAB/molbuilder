@@ -5,7 +5,7 @@ run asked for · what the engine used**, each as THE RUN recorded it, and one
 rule for when the last two disagree.  The columns come from the files the run
 left, the same way for every engine:
 
-* the **effective-parameters block** (`script_emit.read_parameters_fence`) —
+* the **effective-parameters block** (`deck_record.read_parameters_fence`) —
   the one block both engines write: SIESTA's wrapper states every item's
   default at launch, PySCF's deck states all three columns at run time;
 * what the block leaves empty, the run's other records fill: SIESTA's asked
@@ -136,6 +136,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     """``{"setup": {"rows", "engine_only"}, "verdict": {"findings"}}`` for the
     run ``f`` describes -- each part present only when a file states it."""
     from ... import script_emit as _sc
+    from ...deck_record import read_parameters_fence
     from ...engine_table import engines as _engines, keywords
     from ..registry import parse as _parse
     from .record import read_part
@@ -150,8 +151,8 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     # keywords, the deck's own in the engine's output for a script deck,
     # which writes it from inside itself (`model/parse.md` § 5d.3a).
     block = {r["item"]: r for r in
-             _sc.read_parameters_fence(f.wrapper_text)
-             + (_sc.read_parameters_fence(read_part(f.stdout)) if kw is None
+             read_parameters_fence(f.wrapper_text)
+             + (read_parameters_fence(read_part(f.stdout)) if kw is None
                 else [])}
     # THE DECK WHOLE, its coordinates file inlined (the reader's
     # ``read_deck``).

@@ -10,7 +10,7 @@ fact its files state, and a new engine or a new file is a row, not a path
 through this module.  No row reads a format itself: each asks the reader that
 lives with that format (§ 1a) — the SIESTA family's table, `runwrap`'s reader
 of its own log, the instruments, `materialize` and `prep` for their files,
-`script_emit` for its block, the registry for SIESTA's `fdf` log.
+`deck_record` for its block, the registry for SIESTA's `fdf` log.
 
 **The table is configuration, not reconciliation** (§ 5d.1b).  A run's files
 are one calculation reporting itself, one aspect per file -- the `.out` the

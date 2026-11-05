@@ -102,7 +102,7 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     # THE TRANSMISSION WINDOW REACHES THE BIAS WINDOW (P2, `engines/
     # transport.md` § 2a.10, § 6.1c): on the transmission rung alone, whose
     # deck writes the window and the voltage.  One rule for the record, this
-    # gate and the description's preflight (`record.window_short_of`):
+    # gate and the description's preflight (`energies.window_short_of`):
     # TBtrans integrates the current over its window and says nothing when
     # the window cuts it short.
     from ..transport.window import window_rung
@@ -229,7 +229,7 @@ def _bias_points_in_range(task) -> List[Issue]:
 
 def _window_reaches_the_bias(task, ladder) -> List[Issue]:
     """The transmission window reaches the largest listed voltage's bias
-    window, ±(|V|/2 + 5 kT) -- the one rule `record.window_short_of` states
+    window, ±(|V|/2 + 5 kT) -- the one rule `energies.window_short_of` states
     (`engines/transport.md` § 2a.10, P2), judged here on the description as
     the transmission rung resolves it, so a list that the window cannot
     serve is refused where it is written: under the low-bias approximation
@@ -251,7 +251,7 @@ def _window_reaches_the_bias(task, ladder) -> List[Issue]:
 def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
     """THE ONE RULE for whether the transmission's window reaches the bias
     window at its temperature -- the record's, this gate's and the
-    description's (`record.window_short_of`, `engines/transport.md`
+    description's (`energies.window_short_of`, `engines/transport.md`
     § 2a.10) -- an error on the window's edge when it cuts the current
     short, none when a value it needs is unset."""
     emin = getattr(cfg, "transmission_emin_ev", None)
@@ -261,7 +261,7 @@ def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
     if emin is None or emax is None or not n or temp is None:
         return []
     from ..constants import BOLTZMANN_EV_K
-    from ..transport.record import sampled_window, window_short_of
+    from ..transport.energies import sampled_window, window_short_of
     short = window_short_of(*sampled_window(emin, emax, n), bias,
                             BOLTZMANN_EV_K * float(temp))
     return [Issue("error", short + " (engines/transport.md 2a.10)",

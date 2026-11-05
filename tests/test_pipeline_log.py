@@ -142,7 +142,7 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     # `engines/template.md` § 6.6 obligation 5) -- read through its reader.
     from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import find
-    from molbuilder.script_emit import read_provenance_block
+    from molbuilder.deck_record import read_provenance_block
     from molbuilder.task import of as task_of
     from molbuilder.template import SOURCE_WORDS
     # THE DECK LIES IN ITS STAGE'S FOLDER (`project-layout.md` § 5.2).
