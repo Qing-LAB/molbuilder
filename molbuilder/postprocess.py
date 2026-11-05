@@ -5,14 +5,15 @@ MODULE  postprocess (above the parse package and the run door; gathers what
         is already there, a second reader of nothing)
 ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         registry's), in the file's own order, the map on the answer;
-        ``read_steps`` -- a run's steps, in the user order;
+        ``read_steps`` -- a run's steps, in the user order; ``list_runs`` -- a
+        calculation's runs;
         ``read_structure`` -- a structure pair, in the user
         order; ``atom_index_map`` -- which index a file's
         atoms are listed by, and both indices of each (`atom_index`);
         ``read_transport_data`` / ``read_spectra_data`` /
         ``read_optical_data`` -- the data files a calculation writes, each
-        with its atom index map, and ``read_raman_data`` -- an exported
-        Raman view; ``infrared_view`` -- the free atoms' infrared from a
+        with its atom index map, and ``read_optimization_data`` -- an exported
+        optimization -- ``read_raman_data`` -- an exported Raman view; ``infrared_view`` -- the free atoms' infrared from a
         SIESTA vibration result's charges (`spectra.infrared`);
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); ``reaveraged`` -- a frame set's
@@ -123,7 +124,7 @@ def read_steps(path):
         steps.positions_ang[-1, 0]           # it, at the last step, in Å
         steps.forces_ev_per_ang[0, 0]        # the force on it at the first, eV/Å
         steps.final_energy_ev                # the last energy the run finished, eV
-        steps.relaxation["converged"]        # by the run's own tolerance
+        steps.relaxation["converged"]        # its largest force within its tolerance
         steps.max_force_free_ev_per_ang      # what that tolerance tests, by step
         steps.held_atoms                     # the atoms it held, by your index
         steps.last                           # the last geometry: labels, box, your order
@@ -135,39 +136,20 @@ def read_steps(path):
     steps into -- its ``.XV``, a pair saved beside it, read by :func:`parse` --
     a run whose result holds none -- a transmission point's, a vibration's --
     and a run that has finished no step yet."""
-    from .calcdirs import read_with
-    from .parse import detect
-    from .parse.errors import ParseError
-    from .parse.types import answers_a_trajectory
-    from .runfiles import role_of, run_output_roles
-    from .runs import openable, run_of, steps_table
-    p = Path(path)
-    if not p.exists():
-        raise RunStepsError(f"{p} is not there")
-    run = run_of(read_with(p) if p.is_dir() else p)
-    if run is None:
-        try:
-            atom_index_map(p)               # a folder: it names the runs it holds
-        except AtomIndexUnknown as exc:
-            raise RunStepsError(str(exc)) from None
-        raise RunStepsError(f"{p} is no run's file: parse() reads it alone, "
-                            f"read_structure() a structure pair")
-    chosen = p if p.is_file() else openable(p)[0]
-    if chosen is None:
-        raise RunStepsError(f"{p} holds no file of its run's steps yet")
-    chosen = Path(chosen)
-    try:
-        holds_steps = (role_of(chosen) in run_output_roles(run.place.task.engine)
-                       and answers_a_trajectory(detect(chosen)))
-    except ParseError:
-        holds_steps = False
-    if not holds_steps:
-        raise RunStepsError(
-            f"{p.name} is no file its run writes its steps into: parse() reads "
-            f"a file as it stands"
-            if p.is_file() else
-            f"{p} holds no run's steps: what it holds to read is {chosen.name}")
-    return steps_table(run, chosen)
+    from .runs import steps_at
+    return steps_at(path)
+
+
+def list_runs(calculation) -> list:
+    """EVERY RUN OF A CALCULATION, as folders, stage by stage and each stage's
+    starts in turn (`jobset.runstatus.runs_of`) -- a run of points each of its
+    points' folders; what :func:`read_steps` and :func:`atom_index_map` are
+    asked of.  This is the ladder's order, not the order they ran in: a stage
+    can be launched again after a later one.  Refused by name: a folder that
+    holds no calculation (`calculation.NotACalculation`)."""
+    from .calculation import open as open_calculation
+    from .jobset.runstatus import runs_of
+    return [folder for _stage, folder in runs_of(open_calculation(calculation))]
 
 
 def read_structure(path):
@@ -221,6 +203,15 @@ def read_optical_data(path) -> Dict[str, Any]:
     user index (`engines/vibration.md` § 5.11 § 8)."""
     from .spectra.optical_data import read_optical_data as _read
     return {**_read(path), MAP_KEY: atom_index_map(path)}
+
+
+def read_optimization_data(path) -> Dict[str, Any]:
+    """An optimization's data file, ``<label>.optimization.nc`` -- what `jobset
+    export` writes -- as data (`optimization.datafile.read_data_file`: its
+    attributes and every variable with its words) and ``atom_index_map``, its
+    atoms listed by user index (`engines/optimization-postprocessing.md` § 6)."""
+    from .optimization.datafile import read_data_file
+    return {**read_data_file(path), MAP_KEY: atom_index_map(path)}
 
 
 def read_raman_data(path) -> Dict[str, Any]:
@@ -359,8 +350,8 @@ def outermost_move(path, *, mode: int, temperature_k: float,
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
-           "infrared_view", "parse", "raman_view", "read_optical_data",
-           "read_raman_data", "read_spectra_data", "read_steps",
+           "infrared_view", "list_runs", "parse", "raman_view", "read_optical_data",
+           "read_optimization_data", "read_raman_data", "read_spectra_data", "read_steps",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
            "outermost_move", "projects_root", "project_dir", "topic_dir",
            "structure_dir", "list_projects", "list_topics", "list_structures"]

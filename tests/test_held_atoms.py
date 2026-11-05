@@ -32,6 +32,23 @@ def test_a_run_states_the_atoms_it_holds(case, tmp_path, monkeypatch):
     run_road_case(TABLE, case, tmp_path, monkeypatch)
 
 
+def test_a_data_file_of_another_schema_is_not_read_as_an_optimizations(tmp_path):
+    """`model/datafiles.md` § 8: a data file's reader refuses another schema by
+    name.  The silent failure: another kind's file, or another version's, read
+    with this one's meanings.  The file is the one writer's own."""
+    from molbuilder.ncdata import NC_LOCK, as_bytes, in_memory, state
+    from molbuilder.postprocess import read_optimization_data
+    from molbuilder.optimization.datafile import DataFileError
+    other = tmp_path / "other.nc"
+    with NC_LOCK:
+        ds = in_memory(other.name)
+        state(ds, title="a file of another kind", schema="molbuilder/other@1",
+              molbuilder_version="0", source="this test")
+        other.write_bytes(as_bytes(ds))
+    with pytest.raises(DataFileError, match="molbuilder/other@1"):
+        read_optimization_data(other)
+
+
 def test_a_force_block_still_being_written_states_no_figure():
     """`contract.force_figures`: the largest force of a step is over its atoms,
     the held ones left out of the second figure, and a block with rows for only

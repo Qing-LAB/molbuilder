@@ -1836,3 +1836,16 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
         f"{len(left)} of {len(rows)} calls short of done) | the run: relax "
         f"done · fc done · optical {len(taken)} of {len(optical)} done "
         f"({len(taken)} taken over, {len(ran)} failed) |"), finish
+
+
+def test_a_script_reads_a_steps_charges_on_the_persons_atoms(real_co2_vibration):
+    """`runs.StepsTable`: the force-constant call, whose atoms SIESTA ran held
+    first, read by a script: each step's charges are the ones the result states
+    for the same atoms.  THE SILENT FAILURE: a charge left in the engine's order,
+    the carbon's on an oxygen -- measured 0.31 e off on a real 52-atom run."""
+    from molbuilder.postprocess import read_spectra_data, read_steps
+    run = real_co2_vibration.attempt("freq")
+    result = read_spectra_data(next(run.glob("*.spectra.nc")))
+    steps = read_steps(run / "fc")
+    for name, rows in result["partial_charges"]["charges_e"].items():
+        np.testing.assert_allclose(steps.charges_e[name][:len(rows)], rows)

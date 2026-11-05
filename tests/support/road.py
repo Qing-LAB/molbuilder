@@ -959,14 +959,23 @@ def _road_steps_written(want, bundle) -> None:
     import numpy as np
     from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
     from molbuilder.parse import detect
-    from molbuilder.postprocess import (RunStepsError, read_steps,
+    from molbuilder.postprocess import (RunStepsError, list_runs,
+                                        read_optimization_data, read_steps,
                                         read_structure)
+    from pathlib import PurePosixPath
+    from molbuilder.runrecord import RunRef, write_continued_from
+    from molbuilder.runs import run_of
     from molbuilder.trajectory_log import MolwatchEmitter
     from molbuilder.workingcopy_structure import StructureCodec
     from molbuilder.trajectory_log.keys import MAX_FORCE_TOL
     logs = _road_runs(bundle, "*.molwatch.log")
-    assert len(logs) == 1, logs
-    log = logs[0]
+    assert len(logs) == 2, logs
+    log, unstarted = logs
+    refused = molbuilder("jobset", "export", "--format", "netcdf", "--to",
+                         bundle.parent / "too_soon", "--bundle", bundle)
+    assert refused.exit_code != 0 and "holds no step a run has finished" in (
+        refused.output)
+    assert not (bundle.parent / "too_soon").exists()
     seed = detect(log).parse(str(log))
     input_geometry = seed.frames[0].structure
 
@@ -1021,6 +1030,49 @@ def _road_steps_written(want, bundle) -> None:
     StructureCodec().write(steps.last, pair)
     with pytest.raises(RunStepsError, match="no file its run writes its steps"):
         read_steps(pair)
+    pair.unlink()
+    pair.with_suffix(".molstruct.json").unlink()
+    # THE SAME STEPS, EXPORTED (`jobset export`): every row what `read_steps`
+    # hands back, the map on the file, and nothing written into the calculation.
+    assert list_runs(bundle) == [log.parent, unstarted.parent]
+    first_run = log.parent.relative_to(bundle).as_posix()
+    # WHAT A HAND-OVER RECORDS OF THE NEXT RUN, by the record's one writer.
+    write_continued_from(unstarted.parent, RunRef(PurePosixPath(first_run)))
+    inside = molbuilder("jobset", "export", "--format", "netcdf", "--to",
+                        bundle / "exported", "--bundle", bundle)
+    assert inside.exit_code != 0 and "is inside the calculation" in inside.output
+    assert not (bundle / "exported").exists()
+    to = bundle.parent / "exported"
+    for form in ("netcdf", "csv"):
+        said = molbuilder("jobset", "export", "--format", form, "--to", to,
+                          "--bundle", bundle)
+        assert said.exit_code == 0, said.output
+    assert not list(bundle.rglob("*.optimization*"))
+    label = run_of(log).label
+    assert (to / f"{label}.optimization-csv" / "step_atom_xyz.csv").is_file()
+    data = read_optimization_data(to / f"{label}.optimization.nc")
+    assert data["atom_index_map"].listed_by == "user_index"
+    got = {k: v["data"] for k, v in data["variables"].items()}
+    # THE RUN WITH NO STEP STANDS ON THE AXIS AT ITS FILL, saying why: never read
+    # as a rung that was not asked.
+    assert list(got["run"]) == [p.parent.relative_to(bundle).as_posix()
+                                for p in logs]
+    assert list(got["rung_of_run"]) == [run_of(p).stage.split("_", 1)[1]
+                                        for p in logs]
+    assert list(got["run_of_step"]) == [got["run"][0]] * len(steps.energy_ev)
+    assert "holds no step its run finished" in got["said"][1]
+    assert np.isnan(got["final_energy_ev"][1])
+    assert got["force_within_tolerance"][1] is None
+    assert list(got["continued_from"]) == ["", first_run]
+    assert list(got["element"]) == list(steps.elements)
+    assert np.allclose(got["position_ang"], steps.positions_ang)
+    assert np.allclose(got["force_ev_per_ang"], steps.forces_ev_per_ang)
+    assert np.allclose(got["energy_ev"], steps.energy_ev)
+    assert np.allclose(got["max_force_free_ev_per_ang"],
+                       steps.max_force_free_ev_per_ang)
+    assert np.allclose(got["applied_offset_ang"][0], steps.applied_offset_ang)
+    assert [i for i, h in enumerate(got["held"][0]) if h] == want["held"]
+    assert got["force_within_tolerance"][0] is want["converged"]
 
 
 def _road_progress_log_targets(want, bundle) -> None:

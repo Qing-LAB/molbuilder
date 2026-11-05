@@ -486,6 +486,13 @@ prefix.
 The server writes back to `toc.json` atomically (temp file + rename), so a
 crash during refresh never leaves a half-written TOC.
 
+**`GET /api/docs/toc` is the one door that regenerates the file.** Nothing else
+writes it, and nothing depends on what it lists: a test pins what the door does,
+on a copy of the tree (`tests/test_docs_tab.py`), and a page a test serves has a
+documents tree of its own (`tests/support/live_server.py`), so a new document in a
+domain folder needs no step before a test run. A new folder, or a document at the
+top of `docs/`, is listed only once the tree has a group for it.
+
 > **When you write a new document:** drop the `.md` file in the right
 > directory (e.g. `docs/model/`), open or refresh the Documents tab, and
 > it appears.  If the name follows the `parent-` prefix convention, it

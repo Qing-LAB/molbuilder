@@ -881,7 +881,8 @@ def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
 def read_data_file(path) -> Dict[str, Any]:
     """``<label>.transport.nc`` as data: ``{"attrs": {...}, "variables":
     {name: {"dims", "data", "attrs"}}}`` -- each variable's values as numpy
-    arrays (the fill value NaN), its units, long name, definition and source;
+    arrays (a number's fill NaN, a flag's -1), its units, long name, definition
+    and source;
     each attribute written as JSON text (:data:`JSON_ATTRS`, the frames'
     part's `frame_average.JSON_ATTRS`) as the block it holds, where the file
     holds it.  The file's door (`runfiles.WRITTEN`); refuses another schema

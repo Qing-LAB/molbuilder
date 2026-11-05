@@ -275,6 +275,15 @@ def run_folders(calc, stage: str):
         yield from folders or [(run_dir, None)]
 
 
+def runs_of(calc) -> "List[tuple[str, Path]]":
+    """EVERY RUN OF ``calc``, as ``(stage, folder)``, stage by stage in its
+    ladder's order and each stage's as :func:`run_folders` walks them -- not the
+    order they ran in, a stage being launched again on its own: what a run
+    continued from is its own record (`runrecord.read_continued_from`)."""
+    return [(stage.name, folder) for stage in calc.task.stages
+            for folder, _point in run_folders(calc, stage.name)]
+
+
 def _at_work(reading: PointsReading, run: Path):
     """THE POINT AT WORK of a run of points read once (``reading``) --
     the point running; else the last, in the listing order, whose run holds

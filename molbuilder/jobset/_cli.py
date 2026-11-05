@@ -2580,8 +2580,8 @@ def _export_of(calc):
 
 
 @jobset_group.command("export",
-                      short_help="a transport or vibration calculation's "
-                                 "results, as NetCDF or as CSV tables")
+                      short_help="a calculation's results, as NetCDF or as "
+                                 "CSV tables")
 @click.option("--format", "fmt", required=True,
               type=click.Choice(list(_EXPORT_FORMATS)),
               help="netcdf: the data files, every variable saying what it "
@@ -2610,7 +2610,11 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
     (engines/transport.md 2a.12, *Export*).  A VIBRATION calculation: its
     stage's newest result's data files as they are, and with ``--laser-nm``
     the Raman view at that laser, ``<label>.vibration-netcdf/`` or
-    ``<label>.vibration-csv/`` (engines/vibration.md 5.11 10).  What is
+    ``<label>.vibration-csv/`` (engines/vibration.md 5.11 10).  An
+    OPTIMIZATION: every step its runs have finished, its data file
+    ``<label>.optimization.nc`` or the same as tables,
+    ``<label>.optimization-csv/``, the runs with none said
+    (engines/optimization-postprocessing.md 6).  What is
     there already under that name is refused before anything is composed,
     naming it."""
     from pathlib import Path as _P

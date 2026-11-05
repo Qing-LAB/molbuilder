@@ -27,7 +27,7 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         atom axis, read back; :func:`as_tables` -- a data file as long CSV
         tables and a README, every word the file's own; :class:`Exported`
         -- an export's one shape, the data files or their tables
-USED-BY the transport data file (`transport.datafile`: written and read) and
+USED-BY the optimization data file (`optimization.datafile`), the transport data file (`transport.datafile`: written and read) and
         the exports (`transport.export`, `spectra.export`); the vibration result's
         data file (`spectra.datafile`), beside the job in both bundles
         (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`); a
@@ -167,6 +167,9 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("temperature_k", "the thermochemistry's temperatures", "K"),
     Axis("fc_step", "a SIESTA force-constant run's steps", "1"),
     Axis("photon_energy_ev", "the light's energy, hbar*omega", "eV"),
+    Axis("run", "a calculation's runs", ""),
+    Axis("step", "those runs' steps, run by run", "1"),
+    Axis("voigt", "a stress tensor's six components", ""),
 )}
 
 
@@ -184,6 +187,8 @@ UNITS: Dict[str, str] = {
     "A": "ampere",
     "e": "the elementary charge, 1.602176634e-19 C",
     "eV": "electronvolt, 1.602176634e-19 J",
+    "eV/angstrom": "electronvolt per angstrom",
+    "kbar": "kilobar, 1e8 Pa",
     "1/eV": "per electronvolt",
     "Eh": "hartree, the atomic unit of energy, 27.211386 eV",
     "Eh^2": "hartree squared",

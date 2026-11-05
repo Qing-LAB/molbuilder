@@ -141,6 +141,11 @@ class Frame:
                       .out (its ``timer:`` lines time its routines, and
                       no step carries a clock -- P-T2), geomeTRIC's
                       _geom_optim.xyz.
+      charges      -- Each partition's charge per atom the step printed, in
+                      the file's order (``{"hirshfeld": [...], "voronoi":
+                      [...]}``); None where it printed none.
+      stress_voigt_kbar -- The step's stress as printed,
+                      ``Voigt[x,y,z,yz,xz,xy]`` in kbar; None where none.
       in_progress  -- True when this Frame represents a calculation
                       mid-flight rather than a completed geometry step
                       with a real outcoor block.  Set by parsers when
@@ -169,6 +174,8 @@ class Frame:
     forces:       Optional[np.ndarray]            = None
     max_force:    Optional[float]                 = None
     max_force_constrained: Optional[float]        = None
+    charges:      Optional[Dict[str, List[float]]] = None
+    stress_voigt_kbar: Optional[List[float]]      = None
     lattice:      Optional[np.ndarray]            = None
     scf_history:  Optional[List[Dict[str, Any]]] = None
     wall_clock_s: Optional[float]                 = None

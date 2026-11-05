@@ -179,7 +179,7 @@ seed.positions_ang[-1, 0]       # your atom 0, Å
 seed.forces_ev_per_ang[-1, 0]   # the force on it, eV/Å
 seed.final_energy_ev            # the last energy of a finished step, eV
 seed.last                       # a Structure: your order, its labels, its box
-seed.applied_offset_ang         # the run's input + this = the first step's coordinates
+seed.applied_offset_ang         # what prep moved the structure it was handed by
 ```
 
 What a step is, the force figures, the energy and where the coordinates stand are

@@ -210,6 +210,8 @@ class SiestaParser:
                                if step["forces"] else None),
                 max_force   = step["max_force"],
                 max_force_constrained = step["max_force_constrained"],
+                charges     = step["charges"],
+                stress_voigt_kbar = step["stress_voigt_kbar"],
                 scf_history = step["scf_history"],
                 in_progress = step["in_progress"],
                 cut_short   = step["cut_short"],

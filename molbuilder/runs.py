@@ -665,16 +665,23 @@ class StepsTable:
     last row is the final geometry it wrote, which states no energy of its own.
 
     ``positions_ang`` and ``forces_ev_per_ang`` are ``(step, atom, xyz)``: the
-    coordinates the engine ran, the run's input plus ``applied_offset_ang``.
+    coordinates the engine ran, holding the move ``applied_offset_ang`` states --
+    what prep moved the structure it was handed by, which a first rung starts
+    from.
     ``energy_ev``, ``max_force_ev_per_ang`` (every atom) and
     ``max_force_free_ev_per_ang`` (the atoms the run moved, what its tolerance
     tests) are ``(step,)``, each force figure the largest Cartesian component
     (`contract.force_figures`).  NaN where a step states none.
     ``final_energy_ev`` is the last energy of those, ``None`` where none is.
     ``relaxation`` is the run's own record of what it did to the geometry -- its
-    tolerance, its last figures, ``converged`` (`contract.relaxation_of`) --
-    ``None`` for a run that relaxed nothing.  ``elements`` are the atoms'
-    chemical symbols; ``first`` and ``last`` the first and last geometry as
+    tolerance, its last figures, ``converged``, which says only that the largest
+    force was within that tolerance at the last step stating one, an engine
+    testing more than forces and a running run moving on (`contract.relaxation_of`) --
+    ``None`` for a run that relaxed nothing.  ``charges_e`` holds each partition
+    the run printed (``hirshfeld``, ``voronoi``) as ``(step, atom)``, in the same
+    order, and ``stress_voigt_kbar`` its stress as ``(step, component)``,
+    ``Voigt[x,y,z,yz,xz,xy]``; ``output_file`` is the file read.  ``elements``
+    are the atoms' chemical symbols; ``first`` and ``last`` the first and last geometry as
     ``Structure``s, with the run's labels and box; ``held_atoms`` the atoms the
     run's own output says it holds, by the same index."""
     atom_index_map: Any
@@ -684,6 +691,8 @@ class StepsTable:
     energy_ev: Any
     max_force_ev_per_ang: Any
     max_force_free_ev_per_ang: Any
+    charges_e: Dict[str, Any]
+    stress_voigt_kbar: Any
     final_energy_ev: Optional[float]
     relaxation: Optional[Dict[str, Any]]
     held_atoms: Tuple[int, ...]
@@ -693,6 +702,7 @@ class StepsTable:
     run_state: str
     scf_converged: Optional[bool]
     said: Tuple[str, ...]
+    output_file: str
 
 
 #: What a run's steps say of a step that is not among them, by what it is.
@@ -736,6 +746,16 @@ def steps_table(run: Run, output) -> StepsTable:
         # A BLOCK THE RUN WAS STILL WRITING states none.
         if fr.forces is not None and len(fr.forces) == atoms.n_atoms:
             forces[k] = fr.forces
+    charges = {name: np.full(positions.shape[:2], np.nan)
+               for fr in done for name in fr.charges or ()}
+    stress = np.full((len(done), 6), np.nan)
+    for k, fr in enumerate(done):
+        for name, row in (fr.charges or {}).items():
+            # A BLOCK THE RUN WAS STILL WRITING states none, as above.
+            if len(row) == atoms.n_atoms:
+                charges[name][k] = row
+        if fr.stress_voigt_kbar:
+            stress[k] = fr.stress_voigt_kbar
     info = traj.runtime_info or {}
     held_rows = sorted(int(i) for i in info.get("frozen_atoms") or [])
     held, listed = held_rows, atoms
@@ -743,6 +763,8 @@ def steps_table(run: Run, output) -> StepsTable:
         held = sorted(atoms.map_to_user_index(held_rows))
         positions, listed = atoms.map_rows_to_user_order(positions, axis=1)
         forces, _ = atoms.map_rows_to_user_order(forces, axis=1)
+        charges = {name: atoms.map_rows_to_user_order(rows, axis=1)[0]
+                   for name, rows in charges.items()}
     figures = np.array([force_figures(fr, held_rows) for fr in done],
                        dtype=float)
     energy = np.array([fr.energy for fr in done], dtype=float)
@@ -754,6 +776,7 @@ def steps_table(run: Run, output) -> StepsTable:
         positions_ang=positions, forces_ev_per_ang=forces, energy_ev=energy,
         max_force_ev_per_ang=figures[:, 0],
         max_force_free_ev_per_ang=figures[:, 1],
+        charges_e=charges, stress_voigt_kbar=stress,
         final_energy_ev=float(stated[-1]) if stated.size else None,
         relaxation=(geometry.last.info or {}).get("relaxation"),
         held_atoms=tuple(held), first=geometry.first, last=geometry.last,
@@ -763,7 +786,49 @@ def steps_table(run: Run, output) -> StepsTable:
         said=tuple(w for w in (
             atoms.said, info.get("forces_not_computed"),
             *(words for flag, words in _NOT_A_STEP
-              if any(getattr(fr, flag) for fr in traj.frames))) if w))
+              if any(getattr(fr, flag) for fr in traj.frames))) if w),
+        output_file=output.name)
+
+
+def steps_at(path) -> StepsTable:
+    """THE STEPS A RUN FINISHED, from a path a person names (`postprocess.
+    read_steps`, an optimization's data file): a run's folder, by the file it
+    holds to read (:func:`openable`), or its output.  :class:`RunStepsError`
+    for a path that is not there or no run of ours holds, a file the run does
+    not write its steps into, a run whose result holds none, and what
+    :func:`steps_table` refuses."""
+    from molbuilder.atom_index import AtomIndexUnknown, atom_index_map
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import ParseError
+    from molbuilder.parse.types import answers_a_trajectory
+    p = Path(path)
+    if not p.exists():
+        raise RunStepsError(f"{p} is not there")
+    run = run_of(calcdirs.read_with(p) if p.is_dir() else p)
+    if run is None:
+        try:
+            atom_index_map(p)               # a folder: it names the runs it holds
+        except AtomIndexUnknown as exc:
+            raise RunStepsError(str(exc)) from None
+        raise RunStepsError(f"{p} is no run's file: parse() reads it alone, "
+                            f"read_structure() a structure pair")
+    chosen = p if p.is_file() else openable(p)[0]
+    if chosen is None:
+        raise RunStepsError(f"{p} holds no file of its run's steps yet")
+    chosen = Path(chosen)
+    try:
+        holds_steps = (_rf.role_of(chosen)
+                       in _rf.run_output_roles(run.place.task.engine)
+                       and answers_a_trajectory(detect(chosen)))
+    except ParseError:
+        holds_steps = False
+    if not holds_steps:
+        raise RunStepsError(
+            f"{p.name} is no file its run writes its steps into: parse() reads "
+            f"a file as it stands"
+            if p.is_file() else
+            f"{p} holds no run's steps: what it holds to read is {chosen.name}")
+    return steps_table(run, chosen)
 
 
 def saved_pair_row(path) -> Optional["tuple[str, str]"]:
@@ -1408,7 +1473,7 @@ __all__ = ["Place", "place_of", "Run", "run_of", "Declared",
            "declared", "declared_of_deck", "deck_atom_index_map",
            "OrderUnstated", "atom_index_map_of", "RunView",
            "view_of",
-           "RunSteps", "RunStepsError", "steps_of", "about", "file_row",
+           "RunSteps", "RunStepsError", "steps_at", "steps_of", "about", "file_row",
            "openable", "folder_answer", "concluded", "older_run",
            "ended_before_a_point",
            "state_of",

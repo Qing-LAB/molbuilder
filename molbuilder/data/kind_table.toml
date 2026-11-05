@@ -101,6 +101,7 @@ noun = "optimization"
 topic = "optimization"
 handover = "structure-optimization"
 relaxes = true
+export = "molbuilder.optimization.export"
 
 [optimization.on.siesta]
 

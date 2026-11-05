@@ -139,7 +139,7 @@ A SIESTA vibration runs its phases as runs of their own, its held atoms first, s
 relax = read_steps("01_freq/run-0/relax")
 relax.atom_index_map.listed_by, relax.elements[:4], relax.held_atoms[:4]
 relax.positions_ang[-1, 0]                # your atom 0, Å
-relax.relaxation["converged"]             # by the run's own tolerance
+relax.relaxation["converged"]             # its largest force within its tolerance
 fc = read_steps("01_freq/run-0/fc")       # one step per displacement
 ```
 

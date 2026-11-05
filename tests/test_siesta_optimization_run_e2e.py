@@ -569,6 +569,49 @@ def test_the_output_keeps_its_frames_and_the_history_matches_in_order(opt):
 #  A run out of moves, and launched again (`running-a-job.md` § 3.5)     #
 # --------------------------------------------------------------------- #
 
+def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, tmp_path):
+    """`engines/optimization-postprocessing.md` § 6: on a real SIESTA ladder, the
+    exported file's every step is what `read_steps` hands back of each run, in
+    the ladder's order, the stress as the run printed it.  The silent
+    failure: a row of one run read as another's, or an atom's as another's."""
+    from molbuilder.parse.engines.siesta_grammar import STRESS_VOIGT
+    from molbuilder.postprocess import read_optimization_data, read_steps
+    from molbuilder.runs import RunStepsError, run_of
+    from support.road import molbuilder
+    bundle = real_h2_layered.bundle
+    said = molbuilder("jobset", "export", "--format", "netcdf", "--to",
+                      tmp_path, "--bundle", bundle)
+    assert said.exit_code == 0, said.output
+    got = {k: v["data"] for k, v in read_optimization_data(
+        next(tmp_path.glob("*.optimization.nc")))["variables"].items()}
+    at = 0
+    for r, run in enumerate(got["run"]):
+        try:
+            steps = read_steps(bundle / run)
+        except RunStepsError as refused:
+            assert got["said"][r] == str(refused)
+            continue
+        k = len(steps.energy_ev)
+        where = slice(at, at + k)
+        assert set(got["run_of_step"][where]) == {run}
+        np.testing.assert_allclose(got["position_ang"][where],
+                                   steps.positions_ang)
+        np.testing.assert_allclose(got["force_ev_per_ang"][where],
+                                   steps.forces_ev_per_ang)
+        # THE STRESS AS THE RUN PRINTED IT, its line read here by the grammar.
+        out = run_of(bundle / run).stdout
+        printed = [[float(v) for v in m.group(1).split()]
+                   for m in map(STRESS_VOIGT.match,
+                                out.read_text(errors="replace").splitlines())
+                   if m]
+        np.testing.assert_allclose(got["stress_kbar"][where][0], printed[0])
+        at += k
+    assert at == len(got["step"])
+    # EVERY RUN FOLDER THE LADDER HOLDS, by what is on disk.
+    assert sorted(p.relative_to(bundle).as_posix()
+                  for p in bundle.glob("[0-9]*/run-*")) == sorted(got["run"])
+
+
 def test_a_step_a_run_is_inside_or_stopped_inside_is_no_step(real_h2_layered):
     """`runs.StepsTable`: a run's output cut inside its first SCF, as a running
     or a killed run leaves it, and the same with SIESTA's own stop.  The silent

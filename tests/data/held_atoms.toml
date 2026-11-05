@@ -79,6 +79,9 @@ steps_read = { elements = ["H", "C", "N", "O", "F", "H"], listed_by = "engine_in
 name = "a person's script reads the steps a run's writer logged: its opening geometry is no step, the largest force is over every atom and over the atoms moved"
 engine = "pyscf"
 structure = { elements = ["H", "O", "F"], positions = [[1.0, 1.0, 1.0], [1.0, 1.0, 2.0], [1.0, 1.0, 3.0]], cell = [8.0, 8.0, 8.0], regions = { frozen_atoms = [0] } }
+stage_strategy = "publishable"
+before = [["prep", "task", "--group", "1"]]
+stage = "medium"
 steps_written = { held = [0], force_tolerance_ev_ang = 2.0, converged = true, energy_hartree = [-76.1, -76.2], gradient_hartree_bohr = [[[0.0, 0.0, 0.3], [0.1, 0.0, 0.0], [0.0, -0.05, 0.0]], [[0.0, 0.2, 0.0], [0.0, 0.01, 0.0], [0.0, 0.0, -0.02]]] }
 
 # libfdf reads at most 50 tokens on a line (`MAX_NTOKENS`,

@@ -52,6 +52,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10.5 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@4` | `model/parse.md` § 5e |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@3` (`@1`, `@2` read as they are) | `engines/vibration.md` § 5.11 § 8 |
+| `<label>.optimization.nc` | an optimization's every step on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — and each run's own record: whether it converged, how it ended | an export alone (`optimization.export`), never into the calculation | `molbuilder/optimization-data@1` | `engines/optimization-postprocessing.md` § 6 |
 | `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@2` | `engines/vibration.md` § 5.11 § 10 |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
@@ -146,6 +147,8 @@ and there, in the change that first writes it.
 | `A` | ampere — never ångström |
 | `e` | the elementary charge, 1.602176634×10⁻¹⁹ C |
 | `eV` | electronvolt |
+| `eV/angstrom` | electronvolt per ångström |
+| `kbar` | kilobar, 10⁸ Pa |
 | `1/eV` | per electronvolt |
 | `Eh` | hartree, the atomic unit of energy, 27.211386 eV |
 | `Eh^2` | hartree squared |
@@ -213,13 +216,13 @@ naming this section — in every file, every group, the root's included.
 
 | axis | its points | its coordinate's values | units (— labels) | files |
 |---|---|---|---|---|
-| `atom` | the atoms | each atom's index by the file's atom index map — the user index in the transport, vibration and optical files, the engine index in the digest (`atoms_listed_by`), from 0 | 1 | transport, vibration (`/structure`), optical, digest |
+| `atom` | the atoms | each atom's index by the file's atom index map — the user index in the transport, vibration, optical and optimization files, the engine index in the digest (`atoms_listed_by`), from 0 | 1 | transport, vibration (`/structure`), optical, optimization, digest |
 | `free_atom` | the atoms a vibration moves | their atom indices, from 0 | 1 | vibration |
 | `device_atom` | the atoms of TranSIESTA's device region | their atom indices, from 0 | 1 | digest |
 | `atom_bound` | each atom's first orbital, and one past the last | from 0 to the atom count | 1 | digest |
 | `device_orbital` | the device region's orbitals, one DOS column each | each orbital's index in the geometry, from 0; its atom beside it (`device_orbital_atom`) | 1 | digest |
-| `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, optical, digest |
-| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | vibration, optical (`/structure`), digest |
+| `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, optical, optimization, digest |
+| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | vibration, optical (`/structure`), optimization, digest |
 | `reciprocal_vector` | the reciprocal cell's three vectors — a k-point's reduced components | `b1`, `b2`, `b3` | — | digest |
 | `kpoint` | the k-points a reading averaged over | from 0 | 1 | digest |
 | `frame` | a frame set's frames — a transport calculation's structures, a vibration's optical calls (the reference geometry, then each mode's two sides) | from 0, as MolView's API counts | 1 | transport, optical |
@@ -241,6 +244,9 @@ naming this section — in every file, every group, the root's included.
 | `temperature_k` | the thermochemistry's temperatures | each temperature | K | vibration |
 | `fc_step` | a SIESTA force-constant run's steps | from 0, step 0 the reference geometry, then each displacement in SIESTA's order | 1 | vibration (`/partial_charges`) |
 | `photon_energy_ev` | the light's energy, ħω — a concept apart from `energy_ev`, which is an electron's energy relative to the leads' Fermi level at 0 V | each photon energy as SIESTA wrote it, ascending | eV | optical |
+| `run` | a calculation's runs, rung by rung and each rung's starts in turn | each run's folder below the calculation (`01_coarse/run-0`) | — | optimization |
+| `step` | those runs' steps, run by run | from 0; the run each is of beside it (`run_of_step`) | 1 | optimization |
+| `voigt` | a stress tensor's six components | `xx`, `yy`, `zz`, `yz`, `xz`, `xy`, SIESTA's order | — | optimization |
 
 **Files written before these names** read as rule 5 says: the vibration
 data file's reader takes `@1`–`@3`'s names for the new ones; a digest before
@@ -294,7 +300,7 @@ read. **The door is the only opener** of a NetCDF file
 in molbuilder's code — each data file's reader (`transport.datafile.
 read_data_file`, `spectra.datafile.read_spectra_data`,
 `spectra.optical_data.read_optical_data`, `spectra.raman.read_raman_data`,
-the digest's), the
+`optimization.datafile.read_data_file`, the digest's), the
 TBtrans parser, the `.MD.nc` reader, the atom index map's reader — kept so by
 review; sisl reads an engine's other files (`.TS.HSX`, `.ORB_INDX`), which
 are not NetCDF, through its own doors. **Every reader gives the map back with
@@ -324,12 +330,13 @@ The atom axis's own table (`atom.csv`) carries both index columns.
 A person's script reads every data file with the functions molbuilder's own
 doors ask (`model/parse.md` § 3, *One layer*): `read_transport_data`,
 `read_spectra_data`, `read_optical_data` — each with its atom index map —
+`read_optimization_data` for an exported optimization, also with its map,
 `read_raman_data` for an exported Raman view, `infrared_view` and
 `raman_view` for the spectrum viewer's two derivations, `atom_index_map(path)`,
 `read_structure(path)` for a structure pair in the user order with the map
 of the structure it returns, `parse(path)` for an engine's file in its own order
 with the map on the answer, `read_steps(path)` for a run's steps in the user
-order, `read_xv(path)` for SIESTA's own `.XV`, in the engine's order. A notebook's kernel imports the molbuilder its server
+order, `list_runs(calculation)` for its runs, `read_xv(path)` for SIESTA's own `.XV`, in the engine's order. A notebook's kernel imports the molbuilder its server
 runs ([`web/jupyter.md`](?doc=web/jupyter.md) § 7).
 
 ## 7. The transport calculation — what the framework serves, file by file

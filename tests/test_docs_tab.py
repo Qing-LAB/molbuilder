@@ -191,20 +191,6 @@ def test_read_rejects_a_real_file_outside_docs_via_traversal(client):
     assert r.get_json()["ok"] is False
 
 
-def _isolated_docs(tmp_path):
-    """A throwaway copy of `docs/`, because the builder PERSISTS.
-
-    `_build_toc_tree` writes the normalised tree back to `toc.json`, so a test
-    pointed at the real `docs/` modifies the repository — which is how a suite
-    run came back with `docs/toc.json` dirty (2026-09-08).
-    """
-    import shutil
-    from pathlib import Path
-    dst = tmp_path / "docs"
-    shutil.copytree(Path(__file__).resolve().parents[1] / "docs", dst)
-    return dst
-
-
 def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
     """The render after a new document lands must already be correct.
 
@@ -214,7 +200,8 @@ def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
     wrong. Measured 2026-09-08: call 1 gave 230 paths with the new file ×10,
     call 2 gave 221 and clean.
 
-    Two causes, and this test covers both because either alone reproduces it:
+    Two causes, either of which alone reproduces it: this test takes the second,
+    `test_two_groups_over_one_directory_do_not_each_append_it` the first:
 
     * `_toc_paths` was computed once from the original tree and never updated as
       entries were appended, so every directory node resolving to the same
@@ -228,7 +215,19 @@ def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
     """
     from molbuilder.persist import read_json
     from molbuilder.web.blueprints.docs import _build_toc_tree
-    root = _isolated_docs(tmp_path)
+    # A TREE OF THE TEST'S OWN, its groups nested inside the Archive as the
+    # cause needs: the door's work, whatever the repository lists.
+    root = tmp_path / "docs"
+    groups = []
+    for name in ("reviews", "plans", "audits"):
+        (root / "archive" / name).mkdir(parents=True)
+        (root / "archive" / name / "old.md").write_text("# Old\n",
+                                                        encoding="utf-8")
+        groups.append({"label": name,
+                       "children": [{"path": f"archive/{name}/old.md"}]})
+    (root / "toc.json").write_text(json.dumps(
+        {"tree": [{"label": "Archive", "children": groups}]}),
+        encoding="utf-8")
     (root / "archive" / "9999-01-01-brand-new.md").write_text(
         "# Brand new\n", encoding="utf-8")
 
@@ -253,6 +252,57 @@ def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
         + repr(sorted({p for p in first if first.count(p) > 1})))
     # ...and it stays right, which the old code also managed.
     assert paths_of() == first
+
+
+@pytest.mark.parametrize("new, nested_under", [
+    ("engines/brand-new.md", None),
+    ("engines/transport-brand-new.md", "engines/transport.md"),
+], ids=["in-a-domain", "named-for-its-parent"])
+def test_the_route_regenerates_the_index_as_documents_come_and_go(
+        client, tmp_path, monkeypatch, new, nested_under):
+    """`web/tabs.md` § 5.3: `GET /api/docs/toc` is the door that keeps
+    `toc.json`.  A document dropped in a domain is on the tree at the first
+    answer, under its parent where its name says so, and written back; gone,
+    it is off both.  What the file lists is that door's to keep, so no test
+    reads the checkout's: a silent failure here is a document no sidebar
+    shows, or an entry pointing at nothing."""
+    from molbuilder.persist import read_json
+    from molbuilder.web.blueprints import docs as docs_bp
+    # A TREE OF THE TEST'S OWN: the door's work, whatever the repository lists.
+    root = tmp_path / "docs"
+    (root / "engines").mkdir(parents=True)
+    (root / "engines" / "transport.md").write_text("# Transport\n",
+                                                   encoding="utf-8")
+    (root / "toc.json").write_text(json.dumps({"tree": [
+        {"label": "Engines",
+         "children": [{"path": "engines/transport.md"}]}]}), encoding="utf-8")
+    monkeypatch.setattr(docs_bp, "_docs_root", lambda: root)
+
+    def paths_in(nodes):
+        for node in nodes:
+            if "path" in node:
+                yield node["path"]
+            yield from paths_in(node.get("children", []))
+
+    def node_of(nodes, path):
+        for node in nodes:
+            if node.get("path") == path:
+                return node
+            got = node_of(node.get("children", []), path)
+            if got is not None:
+                return got
+        return None
+
+    (root / new).write_text("# Brand new\n", encoding="utf-8")
+    tree = client.get("/api/docs/toc").get_json()["tree"]
+    assert list(paths_in(tree)).count(new) == 1
+    if nested_under:
+        assert new in list(paths_in(node_of(tree, nested_under)["children"]))
+    assert new in paths_in(read_json(root / "toc.json")["tree"])
+    (root / new).unlink()
+    tree = client.get("/api/docs/toc").get_json()["tree"]
+    assert new not in paths_in(tree)
+    assert new not in paths_in(read_json(root / "toc.json")["tree"])
 
 
 def test_two_groups_over_one_directory_do_not_each_append_it(tmp_path):

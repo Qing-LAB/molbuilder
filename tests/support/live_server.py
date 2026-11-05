@@ -20,6 +20,7 @@ import shutil
 import tempfile
 import threading
 from contextlib import contextmanager
+from pathlib import Path
 
 
 @contextmanager
@@ -36,11 +37,17 @@ def serve(config: dict | None = None):
     sidebar's root as it boots, and the default is the developer's real
     tree (`process/testing.md` § 2a).  A test that isolates later, per
     function, still wins: the root is read at call time.
+
+    **A documents tree of its own**: the documents route regenerates
+    `toc.json` as it answers (`blueprints.docs._build_toc_tree`), so a page
+    served from the checkout would write there, and would depend on what the
+    file lists.  A test asks the route; `test_docs_tab` pins what it does.
     """
     from werkzeug.serving import make_server
 
     from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
     from molbuilder.web.app import create_app
+    from molbuilder.web.blueprints import docs as docs_blueprint
 
     own = None
     if not os.environ.get(PROJECTS_ROOT_ENV):
@@ -48,6 +55,11 @@ def serve(config: dict | None = None):
         tree = os.path.join(own, PROJECTS_ROOT_NAME)
         os.mkdir(tree)
         os.environ[PROJECTS_ROOT_ENV] = tree
+
+    the_docs = docs_blueprint._docs_root
+    own_docs = tempfile.mkdtemp(prefix="served-docs-")
+    served_docs = shutil.copytree(the_docs(), os.path.join(own_docs, "docs"))
+    docs_blueprint._docs_root = lambda: Path(served_docs)
 
     server = make_server("127.0.0.1", 0, create_app(config=config or {}),
                          threaded=True)
@@ -58,6 +70,8 @@ def serve(config: dict | None = None):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+        docs_blueprint._docs_root = the_docs
+        shutil.rmtree(own_docs, ignore_errors=True)
         if own is not None:
             os.environ.pop(PROJECTS_ROOT_ENV, None)
             shutil.rmtree(own, ignore_errors=True)
