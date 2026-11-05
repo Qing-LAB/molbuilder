@@ -1362,7 +1362,10 @@ def relieve_clashes(struct: Structure, steps: int = 1000) -> Structure:
     ff.SteepestDescent(max(1, steps // 2))   # clear hard short-range overlaps
     ff.ConjugateGradients(steps)             # then settle
     ff.GetCoordinates(mol)
-    return Structure.from_pdb(conv.WriteString(mol), title=struct.title)
+    # THE ATOMS MOVE AND NOTHING ELSE: same order, same count, every name,
+    # residue and chain the build gave them.
+    return struct.replace(positions=np.array(
+        [[a.GetX(), a.GetY(), a.GetZ()] for a in ob.OBMolAtomIter(mol)]))
 
 
 # --------------------------------------------------------------------- #

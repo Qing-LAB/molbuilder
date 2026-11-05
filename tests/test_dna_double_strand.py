@@ -220,6 +220,12 @@ def test_relax_clashes_clears_near_coincidence_generally(_x3dna):
         d, _, _ = min_nonbonded_contact(relaxed)
         assert d is not None and d >= 1.0, (
             f"{notation}: residual near-coincident contact {d} A after relief")
+        # ...AND THE ATOMS MOVED, NOTHING ELSE: a relief that re-read its own
+        # output renamed the atoms and renumbered the second strand's residues.
+        built = build_dna(notation)
+        for names in ("elements", "atom_names", "residue_names",
+                      "residue_ids", "chain_ids"):
+            assert getattr(relaxed, names) == getattr(built, names), names
 
 
 def test_the_standard_base_templates_land_the_way_3dna_puts_them(_x3dna, tmp_path):

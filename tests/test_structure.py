@@ -80,6 +80,22 @@ def test_to_ase_hands_over_the_box_as_well_as_the_atoms():
     assert list(atoms.pbc) == [True, True, False]
 
 
+def test_to_ase_puts_the_atoms_where_the_engine_puts_them():
+    """`cell.engine_offset`: the box and the atoms together.
+
+    THE SILENT FAILURE: authored coordinates in a box that starts at the
+    origin, the atoms at its corner and half of them outside, so a neighbour
+    list or a calculator handed them sees a molecule cut by the cell's face."""
+    pytest.importorskip("ase")
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[0.0, 0.0, -0.37], [0.0, 0.0, 0.37]]),
+                  vacuum=(10.0, 10.0, 10.0))
+    scaled = s.to_ase().get_scaled_positions(wrap=False)
+    assert (scaled > 0.0).all() and (scaled < 1.0).all(), scaled
+    np.testing.assert_allclose(scaled[:, 2].mean(), 0.5, atol=1e-9)
+    np.testing.assert_allclose(s.to_ase().get_distance(0, 1), 0.74)
+
+
 def test_to_ase_carries_a_derived_box_too(water_structure):
     """`resolve_cell()`, not the raw field: a molecule states no lattice but
     still HAS a box, and ASE should receive the one every other consumer

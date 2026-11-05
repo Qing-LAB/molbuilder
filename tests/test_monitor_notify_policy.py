@@ -48,6 +48,36 @@ def _file(tmp_path, monkeypatch, channels):
     return f
 
 
+def test_a_run_whose_ending_cannot_be_read_is_never_called_running(
+        tmp_path, monkeypatch):
+    """`run-reports.md` § 2.3.  THE SILENT FAILURE: a defect of ours reading
+    how a run ended, swallowed, so a job that has ended sends its closing
+    message saying it is running."""
+    def _a_defect(*_a, **_k):
+        raise RuntimeError("a defect of ours")
+
+    monkeypatch.setattr(M, "run_status", _a_defect)
+    run = M.WatchedRun(names=M._rf.RunNames("L", "01_coarse"), directory=tmp_path)
+    got = run.conclude(M.JobStatus())
+    assert got.state == "unreadable"
+    assert "a defect of ours" in got.detail
+
+
+def test_a_notifier_that_raises_is_said_in_the_monitor_log(tmp_path):
+    """THE SILENT FAILURE: the monitor's stdout is /dev/null, so a card that
+    could not be composed lost the message with no word anywhere."""
+    def _a_defect(_status, _event):
+        raise RuntimeError("the card could not be composed")
+
+    log = tmp_path / "monitor.log"
+    M.register_notifier(_a_defect)
+    try:
+        M._fire(M.JobStatus(), "finish", log)
+    finally:
+        M.clear_notifiers()
+    assert "the card could not be composed" in log.read_text()
+
+
 def test_a_configured_channel_is_read(tmp_path, monkeypatch):
     """A third party's shape: the credential is in the URL or a header,
     because Slack and Discord have nowhere else to keep one."""

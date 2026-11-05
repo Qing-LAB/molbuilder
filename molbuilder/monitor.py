@@ -640,8 +640,12 @@ class WatchedRun:
         reads it there."""
         try:
             rs = run_status(self.directory, self.stem)
-        except Exception:                               # noqa: BLE001
-            return st           # an unreadable directory says nothing
+        except Exception as exc:                        # noqa: BLE001
+            # THE MONITOR NEVER STOPS THE JOB, and never calls one that ended
+            # running: its closing line and its message say this instead.
+            st.state = "unreadable"
+            st.detail = f"how the run ended could not be read: {exc}"
+            return st
         st.state, st.detail = rs.state, rs.detail
         ending = rs.endings.get(rs.active_source) if rs.active_source else None
         if ending is not None and ending.phases:
@@ -1297,14 +1301,15 @@ def clear_notifiers() -> None:
     _NOTIFIERS.clear()
 
 
-def _fire(status: JobStatus, event: str) -> None:
+def _fire(status: JobStatus, event: str, log: Optional[Path] = None) -> None:
     for fn in list(_NOTIFIERS):
         try:
             fn(status, event)
         except Exception as exc:                       # noqa: BLE001
-            # A notifier must never break monitoring.
-            print(f"[monitor] notifier {getattr(fn, '__name__', fn)!r} "
-                  f"raised: {exc!r}", flush=True)
+            # A notifier must never break monitoring, and what it lost is said
+            # where it can be read (:func:`_notify_say`).
+            _notify_say(f"notifier {getattr(fn, '__name__', fn)!r} raised: "
+                        f"{exc!r}", log)
 
 
 #: How long a POST may take before the monitor gives up on it.  Short on
@@ -2287,7 +2292,7 @@ def run_monitor(watched: "WatchedRun", *,
         # never breaking the monitor over the record.  EVERY MESSAGE
         # RESTARTS THE N-HOUR CLOCK (`run-reports.md` § 2).
         nonlocal last_notify
-        _fire(st, event)
+        _fire(st, event, log)
         last_notify = now
         try:
             watched.note(event, now)

@@ -67,6 +67,21 @@ class TestStatingRegionsStatesTheWholeStore:
         assert got.positions.shape == (5, 3)
 
 
+def test_a_new_field_travels_through_replace_without_being_listed():
+    """`model/structure.md` § 2.2a: a rebuild that simply did not list a field
+    is a defect.
+
+    THE SILENT FAILURE: a field added to the structure, lost by every copy
+    because one list of fields was not extended."""
+    @dataclasses.dataclass
+    class WithANewField(Structure):
+        a_new_field: int = 0
+
+    s = WithANewField(elements=["H"], positions=np.zeros((1, 3)), a_new_field=7)
+    assert s.replace(title="x").a_new_field == 7
+    assert s.copy().a_new_field == 7
+
+
 class TestTheInterpreterHook:
     """WHICH stdlib helper dispatches through ``__replace__`` — and which
     does not.

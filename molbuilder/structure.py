@@ -50,7 +50,7 @@ import copy as _copy
 import json as _json
 import re as _re
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as _fields
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
@@ -670,6 +670,14 @@ def _pdb_title_records(title: str) -> List[str]:
     return ([f"TITLE     {lines[0]:<70s}"]
             + [f"TITLE   {k:>2d}{line:<70s}"
                for k, line in enumerate(lines[1:], start=2)])
+
+
+#: The fields :meth:`Structure.replace` copies itself: per atom, or whole
+#: stores with a copy of their own.  ``frozen_atoms`` is a read of ``regions``.
+_PER_ATOM_FIELDS = frozenset({"elements", "positions", "atom_names",
+                              "residue_ids", "residue_names", "chain_ids",
+                              "title", "regions", "annotations", "frames",
+                              "frozen_atoms"})
 
 
 @dataclass
@@ -1546,13 +1554,12 @@ class Structure:
             normalised[region_name] = sorted(unique)
         self.regions = normalised
 
-    def _validate_annotations(self, n: int) -> None:
-        """Extra channels: names must not collide with a label;
-        atom indices must be in
+    def _validate_annotations(self, n: int, channels=None) -> None:
+        """Extra channels -- the structure's own, or ``channels`` about to
+        join them: names must not collide with a label; atom indices must be in
         [0, n).  Normalises tag/flag data to sorted-unique in place."""
-        if not self.annotations:
-            return
-        for name, ch in self.annotations.items():
+        for name, ch in (self.annotations if channels is None
+                         else channels).items():
             if name in self.regions:
                 raise ValueError(
                     f"Structure.annotations[{name!r}]: {name!r} is already a "
@@ -1606,12 +1613,13 @@ class Structure:
     def set_channel(self, name: str, channel: AtomChannel) -> None:
         """Set an EXTENSIBLE channel (stored in ``annotations``).  A name that
         is already a label belongs to the label store -- edit ``.regions``.
-        Re-validates against the current atom count."""
+        Validated against the current atom count before it is set, so a
+        refused channel leaves the one it would have replaced."""
         if name in self.regions:
             raise ValueError(
                 f"{name!r} is already a label; edit .regions instead.")
+        self._validate_annotations(len(self.positions), {name: channel})
         self.annotations[name] = channel
-        self._validate_annotations(len(self.positions))
 
     def replace(self, **changes) -> "Structure":
         """THE door for deriving a modified copy — use instead of
@@ -2483,9 +2491,13 @@ class Structure:
         # of `axis_kind` (§ 1) and this is the one ASE door: atoms alone
         # would describe a crystal as a gas-phase cluster.  `resolve_cell()` rather than
         # the raw field, so a derived box travels too; `None` stays unset.
+        # ...AND THE ATOMS WHERE THE ENGINE PUTS THEM IN IT (`cell.engine_offset`):
+        # authored coordinates sit at the box's corner, half of them outside.
         resolved = self.resolve_cell()
+        from .cell import engine_offset
         return Atoms(symbols=self.chemical_symbols(),
-                     positions=self.positions,
+                     positions=(self.positions if resolved is None else
+                                self.positions + engine_offset(self)),
                      cell=(None if resolved is None
                            else np.asarray(resolved, dtype=float)),
                      pbc=self.pbc())
@@ -2536,20 +2548,12 @@ class Structure:
 
     def _nonatom(self) -> dict:
         """The non-per-atom facts, copied -- what :meth:`replace` derives with
-        and :meth:`_carry_nonatom` hands an atom edit."""
-        return dict(
-            cell        = (self.cell.copy() if self.cell is not None else None),
-            engine_offset = (self.engine_offset.copy()
-                             if self.engine_offset is not None else None),
-            offset_by   = self.offset_by,
-            axis_kind   = self.axis_kind,
-            vacuum      = self.vacuum,
-            info        = _copy.deepcopy(self.info) if self.info else {},
-            customized  = _copy.deepcopy(self.customized),
-            # Immutable, so shared: it holds while the atoms stay in place.
-            atom_order  = self.atom_order,
-            order_unstated = self.order_unstated,
-        )
+        and :meth:`_carry_nonatom` hands an atom edit: every field but those
+        :meth:`replace` copies itself, so a new field travels unless it says
+        otherwise."""
+        return {f.name: _copy.deepcopy(getattr(self, f.name))
+                for f in _fields(self)
+                if f.name not in _PER_ATOM_FIELDS}
 
     # ------------------------------------------------------------------ #
     #  The `info` namespace -- one cluster per subsystem (§ 2.2a)         #

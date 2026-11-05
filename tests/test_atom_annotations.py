@@ -52,6 +52,18 @@ def test_channels_unify_every_label_and_the_extras():
     assert ch["charge"].kind == "value" and ch["charge"].data == {0: -1.0, 1: 0.5}
 
 
+def test_a_refused_channel_leaves_the_one_it_would_have_replaced():
+    """THE SILENT FAILURE: a channel naming an atom that isn't there, refused
+    after it was set, so the good one is gone and every later copy of the
+    structure raises."""
+    s = _struct()
+    s.set_channel("charge", AtomChannel("value", {0: -1.0}))
+    with pytest.raises(ValueError, match="out of range"):
+        s.set_channel("charge", AtomChannel("value", {999: 1.0}))
+    assert s.annotations["charge"].data == {0: -1.0}
+    assert s.copy().annotations["charge"].data == {0: -1.0}
+
+
 def test_atom_annotations_per_atom_view():
     s = _struct()
     s.regions = {"bridge": [0]}

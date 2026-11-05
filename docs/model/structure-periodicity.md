@@ -79,7 +79,7 @@ the parens say it is computed and a stale reader fails on subscript rather
 than silently taking a truthy bound method. It exists for the one format
 outside this project that requires booleans and has nothing richer:
 
-  * ASE — `Atoms(pbc=…)` (`to_ase`).
+  * ASE — `Atoms(pbc=…)` (`to_ase`), with the box and the atoms placed in it as the engine places them (`cell.engine_offset`).
 
 *(Extended XYZ's `pbc="T T F"` header was the second until 2026-10-09: molbuilder
 neither reads nor writes it now — the comment line is never metadata,
