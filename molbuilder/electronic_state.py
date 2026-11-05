@@ -45,19 +45,8 @@ from .chemistry import (
 from .structure import Structure
 
 
-#: How the two spin channels are solved (§ 2a.1) -- the engine-neutral words.
-#: Each deck writer spells them: SIESTA ``Spin non-polarized`` / ``polarized``
-#: / ``non-colinear`` / ``spin-orbit``, PySCF the R / RO / U of its SCF class.
-TREATMENTS = ("restricted", "restricted-open", "unrestricted",
-              "non-collinear", "spin-orbit")
-
 #: A floating moment: the count is whatever the SCF finds (ES6).
 FREE = "free"
-
-#: ``unpaired_electrons``' choices -- whole numbers 0 to 10, and ``free``.  An
-#: enum whose members are ints and one word (``engines/template.md`` § 5), so
-#: the form offers a list and a template reads ``unpaired_electrons = 2``.
-COUNTS = tuple(range(0, 11)) + (FREE,)
 
 def count_must_float(engine: str, kind: str, treatment: str) -> Optional[str]:
     """Why the unpaired-electron count can only float here, or ``None`` --
@@ -254,11 +243,15 @@ def _recorded(struct: Structure) -> Optional[Dict[str, Resolved]]:
     q = contract.get("net_charge")
     if isinstance(q, int) and not isinstance(q, bool):
         out["net_charge"] = Resolved(q, "recorded", why)
+    # WHAT A RECORD MAY SAY of them is what the catalogue offers.  A count's
+    # choices are whole numbers and one word, ``free``, so its type counts.
+    from .template import catalogue, one
     t = contract.get("spin_treatment")
-    if t in TREATMENTS:
+    if t in one(catalogue(), "spin_treatment").choices:
         out["spin_treatment"] = Resolved(t, "recorded", why)
     c = contract.get("unpaired_electrons")
-    if any(type(c) is type(m) and c == m for m in COUNTS):
+    if any(type(c) is type(m) and c == m
+           for m in one(catalogue(), "unpaired_electrons").choices):
         out["unpaired_electrons"] = Resolved(c, "recorded", why)
     return out or None
 

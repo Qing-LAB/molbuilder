@@ -464,15 +464,7 @@ def empty_old_points(stage_dir, points, plan, *, keep=()) -> List[str]:
     out: List[str] = []
 
     def gone(folder: Path) -> None:
-        for here, dirs, files in os.walk(folder, topdown=False):
-            for name in sorted(files):
-                plan.remove(Path(here) / name)
-            for name in sorted(dirs):
-                d = Path(here) / name
-                if d.is_symlink():
-                    plan.remove(d)
-                else:
-                    plan.remove_folder(d)
+        empty_run(folder, plan)
         plan.remove_folder(folder)
         out.append(str(folder.relative_to(stage_dir)) + "/")
 

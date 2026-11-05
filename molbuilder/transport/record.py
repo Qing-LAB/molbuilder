@@ -42,6 +42,7 @@ from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
 from .conductance import at_fermi, per_spin_channel
+from .run_words import PRODUCT
 
 if TYPE_CHECKING:
     from .stages import Point
@@ -197,10 +198,12 @@ def point_transmission(where, label: str, spin: str, *,
             av = point_averages_of(where, label)
         except (OSError, ValueError) as exc:
             raise RecordError(str(exc)) from exc
+    from .energies import same_grid
     curves = {c: a["transmission"] for c, a in av.items()
               if "transmission" in a}
     if (spin == "polarized" and "up" in curves and "down" in curves
-            and av["up"]["energy_ev"] != av["down"]["energy_ev"]):
+            and not same_grid(av["up"]["energy_ev"],
+                              av["down"]["energy_ev"])):
         raise RecordError("the two spin channels' energy grids differ")
     # PER SPIN CHANNEL, the one rule (`conductance.per_spin_channel`), which a
     # transmission run's milestone reads by too (`run-reports.md` § 2.9).
@@ -574,7 +577,7 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
                  "took": p.get("took") or []}
                 for p in points]
         if rung_points(task, name, frames=frames_of(base)) \
-                and answers != "product":
+                and answers != PRODUCT:
             # A RUNG THAT RUNS PER POINT, POINT BY POINT -- the report's
             # convergence card follows the selected point (`web/results.md`
             # § 2.5); the rung's own facts are its first point's.
@@ -626,7 +629,7 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
             out.append(fact)
             continue
         output = (_output_of(run)
-                  if answers != "product" and run is not None else None)
+                  if answers != PRODUCT and run is not None else None)
         if output is None:
             out.append(fact)
             continue
@@ -940,7 +943,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     ladder in progress has a report (`engines/transport.md` § 2a.12).
     """
     from ..jobset.naming import stage_home
-    from ..parse.dirs.job import FINAL_STATES
+    from ..parse.dirs.job import FINAL_STATES, NOT_ENDED_STATES
     from ..parse.engines.tbtrans import loop_record
     from ..runpoints import NOT_RUN
     from ..parse.engines._run_ending import keep_reading, version_of
@@ -1064,7 +1067,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                     "said": progress["progress"],
                     **({"estimated_at": progress["estimated_at"]}
                        if "estimated_at" in progress else {})}
-            (pending if state in ("pending", "queued", "running")
+            (pending if state in NOT_ENDED_STATES
              else not_run if state == NOT_RUN
              else failed).append(entry)
             continue

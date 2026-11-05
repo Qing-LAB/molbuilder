@@ -570,7 +570,8 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
                 again)
     if state == "pending":
         return "which has not been launched", f"Launch it --\n{launch_block}"
-    if state in ("queued", "running"):
+    from ..parse.dirs.job import LIVE_STATES
+    if state in LIVE_STATES:
         return f"which is {state}", "Let it finish"
     return ("which stopped without its conclusion marker -- killed, or out "
             "of time (project-layout.md § 1.6)", again)

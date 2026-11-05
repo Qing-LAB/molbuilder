@@ -1413,7 +1413,8 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     if launch is None:
         return None
     state, _detail = stage_run_state(finished, stage, newest)
-    if state in ("pending", "queued", "running"):
+    from ..parse.dirs.job import NOT_ENDED_STATES
+    if state in NOT_ENDED_STATES:
         return None
     theirs = rung_points(ftask, stage, frames=frames_of(fbase))
     missed = []

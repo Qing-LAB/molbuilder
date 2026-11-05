@@ -69,7 +69,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 
 from .issues import Issue
-from .structure import Structure
+from .structure import AXIS_KINDS, Structure
 
 
 #: The ops the unified door accepts (§ 6.2 v3).  ``box_corner`` assigns the
@@ -267,8 +267,7 @@ def _apply_block(s: Structure, payload: Any,
             f"{list(BLOCK_KEYS)}")
 
     kinds = tuple(str(k) for k in (payload.get("axis_kind") or []))
-    if len(kinds) != 3 or any(
-            k not in ("isolated", "transport", "periodic") for k in kinds):
+    if len(kinds) != 3 or any(k not in AXIS_KINDS for k in kinds):
         raise ValueError("axis_kind must be 3 of isolated|transport|periodic")
 
     raw_cell = payload.get("cell")
@@ -418,9 +417,7 @@ def apply_edit(struct: Structure, op: str,
 
     if op == "axis_kind":
         new_kinds = tuple(str(k) for k in (payload or []))
-        if len(new_kinds) != 3 or any(
-                k not in ("isolated", "transport", "periodic")
-                for k in new_kinds):
+        if len(new_kinds) != 3 or any(k not in AXIS_KINDS for k in new_kinds):
             raise ValueError(
                 "axis_kind must be 3 of isolated|transport|periodic")
         if "periodic" in new_kinds:

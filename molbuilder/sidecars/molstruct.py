@@ -292,6 +292,12 @@ def sidecars_in(directory: Union[str, Path]) -> "List[Path]":
         return []
 
 
+def is_geometry(path: Union[str, Path]) -> bool:
+    """Is this a structure file a sidecar may pair with, whatever the case of
+    its suffix?"""
+    return Path(path).suffix.lower() in GEOMETRY_SUFFIXES
+
+
 def is_sidecar(path: Union[str, Path]) -> bool:
     """Is this a sidecar?  Asked of the one module that names the suffix."""
     return Path(path).name.endswith(SUFFIX)

@@ -700,7 +700,7 @@ run may want one a measurement did not. **The first point is typed before the ro
 **The launch rows stand on every rung's card from the start** *(user,
 2026-10-11: "show them and leave blank - explicit setting is better than
 implicit, in addition, expose gpu enable and gpu number too")*: the items the
-catalogue marks `run_card` — every run setting: for SIESTA the ranks, the
+catalogue holds as a run setting — every one of them: for SIESTA the ranks, the
 threads per rank, the GPU switch and count, the memory cap, the solver and
 the other speed settings; for PySCF its threads, the GPU switch and count,
 the memory cap and the wall slack — each a row whether or not a benchmark
@@ -709,10 +709,9 @@ placeholder and nothing proposed, written on the rungs that read it (the item's
 `stages`, by role, as the stage table's cells follow them). Before
 2026-10-11 the rows were the bench's, the condition's and those added by hand
 only, so a calculation with no benchmark — every transport calculation —
-showed none, and the values prep requires were met first as its refusal. The
-marker is the catalogue's ([`engines/template.md`](?doc=engines/template.md)
-§ 5), served with each item by `/api/task-setup/sweepable`; the page keeps
-no list.
+showed none, and the values prep requires were met first as its refusal. They
+are the catalogue's `execution` category, served by
+`/api/task-setup/sweepable`; the page keeps no list.
 
 **Two rows are the run's alone and are never the bench's**: `time` and
 `domain`, offered by *+ Add setting* beside the sweepable items, served with

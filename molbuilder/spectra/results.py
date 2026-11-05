@@ -55,12 +55,12 @@ try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
     from .normal_modes import display_form
     from ..atom_permutation import MAP_KEY
-    from ..structure import Structure as _Structure
+    from ..structure import FROZEN_LABEL, Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
     from derived import DERIVED_MODE_KEYS, disagreements, with_derived
     from normal_modes import display_form  # type: ignore[no-redef]
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
-    from structure import Structure as _Structure
+    from structure import FROZEN_LABEL, Structure as _Structure
 
 
 # SCHEMA_VERSION (incremented when the on-disk JSON shape changes):
@@ -1131,7 +1131,7 @@ class SpectraResults:
                     f"SpectraResults: the structure holds {s.n_atoms} atoms "
                     f"and n_atoms_total says {self.n_atoms_total}")
             held = sorted(int(i) for i in
-                          (s.regions or {}).get("frozen_atoms", ()))
+                          (s.regions or {}).get(FROZEN_LABEL, ()))
             if held != sorted(frozen_set):
                 raise ValueError(
                     f"SpectraResults: the structure holds {held} as "
@@ -1276,7 +1276,7 @@ class SpectraResults:
         s = _Structure(elements=list(self.equilibrium_elements),
                        positions=np.asarray(self.equilibrium_positions_ang,
                                             dtype=float),
-                       regions=({"frozen_atoms": held} if held else {}))
+                       regions=({FROZEN_LABEL: held} if held else {}))
         return s.to_dict()
 
     def atom_index_map_stated(self):

@@ -55,6 +55,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ..diagnostics import DEFAULT_ENV_NAMES
 from . import builds as _builds
 from .recipes import Recipe, recipe_by_name
 
@@ -143,7 +144,7 @@ _ELPA_GPU_FALLBACK_RE = re.compile(
 )
 
 
-def _trim(text: str, limit: int = 4096) -> str:
+def _trim(text: str, limit: int = _builds.OUTPUT_LIMIT) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n... (trimmed, full length {len(text)} chars)"
@@ -552,7 +553,7 @@ def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
 # validator today (siesta-gpu) and the probes are tightly coupled to
 # its build-tree layout.
 _RECIPE_PROBES = {
-    "molbuilder-siesta-gpu": (
+    DEFAULT_ENV_NAMES["siesta-gpu"]: (
         # Order: cheap probes first so a misconfigured env fails fast
         # without burning time on the long probes before noticing
         # missing binaries.  Runtime hints come from MEASURED times on a

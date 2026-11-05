@@ -211,7 +211,7 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
     if molstruct.is_sidecar(p):
         geometry = molstruct.geometry_for(p)
         return _of_pair(geometry or p, p)
-    if p.suffix.lower() in molstruct.GEOMETRY_SUFFIXES:
+    if molstruct.is_geometry(p):
         return _of_pair(p, molstruct.sidecar_path_for(p))
     if p.suffix == ".nc":
         return _of_nc(p)
@@ -282,8 +282,7 @@ def _of_pair(geometry: Path, sidecar: Path) -> Optional[AtomIndexMap]:
     # order record, a geometry changed since its pin, refused here as there
     # (`model/overview.md` § 2.2b; `structure-molstruct.md` § 1, § 3).
     from .workingcopy_structure import ORDER_UNSTATED, StructureCodec
-    if (geometry.is_file()
-            and geometry.suffix.lower() in molstruct.GEOMETRY_SUFFIXES):
+    if geometry.is_file() and molstruct.is_geometry(geometry):
         StructureCodec().load(geometry, frames=True, said_out=[],
                               opened=(ORDER_UNSTATED,))
     stated: set = set()

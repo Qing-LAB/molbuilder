@@ -58,7 +58,6 @@ what they probably meant.
 from __future__ import annotations
 
 import contextvars
-import difflib
 import dataclasses as _dc
 import re
 from dataclasses import dataclass, field
@@ -67,8 +66,8 @@ from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
                     Tuple)
 
 from .identity import normalise_id, run_id, stage_key
-from .persist import (check_schema, json_text, read_json, unread_words,
-                      write_json)
+from .persist import (check_schema, json_text, read_json, unknown_key_words,
+                      unread_words, write_json)
 
 
 SCHEMA = "molbuilder/task@2"
@@ -615,13 +614,9 @@ def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
     and sending a person to look for a typo they did not make is worse than
     saying nothing.
     """
-    for key in obj:
-        if key in allowed:
-            continue
-        near = difflib.get_close_matches(key, allowed, n=1, cutoff=0.7)
-        hint = f" -- did you mean {near[0]!r}?" if near else \
-               f" (known keys: {', '.join(allowed)}){note}"
-        _refuse(f"unknown key {key!r}{hint}", where=where)
+    said = unknown_key_words(obj, allowed, note)
+    if said:
+        _refuse(said, where=where)
 
 
 def _require(obj: Mapping[str, Any], key: str, *, where: str) -> Any:

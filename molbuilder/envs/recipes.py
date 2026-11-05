@@ -2521,7 +2521,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             ' $(command -v gcc), outside $CONDA_PREFIX.  Bundled Makefiles'
             ' that call gcc directly (flook/lua) would use the HOST'
             ' toolchain.  The bare-name shims are created by: '
-            f'{_hints.fix_cmd("install", "molbuilder-siesta-gpu")}" >&2 ;; '
+            f'{_hints.fix_cmd("install", DEFAULT_ENV_NAMES["siesta-gpu"])}" >&2 ;; '
             'esac; '
             # numpy and netCDF4 for a vibration's finish, as in
             # `_SIESTA`'s self-test.

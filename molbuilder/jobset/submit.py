@@ -2602,6 +2602,14 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
                       "queued are skipped."))
 
 
+def _walked_start(base, place, pdir, start) -> HandOver:
+    """A walked point's hand-over from the point it starts from in this run:
+    its files, copied by the loop step just before it runs."""
+    at = RunRef.at(base, place.point(start.source.rel))
+    return HandOver(pdir, CONTINUED, source=at,
+                    files=tuple((at, f) for f in start.files), walk=True)
+
+
 def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                  inside: Optional[Inside] = None) -> "_Walk":
     """A RUN OF POINTS' WALK, BUILT -- the one walk of every kind's run of
@@ -2801,11 +2809,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         # by the loop step just before it runs.
         start = declared.start_of(calc, stage, pt, every)
         if start.source is not None:
-            at = RunRef.at(base, place.point(start.source.rel))
-            hand_over(base, HandOver(pdir, CONTINUED, source=at,
-                                     files=tuple((at, f)
-                                                 for f in start.files),
-                                     walk=True), plan.writes)
+            hand_over(base, _walked_start(base, place, pdir, start),
+                      plan.writes)
     # EVERY WALKED POINT THAT SHARES ENERGIES is given them (`_shares`).
     for pdir, pt in walked:
         if pt.rel not in is_planned:
@@ -2889,10 +2894,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                 words = (f" (from its prepared files: {last.walked(pt.rel)} "
                          f"left none of its warm files)")
         elif start.source is not None and start.files:
-            at = RunRef.at(base, place.point(start.source.rel))
-            h = HandOver(pdir, CONTINUED, source=at,
-                         files=tuple((at, f) for f in start.files),
-                         walk=True)
+            h = _walked_start(base, place, pdir, start)
             hand_over(base, h, plan.writes)
             # WHAT THE WALK COPIES just before the point runs, each named
             # from the stage's folder by the folder door (§ 2.4).

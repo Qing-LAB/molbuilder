@@ -247,10 +247,11 @@ def spectra_render_checks(struct: Structure, cfg, *,
     # gas-phase translation; with atoms held the thermochemistry is the
     # vibrational sums alone and records no pressure (§ 4.7).  A value the
     # person set is said to do nothing -- warned, not hidden, so the form's
-    # shape does not follow the structure.  The default is the config's own.
-    from ..config.pyscf import PySCFConfig
+    # shape does not follow the structure.
+    from ..template import catalogue, default_of, one
     _p_set = getattr(cfg, "pressure_atm", None)
-    _p_default = PySCFConfig.__dataclass_fields__["pressure_atm"].default
+    _p_default = default_of(one(catalogue(), "pressure_atm", engine="pyscf"),
+                            "vibration")
     if _frozen_idx and _p_set is not None and float(_p_set) != float(_p_default):
         issues.append(Issue(
             severity="warn",

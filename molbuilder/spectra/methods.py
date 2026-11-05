@@ -205,14 +205,15 @@ def infrared_view_sentence(view: Mapping[str, Any]) -> str:
     three times the orientation average; or free, nothing held, the
     orientation average itself (`science/vibrational-optical-response.md`
     § 2.3)."""
+    from .infrared import ORIENTATION_FREE, SOURCE_DIPOLE
     partition = str(view["partition"]).capitalize()
     head = ("The infrared shown is the whole system's, from the dipole "
             "change the engine computed along each mode"
-            if view.get("source") == "dipole" else
+            if view.get("source") == SOURCE_DIPOLE else
             f"The infrared shown is that of {view['atoms_label']}, the "
             f"{len(view['atoms'])} atoms the vibration moved, from their "
             f"{partition} charges")
-    if view.get("orientation") == "free":
+    if view.get("orientation") == ORIENTATION_FREE:
         return (f"{head}, averaged over orientations: no atom is held, so the "
                 f"molecule tumbles, as a free molecule's infrared intensity "
                 f"reports.")

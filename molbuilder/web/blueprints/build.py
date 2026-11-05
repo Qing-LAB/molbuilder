@@ -212,19 +212,11 @@ def api_build_molecule():
     if "add_hydrogens" in takes:
         # add_hydrogens is tri-state: auto / on / off.  The web form sends a
         # string ("auto" by default); a bool is read as auto / off.
-        h_mode_raw = body.get("add_hydrogens", "auto")
-        if isinstance(h_mode_raw, bool):
-            h_mode_used = "auto" if h_mode_raw else "off"
-        else:
-            h_mode_used = str(h_mode_raw).lower()
-            if h_mode_used not in ("auto", "on", "off"):
-                return jsonify({
-                    "ok": False,
-                    "error": (
-                        f"add_hydrogens must be 'auto'/'on'/'off' "
-                        f"(or bool); got {h_mode_raw!r}"
-                    ),
-                }), 400
+        from molbuilder.nucleic import normalise_h_mode
+        try:
+            h_mode_used = normalise_h_mode(body.get("add_hydrogens", "auto"))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
         asked["add_hydrogens"] = h_mode_used
     # THE BACKEND ASKED FOR, when a kind lets a person choose one -- which
     # the missing-backend answer below names.
@@ -795,6 +787,14 @@ def api_build_schema(engine: str):
     })
 
 
+def _machine_named(target):
+    """The machine a request names, by its name: the tab labels the local
+    machine `(this machine)`, which is a label and not a name; the page sends
+    what it shows and the server speaks one vocabulary."""
+    from molbuilder.scheduler.record import LOCAL_LABEL, LOCAL_TARGET
+    return LOCAL_TARGET if target in (LOCAL_LABEL, LOCAL_TARGET) else target
+
+
 def _unstated(**said):
     """A 400 naming what a request left out.  The engine and the calculation
     kind are stated by every caller -- the page states both -- and never
@@ -1083,8 +1083,9 @@ def api_task_setup_handover():
     # a placeholder is worse than naming it after the folder somebody chose.
     _field = _engine(engine).identity_field
     _identity = str(getattr(cfg, _field, "") or "")
+    from molbuilder.template import catalogue, default_of, one
     _placeholder = str(
-        type(cfg).__dataclass_fields__[_field].default or "")
+        default_of(one(catalogue(), _field, engine=engine), calculation) or "")
     typed = (_identity if _identity and _identity != _placeholder
              else str(body.get("name") or ""))
     if not typed:
@@ -1354,12 +1355,7 @@ def api_task_setup_prep():
         return jsonify({"ok": False,
                         "error": f"not a directory: {dest_raw}"}), 400
 
-    # The tab labels the local machine `(this machine)`, which is a label
-    # and not a name; `LOCAL_TARGET` is the name.  Translated here so the
-    # browser sends what it shows and the server speaks one vocabulary.
-    from molbuilder.scheduler.record import LOCAL_TARGET
-    if target in ("(this machine)", LOCAL_TARGET):
-        target = LOCAL_TARGET
+    target = _machine_named(target)
 
     # ---- THE ONE ENTRY (`job-system.md` § 5.0), whole ------------------- #
     # The command line's own prep: the preflight, the save, the steps, the
@@ -1397,10 +1393,11 @@ def api_task_setup_prep():
                         "error": f"{type(exc).__name__}: {exc}"}), 500
     # THE MACHINE IT IS FOR, in the tab's word: the entry's answer -- the
     # one named, else the one the calculation's copy of its record names.
+    from molbuilder.scheduler.record import LOCAL_LABEL, LOCAL_TARGET
     said = [a.as_dict(dest) for a in answers]
     for d in said:
         if d.get("machine") == LOCAL_TARGET:
-            d["machine"] = "(this machine)"
+            d["machine"] = LOCAL_LABEL
     # WHAT COMES NEXT, as the terminal's prep ends: the launch with nothing
     # named, which sends the group that can go -- or, the prep opening no
     # run of its own (`prep.opened_no_run`),
@@ -1799,10 +1796,8 @@ def api_task_setup_sweepable():
             "label":           it.label or it.name,
             "help":            it.help or "",
             "machine_answers": it.allocation,
-            # A ROW ON EVERY RUN CARD FROM THE START, blank until stated
-            # (`web/task-setup.md` § 6.2b), on the rungs that read it --
-            # the catalogue's `run_card` and `stages`.
-            "run_card":        it.run_card,
+            # EACH A ROW ON EVERY RUN CARD FROM THE START, blank until stated
+            # (`web/task-setup.md` § 6.2b), on the rungs that read it.
             "stages":          list(it.stages),
             # WHERE A VALUE OF IT MAY LIVE (`template.home_of`): the
             # Measure card offers what a benchmark row may hold.
@@ -2070,13 +2065,7 @@ def api_task_setup_bench_grid():
         return jsonify({"ok": False,
                         "error": "bench: must be an object of "
                                  "axis -> points"}), 400
-    # The picker offers "(this machine)" as a LABEL, not a name; `LOCAL_TARGET`
-    # is the name.  Translated exactly as the prep door translates it, so both
-    # doors speak one vocabulary.
-    from molbuilder.scheduler.record import LOCAL_TARGET
-    target = body.get("target") or None
-    if target in ("(this machine)", LOCAL_TARGET):
-        target = LOCAL_TARGET
+    target = _machine_named(body.get("target") or None)
 
     from molbuilder.jobset.prep_inputs import bench_inputs
     domain = body.get("domain")
@@ -2833,9 +2822,10 @@ def _folder_set_to(folder):
     """The machine the calculation is set to, or ``None`` before its first
     prep -- the name its copy of the record carries, in the tab's words:
     this machine is `(this machine)` there, as every answer here says it."""
-    from molbuilder.scheduler.record import LOCAL_TARGET, calculation_machine
+    from molbuilder.scheduler.record import (LOCAL_LABEL, LOCAL_TARGET,
+                                             calculation_machine)
     name = calculation_machine(folder)
-    return "(this machine)" if name == LOCAL_TARGET else name
+    return LOCAL_LABEL if name == LOCAL_TARGET else name
 
 
 def _folder_prepared(calc) -> dict:
@@ -2874,7 +2864,6 @@ def api_task_setup_commands():
     Prep's lines, which prepare it again.  Writes nothing.
     """
     from molbuilder.jobset.commands import stage_lines
-    from molbuilder.scheduler.record import LOCAL_TARGET
     body = request.get_json(silent=True) or {}
     dest_raw = str(body.get("dest") or "")
     kind = body.get("kind")
@@ -2895,9 +2884,7 @@ def api_task_setup_commands():
         dest = _resolve_within_roots(dest_raw)
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
-    target = body.get("target") or None
-    if target == "(this machine)":
-        target = LOCAL_TARGET
+    target = _machine_named(body.get("target") or None)
     prepared = False
     if picked and kind == "task":
         from molbuilder.calculation import open as open_calculation

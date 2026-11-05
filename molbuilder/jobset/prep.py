@@ -3064,12 +3064,13 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     # 3 · THE SAVE, ONCE, before anything is written.
     try:
         with user_error_as_prep():
+            from .commands import copied_in_note
             from .group import named
             kept = save_before(
                 base, "prep task " + ", ".join(
-                    named(request, n)
-                    + (f", copied in from {reuse.name}"
-                       if reuse is not None and reuse.copied(n) else "")
+                    copied_in_note(named(request, n), reuse.name)
+                    if reuse is not None and reuse.copied(n)
+                    else named(request, n)
                     for n in numbers),
                 engine=str(task.engine))
     except (CheckpointError, PrepError) as exc:

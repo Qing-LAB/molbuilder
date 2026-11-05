@@ -8,6 +8,7 @@ L1: pure stdlib, no molbuilder deps -- any layer may use it.
 
 from __future__ import annotations
 
+import difflib
 import json
 import math
 import numbers
@@ -61,6 +62,22 @@ def check_schema(got: str, want: str, *, label: str = "") -> None:
             + (f"it says {got!r}" if got else "it names no schema")
             + f", this molbuilder reads "
               f"{schema_name(want)}@{schema_major(want)}.")
+
+
+def unknown_key_words(obj, allowed, note: str = "") -> Optional[str]:
+    """The first key of a hand-edited ``obj`` not in ``allowed``, in words:
+    the near-miss named, or the keys it may hold and where it belongs
+    (``note``); ``None`` when every key is known.  An unknown key is refused,
+    not ignored: an ignored key is a file quietly different from the one
+    written."""
+    for key in obj:
+        if key in allowed:
+            continue
+        near = difflib.get_close_matches(key, allowed, n=1, cutoff=0.7)
+        hint = (f" -- did you mean {near[0]!r}?" if near else
+                f" (known keys: {', '.join(allowed)}){note}")
+        return f"unknown key {key!r}{hint}"
+    return None
 
 
 def check_keys(what: str, d, known, *, needed=None) -> None:
@@ -307,6 +324,6 @@ def sha256_of_bytes(data: bytes) -> str:
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "check_keys",
-           "read_json", "unread_words",
+           "read_json", "unread_words", "unknown_key_words",
            "json_text", "write_json", "stage_bytes", "write_bytes",
            "sha256_of", "sha256_of_bytes"]

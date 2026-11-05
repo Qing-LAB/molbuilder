@@ -242,7 +242,7 @@ def build_rna(
     return _maybe_protonate(struct, protonate_phosphates)
 
 
-def _normalise_h_mode(value: "bool | str") -> str:
+def normalise_h_mode(value: "bool | str") -> str:
     """Map the user's ``add_hydrogens`` argument to {auto, on, off}.
 
     Accepts ``"auto"`` / ``"on"`` / ``"off"`` and a bool (True -> "auto",
@@ -286,7 +286,7 @@ def _maybe_add_hydrogens(struct: Structure,
     the structure lands in the gray zone (~0.3-0.6), prefer ``"on"``
     or ``"off"`` over ``"auto"`` so the decision is explicit.
     """
-    norm = _normalise_h_mode(mode)
+    norm = normalise_h_mode(mode)
     if norm == "off":
         return struct
     if norm == "on":

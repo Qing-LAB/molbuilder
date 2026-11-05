@@ -1170,7 +1170,7 @@ def known_machines() -> List[Dict[str, object]]:
     out = [_describe(read_environment(path), name, "target", path)
            for name, path in sorted(named_environments().items())]
     here = machine_scope_path()
-    out.append(_describe(read_environment(here), "(this machine)", "local",
+    out.append(_describe(read_environment(here), LOCAL_LABEL, "local",
                          here))
     return out
 
@@ -1439,7 +1439,7 @@ class AmbiguousTarget(Exception):
     def __init__(self, choices):
         self.choices = sorted(choices)
         listed = "\n".join(f"    --target {c}" for c in self.choices
-                           if c != "(this machine)")
+                           if c != LOCAL_LABEL)
         listed += f"\n    --target {LOCAL_TARGET}   # this machine"
         # "NOTHING NEEDS PROBING" ONLY WHEN IT IS SO: with no record of its
         # own, `--target this` is refused next, and the probe it needs is the
@@ -1470,6 +1470,8 @@ class AmbiguousTarget(Exception):
 #: at ``--target``.  C1 protects against SILENCE; naming this machine is not
 #: silence.
 LOCAL_TARGET = "this"
+#: ...and the label it is displayed by.
+LOCAL_LABEL = "(this machine)"
 
 
 def probe_command(name: Optional[str] = None) -> str:
@@ -1604,7 +1606,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None
     if target is None and _named:
         _snapshot = calculation_record(bundle_dir) if bundle_dir is not None else None
         if _snapshot is None or not _snapshot.is_file():
-            raise AmbiguousTarget(list(_named) + ["(this machine)"])
+            raise AmbiguousTarget(list(_named) + [LOCAL_LABEL])
 
     for label, path in record_scopes(bundle_dir, target):
         env = read_environment(path)

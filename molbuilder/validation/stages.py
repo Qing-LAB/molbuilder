@@ -125,20 +125,20 @@ def check_a_relaxation_takes_a_step(
     0 to time one SCF on a rung's own deck, and that pin is prep's own,
     never part of a description (`engines/template.md` § 5.3).
     """
-    from ..template import catalogue, one, reads
+    from ..template import catalogue, inactive_settings, one, reads
     try:
         steps = one(catalogue(), "relax_steps", engine=engine)
     except KeyError:
         return []
     out: List[Issue] = []
     for name, cfg in resolved:
-        moves = getattr(cfg, "relax_type", None)
-        if (moves in (None, "none") or getattr(cfg, "relax_steps", None) != 0
+        if ("relax_steps" in inactive_settings(cfg, engine=engine)
+                or getattr(cfg, "relax_steps", None) != 0
                 or not reads(steps, engine, kind, name)):
             continue
         out.append(Issue(
             "error",
-            f"stage {name!r} relaxes ({moves}) in relax_steps = 0 steps -- "
+            f"stage {name!r} relaxes ({cfg.relax_type}) in relax_steps = 0 steps -- "
             f"MD.Steps 0 is a single point (read_options.F90), so the rung "
             f"relaxes nothing.  Give it at least one step "
             f"(engines/template.md 5.3)",

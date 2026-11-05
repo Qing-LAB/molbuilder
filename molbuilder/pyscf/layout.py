@@ -60,24 +60,17 @@ GEOMETRY_SECTION = Section(
      "geom_max_steps"),
 )
 
-#: ``catalogue name -> the geomeTRIC keyword it becomes``.  The mapping is the
-#: catalogue's own ``anchor``; this table exists only to spell the call, and is
-#: read from the declaration rather than typed, so the two cannot disagree.
-_GEOM_KWARG = {
-    "geom_etol": "convergence_energy",
-    "geom_grms": "convergence_grms",
-    "geom_gmax": "convergence_gmax",
-    "geom_drms": "convergence_drms",
-    "geom_dmax": "convergence_dmax",
-    "geom_max_steps": "maxsteps",
-}
+def geom_keyword(name: str) -> str:
+    """The geomeTRIC keyword a catalogue item becomes: its own ``anchor``."""
+    from ..template import catalogue, one
+    return one(catalogue(), name, engine="pyscf").anchor
 
 
 def geom_kwargs() -> "tuple":
     """The relaxation's geomeTRIC keyword lines (handed to ``relax(...)``,
     `relax_policy`), in the section's own order."""
     return tuple(
-        f"        {_GEOM_KWARG[n]:<21} = _GEOM_{n[5:].upper()},"
+        f"        {geom_keyword(n):<21} = _GEOM_{n[5:].upper()},"
         for n in GEOMETRY_SECTION.items)
 
 

@@ -19,6 +19,7 @@ from typing import List, Optional, Tuple
 
 from .. import script_emit as _sc
 from ..calcdirs import RunPlace, prepared_folder
+from ..parse.dirs.job import LIVE_STATES
 from ..deck_record import same_calculation
 from ..runrecord import RunRef
 from ..jobset.errors import PrepError, user_error_as_prep
@@ -166,7 +167,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                 st, rows = got.state, got.rows
                 not_done = [f"{p['point']} ({p['why']})" for p in rows
                             if not p["done"]]
-                if st in ("queued", "running"):
+                if st in LIVE_STATES:
                     raise PrepError(
                         f"the {stage} stage takes {upstream}'s newest run, "
                         f"{newest.relative_to(base)}, whole -- and it is "

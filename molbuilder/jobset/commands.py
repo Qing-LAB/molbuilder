@@ -297,6 +297,18 @@ def launch_save_note(group: str, inside=None) -> str:
     return what
 
 
+def copied_in_note(who: str, source: str) -> str:
+    """How a prep's saved state names a member it copied in from ``source``,
+    read back by :func:`names_copy_of`."""
+    return f"{who}, copied in from {source}"
+
+
+def names_copy_of(note: str, who: str) -> bool:
+    """Whether a saved state's ``note`` is a prep's that copied ``who`` in."""
+    return ("before prep task" in note
+            and copied_in_note(who, "") in note)
+
+
 def names_launch_of(note: str, who: str) -> bool:
     """Whether a saved state's ``note`` is one :func:`launch_save_note`
     wrote for the group whose members are ``who`` (``(a, b)``) -- typed, or
@@ -371,8 +383,7 @@ def redo_launched(stage: Optional[str], *, calc) -> str:
             and copied_in(stage_home(base, calc.task, stage).dir)):
         what = (f"the prep that copied {named(request, g)} in from "
                 f"{Path(calc.task.reuses).name}")
-        state = _state_before(base, lambda note: "before prep task" in note
-                              and f"{who}, copied in from" in note)
+        state = _state_before(base, lambda note: names_copy_of(note, who))
     else:
         what = f"the first launch of {group}"
         state = _state_before(base, lambda note: names_launch_of(note, who))

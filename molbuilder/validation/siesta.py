@@ -608,12 +608,12 @@ def validate_siesta(struct: Structure, cfg,
     # NOT ON A TRANSPORT RUNG, which writes no MD block at all: the junction
     # was relaxed upstream and every rung computes at that geometry
     # (engines/transport.md § 1), so the frozen set holds nothing there.
-    relax = (getattr(cfg, "relax_type", "") or "").lower()
     if not vibration and calculation != "transport":
+        from ..template import inactive_settings
         issues += _check_frozen_atoms_consumed(
             struct,
             engine=words,
-            honored=(relax not in ("none", "")),
+            honored="relax_steps" not in inactive_settings(cfg, engine="siesta"),
             reason_when_dropped=(
                 f"cfg.relax_type = {cfg.relax_type!r} (no MD/relax block "
                 f"is emitted, so Geometry.Constraints would be a no-op)"

@@ -538,12 +538,6 @@ class Item:
     #: Ask it directly, or filter for it: ``select(t, allocation=True)``.
     allocation: bool = False
 
-    #: **A row on every run card from the start**, blank until stated
-    #: (`web/task-setup.md` § 6.2b; user, 2026-10-11) -- marked on every run
-    #: setting of the catalogue.  It states no value and decides nothing
-    #: prep does; Task setup's run card reads it.
-    run_card: bool = False
-
     #: **The CITATION answers this one** — `allocation`'s sibling on the same
     #: axis (§ 6.4), added 2026-09-15 on the user's ruling for the transport
     #: kind.
@@ -949,7 +943,7 @@ def _toml_key(k: Any) -> str:
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "launch", "limit_applied_by", "type",
                    "choices", "value", "source", "default", "engine_default", "recommended", "offered", "not_offered", "result", "active_when", "choice_labels", "optional", "required",
-                   "allocation", "run_card",
+                   "allocation",
                    "citation", "shared", "why_shared", "role", "role_values",
                    "why_fixed", "per_point_from", "stages",
                    "unit", "range", "above", "at_least", "tightens", "tier",
@@ -1043,8 +1037,6 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["refs"] = list(it.refs)
     if it.allocation:
         out["allocation"] = True
-    if it.run_card:
-        out["run_card"] = True
     if it.citation:
         out["citation"] = list(it.citation)
     if it.role:
@@ -2098,7 +2090,6 @@ def _item_from(name: str, body: Any) -> Item:
         tightens=_tightens_from(name, body.get("tightens")),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
-        run_card=bool(body.get("run_card", False)),
         citation=tuple(body.get("citation", ()) or ()),
         role=tuple(body.get("role", ()) or ()),
         role_values=_table_from(name, "role_values", body.get("role_values"),

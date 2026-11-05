@@ -404,6 +404,8 @@ RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running",
 #: Results viewer follows (`web/results.md` § 4.1): a run never launched writes
 #: nothing until it is, and one finished or failed writes nothing more.
 LIVE_STATES: "tuple[str, ...]" = ("queued", "running")
+#: ...and with a run not yet launched, the states a run has not ended in.
+NOT_ENDED_STATES: "tuple[str, ...]" = ("pending",) + LIVE_STATES
 #: The states a run has ended in -- what a loop is said *stopped* in
 #: (`model/parse.md` § 5d.5); `unreadable` is neither live nor over.
 FINAL_STATES: "tuple[str, ...]" = ("finished", "failed", _re.NOT_RUN)

@@ -1437,15 +1437,12 @@ def _print_oauth_redirect_hint_if_auth_on(scheme, host, port):
     hostname if relevant.
     """
     try:
-        from .runtime_config import read_config, get_providers
+        from .runtime_config import OAUTH_KINDS, read_config, get_providers
         cfg = read_config()
     except Exception:
         return  # bad / missing config -- handled elsewhere
     providers = get_providers(cfg)
-    oauth_providers = [
-        p for p in providers
-        if p["kind"] in ("google", "github", "microsoft", "orcid")
-    ]
+    oauth_providers = [p for p in providers if p["kind"] in OAUTH_KINDS]
     if not oauth_providers:
         return
 
@@ -1869,13 +1866,14 @@ def cmd_atom_index(path, to_engine, to_user):
         molbuilder atom-index T.transport.nc --to-engine 0,5
     """
     from .atom_index import AtomIndexUnknown, atom_index_map
-    from .atom_permutation import AtomIndexError
+    from .atom_permutation import (AtomIndexError, LISTED_BY_ENGINE,
+                                   LISTED_BY_USER, LISTED_NOT_STATED)
     try:
         atoms = atom_index_map(path)
     except (AtomIndexUnknown, AtomIndexError, OSError, ValueError) as exc:
         raise click.ClickException(str(exc))
-    listed = {"user_index": "user index", "engine_index": "engine index",
-              "not_stated": "an order nothing states, read as user index"}
+    listed = {LISTED_BY_USER: "user index", LISTED_BY_ENGINE: "engine index",
+              LISTED_NOT_STATED: "an order nothing states, read as user index"}
     click.echo(f"{path}: atoms listed by {listed[atoms.listed_by]} "
                f"-- stated by {atoms.stated_by or path}")
     click.echo("every index below counts from 0; a view numbers an atom "
@@ -2088,8 +2086,7 @@ def _supervise_forever() -> int:
     The shape is Werkzeug's reloader, minus the file watcher: a parent that
     NEVER IMPORTS APPLICATION CODE, whose only job is to start a child and
     start another when that one asks.  That is what makes it robust -- the
-    parent cannot be broken by the code it restarts, so a child that fails to
-    import leaves the supervisor alive and the next reload can fix it.
+    parent cannot be broken by the code it restarts.
 
     The watcher is deliberately absent (docs/archive/2026-08-19-server-reload-plan.md § 3.1).
     Werkzeug's reloader stat-polls every imported module once a second and
@@ -2107,6 +2104,7 @@ def _supervise_forever() -> int:
 
     env = server_environment(os.environ)
     args = [sys.executable, "-m", "molbuilder", *sys.argv[1:]]
+    from .serve_daemon import child_exit_action, flapping
     _crashes: list = []
     while True:
         try:
@@ -2116,6 +2114,8 @@ def _supervise_forever() -> int:
             # is already stopping; the parent must not print a traceback over
             # its shutdown.  128+SIGINT is what a shell reports for this.
             return 130
+        if child_exit_action(code) == "exit":
+            return code
         if code == RELOAD_EXIT_CODE:
             click.echo("molbuilder: reload requested -- starting a fresh "
                        "server", err=True)
@@ -2123,7 +2123,6 @@ def _supervise_forever() -> int:
         if code < 0:
             # KILLED BY A SIGNAL: a hung child that somebody killed by hand
             # must come back.  Flap-guarded through the same pure policy the daemon uses.
-            from .serve_daemon import flapping
             import time as _time
             _crashes.append(_time.monotonic())
             if flapping(_crashes, _time.monotonic()):
@@ -2133,8 +2132,6 @@ def _supervise_forever() -> int:
             click.echo(f"molbuilder: server died by signal {-code}; "
                        f"starting a fresh one (the hung-child repair)",
                        err=True)
-            continue
-        return code
 
 
 @cli.command("notify-token",

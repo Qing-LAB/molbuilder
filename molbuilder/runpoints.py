@@ -413,6 +413,19 @@ def not_done_words(row: Dict[str, Any]) -> str:
     return f"{row['words']}: {state_word(row)} -- {row['why'] or row['state']}"
 
 
+def tally(rows) -> Tuple[int, int, int]:
+    """How many of ``rows`` failed, are not run, and ran to their end and are
+    not done -- not converged where that counts, or a file it must leave
+    missing (`runs-of-points.md` § 1.3, § 1.4): what a kind's count says
+    beside its points done (§ 4.7), one rule for the job's rows and
+    `status`'s, each row's ``state`` its run's."""
+    rows = list(rows)
+    return (sum(1 for r in rows if r.get("state") == "failed"),
+            sum(1 for r in rows if r.get("state") == NOT_RUN),
+            sum(1 for r in rows
+                if r.get("state") == "finished" and not r["done"]))
+
+
 def run_state(rows, index: Dict[str, Any]) -> Tuple[str, Optional[str]]:
     """THE RUN'S STATE, once no point is left to run (`runs-of-points.md`
     § 4.4) -- one rule, the job's and `status`'s: by the index's
@@ -537,7 +550,7 @@ def part(ref: str) -> Any:
         raise ValueError(f"{ref!r} does not resolve: {exc}") from exc
 
 
-__all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN",
+__all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN", "tally",
            "NEVER_REACHED", "NOT_STARTED", "walk_began",
            "index_path",
            "index_of", "read_index", "index_at", "write_index",

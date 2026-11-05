@@ -31,14 +31,13 @@ from __future__ import annotations
 
 from typing import Mapping
 
-
-_OAUTH_KINDS = frozenset({"google", "github", "microsoft", "orcid"})
+from ...runtime_config import OAUTH_KINDS
 
 
 def start_flow(app, entry: Mapping):
     """Dispatch /login/<provider_id> to the right backend."""
     kind = entry["kind"]
-    if kind in _OAUTH_KINDS:
+    if kind in OAUTH_KINDS:
         from . import oauth
         return oauth.start_flow(app, entry)
     if kind == "cas":
@@ -50,7 +49,7 @@ def start_flow(app, entry: Mapping):
 
 def finish_oauth(app, entry: Mapping):
     """Dispatch /oauth-callback/<provider_id> to the OAuth backend."""
-    if entry["kind"] not in _OAUTH_KINDS:
+    if entry["kind"] not in OAUTH_KINDS:
         # Route mismatch: a CAS provider should never land here.
         from flask import abort
         abort(404)

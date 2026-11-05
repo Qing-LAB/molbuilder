@@ -22,7 +22,7 @@ from typing import Iterable, Optional, TextIO
 import click
 
 from ..config_dir import config_dir
-from ..diagnostics import get_capabilities
+from ..diagnostics import DEFAULT_ENV_NAMES, get_capabilities
 from ..runfiles import MACHINE_RECORD_FILE
 from ..runtime_config import ACTIVATION_FORMS
 from . import builds as _builds
@@ -137,6 +137,17 @@ def _tee_console_to(log_path: Path):
                 fh.close()
             except OSError:
                 pass
+
+
+def _recipe_named(name: str):
+    """The recipe called ``name``, or the refusal naming those there are."""
+    recipe = recipe_by_name(name)
+    if recipe is None:
+        registered = ", ".join(r.name for r in builtin_recipes())
+        raise click.UsageError(
+            f"unknown recipe `{name}`.  Registered: {registered}"
+        )
+    return recipe
 
 
 @click.group("envs",
@@ -475,12 +486,7 @@ def cmd_repair(name: str, include_optional: bool,
     exits 0 with "nothing to do".
     """
     caps = get_capabilities()
-    recipe = recipe_by_name(name)
-    if recipe is None:
-        registered = ", ".join(r.name for r in builtin_recipes())
-        raise click.UsageError(
-            f"unknown recipe `{name}`.  Registered: {registered}"
-        )
+    recipe = _recipe_named(name)
     if caps.conda_binary is None:
         raise click.UsageError(
             "conda/mamba not found; cannot run repair.  See "
@@ -731,12 +737,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
     """
     import shutil as _shutil
     caps = get_capabilities()
-    recipe = recipe_by_name(name)
-    if recipe is None:
-        registered = ", ".join(r.name for r in builtin_recipes())
-        raise click.UsageError(
-            f"unknown recipe `{name}`.  Registered: {registered}"
-        )
+    recipe = _recipe_named(name)
     if recipe.build_spec is None:
         raise click.UsageError(
             f"recipe `{recipe.name}` is conda-only (no build_spec); "
@@ -1014,12 +1015,7 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
     ``molbuilder-siesta-gpu`` has probes defined; other recipes
     return 0 with a "no validator" notice.
     """
-    recipe = recipe_by_name(name)
-    if recipe is None:
-        registered = ", ".join(r.name for r in builtin_recipes())
-        raise click.UsageError(
-            f"unknown recipe `{name}`.  Registered: {registered}"
-        )
+    recipe = _recipe_named(name)
     caps = get_capabilities()
     # Need the env to exist and its prefix to be resolvable.
     # Through the one door, so the host override applies here too.
@@ -1191,12 +1187,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     if dry_run and check:
         raise click.UsageError("--dry-run and --check are mutually exclusive")
 
-    recipe = recipe_by_name(name)
-    if recipe is None:
-        registered = ", ".join(r.name for r in builtin_recipes())
-        raise click.UsageError(
-            f"unknown recipe `{name}`.  Registered: {registered}"
-        )
+    recipe = _recipe_named(name)
 
     if rebuild is not None:
         if recipe.build_spec is None:
@@ -1212,7 +1203,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         # remap so users coming from SIESTA 5.4 INSTALL.md vocabulary
         # don't trip.  This is the single source of truth for the rename.
         if (rebuild == "elsi"
-                and name == "molbuilder-siesta-gpu"
+                and name == DEFAULT_ENV_NAMES["siesta-gpu"]
                 and "siesta" in valid):
             click.echo(
                 "Note: ELSI is a SIESTA submodule -- rebuilding 'siesta' "
@@ -1987,7 +1978,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         click.echo("# committing; the host env from this bootstrap is the")
         click.echo("# prerequisite):")
         click.echo(
-            _fix_cmd("install", "molbuilder-siesta-gpu", "--yes")
+            _fix_cmd("install", DEFAULT_ENV_NAMES["siesta-gpu"], "--yes")
         )
     click.echo("")
     click.echo("# Repair any REQUIRED package gaps doctor's audit surfaced:")

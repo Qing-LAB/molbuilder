@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional
 
 from ..calcdirs import where
 from ..identity import StageRef, jobs_as_typed, stage_key
+from ..parse.dirs.job import FINAL_STATES, LIVE_STATES, NOT_ENDED_STATES
 from ..paths import attempts_in
 from .materialize import latest_attempt
 from .naming import job_dir_names, run_names, stage_refs
@@ -44,7 +45,7 @@ from .model import JobSet
 from .continuation import (PointsReading, gathered_lines, pending_words,
                            read_points, stage_run_state, taken_over)
 from .plan import resources_text
-from .ready import MISSING
+from .ready import MISSING, ready_words
 
 # Engine-native warm-restart files keyed by the project id (system label),
 # DERIVED from the one rules file (job-contracts § 4.2a; U3/W2).  The carry rows are status's
@@ -529,7 +530,6 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     says it (`web/results.md` § 4.1)."""
     from ..calculation import open as open_calculation
     from ..identity import parse_token
-    from ..parse.dirs.job import FINAL_STATES, LIVE_STATES
     from ..runs import WALL, record_of, run_of, state_of
     run = run_of(path)
     took = None
@@ -648,7 +648,7 @@ def _job_status(calc, job, *, dirs, refs) -> StageStatus:
                            columns=columns))
     row = dataclasses.replace(row, scratch=_scratch_line(
         base, task, job, d, run if row.launch else None, row.attempts,
-        going=row.state in ("queued", "running")))
+        going=row.state in LIVE_STATES))
     if row.state != "queued":
         return row
     from ..runs import standing_of
@@ -814,9 +814,8 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
 
 
 #: A RUN'S STATES that leave its group needing a launch again
-#: (`running-a-job.md` § 4.2) -- and the ones still on their way.
+#: (`running-a-job.md` § 4.2).
 _ENDED_BADLY = ("failed", "unreadable")
-_ON_ITS_WAY = ("queued", "running")
 
 
 def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
@@ -837,7 +836,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     for g in groups:
         members = [by[m] for m in g.members]
         n = g.number
-        live = next((r for r in members if r.state in _ON_ITS_WAY), None)
+        live = next((r for r in members if r.state in LIVE_STATES), None)
         bad = next((r for r in members if r.state in _ENDED_BADLY), None)
         if g.members_changed:
             # A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a member taken out, or
@@ -879,9 +878,8 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
             # (`job-request.md` § 5); launched
             # and changed in what it computes, the group started from the
             # beginning, the three lines whole (`commands.redo_launched`).
-            from .prepared_with import run_card_only
-            words = ("changed since prepared: "
-                     + "; ".join(d.said for d in g.since_prepared))
+            from .prepared_with import changed_words, run_card_only
+            words = changed_words(g.since_prepared)
             if not g.launched:
                 step = ("changed since prepared",
                         words + " -- prepare it again",
@@ -906,8 +904,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
             # PREPARED BY ANOTHER MOLBUILDER: said, the launch sending what
             # it wrote (`job-system.md` § 6.0).
             step = (("ready",
-                     "ready to launch" + (f" (prepared by {g.prepared_by})"
-                                          if g.prepared_by else ""),
+                     ready_words(g.prepared_by),
                      launch_lines("task", base=base, groups=[n]))
                     if g.launchable else
                     ("waiting", "waits for: " + reason_of(g.why or ""), []))
@@ -1053,7 +1050,6 @@ def _sweep_next(status: JobSetStatus) -> str:
     the calculation (`job-system.md` § 7) -- the trials launch together, the
     ones already launched passed over, and what they measured is read back
     once they have run."""
-    from ..parse.dirs.job import FINAL_STATES
     stage, base = status.bench_of, status.base
     read = block([command("summarize", "bench", stage, base=base)])
     states = {s.state for s in status.stages}
@@ -1061,7 +1057,7 @@ def _sweep_next(status: JobSetStatus) -> str:
     # its way on (R-L28) -- before any launch, which would refuse it; never
     # *ended*.
     odd = [s for s in status.stages
-           if s.state not in FINAL_STATES + ("pending", "queued", "running")]
+           if s.state not in FINAL_STATES + NOT_ENDED_STATES]
     if odd:
         return ("; ".join(f"{s.name}: {_said(s.state, s.detail)}"
                           for s in odd)
@@ -1073,7 +1069,7 @@ def _sweep_next(status: JobSetStatus) -> str:
                 + block(launch_lines("bench", stage, base=base))
                 + "\nthen, once they have run, read what they measured:\n"
                 + read)
-    if states & {"queued", "running"}:
+    if states & set(LIVE_STATES):
         return ("Trials queued or running -- let them finish, then read "
                 "what they measured:\n" + read)
     return "Every trial has ended -- read what they measured:\n" + read
@@ -1319,7 +1315,6 @@ def scratch_answer(calc) -> ScratchAnswer:
     reads); a run whose state does not read keeps its scratch too, said.
     Reads names, states and the jobs' files, and removes nothing."""
     from ..joblist import Asked, going_of
-    from ..parse.dirs.job import LIVE_STATES
     from .continuation import stage_run_state
     from .materialize import scratch_in
     base = Path(calc.base)

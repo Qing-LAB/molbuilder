@@ -201,7 +201,8 @@ def collect_sweep(calc, *,
             state, detail = stage_run_state(calc, name, attempt)
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": state, "detail": detail}
-            if state in ("pending", "queued", "running"):
+            from ..parse.dirs.job import NOT_ENDED_STATES
+            if state in NOT_ENDED_STATES:
                 pending.append(entry)
             else:
                 if state == "finished":

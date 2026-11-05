@@ -36,6 +36,13 @@ MISSING = ("missing", "the job set names this run's folder; it is not on "
                       "disk")
 
 
+def ready_words(prepared_by=None) -> str:
+    """A stage ready to launch, in words, and who prepared it where another
+    molbuilder did (`job-system.md` § 6.0)."""
+    return ("ready to launch"
+            + (f" (prepared by {prepared_by})" if prepared_by else ""))
+
+
 @dataclass
 class Readiness:
     """One stage's answer.  ``ready`` is the question its state asks: a
@@ -91,7 +98,7 @@ class Readiness:
         """One line beside the state: what a ready stage takes, the first
         line of what one waiting waits for."""
         from .commands import reason_of
-        from .prepared_with import UNRECORDED_SAID
+        from .prepared_with import UNRECORDED_SAID, changed_words
         if self.blocked == "record":
             # ITS RECORD OF WHAT IT WAS PREPARED WITH DOES NOT READ, launched
             # or not: the reader's words, which name the file and the way.
@@ -100,23 +107,17 @@ class Readiness:
             # A LAUNCHED STAGE SAYS IT TOO (`job-system.md`, *The task*,
             # the launched row): its runs computed the description as it
             # was; the way on is its group's step.
-            return ("changed since prepared: "
-                    + "; ".join(d.said for d in self.changed)
-                    if self.changed else "")
+            return changed_words(self.changed) if self.changed else ""
         first = reason_of(self.why or "")
         if self.prepared and self.changed:
-            return ("changed since prepared: "
-                    + "; ".join(d.said for d in self.changed)
-                    + " -- prepare it again")
+            return changed_words(self.changed) + " -- prepare it again"
         if self.prepared:
             if not self.ready:
                 return {"regrouped": "its job's members changed: ",
                         "unreadable": "its launch record does not read: ",
                         "missing": f"{MISSING[0]}: ",
                         }.get(self.blocked, "waits for: ") + first
-            return ("ready to launch"
-                    + (f" (prepared by {self.prepared_by})"
-                       if self.prepared_by else "")
+            return (ready_words(self.prepared_by)
                     + " -- " + ("; ".join(self.takes) if self.takes else
                                 "takes nothing from another run")
                     + (f"; {UNRECORDED_SAID}" if self.unrecorded else ""))

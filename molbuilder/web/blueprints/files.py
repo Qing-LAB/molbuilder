@@ -254,6 +254,64 @@ def _resolve_within_roots(raw_path: str) -> Path:
 # these helpers give the files blueprint its file-tree-shaped view of them.
 
 
+def _next_free_name(path: Path) -> Optional[Path]:
+    """The first ``<stem>-<n><suffix>`` beside ``path`` that nothing holds,
+    each passing the rule an uploaded name passes -- ``None`` after 998 tries,
+    when the directory is truly broken."""
+    for n in range(2, 1000):
+        candidate = path.with_name(f"{path.stem}-{n}{path.suffix}")
+        if _validate_upload_filename(candidate.name) is not None:
+            continue
+        if not candidate.exists():
+            return candidate
+    return None
+
+
+def _is_basename(name: str) -> bool:
+    """A file's name alone: no folder in it, no way out of its own."""
+    return not ("/" in name or "\\" in name or name in (".", ".."))
+
+
+def _replace_pair(src: Path, dst: Path, src_sidecar, dst_sidecar, *,
+                  verb: str, past: str):
+    """A structure file moved to ``dst`` with its sidecar, as one
+    (`web/projects.md`: *a structure and its sidecar move as one*): the
+    sidecar's failure puts the structure back, so a person ends where they
+    started -- ``None`` when both went, else the answer that says what did
+    not."""
+    try:
+        os.replace(str(src), str(dst))
+    except OSError as exc:
+        # Cross-device, permission denied, quota: the errno tells them what
+        # to do.
+        return jsonify({"ok": False,
+                        "error": f"{verb} failed: {exc.strerror or str(exc)}"
+                        }), 500
+    if src_sidecar is None or dst_sidecar is None:
+        return None
+    try:
+        os.replace(str(src_sidecar), str(dst_sidecar))
+    except OSError as exc:
+        why = exc.strerror or str(exc)
+        try:
+            os.replace(str(dst), str(src))
+        except OSError:
+            return jsonify({
+                "ok": False,
+                "error": (f"{verb} partially failed: structure {past} to "
+                          f"{str(dst)!r} but sidecar {verb} failed ({why}) "
+                          f"AND rollback also failed.  The sidecar is still "
+                          f"at {str(src_sidecar)!r} -- manual cleanup "
+                          f"needed."),
+            }), 500
+        return jsonify({
+            "ok": False,
+            "error": (f"{verb} failed: sidecar {verb} failed ({why}); "
+                      f"structure {verb} rolled back."),
+        }), 500
+    return None
+
+
 def _paired_sidecar_path(structure_path: Path) -> Path:
     """The canonical sidecar path next to ``structure_path``, whether or not
     it exists -- used both to FIND one to move and to COMPUTE a destination.
@@ -276,8 +334,8 @@ def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
     are never pair-tracked.  Renaming a sidecar directly is allowed
     but treated as a single-file operation.
     """
-    from molbuilder.sidecars.molstruct import GEOMETRY_SUFFIXES
-    if structure_path.suffix.lower() not in GEOMETRY_SUFFIXES:
+    from molbuilder.sidecars.molstruct import is_geometry
+    if not is_geometry(structure_path):
         return None
     sidecar = _paired_sidecar_path(structure_path)
     return sidecar if sidecar.exists() else None
@@ -1034,14 +1092,12 @@ def _validate_subdir_name(parent_abs: Path, name: str) -> None:
 
     Raises :class:`molbuilder.projects.InvalidName` on rejection.
     """
-    hit = _root_containing(parent_abs)
-    root = hit[0] if hit is not None else None
-    if root is None:
+    rel_parts = _rel_parts_inside_root(parent_abs)
+    if rel_parts is None:
         raise InvalidName(
             f"parent {parent_abs!s} is outside the picker's roots; "
             f"the picker shouldn't have surfaced it."
         )
-    rel_parts = parent_abs.relative_to(root).parts
     depth = len(rel_parts)
     if depth == 1:
         # Parent is projects/<project>/ -- the new name is a topic.
@@ -1369,28 +1425,10 @@ def api_files_upload():
     auto_rename = auto_rename_raw in ("1", "true", "yes", "on")
     if dest.exists() and not overwrite:
         if auto_rename:
-            # Phase 6e: pick the first non-colliding name in the
-            # series ``<stem>-2.<ext>``, ``<stem>-3.<ext>``, ...
-            # Used by the embed's export-params dialog so a re-save
-            # of the same default name doesn't silently clobber the
-            # previous one.  Cap at 999 to avoid pathological loops
-            # (the directory's truly broken at that point).
-            # Phase 6e second-review LANDMINE #17: each synthesised
-            # candidate must re-pass _validate_upload_filename so
-            # any future tightening of the regex can't be bypassed
-            # by the suffix-picker.  Today's regex permits all
-            # outputs of this loop, but the invariant is now
-            # checked rather than coincidental.
-            stem = dest.stem
-            suffix = dest.suffix
-            for n in range(2, 1000):
-                candidate = dest.with_name(f"{stem}-{n}{suffix}")
-                if _validate_upload_filename(candidate.name) is not None:
-                    continue
-                if not candidate.exists():
-                    dest = candidate
-                    break
-            else:
+            # Used by the embed's export-params dialog so a re-save of the
+            # same default name doesn't silently clobber the previous one.
+            dest = _next_free_name(dest)
+            if dest is None:
                 return jsonify({
                     "ok": False,
                     "error": (f"could not find an unused auto-rename "
@@ -1574,23 +1612,8 @@ def api_files_write():
             pass  # explicit overwrite
         elif auto_rename:
             # The dialog promises auto-rename for all kinds: mirror
-            # the /upload picker here.  Keep filename
-            # validation parity with /upload's auto_rename loop
-            # so a future tightening of _validate_upload_filename
-            # is enforced symmetrically by both endpoints.  /write
-            # accepts paths (not raw filenames), but the
-            # synthesised <stem>-<n><suffix> is itself a leaf
-            # name and must pass the same regex /upload demands.
-            stem = resolved.stem
-            suffix = resolved.suffix
-            chosen = None
-            for n in range(2, 1000):
-                candidate = resolved.with_name(f"{stem}-{n}{suffix}")
-                if _validate_upload_filename(candidate.name) is not None:
-                    continue
-                if not candidate.exists():
-                    chosen = candidate
-                    break
+            # the /upload picker here.
+            chosen = _next_free_name(resolved)
             if chosen is None:
                 return jsonify({
                     "ok": False,
@@ -1717,12 +1740,7 @@ def api_files_rename():
     # Reject path-traversal / separator attempts on new_name.  A
     # legitimate rename only changes the basename; anything that
     # tries to move the entry into another dir is rejected.
-    if (
-        "/" in new_name
-        or "\\" in new_name
-        or new_name in (".", "..")
-        or ".." in new_name.split("/")    # belt+suspenders for parser
-    ):
+    if not _is_basename(new_name):
         return jsonify({
             "ok": False,
             "error": (
@@ -1815,47 +1833,10 @@ def api_files_rename():
             ),
         }), 409
 
-    try:
-        os.replace(str(resolved), str(dst))
-    except OSError as exc:
-        # Cross-device rename, permission denied, FS quota, ... .
-        # The errno + message tells the user what to do.
-        return jsonify({
-            "ok":    False,
-            "error": f"rename failed: {exc.strerror or str(exc)}",
-        }), 500
-
-    if src_sidecar is not None and dst_sidecar is not None:
-        try:
-            os.replace(str(src_sidecar), str(dst_sidecar))
-        except OSError as exc:
-            # Best-effort rollback of the structure rename so the user
-            # ends up where they started -- not in a half-renamed
-            # state where structure is at the new name + sidecar is
-            # at the old name.  If rollback ALSO fails (extremely
-            # rare; same dir, same FS) the user gets a clear pointer
-            # at the inconsistency.
-            try:
-                os.replace(str(dst), str(resolved))
-            except OSError:
-                return jsonify({
-                    "ok":    False,
-                    "error": (
-                        f"rename partially failed: structure renamed to "
-                        f"{dst.name!r} but sidecar rename failed "
-                        f"({exc.strerror or str(exc)}) AND rollback also "
-                        f"failed.  Structure is at the new name; sidecar "
-                        f"is at the old name -- manual cleanup needed."
-                    ),
-                }), 500
-            return jsonify({
-                "ok":    False,
-                "error": (
-                    f"rename failed: sidecar rename failed "
-                    f"({exc.strerror or str(exc)}); structure rename "
-                    f"rolled back."
-                ),
-            }), 500
+    failed = _replace_pair(resolved, dst, src_sidecar, dst_sidecar,
+                           verb="rename", past="renamed")
+    if failed is not None:
+        return failed
 
     return jsonify({
         "ok":   True,
@@ -1929,9 +1910,7 @@ def _resolve_new_name(
             "error": "'new_name' must be a non-empty string when provided",
         }, 400)
     new_name = raw_new_name.strip()
-    if ("/" in new_name
-            or "\\" in new_name
-            or new_name in (".", "..")):
+    if not _is_basename(new_name):
         return None, ({
             "ok":    False,
             "error": (
@@ -2043,38 +2022,10 @@ def api_files_move():
             ),
         }), 409
 
-    try:
-        os.replace(str(src), str(dst))
-    except OSError as exc:
-        return jsonify({
-            "ok":    False,
-            "error": f"move failed: {exc.strerror or str(exc)}",
-        }), 500
-
-    if src_sidecar is not None and dst_sidecar is not None:
-        try:
-            os.replace(str(src_sidecar), str(dst_sidecar))
-        except OSError as exc:
-            try:
-                os.replace(str(dst), str(src))
-            except OSError:
-                return jsonify({
-                    "ok":    False,
-                    "error": (
-                        f"move partially failed: structure moved to "
-                        f"{str(dst)!r} but sidecar move failed "
-                        f"({exc.strerror or str(exc)}) AND rollback also "
-                        f"failed.  Manual cleanup needed."
-                    ),
-                }), 500
-            return jsonify({
-                "ok":    False,
-                "error": (
-                    f"move failed: sidecar move failed "
-                    f"({exc.strerror or str(exc)}); structure move "
-                    f"rolled back."
-                ),
-            }), 500
+    failed = _replace_pair(src, dst, src_sidecar, dst_sidecar,
+                           verb="move", past="moved")
+    if failed is not None:
+        return failed
 
     return jsonify({"ok": True, "path": str(dst)})
 

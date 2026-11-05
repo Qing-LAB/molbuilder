@@ -207,6 +207,13 @@ def differences(was: Dict[str, Any], now: Dict[str, Any]
     return out
 
 
+def changed_words(differences) -> str:
+    """A stage changed since it was prepared, in words: each difference as it
+    is said (`job-system.md`, *The task*)."""
+    return ("changed since prepared: "
+            + "; ".join(d.said for d in differences))
+
+
 def run_card_only(differences) -> bool:
     """Whether every difference is the job request's (:data:`RUN_CARD`) --
     a launched group so changed is prepared again for its request, its

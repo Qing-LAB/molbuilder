@@ -113,6 +113,9 @@ _CHANNEL_KINDS = ("tag", "flag", "value")
 #: boundary that touches both.
 FROZEN_LABEL = "frozen_atoms"
 
+#: What an axis of a structure is (`model/structure-periodicity.md`).
+AXIS_KINDS = ("periodic", "isolated", "transport")
+
 #: How many decimals of an Angstrom :meth:`Structure.to_xyz` writes each
 #: coordinate to -- the precision a geometry file keeps
 #: (``model/structure.md`` § 2.3), and what a frame set's checks allow for
@@ -917,7 +920,6 @@ class Structure:
         # The boolean view is :meth:`pbc`, which is an INTEROP
         # accessor and nothing more -- ASE takes booleans and the extxyz
         # header writes `pbc="T T F"`.  Nothing inside molbuilder reads it.
-        _KINDS = ("periodic", "isolated", "transport")
         if self.axis_kind is None:
             # A stated cell means a lattice; no cell means a vacuum box.
             # `transport` is never guessed -- a builder says it.
@@ -925,9 +927,9 @@ class Structure:
                               else ("isolated",) * 3)
         else:
             ak = tuple(str(k) for k in self.axis_kind)
-            if len(ak) != 3 or any(k not in _KINDS for k in ak):
+            if len(ak) != 3 or any(k not in AXIS_KINDS for k in ak):
                 raise ValueError(
-                    f"Structure.axis_kind must be exactly 3 of {_KINDS}; "
+                    f"Structure.axis_kind must be exactly 3 of {AXIS_KINDS}; "
                     f"got {self.axis_kind!r}"
                 )
             self.axis_kind = ak

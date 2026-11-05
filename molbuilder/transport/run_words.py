@@ -14,7 +14,8 @@ ROLE    the kind table's ``count`` and ``outcome`` parts of a transport
         average -- read from each point's own files.  The index, its
         stamps and its rules are every run of points' (`runpoints`).
 USED-BY the kind table (`transport.on.siesta.points`), through
-        `runpoints.part` beside the job and `kind_table.part` here
+        `runpoints.part` beside the job and `kind_table.part` here;
+        `transport.record`, for what a stage answers
 """
 from __future__ import annotations
 
@@ -29,11 +30,11 @@ try:                                       # inside molbuilder
     from .. import runrecord as _rr
     from ..calcdirs import RunPlace
     from ..runpoints import NOT_RUN
-    from ..runpoints import state_word, why_not_run
+    from ..runpoints import state_word, tally, why_not_run
 except ImportError:                        # beside a job
     import runrecord as _rr  # type: ignore[no-redef]
     from runpoints import NOT_RUN  # type: ignore[no-redef]
-    from runpoints import state_word, why_not_run  # type: ignore[no-redef]
+    from runpoints import state_word, tally, why_not_run  # type: ignore[no-redef]
     from calcdirs import RunPlace  # type: ignore[no-redef]
 
 #: WHAT A RUN'S POINTS COMPUTE, the kind table's words for the rung
@@ -54,12 +55,7 @@ def count_words(rows, facts=None) -> str:
     run's."""
     rows = list(rows)
     n_done = sum(bool(r["done"]) for r in rows)
-    failed = sum(1 for r in rows if r.get("state") == "failed")
-    not_run = sum(1 for r in rows if r.get("state") == NOT_RUN)
-    # RAN TO ITS END AND NOT DONE -- not converged where that counts, or a
-    # file it must leave missing (`runs-of-points.md` § 1.3, § 1.4).
-    not_done = sum(1 for r in rows
-                   if r.get("state") == "finished" and not r["done"])
+    failed, not_run, not_done = tally(rows)
     n_frames = len({r.get("frame") for r in rows})
     n_volts = len({r["bias_v"] for r in rows})
     return (f"{n_done} of {len(rows)} points done"

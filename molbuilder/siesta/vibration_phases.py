@@ -299,9 +299,9 @@ def count_words(rows, facts) -> str:
     (`continuation.point_rows`): one shape."""
     phases = tuple((facts or {}).get("phases") or ())
     try:                                   # inside molbuilder
-        from ..runpoints import NOT_RUN, state_word
+        from ..runpoints import state_word, tally
     except ImportError:                    # beside a job, the monitor's
-        from runpoints import NOT_RUN, state_word  # type: ignore[no-redef]
+        from runpoints import state_word, tally  # type: ignore[no-redef]
     parts: List[str] = []
     by: Dict[str, list] = {}
     for r in rows:
@@ -321,15 +321,7 @@ def count_words(rows, facts) -> str:
         # TAKEN OVER is the index's ``taken_from`` (`continuation.taken_over`),
         # the key the job's rows and the status door's rows share.
         taken = sum(bool(r.get("taken_from")) for r in got if r["done"])
-        # FAILED -- it ran and ended with an error -- and NOT RUN -- its
-        # ended walk never started it -- each its row's ``state``, one rule
-        # for the job's rows and `status`'s, as a transport run's count
-        # says them (`transport.run_words.count_words`).
-        failed = sum(1 for r in got if r.get("state") == "failed")
-        not_run = sum(1 for r in got if r.get("state") == NOT_RUN)
-        # RAN TO ITS END AND NOT DONE (`runs-of-points.md` § 1.3).
-        not_done = sum(1 for r in got
-                       if r.get("state") == "finished" and not r["done"])
+        failed, not_run, not_done = tally(got)
         if len(got) == 1:
             # ONE CALL: its own word (`runpoints.state_word`).
             parts.append(f"{p.name} {state_word(got[0])}")

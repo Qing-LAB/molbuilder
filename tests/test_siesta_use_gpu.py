@@ -45,9 +45,9 @@ def test_diag_algorithm_field_metadata():
     default ELPA-1STAGE (`engines/siesta.md` § 7: molbuilder's default, on
     CPU in the packaged env), always shown (NOT gated behind GPU) -- on the
     run card, a run setting (`execution/job-request.md` § 2)."""
-    from molbuilder.template import items_of
+    from molbuilder.template import is_run_setting, items_of
     it = items_of(SiestaConfig)["diag_algorithm"]
-    assert it.group == "staging" and it.run_card
+    assert it.group == "staging" and is_run_setting(it)
     assert tuple(it.choices) == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
     assert it.engine_key == "Diag.Algorithm"
     assert SiestaConfig().diag_algorithm == "ELPA-1STAGE"

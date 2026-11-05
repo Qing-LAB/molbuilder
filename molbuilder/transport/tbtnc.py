@@ -45,10 +45,6 @@ class TbtError(Exception):
     """The files cannot answer what was asked -- the message says why."""
 
 
-def _channels(spin: str) -> tuple:
-    return ("up", "down") if spin == "polarized" else ("unpolarized",)
-
-
 def energies_of(folder, label: str) -> List[float]:
     """The energies a point's run computed, ascending, at full precision
     -- its first data file's, through the parser
@@ -167,7 +163,8 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
             av = point_averages_of(folder, label)
         except (OSError, ValueError) as exc:
             raise TbtError(str(exc)) from exc
-    channels = _channels(spin)
+    from .conductance import SPIN_CHANNELS
+    channels = SPIN_CHANNELS[spin]
     missing = [c for c in channels if c not in av]
     if missing:
         raise TbtError(f"{Path(folder).name} holds no k-averaged file of "
@@ -190,9 +187,8 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
     if len(channels) == 1:
         return per[channels[0]]
     up, dn = per["up"], per["down"]
-    if len(up["energy_ev"]) != len(dn["energy_ev"]) or any(
-            abs(x - y) > 1e-9 for x, y in zip(up["energy_ev"],
-                                              dn["energy_ev"])):
+    from .energies import same_grid
+    if not same_grid(up["energy_ev"], dn["energy_ev"]):
         raise TbtError(f"{Path(folder).name}: its two spin channels are on "
                        f"different energy grids -- not one run's two spins")
     out: Dict = {"energy_ev": up["energy_ev"]}

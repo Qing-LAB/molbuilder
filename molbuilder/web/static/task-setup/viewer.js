@@ -769,7 +769,7 @@ function extraRunRows(stage) {
 let _laneAsks = [];
 
 /** The rows that STAND on every run card (`task-setup.md` § 6.2b): the
- *  launch rows the catalogue marks `run_card`, every setting the bench
+ *  catalogue's run settings, every setting the bench
  *  declares, and every one the calculation states, on any stage or for all
  *  of them -- whether or not a card's members read it, which its row says.
  *  A standing row is cleared by its blank, and has no ×.
@@ -782,7 +782,7 @@ function standingRows() {
     const out = [];
     const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
     for (const it of (_sweep || [])) {
-        if (it && it.run_card) add(it.name);
+        if (it) add(it.name);
     }
     const req = _request || {};
     for (const n of Object.keys(req.bench || {})) add(n);
@@ -857,13 +857,12 @@ function dropRunRow(name, members) {
 }
 
 /** THE ORDER EVERY RUN CARD LISTS ITS ROWS IN -- the same on every card
- *  (`task-setup.md` § 6.2b): the catalogue's run-card items, then the other
- *  settings the bench lane speaks, each in the catalogue's order, then the
- *  run's own asks; a name none of those holds after them, by name. */
+ *  (`task-setup.md` § 6.2b): the catalogue's run settings, in its order, then
+ *  the run's own asks; a name none of those holds after them, by name. */
 function runRowOrder(names) {
     const rank = new Map();
     (_sweep || []).forEach((it, i) => {
-        if (it && it.name) rank.set(it.name, (it.run_card ? 0 : 1000) + i);
+        if (it && it.name) rank.set(it.name, i);
     });
     _laneAsks.forEach((a, i) => rank.set(a.name, 2000 + i));
     const at = (n) => (rank.has(n) ? rank.get(n) : 3000);

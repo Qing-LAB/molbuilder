@@ -24,7 +24,6 @@ shape is checked here.
 from __future__ import annotations
 
 import contextvars
-import difflib
 import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -33,8 +32,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NoReturn, Optional, 
 from . import report_fields as _report_fields
 from .config_dir import CHANNEL_NAME_RULE, is_channel_name
 from .identity import stage_key
-from .persist import (check_schema, json_text, read_json, unread_words,
-                      write_json)
+from .persist import (check_schema, json_text, read_json, unknown_key_words,
+                      unread_words, write_json)
 from .scheduler.quantities import canonical_mem, canonical_time
 
 if TYPE_CHECKING:
@@ -338,13 +337,9 @@ def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
     """An unknown key is refused, not ignored -- an ignored key is a request
     quietly different from the one written -- with the near-miss named, or
     where the key belongs (``note``)."""
-    for key in obj:
-        if key in allowed:
-            continue
-        near = difflib.get_close_matches(key, allowed, n=1, cutoff=0.7)
-        hint = f" -- did you mean {near[0]!r}?" if near else \
-               f" (known keys: {', '.join(allowed)}){note}"
-        _refuse(f"unknown key {key!r}{hint}", where=where)
+    said = unknown_key_words(obj, allowed, note)
+    if said:
+        _refuse(said, where=where)
 
 
 #: A key of the description written here, said where it belongs.

@@ -275,11 +275,11 @@ def _vib_relax_block(cfg, names) -> List[str]:
         _cb = "_relax_cb_both"
     else:
         _cb = "_relax_cb"
-    # The geomeTRIC keyword spellings come from the ONE mapping the
-    # optimization deck's section uses (layout._GEOM_KWARG).
-    from .layout import _GEOM_KWARG, GEOMETRY_SECTION
+    # The geomeTRIC keyword spellings are the catalogue's, as the optimization
+    # deck's section reads them (`layout.geom_keyword`).
+    from .layout import geom_keyword, GEOMETRY_SECTION
     _conv_rows = [
-        f"'{_GEOM_KWARG[_n]}': GEOM_{_n[5:].upper()}"
+        f"'{geom_keyword(_n)}': GEOM_{_n[5:].upper()}"
         for _n in GEOMETRY_SECTION.items if _n != "geom_max_steps"]
     out += [
         "    _conv = {" + ",\n             ".join(_conv_rows) + "}",

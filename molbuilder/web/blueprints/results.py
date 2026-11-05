@@ -109,7 +109,6 @@ def api_results_contract():
     cannot come to disagree about what a directory records."""
     from pathlib import Path
 
-    from molbuilder.parse.dirs.run_info import run_info
     from .files import _PickerError, _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
@@ -125,17 +124,13 @@ def api_results_contract():
     # handed down because `parse/` cannot ask it (`model/parse.md` § 5b,
     # § 5b.1).
     from molbuilder.deck_record import DeckRecordUnreadable
-    from molbuilder.runs import declared, openable, run_of
+    from molbuilder.runs import openable, run_of, view_of
     output, _trail = openable(directory)
-    run = run_of(directory)
     try:
-        deck = declared(run).deck if run is not None else None
+        info = view_of(run_of(directory), output=output).info or {}
     except DeckRecordUnreadable as exc:
         # A DECK WHOSE RECORD DOES NOT READ is said, never a crash.
         return jsonify({"ok": False, "error": str(exc)}), 400
-    info = run_info(deck=deck, output=output,
-                    engine=(run.place.task.engine if run is not None
-                            else None)) or {}
     return jsonify({"ok": True, "calculation": info.get("calculation"),
                     "relaxation": info.get("relaxation")})
 

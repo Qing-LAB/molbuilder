@@ -361,10 +361,9 @@ def _register_redirect_uri_logger(app, providers: List[dict]) -> None:
     """
     from flask import url_for
 
-    oauth_provider_ids = [
-        p["id"] for p in providers
-        if p["kind"] in ("google", "github", "microsoft", "orcid")
-    ]
+    from ..runtime_config import OAUTH_KINDS
+    oauth_provider_ids = [p["id"] for p in providers
+                          if p["kind"] in OAUTH_KINDS]
     if not oauth_provider_ids:
         return
 
