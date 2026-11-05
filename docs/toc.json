@@ -117,7 +117,12 @@
         },
         {
           "path": "engines/vibration.md",
-          "label": "Vibration — the calculation, on PySCF and on SIESTA"
+          "label": "Vibration — the calculation, on PySCF and on SIESTA",
+          "children": [
+            {
+              "path": "engines/vibration-postprocessing.md"
+            }
+          ]
         },
         {
           "path": "engines/builders.md"
@@ -130,6 +135,9 @@
         },
         {
           "path": "engines/template.md"
+        },
+        {
+          "path": "engines/optimization-postprocessing.md"
         }
       ]
     },

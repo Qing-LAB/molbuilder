@@ -12,7 +12,9 @@ variables and nothing of the framework: [`engines/transport.md`](?doc=engines/tr
 § 2a.12 (the transport data file), [`engines/vibration.md`](?doc=engines/vibration.md)
 § 6.10.5 (the vibration data file), [`model/parse.md`](?doc=model/parse.md)
 § 5e (a TBtrans data file's kept reading) · the worked examples a person
-starts from, [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md).
+starts from, [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md),
+[`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md),
+[`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md).
 
 *(The user, 2026-10-23: "make it a general data file framework doc … and add
 the specific case for transport, so it is clear what it serves"; before it,
@@ -325,8 +327,9 @@ doors ask (`model/parse.md` § 3, *One layer*): `read_transport_data`,
 `read_raman_data` for an exported Raman view, `infrared_view` and
 `raman_view` for the spectrum viewer's two derivations, `atom_index_map(path)`,
 `read_structure(path)` for a structure pair in the user order with the map
-of the structure it returns, `parse(path)` for an engine's file, `read_xv(path)`
-for SIESTA's own `.XV`, in the engine's order. A notebook's kernel imports the molbuilder its server
+of the structure it returns, `parse(path)` for an engine's file in its own order
+with the map on the answer, `read_steps(path)` for a run's steps in the user
+order, `read_xv(path)` for SIESTA's own `.XV`, in the engine's order. A notebook's kernel imports the molbuilder its server
 runs ([`web/jupyter.md`](?doc=web/jupyter.md) § 7).
 
 ## 7. The transport calculation — what the framework serves, file by file

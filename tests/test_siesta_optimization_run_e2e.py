@@ -569,6 +569,38 @@ def test_the_output_keeps_its_frames_and_the_history_matches_in_order(opt):
 #  A run out of moves, and launched again (`running-a-job.md` § 3.5)     #
 # --------------------------------------------------------------------- #
 
+def test_a_step_a_run_is_inside_or_stopped_inside_is_no_step(real_h2_layered):
+    """`runs.StepsTable`: a run's output cut inside its first SCF, as a running
+    or a killed run leaves it, and the same with SIESTA's own stop.  The silent
+    failure: the energy of an SCF row read as the run's final energy, about
+    1000 eV off on a real 52-atom relaxation stopped inside a move."""
+    from molbuilder.parse import detect
+    from molbuilder.parse.engines.siesta_grammar import FATAL_MARKERS
+    from molbuilder.postprocess import RunStepsError, read_steps
+    from molbuilder.runs import run_of
+    from support.real_runs import copy_of
+
+    def cut_with(tail):
+        def cut(copy):
+            out = run_of(copy.attempt("coarse")).stdout
+            lines = out.read_text(errors="replace").splitlines(keepends=True)
+            first = next(k for k, line in enumerate(lines)
+                         if line.lstrip().startswith("scf:"))
+            out.write_text("".join(lines[:first + 1]) + tail)
+        return cut
+
+    fatal = next(m for m, state in FATAL_MARKERS if state == "stopped")
+    for name, tail, flag in (("in-flight", "", "in_progress"),
+                             ("stopped", f"\n{fatal}\n", "cut_short")):
+        run = copy_of(real_h2_layered, f"cut-{name}", cut_with(tail))
+        folder = run.attempt("coarse")
+        out = run_of(folder).stdout
+        assert getattr(detect(out).parse(str(out)).frames[-1], flag)
+        with pytest.raises(RunStepsError,
+                           match="holds no step its run finished"):
+            read_steps(folder)
+
+
 def test_a_relaxation_out_of_moves_ends_finished_not_converged(capped):
     """One move allowed: SIESTA exits 0 printing ``Final (unrelaxed)``
     coordinates, and the run reads *finished, not converged* -- its

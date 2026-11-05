@@ -174,7 +174,10 @@ def read_xv(path: Union[str, Path]) -> Structure:
         mine, _ = atoms.map_rows_to_user_order(struct.positions)
         struct.elements[atoms.map_to_engine_index([0])[0]]   # your atom 0
 
-    Every index here counts from 0.  On the command line,
+    The structure this returns knows nothing of the run, so its own
+    ``map_to_user_index`` and ``restored`` take these rows for your atoms;
+    :func:`molbuilder.postprocess.parse` reads the same file with the run's
+    order on it.  Every index here counts from 0.  On the command line,
     ``molbuilder xv2xyz --from-run`` writes the pair in your order, and a bare
     ``xv2xyz`` refuses a run that sorted its atoms.
 

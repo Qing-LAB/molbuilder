@@ -219,6 +219,31 @@ def held_atoms_of(struct, rec) -> Optional[List[int]]:
             if line in then]
 
 
+def force_figures(frame, held) -> "tuple[Optional[float], Optional[float]]":
+    """``(largest over every atom, largest over the atoms not in ``held``)`` of
+    one step, each ``None`` where it states none -- ``held`` indexing the
+    frame's own rows.
+
+    THE ENGINES' OWN CONVENTION: the largest absolute Cartesian component per
+    atom -- what SIESTA's `Max` line prints and `MD.MaxForceTol` tests, and the
+    rule both read-backs judge by (`engines/vibration.md` § 2.2, V1.30).  A
+    per-atom norm would call a run the engine converged "not converged" by up
+    to √3.  A step with no whole per-atom block answers with the engine's own
+    `Max` lines, which on SIESTA are that same component: a block the run was
+    still writing has rows for some atoms, and the largest of those is no
+    answer about all."""
+    import numpy as np
+    if frame.forces is None or len(frame.forces) != frame.structure.n_atoms:
+        return (None if frame.max_force is None else float(frame.max_force),
+                None if frame.max_force_constrained is None
+                else float(frame.max_force_constrained))
+    comp = np.abs(np.asarray(frame.forces, dtype=float)
+                  .reshape(-1, 3)).max(axis=1)
+    free = [i for i in range(len(comp)) if i not in set(held)]
+    return (float(comp.max()) if comp.size else None,
+            float(comp[free].max()) if free else None)
+
+
 def relaxation_of_output(path, traj, *,
                          engine: Optional[str] = None
                          ) -> Optional[Dict[str, Any]]:
@@ -229,7 +254,6 @@ def relaxation_of_output(path, traj, *,
     `relax` call's own output (`engines/vibration.md` § 5.11 § 3), so the
     record is of that call and no other, whatever else the directory
     holds."""
-    import numpy as np
     frames = [fr for fr in getattr(traj, "frames", []) if fr.structure is not None]
     if not frames:
         return None
@@ -238,27 +262,10 @@ def relaxation_of_output(path, traj, *,
     if tol is None:
         return None
     held = sorted(int(i) for i in (info.get("frozen_atoms") or []))
-    with_forces = [fr for fr in frames
-                   if fr.forces is not None or fr.max_force is not None]
-    max_all = max_free = None
-    if with_forces:
-        fr = with_forces[-1]
-        if fr.forces is not None:
-            # THE ENGINES' OWN CONVENTION: the largest absolute Cartesian
-            # component per atom -- what SIESTA's `Max` line prints and
-            # `MD.MaxForceTol` tests, and the rule both read-backs judge by
-            # (`engines/vibration.md` § 2.2, V1.30).  A per-atom norm would
-            # call a run the engine converged "not converged" by up to √3.
-            comp = np.abs(np.asarray(fr.forces, dtype=float)
-                          .reshape(-1, 3)).max(axis=1)
-            max_all = float(comp.max()) if comp.size else None
-            free = [i for i in range(len(comp)) if i not in set(held)]
-            max_free = float(comp[free].max()) if free else None
-        else:
-            max_all = (float(fr.max_force) if fr.max_force is not None
-                       else None)
-            max_free = (float(fr.max_force_constrained)
-                        if fr.max_force_constrained is not None else None)
+    figures = [force_figures(fr, held) for fr in frames]
+    max_all, max_free = next(
+        (got for got in reversed(figures) if got != (None, None)),
+        (None, None))
     if max_all is None and max_free is None:
         return None
     judged = max_free if max_free is not None else max_all

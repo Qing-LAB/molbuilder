@@ -1184,29 +1184,13 @@ def _its_run(path):
 
 def _file_atoms(path, traj) -> Optional[dict]:
     """THE ATOM INDEX MAP a bare reader states of a file it read
-    (`model/overview.md` § 2.2b, F3) -- a trajectory log's own header block,
-    read by the map's one reader, checked (:func:`atom_index.map_of_block`);
-    else what the one reader answers of the file (:func:`atom_index.
-    atom_index_map`: its sidecar, its run's deck); else -- a file nothing
-    of ours answers, a run whose deck states no order (I9) or no atom
-    count, the standard input -- the engine column the file's own rows are,
-    the user's not known, ``atom_index_why`` saying why (F1)."""
-    from .atom_index import AtomIndexUnknown, atom_index_map, map_of_block
-    from .atom_permutation import AtomIndexError, AtomIndexMap
-    stated = (traj.runtime_info or {}).get(MAP_KEY)
-    if stated is not None:
-        try:
-            return map_of_block(stated, Path(str(path)).name).to_dict()
-        except AtomIndexError as exc:
-            raise click.ClickException(str(exc))
-    why = "no run of ours holds this file: nothing states its atoms' user index"
-    if str(path) != "-":
-        try:
-            return atom_index_map(path).to_dict()
-        except (AtomIndexUnknown, AtomIndexError, ValueError) as exc:
-            why = str(exc)
-    n = len(traj.frames[0].structure.elements) if traj.frames else 0
-    return AtomIndexMap.of_own_structure(n, why).to_dict()
+    (:func:`atom_index.of_reading`), as its block."""
+    from .atom_index import of_reading
+    from .atom_permutation import AtomIndexError
+    try:
+        return of_reading(None if str(path) == "-" else path, traj).to_dict()
+    except AtomIndexError as exc:
+        raise click.ClickException(str(exc))
 
 
 def _say_a_file_is_not_its_run(path):

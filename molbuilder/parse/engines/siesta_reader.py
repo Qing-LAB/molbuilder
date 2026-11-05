@@ -303,7 +303,8 @@ class SiestaReader:
 
     # ---- a step ------------------------------------------------------------
 
-    def _commit(self, in_progress: bool = False) -> None:
+    def _commit(self, in_progress: bool = False,
+                cut_short: bool = False) -> None:
         """Commit the accumulated step as a record -- or keep the SCF state
         for the step still to come, when no coordinates have been read yet
         (SCF runs *before* outcoor in SIESTA's stream, and the preamble Etot
@@ -311,7 +312,8 @@ class SiestaReader:
 
         ``in_progress`` is set by :meth:`finish` when the output ends
         mid-step (a structure echo and SCF cycles, but no step-end yet), so
-        the flushed step is not mistaken for a completed one.
+        the flushed step is not mistaken for a completed one; ``cut_short``
+        when it ends so for good, the run no longer going.
 
         THE STEP'S ENERGY, strongest signal first -- each a number SIESTA
         wrote:
@@ -365,6 +367,7 @@ class SiestaReader:
             "stress_voigt_kbar": self._step_stress if computed else None,
             "scf_history": list(self._current_scf) or None,
             "in_progress": in_progress,
+            "cut_short": cut_short,
         })
         # The preamble Etot is kept for display: each commit writes its
         # step's, so the LAST committed step wins for a finished run and the
@@ -1505,14 +1508,14 @@ class SiestaReader:
         # SIESTA 5.4.2 writes the input-coordinate echo as an ``outcoor:``
         # block BEFORE the first SCF, so this is the exact in-progress
         # signature.
-        in_progress = (self.run_state == "running"
-                       and bool(self._step_frame)
-                       and bool(self._current_scf)
-                       and self._step_energy is None)
+        unfinished = (bool(self._step_frame) and bool(self._current_scf)
+                      and self._step_energy is None)
+        in_progress = self.run_state == "running" and unfinished
         # WHERE IT IS, read before the step in flight is committed (which
         # empties the rows): the ending's `doing` (`model/parse.md` § 2b).
         doing = self._where_words() or None
-        self._commit(in_progress=in_progress)
+        self._commit(in_progress=in_progress,
+                     cut_short=unfinished and not in_progress)
         live_scf: Optional[Dict[str, Any]] = None
         if self.run_state == "running" and self._current_scf:
             # A device mid-NEGF speaks for its NEGF phase, as `_commit` rules.

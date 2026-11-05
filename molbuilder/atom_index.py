@@ -6,7 +6,8 @@ ROLE    :func:`atom_index_map` -- the map a file states of itself (F1), its
         sidecar's (F4), its deck's, or its run's deck's (F3), with
         ``stated_by`` and ``said``; molbuilder's own doors and a person's
         notebook alike (`molbuilder.postprocess`), and ``molbuilder
-        atom-index``
+        atom-index``; :func:`of_reading` -- the map a reader states of a file
+        it read, where nothing may be refused
 USED-BY postprocess, cli (``atom-index``)
 
 **Never a guess**: a file is answered by what states its atoms' indices --
@@ -55,6 +56,41 @@ def atom_index_map(path) -> AtomIndexMap:
     if atoms is None:
         atoms = _of_run(p, p.parent)
     return _counted(p, atoms)
+
+
+def of_reading(path, reading) -> AtomIndexMap:
+    """THE ATOM INDEX MAP a reader states of a file it read (§ 2.2b, F3):
+    ``reading`` that file's parse, a structure or a run's steps.  The block the
+    reading itself carries (a trajectory log's header), read by the map's one
+    reader and checked; else what :func:`atom_index_map` answers of ``path``
+    (its sidecar, its run's deck); else -- ``path`` ``None`` the standard input,
+    a file nothing of ours answers, a run whose deck states no order (I9) or no
+    atom count, a file whose atom count that answer disagrees with -- the engine
+    column the file's own rows are, the user's not known, ``atom_index_why``
+    saying why (F1).  A reading with no finished geometry yet has no count to
+    set against."""
+    structure = getattr(reading, "structure", None)
+    if structure is not None:
+        n_atoms, stated = structure.n_atoms, None
+    else:
+        n_atoms = next((fr.structure.n_atoms for fr in reading.frames
+                        if not fr.in_progress), 0)
+        stated = (reading.runtime_info or {}).get(MAP_KEY)
+    name = "the standard input" if path is None else str(path)
+    if stated is not None:
+        return replace(map_of_block(stated, name), stated_by=name)
+    why = "no run of ours holds this file: nothing states its atoms' user index"
+    if path is not None:
+        try:
+            atoms = atom_index_map(path)
+        except (AtomIndexUnknown, AtomIndexError, ValueError) as exc:
+            why = str(exc)
+        else:
+            if not n_atoms or atoms.n_atoms == n_atoms:
+                return atoms
+            why = (f"{name} holds {n_atoms} atoms and {atoms.stated_by} states "
+                   f"the order of {atoms.n_atoms}")
+    return AtomIndexMap.of_own_structure(n_atoms, why)
 
 
 def map_of_block(block, source: str) -> AtomIndexMap:
@@ -369,4 +405,4 @@ def _of_log(p: Path) -> Optional[AtomIndexMap]:
     return None
 
 
-__all__ = ["AtomIndexUnknown", "atom_index_map", "map_of_block"]
+__all__ = ["AtomIndexUnknown", "atom_index_map", "map_of_block", "of_reading"]

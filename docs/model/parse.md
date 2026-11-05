@@ -482,7 +482,8 @@ gathers what is already there, one import for a person's script:
 
 | name | what it is, and whose |
 |---|---|
-| `parse(path)` | this registry's: an engine's file, a run's file → its result — a TBtrans data file handed its run's atom index map by the layer, which knows the run (`atom_index_map`), so the reading it keeps states both columns (§ 5e) |
+| `parse(path)` | this registry's: an engine's file, a run's file → its result, **in the file's own order, the map on the answer** (`result.atom_index_map`, on a reading of a structure or of a run's steps, each `Structure` on it carrying the order record of the pair or run that holds the file, [`model/overview.md`](?doc=model/overview.md) § 2.2b) — a TBtrans data file handed its run's map by the layer, which knows the run, so the reading it keeps states both columns (§ 5e) |
+| `read_steps(path)` | the steps a run finished, **in the user order**, from its output (`.out`, `.molwatch.log`: `runfiles.run_output_roles`) or its folder, which asks the run door's choice (`runs.openable`): `elements` (chemical symbols), `positions_ang` and `forces_ev_per_ang` by step and atom, `energy_ev`, `max_force_ev_per_ang` and `max_force_free_ev_per_ang` by step, `final_energy_ev`, `relaxation` (§ 5b.1), `held_atoms`, `first` and `last` as `Structure`s with the run's labels and box, `applied_offset_ang`, `atom_index_map`, `run_state`, `scf_converged`, `said` (`runs.steps_table`). A log's input geometry, a step still being computed and one the run stopped inside are no steps; a path that is not there, a file the run does not write its steps into, a result that holds none, and a run that has finished none are refused by name (`RunStepsError`) |
 | `read_structure(path)` | a structure pair through the codec's read, **in the user order** — an engine's record (a calculation's `junction.xyz`) put back through its order record — as `(structure, atoms, said)`: `atoms` the atom index map of the structure returned (an engine's record's map relisted by user index, `AtomIndexMap.as_listed_by_user`), `said` what the read says, a line each ([`model/overview.md`](?doc=model/overview.md) § 2.2a, I8; § 2.2b) |
 | `atom_index_map(path)` | the run door's floor: which index a file's atoms are listed by, and both indices of each ([`model/overview.md`](?doc=model/overview.md) § 2.2b) |
 | `read_xv(path)` · `read_xv_cell(path)` | SIESTA's own `.XV`, read alone: the structure **in the engine's order, listed by engine index** — row `i` is SIESTA's atom `i`, not your atom `i` where the run sorted them (a transport calculation's seed, device and transmission runs; a SIESTA vibration's runs) — and the cell, tolerating a corrupt atom list. `atom_index_map(path)` is the way to your atoms |
@@ -503,7 +504,9 @@ opens, it opens through the one door, one access a handle (§ 5e, *One door
 for every NetCDF file*). It imports with
 the notebook env's packages alone ([`web/jupyter.md`](?doc=web/jupyter.md)
 § 7), and the worked examples a person starts from are the post-processing
-documents ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)).
+documents ([`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md),
+[`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md),
+[`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)).
 
 **Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`
 base.
@@ -524,14 +527,36 @@ from pathlib import Path
 from molbuilder.postprocess import parse    # the layer a script imports (§ 3)
 
 r = parse(Path("projects/BDT/optimization/BDT.out"))
+r.atom_index_map.listed_by                   # 'engine_index': whose order it is
 if r.result_kind == "trajectory":            # a SIESTA / PySCF / molwatch .out
-    last = r.frames[-1]
-    print(last.energy, last.max_force)        # eV, eV/Å (either may be None)
+    # A SIESTA run's last frame is its final geometry, with no energy of its
+    # own: the last energy is on the frame before it.
+    print(next(f.energy for f in reversed(r.frames) if f.energy is not None))
     print(r.run_state)      # § 2b: "running"|"ended"|"stopped"|"out_of_memory"|"unknown"
     print(r.scf_converged)  # True | False | None -- a FACT, not a verdict
 elif r.result_kind == "structure":           # a .XV / *_optimized.xyz
     print(len(r.structure.elements), r.cell)  # atom count, 3×3 cell or None
 ```
+
+**A run's steps, in your atoms' order** — `parse` answers the file as it
+stands; a run that sorted its atoms lists them by engine index, so ask this
+whenever a row should be one of your atoms:
+
+```python
+from molbuilder.postprocess import read_steps
+
+steps = read_steps("projects/BDT/optimization/BDT/01_coarse/run-0")
+steps.positions_ang[-1, 0]     # your atom 0, at the last step, Å
+steps.forces_ev_per_ang[0, 0]  # the force on it at the first step, eV/Å; NaN if none
+steps.final_energy_ev          # the last energy of a finished step, eV
+steps.relaxation["converged"]  # by the run's own tolerance; None for a run that relaxed nothing
+steps.last                     # the last geometry, a Structure: labels, box, your order
+```
+
+The worked examples for each kind are the post-processing documents:
+[`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md),
+[`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md),
+[`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md).
 
 **Read a sidecar:**
 

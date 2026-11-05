@@ -181,6 +181,45 @@ class TestBookkeepingCrossesTheSort:
                                    match=f" {bad} is not one of the {n} atoms"):
                     door([bad])
 
+    @pytest.mark.parametrize("shape, axis, says", [
+        ((3, None, 3), None, "say which is the atom axis"),
+        ((None, None, 3), None, "say which is the atom axis"),
+        ((3, None, 3), 0, "no atom axis 0"),
+        ((-5, 3), None, "no atom axis 0"),
+        ((None,), 1, "no atom axis 1"),
+    ])
+    def test_rows_that_do_not_hold_the_maps_atoms_are_refused(
+            self, shape, axis, says):
+        """`AtomIndexMap.map_rows_to_user_order`, `map_rows_to_engine_order`:
+        rows hold this map's atoms on their atom axis, and a stack says which
+        that is (``None`` in a shape is the atom count, a negative that many
+        rows past it).  The silent failure: a ``(step, atom, xyz)`` stack of as
+        many steps as atoms reordered by step, every atom on another's place,
+        or rows longer than the atoms cut short with no word."""
+        from molbuilder.atom_permutation import AtomIndexError, AtomIndexMap
+        got = sort_by(_junction(shuffle=True)[0], SORT_TRANSPORT).structure
+        n = got.n_atoms
+        atoms = AtomIndexMap.of_engine_record(got.atom_order, n)
+        rows = np.zeros(tuple(n if d is None else (n - d if d < 0 else d)
+                              for d in shape))
+        for door in (atoms.map_rows_to_user_order,
+                     atoms.map_rows_to_engine_order):
+            with pytest.raises(AtomIndexError, match=says):
+                door(rows, axis=axis)
+
+    def test_a_stack_is_reordered_on_its_atom_axis(self):
+        """``axis=1`` on ``(step, atom, xyz)`` is each step's rows reordered:
+        row k of every step is user atom k, by the record's own column."""
+        from molbuilder.atom_permutation import AtomIndexMap
+        got = sort_by(_junction(shuffle=True)[0], SORT_TRANSPORT).structure
+        n = got.n_atoms
+        atoms = AtomIndexMap.of_engine_record(got.atom_order, n)
+        stack = np.arange(2 * n * 3, dtype=float).reshape(2, n, 3)
+        mine, listed = atoms.map_rows_to_user_order(stack, axis=1)
+        assert listed.listed_by == "user_index"
+        for user, engine in enumerate(got.atom_order.original_to_sorted):
+            assert np.array_equal(mine[:, user], stack[:, engine])
+
     def test_cell_title_vacuum_are_untouched(self):
         struct, _ = _junction(shuffle=True)
         struct.title = "shuffled junction"

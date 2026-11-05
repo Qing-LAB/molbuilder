@@ -470,19 +470,40 @@ class AtomIndexMap:
                                    pick(self.engine), self.said,
                                    self.stated_by)
 
-    def map_rows_to_user_order(self, rows):
-        """Per-atom rows in this file's order (its first axis), reordered so
-        row k is user atom k -- ``(rows, the map they are now listed by)``."""
+    def _reordered(self, rows, order, axis: Optional[int]):
+        """``rows`` taken in ``order`` along their atom axis -- ``axis``, which
+        rows of more than two dimensions must state, since a ``(step, atom,
+        xyz)`` stack of as many steps as atoms looks like rows of atoms.  An
+        axis that does not hold this map's atoms is refused."""
+        arr = np.asarray(rows)
+        if axis is None and arr.ndim > 2:
+            raise AtomIndexError(f"rows of shape {arr.shape}: say which is the "
+                                 f"atom axis, with axis=")
+        at = 0 if axis is None else axis
+        if not -arr.ndim <= at < arr.ndim or arr.shape[at] != self.n_atoms:
+            raise AtomIndexError(f"rows of shape {arr.shape} have no atom axis "
+                                 f"{at} over this map's {self.n_atoms} atoms")
+        return np.take(arr, order, axis=at)
+
+    def map_rows_to_user_order(self, rows, *, axis: Optional[int] = None):
+        """Per-atom rows **listed as this map lists its atoms**, reordered so
+        row k is user atom k -- ``(rows, the map they are now listed by)``.
+        ``axis`` is their atom axis: the first unless said, and said for more
+        than two dimensions (``axis=1`` for ``(step, atom, xyz)``).  The map to
+        use is the map of the file the rows came from: a map listed by user
+        index leaves its rows as they are, and rows an engine's file holds need
+        that file's map."""
         self._needs(user=True, engine=False)
         order, listed = self._relisted(LISTED_BY_USER)
-        return np.asarray(rows)[order], listed
+        return self._reordered(rows, order, axis), listed
 
-    def map_rows_to_engine_order(self, rows):
-        """Per-atom rows in this file's order, reordered so row k is engine
-        atom k -- ``(rows, the map they are now listed by)``."""
+    def map_rows_to_engine_order(self, rows, *, axis: Optional[int] = None):
+        """Per-atom rows listed as this map lists its atoms, reordered so row k
+        is engine atom k -- ``(rows, the map they are now listed by)``, ``axis``
+        as :meth:`map_rows_to_user_order`'s."""
         self._needs(user=False, engine=True)
         order, listed = self._relisted(LISTED_BY_ENGINE)
-        return np.asarray(rows)[order], listed
+        return self._reordered(rows, order, axis), listed
 
     def as_listed_by_user(self) -> "AtomIndexMap":
         """The same atoms' map, listed by user index -- a result for the

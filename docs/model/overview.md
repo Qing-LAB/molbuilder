@@ -385,8 +385,26 @@ file's atoms**, by name — never wrapped, never passed through
 |---|---|
 | `atoms.map_to_engine_index(user_indices)` | user indices → engine indices — to ask sisl about `.TBT.nc`; refused where the engine column is not known, naming the run's map |
 | `atoms.map_to_user_index(engine_indices)` | engine indices → user indices — to name what an engine's file says; refused where the user column is not known (a structure of its own, a file from elsewhere) |
-| `atoms.map_rows_to_user_order(rows)` · `atoms.map_rows_to_engine_order(rows)` | per-atom rows, reordered; the answer comes back with the map it is now listed by |
+| `atoms.map_rows_to_user_order(rows, axis=)` · `atoms.map_rows_to_engine_order(rows, axis=)` | per-atom rows **listed as this map lists its atoms**, reordered along their atom axis: the first unless said, and said for more than two dimensions (`axis=1` for `(step, atom, xyz)`), an axis that does not hold the map's atoms refused; the answer comes back with the map it is now listed by. The map to use is the map of the file the rows came from: a map listed by user index leaves its rows as they are |
 | `atoms.table()` | every atom: its user index and its engine index, each counted from 0 — the correspondence whole; the number a view shows is the browser's (§ 2.1), never made here *(the user, 2026-10-23: "drop the column")* |
+
+**A reading of a run's own file says whose order it hands back** *(the user,
+2026-11-05: "assure the correct index etc conventions will not cause user to get
+the wrong data")*. A file an engine wrote lists its atoms by engine index, and
+that stays what it is: row 0 of a transport run's `.XV` is engine atom 0, your
+atom 13. Two doors of the post-processing layer
+([`model/parse.md`](?doc=model/parse.md) § 3) keep a person from taking one for
+the other:
+
+| door | answers |
+|---|---|
+| `postprocess.parse(path)` | the file as it stands, in **its own order**, the map on the answer: `result.atom_index_map`, on a reading of a structure or of a run's steps; each `Structure` on it carries the order record of the pair or run that holds the file, so its `map_to_user_index` and `restored` answer for your atoms |
+| `postprocess.read_steps(path)` | the steps a run finished — geometry, forces, energy, held atoms — **in the user order**, by the one crossing (§ 2.2a, I3); the first and last geometry as `Structure`s with the run's labels and box. A run that has finished none, a file it does not write its steps into, a result that holds none, are refused by name |
+
+`read_xv(path)` is the file alone, in the engine's order, its docstring saying
+so. The registry's own `parse` (`molbuilder.parse`) stays below the run door and
+knows no run: it states a map only where a file states one of itself, a progress
+log's header, or the layer hands it one, a TBtrans data file's kept reading.
 
 **One reader for a person's script and molbuilder alike —
 `atom_index_map(path)`**, on the run door's floor, since it reads a run's

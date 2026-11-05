@@ -212,6 +212,7 @@ class SiestaParser:
                 max_force_constrained = step["max_force_constrained"],
                 scf_history = step["scf_history"],
                 in_progress = step["in_progress"],
+                cut_short   = step["cut_short"],
             ))
         # In-progress SCF visibility: a run still going with SCF cycles and no
         # coordinates to attach them to yet gets a synthetic Frame, FLAGGED

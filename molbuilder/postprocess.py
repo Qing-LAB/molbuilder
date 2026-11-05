@@ -4,7 +4,9 @@
 MODULE  postprocess (above the parse package and the run door; gathers what
         is already there, a second reader of nothing)
 ROLE    ``parse`` -- an engine's file, a run's file → its result (the
-        registry's); ``read_structure`` -- a structure pair, in the user
+        registry's), in the file's own order, the map on the answer;
+        ``read_steps`` -- a run's steps, in the user order;
+        ``read_structure`` -- a structure pair, in the user
         order; ``atom_index_map`` -- which index a file's
         atoms are listed by, and both indices of each (`atom_index`);
         ``read_transport_data`` / ``read_spectra_data`` /
@@ -33,6 +35,7 @@ floors.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict
 
@@ -41,15 +44,26 @@ from .atom_permutation import MAP_KEY, AtomIndexMap
 from .parse.coords import read_xv, read_xv_cell
 from .projects import (list_projects, list_structures, list_topics,
                        project_dir, projects_root, structure_dir, topic_dir)
+from .runs import RunStepsError
 
 
 def parse(path, **kwargs):
-    """The registry's ``parse`` (`model/parse.md` § 3), with what this layer
-    knows that the registry does not: a parser whose kept reading states
-    its atoms' indices (``keeps_atom_index_map`` -- a TBtrans data file's)
-    is handed the run's atom index map (:func:`atom_index_map`), so the
-    reading it keeps states both columns (§ 5e); a file no run of ours
-    holds is read with none, its reading saying why."""
+    """The registry's ``parse`` (`model/parse.md` § 3), **in the file's own
+    order**, with what this layer knows that the registry does not: whose
+    order that is, ``result.atom_index_map``, on a reading of a structure or of
+    a run's steps (a run's ``.out``, its ``.XV``, a trajectory log, a
+    geometry), and the same on each ``Structure`` it holds, whose
+    ``map_to_user_index`` and ``restored`` then answer for the run's order.  A
+    file an engine wrote lists its atoms by engine index, which is not your
+    atom's index where the run sorted them: for your atoms, ask
+    :func:`read_steps`, or map the rows with ``atom_index_map``.
+
+    A parser whose kept reading states its atoms' indices
+    (``keeps_atom_index_map`` -- a TBtrans data file's) is handed the run's map
+    (:func:`atom_index_map`), so the reading it keeps states both columns
+    (§ 5e); a file no run of ours holds is read with none, its reading saying
+    why."""
+    from .atom_index import of_reading
     from .parse import detect
     parser = detect(path)
     if parser.keeps_atom_index_map and "atoms" not in kwargs:
@@ -57,7 +71,103 @@ def parse(path, **kwargs):
             kwargs["atoms"] = atom_index_map(path)
         except AtomIndexUnknown:
             pass
-    return parser.parse(Path(path), **kwargs)
+    res = parser.parse(Path(path), **kwargs)
+    if (res.result_kind == "trajectory"
+            or (res.result_kind == "structure" and res.structure is not None)):
+        atoms = of_reading(path, res)
+        return replace(_on_the_order_record(res, path, atoms),
+                       atom_index_map=atoms)
+    return res
+
+
+def _on_the_order_record(res, path, atoms):
+    """``res`` with the order record of the file ``path`` on each structure it
+    reads (`model/overview.md` § 2.2a, I5) -- a file listed by engine index, the
+    record its pair's sidecar or its run's deck states, of the atoms that record
+    is over; a mid-flight placeholder is not.  Nothing else of the run is put on
+    it: this is the file's reading."""
+    from .atom_permutation import LISTED_BY_ENGINE
+    from .runs import declared, run_of
+    from .sidecars.molstruct import is_geometry, sidecar_path_for
+    from .workingcopy_structure import StructureCodec
+    if atoms.listed_by != LISTED_BY_ENGINE or atoms.user is None:
+        return res
+    p = Path(path)
+    if is_geometry(p) and sidecar_path_for(p).is_file():
+        order = StructureCodec().load(p).atom_order
+    else:
+        run = run_of(p)
+        order = declared(run).atom_order if run is not None else None
+    if order is None or order.n_atoms != atoms.n_atoms:
+        return res
+    if res.result_kind == "structure":
+        return replace(res, structure=res.structure.replace(atom_order=order))
+    for fr in res.frames:
+        if fr.structure.n_atoms == order.n_atoms:
+            fr.structure = fr.structure.replace(atom_order=order)
+    return res
+
+
+def read_steps(path):
+    """THE STEPS A RUN FINISHED, IN YOUR ATOMS' ORDER (`model/overview.md`
+    § 2.2b; `runs.StepsTable`), whatever order its engine ran them in: ``path``
+    a run's folder -- an optimization's, a transport seed's or device point's,
+    a SIESTA vibration's ``relax`` or ``fc`` call -- or a file of it holding its
+    steps.
+
+    ::
+
+        steps = read_steps("01_coarse/run-0")
+        steps.atom_index_map.listed_by       # 'user_index'
+        steps.elements[0]                    # your atom 0's chemical symbol
+        steps.positions_ang[-1, 0]           # it, at the last step, in Å
+        steps.forces_ev_per_ang[0, 0]        # the force on it at the first, eV/Å
+        steps.final_energy_ev                # the last energy the run finished, eV
+        steps.relaxation["converged"]        # by the run's own tolerance
+        steps.max_force_free_ev_per_ang      # what that tolerance tests, by step
+        steps.held_atoms                     # the atoms it held, by your index
+        steps.last                           # the last geometry: labels, box, your order
+
+    NaN where a step states none.  An electrode rung's cell is a structure of
+    its own, with no user order: its rows are its own engine index, and
+    ``said`` says so.  Refused by name (:class:`RunStepsError`): a path that is
+    not there or that no run of ours holds, a file the run does not write its
+    steps into -- its ``.XV``, a pair saved beside it, read by :func:`parse` --
+    a run whose result holds none -- a transmission point's, a vibration's --
+    and a run that has finished no step yet."""
+    from .calcdirs import read_with
+    from .parse import detect
+    from .parse.errors import ParseError
+    from .parse.types import answers_a_trajectory
+    from .runfiles import role_of, run_output_roles
+    from .runs import openable, run_of, steps_table
+    p = Path(path)
+    if not p.exists():
+        raise RunStepsError(f"{p} is not there")
+    run = run_of(read_with(p) if p.is_dir() else p)
+    if run is None:
+        try:
+            atom_index_map(p)               # a folder: it names the runs it holds
+        except AtomIndexUnknown as exc:
+            raise RunStepsError(str(exc)) from None
+        raise RunStepsError(f"{p} is no run's file: parse() reads it alone, "
+                            f"read_structure() a structure pair")
+    chosen = p if p.is_file() else openable(p)[0]
+    if chosen is None:
+        raise RunStepsError(f"{p} holds no file of its run's steps yet")
+    chosen = Path(chosen)
+    try:
+        holds_steps = (role_of(chosen) in run_output_roles(run.place.task.engine)
+                       and answers_a_trajectory(detect(chosen)))
+    except ParseError:
+        holds_steps = False
+    if not holds_steps:
+        raise RunStepsError(
+            f"{p.name} is no file its run writes its steps into: parse() reads "
+            f"a file as it stands"
+            if p.is_file() else
+            f"{p} holds no run's steps: what it holds to read is {chosen.name}")
+    return steps_table(run, chosen)
 
 
 def read_structure(path):
@@ -248,9 +358,9 @@ def outermost_move(path, *, mode: int, temperature_k: float,
     return _move(row, temperature_k, nodes)
 
 
-__all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map",
+__all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
            "infrared_view", "parse", "raman_view", "read_optical_data",
-           "read_raman_data", "read_spectra_data", "read_structure",
-           "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
+           "read_raman_data", "read_spectra_data", "read_steps",
+           "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
            "outermost_move", "projects_root", "project_dir", "topic_dir",
            "structure_dir", "list_projects", "list_topics", "list_structures"]

@@ -22,7 +22,7 @@ the same from its checkout:
 
 ```python
 from molbuilder.postprocess import (parse, atom_index_map, read_structure,
-                                    read_transport_data)
+                                    read_transport_data, read_steps, read_xv)
 ```
 
 | name | answers |
@@ -30,9 +30,10 @@ from molbuilder.postprocess import (parse, atom_index_map, read_structure,
 | `read_transport_data(path)` | `<label>.transport.nc` — every result with its words, the attributes that hold records as data ([`model/datafiles.md`](?doc=model/datafiles.md) § 2) — and its atom index map |
 | `atom_index_map(path)` | which index a file's atoms are listed by, and both indices of each (§ 4) |
 | `read_structure(path)` | a structure pair — the calculation's `junction.xyz` among them — in the user order, every frame: `(structure, atoms, said)`, `atoms` the returned structure's atom index map (listed by user index, each atom's engine index beside) and `said` what its read says, a line each |
+| `read_steps(run)` | the steps a run finished — geometry, forces, energy — **in your atoms' order**, from its folder: `01_seed/run-0`, `04_device/run-0/v0.2` (§ 4). A transmission point has none, and is refused |
 | `read_xv(path)` | SIESTA's own `.XV`, **in the engine's order** — row `i` is engine index `i` (§ 4) |
 | `project_dir`, `list_projects`, `list_topics`, `list_structures`, … | where a calculation is, by name, in the tree `projects_root()` answers |
-| `parse(path)` | a file a run wrote that molbuilder's parsers read — an engine's output, a TBtrans data file (`.TBT.nc`), which answers its kept reading, reading it first where none is kept |
+| `parse(path)` | a file a run wrote that molbuilder's parsers read, **in the file's own order**, `result.atom_index_map` saying whose — an engine's output, a TBtrans data file (`.TBT.nc`), which answers its kept reading, reading it first where none is kept |
 
 Everything else is the libraries you know: xarray and netCDF4 for the data
 files, pandas for the CSV export, sisl for TBtrans's own files.
@@ -165,6 +166,24 @@ struct = read_xv("01_seed/run-0/T.XV")        # engine order, as SIESTA wrote it
 atoms = atom_index_map("01_seed/run-0/T.XV")  # that run's map, from its deck
 mine, _ = atoms.map_rows_to_user_order(struct.positions)   # row i: your atom i
 ```
+
+**A run's steps, whichever it sorted**: `read_steps` crosses every row by the
+run's map, so a position or a force is already your atom's; an electrode's cell is
+a structure of its own, its rows its own engine index, and `said` says so. A device
+point's forces are all NaN, TranSIESTA computing none in such a run, and `said` says
+that too.
+
+```python
+seed = read_steps("01_seed/run-0")
+seed.positions_ang[-1, 0]       # your atom 0, Å
+seed.forces_ev_per_ang[-1, 0]   # the force on it, eV/Å
+seed.final_energy_ev            # the last energy of a finished step, eV
+seed.last                       # a Structure: your order, its labels, its box
+seed.applied_offset_ang         # the run's input + this = the first step's coordinates
+```
+
+What a step is, the force figures, the energy and where the coordinates stand are
+[`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md) § 3.
 
 On the command line: `molbuilder atom-index <file or run folder>` prints the
 table; `--to-engine 0,5` (user indices to engine indices) or `--to-user 0,5`

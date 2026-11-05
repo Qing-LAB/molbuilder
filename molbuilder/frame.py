@@ -153,6 +153,15 @@ class Frame:
                       when True; the SCF convergence chart is the
                       only meaningful display.  Always False after a
                       real outcoor block has been committed.
+      cut_short    -- True when the output ends inside this step for good: a
+                      geometry and SCF rows, no step end, the run no longer
+                      going.  Its energy is its last SCF row's, a number the
+                      file holds and no result of the step's.
+      preview      -- True for the input geometry a progress log opens with,
+                      before the run computes anything (prep's seed; a PySCF
+                      deck's step 0): no energy, no forces, no step of the
+                      run's.  A SIESTA run never writes more than this into
+                      its log (`runfiles.result_roles`).
     """
     structure:    Structure
     step_index:   int
@@ -165,6 +174,8 @@ class Frame:
     wall_clock_s: Optional[float]                 = None
     elapsed_s:    Optional[float]                 = None
     in_progress:  bool                            = False
+    cut_short:    bool                            = False
+    preview:      bool                            = False
 
     def __post_init__(self) -> None:
         # Be tolerant about input -- parsers may pass plain lists for

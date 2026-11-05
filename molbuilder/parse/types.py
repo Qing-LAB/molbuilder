@@ -121,6 +121,10 @@ class TrajectoryResult(ParseResult):
     runtime_info:  Dict[str, Any] = field(default_factory=dict)
     parse_warnings: List[ParseWarning] = field(default_factory=list)
     result_kind:   str = "trajectory"
+    #: WHOSE ORDER ITS ATOMS ARE IN (`model/overview.md` § 2.2b): what the
+    #: post-processing layer, which knows the run, states on the answer;
+    #: ``None`` from the registry itself, which knows none.
+    atom_index_map: Any = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,8 @@ class StructureResult(ParseResult):
     source_format:  str = "unknown"
     parse_warnings: List[ParseWarning] = field(default_factory=list)
     result_kind:    str = "structure"
+    #: WHOSE ORDER ITS ATOMS ARE IN, as :attr:`TrajectoryResult.atom_index_map`.
+    atom_index_map: Any = None
 
 
 @dataclass(frozen=True)

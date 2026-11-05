@@ -509,6 +509,11 @@ def calls_made(calls: Path):
 # atoms each of its progress logs states the run holds, read back by
 # the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
 # the targets they hand the Watch tab (`progress_log_targets`),
+# what a person's script reads of each log's run, which has written no step
+# (`steps_read`: `{elements, listed_by}` -- `_road_steps_read`), and of the
+# steps the run's own writer logs (`steps_written`: `{held, energy_hartree,
+# gradient_hartree_bohr, force_tolerance_ev_ang, converged}` --
+# `_road_steps_written`),
 # the files each stage's job declares it carries from a run it continues,
 # as the plan states it and its reader reads it -- the declaration, which
 # the launch's `warm_carry` then judges pair by pair (`plan_carries`,
@@ -904,6 +909,120 @@ def _road_progress_log_holds(want, bundle) -> None:
         assert got == list(want), (log.relative_to(bundle), got)
 
 
+def _road_steps_read(want, bundle) -> None:
+    """Each progress log of a run the prep opened, as a person's script reads
+    it (`model/overview.md` § 2.2b).  The prep wrote no step: `read_steps`
+    refuses the log and the run's folder, where taking the log's input geometry
+    for a result would answer a queued run with a last geometry and no energy.
+    `parse` hands back the file's own order and says whose, and each structure
+    on the answer answers for the run's order: its index, and its atoms put
+    back as the person listed them.  A folder that is no run and a file that is
+    not there are refused, naming what to do."""
+    import numpy as np
+    from molbuilder.postprocess import parse, read_steps
+    from molbuilder.runs import RunStepsError, run_of
+    logs = [p for p in _road_runs(bundle, "*.molwatch.log")
+            if run_of(p) is not None]
+    assert logs, "the prep opened no run with a progress log"
+    for log in logs:
+        for asked in (log, log.parent):
+            with pytest.raises(RunStepsError,
+                               match="holds no step its run finished"):
+                read_steps(asked)
+        said = parse(log)
+        atoms = said.atom_index_map
+        assert atoms.listed_by == want["listed_by"]
+        assert atoms.stated_by == str(log)
+        assert atoms.user != atoms.engine, (
+            "this row is to read a run that sorted its atoms")
+        struct = said.frames[0].structure
+        every = list(range(atoms.n_atoms))
+        assert struct.map_to_user_index(every) == atoms.map_to_user_index(every)
+        mine = struct.restored()
+        assert list(mine.elements) == want["elements"]
+        assert np.allclose(atoms.map_rows_to_user_order(struct.positions)[0],
+                           mine.positions)
+        with pytest.raises(RunStepsError, match="is not there"):
+            read_steps(log.parent / "no_such_file.out")
+    with pytest.raises(RunStepsError, match="name one of its runs"):
+        read_steps(bundle)
+
+
+def _road_steps_written(want, bundle) -> None:
+    """The steps the run's own writer logged (`trajectory_log.emitter`, what a
+    PySCF deck calls), read as a person's script reads them
+    (`runs.StepsTable`): the input geometry the log opens with is no step; each
+    energy and force is the step's; the largest force is over every atom and
+    over the atoms the run moved, by the engines' one rule; the geometry stands
+    from the person's structure by the offset the deck states; the atoms held
+    and the elements are the deck's."""
+    import numpy as np
+    from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
+    from molbuilder.parse import detect
+    from molbuilder.postprocess import (RunStepsError, read_steps,
+                                        read_structure)
+    from molbuilder.trajectory_log import MolwatchEmitter
+    from molbuilder.workingcopy_structure import StructureCodec
+    from molbuilder.trajectory_log.keys import MAX_FORCE_TOL
+    logs = _road_runs(bundle, "*.molwatch.log")
+    assert len(logs) == 1, logs
+    log = logs[0]
+    seed = detect(log).parse(str(log))
+    input_geometry = seed.frames[0].structure
+
+    class Molecule:
+        """What the writer asks of a molecule (`emitter.opt_step_hook`)."""
+        natm = input_geometry.n_atoms
+
+        def atom_coords(self, unit="Ang"):
+            assert unit == "Ang"
+            return input_geometry.positions
+
+        def atom_symbol(self, i):
+            return input_geometry.elements[i]
+
+    mol = Molecule()
+    writer = MolwatchEmitter(
+        str(log), "job", mol, frozen_atoms=want["held"],
+        convergence_targets={MAX_FORCE_TOL: want["force_tolerance_ev_ang"]})
+    for energy, gradient in zip(want["energy_hartree"],
+                                want["gradient_hartree_bohr"]):
+        writer.opt_step_hook({"mol": mol, "energy": energy,
+                              "gradients": np.array(gradient)})
+    steps = read_steps(log.parent)
+    assert steps.atom_index_map.listed_by == "user_index"
+    assert list(steps.elements) == list(input_geometry.elements)
+    assert list(steps.held_atoms) == want["held"]
+    assert steps.positions_ang.shape == (
+        len(want["energy_hartree"]), input_geometry.n_atoms, 3)
+    assert np.allclose(steps.energy_ev,
+                       np.array(want["energy_hartree"]) * HARTREE_EV)
+    assert steps.final_energy_ev == pytest.approx(
+        want["energy_hartree"][-1] * HARTREE_EV)
+    forces = -np.array(want["gradient_hartree_bohr"]) \
+        * HARTREE_BOHR_EV_ANGSTROM_ASE
+    assert np.allclose(steps.forces_ev_per_ang, forces)
+    assert np.allclose(steps.max_force_ev_per_ang,
+                       np.abs(forces).max(axis=(1, 2)))
+    moved = [k for k in range(input_geometry.n_atoms)
+             if k not in want["held"]]
+    assert np.allclose(steps.max_force_free_ev_per_ang,
+                       np.abs(forces[:, moved]).max(axis=(1, 2)))
+    assert steps.relaxation["max_force_free_ev_ang"] == pytest.approx(
+        steps.max_force_free_ev_per_ang[-1])
+    assert steps.relaxation["converged"] is want["converged"]
+    mine = read_structure(next(bundle.glob("*.source.xyz")))[0]
+    assert np.allclose(steps.positions_ang[0],
+                       mine.positions + np.array(steps.applied_offset_ang))
+    assert np.allclose(steps.last.positions, steps.positions_ang[-1])
+    # A PAIR SAVED BESIDE THE RUN'S FILES is in the person's order already, and
+    # crossing it again would stand every atom on another's place.
+    pair = log.parent / "saved.xyz"
+    StructureCodec().write(steps.last, pair)
+    with pytest.raises(RunStepsError, match="no file its run writes its steps"):
+        read_steps(pair)
+
+
 def _road_progress_log_targets(want, bundle) -> None:
     """The targets each progress log the prep wrote hands the Watch tab, as
     its own reader reads them (`web/trajectory.md` § 3)."""
@@ -945,6 +1064,10 @@ def _road_after_prep(case, bundle) -> None:
         _road_card_written(case["card_written"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
+    if "steps_read" in case:
+        _road_steps_read(case["steps_read"], bundle)
+    if "steps_written" in case:
+        _road_steps_written(case["steps_written"], bundle)
     if "progress_log_targets" in case:
         _road_progress_log_targets(case["progress_log_targets"], bundle)
     if "plan_carries" in case:

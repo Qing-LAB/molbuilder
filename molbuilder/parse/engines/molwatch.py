@@ -106,6 +106,7 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
             # deriving it from the epoch series has exactly one home, and it
             # is not here (P-T3 -- trajectory_result_to_legacy_dict does).
             wall_clock_s = block["wall_clock_s"],
+            preview      = block["kind"] == _MG.PREVIEW_KIND,
         ))
     # THE ATOMS THE RUN HOLDS are its log's own header line, read with its
     # other runtime facts (`molwatch_reader`) -- nothing is looked for beside

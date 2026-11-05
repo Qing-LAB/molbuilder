@@ -3108,6 +3108,47 @@ def test_an_export_reads_no_data_file_and_says_what_is_missing(
         shutil.move(str(kept), str(digest_of(data)))
 
 
+def test_a_scripts_read_of_a_sorted_run_stands_on_the_persons_atoms(junction):
+    """`model/overview.md` § 2.2b, *A reading of a run's own file says whose
+    order it hands back*: the seed run sorted its atoms, so `read_steps` crosses
+    its rows and `parse` says whose its own are.  Each is checked against what
+    SIESTA itself wrote, its `.FA`, at the atom's engine index from the
+    junction's order record.  The silent failure: a force or a position read as
+    the person's atom i, which is the engine's -- measured 22 Angstrom off on
+    this junction."""
+    from molbuilder.postprocess import atom_index_map, parse, read_steps, read_xv
+    from molbuilder.runs import run_of
+    run = junction
+    seed = run.attempt("seed")
+    steps = read_steps(seed)
+    assert steps.atom_index_map.listed_by == "user_index"
+    # THE JUNCTION'S ELECTRODES ARE LABELLED HELD, AND THE SEED MOVES NOTHING:
+    # the run's own output says it holds none.
+    assert steps.held_atoms == ()
+    atoms = atom_index_map(seed)
+    assert atoms.user != atoms.engine, "this junction's sort moved nothing"
+    engine_of = atoms.map_to_engine_index(list(range(atoms.n_atoms)))
+    out = run_of(seed).stdout
+    forces = [row.split() for row in
+              next(seed.glob("*.FA")).read_text().splitlines()[1:]]
+    forces = np.array([[float(v) for v in row[1:4]] for row in forces])
+    np.testing.assert_allclose(steps.forces_ev_per_ang[-1], forces[engine_of],
+                               atol=1e-6)
+    said = parse(out)
+    assert said.atom_index_map.listed_by == "engine_index"
+    np.testing.assert_allclose(said.frames[-1].forces, forces, atol=1e-6)
+    xv = read_xv(next(seed.glob("*.XV")))
+    mine, _ = atoms.map_rows_to_user_order(xv.positions)
+    np.testing.assert_allclose(mine, steps.last.positions, atol=1e-5)
+    # THE SAME FILE READ WITH THE RUN'S ORDER ON IT, not a row of it taken as
+    # the person's atom by the structure's own answers.
+    read = parse(next(seed.glob("*.XV")))
+    assert (read.structure.map_to_user_index(engine_of)
+            == list(range(atoms.n_atoms)))
+    np.testing.assert_allclose(read.structure.restored().positions,
+                               steps.last.positions, atol=1e-5)
+
+
 def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
     """`model/overview.md` § 2.2b: the data file is listed by user index,
     each atom's engine index the composed junction's order record's; a

@@ -566,17 +566,20 @@ class RunView:
 
 
 def view_of(run: Optional[Run], *, output=None, traj: Any = None,
-            n_atoms: Optional[int] = None, lattice=None) -> RunView:
+            n_atoms: Optional[int] = None, lattice=None,
+            said: Optional["Declared"] = None) -> RunView:
     """THE VIEW OF A RUN (:class:`RunView`) -- three sources, one question:
     *what does this run say about the structure it ran on?*  The labels and
     the axis kinds from what its deck declared (:func:`declared`, for a
     structure of ``n_atoms``), the box from ``lattice`` -- its output's -- or
     its deck's record, and what it says about itself from ``run_info`` of
     its deck and ``output``, the file read (``traj`` its parse, so it is not
-    parsed again).  ``run`` ``None`` -- a file no run of ours holds -- is a
-    view of the output alone: its lattice and its own record."""
+    parsed again; ``said`` what the deck declared, where the caller holds it).
+    ``run`` ``None`` -- a file no run of ours holds -- is a view of the output
+    alone: its lattice and its own record."""
     from molbuilder.parse.dirs.run_info import run_info
-    said = declared(run) if run is not None else Declared()
+    said = said if said is not None else (
+        declared(run) if run is not None else Declared())
     return RunView(atom_metadata=said.atom_metadata_for(n_atoms),
                    periodicity=said.frame(lattice),
                    info=run_info(deck=said.deck, output=output, traj=traj,
@@ -604,27 +607,23 @@ class RunSteps:
     lattice: Optional[List[List[float]]]
 
 
-def steps_of(run: Run, output) -> RunSteps:
+def steps_of(run: Run, output, *, traj: Any = None,
+             said: Optional["Declared"] = None) -> RunSteps:
     """THE ONE READ OF A RUN'S GEOMETRY BY A DOOR THAT BUILDS FROM IT
     (`model/overview.md` § 2.2a, I3-I5, I9): ``output``, the run's file the
     door chose, parsed by the registry; its first and last geometry steps
     through the run's view (:func:`view_of` -- its deck's labels, order
     record and box, the output's own lattice); each crossed back to the user
     order (``Structure.restored``).  Asked by the force-constant prep
-    (`relax`'s geometry and its relaxation record) and the transport
-    citation (the relaxed junction and where it started).  Raises
-    :class:`RunStepsError` for an output with no geometry to give,
+    (`relax`'s geometry and its relaxation record), the transport citation
+    (the relaxed junction and where it started) and :func:`steps_table`.
+    Raises :class:`RunStepsError` for an output with no geometry to give,
     :class:`OrderUnstated` for a run whose order nothing states, and
     `deck_record.DeckRecordUnreadable` for a deck block that cannot be read
-    (:func:`declared`)."""
-    from molbuilder.parse import detect
-    from molbuilder.parse.errors import ParseError
+    (:func:`declared`).  ``traj`` its parse and ``said`` what the deck
+    declared, where the caller holds them."""
     output = Path(output)
-    try:
-        traj = detect(output).parse(str(output))
-    except (ParseError, OSError, ValueError) as exc:
-        raise RunStepsError(f"{output.name} does not read as the run's "
-                            f"output: {exc}") from exc
+    traj = traj if traj is not None else _steps_read(output)
     steps = [fr for fr in traj.frames if fr.structure is not None]
     if not steps:
         raise RunStepsError(f"{output.name} holds no geometry step: the run "
@@ -634,11 +633,137 @@ def steps_of(run: Run, output) -> RunSteps:
     lattice = (None if lattice is None
                else [[float(v) for v in row] for row in lattice])
     view = view_of(run, output=output, traj=traj,
-                   n_atoms=len(last.structure.elements), lattice=lattice)
+                   n_atoms=len(last.structure.elements), lattice=lattice,
+                   said=said)
     return RunSteps(
         lattice=lattice,
         first=view.in_user_order(first.structure, output.name)[0],
         last=view.in_user_order(last.structure, output.name)[0])
+
+
+def _steps_read(output: Path):
+    """``output``, parsed by the registry -- or :class:`RunStepsError`."""
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import ParseError
+    try:
+        return detect(output).parse(str(output))
+    except (ParseError, OSError, ValueError) as exc:
+        raise RunStepsError(f"{output.name} does not read as the run's "
+                            f"output: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class StepsTable:
+    """THE STEPS A RUN FINISHED, BY ATOM (:func:`steps_table`), each row the
+    atom ``atom_index_map`` says: **in the user order** -- its ``listed_by`` is
+    ``user_index`` -- save a run of a structure of its own (an electrode cell),
+    which has no user order and says so in ``said``.
+
+    A step is what the engine finished: the input geometry a progress log opens
+    with is none, nor is a step still being computed or one the run stopped
+    inside, whose energy is no result (``said`` says so).  A SIESTA relaxation's
+    last row is the final geometry it wrote, which states no energy of its own.
+
+    ``positions_ang`` and ``forces_ev_per_ang`` are ``(step, atom, xyz)``: the
+    coordinates the engine ran, the run's input plus ``applied_offset_ang``.
+    ``energy_ev``, ``max_force_ev_per_ang`` (every atom) and
+    ``max_force_free_ev_per_ang`` (the atoms the run moved, what its tolerance
+    tests) are ``(step,)``, each force figure the largest Cartesian component
+    (`contract.force_figures`).  NaN where a step states none.
+    ``final_energy_ev`` is the last energy of those, ``None`` where none is.
+    ``relaxation`` is the run's own record of what it did to the geometry -- its
+    tolerance, its last figures, ``converged`` (`contract.relaxation_of`) --
+    ``None`` for a run that relaxed nothing.  ``elements`` are the atoms'
+    chemical symbols; ``first`` and ``last`` the first and last geometry as
+    ``Structure``s, with the run's labels and box; ``held_atoms`` the atoms the
+    run's own output says it holds, by the same index."""
+    atom_index_map: Any
+    elements: Tuple[str, ...]
+    positions_ang: Any
+    forces_ev_per_ang: Any
+    energy_ev: Any
+    max_force_ev_per_ang: Any
+    max_force_free_ev_per_ang: Any
+    final_energy_ev: Optional[float]
+    relaxation: Optional[Dict[str, Any]]
+    held_atoms: Tuple[int, ...]
+    first: Any
+    last: Any
+    applied_offset_ang: Optional[Tuple[float, ...]]
+    run_state: str
+    scf_converged: Optional[bool]
+    said: Tuple[str, ...]
+
+
+#: What a run's steps say of a step that is not among them, by what it is.
+_NOT_A_STEP = (("in_progress",
+                "a step is still being computed, and is not among these"),
+               ("cut_short",
+                "the run stopped inside a step, which is not among these"))
+
+
+def steps_table(run: Run, output) -> StepsTable:
+    """THE STEPS ``run`` FINISHED, IN THE USER ORDER (`model/overview.md`
+    § 2.2b): every finished step of ``output``, a file the run writes its steps
+    into (`runfiles.run_output_roles`), each row crossed by the run's one map
+    (:func:`deck_atom_index_map`), and the first and last geometry by
+    :func:`steps_of`.  Raises what :func:`steps_of` raises, and
+    :class:`RunStepsError` for a file with no finished step or a step that does
+    not hold the deck's atoms."""
+    import numpy as np
+    from molbuilder.parse.contract import force_figures
+    output = Path(output)
+    traj = _steps_read(output)
+    done = [fr for fr in traj.frames
+            if not (fr.preview or fr.in_progress or fr.cut_short)]
+    if not done:
+        stdout = run.stdout
+        raise RunStepsError(
+            f"{output.name} holds no step its run finished"
+            + (f"; its output is {stdout.name}"
+               if stdout is not None and stdout != output else ""))
+    said = declared(run)
+    atoms = deck_atom_index_map(said, run.place.task, run.stage)
+    astray = [fr.step_index for fr in done
+              if fr.structure.n_atoms != atoms.n_atoms]
+    if astray:
+        raise RunStepsError(f"{output.name}: step {astray[0]} does not hold "
+                            f"the {atoms.n_atoms} atoms of its run's deck")
+    geometry = steps_of(run, output, traj=replace(traj, frames=done), said=said)
+    positions = np.array([fr.structure.positions for fr in done], dtype=float)
+    forces = np.full(positions.shape, np.nan)
+    for k, fr in enumerate(done):
+        # A BLOCK THE RUN WAS STILL WRITING states none.
+        if fr.forces is not None and len(fr.forces) == atoms.n_atoms:
+            forces[k] = fr.forces
+    info = traj.runtime_info or {}
+    held_rows = sorted(int(i) for i in info.get("frozen_atoms") or [])
+    held, listed = held_rows, atoms
+    if atoms.user is not None:
+        held = sorted(atoms.map_to_user_index(held_rows))
+        positions, listed = atoms.map_rows_to_user_order(positions, axis=1)
+        forces, _ = atoms.map_rows_to_user_order(forces, axis=1)
+    figures = np.array([force_figures(fr, held_rows) for fr in done],
+                       dtype=float)
+    energy = np.array([fr.energy for fr in done], dtype=float)
+    stated = energy[np.isfinite(energy)]
+    offset = (said.engine_offset or {}).get("applied_offset")
+    return StepsTable(
+        atom_index_map=listed,
+        elements=tuple(geometry.last.chemical_symbols()),
+        positions_ang=positions, forces_ev_per_ang=forces, energy_ev=energy,
+        max_force_ev_per_ang=figures[:, 0],
+        max_force_free_ev_per_ang=figures[:, 1],
+        final_energy_ev=float(stated[-1]) if stated.size else None,
+        relaxation=(geometry.last.info or {}).get("relaxation"),
+        held_atoms=tuple(held), first=geometry.first, last=geometry.last,
+        applied_offset_ang=(None if offset is None
+                            else tuple(float(v) for v in offset)),
+        run_state=traj.run_state, scf_converged=traj.scf_converged,
+        said=tuple(w for w in (
+            atoms.said, info.get("forces_not_computed"),
+            *(words for flag, words in _NOT_A_STEP
+              if any(getattr(fr, flag) for fr in traj.frames))) if w))
 
 
 def saved_pair_row(path) -> Optional["tuple[str, str]"]:
