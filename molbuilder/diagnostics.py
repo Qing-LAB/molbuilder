@@ -215,9 +215,8 @@ class Capabilities:
         try:
             resolved = projects_root().expanduser().resolve()
         except (OSError, RuntimeError):
-            # Defensive: a broken cwd symlink or mount loop shouldn't
-            # crash the picker -- fall back to an empty tuple so the
-            # UI shows "no roots" and the user gets a clear error.
+            # A folder that does not resolve -- a mount loop -- shouldn't
+            # crash the picker: no roots, and the user gets a clear error.
             return ()
         return ((resolved, "projects"),)
 

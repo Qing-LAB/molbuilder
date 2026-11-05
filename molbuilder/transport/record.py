@@ -377,7 +377,7 @@ def result_folders(calc, stage: str, run: Optional[Path] = None
     if pts:
         if run is None:
             return [(pt, None, None) for pt in pts]
-        return [(pt, p, run) for p, pt in points_in(run, calc, stage)]
+        return [(pt, p, run) for p, pt in points_in(calc, stage, run)]
     return [(Point(), run, run)]
 
 

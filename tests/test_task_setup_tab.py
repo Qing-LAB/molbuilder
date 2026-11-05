@@ -1187,6 +1187,25 @@ class TestTheFolderDoor:
         return dest, create_app(config={}).test_client()
 
 
+    def test_a_description_its_reader_refuses_is_said_on_the_page(self,
+                                                                  described):
+        """A `task.json` an older molbuilder wrote: its reader's words reach
+        the page, naming the way on, where one part of the answer forgot the
+        description might not read and answered a bare 500 with nothing said.
+        The record is the road's own, its version an older one."""
+        from molbuilder.task import FILENAME as TASK_FILENAME
+        dest, client = described
+        path = dest / TASK_FILENAME
+        record = _json.loads(path.read_text(encoding="utf-8"))
+        record["schema"] = "molbuilder/task@1"
+        path.write_text(_json.dumps(record), encoding="utf-8")
+        r = client.get("/api/task-setup/folder",
+                       query_string={"dir": str(dest)})
+        assert r.status_code == 200, r.get_data(as_text=True)[:300]
+        said = r.get_json()
+        assert said["mode"] == "description"
+        assert "migrate" in said["refused"]
+
     def test_the_answer_names_the_folder_it_is_about(self, described):
         """The half a reset list cannot cover.
 

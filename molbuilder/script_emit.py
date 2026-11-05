@@ -1503,7 +1503,8 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
         if not p.is_file():
             return [Issue("error", f"the deck was not written: {p}",
                           where="deck.missing")]
-        text = p.read_text(encoding="utf-8")
+        from .engine_table import read_deck
+        text = read_deck(spec.engine, p)
 
     # BOTH markers, not just BEGIN.  A block is delimited by a PAIR, and
     # counting one end let a stray END through: the USER-CUSTOM round-trip

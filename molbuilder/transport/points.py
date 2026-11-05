@@ -41,8 +41,8 @@ def _entry(calc, stage: str, point: Point, deck) -> dict:
                                  or None)}}
 
 
-def _must_hold(stage: str, label: str, base, point, folder, deck=None):
-    return must_hold(stage, label, folder, base_dir=base,
+def _must_hold(calc, stage: str, point, folder, deck=None):
+    return must_hold(stage, calc.task.label, folder, base_dir=calc.base,
                      deck_text=_deck_text(deck) if deck is not None else None)
 
 
@@ -101,4 +101,4 @@ POINTS = PointsOf(rung_points=_declared_rung_points,
                   run_facts=_run_facts,
                   # A RUNG THAT RUNS ONCE runs at 0 V and no frame
                   # (`engines/transport.md` § 2a.10).
-                  one_point=lambda stage: Point())
+                  one_point=Point)

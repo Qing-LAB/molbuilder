@@ -210,17 +210,17 @@ shared code asks it and nothing else.
 | part | answers | transport | SIESTA vibration |
 |---|---|---|---|
 | `rung_points(calc, stage, read=None)` | the prepared points, in the listing order — `()` for a rung that runs once | a frame of the cited set × a voltage, where either varies (`transport.stages.rung_points`) | `relax` and `fc`, as the stage's job lists its phases (`Job.phases`) |
-| `points_in(run, calc, stage)` — the opened calculation whole, as `rung_points` takes it | the points a run holds, each with its folder | the prepared points whose folders the run holds | the index's points; before the launch wrote one, the prepared points of the plan the calculation holds |
+| `points_in(calc, stage, run)` — the opened calculation whole, as `rung_points` takes it | the points a run holds, each with its folder | the prepared points whose folders the run holds | the index's points; before the launch wrote one, the prepared points of the plan the calculation holds |
 | `entry(calc, stage, point, deck)` | the kind's part of the point's index entry: its words, phase, round and facts — `deck` the path of the deck prep wrote for it | its words, the rung, its voltage, `{frame, frame_words, volts, bias_v, window}` | its words, its phase twice, `{name, mode, side, frequency_cm1, dq_amu12_ang}` |
 | `point_of(entry)` | the point an index entry is | a frame and a voltage | a call |
-| `must_hold(stage, label, base, point, folder, deck=None)` | what the point must hold to be done, each with the words its absence is said in — `deck` a prepared deck's path where no run holds the point's deck yet | the rung's products; `shared/` where its deck shares | its phase's products |
-| `verdict_counts(stage, point)` | whether its verdict counts toward done | yes | its phase's |
+| `must_hold(calc, stage, point, folder, deck=None)` | what the point must hold to be done, each with the words its absence is said in — `deck` a prepared deck's path where no run holds the point's deck yet | the rung's products; `shared/` where its deck shares | its phase's products |
+| `verdict_counts(point)` | whether its verdict counts toward done | yes | its phase's |
 | `start_of(calc, stage, point, points)` | its start — source and files — and its needs, among the run's points | the closest earlier voltage in its frame, the rung's `along` files; the transmission none | its phase's seed and needs (`PHASES`) |
-| `relaunch_of(stage, point)` | `again` or `continue` | again | its phase's (`PhaseRule.relaunch`) |
+| `relaunch_of(point)` | `again` or `continue` | again | its phase's (`PhaseRule.relaunch`) |
 | `containers(calc, stage)` | each container: its point (its folder and prepared folder), its planner, and the inputs its planning writes into each planned point | none | `optical/`, planned by `fc`, each frame's `coordinates.fdf` |
 | `run_facts(calc, stage, *, carried, deck)` | the kind's facts about the run, for its index — `carried`, those of the run whose planner this launch took over; `deck`, a prepared point's deck's path | what its points compute, the leads' pair, the spin, the frames' weights | the phases it walks; the selection, carried |
-| `also_needs(run, names, task, stage, base)` | what the run needs beyond its points done to be finished — `None` when nothing; a finish step that exited non-zero is the run's state's own rule (§ 4.4) | nothing | its finish step ended, and its result at the run's root |
-| `one_point(stage)` | the one point a run of `stage` is when the rung runs once — what `point_of` answers for the run of a rung whose folder opens its calculation's report at a point ([`architecture.md`](?doc=execution/architecture.md) § 3.2) | at 0 V and no frame (`Point()`) | none |
+| `also_needs(calc, stage, run, index)` | what the run needs beyond its points done to be finished — `None` when nothing; a finish step that exited non-zero is the run's state's own rule (§ 4.4) | nothing | its finish step ended, and its result at the run's root |
+| `one_point()` | the one point a run of a stage is when the rung runs once — what `point_of` answers for the run of a rung whose folder opens its calculation's report at a point ([`architecture.md`](?doc=execution/architecture.md) § 3.2) | at 0 V and no frame (`Point()`) | none |
 | `carried(point)` | whether a stage that **continues from** another (below) takes `point` over from that stage's run rather than computing it | no point | the `relax` call (`PhaseRule.carried`) — a displacement sweep's later stage ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) |
 
 The stage a stage **continues from** is the one its pair's rule names, the kind table's `continues`
@@ -631,7 +631,7 @@ Every file has one reader; every side asks it.
 | `runpoints` | 1, travels in `mb_monitor.pyz` and every bundle whose steps write the index | the index, its stamps, its rules and its words (below) |
 | `kind_table` | 1 | `run_of_points(kind, engine)` — the record of § 2.1; a part resolved on this machine, `part` |
 | `calcdirs` | 1, travels | the folders (§ 2.4): `where`, `read_with`, `RunPlace`, `prepared_folder` (below) |
-| `jobset.points` | 4 | `PointsOf`, `points_of(task)`, `record_of(task)`, `rung_points_of`, `carried_of` (the points a stage takes over from the run it continues from), `walls_of`, `point_of(folder)` (the point a folder is) |
+| `jobset.points` | 4 | `PointsOf`, `points_of(task)`, `record_of(task)`, `rung_points_of`, `carried_of` (the points a stage takes over from the run it continues from), `walls_of`, `point_of(calc, folder)` (the point a folder is) |
 | `jobset.submit` | 5 | `_points_walk` — the one walk; `_take_over`, `_all_done`, `_walk_script` |
 | `jobset.continuation` | 4 | the run's one reading, `read_points` → `PointsReading` (below); `point_done`, `point_rows`, `points_state`, `points_verdict`, `never_reached`; `carried_points` — what a run continuing from another stage's takes over |
 | `jobset.runstatus` | 6 | a run of points as a reader sees it: `points_view`, `every_run`, `views_of`, `run_answer` (below) |

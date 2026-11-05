@@ -12,7 +12,8 @@ kind's rung that takes inputs, the gather its pair names (:func:`gather_of`
 -- a transport rung's, its three gates); any other linked stage nothing
 from another stage (a SIESTA vibration's one run, `engines/vibration.md`
 § 5.11).  **Launched**: the run doors answer.
-Nothing here decides a second way, and nothing is written.
+Nothing here decides a second way, and nothing is written but a run's end,
+once, through the run door (`runs.concluded`).
 
 **A group** is the stages one number holds (`engines/stages.md` § 2),
 matched to what is prepared by its members, never its number: prepared as
@@ -357,10 +358,9 @@ def launched_without(calc, number: int
     from ..identity import stage_key
     from .group import members_of
     from .materialize import ever_launched
-    jobset = calc.jobset
     held = calc.request.members(number)
     for m in held:
-        job = jobset.job(m) if jobset else None
+        job = calc.job(m)
         if job is None or not ever_launched(calc, job):
             continue
         had = members_of(job)
@@ -543,12 +543,10 @@ def first_launch_takes(calc, stage: str, *,
         # launch takes that calculation's points over: `--cold` takes none
         # (`engines/transport.md` § 2a.16).
         from .continuation import cannot_be_named
-        from .points import points_of
-        pts = points_of(task)
+        from .points import rung_points_of
         why = (None if cold and not from_attempt and task.reuses
-               and pts is not None and pts.rung_points(calc, stage)
-               else cannot_be_named(base, task, stage, from_attempt, cold,
-                                    template_text=calc.template_text))
+               and rung_points_of(calc, stage)
+               else cannot_be_named(calc, stage, from_attempt, cold))
         if why:
             return None, None, why
         try:
@@ -566,9 +564,8 @@ def first_launch_takes(calc, stage: str, *,
     if cont is None:
         # FROM NOTHING.
         return None, None, None
-    from .points import carried_of, points_of
-    declared = points_of(task)
-    if declared is not None and declared.rung_points(calc, stage):
+    from .points import carried_of, rung_points_of
+    if rung_points_of(calc, stage):
         # A RUN OF POINTS CARRIES POINTS -- each its kind takes over, done
         # in the run it continues from (`runs-of-points.md` § 3, op. 3).
         from .commands import block, launch_lines
@@ -613,13 +610,13 @@ def first_launch_takes(calc, stage: str, *,
         n for n in names if (base / cont.source / n).is_file())), None, None)
 
 
-def at_launch(calc, stage: str, *, job=None) -> List[dict]:
+def at_launch(calc, stage: str) -> List[dict]:
     """What ``stage``'s first launch will take, said before any run is read
     (`job-system.md` § 5.0, *a preview*) -- ``[{"from", "files", "line"}]``,
     the line *at launch: takes <files> from <stage>'s newest run, which must
     have finished*: a rung that takes inputs one per stage upstream, its
     files by its pair's (`ladder.inputs_of` -- a transport rung's, the
-    ladder's DAG); an independent stage its restart files (``job``'s,
+    ladder's DAG); an independent stage its restart files (its job's,
     when prepared; ``files`` ``None`` before) from the stage before it, by
     the pair's rule the launch copies by (`model.warm_carry`) against that
     stage's job in the calculation's plan, ``calc`` as the verb read it
@@ -650,22 +647,14 @@ def at_launch(calc, stage: str, *, job=None) -> List[dict]:
                  "line": (f"at launch: takes {', '.join(took)} over from "
                           if took else "at launch: continues from ")
                          + f"`{prev}`'s newest run, which must have finished"}]
-    files = (carried_from(calc, job, prev)
+    from .model import warm_carry
+    job = calc.job(stage)
+    files = (warm_carry(job, calc.job(prev))
              if job is not None and job.warm else None)
     return [{"from": prev, "files": files,
              "line": f"at launch: takes "
                      f"{', '.join(files) if files else 'its restart files'} "
                      f"from `{prev}`'s newest run, which must have finished"}]
-
-
-def carried_from(calc, job, source: str) -> List[str]:
-    """The restart files ``job`` takes from a run of ``source`` -- the
-    pair's rule (`model.warm_carry`), the one the launch copies by, against
-    ``source``'s job in the calculation's plan, ``calc`` as the verb read it
-    (A16): a file conditioned on the pair is said only when both jobs are
-    there to agree on it."""
-    from .model import warm_carry
-    return warm_carry(job, calc.job(source))
 
 
 def takes_sentence(items: List[dict]) -> str:
@@ -778,10 +767,10 @@ def _prepared_by_another(calc, job) -> Optional[str]:
     from .. import __version__
     from ..calcdirs import prepared_folder
     from ..deck_record import molbuilder_words, written_by
-    from .naming import job_dir_names
+    from .materialize import job_folder
     from .points import rung_points_of
     try:
-        folder = Path(calc.base) / job_dir_names(calc.jobset)[job.name]
+        folder = job_folder(calc, job)
         points = rung_points_of(calc, job.name)
         text = ((prepared_folder(folder, points[0].prepared) if points
                  else folder) / job.script).read_text(errors="replace")
@@ -821,21 +810,16 @@ def _takes_lines(cont, gather) -> List[str]:
 def ladder(calc, *, verdict: bool = True) -> List[Readiness]:
     """Every stage of the description, in ladder order, with its answer --
     ``calc`` the calculation as the verb opened it (A16)."""
-    from .naming import ladder_homes
-    return [readiness(calc, h.name, verdict=verdict)
-            for h in ladder_homes(calc.base, calc.task)]
+    return [readiness(calc, st.name, verdict=verdict)
+            for st in calc.task.stages]
 
 
 @dataclass
 class TaskState:
     """THE TASK AS THE READY DOOR READS IT, ONCE (`job-system.md`, *The
-    task*): the description, its template's text, the plan, every stage's
-    answer in ladder order and every group's -- what `prep task` shows
+    task*): every stage's answer in ladder order and every group's -- what `prep task` shows
     before it asks, what `launch task` sends with nothing named, what
     `status` lists and what Task setup's folder answer carries."""
-    task: object
-    template_text: Optional[str]
-    jobset: object
     stages: List[Readiness]
     groups: List[GroupAnswer]
 
@@ -886,7 +870,7 @@ def task_state(calc, *, verdict: bool = False) -> TaskState:
             continue
         if hit:
             g.members_changed = joined_launched(calc, g.number, *hit)
-    return TaskState(calc.task, calc.template_text, calc.jobset, answers, gs)
+    return TaskState(answers, gs)
 
 
 def groups(request, answers: List[Readiness]) -> List[GroupAnswer]:

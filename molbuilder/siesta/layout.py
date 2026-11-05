@@ -461,65 +461,41 @@ def check_rules(text: str, struct=None, cfg=None):
     and an index with no species is a startup failure after the queue wait.
     """
     from ..issues import Issue
-    from ..parse.fdf import fdf_key
+    from ..parse.fdf import fdf_key, read_fdf
 
     out = []
-    code = [ln.split("#", 1)[0].rstrip() for ln in text.splitlines()]
-
     # -- one keyword, one line; one block, one body ----------------------
-    seen: dict = {}
-    blocks: dict = {}
-    in_block, block, body = False, None, []
-    for ln in code:
-        low = ln.strip().lower()
-        if low.startswith("%block"):
-            name = (ln.split() + [""])[1]
-            in_block, block, body = True, (fdf_key(name), name), []
-            continue
-        if low.startswith("%endblock"):
-            if block is not None:
-                text_of = "\n".join(body)
-                if block[0] in blocks and blocks[block[0]][1] != text_of:
-                    out.append(Issue(
-                        "error",
-                        f"%block {block[1]} is written twice with different "
-                        f"rows; libfdf takes the first, so the second is "
-                        f"silently ignored",
-                        where="deck.duplicate_keyword"))
-                blocks.setdefault(block[0], (block[1], text_of))
-            in_block, block = False, None
-            continue
-        if in_block:
-            body.append(" ".join(ln.split()))
-            continue
-        if not ln.strip():
-            continue
-        key = ln.split()[0]
-        # fdf's keyword rule, from the one module that owns it.  A gate
-        # that enforces "one keyword, one line" must agree with the reader
-        # about what ONE KEYWORD means, or it polices a different rule.
-        norm = fdf_key(key)
-        value = " ".join(ln.split()[1:])
-        if norm in seen and seen[norm][1] != value:
+    # Asked of the one fdf reader, so the gate agrees with it about what ONE
+    # KEYWORD means, or it polices a different rule.
+    spelled: dict = {}
+    repeated: list = []
+    scalars, blocks = read_fdf(text, spelled_out=spelled, repeated=repeated)
+    for is_block, key, word, value in repeated:
+        if is_block and value != blocks[key]:
             out.append(Issue(
                 "error",
-                f"{key} is written twice with different values "
-                f"({seen[norm][1]!r} then {value!r}); libfdf takes the first, "
-                f"so the second is silently ignored",
+                f"%block {word} is written twice with different rows; libfdf "
+                f"takes the first, so the second is silently ignored",
                 where="deck.duplicate_keyword"))
-        seen.setdefault(norm, (key, value))
-    for norm, (key, _value) in seen.items():
-        if norm in blocks:
+        elif not is_block and value != scalars[key]:
             out.append(Issue(
                 "error",
-                f"{key} is written both as a line and as %block "
-                f"{blocks[norm][0]}; libfdf reads one of them, and the other "
+                f"{word} is written twice with different values "
+                f"({' '.join(scalars[key])!r} then {' '.join(value)!r}); "
+                f"libfdf takes the first, so the second is silently ignored",
+                where="deck.duplicate_keyword"))
+    for key in scalars:
+        if key in blocks:
+            out.append(Issue(
+                "error",
+                f"{spelled[key]} is written both as a line and as %block "
+                f"{spelled[key]}; libfdf reads one of them, and the other "
                 f"is silently ignored",
                 where="deck.duplicate_keyword"))
 
     # -- the identity that was stamped ----------------------------------
     label = getattr(cfg, "system_label", None)
-    if label and seen.get("systemlabel", (None, None))[1] != label:
+    if label and " ".join(scalars.get("systemlabel", ())) != label:
         out.append(Issue(
             "error",
             f"the deck's SystemLabel is not the identity it was written for "
@@ -527,22 +503,14 @@ def check_rules(text: str, struct=None, cfg=None):
             where="deck.identity"))
 
     # -- the atom count against the coordinate block --------------------
-    rows, inside = 0, False
-    for ln in code:
-        low = ln.strip().lower()
-        if low.startswith("%block atomiccoordinatesandatomicspecies"):
-            inside = True
-            continue
-        if low.startswith("%endblock") and inside:
-            break
-        if inside and ln.strip():
-            rows += 1
-    declared = seen.get("numberofatoms", (None, None))[1]
-    if declared and declared.isdigit() and rows and int(declared) != rows:
+    coordinates = blocks.get(fdf_key("AtomicCoordinatesAndAtomicSpecies"), [])
+    declared = " ".join(scalars.get("numberofatoms", ()))
+    if (declared.isdigit() and coordinates
+            and int(declared) != len(coordinates)):
         out.append(Issue(
             "error",
             f"NumberOfAtoms says {declared} but the coordinate block has "
-            f"{rows} rows",
+            f"{len(coordinates)} rows",
             where="deck.atom_count"))
 
     # -- every species index used exists --------------------------------
@@ -551,30 +519,10 @@ def check_rules(text: str, struct=None, cfg=None):
     # nothing else in the deck relates them.  An index with no species is a
     # startup failure after the queue wait, which is the most expensive place
     # to find a writer bug.
-    declared_species = set()
-    inside = False
-    for ln in code:
-        low = ln.strip().lower()
-        if low.startswith("%block chemicalspecieslabel"):
-            inside = True
-            continue
-        if low.startswith("%endblock") and inside:
-            break
-        parts = ln.split()
-        if inside and parts and parts[0].isdigit():
-            declared_species.add(parts[0])
-    used = set()
-    inside = False
-    for ln in code:
-        low = ln.strip().lower()
-        if low.startswith("%block atomiccoordinatesandatomicspecies"):
-            inside = True
-            continue
-        if low.startswith("%endblock") and inside:
-            break
-        parts = ln.split()
-        if inside and len(parts) >= 4:
-            used.add(parts[3])
+    declared_species = {row[0] for row in
+                        blocks.get(fdf_key("ChemicalSpeciesLabel"), [])
+                        if row[0].isdigit()}
+    used = {row[3] for row in coordinates if len(row) >= 4}
     for missing in sorted(used - declared_species):
         out.append(Issue(
             "error",

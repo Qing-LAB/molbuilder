@@ -19,10 +19,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .. import calcdirs, runfiles, runrecord
-from ..identity import resolve_stage_ref
 from .model import JobSet, warm_carry
 from .naming import (job_dir_names, ladder_homes, open_container, run_names,
-                     stage_refs, stamp_containers)
+                     stamp_containers)
 from ..paths import (FIRST_ATTEMPT, attempt_dir, attempt_index, attempts_in,
                      bench_containers_in as _bench_containers_in)
 
@@ -58,11 +57,11 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
     else
     ``None``.  A sweep's own job-set names its trials from the calculation,
     so a reader standing in its container reads them from there."""
-    from ..identity import command_stage
+    from ..identity import stage_name
     at = calcdirs.where(folder)
     if at.what != calcdirs.BENCHMARK:
         return None
-    return at.root, command_stage(at.stage)
+    return at.root, stage_name(at.stage)
 
 
 @dataclass(frozen=True)
@@ -100,8 +99,6 @@ def scratch_in(calc) -> List[ScratchFile]:
                         continue
     found = []
     for home in ladder_homes(base, calc.task):
-        if home.dir is None or not home.dir.is_dir():
-            continue
         for p, size in under(home.dir):
             run = run_folder_of(p.relative_to(base))
             found.append(ScratchFile(home.name, p, size,
@@ -220,6 +217,19 @@ def newest_launched(container: Path) -> Optional[Path]:
     if runrecord.launch_record(last) is not None:
         return last
     return attempt_dir(container, ns[-2]) if len(ns) > 1 else None
+
+
+def runs_launched(container: Path) -> int:
+    """How many runs of the stage in ``container`` were launched.  A run is
+    one launch -- a swept rung's too, its points inside it
+    (`engines/transport.md` § 2a.11) -- and only the newest can be unlaunched
+    (:func:`newest_launched`), so it alone may not count.  A record that does
+    not read raises, as the one door does."""
+    ns = attempts_in(container)
+    if not ns:
+        return 0
+    return len(ns) - (newest_launched(container)
+                      != attempt_dir(container, ns[-1]))
 
 
 def trial_run(trial: Path) -> Path:
@@ -385,7 +395,7 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     from .points import points_of
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     job = jobset.job(stage_name)
-    stage_dir = base / job_dir_names(jobset)[job.name]
+    stage_dir = job_folder(calc, job)
     rn = run_names(jobset, job)
     run, fresh = resolve_attempt(stage_dir)
     # THE RUNG'S PREPARED POINTS, by its kind's declaration (`jobset.points`),
@@ -665,15 +675,9 @@ def prepare_attempt(calc, stage_name: str, *,
     engine writes to those very filenames, and writing through a link would
     destroy the result you started from.
 
-    ``stage_name`` goes through the ONE resolver, so it takes a name, a number
-    or a token — the same three spellings every other surface takes, and the
-    same refusal when it matches none of them.
+    ``stage_name`` is the stage's name, as the verb resolved it at its entry.
     """
     jobset, base = calc.jobset, Path(calc.base)
-    dir_of = job_dir_names(jobset)
-    refs = stage_refs(jobset)
-    stage_name = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
-                                   stage_name).name
     job = jobset.job(stage_name)
 
     # WHAT IT CONTINUES FROM, CHECKED BEFORE ANYTHING IS WRITTEN (W52), so a
@@ -686,7 +690,7 @@ def prepare_attempt(calc, stage_name: str, *,
     from .planned import Plan
     own = plan is None
     plan = Plan() if own else plan
-    stage_dir = base / dir_of[stage_name]
+    stage_dir = job_folder(calc, job)
     plan.folder(stage_dir)
     rn = run_names(jobset, job)
     attempt, is_new = resolve_attempt(stage_dir)
@@ -797,8 +801,6 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
     simply has no answer — which :func:`warm_carry` then treats as *unverified*
     rather than guessing.
     """
-    if not continue_from:
-        return None
     parent = str(Path(continue_from).parent)
     for j in jobset.jobs:
         if dir_of.get(j.name) == parent:
@@ -810,7 +812,8 @@ __all__ = [
     "Attempt", "CONTINUED", "GATHERED", "HandOver", "hand_over",
     "gather_into",
     "bench_owner", "bench_stage_of", "scratch_in", "ScratchFile",
-    "materialize", "latest_attempt", "newest_launched", "job_folder", "launched_run",
+    "materialize", "latest_attempt", "newest_launched", "runs_launched",
+    "job_folder", "launched_run",
     "resolve_attempt", "ever_launched", "empty_run",
     "empty_old_points", "prepare_attempt", "open_sweep_run",
     "open_run",

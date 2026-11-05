@@ -71,7 +71,7 @@ from ..runfiles import (GROUP_HEADER, GROUP_LOG, GROUP_RUN_SCRIPT,
                         ROLE_RUN_SCRIPT, ROLE_SESSION_LOG, GroupNames,
                         RunNames)
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
-                          gather_into, hand_over, latest_attempt,
+                          gather_into, hand_over, job_folder, latest_attempt,
                           newest_launched)
 from .naming import job_dir_names, open_container, run_names
 from ..runrecord import LaunchRecordError, RunRef
@@ -708,14 +708,8 @@ class Submission:
         ``run_dir`` -- the file the run door reads for how it ended the job
         (`scheduler.md` R16); the file unnamed when the job's id was not
         read."""
-        from ..runfiles import SCHEDULER_STDERR
-        kind = self.machine.kind
-        stderr = None
-        if job_id is not None and self.outputs_in is not None:
-            err = (Path(self.cwd) / self.outputs_in
-                   / kind.output_file(SCHEDULER_STDERR, job_id=job_id))
-            stderr = os.path.relpath(err, run_dir)
-        return {"kind": kind.name, "stderr": stderr}
+        return self.machine.kind.said_of_job(
+            job_id, Path(self.cwd) / self.outputs_in, run_dir)
 
     @property
     def domain(self) -> Optional[str]:
@@ -754,9 +748,6 @@ class Inside:
     name: str
     record: object
     job: str
-    #: The scheduler kind of the calculation's machine, which names the
-    #: job's error file -- set by the plan, which reads the machine.
-    kind: object = None
 
     @classmethod
     def of(cls, base, name: str, job: str) -> "Inside":
@@ -784,9 +775,8 @@ class Inside:
         """What member ``m``'s launch record says of the job it rides: the
         sequence's record's (`sequence.Record.run_said`), with the
         sequence's name."""
-        said = self.record.run_said(
-            job_id=self.job if self.record.mode == "submit" else None,
-            run_dir=m.run_dir, base=m.base, kind=self.kind)
+        said = self.record.run_said(job_id=self.job, run_dir=m.run_dir,
+                                    base=m.base)
         return {**said, "sequence": self.name}
 
 
@@ -1018,7 +1008,7 @@ def _plan_member(calc, job, *, writes: Plan,
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     names = run_names(jobset, job)
     member = functools.partial(_Member, base=base, names=names)
-    container = base / job_dir_names(jobset)[job.name]
+    container = job_folder(calc, job)
     if latest_attempt(container) is None:
         raise _no_run_open(f"stage {job.name!r}", container, base,
                            _redo(calc, job))
@@ -1159,7 +1149,7 @@ def _launch_again(calc, job, *, member, container: Path,
     is."""
     from ..kind_table import description_part
     from .materialize import open_sweep_run, prepare_attempt
-    base, task = Path(calc.base), calc.task
+    base = Path(calc.base)
     stage = job.name
     ran = newest_launched(container)
     if points:
@@ -1169,19 +1159,14 @@ def _launch_again(calc, job, *, member, container: Path,
         # done there over); a run named by `--from`, where the stage
         # continues from another, the points its kind carries taken over
         # from it.
-        from .continuation import cannot_be_named
-        why = cannot_be_named(base, task, stage, from_attempt,
-                              cold if from_attempt else False,
-                              template_text=calc.template_text)
-        if why:
-            raise SubmitError(why)
         cont = None
         if from_attempt:
             # A RUN NAMED: the points its kind carries taken over from it
             # anew, nothing of the stage's own runs (`job-system.md` § 5.4).
             from .ready import first_launch_takes
             cont, _got, why = first_launch_takes(calc, stage,
-                                                 from_attempt=from_attempt)
+                                                 from_attempt=from_attempt,
+                                                 cold=cold)
             if why:
                 raise SubmitError(why)
         got = _gathered_now(calc, stage) if gather else None
@@ -1395,8 +1380,6 @@ def plan_launch(calc, *, mode: str,
         # not read is refused in its own words before any member is planned
         # -- and read ONCE for the whole launch (§ 3.2, *the machine*).
         machine = _machine_of(base)
-        if inside is not None:
-            inside = dataclasses.replace(inside, kind=machine.kind)
         jobset = calc.jobset if bench is None else bench[0]
         # A GROUP'S LAUNCH INSIDE A SEQUENCE'S JOB plans as a reader inside
         # that job (`joblist.inside`): the runs its job holds read by their
@@ -2658,8 +2641,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     from ..identity import next_run_words
     from ..kind_table import WALL_ONE, description_part
     from ..runpoints import (CONTINUE, add_point, empty_index, entry_of,
-                             index_of, index_path, planned_by, read_index,
-                             write_index)
+                             index_at, index_path, planned_by, write_index)
     from ..runrecord import launch_record
     from .continuation import point_done
     from .materialize import bring_files, open_run
@@ -2686,8 +2668,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         # ITS INDEX, read for what a warm launch takes over (§ 3, op. 2);
         # a cold one takes nothing from it.
         try:
-            got = index_of(prev, names)
-            prev_index = read_index(got) if got is not None else None
+            prev_index = index_at(prev, names)
         except ValueError as exc:
             raise SubmitError(f"{stage}: {exc}") from None
     # THE POINTS CARRIED FROM THE RUN IT CONTINUES FROM, each by its folder
@@ -2701,8 +2682,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         carried_in = {pt.rel: pdir
                       for pdir, pt in carried_points(calc, stage, cont)}
         try:
-            got = index_of(src_run, src_names)
-            src_index = read_index(got) if got is not None else None
+            src_index = index_at(src_run, src_names)
         except ValueError as exc:
             raise SubmitError(f"{stage}: {exc}") from None
 
@@ -2711,9 +2691,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         # warm launch takes over (`runs-of-points.md` § 4.2).
         if not own or not last.point(pt.rel).is_dir():
             return False
-        return point_done(declared, prev, last.point(pt.rel), pt, names,
-                          task=task, stage=stage, base=base,
-                          launch=prev_launch)[0]
+        return point_done(calc, stage, prev, last.point(pt.rel), pt, names)[0]
 
     # THE RUN'S POINTS (§ 3, op. 2), in the listing order: those its opener
     # opened, then each planned point taken with a planner taken over.
@@ -2839,10 +2817,10 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
             e["planned_by"] = prior.get("planned_by")
         else:
             e = {**declared.entry(calc, stage, pt, _deck(pt)),
-                 "must_hold": declared.must_hold(stage, task.label, base, pt,
+                 "must_hold": declared.must_hold(calc, stage, pt,
                                                  place.point(pt.rel),
                                                  deck=_deck(pt)),
-                 "verdict_counts": declared.verdict_counts(stage, pt)}
+                 "verdict_counts": declared.verdict_counts(pt)}
         if pt.rel in taken_from and prior is not None:
             # A POINT TAKEN OVER keeps what its computing run knew of it.
             e["facts"] = {**e["facts"], **(prior.get("facts") or {})}
@@ -2874,7 +2852,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         start = declared.start_of(calc, stage, pt, every)
         before: tuple = ()
         words = ""
-        if (declared.relaunch_of(stage, pt) == CONTINUE and own
+        if (declared.relaunch_of(pt) == CONTINUE and own
                 and last.point(pt.rel).is_dir()):
             at = RunRef.at(base, last.point(pt.rel))
             files = tuple((at, f) for f in warm_carry(job, job)
@@ -2986,7 +2964,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     # A WALKED POINT THAT WOULD TAKE ITS WARM FILES -- one whose relaunch
     # is *continue*; a point that starts over takes nothing from a run.
     would_take = job.warm and any(
-        declared.relaunch_of(stage, pt) == CONTINUE
+        declared.relaunch_of(pt) == CONTINUE
         for _p, pt in walked if pt.rel not in is_planned)
     if own and not takes and would_take and not handed_back:
         raise _warm_impossible(
@@ -3077,7 +3055,7 @@ def _all_done(calc, stage: str, prev: Path, names, record, launch) -> None:
     naming `--cold` (§ 3, op. 17)."""
     from .continuation import points_state
     base = Path(calc.base)
-    state, _detail, _rows = points_state(prev, names, calc, stage,
+    state, _detail, _rows = points_state(calc, stage, prev, names,
                                          launch=launch)
     if state != "finished":
         return
@@ -3452,8 +3430,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
             groups=groups, mode="submit", command=sub.command,
             placed_on=_placed_on(sub.placement, sub.sent),
             scheduler={"kind": machine.kind.name,
-                       "outputs_in": os.path.relpath(
-                           base / (sub.outputs_in or ""), base)})
+                       "outputs_in": sub.outputs_in or "."})
     if mode != "ask":
         plan.writes.text(rec_path, record_text(rec))
     plan.engine = jobset.engine

@@ -1914,14 +1914,13 @@ def api_task_setup_columns():
                     "roles": _T.stage_role_rule(engine, _calc_kind)})
 
 
-def _folder_template(folder, label, *, found=None, engine=None,
-                     kind=None) -> dict:
+def _folder_template(folder, label, *, found=None, task=None) -> dict:
     """What the folder's template answers -- the payload, not the response.
 
     ``found`` is the template as the calculation opened it (A16); with
     none, ``label`` is the hand-over's name and the door is asked
     (`template_file.of`) -- ``None`` for a folder that is neither, which has no
-    template to show.  ``engine`` and ``kind``, a described folder's, add
+    template to show.  ``task``, a described folder's, adds
     ``shared``: every value shared by every stage of that kind, echoed
     read-only with whose it is (`task-setup.md` § 3, `engines/template.md`
     § 6.6 obligation 3).
@@ -1961,7 +1960,8 @@ def _folder_template(folder, label, *, found=None, engine=None,
     # one's label.  A
     # value nobody gave reads as the template has it: none, *not chosen*.
     shared = []
-    if engine and kind:
+    if task is not None:
+        engine, kind = task.engine, task.calculation
         from molbuilder.template import catalogue
         mine = {it.name: it for it in select(tmpl)}
         for it in select(catalogue(), engine=engine, calculation=kind,
@@ -2316,17 +2316,12 @@ def _walk_files(stem: str) -> list:
     its row found as every reader finds a launch group's file
     (`runfiles.row_for`)."""
     from molbuilder.runfiles import (GROUP_HEADER, GROUP_LOG,
-                                     GROUP_RUN_SCRIPT, LEVEL_WHERE,
-                                     GroupNames, row_for)
+                                     GROUP_RUN_SCRIPT, GroupNames, row_for,
+                                     row_words)
     gn = GroupNames.of_points(stem)
-    out = []
-    for row in (GROUP_RUN_SCRIPT, GROUP_HEADER, GROUP_LOG):
-        name = gn.walked(row)
-        a = row_for(name)
-        out.append({"name": name, "what": a.what, "when": a.when,
-                    "level": a.level, "where": LEVEL_WHERE[a.level],
-                    "only": a.only})
-    return out
+    return [row_words(row_for(name), name)
+            for name in map(gn.walked, (GROUP_RUN_SCRIPT, GROUP_HEADER,
+                                        GROUP_LOG))]
 
 
 def _warm_in_effect(task, folder) -> "dict | None":
@@ -2384,29 +2379,19 @@ def _folder_walks(calc) -> dict:
 
 
 def _folder_attempts(calc) -> dict:
-    """How many runs of each stage were launched -- the payload.  A RUN IS
-    ONE LAUNCH of the stage, `run-<n>/` -- a swept rung's too, its points
-    inside it (`engines/transport.md` § 2a.11) -- and only the newest can be
-    unlaunched, prep's or one a refused send opened
-    (`materialize.newest_launched`), so it is not counted.  A stage whose
-    newest launch record does not read is left out: its count is not
-    known."""
-    from molbuilder.jobset.materialize import newest_launched
+    """How many runs of each stage were launched -- the payload
+    (`materialize.runs_launched`).  A stage whose newest launch record does
+    not read is left out: its count is not known."""
+    from molbuilder.jobset.materialize import runs_launched
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.paths import attempt_dir, attempts_in
     from molbuilder.runrecord import LaunchRecordError
-    dest, task = calc.base, calc.task
     stages = {}
-    for st in task.stages:
-        home = stage_home(dest, task, st.name)
-        ns = attempts_in(home.dir)
+    for st in calc.task.stages:
         try:
-            newest = newest_launched(home.dir)
+            stages[st.name] = {"attempts": runs_launched(
+                stage_home(calc.base, calc.task, st.name).dir)}
         except LaunchRecordError:
             continue
-        stages[st.name] = {"attempts": (
-            len(ns) - (newest != attempt_dir(home.dir, ns[-1])) if ns
-            else 0)}
     return {"stages": stages}
 
 
@@ -2501,8 +2486,12 @@ def api_task_setup_folder():
     # writes the first and deletes the second (`task-setup.md` § 3), so the
     # page's MODE follows from which is here rather than from a flag it has
     # to keep.
+    from molbuilder.task import Task
     _task = _calc.task if _calc is not None else _described()
     described = (_task.to_dict() if hasattr(_task, "to_dict") else _task)
+    # THE DESCRIPTION, OR NONE: its reader's words stay in ``described``, and
+    # every part below is handed a `Task` or ``None``.
+    task = _task if isinstance(_task, Task) else None
     handover = None if described is not None else _read_handover()
 
     def _requested():
@@ -2512,19 +2501,19 @@ def api_task_setup_folder():
         with (`execution/job-request.md` § 7)."""
         if _calc is not None:
             return _calc.request.to_dict()
-        if not hasattr(_task, "stages"):
+        if task is None:
             return None
         from molbuilder import job_request as _job_request
         try:
-            found = _job_request.of(folder, _task)
+            found = _job_request.of(folder, task)
         except Exception as exc:                  # noqa: BLE001
             return {"error": str(exc)}
         return None if found is None else found.to_dict()
     requested = _requested()
     # THE LABEL THE TEMPLATE IS NAMED ON: the description's, else the
     # hand-over's name through the normaliser the hand-over named it with.
-    if hasattr(_task, "label"):
-        _label = _task.label
+    if task is not None:
+        _label = task.label
     elif isinstance(handover, dict) and (handover.get("run") or {}).get("name"):
         # Its kind is there: a hand-over stating none is refused by its
         # reader (`_proposal_refused`).
@@ -2562,8 +2551,8 @@ def api_task_setup_folder():
         # a new one takes, by the one rule (`group.default_groups`), for
         # the page to write with Save (`execution/job-request.md` § 7).
         "request": requested,
-        "proposed_groups": (_default_groups_of(folder, _task)
-                            if requested is None and hasattr(_task, "stages")
+        "proposed_groups": (_default_groups_of(folder, task)
+                            if requested is None and task is not None
                             else None),
         "handover": handover,
         # THE FILES' NAMES, said here so the page spells none.
@@ -2582,9 +2571,7 @@ def api_task_setup_folder():
         "kind": _folder_kind(_doc.get("calculation")),
         "template": _folder_template(
             folder, _label,
-            found=_calc.template if _calc is not None else None,
-            engine=getattr(_task, "engine", None),
-            kind=getattr(_task, "calculation", None)),
+            found=_calc.template if _calc is not None else None, task=task),
         "provenance": _folder_provenance(folder),
         # Only a calculation has stages, so only then is there anything to
         # count.
@@ -2602,7 +2589,7 @@ def api_task_setup_folder():
         # WHY THIS DESCRIPTION HAS NO BENCH, or null -- the prep entry's own
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
-        "bench_refusal": _folder_bench_refusal(_task, handover),
+        "bench_refusal": _folder_bench_refusal(task, handover),
         # WHAT EACH RECORD WAS WHEN THIS ANSWER READ IT, for Save to compare
         # (`web/task-setup.md` § 8).
         "read_as": _read_as(folder),
@@ -2613,21 +2600,21 @@ def api_task_setup_folder():
         # (the kind table), so the page offers no stage-table control
         # the reader refuses (`web/task-setup.md` § 5.3); null for every
         # other kind.
-        "fixed": _folder_fixed(_task),
+        "fixed": _folder_fixed(task),
         # AN EXTENSION'S LIMITS -- a transport calculation that reuses a
         # finished one: the rungs that run once, fixed by it, and the words
         # the page says them in (`web/task-setup.md` § 3;
         # `engines/transport.md` § 2a.16, *Extending it*); null otherwise.
-        "extension": _folder_extension(_task, folder),
+        "extension": _folder_extension(task, folder),
         # HOW A TRANSPORT DESCRIPTION TREATS ITS BIAS LIST, by the one rule
         # the record names it with (`Task.treatment`); null for every other
         # kind.  The "What came over" card echoes it (`task-setup.md` § 3).
-        "treatment": getattr(_task, "treatment", None),
+        "treatment": task.treatment if task is not None else None,
         # WHAT THE CITED JUNCTION'S FRAMES ARE -- the count and, for a mode's
         # set, its definition -- by the describe door's own helper
         # (`frame_average.answer`; `engines/transport.md` § 3.8.1); null
         # for every other kind.  The "What came over" card draws it.
-        "frame_set": _folder_frame_set(_task, folder),
+        "frame_set": _folder_frame_set(task, folder),
         # THE MACHINE IT IS SET TO -- its first prep's, read from its copy
         # of the record, or null before that (`configuration.md` M-3): the
         # page shows it fixed rather than offering a choice that can only be
@@ -2689,8 +2676,7 @@ def _folder_fixed(task) -> Optional[dict]:
     ``{"stages"}``, as the stage table reads them; ``None`` for a pair that
     fixes none, or no description."""
     from molbuilder.kind_table import pair
-    fixed = pair(getattr(task, "calculation", ""),
-                 getattr(task, "engine", ""))
+    fixed = pair(task.calculation, task.engine) if task is not None else None
     return (None if fixed is None or not fixed.stages
             else {"stages": list(fixed.stages)})
 
@@ -2702,7 +2688,7 @@ def _folder_extension(task, folder) -> Optional[dict]:
     says and the rung a fit is written into) -- or ``None``; ``{"error"}``
     when the finished calculation does not read (`engines/transport.md`
     § 2a.16)."""
-    reuses = getattr(task, "reuses", "") or ""
+    reuses = task.reuses if task is not None else ""
     if not reuses:
         return None
     from molbuilder.kind_table import description_part
@@ -2734,13 +2720,13 @@ def _folder_ladder(calc) -> dict:
     from molbuilder.jobset.runstatus import ladder_view
     try:
         state = task_state(calc)
-        task, text = state.task, state.template_text
+        task, text = calc.task, calc.template_text
         answers, gs = state.stages, state.groups
         # THE LADDER VIEW, once (`runstatus.ladder_view`, the Results tab's):
         # each group's next step, and each stage's runs copied in from a
         # finished calculation (`.copied-from`) -- every one, each by its
         # folder, as the root's every run reads them.
-        ladder = ladder_view(calc)
+        ladder = ladder_view(calc, state=state)
         copied = {s["name"]: [{"dir": r["dir"],
                                "copied_from": r["copied_from"]}
                               for r in s["runs"] if r["copied_from"]]
@@ -2949,7 +2935,7 @@ def _folder_bench_refusal(task, handover):
     reader has checked the pair (:func:`_proposal_refused`) -- or ``None``
     when there is neither to ask."""
     from molbuilder.jobset.prep_inputs import bench_refusal
-    if hasattr(task, "stages"):
+    if task is not None:
         return bench_refusal(str(task.engine), str(task.calculation))
     if isinstance(handover, dict) and "error" not in handover:
         return bench_refusal(handover["engine"]["name"],

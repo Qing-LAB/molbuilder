@@ -87,13 +87,8 @@ class _PickerError(Exception):
 
 
 def _allowed_roots() -> Tuple[Tuple[Path, str], ...]:
-    """Roots the picker is allowed to browse.
-
-    Cached via the Capabilities singleton -- updates only when
-    ``diagnostics.initialize()`` is called again (i.e., process
-    restart in normal use).  Tests can substitute via
-    :func:`diagnostics.set_capabilities`.
-    """
+    """Roots the picker is allowed to browse.  Asks
+    ``projects.projects_root()`` at each call; nothing is cached."""
     return diagnostics.get_capabilities().file_picker_roots()
 
 
@@ -205,15 +200,14 @@ def _resolve_within_roots(raw_path: str) -> Path:
     if not roots:
         raise _PickerError(
             400,
-            "no file-picker roots are configured (Capabilities snapshot "
-            "should provide at least projects/ + CWD; check that "
-            "diagnostics.initialize() ran at startup).",
+            "the projects folder cannot be read on this machine, so the "
+            "file picker has nothing to browse.",
         )
 
     # THE fence is `projects.contain` -- one implementation, shared with the
     # `jobset` CLI (`projects.py`).  This function keeps what is genuinely
-    # ITS OWN: several allowed roots, first match wins, and an HTTP-shaped
-    # refusal that names them all.  The rules about `..`,
+    # ITS OWN: the picker's root, and an HTTP-shaped refusal that names it.
+    # The rules about `..`,
     # `expanduser`-not-`expandvars` and resolving both sides live in the
     # shared primitive with their reasons attached.
     # `..` and unresolvable paths are refused for their own reason rather
@@ -1087,8 +1081,7 @@ def _validate_subdir_name(parent_abs: Path, name: str) -> None:
     "Depth inside projects/" is computed relative to whichever root
     surfaced the parent path -- the picker's single root from
     ``Capabilities.file_picker_roots()`` IS the projects/ root, so
-    we use that here.  This decouples the validator from the
-    real-cwd projects_root() and lets tests substitute a tmp tree.
+    we use that here.
 
     Raises :class:`molbuilder.projects.InvalidName` on rejection.
     """
@@ -1233,7 +1226,8 @@ def api_projects_create():
     if not roots:
         return jsonify({
             "ok":   False,
-            "error": "no file-picker roots configured; cannot create project",
+            "error": ("the projects folder cannot be read on this machine, so "
+                      "no project can be created."),
         }), 500
     root_path = roots[0][0]   # we ship single-root in v1
 
@@ -1256,11 +1250,7 @@ def api_projects_create():
 
     # Create the empty project root inside the picker's root, then
     # delegate to populate_project_skeleton to bootstrap the canonical
-    # subdirs + READMEs.  This split lets us use the picker's resolved
-    # root (which may differ from projects_root() in tests) rather than
-    # the cwd-derived path the create_project_skeleton convenience
-    # wrapper would assume.
-    project_path = root_path / name
+    # subdirs + READMEs.
     try:
         project_path.mkdir(parents=False, exist_ok=False)
     except FileExistsError:

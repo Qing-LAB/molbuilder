@@ -149,15 +149,29 @@ def test_a_keyword_written_twice_is_refused_because_libfdf_takes_the_first(
     assert [i for i in issues if "twice" in i.message], issues
 
 
-def test_the_atom_count_must_match_the_coordinate_block():
-    """A count that disagrees with the coordinate block is refused.
+def _one_species_row_lost(text: str) -> str:
+    lines = text.splitlines()
+    opens = next(i for i, ln in enumerate(lines)
+                 if ln.lower().startswith("%block chemicalspecieslabel"))
+    del lines[opens + 1]
+    return "\n".join(lines)
 
-    API-level: a refusal the road cannot reach -- prep writes the count from
-    the atoms it places, so the check is handed a deck that disagrees."""
+
+@pytest.mark.parametrize("disagree, where", [
+    # SIESTA reads the count and the coordinate block separately.
+    (lambda text: text.replace("NumberOfAtoms     3", "NumberOfAtoms     5"),
+     "deck.atom_count"),
+    # SIESTA stops on a species with no label, at startup, after the queue wait.
+    (_one_species_row_lost, "deck.species_index"),
+])
+def test_two_blocks_of_a_deck_that_disagree_are_refused(disagree, where):
+    """A deck whose blocks disagree is refused, and the deck it was made from
+    is not.  API-level: a refusal the road cannot reach -- prep writes the two
+    together, so the check is handed a deck that disagrees."""
     from molbuilder.siesta.layout import check_rules
 
     text, struct, cfg = _fdf()
-    broken = text.replace("NumberOfAtoms     3", "NumberOfAtoms     5")
-    assert [i for i in check_rules(broken, struct, cfg)
-            if "NumberOfAtoms" in i.message]
+    assert not [i for i in check_rules(text, struct, cfg) if i.where == where]
+    assert [i for i in check_rules(disagree(text), struct, cfg)
+            if i.where == where]
 

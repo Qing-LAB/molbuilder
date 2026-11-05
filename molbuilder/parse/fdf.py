@@ -62,16 +62,21 @@ def fdf_key(key: str) -> str:
     return key.lower().replace(".", "").replace("-", "").replace("_", "")
 
 
-def read_fdf(text: str, *, spelled_out: Optional[Dict[str, str]] = None
+def read_fdf(text: str, *, spelled_out: Optional[Dict[str, str]] = None,
+             repeated: Optional[list] = None
              ) -> Tuple[Dict[str, List[str]], Dict[str, List[List[str]]]]:
     """``(scalars, blocks)`` from fdf text; first occurrence wins.
 
     ``spelled_out``, when a dict is passed, receives each keyword's and
     block's first spelling by its key (:func:`fdf_key`) -- the words a
-    sentence for a person names it by, where the key is what is compared."""
+    sentence for a person names it by, where the key is what is compared.
+    ``repeated``, when a list is passed, receives each later occurrence, in
+    the text's order, that libfdf reads past as this does -- ``(is_block, key,
+    spelling, value)``, a block's rows or a keyword's tokens."""
     scalars: Dict[str, List[str]] = {}
     blocks: Dict[str, List[List[str]]] = {}
     in_block: Optional[str] = None
+    block_word = ""
     rows: List[List[str]] = []
     spelled = spelled_out if spelled_out is not None else {}
     for raw in text.splitlines():
@@ -92,12 +97,14 @@ def read_fdf(text: str, *, spelled_out: Optional[Dict[str, str]] = None
                     f"block {name} is read from {included}, a file beside "
                     f"the deck: read the deck through read_deck(path), "
                     f"which inlines it")
-            in_block = fdf_key(name)
+            in_block, block_word = fdf_key(name), name
             spelled.setdefault(in_block, name)
             rows = []
             continue
         if low.startswith("%endblock"):
             if in_block is not None:
+                if in_block in blocks and repeated is not None:
+                    repeated.append((True, in_block, block_word, rows))
                 blocks.setdefault(in_block, rows)
             in_block = None
             continue
@@ -106,8 +113,11 @@ def read_fdf(text: str, *, spelled_out: Optional[Dict[str, str]] = None
             continue
         toks = line.split()
         if toks:
-            scalars.setdefault(fdf_key(toks[0]), toks[1:])
-            spelled.setdefault(fdf_key(toks[0]), toks[0])
+            key = fdf_key(toks[0])
+            if key in scalars and repeated is not None:
+                repeated.append((False, key, toks[0], toks[1:]))
+            scalars.setdefault(key, toks[1:])
+            spelled.setdefault(key, toks[0])
     return scalars, blocks
 
 

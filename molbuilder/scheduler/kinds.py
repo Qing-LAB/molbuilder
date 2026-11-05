@@ -17,7 +17,6 @@ list reading whether it still lists a job and which cluster it serves
 (`queue._READERS`).
 
 Floor 1 (`execution/architecture.md` § 2.1): data, and the words it fills.
-Stdlib-only.
 """
 from __future__ import annotations
 
@@ -28,6 +27,7 @@ from __future__ import annotations
 #: nothing else, and written by `jobset/submit.py`.
 LAUNCH_CLAIM_VAR = "MB_LAUNCHED_BY"
 LAUNCH_CLAIM = "jobset-launch"
+import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -172,6 +172,22 @@ class Kind:
         ``job_id``, the file the scheduler wrote for that job."""
         return name.format(scheduler=self.name,
                            jobid=job_id or self.header["jobid"])
+
+    def said_of_job(self, job_id: Optional[str], outputs_in,
+                    run_dir) -> Dict[str, Optional[str]]:
+        """What a launch record says of the scheduler a job was sent to
+        (`runrecord.write_launch`'s ``scheduler``): this kind, and where it
+        writes the job's error file, from the run's own folder ``run_dir`` --
+        the file the run door reads for how it ended the job (`scheduler.md`
+        R16), in ``outputs_in``; the file unnamed when the job's id was not
+        read."""
+        from ..runfiles import SCHEDULER_STDERR
+        stderr = None
+        if job_id is not None:
+            stderr = os.path.relpath(
+                Path(outputs_in)
+                / self.output_file(SCHEDULER_STDERR, job_id=job_id), run_dir)
+        return {"kind": self.name, "stderr": stderr}
 
     def directive_lines_of(self, header_text: str) -> List[str]:
         """A written header's directive lines, as it carries them."""

@@ -339,13 +339,8 @@ def _order_said(task, base: Path) -> list:
 @dataclass(frozen=True)
 class Resolved:
     """Steps 1 and 2 answered (`script-preparation.md` § 3.0), for every step
-    after them: the description, its template and the machine's record --
-    each READ ONCE by the prep that holds this -- the allocation folded once
-    and the stage's elements resolved once.  The steps after them read these
-    and none of the three files."""
-    task: "Task"
-    template: Path
-    template_text: str
+    after them: the machine's record, READ ONCE by the prep that holds this,
+    the allocation folded once and the stage's elements resolved once."""
     #: the machine's record, its activation checked
     environment: "Environment"
     allocation: Resources
@@ -384,32 +379,31 @@ class Resolved:
         return (Path(base) / bench_container(self.token)
                 if self.sweep is not None else Path(base))
 
-    def log_path(self, base) -> Path:
+    def log_path(self, calc) -> Path:
         """The pipeline log this prep writes (`script-preparation.md`
         § 4.5): on the rung's own stem -- the deck's -- the one place its
         path is composed."""
         from ..pipeline_log import log_name
-        t = self.task
-        return self.record_dir(base) / log_name(self.label, self.token,
-                                                t.engine)
+        return self.record_dir(calc.base) / log_name(self.label, self.token,
+                                                     calc.task.engine)
 
 
-def _resolve_stage(stage, *, task, request, template, template_text,
-                   environment, allocation=None, chosen=None, sweep=None,
-                   pins=None, run_settings=None, translation=None, home,
-                   target=None, provenance=None) -> Resolved:
+def _resolve_stage(stage, *, described, allocation=None, chosen=None,
+                   sweep=None, pins=None, run_settings=None, translation=None,
+                   home, target=None) -> Resolved:
     """Step 2, once (`script-preparation.md` § 3.0): the allocation folded --
     the caller's ask over the job request's, and its reporting policy -- and
     the stage's elements resolved from the template, the stage, the sweep,
     the pins and the machine's record.
 
     Asked by the prep entry at its checkpoint 4, where the job it makes is
-    placed (`job-system.md` § 5.0).  ``template`` ``None`` is refused: the
-    folder is a template PLUS a description.  ``home`` is the stage's
-    (`naming.stage_home`): its token and the label its files are
-    named on."""
+    placed (`job-system.md` § 5.0).  ``described`` is the calculation as the
+    entry read it; ``home`` is the stage's (`naming.stage_home`): its token and
+    the label its files are named on."""
     from ..resolve import ResolveError, resolve
     from .prep_inputs import fold_allocation
+    calc, environment = described.calc, described.environment
+    task, request, template_text = calc.task, calc.request, calc.template_text
     # THE JOB REQUEST'S OWN ALLOCATION, under the caller's (2026-08-24).
     # `job-request.json` carries the queue, the wall and the memory a person
     # chose for this calculation (`job_request.Allocation`), so a prepared
@@ -440,11 +434,10 @@ def _resolve_stage(stage, *, task, request, template, template_text,
                        environment=environment)
     except ResolveError as exc:
         raise PrepError(str(exc)) from exc
-    return Resolved(task=task, template=Path(template),
-                    template_text=template_text, environment=environment,
+    return Resolved(environment=environment,
                     allocation=allocation, pset=pset, token=home.token,
                     label=home.label, target=target, sweep=sweep,
-                    provenance=provenance,
+                    provenance=described.provenance,
                     sources=sources)
 
 
@@ -546,8 +539,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     from ..task import FILENAME as TASK_FILENAME
     base = Path(calc.base).resolve()
 
-    task, environment = resolved.task, resolved.environment
-    template_path, pset = resolved.template, resolved.pset
+    task, environment = calc.task, resolved.environment
+    pset = resolved.pset
     allocation, sweep, target = (resolved.allocation, resolved.sweep,
                                  resolved.target)
     # WHERE THIS PREP'S RECORD LIVES -- its job-set, STAGE-PLAN.md and
@@ -566,7 +559,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # so nothing is lost by writing that phase a moment later than it ran.
     # It is HELD, and written with the rest of the plan once every step has
     # passed (`script-preparation.md` § 4.5): a refused prep writes no log.
-    log = PipelineLog.open(resolved.log_path(base), label=resolved.label,
+    log = PipelineLog.open(resolved.log_path(calc), label=resolved.label,
                            token=resolved.token, engine=task.engine)
     log.phase("STEP 1 · MACHINE — where this job will run")
     log.received("calculation", str(base))
@@ -586,7 +579,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     log.text(format_provenance(resolved.provenance))
     seam = engine_seam(task.engine)
     log.phase("STEP 2 · RESOLVE — the values for this rung")
-    log.received(template_path.name, f"{len(pset[0].provenance)} fields")
+    log.received(calc.template.path.name, f"{len(pset[0].provenance)} fields")
     log.received("stage", pset.stage)
     log.received("the ask", _flat_resources(allocation or Resources()))
     # EACH VALUE'S SOURCE IN THE ONE VOCABULARY, the words `resolve`
@@ -934,7 +927,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     _declared, _record = points_of(calc.task), record_of(calc.task)
     _points = [(d, {**rung.wrapper_at(pt),
                     "point": PointOfRun(
-                        relaunch=_declared.relaunch_of(pset.stage, pt),
+                        relaunch=_declared.relaunch_of(pt),
                         steps=dict(_record.steps), role=rung.role_at(pt))})
                for d, pt in rung.points]
     dirs = prep_jobset(js, base, calculation=str(task.calculation),
@@ -1876,16 +1869,8 @@ class Described:
     def task(self) -> "Task":
         return self.calc.task
 
-    @property
-    def template(self) -> Path:
-        return self.calc.template.path
 
-    @property
-    def template_text(self) -> str:
-        return self.calc.template_text
-
-
-def checked(base, described: Described, *, target) -> Described:
+def checked(described: Described, *, target) -> Described:
     """CHECKPOINTS 3 AND 4 (`job-system.md` § 5.0), on ``described``:
 
     3 · § 6.6's PREFLIGHT, at its live moment (R5, 2026-08-12): prep on a
@@ -1901,8 +1886,9 @@ def checked(base, described: Described, *, target) -> Described:
     the ledger's *prepared* line each say (`configuration.md` § 2.2)."""
     from ..runtime_config import config_provenance
     from ..validation.task import preflight
-    base = Path(base).resolve()
-    issues = preflight(described.task, template_text=described.template_text,
+    base = described.calc.base
+    issues = preflight(described.task,
+                       template_text=described.calc.template_text,
                        request=described.calc.request)
     described.findings[:] = ([i for i in issues if i.severity != "error"]
                              + _order_said(described.task, base))
@@ -1919,7 +1905,7 @@ def checked(base, described: Described, *, target) -> Described:
     return described
 
 
-def plan_stage(base, described: Described, kind: str, stage: str, *,
+def plan_stage(described: Described, kind: str, stage: str, *,
                target: Optional[str] = None, allocation=None,
                env: Optional[str] = None,
                emit_sbatch: bool = True, plan, notes: Optional[list] = None,
@@ -1950,9 +1936,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     from .placement import launch_refusal, placed
     from ..engine_table import engine as _engine_rec
     from ..runtime_config import routing_of
-    base = Path(base).resolve()
+    base = described.calc.base
     task, environment = described.task, described.environment
-    template_text = described.template_text
     notes = [] if notes is None else notes
     deck_findings: list = []
 
@@ -2008,13 +1993,11 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     #     and the stage resolved -- what the checks below ask of the job,
     #     and what every step after reads.
     resolved = _resolve_stage(
-        stage, task=task, request=described.calc.request,
-        template=described.template,
-        template_text=template_text, environment=environment,
+        stage, described=described,
         allocation=allocation, chosen=chosen, sweep=sweep, pins=pins,
         run_settings=run_settings,
         translation=translation, home=stage_home(base, task, stage),
-        target=target, provenance=described.provenance)
+        target=target)
     if kind == "task":
         #  ...AND ITS GPU REQUEST AGREES WITH ITSELF (`execution/gpu.md`
         #  G5): a run on the GPU states how many, a run on the CPU none --
@@ -2099,7 +2082,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                  or LOCAL_TARGET))
     # THE PIPELINE LOG, which every prep writes (`script-preparation.md`
     # § 4.5): where this one is, by the rule its writer asks.
-    out.pipeline_log = resolved.log_path(base)
+    out.pipeline_log = resolved.log_path(described.calc)
     out.placement = resolved.placement
     out.fit = resolved.fit
     out.sources = resolved.sources
@@ -2171,7 +2154,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                                continues=job.relaunch_continues)
                            + " (job-system.md § 5.4)"}]
                  if out.launched
-                 else at_launch(pcalc, stage, job=job))
+                 else at_launch(pcalc, stage))
     if job is not None and run_dir is not None:
         r = job.resources
         out.resources = {"mpi_np": r.mpi_np,
@@ -2273,9 +2256,9 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
         why = prepared_already(described.calc, stage)
         if why:
             raise PrepError(why)
-        checked(base, described, target=target)
+        checked(described, target=target)
         plan = Plan()
-        out = plan_stage(base, described, "bench", stage, target=target,
+        out = plan_stage(described, "bench", stage, target=target,
                          allocation=allocation, env=env,
                          emit_sbatch=emit_sbatch, plan=plan, notes=notes,
                          # THE GRID, said before anything is rendered.
@@ -2727,7 +2710,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     previews: Dict[int, List[PrepAnswer]] = {}
     try:
         try:
-            checked(base, description, target=target)
+            checked(description, target=target)
             if on_found is not None:
                 on_found(description.findings, [])
             # 4a · A CALCULATION THAT REUSES A FINISHED ONE
@@ -2756,7 +2739,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                         f"R-P22).")
             for n in numbers:
                 previews[n] = [plan_stage(
-                    base, description, "task", at, target=target,
+                    description, "task", at, target=target,
                     allocation=allocation,
                     env=env, emit_sbatch=emit_sbatch, plan=the_plan,
                     copied=reuse is not None and reuse.copied(n),

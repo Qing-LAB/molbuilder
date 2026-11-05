@@ -264,7 +264,7 @@ def point_folders(base, task, stage: str, *, frames: Optional[int] = None
             for pt in rung_points(task, stage, frames=n)]
 
 
-def points_in(run, calc, stage: str) -> List[Tuple[Path, Point]]:
+def points_in(calc, stage: str, run) -> List[Tuple[Path, Point]]:
     """A run's points -- ``[(run-<n>/<point>, Point)]`` -- or ``[]`` for a
     run of a rung that runs once (`engines/transport.md` § 2a.11): the
     points it HOLDS, each opened at its launch -- a point the description

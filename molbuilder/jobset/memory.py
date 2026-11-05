@@ -191,14 +191,10 @@ def held_by(calc, stage: str) -> List[Held]:
     peak."""
     from ..runrecord import RunRef
     from ..runs import record_of, run_of, state_of
-    from .naming import stage_home
     from .runstatus import run_folders
-    base, task = Path(calc.base), calc.task
-    home = stage_home(base, task, stage)
-    if home.dir is None or not home.dir.is_dir():
-        return []
+    base = Path(calc.base)
     out: List[Held] = []
-    for _n, folder, pt in run_folders(calc, home.dir, home.name):
+    for folder, pt in run_folders(calc, stage):
         run = run_of(folder)
         if run is None:
             continue

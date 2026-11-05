@@ -2560,7 +2560,7 @@ below (taken over whole, never run again) is a run of points'.
 
 **One door for each place.** A rung's runs are `paths.attempts_in`'s, as every
 stage's; a swept run's points are the ones it holds —
-`transport.stages.points_in(run, calc, stage)`'s: a point the description
+`transport.stages.points_in(calc, stage, run)`'s: a point the description
 gained after the run was opened is not the run's
 ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*),
 and a launch opens the points prep wrote; the prepared point decks

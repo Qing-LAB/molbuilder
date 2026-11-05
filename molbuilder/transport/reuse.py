@@ -38,7 +38,7 @@ that walks it (:func:`shared_into`, :func:`carry_shared`).
 A door on floor 4.  Its prepared-and-launched half opens the finished
 calculation through the calculation door, reads its runs through the run
 doors -- their state (`continuation.points_state`, `continuation.read_run`,
-`continuation.done`), and § 6.1's question through the gather's door
+`continuation.point_done`), and § 6.1's question through the gather's door
 (`gather.ran_otherwise`) -- and writes only into the plan it is handed; its
 described half writes the new calculation's folder.  The finished
 calculation is never written.
@@ -1208,11 +1208,10 @@ def _finished_point(finished, stage: str, pt):
     """``(the finished point's folder, its run, why)`` -- ``stage``'s newest
     run in the finished calculation at ``pt``, done, ``why`` ``None`` -- or
     ``(None, run, why)``: the newest run named and what it is instead, in
-    the done-door's words (`continuation.done`); ``why`` ``None`` for a
+    the done-door's words (`continuation.point_done`); ``why`` ``None`` for a
     point the finished calculation does not hold."""
     from ..runrecord import launch_record
-    from .stages import must_hold
-    from ..jobset.continuation import done
+    from ..jobset.continuation import point_done
     from ..jobset.naming import stage_home
     fbase, ftask = Path(finished.base), finished.task
     names = stage_home(fbase, ftask, stage).names
@@ -1229,10 +1228,7 @@ def _finished_point(finished, stage: str, pt):
     src = _at(finished, stage, newest, pt)
     if src is None:
         return None, newest, None
-    ok, why = done(src, names, launch=launch,
-                   must_hold=must_hold(stage, ftask.label, src,
-                                       base_dir=fbase),
-                   launched_in=newest)
+    ok, why = point_done(finished, stage, newest, src, pt, names)
     if not ok:
         return None, newest, (f"{_shown(fbase, src)} is "
                               f"short of done -- {why}")
@@ -1272,10 +1268,9 @@ def _member(calc, finished, stage: str, once, copied: set
     what decided it)`` -- each stage it takes inputs from not copied in, and
     the finished run's state or each difference of its own deck."""
     from ..paths import FIRST_ATTEMPT, attempt_dir, attempts_in
-    from ..runrecord import launch_record, read_copied_from
-    from .stages import (frames_of, inputs_of, must_hold,
-                                    rung_points)
-    from ..jobset.continuation import done, read_points, read_run, usable
+    from ..runrecord import read_copied_from
+    from .stages import frames_of, inputs_of, rung_points
+    from ..jobset.continuation import point_done, read_points, read_run, usable
     from .gather import ran_otherwise
     from ..jobset.naming import stage_home
     # EVERY STAGE IT TAKES INPUTS FROM COPIED IN -- by this decision, or its
@@ -1324,10 +1319,7 @@ def _member(calc, finished, stage: str, once, copied: set
             if src is None:
                 return no(f"{stage}: {shown} holds no "
                           f"{_words(pt)} point")
-            ok, said = done(src, names, launch=launch,
-                            must_hold=must_hold(stage, ftask.label, src,
-                                                base_dir=fbase),
-                            launched_in=newest)
+            ok, said = point_done(finished, stage, newest, src, pt, names)
             if not ok:
                 return no(f"{stage}: {_shown(fbase, src)} "
                           f"is short of done -- {said}")
@@ -1344,9 +1336,7 @@ def _member(calc, finished, stage: str, once, copied: set
             # done door asks of a point (§ 2a.16, *is that point*); the deck
             # it is compared with below renders that point's energies only
             # when it is (:func:`that_point`).
-            ok, said = done(newest, names, launch=launch_record(newest),
-                            must_hold=must_hold(stage, ftask.label, newest,
-                                                base_dir=fbase))
+            ok, said = point_done(finished, stage, newest, newest, None, names)
             if not ok:
                 return no(f"{stage}: {shown} is short of done -- {said}")
         pairs.append((None, newest))
@@ -1401,8 +1391,8 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     It decides nothing: a stage run once is copied when its run finished
     (the user, 2026-10-25)."""
     from ..runrecord import launch_record
-    from .stages import frames_of, must_hold, rung_points
-    from ..jobset.continuation import done, stage_run_state
+    from .stages import frames_of, rung_points
+    from ..jobset.continuation import point_done, stage_run_state
     from ..jobset.naming import stage_home
     newest = _newest(finished, stage)
     if newest is None:
@@ -1421,10 +1411,7 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     for pt in theirs or [None]:
         folder = (RunPlace.of(newest).point(pt.rel) if pt is not None
                   else newest)
-        ok, said = done(folder, names, launch=launch,
-                        must_hold=must_hold(stage, ftask.label, folder,
-                                            base_dir=fbase),
-                        launched_in=newest if pt is not None else None)
+        ok, said = point_done(finished, stage, newest, folder, pt, names)
         if not ok:
             missed.append(f"{pt.words() if pt is not None else 'its result'}"
                           f" ({said})")

@@ -140,7 +140,7 @@ def transport_inputs(calc, stage: str, *, point=None,
         # output saying the engine stopped -- or the refusal is worded by
         # its state, as a stage's own default is (`state_remedy`).
         from ..jobset.materialize import latest_attempt
-        newest = latest_attempt(up_dir) if up_dir.is_dir() else None
+        newest = latest_attempt(up_dir)
         if up_points and newest is not None:
             got = once.points_run(upstream, newest)
             if got.state == "unreadable":

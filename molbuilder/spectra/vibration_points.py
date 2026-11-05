@@ -17,7 +17,7 @@ from typing import List, Tuple
 
 from ..calcdirs import RunPlace
 from ..runfiles import COORDINATES_FILE, ROLE_SPECTRA, compose
-from ..runpoints import index_at, index_of, read_index
+from ..runpoints import index_at
 from ..siesta.vibration_phases import (Call, calls_of, must_hold, phase,
                                        point_entry)
 from ..jobset.points import Container, PointsOf, Start
@@ -47,21 +47,19 @@ def _declared_rung_points(calc, stage: str, *, read=None
     return _prepared(_job_phases(calc, stage))
 
 
-def _declared_points_in(run, calc, stage: str) -> List[Tuple[Path, Call]]:
+def _declared_points_in(calc, stage: str, run) -> List[Tuple[Path, Call]]:
     """A run's calls -- those its index lists, each with its folder below
     the run; before launch wrote the index, the calls prep opened (the
     plan's row's phases as ``calc`` holds the plan, :func:`_job_phases`).
-    The index is the run's one, written by the launch that opened the run
-    (`runpoints.index_of`, which refuses an older molbuilder's naming
-    `jobset migrate`)."""
+    The index is the run's one, written by the launch that opened the run."""
     from ..jobset.naming import stage_home
     place = RunPlace.of(run)
-    path = index_of(place.run_dir,
-                    stage_home(calc.base, calc.task, stage).names)
-    if path is None:
+    index = index_at(place.run_dir,
+                     stage_home(calc.base, calc.task, stage).names)
+    if index is None:
         return [(place.point(c.rel), c)
                 for c in _prepared(_job_phases(calc, stage))]
-    return [(place.point(c.rel), c) for c in calls_of(read_index(path))]
+    return [(place.point(c.rel), c) for c in calls_of(index)]
 
 
 def _entry(calc, stage: str, point: Call, deck) -> dict:
@@ -71,9 +69,8 @@ def _entry(calc, stage: str, point: Call, deck) -> dict:
     return {k: e[k] for k in ("words", "phase", "round", "facts")}
 
 
-def _must_hold(stage: str, label: str, base, point: Call, folder,
-               deck=None):
-    return must_hold(point, label)
+def _must_hold(calc, stage: str, point: Call, folder, deck=None):
+    return must_hold(point, calc.task.label)
 
 
 def _start_of(calc, stage: str, point: Call, points) -> Start:
@@ -115,13 +112,10 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
     return facts
 
 
-def _also_needs(run, names, task, stage: str, base):
+def _also_needs(calc, stage: str, run, index: dict):
     """What the run needs beyond its calls done: its finish step ended (the
     index's entry; one that exited non-zero is the run's state's own rule,
     `runpoints.run_state`) and its result on disk (§ 5.11 § 7)."""
-    index = index_at(run, names)
-    if index is None:
-        return "no index of its calls"
     if (index.get("finish") or {}).get("ended") is None:
         return "the finish did not end"
     from ..runs import on_label_at
@@ -140,10 +134,9 @@ POINTS = PointsOf(rung_points=_declared_rung_points,
                   point_of=Call.from_entry,
                   must_hold=_must_hold,
                   start_of=_start_of,
-                  verdict_counts=lambda stage, point: phase(
+                  verdict_counts=lambda point: phase(
                       point.phase).verdict_counts,
-                  relaunch_of=lambda stage, point: phase(
-                      point.phase).relaunch,
+                  relaunch_of=lambda point: phase(point.phase).relaunch,
                   containers=_containers,
                   run_facts=_run_facts,
                   also_needs=_also_needs,

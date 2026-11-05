@@ -724,23 +724,31 @@ def _onto_the_card(rec: "_Records", task, card: dict) -> List[str]:
 
 
 def _migrate_records(rec: "_Records"):
-    """`task.json` and every `job-set.json` of the calculation, each key an
-    older file left out given the meaning its absence had, and a key a
-    release retired removed -- on the bodies read once (:class:`_Records`),
-    since the readers refuse such a file, and each rewritten file checked by
-    its reader.  Nothing is written here: returns what changed (a line
-    each), the files to write (:class:`_Writes`) and the description as
-    rewritten; the bodies in ``rec`` are the decided ones."""
-    import json
-
-    from ..persist import json_text
-    from ..task import FILENAME as TASK_FILENAME
-    from ..task import Task, never_as_zero, path_of, write_task
-    from .model import JOB_RETIRED_KEYS, JobSet
-    base = rec.base
+    """`task.json`, `job-request.json` and every `job-set.json` of the
+    calculation, each key an older file left out given the meaning its absence
+    had, and a key a release retired removed -- on the bodies read once
+    (:class:`_Records`), since the readers refuse such a file, and each
+    rewritten file checked by its reader.  One function per record, so no
+    record's names reach another's.  Nothing is written here: returns what
+    changed (a line each), the files to write (:class:`_Writes`) and the
+    description as rewritten; the bodies in ``rec`` are the decided ones."""
     said: List[str] = []
     writes = _Writes()
+    task, request_body = _migrate_description(rec, said, writes)
+    _migrate_request(rec, task, request_body, said, writes)
+    _migrate_job_sets(rec, said, writes)
+    return said, writes, task
 
+
+def _migrate_description(rec: "_Records", said: List[str], writes: "_Writes"):
+    """`task.json`: returns the description as rewritten and, for one written
+    before the split, the job request's body taken out of it (``None`` for any
+    other)."""
+    import json
+
+    from ..task import FILENAME as TASK_FILENAME
+    from ..task import Task, never_as_zero, path_of, write_task
+    base = rec.base
     task_path = path_of(base)
     obj = rec.task
     lines: List[Tuple[str, str]] = []          # (what changed, its rule)
@@ -778,70 +786,7 @@ def _migrate_records(rec: "_Records"):
         st.pop("enabled")
         lines.append((f"stages[{name}].enabled removed (2026-10-03: a "
                       f"stage has no on/off switch)", "2026-10-03"))
-    # A STAGE OLDER VERSIONS WROTE THAT THE PAIR NO LONGER HOLDS beside its
-    # others (the kind table's `retired`, `execution/architecture.md`
-    # § 3.3) -- a SIESTA vibration's `relax`, since 2.42.0 one run in
-    # phases (`engines/vibration.md` § 5.11 § 9): folded into the others,
-    # its overrides carried; a value the stages state otherwise is refused
-    # by name.
-    from ..kind_table import pair
-    _part = pair(str(obj.get("calculation", "")),
-                 str((obj.get("engine") or {}).get("name", "")))
-    retired = _part.retired if _part is not None else None
-    if retired is not None:
-        from ..identity import stage_key
-        stages = [st for st in (obj.get("stages") or [])
-                  if isinstance(st, dict)]
-        old = [st for st in stages
-               if stage_key(str(st.get("name", "")))
-               == stage_key(retired.stage)]
-        if old and len(stages) > 1:
-            relax = old[0]
-            rest = [st for st in stages if st is not relax]
-            # THE RETIRED ROLE'S OWN ITEMS go onto the others (§ 5.11 § 9):
-            # those whose `stages` name that role and no other of the kind
-            # -- an item every role reads, alone or as a set (`scf`), is
-            # the others' to state.  Any other value the retired stage set
-            # for its own run is a conflict, named -- one run of points
-            # computes every phase at one value.
-            from ..kind_table import kind
-            from ..template import catalogue, select
-            others = set(kind(_part.kind).role_names) - {retired.role}
-            role_items = {
-                it.name for it in select(catalogue(), engine=_part.engine,
-                                         stages=(retired.role,))
-                if it.stages and not set(it.stages) & others}
-            overrides = dict(relax.get("overrides") or {})
-            carried = {k: v for k, v in overrides.items()
-                       if k in role_items}
-            foreign = [k for k in overrides if k not in role_items]
-            for st in rest:
-                own = dict(st.get("overrides") or {})
-                clash = sorted(
-                    [k for k in carried if k in own and own[k] != carried[k]]
-                    + [k for k in foreign if own.get(k) != overrides[k]])
-                if clash:
-                    raise MigrateError(
-                        f"stage {relax.get('name')!r} overrides "
-                        f"{', '.join(clash)}, which stage {st.get('name')!r} "
-                        f"does not state the same way -- one run of points "
-                        f"carries one value for each, every phase computed "
-                        f"at it (engines/vibration.md 5.11 9): state "
-                        f"{'it' if len(clash) == 1 else 'them'} on "
-                        f"{st.get('name')!r} or remove "
-                        f"{'it' if len(clash) == 1 else 'them'}, in "
-                        f"{TASK_FILENAME}, then run the migration again; "
-                        f"nothing was written.")
-                if carried:
-                    st["overrides"] = {**own, **carried}
-            obj["stages"] = rest
-            rec.folded_stages[str(relax.get("name"))] = retired.since
-            lines.append((
-                f"stage {relax.get('name')!r} folded into "
-                f"{', '.join(repr(st.get('name')) for st in rest)} "
-                f"({retired.since}: {retired.why}"
-                + (f"; its overrides {', '.join(sorted(carried))} carried"
-                   if carried else "") + ")", retired.since))
+    _fold_retired_stage(rec, obj, lines)
     if obj.pop("centre_junction", None) is not None:
         # RETIRED IN 2.6.0: the junction enters its calculation centred
         # (`model/structure-periodicity.md` § 6.0).
@@ -910,9 +855,89 @@ def _migrate_records(rec: "_Records"):
         writes.add(task_path, partial(write_task, base, task),
                    {rule for _ln, rule in lines})
         said += [f"{TASK_FILENAME}: {ln}" for ln, _rule in lines]
+    return task, request_body
+
+
+def _fold_retired_stage(rec: "_Records", obj: dict, lines: list) -> None:
+    """A stage older versions wrote that the pair no longer holds, folded into
+    the others (below); ``lines`` takes what changed and its rule."""
+    from ..task import FILENAME as TASK_FILENAME
+    # A STAGE OLDER VERSIONS WROTE THAT THE PAIR NO LONGER HOLDS beside its
+    # others (the kind table's `retired`, `execution/architecture.md`
+    # § 3.3) -- a SIESTA vibration's `relax`, since 2.42.0 one run in
+    # phases (`engines/vibration.md` § 5.11 § 9): folded into the others,
+    # its overrides carried; a value the stages state otherwise is refused
+    # by name.
+    from ..kind_table import pair
+    _part = pair(str(obj.get("calculation", "")),
+                 str((obj.get("engine") or {}).get("name", "")))
+    retired = _part.retired if _part is not None else None
+    if retired is not None:
+        from ..identity import stage_key
+        stages = [st for st in (obj.get("stages") or [])
+                  if isinstance(st, dict)]
+        old = [st for st in stages
+               if stage_key(str(st.get("name", "")))
+               == stage_key(retired.stage)]
+        if old and len(stages) > 1:
+            relax = old[0]
+            rest = [st for st in stages if st is not relax]
+            # THE RETIRED ROLE'S OWN ITEMS go onto the others (§ 5.11 § 9):
+            # those whose `stages` name that role and no other of the kind
+            # -- an item every role reads, alone or as a set (`scf`), is
+            # the others' to state.  Any other value the retired stage set
+            # for its own run is a conflict, named -- one run of points
+            # computes every phase at one value.
+            from ..kind_table import kind
+            from ..template import catalogue, select
+            others = set(kind(_part.kind).role_names) - {retired.role}
+            role_items = {
+                it.name for it in select(catalogue(), engine=_part.engine,
+                                         stages=(retired.role,))
+                if it.stages and not set(it.stages) & others}
+            overrides = dict(relax.get("overrides") or {})
+            carried = {k: v for k, v in overrides.items()
+                       if k in role_items}
+            foreign = [k for k in overrides if k not in role_items]
+            for st in rest:
+                own = dict(st.get("overrides") or {})
+                clash = sorted(
+                    [k for k in carried if k in own and own[k] != carried[k]]
+                    + [k for k in foreign if own.get(k) != overrides[k]])
+                if clash:
+                    raise MigrateError(
+                        f"stage {relax.get('name')!r} overrides "
+                        f"{', '.join(clash)}, which stage {st.get('name')!r} "
+                        f"does not state the same way -- one run of points "
+                        f"carries one value for each, every phase computed "
+                        f"at it (engines/vibration.md 5.11 9): state "
+                        f"{'it' if len(clash) == 1 else 'them'} on "
+                        f"{st.get('name')!r} or remove "
+                        f"{'it' if len(clash) == 1 else 'them'}, in "
+                        f"{TASK_FILENAME}, then run the migration again; "
+                        f"nothing was written.")
+                if carried:
+                    st["overrides"] = {**own, **carried}
+            obj["stages"] = rest
+            rec.folded_stages[str(relax.get("name"))] = retired.since
+            lines.append((
+                f"stage {relax.get('name')!r} folded into "
+                f"{', '.join(repr(st.get('name')) for st in rest)} "
+                f"({retired.since}: {retired.why}"
+                + (f"; its overrides {', '.join(sorted(carried))} carried"
+                   if carried else "") + ")", retired.since))
+
+
+def _migrate_request(rec: "_Records", task, request_body, said: List[str],
+                     writes: "_Writes") -> None:
+    """`job-request.json`: written from the body the split took out of the
+    description, or the one beside it read raw and rewritten; ``rec.request``
+    holds it for every later step."""
+    from .. import job_request as _jr
+    from .. import template as _T
+    base = rec.base
+    jr_path = _jr.path_of(base)
     if request_body is not None:
-        from .. import job_request as _jr
-        jr_path = _jr.path_of(base)
         if jr_path.exists():
             raise MigrateError(
                 f"{jr_path.name} is already there beside a description "
@@ -934,9 +959,6 @@ def _migrate_records(rec: "_Records"):
         # what every later step composes the calculation with -- and the
         # template's run-setting values onto its card, by what the template
         # holds (`execution/job-request.md` § 8).
-        from .. import job_request as _jr
-        from .. import template as _T
-        jr_path = _jr.path_of(base)
         body = _read_raw(jr_path)
         card = dict(body.get("execution") or {})
         moved = _onto_the_card(rec, task, card)
@@ -984,7 +1006,15 @@ def _migrate_records(rec: "_Records"):
                  for n, since in folded.items()]
         said += _cards_said(jr_path.name, off_cards)
 
+
+def _migrate_job_sets(rec: "_Records", said: List[str],
+                      writes: "_Writes") -> None:
+    """Every `job-set.json` of the calculation -- the root's and each
+    benchmark's."""
     from .. import template as _T
+    from ..persist import json_text
+    from .model import JOB_RETIRED_KEYS, JobSet
+    base = rec.base
     again: List[Tuple[bool, str]] = []
     for folder, d in rec.jobsets.items():
         js_path = JobSet.path_of(folder)
@@ -1068,18 +1098,17 @@ def _migrate_records(rec: "_Records"):
         # computes unchanged (`execution/job-request.md` § 8); a
         # benchmark's trials by their benchmark's prep anew.
         if retired_res:
-            way = _prepare_again(folder, rewritten, rec, base)
+            way = _prepare_again(folder, rewritten, rec)
             if way:
                 again.append((folder == base, way))
     # A BENCHMARK'S WAY BACK FIRST: the state it restores is older than
     # the root's prep the last line asks for.
     said += ([w for root, w in again if not root]
              + [w for root, w in again if root])
-    return said, writes, task
 
 
-def _prepare_again(folder: Path, js: "JobSet", rec: "_Records",
-                   base: Path) -> Optional[str]:
+def _prepare_again(folder: Path, js: "JobSet", rec: "_Records"
+                   ) -> Optional[str]:
     """The way on for a job set an older molbuilder prepared (a run setting
     it carried retired since), ``js`` as this migration rewrites it: its
     groups prepared again; a benchmark's prep anew where a trial is not yet
@@ -1088,6 +1117,7 @@ def _prepare_again(folder: Path, js: "JobSet", rec: "_Records",
     composer of each (`commands`)."""
     from ..runrecord import LaunchRecordError
     from .commands import block, prep_group_lines, rollback
+    base = rec.base
     from .materialize import latest_attempt, newest_launched
     from .model import JobSet
     from .naming import job_dir_names
@@ -1116,25 +1146,24 @@ def _prepare_again(folder: Path, js: "JobSet", rec: "_Records",
             + block(prep_group_lines(groups, base=base)))
 
 
-def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
+def _migrate_machine_record(rec: "_Records", said: List[str],
+                            writes: "_Writes") -> None:
     """The calculation's copy of its machine's record, when an older
     molbuilder wrote it (`record.older_record`): its scheduler word as the
     block -- the kind, and each command by the name the kind gives it, run
     from PATH as before (`scheduler/kinds.toml`); and how a shell there
     enters its environment, written ``script_generation`` before
     2026-10-02, under its name now, ``env_init`` -- one block at two values
-    refused by name.  Returns what changed and the file to write; nothing
-    for a copy that reads, or none."""
+    refused by name.  Nothing for a copy that reads, or none."""
     from ..scheduler.kinds import KindError, kind
     from ..scheduler.record import (SCHEMA, Environment, calculation_record,
                                     older_record, write_environment)
-    writes = _Writes()
-    path = calculation_record(base)
+    path = calculation_record(rec.base)
     if not path.is_file():
-        return [], writes
+        return
     raw = _read_raw(path)
     if not older_record(raw):
-        return [], writes
+        return
     word = raw.get("scheduler")
     try:
         k = kind(str(word))
@@ -1161,9 +1190,9 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
     except (ValueError, TypeError, KeyError) as exc:
         raise _refused_rewrite(path, exc) from None
     writes.add(path, partial(write_environment, env, path), rules)
-    return ([f"{path.name}: scheduler {word!r} -> {env.scheduler.said()} "
+    said += [f"{path.name}: scheduler {word!r} -> {env.scheduler.said()} "
              f"(2.10.1: the kind and where its commands are; each run "
-             f"from PATH, as before)"] + renamed, writes)
+             f"from PATH, as before)"] + renamed
 
 
 @dataclass(frozen=True)
@@ -1306,10 +1335,7 @@ def migrate_state(base) -> List[str]:
     # rewritten (`architecture.md` A16, migrate's rule).
     rec = _Records.read(base)
     said, writes, task = _migrate_records(rec)
-    m_said, m_writes = _migrate_machine_record(base)
-    said += m_said
-    for path, (write, rules) in m_writes.items():
-        writes.add(path, write, rules)
+    _migrate_machine_record(rec, said, writes)
     try:
         decision = _migrate_template(rec, task)
     except MigrateError:

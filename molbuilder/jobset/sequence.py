@@ -12,7 +12,6 @@ sequence's request, `group.sequence_request`'s (floor 3); its plan,
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -61,22 +60,16 @@ class Record:
                               else None),
                 "launched_at": self.launched_at, "job_id": self.job_id}
 
-    def run_said(self, *, job_id: Optional[str], run_dir, base,
-                 kind) -> Dict:
+    def run_said(self, *, job_id: Optional[str], run_dir, base) -> Dict:
         """What a run a group's launch inside this sequence sends records
         of the job it rides (`runrecord.write_launch`'s keys): the job's
-        mode, line, id, placement -- and where its scheduler writes the
-        job's error file, from the run's own folder (``kind``, the
-        scheduler's, names that file for ``job_id``)."""
-        from ..runfiles import SCHEDULER_STDERR
-        scheduler = None
-        if self.scheduler is not None:
-            stderr = None
-            if job_id is not None:
-                err = (Path(base) / self.scheduler["outputs_in"]
-                       / kind.output_file(SCHEDULER_STDERR, job_id=job_id))
-                stderr = os.path.relpath(err, run_dir)
-            scheduler = {"kind": self.scheduler["kind"], "stderr": stderr}
+        mode, line, id, placement -- and where its scheduler, the kind this
+        record states, writes the job's error file, from the run's own
+        folder."""
+        from ..scheduler.kinds import kind
+        scheduler = (kind(self.scheduler["kind"]).said_of_job(
+            job_id, Path(base) / self.scheduler["outputs_in"], run_dir)
+                     if self.scheduler is not None else None)
         return {"mode": self.mode, "command": list(self.command),
                 "job_id": job_id if self.mode == "submit" else None,
                 "placed_on": self.placed_on, "scheduler": scheduler}

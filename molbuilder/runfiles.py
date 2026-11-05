@@ -2655,13 +2655,15 @@ def manifest(label: str, stage: Optional[str], *,
         # engine, which the description names.
         name = shown(_template(a, label, stage),
                      **({"engine": engine} if engine else {}))
-        rows.append({"name": name,
-                     "what": a.what,
-                     "when": a.when,
-                     "level": a.level,
-                     "where": LEVEL_WHERE.get(a.level, ""),
-                     "only": a.only})
+        rows.append(row_words(a, name))
     return rows
+
+
+def row_words(a: "Artifact", name: str) -> dict:
+    """One row of the catalogue as a page shows it, under the name it is
+    spelled by there -- the one form of a row on the wire."""
+    return {"name": name, "what": a.what, "when": a.when, "level": a.level,
+            "where": LEVEL_WHERE.get(a.level, ""), "only": a.only}
 
 
 def shown(template: str, **fields) -> str:

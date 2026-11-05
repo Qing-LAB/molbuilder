@@ -361,7 +361,7 @@ async function init() {
     if (list) {
       list.classList.add("is-empty");
       const reason = rootsResp.ok
-        ? "No file-picker roots configured."
+        ? "The projects folder cannot be read on this machine."
         : ("File-picker roots unavailable: "
            + (rootsResp.error || "unknown error"));
       // The same row list.js draws when a listing fails: the envelope's

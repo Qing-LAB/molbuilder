@@ -89,7 +89,7 @@ class PointsOf:
     #: ``(entry) -> point``: the point an entry of the run's index is -- a
     #: planned point a launch again takes with its planner.
     point_of: Callable
-    #: ``(stage, label, base, point, folder, deck=None) ->
+    #: ``(calc, stage, point, folder, deck=None) ->
     #: [(product, words)]``: what the point in ``folder`` must hold to be
     #: DONE, each with the words its absence is said in -- the list the
     #: done door is asked with (`continuation.done`) and the index carries
@@ -99,12 +99,12 @@ class PointsOf:
     #: ``(calc, stage, point, points) -> Start``: its start and its needs,
     #: among ``points``, the run's in the listing order.
     start_of: Callable
-    #: ``(stage, point) -> bool``: whether its VERDICT counts toward done
+    #: ``(point) -> bool``: whether its VERDICT counts toward done
     #: -- a vibration's relaxation is done finished, converged or not.
-    verdict_counts: Callable = lambda stage, point: True
-    #: ``(stage, point) -> "again" | "continue"``: what a launch again does
+    verdict_counts: Callable = lambda point: True
+    #: ``(point) -> "again" | "continue"``: what a launch again does
     #: with it not done (`runpoints.AGAIN`, `runpoints.CONTINUE`).
-    relaunch_of: Callable = lambda stage, point: AGAIN
+    relaunch_of: Callable = lambda point: AGAIN
     #: ``(calc, stage) -> (Container, ...)``: the folders below a run that
     #: hold its planned points; ``()`` for a kind with none.
     containers: Callable = lambda calc, stage: ()
@@ -112,23 +112,23 @@ class PointsOf:
     #: the run, for its index -- ``carried`` those of the run whose planner
     #: a launch again took over, ``deck`` a prepared point's deck's path.
     run_facts: Callable = (lambda calc, stage, *, carried, deck: {})
-    #: ``(run_dir, names, task, stage, base) -> Optional[str]``: what the
+    #: ``(calc, stage, run_dir, index) -> Optional[str]``: what the
     #: run needs BEYOND its points done to be finished -- ``None`` when
     #: nothing, else why not: a vibration's finish step, which writes the
     #: result once no call is left (`engines/vibration.md` § 5.11 § 7).
-    also_needs: Callable = lambda run, names, task, stage, base: None
+    also_needs: Callable = lambda calc, stage, run, index: None
     #: ``(point) -> bool``: whether a stage that continues from another
     #: (`ladder.stage_before`) takes ``point`` over from that stage's run
     #: -- never computing it itself -- where that run has it done: a
     #: displacement sweep's later stage, the relaxation
     #: (`engines/vibration.md` § 5.9).
     carried: Callable = lambda point: False
-    #: ``(stage) -> point | None``: the one point a run of ``stage`` is
+    #: ``() -> point | None``: the one point a run of a stage is
     #: when the rung runs once -- a transport rung's, at 0 V and no frame
     #: (`engines/transport.md` § 2a.10) -- what :func:`point_of` answers
     #: for the run of a rung whose folder opens its calculation's report at
     #: a point; ``None`` for a kind with none.
-    one_point: Callable = lambda stage: None
+    one_point: Callable = lambda: None
 
 
 def record_of(task):
@@ -136,8 +136,7 @@ def record_of(task):
     (`kind_table.RunOfPoints`, `runs-of-points.md` § 2.1) -- ``None`` for
     a pair whose every rung runs once."""
     from ..kind_table import run_of_points
-    return run_of_points(str(getattr(task, "calculation", "")),
-                         str(getattr(task, "engine", "")))
+    return run_of_points(str(task.calculation), str(task.engine))
 
 
 def points_of(task) -> Optional[PointsOf]:
@@ -145,8 +144,7 @@ def points_of(task) -> Optional[PointsOf]:
     (``declaration``, `execution/architecture.md` § 3.3) -- or ``None`` for
     a pair whose every rung runs once."""
     from ..kind_table import part_of
-    return part_of(str(getattr(task, "calculation", "")),
-                   str(getattr(task, "engine", "")), "points")
+    return part_of(str(task.calculation), str(task.engine), "points")
 
 
 def walls_of(task, n: int) -> int:
@@ -168,7 +166,7 @@ def carried_of(calc, stage: str) -> tuple:
             if pts is not None else ())
 
 
-def point_of(folder, calc):
+def point_of(calc, folder):
     """THE POINT A FOLDER IS (`execution/architecture.md` § 3.2) -- by its
     kind's declaration, of the folder ``calcdirs.where`` places: a point's
     folder below a run of points, its point (the declaration's walk of the
@@ -182,7 +180,7 @@ def point_of(folder, calc):
     caller holds it (A16).  The point object, served by its one wire form
     (``to_wire()``)."""
     from .. import calcdirs
-    from ..identity import parse_token
+    from ..identity import stage_name
     from ..kind_table import kind
     from ..runrecord import LaunchRecordError
     # A ``shared/`` FOLDER IS READ WITH THE POINT IT LIES IN
@@ -193,11 +191,10 @@ def point_of(folder, calc):
     declared = points_of(calc.task)
     if declared is None:
         return None
-    stage = parse_token(at.stage)[1]
+    stage = stage_name(at.stage)
     if at.what == calcdirs.POINT:
         try:
-            return next((pt for _f, pt in declared.points_in(
-                at.run_folder, calc, stage) if pt.rel == at.point), None)
+            return next((pt for _f, pt in declared.points_in(calc, stage, at.run_folder) if pt.rel == at.point), None)
         except LaunchRecordError:
             # ITS RUN'S RECORDS DO NOT READ -- an older molbuilder's index:
             # no point, the run's own row saying why (`continuation.
@@ -205,7 +202,7 @@ def point_of(folder, calc):
             return None
     if (at.what == calcdirs.ATTEMPT and at.role == calcdirs.RUN
             and kind(str(calc.task.calculation)).opens_report(stage)):
-        return declared.one_point(stage)
+        return declared.one_point()
     return None
 
 
