@@ -25,6 +25,7 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.scheduler import Domain, Environment, Topology
 from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.materialize import latest_attempt
+from molbuilder.jobset.model import JobSet
 from molbuilder.jobset.errors import PrepError
 from molbuilder.jobset.prep import prep_bench
 from molbuilder.jobset.ladder import engine_ladder
@@ -201,8 +202,7 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     gpu = deck("G1N4C1block_size64")
     assert ".true." in kw(gpu, "Diag.ELPA.GPU")
 
-    js = json.loads(
-        (sol_calc / "01_coarse" / "bench" / "job-set.json").read_text())
+    js = JobSet.of(sol_calc / "01_coarse" / "bench").to_dict()
     for job in js["jobs"]:
         assert job["point"]["block_size"] in (64, 128)
         assert isinstance(job["point"]["use_gpu"], bool)

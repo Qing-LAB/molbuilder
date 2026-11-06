@@ -243,6 +243,15 @@ def _point_the_one_door_at(root, setenv) -> "Path":
     return root
 
 
+@pytest.fixture
+def in_a_folder_of_its_own(monkeypatch, tmp_path_factory):
+    """A working folder of the test's own, for a test that prepares a
+    calculation: run from the repo's root, the repo's own `molbuilder.json` once
+    folded into every wrapper under test (B-9, 2026-08-13).  A file asks for it
+    with ``pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")``."""
+    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+
+
 @pytest.fixture(scope="module")
 def isolated_projects_root_module(tmp_path_factory):
     """:func:`isolated_projects_root` for a MODULE-scoped fixture.

@@ -59,18 +59,6 @@ PSML_DIR = Path(__file__).resolve().parent / "fixtures" / "psml"
 H_PSML = PSML_DIR / "H.psml"
 
 
-def set_template_value(template: Path, name: str, value: str) -> None:
-    """``[item.<name>]``'s ``value``, as a person sets it in the template."""
-    text = template.read_text()
-    head, sep, tail = text.partition(f"[item.{name}]")
-    assert sep, f"no [item.{name}] in {template.name}"
-    body, nxt, rest = tail.partition("\n[item.")
-    lines = body.split("\n")
-    at = next(i for i, ln in enumerate(lines) if ln.startswith("value = "))
-    lines[at] = f"value = {value}"
-    template.write_text(head + sep + "\n".join(lines) + nxt + rest)
-
-
 @contextmanager
 def _live(tree: Path, tmp_path_factory):
     """A module's road with a real engine: no read of the developer's

@@ -1241,12 +1241,8 @@ def _road_after_prep(case, bundle) -> None:
         for words in case.get("status_lacks", []):
             assert words not in st.output, _one_line(st)
     if "ledger_lacks" in case or "ledger_holds" in case:
-        import json
-        from molbuilder.jobset.ledger import LEDGER_FILE
-        log = bundle / LEDGER_FILE
-        lines = [json.loads(x) for x in
-                 (log.read_text().splitlines() if log.is_file() else [])
-                 if x.strip()]
+        from molbuilder.jobset import ledger
+        lines = ledger.read(bundle)
         # A DECISION, or a verb's decision (``launch continues``): prep and
         # launch both record what a stage continues from.
         decided = ({e["decision"] for e in lines}

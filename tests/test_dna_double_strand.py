@@ -131,7 +131,6 @@ def test_ds_z_form_duplex(_x3dna):
 def test_ds_both_strands_get_5prime_OH_by_default(_x3dna):
     # terminal="OH" (default) strips the spurious 5'-P on BOTH strands, so the
     # duplex carries no terminal phosphate (neutral-friendly for DFT).
-    import numpy as np  # noqa: F401
     ds = build_dna("ds,ATGC")           # default terminal OH
     # Count 5'-terminal phosphorus: each strand's first residue should have had
     # its P stripped, so there is one fewer P than an internal-phosphate count.

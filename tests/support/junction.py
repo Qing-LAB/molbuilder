@@ -17,29 +17,19 @@ It is current by construction, it is readable in source -- twelve lines and you
 can count the atoms -- and a test written on it exercises the real
 write-then-read path instead of trusting a snapshot of one.
 
-Used by ``tests/test_script_emit.py``, ``test_transport_compose.py``,
-``test_k_point_mesh.py``, ``test_where_an_item_binds.py`` and
-``test_hard_limits.py`` (the structure), and its
-spectrum sidecar by ``tests/parse/test_sidecars.py`` and
-``tests/parse/test_round2_fixes.py`` (written by our writer, read back by our
-reader).
+Used by ``tests/test_script_emit.py``.
 
-Below it, THE ROAD TESTS' JUNCTION -- a chain sandwich with its leads
-labelled (`test_transport_compose` owns the layer positions) -- and the
-sandbox fixture the files that prep a description on the road share
-(``tests/test_k_point_mesh.py``, ``tests/test_hard_limits.py``,
-``tests/test_where_an_item_binds.py``).
+Below it, THE ROAD TESTS' JUNCTION -- a chain sandwich with its leads labelled,
+its layers' positions here (``tests/test_transport_compose.py``,
+``tests/test_transport_task.py``).
 """
 from __future__ import annotations
 
 import numpy as np
-import pytest
-
 from molbuilder.structure import Structure
 from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
-from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R
 
 #: Two gold electrodes along z with a benzenedithiol bridge between them.
 #: Small enough to read, shaped like the real thing: the OUTER gold layers are
@@ -119,6 +109,12 @@ def frozen() -> list:
 
 # ---- the road tests' junction --------------------------------------- #
 
+#: Six 2.5 Å gold layers a side (12.5 Å span -- over the wizard's 12 Å lead
+#: floor), a four-atom bridge between.
+_LAYERS_L = [0.0, 2.5, 5.0, 7.5, 10.0, 12.5]
+_BRIDGE = [("S", 15.0), ("C", 16.4), ("C", 17.8), ("S", 19.2)]
+_LAYERS_R = [22.0, 24.5, 27.0, 29.5, 32.0, 34.5]
+
 #: The fixture's leads are a CHAIN, one gold atom per layer, so they are
 #: ISOLATED across the transport axis in the 8 Å box they sit in -- what the
 #: relaxation deck records and `compose` carries (`engines/transport.md`
@@ -176,9 +172,3 @@ def _junction_struct(*, order="canonical", buffers=False, across=_ACROSS,
                      regions=regions, frozen_atoms=frozen,
                      cell=np.diag([width, width, c]),
                      axis_kind=(*across, "transport"))
-
-
-@pytest.fixture(autouse=True)
-def _isolated(monkeypatch, tmp_path_factory):
-    """Same sandbox as test_prep_calculation."""
-    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))

@@ -43,18 +43,20 @@ def serve(config: dict | None = None):
     served from the checkout would write there, and would depend on what the
     file lists.  A test asks the route; `test_docs_tab` pins what it does.
     """
+    from _pytest.monkeypatch import MonkeyPatch
     from werkzeug.serving import make_server
 
     from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
     from molbuilder.web.app import create_app
     from molbuilder.web.blueprints import docs as docs_blueprint
 
+    variables = MonkeyPatch()
     own = None
     if not os.environ.get(PROJECTS_ROOT_ENV):
         own = tempfile.mkdtemp(prefix="served-tree-")
         tree = os.path.join(own, PROJECTS_ROOT_NAME)
         os.mkdir(tree)
-        os.environ[PROJECTS_ROOT_ENV] = tree
+        variables.setenv(PROJECTS_ROOT_ENV, tree)
 
     the_docs = docs_blueprint._docs_root
     own_docs = tempfile.mkdtemp(prefix="served-docs-")
@@ -72,6 +74,6 @@ def serve(config: dict | None = None):
         thread.join(timeout=5)
         docs_blueprint._docs_root = the_docs
         shutil.rmtree(own_docs, ignore_errors=True)
+        variables.undo()
         if own is not None:
-            os.environ.pop(PROJECTS_ROOT_ENV, None)
             shutil.rmtree(own, ignore_errors=True)

@@ -2611,8 +2611,8 @@ def make_log_notifier(log: Path) -> Notifier:
         # gets the same set, and it is the POLICY upstream -- not this
         # list -- that decides which of them ever occur.
         _append(Path(log),
-                f"[{_iso(time.time())}] [NOTIFY] (stub) {event}: "
-                f"{status.as_text()}")
+                f"[{_iso(time.time())}] "
+                + _ML.NOTIFY_STUB.format(event, status.as_text()))
     _hook.__name__ = "log_notifier"
     return _hook
 

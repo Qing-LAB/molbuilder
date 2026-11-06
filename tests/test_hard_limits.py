@@ -31,8 +31,9 @@ from molbuilder.config.pyscf import PySCFConfig
 
 from test_fixed_and_shared_items import _template_says
 from test_what_a_kind_offers import _siesta
-from support.junction import _isolated  # noqa: F401 -- its sandbox, autouse
 from support.road import save_both
+
+pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
 
 @pytest.mark.parametrize("engine, name, reason", [

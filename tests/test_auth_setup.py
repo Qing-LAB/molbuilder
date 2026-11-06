@@ -359,7 +359,7 @@ def test_cli_google_requires_at_least_one_allowed_email(isolated_home,
     # email lines should fail.  Send empty Enter on every email prompt
     # to trigger the "need at least one" branch; immediately abort by
     # sending EOF.
-    r = runner.invoke(cli, [
+    runner.invoke(cli, [
         "auth-setup",
         "--provider", "google",
     ], input="client-id\n", catch_exceptions=True)

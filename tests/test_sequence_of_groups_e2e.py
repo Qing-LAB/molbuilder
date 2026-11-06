@@ -18,7 +18,6 @@ calculation named by its full path -- only a run shows those words reach.
 """
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
@@ -68,9 +67,8 @@ def _groups(bundle: Path):
 
 def _ledger(bundle: Path):
     """The calculation's ledger, line by line, as written."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    log = bundle / LEDGER_FILE
-    return [json.loads(x) for x in log.read_text().splitlines() if x.strip()]
+    from molbuilder.jobset import ledger
+    return ledger.read(bundle)
 
 
 @pytest.fixture(scope="module")

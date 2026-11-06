@@ -68,8 +68,6 @@ class TestRole:
         Without this the marker would be a control that does nothing -- the
         defect `electrode_kz` shipped with.
         """
-        from molbuilder.web.blueprints.build import api_build_schema  # noqa
-        import molbuilder.web as _w
         from flask import Flask
         from molbuilder.web.blueprints.build import bp
         app = Flask(__name__)

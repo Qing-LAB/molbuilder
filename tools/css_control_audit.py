@@ -20,9 +20,7 @@ the panel shows more than one of any -- checkboxes excepted, which are sized
 separately by design.
 """
 import argparse
-import json
 import sys
-import urllib.request
 
 PROBE = """
 (() => {

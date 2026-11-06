@@ -25,6 +25,12 @@ MACHINE_LINE = re.compile(
     + r"\s+".join(f"{k}=(\\S+)" for k in MACHINE_FIELDS[:-1])
     + rf"\s+{MACHINE_FIELDS[-1]}=(.+)$")
 
+#: ``[NOTIFY] (stub) <event>: <summary>`` -- what the log's notifier records of
+#: an event, whether or not a channel is set up (`run-reports.md` § 2.5).
+NOTIFY_STUB_TAG = "[NOTIFY] (stub) "
+NOTIFY_STUB = NOTIFY_STUB_TAG + "{}: {}"
+NOTIFY_STUB_LINE = re.compile(re.escape(NOTIFY_STUB_TAG) + r"(\w+): (.*)$")
+
 #: ``[UTIL-SUMMARY] cpu mean=NN% (mm-MM); gpu0 sm mean=NN% (mm-MM) -> verdict``
 UTIL_SUMMARY_TAG = "[UTIL-SUMMARY]"
 CPU_MEAN = "cpu mean="

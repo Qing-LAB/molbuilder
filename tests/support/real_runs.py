@@ -41,7 +41,6 @@ A run with one thing changed is a copy of it beside it (:func:`copy_of`).
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -194,28 +193,22 @@ def told(run: RealRun, event: str, stage: str, n: int = 0) -> list:
     record every event leaves whether or not a channel is set up
     (`run-reports.md` § 2.5) -- named as the run's files are
     (`monitor.WatchedRun`)."""
-    import re
     from molbuilder.jobset.naming import stage_home
     from molbuilder.monitor import WatchedRun
+    from molbuilder.parse.instruments.monitor import events_said
     from molbuilder.task import of as task_of
     task = task_of(run.bundle)
     names = stage_home(run.bundle, task, stage).names
     log = WatchedRun(names=names,
                      directory=run.attempt(stage, n)).path(".monitor.log")
-    said = re.compile(r"\[NOTIFY\] \(stub\) (\w+): (.*)$")
-    return [m.group(2) for m in map(said.search,
-                                   log.read_text(encoding="utf-8")
-                                   .splitlines())
-            if m and m.group(1) == event]
+    return events_said(log.read_text(encoding="utf-8"), event)
 
 
 def _launched_here(run: RealRun) -> int:
     """The pid of the run here a launch left in the background -- its
     ledger's ``launched`` line (`job-system.md` § 6.0)."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    lines = [json.loads(x) for x in
-             (run.bundle / LEDGER_FILE).read_text().splitlines() if x.strip()]
-    return next(e["pid"] for e in reversed(lines)
+    from molbuilder.jobset import ledger
+    return next(e["pid"] for e in reversed(ledger.read(run.bundle))
                 if e["decision"] == "launched" and e.get("background"))
 
 

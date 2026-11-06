@@ -11,8 +11,6 @@ less than a light one still owns the mode, the answer does not depend on which
 of the two stored eigenvector forms you hand in, and the shares of a mode add
 up to all of it.
 """
-import math
-
 import numpy as np
 import pytest
 

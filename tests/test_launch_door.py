@@ -79,9 +79,8 @@ def _flag(argv, flag):
 
 
 def _ledger(bundle):
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    return [json.loads(ln) for ln in
-            (bundle / LEDGER_FILE).read_text().splitlines()]
+    from molbuilder.jobset import ledger
+    return ledger.read(bundle)
 
 
 def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):

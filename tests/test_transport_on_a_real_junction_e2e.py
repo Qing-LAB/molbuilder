@@ -2039,15 +2039,13 @@ def test_a_device_launched_warm_then_cold_keeps_the_seeds_density(junction):
     # line it printed and the ledger's `gathers` (`job-system.md` § 5.4;
     # the 2.40 review's BE3: they were said as copied from run 0, and the
     # ledger kept no source for them).
-    import json
     import re
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     said = junction.single.said["launch device again"].output
     copied = re.search(r"copied ([^;\n]*)", said)
     assert copied and not any(fn in copied.group(1) for fn in warm), said
     assert "took the inputs its kind gathered" in said, said
-    entries = [json.loads(x) for x in (junction.single.bundle / LEDGER_FILE)
-               .read_text().splitlines() if x.strip()]
+    entries = ledger.read(junction.single.bundle)
     again = max(i for i, e in enumerate(entries)
                 if e.get("decision") == "continues"
                 and e.get("stage") == "device")
@@ -3976,7 +3974,7 @@ def test_a_job_left_running_is_listed_stopped_by_its_line_and_said_once(
     a run going for days that nothing on the machine lists, a stop that
     leaves the engine running, a job said running after its process went,
     and a list that grows with every job that ever ran."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     from support.road import job_lines
     stopped = junction.stopped
     job = next(ln.split("molbuilder jobs stop", 1)[1].strip()
@@ -4002,8 +4000,7 @@ def test_a_job_left_running_is_listed_stopped_by_its_line_and_said_once(
     assert mine[-1] == "  ended -- said once; its address is removed", mine
     assert not job_lines(stopped.jobs["again"].output, job), \
         stopped.jobs["again"].output
-    lines = [json.loads(x) for x in (stopped.bundle / LEDGER_FILE)
-             .read_text().splitlines() if x.strip()]
+    lines = ledger.read(stopped.bundle)
     stop = [e for e in lines if e["verb"] == "jobs stop" and e["job"] == job]
     assert [(e["decision"], e.get("answer")) for e in stop] == [
         ("question", "yes"), ("stopped", None)], stop
@@ -5016,7 +5013,7 @@ def test_more_voltages_take_the_finished_points_over(reused):
     or one taken over that names no finished point -- its result's
     provenance lost."""
     import json
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     from molbuilder.runrecord import read_copied_from
     wider, finished = reused["wider"], reused["finished"]
     # THE FINISHED CALCULATION'S NEWEST RUN of each rung -- its device was
@@ -5041,8 +5038,8 @@ def test_more_voltages_take_the_finished_points_over(reused):
         run = _runs_of(wider, stage)[0]
         assert read_copied_from(run / "v0") == f"P/transport/{shown[stage]}/v0"
         assert read_copied_from(run / "v0.4") is None
-    taken = [json.loads(x) for x in (wider.bundle / LEDGER_FILE)
-             .read_text().splitlines() if '"taken over"' in x]
+    taken = [e for e in ledger.read(wider.bundle)
+             if e["decision"] == "taken over"]
     assert sorted((t["stage"], t["point"]) for t in taken) == [
         ("device", "0 V"), ("device", "0.2 V"),
         ("transmission", "0 V"), ("transmission", "0.2 V")]

@@ -180,20 +180,17 @@ def test_a_prep_from_here_is_recorded_in_the_bundle(web_client, described):
     The line's CONTENTS are `ledger.prepared`'s and are not re-asserted here
     — what this pins is that the surface calls it at all.
     """
-    import json as _json
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
 
     _make_preppable(Path(described))
     st, j = _prep(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200, j
 
-    log = Path(described) / LEDGER_FILE
-    assert log.is_file(), (
+    assert ("prep", "prepared") in [(e["verb"], e["decision"])
+                                    for e in ledger.read(described)], (
         "prep from the browser wrote no ledger line; the bundle card "
         "promises one")
-    lines = [_json.loads(x) for x in log.read_text().splitlines() if x.strip()]
-    assert ("prep", "prepared") in [(e["verb"], e["decision"]) for e in lines]
 
 
 def test_the_refusal_names_a_spelling_that_WORKS(web_client, described):
@@ -310,10 +307,8 @@ def test_two_preps_at_once_leave_the_servers_stderr_as_they_found_it(
 
 
 def _ledger_decisions(calc):
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    log = Path(calc) / LEDGER_FILE
-    return [(e["verb"], e["decision"]) for e in
-            (json.loads(x) for x in log.read_text().splitlines() if x.strip())]
+    from molbuilder.jobset import ledger
+    return [(e["verb"], e["decision"]) for e in ledger.read(calc)]
 
 
 def _cli(*args, input=None):
@@ -556,8 +551,7 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
     # The notes, then the refusal itself -- a decision too (W52).
     assert _ledger_decisions(twin) == [("prep", "preflight-report"),
                                        ("prep", "refused")]
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    assert not (calc / LEDGER_FILE).exists(), "the preview recorded"
+    assert _ledger_decisions(calc) == [], "the preview recorded"
 
 
 def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(

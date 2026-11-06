@@ -434,6 +434,22 @@ def test_a_named_channel_the_machine_lacks_comes_back_as_missing():
     assert missing == ["gone"]
 
 
+def test_what_the_notifier_wrote_is_read_back_by_event(tmp_path):
+    """The log is the record every event leaves, whether or not a channel is
+    set up (`run-reports.md` § 2.5), so the line the notifier writes is the line
+    the log's reader answers with, by event.  THE SILENT FAILURE: the words
+    reworded on one side, and a run's events read as none."""
+    from molbuilder.parse.instruments.monitor import events_said
+    log = tmp_path / "m.log"
+    log.write_text("")
+    hook = M.make_log_notifier(log)
+    status = M.JobStatus(elapsed_s=12.0, n_iters=3, energy=-1.5, geom_step=2)
+    hook(status, "start")
+    hook(status, "finish")
+    assert events_said(log.read_text(), "finish") == [status.as_text()]
+    assert events_said(log.read_text(), "part_failed") == []
+
+
 def test_the_notify_line_has_ONE_prefix_on_both_roads(tmp_path, capsys):
     """It was written twice -- a closure in `load_channels` and a copy in
     `_install_env_notifiers` that stamped the timestamp and then printed it

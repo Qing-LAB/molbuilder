@@ -11,8 +11,6 @@ prescribe a no-op.
 """
 from __future__ import annotations
 
-import pytest
-
 from molbuilder.envs._cli import _fix_cmd, _render_doctor
 from molbuilder.envs.doctor import (EnvReport, PackageAudit,
                                     PackageAuditIssue)

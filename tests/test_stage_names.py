@@ -91,7 +91,7 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
 
     MUTATIONS THIS MUST FAIL AGAINST: a header printing the token again; the
     resolver comparing exact strings; `launch` recording what was typed."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     bundle = _described(tmp_path, monkeypatch, engine, calculation)
     stage = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
     r = _jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle, "--target", "this")
@@ -107,10 +107,9 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
         assert r.exit_code == 0, (spelling, r.output)
         assert re.search(rf"WOULD start in the background\s+{stage}\s+bash H2_{token}\.run\.sh",
                          r.output), (spelling, r.output)
-    ledger = bundle / LEDGER_FILE
     r = _jobset("launch", "task", "--stage", typed.upper(), "--bundle", bundle,
                 "--mode", "submit")
     assert r.exit_code != 0 and "no scheduler header" in r.output, r.output
-    last = json.loads(ledger.read_text().splitlines()[-1])
+    last = ledger.read(bundle)[-1]
     assert (last["verb"], last["decision"], last["stage"]) == (
         "launch", "refused", stage), last

@@ -18,8 +18,6 @@ Pins the contract that the user can run after a successful install:
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest

@@ -36,13 +36,7 @@ from molbuilder.script_emit import Block, DeckSpec
 from molbuilder.structure import Structure
 
 
-@pytest.fixture(autouse=True)
-def _isolated(monkeypatch, tmp_path_factory):
-    """A cwd of their own, like `test_prep_calculation`'s (conftest isolates
-    the config root): an
-    un-isolated run would fold the developer's own config into every
-    wrapper and into the log's config phase."""
-    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
 
 #: 1,4-benzenedithiol — an isolated molecule that relaxes, which is what the

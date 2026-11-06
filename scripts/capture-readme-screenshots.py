@@ -360,7 +360,7 @@ def main() -> int:
         capture_cwd = _prepare_capture_cwd(Path(td))
         print(f"capture cwd: {capture_cwd}")
 
-        with _serve(port, capture_cwd) as _proc:
+        with _serve(port, capture_cwd):
             print("molbuilder serve up; opening Chromium...")
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)

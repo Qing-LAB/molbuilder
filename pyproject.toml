@@ -243,6 +243,8 @@ minversion   = "7.0"
 testpaths    = ["tests"]
 pythonpath   = ["."]
 addopts      = "-ra"
+# An expected failure that passes is a failure: what it stood for has changed.
+xfail_strict = true
 markers      = [
     # ---- Pyramid layers (docs/process/testing.md) ---- #
     # Markers are orthogonal to directory structure: a test in

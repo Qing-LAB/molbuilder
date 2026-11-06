@@ -67,6 +67,17 @@ def record(base, verb: str, decision: str, **facts) -> None:
         pass                              # the logbook must never break a run
 
 
+def read(base) -> list:
+    """The calculation's decisions, in the order they were made, each as
+    :func:`record` wrote it; none when nothing was recorded.  The one reader of
+    this file."""
+    try:
+        text = (Path(base) / LEDGER_FILE).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return []
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
 def prepared(base, *, kind: str, stage, dirs, provenance):
     """Record one ``prep`` — and RETURN the provenance it recorded.
 

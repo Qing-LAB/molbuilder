@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+import subprocess
+
 from tools import progress_plugin, testrun
 
 
@@ -265,6 +267,8 @@ def test_configure_appends_a_generation_instead_of_wiping_a_live_run(tmp_path):
     before = p.read_text()
 
     class _Config:
+        args = []
+
         def getoption(self, _name):
             return str(p)
 
@@ -301,6 +305,110 @@ _NOTE = ("import os, pathlib\n"
          "def note(name):\n"
          "    (pathlib.Path({seen!r}) / name).write_text(\n"
          "        os.environ['PYTEST_XDIST_WORKER'])\n")
+
+
+def _a_small_run(tmp_path, monkeypatch, *words):
+    """A real run through ``testrun.py run`` on real files: one test passing,
+    one skipped, one expected to fail, and a file that skips itself whole.  Its
+    progress file under ``tmp_path``."""
+    monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
+    target = tmp_path / "small"
+    target.mkdir()
+    (target / "test_gone.py").write_text(
+        "import pytest\n"
+        "pytest.importorskip('no_such_package_here')\n"
+        "def test_never_exists(): pass\n")
+    (target / "test_small.py").write_text(
+        "import pytest\n"
+        "def test_passes(): pass\n"
+        "def test_skipped(): pytest.skip('no such tool here')\n"
+        "@pytest.mark.xfail(strict=True, reason='a known defect')\n"
+        "def test_expected_to_fail(): assert False\n")
+    assert testrun.main(["run", *words, str(target), "--workers", "1"]) == 0
+    return target
+
+
+def test_a_run_says_what_it_did_not_run_and_why(tmp_path, monkeypatch, capsys):
+    """A skip is not a pass, and an expected failure is neither.  THE SILENT
+    FAILURE: a tool missing, hundreds of tests skipped or a whole file gone with
+    its import, and `status` reading `done`, with the reasons nowhere and
+    expected failures counted as skips."""
+    _a_small_run(tmp_path, monkeypatch)
+    s = testrun._summarise("custom", testrun._progress_path("custom"))
+    assert s["state"] == "done"
+    assert (s["passed"], s["skipped"], s["xfailed"], s["failed"]) == (1, 2, 1, 0)
+    capsys.readouterr()
+    assert testrun.main(["status", "custom"]) == 0
+    said = capsys.readouterr().out
+    assert "skip 2  xfail 1" in said
+    assert ("no such tool here" in said and "a known defect" in said
+            and "no_such_package_here" in said)
+
+
+def test_which_code_is_what_the_files_hold(tmp_path):
+    """What a run's numbers are about.  A commit changes no byte, so it is the
+    same code, or every run reads as stale the moment it is committed; an edit,
+    a new file and a removed one each are other code; what git ignores is not
+    code, or a run's own files would make it stale."""
+    def git(*words):
+        subprocess.run(["git", "-c", "user.name=t", "-c",
+                        "user.email=t@example.invalid", *words], cwd=tmp_path,
+                       check=True, capture_output=True)
+    (tmp_path / ".gitignore").write_text("ignored\n")
+    (tmp_path / "kept.py").write_text("one\n")
+    git("init", "-q")
+    begun = testrun.code_now(tmp_path)
+    git("add", ".")
+    git("commit", "-qm", "one")
+    assert testrun.code_now(tmp_path) == begun
+    (tmp_path / "ignored").write_text("a run's own\n")
+    assert testrun.code_now(tmp_path) == begun
+    (tmp_path / "kept.py").write_text("two\n")
+    assert testrun.code_now(tmp_path) != begun
+    (tmp_path / "kept.py").write_text("one\n")
+    assert testrun.code_now(tmp_path) == begun
+    (tmp_path / "new.py").write_text("")
+    assert testrun.code_now(tmp_path) != begun
+    (tmp_path / "new.py").unlink()
+    (tmp_path / "kept.py").unlink()
+    assert testrun.code_now(tmp_path) != begun
+
+
+def test_a_result_of_other_code_says_so(tmp_path, monkeypatch, capsys):
+    """THE SILENT FAILURE: `[e2e] done | 543/543 ran | pass 543`, true of a run
+    weeks and many releases ago, read as about the code here."""
+    _a_small_run(tmp_path, monkeypatch)
+    capsys.readouterr()
+    assert testrun.main(["status", "custom"]) == 0
+    assert "OTHER CODE" not in capsys.readouterr().out
+    monkeypatch.setattr(testrun, "code_now", lambda: "another-code")
+    assert testrun.main(["status", "custom"]) == 1
+    assert "OTHER CODE" in capsys.readouterr().out
+
+
+def test_a_part_of_a_batch_is_not_called_the_batch(tmp_path, monkeypatch, capsys):
+    """`run e2e tests/x.py` left `[e2e] done | 12/12 ran`, reading as the whole
+    batch."""
+    target = _a_small_run(tmp_path, monkeypatch, "e2e")
+    assert not os.path.exists(testrun._progress_path("e2e"))
+    capsys.readouterr()
+    testrun.main(["status", "custom"])
+    said = capsys.readouterr().out
+    assert "a part, not the suite" in said and str(target) in said
+
+
+def test_an_expected_failure_that_passes_fails_the_run(tmp_path, monkeypatch):
+    """Asked of the suite's own settings: what it stood for has changed, and a
+    green run would hide that."""
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    (suite / "pyproject.toml").symlink_to(Path(testrun.REPO) / "pyproject.toml")
+    (suite / "test_it.py").write_text(
+        "import pytest\n"
+        "@pytest.mark.xfail(reason='a known defect')\n"
+        "def test_now_fine(): pass\n")
+    monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
+    assert testrun.main(["run", str(suite), "--workers", "1"]) == 1
 
 
 def _spread_run(tmp_path, files):

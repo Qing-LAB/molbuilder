@@ -62,8 +62,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available, set_template_value
+from _road import conda_hook, env_available
 from support.real_runs import notified, told
+from support.road import set_by_the_person
 from support.road import (CO2, CO2_HELD_FIRST, _all_written, group_words,
                           ladder_edited)
 
@@ -134,9 +135,8 @@ def ticked(tmp_path_factory):
                                    co2_vibration)
     with _on_the_road(tmp_path_factory, "ticked") as tree:
         run = RealRun(tree=tree, bundle=co2_vibration(tree))
-        template = run.bundle / "CO2.template.toml"
-        set_template_value(template, "already_relaxed", "true")
-        set_template_value(template, "temperature_K", "350.0")
+        set_by_the_person(run.bundle, {"already_relaxed": True,
+                                       "temperature_K": 350.0})
         _taken(run, "prep freq", "prep", "task",
                *group_words(run.bundle, "freq"), "--target", "this")
         _taken(run, "launch freq", "launch", "task", "--stage", "freq",

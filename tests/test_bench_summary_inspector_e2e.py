@@ -82,8 +82,9 @@ def sweep(isolated_projects_root, monkeypatch):
     prep_bench(open_calculation(calc), "coarse",
                allocation=Resources(mpi_np=8, cpus_per_task=8),
                emit_sbatch=False)
+    from molbuilder.jobset.model import JobSet
     bench = calc / "01_coarse" / "bench"
-    js = json.loads((bench / "job-set.json").read_text())
+    js = JobSet.of(bench).to_dict()
     winner = js["jobs"][0]["name"]
 
     # The server may read this tree, and nothing else.

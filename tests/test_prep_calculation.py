@@ -43,12 +43,7 @@ _BDT = Structure(elements=["S", "C", "C", "H"],
                  vacuum=(10.0, 10.0, 10.0))
 
 
-@pytest.fixture(autouse=True)
-def _isolated(monkeypatch, tmp_path_factory):
-    """The rest of the sandbox (B-9, 2026-08-13): the file ran with cwd =
-    repo root, so the repo's molbuilder.json kept folding into every wrapper
-    under test."""
-    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
 
 def _prep(calc, stage="coarse"):

@@ -15,13 +15,18 @@ JSONL event schema (one JSON object per line).  Every record carries ``run``,
 the id of the run that wrote it, so a file holding records from two runs can be
 SEEN to (``tools/testrun.py status`` refuses to count such a file rather than
 reporting a number from whatever survived):
-    {"event":"start",     "run":<id>, "pid":<int>, "time":<epoch>}
+    {"event":"start",     "run":<id>, "pid":<int>, "time":<epoch>,
+                      "code":<which code, `code_now`>, "asked":[<pytest's arguments>]}
     {"event":"collected", "run":<id>, "n":<int>, "time":<epoch>}
-    {"event":"test",  "run":<id>, "nodeid":<str>, "outcome":"passed|failed|skipped",
+    {"event":"test",  "run":<id>, "nodeid":<str>,
+                      "outcome":"passed|failed|skipped|xfailed",
                       # nodeid gains a " [teardown]" suffix for a teardown failure
+                      # reason: why it failed, why it was skipped, why it is
+                      # expected to fail
                       "duration":<sec>, "reason":<short str>, "time":<epoch>}
-    {"event":"collect", "run":<id>, "nodeid":<str>, "outcome":"failed",
-                      # a file (or xdist's own check) that failed to collect
+    {"event":"collect", "run":<id>, "nodeid":<str>, "outcome":"failed|skipped",
+                      # a file (or xdist's own check) that failed to collect, or
+                      # skipped itself whole: its tests never exist
                       "reason":<short str>, "time":<epoch>}
     {"event":"done",  "run":<id>, "exitstatus":<int>, "time":<epoch>}
 
@@ -45,6 +50,8 @@ import os
 import time
 
 import pytest
+
+from tools.testrun import code_now
 
 _STATE = {"path": None, "run": None, "collected": False}
 
@@ -113,7 +120,8 @@ def pytest_configure(config):
         except OSError:
             _STATE["path"] = None
             return
-    _write({"event": "start", "pid": os.getpid(), "time": time.time()})
+    _write({"event": "start", "pid": os.getpid(), "time": time.time(),
+            "code": code_now(), "asked": [str(a) for a in config.args]})
 
 
 def _collected(n):
@@ -146,16 +154,35 @@ def _reason(report):
     return lines[-1][:300] if lines else ""
 
 
+def _outcome_and_reason(report):
+    """What a test's record says.  A SKIP IS NOT A PASS, and an expected failure
+    is neither: each carries why, or a run that tested little reads as a run
+    that tested everything."""
+    if report.outcome == "failed":
+        return "failed", _reason(report)
+    if report.outcome == "skipped" and hasattr(report, "wasxfail"):
+        return "xfailed", str(report.wasxfail)[:300]
+    if report.outcome == "skipped":
+        longrepr = report.longrepr
+        said = longrepr[2] if isinstance(longrepr, tuple) else str(longrepr)
+        return "skipped", said.removeprefix("Skipped: ")[:300]
+    return report.outcome, ""
+
+
 def pytest_collectreport(report):
     # A FILE THAT FAILS TO COLLECT -- an import that broke -- is a failure of
     # its own, and no test record can carry it: its tests never exist.  One
     # process stops at it; a spread run goes on with the other files
     # (xdist's own loop replaces the one that stops), and before this record
     # `status` then called the run UNEXPLAINED and blamed the canaries.
-    if report.failed:
+    #
+    # A FILE THAT SKIPS ITSELF WHOLE -- a module-level ``importorskip`` -- is the
+    # same: a missing package takes its tests away with no test record, and the
+    # run would read as whole.
+    if report.failed or report.skipped:
+        outcome, reason = _outcome_and_reason(report)
         _write({"event": "collect", "nodeid": report.nodeid,
-                "outcome": "failed", "reason": _reason(report),
-                "time": time.time()})
+                "outcome": outcome, "reason": reason, "time": time.time()})
 
 
 def pytest_runtest_logreport(report):
@@ -182,7 +209,7 @@ def pytest_runtest_logreport(report):
     is_crash = report.when not in ("setup", "call", "teardown")
     if not (is_call or is_setup_terminal or is_teardown_failure or is_crash):
         return
-    reason = _reason(report) if report.outcome == "failed" else ""
+    outcome, reason = _outcome_and_reason(report)
     _write({
         "event": "test",
         # The phase is part of the identity: a teardown failure shares its
@@ -190,7 +217,7 @@ def pytest_runtest_logreport(report):
         # the reader sees one test both passed and failed.
         "nodeid": (f"{report.nodeid} [teardown]" if is_teardown_failure
                    else report.nodeid),
-        "outcome": report.outcome,
+        "outcome": outcome,
         "duration": round(getattr(report, "duration", 0.0), 2),
         "reason": reason,
         "time": time.time(),

@@ -908,6 +908,15 @@ whole surface, not a step before every commit.
 > the 24 failures the `tail` had cut off. `status --fails` shows all of them in
 > one line each.
 
+**What `status` says is about what it ran, and it says so.** A `done` from other
+code reads `done, ON OTHER CODE`, with when it ran: a digest of every file git would
+keep is recorded at the start of a run, so a result from before an edit is not taken
+for today's, and a commit, which changes no byte, leaves it standing. A file or two
+named after a batch (`run e2e tests/x.py`) is `custom`, `a part, not the suite`. A
+skip is not a pass and an expected failure is neither: each is counted apart and
+listed with its reason, a file that skips itself whole among them, and an expected
+failure that passes fails the run (`xfail_strict`).
+
 Two habits that go with it: never conclude "the suite is green" from a truncated
 view, and when an unfamiliar test fails, check it against `HEAD` in a throwaway
 `git worktree` before assuming it is someone else's problem — that is how you

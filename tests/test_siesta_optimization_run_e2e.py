@@ -29,9 +29,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available, live_siesta, set_template_value
+from _road import conda_hook, env_available, live_siesta
 from support.road import H2, road_structure
-from support.road import molbuilder, one_rank
+from support.road import molbuilder, one_rank, set_by_the_person
 
 pytestmark = [
     pytest.mark.engine,
@@ -70,7 +70,7 @@ def capped(isolated_projects_root_module, tmp_path_factory):
                    "--name", "H2", "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
         one_rank(bundle)
-        set_template_value(bundle / "H2.template.toml", "relax_steps", "1")
+        set_by_the_person(bundle, {"relax_steps": 1})
         r = jobset("prep", "task", *group_words(bundle, "coarse"),
                    "--bundle", bundle, "--target", "this")
         assert r.exit_code == 0, r.output

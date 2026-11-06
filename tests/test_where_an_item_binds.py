@@ -26,8 +26,9 @@ Nothing here launches an engine.
 """
 from __future__ import annotations
 
+import pytest
 
-from support.junction import _isolated  # noqa: F401 -- its sandbox, autouse
+pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
 
 def _described(engine, stages, calculation="optimization"):

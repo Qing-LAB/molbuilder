@@ -5,8 +5,7 @@ What a citation of a finished relaxation composes -- the leads it cuts, how
 the run ended, the electrode rename on this calculation's own copy -- reads
 the `.XV` SIESTA wrote, so it is asserted on the junction the end-to-end
 pass relaxes with the engine (`tests/test_transport_on_a_real_junction_e2e.py`,
-plan § 5y).  The layer positions below are the ones `support.junction`
-builds its junction from.
+plan § 5y).  The layer positions are `support.junction`'s.
 """
 from __future__ import annotations
 
@@ -15,19 +14,15 @@ import pytest
 
 from molbuilder.transport.sort import (REGION_BRIDGE, REGION_LEFT_ELECTRODE,
                                        REGION_RIGHT_ELECTRODE)
+from support.junction import _BRIDGE, _LAYERS_L, _LAYERS_R
 
-#: Six 2.5 Å gold layers a side (12.5 Å span -- over the wizard's 12 Å lead
-#: floor), a four-atom bridge between, in a box whose c closes the leads'
-#: boundary to one layer spacing (§ 6.1c).
-_LAYERS_L = [0.0, 2.5, 5.0, 7.5, 10.0, 12.5]
-_BRIDGE = [("S", 15.0), ("C", 16.4), ("C", 17.8), ("S", 19.2)]
-_LAYERS_R = [22.0, 24.5, 27.0, 29.5, 32.0, 34.5]
 
 
 def _junction(*, frozen: bool = True) -> dict:
     """The junction as `describe_calculation` takes it: the structure a
     person built on the Molbuilder tab, its leads labelled and -- unless a
-    case says otherwise -- held still for the relaxation."""
+    case says otherwise -- held still for the relaxation, in a box whose c
+    closes the leads' boundary to one layer spacing (§ 6.1c)."""
     elements, zs, labels = [], [], []
     for z in _LAYERS_L:
         elements.append("Au"); zs.append(z); labels.append(REGION_LEFT_ELECTRODE)

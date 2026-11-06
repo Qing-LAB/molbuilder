@@ -82,6 +82,13 @@ def monitor_metrics(text: str) -> Dict[str, Any]:
     return out
 
 
+def events_said(text: str, event: str) -> list:
+    """What the log's notifier recorded at ``event``, in order: its summary
+    lines (`run-reports.md` § 2.5)."""
+    said = (_ML.NOTIFY_STUB_LINE.search(ln) for ln in (text or "").splitlines())
+    return [m.group(2) for m in said if m and m.group(1) == event]
+
+
 class MonitorLogFileParser(FileParser):
     """The wrapper's utilisation monitor log."""
 

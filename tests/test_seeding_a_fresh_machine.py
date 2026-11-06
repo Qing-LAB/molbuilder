@@ -176,7 +176,6 @@ def test_an_unwritable_root_is_refused_with_the_sentence_that_names_the_fix(
     `PermissionError` traceback out of `mkdir`, which names a system call
     rather than the thing to change.
     """
-    import stat as _stat
 
     parent = tmp_path / "readonly"
     parent.mkdir()

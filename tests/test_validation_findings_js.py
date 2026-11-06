@@ -122,18 +122,18 @@ class TestNothingIsDropped:
         assert got["summary"]["counts"] == {"error": 1, "warn": 1, "info": 0}
 
     def test_rendered_count_equals_received_count(self):
-        got = _run(f"""
+        got = _run("""
         var panel = new El("ul");
         var scope = new FormScope([card("stage")]);
         var issues = [];
-        for (var i = 0; i < 7; i++) {{
-            issues.push({{severity: "info", message: "m" + i,
-                          card: (i % 2) ? "stage" : "nope"}});
-        }}
-        var s = F.render(issues, {{panel: panel, formScope: scope}});
-        console.log(JSON.stringify({{summary: s,
+        for (var i = 0; i < 7; i++) {
+            issues.push({severity: "info", message: "m" + i,
+                          card: (i % 2) ? "stage" : "nope"});
+        }
+        var s = F.render(issues, {panel: panel, formScope: scope});
+        console.log(JSON.stringify({summary: s,
             onCard: scope._cards[0].children.length,
-            inResidual: panel.children.length}}));
+            inResidual: panel.children.length}));
         """)
         assert got["summary"]["total"] == 7
         assert got["onCard"] + got["inResidual"] == 7
@@ -218,16 +218,16 @@ class TestSeverityIsUniform:
         assert [r["message"] for r in got["rows"]] == ["first", "second", "third"]
 
     def test_one_row_shape(self):
-        got = _run(f"""
+        got = _run("""
         var panel = new El("ul");
-        F.render([{{severity: "error", message: "m", where: "cell.x"}}],
-                 {{panel: panel}});
-        console.log(JSON.stringify({{
+        F.render([{severity: "error", message: "m", where: "cell.x"}],
+                 {panel: panel});
+        console.log(JSON.stringify({
             cls: panel.children[0].className,
             sev: panel.children[0].getAttribute("data-severity"),
-            kids: panel.children[0].children.map(function (c) {{
-                return c.className + ":" + c.textContent; }}),
-            where: panel.children[0].getAttribute("data-where")}}));
+            kids: panel.children[0].children.map(function (c) {
+                return c.className + ":" + c.textContent; }),
+            where: panel.children[0].getAttribute("data-where")}));
         """)
         assert got["cls"] == "issue-item"
         assert got["sev"] == "error"

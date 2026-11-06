@@ -19,7 +19,6 @@ a reader's number.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -54,9 +53,8 @@ def _records(run, source: str) -> None:
 def _decided(bundle):
     """The decisions the calculation's ledger holds: each one's decision,
     and its verb's (``launch continues``)."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    lines = [json.loads(x) for x in
-             (bundle / LEDGER_FILE).read_text().splitlines() if x.strip()]
+    from molbuilder.jobset import ledger
+    lines = ledger.read(bundle)
     return ({e["decision"] for e in lines}
             | {f"{e['verb']} {e['decision']}" for e in lines})
 
@@ -78,7 +76,7 @@ def test_a_run_here_is_shown_and_asked_and_written_down(real_h2_layered):
     H2_01_coarse.run.sh -np 1 -omp 1`` -- the line the launch record keeps
     (``command``).  THE SILENT FAILURE (2.63.0): the line logged after the
     arguments were read, so it said nothing of what the launch passed."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     from molbuilder.runrecord import launch_record
     from molbuilder.runs import run_of
     _said(real_h2_layered, "launch coarse", "about to run here, waited on:",
@@ -91,8 +89,7 @@ def test_a_run_here_is_shown_and_asked_and_written_down(real_h2_layered):
     assert argv.group(1).split() == ["H2_01_coarse.run.sh", "-np", "1",
                                      "-omp", "1"], argv.group(0)
     assert launch_record(ran)["command"] == ["bash", *argv.group(1).split()]
-    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
-             .read_text().splitlines() if x.strip()]
+    lines = ledger.read(real_h2_layered.bundle)
     first = [e for e in lines if e.get("verb") == "launch"
              and e["decision"] in ("question", "launched")]
     assert (first[0].get("about"), first[0].get("answer")) == (
@@ -116,7 +113,7 @@ def test_a_run_here_left_in_the_background_loses_nothing_it_prints(
     launch that waits anyway, a run its terminal's closing ends, and a run
     whose terminal was gone with its account of how it ended printed to
     nowhere."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     from molbuilder.parse import detect
     from molbuilder.jobset.runstatus import run_answer
     from molbuilder.runs import folder_answer, openable
@@ -134,8 +131,7 @@ def test_a_run_here_left_in_the_background_loses_nothing_it_prints(
     assert out is not None, trail
     traj = detect(out).parse(str(out))
     assert traj.run_state == "ended" and traj.frames, traj.run_state
-    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
-             .read_text().splitlines() if x.strip()]
+    lines = ledger.read(real_h2_layered.bundle)
     asked = [e for e in lines if e["decision"] == "question"
              and e.get("about") == "run here, in the background"]
     assert asked and asked[-1]["answer"] == "yes (--yes)", asked
@@ -154,10 +150,9 @@ def test_a_run_here_that_ended_is_said_once_by_the_jobs_list(real_h2_layered):
     run in the status door's words -- and then dropped.  The silent
     failures: a list that holds every run that ever went, and a run that
     ended said as going."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     from support.road import job_lines
-    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
-             .read_text().splitlines() if x.strip()]
+    lines = ledger.read(real_h2_layered.bundle)
     went = [e for e in lines if e["decision"] == "launched"]
     left = [e["job"] for e in went if e.get("background")]
     waited = [e["job"] for e in went if not e.get("background")]
@@ -188,11 +183,10 @@ def test_a_run_here_asked_at_a_terminal_goes_the_way_answered(
     (`job-system.md` § 6.0).  The silent failure: a person typing ``f`` and
     the run left in the background, or the ledger saying what was not
     asked."""
-    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset import ledger
     _said(real_h2_layered, "launch coarse again cold",
           "launch in the background? [Y/n/foreground(F)]", "[ran]")
-    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
-             .read_text().splitlines() if x.strip()]
+    lines = ledger.read(real_h2_layered.bundle)
     cold = [e for e in lines if e.get("verb") == "launch"
             and e["decision"] in ("question", "launched")
             and e.get("flags") == [["--cold", True]]]

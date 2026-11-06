@@ -24,7 +24,6 @@ inputs so a reader on GitHub gets the gist in one glance:
 
 from __future__ import annotations
 
-import os
 import sys
 import threading
 import time

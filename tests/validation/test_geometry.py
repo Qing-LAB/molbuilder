@@ -9,10 +9,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.issues import ValidationError
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.structure import Structure
-from molbuilder.validation import report, validate, validate_geometry
+from molbuilder.validation import validate, validate_geometry
 from ._helpers import _vacuum_cell
 
 

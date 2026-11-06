@@ -13,7 +13,8 @@ Usage
     python tools/testrun.py run none2e         # all non-e2e tests
     python tools/testrun.py run e2e            # all *_e2e.py
     python tools/testrun.py run all            # everything, one file
-    python tools/testrun.py run e2e tests/test_molbuilder_e2e.py   # explicit targets
+    python tools/testrun.py run e2e tests/test_molbuilder_e2e.py   # a part of it,
+                                                                   # recorded as a part
     python tools/testrun.py run tests/test_a.py tests/test_b.py     # a targeted set
     python tools/testrun.py run none2e --workers 1                   # one process
     python tools/testrun.py run lf             # rerun ONLY last-run failures (any batch)
@@ -42,12 +43,16 @@ import importlib.util
 import json
 import os
 import fcntl
+import hashlib
 import subprocess
 import sys
 import time
+from collections import Counter
+from datetime import datetime
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROGRESS_DIR = os.path.join(REPO, ".test-progress")
+
 
 # Batch -> pytest target selection.  ``none2e`` excludes e2e FILES (their test
 # names don't reliably contain "e2e", so -k is wrong -- ignore by glob).
@@ -60,6 +65,35 @@ BATCHES = {
     "field":  ["tests/field/"],
     "all":    ["tests/"],
 }
+
+
+def code_now(repo=None):
+    """Which code the checkout holds: a digest of every file git would keep,
+    names and bytes, ``None`` where git cannot list them.  A run's numbers are
+    about the code it ran on, and a commit changes no byte.  git's settings are
+    left out, because a run's and a shell's are not the same (the suite moves
+    ``HOME``)."""
+    repo = repo or REPO
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull,
+           "GIT_CONFIG_SYSTEM": os.devnull}
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard",
+             "-z"], cwd=repo, env=env, capture_output=True, timeout=60,
+            check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    digest = hashlib.sha1()
+    for name in sorted(set(listed.split(b"\0")) - {b""}):
+        path = os.path.join(repo, os.fsdecode(name))
+        if os.path.islink(path):
+            digest.update(name + os.fsencode(os.readlink(path)))
+        elif os.path.isfile(path):
+            digest.update(name)
+            with open(path, "rb") as fh:
+                for block in iter(lambda: fh.read(1 << 20), b""):
+                    digest.update(block)
+    return digest.hexdigest()
 
 
 def _default_workers():
@@ -221,7 +255,7 @@ def _summarise(batch, path):
     # collection failure is a failure -- it explains the exit code.
     results = [e for e in gen if e["event"] in ("test", "collect")]
     last_t = max((e["time"] for e in gen), default=start_t)
-    counts = {"passed": 0, "failed": 0, "skipped": 0}
+    counts = {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0}
     for e in results:
         counts[e["outcome"]] = counts.get(e["outcome"], 0) + 1
     # `ran` COUNTS TESTS, NOT RECORDS.  A teardown failure is an extra record
@@ -284,7 +318,14 @@ def _summarise(batch, path):
         "passed": counts["passed"],
         "failed": counts["failed"],
         "skipped": counts["skipped"],
+        "xfailed": counts["xfailed"],
+        # WHY EACH WAS NOT RUN, or was expected to fail: counted by reason.
+        "not_run": Counter(e.get("reason") or "no reason given" for e in results
+                           if e["outcome"] in ("skipped", "xfailed")),
         "elapsed": round((last_t - start_t), 1),
+        "ran_at": start_t,
+        "code": gen[0].get("code"),
+        "asked": gen[0].get("asked") or [],
         "failed_ids": [(e["nodeid"], e.get("reason", "")) for e in results
                        if e["outcome"] == "failed"],
         "path": path,
@@ -330,8 +371,10 @@ def cmd_run(args):
                   "machine -- MOLBUILDER_FIELD_RECORD=<record> "
                   "(docs/process/testing.md § 0, tier 2)", file=sys.stderr)
             return 2
+        # A PART OF A BATCH IS NOT THE BATCH: its file is the targeted set's,
+        # or `status` would call twelve tests the e2e batch.
         sel = list(BATCHES[args.batch]) if not extra else list(extra)
-        batch_file = args.batch
+        batch_file = args.batch if not extra else "custom"
     else:
         # treat the batch token as an explicit target path
         sel = [args.batch] + list(extra)
@@ -408,13 +451,15 @@ def cmd_status(args):
 
     A number that reads like a result is printed ONLY for ``done``; everything
     else leads with what is wrong with the file, because the failure this guards
-    against was a believable-looking count.
+    against was a believable-looking count.  So is a true count of other code:
+    a ``done`` from a week ago says so, or it reads as today's.
     """
     batches = [args.batch] if args.batch else _known_batches()
     if not batches:
         print("no progress files under .test-progress/ yet")
         return 0
     untrustworthy = False
+    code = code_now()
     for b in batches:
         s = _summarise(b, _progress_path(b))
         if s["state"] == "no-data":
@@ -427,7 +472,7 @@ def cmd_status(args):
             if s["state"] == "abandoned":
                 print(f"      ran {s['ran']}/{s['collected']}  "
                       f"pass {s['passed']}  FAIL {s['failed']}  "
-                      f"skip {s['skipped']}")
+                      f"skip {s['skipped']}  xfail {s['xfailed']}")
             print(f"      {s['path']}")
             if args.fails and s.get("failed_ids"):
                 print(f"      ({len(s['failed_ids'])} failure records are "
@@ -438,15 +483,38 @@ def cmd_status(args):
                         print(f"         -> {reason}")
             continue
         loud = s["state"] in ("partial", "unexplained")
-        head = (f"[{b}] {s['state'].upper() if loud else s['state']}"
+        # ONLY A FINISHED RUN'S COUNTS CAN READ AS A RESULT, so only they are
+        # held to the code they ran on.
+        done_on = None
+        if s["state"] == "done":
+            done_on = ("unknown" if s["code"] is None or code is None
+                       else "other" if s["code"] != code else None)
+        label = ("done, ON OTHER CODE" if done_on == "other"
+                 else "done, ON CODE NOT KNOWN" if done_on == "unknown"
+                 else s["state"].upper() if loud else s["state"])
+        head = (f"[{b}] {label}"
                 + (f" (exit {s['exitstatus']})" if s['exitstatus'] is not None else "")
                 + f" | {s['ran']}/{s['collected']} ran"
                 + f" | pass {s['passed']}  FAIL {s['failed']}  skip {s['skipped']}"
-                + f" | {s['elapsed']}s")
+                + (f"  xfail {s['xfailed']}" if s["xfailed"] else "")
+                + f" | {s['elapsed']}s"
+                + f" | ran {datetime.fromtimestamp(s['ran_at']):%Y-%m-%d %H:%M}")
         print(head)
         if loud:
             untrustworthy = True
             print(f"      {s['why']}")
+        if done_on:
+            untrustworthy = True
+            print("      the checkout has changed since this run: its numbers "
+                  "are not about the code here" if done_on == "other" else
+                  "      this cannot say which code the run was of, so its "
+                  "numbers may not be about the code here")
+        if b == "custom" and s["asked"]:
+            print(f"      a part, not the suite: {' '.join(s['asked'][:6])}"
+                  + (f" and {len(s['asked']) - 6} more"
+                     if len(s["asked"]) > 6 else ""))
+        for reason, n in s["not_run"].most_common():
+            print(f"      not run or expected to fail, {n}: {reason}")
         if args.fails and s["failed_ids"]:
             for nid, reason in s["failed_ids"]:
                 print(f"    FAIL {nid}")

@@ -224,7 +224,7 @@ def test_dispatch_auto_falls_through_threedna_silently(monkeypatch):
             "threedna": lambda *a, **k: (
                 pytest.fail("threedna build called when unavailable")
             ),
-            "amber": lambda *a, **k: (calls := captured.append("amber")) or "amber-out",
+            "amber": lambda *a, **k: captured.append("amber") or "amber-out",
             "rdkit": lambda *a, **k: "rdkit-out",
         },
     )
