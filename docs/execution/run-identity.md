@@ -124,7 +124,7 @@ A real calculation, from typed name to file names:
 
 | step | value |
 |---|---|
-| the folder you made | `projects/claude-review-2-45-0/spectrum/pyscf_held_ir/` |
+| the folder you made | `projects/my-project/spectrum/pyscf_held_ir/` |
 | the name you typed (`run.name`) | `pyscf-held-ir` |
 | the label | `pyscf-held-ir` — the `JOB` literal |
 | the id (`run.id`) | `pyscf-held-ir_H2O` |
@@ -331,7 +331,7 @@ One token names every file of a calculation, on disk and to the engine. For
 the real calculation `h2_siesta` (id `h2_siesta_H2`):
 
 ```text
-projects/claude-s28-onestart/optimization/h2_siesta/   ← the folder you named
+projects/my-project/optimization/h2_siesta/           ← the folder you named
 ├── task.json                     ← run.name, run.id = h2_siesta_H2
 └── 01_coarse/
     ├── h2_siesta_01_coarse.fdf   ┐ named by MOLBUILDER:

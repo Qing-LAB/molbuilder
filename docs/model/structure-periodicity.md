@@ -429,7 +429,7 @@ recipe gives (`AtomicCoordinatesOrigin 0 0 1.1773`: half its 2.3545 Å
 | **a structure saved from an engine's output** | carries the engine's coordinates **with the engine's origin**, `(0,0,0)`, set together and recorded as the engine's — so the saved pair draws its box where the engine had it, and a new calculation made from it is centred (below). *Automatic* on the Cell page centres the pair itself |
 
 **Why fractional, and why never re-wrapped** — both measured on the junction
-that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
+that surfaced this, a gold–BDT slab:
 
 * **Fractional.** Its in-plane cell is hexagonal (`b = (4.326, 7.492, 0)`), so
   the slab's Cartesian x-extent is **10.093 Å against |a| = 8.651 Å**. A

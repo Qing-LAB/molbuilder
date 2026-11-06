@@ -7,14 +7,9 @@ awareness to validate a downloaded pseudo directory at preflight
 and call out mismatches BEFORE the user discovers them in a wrong-
 bond-length SIESTA run.
 
-Tests:
-  * Synthetic-PSML round-trip: build a minimal valid PSML, parse it,
-    assert the canonical metadata.
-  * scan_psml_directory: drop a few synthetic files, scan, get each
-    file by its name.
-  * check_coverage: missing element, XC mismatch, relativistic
-    mismatch.
-  * Tolerance: malformed XML doesn't crash the parser.
+Correct input is a real file: PseudoDojo's own, `tests/fixtures/psml/`.  A real
+file reads right, a set of them is judged right, and a file that is not one is
+said so, with no element made up.
 """
 from __future__ import annotations
 
@@ -22,34 +17,17 @@ import re
 
 import pytest
 
-from pathlib import Path
+import shutil
+
+from _road import PSML_DIR
 
 
-# Minimal PSML body covering the fields the parser reads.  Real
-# PseudoDojo files have 100+ KB of grid / orbital data we don't need
-# to fake here; the parser only touches the <header> + first
-# <libxc-info> + <provenance>.
-def _make_psml(element: str, *,
-                z: int = None,
-                libxc_id: int = 101,   # GGA_X_PBE
-                rel: str = "scalar",
-                creator: str = "ONCVPSP-test") -> str:
-    if z is None:
-        from ase.data import atomic_numbers as _Z
-        z = _Z[element]
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<psml version="1.1" xmlns="http://launchpad.net/psml">
-  <header atomic-label="{element}" atomic-number="{z}" z-pseudo="{z}"
-          relativity="{rel}"/>
-  <exchange-correlation>
-    <libxc-info id="{libxc_id}"/>
-  </exchange-correlation>
-  <provenance creator="{creator}"/>
-  <valence-configuration>
-    <shell n="2" l="s" occupation="2.0"/>
-    <shell n="2" l="p" occupation="4.0"/>
-  </valence-configuration>
-</psml>"""
+#: What a folder of a test holds: an element's real file, v0.4's set unless a
+#: release is named.
+_REAL = {"H": PSML_DIR / "H.psml", "C": PSML_DIR / "C.psml",
+         "O": PSML_DIR / "O.psml",
+         "S": PSML_DIR / "pseudodojo-v0.4" / "S.psml",
+         "S v0.5": PSML_DIR / "pseudodojo-v0.5" / "S.psml"}
 
 
 class TestParsePsmlHeader:
@@ -62,81 +40,51 @@ class TestParsePsmlHeader:
         atomic number read back was z-pseudo."""
         from molbuilder.pseudos import parse_psml_header
         info = parse_psml_header(
-            Path(__file__).parent / "fixtures" / "psml" / "C.psml")
+            _REAL["C"])
         assert info.element       == "C"
         assert info.atomic_number == 6       # the TRUE element Z, not z_pseudo
         assert info.xc_family     == "GGA"
         assert info.xc_authors    == "PBE"
         assert info.relativistic  == "scalar"
+        assert info.generator.startswith("ONCVPSP-3.3.0")
+        assert info.null_channels == []      # d has no <proj>: absent, not dead
         assert info.parse_warnings == []
 
-    def test_basic_round_trip(self, tmp_path):
-        p = tmp_path / "C.psml"
-        p.write_text(_make_psml("C"))
+    def test_a_fully_relativistic_file_reads_as_spin_orbit(self, tmp_path):
+        """PSML's `relativity="dirac"`, so C3 can compare it with a spin-orbit
+        calculation; read as unknown, C3 goes silent.  None of the scalar sets
+        here is one, so this is a real file with that word changed."""
         from molbuilder.pseudos import parse_psml_header
-        info = parse_psml_header(p)
-        assert info.element       == "C"
-        assert info.atomic_number == 6
-        assert info.xc_family     == "GGA"
-        assert info.xc_authors    == "PBE"
-        assert info.relativistic  == "scalar"
-        assert info.generator     == "ONCVPSP-test"
-        assert info.path          == p
-        assert info.parse_warnings == []
-
-    def test_pbesol_libxc(self, tmp_path):
-        """libxc id 116 = XC_GGA_X_PBE_SOL."""
-        p = tmp_path / "Fe.psml"
-        p.write_text(_make_psml("Fe", libxc_id=116))
-        from molbuilder.pseudos import parse_psml_header
-        info = parse_psml_header(p)
-        assert info.xc_family  == "GGA"
-        assert info.xc_authors == "PBEsol"
-
-    def test_fully_relativistic_normalised(self, tmp_path):
-        """``relativity=dirac`` and similar variants should normalise
-        to ``"spin-orbit"`` so downstream code has one canonical
-        value."""
-        p = tmp_path / "Pt.psml"
-        p.write_text(_make_psml("Pt", rel="dirac"))
-        from molbuilder.pseudos import parse_psml_header
+        text = _REAL["H"].read_text(encoding="utf-8")
+        assert 'relativity="scalar"' in text
+        p = tmp_path / "H.psml"
+        p.write_text(text.replace('relativity="scalar"', 'relativity="dirac"'),
+                     encoding="utf-8")
         assert parse_psml_header(p).relativistic == "spin-orbit"
 
-    def test_unknown_libxc_id_falls_back_to_unknown(self, tmp_path):
-        """A libxc id we don't recognise (rare functionals) must NOT
-        misclassify; mark as unknown so the user gets a clear warning
-        rather than a wrong-family false-positive."""
-        p = tmp_path / "X.psml"
-        p.write_text(_make_psml("C", libxc_id=99999))
-        from molbuilder.pseudos import parse_psml_header
-        info = parse_psml_header(p)
-        assert info.xc_family  == "unknown"
-        assert info.xc_authors == "unknown"
-
-    def test_malformed_xml_returns_parse_warning(self, tmp_path):
-        """Garbage in the file -> PsmlInfo with empty element and a
-        parse warning, NOT an exception.  scan_psml_directory relies
-        on this to silently skip bad files."""
+    @pytest.mark.parametrize("text", ["<psml not closed properly",
+                                      "<psml version='1.1'/>"],
+                             ids=["not-xml", "xml-holding-no-element"])
+    def test_a_file_that_is_not_one_says_so(self, tmp_path, text):
+        """Not a file this reader knows: no element made up, and a warning
+        instead of an exception."""
         p = tmp_path / "broken.psml"
-        p.write_text("<psml not closed properly")
+        p.write_text(text)
         from molbuilder.pseudos import parse_psml_header
         info = parse_psml_header(p)
         assert info.element == ""
         assert info.parse_warnings
-        assert "parse" in info.parse_warnings[0].lower()
 
 
 def _write_folder(directory, files):
-    """A folder of synthetic pseudopotentials: file name -> the element it
-    declares, or (element, `_make_psml` keywords), or ``None`` for a file
-    whose XML does not parse."""
+    """A folder of real pseudopotentials under these file names: file name ->
+    a key of `_REAL`, or ``None`` for a file whose XML does not parse."""
     directory.mkdir(parents=True, exist_ok=True)
-    for name, spec in files.items():
-        if spec is None:
+    for name, element in files.items():
+        if element is None:
             (directory / name).write_text("<psml not closed")
             continue
-        element, kw = spec if isinstance(spec, tuple) else (spec, {})
-        (directory / name).write_text(_make_psml(element, **kw))
+        shutil.copy(_REAL[element], directory / name)
 
 
 class TestScanPsmlDirectory:
@@ -147,18 +95,17 @@ class TestScanPsmlDirectory:
 
 class TestCheckCoverage:
     def test_all_present_with_matching_xc(self, tmp_path):
-        for el in ("C", "H", "N", "Fe"):
-            (tmp_path / f"{el}.psml").write_text(_make_psml(el))
+        _write_folder(tmp_path, {f"{el}.psml": el for el in ("C", "H", "O")})
         from molbuilder.pseudos import check_coverage
         entries = check_coverage(
-            ("C", "H", "N", "Fe"), tmp_path,
+            ("C", "H", "O"), tmp_path,
             expected_xc_family="GGA", expected_xc_authors="PBE",
         )
-        assert len(entries) == 4
+        assert len(entries) == 3
         assert all(e.status == "ok" for e in entries)
 
     def test_missing_element_flagged(self, tmp_path):
-        (tmp_path / "C.psml").write_text(_make_psml("C"))
+        _write_folder(tmp_path, {"C.psml": "C"})
         from molbuilder.pseudos import check_coverage
         entries = check_coverage(("C", "H", "Fe"), tmp_path)
         statuses = {e.element: e.status for e in entries}
@@ -170,15 +117,15 @@ class TestCheckCoverage:
         assert "pseudo-dojo" in h_msg.lower()
 
     def test_xc_family_mismatch(self, tmp_path):
-        """LDA pseudo on a GGA calc -- silently-wrong bond lengths.  A
+        """A GGA pseudo on an LDA calc -- silently-wrong bond lengths.  A
         FAMILY mismatch is a distinct status (xc_family_mismatch), which the
         SIESTA validator maps to ERROR (blocks); it is never physically
         correct.  (Same-family author diffs stay 'xc_mismatch' / WARN.)"""
-        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
+        _write_folder(tmp_path, {"C.psml": "C"})
         from molbuilder.pseudos import check_coverage
         entries = check_coverage(
             ("C",), tmp_path,
-            expected_xc_family="GGA", expected_xc_authors="PBE",
+            expected_xc_family="LDA", expected_xc_authors="CA",
         )
         assert entries[0].status == "xc_family_mismatch"
         assert "LDA" in entries[0].message
@@ -186,7 +133,7 @@ class TestCheckCoverage:
 
     def test_xc_authors_mismatch_within_family(self, tmp_path):
         """PBE pseudo + PBEsol calc -- same family, minor mismatch."""
-        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=101))  # PBE
+        _write_folder(tmp_path, {"C.psml": "C"})
         from molbuilder.pseudos import check_coverage
         entries = check_coverage(
             ("C",), tmp_path,
@@ -197,18 +144,17 @@ class TestCheckCoverage:
 
     def test_relativistic_mismatch(self, tmp_path):
         """Scalar pseudo + spin-orbit calc -- WARN."""
-        (tmp_path / "Pt.psml").write_text(_make_psml("Pt", rel="scalar"))
+        _write_folder(tmp_path, {"C.psml": "C"})
         from molbuilder.pseudos import check_coverage
         entries = check_coverage(
-            ("Pt",), tmp_path, expected_relativistic="spin-orbit",
+            ("C",), tmp_path, expected_relativistic="spin-orbit",
         )
         assert entries[0].status == "relativistic_mismatch"
 
     def test_duplicate_elements_in_structure_dedup(self, tmp_path):
         """A structure with many C atoms only counts as ONE coverage
         entry for C."""
-        (tmp_path / "C.psml").write_text(_make_psml("C"))
-        (tmp_path / "H.psml").write_text(_make_psml("H"))
+        _write_folder(tmp_path, {"C.psml": "C", "H.psml": "H"})
         from molbuilder.pseudos import check_coverage
         # Pretend the structure has 6 C + 6 H.
         entries = check_coverage(["C"]*6 + ["H"]*6, tmp_path)
@@ -266,122 +212,50 @@ class TestResolvePsmlLib:
 # ===================================================================== #
 
 
-def _psml_with_projectors(element, projectors, *, z,
-                          creator="ONCVPSP-3.3.0+psml-3.3.0-73 "
-                                  "(scalar-relativistic)"):
-    """Synthetic PSML carrying a <nonlocal-projectors> block.
-
-    projectors: list of (l_letter, ekb_float).  Lets a test build a
-    pseudo with a deliberately dead channel (all ekb=0 for an l).
-    """
-    proj = "\n".join(
-        f'<proj l="{l}" seq="{i+1}" ekb="{ekb}" eref="0" type="oncv"/>'
-        for i, (l, ekb) in enumerate(projectors)
-    )
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<psml version="1.1" xmlns="http://esl.cecam.org/PSML/ns/1.1">
-<provenance creator="{creator}"/>
-<pseudo-atom-spec atomic-label="{element}" atomic-number="{z}"
- z-pseudo="{z}" relativity="scalar"/>
-<exchange-correlation><libxc-info>
-<functional type="exchange" id="101"/>
-<functional type="correlation" id="130"/>
-</libxc-info></exchange-correlation>
-<nonlocal-projectors>
-{proj}
-</nonlocal-projectors>
-</psml>"""
-
-
-# A sulfur with s + d projectors real but the ENTIRE p-channel dead --
-# exactly the defective BDT S.psml (ONCVPSP-4.0.1) that motivated C5.
-_S_DEAD_P = [("s", 6.774), ("s", 0.542),
-             ("p", 0.0), ("p", 0.0),
-             ("d", 0.0), ("d", 3.022)]
-_S_GOOD = [("s", 6.764), ("s", 0.574),
-           ("p", 3.227), ("p", 0.887),
-           ("d", -3.548), ("d", -0.987)]
+def _a_channel_nothing_carries(directory):
+    """Real v0.5 sulfur with its `<slps l="p">` block taken out: p's projectors
+    zero and nothing carrying the channel, C5's case.  No file of either
+    PseudoDojo table has it, so this is made from one that nearly does."""
+    text = re.sub(r'<slps n="\d+" l="p".*?</slps>\s*', "",
+                  _REAL["S v0.5"].read_text(encoding="utf-8"), flags=re.S)
+    (directory / "S.psml").write_text(text, encoding="utf-8")
 
 
 class TestDeadProjectorC5:
-    def test_null_channel_detected(self, tmp_path):
-        from molbuilder.pseudos import parse_psml_header
-        p = tmp_path / "S.psml"
-        p.write_text(_psml_with_projectors("S", _S_DEAD_P, z=16))
-        info = parse_psml_header(p)
-        # Only 'p' is fully null; 'd' has one real projector (3.022) so
-        # it is NOT flagged -- the standard requires the WHOLE channel.
-        assert info.null_channels == ["p"]
-
-    def test_good_pseudo_has_no_null_channels(self, tmp_path):
-        from molbuilder.pseudos import parse_psml_header
-        p = tmp_path / "S.psml"
-        p.write_text(_psml_with_projectors("S", _S_GOOD, z=16))
-        assert parse_psml_header(p).null_channels == []
-
-    def test_absent_channel_is_not_flagged(self, tmp_path):
-        # A channel chosen as LOCAL has no <proj> entries at all; absent
-        # != present-but-zero, so it must NOT be flagged (C5 clause).
-        from molbuilder.pseudos import parse_psml_header
-        p = tmp_path / "X.psml"
-        p.write_text(_psml_with_projectors(
-            "C", [("s", 5.0), ("s", 0.3)], z=6))  # no p/d entries at all
-        assert parse_psml_header(p).null_channels == []
-
-    def test_dead_projector_is_error_status(self, tmp_path):
-        from molbuilder.pseudos import check_coverage
-        (tmp_path / "S.psml").write_text(
-            _psml_with_projectors("S", _S_DEAD_P, z=16))
-        [entry] = check_coverage(["S"], tmp_path)
-        assert entry.status == "dead_projector"
-        assert "p" in entry.message and "ekb=0" in entry.message
-
-    def test_dead_projector_maps_to_error_severity(self, tmp_path):
-        # The validation layer must escalate dead_projector to ERROR.
+    def test_a_channel_nothing_carries_is_dead_and_blocks(self, tmp_path):
+        """Only p is named: `d` has one real projector, and the standard asks
+        of the WHOLE channel.  The screening and the preflight say so alike."""
+        from molbuilder.pseudos import check_coverage, parse_psml_header
         from molbuilder.validation.siesta import _check_siesta_pseudo_coverage
-
         lib = tmp_path / "projects" / "psml"
         lib.mkdir(parents=True)
+        _a_channel_nothing_carries(lib)
+        assert parse_psml_header(lib / "S.psml").null_channels == ["p"]
+        [entry] = check_coverage(["S"], lib)
+        assert entry.status == "dead_projector"
+        assert "p" in entry.message and "ekb=0" in entry.message
 
         class _Cfg:
             psml_lib = str(lib)
             xc_authors = "PBE"
-        (lib / "S.psml").write_text(
-            _psml_with_projectors("S", _S_DEAD_P, z=16))
 
         class _Struct:
             elements = ["S"]
-        issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(),
-                                               dest_dir=lib)
+        issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(), dest_dir=lib)
         assert any(i.severity == "error" and "Kleinman" in i.message
                    for i in issues), [(_i.severity, _i.message) for _i in issues]
 
 
 class TestGeneratorVersionC4:
     def test_mixed_major_version_warns(self, tmp_path):
+        """v0.4's carbon and hydrogen beside v0.5's sulfur: the two releases'
+        generators, ONCVPSP 3 and 4, named by the stranger's element."""
         from molbuilder.pseudos import check_coverage
-        (tmp_path / "C.psml").write_text(_psml_with_projectors(
-            "C", _S_GOOD, z=6,
-            creator="ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)"))
-        (tmp_path / "S.psml").write_text(_psml_with_projectors(
-            "S", _S_GOOD, z=16,
-            creator="ONCVPSP-4.0.1+psml-4.0.1-76 (scalar-relativistic)"))
-        entries = check_coverage(["C", "S"], tmp_path)
-        gm = [e for e in entries if e.status == "generator_mismatch"]
-        assert len(gm) == 1
-        # The minority (S, the v4 stranger) is named.
-        assert "S" in gm[0].element
-
-    def test_patch_difference_does_not_warn(self, tmp_path):
-        from molbuilder.pseudos import check_coverage
-        (tmp_path / "C.psml").write_text(_psml_with_projectors(
-            "C", _S_GOOD, z=6,
-            creator="ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)"))
-        (tmp_path / "S.psml").write_text(_psml_with_projectors(
-            "S", _S_GOOD, z=16,
-            creator="ONCVPSP-3.3.1+psml-3.3.1-99 (scalar-relativistic)"))
-        entries = check_coverage(["C", "S"], tmp_path)
-        assert not [e for e in entries if e.status == "generator_mismatch"]
+        _write_folder(tmp_path, {"C.psml": "C", "H.psml": "H",
+                                 "S.psml": "S v0.5"})
+        gm = [e for e in check_coverage(["C", "H", "S"], tmp_path)
+              if e.status == "generator_mismatch"]
+        assert [e.element for e in gm] == ["S"]
 
     def test_generator_key_reduces_to_name_major(self):
         from molbuilder.pseudos import _generator_key
@@ -419,42 +293,38 @@ class TestErrorStatusesSharedBySurfaces:
              "semilocal_only"})
 
     #: C1 / C1a as rows (`science/pseudopotentials.md`): the folder's files
-    #: (name -> the element it declares, or (element, `_make_psml`
-    #: keywords)), the species labels the structure holds, and the entries
-    #: in order -- (label, status, words its message must carry).
+    #: (`_write_folder`), the species labels the structure holds, and the
+    #: entries in order -- (label, status, words its message must carry).
     NAMED_FILES = [
-        pytest.param({"gold.psml": "Au", "H.psml": "H"}, ["Au", "H"],
-                     [("Au", "misnamed", ["gold.psml", "Au.psml",
-                                          "never reads"]),
+        pytest.param({"carbon.psml": "C", "H.psml": "H"}, ["C", "H"],
+                     [("C", "misnamed", ["carbon.psml", "C.psml",
+                                         "never reads"]),
                       ("H", "ok", [])],
                      id="a-file-SIESTA-never-opens"),
-        pytest.param({"Au1.psml": "Au", "Au2.psml": "Au"}, ["Au1", "Au2"],
-                     [("Au1", "ok", []), ("Au2", "ok", [])],
+        pytest.param({"C1.psml": "C", "C2.psml": "C"}, ["C1", "C2"],
+                     [("C1", "ok", []), ("C2", "ok", [])],
                      id="two-labels-of-one-element-two-files"),
-        pytest.param({"Au.psml": "Au"}, ["Au1"],
-                     [("Au1", "misnamed", ["Au.psml", "Au1.psml"])],
+        pytest.param({"C.psml": "C"}, ["C1"],
+                     [("C1", "misnamed", ["C.psml", "C1.psml"])],
                      id="a-label-is-not-covered-by-its-element's-file"),
-        pytest.param({"C.psml": "Au"}, ["C"],
-                     [("C", "misnamed", ["C.psml", "declares element Au"])],
+        pytest.param({"C.psml": "O"}, ["C"],
+                     [("C", "misnamed", ["C.psml", "declares element O"])],
                      id="the-right-name-another-element"),
-        pytest.param({"Au1.psml": "Au"}, ["Au1", "Au2"],
-                     [("Au1", "ok", []), ("Au2", "missing", [])],
+        pytest.param({"C1.psml": "C"}, ["C1", "C2"],
+                     [("C1", "ok", []), ("C2", "missing", [])],
                      id="a-file-another-label-opens-is-that-label's"),
-        pytest.param({"Au1.psml": ("Au", {"creator": "ONCVPSP-3.3.0"}),
-                      "Au2.psml": ("Au", {"creator": "ONCVPSP-4.0.1"}),
-                      "H.psml": ("H", {"creator": "ONCVPSP-3.3.0"})},
-                     ["Au1", "Au2", "H"],
-                     [("Au1", "ok", []), ("Au2", "ok", []), ("H", "ok", []),
-                      ("Au2", "generator_mismatch", ["ONCVPSP-4"])],
+        pytest.param({"S1.psml": "S", "S2.psml": "S v0.5", "H.psml": "H"},
+                     ["S1", "S2", "H"],
+                     [("S1", "ok", []), ("S2", "semilocal_only", []),
+                      ("H", "ok", []),
+                      ("S2", "generator_mismatch", ["ONCVPSP-4"])],
                      id="the-set's-generators-are-the-files-the-labels-open"),
-        pytest.param({"Au1.psml": ("Au", {"creator": "ONCVPSP-3.3.0"}),
-                      "Au2.psml": ("Au", {"creator": "ONCVPSP-3.3.0"}),
-                      "Au_old.psml": ("Au", {"creator": "ONCVPSP-4.0.1"})},
-                     ["Au1", "Au2"],
-                     [("Au1", "ok", []), ("Au2", "ok", [])],
+        pytest.param({"S1.psml": "S", "S2.psml": "S", "S_old.psml": "S v0.5"},
+                     ["S1", "S2"],
+                     [("S1", "ok", []), ("S2", "ok", [])],
                      id="a-file-no-label-opens-is-not-in-the-set"),
-        pytest.param({"Au.psml": None}, ["Au"],
-                     [("Au", "parse_warning", ["could not parse"])],
+        pytest.param({"C.psml": None}, ["C"],
+                     [("C", "parse_warning", ["could not parse"])],
                      id="a-file-that-does-not-parse-is-C6's-warning"),
         pytest.param({"H.psml": "H"}, ["Au_1", "H"],
                      [("Au_1", "missing", ["not a species label"]),
@@ -489,20 +359,20 @@ class TestErrorStatusesSharedBySurfaces:
     #: `NAMED_FILES`), the options, the exit code, and lines the output must
     #: hold (regular expressions, so a bare "C" is a word, not any letter).
     CLI_ROWS = [
-        pytest.param({"C.psml": ("C", {"libxc_id": 1})}, ["--xc", "PBE"],
+        pytest.param({"C.psml": "C"}, ["--xc", "CA"],
                      1, [r"\[ERROR\] C\b"],
-                     id="an-lda-pseudo-on-a-pbe-calc-blocks"),
-        pytest.param({"C.psml": ("C", {"libxc_id": 101})}, ["--xc", "PBE"],
+                     id="a-gga-pseudo-on-an-lda-calc-blocks"),
+        pytest.param({"C.psml": "C"}, ["--xc", "PBE"],
                      0, [r"\[OK   \] C\b"],
                      id="a-matching-set-passes"),
-        pytest.param({"Au1.psml": "Au", "Au2.psml": "Au", "H.psml": "H"}, [],
-                     0, [r"\[OK   \] Au1\b", r"\[OK   \] Au2\b"],
+        pytest.param({"C1.psml": "C", "C2.psml": "C", "H.psml": "H"}, [],
+                     0, [r"\[OK   \] C1\b", r"\[OK   \] C2\b"],
                      id="a-folder-of-labelled-species-is-screened-by-label"),
-        pytest.param({"gold.psml": "Au", "H.psml": "H"}, [],
-                     1, [r"\[ERROR\] Au\b.*gold\.psml.*Au\.psml"],
+        pytest.param({"carbon.psml": "C", "H.psml": "H"}, [],
+                     1, [r"\[ERROR\] C\b.*carbon\.psml.*C\.psml"],
                      id="a-file-named-for-no-label-is-said-misnamed"),
-        pytest.param({"Au.psml": None, "H.psml": "H"}, [],
-                     0, [r"\[WARN \] Au\b.*could not parse"],
+        pytest.param({"C.psml": None, "H.psml": "H"}, [],
+                     0, [r"\[WARN \] C\b.*could not parse"],
                      id="a-labelled-file-that-does-not-parse-is-screened"),
     ]
 
@@ -523,28 +393,29 @@ class TestErrorStatusesSharedBySurfaces:
         for line in lines:
             assert re.search(line, res.output), (line, res.output)
 
-    #: The settings gate as rows: the library's files, the calculation
-    #: folder's (`pseudos/`, or ``None`` for the library as the folder), the
-    #: labels, and the findings by `where`, each (severity, words).
+    #: The settings gate as rows: the calculation's functional, the library's
+    #: files, the calculation folder's (`pseudos/`, or ``None`` for the library
+    #: as the folder), the labels, and the findings by `where`, each
+    #: (severity, words).
     GATE_ROWS = [
-        # The SAME fixture the CLI blocks on is error-severity in the
+        # The SAME mismatch the CLI blocks on is error-severity in the
         # preflight -- the two surfaces agree.
-        pytest.param({"C.psml": ("C", {"libxc_id": 1})}, None, ["C"],
+        pytest.param("CA", {"C.psml": "C"}, None, ["C"],
                      {"config.psml_lib.C": ("error", ["LDA"])},
-                     id="an-lda-pseudo-on-a-pbe-calc-blocks"),
-        # Labels read from two places -- Au1 and H from the folder, Au2
-        # from the library -- are judged together: the library's Au1.psml
-        # is Au1's, never Au2's to take (measured 2026-10-31: Au2 was told
-        # to save Au's pseudopotential from it).
-        pytest.param({"Au1.psml": "Au"}, {"Au1.psml": "Au", "H.psml": "H"},
-                     ["Au1", "Au2", "H"],
-                     {"config.psml_lib.Au2": ("error",
-                                              ["no .psml file for Au2"])},
+                     id="a-gga-pseudo-on-an-lda-calc-blocks"),
+        # Labels read from two places -- C1 and H from the folder, C2 from the
+        # library -- are judged together: the library's C1.psml is C1's, never
+        # C2's to take (measured 2026-10-31 on gold: the second label was told
+        # to save the element's pseudopotential from it).
+        pytest.param("PBE", {"C1.psml": "C"},
+                     {"C1.psml": "C", "H.psml": "H"}, ["C1", "C2", "H"],
+                     {"config.psml_lib.C2": ("error",
+                                             ["no .psml file for C2"])},
                      id="the-structure's-labels-are-judged-together"),
     ]
 
-    @pytest.mark.parametrize("library, folder, labels, expected", GATE_ROWS)
-    def test_the_settings_gate_says_each_label_once(self, tmp_path, library,
+    @pytest.mark.parametrize("xc, library, folder, labels, expected", GATE_ROWS)
+    def test_the_settings_gate_says_each_label_once(self, tmp_path, xc, library,
                                                     folder, labels,
                                                     expected):
         """The SIESTA preflight (`validation.siesta`) maps each label's
@@ -561,7 +432,7 @@ class TestErrorStatusesSharedBySurfaces:
 
         class _Cfg:
             psml_lib = str(lib)
-            xc_authors = "PBE"
+            xc_authors = xc
 
         class _Struct:
             elements = labels

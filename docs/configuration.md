@@ -271,9 +271,9 @@ calculation on this machine:
 
 ```text
 config:
-  machine     /home/qqing/.config/molbuilder/molbuilder.json  (found)
-  environment /home/qqing/molbuilder/projects/claude-s28-onestart/optimization/h2_siesta/environment.json  (found, via calculation)
-  environment /home/qqing/.config/molbuilder/environment.json  (found, via machine)
+  machine     ~/.config/molbuilder/molbuilder.json  (found)
+  environment ~/molbuilder/projects/my-project/optimization/h2_siesta/environment.json  (found, via calculation)
+  environment ~/.config/molbuilder/environment.json  (found, via machine)
   launch.mode = 'direct'   <- machine
   environment.domains: cpu, gpu
 ```

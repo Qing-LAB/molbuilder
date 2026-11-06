@@ -537,9 +537,9 @@ disagree with what the leads were computed with. The manual is blunt that
 TranSIESTA expects a *metallic* electrode and that fixing the boundary is
 "an intricate and important" matter.
 
-### 0.5 Worked example — the Au–BDT–Au junction in this repo
+### 0.5 Worked example — the Au–BDT–Au junction
 
-`projects/claude-transport-walk/transport/au-dta-t` — the 2026-10-08 walk's
+A gold–dithiol junction — the 2026-10-08 walk's
 sweep, cited from a CONCLUDED relaxation of molbuilder's own (the numbers
 below are the Au–BDT–Au design's, 2026-09; the walk's junction is smaller):
 
@@ -6588,7 +6588,7 @@ cross-checked against the installed binaries (2026-09-29):
 
 | what | the engine's own rule | where |
 |---|---|---|
-| **`siesta` reads no `TBT.*` keyword** | the `siesta` binary holds no `TBT.` label, and the last device run's report of its settings lists none | the 5.4.2 binary; `claude-w33` device run-1, 2026-09-26 |
+| **`siesta` reads no `TBT.*` keyword** | the `siesta` binary holds no `TBT.` label, and the last device run's report of its settings lists none | the 5.4.2 binary; a gold–BDT device run, 2026-09-26 |
 | **`tbtrans` reads the `TS.*` junction description** | the electrodes are `TBT.Elecs` / `TBT.Elec.<name>`, and when none is given, `TS.Elecs` / `TS.Elec.<name>`; the same for the chemical potentials (`TBT.ChemPots` → `TS.ChemPots`) and the buffer atoms | `m_tbt_options.F90` 116–118, 156–195, 261–337 |
 | **and several `TS.*` values as the defaults of its own — and a plain SIESTA one** | `TBT.Voltage` defaults to `TS.Voltage`; `TBT.Elecs.Bulk` to `TS.Elecs.Bulk` (itself true by default); `TBT.Elecs.Eta` to `TS.Elecs.Eta` (itself 1 meV); the temperature is SIESTA's own `ElectronicTemperature`, then `TS.ElectronicTemperature`, then `TBT.ElectronicTemperature` | `m_tbt_hs.F90` 109–110; `m_tbt_options.F90` 151–153, 285–289 |
 | **`TBT.k` is a list or a block — nothing else** | `TBT.k [2 2 1]` or `%block TBT.k` is read; any other form falls through to `%block TBT.kgrid.MonkhorstPack`, then to the SCF's own `kgrid.MonkhorstPack` — which is `kgrid_Monkhorst_Pack`, since fdf drops `_ . -` and case when it compares labels. **A list is only a list in brackets** | `m_tbt_kpoint.F90` 800–810 (`setup_kpoint_grid`), 103–127; `libfdf` `parse.F90` 1726 (*"if the token starts with [ and ends with ], it will be a list"*), `utils.F90` 113–162 (`labeleq`) |
@@ -6622,7 +6622,7 @@ device deck's own header repeated. The first half holds; the second does not.)*
 
 #### What the device run actually used — traced, 2026-09-26
 
-The device rung of `claude-w33/transport/au333bdt-t` (run-1, SIESTA 5.4.2),
+The device rung of a gold–BDT junction (run-1, SIESTA 5.4.2),
 its deck set beside TranSIESTA's own report of what it used:
 
 | what it decides | the deck molbuilder wrote | what TranSIESTA reported using | came from |
@@ -6733,7 +6733,7 @@ overwrites it from the energy, so it cannot act here — `plan.md` § 5p.3o.)
 | the deck states | poles | what happened |
 |---|---|---|
 | 1.5 eV (this project's default until 2026-09-17) | 18 | TranSIESTA refused it, after the queue wait |
-| nothing (TranSIESTA's own choice, $E = 0.7 \cdot 60 \cdot \pi k_B T$, `:316`) | 42 | `claude-w33`'s device lost the charge: 584 electrons off after 1000 iterations |
+| nothing (TranSIESTA's own choice, $E = 0.7 \cdot 60 \cdot \pi k_B T$, `:316`) | 42 | a gold–BDT device lost the charge: 584 electrons off after 1000 iterations |
 | 4 eV | 49 | — (the manual asks for at least 50) |
 | 10 eV | 123 | the same device, the decks differing in this one line, held the charge to 0.024 by step 4 |
 

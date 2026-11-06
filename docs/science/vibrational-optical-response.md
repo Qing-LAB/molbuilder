@@ -371,8 +371,8 @@ it.
 
 ### 2.4 A worked example — the toy junction, from its real run
 
-The charges are those the force-constant run of § 7 printed: the toy junction
-`claude-transport-walk` — a straight chain of 22 hydrogen atoms, ten held on
+The charges are those the force-constant run of § 7 printed: the toy junction,
+a straight chain of 22 hydrogen atoms, ten held on
 each side and the middle two (user indices 10, 11) free, the set $F$;
 $\hat e = \hat z$, along the chain. The run predates the result keeping its
 charges (2.36.0), so they were read from its output by the record step's own
@@ -1060,7 +1060,7 @@ nothing beyond reading what the runs wrote.
 
 ## 7. What is measured, and what is not yet
 
-**Measured** (2026-10-24, the toy junction `claude-transport-walk`: a chain
+**Measured** (2026-10-24, the toy junction: a chain
 of 22 hydrogen atoms, its middle two free) — **the charges at every
 force-constant step**: the vibration `frequency/h-vib-q`, through jobset, its
 input asking for both partitions (2.35.2): 13 steps, 13 Hirshfeld and 13

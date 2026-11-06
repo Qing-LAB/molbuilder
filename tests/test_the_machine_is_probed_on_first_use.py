@@ -12,9 +12,7 @@ Two probes, each resolved on its first use:
 
 Asserted through the command line itself, in a subprocess, because a probe
 at IMPORT is exactly what an in-process test cannot see: the suite imported
-the module long before.  Each probe is a stub that logs its call; the
-driver stub reports CUDA 12, so an answer that reaches a recipe is told
-apart from the project's default, 13 (`ops/env-framework.md` § 3).
+the module long before.  Each probe is a stub that logs its call.
 """
 from __future__ import annotations
 
@@ -33,15 +31,15 @@ REPO = Path(__file__).resolve().parents[1]
 def molbuilder(tmp_path):
     """``molbuilder(*args, **env) -> (run, calls)``: the CLI in a subprocess,
     with the env manager (recorded in molbuilder.json) and ``nvidia-smi`` as
-    stubs that log each call; ``STUB_DRIVER_FAILS=1`` makes the driver's
-    probe fail.  ``MOLBUILDER_CUDA_VERSION`` is unset unless passed."""
+    stubs that log each call, the driver's answering nothing.  What a real
+    driver answers is `tests/field/test_the_cuda_version.py`'s.
+    ``MOLBUILDER_CUDA_VERSION`` is unset unless passed."""
     log = tmp_path / "calls.log"
     stubs = tmp_path / "stubs"
     stubs.mkdir()
     for name, body in (
             ("conda", "echo '{\"envs\": [], \"envs_details\": {}}'"),
-            ("nvidia-smi", '[ -n "$STUB_DRIVER_FAILS" ] && exit 1\n'
-                           "echo 'CUDA Version: 12.2'")):
+            ("nvidia-smi", "exit 1")):
         stub = stubs / name
         stub.write_text(f'#!/usr/bin/env bash\necho "{name} $*" >> "{log}"\n'
                         f"{body}\n")
@@ -84,21 +82,13 @@ def test_a_recipe_reader_runs_both(molbuilder):
 
 
 def test_the_gpu_recipes_carry_the_cuda_version_each_tier_answers(molbuilder):
-    """The three tiers of `_resolve_cuda_version`, read off what the install
-    would run: the driver's major, the variable over it, and the project's
-    default when the driver answers nothing (`ops/env-framework.md` § 3)."""
-    run, _ = molbuilder("envs", "install", "molbuilder-pySCF", "--dry-run")
-    assert "'cupy-cuda12x[ctk]'" in run.stdout, run.stdout
-    assert "gpu4pyscf-cuda12x" in run.stdout, run.stdout
-    run, _ = molbuilder("envs", "install", "molbuilder-siesta-gpu",
-                        "--dry-run")
-    assert "'cuda-version=12.*'" in run.stdout, run.stdout
-    assert "NVIDIA driver supporting CUDA runtime 12.x" in run.stdout
-
+    """Where the driver answers nothing, read off what the install would run:
+    the variable when it is set, and the project's default when it is not
+    (`ops/env-framework.md` § 3).  A real driver's answer, and the variable
+    over it, are `tests/field/test_the_cuda_version.py`'s."""
     run, _ = molbuilder("envs", "install", "molbuilder-pySCF", "--dry-run",
                         MOLBUILDER_CUDA_VERSION="11.8")
     assert "'cupy-cuda11x[ctk]'" in run.stdout, run.stdout
 
-    run, _ = molbuilder("envs", "install", "molbuilder-pySCF", "--dry-run",
-                        STUB_DRIVER_FAILS="1")
+    run, _ = molbuilder("envs", "install", "molbuilder-pySCF", "--dry-run")
     assert "'cupy-cuda13x[ctk]'" in run.stdout, run.stdout

@@ -727,15 +727,7 @@ def _cgroup_paths() -> Dict[str, str]:
 _NO_LIMIT = 1 << 62
 
 #: cgroup v1's mount layout is ``/sys/fs/cgroup/<controller>/<path>``; v2's
-#: is ``/sys/fs/cgroup/<path>``.  Both spellings of the cpu hierarchy's
-#: directory are tried because sites mount it either way.
-#:
-#: These two are NAMED rather than inlined so a test can point them at a
-#: fixture.  Every machine this code will ever run on has exactly one
-#: answer for each, so a test that cannot supply its own is a test that can
-#: only check the machine it happens to be running on -- and the whole
-#: point here is reading a layout (SLURM cgroup v1) that this workstation
-#: does not have.
+#: is ``/sys/fs/cgroup/<path>``.
 _CG = "/sys/fs/cgroup"
 _PROC_CGROUP = "/proc/self/cgroup"
 

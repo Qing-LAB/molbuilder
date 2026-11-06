@@ -240,12 +240,12 @@ class PsmlInfo:
     """Canonical metadata extracted from a .psml file's header."""
     path:                Path
     element:             str             # "Fe", "C", "H", ...
-    atomic_number:       int             # integer Z (decoded from z-pseudo)
+    atomic_number:       int             # integer Z, the file's atomic-number
     xc_family:           str             # "GGA" | "LDA" | "VDW" | "unknown"
     xc_authors:          str             # "PBE" | "PBEsol" | "CA" | etc.
     relativistic:        str             # "no" | "scalar" | "spin-orbit"
     generator:           str             # "ONCVPSP" / "ATOM" / "Hamann" / etc.
-    valence_config:      str             # "[Ar] 3d6 4s2" etc. (free-form)
+    valence_config:      str             # its shells, "2s2 2p2"
     #: ---- what the file REQUIRES OF THE CALCULATION (layer 2) ----------
     #: `science/pseudopotentials.md` § 2a: a pseudo does not only have to be
     #: sound, it STATES things the calculation must satisfy.  These are read
@@ -283,17 +283,15 @@ class PsmlInfo:
     parse_warnings:      List[str] = field(default_factory=list)
 
 
-# PSML uses the namespace ``http://launchpad.net/psml`` for all
-# elements (sometimes versioned: psml-1.1).  ElementTree's strict
-# namespace handling means we have to match on the local tag (the
-# part after the }).
+# PSML uses a namespace for all elements (``http://esl.cecam.org/PSML/ns/1.1``).
+# ElementTree's strict namespace handling means we have to match on the local
+# tag (the part after the }).
 def _localtag(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
 def _findall_local(root, local_name: str):
-    """Find all descendants with local tag == ``local_name`` regardless
-    of namespace.  PseudoDojo PSML files vary in their xmlns URL."""
+    """Find all descendants with local tag == ``local_name``."""
     return [e for e in root.iter() if _localtag(e.tag) == local_name]
 
 
@@ -330,12 +328,10 @@ _LIBXC_MAP = {
 def parse_psml_header(path: Path) -> PsmlInfo:
     """Parse a single .psml file and return the canonical metadata.
 
-    Tolerant: missing fields produce empty strings + a parse warning,
-    not an exception.  XC family / authors fall back to ``"unknown"``
-    when the libxc id isn't in our table (rare functionals).  Returns
-    a PsmlInfo with ``element=""`` only if the file is so malformed
-    we can't even find the element symbol (extremely rare; PSML
-    requires it).
+    Reads what a PSML file holds.  A file that does not hold it is said so: no
+    element, and a warning, never an exception or a value made up.  XC family
+    and authors are ``"unknown"`` when the libxc id isn't in our table (rare
+    functionals).
     """
     path = Path(path)
     warnings: List[str] = []
@@ -355,65 +351,36 @@ def parse_psml_header(path: Path) -> PsmlInfo:
         )
 
     # ----- element + Z ----------------------------------------------
-    # Real PseudoDojo PSML files (the standard format SIESTA users
-    # download) put element + Z + relativity on ``<pseudo-atom-spec>``;
-    # the older / simpler PSML used ``<header>``.  Try both before
-    # falling back to root (which won't have the attribute and yields
-    # element="" + a parse warning).
-    # ``_first_local`` returns an empty Element for tags with no
-    # children -- in Python 3.13 that's "falsy" with a
-    # DeprecationWarning, in older Python 3.x it's also "falsy"
-    # silently.  Use ``is not None`` so the empty element isn't
-    # mistakenly skipped.
-    _hdr = _first_local(root, "pseudo-atom-spec")
-    if _hdr is None:
-        _hdr = _first_local(root, "header")
-    hdr = _hdr if _hdr is not None else root
-    element = (hdr.attrib.get("atomic-label")
-               or hdr.attrib.get("element")
-               or "").strip().capitalize()
-    # Prefer atomic-number (the element's Z) over z-pseudo (the
-    # valence electron count -- e.g. Fe has Z=26 but z-pseudo=16
-    # because the pseudo treats 3s²3p⁶3d⁶4s² = 16 e⁻ as valence).
-    z_str = (hdr.attrib.get("atomic-number")
-             or hdr.attrib.get("z-pseudo")
-             or "")
+    # PSML states them on <pseudo-atom-spec>; a file with none reads as no
+    # element, and is said so (C6).  ``_first_local`` returns an empty Element
+    # for a tag with no children, which is falsy: hence ``is not None``.
+    # `atomic-number` is the element's Z; `z-pseudo` beside it is the valence
+    # count (Fe has Z=26 and z-pseudo=16).
+    spec = _first_local(root, "pseudo-atom-spec")
+    spec_says = spec.attrib if spec is not None else {}
+    element = (spec_says.get("atomic-label") or "").strip().capitalize()
+    z_str = spec_says.get("atomic-number") or ""
     try:
         atomic_number = int(float(z_str)) if z_str else 0
     except ValueError:
         atomic_number = 0
-        warnings.append(f"unparseable z-pseudo: {z_str!r}")
+        warnings.append(f"unparseable atomic-number: {z_str!r}")
     if not element:
-        warnings.append("no element / atomic-label attribute in <header>")
+        warnings.append("no <pseudo-atom-spec atomic-label=...>: not a PSML "
+                        "file this reader knows")
 
     # ----- XC functional -------------------------------------------
     xc_family, xc_authors = "unknown", "unknown"
-    # Real PseudoDojo PSML uses:
+    # PSML states it once:
     #   <libxc-info number-of-functionals="2">
     #     <functional name="..." type="exchange"    id="101"/>
     #     <functional name="..." type="correlation" id="130"/>
     #   </libxc-info>
-    # The id attribute is on <functional>, NOT on <libxc-info>.  Older /
-    # synthesized formats that put id directly on <libxc-info> or on bare
-    # <exchange> / <correlation> are read too.
     libxc_ids: List[int] = []
     for el in _findall_local(root, "functional"):
         v = el.attrib.get("id")
         if v and v.isdigit():
             libxc_ids.append(int(v))
-    if not libxc_ids:
-        for el in _findall_local(root, "libxc-info"):
-            for attr in ("id", "code", "name"):
-                v = el.attrib.get(attr)
-                if v and v.isdigit():
-                    libxc_ids.append(int(v))
-                    break
-    if not libxc_ids:
-        for el in (_findall_local(root, "exchange")
-                   + _findall_local(root, "correlation")):
-            v = el.attrib.get("id") or el.attrib.get("libxc")
-            if v and v.isdigit():
-                libxc_ids.append(int(v))
     for lid in libxc_ids:
         if lid in _LIBXC_MAP:
             fam, auth = _LIBXC_MAP[lid]
@@ -422,82 +389,23 @@ def parse_psml_header(path: Path) -> PsmlInfo:
             if xc_family == "unknown":
                 xc_family, xc_authors = fam, auth
                 break
-    # Fall back to the <header xc-id="..."> attribute used by some files.
-    if xc_family == "unknown":
-        xc_attr = (hdr.attrib.get("xc")
-                   or hdr.attrib.get("xc-functional")
-                   or hdr.attrib.get("xc-id")
-                   or "").upper()
-        if xc_attr:
-            if "PBE" in xc_attr and "SOL" in xc_attr:
-                xc_family, xc_authors = "GGA", "PBEsol"
-            elif "PBE" in xc_attr:
-                xc_family, xc_authors = "GGA", "PBE"
-            elif "BLYP" in xc_attr:
-                xc_family, xc_authors = "GGA", "BLYP"
-            elif xc_attr.startswith("LDA") or "CA" in xc_attr:
-                xc_family, xc_authors = "LDA", "CA"
-
     # ----- relativistic --------------------------------------------
-    # PSML carries this either as a top-level header attribute
-    # (relativity="scalar" | "no" | "dirac") or inside <provenance>.
-    rel_raw = (hdr.attrib.get("relativity")
-               or hdr.attrib.get("relativistic")
-               or "").lower()
-    if rel_raw in ("dirac", "fr", "fully", "fully-relativistic", "spin-orbit"):
-        relativistic = "spin-orbit"
-    elif rel_raw in ("scalar", "sr", "scalar-relativistic"):
-        relativistic = "scalar"
-    elif rel_raw in ("no", "non", "non-relativistic", "nr"):
-        relativistic = "no"
-    else:
-        relativistic = "unknown"
+    # PSML's three values, on <pseudo-atom-spec>; anything else is unknown.
+    relativistic = {"dirac": "spin-orbit", "scalar": "scalar",
+                    "no": "no"}.get(
+        (spec_says.get("relativity") or "").lower(), "unknown")
 
     # ----- generator -----------------------------------------------
     provenance = _first_local(root, "provenance")
-    generator = ""
-    if provenance is not None:
-        generator = (provenance.attrib.get("creator")
-                     or provenance.attrib.get("generator")
-                     or "").strip()
-    if not generator:
-        # Some PSMLs have a <generator-info> sibling.
-        gi = _first_local(root, "generator")
-        if gi is not None:
-            generator = (gi.attrib.get("name")
-                         or (gi.text or "").strip())
-    generator = generator or "unknown"
+    generator = ((provenance.attrib.get("creator") or "").strip()
+                 if provenance is not None else "") or "unknown"
 
     # ----- valence configuration -----------------------------------
     vc_el = _first_local(root, "valence-configuration")
-    if vc_el is not None:
-        # Some files put it as text; others as child <shell> tags.
-        children = list(vc_el)
-        if children:
-            parts = []
-            for sh in children:
-                n = sh.attrib.get("n", "")
-                l = sh.attrib.get("l", "")
-                occ = sh.attrib.get("occupation", "")
-                parts.append(f"{n}{l}{occ}")
-            valence_config = " ".join(parts)
-        else:
-            valence_config = (vc_el.text or "").strip()
-    else:
-        valence_config = ""
-
-    # ----- suggested mesh cutoff (PseudoDojo extension) ------------
-    suggested_mesh = None
-    pd = _first_local(root, "pseudo-dojo")
-    if pd is not None:
-        for key in ("rmax", "mesh-cutoff", "recommended-cutoff"):
-            v = pd.attrib.get(key)
-            if v:
-                try:
-                    suggested_mesh = float(v)
-                    break
-                except ValueError:
-                    pass
+    valence_config = (" ".join(
+        f'{sh.attrib.get("n", "")}{sh.attrib.get("l", "")}'
+        f'{sh.attrib.get("occupation", "")}' for sh in vc_el)
+        if vc_el is not None else "")
 
     # ----- nonlocal-projector value validation ---------------------
     # Each <proj l=".." ekb=".."> is a Kleinman-Bylander projector; the
@@ -594,8 +502,7 @@ def parse_psml_header(path: Path) -> PsmlInfo:
         xc_family=xc_family, xc_authors=xc_authors,
         relativistic=relativistic, generator=generator,
         valence_config=valence_config,
-        suggested_mesh_ry=(cutoff_hints.get("normal")
-                           if cutoff_hints else suggested_mesh),
+        suggested_mesh_ry=cutoff_hints.get("normal"),
         cutoff_hints_ry=cutoff_hints,
         semilocal_only_channels=semilocal_only_channels,
         partial_projector_channels=partial_projector_channels,

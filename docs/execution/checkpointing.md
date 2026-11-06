@@ -889,7 +889,7 @@ state by the note its group's first launch wrote, and a copied-in group's by the
 note of the prep that copied it in.
 
 A real folder after a few acts — the test calculation
-`claude-s28-onestart/optimization/h2_siesta`:
+`my-project/optimization/h2_siesta`:
 
 ```text
 $ molbuilder checkpoint list

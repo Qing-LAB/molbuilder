@@ -1502,7 +1502,7 @@ JOB-SET STATUS -- h2_pyscf (pyscf)
 
 each group, and what is next:
   group 1  coarse  ready to launch (prepared by molbuilder 2.60.0) -- next:
-           molbuilder jobset launch task --group 1 --bundle claude-s28-onestart/optimization/h2_pyscf
+           molbuilder jobset launch task --group 1 --bundle my-project/optimization/h2_pyscf
 ```
 
 **`status <stage>` answers a different question**: not *where is this

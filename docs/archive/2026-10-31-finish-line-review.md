@@ -1866,14 +1866,61 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by 2.67.5's applying the rule (2026-11-06), by the release that owns each
+
+*(the user's rule, `process/testing.md` § 3b, applied to the tests that typed a tool's output; a fresh reader over what was added, its findings confirmed before they were taken; the old and new `parse_psml_header` compared on all 150 real files on this machine: identical answers)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2675-1 | **closed 2.67.5** | the reader's: a docstring saying v0.5 sulfur's `d` is wholly zeroed, when one of its two projectors is real; `dirac` left with no check; a CUDA "variable over the driver" check that could not fail with a driver answering nothing, and a field test the session's cached recipes would have failed; a short pin's row lost; a field test checking a manager other than the product's; a job's field tests erroring where they should skip; a peak test passing for a copy; `z-pseudo` able to read as Z; stale words in `monitor.py`, `pseudos.py`, `installation.md`, `pseudopotentials.md`, `testing.md` | each fixed |
+| K2675-2 | **F9, the shared test doors** | `conftest.write_pseudos` still writes a small typed PSML for tests that only prepare a calculation, for many elements | the real files where they exist; the rest decided there |
+| K2675-3 | **F9, runs that never happened** | `test_util_csv_is_time_weighted.py` types the monitor's own file | a file the monitor wrote |
+| K2675-4 | left: no real file shows it | the check that a wholly zeroed channel outside the valence is not named has no test: none of the 144 real files has such a channel | a file that does |
+| K2675-5 | **the user, on Sol** | `tests/field/test_the_monitor_reads_its_job.py` is written and not run: it needs a scheduled job, `srun --mem=8G -c 4`. Until then nothing checks the cgroup v1 path, the one Sol uses | that run |
+| K2675-6 | left | a manager reporting no details (mamba, micromamba) is tested only on a machine that has one; the LDA and PBEsol rows of `_LIBXC_MAP` have no test, all 150 files being PBE | a machine that has them; a real file |
+| K2675-7 | left | the reader's suspected ones, not measured: the first monitor field test where a cgroup is named and unreadable; `AllowedRAMSpace` other than 100; `PsmlInfo.atomic_number` and `valence_config` have no product reader (with K2674-9); `_lib` and `_write_folder` overlap | the next review |
+
+### What 2.67.5 removed (the list the user saw before the commit, generated from the code against 2.67.4, 2026-11-06)
+
+**From `molbuilder/pseudos.py`**, used only by hand-typed test files, none of the 150 real files holding any of them:
+
+| removed | whose decision |
+|---|---|
+| the `<header>` element in place of `<pseudo-atom-spec>` | the user, once checked (0 of 150) |
+| the `element=` attribute; reading attributes off the root when there is no spec | mine, same rule |
+| `z-pseudo` standing in for the atomic number | mine, the reader's finding |
+| functional ids on `<libxc-info>`, `<exchange>`, `<correlation>`; the `xc`, `xc-functional`, `xc-id` attributes | mine, same rule |
+| the `relativistic=` attribute; the spellings `fr`, `fully`, `fully-relativistic`, `spin-orbit`, `sr`, `scalar-relativistic`, `non`, `non-relativistic`, `nr` | mine, same rule |
+| `generator=` on `<provenance>`; a `<generator>` element | mine, same rule |
+| valence written as text | mine, same rule |
+| `<pseudo-dojo rmax/mesh-cutoff/recommended-cutoff>` | mine, same rule |
+
+**What goes unseen**: the cgroup v1 readings Sol uses, until K2675-5 runs; a manager reporting no details; the LDA and PBEsol table rows; the hint when a deck is loaded where an output belongs; the refusals of mismatched orbital arrays and an unknown phase word. No science rule is lost: the p-channel block, bismuth's warning and the cutoff rules stand on the real files.
+
+**Tests gone (51 cases):**
+
+- `test_monitor_allocation_basis.py` (9): `test_cpu_time_is_the_jobs_own`, `test_job_cgroup_strips_the_step_and_task`, `test_memory_is_the_jobs_own_not_the_nodes`, `test_the_basis_line_names_every_rung`, `test_the_limit_comes_from_the_JOB_cgroup_not_the_task`, `test_the_peak_is_not_a_copy_of_current`, `test_the_sentinel_reads_as_no_limit_stated`, `test_the_v1_layout_is_read_per_controller`, `test_the_v2_layout_is_read_as_one_path`
+- `test_pseudos.py` (13): TestParsePsmlHeader: `test_basic_round_trip`, `test_fully_relativistic_normalised`, `test_malformed_xml_returns_parse_warning`, `test_pbesol_libxc`, `test_unknown_libxc_id_falls_back_to_unknown`; TestDeadProjectorC5: `test_absent_channel_is_not_flagged`, `test_dead_projector_is_error_status`, `test_dead_projector_maps_to_error_severity`, `test_good_pseudo_has_no_null_channels`, `test_null_channel_detected`; TestGeneratorVersionC4: `test_patch_difference_does_not_warn`; TestErrorStatusesSharedBySurfaces: `test_cli_screens_a_folder_by_the_files_it_holds` (1 row), `test_the_settings_gate_says_each_label_once` (1 row)
+- `test_pseudo_requirements_layer.py` (3): `test_a_zeroed_valence_channel_the_semilocal_block_carries_is_named`, `test_an_UNOCCUPIED_zeroed_channel_is_not_named`, `test_the_two_tiers_do_not_overlap`
+- `test_envs_doctor.py` (7 rows of `test_audit_detects_which_tree_is_installed`, the same test on real pip and git with 7 new)
+- `test_envs_one_answer_about_an_env.py` (6): `test_a_manager_that_reports_no_details_hides_nothing`, `test_an_env_outside_envs_dirs_is_VISIBLE`, `test_an_env_the_snapshot_never_saw_is_still_looked_for`, `test_the_gate_and_the_state_machine_now_agree`, `test_the_probe_sees_an_out_of_tree_env_on_EITHER_kind_of_manager`, `test_the_registry_answers_with_prefixes_and_drops_the_installation_root`
+- `test_system_load.py` (6): `test_a_field_the_card_lacks_reads_None_not_a_crash`, `test_a_parsed_row_carries_the_fields_the_widget_draws`, `test_a_timeout_is_reported_and_the_server_keeps_serving`, `test_a_tool_that_fails_is_loud_on_the_wire`, `test_the_query_always_carries_the_hard_timeout`, `test_the_reason_is_read_off_whichever_stream_carried_it` (back with two rows)
+- `spectra/test_types.py` (5): `test_equilibrium_mos_reject_complex`, `test_es_mo_array_rejects_complex`, `test_invalid_phase_status_rejected`, `test_mo_arrays_must_match_size`, `test_mode_eigenvector_rejects_complex`
+- `test_machine_identity.py` (1): `test_no_tool_and_no_device_read_the_same`, renamed for what it now does
+- `watch/test_registry.py` (1, file gone): `test_unknown_format_fdf_suggests_out_file`
+
+**Helpers and typed data gone**: `_make_psml`, `_psml_with_projectors`, `_psml`, `_make_pdojo_psml`, `_S_DEAD_P`, `_S_GOOD`, `_S_V04`, `_S_V05`, `_BI_V05`, `_S_HINTS`, `_S_SHELLS`, `_fake_dist`, `_registry`, `sol`, `SOL_V1`, `SOL_TASK`, `SOL_JOB`, `V2_LINE`, `_ROW`, `_smi_result`, class `TestPhaseStatus`.
+
+**Sentences withdrawn**: `ops/installation.md`'s *each of its three tiers*; `science/pseudopotentials.md`'s *`z-pseudo` … parsed for sanity*; `monitor.py`'s comment that its two paths are named for a test to point at a fixture; document mentions of scratch folders no longer on disk (`claude-s28-onestart`, `claude-review-2-45-0`, `claude-transport-walk`, `claude-vib-ui`, `claude-w33`), each kept as what it showed.
+
 ## Found by 2.67.4's judging of the tests (2026-11-06), by the release that owns each
 
 *(every test the audit named judged by breaking the code and reading what else failed: 581 rows in five readers' tables; a fresh reader over what was added. The user's rule of 2026-11-06 came out of this work: [`process/testing.md`](?doc=process/testing.md) § 3b, *A test validates what is correct*.)*
 
 | id | where | finding | door |
 |---|---|---|---|
-| K2674-1 | **F9** | the user's rule reaches tests this release left: three typing `nvidia-smi`'s output and one typed system-load row, the cgroup-v1 tests, the typed pip file and `_fake_dist`, the typed PSML files and `_make_psml`, `test_envs_one_answer_about_an_env.py`'s typed manager answers, and 8 wrong-input checks in `spectra/test_types.py` and `watch/test_registry.py` that each caught a break nothing else in its set caught | what the tool prints read where it runs; correct input through the real writer; one test for *reported, no number invented* |
-| K2674-2 | **F9** | `pseudos.py:371`'s `<header>` branch may read a shape no real file has, and only a typed test reaches it | read the real H, C and O files first; a branch no real file uses goes |
+| K2674-1 | **closed 2.67.5** | the user's rule reaches tests this release left: three typing `nvidia-smi`'s output and one typed system-load row, the cgroup-v1 tests, the typed pip file and `_fake_dist`, the typed PSML files and `_make_psml`, `test_envs_one_answer_about_an_env.py`'s typed manager answers, and 8 wrong-input checks in `spectra/test_types.py` and `watch/test_registry.py` that each caught a break nothing else in its set caught | what the tool prints read where it runs; correct input through the real writer; one test for *reported, no number invented* |
+| K2674-2 | **closed 2.67.5** | `pseudos.py:371`'s `<header>` branch may read a shape no real file has, and only a typed test reaches it | read the real H, C and O files first; a branch no real file uses goes |
 | K2674-3 | **F9** | a spectrum file of the wrong version gets the refusal `engines/vibration.md` § 6.7 promises, and removing `_validate_schema_version` turns no test red | one test on what the writer writes, with its version moved |
 | K2674-4 | **F9** | spectra rules with no test: the canonical eigenvector read from the display form; `free_atom_idxs` not ascending; a complex canonical vector not refused; a probe's SCF-minus energy and amplitude | a run's result, correct input |
 | K2674-5 | **F9** | a mutation letting T through the server's RNA alphabet left 248 tests green: only the page's own check is tested | one row on the server's refusal |

@@ -54,13 +54,10 @@ def test_cores_is_the_node_not_the_allocation():
 
 
 
-def test_no_tool_and_no_device_read_the_same(monkeypatch):
-    """`nvidia-smi` absent and `nvidia-smi` reporting nothing are one
-    answer — this run could not touch a device — so both must yield the
-    same record, not an error for one of them."""
-    def absent(cmd, **kw):
-        raise FileNotFoundError(cmd[0])
-    monkeypatch.setattr(monitor.subprocess, "run", absent)
+def test_no_tool_reads_as_no_device(tmp_path, monkeypatch):
+    """`nvidia-smi` absent: this run could not touch a device, and the record
+    says none, not an error."""
+    monkeypatch.setenv("PATH", str(tmp_path))
     assert monitor._gpu_models() == []
     assert monitor.machine_identity()["gpu"] == "none"
     assert monitor._gpu_present() is False

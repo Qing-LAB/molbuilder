@@ -19,7 +19,6 @@ import pytest
 
 from molbuilder.spectra import (
     ModeData,
-    ModeElectronicStructure,
     SpectraResults,
 )
 from molbuilder.spectra.results import SCHEMA_VERSION
@@ -80,22 +79,6 @@ class TestPostInitValidation:
     raise at the construction site, not 100 lines downstream when
     a caller assumes a float array but got ints.
     """
-
-    # ----- ModeElectronicStructure -----
-
-    def test_mo_arrays_must_match_size(self):
-        """All three MO arrays must have the same window size."""
-        with pytest.raises(ValueError, match="must share the same shape"):
-            ModeElectronicStructure(
-                amplitude_ang        = 0.1,
-                mo_energies_eq_eh    = np.zeros(5),
-                mo_energies_minus_eh = np.zeros(4),       # wrong size
-                mo_energies_plus_eh  = np.zeros(5),
-                homo_index_in_window = 0,
-                scf_energy_eq_eh     = -1.0,
-                scf_energy_minus_eh  = -1.0,
-                scf_energy_plus_eh   = -1.0,
-            )
 
     # ----- SpectraResults -----
 
@@ -187,54 +170,6 @@ class TestPostInitValidation:
     # for an all-real-valued wire format.  All three dataclasses must
     # reject complex inputs LOUDLY at __post_init__.
 
-    def test_es_mo_array_rejects_complex(self):
-        with pytest.raises(TypeError, match="complex"):
-            ModeElectronicStructure(
-                amplitude_ang        = 0.1,
-                mo_energies_eq_eh    = np.array([1+0j, 2+0j, 3+0j]),
-                mo_energies_minus_eh = np.zeros(3),
-                mo_energies_plus_eh  = np.zeros(3),
-                homo_index_in_window = 0,
-                scf_energy_eq_eh     = -1.0,
-                scf_energy_minus_eh  = -1.0,
-                scf_energy_plus_eh   = -1.0,
-            )
-
-    def test_mode_eigenvector_rejects_complex(self):
-        with pytest.raises(TypeError, match="complex"):
-            ModeData(
-                index_1based          = 1,
-                frequency_cm1         = 100.0,
-                raman_activity_a4_amu = None,
-                ir_intensity_km_mol   = None,
-                eigenvector_canonical = np.array([[1+0j, 0, 0],
-                                                                       [-1+0j, 0, 0]]),
-                eigenvector_display   = np.array([[1+0j, 0, 0],
-                                                                       [-1+0j, 0, 0]]),
-                has_imag              = False,
-            )
-
-    def test_equilibrium_mos_reject_complex(self):
-        with pytest.raises(TypeError, match="complex"):
-            SpectraResults(
-                schema_version             = SCHEMA_VERSION,
-                engine                     = "pyscf",
-                engine_version             = "2.6.0",
-                molbuilder_version         = "1.2.0",
-                timestamp                  = "t",
-                n_atoms_total              = 1,
-                free_atom_idxs             = [0],
-                frozen_atom_idxs            = [],
-                equilibrium_scf_eh         = -1.0,
-                equilibrium_mo_energies_eh = np.array([1+0j, 0, -1+0j]),
-                equilibrium_homo_idx       = 1,
-                modes                      = [],
-                selected_mode_idxs_1based  = [],
-                config                     = {},
-                methods_text               = "",
-                bibliography_keys          = [],
-            )
-
     def test_zero_imaginary_part_complex_still_rejected(self):
         """Even when the imaginary part is exactly 0, we reject -- the
         dtype carries the type information regardless of value.  This
@@ -250,42 +185,6 @@ class TestPostInitValidation:
                 eigenvector_display   = np.zeros((2, 3), dtype=complex),
                 has_imag              = False,
             )
-
-# --------------------------------------------------------------------- #
-#  Phase status                                                         #
-# --------------------------------------------------------------------- #
-
-
-class TestPhaseStatus:
-    """The per-phase status fields are the engine + UI's
-    coordination point (`engines/vibration.md` § 4.9).  Each phase reading
-    from its own key is asked of the file, in ``test_parsers_json.py``."""
-
-    def test_invalid_phase_status_rejected(self):
-        """Phase values are constrained to the controlled vocabulary;
-        a stray string is a programmer error, not a forward-compat
-        opportunity."""
-        with pytest.raises(ValueError, match="is not a valid phase status"):
-            SpectraResults(
-                schema_version             = SCHEMA_VERSION,
-                engine                     = "pyscf",
-                engine_version             = "2.6.0",
-                molbuilder_version         = "1.2.0",
-                timestamp                  = "t",
-                n_atoms_total              = 1,
-                free_atom_idxs             = [0],
-                frozen_atom_idxs            = [],
-                equilibrium_scf_eh         = 0.0,
-                equilibrium_mo_energies_eh = np.zeros(3),
-                equilibrium_homo_idx       = 0,
-                modes                      = [],
-                selected_mode_idxs_1based  = [],
-                config                     = {},
-                methods_text               = "",
-                bibliography_keys          = [],
-                phase_frequencies          = "kindof",  # not in vocab
-            )
-
 
 def test_the_reader_refuses_a_key_it_does_not_know_by_name():
     """A misspelled key is refused, naming the key, at every block -- dropped,

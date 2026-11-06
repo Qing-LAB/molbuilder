@@ -575,7 +575,7 @@ exists only after a first `summarize task`.
 trajectory viewer on it, the charts' theme (`lib/plot-theme.js`), the report
 (`lib/inspectors/transport.js`, a module, and its sheet), the ladder above the
 panel. **Checked on a real calculation** *(2026-10-07)*: a 16-atom carbon
-chain (`projects/claude-transport-walk/transport/chain-t`, six frozen atoms per
+chain (six frozen atoms per
 lead, SZ, 100 Ry) run through `describe → prep → launch` for all five rungs at 0 and
 0.2 V, then `summarize task`: $T(E_F) = 2.0$, the cumulene's two π channels; the
 record's DOS, PDOS, both leads' bulk DOS, L's spectral DOS and four eigenchannels
@@ -590,8 +590,7 @@ point. **The frame family** (below) built 2026-10-10 (plan § 5z, Q17-f) and
 **seen in a browser** the same day on an H2 frame set walked through the
 road — the junction and its mode's three frames written by scripts through
 the Structure API, cited on the Transport tab, handed to Task setup, the
-printed `prep` / `launch` run, read here
-(`projects/claude-transport-walk/transport/h-frames`): the ladder's rows and
+printed `prep` / `launch` run, read here: the ladder's rows and
 the points table named *Frame 2 of 3 · 0.2 V*, a row moving the frame bar,
 *all frames* on T(E) (the mode's average dashed, its numbers and
 assumptions under the card), the DOS and the device's convergence.
@@ -599,7 +598,7 @@ assumptions under the card), the DOS and the device's convergence.
 **A spin-polarised calculation shows each spin and their total, told apart by
 colour and legend** *(the user, 2026-10-11: "use color/legend to correctly
 present up and down spin and total current"; built after the first polarised
-run, `claude-transport-walk/transport/h-spin`)*. Every number is the record's
+run)*. Every number is the record's
 — the sums too — and the colours are the plot theme's (`plotTheme()`): spin
 up the first series colour, spin down the second, the total the ink, bold:
 

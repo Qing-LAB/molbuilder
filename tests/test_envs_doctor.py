@@ -6,7 +6,9 @@ source.
 """
 from __future__ import annotations
 
-import json
+import os
+import subprocess
+import sys
 
 import pytest
 
@@ -171,88 +173,102 @@ def test_repair_runs_the_step_the_installer_would(monkeypatch):
 #  Provenance: which TREE is installed, when the version cannot say      #
 # --------------------------------------------------------------------- #
 
-def _fake_dist(site_packages, name, version, *, url=None, commit=None):
-    """Write the dist-info pip would write for one installed package."""
-    d = site_packages / f"{name.replace('-', '_')}-{version}.dist-info"
-    d.mkdir(parents=True)
-    (d / "METADATA").write_text(
-        f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
-        encoding="utf-8",
-    )
-    if url is not None:
-        body = {"url": url}
-        if commit is not None:
-            body["vcs_info"] = {"vcs": "git", "commit_id": commit}
-        (d / "direct_url.json").write_text(json.dumps(body), encoding="utf-8")
+@pytest.fixture(scope="module")
+def widget(tmp_path_factory):
+    """A small package in a git repository, installed by real pip both ways:
+    from the repository, and from a folder standing for an index.  What the
+    audit reads is what pip wrote."""
+    pytest.importorskip("setuptools", reason="building a package needs it, "
+                                             "with no network to fetch it")
+    root = tmp_path_factory.mktemp("widget")
+    env = {**os.environ, "HOME": str(root), "PIP_NO_CACHE_DIR": "1",
+           "PIP_CONFIG_FILE": os.devnull, "PIP_DISABLE_PIP_VERSION_CHECK": "1"}
+
+    def run(*argv, cwd=None):
+        done = subprocess.run(argv, cwd=cwd, env=env, text=True,
+                              capture_output=True)
+        assert done.returncode == 0, (argv, done.stdout, done.stderr)
+        return done.stdout.strip()
+
+    def pip(*argv):
+        return run(sys.executable, "-m", "pip", "--no-input", *argv,
+                   "--no-deps", "--no-index")
+
+    repo = root / "repo"
+    (repo / "widget").mkdir(parents=True)
+    (repo / "widget" / "__init__.py").write_text("")
+    (repo / "pyproject.toml").write_text(
+        '[build-system]\nrequires = ["setuptools"]\n'
+        'build-backend = "setuptools.build_meta"\n'
+        '[project]\nname = "widget"\nversion = "0.1.0"\n')
+    git = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
+    run(*git, "init", "-q", "-b", "main", cwd=repo)
+    run(*git, "add", ".", cwd=repo)
+    run(*git, "commit", "-qm", "0.1.0", cwd=repo)
+    source = f"git+file://{repo}"
+    from_repository = root / "from-repository"
+    pip("install", "--no-build-isolation", "--prefix", str(from_repository),
+        source)
+    wheels = root / "wheels"
+    pip("wheel", "--no-build-isolation", "-w", str(wheels), str(repo))
+    from_index = root / "from-index"
+    pip("install", "--find-links", str(wheels), "--prefix", str(from_index),
+        "widget")
+    return {"source": source, "commit": run(*git, "rev-parse", "HEAD", cwd=repo),
+            "from_repository": from_repository, "from_index": from_index}
 
 
-@pytest.mark.parametrize("declared_source,installed_url,installed_commit,expect", [
-    # The case the whole mechanism exists for: same NAME, same VERSION,
-    # different tree.  Only provenance can tell these apart.
-    ("git+https://example.invalid/o/r.git", None, None, "pip-source"),
-    ("git+https://example.invalid/o/r.git",
-     "https://example.invalid/o/r.git", "abc1234", None),
-    ("git+https://example.invalid/o/r.git",
-     "https://example.invalid/other/r.git", "abc1234", "pip-source"),
-    # A ref-pinned declaration must not read as a mismatch just for
-    # carrying a ref -- a branch cannot be checked against a commit.
-    ("git+https://example.invalid/o/r.git@main",
-     "https://example.invalid/o/r.git", "abc1234", None),
-    # ...but a pinned SHA is checked, because that is what a pin is for.
-    ("git+https://example.invalid/o/r.git@abc1234",
-     "https://example.invalid/o/r.git", "abc1234def", None),
-    ("git+https://example.invalid/o/r.git@deadbee",
-     "https://example.invalid/o/r.git", "abc1234def", "pip-source"),
+def _a_recipe_of(package):
+    return Recipe(name="a-recipe", category=None, description="d",
+                  channels=("conda-forge",), conda_packages=("python",),
+                  pip_packages=(package,))
+
+
+@pytest.mark.parametrize("declared, expect", [
+    ("{source}", None),
+    # A branch cannot be checked against a commit, so it is no mismatch...
+    ("{source}@main", None),
+    # ...and a pinned SHA is checked, because that is what a pin is for.
+    ("{source}@{commit}", None),
+    ("{source}@{commit:.7}", None),
+    ("{source}@deadbee", "pip-source"),
+    # Same name, same version, another tree: only provenance can tell.
+    ("git+file:///elsewhere/repo", "pip-source"),
     # No source declared -> provenance is not this recipe's business.
-    (None, "https://example.invalid/anything.git", "abc1234", None),
+    (None, None),
 ])
-def test_audit_detects_which_tree_is_installed(
-        tmp_path, declared_source, installed_url, installed_commit, expect):
+def test_audit_detects_which_tree_is_installed(widget, declared, expect):
     """A package declared with a source is audited on PROVENANCE.
 
     ``pyscf-properties`` declares version ``0.1.0`` both on PyPI and on
     master, so a version comparison passes on an env that lacks the
-    feature.  The audit reads PEP 610 ``direct_url.json`` instead.  Every
-    row here holds the version FIXED so nothing but provenance can be
-    doing the work.
+    feature.  The audit reads PEP 610 ``direct_url.json`` instead, as pip wrote
+    it for the install from the repository.
     """
-    sp = tmp_path / "lib" / "python3.12" / "site-packages"
-    sp.mkdir(parents=True)
-    _fake_dist(sp, "widget", "0.1.0",
-               url=installed_url, commit=installed_commit)
-    recipe = Recipe(
-        name="synthetic", category=None, description="d",
-        channels=("conda-forge",), conda_packages=("python",),
-        pip_packages=(PipPackage("widget", source=declared_source),),
-    )
-    # The synthetic prefix has no conda-meta, so the declared conda
-    # package audits as missing.  This test is about pip provenance.
-    kinds = [i.kind for i in doctor.audit_packages(tmp_path, recipe).issues
+    source = declared.format(**widget) if declared else None
+    # This prefix has no conda-meta, so the declared conda package audits as
+    # missing.  This test is about pip provenance.
+    kinds = [i.kind for i in doctor.audit_packages(
+                 widget["from_repository"],
+                 _a_recipe_of(PipPackage("widget", source=source))).issues
              if i.kind.startswith("pip-")]
     assert kinds == ([expect] if expect else [])
 
 
-def test_a_source_mismatch_the_recipe_accepts_is_only_informational(tmp_path):
+def test_a_source_mismatch_the_recipe_accepts_is_only_informational(widget):
     """``fallback_to_index`` means the indexed build is a declared
     acceptable outcome, so landing on it degrades a capability rather
     than breaking the env -- and ``doctor`` must not call it FAILED."""
-    sp = tmp_path / "lib" / "python3.12" / "site-packages"
-    sp.mkdir(parents=True)
-    _fake_dist(sp, "widget", "0.1.0")          # from the index
-    recipe = Recipe(
-        name="synthetic", category=None, description="d",
-        channels=("conda-forge",), conda_packages=("python",),
-        pip_packages=(PipPackage("widget",
-                                 source="git+https://example.invalid/o/r.git",
-                                 fallback_to_index=True,
-                                 reason="why this source is unusual"),),
-    )
-    (issue,) = [i for i in doctor.audit_packages(tmp_path, recipe).issues
+    recipe = _a_recipe_of(PipPackage("widget", source=widget["source"],
+                                     fallback_to_index=True,
+                                     reason="why this source is unusual"))
+    (issue,) = [i for i in doctor.audit_packages(widget["from_index"],
+                                                 recipe).issues
                 if i.kind.startswith("pip-")]
     assert issue.kind == "pip-source-optional"
     assert issue.found == "(default index)"
     # repair must be handed the SOURCE and the flags, not a bare name --
     # a plain install of a force-flagged package exits 0 and changes
     # nothing, because the versions are identical.
-    assert issue.spec.endswith("git+https://example.invalid/o/r.git")
+    assert issue.spec.endswith(widget["source"])
     assert issue.reason == "why this source is unusual"

@@ -12,86 +12,32 @@ the Au-BDT-Au sweep's 32.2% read as idleness when the job was at ~86% of what
 it held. And a job that looks starved argues for a bigger machine, which is
 the queue this practice exists to stay out of.
 
-**The fixtures are the real thing.** Every cgroup-v1 value below was measured
-on an ASU Sol `htc`/`debug` node on 2026-08-26, including the `2**63 - 4096`
-no-limit sentinel on the task cgroup and the enforced 8 GiB one level up.
-This workstation is cgroup v2, so without fixtures the v1 path -- the one that
-actually runs on the cluster -- could not be tested at all.
+What a cgroup holds is read where it is: this machine's here, and a scheduled
+job's in `tests/field/test_the_monitor_reads_its_job.py`, on the target.
 """
 from __future__ import annotations
 
 import time
 
-import pytest
-
 from molbuilder import monitor as M
 
 
-# The measured Sol job: /slurm/uid_961166/job_62238108/step_0/task_0
-SOL_V1 = """\
-12:rdma:/
-11:freezer:/slurm/uid_961166/job_62238108/step_0
-10:cpuset:/slurm/uid_961166/job_62238108/step_0/task_0
-9:hugetlb:/
-8:devices:/slurm/uid_961166/job_62238108/step_0/task_0
-7:cpu,cpuacct:/slurm/uid_961166/job_62238108/step_0/task_0
-6:perf_event:/
-5:pids:/system.slice/slurmd.service
-4:memory:/slurm/uid_961166/job_62238108/step_0/task_0
-3:blkio:/system.slice/slurmd.service
-2:net_cls,net_prio:/
-1:name=systemd:/system.slice/slurmd.service
-"""
-SOL_TASK = "/slurm/uid_961166/job_62238108/step_0/task_0"
-SOL_JOB = "/slurm/uid_961166/job_62238108"
-V2_LINE = "0::/user.slice/user-1000.slice/session-1.scope\n"
-
-
-@pytest.fixture
-def sol(tmp_path, monkeypatch):
-    """A cgroup-v1 tree holding exactly what Sol reported."""
-    proc = tmp_path / "proc_cgroup"
-    proc.write_text(SOL_V1)
-    monkeypatch.setattr(M, "_PROC_CGROUP", str(proc))
-    monkeypatch.setattr(M, "_CG", str(tmp_path / "cg"))
-
-    cpu = tmp_path / "cg" / "cpu,cpuacct" / SOL_TASK.lstrip("/")
-    cpu.mkdir(parents=True)
-    (cpu / "cpuacct.usage").write_text("52132694\n")
-
-    task = tmp_path / "cg" / "memory" / SOL_TASK.lstrip("/")
-    task.mkdir(parents=True)
-    (task / "memory.usage_in_bytes").write_text("1736704\n")
-    (task / "memory.max_usage_in_bytes").write_text("2805760\n")
-    (task / "memory.limit_in_bytes").write_text("9223372036854771712\n")
-
-    job = tmp_path / "cg" / "memory" / SOL_JOB.lstrip("/")
-    (job / "memory.limit_in_bytes").write_text("8589934592\n")
-    return tmp_path
-
-
 # --------------------------------------------------------------------- #
-#  reading the layout                                                    #
+#  the readings                                                          #
 # --------------------------------------------------------------------- #
 
-def test_the_v1_layout_is_read_per_controller(sol):
-    """v1 writes one line per hierarchy. `cpu,cpuacct` must be reachable
-    under its joined spelling (which is also the mount directory) AND under
-    each controller name, because callers ask for one or the other."""
-    cg = M._cgroup_paths()
-    assert cg["memory"] == SOL_TASK
-    assert cg["cpu,cpuacct"] == SOL_TASK
-    assert cg["cpuacct"] == SOL_TASK
-    assert cg["cpu"] == SOL_TASK
-    assert "" not in cg, "a v1 tree must not look like v2"
-
-
-def test_the_v2_layout_is_read_as_one_path(tmp_path, monkeypatch):
-    proc = tmp_path / "pc"
-    proc.write_text(V2_LINE)
-    monkeypatch.setattr(M, "_PROC_CGROUP", str(proc))
-    cg = M._cgroup_paths()
-    assert cg[""] == "/user.slice/user-1000.slice/session-1.scope"
+def test_what_this_machine_reads_says_where_it_came_from():
+    """**A percentage whose denominator is invisible is how this went wrong in
+    the first place.** Whatever this machine is, each reading is a number and
+    names the source that answered, and the basis line says the same names, so
+    a number can be checked."""
+    used_ns, cpu_from = M._read_cpu_used_ns()
+    used_gb, mem_from = M._read_mem_used_gb()
+    assert used_ns >= 0 and used_gb >= 0
+    line = M.measurement_provenance()
+    assert f"cpu time [{cpu_from}]" in line
+    assert f"mem [{mem_from}]" in line
+    assert "core(s) [" in line
 
 
 def test_an_unreadable_proc_file_is_empty_not_an_error(tmp_path, monkeypatch):
@@ -100,64 +46,6 @@ def test_an_unreadable_proc_file_is_empty_not_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(M, "_PROC_CGROUP", str(tmp_path / "absent"))
     assert M._cgroup_paths() == {}
     assert M._read_cpu_used_ns()[1] == "node"
-
-
-# --------------------------------------------------------------------- #
-#  the limit, and the sentinel that is not one                           #
-# --------------------------------------------------------------------- #
-
-def test_the_limit_comes_from_the_JOB_cgroup_not_the_task(sol):
-    """MEASURED: the task cgroup carries the no-limit sentinel while the job
-    cgroup one level up carries the real `--mem=8G`. A reader that asks the
-    task level gets a number that is not a limit."""
-    assert M._read_mem_limit_gb() == 8.0
-
-
-def test_the_sentinel_reads_as_no_limit_stated(sol, tmp_path):
-    """`scheduler.md` R3 -- *an unstated limit never bars* -- and a sentinel
-    is an absence wearing a number. Dividing by `2**63` silently reports 0%
-    of everything."""
-    job = tmp_path / "cg" / "memory" / SOL_JOB.lstrip("/")
-    (job / "memory.limit_in_bytes").write_text("9223372036854771712\n")
-    assert M._read_mem_limit_gb() is None
-
-
-def test_job_cgroup_strips_the_step_and_task(sol):
-    assert M._job_cgroup(SOL_TASK) == SOL_JOB
-    assert M._job_cgroup(SOL_JOB) == SOL_JOB, "already a job path: unchanged"
-
-
-# --------------------------------------------------------------------- #
-#  the readings themselves                                               #
-# --------------------------------------------------------------------- #
-
-def test_cpu_time_is_the_jobs_own(sol):
-    used = M._read_cpu_used_ns()
-    assert used == (52132694, "cgroup-v1")
-
-
-def test_memory_is_the_jobs_own_not_the_nodes(sol):
-    """`MemTotal - MemAvailable` was every process on the machine, so on a
-    shared node it measured other people's jobs as much as this one's."""
-    gb, rung = M._read_mem_used_gb()
-    assert rung == "cgroup-v1"
-    assert gb == round(1736704 / 1073741824.0, 2)
-
-
-def test_the_peak_is_not_a_copy_of_current(tmp_path, monkeypatch):
-    """At the scale a real calculation runs at, the two are different
-    numbers -- which is what makes the kernel counter worth reading."""
-    proc = tmp_path / "pc"
-    proc.write_text(SOL_V1)
-    monkeypatch.setattr(M, "_PROC_CGROUP", str(proc))
-    monkeypatch.setattr(M, "_CG", str(tmp_path / "cg"))
-    d = tmp_path / "cg" / "memory" / SOL_TASK.lstrip("/")
-    d.mkdir(parents=True)
-    (d / "memory.usage_in_bytes").write_text(str(12 * 1073741824))
-    (d / "memory.max_usage_in_bytes").write_text(str(31 * 1073741824))
-    cur, _ = M._read_mem_used_gb()
-    assert cur == 12.0
-    assert M._read_mem_peak_gb() == 31.0
 
 
 # --------------------------------------------------------------------- #
@@ -234,19 +122,6 @@ def test_the_denominator_is_fixed_once_and_cannot_drift(monkeypatch):
 # --------------------------------------------------------------------- #
 #  saying which rung answered                                            #
 # --------------------------------------------------------------------- #
-
-def test_the_basis_line_names_every_rung(sol, monkeypatch):
-    """**A percentage whose denominator is invisible is how this went wrong
-    in the first place.** With two cgroup generations in play, a number that
-    does not say where it came from cannot be checked at all."""
-    monkeypatch.setattr(M.os, "sched_getaffinity", lambda _pid: set(range(4)))
-    line = M.measurement_provenance()
-    assert "cpu% of 4 core(s) [affinity]" in line
-    assert "cpu time [cgroup-v1]" in line
-    assert "mem [cgroup-v1]" in line
-    assert "limit 8 GB" in line
-    assert "peak" in line
-
 
 def test_a_process_tree_is_named_even_when_the_last_read_met_an_exit(
         monkeypatch):

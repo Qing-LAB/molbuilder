@@ -1975,8 +1975,7 @@ ranking (science § 4c.3, the antisymmetric stretch).
 *(built 2.36.0)* (D3). The force-constant deck asks for the population analysis at
 every step when *Compute IR* is on — `Charge.Hirshfeld` and
 `Charge.Voronoi`, the 5.4.2 spellings of the deprecation table (§ 5.3).
-**Measured on the toy junction** (`claude-transport-walk/frequency/h-vib-q`,
-22 H, two free, 2026-10-24): 13 force-constant steps, 13 Hirshfeld and 13
+**Measured on the toy junction** (22 H, two free, 2026-10-24): 13 force-constant steps, 13 Hirshfeld and 13
 Voronoi blocks — one of each per step, every atom in each — each block
 summing to zero within 1.2 × 10⁻⁵ e; a free atom moved off the chain's axis
 (along x or y) leaves the charges unchanged both ways, moved along it (along

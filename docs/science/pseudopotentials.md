@@ -462,7 +462,7 @@ verify:
 
 - **Valence-charge correctness** — e.g. whether Au uses an 11- or 19-electron
   valence appropriate to the chemistry (`z-pseudo`, the count of valence electrons
-  the pseudo treats explicitly, is parsed for sanity, not correctness).
+  the pseudo treats explicitly, is not read).
 - **Ghost states** — spurious bound states below the valence; needs
   generation-level analysis, not header inspection.
 - **Transferability / hardness** — whether the pseudo reproduces all-electron

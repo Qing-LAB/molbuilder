@@ -41,8 +41,8 @@ typed**: a test that needs what an engine writes — a `.out`, an `.MD.nc`, a
 tier-3 test that makes the run *(user, 2026-10-06: "when a test need siesta's
 output why is it not part of a e2e test?"; 2026-10-08: "when something reads
 the output of \"siesta\" output that's an end to end by definition")*.
-`tests/fixtures/` holds an engine's INPUTS only — the H pseudopotential a live
-run needs (`tests/fixtures/psml/README.md`).
+`tests/fixtures/` holds an engine's INPUTS only — the real pseudopotentials a
+live run needs and the screening reads (`tests/fixtures/psml/README.md`).
 
 **What it never holds** *(user, 2026-10-04, 2026-10-06: "the whole default test set
 should never be based on fabricated text")*:
@@ -95,7 +95,11 @@ steps:
    when a record is named; tier 1 never sees it, and its scheduler's submit
    command — where the record says it is, off PATH — writes each call down and
    refuses it: what a scheduler answers is read here, never typed into a basic
-   test.
+   test. So too what the machine's other tools say: `nvidia-smi` reaching the
+   load widget, the `[MACHINE]` line and the GPU recipes' CUDA version; the env
+   manager's registry, on an empty env made under the test's own home; and, in a
+   scheduled job, the monitor against what the job asked for
+   (`test_the_monitor_reads_its_job.py`, run with `srun`, as its header says).
 2. **A field run.** The smallest real job, on the road, on the target: `molbuilder
    describe` a held H2, `jobset prep task --group 1 --target <name>`, then on the target
    `jobset launch task --group 1` with its mode, `jobset status`, and the Results tab.

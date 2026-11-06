@@ -1234,8 +1234,9 @@ its own header documents the three and its error text names all three.
 - `test_envs_recipes.py` — what every recipe must declare, no two recipes sharing
   a name or an env, the default env names each having a recipe, and the host
   env's psutil floor.
-- `test_the_machine_is_probed_on_first_use.py` — the CUDA version each GPU recipe
-  carries at each of its three tiers, read off `envs install --dry-run`; and that
+- `test_the_machine_is_probed_on_first_use.py` — the project's default CUDA version
+  when no driver answers, read off `envs install --dry-run` (what a real driver
+  and the variable over it give is `tests/field/test_the_cuda_version.py`); and that
   a command needing neither the machine snapshot nor a recipe runs neither probe
   (`env-framework.md` § 3, plan W36 ⑥).
 - `test_envs_siesta_gpu_recipe.py` — the GPU recipe's lines whose loss the build

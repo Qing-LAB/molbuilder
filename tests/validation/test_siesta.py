@@ -6,8 +6,11 @@ layout).
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
+from _road import PSML_DIR
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.validation import validate
 from ._helpers import _peptide_struct
@@ -257,30 +260,6 @@ def test_siesta_peptide_protonation_warn(water_structure):
 # --------------------------------------------------------------------- #
 
 
-def _make_pdojo_psml(element: str, *, z: int = None,
-                     libxc_id_x: int = 101,  # PBE exchange
-                     libxc_id_c: int = 130   # PBE correlation
-                     ) -> str:
-    """Real-PseudoDojo-shape PSML (pseudo-atom-spec + nested
-    <functional> for libxc)."""
-    if z is None:
-        from ase.data import atomic_numbers as _Z
-        z = _Z[element]
-    return f"""<?xml version="1.0" encoding="UTF-8" ?>
-<psml version="1.1" xmlns="http://esl.cecam.org/PSML/ns/1.1">
-<provenance creator="test"/>
-<pseudo-atom-spec atomic-label="{element}" atomic-number="{z}"
- z-pseudo="{z}" relativity="scalar">
-<exchange-correlation>
-<libxc-info number-of-functionals="2">
-<functional name="x" type="exchange" id="{libxc_id_x}"/>
-<functional name="c" type="correlation" id="{libxc_id_c}"/>
-</libxc-info>
-</exchange-correlation>
-</pseudo-atom-spec>
-</psml>"""
-
-
 class TestSiestaPseudoCoverageInPreflight:
     """Pin the actual wiring: validate(struct, SiestaConfig, calculation="optimization") MUST
     surface pseudo-coverage findings as Issues."""
@@ -336,8 +315,6 @@ class TestSiestaPseudoCoverageInPreflight:
         The severity rule is the one the missing-directory branch beside it
         already uses: a folder makes it answerable, no folder does not.
         """
-        from conftest import _PSML_FIXTURE
-        from molbuilder.chemistry import atomic_number
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation.siesta import (
             _check_siesta_pseudo_coverage as _check)
@@ -353,14 +330,13 @@ class TestSiestaPseudoCoverageInPreflight:
         supplied = tmp_path / "beside"
         supplied.mkdir()
         for el in ("O", "H"):
-            (supplied / f"{el}.psml").write_text(
-                _PSML_FIXTURE.format(el=el, z=atomic_number(el)))
+            shutil.copy(PSML_DIR / f"{el}.psml", supplied)
         assert _check(water, cfg, dest_dir=supplied) == [], (
             "the folder supplies them, so an unset psml_lib is correct")
 
         half = tmp_path / "partial"
         half.mkdir()
-        (half / "H.psml").write_text(_PSML_FIXTURE.format(el="H", z=1))
+        shutil.copy(PSML_DIR / "H.psml", half)
         assert [i.severity for i in _check(water, cfg, dest_dir=half)] == [
             "error"], "covering SOME elements is not covering them"
 
@@ -380,7 +356,7 @@ class TestSiestaPseudoCoverageInPreflight:
         (other checks may fire; we filter to just the psml ones)."""
         lib = isolated_projects_root
         for el in ("O", "H"):
-            (lib / f"{el}.psml").write_text(_make_pdojo_psml(el))
+            shutil.copy(PSML_DIR / f"{el}.psml", lib)
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._water(),
@@ -392,7 +368,7 @@ class TestSiestaPseudoCoverageInPreflight:
     def test_missing_element_emits_error(self, isolated_projects_root):
         """Only O.psml is present; H is missing -> ERROR Issue."""
         lib = isolated_projects_root
-        (lib / "O.psml").write_text(_make_pdojo_psml("O"))
+        shutil.copy(PSML_DIR / "O.psml", lib)
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._water(),
@@ -405,19 +381,16 @@ class TestSiestaPseudoCoverageInPreflight:
         assert "no .psml file for H" in h_issues[0].message
 
     def test_xc_family_mismatch_emits_error(self, isolated_projects_root):
-        """Pseudos are LDA but the calc requests PBE -> an XC-FAMILY
-        mismatch, which is never physically correct (silently wrong bond
-        lengths).  ERROR per element so it BLOCKS emission."""
+        """The pseudos are GGA and the calc asks LDA -> an XC-FAMILY mismatch,
+        which is never physically correct (silently wrong bond lengths).
+        ERROR per element so it BLOCKS emission."""
         lib = isolated_projects_root
-        # libxc id 1 = XC_LDA_X
         for el in ("O", "H"):
-            (lib / f"{el}.psml").write_text(
-                _make_pdojo_psml(el, libxc_id_x=1, libxc_id_c=9))
+            shutil.copy(PSML_DIR / f"{el}.psml", lib)
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib=str(lib),
-                                          xc_authors="PBE"),
+                           SiestaConfig(psml_lib=str(lib), xc_authors="CA"),
                            calculation="optimization")
         mismatch_issues = [i for i in issues
                            if "psml" in i.where.lower()

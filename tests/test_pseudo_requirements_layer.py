@@ -29,103 +29,60 @@ knowingly, and the number is theirs to set.
 """
 from __future__ import annotations
 
+import shutil
+from types import SimpleNamespace
+
+import numpy as np
+
+from _road import PSML_DIR
 from molbuilder.pseudos import ERROR_STATUSES, check_coverage, parse_psml_header
+from molbuilder.structure import Structure
+from molbuilder.validation.siesta import _declared_cutoff_ry
+
+#: The files themselves (`tests/fixtures/psml/README.md`).
+S_V04 = PSML_DIR / "pseudodojo-v0.4" / "S.psml"
+S_V05 = PSML_DIR / "pseudodojo-v0.5" / "S.psml"
+BI_V05 = PSML_DIR / "pseudodojo-v0.5" / "Bi.psml"
 
 
-#: The real ekb values read out of PseudoDojo v0.5's S.psml (2026-09-03).
-_S_V05 = [("s", 6.77423395188), ("s", 0.542269569144),
-          ("p", 0.0), ("p", 0.0),
-          ("d", 0.0), ("d", 3.02242629395)]
-#: v0.4's sulfur: every channel carries a real projector.
-_S_V04 = [("s", 6.764), ("s", 0.574),
-          ("p", 3.227), ("p", 0.887),
-          ("d", -3.548), ("d", -0.987)]
+def _lib(tmp_path, **files):
+    """A library holding these real files under their species' names."""
+    d = tmp_path / "psml"
+    d.mkdir(exist_ok=True)
+    for name, source in files.items():
+        shutil.copy(source, d / f"{name}.psml")
+    return d
 
 
-def _psml(element, projectors, *, z, semilocal=(), shells=(), hints=None,
-          creator="ONCVPSP-4.0.1+psml-4.0.1-76 (scalar-relativistic)"):
-    """A PSML carrying the parts this layer reads.
-
-    ``semilocal`` are the l-letters with an `<slps>` block, ``shells`` the
-    OCCUPIED (n, l, occupation) rows, and ``hints`` the PseudoDojo cutoff
-    annotation.  Everything is optional, because the point of several tests
-    below is what happens when a file states nothing.
-    """
-    proj = "\n".join(
-        f'<proj l="{l}" seq="{i + 1}" ekb="{ekb}" eref="0" type="oncv"/>'
-        for i, (l, ekb) in enumerate(projectors))
-    slps = "\n".join(f'<slps n="3" l="{l}" set="scalar_relativistic"/>'
-                     for l in semilocal)
-    sh = "\n".join(f'<shell n="{n}" l="{l}" occupation="{occ}"/>'
-                   for n, l, occ in shells)
-    hint_attrs = ""
-    if hints:
-        hint_attrs = " " + " ".join(f'cutoff_hint_{k}="{v}"'
-                                    for k, v in hints.items())
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<psml version="1.1" xmlns="http://esl.cecam.org/PSML/ns/1.1">
-<provenance creator="{creator}"/>
-<pseudo-atom-spec atomic-label="{element}" atomic-number="{z}"
- z-pseudo="{z}" relativity="scalar">
-<annotation pseudo-energy="-10.1"{hint_attrs}/>
-<valence-configuration total-valence-charge="6">
-{sh}
-</valence-configuration>
-</pseudo-atom-spec>
-<exchange-correlation><libxc-info>
-<functional type="exchange" id="101"/>
-<functional type="correlation" id="130"/>
-</libxc-info></exchange-correlation>
-<semilocal-potentials set="scalar_relativistic">
-{slps}
-</semilocal-potentials>
-<nonlocal-projectors set="scalar_relativistic">
-{proj}
-</nonlocal-projectors>
-</psml>"""
-
-
-_S_SHELLS = [(3, "s", 2), (3, "p", 4)]          # sulfur's valence: 3s2 3p4
-_S_HINTS = {"low": 72, "normal": 147, "high": 162}
+def _found(lib, element):
+    return [e for e in check_coverage([element], lib,
+                                      expected_xc_family="GGA",
+                                      expected_xc_authors="PBE")
+            if e.status != "ok"]
 
 
 # ===================================================================== #
-#  Layer 1 — the file: present-but-zero is a claim, and it is false     #
+#  Layer 1 -- the file: present-but-zero is a claim, and it is false    #
 # ===================================================================== #
 
-def test_a_zeroed_valence_channel_the_semilocal_block_carries_is_named(tmp_path):
-    """The v0.5 sulfur shape, exactly."""
-    p = tmp_path / "S.psml"
-    p.write_text(_psml("S", _S_V05, z=16, semilocal="spd",
-                       shells=_S_SHELLS, hints=_S_HINTS))
-    info = parse_psml_header(p)
-    assert info.semilocal_only_channels == ["p"], (
-        "sulfur's p projectors are both zero and an <slps l='p'> carries the "
-        "channel -- that is the case that broke a real run")
-    assert info.null_channels == [], (
-        "C5 must stay quiet: it asks whether a channel is MISSING, and this "
-        "one is present and lying.  A different question, a different check")
+def test_the_file_that_broke_a_run_names_its_zeroed_valence_channel():
+    """v0.5's sulfur: both p projectors zero, with an `<slps l="p">` carrying
+    the channel, and p is in its valence (3s2 3p4).  One of its two `d`
+    projectors is zero too and is not named: nothing occupies d, so nothing
+    rides on it, and naming it would bury the one that matters.  C5 stays
+    quiet: it asks whether a channel is MISSING, and this one is present and
+    lying."""
+    info = parse_psml_header(S_V05)
+    assert info.semilocal_only_channels == ["p"]
+    assert info.partial_projector_channels == []
+    assert info.null_channels == []
 
 
-def test_an_UNOCCUPIED_zeroed_channel_is_not_named(tmp_path):
-    """Sulfur's `d` is zeroed too, and d is not in 3s² 3p⁴.
-
-    A dead channel nothing occupies is a representation choice with nothing
-    riding on it.  Naming it would bury the one that matters in noise —
-    which is the whole reason the valence configuration is read.
-    """
-    p = tmp_path / "S.psml"
-    p.write_text(_psml("S", _S_V05, z=16, semilocal="spd",
-                       shells=_S_SHELLS, hints=_S_HINTS))
-    assert "d" not in parse_psml_header(p).semilocal_only_channels
-
-
-def test_the_good_pseudo_says_nothing(tmp_path):
-    """v0.4's sulfur, same element, same everything else."""
-    p = tmp_path / "S.psml"
-    p.write_text(_psml("S", _S_V04, z=16, semilocal="spd", shells=_S_SHELLS))
-    info = parse_psml_header(p)
+def test_the_good_pseudo_says_nothing():
+    """v0.4's sulfur, every channel a real projector."""
+    info = parse_psml_header(S_V04)
     assert info.semilocal_only_channels == []
+    assert info.partial_projector_channels == []
     assert info.null_channels == []
 
 
@@ -134,151 +91,78 @@ def test_it_BLOCKS(tmp_path):
 
     The file states something false about a channel carrying four of
     sulfur's six valence electrons, and nothing in it says to read the
-    semilocal block instead — so a reader doing the normal thing gets wrong
+    semilocal block instead -- so a reader doing the normal thing gets wrong
     physics with no crash to notice.  That is the `xc_family_mismatch` case,
     and it blocks for the same reason: *silently* wrong is what a preflight
     is for.
     """
-    (tmp_path / "S.psml").write_text(
-        _psml("S", _S_V05, z=16, semilocal="spd", shells=_S_SHELLS,
-              hints=_S_HINTS))
-    entries = [e for e in check_coverage(["S"], tmp_path,
-                                         expected_xc_family="GGA",
-                                         expected_xc_authors="PBE")
-               if e.status != "ok"]
+    entries = _found(_lib(tmp_path, S=S_V05), "S")
     assert [e.status for e in entries] == ["semilocal_only"], entries
-    assert "semilocal_only" in ERROR_STATUSES, (
-        "a claim of zero on a valence channel must block -- the run would be "
-        "wrong and would not say so")
+    assert "semilocal_only" in ERROR_STATUSES
     msg = entries[0].message
     assert "ZERO" in msg and "not omitted" in msg, (
         "the message must say the projector is present and CLAIMS zero -- "
         "'missing' would send the reader looking for the wrong thing")
 
 
-#: Bismuth's shape in v0.5: p1 real, p2 zeroed — the channel survives.
-_BI_V05 = [("s", 3.1), ("s", 0.4),
-           ("p", 0.433266), ("p", 0.0),
-           ("d", 0.0), ("d", 2.1)]
-
-
 def test_a_PARTLY_zeroed_valence_channel_warns_rather_than_blocks(tmp_path):
-    """The other six of the eleven (Bi, Pb, Po, Rn, Te, Tl).
+    """v0.5's bismuth: p asks for two projectors and ships one real, one empty.
 
-    Their p channel asks for two projectors and ships one real, one empty.
     A second projector is what makes a channel transferable across bonding
-    environments, so this costs accuracy — not the channel, which is why it
+    environments, so this costs accuracy -- not the channel, which is why it
     is not the ERROR above.  Blocking would refuse six elements over a
     degradation their owner may knowingly accept; silence would hide a defect
     the file's own generator input contradicts.
     """
-    (tmp_path / "Bi.psml").write_text(
-        _psml("Bi", _BI_V05, z=83, semilocal="spd",
-              shells=[(6, "s", 2), (6, "p", 3), (5, "d", 1)]))
-    entries = [e for e in check_coverage(["Bi"], tmp_path,
-                                         expected_xc_family="GGA",
-                                         expected_xc_authors="PBE")
-               if e.status != "ok"]
+    entries = _found(_lib(tmp_path, Bi=BI_V05), "Bi")
     assert [e.status for e in entries] == ["partial_projectors"], entries
-    assert "partial_projectors" not in ERROR_STATUSES, (
-        "the channel still works -- blocking would refuse six elements over "
-        "lost transferability the user may accept knowingly")
-    assert "p" in parse_psml_header(tmp_path / "Bi.psml"
-                                    ).partial_projector_channels
-
-
-def test_the_two_tiers_do_not_overlap(tmp_path):
-    """A channel is entirely dead or partly dead, never counted as both --
-    otherwise one file would raise an ERROR and a WARN about one channel and
-    the reader would not know which to act on."""
-    (tmp_path / "S.psml").write_text(
-        _psml("S", _S_V05, z=16, semilocal="spd", shells=_S_SHELLS))
-    info = parse_psml_header(tmp_path / "S.psml")
-    assert info.semilocal_only_channels == ["p"]
-    assert "p" not in info.partial_projector_channels
+    assert "partial_projectors" not in ERROR_STATUSES
+    info = parse_psml_header(BI_V05)
+    assert "p" in info.partial_projector_channels
+    assert info.semilocal_only_channels == []
 
 
 # ===================================================================== #
-#  Layer 2 — the set + the config: what the files ask of the run        #
+#  Layer 2 -- the set + the config: what the files ask of the run       #
 # ===================================================================== #
 
-def _lib(tmp_path, **files):
-    d = tmp_path / "psml"
-    d.mkdir(exist_ok=True)
-    for name, text in files.items():
-        (d / f"{name}.psml").write_text(text)
-    return d
+def _cutoff(lib, elements):
+    struct = Structure(
+        elements=elements,
+        positions=np.array([[2.0 * i, 0.0, 0.0] for i in range(len(elements))]))
+    return _declared_cutoff_ry(struct, SimpleNamespace(psml_lib=None),
+                               dest_dir=lib)
 
 
 def test_the_highest_requirement_wins_because_there_is_one_grid(tmp_path):
     """The mesh is a single global grid, so the most demanding element sets
     it.  A minimum or an average would answer LOWER the more species a
     system has, which is backwards: adding a species can only make the
-    grid's job harder."""
-    from types import SimpleNamespace
-    import numpy as np
-    from molbuilder.pseudos import parse_psml_header as ph
-    from molbuilder.structure import Structure
-    from molbuilder.validation.siesta import _declared_cutoff_ry
-    lib = _lib(
-        tmp_path,
-        S=_psml("S", _S_V04, z=16, shells=_S_SHELLS,
-                hints={"low": 72, "normal": 147, "high": 162}),
-        C=_psml("C", _S_V04, z=6, shells=[(2, "s", 2), (2, "p", 2)],
-                hints={"low": 30, "normal": 41, "high": 48}),
-    )
-    got = {el: ph(lib / f"{el}.psml").suggested_mesh_ry for el in ("S", "C")}
-    assert got == {"S": 147.0, "C": 41.0}
-    struct = Structure(elements=["S", "C"],
-                       positions=np.array([[0., 0, 0], [1.8, 0, 0]]))
-    assert _declared_cutoff_ry(struct, SimpleNamespace(psml_lib=None),
-                               dest_dir=lib) == (147.0, "S"), (
-        "the strictest element sets the grid")
+    grid's job harder.  Bismuth states 36 Ry, sulfur 147."""
+    lib = _lib(tmp_path, S=S_V05, Bi=BI_V05)
+    assert _cutoff(lib, ["Bi", "S"]) == (147.0, "S")
 
 
 def test_an_element_that_states_nothing_does_not_lower_the_bar(tmp_path):
     """Only the eleven re-generated elements carry hints, so a real system
-    states fewer numbers than it has species — BDT on gold states exactly
-    one.  Silence must abstain, not vote for a smaller number: asked with a
-    silent species on each side of the one that states, in the order the
-    species are read."""
-    from types import SimpleNamespace
-    import numpy as np
-    from molbuilder.pseudos import parse_psml_header as ph
-    from molbuilder.structure import Structure
-    from molbuilder.validation.siesta import _declared_cutoff_ry
-    lib = _lib(
-        tmp_path,
-        S=_psml("S", _S_V04, z=16, shells=_S_SHELLS, hints=_S_HINTS),
-        Au=_psml("Au", _S_V04, z=79, shells=[(6, "s", 1)]),   # no hints
-        H=_psml("H", _S_V04, z=1, shells=[(1, "s", 1)]),      # no hints
-        Zn=_psml("Zn", _S_V04, z=30, shells=[(4, "s", 2)]),   # no hints
-    )
-    stated = [ph(lib / f"{el}.psml").suggested_mesh_ry
-              for el in ("S", "Au", "H", "Zn")]
-    assert stated == [147.0, None, None, None]
-    struct = Structure(elements=["Au", "S", "H", "Zn"],
-                       positions=np.array([[0., 0, 0], [2.4, 0, 0], [3.8, 0, 0],
-                                           [6.0, 0, 0]]))
-    assert _declared_cutoff_ry(struct, SimpleNamespace(psml_lib=None),
-                               dest_dir=lib) == (147.0, "S")
+    states fewer numbers than it has species.  Silence must abstain, not vote
+    for a smaller number: asked with a silent species on each side of the one
+    that states, in the order the species are read."""
+    lib = _lib(tmp_path, S=S_V05, H=PSML_DIR / "H.psml", C=PSML_DIR / "C.psml")
+    assert _cutoff(lib, ["H", "S", "C"]) == (147.0, "S")
 
 
-def test_the_hints_are_read_whole_so_high_can_be_named(tmp_path):
+def test_the_hints_are_read_whole_so_high_can_be_named():
     """`normal` is the threshold; `high` is what tight and vibrational work
     wants, so the message can offer it."""
-    p = tmp_path / "S.psml"
-    p.write_text(_psml("S", _S_V04, z=16, shells=_S_SHELLS, hints=_S_HINTS))
-    info = parse_psml_header(p)
+    info = parse_psml_header(S_V05)
     assert info.cutoff_hints_ry == {"low": 72.0, "normal": 147.0, "high": 162.0}
     assert info.suggested_mesh_ry == 147.0, "the THRESHOLD is `normal`"
 
 
-def test_a_file_that_states_nothing_leaves_the_field_None(tmp_path):
+def test_a_file_that_states_nothing_leaves_the_field_None():
     """v0.4 files carry no hints at all, and that must read as *unknown*
-    rather than as zero — a zero requirement is satisfied by anything."""
-    p = tmp_path / "S.psml"
-    p.write_text(_psml("S", _S_V04, z=16, shells=_S_SHELLS))
-    info = parse_psml_header(p)
+    rather than as zero -- a zero requirement is satisfied by anything."""
+    info = parse_psml_header(S_V04)
     assert info.cutoff_hints_ry == {}
     assert info.suggested_mesh_ry is None
