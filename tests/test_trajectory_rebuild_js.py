@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests._node_esm import run_node
+from tests._node_esm import lifted, run_node
 from tests.test_molview_model import MODEL, SERVER
 
 CORE = (Path(__file__).resolve().parents[1]
@@ -27,9 +27,8 @@ CORE = (Path(__file__).resolve().parents[1]
 
 
 def _rebuild_model() -> str:
-    src = CORE.read_text(encoding="utf-8")
-    i = src.index("    async function rebuildModel(seekIdx) {")
-    return src[i:src.index("    // (No local showFrame()", i)]
+    return lifted(CORE, "    async function rebuildModel(seekIdx) {",
+                  "    // (No local showFrame()")
 
 
 #: What `rebuildModel` reaches outside itself, at the edge: the mounted

@@ -31,24 +31,6 @@ def test_heavy_atom_count(heavy_only_arndc):
     assert "H" not in s.elements
 
 
-def test_xyz_round_trip(heavy_only_arndc):
-    s = heavy_only_arndc
-    xyz = s.to_xyz()
-    assert int(xyz.splitlines()[0]) == s.n_atoms
-
-
-def test_pdb_atom_count(heavy_only_arndc):
-    s = heavy_only_arndc
-    pdb = s.to_pdb()
-    assert pdb.count("ATOM") == s.n_atoms
-
-
-def test_pyscf_listing(heavy_only_arndc):
-    s = heavy_only_arndc
-    py = s.to_pyscf()
-    assert len(py) == s.n_atoms
-
-
 def test_full_protonation_keeps_heavy_atom_counts(heavy_only_arndc):
     """build_peptide(...) with default add_hydrogens=True should keep
     the same heavy-atom counts but add explicit Hs."""

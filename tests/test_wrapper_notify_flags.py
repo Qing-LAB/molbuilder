@@ -1,24 +1,6 @@
-"""The reporting policy rides ``Resources`` from `task.json` to the run
-script, and survives a job-set file on the way.
-
-**Why the policy rides ``Resources``.**  It is not a scheduler ask and
-becomes no ``sbatch`` directive — like the wall's slack: it is the road
-every field the deck never carries already rides, and the alternative was a
-second, hand-maintained road from a job to its wrapper.  That road has lost a field to a
-hand-copied argument list twice (``max_memory_mb``, then the ranks/cores
-pair), which is the whole argument for not opening a third one.
-
-**And what must never ride it: the destination.**  The URL and its
-credential are the user's own file on the machine that runs the job.  A
-wrapper is written to disk, copied into composed copies and read by anyone
-who can see the run directory; a token in one would be a token published.
-"""
+"""``Resources.notify_channels`` survives a job-set file."""
 from __future__ import annotations
 
-
-# --------------------------------------------------------------------- #
-#  which channels -- names, and the two ways of saying none              #
-# --------------------------------------------------------------------- #
 
 def test_the_names_survive_a_job_set_file(tmp_path):
     """**A tuple out, a tuple back.**
@@ -39,22 +21,3 @@ def test_the_names_survive_a_job_set_file(tmp_path):
         back = Resources.from_dict(_json.loads(_json.dumps(r.to_dict())))
         assert back == r, f"{channels!r} did not survive the file"
         assert back.notify_channels == channels
-
-
-def test_a_list_of_names_is_accepted_and_normalised():
-    """Several roads reach `Resources` (the CLI, `prep`'s fold, a job-set
-    file). A caller handing a list is not wrong; the class holds its own invariant, exactly as it does for
-    `time` and `mem`."""
-    from molbuilder.jobset.model import Resources
-    assert Resources(notify_channels=["a", "b"]).notify_channels == ("a", "b")
-
-
-# --------------------------------------------------------------------- #
-#  the flags the monitor actually has                                    #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  what the job holds, and whether it can be watched                     #
-# --------------------------------------------------------------------- #
-

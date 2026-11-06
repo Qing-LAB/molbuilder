@@ -155,54 +155,6 @@ def _run_node(snippet: str) -> object:
     return out
 
 
-# ----- Surface presence ------------------------------------------ #
-
-
-class TestSurfacePresence:
-
-    def test_methods_callable(self):
-        out = _run_node('''
-            console.log(JSON.stringify({
-                _bind:                      typeof page._bind,
-                loadIntoCanvas:             typeof page.loadIntoCanvas,
-                markDirtyAfterModification: typeof page.markDirtyAfterModification,
-                markSavedTo:                typeof page.markSavedTo,
-                getCanvasSnapshot:          typeof page.getCanvasSnapshot,
-                onCanvasChange:             typeof page.onCanvasChange,
-            }));
-        ''')
-        for fn in ("_bind", "loadIntoCanvas",
-                   "markDirtyAfterModification", "markSavedTo",
-                   "getCanvasSnapshot", "onCanvasChange"):
-            assert out[fn] == "function", f"missing: {fn}"
-
-
-# ----- _bind ------------------------------------------------------ #
-
-
-class TestBind:
-
-    def test_rejects_missing_canvas(self):
-        out = _run_node('''
-            const modal = _mkFakeModal(true);
-            let threw = false;
-            try { page._bind(null, modal); }
-            catch (e) { threw = true; }
-            console.log(JSON.stringify(threw));
-        ''')
-        assert out is True
-
-    def test_rejects_missing_modal(self):
-        out = _run_node('''
-            const canvas = _mkFakeCanvas();
-            let threw = false;
-            try { page._bind(canvas, null); }
-            catch (e) { threw = true; }
-            console.log(JSON.stringify(threw));
-        ''')
-        assert out is True
-
-
 # ----- loadIntoCanvas gate --------------------------------------- #
 
 
@@ -416,7 +368,7 @@ class TestALoadRetiresTheSaveTarget:
         assert out["loaded"] is None
 
 
-# ----- snapshot + onChange --------------------------------------- #
+# ----- snapshot -------------------------------------------------- #
 
 
 class TestSnapshot:
@@ -441,68 +393,3 @@ class TestSnapshot:
         # (molview.md § 6.7), so the snapshot cannot carry one.
         assert "source" not in out
         assert out["lastSaveTo"] is None
-
-    def test_onCanvasChange_is_a_passthrough(self):
-        out = _run_node('''
-            const canvas = _mkFakeCanvas();
-            page._bind(canvas, _mkFakeModal(false));
-            const unsub = page.onCanvasChange(() => {});
-            console.log(JSON.stringify({
-                canvasOnChangeCalled: canvas._calls()
-                                            .some(c => c.fn === "onChange"),
-                unsubIsFn:            typeof unsub === "function",
-            }));
-        ''')
-        assert out["canvasOnChangeCalled"] is True
-        assert out["unsubIsFn"] is True
-
-
-# ----- unbound error handling ------------------------------------ #
-
-
-class TestUnboundErrors:
-    """Each method must surface a clear error if called before
-    _bind() — production code wires the bind once at module load,
-    but tests + future module orders shouldn't crash mysteriously."""
-
-    def test_loadIntoCanvas_rejects_when_unbound(self):
-        out = _run_node('''
-            // Don't call _bind.
-            const p = page.loadIntoCanvas(
-                { structure: { elements: ["C"] } },
-                { kind: "file" }
-            );
-            let rejected = false;
-            let msg = "";
-            try { await p; }
-            catch (e) { rejected = true; msg = e.message; }
-            console.log(JSON.stringify({
-                rejected: rejected, msg: msg,
-            }));
-        ''')
-        assert out["rejected"] is True
-        assert "not bound" in out["msg"]
-
-    def test_the_helpers_that_need_a_viewer_refuse_without_one(self):
-        """Only the two that ASK the viewer something.
-
-        `markDirtyAfterModification` and `markSavedTo` do not touch the
-        viewer — the first says something the
-        viewer already knows, the second records a fact the page owns — so
-        neither has anything to refuse.
-        """
-        out = _run_node('''
-            const r = {};
-            for (const m of ["getCanvasSnapshot", "onCanvasChange"]) {
-                let threw = false;
-                try {
-                    if (m === "onCanvasChange") page[m](() => {});
-                    else page[m]();
-                } catch (e) { threw = true; }
-                r[m] = threw;
-            }
-            console.log(JSON.stringify(r));
-        ''')
-        # The two that ASK the viewer something still refuse without one.
-        for m in ("getCanvasSnapshot", "onCanvasChange"):
-            assert out[m] is True

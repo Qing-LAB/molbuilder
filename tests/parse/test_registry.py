@@ -8,15 +8,10 @@ read off a run made on the road, `tests/test_siesta_optimization_run_e2e.py`.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from molbuilder.parse import UnknownFormatError, detect
 from molbuilder.parse.registry import _registered_file_parsers
-
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 # Registration --------------------------------------------------------- #
@@ -35,17 +30,19 @@ def test_engine_parsers_registered():
 # Detection + dispatch ------------------------------------------------- #
 
 
-def test_detect_unknown_extension_raises():
-    """detect() on a non-engine file raises UnknownFormatError with
-    the supported-formats list."""
-    nonsense = REPO_ROOT / "README.md"
-    if not nonsense.exists():
-        pytest.skip("README.md absent")
+def test_a_file_nothing_claims_is_told_every_format(tmp_path):
+    """A file no parser claims is refused, and the refusal names every format
+    molbuilder reads with its hint: it is how a person learns which file to
+    pick up (`model/parse.md` § 3, `detect`).  THE SILENT FAILURE: the list
+    losing its labels or its hints, the refusal still raised."""
+    nonsense = tmp_path / "garbage.txt"
+    nonsense.write_text("just some random text\n")
     with pytest.raises(UnknownFormatError) as ei:
         detect(nonsense)
     msg = str(ei.value)
-    # Hint list mentions each registered parser by label.
-    assert "Supported" in msg
+    for parser in _registered_file_parsers():
+        assert parser.label in msg
+        assert getattr(parser, "hint", "") in msg
 
 
 def test_detect_refuses_a_directory_by_name(tmp_path):

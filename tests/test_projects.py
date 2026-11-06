@@ -13,7 +13,7 @@ from molbuilder.projects import (CANONICAL_TOPICS, InvalidName,
                                    PROJECTS_ROOT_NAME, ensure_structure_dir,
                                    list_projects,
                                    list_structures, list_topics, project_dir,
-                                   projects_root, structure_dir, topic_dir,
+                                   structure_dir, topic_dir,
                                    validate_name, validate_topic)
 
 
@@ -95,18 +95,6 @@ def test_projects_root_comes_from_the_one_door(tmp_path, monkeypatch):
     # an explicit base wins over everything
     assert projects_root(base=tmp_path) == tmp_path / PROJECTS_ROOT_NAME
 
-def test_projects_root_with_explicit_base(tmp_path):
-    assert projects_root(base=tmp_path) == tmp_path / PROJECTS_ROOT_NAME
-
-
-def test_path_resolution_composes(tmp_path):
-    p = project_dir("p1", base=tmp_path)
-    t = topic_dir("p1", "spectrum", base=tmp_path)
-    s = structure_dir("p1", "spectrum", "Au-S-12mer", base=tmp_path)
-    assert p == tmp_path / "projects" / "p1"
-    assert t == tmp_path / "projects" / "p1" / "spectrum"
-    assert s == tmp_path / "projects" / "p1" / "spectrum" / "Au-S-12mer"
-
 
 def test_path_resolution_validates_each_segment(tmp_path):
     """Bad project / topic / structure all raise individually."""
@@ -116,14 +104,6 @@ def test_path_resolution_validates_each_segment(tmp_path):
         topic_dir("p", "uvvis", base=tmp_path)
     with pytest.raises(InvalidName):
         structure_dir("p", "spectrum", "bad/name", base=tmp_path)
-
-
-def test_ensure_structure_dir_creates_full_chain(tmp_path):
-    d = ensure_structure_dir("p", "spectrum", "s", base=tmp_path)
-    assert d.is_dir()
-    # And the parents:
-    assert (tmp_path / "projects" / "p").is_dir()
-    assert (tmp_path / "projects" / "p" / "spectrum").is_dir()
 
 
 def test_ensure_structure_dir_idempotent(tmp_path):

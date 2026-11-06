@@ -24,6 +24,13 @@ threads = 1
 #  SIESTA                                                                #
 # ===================================================================== #
 
+# A deck whose description states no solver solves with molbuilder's default,
+# not SIESTA's own (`docs/engines/siesta.md` § 7; user, 2026-10-12).
+[[case]]
+name = "a SIESTA deck that states no solver solves with ELPA-1STAGE, molbuilder's default"
+stage_strategy = ""
+deck_says = { "Diag.Algorithm" = "ELPA-1STAGE" }
+
 # A relaxation is bounded by MD.Steps whatever its algorithm: SIESTA 5.4.2
 # reads that one count for CG, Broyden and FIRE, and a count it does not
 # read leaves a single point that reports success.
@@ -175,6 +182,21 @@ deck_says = { "SolutionMethod" = "OMM", "Spin.Fix" = ".true." }
 # ===================================================================== #
 #  PySCF                                                                 #
 # ===================================================================== #
+
+# THE HARD-SCF HINT (`pyscf/layout.py`, `hard_scf_hint`): a commented level
+# shift where an open-d metal is present, the commonest reason such an SCF does
+# not converge; nothing for a clean organic, where the line would be noise.
+[[case]]
+name = "a PySCF deck for an open-d metal carries the commented level shift"
+engine = "pyscf"
+structure = { elements = ["Fe", "N", "N", "N", "N"], positions = [[6.0, 6.0, 6.0], [8.0, 6.0, 6.0], [4.0, 6.0, 6.0], [6.0, 8.0, 6.0], [6.0, 4.0, 6.0]], cell = [12.0, 12.0, 12.0] }
+template = { spin_treatment = "unrestricted", unpaired_electrons = 2 }
+deck = ["# mf.level_shift = 0.2"]
+
+[[case]]
+name = "...and a clean organic's none"
+engine = "pyscf"
+deck_lacks = ["# mf.level_shift = 0.2"]
 
 [[case]]
 name = "...a PySCF deck in the same fence, its run script echoing none"

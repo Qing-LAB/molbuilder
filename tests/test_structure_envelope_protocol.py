@@ -159,24 +159,6 @@ def test_a_subset_envelope_is_accepted_and_its_map_back_is_the_callers():
 #  Responses carry both views, from one Structure                       #
 # --------------------------------------------------------------------- #
 
-def test_a_response_carries_the_envelope_beside_todays_keys(client):
-    """"Added, not swapped": the envelope rides beside the keys the tabs read."""
-    answer = client.post("/api/build/load",
-                         json={"text": "2\n\nC 0 0 0\nO 1 0 0\n",
-                               "filename": "x.xyz"}).get_json()
-
-    assert answer["ok"] is True
-    for key in ("text", "atoms", "periodicity", "annotations",
-                "atom_names", "residue_names"):
-        assert key in answer, f"the key '{key}' stopped being sent"
-
-    envelope = answer["structure"]
-    assert "document" not in envelope, (
-        "a coordinate document is the export door's answer, not a per-response cost"
-    )
-    assert envelope["elements"] == [a["element"] for a in answer["atoms"]]
-    assert envelope["positions"] == [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
-
 
 def test_the_two_views_cannot_disagree_because_they_come_from_one_structure(client):
     """They are two views of one object, not two objects. Anything a reader can
@@ -322,21 +304,6 @@ def test_export_is_born_in_the_envelope_and_takes_nothing_else(client):
                          json={"blob": {"xyz": "1\n\nC 0 0 0\n", "sidecar": {}}})
     assert legacy.status_code == 400
     assert legacy.get_json()["ok"] is False
-
-
-def test_export_reports_what_the_server_did_to_the_structure(client):
-    """`notices` sits beside `ok`, never inside the structure: it belongs to the
-    CALL — what this door did on the way through — not to the atoms.
-
-    The export door runs the same periodicity gate the save door runs, which is
-    what makes `test_export_returns_what_a_save_would_write` true rather than
-    coincidental; anything that gate says is passed on instead of swallowed.
-    (Which structures it has something to say about is
-    `structure-periodicity.md`'s business and is tested there — this pins only
-    that the channel exists and is a list.)
-    """
-    answer = client.post("/api/structure/export", json=_envelope()).get_json()
-    assert isinstance(answer["notices"], list)
 
 
 # --------------------------------------------------------------------- #

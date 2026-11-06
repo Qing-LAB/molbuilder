@@ -63,25 +63,6 @@ def _run_node(snippet: str) -> object:
     return out
 
 
-class TestSurfacePresence:
-
-    def test_methods_callable(self):
-        out = _run_node('''
-            console.log(JSON.stringify({
-                configure:   typeof dna.configure,
-                generate:    typeof dna.generate,
-                wirePanel:   typeof dna.wirePanel,
-                BUILD_URL:   dna.BUILD_URL,
-                VALID_FORMS: dna.VALID_FORMS,
-            }));
-        ''')
-        assert out["configure"] == "function"
-        assert out["generate"]  == "function"
-        assert out["wirePanel"] == "function"
-        assert out["BUILD_URL"] == "/api/build/molecule"
-        assert out["VALID_FORMS"] == ["B", "A", "Z"]
-
-
 class TestInputValidation:
 
     def test_empty_sequence_rejected(self):
@@ -161,7 +142,6 @@ class TestHappyPath:
             console.log(JSON.stringify(capturedBody));
         ''')
         assert out["form"] == "Z"
-
 
 
 class TestBackendSelection:

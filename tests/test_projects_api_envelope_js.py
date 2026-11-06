@@ -188,45 +188,6 @@ class TestNetworkFailure:
         assert "network error" in out["error"]
         assert "Failed to fetch" in out["error"]
 
-    def test_apiMkdir_network_drop_returns_envelope(self):
-        out = _run_node('''
-            global.fetch = async () => {
-                throw new Error("offline");
-            };
-            const r = await api.apiMkdir("/parent", "newdir");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "network error" in out["error"]
-
-    def test_apiUpload_network_drop_returns_envelope(self):
-        out = _run_node('''
-            // Provide a FormData stub since Node may not have one.
-            global.FormData = function () {
-                this.append = () => {};
-            };
-            global.fetch = async () => {
-                throw new TypeError("Failed to fetch");
-            };
-            const r = await api.apiUpload("/x", { name: "f.xyz" });
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "network error" in out["error"]
-
-    def test_apiWrite_network_drop_returns_envelope(self):
-        """Regression-pin so a refactor doesn't accidentally drop apiWrite's
-        envelope behaviour."""
-        out = _run_node('''
-            global.fetch = async () => {
-                throw new TypeError("Failed to fetch");
-            };
-            const r = await api.apiWrite("/x", "text");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "network error" in out["error"]
-
 
 # ----- Non-JSON response: server returns 501 / HTML 5xx ----------- #
 
@@ -246,19 +207,6 @@ class TestNonJsonResponse:
         assert out["ok"] is False
         assert "non-JSON" in out["error"]
         assert "501" in out["error"]
-
-    def test_apiList_non_json_returns_envelope(self):
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => { throw new SyntaxError("Unexpected token <"); },
-            });
-            const r = await api.apiList("/x");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "non-JSON" in out["error"]
 
 
 # ----- AbortSignal threading (#174 sidebar gap M1) ---------------- #
@@ -284,33 +232,6 @@ class TestAbortSignal:
         assert out["ok"] is False
         assert out["error"] == "aborted"
         assert out["aborted"] is True
-
-    def test_apiDelete_aborted_returns_clean_envelope(self):
-        out = _run_node('''
-            global.fetch = async () => {
-                const err = new Error("aborted");
-                err.name = "AbortError";
-                throw err;
-            };
-            const r = await api.apiDelete("/x", false);
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["aborted"] is True
-        assert out["ok"] is False
-
-    def test_apiUpload_aborted_returns_clean_envelope(self):
-        out = _run_node('''
-            global.FormData = function () { this.append = () => {}; };
-            global.fetch = async () => {
-                const err = new Error("aborted");
-                err.name = "AbortError";
-                throw err;
-            };
-            const r = await api.apiUpload("/x", { name: "f" });
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["aborted"] is True
-        assert out["ok"] is False
 
     def test_apiWrite_forwards_signal_into_fetch(self):
         """The ``signal`` from opts must reach the fetch init -- pin
@@ -540,7 +461,8 @@ class TestNoStoreCache:
     /results stale-dropdown bug (#192).
 
     These tests pin the default + the override path so a future
-    refactor can't quietly drop either.
+    refactor can't quietly drop either.  One caller stands for all of them:
+    every function here reaches `fetch` through that one wrapper.
     """
 
     def test_apiList_passes_cache_no_store(self):
@@ -557,92 +479,6 @@ class TestNoStoreCache:
             console.log(JSON.stringify({
                 cache: capturedInit ? capturedInit.cache : null,
             }));
-        ''')
-        assert out["cache"] == "no-store"
-
-    def test_apiRead_passes_cache_no_store(self):
-        out = _run_node('''
-            let cache = null;
-            global.fetch = async (_u, init) => {
-                cache = init && init.cache;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({ ok: true, text: "" }),
-                };
-            };
-            await api.apiRead("/p");
-            console.log(JSON.stringify({ cache: cache }));
-        ''')
-        assert out["cache"] == "no-store"
-
-    def test_apiReadRange_passes_cache_no_store(self):
-        out = _run_node('''
-            let cache = null;
-            global.fetch = async (_u, init) => {
-                cache = init && init.cache;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({
-                        ok: true, path: "/p", offset: 0, length: 0,
-                        file_size: 0, mtime: 0, text: "", eof: true,
-                    }),
-                };
-            };
-            await api.apiReadRange("/p", 0, 1024);
-            console.log(JSON.stringify({ cache: cache }));
-        ''')
-        assert out["cache"] == "no-store"
-
-    def test_apiStat_passes_cache_no_store(self):
-        out = _run_node('''
-            let cache = null;
-            global.fetch = async (_u, init) => {
-                cache = init && init.cache;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({ ok: true }),
-                };
-            };
-            await api.apiStat("/p");
-            console.log(JSON.stringify({ cache: cache }));
-        ''')
-        assert out["cache"] == "no-store"
-
-    def test_apiRoots_passes_cache_no_store(self):
-        """Roots is quasi-static but goes through the same wrapper.
-        Forcing no-store here is harmless + keeps the default uniform
-        so a future refactor can't drop the safety net for one caller."""
-        out = _run_node('''
-            let cache = null;
-            global.fetch = async (_u, init) => {
-                cache = init && init.cache;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({ roots: [] }),
-                };
-            };
-            await api.apiRoots();
-            console.log(JSON.stringify({ cache: cache }));
-        ''')
-        assert out["cache"] == "no-store"
-
-    def test_post_endpoints_also_get_no_store(self):
-        """``cache: "no-store"`` is a no-op for POST (browsers never
-        cache non-GET responses), so applying it uniformly is safe.
-        Pin that it's still passed -- so a future caller that switches
-        a GET endpoint to POST or adds a new POST through the same
-        wrapper inherits the default without surprises."""
-        out = _run_node('''
-            let cache = null;
-            global.fetch = async (_u, init) => {
-                cache = init && init.cache;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({ ok: true }),
-                };
-            };
-            await api.apiMkdir("/parent", "new");
-            console.log(JSON.stringify({ cache: cache }));
         ''')
         assert out["cache"] == "no-store"
 

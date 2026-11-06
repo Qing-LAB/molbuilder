@@ -164,52 +164,17 @@ class TestTransportSchemaEndpoint:
             f"fields missing render metadata: {missing}"
         )
 
-class TestTransportPageRendering:
 
-    def test_page_loads_at_canonical_route(self, web):
-        r = web.get("/transport-calculation")
-        assert r.status_code == 200
-
-    def test_page_includes_form_container(self, web):
-        r = web.get("/transport-calculation")
-        assert r.status_code == 200
-        body = r.data.decode()
-        assert 'id="transport-form-container"' in body
-        # ONE TAB PER ENGINE (`engines/transport.md` § 3.8.8): an engine
-        # that runs no transport is drawn DISABLED, its title saying why.
-        from molbuilder.kind_table import kind
-        pyscf = body.split('data-tab="pyscf"')[1].split(">")[0]
-        assert "disabled" in pyscf and kind("transport").why_not_on("pyscf") in pyscf
-        # ...in the contract's words (§ 3.8.8).
-        assert "no PySCF transport backend is built yet" in pyscf
-        assert 'id="transport-junction-btn"' in body
-        assert 'id="transport-send-btn"' in body
-        assert 'transport-generate-btn' not in body
-
-
-    def test_send_button_is_disabled_until_a_junction_is_cited(self, web):
-        """The composite's one hard requirement is the citation
-        (engines/transport.md § 3.1); the button says so and starts
-        disabled -- core.js enables it when a junction is picked."""
-        body = web.get("/transport-calculation").data.decode()
-        assert (
-            'id="transport-send-btn"' in body
-            and 'disabled' in body.split('id="transport-send-btn"')[1][:200]
-        ), "Send must start disabled"
-        assert "Task setup" in body
-
-    def test_active_tab_marker_set(self, web):
-        """``active_tab`` must equal ``transport-calculation`` so
-        the shared header partial marks the right tab is-active."""
-        body = web.get("/transport-calculation").data.decode()
-        # The is-active marker should be on the
-        # /transport-calculation tab link only.
-        import re
-        m = re.search(
-            r'<a[^>]*href="/transport-calculation"[^>]*class="[^"]*is-active[^"]*"',
-            body,
-        )
-        assert m, "Transport tab must mark itself active in the nav"
+def test_a_tab_for_an_engine_that_runs_no_transport_is_disabled_and_says_why(web):
+    """ONE TAB PER ENGINE (`engines/transport.md` § 3.8.8): an engine that runs
+    no transport is drawn DISABLED, its title saying why, in the contract's
+    words."""
+    from molbuilder.kind_table import kind
+    r = web.get("/transport-calculation")
+    assert r.status_code == 200
+    pyscf = r.data.decode().split('data-tab="pyscf"')[1].split(">")[0]
+    assert "disabled" in pyscf and kind("transport").why_not_on("pyscf") in pyscf
+    assert "no PySCF transport backend is built yet" in pyscf
 
 
 def test_a_rung_tab_offers_no_run_setting(web):

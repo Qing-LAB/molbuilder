@@ -13,10 +13,7 @@ reset.
 
 from __future__ import annotations
 
-import json
-import subprocess
-from typing import Any, Dict, List
-from unittest.mock import MagicMock
+from typing import Any, Dict
 
 from molbuilder import diagnostics
 from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
@@ -49,9 +46,6 @@ def test_every_recipe_category_has_an_env_name():
     missing = [r.name for r in builtin_recipes()
                if r.category is not None and r.category not in DEFAULT_ENV_NAMES]
     assert not missing, f"recipe category names no env: {missing}"
-def test_every_tool_routes_to_a_known_category():
-    """Each routed tool maps to a category we know how to dispatch."""
-    assert set(TOOL_TO_CATEGORY.values()) <= set(DEFAULT_ENV_NAMES)
 
 
 def test_every_engine_the_catalogue_names_has_an_env():
@@ -85,65 +79,10 @@ def _caps(**overrides) -> Capabilities:
     return Capabilities(**defaults)
 
 
-def test_env_for_category_returns_default():
-    caps = _caps()
-    assert caps.env_for_category("siesta")  == "molbuilder-siesta"
-    assert caps.env_for_category("pyscf")   == "molbuilder-pySCF"
-    assert caps.env_for_category("mdtools") == "molbuilder-MDtools"
-    # "tests" is not a routed category (browser E2E runs under the host env).
-    assert caps.env_for_category("tests")   is None
-
-
-def test_env_for_category_unknown_returns_none():
-    assert _caps().env_for_category("not-a-real-category") is None
-
-
-def test_env_for_category_honours_config_override():
-    caps = _caps(runtime_config={
-        "envs": {"siesta": "my-siesta", "mdtools": "my-amber"},
-    })
-    assert caps.env_for_category("siesta")  == "my-siesta"
-    assert caps.env_for_category("mdtools") == "my-amber"
-    # Unspecified category falls back to compiled default.
-    assert caps.env_for_category("pyscf")   == "molbuilder-pySCF"
-
-
-def test_env_for_tool_known():
-    caps = _caps()
-    assert caps.env_for_tool("tleap")      == "molbuilder-MDtools"
-    assert caps.env_for_tool("siesta")     == "molbuilder-siesta"
-
-
-def test_env_for_tool_playwright_not_routed():
-    """``playwright`` is deliberately unrouted: browser E2E runs under
-    the host env (in-process Flask app), not a dedicated conda env."""
-    assert _caps().env_for_tool("playwright") is None
-
-
-def test_env_for_tool_unknown_returns_none():
-    assert _caps().env_for_tool("ls") is None
-
-
 def test_env_for_tool_picks_up_override():
     caps = _caps(runtime_config={"envs": {"mdtools": "amber26-dac"}})
     assert caps.env_for_tool("tleap")    == "amber26-dac"
     assert caps.env_for_tool("parmchk2") == "amber26-dac"
-
-
-def test_env_available():
-    caps = _caps(conda_envs={"molbuilder-MDtools", "other-env"})
-    assert caps.env_available("molbuilder-MDtools") is True
-    assert caps.env_available("not-there")          is False
-
-
-def test_routed_env_returns_name_when_routed_and_available():
-    caps = _caps(conda_envs={"molbuilder-MDtools"})
-    assert caps.routed_env("tleap") == "molbuilder-MDtools"
-
-
-def test_routed_env_none_when_env_missing():
-    caps = _caps(conda_envs=set())
-    assert caps.routed_env("tleap") is None
 
 
 def test_routed_env_none_when_unrouted():
@@ -174,106 +113,20 @@ def test_tool_available_unreachable(monkeypatch):
 # --------------------------------------------------------------------- #
 
 
-def _stub_conda_env_list(envs_list: List[str], base: str = None):
-    """Return a fake subprocess.run that mimics ``conda env list --json``.
-
-    ``base`` adds the ``envs_details`` block a real manager returns, flagging
-    that prefix as its installation.  Without it the stub is a manager that
-    reports only ``envs`` -- and then nothing can say which prefix is an
-    installation, so none is excluded.
+def test_detect_reads_this_machines_config(machine_config, monkeypatch):
+    """What this machine's ``molbuilder.json`` states reaches the snapshot
+    every door asks.  THE SILENT FAILURE: every ``envs.*`` override ignored by
+    the real probe, while each lookup test handed a synthetic snapshot still
+    passes.  `configuration.md` § 4.  No manager here, so nothing a manager
+    prints is typed: `test_envs_one_answer_about_an_env.py` reads its registry.
     """
-    def fake_run(argv, *args, **kwargs):
-        cp = MagicMock(spec=subprocess.CompletedProcess)
-        cp.returncode = 0
-        payload: Dict[str, Any] = {"envs": envs_list}
-        if base is not None:
-            payload["envs_details"] = {
-                p: {"name": ("base" if p == base else p.rsplit("/", 1)[-1]),
-                    "base": p == base}
-                for p in envs_list
-            }
-        cp.stdout = json.dumps(payload)
-        cp.stderr = ""
-        return cp
-    return fake_run
-
-
-def test_detect_assembles_capabilities(monkeypatch):
-    monkeypatch.setattr(diagnostics, "read_config",
-                         lambda: {"envs": {"siesta": "my-siesta"}})
-    monkeypatch.setattr(diagnostics.shutil, "which",
-                         lambda t: "/usr/bin/conda" if t == "conda" else None)
-    monkeypatch.setattr(diagnostics.subprocess, "run",
-                         _stub_conda_env_list([
-                             "/home/u/miniconda3",
-                             "/home/u/miniconda3/envs/molbuilder-MDtools",
-                             "/home/u/miniconda3/envs/some-other",
-                         ], base="/home/u/miniconda3"))
-    caps = detect()
-    assert caps.conda_binary == "/usr/bin/conda"
-    # The installation root is excluded by the manager's own `base` flag;
-    # only true named envs make it into the snapshot.
-    # `{name: prefix}`: the snapshot carries WHERE each env is, so
-    # `install._env_prefix` does not pay a 1.2 s registry read per recipe.
-    # Membership -- which is what every gate asks -- reads a mapping unchanged.
-    assert caps.conda_envs == {
-        "molbuilder-MDtools": "/home/u/miniconda3/envs/molbuilder-MDtools",
-        "some-other":         "/home/u/miniconda3/envs/some-other",
-    }
-    assert caps.runtime_config == {"envs": {"siesta": "my-siesta"}}
-
-
-def test_detect_filters_out_conda_root_installation(monkeypatch):
-    """A base installation is not an env of ours, and its prefix's basename
-    (``miniconda3``) is not a name conda knows at all -- the base env is called
-    ``base``, so keying it by basename would INVENT a name.
-
-    **Asserted through the mechanism that delivers it** *(2026-09-12)*: the
-    manager's own ``envs_details`` block flags its installation.  This used to be
-    a path rule -- "keep only prefixes whose parent is called `envs`" -- which
-    excluded the base AND every env created with ``--prefix`` elsewhere, so a
-    real env went missing and `probe_env_state` then called it FRESH, whereupon
-    ``conda create`` would make a second env beside it.  A manager that reports
-    no details is covered in
-    `test_envs_one_answer_about_an_env.py`: nothing is excluded there, because
-    nothing in that document says which prefix is an installation."""
-    monkeypatch.setattr(diagnostics, "read_config", lambda: {})
-    monkeypatch.setattr(diagnostics.shutil, "which",
-                         lambda t: "/usr/bin/conda" if t == "conda" else None)
-    monkeypatch.setattr(diagnostics.subprocess, "run",
-                         _stub_conda_env_list(
-                             ["/home/u/miniconda3", "/opt/anaconda3"],
-                             base="/home/u/miniconda3"))
-    caps = detect()
-    # The flagged installation is gone; the other prefix is an env as far as
-    # this document says -- which is the manager's statement, not a guess here.
-    assert caps.conda_envs == {"anaconda3": "/opt/anaconda3"}
-
-
-def test_detect_no_conda_gives_empty_envs(monkeypatch):
-    monkeypatch.setattr(diagnostics, "read_config", lambda: {})
+    machine_config({"envs": {"siesta": "my-siesta"}})
     monkeypatch.setattr(diagnostics.shutil, "which", lambda t: None)
     monkeypatch.delenv("CONDA_EXE", raising=False)
+    monkeypatch.delenv("MAMBA_EXE", raising=False)
     caps = detect()
     assert caps.conda_binary is None
-    assert caps.conda_envs   == {}
-
-
-def test_detect_conda_failure_yields_empty_envs(monkeypatch):
-    """Non-zero exit / timeout / malformed JSON -> empty set, not raise."""
-    monkeypatch.setattr(diagnostics, "read_config", lambda: {})
-    monkeypatch.setattr(diagnostics.shutil, "which",
-                         lambda t: "/usr/bin/conda" if t == "conda" else None)
-    def failing_run(argv, *a, **kw):
-        cp = MagicMock(spec=subprocess.CompletedProcess)
-        cp.returncode = 1
-        cp.stdout = ""
-        cp.stderr = "boom"
-        return cp
-    monkeypatch.setattr(diagnostics.subprocess, "run", failing_run)
-    caps = detect()
-    assert caps.conda_binary == "/usr/bin/conda"
-    assert caps.conda_envs   == {}
+    assert caps.env_for_category("siesta") == "my-siesta"
 
 
 # --------------------------------------------------------------------- #

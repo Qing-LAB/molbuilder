@@ -1,12 +1,10 @@
-"""`prep` refuses before it writes -- through the road: `molbuilder describe`, `prep`.
+"""`prep` refuses in the verb's voice -- through the road: `molbuilder describe`, `prep`.
 
-PINS: ``docs/execution/job-system.md`` § 5.4 (*what cannot be taken is
-refused before anything is written too: a run that is not an attempt of this
-calculation, `--from` with `--cold`, either on the flat layout or a bias
-scan, either on a bench -- and the attempt is opened once, with what it
-carries, so a refusal leaves an attempt an earlier prep set up as it was*)
-and § 5.3 (every decision the entry makes lands in the ledger; both doors
-refuse through the one entry); plan W52.
+PINS: ``docs/execution/job-system.md``, *Every refusal, and its way on* (a
+`--time`, `--mem` or `--gpus` that is no amount is said where it is typed);
+``docs/execution/run-identity.md`` § 3 (a label longer than its engine keeps is
+refused at prep).  What `--from` and `--cold` cannot take (`job-system.md`
+§ 5.4) is `tests/data/prep_protocol.toml`'s.
 
 PREVENTS, read in the code before 2026-10-01 (the W52 review): a mistyped
 `--time` dumping a traceback.
@@ -14,8 +12,6 @@ PREVENTS, read in the code before 2026-10-01 (the W52 review): a mistyped
 Nothing here launches an engine.
 """
 from __future__ import annotations
-
-import json
 
 import pytest
 
@@ -25,12 +21,6 @@ from support.road import describe_calculation, group_words, jobset
 def _prep(bundle, stage, *more):
     return jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle,
                   "--target", "this", *more)
-
-
-def _ledger(bundle):
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    return [json.loads(ln) for ln in
-            (bundle / LEDGER_FILE).read_text().splitlines()]
 
 
 def test_a_mistyped_amount_is_refused_by_its_flag(tmp_path, monkeypatch):
@@ -59,7 +49,7 @@ LONG_LABEL = "H2_" + "a" * 46
 def test_a_label_longer_than_its_engine_keeps_is_refused_at_prep(
         tmp_path, monkeypatch, engine, refused):
     """A 49-character label: refused at prep for SIESTA, naming its length
-    and the 48 SIESTA keeps, with nothing written; prepared for PySCF.
+    and the 48 SIESTA keeps; prepared for PySCF.
 
     MUTATION THIS MUST FAIL AGAINST: the limit read as a constant for every
     engine (the PySCF row is refused)."""

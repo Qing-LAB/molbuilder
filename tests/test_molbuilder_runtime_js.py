@@ -57,29 +57,11 @@ def _run_node(snippet: str) -> object:
 
 
 # --------------------------------------------------------------------- #
-#  API surface presence                                                  #
+#  Loaded twice                                                          #
 # --------------------------------------------------------------------- #
 
 
-class TestSurfacePresence:
-
-    def test_runtime_object_exposes_documented_methods(self):
-        """The five public methods MUST all be callable functions on
-        ``window.molbuilder.runtime``.
-        """
-        out = _run_node('''
-            const rt = window.molbuilder.runtime;
-            console.log(JSON.stringify({
-                register:       typeof rt.register,
-                whenReady:      typeof rt.whenReady,
-                get:            typeof rt.get,
-                listRegistered: typeof rt.listRegistered,
-                listPending:    typeof rt.listPending,
-            }));
-        ''')
-        for fn in ("register", "whenReady", "get",
-                   "listRegistered", "listPending"):
-            assert out[fn] == "function", f"missing method: {fn}"
+class TestLoadedTwice:
 
     def test_double_load_is_idempotent(self):
         """Loading the IIFE twice (e.g. a template double-includes

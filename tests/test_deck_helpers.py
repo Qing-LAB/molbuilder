@@ -1,12 +1,9 @@
-"""The deck readers in ``tests/_deck.py``, which nothing else checks.
+"""The window reader in ``tests/_deck.py``, which nothing else checks.
 
-Six test files assert through these, so an error here is an error in all
-of them — and the dangerous direction is silent: a unit factor that is
-wrong, or a bound read off the wrong end, makes every caller agree with
-the deck for the wrong reason and nothing goes red.
-
-Only the logic is covered. The thin delegations to
-``molbuilder.parse.fdf.read_fdf`` are that module's to test.
+`test_transport_au_bdt_au_validation.py` asserts through it, so an error here
+is an error there -- and the dangerous direction is silent: a unit factor that
+is wrong, or a bound read off the wrong end, makes the caller agree with the
+deck for the wrong reason and nothing goes red.
 """
 from __future__ import annotations
 
@@ -14,8 +11,7 @@ import pytest
 
 from molbuilder.units import UnknownUnit
 
-from _deck import (assert_fdf, fdf_block, fdf_block_rows, fdf_energy_window,
-                   fdf_sets, fdf_value)
+from _deck import fdf_energy_window
 
 _WINDOW = """\
 SystemLabel probe
@@ -27,71 +23,6 @@ SystemLabel probe
 %endblock TBT.Contour.window
 """
 
-
-# --------------------------------------------------------------------- #
-#  scalars                                                              #
-# --------------------------------------------------------------------- #
-
-@pytest.mark.parametrize("spelling", [
-    "SystemLabel", "system_label", "System.Label", "SYSTEMLABEL",
-    "system-label",
-])
-def test_a_keyword_is_found_by_any_fdf_spelling(spelling):
-    """fdf matches ignoring case, ``.``, ``-`` and ``_``, so a test that
-    insists on one spelling reports a deck the engine reads fine."""
-    assert fdf_value(_WINDOW, spelling) == "probe"
-
-
-def test_a_keyword_the_deck_does_not_set_reads_as_None():
-    assert fdf_value(_WINDOW, "MeshCutoff") is None
-    assert fdf_sets(_WINDOW, "MeshCutoff") is False
-
-
-def test_assert_fdf_says_which_of_the_two_failures_it_is():
-    """Absent and wrong are different repairs, so they read differently."""
-    with pytest.raises(AssertionError, match="does not set"):
-        assert_fdf(_WINDOW, "MeshCutoff", "250")
-    with pytest.raises(AssertionError, match="deck says"):
-        assert_fdf(_WINDOW, "SystemLabel", "other")
-
-
-def test_spacing_is_not_part_of_the_value():
-    """The reason this module exists: padding changed, 45 tests failed,
-    none of them meant to be testing padding."""
-    assert fdf_value("SystemLabel      probe\n", "SystemLabel") == "probe"
-
-
-# --------------------------------------------------------------------- #
-#  blocks                                                               #
-# --------------------------------------------------------------------- #
-
-def test_a_block_comes_back_tokenised_row_by_row():
-    assert fdf_block(_WINDOW, "TBT.Contour.window")[0] == ["part", "line"]
-
-
-def test_an_absent_block_is_None_and_its_rows_are_empty():
-    assert fdf_block(_WINDOW, "TS.Elecs") is None
-    assert fdf_block_rows(_WINDOW, "TS.Elecs") == {}
-
-
-def test_block_rows_key_on_the_first_token():
-    rows = fdf_block_rows(_WINDOW, "TBT.Contour.window")
-    assert rows["points"] == ["401"]
-    assert rows["part"] == ["line"]
-
-
-def test_repeated_leading_tokens_collapse_and_that_is_documented():
-    """THE TRAP IN `fdf_block_rows`, pinned so it cannot surprise: a
-    block whose rows repeat a leading token keeps only the last, which is
-    why coordinates and lattice vectors must use `fdf_block`."""
-    text = "%block X\n a 1\n a 2\n%endblock X\n"
-    assert fdf_block_rows(text, "X") == {"a": ["2"]}
-    assert fdf_block(text, "X") == [["a", "1"], ["a", "2"]]
-
-
-# --------------------------------------------------------------------- #
-#  the from ... to ... row                                              #
-# --------------------------------------------------------------------- #
 
 def test_both_bounds_come_off_one_row():
     """`to` sits inside the `from` row, which is the whole reason this
@@ -133,55 +64,3 @@ def test_a_bare_energy_is_REFUSED_rather_than_assumed():
 
 def test_an_absent_window_is_None_not_a_default():
     assert fdf_energy_window("SystemLabel probe\n", "TBT.Contour.window") is None
-
-
-@pytest.mark.parametrize("row,match,exc", [
-    ("from -2.0 eV 2.0 eV", "no `to`",          AssertionError),
-    ("from to 2.0 eV",      "missing a bound",  AssertionError),
-    ("from -2.0 eV to",     "missing a bound",  AssertionError),
-    ("from x eV to 2.0 eV", "not a number",     UnknownUnit),
-    ("from -2.0 furlongs to 2.0 furlongs", "does not know how to convert",
-     UnknownUnit),
-])
-def test_a_malformed_row_names_the_block_and_the_problem(row, match, exc):
-    """The row GRAMMAR is this module's; the unit vocabulary is
-    `molbuilder.units`'.  Both refusals must still name the block."""
-    text = _WINDOW.replace("from -2.00000 eV to 2.00000 eV", row)
-    with pytest.raises(exc, match=match) as e:
-        fdf_energy_window(text, "TBT.Contour.window")
-    assert "TBT.Contour.window" in str(e.value), (
-        "a refusal must say which block it is about")
-
-
-def test_a_block_read_from_a_file_beside_the_deck_reads_as_one_deck(tmp_path):
-    """`engines/vibration.md` § 5.11 § 4; `parse/fdf.read_deck`: a deck whose
-    coordinate block is read from `coordinates.fdf` beside it (libfdf's
-    `%block Label < Filename`) reads, through the deck's one file reader,
-    as the same deck written inline -- its atoms, their places and every
-    scalar after the include.  The silent failure: the include line read as
-    an empty block that swallows every line after it, so every reader of the
-    deck sees no atoms and no later setting.  The text alone cannot give the
-    rows, so `read_fdf` refuses it naming the file and the reader; a file
-    not beside the deck is refused by name."""
-    from molbuilder.parse.fdf import (deck_atoms, parse_fdf_params,
-                                      read_deck, read_fdf)
-    rows = "0.0 0.0 4.6 1\n0.0 0.0 5.4 1\n"
-    head = ("SystemLabel H2\nNumberOfAtoms 2\nNumberOfSpecies 1\n"
-            "%block ChemicalSpeciesLabel\n1 1 H\n%endblock ChemicalSpeciesLabel\n"
-            "AtomicCoordinatesFormat Ang\n")
-    tail = "MeshCutoff 200 Ry\n"
-    inline = (head + "%block AtomicCoordinatesAndAtomicSpecies\n" + rows
-              + "%endblock AtomicCoordinatesAndAtomicSpecies\n" + tail)
-    deck = head + "%block AtomicCoordinatesAndAtomicSpecies < coordinates.fdf\n" + tail
-    (tmp_path / "H2.fdf").write_text(deck)
-    (tmp_path / "coordinates.fdf").write_text(rows)
-    whole = read_deck(tmp_path / "H2.fdf")
-    assert deck_atoms(whole) == deck_atoms(inline)
-    want, got = parse_fdf_params(inline), parse_fdf_params(whole)
-    assert got.coords_ang == want.coords_ang and want.coords_ang
-    assert got.mesh_cutoff_ry == want.mesh_cutoff_ry and want.mesh_cutoff_ry
-    with pytest.raises(ValueError, match="coordinates.fdf.*read_deck"):
-        read_fdf(deck)
-    (tmp_path / "coordinates.fdf").unlink()
-    with pytest.raises(ValueError, match="coordinates.fdf.*not beside"):
-        read_deck(tmp_path / "H2.fdf")

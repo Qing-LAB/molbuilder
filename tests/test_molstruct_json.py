@@ -37,8 +37,8 @@ _HASH = "b" * 64
 
 
 def _toy_xyz_text(n: int = 4) -> str:
-    """Tiny synthetic XYZ -- N carbons on a line.  Used to give the
-    parser a real on-disk file to hash."""
+    """Tiny synthetic XYZ -- N carbons on a line: a real file for the
+    pair to be written beside."""
     lines = [f"{n}", "synthetic"]
     for i in range(n):
         lines.append(f"C   {float(i):.3f}   0.000   0.000")
@@ -347,13 +347,14 @@ class TestLoadErrors:
         broken and not where. The end product asserted is the raised error's message,
         which is the only place the two facts meet.
         """
-        p = tmp_path / "bad.molstruct.json"
-        p.write_text(_json.dumps({
-            "schema_version": 7,
-            "n_atoms_total": 3,
-            "structure_hash": "b" * 32,
-            "regions": {"L": [99]},  # out-of-range
-        }))
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        xyz = tmp_path / "bad.xyz"
+        StructureCodec().write(Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n"), xyz)
+        p = msj.sidecar_path_for(xyz)
+        payload = _json.loads(p.read_text(encoding="utf-8"))
+        payload["regions"] = {"L": [99]}  # out-of-range
+        p.write_text(_json.dumps(payload), encoding="utf-8")
         with pytest.raises(MolstructJsonError) as exc:
             msj.load(p)
         # Path AND the underlying invariant should both appear:
@@ -423,26 +424,16 @@ class TestApplyToStructure:
 
 class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
-    schemas this build accepts: {7, ..., 17} (`structure-molstruct.md` § 2).
-    v8, v9, v11, v12 and v14 only ADDED optional keys, so an older file reads
-    whole (an absent addition IS its default, which is exactly what the
-    older version meant); v10 retired `cell_origin` and v13 `structure_hash`
-    -- read and ignored, `TestARetiredKeyPassesEveryGate` -- and a v7-v12
-    file states no geometry hash, so its pair opens unchecked.  Everything
-    older than v7 stores the same facts in DIFFERENT places (v3's top-level
-    frozen atoms) and is refused rather than silently coerced."""
+    schemas this build accepts (`structure-molstruct.md` § 2)."""
 
     @pytest.mark.parametrize("version, why", [
-        (2, "v2 kept a `fixed_atoms` key"),
-        (3, "v3 kept frozen atoms in a top-level key, not in `regions`"),
-        (6, "v6 was the last before the label store was unified"),
         (99, "a version from the future"),
         (None, "no version at all"),
     ])
     def test_any_version_but_the_current_one_is_refused(self, tmp_path,
                                                         version, why):
-        """One gate, one answer: this build reads the current schema and refuses
-        everything else, whether it is older or newer.
+        """One gate, one answer: a version this build does not read is refused,
+        naming the ones it does.
         """
         payload = {
             "n_atoms_total":  3,
@@ -485,29 +476,9 @@ class TestSchemaVersioning:
         assert rewritten["schema_version"] == msj.SCHEMA_VERSION
         assert "selection_rules" not in rewritten
 
-    def test_a_v7_file_reads_whole_under_v8(self, tmp_path):
-        """The additive-bump rule (2026-08-20): v8 added only the OPTIONAL
-        identity columns, so every fact a v7 file states lands in the same
-        place -- and the absent identity means the synthesized defaults,
-        which is what v7 always meant.  This is the case that makes the
-        readable SET a set; a strict single-version gate here would have
-        refused every pair on disk the day the schema learned a new word."""
-        payload = {
-            "schema_version": 7,
-            "n_atoms_total":  3,
-            "structure_hash": "b" * 32,
-            "regions":        {"L-electrode": [0]},
-        }
-        p = tmp_path / "old.molstruct.json"
-        p.write_text(_json.dumps(payload))
-        loaded = msj.load(p)
-        assert loaded["regions"] == {"L-electrode": [0]}
-        assert "atom_names" not in loaded
-
     def test_writes_the_reserved_label_into_the_one_label_store(self, tmp_path):
-        """Canonical write: the reserved label is a label. Neither
-        the schema-6 top-level `frozen_atoms` key nor the older `fixed_atoms`
-        one is written -- both were second homes for the same fact."""
+        """Canonical write: the reserved label is a label, and no top-level
+        `frozen_atoms` key is written beside it -- a second home for one fact."""
         d = msj.to_dict(
             {"regions": {"L-electrode": [0], "frozen_atoms": [1, 2]}},
             n_atoms_total=3, geometry_hash=_HASH,
@@ -515,7 +486,6 @@ class TestSchemaVersioning:
         assert d["schema_version"] == msj.SCHEMA_VERSION
         assert d["regions"] == {"L-electrode": [0], "frozen_atoms": [1, 2]}
         assert "frozen_atoms" not in d
-        assert "fixed_atoms" not in d
 
 
 class TestPbcFollowsAxisKind:
@@ -621,33 +591,6 @@ class TestInfoBlock:
             "info DESCRIBES the structure; it must not read as a "
             "different one")
 
-    def test_a_v8_file_loads_with_an_empty_store(self, tmp_path):
-        """A pair whose sidecar no longer carries `info` loads with an EMPTY store, not
-        with whatever was there before.
-
-        Full-replace, not merge: apply is the sidecar's complete statement about the
-        structure, so a v8 file -- which cannot carry `info` at all -- must not leave
-        a stale block in place from a previous load. `structure-molstruct.md` section
-        2's additive-bump rule is what makes reading a v8 file legal in the first
-        place.
-        """
-        from molbuilder.workingcopy_structure import StructureCodec
-        s = self._struct()
-        s.info = {"stale": True}
-        StructureCodec().write(s, tmp_path / "v8.xyz")
-        # Rewritten as a molbuilder of schema 8 wrote it: none of the keys
-        # v9-v13 added, its pin the retired `structure_hash`.
-        raw = _json.loads((tmp_path / "v8.molstruct.json").read_text())
-        for later in ("info", "engine_offset", "offset_by", "customized",
-                      "n_frames_total", "geometry_hash"):
-            raw.pop(later, None)
-        raw.update(schema_version=8, structure_hash="0" * 64)
-        (tmp_path / "v8.molstruct.json").write_text(_json.dumps(raw))
-        back = StructureCodec().load(tmp_path / "v8.xyz")
-        assert back.info == {}, (
-            "FULL-REPLACE: a pair that no longer carries a store must "
-            "not keep serving a stale one")
-
     def test_an_unserialisable_value_refuses_at_write(self):
         """A value JSON cannot carry is refused when the payload is BUILT, not when it is
         written.
@@ -665,8 +608,7 @@ class TestInfoBlock:
 
 
 class TestAnUnknownKeyIsRefused:
-    """The complement of `TestARetiredKeyPassesEveryGate` below: a key this
-    project RETIRED is tolerated, a key it never wrote is refused.
+    """A key this project never wrote is refused, not dropped.
     """
 
     @staticmethod
@@ -707,108 +649,3 @@ class TestAnUnknownKeyIsRefused:
         side.write_text(json.dumps(payload))
         with pytest.raises(MolstructJsonError, match="invented_by_nobody"):
             StructureCodec().load(xyz)
-
-
-class TestARetiredKeyPassesEveryGate:
-    """A key we stopped WRITING must still pass every gate a file meets.
-
-    `structure.py`'s retirement rule is three gates: tolerated on read,
-    never applied, dropped on rewrite.  Three separate stray-key checks, in
-    two modules, can each refuse one -- and a retirement written into some of
-    them and not others leaves a file readable by one door and refused by
-    another.  Both keys retired before `cell_origin` reached only part of the
-    set, which is why this iterates instead of naming them.
-
-    NEVER APPLIED is checked against the same file without the key: the
-    structure must come back identical.  For `cell_origin` that is decision
-    D2 (plan § 5q; `structure-molstruct.md`, *v10*) -- a v9 corner is not
-    migrated into a stated `engine_offset`, because v9 cannot tell a corner
-    somebody typed from one the code wrote.
-
-    So this iterates the RETIRED_* tuples rather than naming keys.  A key
-    retired tomorrow is covered the moment it is declared, and a key with no
-    sample value below fails loudly instead of being skipped -- the hole
-    `test_replace_carries_every_field_the_dataclass_declares` has, where the
-    names come from the dataclass but the values come from a fixture.
-
-    Mutation-checked per gate.  Gate 1 and gate 2 each go red alone.  **Gate 3 needs BOTH writer defences reverted**, because there
-    are two and either suffices: `identity_to_dict` does not emit a retired
-    key, and `to_dict`'s identity normalisation does not rebuild one.  That
-    is worth knowing before anyone "simplifies" one of them -- on its own,
-    removing either looks harmless and this test stays green.
-    """
-
-    #: A type-appropriate value per retired key.  A retirement that forgets
-    #: to add one is a FAILURE, not a silent pass -- see the assert below.
-    SAMPLES = {"pbc": [True, True, False], "cell_origin": [1.0, 2.0, 3.0],
-               "title": "a name only the sidecar knows",
-               "structure_hash": "0" * 64,
-               # empty, as every sidecar 2.65.7 wrote holds it
-               "selection_rules": {}}
-
-    def _payload(self, key, n=2):
-        return {"schema_version": 9, "n_atoms_total": n,
-                "structure_hash": "0" * 64, "regions": {"L": [0]},
-                key: self.SAMPLES[key]}
-
-    def test_every_retired_key_passes_all_three_gates(self, tmp_path):
-        import numpy as np
-        from molbuilder.structure import (Structure, RETIRED_METADATA_KEYS,
-                                          RETIRED_IDENTITY_KEYS)
-        from molbuilder.sidecars import molstruct
-        from molbuilder.parse.sidecars import molstruct as parse_molstruct
-        import json
-
-        retired = (tuple(RETIRED_METADATA_KEYS) + tuple(RETIRED_IDENTITY_KEYS)
-                   + tuple(molstruct.RETIRED_ENVELOPE_KEYS))
-        assert retired, "no retired keys -- this test has nothing to guard"
-        missing = [k for k in retired if k not in self.SAMPLES]
-        assert not missing, (
-            f"{missing} was retired without a sample value here, so its "
-            f"three gates are unguarded. Add one.")
-
-        for key in retired:
-            payload = self._payload(key)
-
-            # GATE 1 -- the file reader tolerates it rather than refusing.
-            loaded = parse_molstruct.load_text(json.dumps(payload),
-                                               source=f"<{key}>")
-            assert key not in loaded, \
-                f"gate 1 kept {key!r}; a retired key must not survive the read"
-
-            # GATE 2 -- the payload door, reached by callers that BUILD a
-            # payload in code rather than loading a file.
-            s = Structure(elements=["C", "O"],
-                          positions=np.array([[0., 0, 0], [1., 0, 0]]))
-            molstruct.apply_to_structure(s, payload)   # must not raise
-            assert s.regions == {"L": [0]}, \
-                f"gate 2 took {key!r} but dropped the rest of the sidecar"
-
-            # GATE 3 -- THE REAL REWRITE PATH, through the codec.
-            # What the contract actually claims (§ 2.2c: "a stale value
-            # self-heals the next time the pair is written") is this round
-            # trip, so this is the one that has to hold.
-            from molbuilder.workingcopy_structure import StructureCodec
-            stem = tmp_path / f"{key}-pair.xyz"
-            stem.write_text("2\nkept by the geometry file\n"
-                            "C 0.0 0.0 0.0\nO 1.0 0.0 0.0\n")
-            (tmp_path / f"{key}-pair.molstruct.json").write_text(
-                json.dumps(payload))
-            codec = StructureCodec()
-            reopened = codec.load(stem)        # tolerated, not refused
-            # ...and never applied: the same pair without the key reads back
-            # as the same structure.
-            bare = tmp_path / f"{key}-bare.xyz"
-            bare.write_text(stem.read_text())
-            (tmp_path / f"{key}-bare.molstruct.json").write_text(json.dumps(
-                {k: v for k, v in payload.items() if k != key}))
-            assert reopened.to_dict() == codec.load(bare).to_dict(), \
-                f"the retired {key!r} was applied to the structure it was read into"
-            codec.write(reopened, stem)        # and rewritten without it
-            rewritten = json.loads(
-                (tmp_path / f"{key}-pair.molstruct.json").read_text())
-            assert key not in rewritten, \
-                f"gate 3 persisted {key!r} again; a retired key does not survive"
-            assert rewritten["schema_version"] == molstruct.SCHEMA_VERSION
-            assert rewritten.get("regions") == {"L": [0]}, \
-                f"the rewrite dropped the rest of the sidecar with {key!r}"

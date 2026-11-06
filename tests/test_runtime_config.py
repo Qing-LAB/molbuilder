@@ -1,21 +1,16 @@
-"""Per-machine config reader (``molbuilder.json``).
+"""Per-machine config reader (``molbuilder.json``): a section that is not an
+object, a value of the wrong type, and `admin` and `rate_limit` reaching their
+readers through the loader (U7, 2026-08-12: a section the loader dropped read
+as nobody being an admin).
 
-Covered:
-
-* nested form is parsed straight through
-* malformed JSON raises ``RuntimeConfigError`` (not silent swallow)
-* non-dict top-level / sections raise ``RuntimeConfigError``
-* missing file returns ``{}`` (not raise)
-* unknown top-level keys are REFUSED with the known set named (U7,
-  2026-08-12 -- "ignored silently" is how admin/rate_limit were dropped)
-* the convenience accessors filter junk values defensively
+Elsewhere: malformed JSON and a top level that is not an object,
+``test_auth_config.py``; a missing file,
+``test_machine_config_file.py::test_no_config_files_returns_empty``; an unknown
+top-level key, ``data/molbuilder_json.toml``.
 
 Every test writes its ``molbuilder.json`` into ``tmp_path`` and the fixture
 below makes ``tmp_path`` the CONFIG ROOT, so the reader opens exactly the file
 the test wrote and nothing else.
-
-The ``chdir`` calls in these tests decide nothing (`configuration.md`
-§ 2.1a); the one variable does.
 """
 
 from __future__ import annotations
@@ -46,38 +41,16 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
 # --------------------------------------------------------------------- #
 
 
-def test_empty_json_object_returns_empty_dict(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text("{}")
-    assert read_config() == {}
-
-
-def test_non_dict_tls_section_raises(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
+def test_non_dict_tls_section_raises(tmp_path):
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({"tls": "string"}))
     with pytest.raises(RuntimeConfigError, match="'tls' must be an object"):
         read_config()
 
 
-def test_non_dict_envs_section_raises(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
+def test_non_dict_envs_section_raises(tmp_path):
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({"envs": ["a", "b"]}))
     with pytest.raises(RuntimeConfigError, match="'envs' must be an object"):
         read_config()
-
-
-# --------------------------------------------------------------------- #
-#  Nested form                                                          #
-# --------------------------------------------------------------------- #
-
-
-def test_nested_envs_section_parses(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
-        "envs": {"siesta": "my-siesta", "pyscf": "my-pyscf"},
-    }))
-    cfg = read_config()
-    assert cfg == {"envs": {"siesta": "my-siesta", "pyscf": "my-pyscf"}}
 
 
 # --------------------------------------------------------------------- #
@@ -85,9 +58,8 @@ def test_nested_envs_section_parses(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_the_tls_section_is_read(monkeypatch, tmp_path):
+def test_the_tls_section_is_read(tmp_path):
     """The one spelling, whole and partial."""
-    monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "tls": {"cert": "/c.pem", "key": "/k.pem"}}))
     assert read_config() == {"tls": {"cert": "/c.pem", "key": "/k.pem"}}
@@ -102,13 +74,12 @@ def test_the_tls_section_is_read(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_admin_emails_survive_the_loader(monkeypatch, tmp_path):
+def test_admin_emails_survive_the_loader(tmp_path):
     """THE U7 regression pin: `admin` must reach `get_admin_emails`
     through read_config.  Until 2026-08-12 `_normalise` dropped it (the
     section was absent from its ad-hoc allowlist), so the web layer read
     post-strip config and NOBODY could be admin, silently."""
     from molbuilder.runtime_config import get_admin_emails
-    monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "admin": {"emails": ["Operator@ASU.edu", "  second@asu.edu "]},
     }))
@@ -117,10 +88,9 @@ def test_admin_emails_survive_the_loader(monkeypatch, tmp_path):
         {"operator@asu.edu", "second@asu.edu"})
 
 
-def test_rate_limit_survives_the_loader(monkeypatch, tmp_path):
+def test_rate_limit_survives_the_loader(tmp_path):
     """Same defect family as admin: the tuning block must round-trip."""
     from molbuilder.runtime_config import get_rate_limit
-    monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "rate_limit": {"enabled": False, "allowlist": ["10.0.0.1"]},
     }))
@@ -129,10 +99,9 @@ def test_rate_limit_survives_the_loader(monkeypatch, tmp_path):
                                    "allowlist": ["10.0.0.1"]}
 
 
-def test_admin_with_a_broken_emails_shape_is_refused(monkeypatch, tmp_path):
+def test_admin_with_a_broken_emails_shape_is_refused(tmp_path):
     """A mistyped emails list must not fail silently into the
     safe-but-wrong 'nobody'."""
-    monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "admin": {"emails": "operator@asu.edu"},
     }))
@@ -145,8 +114,7 @@ def test_admin_with_a_broken_emails_shape_is_refused(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_read_config_rejects_non_string_envs_value(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
+def test_read_config_rejects_non_string_envs_value(tmp_path):
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "envs": {"siesta": "molbuilder-siesta", "pyscf": 123},
     }))
@@ -154,8 +122,7 @@ def test_read_config_rejects_non_string_envs_value(monkeypatch, tmp_path):
         read_config()
 
 
-def test_read_config_rejects_non_string_tls_value(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
+def test_read_config_rejects_non_string_tls_value(tmp_path):
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "tls": {"cert": 123, "key": "/k.pem"},
     }))
@@ -163,11 +130,10 @@ def test_read_config_rejects_non_string_tls_value(monkeypatch, tmp_path):
         read_config()
 
 
-def test_read_config_rejects_empty_string_envs_value(monkeypatch, tmp_path):
+def test_read_config_rejects_empty_string_envs_value(tmp_path):
     """An empty env-name override silently breaks dispatch
     (``routed_env`` returns None, falls back to host PATH).  Caught
     at the config boundary instead."""
-    monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "envs": {"siesta": ""},
     }))

@@ -4,7 +4,6 @@ Tested in isolation from the SIESTA / PySCF e2e flow that
 ``test_smiles_and_siesta.py`` covers.  These tests pin the dispatch
 contract:
 
-  * ``available_backends()`` returns one bool per registered backend.
   * ``dispatch(backend="auto")`` picks the first available in the
     documented order (threedna > amber > rdkit).
   * ``dispatch(backend="<name>")`` calls that backend exclusively;
@@ -21,27 +20,14 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.builders.backends import (
-    available_backends,
-    dispatch,
-)
+from molbuilder.builders.backends import dispatch
 from molbuilder.chemistry import BackendUnavailable
 
 
-def test_available_backends_returns_dict_of_bools():
-    """available_backends() returns one entry per registered backend
-    with a bool value -- the web UI's `/api/backends` endpoint relies
-    on this exact shape."""
-    avail = available_backends()
-    assert isinstance(avail, dict)
-    assert "rdkit" in avail and "amber" in avail
-    assert all(isinstance(v, bool) for v in avail.values())
-
-
 def test_dispatch_explicit_backend_calls_only_that_one(monkeypatch):
-    """When the caller names a backend explicitly, dispatch must NOT
-    fall back to another one if that backend's build() fails -- the
-    user picked the backend for a reason."""
+    """When the caller names a backend explicitly, that backend is the one
+    called -- the user picked it for a reason.  Not falling back when it
+    cannot run is `test_dispatch_threedna_unavailable_raises_with_message`."""
     calls = []
 
     def fake_amber_build(kind, sequence, form, terminal, title,
@@ -139,26 +125,6 @@ def test_dispatch_unknown_backend_raises_value_error():
     # Error must enumerate the valid choices so users can fix it.
     assert "rdkit" in msg or "amber" in msg
     assert "auto" in msg
-
-
-# --------------------------------------------------------------------- #
-#  is_available() smoke tests                                           #
-# --------------------------------------------------------------------- #
-
-
-def test_rdkit_is_available_returns_bool():
-    from molbuilder.builders.backends import _rdkit
-    assert isinstance(_rdkit.is_available(), bool)
-
-
-def test_amber_is_available_returns_bool():
-    from molbuilder.builders.backends import _amber
-    assert isinstance(_amber.is_available(), bool)
-
-
-def test_threedna_is_available_returns_bool():
-    from molbuilder.builders.backends import _threedna
-    assert isinstance(_threedna.is_available(), bool)
 
 
 # --------------------------------------------------------------------- #

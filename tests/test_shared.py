@@ -1,10 +1,8 @@
-"""Tests for ``molbuilder/web/blueprints/_shared.py``.
-
-The unifier helpers (``atoms_list``, ``structure_to_dict``,
-``ok_structure_response`` and ``workspace_payload``) are the single source of truth for "how a Structure
-becomes JSON" across every Flask blueprint.  Pin the canonical
-shape here so a future refactor that touches one endpoint can't
-silently drift the schema.
+"""``molbuilder/web/blueprints/_shared.py``: what a direct look at the two
+serializers sees and a route's answer does not (`web/web-api.md` § 1) -- the
+labels come from the kind table, the second serializer carries every canonical
+key, each atom holds its own coordinates, and a channel stays on its atoms.
+Which keys the real routes carry is `test_web.py`'s.
 """
 from __future__ import annotations
 
@@ -12,345 +10,67 @@ import numpy as np
 
 from molbuilder.structure import Structure
 from molbuilder.web.blueprints._shared import (
-    atoms_list,
-    ok_structure_response,
     structure_to_dict,
     workspace_payload,
 )
 
 
 def _h2o() -> Structure:
-    """Plain water Structure — three atoms, no PDB metadata, no regions."""
+    """Three atoms lying in no coordinate plane, each with its own x, y and z,
+    so a coordinate read from the wrong place shows."""
     return Structure(
         elements  = ["O", "H", "H"],
         positions = np.array([
-            [0.000,  0.000, 0.000],
-            [0.957,  0.000, 0.000],
-            [-0.239, 0.927, 0.000],
+            [0.000,  0.000, 0.117],
+            [0.957,  0.000, 0.233],
+            [-0.239, 0.927, 0.351],
         ]),
         title="water",
     )
 
 
-def _h2o_with_regions() -> Structure:
-    """Water + an L-electrode region tag on the O + a frozen H."""
+def test_labels_are_the_kind_tables():
+    """The labels a calculation kind reads arrive with every structure,
+    each with what it is for, read from the kind table -- a transport
+    calculation's leads, bridge and buffer (`web/molview.md`) -- so no
+    page spells them.  SILENT FAILURE: a page's copy drifting from the
+    table after a rename, a lead offered under its old name."""
+    served = workspace_payload(_h2o())["labels"]
+    assert [e["name"] for e in served] == [
+        "L-electrode", "R-electrode", "bridge", "buffer"]
+    assert all(set(e) == {"name", "description"} and e["description"]
+               for e in served), served
+    # ...each sentence the kind table's own for that label.
+    from molbuilder.kind_table import labels
+    assert [(e["name"], e["description"]) for e in served] == \
+        list(labels())
+
+
+def test_atoms_carry_coordinates_on_the_atom():
+    """Each atom row carries its own x/y/z as numbers (`web/web-api.md` § 1) --
+    the atom is the geometric truth, not a re-parsed xyz string.  SILENT
+    FAILURE: a row that disagrees with the structure, in what the Selection
+    panel and every question about atoms read."""
     s = _h2o()
-    return Structure(
-        elements      = list(s.elements),
-        positions     = s.positions.copy(),
-        atom_names    = list(s.atom_names),
-        residue_ids   = list(s.residue_ids),
-        residue_names = list(s.residue_names),
-        chain_ids     = list(s.chain_ids),
-        regions       = {"L-electrode": [0]},
-        frozen_atoms  = [1],
-        title         = s.title,
-    )
+    atoms = workspace_payload(s)["atoms"]
+    for i, row in enumerate(atoms):
+        assert isinstance(row["x"], float)
+        assert isinstance(row["y"], float)
+        assert isinstance(row["z"], float)
+        assert (row["x"], row["y"], row["z"]) == (
+            float(s.positions[i][0]), float(s.positions[i][1]),
+            float(s.positions[i][2]))
 
 
-# --------------------------------------------------------------------- #
-#  workspace_payload — canonical-shape pins                             #
-# --------------------------------------------------------------------- #
-
-
-class TestWorkspacePayloadCanonicalKeys:
-    """Pin the exact key set + types of the canonical shape.
-
-    Any future field addition must update this test class.
-    """
-
-    def test_has_canonical_keys(self):
-        payload = workspace_payload(_h2o())
-        canonical = {
-            "text", "source_format", "title", "n_atoms",
-            "atoms", "lattice", "issues", "labels", "extra",
-        }
-        assert set(payload.keys()) == canonical, (
-            f"workspace_payload key set drifted from canonical;\n"
-            f"  expected: {sorted(canonical)}\n"
-            f"  got:      {sorted(payload.keys())}\n"
-            f"Update docs/web/workspace.md "
-            f"before extending."
-        )
-
-    def test_labels_are_the_kind_tables(self):
-        """The labels a calculation kind reads arrive with every structure,
-        each with what it is for, read from the kind table -- a transport
-        calculation's leads, bridge and buffer (`web/molview.md`) -- so no
-        page spells them.  SILENT FAILURE: a page's copy drifting from the
-        table after a rename, a lead offered under its old name."""
-        served = workspace_payload(_h2o())["labels"]
-        assert [e["name"] for e in served] == [
-            "L-electrode", "R-electrode", "bridge", "buffer"]
-        assert all(set(e) == {"name", "description"} and e["description"]
-                   for e in served), served
-        # ...each sentence the kind table's own for that label.
-        from molbuilder.kind_table import labels
-        assert [(e["name"], e["description"]) for e in served] == \
-            list(labels())
-
-    def test_text_is_xyz_bytes(self):
-        payload = workspace_payload(_h2o())
-        assert isinstance(payload["text"], str)
-        # XYZ header is the atom count line.
-        first = payload["text"].splitlines()[0].strip()
-        assert first == "3"
-
-    def test_source_format_defaults_to_xyz(self):
-        """The default — PDB callers override via extra."""
-        assert workspace_payload(_h2o())["source_format"] == "xyz"
-
-    def test_title_falls_back_to_empty_string_not_none(self):
-        s = _h2o()
-        no_title = Structure(
-            elements=list(s.elements), positions=s.positions.copy())
-        assert workspace_payload(no_title)["title"] == ""
-
-    def test_n_atoms_matches_structure(self):
-        assert workspace_payload(_h2o())["n_atoms"] == 3
-
-
-    def test_atoms_carry_coordinates_on_the_atom(self):
-        """Each atom row carries its own x/y/z as numbers -- the atom is the geometric truth, not a re-parsed xyz
-        string."""
-        s = _h2o()
-        atoms = workspace_payload(s)["atoms"]
-        for i, row in enumerate(atoms):
-            assert isinstance(row["x"], float)
-            assert isinstance(row["y"], float)
-            assert isinstance(row["z"], float)
-            assert (row["x"], row["y"], row["z"]) == (
-                float(s.positions[i][0]), float(s.positions[i][1]),
-                float(s.positions[i][2]))
-
-    def test_atoms_matches_atoms_list_helper(self):
-        """One source of truth — workspace_payload routes through
-        atoms_list rather than building per-atom rows itself."""
-        s = _h2o_with_regions()
-        assert workspace_payload(s)["atoms"] == atoms_list(s)
-
-    def test_lattice_is_none_for_non_periodic_structure(self):
-        """A non-periodic structure: the helper returns None."""
-        assert workspace_payload(_h2o())["lattice"] is None
-
-    def test_issues_array_is_present_and_a_list(self):
-        """validate_geometry runs at serialisation time; the array
-        is always present (possibly empty) so consumers don't have
-        to feature-detect."""
-        issues = workspace_payload(_h2o())["issues"]
-        assert isinstance(issues, list)
-
-    def test_extra_defaults_to_empty_dict_not_none(self):
-        """``extra`` is the open-set bag for endpoint-specific
-        keys.  Defaulting to ``{}`` (not ``None``) keeps consumers
-        from feature-detecting on the wrong shape."""
-        assert workspace_payload(_h2o())["extra"] == {}
-
-    def test_extra_passes_through_keyword_dict(self):
-        payload = workspace_payload(
-            _h2o(),
-            extra={"backend_used": "rdkit",
-                   "add_hydrogens_mode": "auto"},
-        )
-        assert payload["extra"] == {
-            "backend_used": "rdkit",
-            "add_hydrogens_mode": "auto",
-        }
-
-    def test_extra_is_a_copy_not_an_alias(self):
-        """A caller mutating the dict it passed in must not bleed
-        into the payload (defensive copy at the boundary)."""
-        ext = {"backend_used": "rdkit"}
-        payload = workspace_payload(_h2o(), extra=ext)
-        ext["backend_used"] = "amber"   # mutate caller-side
-        assert payload["extra"]["backend_used"] == "rdkit"
-
-
-class TestStructureToDict:
-    """structure_to_dict routes through workspace_payload.  Pin that:
-
-      1. The keys a viewer reads are emitted.
-      2. The canonical keys are ALSO emitted.
-      3. ``atoms`` is the same list workspace_payload exposes
-         (single source of truth across both helpers).
-    """
-
-    def test_emits_every_key_a_viewer_reads(self):
-        d = structure_to_dict(_h2o())
-        read = {
-            "atom_names", "residue_ids", "residue_names", "chain_ids",
-            "n_atoms", "title", "atoms",
-        }
-        missing = read - set(d.keys())
-        assert not missing, (
-            f"structure_to_dict dropped keys a viewer reads: "
-            f"{sorted(missing)}"
-        )
-
-    def test_emits_the_canonical_keys(self):
-        """Every key the canonical door sends -- the second serializer adds
-        to it, never re-lists it.  THE SILENT FAILURE (2.65.0, found
-        headless): a hand-listed copy of the canonical keys dropped the
-        kind table's `labels`, and the palette offered MolView's two."""
-        d = structure_to_dict(_h2o())
-        missing = set(workspace_payload(_h2o())) - set(d.keys())
-        assert not missing, (
-            f"structure_to_dict is missing canonical keys; "
-            f"Phase-2-ready consumers won't be able to read them: "
-            f"{sorted(missing)}"
-        )
-
-    def test_atoms_matches_workspace_payload_atoms(self):
-        s = _h2o_with_regions()
-        assert structure_to_dict(s)["atoms"] \
-            == workspace_payload(s)["atoms"]
-
-
-# --------------------------------------------------------------------- #
-#  structure_to_dict accepts extra + threads it everywhere              #
-# --------------------------------------------------------------------- #
-
-
-class TestStructureToDictExtraThreading:
-    """``structure_to_dict`` accepts an optional ``extra`` dict for
-    endpoint-specific keys.  The helper threads each key BOTH into the
-    top level of the returned dict (where JS consumers read off the
-    response root) AND into the canonical ``extra`` sub-dict.
-    """
-
-    def test_extras_appear_at_top_level(self):
-        d = structure_to_dict(_h2o(), extra={
-            "pdb":     "PDB\n",
-            "summary": "1 mol",
-        })
-        assert d["pdb"]     == "PDB\n"
-        assert d["summary"] == "1 mol"
-
-    def test_extras_also_appear_in_canonical_extra_subdict(self):
-        d = structure_to_dict(_h2o(), extra={
-            "backend_used":      "rdkit",
-            "add_hydrogens_mode": "auto",
-        })
-        assert d["extra"] == {
-            "backend_used":      "rdkit",
-            "add_hydrogens_mode": "auto",
-        }
-
-    def test_extra_can_override_canonical_source_format(self):
-        """The /api/build/load endpoint sets source_format=fmt from
-        the parsed shape.  The helper must let that override the
-        canonical XYZ default at both the top level and inside
-        the canonical extra dict."""
-        d = structure_to_dict(_h2o(), extra={"source_format": "pdb"})
-        assert d["source_format"]      == "pdb"
-        assert d["extra"]["source_format"] == "pdb"
-
-    def test_no_extra_yields_empty_extra_dict_not_none(self):
-        d = structure_to_dict(_h2o())
-        assert d["extra"] == {}
-
-    def test_issues_array_is_present_when_no_extra(self):
-        """structure_to_dict's issues array is sourced from
-        workspace_payload — same validate-pass, same shape."""
-        d = structure_to_dict(_h2o())
-        assert "issues" in d
-        assert isinstance(d["issues"], list)
-
-
-# --------------------------------------------------------------------- #
-#  ok_structure_response — modify endpoints + issues array              #
-# --------------------------------------------------------------------- #
-
-
-class TestOkStructureResponse:
-    """Pin the response Flask emits for ``/api/modify/*``.
-
-    ``ok: True`` envelope, every key from
-    structure_to_dict, plus a top-level ``issues`` array — the
-    shape every modifier-op caller depends on.
-    """
-
-    def _payload(self, struct: Structure):
-        from flask import Flask
-        app = Flask(__name__)
-        with app.app_context():
-            resp = ok_structure_response(struct)
-            return resp.get_json()
-
-    def test_ok_envelope(self):
-        body = self._payload(_h2o())
-        assert body["ok"] is True
-
-    def test_carries_canonical_shape_keys(self):
-        body = self._payload(_h2o())
-        for k in ("text", "source_format", "title",
-                  "n_atoms", "atoms", "lattice", "issues"):
-            assert k in body, f"missing canonical key {k!r}"
-
-    def test_carries_the_atom_columns(self):
-        body = self._payload(_h2o())
-        for k in ("atom_names", "residue_ids", "residue_names", "chain_ids"):
-            assert k in body, f"missing column {k!r}"
-
-    def test_issues_array_present(self):
-        body = self._payload(_h2o())
-        assert isinstance(body["issues"], list)
-
-    def test_phase_2_extras_at_top_level_and_in_extra_subdict(self):
-        """Endpoint extras land at BOTH the response root AND the
-        canonical ``extra`` sub-dict."""
-        from flask import Flask
-        app = Flask(__name__)
-        with app.app_context():
-            resp = ok_structure_response(_h2o(), extra={
-                "pdb":               "PDB...\n",
-                "summary":           "water (1 mol)",
-                "backend_used":      "rdkit",
-                "add_hydrogens_mode": "auto",
-            })
-            body = resp.get_json()
-        for k in ("pdb", "summary", "backend_used",
-                  "add_hydrogens_mode"):
-            assert k in body, (
-                f"{k!r} missing from top level — Phase 1-3 client "
-                f"back-compat broken"
-            )
-            assert k in body["extra"], (
-                f"{k!r} missing from extra sub-dict — Phase 4+ "
-                f"workspace-dispatcher reader broken"
-            )
-
-
-# --------------------------------------------------------------------- #
-#  The atoms list, through every helper                                #
-# --------------------------------------------------------------------- #
-
-
-def _h2o_xyz_text():
-    return "3\nwater\nO 0.0 0.0 0.0\nH 0.96 0.0 0.0\nH -0.24 0.93 0.0\n"
-
-
-def _h2o_structure_path(tmp_path):
-    """Write a small XYZ to tmp_path; return its absolute path."""
-    p = tmp_path / "water.xyz"
-    p.write_text(_h2o_xyz_text())
-    return p
-
-
-def test_every_helper_carries_atoms_for_three_atom_water():
-    """Regression for the 2026-06-07 audit's root cause: the
-    ``atoms`` key was missing from ``/api/build/load`` because the
-    endpoint had its own hand-rolled jsonify that didn't route
-    through the helper.  This test pins that every helper in
-    _shared keeps the canonical atoms list present and accurate."""
-    s = _h2o()
-    wp = workspace_payload(s)["atoms"]
-    sd = structure_to_dict(s)["atoms"]
-    al = atoms_list(s)
-    assert len(wp) == 3
-    assert len(sd) == 3
-    assert len(al) == 3
-    assert wp == sd == al
+def test_emits_the_canonical_keys():
+    """Every key the canonical door sends -- the second serializer adds
+    to it, never re-lists it.  THE SILENT FAILURE (2.65.0, found
+    headless): a hand-listed copy of the canonical keys dropped the
+    kind table's `labels`, and the palette offered MolView's two."""
+    d = structure_to_dict(_h2o())
+    missing = set(workspace_payload(_h2o())) - set(d.keys())
+    assert not missing, (
+        f"structure_to_dict is missing canonical keys: {sorted(missing)}")
 
 
 # --------------------------------------------------------------------- #

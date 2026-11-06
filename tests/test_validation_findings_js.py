@@ -22,9 +22,10 @@ from __future__ import annotations
 import json
 import pathlib
 import shutil
-import subprocess
 
 import pytest
+
+from tests._node_esm import run_node
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 MODULE = REPO / "molbuilder/web/static/lib/validation-findings.js"
@@ -61,28 +62,15 @@ function card(name) {
   ul.hidden = true;
   return ul;
 }
-var window = { document: doc };
+globalThis.document = doc;
 """
 
 
 def _run(script: str) -> dict:
-    """Run the REAL module body against the stub DOM.
-
-    The file is an ES module (it exports `render`/`clear` so
-    `lib/molview/` can import it, and a separate entry point publishes the
-    namespace for the classic scripts).  This harness inlines the source into a
-    plain eval, so the two `export` lines are stripped and the module's own
-    internal handle is used instead -- the same object both delivery forms
-    hand out.
-    """
-    import re as _re
-    src = MODULE.read_text(encoding="utf-8")
-    src = _re.sub(r"^export const \w+ = _module\.\w+;$", "", src, flags=_re.M)
-    prog = f"{_STUB}\n{src}\nvar F = _module;\n{script}"
-    out = subprocess.run(["node", "-e", prog], capture_output=True, text=True,
-                         timeout=60)
-    assert out.returncode == 0, f"node failed:\n{out.stderr}"
-    return json.loads(out.stdout.strip().splitlines()[-1])
+    """Import the REAL module, as a page does, against the stub DOM."""
+    return run_node(
+        [], f"const F = await import({json.dumps(MODULE.as_uri())});\n{script}",
+        globals_js=_STUB, timeout=60)
 
 
 def _rows(panel_expr: str) -> str:

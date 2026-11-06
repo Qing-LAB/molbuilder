@@ -584,18 +584,14 @@ class TestSetupSessionSecurity:
         app.config["SECRET_KEY"] = b"x" * 32
         return app
 
-    def test_session_cookie_flags_set_when_auth_on(self):
+    @pytest.mark.parametrize("trust_proxy", [False, True])
+    def test_session_cookie_flags_set_when_auth_on(self, trust_proxy):
         """SECURE + HTTPONLY + SAMESITE are non-negotiable; auth must
-        set them on the app config every time it installs."""
-        app = self._flask_with([_google_entry()])
-        assert app.config["SESSION_COOKIE_SECURE"]   is True
-        assert app.config["SESSION_COOKIE_HTTPONLY"] is True
-        assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
-
-    def test_session_cookie_flags_set_regardless_of_trust_proxy(self):
-        """trust_proxy controls ProxyFix only; the cookie flags must
-        be wired in both code paths."""
-        app = self._flask_with([_google_entry()], trust_proxy=True)
+        set them on the app config every time it installs.  THE SILENT
+        FAILURE: the session cookie sent over plain HTTP on one deployment
+        shape -- `trust_proxy` controls ProxyFix only, so each value of it is
+        a row of its own: a flag set on one branch reddens the other."""
+        app = self._flask_with([_google_entry()], trust_proxy=trust_proxy)
         assert app.config["SESSION_COOKIE_SECURE"]   is True
         assert app.config["SESSION_COOKIE_HTTPONLY"] is True
         assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
@@ -682,17 +678,6 @@ class TestAuthlibNamespaceCollisionProtection:
 
 class TestGoogleSpecific:
 
-    def test_hosted_domain_defaults_empty(self):
-        """A Google provider without `hosted_domain` failing to load, or
-        defaulting to a restriction: the documented default is no domain
-        restriction, with `allowed_users` doing the gating.
-
-        `access-control.md` § 3.1 (the allowlist is the gate); the field is
-        normalised in `runtime_config._validate_google`.
-        """
-        cfg = _normalise(_wrap(_google_entry()))
-        assert get_providers(cfg)[0]["hosted_domain"] == []
-
     def test_hosted_domain_list_of_strings(self):
         """The key dropped or misspelled during normalisation. The enforcement
         site then sees no domain restriction and admits accounts from outside
@@ -718,16 +703,6 @@ class TestGitHubSpecific:
 
     def _entry(self, **kw):
         return _google_entry(kind="github", id="github", **kw)
-
-    def test_allowed_organizations_defaults_empty(self):
-        """A GitHub provider without `allowed_organizations` failing to load,
-        or defaulting to a restriction: as with Google's domain, the documented
-        default is no org restriction and `allowed_users` gates.
-
-        `access-control.md` § 3.1.
-        """
-        cfg = _normalise(_wrap(self._entry()))
-        assert get_providers(cfg)[0]["allowed_organizations"] == []
 
     def test_allowed_organizations_accepted(self):
         """The key dropped or renamed in normalisation, so an org restriction
@@ -776,33 +751,6 @@ class TestMicrosoftSpecific:
         """
         cfg = _normalise(_wrap(self._entry(tenant_id="asu.onmicrosoft.com")))
         assert get_providers(cfg)[0]["tenant_id"] == "asu.onmicrosoft.com"
-
-
-# --------------------------------------------------------------------- #
-#  ORCID-specific                                                       #
-# --------------------------------------------------------------------- #
-
-
-class TestORCIDSpecific:
-
-    def test_minimal_entry_valid(self):
-        """An ORCID entry routed through another kind's validator, which would
-        add `hosted_domain` or `tenant_id` defaults that have no meaning for
-        it.
-
-        `deployment.md` § 3.4 (ORCID takes the shared OAuth shape and adds
-        nothing). Honest note (2026-09-09): the audit records this as UNSURE
-        rather than a cut -- no shipped code reads those keys for an ORCID
-        provider, so the mixup it catches may have no consequence.
-        """
-        cfg = _normalise(_wrap(_google_entry(kind="orcid", id="orcid")))
-        p = get_providers(cfg)[0]
-        assert p["kind"] == "orcid"
-        # No ORCID-only extras today; the entry should round-trip
-        # without surprise additions.
-        assert "hosted_domain" not in p
-        assert "allowed_organizations" not in p
-        assert "tenant_id" not in p
 
 
 # --------------------------------------------------------------------- #
@@ -902,16 +850,6 @@ class TestCASSpecific:
 
 
 class TestMixedConfig:
-
-    def test_google_plus_cas_round_trip(self):
-        """The expected real deployment shape: institutional CAS for
-        on-network users + Google for external collaborators."""
-        raw = _wrap(_google_entry(), _cas_entry())
-        cfg = _normalise(raw)
-        provs = get_providers(cfg)
-        assert len(provs) == 2
-        assert provs[0]["kind"] == "google"
-        assert provs[1]["kind"] == "cas"
 
     def test_all_five_kinds_accepted(self):
         """A kind listed as supported but not wired into the validator

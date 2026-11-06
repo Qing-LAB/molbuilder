@@ -499,18 +499,3 @@ def test_asking_for_the_ruler_is_the_modules_decision_not_the_pages():
         "opening with a notice about a mode nobody touched"
     )
     assert out["active"] is True
-
-
-# ---------------------------------------------------------------------- #
-#  NOTHING ESCAPES THE MODULE (user, 2026-08-31)                          #
-#                                                                        #
-#  "All the measurement API has to be within MolView, and all the users   #
-#  have to call through it.  Nothing escapes."                            #
-#                                                                        #
-#  A design invariant, so it is checked statically: it is violated by     #
-#  NEW code reaching past the surface, which no behavioural test can see  #
-#  until someone writes that code.                                       #
-# ---------------------------------------------------------------------- #
-
-
-_STATIC = REPO / "molbuilder" / "web" / "static"

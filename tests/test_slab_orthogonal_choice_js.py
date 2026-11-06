@@ -24,31 +24,12 @@ from pathlib import Path
 
 import pytest
 
+from tests._node_esm import lifted
+
 pytestmark = pytest.mark.module
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/slab-panel.js"
-
-
-def _extract_fn_source(name: str) -> str:
-    src = MODULE.read_text(encoding="utf-8")
-    start = src.find(f"function {name}(")
-    if start < 0:
-        pytest.fail(
-            f"Could not find ``function {name}(`` in "
-            f"{MODULE.relative_to(ROOT)}.  Either the function was renamed "
-            f"or this test's parser needs updating."
-        )
-    depth, i = 0, src.find("{", start)
-    while i < len(src):
-        if src[i] == "{":
-            depth += 1
-        elif src[i] == "}":
-            depth -= 1
-            if depth == 0:
-                return src[start:i + 1]
-        i += 1
-    pytest.fail(f"Unbalanced braces in function {name}")
 
 
 def _run(plane: str, choices, *, box_checked: bool = False) -> dict:
@@ -56,7 +37,8 @@ def _run(plane: str, choices, *, box_checked: bool = False) -> dict:
     if node is None:
         pytest.skip("node not available")
 
-    fn = _extract_fn_source("renderOrthogonalChoice")
+    fn = lifted(MODULE, "function renderOrthogonalChoice(",
+                "/* A seam only continues")
     bootstrap = f"""
         const dom = {{
             "slab-orthogonal": {{ checked: {json.dumps(box_checked)},

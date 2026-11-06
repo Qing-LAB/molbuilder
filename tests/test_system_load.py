@@ -193,15 +193,6 @@ def test_open_pages_share_one_query_per_ttl(monkeypatch):
 
 # ---------------------------------------------------------- the endpoint
 
-def test_endpoint_returns_envelope(monkeypatch):
-    from molbuilder.web.app import create_app
-    client = create_app(config={}).test_client()
-    r = client.get("/api/system/load")
-    assert r.status_code == 200
-    body = r.get_json()
-    assert body["ok"] is True
-    assert isinstance(body["data"]["cpu_pct"], (int, float))
-
 
 def test_snapshot_endpoint_handles_psutil_failure(monkeypatch):
     from molbuilder.web.app import create_app

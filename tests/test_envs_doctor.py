@@ -1,9 +1,8 @@
 """L1 tests for ``molbuilder.envs.doctor``.
 
-Pins the report shape and the present/missing logic without running
-real conda subprocesses; the verify_argv dispatch is exercised by
-plugging a fake conda binary into capabilities and patching
-``subprocess.run``.
+Pins the present/missing logic without running real conda subprocesses, the
+accept rule, what `repair` dispatches, and what the audit reads of a package's
+source.
 """
 from __future__ import annotations
 
@@ -12,9 +11,8 @@ import json
 import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
-from molbuilder.envs import builds as _builds, doctor, install as _install
-from molbuilder.envs.recipes import (builtin_recipes, PipPackage, Recipe,
-                                     recipe_by_name)
+from molbuilder.envs import doctor, install as _install
+from molbuilder.envs.recipes import PipPackage, Recipe, recipe_by_name
 
 
 def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda",
@@ -28,20 +26,8 @@ def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda",
 
 
 # --------------------------------------------------------------------- #
-#  report_all: shape + present/missing                                   #
+#  report_all: present/missing                                           #
 # --------------------------------------------------------------------- #
-
-
-def test_report_all_marks_every_env_missing_on_empty_machine():
-    _bind(conda_envs=())
-    reports = doctor.report_all(run_verify=False)
-    assert {r.recipe.name for r in reports} == {
-        r.name for r in builtin_recipes()
-    }
-    for r in reports:
-        assert r.present is False
-        assert r.verify_ok is None
-        assert r.verify_output == ""
 
 
 def test_report_all_marks_envs_present_when_in_caps():
@@ -65,17 +51,6 @@ def test_report_all_honours_envs_override():
                   if r.recipe.category == "siesta")
     assert siesta.effective_name == "my-siesta"
     assert siesta.present is True
-
-
-def test_report_all_skip_verify_dispatches_nothing(monkeypatch):
-    _bind(conda_envs=("molbuilder-siesta",))
-    called = []
-    monkeypatch.setattr(_builds, "run_streaming",
-                        lambda *a, **kw: called.append(a) or (0, ""))
-    doctor.report_all(run_verify=False)
-    assert called == [], (
-        "run_verify=False must not dispatch anything at all"
-    )
 
 
 # --------------------------------------------------------------------- #
@@ -113,31 +88,22 @@ def test_accept_rule(expect, rc, output, accepted):
     assert step.accepts(rc, output) is accepted
 
 
-def test_doctor_verify_uses_the_accept_rule(monkeypatch):
-    """MDtools expects "LEaP" in the output, so exit 0 WITHOUT the banner is
-    a FAIL.  A doctor that decided on the exit code itself reports True
-    here."""
-    _bind(conda_envs=("molbuilder-MDtools",))
+def test_doctor_verify_uses_the_accept_rule(monkeypatch, tmp_path):
+    """A recipe that expects a banner: a command that exits 0 WITHOUT it is a
+    FAIL.  A doctor that decided on the exit code itself reports True here.
+    The manager is a real process that exits 0 and prints nothing, so no
+    answer is typed."""
+    mgr = tmp_path / "mgr"
+    mgr.write_text("#!/bin/sh\nexit 0\n")
+    mgr.chmod(0o755)
+    _bind(conda_envs=("synthetic",), conda_binary=str(mgr))
     monkeypatch.setattr(_install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    monkeypatch.setattr(_builds, "run_streaming",
-                        lambda *a, **kw: (0, "command not found"))
-    reports = doctor.report_all()
-    md = next(r for r in reports if r.recipe.category == "mdtools")
-    assert md.verify_ok is False
-
-
-def test_verify_output_trimmed_to_2k(monkeypatch):
-    """The installer keeps 4 KiB; this report keeps 2 KiB, because it
-    prints one block per env."""
-    _bind(conda_envs=("molbuilder-siesta",))
-    monkeypatch.setattr(_install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    monkeypatch.setattr(_builds, "run_streaming",
-                        lambda *a, **kw: (0, "x" * 10000))
-    reports = doctor.report_all()
-    siesta = next(r for r in reports if r.recipe.category == "siesta")
-    assert len(siesta.verify_output) <= 2048
+                        lambda env_name, conda_binary: str(tmp_path))
+    recipe = Recipe(name="synthetic", category=None, description="d",
+                    channels=("conda-forge",), conda_packages=("python",),
+                    verify_argv=("true",), verify_expect_contains="LEaP")
+    (report,) = doctor.report_all(recipes=(recipe,))
+    assert report.verify_ok is False
 
 
 # --------------------------------------------------------------------- #

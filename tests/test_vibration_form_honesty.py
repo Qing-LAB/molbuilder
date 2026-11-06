@@ -90,6 +90,10 @@ _COMPANIONS = {
     # holds the element -- probe them together, on gold (below).
     "ecp":       {"ecp_atoms": ["Au"]},
     "ecp_atoms": {"ecp": "lanl2dz"},
+    # AN EVEN CHARGE, so the system stays closed-shell: the generic probe's +3
+    # leaves an odd electron count, refused for its spin on PySCF, and that
+    # says nothing about the charge.
+    "net_charge": {"net_charge": 2},
 }
 
 #: Knobs whose effect is conditional on the STRUCTURE: probed on a
@@ -202,8 +206,10 @@ def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
             text = _render(which,
                            **{item.name: probe,
                               **_COMPANIONS.get(item.name, {})})
-        except ValueError:
-            # A REFUSAL is an honored parameter: the deck reacted.
+        except ValueError as exc:
+            # A REFUSAL NAMING THIS PARAMETER is an honored parameter: the
+            # deck reacted to it.  Any other ValueError is the render failing.
+            assert item.name in str(exc), (item.name, str(exc))
             continue
         if _strip_config_echo(text) == baselines[which]:
             silent.append(item.name)

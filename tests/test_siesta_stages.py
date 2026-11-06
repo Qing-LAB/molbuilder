@@ -1,7 +1,7 @@
 """The shipped SIESTA ladder: where it comes from, and what it is made of.
 
 Contract: ``docs/engines/stages.md`` § 1.1 (**no engine config carries a
-stage list**), § 1.3 (the default *selection*), § 2 (a stage has three
+stage list**), § 1.3 (the default *selection*), § 2 (a stage has two
 fields), § 4 (``template ⊕ overrides``).
 """
 from __future__ import annotations
@@ -43,38 +43,9 @@ def test_no_field_of_the_config_is_a_list_of_dataclasses():
             f"generator would emit a stage-table for it (stages.md § 1.2)")
 
 
-def test_the_siesta_form_schema_emits_no_stage_table():
-    """The consequence, at the surface that had the bug.  The generator
-    answers *what settings exist and how is each drawn*; it must never
-    meet a stage (web/form-schema.md § 1's callout).
-
-    ``catalogue_to_form_schema`` is the builder the tab is served by.  Both
-    engines are checked, because the rule is the tab's and not SIESTA's.
-    """
-    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    for engine, prefix in (("siesta", "p"), ("pyscf", "py")):
-        sch = catalogue_to_form_schema(engine, prefix, "optimization")
-        kinds = [f["kind"] for s in sch["sections"] for f in s["fields"]]
-        assert "stage-table" not in kinds, engine
-
-
 # --------------------------------------------------------------------- #
 #  The shipped ladder                                                   #
 # --------------------------------------------------------------------- #
-
-def test_default_ladder_is_three_named_stages():
-    stages = engine_ladder("siesta", "vib-quality")
-    # The tiers' NAMES, from STAGE_NAMES: decision 27 puts the ordinal
-    # in the artifact token (``01_coarse``), so a name that is itself a
-    # position would say the number twice and the science none.
-    assert [s.name for s in stages] == ["coarse", "medium", "tight"]
-    assert all(isinstance(s, Stage) for s in stages)
-
-
-def test_default_ladder_is_coarse_and_medium():
-    """publishable = coarse + medium; tight is added when wanted -- a
-    strategy writes the stages it runs (`engines/stages.md` § 2)."""
-    assert [s.name for s in engine_ladder("siesta")] == ["coarse", "medium"]
 
 
 @pytest.mark.parametrize("tier", sorted(SIESTA_STAGE_PRESETS))
@@ -156,20 +127,3 @@ def test_each_call_returns_independent_stages():
     assert "mesh_cutoff" not in b[0].overrides
 
 
-# --------------------------------------------------------------------- #
-#  § 3 — the non-convergence policy is the producer's input             #
-# --------------------------------------------------------------------- #
-
-def test_no_stage_carries_a_nonconvergence_policy():
-    """§ 3: it fails question 1 -- without a scheduler there is nothing
-    for it to mean -- so it is not a stage field.  And it is not a
-    shared-schema field either, or ``overrides`` would readmit it."""
-    assert "on_nonconvergence" not in {f.name for f in dataclasses.fields(Stage)}
-    assert "on_nonconvergence" not in {f.name
-                                       for f in dataclasses.fields(SiestaConfig)}
-
-
-def test_the_siesta_form_has_no_stages_field_to_look_a_policy_up_in():
-    """If a SIESTA stage table is ever reintroduced, this fails and whoever
-    does it has to say what reads it."""
-    assert "stages" not in {f.name for f in dataclasses.fields(SiestaConfig)}

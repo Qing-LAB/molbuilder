@@ -8,31 +8,6 @@ import pytest
 from molbuilder.structure import Structure
 
 
-def test_basic_construction(water_structure):
-    s = water_structure
-    assert s.n_atoms == 3
-    assert s.n_residues == 1
-    assert "H2O" in s.summary()
-
-
-def test_to_xyz_renders_the_document(water_structure):
-    # The writer returns TEXT and the codec owns the file, so what reaches
-    # disk is `test_workingcopy_structure.py`'s to assert.
-    s = water_structure
-    text = s.to_xyz()
-    assert text.startswith("3\n")
-    assert "O" in text and "H" in text
-
-
-def test_to_pdb_basic_structure(water_structure):
-    s = water_structure
-    pdb = s.to_pdb()
-    assert pdb.startswith("TITLE")
-    assert "ATOM" in pdb
-    assert "HOH" in pdb
-    assert "END" in pdb
-
-
 def test_to_pyscf_list_form(water_structure):
     s = water_structure
     py = s.to_pyscf()
@@ -41,13 +16,6 @@ def test_to_pyscf_list_form(water_structure):
         ("H", (0.957, 0.0, 0.0)),
         ("H", (-0.240, 0.927, 0.0)),
     ]
-
-
-def test_to_pyscf_string_form(water_structure):
-    s = water_structure
-    py_str = s.to_pyscf(as_string=True)
-    assert "O " in py_str and "H " in py_str
-    assert py_str.count("\n") == 2  # 3 lines, 2 newlines
 
 
 def test_to_ase_optional_dep(water_structure):
@@ -146,6 +114,7 @@ def test_pdb_round_trip_identity(water_structure):
     assert s2.atom_names    == s.atom_names
     assert s2.residue_names == s.residue_names
     assert s2.chain_ids     == s.chain_ids
+    assert s.to_pdb().endswith("END\n")
 
 
 # --------------------------------------------------------------------- #

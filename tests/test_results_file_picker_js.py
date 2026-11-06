@@ -71,8 +71,7 @@ def _run_node(snippet: str) -> object:
 class TestFilterToResultFiles:
     """The directory-listing filter is the core of the tab-level
     picker.  It must:
-      * keep only entries whose ``kind === 'file'``;
-      * keep only files for which ``pickResult(path)`` returns truthy;
+      * keep only the files the server's registry can open (``parser``);
       * sort by mtime descending;
       * break ties on name deterministically.
     """
@@ -94,18 +93,6 @@ class TestFilterToResultFiles:
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["c.spectra.json", "a.out"]
-
-    def test_filters_out_directories(self):
-        out = _run_node(
-            "const entries = [\n"
-            "  {name: 'slurm.1.out', mtime: 999, parser: null},\n"
-            "  {name: 'foo.out',     mtime: 100, parser: 'siesta'},\n"
-            "];\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries);\n"
-            "console.log(JSON.stringify(r.map(x => x.name)));"
-        )
-        assert out == ["foo.out"]
 
     def test_sorts_newest_first(self):
         out = _run_node(
@@ -366,35 +353,6 @@ class TestLabelForResult:
         assert out == "plain.out"
 
 
-class TestAPISurface:
-
-    def test_module_exposes_named_helpers(self):
-        """Pin the public-surface contract: a future refactor that
-        renames any helper would break callers."""
-        out = _run_node(
-            "const api = window.molbuilder.resultsFilePicker;\n"
-            "console.log(JSON.stringify({"
-            "  hasMount:               typeof api.mount === 'function',"
-            "  hasFilterToResultFiles: typeof api.filterToResultFiles === 'function',"
-            "  hasGroupResultFiles:    typeof api.groupResultFiles === 'function',"
-            "  hasReadAnswer:          typeof api.readAnswer === 'function',"
-            "  hasMetaOf:              typeof api.metaOf === 'function',"
-            "  hasLabelForResult:      typeof api._labelForResult === 'function'"
-            "}));"
-        )
-        # `readAnswer` and `metaOf` are the viewer's too: a run picked off
-        # the ladder reads its folder's answer as the picker does
-        # (`results/viewer.js` `_pickRun`, results.md § 2.4).
-        assert out == {
-            "hasMount":               True,
-            "hasFilterToResultFiles": True,
-            "hasGroupResultFiles":    True,
-            "hasReadAnswer":          True,
-            "hasMetaOf":              True,
-            "hasLabelForResult":      True,
-        }
-
-
 class TestAbsorbSatellites:
     """A run is ONE result, not a pile of files (results.md § 2.3).
 
@@ -434,7 +392,6 @@ class TestAbsorbSatellites:
         The shared harness loads only the picker, so the factory the presenter
         is built from and the presenter itself are prepended here.
         """
-        import json
         _INSP = MODULE.parent.parent / "inspectors"
         extra = ("global.window.molbuilder = global.window.molbuilder || {};\n"
                  "global.window.molbuilder.inspectors ="

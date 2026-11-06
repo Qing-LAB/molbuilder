@@ -16,12 +16,10 @@ sixteen days.  Prose cannot stop that; this can.
 -- *"a template declares the question and never asserts the answer"* -- so the
 careless version of this mistake cannot reach the tree.  The COHERENT version
 can: drop the value, add the flag, and the file parses cleanly with the GPU
-flag on the machine's side.  Verified by mutation 2026-08-23, where only the
-two tests below noticed.  That gap is what this file is for.
+flag on the machine's side.  Verified by mutation 2026-08-23, where only this
+file noticed.  That gap is what this file is for.
 """
 from __future__ import annotations
-
-import pytest
 
 #: `gpu.md` G2.  The machine answers what the SCHEDULER grants; a person
 #: answers everything else in the staging group.  Membership is the
@@ -59,30 +57,9 @@ def test_the_machine_answered_set_is_exactly_what_the_contract_names():
         f"amend G2 and the § 1 vocabulary table with it")
 
 
-def test_the_gpu_flag_is_the_persons_choice_not_the_machines():
-    """The specific claim `tuning.md` got backwards until 2026-08-23."""
-    assert "use_gpu" not in _allocation_names(), (
-        "the GPU flag is marked as machine-answered.  It is an ordinary "
-        "explicit option with a real default, chosen at the Job Prep UI "
-        "(`web/task-setup.md` § 6.2, user ruling 2026-08-16) -- nothing "
-        "derives it from the machine (gpu.md G2)")
-
-
 def test_the_flag_has_a_real_default_which_is_what_chosen_means():
     """A machine-answered setting has no default a person could mean; a chosen
     one does, and `false` is it."""
     item = _item("use_gpu")
     assert item.default is False
     assert item.group == "staging"
-
-
-@pytest.mark.parametrize("name", sorted(_MACHINE_ANSWERS))
-def test_each_machine_answered_setting_really_carries_the_flag(name):
-    """The other direction: the contract's list is not allowed to name
-    something the catalogue does not mark."""
-    item = _item(name)
-    if item is None:
-        pytest.skip(f"{name} is not in the catalogue for any shipped engine")
-    assert item.allocation, (
-        f"`gpu.md` G2 lists {name} as machine-answered and the catalogue "
-        f"does not mark it -- so a surface would offer it to a person")

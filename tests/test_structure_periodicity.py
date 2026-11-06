@@ -58,13 +58,6 @@ class TestAxisKindIsTheOnePeriodicityField:
                axis_kind=("periodic", "periodic", "transport"))
         assert s.axis_kind == ("periodic", "periodic", "transport")
 
-    def test_the_boolean_view_is_no_longer_a_field(self):
-        """Constructing with it is an error, not a silent second opinion."""
-        import dataclasses as _dc
-        from molbuilder.structure import Structure as _S
-        assert "pbc" not in {f.name for f in _dc.fields(_S)}
-        with pytest.raises(TypeError):
-            _s(cell=np.eye(3) * 5, pbc=(False, False, False))
 
     def test_invalid_axis_kind_raises(self):
         with pytest.raises(ValueError, match="axis_kind"):

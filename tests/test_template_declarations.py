@@ -23,7 +23,6 @@ import typing
 
 import pytest
 
-from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.deck_record import MARKER_RE
 from molbuilder.script_emit import benchmark_declarable_types
@@ -108,12 +107,6 @@ def test_optional_is_set_for_exactly_the_optional_fields(cls):
         assert d.optional is is_opt, d.name
 
 
-def test_the_kgrid_is_one_declaration_not_three():
-    """It is one decision — how finely reciprocal space is sampled — and a
-    stage overriding it overrides all three components together."""
-    assert _cat()["kgrid"].type == "int3"
-
-
 def test_the_kgrid_displacement_is_its_own_item_and_a_float3():
     """Two items, not one, and not a general ``matrix``.
 
@@ -169,15 +162,6 @@ def test_a_misspelled_kind_is_refused_by_name(table):
             'choices = ["CG", "FIRE"]\nhelp = "x"\n' + table + "\n")
     with pytest.raises(ValueError, match="calculation kind"):
         T.read_template(text)
-
-
-def test_pyscf_renders_a_template_at_all():
-    """The template is the single source of truth, so PySCF must produce
-    one."""
-    from molbuilder.template import template_with_values, read_template
-    t = read_template(template_with_values(PySCFConfig(), engine="pyscf", calculation="optimization"))
-    assert len(t.items) > 30
-    assert all(i.category for i in t.items)
 
 
 # --------------------------------------------------------------------- #

@@ -35,18 +35,12 @@ pytestmark = pytest.mark.unit
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("2.39", (2, 39)),
-    ("2.17", (2, 17)),
-    ("glibc 2.43", (2, 43)),          # os.confstr shape
-    ("6.12.0", (6, 12, 0)),
-    ("7.0.0-30-generic", (7, 0, 0)),  # uname shape
-    ("", None),
-    (None, None),
-    ("no-numbers-here", None),
-])
-def test_parse_version_handles_every_shape_this_module_receives(raw, expected):
-    assert A.parse_version(raw) == expected
+def test_a_text_with_no_number_is_no_version():
+    """`None` means *cannot judge*, and every caller treats it so.  THE SILENT
+    FAILURE: a version invented for what cannot be read, which condemns a
+    healthy env against the sysroot.  What a real version reads as is
+    `test_env_toolchain_reads_both_targets` and the real host's read."""
+    assert A.parse_version("no-numbers-here") is None
 
 
 def test_versions_order_as_tuples_not_strings():
@@ -164,35 +158,6 @@ def test_kernel_header_skew_is_a_warning_not_an_error():
     codes = {f.code: f for f in findings}
     assert codes["abi.kernel-headers-exceed-host-kernel"].severity \
         is A.Severity.WARNING
-
-
-def test_every_rule_has_a_unique_stable_code():
-    codes = [r.code for r in A.ABI_RULES]
-    assert len(codes) == len(set(codes))
-    assert all(c.startswith("abi.") and c.islower() for c in codes)
-
-
-def test_every_rule_remediates_on_the_env_side():
-    """A design invariant, not a coincidence.
-
-    The host's C library is an input we accept; a finding whose fix was
-    "upgrade your cluster's glibc" would be one the reader cannot act
-    on.  Every knob this module points at lives in the recipe.
-    """
-    for rule in A.ABI_RULES:
-        assert rule.remediation_scope is A.Scope.ENV
-    findings = _contract((2, 39), (2, 28), headers=(6, 12, 0),
-                         kernel=(4, 18, 0)).findings()
-    assert findings
-    for finding in findings:
-        assert finding.scope is A.Scope.ENV
-
-
-def test_every_rule_carries_a_remedy():
-    """A finding the reader cannot act on is a finding that wastes their
-    afternoon -- which is precisely what the raw autotools error did."""
-    for rule in A.ABI_RULES:
-        assert rule.remedy.strip()
 
 
 def test_describe_always_reports_both_sides():

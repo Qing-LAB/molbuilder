@@ -141,3 +141,59 @@ def test_a_project_is_deleted_only_once_its_name_is_typed(
     row.wait_for(state="detached", timeout=20000)
     assert not proj.exists(), "the dialog closed but the project is still there"
     assert native == [], f"a native dialog was opened: {native}"
+
+
+def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
+        page, flask_server, isolated_projects_root, tmp_path_factory):
+    """The sidebar's three actions (`web/projects.md` § 4), each pressed and
+    its dialog answered: what it made is on disk and in the list, and the
+    sidebar is where the person now works.
+
+    THE SILENT FAILURE: a button losing its id leaves the JS unable to wire
+    it: the control renders and does nothing when clicked, with no error
+    anywhere."""
+    from playwright.sync_api import expect
+    root = isolated_projects_root.resolve()
+    proj = root / "made"
+    notes = proj / "user" / "notes"
+    src = tmp_path_factory.mktemp("on_disk") / "water.xyz"
+    src.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+    bar = page.locator(".ps-create-bar")
+    asked = page.locator("dialog.mb-dialog[open]")
+
+    def row(path):
+        return page.locator(f'.ps-entry[data-path="{path}"]')
+
+    def on(folder):
+        expect(page.locator(".ps-crumb.is-current")).to_have_attribute(
+            "title", str(folder))
+
+    def named(button, name):
+        bar.locator(button).click()
+        asked.wait_for(state="visible", timeout=5000)
+        asked.locator("input[data-role='name']").fill(name)
+        asked.locator("[data-action='confirm']").click()
+        asked.wait_for(state="detached", timeout=5000)
+
+    page.goto(f"{flask_server}/molbuilder", wait_until="domcontentloaded")
+    expect(bar.locator("#ps-create-project-btn")).to_contain_text("New project")
+    on(root)    # drawn after the bar's buttons are wired: `projects-sidebar.js`
+
+    named("#ps-create-project-btn", "made")
+    on(proj)
+    assert proj.is_dir()
+    row(proj / "user").click()
+    on(proj / "user")
+
+    expect(bar.locator("#ps-create-folder-btn")).to_contain_text("New folder")
+    named("#ps-create-folder-btn", "notes")
+    on(notes)
+    assert notes.is_dir()
+
+    expect(bar.locator("#ps-create-upload-btn")).to_contain_text("Upload")
+    bar.locator("#ps-create-upload-btn").click()
+    asked.wait_for(state="visible", timeout=5000)
+    asked.locator("input[data-role='file']").set_input_files(str(src))
+    asked.locator("[data-action='confirm']").click()
+    row(notes / "water.xyz").wait_for(state="visible", timeout=20000)
+    assert (notes / "water.xyz").read_bytes() == src.read_bytes()

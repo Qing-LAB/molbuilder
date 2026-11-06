@@ -29,27 +29,21 @@ from molbuilder import cli
 # --------------------------------------------------------------------- #
 
 
-_SUBCOMMANDS = [
-    "peptide", "dna", "rna", "smiles", "name",
-    "modify",
-    "serve", "watch",
-]
+def test_every_command_of_the_tree_answers_help():
+    """Every command's ``--help`` answers 0, walked from the tree itself so a
+    command added later is asked too.  THE SILENT FAILURE: a click
+    misconfiguration a command's own tests never reach, so a person asking
+    what a verb does meets a traceback.  `process/conventions.md` § 3."""
+    import click
+    from click.testing import CliRunner
 
-
-@pytest.mark.parametrize("sub", _SUBCOMMANDS)
-def test_subcommand_help_exits_cleanly(sub):
-    """Every subcommand's --help must succeed (SystemExit code 0).
-    Failure here means a click misconfiguration -- a typo in a
-    decorator, a duplicate flag name, an undefined kwarg, etc."""
-    with pytest.raises(SystemExit) as exc:
-        cli.main([sub, "--help"])
-    assert exc.value.code == 0
-
-
-def test_top_level_help_exits_cleanly():
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["--help"])
-    assert exc.value.code == 0
+    def walk(cmd, path):
+        r = CliRunner().invoke(cli.cli, path + ["--help"], prog_name="molbuilder")
+        assert r.exit_code == 0, (path, r.output)
+        if isinstance(cmd, click.Group):
+            for sub, child in cmd.commands.items():
+                walk(child, path + [sub])
+    walk(cli.cli, [])
 
 
 def test_every_verb_a_groups_help_names_runs():
@@ -321,6 +315,7 @@ def test_modify_electrode_spec_key_case_insensitive():
     mixed_contact = cli._parse_electrode_spec("Au:111:3x3x2@Contact=2.4:-z=7")
     assert mixed_contact["mode"] == "single"
     assert mixed_contact["contact_distance"] == 2.4
+    assert mixed_contact["side"] == "-z"
 
 
 # --------------------------------------------------------------------- #
@@ -369,10 +364,14 @@ def test_modify_two_op_types_is_error(tmp_path):
     inp  = tmp_path / "in.xyz"
     outp = tmp_path / "out.xyz"
     inp.write_text(_bdt_stub_xyz())
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc:
         cli.main(["modify", str(inp), str(outp),
                   "--delete", "1",
                   "--orient-axis", "0,3"])
+    # A usage error's code: a run that ended any other way exits too, so
+    # `SystemExit` alone proves nothing.
+    assert exc.value.code == 2
+    assert not outp.exists()
 
 
 def test_modify_delete_only(tmp_path):
@@ -568,15 +567,30 @@ def test_modify_refuses_a_file_of_several_frames(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_serve_no_auth_refuses_non_loopback_host():
+def test_serve_no_auth_refuses_non_loopback_host(monkeypatch):
     """--no-auth must REFUSE a non-loopback bind so an unauthenticated
-    server is never exposed off the machine."""
+    server is never exposed off the machine.
+
+    The app is a stand-in that records a start: were the refusal to regress,
+    the real one would bind 0.0.0.0 here and never return."""
     from click.testing import CliRunner
+    import molbuilder.web.app as _appmod
+
+    started = []
+
+    class _App:
+        config: dict = {}
+
+        def run(self, **kw):
+            started.append(kw)
+
+    monkeypatch.setattr(_appmod, "create_app", lambda **_: _App())
     res = CliRunner().invoke(
         cli.cli, ["serve", "foreground", "--no-auth", "--host", "0.0.0.0", "--port", "8099",
                   "--no-supervise"])
     assert res.exit_code != 0
     assert "loopback" in res.output.lower()
+    assert not started
 
 
 def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
@@ -674,13 +688,6 @@ def test_a_centre_index_off_the_end_is_refused_by_the_flag(tmp_path):
     with pytest.raises(SystemExit):
         cli.main(["modify", str(inp), str(tmp_path / "o.xyz"), "--yes",
                   "--electrode", "Au:111:2x2x1@contact=2.4:+z=5"])
-
-
-def test_electrode_still_builds_one_slab_per_flag():
-    from molbuilder import cli
-    spec = cli._parse_electrode_spec("Au:111:3x3x2@contact=2.4:+z=3")
-    assert spec["mode"] == "single" and spec["side"] == "+z"
-    assert spec["contact_distance"] == 2.4
 
 
 def test_electrode_registry_is_per_slab_and_reaches_the_builder(tmp_path):

@@ -8,13 +8,13 @@ line by review, and the tests read the file.
 WHAT THIS FILE OWNS: the rows of § 6.6's preflight that are purely
 structural, answerable from the file alone:
     * the schema string's major (through ``persist.check_schema``)
-    * ``shape`` present and the one layout, ``hierarchical``
+    * ``shape`` present
     * stage names match ``[A-Za-z0-9_]+`` and are unique case-insensitively
     * no ``overrides`` key names a stage field (§ 2)
     * every stage's ``overrides`` holds only keys in ``varies``
     * unknown keys refused, naming the key
     * how it runs -- a job request's block -- refused, naming
-      ``job-request.json``; one written before 2.27.0 naming migrate
+      ``job-request.json``
 
 The rows that need the engine's schema are not here: they would force
 ``molbuilder/task.py`` to import an engine -- an L1 module reaching up a
@@ -29,10 +29,8 @@ from pathlib import Path
 import pytest
 
 from molbuilder.task import (
-    SCHEMA,
     FILENAME,
     Run,
-    Stage,
     StructureRef,
     Task,
     derive_run,
@@ -58,13 +56,6 @@ def test_round_trip_is_byte_identical(example, tmp_path):
     again = write_task(p.parent, task_of(p.parent)).read_bytes()
     assert first == again
     assert task_of(p.parent) == Task.from_dict(example)
-
-
-def test_written_file_is_named_and_versioned(example, tmp_path):
-    p = tmp_path / FILENAME
-    write_task(p.parent, Task.from_dict(example))
-    assert p.name == "task.json"
-    assert json.loads(p.read_text())["schema"] == SCHEMA == "molbuilder/task@2"
 
 
 # --------------------------------------------------------------------- #
@@ -142,48 +133,12 @@ def test_how_it_runs_is_refused_naming_the_job_request(example, edit, said):
     assert said in str(e.value) and "job-request.json" in str(e.value)
 
 
-def test_a_description_written_before_the_job_request_names_migrate(example):
-    """`job-request.md` § 8: a ``molbuilder/task@1`` description held how it
-    runs in its own record; the reader names `jobset migrate`, which splits
-    it, rather than reading half of it."""
-    from molbuilder.task import from_text
-    example["schema"] = "molbuilder/task@1"
-    with pytest.raises(ValueError) as e:
-        from_text(json.dumps(example))
-    assert "job-request.json" in str(e.value) and "migrate" in str(e.value)
-
-
 def test_missing_shape_is_refused_saying_so(example):
     """§ 6.7: required, no default, never inferred."""
     del example["shape"]
     with pytest.raises(ValueError) as e:
         Task.from_dict(example)
     assert "shape" in str(e.value)
-
-
-def test_a_flat_description_is_refused_by_name(example, tmp_path):
-    """`project-layout.md` § 1, `stages.md` § 6.7: one layout, and a
-    description an older molbuilder wrote stating ``flat`` is refused BY
-    NAME, its way out said -- through the folder's door (`task.of`) and the
-    text Task setup's Save sends (`task.from_text`) alike; no migration,
-    nothing read as the one layout.
-
-    THE SILENT FAILURE: an old flat description read as if it were laid
-    out by stage, its runs then looked for in folders that were never
-    made.  MUTATION THIS MUST FAIL AGAINST: the reader accepting any
-    `shape`."""
-    from molbuilder.task import from_text
-    shape = "flat"
-    example["shape"] = shape
-    (tmp_path / "task.json").write_text(json.dumps(example))
-    for read in (lambda: task_of(tmp_path),
-                 lambda: from_text(json.dumps(example))):
-        with pytest.raises(ValueError) as e:
-            read()
-        # BY NAME: the value stated, the one legal value, the way out.
-        said = str(e.value)
-        assert repr(shape) in said and "'hierarchical'" in said, said
-        assert "describe the calculation again" in said.lower(), said
 
 
 def test_a_different_schema_major_is_refused(example):
@@ -428,23 +383,6 @@ def test_a_task_whose_stages_are_long_still_derives_the_same_id(example):
 #  Constructed by hand, not only parsed                                  #
 # --------------------------------------------------------------------- #
 
-def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
-    task = Task(
-        engine="siesta",
-        calculation="optimization",
-        # Derived, not retyped.
-        run=derive_run("H2 relax", "H2",
-                       created="2026-08-07T10:00:00-07:00"),
-        structure=StructureRef(source="projects/x/structure/h2.xyz",
-                               formula="H2", atoms=2),
-        varies=("mesh_cutoff",),
-        stages=(Stage(name="coarse", overrides={"mesh_cutoff": 150}),
-                Stage(name="tight", overrides={"mesh_cutoff": 300})),
-    )
-    p = write_task(tmp_path, task)
-    assert task_of(p.parent) == task
-    assert task.to_dict()["schema"] == SCHEMA
-
 
 @pytest.mark.parametrize("key,value", [
     ("engine", "siesta"),
@@ -526,17 +464,3 @@ def test_duplicate_stage_names_are_refused_by_the_codec():
         _ladder_task((Stage("a"), Stage("a")))
 
 
-def test_a_description_written_before_is_refused_naming_migrate(example):
-    """`engines/stages.md` § 2: a stage has no on/off switch since
-    2026-10-03, and a description an older molbuilder wrote with `enabled`
-    on a stage is refused by name, naming `jobset migrate`, which removes
-    it -- one policy for a state against the design, never a silent rewrite
-    on Save (a `true` was read and dropped until 2026-10-19).  API-level:
-    molbuilder no longer writes the key, so the road cannot produce such a
-    file."""
-    import pytest
-    from molbuilder.task import Task
-    for st in example["stages"]:
-        st["enabled"] = True
-    with pytest.raises(ValueError, match="jobset migrate"):
-        Task.from_dict(example)

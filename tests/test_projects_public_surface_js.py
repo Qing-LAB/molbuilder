@@ -9,7 +9,6 @@ managers) don't need to import ``./api.js`` directly.
 
 Each wrapper auto-fires a sidebar refresh on success so the tree
 stays in sync.  These tests pin:
-  * Each method is present + callable on projects.*.
   * Success path delegates to the matching apiX function +
     triggers refreshHandler with the right argument.
   * Failure path passes through the apiX response verbatim AND
@@ -94,47 +93,6 @@ def _run_node(snippet: str) -> object:
             "module threw: " + str(out)
         )
     return out
-
-
-# ----- Surface presence ------------------------------------------- #
-
-
-class TestSurfacePresence:
-
-    def test_all_M4_methods_are_callable(self):
-        """Every name `web/projects.md` § 5 promises is present on the public object
-        and is a function.
-
-        RECORDED HONESTLY for the section 3b review rather than defended: this is a
-        signature restated in a second language. All thirteen names are also CALLED
-        behaviourally elsewhere in this file (`p.setShared` is the one exception --
-        the behaviour tests reach `state.setShared` directly), so what the `typeof`
-        sweep adds over those is that the name is EXPORTED onto `projects.*`, which a
-        correct module plus review already covers. Raised as a cut candidate.
-        """
-        out = _run_node('''
-            const p = state.projects;
-            console.log(JSON.stringify({
-                readFile:                   typeof p.readFile,
-                readRange:                  typeof p.readRange,
-                createProject:              typeof p.createProject,
-                mkdir:                      typeof p.mkdir,
-                deleteEntry:                typeof p.deleteEntry,
-                rename:                     typeof p.rename,
-                upload:                     typeof p.upload,
-                setShared:                  typeof p.setShared,
-                navigateTo:                 typeof p.navigateTo,
-                onProjectsRootResolved:     typeof p.onProjectsRootResolved,
-                onCommit:                   typeof p.onCommit,
-                isCancelError:              typeof p.isCancelError,
-            }));
-        ''')
-        for fn in ("readFile", "readRange", "createProject", "mkdir",
-                   "deleteEntry", "rename", "upload", "setShared",
-                   "navigateTo", "onProjectsRootResolved",
-                   "onCommit",
-                   "isCancelError"):
-            assert out[fn] == "function", f"missing public method: {fn}"
 
 
 # ----- onCommit + publishCommit (B.5.2) --------------------------- #
@@ -308,19 +266,33 @@ class TestOnCommit:
         assert out is True
 
 
+# ----- setShared -------------------------------------------------- #
+
+
+class TestSetSharedOnTheDoor:
+
+    def test_setShared_answers_through_projects(self):
+        """`projects.setShared` is what the Results file picker calls
+        (`results/file-picker.js`), and every other test here reaches
+        `state.setShared` directly.  THE SILENT FAILURE: the name gone from the
+        public object, and picking a run's file failing on Results alone."""
+        out = _run_node('''
+            const r = state.projects.setShared("/a", "/a/b.xyz");
+            console.log(JSON.stringify({ok: r.ok}));
+        ''')
+        assert out["ok"] is True
+
+
 # ----- readFile --------------------------------------------------- #
 
 
 class TestReadFile:
 
     def test_delegates_to_apiRead(self):
-        """`projects.readFile` reaches `/api/files/read` with the path URL-encoded.
-
-        CUT CANDIDATE (section 3b, "test the DOOR's outcome"): `state.readFile` is
-        `return await apiRead(path, opts)` -- one line, no decision of its own -- so
-        this observes `api.js`'s outcome through a wrapper. The URL composition lives
-        in `apiRead`, and `test_projects_api_envelope_js.py` drives that door
-        directly.
+        """`projects.readFile`, the door every inspector reads through
+        (`inspectors/registry.js`), reaches `/api/files/read` with the path
+        URL-encoded and the options it was handed: a source inspector's `maxBytes`
+        lost is a large file it cannot open.
         """
         out = _run_node('''
             let capturedUrl = null;
@@ -334,7 +306,8 @@ class TestReadFile:
                     }),
                 };
             };
-            const r = await state.projects.readFile("/projects/job/a.xyz");
+            const r = await state.projects.readFile("/projects/job/a.xyz",
+                                                    {maxBytes: 1024});
             console.log(JSON.stringify({
                 envelope: r,
                 url:      capturedUrl,
@@ -344,26 +317,7 @@ class TestReadFile:
         assert "/api/files/read" in out["url"]
         # Path is URL-encoded -- ``/`` becomes ``%2F``.
         assert "%2Fprojects%2Fjob%2Fa.xyz" in out["url"]
-
-    def test_failure_passes_through(self):
-        """A server error envelope reaches the caller unchanged through
-        `projects.readFile`.
-
-        CUT CANDIDATE, same reason as the test above: the wrapper is a single
-        `return await apiRead(...)`, and the uniform never-throw envelope is
-        `api.js`'s contract, held by `test_projects_api_envelope_js.py`
-        (`TestNetworkFailure` / `TestNonJsonResponse`).
-        """
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: false,
-                status: 404,
-                json: async () => ({ ok: false, error: "no such file" }),
-            });
-            const r = await state.projects.readFile("/missing");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": False, "error": "no such file"}
+        assert "max_bytes=1024" in out["url"]
 
 
 # ----- readRange (#189, 2026-06-02) ------------------------------- #
@@ -408,12 +362,9 @@ class TestReadRange:
         """`readRange(path, offset, maxBytes)` puts both on the query string.
 
         The property is real -- a dropped `offset` makes the paginated source
-        inspector re-read the first chunk forever -- but it is composed in
-        `api.js::apiReadRange`, and `state.readRange` only forwards. MOVE CANDIDATE
-        rather than a cut: it belongs beside
-        `test_apiReadRange_returns_server_body_verbatim` in
-        `test_projects_api_envelope_js.py`, which today asserts the envelope and not
-        the URL.
+        inspector re-read the first chunk forever.  Asked through the wrapper, so it
+        holds both layers: `state.readRange` handing the values on, and
+        `api.js::apiReadRange` composing them.
         """
         out = _run_node('''
             let capturedUrl = null;
@@ -458,28 +409,6 @@ class TestReadRange:
         ''')
         assert "offset=-262144" in out["url"]
 
-    def test_server_error_envelope_passes_through(self):
-        """A 400 from the range route arrives as `{ok:false, error}` rather than a throw.
-
-        CUT CANDIDATE: `state.readRange` forwards to `apiReadRange` with no branch of
-        its own, and the never-throw envelope rule -- `web/projects.md` § 5,
-        "they never throw" -- belongs to `api.js` and is held by
-        `test_projects_api_envelope_js.py`.
-        """
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: false, status: 400,
-                json: async () => ({
-                    ok: false,
-                    error: "offset past end of file",
-                }),
-            });
-            const r = await state.projects.readRange(
-                "/p/small.txt", 999999);
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": False, "error": "offset past end of file"}
-
     def test_network_drop_returns_uniform_envelope(self):
         """Same shape as every other projects.* wrapper -- network
         drop must NOT throw."""
@@ -496,11 +425,8 @@ class TestReadRange:
     def test_abort_signal_threads_into_fetch(self):
         """`opts.signal` reaches `fetch`, so a slow range read can be cancelled.
 
-        Forwarded verbatim by a one-line wrapper, so by section 3b this is a caller
-        test for a door's property. MOVE CANDIDATE, not a cut: the door file pins
-        signal forwarding for `apiRead`, `apiWrite`, `apiDelete`, `apiUpload`,
-        `apiList`, `apiRename` and `apiMkdir` -- but NOT for `apiReadRange`, so
-        deleting this outright is the only version of the change that loses coverage.
+        Asked through the wrapper, so it holds both layers: `state.readRange` handing
+        its options on, and `apiReadRange` handing the signal to `fetch`.
         """
         out = _run_node('''
             let capturedSignal = null;

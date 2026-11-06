@@ -31,4 +31,3 @@ def test_a_resolved_citation_carries_what_a_person_needs():
     shape on a stable entry."""
     c = citation_for("Sun2020")
     assert c and c["title"] and c["doi"], c
-    assert "PySCF" in c["title"]

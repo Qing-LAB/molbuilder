@@ -20,18 +20,10 @@ explicit ``, 200`` and Flask's default 200 are the SAME response, so no
 request can tell them apart -- that half of the rule is review's
 (`process/code-audit.md` § 1c), and each route's own tests assert the
 status of the refusals they drive.
-
-The ``Endpoint index`` count in ``docs/web/web-api.md`` is checked
-against Flask's URL map below.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TestKnownAdvisorySitesAreHTTP200:

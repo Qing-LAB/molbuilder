@@ -1,22 +1,17 @@
-"""Shape contract for the ``molbuilder-siesta-gpu`` recipe.
+"""The ``molbuilder-siesta-gpu`` recipe: the failures its builds have measured,
+and the lines whose loss the build does not show (`ops/installation.md` § 6).
 
-The recipe lives in :mod:`molbuilder.envs.recipes` and carries a
-:class:`BuildSpec` because SIESTA-GPU is built from source rather than
-installed via conda.  This file pins the exact recipe shape so a
-casual edit to recipes.py can't silently desync from:
-
-    * docs/design.md 2026-06-14 Decisions log entry (locked decisions)
-    * docs/ops/installation.md § 6 (engineering reference)
-    * docs/ops/installation.md (user-facing instructions)
+SIESTA is built from source here, so a recipe line that goes wrong shows after
+a long build, or only at a run.  The build itself checks the rest: what a test
+restating a build option would add is `installation.md`'s stated reason for
+leaving it out.
 """
 from __future__ import annotations
 
 import pytest
 
 from molbuilder.envs.recipes import (
-    builtin_recipes,
     BuildComponent,
-    BuildSpec,
     Recipe,
     recipe_by_name,
 )
@@ -30,48 +25,6 @@ def recipe() -> Recipe:
 
 
 # --------------------------------------------------------------------- #
-#  Top-level Recipe shape                                                #
-# --------------------------------------------------------------------- #
-
-
-def test_recipe_is_registered(recipe):
-    """In the registry tuple AND lookup-able by name."""
-    assert recipe in builtin_recipes()
-
-
-def test_recipe_category(recipe):
-    """The recipe sets the ``siesta-gpu`` category so doctor groups it
-    correctly + so DEFAULT_ENV_NAMES routing works."""
-    assert recipe.category == "siesta-gpu"
-
-
-def test_recipe_carries_build_spec(recipe):
-    """Source-build recipes are identified by a non-None build_spec."""
-    assert recipe.build_spec is not None
-    assert isinstance(recipe.build_spec, BuildSpec)
-
-
-def test_recipe_uses_conda_forge_only(recipe):
-    """No third-party channels for the build env -- everything in
-    conda_packages must be in conda-forge."""
-    assert recipe.channels == ("conda-forge",)
-
-
-def test_recipe_description_mentions_gpu_and_source(recipe):
-    """Description text shows up in `envs list`; it must signal both
-    'GPU' and 'source build' so users don't confuse this with the
-    precompiled CPU env."""
-    desc = recipe.description.lower()
-    assert "cuda" in desc or "gpu" in desc, (
-        f"description should mention CUDA/GPU: {recipe.description!r}"
-    )
-    assert "source" in desc or "built" in desc or "build" in desc, (
-        f"description should signal this is built from source: "
-        f"{recipe.description!r}"
-    )
-
-
-# --------------------------------------------------------------------- #
 #  Build toolchain in conda_packages                                     #
 # --------------------------------------------------------------------- #
 
@@ -80,8 +33,9 @@ def test_the_toolchain_is_pinned_to_a_MINOR_version(recipe):
     """**The minor is the whole point** (`ops/installation.md` § 6).
 
     A major-only ``gcc_linux-64=14`` is satisfied by `14.3` and `14.4`
-    equally -- and **14.4's gfortran miscompiles SIESTA's `kpoint_t.F90`**,
-    silently, into wrong k-points.
+    equally -- and **14.4's gfortran miscompiles SIESTA's `kpoint_t.F90`**:
+    the build dies at its link step, near the end (`undefined reference to
+    process_k_cell_`, § 6.1).
 
     Checked as a PROPERTY -- three packages, one version, and that version
     carrying a minor -- rather than by retyping `14.3` here: the number is
@@ -93,44 +47,14 @@ def test_the_toolchain_is_pinned_to_a_MINOR_version(recipe):
     assert "." in _GCC_VERSION, (
         f"the toolchain pin is {_GCC_VERSION!r} -- a MAJOR-only pin lets "
         f"conda resolve 14.4, whose gfortran miscompiles SIESTA's "
-        f"kpoint_t.F90 into wrong k-points with no error "
-        f"(ops/installation.md § 6)")
+        f"kpoint_t.F90, and the build dies at its link step "
+        f"(ops/installation.md § 6.1)")
     pkgs = " ".join(recipe.conda_specs)
     for tool in ("gcc", "gxx", "gfortran"):
         want = f"{tool}_linux-64={_GCC_VERSION}"
         assert want in pkgs, (
             f"the GPU recipe does not pin {tool} to the toolchain version "
             f"the rest of the family uses ({_GCC_VERSION}): {pkgs}")
-
-
-def test_pins_the_project_python(recipe):
-    """**Every env that declares a python declares the SAME one.**
-
-    That is the invariant, and it is what a single `MOLBUILDER_PYTHON` exists
-    to hold.  Asserting the literal ``python=3.12`` instead would pin the
-    DEFAULT, failing on any machine that legitimately overrode it, and say
-    nothing about whether the recipes agreed with each other.
-    """
-    from molbuilder.envs.recipes import builtin_recipes, _PYTHON_SPEC
-    assert _PYTHON_SPEC in recipe.conda_specs, (
-        f"the GPU recipe does not declare the project python "
-        f"({_PYTHON_SPEC}): {recipe.conda_specs}")
-    declared = {r.name: [p for p in r.conda_specs if p.startswith("python=")]
-                for r in builtin_recipes()}
-    disagree = {n: v for n, v in declared.items()
-                if v and v != [_PYTHON_SPEC]}
-    assert not disagree, (
-        f"these recipes declare a different python from the project's "
-        f"{_PYTHON_SPEC}: {disagree}")
-
-
-def test_pins_cmake_geq_3_30(recipe):
-    """CMake 3.30+ is required by SIESTA 5.4.2's CMakeLists."""
-    assert any("cmake" in p for p in recipe.conda_specs)
-    cmake_specs = [p for p in recipe.conda_specs if p.startswith("cmake")]
-    assert any(">=3.30" in p for p in cmake_specs), (
-        f"cmake spec should pin >=3.30: {cmake_specs!r}"
-    )
 
 
 def test_uses_openblas_not_mkl(recipe):
@@ -165,97 +89,6 @@ def test_mpi_packages_pinned_to_openmpi_variant(recipe):
             )
 
 
-def test_libxc_present(recipe):
-    """SIESTA links libxc for the wider functional library."""
-    assert "libxc" in recipe.conda_specs
-
-
-# --------------------------------------------------------------------- #
-#  BuildSpec shape                                                       #
-# --------------------------------------------------------------------- #
-
-
-def test_build_spec_artifact_subdir(recipe):
-    """Lives under $CONDA_PREFIX/opt/siesta-gpu-stack (locked decision #2)."""
-    assert recipe.build_spec.artifact_subdir == "siesta-gpu-stack"
-
-
-def test_build_spec_cuda_required(recipe):
-    """GPU env -- preflight refuses without CUDA."""
-    assert recipe.build_spec.cuda_required is True
-
-
-def test_build_spec_components_in_order(recipe):
-    """Siesta is built LAST, because it links the others.
-
-    Only that is asserted.  The order among the components siesta links
-    is a judgement call (recipes.py records why the cheap one goes
-    second), not a dependency, and a test that pinned it would block a
-    legitimate reorder.
-
-    ELSI + libfdf + libpsml + xmlf90 + libgridxc are SIESTA git
-    submodules (per SIESTA 5.4 INSTALL.md § "Required domain-specific
-    libraries") that SIESTA's cmake compiles on the fly when the
-    --recurse-submodules clone populates External/, so they are not
-    components."""
-    names = [c.name for c in recipe.build_spec.components]
-    assert names[-1] == "siesta", (
-        f"siesta links the others, so it must be built last: {names}")
-
-
-def test_build_spec_activate_hook_publishes_paths(recipe):
-    """Activate.d hook puts siesta on PATH, ELPA on LD_LIBRARY_PATH,
-    and $CONDA_PREFIX/lib on LD_LIBRARY_PATH (where conda-installed
-    libcudart / libmpi / libgomp live).  ELSI has no install dir of its
-    own: it is built into the siesta executable via the SIESTA submodule
-    path."""
-    hook = recipe.build_spec.activate_hook
-    assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"' in hook
-    assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"' in hook
-    assert '"$CONDA_PREFIX/lib"' in hook
-    # No separate ELSI install dir -- ELSI is a SIESTA submodule, its
-    # libs end up inside the SIESTA install tree (if at all; usually
-    # it's a static link).
-    assert "elsi/lib" not in hook
-    # No legacy system-CUDA path
-    assert "/usr/local/cuda" not in hook
-    # We DO NOT export CUDA_HOME -- conda-forge's cuda-nvcc package
-    # has its own activate.d that handles that; we'd conflict.
-    assert "CUDA_HOME" not in hook
-
-
-def test_build_spec_deactivate_hook_mirrors_activate(recipe):
-    """Deactivate hook must drop exactly the paths activate added."""
-    deact = recipe.build_spec.deactivate_hook
-    assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"' in deact
-    assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"' in deact
-    assert '"$CONDA_PREFIX/lib"' in deact
-    assert "elsi/lib" not in deact
-    assert "/usr/local/cuda" not in deact
-
-
-def test_cuda_toolkit_in_conda_packages(recipe):
-    """Per the 2026-06-15 design correction, CUDA toolkit lives IN
-    the env via conda-forge packages (mirroring molbuilder-pySCF).
-    The recipe must declare cuda-nvcc + cuda-cudart-dev + a pinned
-    cuda-version; without them the env has no CUDA toolkit at all."""
-    pkgs = " ".join(recipe.conda_specs)
-    assert "cuda-version=" in pkgs, (
-        "recipe must pin cuda-version (mirrors molbuilder-pySCF "
-        "convention); got: " + pkgs
-    )
-    for required in ("cuda-nvcc", "cuda-cudart-dev"):
-        assert required in recipe.conda_specs, (
-            f"recipe must include {required!r} in conda_packages "
-            f"to ship the CUDA toolkit in-env"
-        )
-
-
-# --------------------------------------------------------------------- #
-#  Per-component shape                                                   #
-# --------------------------------------------------------------------- #
-
-
 def _comp(recipe: Recipe, name: str) -> BuildComponent:
     for c in recipe.build_spec.components:
         if c.name == name:
@@ -264,55 +97,32 @@ def _comp(recipe: Recipe, name: str) -> BuildComponent:
 
 
 def test_elpa_component(recipe):
-    """ELPA: tarball download + autotools build (verified 2026-06-15
-    against upstream configure.ac across 2020.11 / 2021.11 / 2023.05 /
-    2025.06: no CMakeLists.txt exists on any tag; all versions ship a
-    pre-bootstrapped ``configure`` script in the tarball).
+    """ELPA's GPU path, and the GPU it is compiled for (`installation.md` § 6).
 
-    Configure flags use the modern ``--enable-nvidia-gpu`` naming
-    (introduced in ELPA 2021.x).  Older ``--enable-gpu`` syntax is NOT
-    used because the default tag is 2021.11.001+.
-    """
-    elpa = _comp(recipe, "elpa")
-    # Tarball, not git clone.
-    assert elpa.tarball_url, "ELPA must use tarball download"
-    assert "elpa.mpcdf.mpg.de" in elpa.tarball_url, (
-        f"ELPA tarball must come from MPCDF: {elpa.tarball_url!r}"
-    )
-    assert elpa.tarball_inner_dir, "ELPA needs tarball_inner_dir set"
-    # SHA256 pin for integrity.
-    assert elpa.tarball_sha256, (
-        "ELPA tarball_sha256 must be pinned for integrity verification"
-    )
-    assert len(elpa.tarball_sha256) == 64
-    # autotools configure_argv (sh -c wrapping autotools build).
-    flags = " ".join(elpa.configure_argv)
-    assert elpa.configure_argv[0] == "sh"
-    assert "configure" in flags
+    `--enable-nvidia-gpu`: the build and its `verify` both pass without it,
+    and the env has no GPU path.  `CC_TAG` is the machine's own capability,
+    not a fixed `sm_80` (2026-06-15: ELPA 2024.05.001's configure refuses the
+    SM80 kernel for every GPU but the A100, which broke the build on the
+    others)."""
+    flags = " ".join(_comp(recipe, "elpa").configure_argv)
     assert "--enable-nvidia-gpu" in flags
-    # The cc flag uses a bash variable (CC_TAG), so the SM_80 specialised
-    # kernel can force sm_80 (A100-only) while everyone else uses their
-    # native cc.  See the CC_TAG block in recipes.py for the design
-    # rationale.
-    assert "--with-NVIDIA-GPU-compute-capability=$CC_TAG" in flags
-    # The native cc still flows through via the CC_NUM/CC_TAG assignment
-    # at the top of the configure prelude.
     assert "CC_TAG=sm_{cuda_cc_numeric}" in flags
-    assert "--enable-openmp" in flags
-    assert "--prefix={install}" in flags
-    assert "--with-cuda-path={env_prefix}" in flags
-    # No cmake flags.
-    assert "cmake" not in flags.lower() or "cmake" not in flags
-    assert "-DENABLE_NVIDIA_GPU" not in flags
-    assert "-DCMAKE_CUDA_ARCHITECTURES" not in flags
+    assert "--with-NVIDIA-GPU-compute-capability=$CC_TAG" in flags
 
 
-def test_no_elsi_component(recipe):
-    """ELSI is NOT a separate BuildComponent -- it's a SIESTA submodule under
-    External/ELSI-project/elsi_interface and SIESTA's cmake builds
-    it on the fly.  Per SIESTA 5.4 INSTALL.md."""
-    names = [c.name for c in recipe.build_spec.components]
-    assert "elsi" not in names
+def test_siesta_is_built_with_its_features_against_the_envs_mpi(recipe):
+    """`installation.md` § 6: ELPA, ELSI, libxc and NetCDF on, against the
+    env's own MPI compilers.  THE SILENT FAILURE: lose a flag and the build
+    finishes and `siesta --version` passes, so the build cannot say so; and
+    without the pins a machine with a system MPI first on its `PATH` links
+    that `libmpi`, and nothing says so until a run."""
+    argv = _comp(recipe, "siesta").configure_argv
+    for flag in ("-DSIESTA_WITH_ELPA=ON", "-DSIESTA_WITH_ELSI=ON",
+                 "-DSIESTA_WITH_LIBXC=ON", "-DSIESTA_WITH_NETCDF=ON",
+                 "-DMPI_C_COMPILER={env_prefix}/bin/mpicc",
+                 "-DMPI_CXX_COMPILER={env_prefix}/bin/mpicxx",
+                 "-DMPI_Fortran_COMPILER={env_prefix}/bin/mpifort"):
+        assert flag in argv, flag
 
 
 def test_siesta_clones_with_recurse_submodules(recipe):
@@ -323,99 +133,6 @@ def test_siesta_clones_with_recurse_submodules(recipe):
     FIND_METHOD=source picks them up from External/<package>."""
     siesta = _comp(recipe, "siesta")
     assert siesta.clone_recurse_submodules is True
-
-
-def test_siesta_component(recipe):
-    """SIESTA: TranSiesta + ELSI + libxc + netcdf, pinned to the
-    ``5.4.2`` release tag.
-
-    Upstream observation (2026-06-15 ``git ls-remote --tags``):
-    gitlab.com/siesta-project/siesta DOES ship numeric 5.x release
-    tags: ``5.0.0``, ``5.0.1``, ``5.0.2``, ``5.2.0``, ``5.2.1``,
-    ``5.2.2``, ``5.4.0``, ``5.4.1``, ``5.4.2`` (bare numeric, no
-    ``v`` / ``siesta-`` prefix).  A tag, not the moving ``rel-5.4``
-    branch, so the source does not drift on every push.  Pinning to
-    ``5.4.2`` also matches what the precompiled ``molbuilder-siesta`` env
-    ships, so the ``.fdf`` input format and TranSiesta output format
-    stay identical across CPU vs GPU runs.  Override via
-    ``MOLBUILDER_SIESTA_TAG`` for a hotfix from the ``rel-5.4`` branch
-    or a specific SHA."""
-    siesta = _comp(recipe, "siesta")
-    assert siesta.ref == "5.4.2", (
-        f"SIESTA ref must be pinned to the 5.4.2 release tag "
-        f"(see test docstring for why): {siesta.ref!r}"
-    )
-    assert "gitlab.com/siesta-project/siesta" in siesta.repo_url
-    flags = " ".join(siesta.configure_argv)
-    # One binary serves siesta + transiesta + tbtrans (locked decision #7).
-    assert "-DSIESTA_WITH_TRANSIESTA=ON" in flags
-    assert "-DSIESTA_WITH_ELSI=ON" in flags
-    # ELSI built from SIESTA submodule -- no ELSI_ROOT; cmake's FIND_METHOD
-    # source step picks it up from External/.
-    assert "-DELSI_ROOT" not in flags
-    assert "-DSIESTA_WITH_LIBXC=ON" in flags
-    assert "-DSIESTA_WITH_NETCDF=ON" in flags
-    assert "-DSIESTA_WITH_ELPA=ON" in flags
-
-
-# --------------------------------------------------------------------- #
-#  Build-env isolation: cmake pins compilers + MPI + CUDA to the env    #
-# --------------------------------------------------------------------- #
-
-
-def _configure_flags(component_name: str, recipe: Recipe) -> str:
-    """Join one component's configure_argv into a searchable string."""
-    return " ".join(_comp(recipe, component_name).configure_argv)
-
-
-def test_siesta_pins_cmake_prefix_path_to_env_and_elpa(recipe):
-    """SIESTA (cmake): CMAKE_PREFIX_PATH must include BOTH the env
-    prefix (for conda-installed deps) AND the ELPA install dir.
-    Semicolon = cmake's list separator."""
-    siesta_flags = _configure_flags("siesta", recipe)
-    assert "-DCMAKE_PREFIX_PATH=" in siesta_flags
-    assert "{env_prefix}" in siesta_flags and "{dep_elpa}" in siesta_flags
-
-
-def test_elpa_pins_env_compilers_and_cuda_path(recipe):
-    """ELPA (autotools): FC/CC/CXX use the env's mpi compilers, and
-    --with-cuda-path points at the env (where conda-installed cuda-nvcc
-    lives).  This bypasses autoconf's PATH walk so the system openmpi
-    can't be picked up by accident."""
-    flags = _configure_flags("elpa", recipe)
-    # MPI compilers via FC=mpifort etc. (resolves via PATH inside conda
-    # activate; the autotools build doesn't take cmake's explicit
-    # -DMPI_C_COMPILER pin).
-    assert "FC=mpifort" in flags
-    assert "CC=mpicc" in flags
-    assert "CXX=mpicxx" in flags
-    # CUDA path points at the env (conda-installed cuda-nvcc + libs).
-    assert "--with-cuda-path={env_prefix}" in flags
-
-
-def test_siesta_pins_mpi_compilers_to_env(recipe):
-    """SIESTA (cmake): FindMPI walks PATH for mpicc/mpicxx/mpifort.
-    If system OpenMPI is installed via apt and PATH has /usr/bin
-    before $CONDA_PREFIX/bin in some odd shell ordering, the build
-    silently links system libmpi.  Explicit pins make that impossible."""
-    flags = _configure_flags("siesta", recipe)
-    assert "-DMPI_C_COMPILER={env_prefix}/bin/mpicc" in flags
-    assert "-DMPI_CXX_COMPILER={env_prefix}/bin/mpicxx" in flags
-    assert "-DMPI_Fortran_COMPILER={env_prefix}/bin/mpifort" in flags
-
-
-def test_no_system_paths_in_cmake_flags(recipe):
-    """A regression guard.  None of the cmake flags should reference
-    /usr/lib, /usr/local/cuda, /opt/cuda, or similar system locations.
-    The full toolchain must live inside the env."""
-    for comp in (c.name for c in recipe.build_spec.components):
-        flags = _configure_flags(comp, recipe)
-        for forbidden in ("/usr/lib", "/usr/local/cuda", "/opt/cuda",
-                          "/usr/include"):
-            assert forbidden not in flags, (
-                f"{comp} configure_argv references system path "
-                f"{forbidden!r}: {flags}"
-            )
 
 
 # --------------------------------------------------------------------- #
@@ -497,6 +214,45 @@ def test_every_component_argv_renders_through_template(recipe, phase):
             )
 
 
+@pytest.mark.parametrize("preset,tmpdir", [
+    ({}, "/tmp"),
+    ({"TMPDIR": "/scratch/job1"}, "/scratch/job1"),
+    ({"TMPDIR": "/scratch/job1", "OMPI_MCA_orte_tmpdir_base": "/mine"}, "/mine"),
+], ids=["no scheduler", "the job's own TMPDIR", "the person's value"])
+def test_the_hooks_publish_the_stack_and_take_back_only_what_they_set(
+        tmp_path, recipe, preset, tmpdir):
+    """Source the real activate and deactivate hooks in a shell and read what
+    it holds (`installation.md` § 6.1).  Activated, SIESTA is on `PATH`, the
+    source-built libraries come before the env's, and OpenMPI's shared memory
+    goes to the job's own `TMPDIR` or `/tmp`, never onto the NFS home the env
+    lives on (measured 2026-06-24: a warning at every `mpirun`, and every
+    write a network trip) -- unless the person set it.  Deactivated, the shell
+    is as it was.  A string check cannot see any of this: a hook whose guard
+    is wrong still holds every word."""
+    prefix = "/stub/env"
+    stack = f"{prefix}/opt/siesta-gpu-stack"
+    spec = recipe.build_spec
+    activate = tmp_path / "activate.sh"
+    activate.write_text(spec.activate_hook)
+    deactivate = tmp_path / "deactivate.sh"
+    deactivate.write_text(spec.deactivate_hook)
+    show = ('printf "%s\\n" "$PATH" "${LD_LIBRARY_PATH:-}" '
+            '"${OMPI_MCA_orte_tmpdir_base:-unset}"')
+    r = _subprocess.run(
+        ["bash", "-c", f'{show}; . "{activate}"; {show}; . "{deactivate}"; {show}'],
+        env={"PATH": "/usr/bin:/bin", "CONDA_PREFIX": prefix, **preset},
+        capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    lines = r.stdout.splitlines()
+    before, inside, after = lines[:3], lines[3:6], lines[6:]
+    path, libs, shared_memory = inside
+    assert path.split(":")[0] == f"{stack}/siesta/bin"
+    assert libs.split(":") == [f"{stack}/netcdf_fortran/lib", f"{stack}/elpa/lib",
+                               f"{prefix}/lib"]
+    assert shared_memory == tmpdir
+    assert after == before
+
+
 # --------------------------------------------------------------------- #
 #  Header + library search paths for the BUNDLED Makefiles              #
 #                                                                        #
@@ -557,7 +313,7 @@ def test_sysroot_is_pinned_not_merely_declared(recipe):
     it never solves.  It is only sufficient BECAUSE the spec is pinned:
     once the version is stated, the spec fully determines what gets
     installed.  While the spec was bare, no static assertion could have
-    caught this, which is why the live-solve test below exists as well.
+    caught this, which is why `test_envs_solve_drift.py` solves it live.
     """
     specs = [p for p in recipe.conda_specs
              if p.split("=")[0] == "sysroot_linux-64"]
@@ -583,17 +339,6 @@ def test_the_sysroot_pin_is_at_or_below_the_conda_forge_floor(recipe):
     assert parse_version(spec.split("=", 1)[1]) <= (2, 17)
 
 
-def test_kernel_headers_is_not_double_pinned(recipe):
-    """sysroot pins kernel-headers exactly (2.17 -> 3.10.0), so a second
-    pin here would be a redundant fact with its own way of going stale.
-    One decision, one place."""
-    specs = [p for p in recipe.conda_specs
-             if p.split("=")[0] == "kernel-headers_linux-64"]
-    assert specs == ["kernel-headers_linux-64"], (
-        f"kernel-headers should follow sysroot, not carry its own pin: {specs}"
-    )
-
-
 def test_readline_is_declared_not_inherited(recipe):
     """``readline`` must be named outright.
 
@@ -604,18 +349,6 @@ def test_readline_is_declared_not_inherited(recipe):
     ``python`` happens to pull it in transitively.
     """
     assert "readline" in recipe.conda_specs
-
-
-def test_the_lua_build_step_is_the_one_carrying_the_search_paths(recipe):
-    """Pins the two halves to the SAME component.
-
-    Exporting the paths from a component that does not build flook
-    would leave the real compile untouched.
-    """
-    comp = _flook_building_component(recipe)
-    payload = " ".join(comp.build_argv)
-    assert "C_INCLUDE_PATH" in payload
-    assert "LIBRARY_PATH" in payload
 
 
 @pytest.mark.parametrize(
@@ -632,7 +365,7 @@ def test_build_step_exports_search_paths_to_the_compiler(
     then read back what the compiler would actually have seen.
 
     Asserting that the string ``C_INCLUDE_PATH`` appears in the payload
-    (as the test above does, for a different purpose) would still pass
+    would still pass
     if the export sat AFTER ``cmake --build``, or were spelled so that
     no shell ever applied it.  Executing it and reading the values out
     of the stub is the only version that fails for the right reason.
@@ -743,4 +476,3 @@ def test_an_unmeasured_tag_falls_back_conservatively_not_to_a_wildcard():
     to be conservative, not a reason to let the solver pick."""
     from molbuilder.envs import recipes as R
     assert R._GCC_WHEN_UNMEASURED in R._GCC_PIN_BY_SIESTA_REF.values()
-    assert R._GCC_PIN_BY_SIESTA_REF.get("rel-5.4") is None    # no row today

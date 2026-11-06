@@ -1,15 +1,9 @@
-"""L1 tests for ``molbuilder.envs.recipes``.
+"""What the env registry must hold (`ops/env-framework.md` § 3.2b): the
+packages every env carries, a recipe for every category, no two recipes on one
+env, and in the host env what the server imports.
 
-
-Pins the registry shape: every built-in recipe must have non-empty
-required fields, every routed recipe must reference a valid category
-from ``DEFAULT_ENV_NAMES``, and the name-keyed + category-keyed
-lookups must be consistent with the registry, `builtin_recipes()`.
-
-The recipes module is the single source of truth for env shape;
-these tests catch a stray "oh I'll change `name=` to a different
-string for a moment" type regression that would silently disconnect
-the recipe from the diagnostics-side category mapping.
+The recipes module is the single source of truth for env shape.  A recipe's
+required fields are `Recipe.__post_init__`'s, which refuses at import.
 """
 from __future__ import annotations
 
@@ -21,24 +15,6 @@ from molbuilder.envs.recipes import (
     builtin_recipes,
     recipe_by_name,
 )
-
-
-def test_registry_is_non_empty():
-    assert len(builtin_recipes()) >= 5, (
-        "Registry should hold at least the five envs documented in "
-        "docs/ops/installation.md (host + 4 backends)."
-    )
-
-
-def test_every_recipe_has_required_fields():
-    """Every recipe must have non-empty name, description, channels,
-    and conda_packages.  Empty values would render the recipe
-    unusable."""
-    for r in builtin_recipes():
-        assert r.name, f"empty name in recipe {r}"
-        assert r.description, f"empty description in {r.name}"
-        assert r.channels, f"no channels in {r.name}"
-        assert r.conda_packages, f"no conda_packages in {r.name}"
 
 
 #: Packages EVERY recipe carries, and the rule each one answers to.  Both are
@@ -87,24 +63,20 @@ def test_every_recipe_declares_the_uniform_packages(spec, why):
     )
 
 
-def test_recipe_names_are_unique():
-    names = [r.name for r in builtin_recipes()]
-    assert len(names) == len(set(names)), (
-        f"duplicate recipe names: {names}"
-    )
+@pytest.mark.parametrize("field", ["name", "category"])
+def test_no_two_recipes_share_a(field):
+    """A name and a category each name one environment (`recipe_by_name`,
+    `effective_name`).  THE SILENT FAILURE: a copied recipe that keeps either
+    installs into one env, the second over the first, and the lookup by name
+    never reaches it."""
+    said = [getattr(r, field) for r in builtin_recipes() if getattr(r, field)]
+    assert len(said) == len(set(said)), said
 
 
 # A routed recipe takes its name FROM the table (`name=DEFAULT_ENV_NAMES[...]`),
 # so the names agree by construction and an unknown category is a `KeyError`
 # at import.  The reverse direction below is not covered by that: a category
 # added to `DEFAULT_ENV_NAMES` with no recipe is still writable.
-
-def test_no_two_recipes_serve_one_category():
-    """A category names one environment (`effective_name`): two recipes on it
-    would install into one env, the second over the first."""
-    categories = [r.category for r in builtin_recipes() if r.category]
-    assert sorted(categories) == sorted(set(categories))
-
 
 def test_default_env_names_all_have_recipes():
     """Reverse direction: every category in ``DEFAULT_ENV_NAMES``
@@ -118,11 +90,11 @@ def test_default_env_names_all_have_recipes():
     )
 
 
-def test_recipe_by_name_finds_every_recipe():
-    for r in builtin_recipes():
-        assert recipe_by_name(r.name) is r
-
-
-def test_recipe_by_name_returns_none_for_unknown():
-    assert recipe_by_name("nope-not-a-real-env") is None
-
+def test_host_env_includes_psutil():
+    """``molbuilder serve`` imports `web/blueprints/system_load.py`, which
+    imports psutil unconditionally, so without it the server dies before it
+    binds a port (measured 2026-06-24, dd09d9824).  THE SILENT FAILURE: a
+    working machine keeps the package, so every server test stays green, and
+    the host recipe's `verify` does not import it -- only a new env finds out.
+    """
+    assert "psutil" in " ".join(recipe_by_name("molbuilder").conda_specs)

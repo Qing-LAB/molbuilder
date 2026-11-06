@@ -19,25 +19,7 @@ Nothing here launches an engine: prep writes the decks and stops.
 """
 from __future__ import annotations
 
-from support.road import group_words
-
-
-from click.testing import CliRunner
-
-from molbuilder.jobset._cli import jobset_group
-
-from support.junction import _isolated, _junction_struct  # noqa: F401
-
-
-def _prep(dest, rung, *, refused=False):
-    """`jobset prep task <rung>`; what it said when ``refused``."""
-    r = CliRunner().invoke(jobset_group, ["prep", "task", *group_words(dest, rung), "--bundle",
-                                          str(dest), "--no-sbatch"])
-    if refused:
-        assert r.exit_code != 0, r.output
-        return r.output
-    assert r.exit_code == 0, r.output
-    return None
+from support.road import describe_calculation, jobset, set_by_the_person
 
 
 def _mesh(deck: str, block: str = "kgrid_Monkhorst_Pack"):
@@ -50,7 +32,7 @@ def _mesh(deck: str, block: str = "kgrid_Monkhorst_Pack"):
             tuple(float(rows[i][3]) for i in range(3)))
 
 
-def test_a_relaxation_samples_every_axis_by_its_kind(isolated_projects_root):
+def test_a_relaxation_samples_every_axis_by_its_kind(tmp_path, monkeypatch):
     """Outside a transport calculation each axis is sampled by its kind: a
     periodic axis, and one declared ``transport`` -- relaxing a junction,
     whose deck is periodic along it (user, 2026-09-30) -- write the
@@ -64,16 +46,18 @@ def test_a_relaxation_samples_every_axis_by_its_kind(isolated_projects_root):
     the deck's meshes not handed to the settings gate (the report says
     nothing); the offset compared with 0 rather than read modulo 1 (1.0 is
     warned)."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.task import Stage
-    from test_engine_offset_reaches_every_deck import _prep as _describe_prep
-    dest, _stage, deck = _describe_prep(
-        isolated_projects_root, _junction_struct(across=("periodic",
-                                                         "isolated")),
-        SiestaConfig(system_label="JOB", kgrid=(2, 3, 1),
-                     kgrid_displacement=(0.0, 0.0, 1.0)),
-        (Stage(name="relax", overrides={}),), "siesta")
-    assert _mesh(deck) == ((2, 3, 1), (0.0, 0.0, 1.0))
+    dest = describe_calculation(tmp_path, monkeypatch, stage_strategy="", structure={
+        "elements": ["H"] * 6,
+        "positions": [[7.0, 7.0, 3.0 + 1.5 * i] for i in range(6)],
+        "cell": [14.0, 14.0, 14.0],
+        "axis_kind": ["periodic", "isolated", "transport"]})
+    set_by_the_person(dest, {"kgrid": [2, 3, 1],
+                             "kgrid_displacement": [0.0, 0.0, 1.0]})
+    r = jobset("prep", "task", "--group", "1", "--bundle", dest,
+               "--target", "this")
+    assert r.exit_code == 0, r.output
+    assert _mesh(next(dest.rglob("*.fdf")).read_text()) == (
+        (2, 3, 1), (0.0, 0.0, 1.0))
     report = next(dest.rglob("*.validation.txt")).read_text()
     assert "K-point grid along y = 3 on an isolated axis" in report, report
     assert "The k-point offset along z" not in report, report

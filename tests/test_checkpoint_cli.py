@@ -50,20 +50,8 @@ def _ids(output):
 
 
 # ------------------------------------------------------------------ #
-#  § 5 — the six verbs, and only those                                #
+#  A4 — no surface offers a partial restore                           #
 # ------------------------------------------------------------------ #
-
-
-def test_the_group_offers_exactly_the_contracts_verbs():
-    """§ 5 names six verbs, and the group offers those six.
-
-    **An equality.** "Each of these six appears" passes a seventh verb;
-    stating the set covers both directions: a verb added without a contract
-    change fails here, whatever it is called.
-    """
-    from molbuilder.cli import cli as _cli
-    assert set(_cli.commands["checkpoint"].commands) == {
-        "init", "save", "list", "tag", "restore", "config"}
 
 
 def test_restore_returns_the_whole_folder(mb):

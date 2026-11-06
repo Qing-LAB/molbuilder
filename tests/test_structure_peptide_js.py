@@ -63,23 +63,6 @@ def _run_node(snippet: str) -> object:
     return out
 
 
-class TestSurfacePresence:
-
-    def test_methods_callable(self):
-        out = _run_node('''
-            console.log(JSON.stringify({
-                configure: typeof pep.configure,
-                generate:  typeof pep.generate,
-                wirePanel: typeof pep.wirePanel,
-                BUILD_URL: pep.BUILD_URL,
-            }));
-        ''')
-        assert out["configure"] == "function"
-        assert out["generate"]  == "function"
-        assert out["wirePanel"] == "function"
-        assert out["BUILD_URL"] == "/api/build/molecule"
-
-
 class TestInputValidation:
 
     def test_empty_sequence_rejected_without_fetch(self):

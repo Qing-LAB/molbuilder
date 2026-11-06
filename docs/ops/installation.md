@@ -568,7 +568,9 @@ isn't available as a conda package. `bash scripts/install-env.sh install molbuil
   The **C** half, `libnetcdf`, stays a conda package;
 - **SIESTA** (`5.4.2`) is cloned with submodules and built with cmake+Ninja, MPI +
   TranSiesta + ELPA + libxc + NetCDF all on. Its ELSI and the four ESL libraries
-  are SIESTA's own submodules — compiled in place, not separate steps.
+  are SIESTA's own submodules — compiled in place, not separate steps. cmake is
+  handed the env's own MPI compilers (`-DMPI_*_COMPILER`) rather than finding them
+  on `PATH`, so a system MPI first on the `PATH` is not what gets linked.
 
 The build is resumable (a sentinel per finished phase, and a component whose installed binary still answers is skipped whole). **Make sure you
 have enough free disk before starting**, and note that molbuilder does not
@@ -1229,29 +1231,27 @@ its own header documents the three and its error text names all three.
 
 ## 9. Test map
 
-- `test_envs_recipes.py` — the recipe registry shape (≥5 recipes, required fields,
-  the category↔env-name mapping).
+- `test_envs_recipes.py` — what every recipe must declare, no two recipes sharing
+  a name or an env, the default env names each having a recipe, and the host
+  env's psutil floor.
 - `test_the_machine_is_probed_on_first_use.py` — the CUDA version each GPU recipe
   carries at each of its three tiers, read off `envs install --dry-run`; and that
   a command needing neither the machine snapshot nor a recipe runs neither probe
   (`env-framework.md` § 3, plan W36 ⑥).
-- `test_envs_siesta_gpu_recipe.py` — the whole GPU build recipe (ELPA-tarball,
-  netcdf-fortran-tarball and SIESTA-cmake components, the toolchain pins, the
-  Fortran module-ABI fence of § 6.3 asserted as a relationship to the § 6.1 pin,
-  the argv templates). **Be precise about what it does and does not hold.**
-  **The rpath is asserted nowhere, on purpose.** The two tests that pinned
-  `-DCMAKE_INSTALL_RPATH` were deleted on 2026-09-19 once that flag was measured
-  to be discarded by SIESTA's own cmake — they were green over something inert,
-  which is worse than no test. Pre-existing assertions still pin ELPA's hook
-  lines and the env prefix on `CMAKE_PREFIX_PATH`; the `netcdf_fortran`
-  equivalents were deliberately not added, since a test that restates a build
-  option blocks a legitimate change to that option while proving nothing about
-  whether the build works. What checks the new component is the build itself
-  (§ 6.4): its `verify` phase compiles `use netcdf` with the env's own compiler,
-  and `siesta --version` closes the run. The argv-template gate does cover all
-  five phases including `verify`, because a shell-syntax error in a verify
-  payload would otherwise surface at step 10 of 15.
-- `test_envs_nfs_shmem_fix.py` — the NFS shared-memory hook + the host psutil floor.
+- `test_envs_siesta_gpu_recipe.py` — the GPU recipe's lines whose loss the build
+  does not show, or shows only after a long wait: the toolchain pins and the gcc
+  row of the SIESTA tag (§ 6.1), the one OpenMP runtime, the OpenMPI variants,
+  ELPA's GPU flags, SIESTA's features and its MPI compilers, the submodule clone,
+  the sysroot and readline lines, the argv templates in all five phases, and the
+  activate and deactivate hooks sourced in a shell (the NFS shared-memory fix
+  among them). **The rpath is asserted nowhere, on purpose.** The two tests that
+  pinned `-DCMAKE_INSTALL_RPATH` were deleted on 2026-09-19 once that flag was
+  measured to be discarded by SIESTA's own cmake — they were green over something
+  inert, which is worse than no test. A test that restates a build option blocks
+  a legitimate change to it while proving nothing about whether the build works,
+  so what checks the rest is the build itself (§ 6.4): its `verify` phase compiles
+  `use netcdf` with the env's own compiler, and `siesta --version` closes the run.
+  The Fortran module-ABI fence of § 6.3 has no test.
 - `test_envs_clean.py` — `molbuilder envs clean` (build dirs go, load-bearing dirs stay).
 - `test_envs_abi.py` — the build-time/run-time ABI contract (§ 6.2): version
   ordering, the host/env scope split, the rule table, and the compile-and-run

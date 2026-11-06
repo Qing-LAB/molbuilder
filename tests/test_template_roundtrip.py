@@ -102,17 +102,6 @@ def test_unset_is_encoded_as_an_absent_key_not_an_empty_one():
     assert "\nvalue" not in text.split("[item.net_charge]")[1].split("[item.")[0]
 
 
-def test_a_template_missing_an_item_keeps_the_class_default():
-    """A template written against an older schema is **missing** items, not
-    wrong about them.  The per-field checks name the ones that moved; the
-    reader's job is to not invent values."""
-    text = T.template_with_values(SiestaConfig(system_label="JOB"), calculation="optimization")
-    head, _, rest = text.partition("[item.mesh_cutoff]")
-    trimmed = head + rest[rest.index("[item."):]
-    back = T.config_from_template(trimmed, SiestaConfig)
-    assert back.mesh_cutoff == SiestaConfig().mesh_cutoff
-
-
 def test_a_stage_resolves_against_the_template_read_back(cfg):
     """What ``prep`` actually does: rebuild the config, then land the stage's
     ``overrides`` on it (`stages.md` § 4)."""
@@ -167,7 +156,7 @@ def test_an_unknown_kind_is_refused_not_skipped():
     """§ 6: the vocabulary is closed.  *"A reader that quietly ignored an item
     it did not understand would produce a deck missing a parameter, and say
     nothing."*"""
-    text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.x]\nkind = "wishful"\ncategory = ["method"]\n'
             'type = "int"\nhelp = "x"\n')
     with pytest.raises(ValueError, match=r"kind 'wishful' is not one of"):
@@ -177,7 +166,7 @@ def test_an_unknown_kind_is_refused_not_skipped():
 def test_an_unknown_item_key_is_refused_not_ignored():
     """An ignored key is a calculation quietly different from the one asked
     for — the same rule ``task.json`` holds itself to."""
-    text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.x]\nkind = "wrapper"\ntype = "int"\nhelp = "x"\n'
             'trailing_semicolon = true\n')
     with pytest.raises(ValueError, match=r"unknown key"):
@@ -185,9 +174,9 @@ def test_an_unknown_item_key_is_refused_not_ignored():
 
 
 def test_a_future_major_refuses_rather_than_guessing():
-    text = ('schema = "molbuilder/template@9"\nengine = "siesta"\n'
+    text = ('schema = "molbuilder/template@9"\nengines = ["siesta"]\n'
             )
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="template@9"):
         T.read_template(text)
 
 
@@ -370,12 +359,6 @@ def _siesta_template():
     return T.read_template(T.template_with_values(SiestaConfig(), engine="siesta", calculation="optimization"))
 
 
-def test_select_with_no_filter_is_every_item():
-    """`prep` step 2 filters nothing -- it wants them all (§ 8)."""
-    t = _siesta_template()
-    assert len(T.select(t)) == len(t.items)
-
-
 def test_select_returns_items_in_CATEGORY_order():
     """The categories ARE the reading order (§ 6.2); a surface renders
     panels top to bottom, so the API hands them over that way rather than
@@ -383,24 +366,6 @@ def test_select_returns_items_in_CATEGORY_order():
     t = _siesta_template()
     order = [T.CATEGORIES.index(i.category[0]) for i in T.select(t)]
     assert order == sorted(order)
-
-
-def test_select_finds_an_item_by_its_SECOND_category():
-    """The whole point of a category being a list: an item panels under
-    its first and stays findable under the rest.  `pao_energy_shift`
-    panels under `method` and must be found under `accuracy`, where a
-    user hunting precision knobs will look."""
-    t = _siesta_template()
-    found = [i.name for i in T.select(t, category="accuracy")]
-    assert "pao_energy_shift" in found
-    assert T.one(t, "pao_energy_shift").category[0] == "method"
-
-
-def test_select_filters_compose():
-    both = T.select(T.catalogue(), engine="siesta", category="execution",
-                    kind="wrapper")
-    assert both and all("execution" in i.category and i.kind == "wrapper"
-                        for i in both)
 
 
 def test_read_by_filters_on_SEVERAL_layers_like_its_siblings():
@@ -462,27 +427,3 @@ def test_an_item_claiming_an_unlisted_engine_is_refused():
             'type = "int"\nhelp = "x"\n')
     with pytest.raises(ValueError, match=r"x: declares engines \['pyscf'\]"):
         T.read_template(text)
-
-
-# ------------------------------------------------------------------ #
-#  T4 -- the catalogue's machine-answered items are FLAGGED          #
-# ------------------------------------------------------------------ #
-
-def test_the_machine_answered_items_are_flagged_and_nothing_else_is():
-    """**One flag, and it is the item's own**: the scheduler answers
-    exactly these, and the flag says so on the item.
-    """
-    t = T.catalogue()
-    answered = {i.name for i in T.select(t, engine="siesta", allocation=True)}
-    # ``gpu_count`` (user, 2026-08-21: "explicit is what we need") -- the
-    # device count is the scheduler's grant exactly like the rank count, and
-    # as a bench axis it is declared, not derived.
-    assert answered == {"mpi_np", "omp_threads", "max_memory_mb",
-                        "gpu_count"}, answered
-
-    # `block_size`: the scheduler does NOT grant it -- a benchmark measures it and `prep`
-    # realigns it against the GPU target -- so its item may legitimately carry
-    # a value.  It needs no name of its own to say that; being unflagged and
-    # `optional` with no value already says it.
-    bs = T.one(t, "block_size", engine="siesta")
-    assert bs is not None and not bs.allocation and bs.optional

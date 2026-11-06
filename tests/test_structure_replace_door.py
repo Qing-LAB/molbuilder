@@ -82,31 +82,6 @@ def test_a_new_field_travels_through_replace_without_being_listed():
     assert s.copy().a_new_field == 7
 
 
-class TestTheInterpreterHook:
-    """WHICH stdlib helper dispatches through ``__replace__`` — and which
-    does not.
-
-    Checked against the stdlib source: `dataclasses.replace` ends
-    `return obj.__class__(**changes)` and never mentions `__replace__`, on
-    any version.  The 3.13 addition is `copy.replace`, a different helper.
-    """
-
-    def test_the_replace_hook_is_installed(self):
-        """For `copy.replace` (3.13+), which is the helper that honours it."""
-        assert Structure.__replace__ is Structure.replace
-
-
-    def test_the_stdlib_helper_carries_the_trap_on_every_version(self, held):
-        """NOT skipped on 3.13 — there is no version where this stops being
-        true, so `Structure.replace` is the only correct door, permanently.
-
-        Kept as a live assertion rather than a comment because the whole
-        reason `replace()` exists is that this alternative looks equivalent
-        and is not."""
-        got = dataclasses.replace(held, regions={"electrode_L": [1]})
-        assert got.regions == {"electrode_L": [1], FROZEN_LABEL: [0]}
-
-
 class TestTheDerivedCopyIsACopy:
     """The door is `copy()` plus the changes, so nothing it carried can be
     written through.

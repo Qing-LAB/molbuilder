@@ -6,9 +6,7 @@ writes its log beside it -- ``<base>.parse.log``, or
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-from molbuilder.parse._log import ParseLogger, _sidecar_path
+from molbuilder.parse._log import ParseLogger
 
 
 # ----------------------------------------------------------------- #
@@ -16,14 +14,19 @@ from molbuilder.parse._log import ParseLogger, _sidecar_path
 # ----------------------------------------------------------------- #
 
 
-def test_a_progress_logs_parse_log_is_its_own_row():
+def test_a_progress_logs_parse_log_is_its_own_row(tmp_path, monkeypatch):
     """`project-layout.md` § 5.3 lists two parse logs: ``<base>.parse.log``,
     and the progress log's own, ``<base>.molwatch.parse.log`` -- the one
     name the parse log's writer decides (the rest are `named_beside`'s).
     THE SILENT FAILURE: a progress log's parse log named as an output's,
     ``job_01_relax.parse.log``, beside the output's own."""
-    assert _sidecar_path("/x/job_01_relax.molwatch.log") == Path(
-        "/x/job_01_relax.molwatch.parse.log")
+    monkeypatch.setenv("MOLBUILDER_PARSE_LOG", "1")
+    read = tmp_path / "job_01_relax.molwatch.log"
+    read.write_text("x\n")
+    with ParseLogger(str(read), parser_name="test") as log:
+        log.warn("it was read", line_no=1)
+    assert (tmp_path / "job_01_relax.molwatch.parse.log").is_file()
+    assert not (tmp_path / "job_01_relax.parse.log").exists()
 
 
 # ----------------------------------------------------------------- #

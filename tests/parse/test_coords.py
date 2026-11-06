@@ -16,20 +16,6 @@ import pytest
 from molbuilder.parse import detect
 from molbuilder.parse.coords import PySCFGeomFileParser, SiestaXVFileParser
 from molbuilder.parse.errors import UnknownFormatError
-from molbuilder.parse.registry import _registered_file_parsers
-
-
-REPO = Path(__file__).resolve().parents[2]
-
-
-# Registration --------------------------------------------------------- #
-
-
-def test_coords_parsers_registered():
-    names = {p.name for p in _registered_file_parsers()}
-    assert "siesta-xv" in names
-    assert "pyscf-geom" in names
-    assert "pdb" in names
 
 
 # --------------------------------------------------------------------- #
@@ -135,13 +121,20 @@ def test_a_pdb_that_holds_no_coordinates_is_refused(tmp_path: Path):
 
 
 def test_siesta_xv_claims_uppercase_extension(tmp_path: Path):
-    """Capital ``.XV`` is the SIESTA convention; lowercase isn't."""
+    """Capital ``.XV`` is the SIESTA convention; lowercase isn't.
+
+    Asked of the REGISTRY, as the Results listing asks of each file.  THE
+    SILENT FAILURE: the parser dropped from the registry, so a run's final
+    coordinates are listed as nothing anyone can open -- the class's own
+    ``can_parse`` still says yes.  `model/parse.md` § 3.
+    """
     xv = tmp_path / "test.XV"
     xv.write_text("dummy\n")
-    assert SiestaXVFileParser.can_parse(xv)
+    assert detect(str(xv)).name == "siesta-xv"
     xv_lower = tmp_path / "test.xv"
     xv_lower.write_text("dummy\n")
-    assert not SiestaXVFileParser.can_parse(xv_lower)
+    with pytest.raises(UnknownFormatError):
+        detect(str(xv_lower))
 
 
 def test_siesta_xv_doesnt_claim_xml(tmp_path: Path):
@@ -163,4 +156,3 @@ def test_pyscf_geom_doesnt_claim_plain_xyz(tmp_path: Path):
     p = tmp_path / "structure.xyz"
     p.write_text("0\n\n")
     assert not PySCFGeomFileParser.can_parse(p)
-

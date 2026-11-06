@@ -201,7 +201,7 @@ that possible; § 5 owns them now.*
 
 **`category` replaces `section`** in the inner legend, and that is the whole
 visible change: `section` was free text chosen per engine, so SIESTA's *"Basis &
-grid"* and PySCF's *"Method"* were unrelated words. The six categories are
+grid"* and PySCF's *"Method"* were unrelated words. The categories are
 shared, so the same card shows the same inner headings for both engines — which
 is what [`template.md`](?doc=engines/template.md) § 6.2 exists for.
 

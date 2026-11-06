@@ -783,69 +783,41 @@ class TestLoaderGate:
     states an offset (§ 6.0), so the seams have one thing to agree on: nothing
     is invented."""
 
-    def _write_pair_stating_no_offset(self, dirpath, v9_corner=None):
+    def _write_pair_stating_no_offset(self, dirpath):
         """A pair whose sidecar holds an explicit cell and NO origin, with the
         atoms outside it at the world origin — the hemeC state, and a legal one.
-        Written through the codec, as a save writes it.
-
-        ``v9_corner`` rewrites its sidecar as a molbuilder before v10 wrote it:
-        schema 9, carrying that retired ``cell_origin`` -- what the electrode
-        builder stored flush against the atoms, the placement TranSIESTA
-        refused -- its pin the retired ``structure_hash``, and none of the
-        keys v10-v13 added."""
-        import json as _json
-        from molbuilder.sidecars import molstruct
+        Written through the codec, as a save writes it."""
         from molbuilder.workingcopy_structure import StructureCodec
         s = _mol()                          # atoms near (10,10,10), vac 2.5
         s.cell = np.eye(3) * 7.0            # explicit cell, no origin,
         s.__post_init__()                   # atoms far outside [0, cell)
-        path = StructureCodec().write(s, dirpath / "m.xyz")
-        if v9_corner is not None:
-            sidecar = molstruct.sidecar_path_for(path)
-            side = _json.loads(sidecar.read_text(encoding="utf-8"))
-            for later in ("engine_offset", "offset_by", "customized",
-                          "n_frames_total", "geometry_hash"):
-                side.pop(later, None)
-            side.update(schema_version=9, structure_hash="0" * 64,
-                        cell_origin=list(v9_corner))
-            sidecar.write_text(_json.dumps(side), encoding="utf-8")
-        return path
+        return StructureCodec().write(s, dirpath / "m.xyz")
 
-    @pytest.mark.parametrize("v9_corner", [None, [10.0, 10.0, 10.0]],
-                             ids=["v10-automatic", "v9-with-a-retired-corner"])
-    def test_the_read_seam_invents_no_corner(self, tmp_path, v9_corner):
+    def test_the_read_seam_invents_no_corner(self, tmp_path):
         """The READ seam of the pair states nothing it did not read: no offset
         is invented, and the box the rule places wraps the atoms.
 
         Catches the hemeC divergence at its source: while the read seam invented
         an origin (or refused to derive one), the same file gave two answers
         depending on which door opened it, and re-saving it changed a file the
-        user had not edited.  And a v9 pair's `cell_origin` is RETIRED, not
-        migrated (D2): v9 cannot tell a corner somebody typed from the one the
-        electrode builder stored flush against the atoms.
+        user had not edited.
 
         Contract: `model/structure-periodicity.md` § 6.1 clause 2 (ONE gate, both
-        seams) + § 6.0; `structure-molstruct.md`, *v10*. Commemorates
+        seams) + § 6.0. Commemorates
         projects/hemeC-dithiol, observed live 2026-07-29.
         """
         from molbuilder.workingcopy_structure import StructureCodec
-        xyz = self._write_pair_stating_no_offset(tmp_path, v9_corner)
+        xyz = self._write_pair_stating_no_offset(tmp_path)
         out = StructureCodec().load(xyz)
         assert out.engine_offset is None, "an offset was invented on the read"
         assert cellmod.resolve(out).contains_atoms, (
             "the box is not drawn round the atoms")
 
-    @pytest.mark.parametrize("v9_corner", [None, [10.0, 10.0, 10.0]],
-                             ids=["v10-automatic", "v9-with-a-retired-corner"])
     def test_the_load_door_serves_the_rules_box_corner(
-            self, tmp_path, monkeypatch, v9_corner):
+            self, tmp_path, monkeypatch):
         """The same state, one layer out: `/api/build/load` serves the corner the rule
         places the box at, in `box_corner`, so the browser draws the box where the
         file means -- and states no offset, because the file states none.
-
-        And a v9 pair's retired `cell_origin` is said, not dropped in silence:
-        the answer names the corner it did not apply (plan § 5q D14), because a
-        person who typed it assigns it again on the Cell page.
 
         Catches the seam between the codec and the wire dropping the resolved half
         -- the exact live symptom of 2026-07-29, where MolView drew the box from
@@ -864,7 +836,7 @@ class TestLoaderGate:
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
         sdir = tmp_path / "projects" / "P" / "structure"
         sdir.mkdir(parents=True)
-        xyz = self._write_pair_stating_no_offset(sdir, v9_corner)
+        xyz = self._write_pair_stating_no_offset(sdir)
         set_capabilities(Capabilities(runtime_config={},
                                       conda_binary="/usr/bin/conda"))
         try:
@@ -872,13 +844,6 @@ class TestLoaderGate:
             client = create_app(config={}).test_client()
             r = client.post("/api/build/load", json={"path": str(xyz)})
             assert r.status_code == 200, r.get_json()
-            said = [n for n in r.get_json().get("notices") or []
-                    if n.get("where") == "cell.origin_retired"]
-            if v9_corner is None:
-                assert not said, said
-            else:
-                assert len(said) == 1 and "(10, 10, 10)" in said[0]["message"], (
-                    said)
             per = r.get_json()["periodicity"]
             assert per["engine_offset"] is None
             # Centred on the atoms (x 10..12, y and z at 10), stated as the
@@ -1137,8 +1102,6 @@ class TestDoorHygieneAndRemainingOps:
     door, not just the Python function, so the endpoint and the gate cannot
     drift apart.
     """
-    """Door error hygiene (approved batch item 2) + the door-op endpoint
-    pins the coverage audit called for."""
 
     @pytest.fixture
     def client(self):
@@ -1765,10 +1728,6 @@ class TestTheCellPageCanRepairWhatItRefuses:
                       positions=np.array([[0., 0., 0.], [0., 0., 1.]]))
         s.cell = np.array([[10., 0, 0], [0, 0, 10.], [0, 10., 0]])
         return s
-
-    def test_a_mirrored_cell_is_admitted_so_it_can_be_corrected(self):
-        """`__post_init__` refuses only a near-zero determinant."""
-        assert self._mirrored().cell is not None
 
     def test_setting_a_good_cell_over_a_mirrored_one_is_ACCEPTED(self):
         """The fix the refusal asks for -- 'swap any two of the three

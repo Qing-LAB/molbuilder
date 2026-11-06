@@ -17,8 +17,8 @@ to the project (`tabs.md` § 6).
 WHAT IS DELIBERATELY NOT HERE
 -----------------------------
 Coverage NOT reproduced here, recorded so its
-absence is a known hole rather than a silent one: the transform sub-tab
-(translate / rotate / centre), the by-residue and by-label filters' selections,
+absence is a known hole rather than a silent one: the transform sub-tab's
+translate and centre, the by-residue and by-label filters' selections,
 the measurement readout, the DNA/RNA/peptide generators and the findings their
 panels draw (`science/validation.md` § 4.1 R5), and the narrow-viewport
 layout.  Each needs writing from the contract the same way.
@@ -901,6 +901,129 @@ def test_an_edit_changes_the_structure_and_records_itself(
         timeout=_ACT_MS)
     assert "2 atoms" in page.locator("#edit-status").inner_text(), \
         "the op line reports the count off the structure the door handed back"
+
+
+# --------------------------------------------------------------------- #
+#  The edits that place atoms (molview § 11.1)                          #
+#                                                                       #
+#  THE SILENT FAILURE: a control renamed in the page, and `viewer.js`    #
+#  throwing on it the first time a person uses it.  Each is pressed      #
+#  here, and what the door answered read back.                           #
+# --------------------------------------------------------------------- #
+
+def _slide(page, slider: str, value) -> None:
+    """A range control moved as a drag moves it: its value, then the `input`
+    its readout listens to."""
+    page.locator(f"#{slider}").evaluate(
+        "(el, v) => { el.value = v;"
+        "  el.dispatchEvent(new Event('input', {bubbles: true})); }",
+        str(value))
+
+
+def _ready(page, button: str) -> None:
+    page.wait_for_function(
+        "(id) => !document.getElementById(id).disabled",
+        arg=button, timeout=_ACT_MS)
+
+
+def _applied(page, op: str, button: str) -> dict:
+    """``button`` pressed: the structure its door answered the page."""
+    with page.expect_response(
+            lambda r: r.url.endswith(f"/api/modify/{op}"),
+            timeout=_ACT_MS) as answered:
+        page.locator(f"#{button}").click()
+    answer = answered.value.json()
+    assert answer["ok"] is True, answer
+    return answer["structure"]
+
+
+def _said(page, words: str) -> None:
+    """The op line says ``words``."""
+    page.wait_for_function(
+        "(w) => document.getElementById('edit-status').textContent"
+        "  .includes(w)", arg=words, timeout=_ACT_MS)
+
+
+def test_add_atom_lands_where_its_sliders_say_from_the_picked_atom(
+        page, flask_server, labelled_xyz):
+    """The new atom is the element typed, at the offset the sliders show from
+    the one atom selected (molview § 11.1), and the readouts say so before
+    anything is sent."""
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    _pick_atom(page, 2)                       # H at (0.957, 0, 0)
+    page.wait_for_function(
+        "() => document.getElementById('add-anchor-readout').textContent"
+        "  .includes('#2 H')", timeout=_ACT_MS)
+
+    page.locator("#add-element").fill("F")
+    _slide(page, "add-dx", 0.5)
+    _slide(page, "add-dy", 0)
+    _slide(page, "add-dz", 1.5)
+    assert page.locator("#add-dx-val").inner_text() == "0.50"
+    assert page.locator("#add-dy-val").inner_text() == "0.00"
+    assert page.locator("#add-dz-val").inner_text() == "1.50"
+    assert page.locator("#add-distance").inner_text().startswith("1.58")
+
+    _ready(page, "add-apply")
+    made = _applied(page, "add_atom", "add-apply")
+    assert made["elements"] == ["O", "H", "H", "F"]
+    assert made["positions"][3] == pytest.approx([1.457, 0.0, 1.5], abs=1e-3)
+    _said(page, "4 now")
+    assert _atom_count(page) == 4
+
+
+def test_orient_lays_the_two_picked_atoms_at_the_tilt_its_controls_say(
+        page, flask_server, labelled_xyz):
+    """First → second at the tilt shown from the axis chosen, the first at the
+    origin when Center says so (`modify.orient_along_axis`; molview § 11.1:
+    the anchors are the ruler's, in click order).  O→H is 0.957 Å, tilted 30°
+    from y in the yz-plane."""
+    import math
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-transform").click()
+    _pick_atom(page, 1)                       # O at the origin
+    _pick_atom(page, 2)                       # H at (0.957, 0, 0)
+    _ready(page, "orient-apply")
+    anchors = page.locator("#orient-anchor-readout").inner_text()
+    assert "#1 O" in anchors and "#2 H" in anchors, anchors
+
+    page.locator("input[name='orient-axis'][value='y']").check()
+    _slide(page, "orient-angle", 30)
+    assert page.locator("#orient-angle-val").inner_text() == "30°"
+    page.locator("#orient-center").select_option("first")
+
+    made = _applied(page, "orient", "orient-apply")
+    tilt = math.radians(30)
+    assert made["positions"][0] == pytest.approx([0.0, 0.0, 0.0], abs=1e-6)
+    assert made["positions"][1] == pytest.approx(
+        [0.0, 0.957 * math.cos(tilt), 0.957 * math.sin(tilt)], abs=1e-3)
+    _said(page, "Oriented (y, tilt 30°)")
+
+
+def test_rotate_turns_the_structure_by_the_angle_its_slider_says(
+        page, flask_server, labelled_xyz):
+    """About the axis chosen, around the centroid by default (molview § 11.1):
+    +90° about z takes (x, y) to (-y, x), measured from the centroid."""
+    import numpy as np
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-transform").click()
+    _ready(page, "rotate-apply")
+
+    page.locator("input[name='rotate-axis'][value='z']").check()
+    _slide(page, "rotate-angle", 90)
+    assert page.locator("#rotate-angle-val").inner_text() == "90°"
+
+    made = _applied(page, "rotate", "rotate-apply")
+    drawn = np.array([[0.000, 0.000, 0.000], [0.957, 0.000, 0.000],
+                      [-0.239, 0.927, 0.000]])
+    centroid = drawn.mean(axis=0)
+    away = drawn - centroid
+    want = centroid + np.c_[-away[:, 1], away[:, 0], away[:, 2]]
+    assert np.allclose(made["positions"], want, atol=1e-3), made["positions"]
+    _said(page, "Rotated 90° around z")
 
 
 # --------------------------------------------------------------------- #

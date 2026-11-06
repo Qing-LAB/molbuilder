@@ -184,23 +184,36 @@ def test_the_toolchain_shim_step_actually_creates_the_links(tmp_path):
     assert re.search(r"created 0 bare-name", cp2.stderr), cp2.stderr
 
 
-def test_the_verify_step_only_warns_about_a_foreign_gcc():
+def test_the_verify_step_only_warns_about_a_foreign_gcc(tmp_path):
     """The toolchain check must NOT fail an env that merely predates the
-    shims -- it warns and names the remedy.  Asked of the generated verify
-    command itself: running it runs the env's SIESTA, and no engine runs in
-    a basic test (plan § 5y); the env's own install runs it whole."""
+    shims -- it warns, names the remedy, and the verify goes on.
+
+    The generated check itself, EXECUTED with a `gcc` outside the env; only
+    that part of the command, because the rest of it runs the env's SIESTA, and
+    no engine runs in a basic test.  A `molbuilder` on PATH writes down that it
+    ran: a backticked remedy inside the double-quoted echo would EXECUTE, an
+    install inside an install (this file's header)."""
     recipe = R.recipe_by_name("molbuilder-siesta-gpu")
     script = recipe.verify_argv[-1]
-    warning = next(arm for arm in script.split(";;")
-                   if "WARNING: bare gcc resolves to" in arm)
-    # A WARNING, NOT A GATE: the arm echoes to stderr and stops nothing.
-    assert warning.rstrip().endswith(">&2"), warning
-    assert "exit" not in warning and "false" not in warning, warning
+    start = script.index('case "$(command -v gcc)" in')
+    check = script[start:script.index("esac;", start) + len("esac;")]
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ran = tmp_path / "the-remedy-ran"
+    for name, body in (("gcc", "exit 0"), ("molbuilder", f'touch "{ran}"')):
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    cp = subprocess.run(["bash", "-c", check + " echo went-on"],
+                        capture_output=True, text=True, timeout=20,
+                        env={"PATH": f"{bin_dir}:/usr/bin:/bin",
+                             "CONDA_PREFIX": str(tmp_path / "env")})
+
+    # A WARNING, NOT A GATE.
+    assert cp.returncode == 0 and "went-on" in cp.stdout, (cp.stdout, cp.stderr)
+    assert "WARNING: bare gcc resolves to" in cp.stderr, cp.stderr
+    assert not ran.exists(), "the remedy was executed, not said"
     # ...and the remedy NAMES A REGISTERED RECIPE: `recipe_by_name` takes
     # canonical names only, so a remedy naming `siesta-gpu` hands you
     # "unknown recipe 'siesta-gpu'", exit 2.
-    assert f"install {recipe.name}" in warning, warning
-    assert R.recipe_by_name(recipe.name) is recipe
-    assert "`" not in warning, (
-        "a backtick in the warning would be command substitution inside the "
-        f"double-quoted echo -- the remedy would EXECUTE:\n{warning}")
+    assert f"install {recipe.name}" in cp.stderr, cp.stderr

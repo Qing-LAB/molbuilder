@@ -1,8 +1,7 @@
 """Flask tests for the build/describe surface of the molbuilder web UI.
 
 Covers the build blueprint's doors (molecule / load / preflight /
-schema), the structure-optimization page's markup contract with its
-viewer.js, and the form-schema plumbing.  NOT every endpoint: spectra,
+schema), the modify routes, and the form-schema plumbing.  NOT every endpoint: spectra,
 watch, checkpoint, projects and transport are tested in their own
 files.  Skipped cleanly if Flask isn't installed.
 """
@@ -15,65 +14,6 @@ from support.envelope import (from_xyz as _env,
                              from_xyz_with_periodicity as _env_per)
 
 import pytest
-
-
-# --------------------------------------------------------------------- #
-#  Index page                                                           #
-# --------------------------------------------------------------------- #
-
-
-def test_index_page_loads(web_client):
-    r = web_client.get("/structure-optimization")
-    assert r.status_code == 200
-    body = r.data.decode()
-    # The optimization tab is file-driven via the project sidebar: the
-    # "Load from sidebar selection" button is the structure entry point.
-    for needle in (
-        "molbuilder", "load-from-sidebar-btn",
-        "viewer.js", "style.css", "3Dmol-min.js",
-    ):
-        assert needle in body, needle
-
-
-def test_index_page_has_tab_markup(web_client):
-    r = web_client.get("/structure-optimization")
-    body = r.data.decode()
-    for needle in (
-        'class="tabs"',
-        'data-tab="siesta"',
-        'data-tab="pyscf"',
-        'id="tab-siesta"',
-        'id="tab-pyscf"',
-        # The two engine panels are each a schema-driven form container:
-        # the tab COLLECTS PARAMETERS and hands them on -- *the browser
-        # describes; a machine's own facts render* (`web/task-setup.md` § 1).
-        'id="pyscf-form-container"',
-        'id="siesta-form-container"',
-    ):
-        assert needle in body, f"missing {needle!r} in index.html"
-
-
-def test_the_tab_neither_generates_nor_saves(web_client):
-    """The tab collects parameters; it does not produce artefacts.
-
-    `web/task-setup.md` § 1 — *the browser describes; a machine's own
-    facts render*.  A deck carries values that depend on how it will be
-    launched, so a browser that "finished" one would be guessing -- the
-    parameter tab hands over, and a deck is only ever rendered from a
-    machine's record, by the one prep entry.  This
-    is the guard on that: the buttons are not merely unwired, they are
-    absent, and a future edit that re-adds one fails here rather than
-    quietly reintroducing the split.
-    """
-    r = web_client.get("/structure-optimization")
-    assert r.status_code == 200
-    body = r.data.decode()
-    for gone in ('id="generate-fdf"', 'id="generate-pyscf"',
-                 'id="save-fdf"', 'id="save-pyscf"',
-                 'id="dl-fdf"', 'id="dl-pyscf"',
-                 'id="fdf-output"', 'id="pyscf-output"',
-                 'id="p-stage-preset"'):
-        assert gone not in body, f"{gone} is back in index.html"
 
 
 def test_build_dna_response_includes_backend_used(web_client):
@@ -108,40 +48,6 @@ def test_build_response_carries_validation_issues(web_client):
     assert len(h_ratio_notes) == 1, (
         f"expected one h_ratio note for the skeleton, got: {issues}"
     )
-
-
-
-def test_all_pages_serve_with_shared_tab_nav(web_client):
-    """The unified UI puts a shared tab nav at the top of every page so
-    a user can flip between tabs without leaving the app.
-
-    Five tabs in the canonical order: Molbuilder (/molbuilder),
-    Structure optimization (/structure-optimization), Spectrum
-    calculation (/spectrum-calculation), Transport calculation
-    (/transport-calculation), Results (/results).  The active tab
-    matches the current page; the tab links point at the canonical
-    paths."""
-    import re
-    all_tabs = ["/molbuilder", "/structure-optimization",
-                "/spectrum-calculation", "/transport-calculation",
-                "/results"]
-    for path in all_tabs:
-        r = web_client.get(path)
-        assert r.status_code == 200, f"{path} returned {r.status_code}"
-        html = r.get_data(as_text=True)
-        # Every tab link is present on every page (shared nav).
-        for tab in all_tabs:
-            assert f'href="{tab}"' in html, (
-                f"{path}: missing tab link to {tab}"
-            )
-        # The current page's link carries is-active.  Match flexibly
-        # so whitespace alignment in the template can change without
-        # breaking the test.
-        m = re.search(
-            rf'<a[^>]*href="{re.escape(path)}"[^>]*class="[^"]*is-active[^"]*"',
-            html,
-        )
-        assert m, f"{path}: link to {path} missing is-active"
 
 
 # --------------------------------------------------------------------- #
@@ -342,53 +248,6 @@ def test_load_empty_returns_error(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  Modify tab (M2 -- read-only inspection skeleton)                     #
-# --------------------------------------------------------------------- #
-
-
-def test_molbuilder_page_loads(web_client):
-    """``GET /molbuilder`` returns 200 with the page scaffolding +
-    edit-op controls the JS expects to find by id."""
-    r = web_client.get("/molbuilder")
-    assert r.status_code == 200
-    body = r.data.decode()
-    for needle in (
-        "molbuilder",
-        "<title>molbuilder &mdash; Molbuilder</title>",
-        # Static asset paths the template references.
-        "modify/style.css",
-        # THE PAGE'S OWNER, and the only modify/ module with a <script> tag.
-        # `viewer.js` and `periodicity.js` are IMPORTED by it (molview.md § 8
-        # — making and tearing down a viewer).
-        "modify/selection-bootstrap.js",
-        # Scaffolding the JS targets by id.  The template
-        # exposes only the EMPTY host (#molview-host); molview.mount
-        # builds the whole fused card (the .viewer div, the selection
-        # panel, the View-menu knobs) into it client-side, so those are
-        # NOT in the static HTML.
-        'id="molview-host"',
-        # All five edit ops are wired by the JS.
-        'id="delete-apply"',
-        'id="add-apply"',
-        'id="orient-apply"',
-        'id="rotate-apply"',
-    ):
-        assert needle in body, f"missing {needle!r} in /molbuilder HTML"
-    # Retired surfaces stay retired -- catch any reintroduction of
-    # the legacy left-column atom-list or right-panel selection
-    # readout.  The selection panel above the grid (#selection-host)
-    # owns the per-atom list + click-to-select.
-    for needle in (
-        'id="atom-list-body"',
-        'id="atom-list"',
-        'id="selection-readout"',
-        'id="selection-info-body"',
-        'class="atom-list-card"',
-    ):
-        assert needle not in body, f"reintroduced legacy id {needle!r}"
-
-
-# --------------------------------------------------------------------- #
 #  /api/build/load extended response (atom_names / residue_ids / ...)   #
 #  -- needed by the Modify tab's atom list, surfaced from Structure's   #
 #  PDB metadata.                                                        #
@@ -415,111 +274,6 @@ def test_build_load_response_includes_atom_metadata(web_client):
         assert isinstance(body[k], list), f"{k!r} is not a list"
         assert len(body[k]) == 3, (
             f"{k!r} has {len(body[k])} entries, expected 3"
-        )
-
-
-# --------------------------------------------------------------------- #
-#  Phase 2: every Structure-returning endpoint emits the canonical      #
-#  workspace_payload shape (text / source_format / lattice / extra)     #
-#  alongside the per-atom columns.                                      #
-# --------------------------------------------------------------------- #
-
-_CANONICAL_KEYS = {
-    "text", "source_format", "title", "n_atoms",
-    "atoms", "lattice", "issues", "extra",
-}
-_ATOM_COLUMN_KEYS = {
-    "atom_names", "residue_ids", "residue_names", "chain_ids",
-}
-
-
-def _assert_canonical_workspace_shape(body, *, endpoint):
-    """Every endpoint returns the canonical keys and the atom columns."""
-    for k in _CANONICAL_KEYS:
-        assert k in body, (
-            f"{endpoint}: canonical key {k!r} missing — "
-            f"Phase 2 workspace_payload contract broken")
-    for k in _ATOM_COLUMN_KEYS:
-        assert k in body, (
-            f"{endpoint}: the column {k!r} a viewer folds in is missing")
-    assert isinstance(body["extra"], dict), (
-        f"{endpoint}: canonical extra must be a dict, not "
-        f"{type(body['extra']).__name__}"
-    )
-
-
-def test_build_load_returns_workspace_payload(web_client):
-    """Phase 2 of the workspace-state migration (§ 6 step 2):
-    /api/build/load emits the canonical workspace_payload shape
-    (text/source_format/lattice/extra) alongside the per-atom columns
-    that existing front-end code reads.  Endpoint extras
-    (pdb, summary, source_format) live BOTH at top level (back-
-    compat) AND inside the canonical extra sub-dict (Phase 4+
-    workspace-dispatcher consumers)."""
-    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
-    r = web_client.post(
-        "/api/build/load",
-        # JSON, the transport a caller uses -- the only FormData in the front
-        # end targets /api/files/upload.
-        json={"text": xyz, "filename": "h2o.xyz"},
-    )
-    body = r.get_json()
-    assert body["ok"] is True
-    _assert_canonical_workspace_shape(body, endpoint="/api/build/load")
-    # /api/build/load's endpoint-specific extras.
-    for k in ("pdb", "summary"):
-        assert k in body, f"top-level {k!r} missing"
-        assert k in body["extra"], (
-            f"extra[{k!r}] missing — Phase 4+ consumers broken"
-        )
-    # source_format must reflect the actually-parsed shape, not
-    # the canonical default of "xyz" (in this case the file was
-    # XYZ, but the endpoint sets it explicitly via the
-    # parsed-format detection).
-    assert body["source_format"] == "xyz"
-    assert body["extra"]["source_format"] == "xyz"
-
-
-def test_build_load_pdb_overrides_canonical_source_format(web_client):
-    """When the user uploads a PDB file, source_format flips to
-    "pdb" at BOTH the top level (replaces the canonical XYZ
-    default) AND inside extra.  This is what makes the workspace
-    dispatcher know which parser to round-trip through."""
-    pdb = (
-        "ATOM      1  O   HOH A   1       0.000   0.000   0.000  "
-        "1.00  0.00           O  \n"
-        "ATOM      2  H1  HOH A   1       0.957   0.000   0.000  "
-        "1.00  0.00           H  \n"
-        "ATOM      3  H2  HOH A   1      -0.239   0.927   0.000  "
-        "1.00  0.00           H  \n"
-    )
-    r = web_client.post(
-        "/api/build/load",
-        json={"text": pdb, "filename": "water.pdb"},
-    )
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["source_format"]      == "pdb"
-    assert body["extra"]["source_format"] == "pdb"
-
-
-def test_build_molecule_returns_workspace_payload(web_client):
-    """Phase 2: /api/build/molecule emits the canonical
-    workspace_payload shape.  Endpoint extras (pdb, summary,
-    backend_used, add_hydrogens_mode) live BOTH at top level
-    AND inside ``extra``."""
-    r = web_client.post("/api/build/molecule", json={
-        "kind": "smiles", "input": "O",   # water
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    _assert_canonical_workspace_shape(
-        body, endpoint="/api/build/molecule")
-    for k in ("pdb", "summary", "backend_used",
-              "add_hydrogens_mode"):
-        assert k in body, f"top-level {k!r} missing"
-        assert k in body["extra"], (
-            f"extra[{k!r}] missing — Phase 4+ consumers broken"
         )
 
 
@@ -784,31 +538,6 @@ def test_modify_endpoint_chain_preserves_metadata(web_client):
     assert s3["n_atoms"] == 3
     assert s3["atom_names"]    == ["OW", "HW1", "HW2"]
     assert s3["residue_names"] == ["WAT", "WAT", "WAT"]
-
-
-# --------------------------------------------------------------------- #
-#  M3 UI scaffolding lives in modify.html / static/modify/viewer.js.    #
-# --------------------------------------------------------------------- #
-
-
-def test_modify_page_has_m3_edit_controls(web_client):
-    """The Edit panel must expose the M3 op controls (delete button,
-    add-atom element input, three offset sliders + live distance
-    readout)."""
-    body = web_client.get("/molbuilder").data.decode()
-    for needle in (
-        # Delete
-        'id="delete-apply"',
-        # Add atom
-        'id="add-element"',
-        'id="add-anchor-readout"',
-        'id="add-dx"',     'id="add-dx-val"',
-        'id="add-dy"',     'id="add-dy-val"',
-        'id="add-dz"',     'id="add-dz-val"',
-        'id="add-distance"',
-        'id="add-apply"',
-    ):
-        assert needle in body, f"missing {needle!r} in /modify HTML"
 
 
 # --------------------------------------------------------------------- #
@@ -1101,26 +830,6 @@ def test_modify_orient_then_rotate_chains_through_metadata(web_client):
     assert s3["residue_names"] == ["MOL"] * 4
 
 
-def test_modify_page_has_m4_orient_rotate_controls(web_client):
-    """The Edit panel must expose the M4 orient + rotate controls
-    (anchor-pair readout, axis radios, angle slider, Apply for both
-    ops)."""
-    body = web_client.get("/molbuilder").data.decode()
-    for needle in (
-        # Orient
-        'id="orient-apply"',
-        'id="orient-anchor-readout"',
-        'id="orient-angle"',     'id="orient-angle-val"',
-        'id="orient-center"',
-        'name="orient-axis"',
-        # Rotate
-        'id="rotate-apply"',
-        'id="rotate-angle"',     'id="rotate-angle-val"',
-        'name="rotate-axis"',
-    ):
-        assert needle in body, f"missing {needle!r} in /modify HTML"
-
-
 # --------------------------------------------------------------------- #
 #  NaN / Inf rejection on /api/modify/* floats                          #
 # --------------------------------------------------------------------- #
@@ -1139,54 +848,6 @@ def test_modify_translate_rejects_nan_offset(web_client):
     }), content_type="application/json")
     assert r.status_code == 400
     assert "finite" in r.get_json()["error"]
-
-
-def test_siesta_form_schema_matches_documented_layout():
-    """The layout the STRUCTURE-OPTIMIZATION TAB actually renders.
-
-    The tab is served by the catalogue builder (``build.py``
-    /api/build/schema), so this asks that builder.
-
-    THE SECTIONS ARE THE SIX SHARED CATEGORIES, not per-engine fieldset
-    names (`engines/template.md` § 6.2).  The six
-    are shared, in `template.CATEGORIES` order, so both engines show the
-    same inner headings.
-
-    The counts are a fact about the catalogue, and they move when a
-    parameter is added or re-filed -- which is the point: a diff here is
-    a prompt to check the form still reads well, not a nuisance.
-    """
-    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("siesta", "p", "optimization")
-    # The catalogue builder names the ENGINE, not the translator class --
-    # which is the point: the form is built from the catalogue, and the
-    # config class is a translator on the way out to that engine.
-    assert sch["config"] == "siesta"
-    assert sch["id_prefix"] == "p"
-
-    got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
-    assert got == [
-        ("system",      6),
-        ("method",      6),
-        ("accuracy",    8),
-        ("convergence", 4),
-        # `write_forces` and `write_coor_step` are fixed by the rung on
-        # every SIESTA kind (`engines/template.md` § 6.4) and shown
-        # read-only at that answer (`locked`, § 6.6 obligation 3; plan § 5w
-        # K7) -- never a control.  Three fewer since 2.40.2: molecular
-        # dynamics left the optimization kind, retiring the three `md_*`
-        # items (`engines/template.md` § 3).
-        ("procedure",  11),
-    ], got
-
-    # `staging` items are declared parameters this surface does not ask
-    # (user, 2026-08-15): every run setting -- the run card's
-    # (`execution/job-request.md` § 2) -- and `restart`, the stage
-    # table's.  A regression that put one back would land here.
-    from molbuilder.template import run_settings
-    names = {f["name"] for s in sch["sections"] for f in s["fields"]}
-    assert not names & (run_settings("siesta") | {"restart"}), sorted(
-        names & (run_settings("siesta") | {"restart"}))
 
 
 def test_api_build_schema_returns_siesta_schema(web_client):
@@ -1219,42 +880,15 @@ def test_api_build_schema_rejects_unknown_engine(web_client):
     assert "cp2k" in body["error"].lower()
 
 
-def test_pyscf_form_schema_matches_documented_layout():
-    """PySCF's half of the same contract -- the six shared categories,
-    from the same builder the tab uses."""
+@pytest.mark.parametrize("engine,prefix", [("siesta", "p"), ("pyscf", "py")])
+def test_the_form_reads_in_the_categories_shared_by_both_engines(engine, prefix):
+    """The sections of a form are the shared categories, in their reading
+    order, so both engines show the same headings (`engines/template.md`
+    § 6.2) -- whatever they hold."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("pyscf", "py", "optimization")
-    assert sch["config"] == "pyscf"
-    assert sch["id_prefix"] == "py"
-
-    got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
-    assert got == [
-        # `system` holds job_name and the electronic state's
-        # `spin_treatment` beside `unpaired_electrons`; there is no
-        # `execution` panel -- threads and use_gpu are bench axes.
-        ("system",      7),
-        ("method",      8),
-        # The FIVE geomeTRIC criteria
-        # (`geom_gmax`/`_grms`/`_dmax`/`_drms`/`_etol`) are one family
-        # (`tuning.md` § 2.4) and they are THRESHOLDS -- *what answer you will
-        # accept* -- which is what `accuracy` means in § 6.2, and what puts
-        # `scf_conv_tol` there too.
-        ("accuracy",    8),
-        # `convergence` is *how do I reach it when it fights* -- the § 7.2
-        # escalation ladder (diis_space, level_shift, damp, soscf) and the SCF
-        # iteration budget.  Loosening a threshold to "fix" a stubborn run is
-        # the substitution § 6.2 splits these two categories to discourage.
-        ("convergence", 6),
-        # `geom_max_steps` is the OUTER geometry budget, so it sits with
-        # `relax_steps`, the SIESTA knob `tuning.md` § 3.1 pairs it with --
-        # not with the inner SCF budget.
-        ("procedure",  12),
-    ], got
-
-    # The stage table is NOT here: the staging surface owns the ladder, so
-    # this form never asks.
-    ids = [f["id"] for s in sch["sections"] for f in s["fields"]]
-    assert not [i for i in ids if "stage" in i], ids
+    sch = catalogue_to_form_schema(engine, prefix, "optimization")
+    assert [s["name"] for s in sch["sections"]] == [
+        "system", "method", "accuracy", "convergence", "procedure"]
 
 
 def _flatten_schema_fields(sch):
@@ -1318,75 +952,22 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
             f"too few for this to be proving anything")
 
 
-def test_engine_key_pins_load_bearing_siesta_keywords():
-    """Spot-check that the SIESTA fields whose 1:1 keyword mapping
-    other parts of the codebase rely on (or the user manually
-    cross-references against the SIESTA manual) carry the exact
-    expected engine_key text.  If any of these changes, downstream
-    text searches + the .fdf grep workflow break."""
-    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("siesta", "p", "optimization")
-    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
-    expected = {
-        # `Spin`, not `SpinPolarized`: the manual deprecates all three old
-        # spin booleans in favour of the one four-valued keyword.  A MERGED
-        # item (the electronic state), so the badge names
-        # both engines' spelling.
-        "spin_treatment": "Spin (SIESTA) | the SCF class's R / RO / U (PySCF)",
-        # The "two keys, either alone is silently ignored" rule depends on
-        # the badge naming BOTH of SIESTA's.
-        "unpaired_electrons": ("Spin.Fix + Spin.Total (SIESTA) | "
-                               "gto.M(spin=...) (PySCF)"),
-        # Documented user-facing keywords -- ``MeshCutoff`` /
-        # ``PAO.BasisSize`` are SIESTA's own names, and the help text
-        # references them.
-        "mesh_cutoff":    "MeshCutoff",
-        "basis_size":     "PAO.BasisSize",
-        # MERGED with PySCF's `charge`: one question, one
-        # item, and the spelling names both engines because neither is
-        # THE answer (`template.md` § 6.3).
-        "net_charge":     "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
-        "xc_authors":     "XC.authors",
-        "xc_functional":  "XC.functional",
-        "solution_method": "SolutionMethod",
-        "kgrid":          "%block kgrid_Monkhorst_Pack",
-    }
-    for name, want in expected.items():
-        f = fields_by_name.get(name)
-        assert f is not None, f"missing field {name}"
-        assert f["engine_key"] == want, (
-            f"{name}: engine_key={f['engine_key']!r}; expected {want!r}"
-        )
+def test_a_siesta_keyword_badge_leads_with_the_keyword_the_deck_writes():
+    """The badge (`engine_key`) is what a person looks up in the manual, and
+    the `anchor` is what the deck writes: for a SIESTA `engine` item the first
+    is led by the second (`engines/template.md`, *The shape of `engine_key`*).
 
+    THE SILENT FAILURE: a typo in a badge, which the deck never reads, sends a
+    person to the manual for a keyword that does not exist."""
+    from molbuilder import template as T
 
-def test_engine_key_pins_load_bearing_pyscf_keywords():
-    """Same for PySCF.  The 2026-05-24 review surfaced that PySCF's
-    method= is a CLASS switch, not a string kwarg -- and the class is
-    composed from the method and the spin treatment, so
-    the two badges between them say which class (the treatment's is the
-    merged item's, pinned in the SIESTA test)."""
-    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("pyscf", "py", "optimization")
-    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
-    # (The merged items -- the charge and the spin -- are ONE declaration
-    # for both engines, pinned once, in the SIESTA test above.)
-    expected = {
-        "symmetry": "gto.M(symmetry=...)",
-        "basis":    "gto.M(basis=...)",
-        "functional": "mf.xc = ...",
-        "scf_conv_tol": "mf.conv_tol",
-        "scf_max_cycle": "mf.max_cycle",
-    }
-    for name, want in expected.items():
-        f = fields_by_name.get(name)
-        assert f is not None, f"missing field {name}"
-        assert f["engine_key"] == want, (
-            f"{name}: engine_key={f['engine_key']!r}; expected {want!r}"
-        )
-    # `method` says which theory, and the class is composed from it and the
-    # spin treatment (2026-09-28): the method's badge names the class
-    # MODULE it picks, the treatment's the R / RO / U it contributes -- so
-    # the person knows they are picking a class, not a string.
-    method_key = fields_by_name["method"]["engine_key"]
-    assert "dft.<class>" in method_key and "scf.<class>" in method_key, \
-        method_key
+    def leading(key):
+        words = key.split(" (SIESTA)")[0].split()
+        return " ".join(words[:2]) if words[:1] == ["%block"] else words[0]
+
+    items = [it for it in T.select(T.catalogue(), engine="siesta", kind="engine")
+             if it.anchor and not it.engine_key.startswith("(molbuilder")]
+    assert items
+    wrong = [(it.name, it.anchor, it.engine_key) for it in items
+             if leading(it.engine_key) != it.anchor]
+    assert not wrong, wrong

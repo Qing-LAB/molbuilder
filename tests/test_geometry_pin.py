@@ -24,13 +24,6 @@ Keys of a ``[[case]]``:
 ``sidecar``
     keys whose values replace the sidecar's -- the cell, the axis kinds, a
     label set edited by hand.
-``as_v12``
-    the sidecar rewritten as a molbuilder before v13 wrote it: schema 12, its
-    pin the retired ``structure_hash``, no ``geometry_hash``, no
-    ``atom_index_map``.
-``as_v13``
-    the sidecar rewritten as a molbuilder before v14 wrote it: schema 13, no
-    ``atom_order``, no ``atom_index_map``.
 ``marked``
     ``true``: the pair as a viewer of a run whose deck states no order holds
     it -- ``order_unstated`` (`model/overview.md` § 2.2b, F4).
@@ -186,12 +179,6 @@ def _edited(case, path: Path) -> None:
     side = molstruct.sidecar_path_for(path)
     payload = json.loads(side.read_text())
     payload.update(case.get("sidecar", {}))
-    if case.get("as_v12"):
-        del payload["geometry_hash"], payload["atom_index_map"]
-        payload.update(schema_version=12, structure_hash="0" * 64)
-    if case.get("as_v13"):
-        del payload["atom_order"], payload["atom_index_map"]
-        payload.update(schema_version=13)
     side.write_text(json.dumps(payload))
 
 

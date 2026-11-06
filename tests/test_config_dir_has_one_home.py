@@ -127,23 +127,11 @@ class TestOperationalStateFollowsTheVariablesOnly:
         (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
         return tmp_path
 
-    def _write(self, cfg, obj):
-        import json
-        (cfg / "cfg" / "molbuilder.json").write_text(json.dumps(obj))
-
     def test_the_variables_move_them(self, cfg):
         from molbuilder.config_dir import logs_dir, reports_dir, runtime_dir
         assert logs_dir() == cfg / "state" / "molbuilder" / "logs"
         assert reports_dir() == cfg / "state" / "molbuilder" / "reports"
         assert runtime_dir() == cfg / "state" / "molbuilder" / "run"
-
-
-    def test_projects_stays(self, cfg):
-        """Data rather than operational state, no XDG equivalent, and
-        `$MOLBUILDER_PROJECTS` is its documented override."""
-        from molbuilder.runtime_config import read_config
-        self._write(cfg, {"paths": {"projects": "/data/projects"}})
-        assert read_config()["paths"]["projects"] == "/data/projects"
 
 
 # ---------------------------------------------------------------------------

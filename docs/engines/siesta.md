@@ -833,8 +833,7 @@ variant tested must render end-to-end without raising.
 **Tests:** the SIESTA rows of `tests/data/the_deck.toml` (`tests/test_the_deck.py`),
 `test_review_fixes.py` (the thin-vacuum **warn** — D3, since `cell_padding`
 was removed 2026-07), `test_siesta_stages.py` (the ladder and its strategy
-presets), `test_siesta_use_gpu.py` (§ 7's
-two orthogonal decisions),
+presets),
 `test_k_point_mesh.py` (§ 6.1's mesh on every rung, through `molbuilder describe`
 and `prep`), and `test_molwatch_preview.py` (the sibling log). *(This list named
 `test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until

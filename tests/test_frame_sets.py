@@ -140,6 +140,11 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
                 assert payload[k] == v, (k, payload[k])
         elif key == "n_frames":
             assert got.n_frames == want
+        elif key == "info":
+            assert got.info == want
+        elif key == "value_channels":
+            for name, values in want.items():
+                assert list(got.channels()[name].data.values()) == values
         elif key == "positions":
             assert np.allclose(got.positions, want)
         elif key == "rows":

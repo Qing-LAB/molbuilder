@@ -285,34 +285,28 @@ class TestRenderMethodsMdWithStruct:
         from molbuilder.spectra import render_methods_md
         md = render_methods_md(_spectra_cfg())
         assert "free, " not in md  # no "(N free, M held fixed)" clause
-        assert "vibrational modes" not in md or "vibrational mode" in md
         # When struct is None, the L2 paragraph has no atom counts.
+        assert "non-translational" not in md
 
     def test_struct_provided_emits_atom_clause(self):
         """When a Structure is provided, the prose names total
         atoms, free atoms, and the 3N-6 mode count."""
         from molbuilder.spectra import render_methods_md
 
-        class _Atom:
-            def __init__(self, sym):
-                self.symbol = sym
-        # 5-atom water-cluster mock; no atoms fixed.
-        atoms = [_Atom("O"), _Atom("H"), _Atom("H"), _Atom("O"), _Atom("H")]
-
-        # A REAL STRUCTURE of five atoms (the one shape `methods` reads; a
-        # duck-typed mock stood here until 2026-10-18).
+        # A REAL STRUCTURE of five atoms (the one shape `methods` reads), no
+        # atoms fixed...
         import numpy as np
         from molbuilder.structure import Structure
         # ...bent, not collinear: a linear chain has five rigid motions
         # and the clause counts 3N - 6 for a bent one.
-        struct = Structure(elements=["H"] * len(atoms),
+        struct = Structure(elements=["H"] * 5,
                            positions=np.array([[1.2 * i, 0.4 * (i % 2), 0.0]
-                                               for i in range(len(atoms))]))
+                                               for i in range(5)]))
 
         md = render_methods_md(_spectra_cfg(), struct=struct)
         assert "5 atoms" in md
         # 3*5 - 6 = 9 modes for all-free.
-        assert "9 non-translational" in md or "9 " in md
+        assert "9 non-translational" in md
 
     def test_struct_with_frozen_atoms_counts_correctly(self):
         """Frozen atoms subtract from n_free.  Named by INDEX -- the

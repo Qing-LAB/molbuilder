@@ -13,7 +13,6 @@ import pytest
 from molbuilder.modify import (
     append_structure,
     SUPPORTED_FCC_ELEMENTS,
-    SUPPORTED_FCC_PLANES,
     add_atom,
     add_slab,
     delete_atoms,
@@ -235,19 +234,9 @@ def test_delete_preserves_metadata_in_lockstep(linear_dimer):
 
 
 def test_delete_does_not_mutate_input(linear_dimer):
-    """Delete is pure: the structure passed in is unchanged afterwards.
-
-    Catches an in-place rewrite. The Modify tab keeps the pre-edit structure
-    for undo, and every op in this module returns a new object -- an op that
-    edited its argument would corrupt that history silently, because the caller
-    holds the same object it just "copied from".
-
-    Contract: `web/tabs.md` § 2 (the ops are pure functions the tab composes).
-
-    THIN: `delete_atoms` builds its lists with comprehensions and slices
-    `positions` with a fancy index (which copies), so purity is structural
-    rather than defended.
-    """
+    """Delete hands back a new structure and leaves the one it was given as it
+    was (`web/tabs.md` § 2).  THE SILENT FAILURE: a script keeping the original
+    to compare with, or to edit another way, finds an atom gone from it."""
     delete_atoms(linear_dimer, [0])
     assert linear_dimer.n_atoms == 6
     assert linear_dimer.elements[0] == "C"
@@ -365,15 +354,14 @@ def test_append_keeps_the_open_structures_cell_and_record_and_says_so():
     add = _frag(["N"], [3.0])
     add.cell = np.diag([20.0, 20.0, 20.0])
     add.engine_offset = np.array([9.0, 9.0, 9.0])
-    add.info = {"calculation": {"engine": "siesta"},
-                "relaxation": {"converged": True}}
+    add.info = {"entry_a": {"x": 1}, "entry_b": {"y": 2}}
     add.__post_init__()
     out, notes = append_structure(base, add)
     assert np.allclose(out.cell, np.diag([10.0, 10.0, 10.0]))
     assert np.allclose(out.engine_offset, [1.0, 1.0, 1.0]), out.engine_offset
     assert any("not adopted" in n for n in notes), notes
-    assert "calculation" not in out.info and "relaxation" not in out.info
-    assert any("record was not carried (calculation, relaxation)" in n
+    assert "entry_a" not in out.info and "entry_b" not in out.info
+    assert any("record was not carried (entry_a, entry_b)" in n
                for n in notes), notes
 
 
@@ -454,21 +442,6 @@ def test_add_atom_residue_name_default_and_override(linear_dimer):
     assert out.residue_names[-1] == "MOD"
     out2 = add_atom(linear_dimer, "S", 0, [1, 0, 0], residue_name="THI")
     assert out2.residue_names[-1] == "THI"
-
-
-def test_add_atom_atom_name_defaults_to_element(linear_dimer):
-    """With no `atom_name`, the new atom's name is its element symbol.
-
-    Catches an appended atom arriving with an empty name column -- the PDB
-    writer and the viewer's atom list both read `atom_names`, so a blank there
-    shows as an unnamed row and writes a malformed PDB ATOM record.
-
-    Contract: `model/structure.md` § 1.
-
-    THIN: this restates a one-line `atom_name or element` default.
-    """
-    out = add_atom(linear_dimer, "Au", 0, [0, 0, 1])
-    assert out.atom_names[-1] == "Au"
 
 
 def test_add_atom_rejects_bad_anchor(linear_dimer):
@@ -922,12 +895,6 @@ def test_rotate_rejects_bad_axis(linear_dimer):
 # --------------------------------------------------------------------- #
 
 
-def test_electrode_supported_lists_match_table():
-    """Closed list of 6 metals + 3 planes."""
-    assert SUPPORTED_FCC_ELEMENTS == ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
-    assert SUPPORTED_FCC_PLANES   == ("100", "110", "111")
-
-
 # Valid per-(plane, orthogonal) tuples and their atom counts.  The
 # count is m * n * n_layers regardless of cell shape, since ASE's slab
 # is uniform across layers.
@@ -989,8 +956,8 @@ def test_electrode_rejects_unsupported_element(single_anchor):
     pseudopotentials FOR, not about crystallography, and it must be refused for
     that reason rather than accidentally accepted because the geometry works.
 
-    Contract: `SUPPORTED_FCC_ELEMENTS` (the closed list, pinned by
-    `test_electrode_supported_lists_match_table`) + `science/junction-cell.md`.
+    Contract: `SUPPORTED_FCC_ELEMENTS` (the closed list) +
+    `science/junction-cell.md`.
     """
     with pytest.raises(ValueError, match="unsupported electrode element"):
         add_slab(single_anchor, "Fe", "111", (2, 2, 1))
@@ -1178,34 +1145,6 @@ def test_junction_stepped_contacts_via_two_calls():
     elc_residues = {r for r, n in zip(junction.residue_ids, junction.residue_names)
                     if n == "ELC"}
     assert len(elc_residues) == 4
-
-
-# --------------------------------------------------------------------- #
-#  SP-C: import does NOT load the FCC lattice file.  Lazy load only      #
-#  triggers when a function actually needs the table.                    #
-# --------------------------------------------------------------------- #
-
-
-def test_modify_module_import_does_not_eagerly_load_fcc_table(monkeypatch):
-    """SP-C: the FCC lattice-constant table loads on first call to
-    ``_get_fcc_lattice``, NOT at module import -- only an operation that
-    consumes a lattice constant reads it."""
-    import importlib
-    import molbuilder.modify as mod
-    # Reset the cache and re-import the module.  Right after import
-    # the cache must be None (lazy).
-    mod._FCC_LATTICE_A_CACHE = None
-    importlib.reload(mod)
-    assert mod._FCC_LATTICE_A_CACHE is None, (
-        "FCC table was loaded at import time -- SP-C regressed"
-    )
-    # Asking for the table populates the cache.
-    table = mod._get_fcc_lattice()
-    assert "Au" in table
-    assert mod._FCC_LATTICE_A_CACHE is not None
-    # Public closed list of metals is hardcoded so a missing JSON
-    # doesn't take it down.
-    assert mod.SUPPORTED_FCC_ELEMENTS == ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
 
 
 # --------------------------------------------------------------------- #

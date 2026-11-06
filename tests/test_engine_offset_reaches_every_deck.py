@@ -13,7 +13,6 @@ then `jobset prep task`, then the deck on disk.  Per engine:
 """
 from __future__ import annotations
 
-from molbuilder.scheduler.record import write_environment
 from support.road import group_words, read_request, write_request
 
 import ast
@@ -27,10 +26,8 @@ from click.testing import CliRunner
 from molbuilder import cell as cellmod
 from molbuilder import describe as D
 from molbuilder.jobset._cli import jobset_group
-from molbuilder.scheduler import Environment, Topology
 from molbuilder.deck_record import extract_engine_offset
 from molbuilder.structure import Structure
-from support.machines import WORKSTATION
 
 #: A skewed cell, as the 2026-09-25 junction's was.
 _HEX = np.array([[8.651, 0.0, 0.0], [4.326, 7.492, 0.0], [0.0, 0.0, 14.0]])
@@ -99,21 +96,11 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     request["execution"] = ({"mpi_np": 4, "omp_threads": 1}
                             if engine == "siesta" else {"threads": 1})
     write_request(dest, request)
-    # The machine the calculation is prepared for, with how a shell enters an
-    # environment there -- the record carries it for the generator
-    # (`configuration.md` § 4).
-    write_environment(
-        Environment(machine="this", scheduler=WORKSTATION,
-                    topology=Topology(sockets=1, cores_per_socket=4),
-                    env_init={"activation": "conda activate",
-                                       "preamble": "true"}
-                    ),
-        (dest / "environment.json"))
     if before_prep is not None:
         before_prep(dest)
     stage = stage or stages[0].name
     r = CliRunner().invoke(jobset_group, ["prep", "task", *group_words(dest, stage), "--bundle",
-                                          str(dest), "--no-sbatch"])
+                                          str(dest), "--target", "this"])
     if refused:
         assert r.exit_code != 0, r.output
         return dest, stage, r.output

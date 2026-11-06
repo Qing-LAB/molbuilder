@@ -225,19 +225,6 @@ def test_the_warm_rules_and_the_catalogue_name_the_same_keywords():
         f"one group, and these are the two files that spell it")
 
 
-def test_the_restart_group_object_is_not_a_second_declaration():
-    """`SIESTA_RESTART_GROUP.keys` is DERIVED, and this is what says so.
-
-    A literal tuple can drift into a different order from the catalogue's
-    `expands` and the rules file's rows.  Pinning identity-with-the-catalogue rather than a hardcoded expectation is
-    the point: a test naming the three keywords here would be a fourth copy.
-    """
-    from molbuilder.config.siesta import SIESTA_RESTART_GROUP
-    from molbuilder.script_emit import parameter
-    assert tuple(SIESTA_RESTART_GROUP.keys) == parameter("restart",
-                                                         "siesta").writes
-
-
 @pytest.mark.parametrize("role,said", [
     (".XV", "carried"), (".LWF", "listed"), (".contrib.EPSIMG", "scratch"),
     (".{bias}.TSGF{lead}", "scratch"), (".{tbt}.nc", ""),

@@ -198,8 +198,8 @@ def test_drop_overlapping_hydrogens_h_h_pair_keeps_one():
 
 
 def test_drop_overlapping_hydrogens_no_overlap_returns_struct_unchanged():
-    """Identity case: no ghosts, no removals -- the function should
-    return the original Structure object (cheap shortcut)."""
+    """Identity case: no ghosts, no removals -- every atom stays, where it
+    was."""
     from molbuilder.chemistry import _drop_overlapping_hydrogens
     s = Structure(
         elements=["O", "H", "H"],
@@ -210,8 +210,8 @@ def test_drop_overlapping_hydrogens_no_overlap_returns_struct_unchanged():
         ], dtype=float),
     )
     out = _drop_overlapping_hydrogens(s)
-    # Same object (the function returns `struct` early when keep.all()).
-    assert out is s
+    assert list(out.elements) == list(s.elements)
+    assert np.array_equal(np.asarray(out.positions), np.asarray(s.positions))
 
 
 # --------------------------------------------------------------------- #

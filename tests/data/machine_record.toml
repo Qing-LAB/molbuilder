@@ -15,8 +15,8 @@
 [[case]]
 name = "a fact the probe cannot see is declared to it, and lands typed"
 ends_at = "probe"
-probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100", "--set", "mem_total_gb=1536.5"]]
-record_says = { topology = { gpus_per_node = 4, gpu_type = "a100", mem_total_gb = 1536.5 } }
+probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100", "--set", "mem_total_gb=1536.5", "--set", "arch=aarch64"]]
+record_says = { topology = { gpus_per_node = 4, gpu_type = "a100", mem_total_gb = 1536.5, arch = "aarch64" } }
 record_declared = ["topology"]
 
 [[case]]

@@ -7,10 +7,6 @@ from __future__ import annotations
 from molbuilder.workingcopy_structure import StructureCodec
 
 
-def test_positive_count_is_xyz():
-    assert StructureCodec.format_of_text("3\nh2o\nO 0 0 0\nH 1 0 0\nH 0 1 0\n") == "xyz"
-
-
 def test_leading_zero_line_is_pdb_not_xyz():
     # int("0") > 0 is False -> pdb.
     assert StructureCodec.format_of_text("0\n") == "pdb"

@@ -271,8 +271,8 @@ on read, so a file already on disk is not refused as carrying a stray key;
 never applied; dropped on rewrite, so the pair heals on its next save. Every
 gate has to know every retired key — a guard that disagrees with its
 neighbours about what is retired is how a retirement reaches one gate of
-three — and `tests/test_molstruct_json.py::TestARetiredKeyPassesEveryGate`
-pins it for every key in those tuples, present and future.
+three. No test builds a file holding one (`process/testing.md`: no test of an
+older release's files).
 
 **This is deliberate, and it is not a transitional state.** molbuilder is a new
 product with no installed base to protect. Accepting several schemas costs more

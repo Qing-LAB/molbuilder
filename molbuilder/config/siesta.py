@@ -577,19 +577,9 @@ _ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
 #: dynamics modes ignore it. That conditionality lives in the renderer beside
 #: the optimizer it depends on, not here: this declares what the group *is*,
 #: and the emitter decides which members are meaningful for a given run.
-#: WHICH KEYWORDS -- spelled here, and PROVEN equal to the catalogue.
-#:
-#: Spelled here for the layering:
-#: this module is **L1** and the catalogue reader is **L2**, so importing it
-#: here is the upward import review refuses (`process/code-audit.md` § 1c (e)).
-#: The fact still has ONE authority -- `[item.restart].expands` --
-#: and every PRODUCTION reader goes there through `script_emit.parameter`; this
-#: tuple has no production reader left at all.
-#:
-#: What keeps it honest is a gate, not discipline:
-#: `test_the_restart_group_object_is_not_a_second_declaration` asserts identity
-#: with the catalogue rather than naming the keywords again, so a tuple that
-#: drifts fails rather than quietly becoming a fourth spelling.
+#: WHICH KEYWORDS: the one authority is `[item.restart].expands`, and every
+#: production reader goes there through `script_emit.parameter`.  This tuple
+#: has no production reader and no test holds it to the catalogue.
 SIESTA_RESTART_GROUP = RestartGroup(
     literal="SystemLabel",
     keys=("DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"),

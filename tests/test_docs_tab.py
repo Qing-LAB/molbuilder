@@ -1,14 +1,12 @@
 """Documents tab — the read-only docs/*.md reader (blueprints/docs.py).
 
-Pins: the tab page renders + is in the nav; /api/docs/toc groups every
-docs/*.md; /api/docs/read returns one doc's text + H1 title; and the
-path-safety gate rejects traversal / non-.md / outside-docs paths (the same
-defence-in-depth class as the files blueprint, on a different, read-only root).
+Pins: /api/docs/toc groups every docs/*.md; /api/docs/read returns one doc's
+text + H1 title; and the path-safety gate rejects traversal / non-.md /
+outside-docs paths (the same defence-in-depth class as the files blueprint, on a
+different, read-only root).
 
 The blueprint serves the ``docs/`` tree plus the explicitly whitelisted root
-README and LICENSE; all other paths outside ``docs/`` are rejected.  The
-specific docs pinned below are the current tree's spine (the index +
-the migration ledger, docs/README.md); update the names as the tree grows.
+README and LICENSE; all other paths outside ``docs/`` are rejected.
 """
 from __future__ import annotations
 
@@ -21,26 +19,6 @@ import pytest
 def client():
     from molbuilder.web.app import create_app
     return create_app(config={}).test_client()
-
-
-# --------------------------------------------------------------------- #
-#  Tab page + nav                                                       #
-# --------------------------------------------------------------------- #
-
-
-def test_documents_page_renders(client):
-    r = client.get("/documents")
-    assert r.status_code == 200
-    # the shared nav lists the Documents tab (derived from tabs.TABS)
-    assert b"Documents" in r.data
-
-
-def test_documents_tab_registered_in_tab_order():
-    from molbuilder.web.tabs import TABS
-    keys = [t["key"] for t in TABS]
-    assert "documents" in keys
-    doc_tab = next(t for t in TABS if t["key"] == "documents")
-    assert doc_tab["path"] == "/documents"
 
 
 def test_toc_returns_each_document_once(client, tmp_path, monkeypatch):
@@ -113,10 +91,18 @@ def test_toc_endpoint_tolerates_corrupt_json(client, tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 
 
-def test_img_serves_a_real_docs_image(client):
-    r = client.get("/api/docs/img/hero-molbuilder.png")
+def test_img_serves_an_image_under_docs_img(client, tmp_path, monkeypatch):
+    """An image in ``docs/img/`` is served as its own bytes.  THE SILENT
+    FAILURE: every picture in a document broken while each refusal below still
+    holds.  A file of the test's own, so no picture of the real tree is needed."""
+    png = b"\x89PNG\r\n\x1a\n" + b"\0" * 8
+    (tmp_path / "img").mkdir(parents=True)
+    (tmp_path / "img" / "a.png").write_bytes(png)
+    monkeypatch.setattr("molbuilder.web.blueprints.docs._docs_root",
+                        lambda: tmp_path)
+    r = client.get("/api/docs/img/a.png")
     assert r.status_code == 200
-    assert r.data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert r.data == png
 
 
 @pytest.mark.parametrize("bad", [
@@ -145,13 +131,19 @@ def test_img_missing_file_is_404(client):
 # --------------------------------------------------------------------- #
 
 
-def test_read_returns_text_and_h1_title(client):
-    r = client.get("/api/docs/read?path=README.md").get_json()
+def test_read_returns_text_and_h1_title(client, tmp_path, monkeypatch):
+    """One document's text, titled by its first Markdown H1.  THE SILENT
+    FAILURE: a document shown under its file name.  A document of the test's
+    own, so an edit of the real tree's words never reddens this."""
+    text = "# The title of it\n\nThe body of it.\n"
+    (tmp_path / "a.md").write_text(text, encoding="utf-8")
+    monkeypatch.setattr("molbuilder.web.blueprints.docs._docs_root",
+                        lambda: tmp_path)
+    r = client.get("/api/docs/read?path=a.md").get_json()
     assert r["ok"] is True
-    assert r["path"] == "README.md"
-    # title comes from the first Markdown H1
-    assert r["title"] == "molbuilder — documentation"
-    assert "## The rules" in r["text"]
+    assert r["path"] == "a.md"
+    assert r["title"] == "The title of it"
+    assert r["text"] == text
 
 
 def test_read_returns_root_readme_and_license(client):
@@ -159,14 +151,12 @@ def test_read_returns_root_readme_and_license(client):
     readme = client.get("/api/docs/read?path=../README.md").get_json()
     assert readme["ok"] is True
     assert readme["path"] == "../README.md"
-    assert readme["title"] == "molbuilder — Project README"
-    assert "## Quick start" in readme["text"]
+    assert readme["text"].strip()
 
     license_doc = client.get("/api/docs/read?path=../LICENSE").get_json()
     assert license_doc["ok"] is True
     assert license_doc["path"] == "../LICENSE"
-    assert license_doc["title"] == "molbuilder license"
-    assert "BSD 3-Clause License" in license_doc["text"]
+    assert license_doc["text"].strip()
 
 
 @pytest.mark.parametrize("bad", [

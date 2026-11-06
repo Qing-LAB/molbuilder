@@ -492,10 +492,7 @@ Structure therefore spells `title=struct.title` by hand, beside what it carries.
   Exactly the shape `62cc76d0` fixed for `pbc` (*"the retirement reached one
   gate of two"*), and the function's own comment four lines above the bug
   says *"a guard that disagrees with its neighbours about what is retired is
-  how this bug happened in the first place"*. Now pinned for EVERY retired
-  key, present and future, by
-  `tests/test_molstruct_json.py::TestARetiredKeyPassesEveryGate`, which
-  iterates the `RETIRED_*` tuples rather than naming keys.
+  how this bug happened in the first place"*.
 
 All six defects close. **Pinned by**
 `tests/…::TestTitleBelongsToTheGeometryFile` — one test for one rule, and

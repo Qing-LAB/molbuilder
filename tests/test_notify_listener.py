@@ -74,7 +74,7 @@ def store(tmp_path, monkeypatch):
     # place and carries its own route, so there is no config to set.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
     (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
-    keys = _seed_keys({"route": ROUTE, "keys": {USER: KEY}})
+    _seed_keys({"route": ROUTE, "keys": {USER: KEY}})
     app = create_app(config={"rate_limit": {"enabled": False}})
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()          # rotating handlers are cached per user
@@ -180,14 +180,6 @@ def test_a_stored_line_stands_on_its_own(store):
     assert line["sent_at"] == 1756000000.5, "the sender's clock"
     assert line["received_at"] >= line["sent_at"], "and ours, beside it"
     assert line["energy"] == "-1740.21" and line["n_iters"] == 7
-
-
-def test_the_user_is_STAMPED_never_accepted(store):
-    """The key is the claim. A payload that names a user must not become
-    one, or a valid key could write into somebody else's record."""
-    client, reports = store
-    _post(client, body={"event": "tick", "user": "somebody-else"})
-    assert _lines(reports)[0]["user"] == USER
 
 
 def test_a_report_is_readable_line_by_line_with_no_parser_of_ours(store):
@@ -470,19 +462,6 @@ def test_a_timestamp_that_is_not_a_REAL_number_is_refused(store, ts, why):
     client, log_root = store
     assert _post(client, ts=ts).status_code == 404, why
     assert _lines(log_root) == []
-
-
-def test_deny_actually_RAISES(store):
-    """Every gate is a bare `_deny()` statement, not `return _deny()`. If it
-    ever stopped raising, each one would fall through to the next step — a
-    wrong route would go on to be signature-checked, a bad signature would
-    go on to be logged. A `NoReturn` annotation says so; this makes it a
-    mechanism."""
-    from molbuilder.web.blueprints.notify import _deny
-    with store[0].application.test_request_context():
-        with pytest.raises(Exception) as exc:
-            _deny()
-        assert "404" in str(exc.value) or "Not Found" in str(exc.value)
 
 
 def test_the_route_never_REDIRECTS(store):

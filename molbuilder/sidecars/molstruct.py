@@ -124,14 +124,11 @@ SCHEMA_VERSION = 17  # 17: `selection_rules` RETIRED -- never written; a
 #: strict gate exists for -- so the set widens only when an addition is
 #: provably additive.
 #:
-#: **AND ONLY WHEN A READER HAS BEEN RUN AGAINST A FILE AT EACH VERSION
-#: CLAIMED.**  That is the check, not the reasoning: ``load_text`` reads the
-#: keys it NAMES, so a key an older version kept elsewhere is never looked
-#: for.
-#:
-#: Each version in the set below is read by a test against a real file at
-#: that version (``tests/test_molstruct_json.py::TestSchemaVersioning``, and
-#: v9 in ``TestARetiredKeyPassesEveryGate``).
+#: **AND ONLY WHEN A READER HAS BEEN RUN AGAINST A FILE AT THAT VERSION.**
+#: That is the check, not the reasoning: ``load_text`` reads the keys it
+#: NAMES, so a key an older version kept elsewhere is never looked for.  It is
+#: made when the version joins the set and kept by no test: no test builds an
+#: older release's file (`process/testing.md`).
 #:
 #: v10 removed a key and added an optional one: a v7-v9 file's
 #: `cell_origin` is retired -- read and ignored, by decision (D2) -- and a

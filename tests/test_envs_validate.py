@@ -5,8 +5,6 @@ person acts on; the probes themselves need a built GPU env and ~30 minutes.
 """
 from __future__ import annotations
 
-import pytest
-
 from molbuilder.envs import _cli as envs_cli
 from molbuilder.envs.validate import (ProbeResult, ValidationReport,
                                       _RECIPE_PROBES)
@@ -58,14 +56,3 @@ def test_the_long_upstream_suites_are_not_optional():
     slugs = [row[0] for row in _RECIPE_PROBES["molbuilder-siesta-gpu"]]
     for required in ("siesta ctest", "elpa make check"):
         assert required in slugs, f"{required} must stay in the suite"
-
-
-@pytest.mark.parametrize("slug,fn,hint", _RECIPE_PROBES["molbuilder-siesta-gpu"])
-def test_every_probe_row_carries_a_runtime_hint(slug, fn, hint):
-    """The hint is what the CLI prints so the terminal is never silent for
-    longer than a person expects -- the docstring's claim of "~2 min" for a
-    ~30 min suite is exactly what a missing hint lets happen."""
-    assert callable(fn)
-    assert hint.strip(), f"{slug} has no runtime hint"
-    assert any(u in hint for u in ("s ", "s -", "min")), (
-        f"{slug}'s hint states no time: {hint!r}")

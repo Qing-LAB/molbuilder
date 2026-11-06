@@ -16,7 +16,8 @@ import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.parse.fdf import fdf_key, read_deck, read_fdf
+from molbuilder.parse.fdf import (deck_atoms, fdf_key, parse_fdf_params,
+                                  read_deck, read_fdf)
 from molbuilder.siesta.vibration_deck import FC_PART
 from molbuilder.structure import Structure
 from molbuilder.runfiles import RunNames
@@ -80,6 +81,44 @@ def test_the_force_constant_deck_nudges_the_free_range_only(tmp_path,
     scalars, _ = read_fdf(text)
     for key in ("Charge.Hirshfeld", "Charge.Voronoi"):
         assert scalars.get(fdf_key(key)) == ["geometry"], key
+
+
+def test_a_deck_with_its_coordinates_beside_it_reads_as_one_deck(tmp_path,
+                                                                monkeypatch):
+    """`engines/vibration.md` § 5.11 § 4; `parse/fdf.read_deck`: the
+    force-constant deck prep writes reads its coordinates from
+    `coordinates.fdf` beside it (libfdf's `%block Label < Filename`), and
+    through the deck's one file reader it reads as one deck -- its atoms, their
+    places and every setting after the include.  THE SILENT FAILURE: the include
+    line read as an empty block that swallows every line after it, so every
+    reader of the deck sees no atoms and no later setting.  The text alone
+    cannot give the rows, so `read_fdf` refuses it naming the file and the
+    reader; a file no longer beside the deck is refused by name."""
+    from support.road import CO2, describe_calculation, group_words, jobset
+    bundle = describe_calculation(tmp_path, monkeypatch, name="CO2",
+                                  calculation="vibration", structure=CO2)
+    r = jobset("prep", "task", *group_words(bundle, "freq"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    path = bundle / "01_freq" / FC_PART / RunNames("CO2", "01_freq").name(".fdf")
+    raw = path.read_text()
+    include = next(ln for ln in raw.splitlines() if "< coordinates.fdf" in ln)
+    beside = path.parent / "coordinates.fdf"
+    rows = [ln.split() for ln in beside.read_text().splitlines() if ln.strip()]
+    whole = read_deck(path)
+    assert len(deck_atoms(whole).labels) == len(rows) == 3
+    assert [[float(c) for c in row[:3]] for row in rows] == [
+        pytest.approx(list(p)) for p in parse_fdf_params(whole).coords_ang]
+    # every setting after the include still reads
+    after, _ = read_fdf(raw[raw.index(include) + len(include):])
+    assert after
+    scalars, _ = read_fdf(whole)
+    assert all(key in scalars for key in after), after
+    with pytest.raises(ValueError, match="coordinates.fdf.*read_deck"):
+        read_fdf(raw)
+    beside.unlink()
+    with pytest.raises(ValueError, match="coordinates.fdf.*not beside"):
+        read_deck(path)
 
 
 def test_each_phase_s_record_lists_what_its_role_reads(tmp_path,

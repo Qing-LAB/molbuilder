@@ -621,7 +621,7 @@ flowchart TD
 
 | arrow | what travels, and why it is that way round |
 |---|---|
-| catalogue → surface | **every** item, both engines. A surface builds the six panels from `category` and filters the contents by `engines` — one panel set serving every engine, which is why `category` is engine-independent (§ 6.2) |
+| catalogue → surface | **every** item, both engines. A surface builds its panels from `category` and filters the contents by `engines` — one panel set serving every engine, which is why `category` is engine-independent (§ 6.2) |
 | surface → template | **only the answers.** The items themselves are not re-invented; the surface is filling in a form whose questions the catalogue already asked |
 | template → config | narrowed to one engine first, **then** read as that schema's fields. Skip the narrowing and a two-engine file is refused for both engines, each seeing the other's items as names it does not know |
 | config → deck | the engine's own writer, which never sees the template. It receives an ordinary config object, which is why a config class is a **translator** and not a source (§ 2.1) |
@@ -669,7 +669,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `launch` | `kind = "wrapper"` — the words the run script passes the engine on its command line for this item, a table by the program it starts (`Job.program`, the engine's own by default): `launch.siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"]`, the placeholders the script fills; a program not named takes the item some other way (a PySCF deck reads its environment) or not at all (`tbtrans`). The run script renders the words, never spells them ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
 | `limit_applied_by` | `kind = "wrapper"` — **who applies this limit, for each engine**: `"run_script"` or `"deck"`. `limit_applied_by = { siesta = "run_script", pyscf = "deck" }` on `wall_slack` (SIESTA is given the wall on its command line, the program's `launch` words; a PySCF deck keeps the deadline from its environment) and on `max_memory_mb` (the run script sets `ulimit -v` before a program; a PySCF deck passes the cap to `mol.max_memory`). **Every engine the item serves is named**, and nothing else, checked when the catalogue loads (`template.catalogue`) — a left-out engine would mean *the run script* without anyone saying so. For the wall, a program the item gives no `launch` words is given nothing (TBtrans checks no clock); the memory cap is the run script's `ulimit -v` before any program ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.2, § 3.6) |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
-| `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
+| `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same panels serve every engine |
 | `result` | **which result of the calculation this setting is for**, on a kind whose form is laid out by its results — a vibration's *Frequencies and mode shapes*, *Infrared*, *Raman*, *Thermochemistry*, *Orbital energies along a mode* (§ 6.2a) — a table keyed by kind, `result = { vibration = "raman" }`, each value one of that kind's results (the kind table's `results`); a kind or a result it does not list is refused at parse time. **It only decides where the setting is drawn**, as `category` does: no deck changes with it, and it is not written into a calculation's template |
 | `choice_labels` | **the words a person reads for each choice** — `choice_labels = { all = "All modes", range = "Modes in a frequency range" }`: what a form's list shows and a message says (`template.choice_words`); the value written stays the choice. Every key a choice of the item. Catalogue-only, like `result` |
 | `active_when` | **the values other settings must hold for this one to enter the calculation** — `active_when = { compute_raman = [true], raman_modes = ["range"] }`, every named setting at one of its listed values (2026-10-27) — or, for an optional setting, the word `"set"`: `active_when = { solvent = "set" }`, the setting holding any value, read *"it takes effect only while Solvent is set"* (2.65.0; the Structure-optimization tab's solvent model, whose solvent's blank is the gas phase); `"set"` on a setting that is not optional is refused, since it would always hold. Otherwise the setting enters nothing: the form draws it greyed out, keeping its value and saying what it waits on (`template.active_words`), and the settings gate says once that a value given to it enters nothing (`template.inactive_why`; a value at the kind's default says nothing) — never a refusal for that, since nothing it holds is run, and **no advice about it**: no recommended range, no check of the run it would join (the orbital probe's displacement under `skip`). A value no setting can hold is still refused, as anywhere (§ 5.3): the template holds it, and it would run the day the switch is turned on. Each named setting is an item of the catalogue serving the same engines, each listed value passes that item's own type. Catalogue-only, like `result`. *(A relaxation's step settings wait on `relax_type = ["CG", "Broyden", "FIRE"]`, and the solvent model on its solvent being set — the Structure-optimization tab's two locks until 2.65.0, now the catalogue's.)* |
@@ -1376,10 +1376,11 @@ for every engine the calculation can run on; `engines` on an item says which
 ones it applies to, and its absence means all of them.
 
 This is what makes the panel set engine-independent. Every engine has a *system*,
-a *method*, an *accuracy* — so a surface builds the same six panels in the same
+a *method*, an *accuracy* — so a surface builds the same panels in the same
 order and filters the contents by engine. A SIESTA user sees `mesh_cutoff` under
 *Accuracy*; a PySCF user sees `grid_level`. Same panel, same position, same
-mental model.
+mental model. An engine's form draws five of the six categories: the
+`execution` items are asked on the run card.
 
 **And `calculations` is `engines`' exact sibling for the calculation KIND**
 *(spectra-migration plan P0, 2026-08-20)*: an item may declare which kinds

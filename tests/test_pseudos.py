@@ -23,13 +23,6 @@ import re
 import pytest
 
 from pathlib import Path
-from tests.spectra._helpers import _spectra_cfg
-
-
-def _names():
-    """A vibration stage's names (`runfiles.RunNames`), as the deck takes them."""
-    from molbuilder.runfiles import RunNames
-    return RunNames("job", "01_vibration")
 
 
 # Minimal PSML body covering the fields the parser reads.  Real
@@ -59,59 +52,19 @@ def _make_psml(element: str, *,
 </psml>"""
 
 
-def _make_pseudodojo_psml(element: str, *, z: int = None,
-                            z_pseudo: int = None) -> str:
-    """Produce a synthetic PSML that mirrors the REAL PseudoDojo
-    format (used by users who download from www.pseudo-dojo.org).
-    Differs from _make_psml in two important ways the parser bug
-    of 2026-05-23 missed:
-      * Element + Z + relativity live on <pseudo-atom-spec>, NOT
-        <header>.
-      * The libxc id is on <functional> CHILDREN of <libxc-info>,
-        NOT directly on <libxc-info>.  Real files always nest.
-    These tests pin the contract against real-world files so a
-    future refactor can't regress.
-    """
-    if z is None:
-        from ase.data import atomic_numbers as _Z
-        z = _Z[element]
-    if z_pseudo is None:
-        z_pseudo = z      # for light elements z_pseudo == z; Fe has 16, etc.
-    return f"""<?xml version="1.0" encoding="UTF-8" ?>
-<psml version="1.1" energy_unit="hartree" length_unit="bohr"
- uuid="00000000-0000-0000-0000-000000000000"
- xmlns="http://esl.cecam.org/PSML/ns/1.1">
-<provenance creator="ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)"/>
-<pseudo-atom-spec atomic-label="{element}" atomic-number="{z}"
- z-pseudo="{z_pseudo}"
- flavor="Hamann oncvpsp" relativity="scalar" spin-dft="no">
-<exchange-correlation>
-<libxc-info number-of-functionals="2">
-<functional name="Perdew, Burke &amp; Ernzerhof (GGA)" type="exchange" id="101"/>
-<functional name="Perdew, Burke &amp; Ernzerhof (GGA)" type="correlation" id="130"/>
-</libxc-info>
-</exchange-correlation>
-</pseudo-atom-spec>
-</psml>"""
-
-
 class TestParsePsmlHeader:
     def test_real_pseudodojo_format(self, tmp_path):
-        """Pin parsing of REAL PseudoDojo PSML format.  The 2026-05-23
-        regression was: my synthetic tests used <header> but real files
-        use <pseudo-atom-spec>; my <libxc-info id="..."> structure but
-        real files nest <functional id="..."> inside <libxc-info>.  Both
-        bugs missed every real PseudoDojo file (returned element="",
-        xc=unknown).  THIS test uses the real shape -- if it passes,
-        the user's actual downloads work."""
+        """A real PseudoDojo file, as a person downloads it, read whole.  The
+        2026-05-23 regression: synthetic tests used <header> where real files use
+        <pseudo-atom-spec>, and an id on <libxc-info> where real files nest
+        <functional id="...">; every real file read as element="" and xc=unknown.
+        Carbon also tells Z (6) from the valence z-pseudo (4): pre-fix the
+        atomic number read back was z-pseudo."""
         from molbuilder.pseudos import parse_psml_header
-        # Fe specifically catches the z-pseudo (16 valence) vs Z (26)
-        # bug: pre-fix returned atomic_number=16.
-        (tmp_path / "Fe.psml").write_text(_make_pseudodojo_psml("Fe",
-                                                                  z=26, z_pseudo=16))
-        info = parse_psml_header(tmp_path / "Fe.psml")
-        assert info.element       == "Fe"
-        assert info.atomic_number == 26      # the TRUE element Z, not z_pseudo
+        info = parse_psml_header(
+            Path(__file__).parent / "fixtures" / "psml" / "C.psml")
+        assert info.element       == "C"
+        assert info.atomic_number == 6       # the TRUE element Z, not z_pseudo
         assert info.xc_family     == "GGA"
         assert info.xc_authors    == "PBE"
         assert info.relativistic  == "scalar"
@@ -187,9 +140,9 @@ def _write_folder(directory, files):
 
 
 class TestScanPsmlDirectory:
-    def test_missing_directory_returns_empty(self):
+    def test_missing_directory_returns_empty(self, tmp_path):
         from molbuilder.pseudos import scan_psml_directory
-        assert scan_psml_directory(Path("/does/not/exist")) == {}
+        assert scan_psml_directory(tmp_path / "absent") == {}
 
 
 class TestCheckCoverage:
@@ -304,53 +257,6 @@ class TestResolvePsmlLib:
             with _pytest.raises(PsmlLibError) as e:
                 resolve_psml_lib(raw, base=tmp_path)
             assert "retired" in str(e.value)
-
-
-# --------------------------------------------------------------------- #
-#  Open-shell-metal-conditional script templates                       #
-#  (the level_shift hint appears in the emitted script ONLY when an    #
-#   Fe / Mn / Co / Cu / Ni / etc. is present.  Clean-organic scripts   #
-#   must NOT have it — noise.)                                         #
-# --------------------------------------------------------------------- #
-
-
-class TestMetalAwareScriptTemplates:
-    def _fe(self):
-        from molbuilder.structure import Structure
-        import numpy as np
-        return Structure(elements=["Fe", "N", "N", "N", "N"],
-                         positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0],
-                                              [0, 2, 0], [0, -2, 0]]),
-                         vacuum=(12.0, 12.0, 12.0))   # planar -> needs vacuum for a real box
-
-    def _water(self):
-        from molbuilder.structure import Structure
-        import numpy as np
-        return Structure(elements=["O", "H", "H"],
-                         positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]),
-                         vacuum=(12.0, 12.0, 12.0))   # linear -> needs vacuum for a real box
-
-
-    def test_spectra_pyscf_fe_emits_level_shift_template(self):
-        # The hint lives in the equilibrium-SCF emitter the vibration
-        # deck composes.
-        from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
-        # The view resolves the state on the structure it is given -- the
-        # metals the hint reads are that structure's.
-        fe = self._fe()
-        text = "\n".join(_emit_equilibrium_scf(_spectra_cfg(
-            fe, spin_treatment="unrestricted", unpaired_electrons=2,
-        ), fe, _names()))
-        assert "Hard SCF (typical for open-shell metals like Fe)" in text
-        assert "# mf.level_shift = 0.2" in text
-
-    def test_spectra_pyscf_organic_skips_level_shift_template(self):
-        from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
-        water = self._water()
-        text = "\n".join(_emit_equilibrium_scf(
-            _spectra_cfg(water, spin_treatment="restricted"), water,
-            _names()))
-        assert "Hard SCF (typical for open-shell metals" not in text
 
 
 # ===================================================================== #

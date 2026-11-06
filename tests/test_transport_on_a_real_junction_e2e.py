@@ -1114,6 +1114,51 @@ def _cited_on_the_tab(page, base, junction, cite=None) -> dict:
     return answer
 
 
+def test_the_form_draws_its_rungs_and_choosing_a_junction_cites_the_run(
+        junction, page, monkeypatch):
+    """The one thing a transport calculation cannot go without
+    (`engines/transport.md` § 3.1), as a person gives it: *Choose junction…*
+    walks the tree, the picked run's line answers before it is confirmed, and
+    confirmed the tab says the citation.  The form draws a tab per rung from the
+    start (§ 3.8.2a), so that is read before the citation.
+
+    THE SILENT FAILURE: a control renamed in the page, so the button does
+    nothing when clicked and the form has nowhere to draw, with no error
+    anywhere."""
+    from playwright.sync_api import expect
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.live_server import serve
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    tree = junction.tree.resolve()
+    parts = Path(junction.cite).parts
+    with serve() as base:
+        page.goto(f"{base}/transport-calculation",
+                  wait_until="domcontentloaded")
+        page.locator(f'.ps-entry[data-path="{tree / parts[0]}"]').wait_for(
+            state="visible", timeout=20000)
+        form = page.locator("#transport-form-container")
+        tabs = form.locator("#transport-rung-tabs .tab-btn")
+        expect(tabs).to_have_count(len(TRANSPORT_STAGES), timeout=15000)
+        assert [tab.get_attribute("data-tab") for tab in tabs.all()] == list(
+            TRANSPORT_STAGES)
+        expect(form.locator(".tab-panel:not([hidden]) .param-grid")).not_to_be_empty()
+        page.locator("#transport-junction-btn").click()
+        dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+        for depth in range(1, len(parts)):
+            folder = tree.joinpath(*parts[:depth])
+            dialog.locator(f'li.tp-node[data-path="{folder}"]'
+                           " > .tp-row > .tp-twisty").click()
+        dialog.locator(f'li.tp-node[data-path="{tree / junction.cite}"]'
+                       " > .tp-row").click()
+        meta = dialog.locator(".tp-meta")
+        expect(meta).not_to_have_text("")
+        expect(meta).not_to_have_text("Reading…", timeout=60000)
+        dialog.get_by_role("button", name="Cite this").click()
+
+        expect(page.locator("#transport-junction-readout")).to_have_text(
+            junction.cite, timeout=15000)
+
+
 def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
                                                            monkeypatch):
     """The Transport tab's chemistry card, on the relaxation it cites

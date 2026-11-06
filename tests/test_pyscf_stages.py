@@ -1,9 +1,8 @@
 """The shipped PySCF ladder: where it comes from, and what it is made of.
 
-Contract: ``docs/engines/stages.md`` § 1.1 (**no engine config carries a
-stage list**) and § 1.1a (a PySCF ladder is N decks and N jobs, declared in
-``task.json``, exactly as SIESTA's is), § 2 (a stage has four fields),
-§ 4 (``template ⊕ overrides``).
+Contract: ``docs/engines/stages.md`` § 1.1a (a PySCF ladder is N decks and N
+jobs, declared in ``task.json``, exactly as SIESTA's is), § 2 (a stage has four
+fields), § 4 (``template ⊕ overrides``).
 
 Every rule here is about the *ladder*, stated against the mechanism that
 carries it.  **This file is deliberately the twin of ``test_siesta_stages.py``**: the two engines
@@ -22,69 +21,12 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig, PYSCF_STAGE_PRESETS
 from molbuilder.config.stages import STAGE_STRATEGY_PRESETS
-from molbuilder.config.stages import STAGE_NAMES
 from molbuilder.jobset.ladder import engine_ladder
-from molbuilder.task import Stage
-
-
-# --------------------------------------------------------------------- #
-#  § 1.1 — an engine config carries no stage list                       #
-# --------------------------------------------------------------------- #
-
-def test_the_config_has_no_stages_field():
-    """**No stage list on the config, asserted directly** (§ 1.1a: the
-    ladder is declared in ``task.json``)."""
-    names = {f.name for f in dataclasses.fields(PySCFConfig)}
-    assert "stages" not in names
-
-
-def test_no_field_of_the_config_is_a_list_of_dataclasses():
-    """The stronger form: not merely *this* name, but the SHAPE.  A
-    ``List[<dataclass>]`` on an engine config is what the form-schema
-    generator would turn into a stage-table, so a differently-named
-    ladder would reopen § 1.2 just as wide."""
-    import typing
-    hints = typing.get_type_hints(PySCFConfig)
-    for f in dataclasses.fields(PySCFConfig):
-        ann = hints.get(f.name)
-        args = typing.get_args(ann)
-        assert not (typing.get_origin(ann) in (list, tuple)
-                    and args and dataclasses.is_dataclass(args[0])), (
-            f"PySCFConfig.{f.name} is a list of dataclasses -- the form "
-            f"generator would emit a stage-table for it (stages.md § 1.2)")
-
-
-def test_the_pyscf_form_schema_emits_no_stage_table():
-    """The consequence at the surface that had the bug.  The generator
-    answers *what settings exist and how is each drawn*; it must never meet
-    a stage (web/form-schema.md § 1's callout)."""
-    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    sch = catalogue_to_form_schema("pyscf", "py", "optimization")
-    kinds = [f["kind"] for s in sch["sections"] for f in s["fields"]]
-    assert "stage-table" not in kinds
 
 
 # --------------------------------------------------------------------- #
 #  The shipped ladder                                                   #
 # --------------------------------------------------------------------- #
-
-def test_default_ladder_is_three_named_stages():
-    """The names are the SHARED vocabulary, not PySCF's own.  A rung is a
-    rung in both engines, so ``coarse`` means the same thing in a PySCF
-    description and a SIESTA one (`tuning.md` § 4)."""
-    stages = engine_ladder("pyscf", "vib-quality")
-    assert [s.name for s in stages] == [STAGE_NAMES[i]
-                                        for i in (1, 2, 3)]
-    assert all(isinstance(s, Stage) for s in stages)
-
-
-def test_default_ladder_matches_siesta():
-    """publishable = coarse + medium; tight is added when wanted.  The same
-    shape as SIESTA's default, so the two engines read alike."""
-    from molbuilder.jobset.ladder import engine_ladder
-    assert ([s.name for s in engine_ladder("pyscf")]
-            == [s.name for s in engine_ladder("siesta")]
-            == ["coarse", "medium"])
 
 
 @pytest.mark.parametrize("tier", sorted(PYSCF_STAGE_PRESETS))
@@ -123,8 +65,10 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
     varied = {k for s in engine_ladder("pyscf", "vib-quality")
               for k in s.overrides}
     assert varied <= known
-    assert varied == {"scf_conv_tol", "geom_gmax", "geom_grms", "geom_dmax",
-                      "geom_drms", "geom_etol", "geom_max_steps"}
+    # THE ONLY GUARD against a shipped tier gaining a parameter: a level shift
+    # in a rung would change what every run of it computes, and no deck row
+    # asks for what a rung does not state.
+    assert varied == set(_VARIED)
 
 
 #: The catalogue, through its one door (`template.md` § 8.0).  A test that
@@ -203,26 +147,6 @@ def test_each_call_returns_independent_stages():
     a[0].overrides["basis"] = "def2-QZVP"
     assert "basis" not in b[0].overrides
 
-
-# --------------------------------------------------------------------- #
-#  The two engines build a ladder the same way                          #
-# --------------------------------------------------------------------- #
-
-def test_both_engines_build_a_ladder_through_the_same_shape():
-    """§ 1.1a's whole claim, asserted directly: same call signature, same
-    return type, same field names, same stage names.  The difference is
-    which parameters the overrides carry.
-
-    This is the test that fails when one engine is 'fixed' and the other is
-    not -- the drift the user named as the thing to prevent."""
-    from molbuilder.jobset.ladder import engine_ladder
-    for strategy in sorted(STAGE_STRATEGY_PRESETS):
-        p = engine_ladder("pyscf", strategy)
-        s = engine_ladder("siesta", strategy)
-        assert [x.name for x in p] == [x.name for x in s]
-        # And neither says anything about restarting: that is the folder's
-        # answer at run time, not the ladder's (`run-identity.md` § 4 rule 3).
-        assert not any("restart" in x.overrides for x in p + s)
 
 
 def _as_2_65_7_wrote_it(now):

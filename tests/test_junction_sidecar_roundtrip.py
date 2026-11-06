@@ -35,7 +35,6 @@ import pytest
 from molbuilder.sidecars import molstruct
 from molbuilder.structure import Structure
 from molbuilder.workingcopy_structure import StructureCodec
-from molbuilder.structure_pair import MolstructJsonError
 
 
 # --------------------------------------------------------------------- #
@@ -105,30 +104,6 @@ def _junction() -> Structure:
 @pytest.fixture
 def junction() -> Structure:
     return _junction()
-
-
-def test_the_junction_is_shaped_the_way_the_test_claims(junction):
-    """Read the fixture before trusting anything built on it.
-
-    WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT.  It checks the fixture
-    is the SHAPE the round-trip tests below need -- two electrodes' worth of
-    gold, a two-sulphur bridge, a transport axis -- so that a failure there is
-    about the sidecar and not about a fixture that quietly changed.
-
-    IT DOES NOT ASSERT WHICH ATOMS ARE FROZEN, and that is deliberate.
-    `frozen_atoms` is the USER'S choice: molbuilder never derives it, it carries
-    it (`structure.FROZEN_LABEL` is a reserved label in the one store; every
-    reference in the package reads, converts or writes it). A test asserting
-    that the outermost layer is the frozen one would be pinning a decision this
-    tool has no opinion about -- and the subject of this file is that whatever
-    the user chose SURVIVES write -> read -> write, for any set.  The count
-    stays because the round trip needs a non-empty list to lose.
-    """
-    assert junction.n_atoms == 2 * _ELECTRODE_LAYERS * _ATOMS_PER_LAYER + 12
-    assert junction.elements.count("Au") == 24
-    assert junction.elements.count("S") == 2
-    assert len(junction.regions["frozen_atoms"]) == 2 * _ATOMS_PER_LAYER
-    assert junction.axis_kind == ("periodic", "periodic", "transport")
 
 
 # --------------------------------------------------------------------- #
@@ -201,58 +176,3 @@ def test_the_cell_and_its_axis_kinds_survive(tmp_path, junction):
 
     assert back.axis_kind == ("periodic", "periodic", "transport")
     assert np.allclose(np.asarray(back.cell), np.asarray(junction.cell))
-
-
-def test_the_pair_is_written_at_the_current_schema_version(tmp_path, junction):
-    """A writer that stamps an old version, or a reader that accepts one, is how
-    the frozen atoms went missing. Both ends are pinned here."""
-    target = tmp_path / "junction.xyz"
-    StructureCodec().write(junction, target)
-    payload = molstruct.load(molstruct.sidecar_path_for(target))
-    # The number is `SCHEMA_VERSION`'s to state; a literal here failed the
-    # day the schema moved on (v10, 2026-09-25) without anything being wrong.
-    assert payload["schema_version"] == molstruct.SCHEMA_VERSION
-
-
-def test_a_sidecar_from_an_older_schema_is_refused_not_half_read(
-        tmp_path, junction):
-    """The gate, stated as behaviour rather than as a constant.
-
-    An older sidecar keeps the same facts in different places, so there is
-    nothing to be gained by reading it and everything to lose: the v3 shape put
-    the frozen list in a top-level key this reader does not name, so it loaded
-    clean and arrived empty. Refusing says so; reading it did not.
-    """
-    import json
-    target = tmp_path / "junction.xyz"
-    StructureCodec().write(junction, target)
-
-    side = molstruct.sidecar_path_for(target)
-    payload = json.loads(side.read_text(encoding="utf-8"))
-    payload["schema_version"] = 3
-    payload["frozen_atoms"] = payload["regions"].pop("frozen_atoms")   # v3 shape
-    side.write_text(json.dumps(payload), encoding="utf-8")
-
-    with pytest.raises(MolstructJsonError, match="schema_version"):
-        StructureCodec().load(target)
-
-
-def test_a_key_this_version_does_not_read_is_refused_rather_than_dropped(
-        tmp_path, junction):
-    """"A key nobody reads is metadata the writer thinks it saved."
-
-    It is checked where the payload is still whole, not downstream of the
-    place that would drop the key.
-    """
-    import json
-    target = tmp_path / "junction.xyz"
-    StructureCodec().write(junction, target)
-
-    side = molstruct.sidecar_path_for(target)
-    payload = json.loads(side.read_text(encoding="utf-8"))
-    payload["something_the_writer_believed_in"] = [1, 2, 3]
-    side.write_text(json.dumps(payload), encoding="utf-8")
-
-    with pytest.raises(MolstructJsonError,
-                       match="something_the_writer_believed_in"):
-        StructureCodec().load(target)

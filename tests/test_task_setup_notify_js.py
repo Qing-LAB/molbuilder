@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._node_esm import lifted
+
 
 ROOT = Path(__file__).resolve().parents[1]
 VIEWER = ROOT / "molbuilder/web/static/task-setup/viewer.js"
@@ -38,9 +40,31 @@ const pageBusy = { run: async (reason, cancelers, fn) => fn() };
 """
 
 
-def _slice(src: str, start: str, end: str) -> str:
-    i = src.index(start)
-    return src[i:src.index(end, i)].rstrip()
+#: WHAT THE HARNESSES LIFT OUT OF THE VIEWER, each by `lifted`'s two anchors:
+#: `notifyValues` asks BOTH selectors, so a harness needs both or it exercises
+#: a different function than the page runs.
+_CHOOSING = (
+    ("//: ``null`` until the server has answered",
+     "/** Paint one tick per report"),
+    ("function channelSelection()", "/** Paint one tick per channel"),
+    ("function notifyValues()", "/** Write the policy INTO"),
+)
+#: ...and what writes the choice into the document: `applyNotifyToDoc` runs
+#: inside the fence, and asks the buffers' accessor, the page's own.
+_WRITING = (
+    ("function bufferText(which)", "/** Whether either buffer"),
+    ("function keepingPagePut(fn)", "/** Fill the card FROM"),
+    ("function applyNotifyToDoc()", "/** Fill the card FROM"),
+)
+_WRITER = (*_CHOOSING, _FENCE_IN_NODE, *_WRITING)
+
+
+def _fns(*parts) -> str:
+    """The parts in order: each a pair of `lifted`'s anchors, or a line of the
+    harness's own."""
+    return "\n\n".join(
+        lifted(VIEWER, *part).rstrip() if isinstance(part, tuple) else part
+        for part in parts)
 
 
 def _run(controls: dict, request: dict | None, want: str):
@@ -54,23 +78,10 @@ def _run(controls: dict, request: dict | None, want: str):
     if node is None:
         pytest.skip("node not available")
 
-    src = VIEWER.read_text()
-    fns = "\n\n".join([
-        # `notifyValues` asks BOTH selectors, so the harness needs both or
-        # it exercises a different function than the page runs.
-        _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
-        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
-        _slice(src, "function notifyValues()", "/** Write the policy INTO"),
-        # `applyNotifyToDoc` calls it, so the harness needs it too.
-        _FENCE_IN_NODE,
-        # The buffers' accessor, the page's own.
-        _slice(src, "function bufferText(which)", "/** Whether either buffer"),
-        _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
-        _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
-        _slice(src, "function readNotifyFromRequest(request, task)",
-               "/** One line saying"),
-        _slice(src, "function paintNotifyNote()", "/** What a `prep` would"),
-    ])
+    fns = _fns(*_WRITER,
+               ("function readNotifyFromRequest(request, task)",
+                "/** One line saying"),
+               ("function paintNotifyNote()", "/** What a `prep` would"))
 
     harness = f"""
         const _els = {json.dumps(controls)};
@@ -246,23 +257,10 @@ def test_an_unparseable_document_loses_nothing():
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    src = VIEWER.read_text()
-    fns = "\n\n".join([
-        # `notifyValues` asks BOTH selectors, so the harness needs both or
-        # it exercises a different function than the page runs.
-        _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
-        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
-        _slice(src, "function notifyValues()", "/** Write the policy INTO"),
-        # `applyNotifyToDoc` calls it, so the harness needs it too.
-        _FENCE_IN_NODE,
-        # The buffers' accessor, the page's own.
-        _slice(src, "function bufferText(which)", "/** Whether either buffer"),
-        _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
-        _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
-        # `patchDoc` refuses through it, naming the records' tabs.
-        "const RECORDS = ['task', 'request'];",
-        _slice(src, "function refuseUnparsed()", "/** Whether record"),
-    ])
+    fns = _fns(*_WRITER,
+               # `patchDoc` refuses through it, naming the records' tabs.
+               "const RECORDS = ['task', 'request'];",
+               ("function refuseUnparsed()", "/** Whether record"))
     harness = f"""
         const _els = {json.dumps(_controls(scf=True))};
         _els["ts-notify-channels"] = {{
@@ -386,17 +384,7 @@ def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    src = VIEWER.read_text(encoding="utf-8")
-    fns = "\n\n".join([
-        _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
-        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
-        _slice(src, "function notifyValues()", "/** Write the policy INTO"),
-        _FENCE_IN_NODE,
-        # The buffers' accessor, the page's own.
-        _slice(src, "function bufferText(which)", "/** Whether either buffer"),
-        _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
-        _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
-    ])
+    fns = _fns(*_WRITER)
     harness = f"""
         let _doc = JSON.stringify({{ schema: "molbuilder/job-request@1",
                                      stages: {{}} }}, null, 2);
@@ -458,16 +446,9 @@ def test_a_card_that_could_not_ask_keeps_the_descriptions_report_list():
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    src = VIEWER.read_text(encoding="utf-8")
-    fns = "\n\n".join([
-        _slice(src, "//: ``null`` until the server has answered",
-               "/** Paint one tick per report"),
-        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
-        _slice(src, "function notifyValues()", "/** Write the policy INTO"),
-        # The buffers' accessor, the page's own.
-        _slice(src, "function bufferText(which)", "/** Whether either buffer"),
-        _slice(src, "function currentRecord(which)", "function wireChannels()"),
-    ])
+    fns = _fns(*_CHOOSING,
+               ("function bufferText(which)", "/** Whether either buffer"),
+               ("function currentRecord(which)", "function wireChannels()"))
     harness = f"""
         const _els = {{
             "ts-report-all":   {{ checked: false }},

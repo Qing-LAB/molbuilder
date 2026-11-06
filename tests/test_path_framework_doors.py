@@ -27,36 +27,6 @@ def _touch(d, *names):
 # 1.  The patterned role -- a row in the catalogue that is a family.          #
 # --------------------------------------------------------------------------- #
 
-def test_no_role_in_the_catalogue_is_a_GLOB():
-    """A wildcard in a role is a coordinate that escaped into the vocabulary.
-
-    § 5l.3: a channel is a **field**, so the role is a template and every
-    comparison is an ordinary equality.
-    """
-    starred = sorted(a.role for a in runfiles.WRITTEN if "*" in a.role)
-    assert not starred, (
-        f"these rows declare a glob as a role: {starred}. If the name varies, "
-        f"declare the varying part as a FIELD (`fields=(...)` on the row, its "
-        f"shape in `runfiles.FIELDS`) — see § 5l.1.")
-
-
-def test_every_declared_field_has_a_declared_shape():
-    """A field whose shape is not written down cannot be read back out.
-
-    The shapes live in one place: `compose` validates against it and `parse`
-    reads with it, so the two cannot disagree about what a field looks
-    like.
-    """
-    for a in runfiles.WRITTEN:
-        for f in a.fields:
-            assert f in runfiles.FIELDS, (
-                f"role {a.role!r} names the field {f!r} with no shape in "
-                f"`FIELDS`")
-        # and the template must actually mention what it declares
-        assert set(a.fields) == set(runfiles._fields_in(a.role)), (
-            f"role {a.role!r} declares fields {a.fields} but its template "
-            f"names {runfiles._fields_in(a.role)}")
-
 
 def test_canonical_role_maps_a_name_back_to_its_TEMPLATE():
     """A plain role must come back unchanged and must NOT become fuzzy — ``.out``
@@ -144,14 +114,3 @@ def test_what_travels_beside_a_deck_is_its_engines_and_its_kinds(
     assert sorted(runfiles.beside_the_deck(engine, calculation, None,
                                            names)) == sorted(
         (names.run_script, names.header, runfiles.MONITOR_BUNDLE, *theirs))
-
-
-# --------------------------------------------------------------------------- #
-# 3.  The sidecar's composer.                                                  #
-# --------------------------------------------------------------------------- #
-
-# --------------------------------------------------------------------------- #
-# 4.  The other callers, asked for their answers.                              #
-# --------------------------------------------------------------------------- #
-
-

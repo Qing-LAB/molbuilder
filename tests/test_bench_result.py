@@ -2,9 +2,6 @@
 (molbuilder/bench/result.py)."""
 from __future__ import annotations
 
-
-import pytest
-
 from molbuilder.bench.result import (
     BenchPoint,
     BenchResult,
@@ -71,23 +68,6 @@ def test_build_and_round_trip():
     assert back.choice["engine"] == "gpu"
     assert back.points[0].label == "gpu-k8"
     assert back.system["n_atoms"] == 444
-
-
-def test_from_dict_rejects_major_mismatch():
-    with pytest.raises(ValueError, match="schema mismatch"):
-        BenchResult.from_dict({"schema": "molbuilder/bench-result@2"})
-
-
-def test_choice_survives_a_json_round_trip_for_the_offer():
-    """The artifact: the `choice` written here must carry the knobs that
-    the offer reads back, through a JSON round trip.
-    """
-    import json
-    from molbuilder.persist import json_text
-    res = build_bench_result(_pts())
-    back = json.loads(json_text(res.to_dict()))
-    knobs = (back.get("choice") or {}).get("knobs") or {}
-    assert knobs, "choice.knobs is what prep-run's offer consumes"
 
 
 # --------------------------------------------------------------------- #

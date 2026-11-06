@@ -126,15 +126,16 @@ class TestParseSpectraJsonHappyPath:
             original.equilibrium_mo_energies_eh,
         )
 
-    def test_accepts_pathlike_input(self, tmp_path):
-        """os.PathLike (e.g. pathlib.Path) should work directly --
-        the live-watch poller hands us Paths, not strings."""
-        original = _make_minimal_results()
-        p = _write_json(tmp_path, original)
-        # Passing the Path object directly:
-        loaded = parse_spectra_json(p)
-        assert loaded.engine == "pyscf"
-
+    def test_the_file_the_writer_wrote_is_read_by_its_parser(self, tmp_path):
+        """A result as the one writer writes it is claimed by the registry's
+        spectra parser.  THE SILENT FAILURE: the parser dropped from the
+        registry, so a vibration's result is listed with `parser: null` and the
+        picker drops it, while every direct `parse_spectra_json` here still
+        reads it.  `model/parse.md` § 3.
+        """
+        from molbuilder.parse import detect
+        p = _write_json(tmp_path, _make_minimal_results())
+        assert detect(str(p)).name == "spectra-json"
 
     def test_intermediate_phase_state_round_trips(self, tmp_path):
         """A partially-complete file (L2 done, L3+L4 empty) round-
@@ -255,11 +256,6 @@ class TestExceptionHierarchy:
                     SpectraJsonFieldError):
             assert issubclass(cls, SpectraJsonError)
 
-    def test_not_found_also_inherits_filenotfound(self):
-        """Legacy ``except FileNotFoundError`` blocks must keep
-        catching missing-file errors."""
-        assert issubclass(SpectraJsonNotFoundError, FileNotFoundError)
-
     def test_schema_error_carries_expected_and_actual_attrs(self):
         """The SchemaError carries the two version numbers as
         attributes so the web layer can render a structured "update
@@ -275,9 +271,8 @@ class TestExceptionHierarchy:
 
 
 class TestParseEncodingTolerance:
-    """The reader uses utf-8-sig so a BOM-prefixed file (some
-    Windows editors insert one) is transparently stripped instead
-    of poisoning the first byte of the JSON document."""
+    """Characters beyond ASCII travel as written, through the one writer and
+    back through the reader."""
 
 
     def test_utf8_special_chars_round_trip(self, tmp_path):
@@ -308,23 +303,6 @@ class TestDumpSpectraJson:
     """The writer is the second half of the wire-format contract.
     It enforces the safety rules every Spectra engine has to
     follow when emitting JSON checkpoints."""
-
-    def test_round_trip(self, tmp_path):
-        """PLUMBING. The writer's product is readable by the reader.
-
-        Catches the two halves of the wire format drifting apart. Every other test
-        in this class checks one property of the written file; this is the one
-        that checks the pair still closes -- and it is the only place a writer
-        change is required to survive an actual parse.
-
-        Contract: `web/spectra.md` § 6; the format is `spectra/results.py`.
-        """
-        original = _make_minimal_results()
-        p = tmp_path / "out.spectra.json"
-        dump_spectra_json(original, p)
-        loaded = parse_spectra_json(p)
-        assert loaded.engine == original.engine
-        assert len(loaded.modes) == len(original.modes)
 
     def test_nan_in_scalar_field_rejected(self, tmp_path):
         """allow_nan=False means a NaN energy raises ValueError
@@ -387,22 +365,6 @@ class TestDumpSpectraJson:
         # And the first char is actually the JSON opening brace.
         assert p.read_bytes()[:1] == b"{"
 
-    def test_pathlike_accepted(self, tmp_path):
-        """PLUMBING. The writer takes an `os.PathLike` destination.
-
-        Catches the writer being narrowed to `str` -- every caller in the package
-        holds a `Path`, so a str-only writer would break the engine's checkpoint
-        write while every string-based test kept passing.
-
-        Contract: `web/spectra.md` § 6 (the engine writes the checkpoint the door
-        later reads).
-        """
-        original = _make_minimal_results()
-        # pathlib.Path is os.PathLike; the name is the catalogue's.
-        dump_spectra_json(original, tmp_path / "x.spectra.json")
-        assert (tmp_path / "x.spectra.json").exists()
-
-
 # --------------------------------------------------------------------- #
 #  Optional / null fields                                               #
 #                                                                       #
@@ -440,9 +402,9 @@ class TestOptionalNullFields:
         results = self._build_with_modes([mode])
         p = tmp_path / "no_raman.spectra.json"
         dump_spectra_json(results, p)
-        # The JSON file actually has the literal null token.
-        raw = p.read_text(encoding="utf-8")
-        assert '"raman_activity_a4_amu": null' in raw
+        # The JSON file states the key, as a null.
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        assert raw["modes"][0]["raman_activity_a4_amu"] is None
         loaded = parse_spectra_json(p)
         assert loaded.modes[0].raman_activity_a4_amu is None
 
@@ -461,8 +423,8 @@ class TestOptionalNullFields:
         results = _make_minimal_results()
         p = tmp_path / "no_es.spectra.json"
         dump_spectra_json(results, p)
-        raw = p.read_text(encoding="utf-8")
-        assert '"electronic_structure": null' in raw
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        assert raw["modes"][0]["electronic_structure"] is None
         loaded = parse_spectra_json(p)
         assert loaded.modes[0].electronic_structure is None
 
@@ -778,6 +740,12 @@ class TestComprehensiveRoundTrip:
         `null` for one mode being read back onto another. Every other test in this
         file uses a one-mode fixture where none of those can happen.
 
+        Every number of the probe block, every infrared intensity and each
+        phase's word hold a value no other key holds, so a key read from its
+        neighbour cannot pass: an orbital window at -A read as the one at +A
+        would give a wrong shift with no word, and infrared thrown away on read
+        serves *not computed* over a file holding the numbers.
+
         Contract: `web/spectra.md` § 6 + the wire format in
         `spectra/results.py`.
 
@@ -785,10 +753,12 @@ class TestComprehensiveRoundTrip:
         ORDER (frequencies ascending, imaginary first) is a convention the viewer
         depends on and nothing here checks it.
         """
-        from molbuilder.spectra.results import PHASE_COMPLETE, SCHEMA_VERSION
+        from molbuilder.spectra.results import (PHASE_COMPLETE,
+                                                PHASE_NOT_REQUESTED,
+                                                PHASE_RUNNING, SCHEMA_VERSION)
 
         es = ModeElectronicStructure(
-            amplitude_ang        = 0.10,
+            amplitude_ang        = 0.25,
             mo_energies_eq_eh    = np.array([-1.234e-2, -5.678e-3, 0.0,
                                              1.111e-3, 2.222e-3]),
             mo_energies_minus_eh = np.array([-1.235e-2, -5.679e-3, -1e-9,
@@ -803,14 +773,14 @@ class TestComprehensiveRoundTrip:
         modes = [
             ModeData(  # imaginary
                 index_1based=1, frequency_cm1=-120.5,
-                raman_activity_a4_amu=0.0, ir_intensity_km_mol=None,
+                raman_activity_a4_amu=0.0, ir_intensity_km_mol=1.5,
                 eigenvector_canonical = np.array([[0.7, 0., 0.], [-0.7, 0., 0.]]),
                 eigenvector_display   = np.array([[0.7, 0., 0.], [-0.7, 0., 0.]]),
                 has_imag=True,
             ),
             ModeData(  # selected for ES
                 index_1based=2, frequency_cm1=1023.4,
-                raman_activity_a4_amu=87.2, ir_intensity_km_mol=None,
+                raman_activity_a4_amu=87.2, ir_intensity_km_mol=42.0,
                 eigenvector_canonical = np.array([[0., 0.7, 0.], [0., -0.7, 0.]]),
                 eigenvector_display   = np.array([[0., 0.7, 0.], [0., -0.7, 0.]]),
                 has_imag=False,
@@ -818,7 +788,7 @@ class TestComprehensiveRoundTrip:
             ),
             ModeData(  # not selected (no ES) + no Raman activity
                 index_1based=3, frequency_cm1=3656.0,
-                raman_activity_a4_amu=None, ir_intensity_km_mol=None,
+                raman_activity_a4_amu=None, ir_intensity_km_mol=7.25,
                 eigenvector_canonical = np.array([[0., 0., 0.7], [0., 0., -0.7]]),
                 eigenvector_display   = np.array([[0., 0., 0.7], [0., 0., -0.7]]),
                 has_imag=False,
@@ -849,16 +819,18 @@ class TestComprehensiveRoundTrip:
             },
             methods_text               = (
                 "Vibrational analysis at the B3LYP/def2-SVP level "
-                "with D3BJ dispersion (displacement amplitude 0.10 Å; "
+                "with D3BJ dispersion (displacement amplitude 0.25 Å; "
                 "frequencies reported in cm⁻¹)."
             ),
             bibliography_keys          = [
                 "Sun2020", "Sun2018", "Becke1993", "Grimme2011",
                 "Mills1972", "Galperin2007",
             ],
+            phase_relaxation           = PHASE_NOT_REQUESTED,
             phase_frequencies          = PHASE_COMPLETE,
-            phase_raman                = PHASE_COMPLETE,
-            phase_es                   = PHASE_COMPLETE,
+            phase_raman                = PHASE_RUNNING,
+            phase_ir                   = PHASE_COMPLETE,
+            phase_es                   = PHASE_EMPTY,
             engine_metadata            = {
                 "pyscf_grid_radial": 75,
                 "pyscf_grid_angular": 302,
@@ -893,11 +865,17 @@ class TestComprehensiveRoundTrip:
         m1, m2, m3 = loaded.modes
         assert m1.frequency_cm1 == -120.5 and m1.has_imag is True
         assert m2.electronic_structure is not None
-        assert m2.electronic_structure.amplitude_ang == pytest.approx(0.10)
-        np.testing.assert_array_equal(
-            m2.electronic_structure.mo_energies_eq_eh,
-            original.modes[1].electronic_structure.mo_energies_eq_eh,
-        )
+        probe = m2.electronic_structure
+        assert probe.amplitude_ang == pytest.approx(0.25)
+        np.testing.assert_array_equal(probe.mo_energies_eq_eh, es.mo_energies_eq_eh)
+        np.testing.assert_array_equal(probe.mo_energies_minus_eh, es.mo_energies_minus_eh)
+        np.testing.assert_array_equal(probe.mo_energies_plus_eh, es.mo_energies_plus_eh)
+        assert probe.homo_index_in_window == 2
+        assert probe.scf_energy_eq_eh == es.scf_energy_eq_eh
+        assert probe.scf_energy_minus_eh == es.scf_energy_minus_eh
+        assert probe.scf_energy_plus_eh == es.scf_energy_plus_eh
+        assert [m1.ir_intensity_km_mol, m2.ir_intensity_km_mol,
+                m3.ir_intensity_km_mol] == [1.5, 42.0, 7.25]
         assert m3.raman_activity_a4_amu is None
         assert m3.electronic_structure is None
         # Selected modes list.
@@ -909,9 +887,11 @@ class TestComprehensiveRoundTrip:
         assert "cm⁻¹" in loaded.methods_text
         assert loaded.bibliography_keys == original.bibliography_keys
         # Phase flags.
+        assert loaded.phase_relaxation  == PHASE_NOT_REQUESTED
         assert loaded.phase_frequencies == PHASE_COMPLETE
-        assert loaded.phase_raman       == PHASE_COMPLETE
-        assert loaded.phase_es          == PHASE_COMPLETE
+        assert loaded.phase_raman       == PHASE_RUNNING
+        assert loaded.phase_ir          == PHASE_COMPLETE
+        assert loaded.phase_es          == PHASE_EMPTY
         # Engine metadata (mixed types).
         assert loaded.engine_metadata["pyscf_grid_angular"] == 302
         assert loaded.engine_metadata["wall_time_seconds"] == pytest.approx(1234.567)

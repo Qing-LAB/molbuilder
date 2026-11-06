@@ -130,7 +130,8 @@ def road_structure(s: dict):
     """A road structure -- :data:`H2`, :data:`CO2`, a row's -- as a
     ``Structure``: its ``elements``, ``positions`` (Å), ``regions``
     (``frozen_atoms`` among them), its box's three edges or three vectors,
-    ``cell`` (Å), and each axis's ``axis_kind`` (isolated unless given).
+    ``cell`` (Å), each axis's ``axis_kind`` (isolated unless given) and the
+    origin a person assigned, ``engine_offset`` (none unless given).
     THE ONE BUILDER of the road's structures."""
     from molbuilder.structure import Structure
     return Structure(
@@ -139,7 +140,8 @@ def road_structure(s: dict):
         regions={k: list(v) for k, v in s.get("regions", {}).items()},
         cell=(np.asarray(s["cell"], dtype=float) if np.ndim(s["cell"]) == 2
               else np.diag([float(a) for a in s["cell"]])),
-        axis_kind=tuple(s.get("axis_kind", ["isolated"] * 3)))
+        axis_kind=tuple(s.get("axis_kind", ["isolated"] * 3)),
+        engine_offset=s.get("engine_offset"))
 
 
 def co2_in_engine_order():
@@ -494,7 +496,7 @@ def calls_made(calls: Path):
 # `calculation` -- the kind `molbuilder describe` describes, an optimization unless
 # given; `structure` -- the structure it describes, H2 unless given
 # (`describe_calculation`: `elements`, `positions`, `regions`, `cell`,
-# `axis_kind`); `stage_strategy` -- the ladder `molbuilder describe` is told,
+# `axis_kind`, `engine_offset`); `stage_strategy` -- the ladder `molbuilder describe` is told,
 # `publishable` for a SIESTA optimization unless given, `""` for the one
 # stage the template alone describes.
 #

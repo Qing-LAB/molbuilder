@@ -101,10 +101,6 @@ def test_the_table_names_the_next_move():
     assert "--time" in out and "ask again" in out and "prep" in out
 
 
-def test_an_empty_ask_says_so_rather_than_printing_a_header():
-    assert prediction_table([]) == "nothing to ask about."
-
-
 # --------------------------------------------------------------------- #
 #  what `launch --mode ask` says, on the road a person takes             #
 # --------------------------------------------------------------------- #

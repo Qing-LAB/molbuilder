@@ -693,3 +693,58 @@ said = ["coarse (01_coarse): prepared, never launched, and already as this prep 
 said_once = ["held fixed"]
 # ...the page told of the group left as it stands too, as the terminal is.
 page_stage_found = { coarse = ["held fixed"], medium = ["held fixed"] }
+
+# ===================================================================== #
+#  WHAT THE GATE JUDGES IS WHAT THE DECK WRITES                         #
+#  (`science/validation.md` § 4.1)                                      #
+# ===================================================================== #
+
+# THE SUBJECT AND ITS COORDINATES SHARE ONE FRAME (`model/
+# structure-periodicity.md` § 6.0, *A stated offset*): the structure the SIESTA
+# deck hands the validator carries the coordinates the deck will write, the
+# cell's corner at (0,0,0), so it states THAT frame's offset, 0, not the
+# design's.  Measured before the fix on a junction with a stored corner:
+# `contains_atoms = False` and a clearance of -19 Å along transport, a
+# `cell.atoms_outside` warning naming numbers from neither frame on atoms
+# inside their box.  The emitted coordinates were right throughout, which is
+# why it survived: a false warning, never a refusal.  Here the origin is
+# ASSIGNED at (-2, -2, -10): the deck puts the atoms at x = y = 3 in the 8 Å
+# cell -- off-centre, so the rule is not what placed them -- and z = 1..19;
+# the design's offset carried over would put z at fractional 0.55-1.45.  The
+# subject is a derived copy: the origin the person assigned and the design
+# coordinates stay on the pair they own (§ 6.1 clause 1; § 6.0).
+[[case]]
+name = "the gate judges the frame the deck writes, and the pair the description names is left as it was"
+structure = { elements = ["Au", "Au", "Au", "Au", "Au", "Au", "Au"], positions = [[1.0, 1.0, -9.0], [1.0, 1.0, -6.0], [1.0, 1.0, -3.0], [1.0, 1.0, 0.0], [1.0, 1.0, 3.0], [1.0, 1.0, 6.0], [1.0, 1.0, 9.0]], cell = [8.0, 8.0, 20.0], engine_offset = [2.0, 2.0, 10.0], axis_kind = ["periodic", "periodic", "transport"] }
+said_lacks = ["[cell.atoms_outside]"]
+kept = ["H2.source.xyz", "H2.source.molstruct.json"]
+
+# A CHARGED MOLECULE'S DIPOLE IS ITS OWN (`model/chemistry.md` § 4, taken about
+# the centre of mass; plan § 5q D8): the validators judge the copy the deck
+# places, half a box from where the molecule was drawn, and an ion's dipole
+# depends on the origin (`science/normal-modes.md` § 4a.5), so ``sum(q r)``
+# there measured the box, not the molecule: formate at charge -1 read 88.8 D
+# placed against 1.4 D as drawn (found by review, 2026-09-25).  About its
+# centre of mass it reads 0.6 D, under the 1 D the advisory speaks at.
+[[case]]
+name = "formate at charge -1 is not told of a dipole: the box's size is not the molecule's"
+structure = { elements = ["C", "O", "O", "H"], positions = [[0.0, 0.0, 0.0], [1.26, 0.0, 0.0], [-0.63, 1.09, 0.0], [-0.55, -0.95, 0.0]], cell = [10.0, 10.0, 10.0] }
+template = { net_charge = -1 }
+said_lacks = ["estimated net dipole"]
+
+# THE DIPOLE ADVISORY ASKS THE AXES (`model/structure-periodicity.md` § 2.1,
+# plan § 5w K8): it is for a box of vacuum on every axis -- the axes SIESTA
+# computes on, never the k-point count (the K3 review).  A polar molecule
+# sampled 4x4x4 still sits among its images...
+[[case]]
+name = "a polar molecule at four k-points is told of its dipole"
+structure = { elements = ["F", "H"], positions = [[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]], cell = [11.0, 10.0, 10.0] }
+template = { kgrid = [4, 4, 4] }
+said = ["estimated net dipole"]
+
+# ...and the same pair as a crystal, periodic on every axis and sampled at
+# Gamma alone, carries its images by design.
+[[case]]
+name = "...the same pair as a crystal at Gamma is not"
+structure = { elements = ["F", "H"], positions = [[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]], cell = [5.0, 5.0, 5.0], axis_kind = ["periodic", "periodic", "periodic"] }
+said_lacks = ["estimated net dipole"]

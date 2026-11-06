@@ -43,10 +43,7 @@ import pytest
 pytest.importorskip("flask")
 
 
-from molbuilder.web.app import (
-    _ClientDisconnectSSLFilter,
-    _install_client_disconnect_filter,
-)
+from molbuilder.web.app import _ClientDisconnectSSLFilter
 
 
 _FILTER = _ClientDisconnectSSLFilter()
@@ -129,52 +126,31 @@ def test_preserves_record_about_other_ssl_event():
 
 
 # --------------------------------------------------------------------- #
-#  Install-side: the helper is called from create_app                    #
+#  Wired from create_app                                                 #
 # --------------------------------------------------------------------- #
 
 
-def test_install_attaches_filter_to_werkzeug_logger():
-    """Sanity: ``_install_client_disconnect_filter`` attaches the
-    filter to the ``werkzeug`` logger and is idempotent.
-    """
-    werkzeug_log = logging.getLogger("werkzeug")
-    # Capture pre-state so we restore it afterwards.
-    pre_filters = list(werkzeug_log.filters)
-    try:
-        # Clear any prior filter from earlier test runs.
-        werkzeug_log.filters = []
-        _install_client_disconnect_filter()
-        assert any(
-            isinstance(f, _ClientDisconnectSSLFilter)
-            for f in werkzeug_log.filters
-        ), "filter not installed on werkzeug logger"
-
-        # Idempotent: calling again does NOT add a second copy.
-        _install_client_disconnect_filter()
-        n_filters = sum(
-            1 for f in werkzeug_log.filters
-            if isinstance(f, _ClientDisconnectSSLFilter)
-        )
-        assert n_filters == 1, (
-            f"filter must be attached EXACTLY once; found "
-            f"{n_filters} copies"
-        )
-    finally:
-        werkzeug_log.filters = pre_filters
-
-
 def test_create_app_installs_the_filter():
-    """The filter MUST be wired from ``create_app`` so a deployed
-    server gets it without an extra install step."""
+    """A deployed server gets the filter without an extra step: after
+    ``create_app`` the werkzeug logger drops the EOF record and lets another
+    SSL record through.
+
+    THE SILENT FAILURE: the filter alive as a class and called by nothing, so
+    the log floods again while every test of the class stays green."""
     werkzeug_log = logging.getLogger("werkzeug")
     pre_filters = list(werkzeug_log.filters)
     werkzeug_log.filters = []
     try:
         from molbuilder.web.app import create_app
         create_app(config={})  # builds the Flask app
-        assert any(
-            isinstance(f, _ClientDisconnectSSLFilter)
-            for f in werkzeug_log.filters
-        ), "create_app did not install the client-disconnect filter"
+        eof = _make_record(
+            "ssl.SSLError: [SSL: UNEXPECTED_EOF_WHILE_READING] "
+            "unexpected eof while reading (_ssl.c:2580)")
+        other = _make_record(
+            "ssl.SSLError: [SSL: WRONG_VERSION_NUMBER] wrong version")
+        assert not werkzeug_log.filter(eof), (
+            "create_app did not install the client-disconnect filter")
+        assert werkzeug_log.filter(other), (
+            "the filter on the logger dropped another SSL event")
     finally:
         werkzeug_log.filters = pre_filters

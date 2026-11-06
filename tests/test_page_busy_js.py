@@ -154,20 +154,25 @@ def test_cancel_runs_cancelers_in_order_and_does_not_release():
 
 
 def test_release_lowers_the_cover_and_is_idempotent():
+    """`ui-contract.md` § 10.  THE SILENT FAILURE: every heavy operation leaving
+    the page under its cover."""
     out = _run_node('''
         pageBusy.claim("op", []);
-        pageBusy.release();
-        pageBusy.release();      // idempotent -- must not throw
         const cover = body.children.find(
             c => c.className === "page-busy-cover");
-        const after = pageBusy.claim("again", []);   // reclaimable
+        const up = cover.hidden;
+        pageBusy.release();
+        const lowered = cover.hidden;
+        pageBusy.release();      // idempotent -- must not throw
+        pageBusy.claim("again", []);   // reclaimable
         console.log(JSON.stringify({
-            hiddenAfterRelease: false,   // replaced below if reachable
+            up, lowered,
             claimed: pageBusy.isClaimed(),
             reason:  pageBusy.reason(),
-            coverHiddenBetween: cover.hidden === false,  // now re-raised
         }));
     ''')
+    assert out["up"] is False
+    assert out["lowered"] is True, "released, and the page is still covered"
     assert out["claimed"] is True and out["reason"] == "again"
 
 

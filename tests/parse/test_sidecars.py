@@ -1,79 +1,33 @@
-"""L2 tests for the sidecar FileParsers.
-
-Pins:
-  * Each sidecar parser is registered + claims its filename
-    suffix.
-  * parse() returns a SidecarResult with the right schema tag.
-  * detect() routes to the right sidecar parser.
+"""L2 tests for the sidecar FileParsers: what molbuilder's writers write, the
+registry claims, under the right parser and schema tag.  A vibration's
+`.spectra.json` is asked in `tests/spectra/test_parsers_json.py`, beside the
+results that writer takes.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from molbuilder.parse import SidecarResult, detect, parse
-from molbuilder.parse.sidecars import MolstructSidecarFileParser
-from molbuilder.parse.registry import _registered_file_parsers
+from molbuilder.parse import detect
 
 
-REPO = Path(__file__).resolve().parents[2]
-MOLSTRUCT_FX = REPO / "tests" / "data" / "au_bdt_au.molstruct.json"
-
-
-def _need(p: Path) -> Path:
-    """Assert the fixture is there.
-
-    Every fixture it guards is COMMITTED under tests/ -- so absence means a
-    broken checkout or a deleted file, and a missing committed fixture is a
-    failure, loudly.
+def test_a_structures_sidecar_is_read_by_its_parser(tmp_path):
+    """A pair as the writer writes it: its `.molstruct.json` is claimed by the
+    sidecar parser and read at the version this build writes.  THE SILENT
+    FAILURE: the parser dropped from the registry, so the file is listed with
+    `parser: null` and the picker drops it.  `model/parse.md` § 3, § 6.
     """
-    assert p.exists(), (
-        f"committed fixture missing: {p}.  It is versioned with these tests; "
-        f"a checkout without it is broken, not a reason to skip.")
-    return p
+    from molbuilder.sidecars import molstruct
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
 
-
-# Registration --------------------------------------------------------- #
-
-
-def test_sidecar_parsers_registered():
-    names = {p.name for p in _registered_file_parsers()}
-    assert "molstruct-json" in names
-    assert "spectra-json"   in names
-
-
-def test_molstruct_parser_claims_suffix():
-    assert MolstructSidecarFileParser.can_parse(_need(MOLSTRUCT_FX))
-    assert not MolstructSidecarFileParser.can_parse(REPO / "README.md")
-
-
-def test_detect_routes_to_molstruct_parser():
-    cls = detect(_need(MOLSTRUCT_FX))
-    assert cls is MolstructSidecarFileParser
-
-
-# Parse + payload + schema -------------------------------------------- #
-
-
-def test_parse_molstruct_returns_sidecarresult():
-    result = parse(_need(MOLSTRUCT_FX))
-    assert isinstance(result, SidecarResult)
-    assert result.result_kind == "sidecar"
-    assert result.schema.startswith("molstruct/v")
-    assert result.parser_name == "molstruct-json"
-    assert isinstance(result.payload, dict)
-    # The schema tag matches what the payload declares
-    sv_in_payload = result.payload.get("schema_version")
-    if sv_in_payload is not None:
-        assert result.schema == f"molstruct/v{sv_in_payload}"
-
-
-def test_sidecar_result_is_frozen():
-    result = parse(_need(MOLSTRUCT_FX))
-    with pytest.raises(Exception):
-        result.schema = "tampered/v0"   # noqa
+    f = tmp_path / "h2.xyz"
+    StructureCodec().write(Structure(elements=["H", "H"],
+                                     positions=[[0, 0, 0], [0, 0, 0.74]]), f)
+    side = molstruct.sidecar_path_for(f)
+    kind = detect(str(side))
+    assert kind.name == "molstruct-json"
+    assert kind.parse(side).schema == f"molstruct/v{molstruct.SCHEMA_VERSION}"
 
 
 # --------------------------------------------------------------------- #

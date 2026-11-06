@@ -739,7 +739,7 @@ When reviewing chemistry correctness in a PR, a refactor, or a structural audit,
 walk these in order (the "scientific correctness" audit dimension lives here):
 
 **3.1 At the dispatcher** — `available_backends()` reports installed backends
-correctly (`tests/test_backends.py:31::test_available_backends_returns_dict_of_bools`);
+correctly (`tests/test_backends.py`);
 `auto_backend_name()` returns the highest-priority available backend; adding a
 backend doesn't break the cascade (3DNA still wins for DNA when present).
 

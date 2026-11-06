@@ -433,7 +433,8 @@ def test_the_sidecar_payload_has_exactly_these_members(tmp_path):
     )
     assert saved["regions"] == {"L-electrode": [0], FROZEN_LABEL: [1, 2]}
 
-    # The pre-v7 second key, put back by hand: the read door refuses it.
+    # A second frozen list, put in by hand: the read door refuses it rather than
+    # drop atoms the person believes are held.
     molstruct.sidecar_path_for(target).write_text(
         json.dumps(dict(saved, frozen_atoms=[0])), "utf-8")
     with pytest.raises(MolstructJsonError,

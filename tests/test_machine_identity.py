@@ -4,8 +4,7 @@
 sbatch-accept, when no node exists yet); what it LANDED ON is the monitor's,
 written on the compute node as the log's first line.
 
-The guards here are named for the two traps in `archive/2026-09-01-machine-identity-plan.md`
-§ 2, because each would produce a feature that runs, reports, and means
+The trap this guards would produce a feature that runs, reports, and means
 nothing:
 
 * **T2** — the node's size, not the allocation.  ``_alloc_cores()`` reads
@@ -14,8 +13,10 @@ nothing:
   trial of a rank-scaling sweep.  On an unconstrained workstation the two
   sources agree, so the guard must constrain affinity itself or it tests
   nothing.
-* the device COUNT is the allocation's — inside a scheduled job the device
-  cgroup shows only granted GPUs — so only the MODEL may appear.
+
+The device COUNT is the allocation's -- inside a scheduled job the device
+cgroup shows only granted GPUs -- so only the MODEL may appear: asked of a real
+device list in `tests/field/test_the_machine_line.py`.
 """
 import os
 
@@ -51,31 +52,6 @@ def test_cores_is_the_node_not_the_allocation():
     finally:
         os.sched_setaffinity(0, full)
 
-
-# ------------------------------------------------------- model, never count
-
-def test_gpu_models_dedup_and_never_a_count(monkeypatch):
-    two_of_a_kind = (
-        "GPU 0: NVIDIA A100-SXM4-80GB (UUID: GPU-aaa)\n"
-        "GPU 1: NVIDIA A100-SXM4-80GB (UUID: GPU-bbb)\n"
-        "GPU 2: NVIDIA H200 (UUID: GPU-ccc)\n")
-
-    def fake_run(cmd, **kw):
-        class R:
-            returncode = 0
-            stdout = two_of_a_kind
-        assert cmd[:2] == ["nvidia-smi", "-L"]
-        return R()
-
-    monkeypatch.setattr(monitor.subprocess, "run", fake_run)
-    models = monitor._gpu_models()
-    assert models == ["NVIDIA A100-SXM4-80GB", "NVIDIA H200"], (
-        "distinct models in first-seen order — a repeated model must not "
-        "repeat, because two visible A100s is a fact about the ALLOCATION")
-    assert (monitor.machine_line().split("gpu=", 1)[1]
-            == "NVIDIA A100-SXM4-80GB, NVIDIA H200"), (
-        "the gpu field must be exactly the model list — a count prefix "
-        "(e.g. '2x') would be the allocation's count, not the node's")
 
 
 def test_no_tool_and_no_device_read_the_same(monkeypatch):

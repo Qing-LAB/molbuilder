@@ -9,6 +9,10 @@ These tests use a fake fetch + structurePage + viewer-loader so
 the state machine can be exercised without a real DOM or HTTP
 roundtrip.  The DOM wiring (``wirePanel`` against actual buttons +
 inputs) is exercised by an e2e test in test_molbuilder_e2e.py.
+
+The one generate chain is `panel-deps.js`'s, tested here through SMILES.  What
+each other panel asks the server is its own, and is a row of the table at the
+end of this file.
 """
 from __future__ import annotations
 
@@ -73,26 +77,6 @@ def _run_node(snippet: str) -> object:
             "module threw: " + str(out)
         )
     return out
-
-
-# ----- Surface presence ------------------------------------------ #
-
-
-class TestSurfacePresence:
-
-    def test_methods_callable(self):
-        out = _run_node('''
-            console.log(JSON.stringify({
-                configure: typeof smiles.configure,
-                generate:  typeof smiles.generate,
-                wirePanel: typeof smiles.wirePanel,
-                BUILD_URL: smiles.BUILD_URL,
-            }));
-        ''')
-        assert out["configure"] == "function"
-        assert out["generate"]  == "function"
-        assert out["wirePanel"] == "function"
-        assert out["BUILD_URL"] == "/api/build/molecule"
 
 
 # ----- Input validation ------------------------------------------ #
@@ -438,23 +422,6 @@ class TestCanvasGate:
 
 class TestConfigurationErrors:
 
-    def test_generate_rejects_when_fetch_unconfigured(self):
-        """No fetch at all -- stated, rather than relied on.
-
-        The shared `panel-deps` creates the app namespace, so the panel's
-        resolver would pick up Node's global fetch.  The condition the test
-        MEANS is "the host has no fetch", so it says so.
-        """
-        out = _run_node('''
-            delete globalThis.fetch;          // the condition under test
-            const p = smiles.generate("CCO");
-            let rejected = false, msg = "";
-            try { await p; }
-            catch (e) { rejected = true; msg = e.message; }
-            console.log(JSON.stringify({rejected, msg}));
-        ''')
-        assert out["rejected"] is True
-        assert "fetch" in out["msg"]
 
     def test_generate_rejects_when_structurePage_unconfigured(self):
         out = _run_node('''
@@ -470,3 +437,63 @@ class TestConfigurationErrors:
         ''')
         assert out["rejected"] is True
         assert "structurePage" in out["msg"]
+
+
+# ----- What each panel asks the server --------------------------- #
+
+
+def _ask_panel(panel: str, typed: str, opts: dict) -> dict:
+    """What ``panel`` answers for ``typed``, and what it sent and recorded."""
+    return _run_node(f"""
+        const p = require({json.dumps(str((PANEL_DEPS.parent / (panel + '.js')).resolve()))});
+        let body = null, made = null;
+        p.configure({{
+            fetch: async (url, init) => {{
+                body = JSON.parse(init.body);
+                return {{ ok: true,
+                          json: async () => ({{ ok: true, n_atoms: 1 }}) }};
+            }},
+            structurePage: {{
+                loadIntoCanvas: async (s, g) => {{
+                    made = g;
+                    return {{ ok: true }};
+                }},
+            }},
+        }});
+        const said = await p.generate({json.dumps(typed)}, {json.dumps(opts)});
+        console.log(JSON.stringify({{ said, body, made }}));
+    """)
+
+
+@pytest.mark.parametrize("panel,typed,opts,asked,record", [
+    ("name", "ethanol", {}, {"kind": "name", "input": "ethanol"},
+     {"name": "ethanol"}),
+    ("rna", "ACGU", {"form": "A", "backend": "amber"},
+     {"kind": "rna", "input": "ACGU", "form": "A", "backend": "amber"},
+     {"sequence": "ACGU", "form": "A", "backend": "amber"}),
+    ("rna", "5'-ACGU-3'", {},
+     {"kind": "rna", "input": "5'-ACGU-3'", "backend": "auto"},
+     {"sequence": "5'-ACGU-3'", "backend": "auto"}),
+    ("rna", "3'-UGCA", {},
+     {"kind": "rna", "input": "3'-UGCA", "backend": "auto"},
+     {"sequence": "3'-UGCA", "backend": "auto"}),
+], ids=["a name", "RNA with its form and backend",
+        "a strand labelled with its ends", "a strand missing an end"])
+def test_what_a_panel_asks_the_server(panel, typed, opts, asked, record):
+    """Each panel's whole request, and the record of what made the structure
+    (`web/tabs.md` § 2).  THE SILENT FAILURES: a chosen form or backend
+    dropped, and the server builds its default with no word; a strand's letters
+    sent in place of what was typed: `3'-UGCA`, which the server refuses for
+    its missing end, built as if unlabelled -- the strand read the other way,
+    nothing said."""
+    got = _ask_panel(panel, typed, opts)
+    assert got["body"] == asked
+    assert got["made"] == {"kind": panel, "generator_input": record}
+
+
+def test_dna_thymine_rejected_in_rna_panel():
+    """T is DNA's thymine; RNA uses U.  The letter is refused, naming the
+    alphabet, and nothing is sent to be built."""
+    got = _ask_panel("rna", "ACGT", {})
+    assert got["said"]["ok"] is False and "ACGU" in got["said"]["error"]
+    assert got["body"] is None

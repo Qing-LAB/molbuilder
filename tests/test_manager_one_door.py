@@ -39,10 +39,17 @@ def test_a_wrong_recorded_manager_refuses_it_never_falls_back(monkeypatch, tmp_p
     assert "not an executable" in caps.conda_binary_source
 
 
-def test_absent_key_probes_with_provenance(monkeypatch):
+def test_absent_key_probes_with_provenance(monkeypatch, tmp_path):
+    """No manager recorded: the one on PATH is used, and it is said where it
+    came from.  A manager of its own on a PATH of its own, so this asks the same
+    thing on every machine."""
+    exe = tmp_path / "mamba"
+    exe.write_text("#!/bin/sh\nexit 1\n")
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
     caps = _detect_with(monkeypatch, {})
-    if caps.conda_binary is not None:
-        assert caps.conda_binary_source.startswith(("PATH (", "$"))
+    assert caps.conda_binary == str(exe)
+    assert caps.conda_binary_source == "PATH (mamba)"
 
 
 def test_the_manager_key_is_not_a_category(monkeypatch):

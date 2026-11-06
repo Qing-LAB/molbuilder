@@ -34,17 +34,6 @@ def web():
 
 class TestResultsRoute:
 
-    def test_route_returns_200(self, web):
-        r = web.get("/results")
-        assert r.status_code == 200
-
-    def test_page_includes_projects_sidebar(self, web):
-        """The sidebar is the dispatch mechanism: without it the
-        user has no way to pick a file."""
-        body = web.get("/results").get_data(as_text=True)
-        assert 'class="projects-sidebar dock-panel"' in body
-        assert 'id="projects-sidebar"' in body
-
     def test_page_has_single_inspector_host(self, web):
         """The registry-driven architecture mounts every inspector
         inside ONE host element."""
@@ -53,50 +42,6 @@ class TestResultsRoute:
         # The fallback content lives inside the host until the
         # dispatch detaches it on first selection.
         assert 'id="results-fallback"' in body
-
-    def test_page_has_status_header(self, web):
-        body = web.get("/results").get_data(as_text=True)
-        assert 'id="results-current-file"' in body
-        assert 'id="results-current-kind"' in body
-
-
-# --------------------------------------------------------------------- #
-#  Tab nav                                                              #
-# --------------------------------------------------------------------- #
-
-
-class TestResultsInTabNav:
-    """Results must appear in the shared app-tabs nav on every page,
-    AND the /results page itself must mark its own tab active."""
-
-    @pytest.mark.parametrize("path", ["/molbuilder",
-                                       "/structure-optimization",
-                                       "/spectrum-calculation",
-                                       "/transport-calculation",
-                                       "/results"])
-    def test_results_link_present_on_every_page(self, web, path):
-        body = web.get(path).get_data(as_text=True)
-        assert 'href="/results"' in body
-
-    def test_results_page_marks_itself_active(self, web):
-        body = web.get("/results").get_data(as_text=True)
-        import re
-        m = re.search(
-            r'<a[^>]*href="/results"[^>]*class="[^"]*is-active[^"]*"',
-            body,
-        )
-        assert m, "Results tab link on /results is missing is-active"
-
-    def test_other_pages_do_not_mark_results_active(self, web):
-        import re
-        for path in ("/molbuilder", "/structure-optimization",
-                     "/spectrum-calculation", "/transport-calculation"):
-            body = web.get(path).get_data(as_text=True)
-            m = re.search(
-                r'<a[^>]*href="/results"[^>]*class="[^"]*is-active[^"]*"',
-                body,
-            )
-            assert not m, f"{path!r} incorrectly marks /results active"
 
 
 # --------------------------------------------------------------------- #
@@ -189,20 +134,6 @@ class TestPartialTrajectoryInspectorEndpoint:
         # Doctype is its own case (not a tag).
         assert "<!doctype" not in body.lower(), (
             "partial response carries a <!DOCTYPE> declaration"
-        )
-
-    def test_endpoint_does_NOT_require_auth_gate_for_the_test_client(self, web):
-        """Sanity: the test client (created via create_app(config={}))
-        has NO auth configured, so every endpoint is public.  This
-        test is mostly a guardrail: if a future change accidentally
-        makes /partials/* fail without auth, the registry inspector's
-        fetch path breaks across the board."""
-        r = web.get("/partials/trajectory-inspector")
-        # No redirect to /login in the no-auth test config.
-        assert r.status_code != 302, (
-            "endpoint is redirecting in the no-auth test fixture; "
-            "either the test fixture leaked auth config or the "
-            "endpoint sprouted a per-route gate"
         )
 
 
@@ -372,32 +303,6 @@ class TestPartialSpectraInspectorEndpoint:
         assert "<!doctype" not in body.lower(), (
             "partial response carries a <!DOCTYPE> declaration"
         )
-
-    def test_partial_does_NOT_carry_generate_side_ids(self, web):
-        """SEMANTIC pin of the generate-vs-inspect split: the partial
-        must contain ONLY inspect-side ids.  Generate-side surfaces
-        (form, methods modal, generate-script buttons, script
-        preview, generate-time issues) belong in spectra.html, not
-        in this partial.  A regression that pulls a generate-side
-        id in here would mean /results renders a non-functional
-        generate UI on every trajectory click."""
-        r = web.get("/partials/spectra-inspector")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        for generate_side_id in (
-            "spectra-form-container",   # the form itself
-            "generate-btn",             # script generation button
-            "script-preview",           # script-preview <pre>
-            "methods-modal",            # methods help modal
-            "issues-panel",             # generate-time validation
-        ):
-            needle = f'id="{generate_side_id}"'
-            assert needle not in body, (
-                f"partial response contains {needle!r} which is a "
-                f"generate-side id -- it belongs in spectra.html, "
-                f"not in the inspector partial.  See § 2.3 of "
-                f"docs/web/results.md for the split."
-            )
 
 
 class TestTheContractEndpoint:

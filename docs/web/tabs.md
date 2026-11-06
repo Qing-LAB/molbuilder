@@ -127,6 +127,8 @@ below. The controller code is deliberately thin glue:
   (save-state / undo). Crucially, applying an op does **not** hand-roll a fetch:
   it calls `molview.data.applyOp(op)` and lets the module talk to the server
   (`/api/modify/<op>`).
+  Each op of `molbuilder/modify.py` returns a new `Structure` and leaves the one
+  it was given as it was, so a script can keep the original.
 
   *There was a fourth, **Junction (electrode)**, and it is gone: the panel with
   the pair op (2026-08-31) and the per-side route with it (2026-09-01,

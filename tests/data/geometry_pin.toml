@@ -79,12 +79,6 @@ sidecar = { regions = { frozen_atoms = [1] } }
 door = "load"
 
 [[case]]
-name = "a pair written before v13 states no pin, and opens unchecked though an atom moved"
-as_v12 = true
-atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
-door = "load"
-
-[[case]]
 name = "a .pdb pair's moved atom is refused -- its ATOM records are its atom lines"
 format = "pdb"
 atom_line = { index = 1, line = "ATOM      2  O   MOL A   1       5.000   5.000   5.700  1.00  0.00           O" }
@@ -100,12 +94,6 @@ said = { where = "structure.geometry_changed", severity = "warn", words = ["co.x
 [[case]]
 name = "the browser's load door says nothing of a pair as it was written"
 door = "route_load"
-
-[[case]]
-name = "a pair written before v14 states no order record, and opens in the user order -- warned that it may not be (F4)"
-as_v13 = true
-door = "route_load"
-said = { where = "structure.order_not_stated", severity = "warn", words = ["co.xyz does not say which order its atoms are in: read in the order listed"] }
 
 [[case]]
 name = "a save of a view of a run whose order nothing states writes not_stated, and its read warns -- nothing molbuilder writes claims what it does not know (F4)"

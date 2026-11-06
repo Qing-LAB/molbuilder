@@ -15,9 +15,10 @@ def _struct(n=5):
 
 # ---- AtomChannel ---------------------------------------------------- #
 
-def test_channel_kind_validation_and_defaults():
-    assert AtomChannel("tag").data == []
-    assert AtomChannel("value").data == {}
+def test_a_channel_of_an_unknown_kind_is_refused():
+    """The kinds are a closed list (`structure-annotations.md` § 2): anything
+    else is refused where it is made, the one example of the one rule.  THE
+    SILENT FAILURE: a channel no reader knows how to read, carried and written."""
     with pytest.raises(ValueError, match="kind"):
         AtomChannel("bogus")
 
@@ -32,12 +33,6 @@ def test_channel_remapped_tag_and_value():
 
 
 # ---- Structure annotations ----------------------------------------- #
-
-def test_annotations_default_empty_and_backcompat():
-    s = _struct()
-    assert s.annotations == {}
-    assert s.channels() == {}               # no regions/frozen either
-
 
 def test_channels_unify_every_label_and_the_extras():
     s = _struct()
@@ -143,8 +138,7 @@ def test_delete_atoms_remaps_annotations():
 def test_passthrough_op_carries_annotations_verbatim():
     s = _struct(3)
     s.set_channel("charge", AtomChannel("value", {0: -1.0}))
-    out = modify.translate(s, [1.0, 0, 0]) if hasattr(modify, "translate") \
-        else s.translated([1.0, 0, 0])
+    out = modify.translate(s, [1.0, 0, 0])
     assert out.get_channel("charge").data == {0: -1.0}
 
 

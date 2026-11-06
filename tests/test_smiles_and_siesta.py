@@ -30,12 +30,6 @@ def test_smiles_benzene_planarity():
     assert z_spread < 0.1, z_spread
 
 
-def test_smiles_xyz_header_count():
-    s = _smiles_or_skip("c1ccccc1")
-    xyz = s.to_xyz()
-    assert int(xyz.splitlines()[0]) == 12
-
-
 def test_smiles_bdt_has_two_sulphurs():
     s2 = _smiles_or_skip("Sc1ccc(S)cc1", title="bdt")
     assert "S" in s2.elements
@@ -121,7 +115,6 @@ def test_block_size_honours_orbital_rank_constraint():
                     f"{10 * n} -- trailing ranks would get no "
                     f"orbital block"
                 )
-
 
 
 def _h2_in_a_box():

@@ -1,5 +1,5 @@
 """Blocks of the run script (``molbuilder.runwrap``) that are their own
-programs, run as bash.  (The cold sweep's: `test_runwrap_cold_restart.py`.)
+programs, run as bash (`execution/running-a-job.md` 3.1a).
 """
 
 from __future__ import annotations

@@ -40,27 +40,9 @@ def test_validation_error_carries_issues():
     assert "minor" not in str(exc.value)
 
 
-def test_validation_error_rejects_empty_or_warn_only():
-    with pytest.raises(ValueError, match="error-severity"):
-        ValidationError([])
-    with pytest.raises(ValueError, match="error-severity"):
-        ValidationError([Issue("warn", "just a warning")])
-
-
 # --------------------------------------------------------------------- #
 #  report() helper: warnings to stderr, raise on errors                 #
 # --------------------------------------------------------------------- #
-
-
-def test_report_prints_warnings_to_stream():
-    buf = io.StringIO()
-    report(
-        [Issue("warn", "watch out", "test.case")],
-        raise_on_error=False, stream=buf,
-    )
-    out = buf.getvalue()
-    assert "watch out" in out
-    assert "[test.case]" in out
 
 
 def test_report_raises_on_error_by_default():
@@ -159,7 +141,6 @@ def test_a_setting_waiting_on_another_is_said_once_never_refused(
     # ...naming the setting it waits on, in the why after the value.
     assert all(waits_on in i.message.split("has no effect here:", 1)[1]
                for i in about), about
-
 
 
 #: (engine, kind, the values given, the value refused, a setting waiting

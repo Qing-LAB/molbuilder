@@ -11,12 +11,16 @@ from molbuilder.trajectory_log.emitter import MolwatchEmitter
 
 
 def test_unknown_format_exits_nonzero(tmp_path):
+    """A file no parser reads is refused, and nothing is written.  THE SILENT
+    FAILURE: exit 0 with an empty sidecar.  ``--out`` names the file, so the
+    refusal reached is the parser's and not the one of a name no role reads
+    back."""
     p = tmp_path / "garbage.txt"
     p.write_text("not a SIESTA or PySCF output\n")
-    runner = CliRunner()
-    result = runner.invoke(cli, ["runtime-info", str(p)])
-    assert result.exit_code != 0
-    assert "Error" in result.output or "Error" in (result.stderr or "")
+    out = tmp_path / "info.json"
+    result = CliRunner().invoke(cli, ["runtime-info", str(p), "--out", str(out)])
+    assert result.exit_code == 2, result.output
+    assert not out.exists()
 
 
 class _Mol:

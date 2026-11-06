@@ -312,6 +312,28 @@ because a rule existed, rather than because the rule can plausibly break unseen.
 test removed, be able to say what now goes undetected and why that is acceptable.
 If that sentence will not come, the honest answer is *unsure*, not *cut*.
 
+### A test validates what is correct *(user, 2026-11-06)*
+
+> *"isn't it the code's job to understand what is "correct" and only work with
+> corrected results and report correctly if the expected input is not
+> available?"* And: *"these should be designed to validate what is "correct" and
+> detect what could be wrong."*
+
+The ways an input can be wrong have no end, so a list of them is never complete
+and records only the ones already met. So:
+
+1. **The code states what correct input is**, and works only with that.
+2. **A test feeds correct input and checks the result is right.** Correct input
+   is what the real tool or the real commands produce (§ 0): what a tool prints
+   is read from that tool where it runs, a field test, never typed.
+3. **Anything else is reported, by one rule, with no number invented.** One test
+   shows it, with one example, because the code has one rule for it: a reader
+   whose tool is missing says so. A test needing many wrong examples means the
+   code enumerates wrongness, and that is the code's defect, fixed in the code.
+
+*The failure it would have caught*, above, means our code going wrong, never a
+list of what the outside world might send.
+
 ### Every test states its GOAL and its CONTRACT, in its first lines *(user, 2026-09-08)*
 
 > *"The tests should have their goal clearly stated upfront in their starting

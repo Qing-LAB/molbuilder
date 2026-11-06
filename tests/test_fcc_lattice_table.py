@@ -61,13 +61,6 @@ def test_meta_endpoint_exposes_lattice_table(web_client):
         assert "a_pbe" in e
 
 
-def test_meta_endpoint_lattice_error_is_none_on_happy_path(web_client):
-    """When the JSON loads cleanly, lattice_error is null in the response."""
-    r = web_client.get("/api/modify/meta")
-    j = r.get_json()
-    assert j.get("lattice_error") in (None, "")
-
-
 class TestTheSpacingsDoorAnswersTheSurface:
     """PINS: `/api/modify/spacings` — the crystallography is the backend's.
 

@@ -45,18 +45,12 @@ def test_the_page_says_which_list_the_calculation_follows(own, tmp_path,
     MUTATION THIS MUST FAIL AGAINST: the route asking the door without the
     calculation's folder (it would answer molbuilder's list for both)."""
     import json
-    from molbuilder import diagnostics
     from molbuilder.warmfiles import FILENAME, warm_list
     from molbuilder.web.app import create_app
     bundle = describe_calculation(tmp_path, monkeypatch)
     if own:
         (bundle / FILENAME).write_text(
             Path(warm_list("siesta").path).read_text())
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
     task = json.loads((bundle / "task.json").read_text())
     got = create_app(config={}).test_client().post(
         "/api/task-setup/prep-plan",

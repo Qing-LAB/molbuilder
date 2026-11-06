@@ -649,11 +649,11 @@ complemntary and use should know that's not part of contract and it's a customiz
 | B4-1 | test | tests/support/road.py `_road_launched` — six case-table rows stand on a launch record written by hand, not by a launch | make the launched state by a launch — the six rows to tier 3 on `support.real_runs.layered`/`copy_of` (its `coarse` launched `--mode direct --foreground`), or the rows dropped where `tests/test_the_road_on_real_runs_e2e… | confirmed |
 | B4-2 | test | the sent-run tests — a launch record and a job's address written by hand for a run never sent | the field tier sends one real held-H2 job (`launch task --mode submit`) and reads `concluded` on it; the basic pair retired or kept on your word; `launch_record_path(run)` for the composed path | confirmed |
 | B4-3 | test | tier-1 spectrum tests — the vibration result a run derives is made by hand and read by the route and the reader | what the route serves of a result is asked of the real runs that already load it through `/api/spectra/load` (test_siesta_vibration_e2e.py, test_vibration_e2e.py on `real_co2_vibration` and the PySCF run); the codec's o… | partial: PARTIAL \| spectra/_helpers.py:65 `_make_results` ("toy numerics"), test_blueprint.py:52 `_make_minimal_results`; counts re-derived: test_blueprint 16 sites/18 tests, test_parsers_json 49/34, test_ty… |
-| B4-4 | test | older releases' files built by hand — sidecars, deck metadata blocks and spectra as an older molbuilder wrote them | retire the older-file cases; the committed pair replaced by the pair the Structure API writes today (`StructureCodec().write`, as support/junction.py builds its junction) | confirmed |
+| B4-4 | **in part 2.67.4**, the rest with the next steps: test | older releases' files built by hand — sidecars, deck metadata blocks and spectra as an older molbuilder wrote them | retire the older-file cases; the committed pair replaced by the pair the Structure API writes today (`StructureCodec().write`, as support/junction.py builds its junction) | confirmed |
 | B4-5 | test | the ledger read by hand — eighteen parsers of one format in ten files, and the product has no reader | one reader beside `ledger.record` in `jobset/ledger.py`, the support helpers and the ten files asking it | confirmed |
 | B4-6 | test | § 1ak S4's done-test still fails — tests compose run paths and file names by hand | `RealRun.attempt`/`call` (support/real_runs.py), `runs.run_of`, `runs.on_label_at`, `runfiles.compose` through `stage_home(...).names`, `runrecord.launch_record_path` — the doors the support helpers already use | confirmed |
-| B4-7 | test | watch/test_pattern_matcher.py + watch/test_section_rule.py — 54 tests restate a private matcher's shape on SIESTA lines typed by hand | retire; what the SIESTA parser reads is asked of the real runs (test_siesta_optimization_run_e2e.py, which test_pattern_matcher's own header names) | confirmed |
-| B4-8 | test | the `.spectra.json` codec — refusals of hand-edited payloads, exception-class shape, and one round trip tested in two files | one table of results the writer writes (a row each: complete, in progress, null intensities, imaginary mode, geometry) through `dump_spectra_json` → `parse_spectra_json`; the hand-edited refusals and the class-shape tes… | confirmed |
+| B4-7 | **closed 2.67.4**: test | watch/test_pattern_matcher.py + watch/test_section_rule.py — 54 tests restate a private matcher's shape on SIESTA lines typed by hand | retire; what the SIESTA parser reads is asked of the real runs (test_siesta_optimization_run_e2e.py, which test_pattern_matcher's own header names) | confirmed |
+| B4-8 | **in part 2.67.4**, the rest with the next steps: test | the `.spectra.json` codec — refusals of hand-edited payloads, exception-class shape, and one round trip tested in two files | one table of results the writer writes (a row each: complete, in progress, null intensities, imaginary mode, geometry) through `dump_spectra_json` → `parse_spectra_json`; the hand-edited refusals and the class-shape tes… | confirmed |
 | B4-9 | test | test_vibration_render_gate.py — decks rendered around prep, and a local name's spelling asserted | the rows of tests/data/the_deck.toml (`engine = "pyscf"`, `calculation = "vibration"`) through `support.road.run_road_case`, asserting what the deck sets (`deck_says`), not a local's name | confirmed |
 | B4-10 | test | test_warmfiles.py — the shipped restart-file list pinned to a literal copy of itself | retire the two inventory pins; the carry rows the contract states (`job-contracts.md` § 2.3.4's table, the next test in the file) stay | confirmed |
 | B4-11 | test | five files plant the calculation's own machine record by hand, and edit it as JSON | the machine's record written where a probe writes it (`conftest.write_machine_record(...)`, or a named target by `write_environment(..., named_environment_path("sol"))` as support/road.py `_road_target` does), then `pre… | confirmed |
@@ -665,7 +665,7 @@ complemntary and use should know that's not part of contract and it's a customiz
 | B4-17 | test | tests/support/junction.py — a support helper importing a test module's privates, a header naming users and a sidecar it does not have, and the chain junction built twice | the chain built once in support (as a road dict for `describe_calculation`, `road_structure` making the `Structure`), its constants there; the header rewritten to its users | partial: PARTIAL \| support/junction.py:42 `from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R`; header :20-25 "Used by `tests/test_script_emit.py`, `test_transport_compose.py` … and its spectru… |
 | B4-18 | test | two hand-rolled template editors beside the product's own | `template.with_values_set(..., source="person")` for both | partial: PARTIAL \| tests/_road.py:59-69 `set_template_value` (rewrites `value = ` only); test_transport_on_a_real_junction_e2e.py:301-319 `_set_by_the_person` (sets `value` and `source = "person"`); 19 uses … |
 | B4-19 | test | test_checkpoint_states.py `_staged` — a calculation's run records typed in a shape no writer writes | the fixture's run records dropped (the folder tool needs bytes and folders, which stay), or the stage folders made by `describe_calculation` + `prep` | confirmed |
-| B4-20 | test | test_envs_siesta_gpu_recipe.py — the recipe's declaration restated, "pinned" to documents by a copy | keep the measured pins (gcc minor, python, cmake floor, ELPA/CUDA flags tied to a failure); retire the restatements; the doc agreement is review's (`code-audit.md` § 1c) | confirmed |
+| B4-20 | **closed 2.67.4**: test | test_envs_siesta_gpu_recipe.py — the recipe's declaration restated, "pinned" to documents by a copy | keep the measured pins (gcc minor, python, cmake floor, ELPA/CUDA flags tied to a failure); retire the restatements; the doc agreement is review's (`code-audit.md` § 1c) | confirmed |
 | B4-21 | test | support/live_server.py sets the projects-tree variable by hand | a `MonkeyPatch()` inside `serve()` (as conftest's `isolated_projects_root_module` does), undone at exit | partial: PARTIAL \| tests/support/live_server.py:46-50 `if not os.environ.get(PROJECTS_ROOT_ENV): … os.environ[PROJECTS_ROOT_ENV] = tree`; :61-63 `if own is not None: os.environ.pop(PROJECTS_ROOT_ENV, None)` … |
 | B4-22 | test | the run's monitor-log lines read by regex in the support helpers — a second reader of our own log | the monitor-log reader (`parse/instruments/monitor.py`) answers the status and notify lines, the two helpers ask it | confirmed |
 | B4-23 | test | a package JavaScript file's text read to syntax-check it | retire; a module that does not parse fails every page that loads the sidebar in the browser tests | partial: PARTIAL \| test_checkpoint_sensor_js.py:247-268 `probe.write_text(source.read_text())` of checkpoint.js / projects-sidebar.js, then `node --check` \| The § 3b list B4 cites names a read "to check a s… |
@@ -1866,6 +1866,309 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by 2.67.4's judging of the tests (2026-11-06), by the release that owns each
+
+*(every test the audit named judged by breaking the code and reading what else failed: 581 rows in five readers' tables; a fresh reader over what was added. The user's rule of 2026-11-06 came out of this work: [`process/testing.md`](?doc=process/testing.md) § 3b, *A test validates what is correct*.)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2674-1 | **F9** | the user's rule reaches tests this release left: three typing `nvidia-smi`'s output and one typed system-load row, the cgroup-v1 tests, the typed pip file and `_fake_dist`, the typed PSML files and `_make_psml`, `test_envs_one_answer_about_an_env.py`'s typed manager answers, and 8 wrong-input checks in `spectra/test_types.py` and `watch/test_registry.py` that each caught a break nothing else in its set caught | what the tool prints read where it runs; correct input through the real writer; one test for *reported, no number invented* |
+| K2674-2 | **F9** | `pseudos.py:371`'s `<header>` branch may read a shape no real file has, and only a typed test reaches it | read the real H, C and O files first; a branch no real file uses goes |
+| K2674-3 | **F9** | a spectrum file of the wrong version gets the refusal `engines/vibration.md` § 6.7 promises, and removing `_validate_schema_version` turns no test red | one test on what the writer writes, with its version moved |
+| K2674-4 | **F9** | spectra rules with no test: the canonical eigenvector read from the display form; `free_atom_idxs` not ascending; a complex canonical vector not refused; a probe's SCF-minus energy and amplitude | a run's result, correct input |
+| K2674-5 | **F9** | a mutation letting T through the server's RNA alphabet left 248 tests green: only the page's own check is tested | one row on the server's refusal |
+| K2674-6 | **F9** | older-release tests added after the audit, not judged by it: `test_a_pair_the_release_before_wrote_reads_whole` (2.65.8), `_as_2_65_7_wrote_it` in `test_pyscf_stages` (2.65.9), `test_a_record_from_before_it_held_folders...` (2.67.2) | `testing.md`'s rule on older files |
+| K2674-7 | **F9** | `test_vibration_form_honesty` passes by accident; `test_sidebar_layout_opt_in_is_server_side`'s page half passes against a 404 | correct input, or retire |
+| K2674-8 | **F9** | `_parse_lscpu`, `_parse_scontrol_node` and `sniff5` have no test; `-DCMAKE_IGNORE_PATH=/usr/local` and the § 6.3 Fortran fence (`_FORTRAN_ABI_CEILING`) neither | field tests for the first two; the rest decided by what the build shows |
+| K2674-9 | **a release of its own, list shown first** | code no product path reads: `SIESTA_RESTART_GROUP`, `PYSCF_RESTART_GROUP` and their `RestartGroup` (though `run-identity.md` § 4 presents them as each engine's declaration); `annotations_fdf`'s register and report functions and `unregistered_channels`; `onCanvasChange` in `structure/page.js`; `category=` of `template.select`; `Frame.__post_init__`'s list coercion; `jobset/ask.py:333`; `/api/modify/meta`'s `lattice_error`; the response keys `extra`, `source_format`, `lattice` | delete, with what `run-identity.md` § 4 says of them |
+| K2674-10 | **F10** | `parse.md` § 3 against `AmbiguousFormatError`; `web-api.md` § 3 says all 99 routes, there are 110 | the chapter |
+| K2674-11 | **left** | two `ParseWarning` classes (`frame.py:35`, `parse/types.py:33`); silent bail-outs at `results/viewer.js:697` and `:816` and `if (!els.esPanel) return` in `spectra/core.js`; a *not bound* error naming `_bind()` | the next review of each module |
+| K2674-12 | **closed 2.67.4** | a fresh reader over what this release added: the create bar's first click could beat the button's wiring; a test's name claimed a citation draws the rungs, drawn at load; a frame-set row named a channel and a record it never checked; a presence check, a stale store no product path reaches and a test helper's wrong rows added; a negative row asking other words than its positive; a second node launcher; a hand-written machine config beside the fixture; an fdf scan beside `read_fdf`; `engines/template.md` and `web/form-schema.md` saying six panels where every form draws five; `installation.md` § 6 not stating the MPI pins a test cites it for | each fixed or gone; the words on six panels measured on every engine and kind |
+| K2674-13 | left | the reader's low ones: `test_setShared_answers_through_projects` asserts only `ok`; `_GCC_VERSION`'s minor asserted twice; `row()` defined twice in `test_sidebar_e2e.py`; `[cell.atoms_outside]`'s negative row has no positive in its table, and it did go red with the frame fix reverted in a scratch copy | the next review of each |
+
+### What 2.67.4 removed (the list the user saw before the commit, generated from the code against 2.67.3, 2026-11-06)
+
+Nothing in the product calls a test. Each removal rests on `process/testing.md` § 3b, default removal, and was judged by a break; those marked *older files* on the user's rule of 2026-10-16. The user read this list and answered *go ahead* to it, to the rule above and to keeping `test_delete_does_not_mutate_input`, my recommendation, which is why that test is not below. A fresh reader then found three of the tests added here should not be (a page presence check, a stale store no product path reaches, a test helper's wrong rows): those are gone, K2674-12, and the words below say so.
+
+**`parse/test_coords.py`** (1). Moved: the same check now asks the file reader by the name a person's file has, and still fails if the `.XV` reader is not registered.
+`test_coords_parsers_registered`
+
+**`parse/test_parse_warning.py`** (2). File gone. It restated a small record's fields. A renamed field breaks the code using it at once. Nothing lost.
+`test_parsewarning_allows_none_for_line_no_and_snippet`, `test_parsewarning_constructible_with_documented_fields`
+
+**`parse/test_registry.py`** (1). Moved to a test over every registered format: a file nothing can read is told every format.
+`test_detect_unknown_extension_raises`
+
+**`parse/test_sidecars.py`** (5). Used a structure file from an older release, or restated a shape. Replaced by a test on a file the writer really wrote. Lost: nothing a person meets.
+`test_detect_routes_to_molstruct_parser`, `test_molstruct_parser_claims_suffix`, `test_parse_molstruct_returns_sidecarresult`, `test_sidecar_parsers_registered`, `test_sidecar_result_is_frozen`
+
+**`parse/test_tbtrans_out.py`** (1). **Real loss.** Empty files named from TBtrans's source, no run made them. If the lookup of a spin-polarized point's files breaks, that point is refused with wrong words. No wrong number. The real-run tests in F10 are where this belongs.
+`test_a_points_averaged_files_are_found_by_tbtrans_own_names` (1 row)
+
+**`spectra/test_parsers_json.py`** (4). Same call twice over. Replaced by reading a file the writer wrote. Lost: nothing.
+TestDumpSpectraJson: `test_pathlike_accepted`, `test_round_trip`; TestExceptionHierarchy: `test_not_found_also_inherits_filenotfound`; TestParseSpectraJsonHappyPath: `test_accepts_pathlike_input`
+
+**`spectra/test_types.py`** (27). **Small real loss.** Restated fields, and hand-built wrong results. Moved first: infrared read back, each phase's state, a stored display form. Lost: if someone deletes a check on an impossible result (a HOMO outside its window, orbital arrays of the wrong shape, modes disagreeing on window size), or the line making `a == b` on two results an error, or reading an older result file, no test says so. All writers state these values.
+TestEqualityIsLoud: `test_error_message_points_at_compare_api`, `test_mode_data_eq_raises`, `test_mode_electronic_structure_eq_raises`, `test_spectra_results_eq_raises`; TestModeData: `test_ir_intensity_reserved_for_future`, `test_raman_activity_none_when_not_computed`, `test_round_trip_with_es`, `test_round_trip_without_es`; TestModeElectronicStructure: `test_json_serialisable`, `test_round_trip`; TestPhaseStatus: `test_independent_phase_state`, `test_running_status_round_trips`; TestPostInitValidation: `test_cross_mode_es_window_consistency`, `test_eigenvector_coerced_to_float`, `test_eigenvector_shape_validated`, `test_empty_modes_allowed_for_in_progress_runs`, `test_equilibrium_mos_coerced_to_float`, `test_homo_idx_validated`, `test_homo_index_in_range`, `test_mo_arrays_coerced_to_float`, `test_mo_arrays_must_be_1d`; TestSpectraResults: `test_engine_metadata_passes_through`, `test_from_dict_defaults_for_missing_optionals`, `test_modes_preserve_order_through_round_trip`, `test_round_trip_complete`, `test_round_trip_in_progress`, `test_schema_version_pinned`
+
+**`test_annotations_fdf.py`** (2). File gone. **Close call:** a structure made in a notebook carrying an unknown annotation word would stop prep with a raw error instead of being carried. Loud, not silent. The second test covered an extension point nothing uses.
+`test_no_strategy_is_carried_not_emitted`, `test_register_and_emit_channel`
+
+**`test_atom_annotations.py`** (2). One restated a default; the other became one test, a channel of an unknown kind refused. Lost: nothing.
+`test_annotations_default_empty_and_backcompat`, `test_channel_kind_validation_and_defaults`
+
+**`test_auth_config.py`** (6). Defaults restated, and the code asks for them the same way either way. The two cookie tests became one with two rows, both still run. Lost: nothing.
+TestGitHubSpecific: `test_allowed_organizations_defaults_empty`; TestGoogleSpecific: `test_hosted_domain_defaults_empty`; TestMixedConfig: `test_google_plus_cas_round_trip`; TestORCIDSpecific: `test_minimal_entry_valid`; TestSetupSessionSecurity: `test_session_cookie_flags_set_regardless_of_trust_proxy`, `test_session_cookie_flags_set_when_auth_on`
+
+**`test_backends.py`** (4). Asked whether an answer is a bool. Lost: nothing a reader sees.
+`test_amber_is_available_returns_bool`, `test_available_backends_returns_dict_of_bools`, `test_rdkit_is_available_returns_bool`, `test_threedna_is_available_returns_bool`
+
+**`test_bench_result.py`** (2). Duplicates. Lost: nothing.
+`test_choice_survives_a_json_round_trip_for_the_offer`, `test_from_dict_rejects_major_mismatch`
+
+**`test_build_format_sniff.py`** (1). Duplicate. Lost: nothing.
+`test_positive_count_is_xyz`
+
+**`test_checkpoint_cli.py`** (1). Pinned the list of verbs. A seventh verb would land without this test objecting; adding one takes a deliberate edit.
+`test_the_group_offers_exactly_the_contracts_verbs`
+
+**`test_cli.py`** (10). One walk now asks every command of the real tree for help, instead of a typed list of eight. Lost: nothing.
+`test_electrode_still_builds_one_slab_per_flag`, `test_subcommand_help_exits_cleanly` (8 rows), `test_top_level_help_exits_cleanly`
+
+**`test_cli_tls.py`** (6). Private helper, or duplicates of the real `serve` tests. Lost: a flag hidden from `--help` would go unseen.
+`test_check_tls_readable_noop_on_falsy_inputs`, `test_resolve_cli_flag_alone_without_pair_falls_back`, `test_resolve_json_supplies_both_when_no_flags`, `test_resolve_json_with_only_cert_falls_back_to_http`, `test_resolve_no_json_no_flags_returns_none_pair`, `test_serve_help_advertises_cert_and_key`
+
+**`test_config_dir_has_one_home.py`** (1). Read back what it wrote. Lost: nothing.
+TestOperationalStateFollowsTheVariablesOnly: `test_projects_stays`
+
+**`test_convergence_targets_nested.py`** (6). Two tests that never ran in this suite (the engine package isn't in this environment). The file's other test stays, under a name that fits: `test_convergence_targets_card.py`.
+`test_a_target_reads_as_a_person_reads_it` (4 rows), `test_emitter_writes_flat_lines_for_flat_input`, `test_emitter_writes_nested_lines_for_nested_input`
+
+**`test_deck_helpers.py`** (18). Tested a test helper with no callers left, wrong rows typed into a deck prep never writes. A bare energy refused stays, the one example. One moved to `test_siesta_vibration_deck.py`. Lost: only how a failing test words itself.
+`test_a_block_comes_back_tokenised_row_by_row`, `test_a_block_read_from_a_file_beside_the_deck_reads_as_one_deck`, `test_a_keyword_is_found_by_any_fdf_spelling` (5 rows), `test_a_keyword_the_deck_does_not_set_reads_as_None`, `test_a_malformed_row_names_the_block_and_the_problem` (5 rows), `test_an_absent_block_is_None_and_its_rows_are_empty`, `test_assert_fdf_says_which_of_the_two_failures_it_is`, `test_block_rows_key_on_the_first_token`, `test_repeated_leading_tokens_collapse_and_that_is_documented`, `test_spacing_is_not_part_of_the_value`
+
+**`test_diagnostics.py`** (14). Typed a fake conda answer, or duplicates. Replaced by one test with a real config file in the sandbox. Lost: nothing, as long as `test_envs_one_answer_about_an_env.py` stands, and that file types manager answers too (K2674-1).
+`test_detect_assembles_capabilities`, `test_detect_conda_failure_yields_empty_envs`, `test_detect_filters_out_conda_root_installation`, `test_detect_no_conda_gives_empty_envs`, `test_env_available`, `test_env_for_category_honours_config_override`, `test_env_for_category_returns_default`, `test_env_for_category_unknown_returns_none`, `test_env_for_tool_known`, `test_env_for_tool_playwright_not_routed`, `test_env_for_tool_unknown_returns_none`, `test_every_tool_routes_to_a_known_category`, `test_routed_env_none_when_env_missing`, `test_routed_env_returns_name_when_routed_and_available`
+
+**`test_docs_tab.py`** (3). Duplicates; the image test was renamed for what it does. Lost: the Docs tab dropped from the menu would be seen at first use.
+`test_documents_page_renders`, `test_documents_tab_registered_in_tab_order`, `test_img_serves_a_real_docs_image`
+
+**`test_envs_abi.py`** (11). Restated the rule table, and 7 rows of version strings that real code paths already exercise. Kept the one that only it held: text with no number is no version.
+`test_every_rule_carries_a_remedy`, `test_every_rule_has_a_unique_stable_code`, `test_every_rule_remediates_on_the_env_side`, `test_parse_version_handles_every_shape_this_module_receives` (8 rows)
+
+**`test_envs_doctor.py`** (3). One could not fail, one was a duplicate, one pinned a report's length. Lost: a long block in a report.
+`test_report_all_marks_every_env_missing_on_empty_machine`, `test_report_all_skip_verify_dispatches_nothing`, `test_verify_output_trimmed_to_2k`
+
+**`test_envs_nfs_shmem_fix.py`** (2). File gone, both moved: the hook's fix is now checked by sourcing the real hook in a shell, psutil into the recipes test.
+`test_activate_hook_sets_ompi_tmpdir_base`, `test_host_env_includes_psutil`
+
+**`test_envs_recipes.py`** (6). Could not fail (the class refuses such a recipe), or restated. Two merged into one with two rows. Lost: nothing.
+`test_every_recipe_has_required_fields`, `test_no_two_recipes_serve_one_category`, `test_recipe_by_name_finds_every_recipe`, `test_recipe_by_name_returns_none_for_unknown`, `test_recipe_names_are_unique`, `test_registry_is_non_empty`
+
+**`test_envs_siesta_gpu_recipe.py`** (22). Restated recipe lines the build itself would show. Merged and kept, per your answer: SIESTA's features and MPI compilers, one test. The hooks are now executed. Lost: a lost `cmake>=3.30` floor, a flag naming `/usr/lib`, or a second channel, each needing a deliberate edit and each showing at the build.
+`test_build_spec_activate_hook_publishes_paths`, `test_build_spec_artifact_subdir`, `test_build_spec_components_in_order`, `test_build_spec_cuda_required`, `test_build_spec_deactivate_hook_mirrors_activate`, `test_cuda_toolkit_in_conda_packages`, `test_elpa_pins_env_compilers_and_cuda_path`, `test_kernel_headers_is_not_double_pinned`, `test_libxc_present`, `test_no_elsi_component`, `test_no_system_paths_in_cmake_flags`, `test_pins_cmake_geq_3_30`, `test_pins_the_project_python`, `test_recipe_carries_build_spec`, `test_recipe_category`, `test_recipe_description_mentions_gpu_and_source`, `test_recipe_is_registered`, `test_recipe_uses_conda_forge_only`, `test_siesta_component`, `test_siesta_pins_cmake_prefix_path_to_env_and_elpa`, `test_siesta_pins_mpi_compilers_to_env`, `test_the_lua_build_step_is_the_one_carrying_the_search_paths`
+
+**`test_envs_validate.py`** (6). Asked that a table's hint isn't empty. Lost: only a deliberate empty string.
+`test_every_probe_row_carries_a_runtime_hint` (6 rows)
+
+**`test_fcc_cell_shapes.py`** (3). Duplicate of two tests beside it. Lost: nothing.
+`test_every_plane_has_an_entry` (3 rows)
+
+**`test_fcc_lattice_table.py`** (1). A field no page reads. Lost: nothing.
+`test_meta_endpoint_lattice_error_is_none_on_happy_path`
+
+**`test_frame.py`** (1). File gone. No product code passes a list there. Lost: nothing.
+`test_frame_post_init_coerces_list_inputs`
+
+**`test_frame_sets.py`** (1). Not a removal: the same row reworded, because its record no longer pretends to be a vibration's.
+`test_frame_set` (1 row)
+
+**`test_geometry_pin.py`** (2). **Your rule, older files.** Two rows built v12 and v13 files. How a pre-v13 pair opens could change, unseen.
+`test_the_pin_through_the_read_door` (2 rows)
+
+**`test_gpu_answerers.py`** (6). Duplicates of the tests that stay. Lost: nothing.
+`test_each_machine_answered_setting_really_carries_the_flag` (5 rows), `test_the_gpu_flag_is_the_persons_choice_not_the_machines`
+
+**`test_junction_sidecar_roundtrip.py`** (4). Duplicates, a fixture check, an older schema's file. Lost: nothing.
+`test_a_key_this_version_does_not_read_is_refused_rather_than_dropped`, `test_a_sidecar_from_an_older_schema_is_refused_not_half_read`, `test_the_junction_is_shaped_the_way_the_test_claims`, `test_the_pair_is_written_at_the_current_schema_version`
+
+**`test_launch_ask_mode.py`** (1). A branch the command line never reaches. Lost: nothing.
+`test_an_empty_ask_says_so_rather_than_printing_a_header`
+
+**`test_machine_identity.py`** (1). Moved to the field tests: it typed what `nvidia-smi -L` prints, and now reads the real tool. Run once here and it passes; this machine has one GPU, so its "each model once" half had nothing to tell apart, and it does not run in the fast batch.
+`test_gpu_models_dedup_and_never_a_count`
+
+**`test_modify.py`** (3). **Small loss.** An added atom could get a blank name, its element untouched. A metal dropped from the electrode list gets a refusal naming the list. The table could load at import.
+`test_add_atom_atom_name_defaults_to_element`, `test_electrode_supported_lists_match_table`, `test_modify_module_import_does_not_eagerly_load_fcc_table`
+
+**`test_molbuilder_runtime_js.py`** (2). One pinned method names; the other kept, in its own class. Lost: nothing.
+TestSurfacePresence: `test_double_load_is_idempotent`, `test_runtime_object_exposes_documented_methods`
+
+**`test_molstruct_json.py`** (6). **Your rule, older files.** v2, v3, v6, v7 and v8 files and the retired-keys file. An older pair's read could change, unseen. No test now reads a pair into a structure already holding a store: no product path does. Rows for a future version and no version stay.
+TestARetiredKeyPassesEveryGate: `test_every_retired_key_passes_all_three_gates`; TestInfoBlock: `test_a_v8_file_loads_with_an_empty_store`; TestSchemaVersioning: `test_a_v7_file_reads_whole_under_v8`, `test_any_version_but_the_current_one_is_refused` (3 rows)
+
+**`test_molwatch_preview.py`** (3). Text of one writer's lines. `test_molwatch_emitter.py` went red on all 7 of the same breaks. Lost: nothing.
+`test_preview_helper_marks_kind_and_nulls`, `test_preview_helper_one_block_with_all_atoms`, `test_preview_helper_writes_header`
+
+**`test_notify_listener.py`** (2). Duplicate, and a private function. Lost: nothing.
+`test_deny_actually_RAISES`, `test_the_user_is_STAMPED_never_accepted`
+
+**`test_path_framework_doors.py`** (2). A table check. Lost: a new row with `*` in its role finds no file, shown by its author's first run.
+`test_every_declared_field_has_a_declared_shape`, `test_no_role_in_the_catalogue_is_a_GLOB`
+
+**`test_pdb_workflow_integration.py`** (2). Steps 2 and 3 merged into one: labels saved on the pair come back on the atoms. Lost: nothing.
+TestPdbWorkflowEndToEnd: `test_step_2_save_writes_current_schema_sidecar`, `test_step_3_a_reread_picks_up_the_sidecar`
+
+**`test_peptide.py`** (3). Shape only; the writer is Structure's. Lost: nothing.
+`test_pdb_atom_count`, `test_pyscf_listing`, `test_xyz_round_trip`
+
+**`test_periodicity_gate.py`** (5). **Your rule, older files,** on the two `v9` rows; a test that could not fail; the `v10` rows simply stop being rows of a table of one. Lost: a v9 corner's read could change, unseen.
+TestLoaderGate: `test_the_load_door_serves_the_rules_box_corner` (2 rows), `test_the_read_seam_invents_no_corner` (2 rows); TestTheCellPageCanRepairWhatItRefuses: `test_a_mirrored_cell_is_admitted_so_it_can_be_corrected`
+
+**`test_prep_calculation.py`** (10). **Your rule, older files.** `jobset migrate` is no longer seen taking retired settings out, renaming older runs, or renaming the key in an older machine copy. These rest on your 2026-10-16 ruling.
+`test_a_retired_run_setting_comes_out_where_it_lies` (5 rows), `test_a_run_an_older_molbuilder_named_is_named_once` (4 rows), `test_an_older_machine_copy_keeps_how_a_shell_enters_its_environment`
+
+**`test_projects.py`** (3). Duplicates or shapes. Lost: nothing.
+`test_ensure_structure_dir_creates_full_chain`, `test_path_resolution_composes`, `test_projects_root_with_explicit_base`
+
+**`test_projects_api_envelope_js.py`** (11). Same wrapper asked per caller. Kept one of each kind. Lost: a new function skipping the wrapper would throw on a dropped network or get a browser-cached answer. Review holds that.
+TestAbortSignal: `test_apiDelete_aborted_returns_clean_envelope`, `test_apiUpload_aborted_returns_clean_envelope`; TestNetworkFailure: `test_apiMkdir_network_drop_returns_envelope`, `test_apiUpload_network_drop_returns_envelope`, `test_apiWrite_network_drop_returns_envelope`; TestNoStoreCache: `test_apiReadRange_passes_cache_no_store`, `test_apiRead_passes_cache_no_store`, `test_apiRoots_passes_cache_no_store`, `test_apiStat_passes_cache_no_store`, `test_post_endpoints_also_get_no_store`; TestNonJsonResponse: `test_apiList_non_json_returns_envelope`
+
+**`test_projects_public_surface_js.py`** (3). Moved first: the one thing only it saw, `projects.setShared` exported, is now a test of its own. Lost: nothing.
+TestReadFile: `test_failure_passes_through`; TestReadRange: `test_server_error_envelope_passes_through`; TestSurfacePresence: `test_all_M4_methods_are_callable`
+
+**`test_pseudos.py`** (2). Moved to two deck rows, written the way the road writes them. Lost: nothing.
+TestMetalAwareScriptTemplates: `test_spectra_pyscf_fe_emits_level_shift_template`, `test_spectra_pyscf_organic_skips_level_shift_template`
+
+**`test_pubchem.py`** (2). **Small real loss.** It faked the call underneath. `optimize=False` dropped by that three-line pass-through would go unseen; a title is only a label.
+`test_build_from_name_explicit_title_overrides_default`, `test_build_from_name_threads_through_build_from_smiles`
+
+**`test_pyscf_convergence_knobs.py`** (3). File gone. Words on the form, seen on the form; one could not fail. Lost: nothing silent.
+`test_memory_is_one_item_across_both_engines`, `test_soscf_field_exists_with_ui_metadata`, `test_the_field_exists_with_ui_metadata`
+
+**`test_pyscf_stages.py`** (6). Duplicates, or a field that no longer exists. Lost: nothing.
+`test_both_engines_build_a_ladder_through_the_same_shape`, `test_default_ladder_is_three_named_stages`, `test_default_ladder_matches_siesta`, `test_no_field_of_the_config_is_a_list_of_dataclasses`, `test_the_config_has_no_stages_field`, `test_the_pyscf_form_schema_emits_no_stage_table`
+
+**`test_record_architecture.py`** (3). File gone; `arch` is now a row of the machine-record table, through `jobset probe`. Lost: nothing.
+`test_env_arch_round_trips`, `test_the_field_is_absent_rather_than_null_when_unknown`, `test_topology_arch_survives_the_round_trip`
+
+**`test_restart_group.py`** (6). No product code reads these two group objects. Lost: nothing, and that's a finding: those objects are dead (K2674-9).
+`test_a_stage_sets_restart_like_any_other_field`, `test_every_shipped_engine_declares_a_group` (2 rows), `test_pyscf_also_says_it_with_one_field`, `test_the_members_cannot_be_set_individually_any_more`, `test_the_two_engines_mean_the_same_idea_by_different_mechanisms`
+
+**`test_results_blueprint.py`** (12). Duplicates of tab tests, and absence of old names. Lost: the kind word beside a file's name could go blank, shown at once.
+TestPartialSpectraInspectorEndpoint: `test_partial_does_NOT_carry_generate_side_ids`; TestPartialTrajectoryInspectorEndpoint: `test_endpoint_does_NOT_require_auth_gate_for_the_test_client`; TestResultsInTabNav: `test_other_pages_do_not_mark_results_active`, `test_results_link_present_on_every_page` (5 rows), `test_results_page_marks_itself_active`; TestResultsRoute: `test_page_has_status_header`, `test_page_includes_projects_sidebar`, `test_route_returns_200`
+
+**`test_results_file_picker_js.py`** (2). One misnamed duplicate; one listed method names. The real picker has its end-to-end test. Lost: nothing.
+TestAPISurface: `test_module_exposes_named_helpers`; TestFilterToResultFiles: `test_filters_out_directories`
+
+**`test_runfile_names.py`** (12). **Your rule, older files.** 12 older names. Older runs could stop reading back, unseen.
+`test_an_older_name_reads_back_to_the_name_it_takes_now` (12 rows)
+
+**`test_runtime_config.py`** (2). Shape. Lost: nothing.
+`test_empty_json_object_returns_empty_dict`, `test_nested_envs_section_parses`
+
+**`test_shared.py`** (27). Fields of a reply restated, one by one; fields nothing reads (`extra`, `source_format`, `lattice`). Lost: nothing. Three that say something stay, as plain tests.
+TestOkStructureResponse: `test_carries_canonical_shape_keys`, `test_carries_the_atom_columns`, `test_issues_array_present`, `test_ok_envelope`, `test_phase_2_extras_at_top_level_and_in_extra_subdict`; TestStructureToDict: `test_atoms_matches_workspace_payload_atoms`, `test_emits_every_key_a_viewer_reads`, `test_emits_the_canonical_keys`; TestStructureToDictExtraThreading: `test_extra_can_override_canonical_source_format`, `test_extras_also_appear_in_canonical_extra_subdict`, `test_extras_appear_at_top_level`, `test_issues_array_is_present_when_no_extra`, `test_no_extra_yields_empty_extra_dict_not_none`; TestWorkspacePayloadCanonicalKeys: `test_atoms_carry_coordinates_on_the_atom`, `test_atoms_matches_atoms_list_helper`, `test_extra_defaults_to_empty_dict_not_none`, `test_extra_is_a_copy_not_an_alias`, `test_extra_passes_through_keyword_dict`, `test_has_canonical_keys`, `test_issues_array_is_present_and_a_list`, `test_labels_are_the_kind_tables`, `test_lattice_is_none_for_non_periodic_structure`, `test_n_atoms_matches_structure`, `test_source_format_defaults_to_xyz`, `test_text_is_xyz_bytes`, `test_title_falls_back_to_empty_string_not_none`; `test_every_helper_carries_atoms_for_three_atom_water`
+
+**`test_siesta_stages.py`** (5). Could not fail, or duplicates. Lost: nothing, because the one caller passes the strategy.
+`test_default_ladder_is_coarse_and_medium`, `test_default_ladder_is_three_named_stages`, `test_no_stage_carries_a_nonconvergence_policy`, `test_the_siesta_form_has_no_stages_field_to_look_a_policy_up_in`, `test_the_siesta_form_schema_emits_no_stage_table`
+
+**`test_siesta_use_gpu.py`** (3). File gone; its one live rule, ELPA-1STAGE as our default, is now a row of the deck table. Lost: the words of one help line.
+`test_diag_algorithm_field_metadata`, `test_use_gpu_default_is_off`, `test_use_gpu_metadata_is_present`
+
+**`test_smiles_and_siesta.py`** (1). Shape. Lost: nothing.
+`test_smiles_xyz_header_count`
+
+**`test_ssl_log_filter.py`** (1). Presence. Lost: a second copy of the filter, which answers the same.
+`test_install_attaches_filter_to_werkzeug_logger`
+
+**`test_structure.py`** (4). Substring checks. The `END` line moved to the PDB round-trip test. Lost: a banner's formula, seen at once.
+`test_basic_construction`, `test_to_pdb_basic_structure`, `test_to_pyscf_string_form`, `test_to_xyz_renders_the_document`
+
+**`test_structure_dna_js.py`** (1). Listed method names. Lost: nothing.
+TestSurfacePresence: `test_methods_callable`
+
+**`test_structure_envelope_protocol.py`** (2). One admitted it pins nothing; one checked old keys. Lost: nothing.
+`test_a_response_carries_the_envelope_beside_todays_keys`, `test_export_reports_what_the_server_did_to_the_structure`
+
+**`test_structure_name_js.py`** (8). File gone. Its one own fact, the panel asking for the right kind, is a row of the panel table. Lost: the words "Enter a name" could change.
+TestErrorPaths: `test_canvas_cancel_passes_through_as_cancelled`, `test_network_failure_returns_envelope`, `test_pubchem_lookup_failure_surfaces_message`; TestHappyPath: `test_name_trimmed_before_post`, `test_successful_generate_routes_through_canvas`; TestInputValidation: `test_empty_name_rejected_without_fetch`, `test_whitespace_rejected`; TestSurfacePresence: `test_methods_callable`
+
+**`test_structure_page_js.py`** (6). Tested a test helper, or a function with no product caller. Lost: Generate pressed before the viewer mounts fails in different words.
+TestBind: `test_rejects_missing_canvas`, `test_rejects_missing_modal`; TestSnapshot: `test_onCanvasChange_is_a_passthrough`; TestSurfacePresence: `test_methods_callable`; TestUnboundErrors: `test_loadIntoCanvas_rejects_when_unbound`, `test_the_helpers_that_need_a_viewer_refuse_without_one`
+
+**`test_structure_peptide_js.py`** (1). Listed method names. Lost: nothing.
+TestSurfacePresence: `test_methods_callable`
+
+**`test_structure_periodicity.py`** (1). A retired field's tombstone. Lost: nothing.
+TestAxisKindIsTheOnePeriodicityField: `test_the_boolean_view_is_no_longer_a_field`
+
+**`test_structure_replace_door.py`** (2). Tested Python's standard library. Lost: nothing; it never saw product code either.
+TestTheInterpreterHook: `test_the_replace_hook_is_installed`, `test_the_stdlib_helper_carries_the_trap_on_every_version`
+
+**`test_structure_rna_js.py`** (8). File gone. Strand direction and the whole request moved to the panel table, now asserting more. Thymine refused stays. Lost: blank text is told "must use ACGU" instead; a form the page can't offer reaches the server.
+TestErrorPaths: `test_backend_failure_surfaces_message`, `test_canvas_cancel_passes_through_as_cancelled`; TestHappyPath: `test_a_strand_goes_to_the_server_as_typed`, `test_explicit_form_forwarded`; TestInputValidation: `test_dna_thymine_rejected_in_rna_panel`, `test_empty_sequence_rejected`, `test_invalid_form_rejected_client_side`; TestSurfacePresence: `test_methods_callable`
+
+**`test_structure_smiles_js.py`** (2). Listed method names, and a browser with no `fetch`. Lost: nothing.
+TestConfigurationErrors: `test_generate_rejects_when_fetch_unconfigured`; TestSurfacePresence: `test_methods_callable`
+
+**`test_system_load.py`** (1). Duplicate. Lost: nothing.
+`test_endpoint_returns_envelope`
+
+**`test_task_description.py`** (5). **Your rule, older files,** on three. A flat description's refusal stays held by a prep-protocol row (I removed the refusal in scratch and it went red). Two were shape. Lost: the "name the way out" words for an older description could change.
+`test_a_description_written_before_is_refused_naming_migrate`, `test_a_description_written_before_the_job_request_names_migrate`, `test_a_flat_description_is_refused_by_name`, `test_a_task_built_in_code_writes_the_same_shape`, `test_written_file_is_named_and_versioned`
+
+**`test_template_declarations.py`** (2). Restated a value, weak check. Lost: nothing.
+`test_pyscf_renders_a_template_at_all`, `test_the_kgrid_is_one_declaration_not_three`
+
+**`test_template_roundtrip.py`** (5). An older template's row, a duplicate, and a filter no product code calls. Lost: nothing.
+`test_a_template_missing_an_item_keeps_the_class_default`, `test_select_filters_compose`, `test_select_finds_an_item_by_its_SECOND_category`, `test_select_with_no_filter_is_every_item`, `test_the_machine_answered_items_are_flagged_and_nothing_else_is`
+
+**`test_transport_blueprint.py`** (4). Duplicates, and old names. Kept: the PySCF tab disabled, with its words. The junction button's check moved to a click-through test, written and not yet run. Lost: Describe pressable for a moment before the page's script runs; the server still refuses.
+TestTransportPageRendering: `test_active_tab_marker_set`, `test_page_includes_form_container`, `test_page_loads_at_canonical_route`, `test_send_button_is_disabled_until_a_junction_is_cited`
+
+**`test_validation_delivery_contract.py`** (3). Moved, science kept: 4 rows of the prep table, through the real commands, with the planted record gone. The ion's dipole (measured 88.8 D) is one of them. Lost: nothing.
+TestAChargedMoleculesDipoleIsItsOwn: `test_a_charged_molecules_dipole_does_not_measure_the_box`; TestTheDipoleAdvisoryAsksTheAxes: `test_a_molecule_at_four_k_points_is_told_and_a_crystal_at_gamma_is_not`; TestTheSubjectAndItsCoordinatesShareOneFrame: `test_the_deck_validates_the_frame_it_emits_and_leaves_the_structure_alone`
+
+**`test_warmfiles.py`** (1). Guarded a list nothing reads. Lost: nothing. The comment claiming it is corrected.
+`test_the_restart_group_object_is_not_a_second_declaration`
+
+**`test_web.py`** (14). Text pins and retired buttons. Moved first: the keyword badge, the form's categories, and Add atom, Orient and Rotate, now 3 click-through tests. **These 3 are written and not yet run,** because no end-to-end runs before F9 ships.
+`test_all_pages_serve_with_shared_tab_nav`, `test_build_load_pdb_overrides_canonical_source_format`, `test_build_load_returns_workspace_payload`, `test_build_molecule_returns_workspace_payload`, `test_engine_key_pins_load_bearing_pyscf_keywords`, `test_engine_key_pins_load_bearing_siesta_keywords`, `test_index_page_has_tab_markup`, `test_index_page_loads`, `test_modify_page_has_m3_edit_controls`, `test_modify_page_has_m4_orient_rotate_controls`, `test_molbuilder_page_loads`, `test_pyscf_form_schema_matches_documented_layout`, `test_siesta_form_schema_matches_documented_layout`, `test_the_tab_neither_generates_nor_saves`
+
+**`test_web_files.py`** (6). Absence of retired pages; the create bar moved to a click-through test, **written and not yet run.** Lost: nothing silent.
+TestSidebarCreateUI: `test_create_bar_in_partial`, `test_three_action_buttons_visible`; TestSidebarPartialAndShim: `test_projects_nav_entry_removed`, `test_projects_page_route_removed`, `test_projects_selection_shim_removed`; TestSidebarStubsUI: `test_preview_modal_starts_hidden`
+
+**`test_workspace_tag_isolation.py`** (1). Absence of retired names. Lost: a retired name re-added by hand.
+`test_there_is_no_second_way_to_save`
+
+**`test_wrapper_notify_flags.py`** (1). API shape. Lost: nothing.
+`test_a_list_of_names_is_accepted_and_normalised`
+
+**`validation/test_aggregator.py`** (2). A duplicate, and a usage guard. Lost: a future caller gets an empty message.
+`test_report_prints_warnings_to_stream`, `test_validation_error_rejects_empty_or_warn_only`
+
+**`watch/test_molwatch_log_parser.py`** (1). File gone; the registry's tests show a reader that claims too much. Lost: nothing.
+`test_can_parse_rejects_non_molwatch`
+
+**`watch/test_pattern_matcher.py`** (38). File gone. Text of regexes and speed paths. What mattered is now 14 rows through the real matcher in `parse/test_section_rules.py`, and those rows caught breaks the old tests stayed green on. Lost: speed only.
+TestAnyOfShape: `test_all_pattern_matchers_yields_pattern_matcher`, `test_empty_raises`, `test_mixed_yields_plain_callable`, `test_short_circuit_semantics`; TestCompileRules: `test_all_predicate_only_no_combined_regex`, `test_duplicate_name_raises`, `test_empty_rule_list_compiles`, `test_mixed_rules_combined_includes_only_pattern_rules`; TestContainsCiShape: `test_matcher_still_callable_directly`, `test_pattern_escapes_metachars`, `test_pattern_has_no_start_anchor`, `test_returns_pattern_matcher`; TestExistingTestsStillWork: `test_old_style_match_call_works`; TestFindMatchDispatchOrder: `test_no_rule_matches_returns_none`, `test_predicate_before_regex`, `test_predicate_exception_isolated`, `test_regex_before_predicate`, `test_three_rules_first_registration_wins`, `test_two_regex_first_wins`; TestFindMatchFastFilter: `test_fast_filter_skips_regex_rules_when_no_match`, `test_predicate_rules_still_run_when_fast_filter_misses`; TestHelperEquivalence: `test_contains_ci_equivalence_suite`, `test_metachar_heavy_substring`, `test_starts_with_ci_equivalence_suite`; TestMatchesRegexCiShape: `test_case_insensitive_via_compile_flag`, `test_matcher_callable_directly`, `test_pattern_is_raw_passthrough`, `test_returns_pattern_matcher`; TestSectionRuleValidation: `test_empty_name_raises`, `test_non_callable_start_raises`, `test_non_string_name_raises`, `test_pattern_matcher_start_accepted`, `test_plain_callable_start_accepted`; TestStartsWithCiShape: `test_matcher_still_callable_directly`, `test_pattern_escapes_metachars`, `test_pattern_has_no_inline_ignorecase_flag`, `test_pattern_includes_lstrip_anchor`, `test_returns_pattern_matcher`
+
+**`watch/test_registry.py`** (4). Moved to `parse/test_registry.py`. Lost: one line of advice.
+`test_detect_unknown_format`, `test_registry_lists_all_parsers`, `test_unknown_format_error_lists_supported`, `test_unknown_format_generic_hint_points_at_the_types_it_reads`
+
+**`watch/test_section_rule.py`** (16). File gone, same as above. Lost: nothing.
+TestAnyOf: `test_empty_combine_raises`, `test_first_matcher_wins`, `test_none_matches`; TestContainsCi: `test_case_insensitive_substring`, `test_no_match`, `test_substring_match`; TestSectionRule: `test_full_rule`, `test_minimal_rule_only_needs_name_and_start`; TestSentinels: `test_are_strings`, `test_distinct_values`; TestStartsWithCi: `test_empty_line`, `test_exact_case`, `test_leading_whitespace_stripped`, `test_mixed_case`, `test_no_match_on_non_prefix`, `test_uppercase`
+
+**`watch/test_siesta_parser.py`** (1). File gone; subsumed. Lost: nothing.
+`test_can_parse_rejects_non_siesta`
+
+**Helpers gone, with no user left**: `tests/_deck.py`: `assert_fdf`, `fdf_sets`, `fdf_value`; `parse/test_sidecars.py`: `_need`; `test_config_dir_has_one_home.py`: `_write`; `test_diagnostics.py`: `_stub_conda_env_list`; `test_envs_siesta_gpu_recipe.py`: `_configure_flags`; `test_k_point_mesh.py`: `_prep`; `test_molstruct_json.py`: `_payload`; `test_molwatch_preview.py`: `water_struct`; `test_prep_refuses_before_writing.py`: `_ledger`; `test_pseudos.py`: `_fe`, `_water`, `_make_pseudodojo_psml`, `_names`; `test_shared.py`: `_payload`, `_h2o_structure_path`, `_h2o_with_regions`, `_h2o_xyz_text`; `test_slab_orthogonal_choice_js.py`: `_extract_fn_source`; `test_task_setup_notify_js.py`: `_slice`; `test_validation_delivery_contract.py`: `_junction_with_an_assigned_origin`; `test_web.py`: `_assert_canonical_workspace_shape`.
+
+**Table rows**: `geometry_pin.toml` 2 rows gone; `frame_sets.toml` one record reworded; `restart_files.toml` 3 run-script checks loosened from whole shell lines to what matters; `machine_record.toml` `arch` added to a row; `prep_protocol.toml` 4 rows added; `the_deck.toml` 3 rows added; `tests/support/road.py`'s structure helper takes an engine offset.
+
+**Sentences withdrawn**: `model/structure.md` and `model/structure-molstruct.md`, that every retired key is pinned by a test; `sidecars/molstruct.py`'s comment, that each readable version is read by a test; `config/siesta.py`'s comment, that the restart keywords are proven equal to the catalogue; `ops/installation.md` § 9, its test map rewritten, the claim that the § 6.3 fence is asserted being already false; `engines/siesta.md` and `science/chemistry-correctness.md`, naming removed tests.
+
 ## Found by 2.67.3's review rounds (2026-11-05 and 06), by the release that owns each
 
 *(three independent readers over the release's whole diff, each finding read again or measured before it was taken; a walk on the real server, Preview only)*
@@ -2105,6 +2408,6 @@ scheduled".)* The audit, every file read whole, with a row per file:
 | TA-GUARD | **closed (tests, before 2.63.0)** | test code ran outside pytest; module, session and collection-time code and child processes ran outside the per-test isolation; tests reached the network; the harness's writers took any folder they were handed | `testing.md` § 2b: test code loads only under pytest; one sandbox for the whole process, set before anything is collected; nothing leaves the machine; one write guard for the whole run; `test_the_suite_stays_in_its_sandbox.py` |
 | TA-PREFIX | **closed (tests, before 2.63.0)** | eleven env tests handed the product fake prefixes at the machine's root (`/fake`, `/prefix`, `/scratch/me`), under which it creates folders | the prefixes under the sandbox home |
 | TA-DOCS | F9 | a page test asked the docs route for its index over the real `docs/`, and the route rebuilt `docs/toc.json` in the checkout; the write guard refuses it now, so the next new document fails the test until it is mended | the page tests pointed at a copy of `docs/` |
-| TA-RETIRE | F9 | the 22 files the audit retires, and the single tests and rows each group table names | the group tables |
+| TA-RETIRE | **in part 2.67.4**, its list below; the rest under the 2026-11-06 rule | the 22 files the audit retires, and the single tests and rows each group table names | the group tables |
 | TA-REWRITE | F9 | the 50 files whose inputs are handcrafted (the audit's § 4: machine records, records of runs that never happened, calculation records typed instead of `describe`, older releases' files, typed engine and tool output, typed server replies, invented results) | through the road, or a recorded real run |
 | TA-ISOLATE | F9 | the 56 "fix isolation" files: what the guards close by construction is closed; what is left — the validation tests' reads of the real `projects/pseudopotential/`, the `--clean` test's real prefix behind a recording door, a stand-in server with no projects tree of its own, collection-time engine checks — is F9's | per file, the group tables |

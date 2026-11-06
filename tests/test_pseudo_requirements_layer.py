@@ -215,7 +215,11 @@ def test_the_highest_requirement_wins_because_there_is_one_grid(tmp_path):
     it.  A minimum or an average would answer LOWER the more species a
     system has, which is backwards: adding a species can only make the
     grid's job harder."""
+    from types import SimpleNamespace
+    import numpy as np
     from molbuilder.pseudos import parse_psml_header as ph
+    from molbuilder.structure import Structure
+    from molbuilder.validation.siesta import _declared_cutoff_ry
     lib = _lib(
         tmp_path,
         S=_psml("S", _S_V04, z=16, shells=_S_SHELLS,
@@ -225,24 +229,39 @@ def test_the_highest_requirement_wins_because_there_is_one_grid(tmp_path):
     )
     got = {el: ph(lib / f"{el}.psml").suggested_mesh_ry for el in ("S", "C")}
     assert got == {"S": 147.0, "C": 41.0}
-    assert max(got.values()) == 147.0, "the strictest element sets the grid"
+    struct = Structure(elements=["S", "C"],
+                       positions=np.array([[0., 0, 0], [1.8, 0, 0]]))
+    assert _declared_cutoff_ry(struct, SimpleNamespace(psml_lib=None),
+                               dest_dir=lib) == (147.0, "S"), (
+        "the strictest element sets the grid")
 
 
 def test_an_element_that_states_nothing_does_not_lower_the_bar(tmp_path):
     """Only the eleven re-generated elements carry hints, so a real system
     states fewer numbers than it has species — BDT on gold states exactly
-    one.  Silence must abstain, not vote for a smaller number."""
+    one.  Silence must abstain, not vote for a smaller number: asked with a
+    silent species on each side of the one that states, in the order the
+    species are read."""
+    from types import SimpleNamespace
+    import numpy as np
     from molbuilder.pseudos import parse_psml_header as ph
+    from molbuilder.structure import Structure
+    from molbuilder.validation.siesta import _declared_cutoff_ry
     lib = _lib(
         tmp_path,
         S=_psml("S", _S_V04, z=16, shells=_S_SHELLS, hints=_S_HINTS),
         Au=_psml("Au", _S_V04, z=79, shells=[(6, "s", 1)]),   # no hints
         H=_psml("H", _S_V04, z=1, shells=[(1, "s", 1)]),      # no hints
+        Zn=_psml("Zn", _S_V04, z=30, shells=[(4, "s", 2)]),   # no hints
     )
     stated = [ph(lib / f"{el}.psml").suggested_mesh_ry
-              for el in ("S", "Au", "H")]
-    assert stated == [147.0, None, None]
-    assert max(v for v in stated if v is not None) == 147.0
+              for el in ("S", "Au", "H", "Zn")]
+    assert stated == [147.0, None, None, None]
+    struct = Structure(elements=["Au", "S", "H", "Zn"],
+                       positions=np.array([[0., 0, 0], [2.4, 0, 0], [3.8, 0, 0],
+                                           [6.0, 0, 0]]))
+    assert _declared_cutoff_ry(struct, SimpleNamespace(psml_lib=None),
+                               dest_dir=lib) == (147.0, "S")
 
 
 def test_the_hints_are_read_whole_so_high_can_be_named(tmp_path):

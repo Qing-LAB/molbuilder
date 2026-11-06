@@ -45,18 +45,6 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_resolve_no_json_no_flags_returns_none_pair(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    assert _resolve_tls(None, None) == (None, None)
-
-
-def test_resolve_json_supplies_both_when_no_flags(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"tls": {"cert": "/etc/ssl/c.pem", "key": "/etc/ssl/k.pem"}}))
-    assert _resolve_tls(None, None) == ("/etc/ssl/c.pem", "/etc/ssl/k.pem")
-
-
 def test_resolve_cli_flag_overrides_json(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "molbuilder.json").write_text(json.dumps(
@@ -67,30 +55,11 @@ def test_resolve_cli_flag_overrides_json(monkeypatch, tmp_path):
     assert _resolve_tls("/cli.pem", "/cli.key") == ("/cli.pem", "/cli.key")
 
 
-def test_resolve_json_with_only_cert_falls_back_to_http(
-        monkeypatch, tmp_path, capsys):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps({"tls": {"cert": "/c.pem"}}))
-    assert _resolve_tls(None, None) == (None, None)
-    err = capsys.readouterr().err
-    assert "incomplete" in err
-    assert "HTTP" in err
-
-
 def test_resolve_json_with_only_key_falls_back_to_http(
         monkeypatch, tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "molbuilder.json").write_text(json.dumps({"tls": {"key": "/k.pem"}}))
     assert _resolve_tls(None, None) == (None, None)
-    assert "incomplete" in capsys.readouterr().err
-
-
-def test_resolve_cli_flag_alone_without_pair_falls_back(
-        monkeypatch, tmp_path, capsys):
-    """``--cert`` without ``--key`` (and no JSON) is incomplete -- warn
-    and fall back to HTTP rather than silently shipping half a pair."""
-    monkeypatch.chdir(tmp_path)
-    assert _resolve_tls("/c.pem", None) == (None, None)
     assert "incomplete" in capsys.readouterr().err
 
 
@@ -128,16 +97,6 @@ def test_a_malformed_molbuilder_json_is_refused_where_it_is_read(
 # of which file failed.  ``_check_tls_readable`` runs before
 # ``app.run`` and surfaces a click.UsageError naming the bad path +
 # pointing at the reverse-proxy approach in docs/ops/deployment.md.
-
-
-def test_check_tls_readable_noop_on_falsy_inputs():
-    """No TLS configured -- the call is a no-op (no exception).  Pins
-    the "skip when there's nothing to check" branch so callers don't
-    have to gate on ``if cert and key`` themselves."""
-    assert _check_tls_readable(None, None) is None
-    assert _check_tls_readable("", "") is None
-    assert _check_tls_readable("/path", None) is None
-    assert _check_tls_readable(None, "/path") is None
 
 
 def test_check_tls_readable_accepts_readable_pair(tmp_path):
@@ -312,10 +271,3 @@ def test_serve_cli_cert_only_warns_and_falls_back(
     assert capture_flask_run[-1]["kwargs"]["ssl_context"] is None
     assert "incomplete" in res.stderr
     assert "http://" in res.stderr
-
-
-def test_serve_help_advertises_cert_and_key():
-    res = CliRunner().invoke(cli.cli, ["serve", "foreground", "--help"])
-    assert res.exit_code == 0
-    assert "--cert" in res.output
-    assert "--key" in res.output

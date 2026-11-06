@@ -114,18 +114,17 @@ run_sh = ['what a launch again will do: launch the stage again to continue warm 
 # failure says nothing of how it ended.
 [[case]]
 name = "a SIESTA run script asks how a failure ended with its session log as the engine's stderr, and the advice for its cause by meaning"
-run_sh = ['ending "$_out_file" --stderr "$_runwrap_log"', 'echo "how it ended: $_mb_ending_words"',
-          'if _mb_advice=$(_mb_ending advice); then']
+run_sh = ['--stderr "$_runwrap_log"', 'how it ended: ', '$(_mb_ending advice)']
 run_sh_lacks = ["stopped-by", "IMAX = 0"]
 
 [[case]]
 name = "...and a PySCF run script says how it ended too, its output carrying the engine's stderr"
 engine = "pyscf"
-run_sh = ['echo "how it ended: $_mb_ending_words"', 'ending "$_out_file" "$@"']
+run_sh = ['how it ended: ', 'ending "$_out_file" "$@"']
 run_sh_lacks = ['--stderr "$_runwrap_log"',
                 # its output's family names no stop at the wall and keeps no
                 # advice (its catalogue row's `stops` reader), so neither is asked
-                "if _mb_ending out-of-time; then", "_mb_advice=$(_mb_ending advice)"]
+                "if _mb_ending out-of-time; then", "$(_mb_ending advice)"]
 
 [[case]]
 name = "...and a clean stage's, that a launch again starts over from its deck's coordinates"

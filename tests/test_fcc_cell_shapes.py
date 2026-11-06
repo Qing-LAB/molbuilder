@@ -36,13 +36,6 @@ def _builds(plane: str, orthogonal: bool) -> bool:
 
 
 @pytest.mark.parametrize("plane", SUPPORTED_FCC_PLANES)
-def test_every_plane_has_an_entry(plane):
-    assert plane in FCC_ORTHOGONAL_CHOICES, (
-        f"fcc({plane}) is offered but the table does not say which cell "
-        f"shapes it has, so the panel cannot know what to offer")
-
-
-@pytest.mark.parametrize("plane", SUPPORTED_FCC_PLANES)
 def test_what_the_table_allows_ase_builds(plane):
     for orthogonal in FCC_ORTHOGONAL_CHOICES[plane]:
         assert _builds(plane, orthogonal), (

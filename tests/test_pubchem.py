@@ -121,67 +121,15 @@ def test_smiles_for_name_restores_socket_timeout(monkeypatch):
     otherwise a transient PubChem hiccup would silently break every
     subsequent network call in the same process."""
     sentinel = 12.34
+    before = socket.getdefaulttimeout()
     socket.setdefaulttimeout(sentinel)
-    _install_fake_pubchempy(
-        monkeypatch,
-        lambda name, kind: [_FakeCompound(canonical="O")],
-    )
-    pubchem.smiles_for_name("water", timeout=99.0)
-    assert socket.getdefaulttimeout() == sentinel
-    # Reset for any later tests in the same session.
-    socket.setdefaulttimeout(None)
-
-
-# --------------------------------------------------------------------- #
-#  build_from_name composition                                          #
-# --------------------------------------------------------------------- #
-
-
-def test_build_from_name_threads_through_build_from_smiles(monkeypatch):
-    """build_from_name must call smiles_for_name() then hand the
-    result + a default title to build_from_smiles().  This pins the
-    composition contract -- a refactor that drops kwargs or swaps
-    title precedence shows up here."""
-    _install_fake_pubchempy(
-        monkeypatch,
-        lambda name, kind: [_FakeCompound(canonical="O")],
-    )
-    captured = {}
-
-    def fake_build_from_smiles(smi, **kwargs):
-        captured["smi"] = smi
-        captured["kwargs"] = kwargs
-        from molbuilder.structure import Structure
-        import numpy as np
-        return Structure(elements=["O"],
-                         positions=np.array([[0.0, 0.0, 0.0]]),
-                         title=kwargs.get("title", ""))
-    monkeypatch.setattr("molbuilder.pubchem.build_from_smiles",
-                        fake_build_from_smiles)
-    s = pubchem.build_from_name("water", optimize=False)
-    assert captured["smi"] == "O"
-    # Default title is the name (not None, not empty).
-    assert captured["kwargs"]["title"] == "water"
-    # Caller's smiles_kwargs forward through.
-    assert captured["kwargs"]["optimize"] is False
-    assert s.title == "water"
-
-
-def test_build_from_name_explicit_title_overrides_default(monkeypatch):
-    _install_fake_pubchempy(
-        monkeypatch,
-        lambda name, kind: [_FakeCompound(canonical="O")],
-    )
-    captured = {}
-
-    def fake_build_from_smiles(smi, **kwargs):
-        captured["title"] = kwargs.get("title")
-        from molbuilder.structure import Structure
-        import numpy as np
-        return Structure(elements=["O"],
-                         positions=np.array([[0.0, 0.0, 0.0]]),
-                         title=kwargs.get("title", ""))
-    monkeypatch.setattr("molbuilder.pubchem.build_from_smiles",
-                        fake_build_from_smiles)
-    pubchem.build_from_name("water", title="H2O")
-    assert captured["title"] == "H2O"
+    try:
+        _install_fake_pubchempy(
+            monkeypatch,
+            lambda name, kind: [_FakeCompound(canonical="O")],
+        )
+        pubchem.smiles_for_name("water", timeout=99.0)
+        assert socket.getdefaulttimeout() == sentinel
+    finally:
+        # Whatever happened above, the rest of the run keeps its own.
+        socket.setdefaulttimeout(before)

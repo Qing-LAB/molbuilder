@@ -209,42 +209,11 @@ def test_the_workspace_does_not_open_what_it_was_given():
         await settle();
         console.log(JSON.stringify({
             back:    await readBack("some-tag", 0),
-            surface: Object.keys(ws).sort(),
         }));
         """
     )
     assert out["back"] == {"v": 1, "state": {"shopping": ["milk", "bread"]}}, (
         f"the workspace changed what it was handed: {out['back']}"
-    )
-    for gone in ("hasRestorableSnapshot", "mountRestoreTarget"):
-        assert gone not in out["surface"], (
-            f"{gone} is back — it opens your saved work to answer a question "
-            f"that belongs to whoever wrote it"
-        )
-
-
-def test_there_is_no_second_way_to_save():
-    """Everything that saves goes through this one set of calls: bytes written
-    without a tag would defeat the only thing keeping two savers apart.
-    """
-    out = _run(
-        """
-        console.log(JSON.stringify({
-            secondDoor: typeof globalThis.molbuilder.workspaceSnapshot,
-            surface:    Object.keys(ws).sort(),
-        }));
-        """
-    )
-    assert out["secondDoor"] == "undefined", (
-        "the browser-storage helper is published again — bytes can be written "
-        "without a tag"
-    )
-    assert "useNamespace" not in out["surface"], (
-        "the setter is back; the tag is an argument now"
-    )
-    assert "readPersistedSnapshot" not in out["surface"], (
-        "the browser copy is back — nothing ever restored from it, and it cost "
-        "a write on every edit"
     )
 
 

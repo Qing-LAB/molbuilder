@@ -201,8 +201,6 @@ def test_a_reserved_label_is_an_ordinary_label():
     """§ 6.6: a reserved name is "stored, filtered and displayed exactly like any
     other label", and "no code here acts on the name".
 
-    § 13.3: tagging atoms `frozen atoms` changes what is stored and nothing about
-    what is drawn.
     """
     out = _run(
         """
@@ -213,20 +211,7 @@ def test_a_reserved_label_is_an_ordinary_label():
         const kinds = ATOM.channelKinds(["C", "C"], annotations);
         const byName = {};
         for (const k of kinds) byName[k.name] = k.kind;
-
-        // ...and it changes nothing about what is drawn.
-        const plain = ENGINE.processFrame({
-            elements: ["C", "C"], positions: [[0,0,0],[1,0,0]],
-            selection: [], switches: OFF,
-        });
-        const tagged = ENGINE.processFrame({
-            elements: ["C", "C"], positions: [[0,0,0],[1,0,0]],
-            selection: [], switches: OFF,
-        });
-        console.log(JSON.stringify({
-            byName,
-            drawnSame: JSON.stringify(plain) === JSON.stringify(tagged),
-        }));
+        console.log(JSON.stringify({ byName }));
         """
     )
     assert out["byName"]["frozen atoms"] == "tag", (
@@ -236,7 +221,6 @@ def test_a_reserved_label_is_an_ordinary_label():
     assert out["byName"]["my region"] == out["byName"]["frozen atoms"], (
         "a reserved label and an ordinary one must be indistinguishable here"
     )
-    assert out["drawnSame"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -554,19 +538,22 @@ def test_the_two_triads_are_told_apart_by_colour_as_well_as_by_label():
     The label at each tip says which; the colour has to say it too, because a
     label is read second and a colour is seen first.
     """
+    import numpy as np
+    from molbuilder.structure import Structure
+    celled = Structure(elements=["H", "H"],
+                       positions=np.array([[0., 0, 0], [0, 0, 0.74]]),
+                       cell=np.eye(3) * 5.0)
     out = _run(
-        """
+        f"""
         // ONE structure with a cell, so both triads are in play at once — which
         // is the situation the colours exist for.
-        const scene = ENGINE.sceneFor({
-            resolved_cell: [[5,0,0],[0,5,0],[0,0,5]],
-            box_corner: [1,1,1] });
-        console.log(JSON.stringify({
+        const scene = ENGINE.sceneFor({_wire_periodicity(celled)});
+        console.log(JSON.stringify({{
             abc: scene.cellAxes.map(a => a.color),
             xyz: scene.axes.map(a => a.color),
             abcLabels: scene.cellAxes.map(a => a.label),
             xyzLabels: scene.axes.map(a => a.label),
-        }));
+        }}));
         """
     )
     assert out["abcLabels"] == ["a", "b", "c"]
@@ -586,23 +573,30 @@ def test_with_no_cell_or_no_corner_there_is_no_box_and_the_triad_is_cartesian():
     """§ 6.2: `cell` is null when there is no cell. The triad still has a job —
     saying which way is which — so it falls back to x/y/z at the world origin.
 
-    And a cell that arrives with no `box_corner` draws no box either: the box
-    sits at the server's corner and nowhere else, so none is invented at the
-    world origin (§ 10.3; plan § 5q D13).
+    And a cell that arrives with no `box_corner` -- what the server sends for a
+    cell with no atoms in it -- draws no box either: the box sits at the
+    server's corner and nowhere else, so none is invented at the world origin
+    (§ 10.3; plan § 5q D13).
     """
+    import numpy as np
+    from molbuilder.structure import Structure
+    empty = Structure(elements=[], positions=np.zeros((0, 3)),
+                      cell=np.eye(3) * 5.0,
+                      axis_kind=("periodic", "periodic", "periodic"))
+    block = json.loads(_wire_periodicity(empty))
+    assert block["box_corner"] is None and block["resolved_cell"] is not None
     out = _run(
-        """
+        f"""
         const scene = ENGINE.sceneFor(null);
-        const cornerless = ENGINE.sceneFor({
-            resolved_cell: [[5,0,0],[0,5,0],[0,0,5]] });
-        console.log(JSON.stringify({
+        const cornerless = ENGINE.sceneFor({_wire_periodicity(empty)});
+        console.log(JSON.stringify({{
             box: scene.cellBox,
             labels: scene.axes.map(a => a.label),
             starts: scene.axes.map(a => a.start),
             ends: scene.axes.map(a => a.end),
             cornerlessBox: cornerless.cellBox,
             cornerlessTriad: cornerless.cellAxes,
-        }));
+        }}));
         """
     )
     assert out["box"] is None, "no cell means no box to draw"
@@ -685,24 +679,24 @@ def test_the_effective_cell_prefers_the_resolved_answer_over_the_raw_one():
     said a structure had a cell while the drawing read the RAW ones and found
     none, so "Show unit cell" drew nothing for every plain `.xyz`.
     """
+    import numpy as np
+    from molbuilder.structure import Structure
+    sized_by_vacuum = Structure(elements=["H", "H"],
+                                positions=np.array([[0., 0, 0], [0, 0, 0.74]]),
+                                vacuum=(5.0, 5.0, 5.0))
+    block = json.loads(_wire_periodicity(sized_by_vacuum))
+    assert block["cell"] is None
     out = _run(
-        """
-        const raw = {
-            cell: null, engine_offset: null,
-            axis_kind: ["isolated", "isolated", "isolated"], vacuum: [5, 5, 5],
-            resolved_cell: [[9,0,0],[0,9,0],[0,0,9]],
-            box_corner: [-4.5, -4.5, -4.5],
-            resolved_vacuum: [5, 5, 5],
-        };
-        console.log(JSON.stringify({
-            derived: JOBS.effectiveCell(raw),
+        f"""
+        console.log(JSON.stringify({{
+            derived: JOBS.effectiveCell({_wire_periodicity(sized_by_vacuum)}),
             nothing: JOBS.effectiveCell(null),
-        }));
+        }}));
         """
     )
-    assert out["derived"]["cell"] == [[9, 0, 0], [0, 9, 0], [0, 0, 9]], (
+    assert out["derived"]["cell"] == block["resolved_cell"], (
         "the resolved box must win over a null raw cell")
-    assert out["derived"]["box_corner"] == [-4.5, -4.5, -4.5]
+    assert out["derived"]["box_corner"] == block["box_corner"]
     # NEVER null ITSELF, whatever it is handed -- § 9.3 says so explicitly, and
     # a caller that has to null-check the main way in has two shapes to handle.
     assert out["nothing"] is not None

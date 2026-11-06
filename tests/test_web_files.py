@@ -713,32 +713,6 @@ class TestSidebarPartialAndShim:
     the supporting JS / CSS are reachable, and subscriber tabs (those
     that also load a file via the selection) include the banner DOM."""
 
-    def test_projects_page_route_removed(self, web):
-        """A re-added `/projects` page would give the sidebar a second home,
-        and the two would disagree about what is selected.
-
-        `projects.md` § 1 (the one door) -- the standalone tab was retired for
-        the persistent sidebar.
-        """
-        # The standalone /projects tab was retired in favour of the
-        # persistent sidebar.  Make sure the old route is gone so a
-        # bookmark lands on a clean 404 rather than a half-rendered
-        # leftover.
-        r = web.get("/projects")
-        assert r.status_code == 404
-
-
-    def test_projects_selection_shim_removed(self, web, picker_root):
-        """The per-tab selection shim coming back would put a second subscriber
-        on the selection, so a picked file loads twice -- and, when the two
-        disagree, into two different viewers.
-
-        `projects.md` § 3 (opening a molecule -- one door).
-        """
-        # The per-tab projects-selection shim was retired -- the sidebar
-        # actions section took over (no more "Use this file" banner).
-        r = web.get("/static/lib/projects-selection.js")
-        assert r.status_code == 404
 
     @pytest.mark.parametrize("path", [
         "/molbuilder", "/structure-optimization",
@@ -792,14 +766,6 @@ class TestSidebarPartialAndShim:
         # server-side opt-in so the regression can't come back.
         body = web.get(path).get_data(as_text=True)
         assert 'data-sidebars="projects"' in body, path
-        # The JS must NOT set the attribute (that would race the first paint);
-        # it only toggles the collapsed / mobile-drawer *body classes*.
-        js = web.get(
-            "/static/lib/projects/projects-sidebar.js",
-        ).get_data(as_text=True)
-        assert 'setAttribute("data-sidebars"' not in js
-        assert "setAttribute('data-sidebars'" not in js
-        assert "dataset.sidebars" not in js
 
     @pytest.mark.parametrize("path", ["/molbuilder"])
     def test_subscriber_tabs_use_inquire_api(
@@ -811,8 +777,7 @@ class TestSidebarPartialAndShim:
 
         `projects.md` § 3 (opening a molecule -- the one door) and
         `model/structure.md` § 3.1 (`projects.parser.openMolecule`, reached
-        through `window.molbuilder.projects`). The negative half (retired ids
-        stay absent) is spelling on shipped markup and is the weaker part.
+        through `window.molbuilder.projects`).
         """
         # /molbuilder is the canonical "subscriber tab": it reacts
         # to the Projects-sidebar selection by auto-loading the
@@ -830,13 +795,8 @@ class TestSidebarPartialAndShim:
         # Wires through window.molbuilder.projects (Inquire API).
         assert "window.molbuilder" in body, path
         assert "selection-bootstrap.js" in body, path
-        # Retired surfaces stay retired.
-        assert 'id="load-from-selection-btn"' not in body, path
-        assert "molbuilderTabAutoLoad" not in body, path
-        assert "projects-selection.js" not in body, path
-        assert 'id="projects-banner"' not in body, path
 
-    def test_projects_nav_entry_removed(self, web):
+    def test_every_tab_link_is_a_served_route(self, web):
         """A tab link pointing at a route the server does not serve -- the user
         clicks a header tab and lands on a 404.
 
@@ -845,18 +805,13 @@ class TestSidebarPartialAndShim:
         so it is an artifact lint over the whole class rather than one link --
         the kind `testing.md` § 3b keeps.
         """
-        # The sidebar's own <h2>Projects</h2> title
-        # legitimately contains the word "Projects", so the actual
-        # invariants are: (a) no /projects href anywhere, and (b)
-        # every visible app-tab link points at a route we actually
-        # serve.  Counting tabs would make this test break every
-        # time we add or remove a tab, which is the wrong sensitivity.
+        # Every visible app-tab link points at a route we actually serve.
+        # Counting tabs would make this test break every time we add or
+        # remove a tab, which is the wrong sensitivity.
         import re
         r = web.get("/structure-optimization")
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        # No href="/projects" anywhere -- the sidebar replaced the tab.
-        assert 'href="/projects"' not in body
         # Each app-tab link points at one of the served routes.  Pull
         # every href from the app-tab class; assert every value is in
         # the served-routes set.  SERVED is derived from
@@ -1184,42 +1139,6 @@ class TestProjectsCreate:
         r = web.post("/api/projects/create", json={})
         assert r.status_code == 400
         assert "missing 'name'" in r.get_json()["error"]
-
-
-class TestSidebarCreateUI:
-    """2026-06-12 (v2): three SEPARATE buttons (New project / New
-    folder / Upload) in the sidebar header.  Each button opens its
-    modal dialog directly.  See web/projects.md § Mutation UX."""
-
-    def test_create_bar_in_partial(self, web, picker_root):
-        """The create bar disappearing from the sidebar header, which is where
-        all three mutation actions live.
-
-        `projects.md` § 4.
-        """
-        body = web.get("/spectrum-calculation").get_data(as_text=True)
-        assert 'class="ps-create-bar"' in body
-
-    def test_three_action_buttons_visible(self, web, picker_root):
-        """A button losing its id leaves the JS unable to wire it: the control
-        renders and does nothing when clicked -- the failure mode with no error
-        anywhere.
-
-        `projects.md` § 4 (the sidebar's three actions, v2 2026-06-12).
-        """
-        body = web.get("/spectrum-calculation").get_data(as_text=True)
-        # Three distinct buttons with stable ids for the JS to wire.
-        assert 'id="ps-create-project-btn"' in body
-        assert 'id="ps-create-folder-btn"' in body
-        assert 'id="ps-create-upload-btn"' in body
-        # data-action attributes (used by tests + accessibility tools).
-        assert 'data-action="new-project"' in body
-        assert 'data-action="new-folder"' in body
-        assert 'data-action="upload"' in body
-        # User-facing labels (verify the wording renders).
-        assert "New project" in body
-        assert "New folder" in body
-        assert "Upload" in body
 
 
 class TestFilesWrite:
@@ -2771,21 +2690,6 @@ class TestFilesWriteAutoRename:
             f"{upload_path!r}; write picked {write_path!r}"
         )
 
-
-class TestSidebarStubsUI:
-    """The stub features ship with their full UI surface so the design
-    is reviewable.  Markup checks here."""
-
-    def test_preview_modal_starts_hidden(self, web, picker_root):
-        """The preview modal painting over the page for one frame on every
-        load, before the JS hides it.
-
-        `projects.md` § 4.
-        """
-        # The hidden attribute ensures it doesn't flash on first paint
-        # before JS runs.
-        body = web.get("/spectrum-calculation").get_data(as_text=True)
-        assert 'id="ps-preview-modal" class="ps-preview-modal" hidden' in body
 
 class TestRootsContract:
     """Single-root contract: Capabilities.file_picker_roots() returns

@@ -2,6 +2,10 @@
 
 F2 inbound (the facts a validating request carries) and F4 (the gate derives
 what a check needs).  Each test names the invisible failure it prevents.
+
+What prep's gate judges of a deck -- the frame it writes, an ion's dipole, whom
+the dipole advisory is for -- is prepared on the road, rows of
+``data/prep_protocol.toml``.
 """
 from __future__ import annotations
 
@@ -13,9 +17,6 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
 
-import sys as _sys, pathlib as _pl
-_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
-
 
 def _thin_box_molecule() -> Structure:
     """A molecule in a box too small for its own basis orbitals -- the
@@ -24,136 +25,6 @@ def _thin_box_molecule() -> Structure:
     pos = rng.uniform(-4.0, 4.0, size=(12, 3))
     return Structure(elements=["C"] * 12, positions=pos,
                      vacuum=(2.5, 2.5, 2.5))
-
-
-class TestTheSubjectAndItsCoordinatesShareOneFrame:
-    """PINS: `model/structure-periodicity.md` § 6.0, *A stated offset* -- an
-    offset is a statement about the coordinates beside it, so an op that
-    reframes the coordinates restates the offset in the same breath.
-
-    INVARIANT: the structure the SIESTA deck hands the validator carries the
-    coordinates the deck will actually write -- already placed by the engine
-    offset into SIESTA's frame, the cell's corner at (0,0,0) -- so it states
-    THAT frame's offset, 0, not the design structure's.
-
-    PREVENTS: the validator judging atoms against a box a whole offset away.
-    Measured before the fix on a junction with a stored corner:
-    ``contains_atoms = False`` and a clearance of -19 Å along transport, i.e.
-    a ``cell.atoms_outside`` warning naming numbers from neither frame, on a
-    structure whose atoms sit perfectly inside their box.  The emitted
-    coordinates were right throughout, which is why it survived: a false
-    warning, never a refusal.
-    """
-
-    def _junction_with_an_assigned_origin(self) -> Structure:
-        # Atoms that straddle the origin, and an origin the person ASSIGNED at
-        # (-2, -2, -10): the deck puts them at x = y = 3 in the 8 Å cell --
-        # off-centre, so the rule is not what placed them -- and z = 1..19.
-        z = np.linspace(-9.0, 9.0, 7)
-        pos = np.array([[1.0, 1.0, float(v)] for v in z])
-        return Structure(
-            elements=["Au"] * len(z), positions=pos,
-            cell=np.diag([8.0, 8.0, 20.0]),
-            engine_offset=[2.0, 2.0, 10.0],
-            axis_kind=("periodic", "periodic", "transport"))
-
-    def test_the_deck_validates_the_frame_it_emits_and_leaves_the_structure_alone(
-            self, isolated_projects_root):
-        """Carried over, the design's offset would put z at fractional 0.55-1.45
-        and `cell.atoms_outside` would fire on a deck whose atoms are inside.
-        And the subject is a derived copy: the origin the person assigned, and
-        the design coordinates, stay on the pair they own (§ 6.1 clause 1;
-        § 6.0, no engine step rewrites the design).
-
-        Through the road: prep writes the deck beside its `.validation.txt`,
-        the report of what the gate judged."""
-        from molbuilder.jobset.ladder import engine_ladder
-        from test_engine_offset_reaches_every_deck import _design, _prep
-        s = self._junction_with_an_assigned_origin()
-        before = s.positions.copy()
-        dest, stage, _text = _prep(isolated_projects_root, s,
-                                   SiestaConfig(system_label="JOB"),
-                                   engine_ladder("siesta", "publishable"),
-                                   "siesta")
-        report = next(next(dest.glob(f"*_{stage}"))
-                      .glob("*.validation.txt")).read_text()
-        assert "[cell.atoms_outside]" not in report, (
-            "the validator judged the deck's coordinates against the offset "
-            "they were placed by:\n" + report)
-        design = _design(dest)
-        np.testing.assert_array_equal(design.engine_offset, [2.0, 2.0, 10.0])
-        np.testing.assert_array_equal(design.positions, before)
-
-
-class TestAChargedMoleculesDipoleIsItsOwn:
-    """PINS: `model/chemistry.md` § 4 (the dipole estimate, taken about the
-    centre of mass; plan § 5q D8).
-
-    The validators judge the copy the deck places -- half a box from where the
-    molecule was drawn -- and an ion's dipole depends on the origin
-    (`science/normal-modes.md` § 4a.5), so ``sum(q r)`` there measured the
-    box, not the molecule: formate at charge -1 read 88.8 D placed against
-    1.4 D as drawn (found by review, 2026-09-25).
-    """
-
-    def test_a_charged_molecules_dipole_does_not_measure_the_box(
-            self, isolated_projects_root):
-        """Formate, charge -1, in an 8 Å vacuum box: the report says no dipole
-        worth warning about, or a molecular-sized one -- never the tens of
-        debye the box's own size gave.
-
-        Through the road: prep writes the deck beside its `.validation.txt`,
-        the report of what the gate judged."""
-        import re as _re
-        from molbuilder.jobset.ladder import engine_ladder
-        from test_engine_offset_reaches_every_deck import _prep
-        formate = Structure(
-            elements=["C", "O", "O", "H"],
-            positions=np.array([[0.0, 0.0, 0.0], [1.26, 0.0, 0.0],
-                                [-0.63, 1.09, 0.0], [-0.55, -0.95, 0.0]]),
-            vacuum=(8.0, 8.0, 8.0))
-        dest, stage, _text = _prep(
-            isolated_projects_root, formate,
-            SiestaConfig(system_label="JOB", net_charge=-1),
-            engine_ladder("siesta", "publishable"), "siesta")
-        report = next(next(dest.glob(f"*_{stage}"))
-                      .glob("*.validation.txt")).read_text()
-        said = _re.search(r"estimated net dipole = ([0-9.]+) D", report)
-        assert said is None or float(said.group(1)) < 5.0, report
-
-
-class TestTheDipoleAdvisoryAsksTheAxes:
-    """PINS: `model/structure-periodicity.md` § 2.1 (plan § 5w K8): the
-    dipole advisory is for a box of vacuum on every axis -- the axes SIESTA
-    computes on, never the k-point count (the K3 review)."""
-
-    def test_a_molecule_at_four_k_points_is_told_and_a_crystal_at_gamma_is_not(
-            self, isolated_projects_root):
-        """Through the road: prep writes each deck beside its
-        `.validation.txt`.  A polar molecule sampled 4x4x4 still sits among
-        its images; the same pair as a crystal, periodic on every axis and
-        sampled at Gamma alone, carries its images by design -- the trigger
-        that asked whether the mesh had one point told it "a 3-D vacuum
-        cell".
-
-        MUTATION THIS MUST FAIL AGAINST: the advisory keyed on a mesh of one
-        point."""
-        from molbuilder.jobset.ladder import engine_ladder
-        from test_engine_offset_reaches_every_deck import _prep
-        hf = dict(elements=["F", "H"],
-                  positions=np.array([[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]]))
-        cases = ((Structure(**hf, vacuum=(10.0,) * 3), (4, 4, 4), True),
-                 (Structure(**hf, cell=np.eye(3) * 5.0,
-                            axis_kind=("periodic",) * 3), (1, 1, 1), False))
-        for i, (struct, kgrid, told) in enumerate(cases):
-            root = isolated_projects_root / f"case{i}"
-            root.mkdir()
-            dest, stage, _text = _prep(
-                root, struct, SiestaConfig(system_label="JOB", kgrid=kgrid),
-                engine_ladder("siesta", "publishable"), "siesta")
-            report = next(next(dest.glob(f"*_{stage}"))
-                          .glob("*.validation.txt")).read_text()
-            assert ("estimated net dipole" in report) is told, report
 
 
 class TestF4GateDerivesWhatChecksNeed:

@@ -6,9 +6,6 @@ generator, and the writer that drops the script next to the FDF.
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from molbuilder.runfiles import RunNames
@@ -110,11 +107,17 @@ class TestScriptGeneration:
         compile(s, "makov_payne_correction.py", "exec")
 
     def test_carries_q_and_label(self):
+        """What the script holds, read by running it, as
+        `TestTheLengthTheScriptUses` does.  THE SILENT FAILURE: a charged
+        molecule's correction computed for another charge; a text pin passes
+        ``NET_CHARGE   = -2 + 1``."""
         s = render_correction_script(
             system_label="my-job", q=-2, epsilon_r=4.0, stage=_NAMES.stage)
-        assert "SYSTEM_LABEL = \"my-job\"" in s
-        assert "NET_CHARGE   = -2" in s
-        assert "DEFAULT_EPS  = 4.0" in s
+        made: dict = {"__name__": "the_script"}
+        exec(compile(s, "makov_payne_correction.py", "exec"), made)
+        assert made["SYSTEM_LABEL"] == "my-job"
+        assert made["NET_CHARGE"] == -2
+        assert made["DEFAULT_EPS"] == 4.0
 
 
 # --------------------------------------------------------------------- #
@@ -123,22 +126,19 @@ class TestScriptGeneration:
 
 
 class TestEmitScript:
-    def test_writes_alongside_fdf(self):
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            fdf = d / "job.fdf"
-            fdf.write_text("# fake fdf\n")
-            out = emit_correction_script(fdf, system_label="job", q=1,
-                                         names=_NAMES)
-            assert out is not None
-            assert out == d / "makov_payne_correction.py"
-            assert out.is_file()
-            compile(out.read_text(), str(out), "exec")
+    def test_writes_alongside_fdf(self, tmp_path):
+        fdf = tmp_path / "job.fdf"
+        fdf.write_text("# fake fdf\n")
+        out = emit_correction_script(fdf, system_label="job", q=1,
+                                     names=_NAMES)
+        assert out is not None
+        assert out == tmp_path / "makov_payne_correction.py"
+        assert out.is_file()
+        compile(out.read_text(), str(out), "exec")
 
-    def test_returns_none_when_parent_missing(self):
+    def test_returns_none_when_parent_missing(self, tmp_path):
         # Pathlib doesn't auto-create the parent of a path that
         # doesn't exist — we test the "FDF parent missing" path.
-        with tempfile.TemporaryDirectory() as d:
-            phantom = Path(d) / "no-such-subdir" / "job.fdf"
-            assert emit_correction_script(
-                phantom, system_label="job", q=1, names=_NAMES) is None
+        phantom = tmp_path / "no-such-subdir" / "job.fdf"
+        assert emit_correction_script(
+            phantom, system_label="job", q=1, names=_NAMES) is None

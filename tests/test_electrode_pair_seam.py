@@ -34,26 +34,32 @@ _CONTINUES = [("111", 3), ("111", 6), ("100", 4), ("100", 6),
               ("110", 4), ("110", 6)]
 
 
-def _junction(plane, layers, *, registry_plus=0, registry_minus=0):
-    """Two slabs facing each other, built the way `--electrode` builds them.
+def _junction(tmp_path, plane, layers, *, registry_plus="", registry_minus=""):
+    """Two slabs facing each other, built by `molbuilder modify --electrode`,
+    one flag per side, around one atom at the origin; `c` set to `z_span + d`
+    as § 6.1 instructs the user to.  The only thing varied is ``registry=``,
+    which the flag leaves at its default when it is not written.
 
-    Mirrors `cli.py`'s own call site: one `add_slab` per side, the side
-    mapped to the walk through `_WALK_ALONG_GROWTH`, and `c` set to
-    `z_span + d` as § 6.1 instructs the user to.  The only thing varied is
-    `start_registry`, which the CLI leaves at its default.
+    The command's own refusal is a failure, never the `xfail` below's.
     """
-    from molbuilder.cell import classify_seam
-    from molbuilder.modify import add_slab
-    from molbuilder.structure import Structure
+    from click.testing import CliRunner
 
-    ortho = plane != "111"          # FCC_ORTHOGONAL_CHOICES: only (111) is free
-    struct = Structure(elements=["X"], positions=np.array([[0.0, 0.0, 0.0]]))
-    for side, sign, seq, reg in (("+z", 1.0, "ABC", registry_plus),
-                                 ("-z", -1.0, "ACB", registry_minus)):
-        struct = add_slab(struct, element="Au", plane=plane,
-                          size=(2, 2, layers), start_z=sign * 2.4,
-                          grow=side, sequence=seq, start_registry=reg,
-                          orthogonal=ortho)
+    from molbuilder.cell import classify_seam
+    from molbuilder.cli import cli
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    src, out = tmp_path / "in.xyz", tmp_path / "out.xyz"
+    src.write_text("1\none atom\nH 0 0 0\n")
+    argv = ["modify", str(src), str(out), "--yes"]
+    for side, reg in (("+z", registry_plus), ("-z", registry_minus)):
+        argv += ["--electrode",
+                 f"Au:{plane}:2x2x{layers}@contact=2.4{reg}:{side}=0"]
+    if plane != "111":              # FCC_ORTHOGONAL_CHOICES: only (111) is free
+        argv.append("--orthogonal")
+    res = CliRunner().invoke(cli, argv)
+    if res.exit_code != 0:
+        pytest.fail(f"modify refused the pair: {res.output}")
+    struct = StructureCodec().load(out)
     pos = np.asarray(struct.positions, dtype=float)
     metal = np.array([p for e, p in zip(struct.elements, pos) if e == "Au"])
     cell = np.array(struct.cell, dtype=float).copy()
@@ -61,7 +67,7 @@ def _junction(plane, layers, *, registry_plus=0, registry_minus=0):
     return classify_seam(metal, cell)
 
 
-@pytest.mark.xfail(strict=True, reason=(
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
     "THE DEFAULT, and it is a decision now rather than a gap (2026-09-22). "
     "`--electrode` leaves `start_registry` at 0 on both slabs unless told "
     "otherwise, so a junction built without stating it meets itself on the "
@@ -76,9 +82,9 @@ def _junction(plane, layers, *, registry_plus=0, registry_minus=0):
     "lines are unchanged (user ruling), which is what keeps this xfail "
     "true. It is no longer a Fix: it is the documented default."))
 @pytest.mark.parametrize("plane,layers", _CONTINUES)
-def test_the_cli_electrode_pair_continues_the_crystal(plane, layers):
+def test_the_cli_electrode_pair_continues_the_crystal(tmp_path, plane, layers):
     """§ 3.1's table, as an assertion, at the CLI's own registry default."""
-    seam = _junction(plane, layers)
+    seam = _junction(tmp_path, plane, layers)
     assert seam.verdict == "continues", (
         f"Au({plane}), {layers} layers/side: junction-cell.md 3.1 says this "
         f"continues the crystal; the CLI's placement gives {seam.verdict!r} "
@@ -88,11 +94,12 @@ def test_the_cli_electrode_pair_continues_the_crystal(plane, layers):
 
 
 @pytest.mark.parametrize("plane,layers", [("100", 4), ("111", 3)])
-def test_start_registry_is_the_control_that_fixes_it(plane, layers):
-    """`add_slab` continues the crystal when the two slabs are given
-    DIFFERENT registries.
+def test_start_registry_is_the_control_that_fixes_it(tmp_path, plane, layers):
+    """The pair continues the crystal when the two flags state DIFFERENT
+    registries.
     """
-    seam = _junction(plane, layers, registry_plus=1, registry_minus=0)
+    seam = _junction(tmp_path, plane, layers,
+                     registry_plus=":registry=B", registry_minus=":registry=A")
     assert seam.verdict == "continues", seam.message
     # And the nearest metal across the boundary is the BULK nearest-neighbour
     # distance a/√2, which is § 3.1's own column for a continuing seam.
