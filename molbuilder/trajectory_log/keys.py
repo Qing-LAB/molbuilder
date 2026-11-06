@@ -37,15 +37,17 @@ MAX_SCF_ITER    = "max_scf_iter"
 MAX_GEOM_ITER   = "max_geom_iter"
 
 #: ...IN THE FILE'S ORDER, with the words a page says each in and its unit
-#: (`web/trajectory.md` § 3): ``(key, label, unit)``.
+#: (`web/trajectory.md` § 3), and how its value reads there -- a count whole,
+#: a tolerance converted to eV without its binary tail: ``(key, label, unit,
+#: format)``.
 LEAF_ROWS = (
-    (MAX_FORCE_TOL,   "max |F|",        "eV/Å"),
-    (RMS_FORCE_TOL,   "rms |F|",        "eV/Å"),
-    (MAX_DISPL,       "max displ",      "Å"),
-    (RMS_DISPL,       "rms displ",      "Å"),
-    (ENERGY_STEP_TOL, "energy step",    "eV"),
-    (MAX_SCF_ITER,    "MaxSCFIterations", ""),
-    (MAX_GEOM_ITER,   "geom steps cap", ""),
+    (MAX_FORCE_TOL,   "max |F|",        "eV/Å", ".4f"),
+    (RMS_FORCE_TOL,   "rms |F|",        "eV/Å", ".4f"),
+    (MAX_DISPL,       "max displ",      "Å",    ".3g"),
+    (RMS_DISPL,       "rms displ",      "Å",    ".3g"),
+    (ENERGY_STEP_TOL, "energy step",    "eV",   ".3g"),
+    (MAX_SCF_ITER,    "MaxSCFIterations", "",   ".0f"),
+    (MAX_GEOM_ITER,   "geom steps cap", "",     ".0f"),
 )
 LEAF_KEYS = tuple(r[0] for r in LEAF_ROWS)
 
@@ -76,13 +78,11 @@ def targets_said(convergence_targets) -> "list":
     spells no key and no unit (`web/trajectory.md` § 3)."""
     leaf = targets_of(convergence_targets) or {}
     out = []
-    for key, label, unit in LEAF_ROWS:
+    for key, label, unit, shown in LEAF_ROWS:
         v = leaf.get(key)
         if isinstance(v, bool) or not isinstance(v, (int, float)):
             continue
-        text = (f"{v:.4f}" if key in (MAX_FORCE_TOL, RMS_FORCE_TOL)
-                else str(v)) + (f" {unit}" if unit else "")
-        out.append([label, text])
+        out.append([label, format(v, shown) + (f" {unit}" if unit else "")])
     return out
 
 

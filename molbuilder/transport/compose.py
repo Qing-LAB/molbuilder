@@ -548,7 +548,8 @@ def _run_geometry(cited: CitedRun, kinds):
             f"Transport derives the electrodes FROM the labels (L-electrode / "
             f"R-electrode; engines/transport.md 3.1, 4) -- label the junction "
             f"on the Molbuilder tab and relax it through `molbuilder describe` -> "
-            f"`prep task` -> `launch task`, then cite that run.")
+            f"`prep task` -> `launch task`, then cite that run from a new "
+            f"calculation folder.")
     return (struct, np.asarray(steps.first.positions, dtype=float),
             Path(output))
 

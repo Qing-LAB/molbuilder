@@ -195,6 +195,19 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
         "a halted rung kept no geometry to continue from")
     log = parse(run.file(".molwatch.log"))
     assert log.run_state == "stopped", log.run_state
+    # WHAT A PAGE SAYS OF THE GEOMETRY IT REACHED (`engines/vibration.md`
+    # § 2.2): the target it had, and that it did not reach it.  THE SILENT
+    # FAILURE: *relaxed to* of a run that ran out of steps.
+    from molbuilder.parse.contract import relaxation_of_output
+    from molbuilder.validation.sidecar import check_relaxation_record
+    rec = relaxation_of_output(run.file(".molwatch.log"), log, engine="pyscf")
+    assert rec["converged"] is False, rec
+    reached = [fr for fr in log.frames if fr.structure is not None][-1].structure
+    reached.apply_info_dict({"relaxation": rec})
+    words = " ".join(i.message for i in check_relaxation_record(
+        reached, calculation="vibration", engine="pyscf",
+        already_relaxed=False, force_tolerance_ev_ang=None))
+    assert "not reaching it" in words and "relaxed on" not in words, words
     # ITS OWN WORDS on every surface (:func:`_the_engines_words_kept`) --
     # and what a launch again will do, said by the run script: this stage
     # continues (`running-a-job.md` § 3.5, 3: *"a stage that continues |
@@ -279,6 +292,15 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
         rx.get("warning") or ""), rx
     assert rx["converged"] is False, rx
     assert rx["max_force_eh_bohr"] is not None, rx
+    # A FINISHED RUN'S FILE IS WHOLE (`running-a-job.md` § 3.6): its engine
+    # ended on its own, so one dated at or after the monitor closed is not named
+    # as a file a kill may have caught.  THE SILENT FAILURE: every warm start
+    # from a finished PySCF run warned of a `.chk` that is whole.
+    import os
+    from molbuilder.jobset.materialize import written_as_ended
+    chk = run.on_label(".chk")
+    os.utime(chk)
+    assert written_as_ended(run.folder, run.label, [chk.name]) == {}
 
 
 def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(

@@ -123,6 +123,10 @@ class PointsOf:
     #: displacement sweep's later stage, the relaxation
     #: (`engines/vibration.md` § 5.9).
     carried: Callable = lambda point: False
+    #: ``(calc, stage) -> bool``: whether ``stage`` runs as a run of points,
+    #: asked before any prep as after: a kind whose rungs' points are known
+    #: only once prepared says so here.
+    runs_points: Callable = (lambda calc, stage: None)
     #: ``() -> point | None``: the one point a run of a stage is
     #: when the rung runs once -- a transport rung's, at 0 V and no frame
     #: (`engines/transport.md` § 2a.10) -- what :func:`point_of` answers
@@ -214,5 +218,18 @@ def rung_points_of(calc, stage: str) -> tuple:
     return tuple(pts.rung_points(calc, stage)) if pts is not None else ()
 
 
+def runs_points(calc, stage: str) -> bool:
+    """Whether ``stage`` of the calculation runs as a run of points, whether or
+    not it is prepared yet (`runs-of-points.md` § 1.2: its wall is typed before
+    its first prep): the kind's own word (:attr:`PointsOf.runs_points`), else
+    whether it has points now."""
+    pts = points_of(calc.task)
+    if pts is None:
+        return False
+    said = pts.runs_points(calc, stage)
+    return bool(pts.rung_points(calc, stage)) if said is None else bool(said)
+
+
 __all__ = ["Start", "Container", "PointsOf", "record_of", "points_of",
-           "walls_of", "carried_of", "point_of", "rung_points_of"]
+           "walls_of", "carried_of", "point_of", "rung_points_of",
+           "runs_points"]

@@ -228,6 +228,33 @@ def _record_findings(struct, cfg):
                                           "The structure is not stated"))]
 
 
+def test_a_relaxation_cut_short_is_said_as_it_stands(relaxed, tmp_path):
+    """`engines/vibration.md` § 2.2: what a page says of a structure's record is
+    the record's own verdict and how its run ended.  THE SILENT FAILURE: a
+    structure called *relaxed to 0.0400 eV/Å* from a record that says it never
+    got there, its run still going -- so a person takes the geometry as relaxed.
+    The input: this relaxation's own output as it stood early in the run."""
+    from molbuilder.parse.contract import relaxation_of_output
+    from molbuilder.parse.registry import parse
+    from molbuilder.validation.sidecar import check_relaxation_record
+    out = _out(relaxed)
+    text = out.read_text(errors="replace")
+    moves = [m.start() for m in re.finditer(r"^\s*Begin \w+ opt\. move", text,
+                                            re.M)]
+    cut = tmp_path / out.name
+    cut.write_text(text[:moves[2]])
+    traj = parse(cut)
+    rec = relaxation_of_output(cut, traj, engine="siesta")
+    assert rec["converged"] is False and rec["run_state"] == "running", rec
+    struct = [fr for fr in traj.frames if fr.structure is not None][-1].structure
+    struct.apply_info_dict({"relaxation": rec})
+    said = " ".join(i.message for i in check_relaxation_record(
+        struct, calculation="vibration", engine="siesta",
+        already_relaxed=False, force_tolerance_ev_ang=None))
+    assert "not reaching it (the run had not ended)" in said, said
+    assert "relaxed on SIESTA to" not in said, said
+
+
 def _ev(x: float) -> str:
     """A force as the gate words it: four decimals down to half a
     milli-eV/Å, an exponent below that (`validation/sidecar._ev`)."""

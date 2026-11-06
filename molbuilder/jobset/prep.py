@@ -1229,7 +1229,8 @@ def walk_words(calc, stage: str, *, read=None) -> str:
     known = len(pts.rung_points(calc, stage, read=read))
     unit = rec.unit
     planned = bool(pts.containers(calc, stage))
-    count = (f"its {unit}s -- {known} prepared, the rest planned by the "
+    count = (f"its {unit}s, prep preparing them" if not known else
+             f"its {unit}s -- {known} prepared, the rest planned by the "
              f"job" if planned else
              f"its {known} {unit}{'s' if known != 1 else ''}")
     return (f"one job walking {count} ("

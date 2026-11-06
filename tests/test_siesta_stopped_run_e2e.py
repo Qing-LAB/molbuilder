@@ -450,3 +450,25 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
         " return s.options[s.selectedIndex].textContent === t; }",
         arg=at_root, timeout=10000)
     assert menu.locator("option[data-picked-run]").count() == 0
+
+    # RELOAD KEEPS THE PICK; A CHOICE IN THE MENU LEAVES IT (`web/results.md`
+    # § 2.4).  THE SILENT FAILURE: the run a person opened gone from the screen
+    # on every Reload, or a file chosen in the menu not shown at all, the picked
+    # run put back over it.
+    page.locator(".results-ladder-open[aria-pressed='false']").first.click()
+    page.wait_for_selector(".results-ladder-back", timeout=10000)
+    showing = menu.evaluate(chosen)
+    page.get_by_role("button", name="Reload from current project dir").click()
+    page.wait_for_function(
+        "(t) => { const s = document.querySelector("
+        "'#results-file-picker-select');"
+        " return s.options[s.selectedIndex].textContent === t; }",
+        arg=showing, timeout=10000)
+    assert page.locator(".results-ladder-back").count() == 1
+    a_file = next(v for v in menu.evaluate(
+        "(s) => Array.from(s.options).map((o) => o.value)") if v)
+    menu.select_option(a_file)
+    page.wait_for_function(
+        "() => !document.querySelector('.results-ladder-back')", timeout=10000)
+    assert menu.input_value() == a_file
+    assert menu.locator("option[data-picked-run]").count() == 0

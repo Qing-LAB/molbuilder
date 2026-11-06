@@ -553,12 +553,17 @@ def written_as_ended(folder, label: str, files) -> Dict[str, str]:
     closing record (`parse/instruments/monitor.py`, ``ended_at``), read
     through the registry -- a file a scheduler's kill may have caught
     mid-write.  The log is ``label``'s run's in the folder.  Empty where no
-    monitor closed, or every file was written before.  A
-    fact shown, never a veto."""
+    monitor closed, where every file was written before, and for a run that
+    finished: its engine ended on its own, so a file from its last second is
+    whole.  A fact shown, never a veto."""
     from datetime import datetime
     from .. import runfiles as _rf
     from ..parse import detect
+    from ..runs import run_of, state_of
     folder = Path(folder)
+    run = run_of(folder)
+    if run is not None and state_of(run).state == "finished":
+        return {}
     logs = _rf.find(folder, label, role=_rf.ROLE_MONITOR_LOG)
     if not logs:
         return {}

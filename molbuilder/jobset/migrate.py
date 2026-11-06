@@ -446,6 +446,18 @@ class _Records:
         return self.template
 
 
+def _template_read(template: "TemplateFile"):
+    """The template's items, read against its own declarations -- or refused by
+    name, nothing written (`job-request.md` § 8): every step that reads it asks
+    here, so a template that does not read never ends in a Python traceback."""
+    from .. import template as _T
+    try:
+        return _T.read_template(template.text)
+    except ValueError as exc:
+        raise MigrateError(f"{template.path.name} does not read, so nothing "
+                           f"was written: {exc}") from exc
+
+
 def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     """Every stage's `group` (2026-10-11, plan § 5aa M1), written into the
     raw description ``obj`` -- a line saying the numbers, or ``[]`` when
@@ -697,7 +709,7 @@ def _onto_the_card(rec: "_Records", task, card: dict) -> List[str]:
     engine, kind = str(task.engine), str(task.calculation)
     run_settings = _T.run_settings(engine)
     said: List[str] = []
-    for it in _T.read_template(template.text).items:
+    for it in _template_read(template).items:
         if it.name not in run_settings or it.value is None or it.name in card:
             continue
         if (it.source == "default"
@@ -1226,7 +1238,7 @@ def _migrate_runs(base: Path) -> Tuple[List[str], List["_Rename"]]:
     session log), whose job this machine holds and is going or cannot ask,
     any folder of which is not writable here, a new name a file already
     holds or two of its files would take, or a role this molbuilder does
-    not name, is LEFT AS IT IS, whole, and said: it is not read
+    not name -- a kept copy's excepted -- is LEFT AS IT IS, whole, and said: it is not read
     (`job-request.md` § 8, its five reasons).  A run no job of this
     machine's holds is read as the copy it is.  Returns what is said and
     the renames, decided before any is made."""
@@ -1270,10 +1282,13 @@ def _migrate_runs(base: Path) -> Tuple[List[str], List["_Rename"]]:
         for folder, stage, older in found if not stuck else ():
             names = []
             for o in older:
-                # ONE CHECK, a kept copy's and a file's alike: a file named
-                # on the stage is one of the catalogue's own rows; SIESTA's
-                # history keeps the name SIESTA gives it.
-                if o.staged and _rf.canonical_role(o.role)[0] not in known:
+                # ONE CHECK: a file named on the stage is one of the
+                # catalogue's own rows; SIESTA's history keeps the name SIESTA
+                # gives it.  A KEPT COPY IS AN EARLIER MIGRATION'S OWN, of a
+                # role this molbuilder may no longer write, and is named anew
+                # every byte kept.
+                if (o.kept is None and o.staged
+                        and _rf.canonical_role(o.role)[0] not in known):
                     stuck.append(f"{o.path.name} names no file this "
                                  f"molbuilder writes")
                     continue
@@ -1485,8 +1500,8 @@ def _decide_template(rec: "_Records", task):
     if template is None:
         raise _NothingInTheTemplate(f"{base} holds no template.")
     tmpl, text = template.path, template.text
+    parsed = _template_read(template)     # read against its OWN declarations
     try:
-        parsed = _T.read_template(text)   # read against its OWN declarations
         mine = (_T.select(parsed, engine=engine) if parsed.engines
                 else parsed.items)
     except ValueError as exc:

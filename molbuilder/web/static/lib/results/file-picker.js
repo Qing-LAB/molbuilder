@@ -775,7 +775,7 @@
                                 + "pick a file —");
                         }
                         _showIdleMeta(null);
-                        _emitFileSelected("");
+                        _emitFileSelected("", true);
                         return;
                     }
                     _populate(selEl, cachedGroups, chosen);
@@ -850,7 +850,7 @@
         function _adoptSelection(path) {
             if (!path) return;
             if (!_mirrorToSidebar(path)) return;
-            _emitFileSelected(path);
+            _emitFileSelected(path, true);
         }
 
         /** The name the server gives a file of the answer -- shown, never
@@ -972,7 +972,9 @@
             return metaOf((cachedResults || []).find(r => r.path === file));
         }
 
-        function _emitFileSelected(file) {
+        /* ``rescan``: this announcement is a scan's, no person's choice --
+         * a run picked off the ladder stays picked (results.md § 2.4). */
+        function _emitFileSelected(file, rescan) {
             const forced = forceNextAnnounce;
             forceNextAnnounce = false;
             /* "Parsing…" STARTS BEFORE THE ANNOUNCEMENT, because a viewer
@@ -1022,6 +1024,7 @@
                                 files: lastFiles,
                                 dir: boundDir,
                                 diverged: _divergedFromSidebar(),
+                                rescan: !!rescan,
                                 force: forced } }));
             } catch (_) {
                 // CustomEvent should always be available in supported

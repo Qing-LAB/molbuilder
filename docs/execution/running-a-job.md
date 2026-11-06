@@ -673,8 +673,9 @@ first launch, a run named with `--from` — compares each file with the second t
 its monitor log's closing record, the `[MONITOR] job ended` line
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2.5), which the monitor writes on the signal that stops it —
 the scheduler's at the wall or a cancel, or the run script's own at its exit — within a fifth of a second. A
-file whose write time is in that second or after it is named. The inputs a transport rung gathers are not
-compared: a gather takes only runs that finished. A run whose monitor wrote no closing record — the node lost,
+file whose write time is in that second or after it is named. A run that finished is not compared: its engine
+ended on its own, so a file from its last second is whole. The inputs a transport rung gathers are not compared
+either: a gather takes only runs that finished. A run whose monitor wrote no closing record — the node lost,
 the monitor killed outright — has no end to compare with, and nothing is said.
 
 The launch names the file in its preview and in its line once sent, and the ledger's `continues` entry records

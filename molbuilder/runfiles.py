@@ -759,7 +759,8 @@ class OlderName:
         """Its name now, by the one composer (:func:`compose`), on the
         label it carries and the stage token ``stage`` -- a kept file's
         under its rule."""
-        name = compose(self.label, self.role, stage if self.staged else None)
+        name = compose(self.label, self.role, stage if self.staged else None,
+                       roles=(self.role,) if self.kept else ())
         return (fixed_name(KEPT_FILE, kept=name, rule=self.kept)
                 if self.kept else name)
 

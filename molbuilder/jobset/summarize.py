@@ -638,7 +638,10 @@ def sweep_view(calc, jobset) -> Dict:
         "name":         status.name,
         "engine":       status.engine,
         "kind":         getattr(jobset, "kind", ""),
-        "complete":     status.complete,
+        "n_running":    sum(1 for s in status.stages
+                            if s.state == "running"),
+        "n_queued":     sum(1 for s in status.stages
+                            if s.state == "queued"),
         "generated_at": res.generated_at,
         "environment":  res.environment,
         "system":       res.system,

@@ -1114,7 +1114,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
             keys:         Object.keys(saved[0].payload.structure).sort(),
             regions:      saved[0].payload.structure.metadata.regions,
             framesSent:   saved.map(s => s.payload.frames !== undefined),
-            dialogOpen:   !!card.querySelector(".molviewer-export-dialog"),
+            dialogOpen:   !!document.body.querySelector(".molviewer-export-dialog"),
             identical:    JSON.stringify(saved[0].payload.structure)
                           === JSON.stringify(saved[1].payload.structure),
         }));
@@ -1178,10 +1178,9 @@ def test_a_picture_is_the_view_and_leaves_through_saveBinary():
         const imageRow = card.querySelectorAll(".molviewer-export-section")[1];
         imageRow.querySelectorAll(".molviewer-export-btn")[1].click(); // Download
         await new Promise((r) => setTimeout(r, 10));
-        const dialog = card.querySelector(".molviewer-export-dialog");
+        const dialog = document.body.querySelector(".molviewer-export-dialog");
         const rangeInputs = dialog ? dialog.querySelectorAll("input").length : -1;
-        const actions = dialog.querySelectorAll(".molviewer-export-btn");
-        actions[actions.length - 1].click();          // Export at defaults
+        dialog.querySelector("button.primary").click();   // Export at defaults
         await new Promise((r) => setTimeout(r, 30));
 
         console.log(JSON.stringify({ rangeInputs, saved }));
@@ -1228,7 +1227,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
         dataRow.querySelectorAll(".molviewer-export-btn")[1].click();  // Download
         await new Promise((r) => setTimeout(r, 10));
 
-        const dialog = card.querySelector(".molviewer-export-dialog");
+        const dialog = document.body.querySelector(".molviewer-export-dialog");
         const opened = {
             exists: !!dialog,
             defaults: dialog
@@ -1240,8 +1239,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
         const inputs = dialog.querySelectorAll("input");
         inputs[0].value = "2";
         inputs[1].value = "4";
-        const actions = dialog.querySelectorAll(".molviewer-export-btn");
-        actions[actions.length - 1].click();          // Export
+        dialog.querySelector("button.primary").click();   // Export
         await new Promise((r) => setTimeout(r, 20));
 
         console.log(JSON.stringify({
@@ -1249,7 +1247,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
             stem: saved[0] && saved[0].stem,
             frameCount: saved[0] && saved[0].payload.structure.frames
                 ? saved[0].payload.structure.frames.length : null,
-            dialogGone: !card.querySelector(".molviewer-export-dialog"),
+            dialogGone: !document.body.querySelector(".molviewer-export-dialog"),
         }));
         """
     )

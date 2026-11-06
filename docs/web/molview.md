@@ -1090,8 +1090,9 @@ map that put an error in the tone of a remark.
 > rule, not a vow to reimplement every shared concern. Depending downward on a
 > presentation module is reuse; what § 4 forbids is taking it off a global, and
 > `test_mounting_needs_only_a_host_and_a_workspace_door` proves mounting still
-> publishes nothing. Each dependency is a decision, read at review: today one,
-> `lib/validation-findings.js`.
+> publishes nothing. Each dependency is a decision, read at review: today two,
+> `lib/validation-findings.js`, and `lib/dialog.js`, the export's question being
+> a dialog of the one component (`web/ui-contract.md` § 11).
 > MolView's sheet sets the row's type scale
 > for this panel's density and owns nothing about the severity.
 

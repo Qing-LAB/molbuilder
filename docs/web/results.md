@@ -520,7 +520,13 @@ and the Result file menu's first row saying which, `(showing <file>, a run off
 the ladder)`, so the menu never names a file that is not shown (§ 2.2);
 a folder that does not answer is said under the ladder, and a pick overtaken
 by a later one or by a new selection is dropped; *back to the calculation*
-re-announces the root, and the menu names the root's file again. A transmission row's *open* re-announces the
+re-announces the root, and the menu names the root's file again. **The pick
+outlives a look at the calculation**: Reload, or coming back to the tab, reads
+the ladder and asks the run door for the picked run again — Reload opening what
+it answers afresh, coming back keeping the view when it is the same file — and a
+run that opens nothing now, or no longer answers, leaves the pick: the
+calculation is shown and the reason said under the ladder. A file chosen in the
+Result file menu is shown in the run's place and leaves the pick too. A transmission row's *open* re-announces the
 calculation at its point instead, with no Run panel — that run's record,
 TBtrans's loop among it, is shown in the run's own folder (§ 2). A calculation's
 own product — a transport I–V, a displacement sweep — is shown **with** the

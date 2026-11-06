@@ -138,6 +138,8 @@ POINTS = PointsOf(rung_points=_declared_rung_points,
                       point.phase).verdict_counts,
                   relaunch_of=lambda point: phase(point.phase).relaunch,
                   containers=_containers,
+                  # EVERY STAGE RUNS ITS CALLS, its phases written by its prep.
+                  runs_points=lambda calc, stage: True,
                   run_facts=_run_facts,
                   also_needs=_also_needs,
                   carried=lambda point: phase(point.phase).carried)

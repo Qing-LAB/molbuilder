@@ -378,6 +378,17 @@ export function init(viewer) {
      * `/api/modify/*` route runs that validator at all. That is a hole in the
      * findings-delivery contract (task #37), not something a display fixes. */
 
+    /* What an operation did, said from the atoms it held before and holds now:
+     * deleting one atom of nineteen is *Deleted 1 atom: 18 left*, never a count
+     * that reads as how many went. */
+    function _opSaid(label, before, now) {
+        const change = before === null ? 0 : now - before;
+        const atoms = (n) => `${n} atom${n === 1 ? "" : "s"}`;
+        if (change < 0) return `${label} ${atoms(-change)}: ${now} left.`;
+        if (change > 0) return `${label}: ${atoms(change)} added, ${now} now.`;
+        return `${label}: ${atoms(now)}.`;
+    }
+
     async function postOp(path, extraBody, label) {
         // Modifier-button wrapper around ``molview.data.applyOp``.  Owns the
         // UI-level concerns the module deliberately stays out of: the
@@ -392,6 +403,9 @@ export function init(viewer) {
         setEditStatus(`${label}…`);
         const op = path.replace(/^\/api\/modify\//, "");
         let r = null;
+        const held = _data();
+        const before = (held && typeof held.getElements === "function")
+            ? (held.getElements() || []).length : null;
         try {
             try {
                 const d = _data();
@@ -414,9 +428,10 @@ export function init(viewer) {
             }
             /* THE COUNT IS READ OFF THE STRUCTURE THE DOOR HANDED BACK.
              * `applyOp` answers the structure itself (§ 6.9) — elements and
-             * their metadata — not a report about it. */
-            setEditStatus(
-                `${label}: ${(r.elements || []).length} atoms.`, "ok");
+             * their metadata — not a report about it; what the operation did
+             * is that against what it held before. */
+            setEditStatus(_opSaid(label, before, (r.elements || []).length),
+                          "ok");
             return r;
         } finally {
             state.inFlight = false;

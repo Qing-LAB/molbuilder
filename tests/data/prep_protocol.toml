@@ -72,6 +72,7 @@ refused = ["the structure has changed since this calculation was described", "st
 
 [[case]]
 name = "a group prepared, never launched, and already as this prep would prepare it has nothing to write -- said with what is next, no file written again and no state saved (the user, 2026-10-23)"
+points_before_prep = { coarse = "" }
 before = [["prep", "task", "--group", "1"]]
 said = ["coarse (01_coarse): prepared, never launched, and already as this prep would prepare it now -- nothing to write (group 1)", "each group, and what is next:"]
 said_lacks = ["the folder's state was"]
@@ -80,6 +81,7 @@ kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh", "01_coars
 [[case]]
 name = "...and a SIESTA vibration -- one stage, one run in phases -- prepared again as it was has nothing to write: each phase's deck and run script kept as they were (engines/vibration.md 5.11 2)"
 calculation = "vibration"
+points_before_prep = { freq = "one job walking its calls, prep preparing them (one wall for the whole run)" }
 stage = "freq"
 before = [["prep", "task", "--group", "1"]]
 said = ["freq (01_freq): prepared, never launched, and already as this prep would prepare it now -- nothing to write (group 1)"]

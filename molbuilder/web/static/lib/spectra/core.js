@@ -2394,7 +2394,10 @@
                                : (results.phase_relaxation || "\u2014")) + force;
         }
         let out = results.phase_relaxation || "empty";
-        if (rx.n_steps != null) out += " \u2014 " + rx.n_steps + " steps";
+        if (rx.n_steps != null) {
+            out += " \u2014 " + rx.n_steps
+                + (rx.n_steps === 1 ? " step" : " steps");
+        }
         out += force;
         // A WARNING ONLY WHERE DUE: a relaxation within its criterion has
         // its force said once, above.

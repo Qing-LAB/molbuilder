@@ -84,8 +84,3 @@ label[title] > input,
 label[title] > select { cursor: auto; }
 
 
-/* The restart note under the run directory's hint (index.html): a step
- * below the hint, its body a step below its summary, which opens it. */
-.restart-note { margin: var(--space-xs) 0 0; }
-.restart-note > summary { cursor: pointer; }
-.restart-note > div { margin-top: var(--space-xs); }

@@ -23,6 +23,8 @@
  * import, so the dependency is DECLARED and satisfied by the module loader
  * rather than taken off a global.  § 4's rule is "nothing it needs comes from
  * a global", and mounting must publish nothing; an import breaks neither. */
+import { dialogActions, dialogField, dialogTitle, newDialog, openDialog,
+         settleDialog } from "../dialog.js";
 import { render as renderFindings } from "../validation-findings.js";
 import { fromDisplay, toDisplay } from "./_atom.js";
 import { FROZEN_LABEL, offeredLabels }
@@ -801,7 +803,7 @@ function buildExportMenu(doc, card, model, handle, files) {
         if (model.frameCount() > 1) {
             // The dialog opens on the frame you are looking at (§ 11.3):
             // accepting it unchanged is the common case.
-            range = await askExportDialog(doc, card, model, { kind: "data" });
+            range = await askExportDialog(model, { kind: "data" });
             if (!range) return;
         }
         const file = model.exportFile(range || undefined);
@@ -830,7 +832,7 @@ function buildExportMenu(doc, card, model, handle, files) {
             say("this viewer cannot capture its window", true);
             return;
         }
-        const ask = await askExportDialog(doc, card, model, { kind: "image" });
+        const ask = await askExportDialog(model, { kind: "image" });
         if (!ask) return;
         const canvas = card.canvas || {};
         const width  = Math.max(1, Math.round(
@@ -918,7 +920,7 @@ function buildExportMenu(doc, card, model, handle, files) {
 
 /* ── The export dialog (§ 11.3) ──────────────────────────────────────────────
  *
- * One small modal over the card: the frame range (only when there is more
+ * One small modal, of the one component (`web/ui-contract.md` § 11): the frame range (only when there is more
  * than one frame -- "a one-frame structure never asks"), and for Image a
  * resolution and, when the range spans, the movie format.  It opens on the
  * DISPLAYED frame, so accepting it unchanged is the common case and costs
@@ -927,115 +929,67 @@ function buildExportMenu(doc, card, model, handle, files) {
  * Resolves to null on cancel; for "data", `{from, to}` (0-based, inclusive);
  * for "image", `{range|null, scale, format}`.
  */
-function askExportDialog(doc, card, model, opts) {
+function askExportDialog(model, opts) {
     const kind = opts.kind;
     const count = model.frameCount();
     const multi = count > 1;
     if (kind === "data" && !multi) return Promise.resolve({});
 
-    return new Promise((resolve) => {
-        const overlay = doc.createElement("div");
-        overlay.className = "molviewer-export-dialog-overlay";
-        const box = doc.createElement("div");
-        box.className = "molviewer-export-dialog";
-        overlay.appendChild(box);
+    const box = newDialog("molviewer-export-dialog");
+    box.appendChild(dialogTitle(
+        kind === "data" ? "Export data" : "Export image"));
+    const field = (label, spec) => {
+        const { wrap, input } = dialogField(label, spec);
+        box.appendChild(wrap);
+        return input;
+    };
+    // 1-based on screen, like every atom and frame number (§ 11.5).
+    const frameField = (label, value) => field(label, {
+        type: "number", value, attrs: { min: 1, max: count } });
 
-        const h = doc.createElement("div");
-        h.className = "molviewer-export-dialog-title";
-        h.textContent = kind === "data" ? "Export data" : "Export image";
-        box.appendChild(h);
-
-        const field = (labelText, input) => {
-            const w = doc.createElement("label");
-            w.className = "molviewer-export-dialog-field";
-            const s = doc.createElement("span");
-            s.textContent = labelText;
-            w.appendChild(s);
-            w.appendChild(input);
-            box.appendChild(w);
-            return input;
-        };
-        const numberInput = (value) => {
-            const input = doc.createElement("input");
-            input.type = "number";
-            // 1-based on screen, like every atom and frame number (§ 11.5).
-            input.min = "1";
-            input.max = String(count);
-            input.value = String(value);
-            return input;
-        };
-        const select = (options, value) => {
-            const sel = doc.createElement("select");
-            for (const [v, label] of options) {
-                const o = doc.createElement("option");
-                o.value = v;
-                o.textContent = label;
-                sel.appendChild(o);
-            }
-            sel.value = value;
-            return sel;
-        };
-
-        let fromEl = null, toEl = null, scaleEl = null, formatEl = null;
+    let fromEl = null, toEl = null, scaleEl = null, formatEl = null;
+    if (multi) {
+        const shown = toDisplay(model.currentFrame());
+        fromEl = frameField("From frame", shown);
+        toEl   = frameField("To frame", shown);
+    }
+    if (kind === "image") {
+        scaleEl = field("Resolution", { value: "1", options: [
+            ["1", "1\u00d7 (window size)"], ["2", "2\u00d7"], ["4", "4\u00d7"]] });
         if (multi) {
-            const shown = toDisplay(model.currentFrame());
-            fromEl = field("From frame", numberInput(shown));
-            toEl   = field("To frame",   numberInput(shown));
+            formatEl = field("Movie format", { value: "webm", options: [
+                ["webm", "webm (video)"], ["gif", "gif"]] });
         }
-        if (kind === "image") {
-            scaleEl = field("Resolution", select(
-                [["1", "1\u00d7 (window size)"], ["2", "2\u00d7"],
-                 ["4", "4\u00d7"]], "1"));
-            if (multi) {
-                formatEl = field("Movie format", select(
-                    [["webm", "webm (video)"], ["gif", "gif"]], "webm"));
-            }
-        }
+    }
 
-        const actions = doc.createElement("div");
-        actions.className = "molviewer-export-dialog-actions";
-        const mkBtn = (label, cls) => {
-            const b = doc.createElement("button");
-            b.type = "button";
-            b.className = "molviewer-export-btn " + cls;
-            b.textContent = label;
-            actions.appendChild(b);
-            return b;
+    const answer = () => {
+        let range = null;
+        if (multi) {
+            // Back across the numbering boundary exactly once (§ 11.5),
+            // clamped to the range that exists -- reversed ends are the
+            // user saying "between these", so they are ordered, not
+            // refused.
+            const raw = [Number(fromEl.value), Number(toEl.value)]
+                .map((n) => (Number.isFinite(n) ? fromDisplay(Math.round(n)) : 0))
+                .map((n) => Math.min(Math.max(0, n), count - 1))
+                .sort((a, b) => a - b);
+            range = { from: raw[0], to: raw[1] };
+        }
+        if (kind === "data") return range || {};
+        return {
+            range,
+            scale: Number(scaleEl.value) || 1,
+            format: (range && range.from !== range.to && formatEl)
+                ? formatEl.value : "png",
         };
-        const cancel = mkBtn("Cancel", "is-cancel");
-        const okBtn  = mkBtn("Export", "is-confirm");
-        box.appendChild(actions);
-
-        const done = (answer) => { overlay.remove(); resolve(answer); };
-        cancel.addEventListener("click", () => done(null));
-        overlay.addEventListener("click", (ev) => {
-            if (ev.target === overlay) done(null);
-        });
-        okBtn.addEventListener("click", () => {
-            let range = null;
-            if (multi) {
-                // Back across the numbering boundary exactly once (§ 11.5),
-                // clamped to the range that exists -- reversed ends are the
-                // user saying "between these", so they are ordered, not
-                // refused.
-                const raw = [Number(fromEl.value), Number(toEl.value)]
-                    .map((n) => (Number.isFinite(n) ? fromDisplay(Math.round(n)) : 0))
-                    .map((n) => Math.min(Math.max(0, n), count - 1))
-                    .sort((a, b) => a - b);
-                range = { from: raw[0], to: raw[1] };
-            }
-            if (kind === "data") { done(range || {}); return; }
-            done({
-                range,
-                scale: Number(scaleEl.value) || 1,
-                format: (range && range.from !== range.to && formatEl)
-                    ? formatEl.value : "png",
-            });
-        });
-
-        (card.root || doc.body).appendChild(overlay);
-        try { (fromEl || scaleEl || okBtn).focus(); } catch (_) {}
-    });
+    };
+    box.appendChild(dialogActions([
+        { label: "Cancel", action: "cancel",
+          onClick: () => settleDialog(null) },
+        { label: "Export", action: "confirm", kind: "primary",
+          onClick: () => settleDialog(answer()) },
+    ]));
+    return openDialog(box, null);
 }
 
 /* THE DEFAULT NAME (§ 11.4's `wire_frame50` / `wire_frame40-120`), which is

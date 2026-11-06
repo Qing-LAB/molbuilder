@@ -988,7 +988,8 @@ left when:
 2. its job is one this machine holds, and is still going or cannot be asked;
 3. a folder of it cannot be written here;
 4. a new name is one a file already holds, or two of its files would take;
-5. a file of it names a role this molbuilder does not write.
+5. a file of it names a role this molbuilder does not write -- a copy an earlier
+   migration kept is that migration's own, and is named anew every byte kept.
 
 A run no job of this machine's holds is read as the copy it is. Why a run is one
 start is [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1.

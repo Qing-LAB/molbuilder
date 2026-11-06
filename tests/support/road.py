@@ -509,6 +509,9 @@ def calls_made(calls: Path):
 # atoms each of its progress logs states the run holds, read back by
 # the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
 # the targets they hand the Watch tab (`progress_log_targets`),
+# whether each stage runs as a run of points before any prep, and the words the
+# run card says it in (`points_before_prep`: `{stage = words}`, `""` for a stage
+# that runs once -- `_road_points_before_prep`),
 # what a person's script reads of each log's run, which has written no step
 # (`steps_read`: `{elements, listed_by}` -- `_road_steps_read`), and of the
 # steps the run's own writer logs (`steps_written`: `{held, energy_hartree,
@@ -946,6 +949,21 @@ def _road_steps_read(want, bundle) -> None:
             read_steps(log.parent / "no_such_file.out")
     with pytest.raises(RunStepsError, match="name one of its runs"):
         read_steps(bundle)
+
+
+def _road_points_before_prep(want, bundle) -> None:
+    """Whether each stage runs as a run of points, asked of a calculation
+    described and not yet prepared (`jobset.points.runs_points`), and the words
+    the run card says it in (`prep.walk_words`), so its one wall is told while
+    the wall is typed, never only after the first prep."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.points import runs_points
+    from molbuilder.jobset.prep import walk_words
+    calc = open_calculation(bundle)
+    for stage, words in want.items():
+        assert runs_points(calc, stage) is bool(words), stage
+        if words:
+            assert walk_words(calc, stage) == words
 
 
 def _road_steps_written(want, bundle) -> None:
@@ -1500,6 +1518,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     if case.get("ends_at") == "probe":
         return
     bundle = _road_describe(table, case, tmp_path, monkeypatch)
+    if "points_before_prep" in case:
+        _road_points_before_prep(case["points_before_prep"], bundle)
     if "own_warm_files" in case:
         _road_own_warm_files(case, bundle)
     if case.get("saved_first"):

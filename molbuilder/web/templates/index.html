@@ -120,57 +120,6 @@
         default.
       </p>
 
-      <!-- SIESTA restart-from-folder warning + job-name guidance.
-           The job-name field itself comes from the schema-driven
-           container below; this fieldset is the user-facing
-           explanation of the .XV / .DM / .CG silent-override
-           mechanic (job-layout v1).  Kept as static HTML because
-           it's prose + an external pointer, not config data. -->
-      <fieldset class="param-grid-pre schema-section"
-                title="SIESTA reuses the .XV / .DM / .CG files in the run directory automatically when their basename matches the SystemLabel set below.">
-        <legend>Run directory &amp; restart</legend>
-        <p class="hint" style="margin: 0;">
-          The <strong>Job name</strong> field in the form below drives
-          the basename for every output file:
-          <code>&lt;name&gt;.fdf</code>,
-          <code>&lt;name&gt;.molwatch.log</code>,
-          <code>&lt;name&gt;.out</code> (recommended redirect target),
-          and the <code>.XV</code> / <code>.DM</code> /
-          <code>.CG</code> restart files.  Keep identical across
-          staged runs.
-        </p>
-        <details class="hint restart-note">
-          <summary>
-            <strong>Important:</strong> SIESTA restart-from-folder behavior
-          </summary>
-          <div>
-            When <strong>Start from</strong> is set to
-            <em>continue</em> &mdash; which emits
-            <code>MD.UseSaveXV</code> /
-            <code>DM.UseSaveDM</code> /
-            <code>MD.UseSaveCG</code> together, as one group &mdash;
-            SIESTA <strong>silently overrides</strong> the
-            <code>AtomicCoordinatesAndAtomicSpecies</code> block in
-            the generated FDF when a
-            <code>&lt;name&gt;.XV</code> file exists in the run
-            directory &mdash; the saved coordinates win, not the
-            FDF&apos;s.  Same for <code>.DM</code> (density-matrix
-            warm-start) and <code>.CG</code> (CG state resume).
-            This is what makes staged relaxation work: stage 2&apos;s
-            FDF can carry stage 1&apos;s input coords and SIESTA still
-            picks up stage 1&apos;s converged geometry.
-            <br><br>
-            <strong>For a clean fresh start</strong>, leave
-            <strong>Start from</strong> on <em>clean</em> &mdash; the
-            default, and none of the three flags is written, so SIESTA
-            never looks. Running in an empty directory or deleting
-            <code>&lt;name&gt;.XV</code> / <code>.DM</code> /
-            <code>.CG</code> works too. SIESTA falls back to the FDF
-            coordinates silently when none of those files exist.
-          </div>
-        </details>
-      </fieldset>
-
       <!-- Schema-driven form: filled by form-schema.js using the
            SiestaConfig schema from GET /api/build/schema/siesta.
            Field IDs (p-system-label, p-mesh-cutoff, etc.) are what
@@ -262,7 +211,7 @@
           <code>&lt;label&gt;.template.toml</code> and
           <code>task.1st.json</code> into the folder selected in the sidebar.
           Nothing runs, and nothing opens: go to Task setup and pick that
-          folder, which is where the stages are asked for.
+          folder, which shows the stages proposed.
         </p>
         <p class="status" id="handover-status" hidden></p>
       </div>

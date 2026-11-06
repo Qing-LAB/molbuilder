@@ -107,18 +107,25 @@
      * Run panel reads that run's record and the ladder stays above it; the
      * sidebar is not moved.  Never the ladder's word for the file, read at
      * the last scan: a run of points' point at work moves on between the
-     * two (§ 2.4, § 3a).  The row names the folder whole (§ 0.3). */
-    function _pickRun(r) {
+     * two (§ 2.4, § 3a).  The row names the folder whole (§ 0.3).
+     * `rescan`: the scan's announcement that asks again for the run already
+     * picked; what it opens is mounted as that scan's own file would be, and
+     * a run that no longer opens leaves the pick, the calculation shown. */
+    function _pickRun(r, rescan) {
         const mine = ++pickSeq;
         const shown = _shown(r.dir);
         const mb = window.molbuilder || {};
+        const refused = (words, kind) => {
+            if (rescan) _backToRoot();
+            _sayOnLadder(words, kind);
+        };
         fetch("/api/results/dir?path=" + encodeURIComponent(r.dir),
               { cache: "no-store" })
             .then((res) => res.json())
             .then((body) => {
                 if (mine !== pickSeq) return;
                 if (!body || body.ok !== true) {
-                    _sayOnLadder("Could not open " + shown + ": "
+                    refused("Could not open " + shown + ": "
                         + ((body && body.error) || "the folder did not answer")
                         + ".", "error");
                     return;
@@ -126,8 +133,9 @@
                 const a = mb.resultsFilePicker.readAnswer(
                     body, mb.inspectors && mb.inspectors.pickResult);
                 if (!a.opens) {
-                    _sayOnLadder(shown + " opens no result now \u2014 click "
-                        + "Reload to read the ladder again.", "warn");
+                    refused(shown + " opens no result now"
+                        + (rescan ? "." : " \u2014 click Reload to read the "
+                                          + "ladder again."), "warn");
                     return;
                 }
                 const listed = a.results.find((f) => f.path === a.opens)
@@ -150,13 +158,13 @@
                         point: a.opens === a.leadPath ? a.point : null,
                         points: a.points,
                         files: a.files,
-                        force: true,
+                        force: rescan ? !!rescan.force : true,
                         picked_run: true,
                     } }));
             })
             .catch((e) => {
                 if (mine !== pickSeq) return;
-                _sayOnLadder("Could not open " + shown + ": "
+                refused("Could not open " + shown + ": "
                     + (e && e.message ? e.message : e) + ".", "error");
             });
     }
@@ -587,6 +595,16 @@
          * picked off the ladder can be left again; a picked run's own
          * announcement never replaces it. */
         if (!(sel && sel.picked_run)) {
+            /* A RESCAN OF THE SAME ROOT -- Reload, or coming back to the tab --
+             * keeps the run picked off the ladder: asked again, as a pick
+             * asks, so what it shows is read now (results.md § 2.4).  A choice
+             * in the Result file menu is a person's, and leaves it. */
+            if (sel && sel.rescan && pickedRun && ladder
+                    && scope.dir === rootDir) {
+                rootSel = sel;
+                _pickRun({ dir: pickedDir }, sel);
+                return;
+            }
             ++pickSeq;              // a pick still in flight is overtaken
             pickedRun = false;
             pickedDir = "";

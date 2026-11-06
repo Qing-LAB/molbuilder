@@ -44,7 +44,7 @@ def save_to_project(page, name: str, *, frames: int) -> str:
         ask.wait_for(state="visible", timeout=_WAIT_MS)
         for box in ask.locator("input[type=number]").all():
             box.fill("9999")
-        ask.locator(".is-confirm").click()
+        ask.locator("[data-action='confirm']").click()
     where = page.locator("dialog .tp-row:not(.tp-row--inert)").first
     where.wait_for(state="visible", timeout=_WAIT_MS)
     where.click()

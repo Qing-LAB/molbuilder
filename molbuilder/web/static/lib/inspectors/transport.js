@@ -242,7 +242,13 @@ const WORKSPACE_TAG = "results:transport";
         wrap.appendChild(_rungs(rec, stages, state));
         host.appendChild(wrap);
 
-        _mountDevice(molHost, state, rec.junction_file, !!rec.order_unstated);
+        if (rec.junction_file) {
+            _mountDevice(molHost, state, rec.junction_file,
+                         !!rec.order_unstated);
+        } else {
+            molHost.appendChild(_el("p", "transport-note",
+                "The junction is composed when the calculation is prepared."));
+        }
         _redraw(state);
     }
 

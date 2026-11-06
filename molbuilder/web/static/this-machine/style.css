@@ -45,6 +45,13 @@
     border-radius: var(--radius-sm);
 }
 
+/* AT PHONE WIDTH each row's parts stack: the buttons would otherwise run past
+   the card (`web/ui-contract.md`, no sideways scroll). */
+@media (max-width: 40rem) {
+    .tm-row { grid-template-columns: minmax(0, 1fr); }
+    .tm-row code { overflow-wrap: anywhere; }
+}
+
 .tm-row-name { font-weight: var(--weight-semibold); }
 
 .tm-row-where {

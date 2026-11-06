@@ -477,7 +477,8 @@
         head.appendChild(el(
             "span", "bench-count",
             `${data.n_trials} trials · ${data.n_done} done`
-            + (data.complete === false ? " · still running" : "")));
+            + (data.n_running ? ` · ${data.n_running} running` : "")
+            + (data.n_queued ? ` · ${data.n_queued} queued` : "")));
         wrap.appendChild(head);
 
         /* WHAT IT IS A BENCHMARK OF, AND WHERE IT RAN.  A number per

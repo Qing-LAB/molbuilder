@@ -764,15 +764,23 @@ import { molviewFiles } from "../projects/molview-doors.js";
         lines.push("#                                   when constraints exist, otherwise empty.");
         lines.push("#   scf_cycle                     — last SCF iteration index for this step");
         lines.push("#   scf_cycle_energy_eV           — energy at that SCF cycle (eV)");
-        lines.push("#   scf_cycle_gnorm_eV            — SCF orbital-gradient norm at that cycle (eV);");
-        lines.push("#                                   PySCF only; SIESTA emits dHmax instead.");
+        // ONE COLUMN PER RESIDUAL THE RUN DECLARES (`web/trajectory.md` § 3.0).
+        const residuals = _scfResiduals();
+        const residualColumn = (r) => "scf_cycle_" + r.key
+            + (r.unit ? "_" + r.unit : "");
+        residuals.forEach((r) => {
+            lines.push("#   " + residualColumn(r) + " — " + r.name
+                       + " at that cycle" + (r.unit ? " (" + r.unit + ")" : "")
+                       + ".");
+        });
         lines.push("#");
         lines.push("# Empty cells mean the engine didn't emit that value at that step.");
         lines.push("#");
         lines.push([
             "step", "energy_eV",
             "max_force_eVperA", "max_force_constrained_eVperA",
-            "scf_cycle", "scf_cycle_energy_eV", "scf_cycle_gnorm_eV",
+            "scf_cycle", "scf_cycle_energy_eV",
+            ...residuals.map(residualColumn),
         ].join(","));
 
         for (var i = 0; i < nFrames; i++) {
@@ -787,7 +795,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 _esc(maxForcesC[i]),
                 _esc(lastCycle.cycle),
                 _esc(lastCycle.energy),
-                _esc(lastCycle.gnorm),
+                ...residuals.map((r) => _esc(lastCycle[r.key])),
             ].join(","));
         }
         return lines.join("\n") + "\n";
@@ -864,6 +872,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // (threshold / hide-frozen).  setForces re-bakes the arrow overlay IN PLACE -- no movie
     // reload -- preserving the overlay's on/off visibility.  Scale is separate (the cheap
     // forceScale flag), so it never routes here.
+    let _scaleSaidBy = null;   // the selection the slider follows
+
     function drawForces() {
         const d = _mvdata();
         if (d) {
@@ -928,8 +938,21 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * arrow bake already uses the right length. */
         const _fscaleEl = $("force-scale");
         if (_fscaleEl) {
-            _mvdata().selection.setSwitch(
-                "forceScale", parseFloat(_fscaleEl.value) || 1.0);
+            const picks = _mvdata().selection;
+            picks.setSwitch("forceScale", parseFloat(_fscaleEl.value) || 1.0);
+            /* THE SLIDER SAYS WHAT THE SWITCH HOLDS: a restored view sets the
+             * switch after this, and arrows at 3x beside a slider at 1.0 is
+             * two answers to one question. */
+            if (_scaleSaidBy !== picks) {
+                _scaleSaidBy = picks;
+                picks.subscribe((now) => {
+                    const v = Number(now.forceScale);
+                    if (!Number.isFinite(v)) return;
+                    _fscaleEl.value = String(v);
+                    const said = $("force-scale-val");
+                    if (said) said.textContent = v.toFixed(1);
+                });
+            }
         }
 
         /* THE WHOLE RUN GOES IN ONE CALL (molview.md § 9.3).
@@ -2001,7 +2024,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 badgeLab.textContent = "Running";
                 badgeDet.textContent = joinParts(
                     lastResultTs ? "last result " + lastResultTs : "",
-                    elapsedTxt ? "sim time " + elapsedTxt : "",
+                    elapsedTxt ? "total " + elapsedTxt : "",
                 );
                 badgeDet.removeAttribute("title");
             }

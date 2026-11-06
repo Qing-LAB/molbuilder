@@ -1507,14 +1507,18 @@ const WORKSPACE_TAG = "transport";
                     // bias list and its treatment by their rows -- and
                     // that rung's tab brought up first, so a refusal is
                     // read where it is fixed.
-                    var first = (issues || []).filter(function (i) {
-                        return i && i.severity === "error" && i.stage
-                            && _rungHosts[i.stage];
+                    var onATab = (issues || []).filter(function (i) {
+                        return i && i.stage && _rungHosts[i.stage];
+                    });
+                    var first = onATab.filter(function (i) {
+                        return i.severity === "error";
+                    })[0] || onATab.filter(function (i) {
+                        return i.severity === "warn";
                     })[0];
                     if (first && _rungTabs) _rungTabs.select(first.stage);
                     vf.render(issues, {
                         panel: panel,
-                        formScope: _$("parameters-card"),
+                        formScope: _formParts(),
                         fieldIds: _fieldIds(),
                         reveal: true,
                     });
@@ -1684,22 +1688,32 @@ const WORKSPACE_TAG = "transport";
         if (vf && panel) {
             vf.render([{ severity: "error", message: message,
                          where: "task.bias" }],
-                      { panel: panel, formScope: _$("parameters-card"),
+                      { panel: panel, formScope: _formParts(),
                         fieldIds: _fieldIds(), reveal: true });
         }
         _setSendStatus(message, "error");
     }
 
+    /* The cards a finding of this form lands in: what the renderer clears and
+     * places within. */
+    function _formParts() {
+        return [_$("parameters-card"), _$("shared-card")];
+    }
+
     /* {stage -> {field name -> the DOM id its tab gave it}} from the schemas
      * this page rendered -- the id rule is the schema's, never derived here
      * -- plus the description's own two rows (`task.bias`, its treatment),
-     * whose ids name the row itself.  The map the findings renderer places
-     * by. */
+     * whose ids name the row itself, and the shared panel's fields, which
+     * bind every rung and so name no stage.  The map the findings renderer
+     * places by. */
     function _fieldIds() {
         var out = {
             "task.bias": "transport-bias-row",
             "task.bias.low_bias_approximation": "transport-bias-treatment",
         };
+        ((_sharedSchema || {}).sections || []).forEach(function (s) {
+            (s.fields || []).forEach(function (f) { out[f.name] = f.id; });
+        });
         Object.keys(_rungSchemas).forEach(function (rung) {
             var m = {};
             ((_rungSchemas[rung] || {}).sections || []).forEach(function (s) {

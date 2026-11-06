@@ -85,7 +85,8 @@ server from the run's `convergence_targets` through the log's one reader
 (`trajectory_log.keys.targets_of`: the one stage's leaf of a nested block,
 or SIESTA's flat echo as it stands) and the one table of the keys' words and
 units (`keys.LEAF_ROWS`: *max |F|* in eV/Å, *rms |F|*, *max displ* in Å,
-*rms displ*, *energy step* in eV, *MaxSCFIterations*, *geom steps cap*); the
+*rms displ*, *energy step* in eV, *MaxSCFIterations*, *geom steps cap*, each
+reading as the table says: a count whole, a tolerance to three figures); the
 page draws the rows and the threshold line from that answer and spells no key.
 
 ### 3.0 What converged means — two levels, every test at each

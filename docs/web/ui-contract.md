@@ -305,8 +305,7 @@ own `[hidden]` guard (§ 6).
   every sentence the server composes for a page (`tbtrans.loop_words`); a
   report field that is a length of time is marked `span` — two languages, one
   rule, stated here, each asked the same rows (`tests/test_span_rule.py`). The
-  trajectory badge's *total* and *sim time* are a run's own length too, and
-  take it. **A benchmark's measured times keep the second** — its wall on the
+  trajectory badge's *total* is a run's own length too, and takes it. **A benchmark's measured times keep the second** — its wall on the
   page, its monitored window in `summarize bench`'s table (*4m05s*): a
   measurement compared across trials, which a rounded length would hide.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /

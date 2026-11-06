@@ -2236,16 +2236,16 @@ def _placed(rows, home) -> list:
 
 
 def _runs_points(calc, stage: str) -> bool:
-    """Whether ``stage`` of the calculation as saved runs as a run of
-    points -- its points as prepared, by its kind's declaration
-    (`jobset.points.rung_points_of`); ``False`` with no calculation, and
-    for a stage it does not hold or whose points do not read."""
+    """Whether ``stage`` of the calculation as saved runs as a run of points,
+    by its kind's declaration (`jobset.points.runs_points`), prepared or not;
+    ``False`` with no calculation, and for a stage it does not hold or whose
+    points do not read."""
     if calc is None:
         return False
     from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.points import rung_points_of
+    from molbuilder.jobset.points import runs_points
     try:
-        return bool(rung_points_of(calc, stage))
+        return runs_points(calc, stage)
     except (OSError, ValueError, PrepError):
         return False
 

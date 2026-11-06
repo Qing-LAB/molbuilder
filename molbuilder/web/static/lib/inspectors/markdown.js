@@ -35,20 +35,13 @@
                 t.onerror = () => ko(new Error("failed to load " + src));
                 document.head.appendChild(t);
             });
-            const loadCSS = (href) => new Promise((ok) => {
-                const l = document.createElement("link");
-                l.rel  = "stylesheet";
-                l.href = href;
-                l.onload = () => ok();
-                document.head.appendChild(l);
-            });
-            if (!window.CodeMirror) {
-                await loadCSS("/static/vendor/codemirror/codemirror.min.css");
-                await loadScript("/static/vendor/codemirror/codemirror.min.js");
-            }
-            if (!window.CodeMirror.modes.markdown) {
-                await loadScript("/static/vendor/codemirror/markdown.min.js");
-            }
+            // THE ONE LOADER (`lib/codemirror-load.js`), which every editor
+            // asks: a page's first editor loads the search addons for the
+            // rest, and Find works in each.
+            const { loadCodeMirror, modeFor } =
+                await import("../codemirror-load.js");
+            await loadCodeMirror();
+            await modeFor("notes.md");
             // marked + DOMPurify (the render + sanitise policy) live in the
             // shared lib/markdown-render.js so this inspector and the
             // Documents tab can't drift on the allow-list.  Ensure it's

@@ -287,16 +287,6 @@ details.workflow-group > .workflow-group-body > fieldset.schema-section > legend
     }
 }
 
-.param-grid-pre {
-    /* Pre-form fieldsets (e.g. SIESTA's Relaxation-stage preset
-     * selector) read better as full-width blocks above the
-     * responsive .param-grid below them. */
-    margin: 0 0 var(--space-sm2);
-}
-.param-grid-pre + .param-grid-pre {
-    margin-top: var(--space-sm);
-}
-
 /* int-triple kind (e.g. kgrid: Tuple[int, int, int]).  Three small
  * inline cells with sub-labels so the user reads "x 1  y 1  z 1"
  * instead of three anonymous boxes. */

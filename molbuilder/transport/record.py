@@ -1125,8 +1125,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # EVERY RUNG'S E_F, said in its frame (`fermi_frames`).
         "fermi_frames": fermi_frames(stages),
         # THE COMPOSED JUNCTION the device was built from, by its catalogue
-        # name (`runfiles.JUNCTION_FILE`) -- what the report draws.
-        "junction_file": JUNCTION_FILE,
+        # name (`runfiles.JUNCTION_FILE`) -- what the report draws; ``None``
+        # until a prep has composed it.
+        "junction_file": JUNCTION_FILE if recorded is not None else None,
         # WHEN ITS ORDER IS NOT RECORDED -- a junction whose sidecar states
         # none (I9) -- the sentence the report says beside the drawing, which
         # then lists the atoms as TranSIESTA does; ``None`` otherwise.

@@ -297,12 +297,32 @@ def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(calc):
 #: started again by hand in the same folder, ``--run 1`` as its refusal
 #: asked, failing alike: its marker and its own stamped session log.  A
 #: calculation reached through a link is the same run, its folder named
-#: by the link -- a projects folder linked into a home.
+#: by the link -- a projects folder linked into a home.  A copy an earlier
+#: migration kept, of a file this molbuilder no longer writes, is that
+#: migration's own and is named anew with the rest.
 _OLDER_RUNS = {
     "nothing more": ("renamed", None),
+    "a kept copy of a retired file": ("renamed", None),
     "a second start": ("left", "started more than once"),
     "reached through a link": ("renamed", None),
 }
+
+
+def test_a_template_that_does_not_read_is_refused_by_migrate(calc):
+    """`job-request.md` § 8: a template that does not read is refused by name
+    and nothing is written.  THE SILENT FAILURE: a Python traceback, its file
+    unchanged and no way on said, as a retired word left by hand in a template
+    of today's shape ended in."""
+    from molbuilder.jobset.migrate import MigrateError, migrate_state
+    template = next(calc.glob("*.template.toml"))
+    text = template.read_text()
+    item = "[item.spin_treatment]\n"
+    assert item in text
+    edited = text.replace(item, item + 'value = "polarized"\n')
+    template.write_text(edited)
+    with pytest.raises(MigrateError, match="does not read, so nothing was"):
+        migrate_state(calc)
+    assert template.read_text() == edited
 
 
 @pytest.mark.parametrize("how", list(_OLDER_RUNS))
@@ -336,6 +356,8 @@ def test_a_run_an_older_molbuilder_named_is_named_once(tmp_path,
     if how == "a second start":
         older[f"{stem}-run1.concluded"] = was[marker.name]
         older[f"{stem}.runwrap-20261031-120500.log"] = was[log.name]
+    if how == "a kept copy of a retired file":
+        older[f"{stem}-run0.phases.json.pre-2.55.0"] = was[marker.name]
     for name, body in older.items():
         (run / name).write_bytes(body)
     st = concluded(run, names, base=bundle)
@@ -357,6 +379,9 @@ def test_a_run_an_older_molbuilder_named_is_named_once(tmp_path,
     assert marker.read_bytes() == was[marker.name]
     assert log.read_bytes() == was[log.name]
     assert not any((run / n).exists() for n in older)
+    if how == "a kept copy of a retired file":
+        assert (run / f"{stem}.phases.json.pre-2.55.0").read_bytes() == was[
+            marker.name]
     st = concluded(run, names, base=bundle)
     assert st.state == "failed" and "no env python" in st.detail, st
 

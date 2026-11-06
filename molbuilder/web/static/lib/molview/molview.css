@@ -2097,59 +2097,6 @@
 .molviewer-export-status[data-error] {
     color:          var(--molviewer-color-danger-text);
 }
-.molviewer-export-dialog-overlay {
-    position:       absolute;
-    inset:          0;
-    z-index:        var(--molviewer-layer-overlay);
-    display:        flex;
-    align-items:    center;
-    justify-content: center;
-    background:     color-mix(in srgb,
-                        var(--molviewer-color-surface) 60%, transparent);
-}
-.molviewer-export-dialog {
-    background:     var(--molviewer-color-surface-elevated);
-    color:          var(--molviewer-color-text);
-    border:         1px solid var(--molviewer-color-edge);
-    border-radius:  var(--molviewer-radius-md);
-    box-shadow:     var(--molviewer-shadow-popover);
-    padding:        var(--molviewer-space-lg);
-    min-width:      var(--molviewer-size-panel-min);
-    display:        flex;
-    flex-direction: column;
-    gap:            var(--molviewer-space-sm);
-}
-.molviewer-export-dialog-title {
-    font:           600 var(--molviewer-text-sm)/var(--molviewer-line-snug)
-                    var(--molviewer-font-ui);
-}
-.molviewer-export-dialog-field {
-    display:        flex;
-    align-items:    center;
-    justify-content: space-between;
-    gap:            var(--molviewer-space-sm);
-    font:           var(--molviewer-text-xs)/var(--molviewer-line-normal)
-                    var(--molviewer-font-ui);
-}
-.molviewer-export-dialog-field input,
-.molviewer-export-dialog-field select {
-    box-sizing:     border-box;
-    height:         var(--molviewer-control-height);
-    padding:        var(--molviewer-control-pad-y)
-                    var(--molviewer-control-pad-x);
-    width:          8rem;               /* two fields side by label, § 8.2's band */
-    background:     var(--molviewer-color-panel-well);
-    color:          inherit;
-    border:         1px solid var(--molviewer-color-edge-soft);
-    border-radius:  var(--molviewer-radius-sm);
-    font-size:      var(--molviewer-control-font);
-}
-.molviewer-export-dialog-actions {
-    display:        flex;
-    justify-content: flex-end;
-    gap:            var(--molviewer-space-xs);
-    margin-top:     var(--molviewer-space-xs);
-}
 
 /* ── The Metadata page (§ 8.4a) ──────────────────────────────────────────
  * The store as a tree under a pinned bar (user, 2026-10-03: "we need a good

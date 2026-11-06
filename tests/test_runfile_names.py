@@ -497,6 +497,10 @@ _OLDER = [
     ("H2_02_dev-run0.MD.nc", "H2.MD.nc"),
     ("H2_02_dev-run0.points.json.pre-2.55.0",
      "H2_02_dev.points.json.pre-2.55.0"),
+    # A COPY AN EARLIER MIGRATION KEPT, of a role this molbuilder no longer
+    # writes: a real vibration's `.phases.json` left its run unread for good.
+    ("H2_02_dev-run0.phases.json.pre-2.55.0",
+     "H2_02_dev.phases.json.pre-2.55.0"),
     ("H2_02_dev-run1.out", "H2_02_dev.out"),
     ("H2_02_dev.out", None),
     ("H2_02_dev.runwrap.log", None),

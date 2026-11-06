@@ -1333,8 +1333,11 @@ def test_sweep_view_reports_where_the_RUN_is(calc):
     t = view["trials"][0]
     assert "state" in t and "artifacts" not in t
     # Nothing has been launched, so the RUN has not started: the door's
-    # word, never `unknown` and never `completed`.
+    # word, never `unknown` and never `completed` -- and the page's count of
+    # trials running is 0, never a benchmark called *still running* for not
+    # having finished.
     assert t["state"] == "pending", t["state"]
+    assert view["n_running"] == view["n_queued"] == 0
 
 
 def test_sweep_view_names_the_coordinate_the_sweep_varied(calc):

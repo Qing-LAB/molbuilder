@@ -427,9 +427,20 @@ def check_relaxation_record(struct: Structure, *, calculation: str,
     from ..parse.contract import judged_force
     judged = judged_force(rec)
     rec_tol = rec.get("force_tolerance_ev_ang")
-    who = (f"relaxed on {_engine_said(rec_engine) if rec_engine else 'an engine the record does not name'}"
-           + (f" to {_ev(rec_tol)} eV/Å" if rec_tol is not None else "")
-           + f" in {rec.get('n_steps', '?')} geometry step(s)")
+    # WHAT THE RECORD SAYS OF THE TARGET: reached, or only aimed at -- by the
+    # record's own `converged` and how its run ended (`contract.relaxation_of`).
+    reached = rec.get("converged") is not False
+    engine_said = (_engine_said(rec_engine) if rec_engine
+                   else "an engine the record does not name")
+    target = ("" if rec_tol is None else
+              f" to {_ev(rec_tol)} eV/Å" if reached else
+              f" against a target of {_ev(rec_tol)} eV/Å")
+    who = (f"relaxed on {engine_said}{target} in "
+           f"{rec.get('n_steps', '?')} geometry step(s)"
+           + ("" if reached or rec_tol is None else
+              ", not reaching it" + (" (the run had not ended)"
+                                     if rec.get("run_state") == "running"
+                                     else "")))
     if judged is None:
         issues.append(Issue(severity="info", where=where,
                             message=f"This structure was {who}; the record "

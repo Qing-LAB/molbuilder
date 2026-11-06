@@ -70,9 +70,8 @@
      * once, for the tabs that send through it. */
     const HANDOVER = {
         url: "/api/task-setup/handover",
-        next: "Next: open Task setup and pick this folder — it asks for the "
-            + "stages, which this hand-over leaves out on purpose, and "
-            + "writes task.json when you save.",
+        next: "Next: open Task setup and pick this folder — it shows the "
+            + "stages proposed and writes task.json when you save.",
         needs: [["structure",
                  "Load a structure first — a description is of something."]],
     };
