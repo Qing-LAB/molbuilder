@@ -176,9 +176,9 @@ molbuilder jobset launch bench tight --mode direct   # here: one walk over the t
 molbuilder jobset summarize bench tight              # the table, the record, the report
 ```
 
-`prep bench` prints the grid — one line per cell kept; on this workstation,
-with no queue, a cell's fit is said only when the node cannot hold it — and,
-once everything is checked, saves the folder's state and writes the trials:
+`prep bench`, once everything is checked, saves the folder's state, writes the
+trials and prints the grid — one line per cell kept; on this workstation, with
+no queue, a cell's fit is said only when the node cannot hold it:
 
 ```text
   bench grid: 4 combination(s) enumerated, 4 kept

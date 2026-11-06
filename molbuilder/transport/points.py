@@ -25,7 +25,12 @@ def _deck_text(deck):
 
 def _declared_rung_points(calc, stage: str, *, read=None):
     from .rung import frames_had
-    return rung_points(calc.task, stage, frames=frames_had(calc, read=read))
+    from .stages import per_point_rungs
+    # ONLY A RUNG THAT RUNS PER POINT ASKS, its frames possibly the citation's
+    # whole frame set read.
+    return rung_points(calc.task, stage,
+                       frames=(frames_had(calc, read=read)
+                               if stage in per_point_rungs() else 1))
 
 
 def _entry(calc, stage: str, point: Point, deck) -> dict:

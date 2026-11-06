@@ -30,7 +30,10 @@ from __future__ import annotations
 
 from .model import KIND_LADDER, KIND_SWEEP
 
+import contextlib
 import dataclasses
+import io
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -441,6 +444,64 @@ def _resolve_stage(stage, *, described, allocation=None, chosen=None,
                     sources=sources)
 
 
+class _OncePerLine(io.TextIOBase):
+    """A stream saying each warning line once.  A LINE IS JUDGED WHOLE:
+    `print` writes its text and its newline apart, so a line is held until its
+    newline arrives -- a repeat dropped takes its newline with it, never
+    leaving a blank line."""
+
+    def __init__(self, wrapped):
+        self._w, self._seen, self.dropped = wrapped, set(), 0
+        self._held = ""
+
+    def write(self, text):
+        whole = (self._held + text).splitlines(keepends=True)
+        self._held = (whole.pop() if whole
+                      and not whole[-1].endswith("\n") else "")
+        for line in whole:
+            key = line.strip()
+            if key and (key.startswith("warn") or key.startswith("info")):
+                if key in self._seen:
+                    self.dropped += 1
+                    continue
+                self._seen.add(key)
+            self._w.write(line)
+        return len(text)
+
+    def flush(self):
+        if self._held:
+            self._w.write(self._held)
+            self._held = ""
+        self._w.flush()
+
+
+@contextlib.contextmanager
+def _each_warning_once():
+    """ONE line per unique finding, however many trials or members of a prep
+    repeat it (user, 2026-08-28, O5).  The gate still FIRES per deck -- every
+    deck is validated and its own report carries its findings -- but sixteen
+    identical thin-vacuum warnings on one terminal is noise wearing a safety
+    vest.  Scoped to THIS prep (not a module global) so a long-lived server
+    process cannot quietly swallow a later prep's warnings -- and to this
+    THREAD: the gate's report reads its stream from
+    `validation.REPORT_STREAM`, a context variable."""
+    from ..validation import REPORT_STREAM
+    once = _OncePerLine(sys.stderr)
+    scope = REPORT_STREAM.set(once)
+    try:
+        yield
+    finally:
+        REPORT_STREAM.reset(scope)
+        once.flush()
+    if once.dropped:
+        # TRUE OF A PREVIEW TOO, which writes nothing: the report is the
+        # deck's, written with it when the prep is.
+        print(f"  (each warning shown once; {once.dropped} repeat(s) "
+              f"across this prep's other decks suppressed -- each deck's "
+              f"own {ROLE_VALIDATION}, written with it when the prep is, "
+              f"carries its full findings)", file=sys.stderr)
+
+
 def prep_calculation(calc, stage: Optional[str], *,
                      resolved: "Resolved", plan,
                      env: str = None,
@@ -630,219 +691,166 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     jobs: List[Job] = []
     from .materialize import trial_run
     from .naming import trial_dir
-    # ONE line per unique finding, however many trials repeat it (user,
-    # 2026-08-28, O5).  The gate still FIRES per deck -- every trial is
-    # validated and its own <deck>.validation.txt carries its findings --
-    # but sixteen identical thin-vacuum warnings on one terminal is
-    # noise wearing a safety vest.  Scoped to THIS loop (not a module
-    # global) so a long-lived server process cannot quietly swallow a
-    # later prep's warnings -- and to this THREAD: the gate's report reads
-    # its stream from `validation.REPORT_STREAM`, a context variable.
-    import io as _io
-    import sys as _sys
-    from ..validation import REPORT_STREAM
-
-    class _OncePerLine(_io.TextIOBase):
-        # A LINE IS JUDGED WHOLE: `print` writes its text and its newline
-        # apart, so a line is held until its newline arrives -- a repeat
-        # dropped takes its newline with it, never leaving a blank line.
-        def __init__(self, wrapped):
-            self._w, self._seen, self.dropped = wrapped, set(), 0
-            self._held = ""
-
-        def write(self, text):
-            whole = (self._held + text).splitlines(keepends=True)
-            self._held = (whole.pop() if whole
-                          and not whole[-1].endswith("\n") else "")
-            for line in whole:
-                key = line.strip()
-                if key and (key.startswith("warn") or key.startswith("info")):
-                    if key in self._seen:
-                        self.dropped += 1
-                        continue
-                    self._seen.add(key)
-                self._w.write(line)
-            return len(text)
-
-        def flush(self):
-            if self._held:
-                self._w.write(self._held)
-                self._held = ""
-            self._w.flush()
-
-    _once = _OncePerLine(_sys.stderr)
-    _scope = REPORT_STREAM.set(_once)
-    try:
-        for element in pset:
-            # THE NAMES OF THIS ELEMENT'S FILES (`runfiles.RunNames`): its
-            # own label -- a trial's carries its point -- and stage.  Its
-            # deck, its run script and its seed are all named by them, so
-            # none can spell another's name its way.
-            _names = RunNames(element.label, token)
-            script = _names.name(seam.suffix)
-            # WHERE THIS ELEMENT'S FILES GO (`project-layout.md` § 1.0):
-            # the stage's folder, or a trial's run, `bench-<point>/run-0`
-            # (§ 1.5a) -- by the rule `job_dir_names` answers with
-            # (`naming.trial_dir`), so the deck is born where the launch
-            # looks.  A trial's folder is named by the job's name, its sweep
-            # coordinate, never by its relabelled SystemLabel.
-            if element.is_trial:
-                from ..resolve import point_token as _pt
-                _trial = _pt(element.point)
-                _jdir = trial_run(base / trial_dir(token, _trial))
+    for element in pset:
+        # THE NAMES OF THIS ELEMENT'S FILES (`runfiles.RunNames`): its
+        # own label -- a trial's carries its point -- and stage.  Its
+        # deck, its run script and its seed are all named by them, so
+        # none can spell another's name its way.
+        _names = RunNames(element.label, token)
+        script = _names.name(seam.suffix)
+        # WHERE THIS ELEMENT'S FILES GO (`project-layout.md` § 1.0):
+        # the stage's folder, or a trial's run, `bench-<point>/run-0`
+        # (§ 1.5a) -- by the rule `job_dir_names` answers with
+        # (`naming.trial_dir`), so the deck is born where the launch
+        # looks.  A trial's folder is named by the job's name, its sweep
+        # coordinate, never by its relabelled SystemLabel.
+        if element.is_trial:
+            from ..resolve import point_token as _pt
+            _trial = _pt(element.point)
+            _jdir = trial_run(base / trial_dir(token, _trial))
+        else:
+            _trial = None
+            _jdir = base / token
+        plan.folder(_jdir)
+        # The deck is rendered from values ⊕ THIS element's allocation, so it
+        # records the rank count it actually assumed.  Rendering from the
+        # values alone emits `mpi_np auto` and the launch check then refuses a
+        # deck that `prep` itself just made.
+        # THE CONFIG THIS ELEMENT RENDERS FROM, as the kind's rung says
+        # (a lead's own label, the junction's state) -- identity for
+        # every kind with no steps of its own.
+        cfg = rung.configure(element.render_config())
+        # WHO SET EACH VALUE THE DECKS WRITE, the rung's own steps
+        # included (`job-contracts.md` § 3.2).
+        from ..resolve import SET_AFTER, said_by
+        _sources = rung.sources(element)
+        if element.is_trial:
+            # The deck's OWN identity line carries the trial label -- this,
+            # not the filename, is what keys SIESTA's warm files away from
+            # the real run's (generator.md § 4.2).
+            with _calling("relabel", engine=task.engine,
+                          where=element.label):
+                cfg = seam.relabel(cfg, element.label)
+            # ...said on the field the engine's record names as its
+            # identity (``identity_field``).
+            from ..engine_table import engine as _engine_rec
+            _sources = said_by(_sources,
+                               _engine_rec(task.engine).identity_field,
+                               SET_AFTER["trial_label"])
+            # The forced cold has ONE setter -- the measurement pin
+            # (`template.TRIAL_PINS`, resolved with provenance "pin") --
+            # and ONE verifier, the submission door
+            # (`agreement.check_trial_starts_cold`; user-settled
+            # 2026-08-21: prep bakes the intent, submission determines
+            # the actual state).
+        # The render's refusals (missing pseudos above all) are user-fixable
+        # and translate to PrepError -- see user_error_as_prep
+        # (2026-08-12 plan A8).
+        # STEP 3, WHOLE, IN ONE CALL: validate the settings, render the deck,
+        # write it through the one writer (which keeps the reader's USER-CUSTOM
+        # block), then read the file back and refuse one that does not say what
+        # it was meant to say.  The conductor says WHEN; the framework owns the
+        # order (`script-preparation.md` § 4.3).
+        log.phase(f"STEP 3 · DECK — {script}")
+        log.received("config", f"{type(cfg).__name__}"
+                               + f", stage_token={token}"
+                               + (f", trial {element.label}"
+                                  if element.is_trial else ""))
+        # EVERY DECK THIS ELEMENT WRITES: its own folder's -- or, for a
+        # swept rung, one in each point's folder, written at its point
+        # and none at the stage level (`engines/transport.md` § 2a.11).
+        spec = None
+        # EACH POINT'S OWN SPEC: a frame set's points are its frames,
+        # each placed by the engine where its own deck puts it.  A
+        # BENCHMARK TRIAL IS ONE DECK in its own folder: it measures the
+        # one call that costs, never a run of points.
+        spec_at: dict = {}
+        _points_of = [] if element.is_trial else list(rung.points)
+        for _out, _point in (_points_of or [(_jdir, None)]):
+            # A POINT'S FOLDER BELOW ITS STAGE says what it is, as every
+            # folder this tree makes below the root does
+            # (`project-layout.md` invariant 6b): a container, holding
+            # the point's deck and run script every run copies.
+            if _point is not None:
+                open_container(base, _out, plan)
             else:
-                _trial = None
-                _jdir = base / token
-            plan.folder(_jdir)
-            # The deck is rendered from values ⊕ THIS element's allocation, so it
-            # records the rank count it actually assumed.  Rendering from the
-            # values alone emits `mpi_np auto` and the launch check then refuses a
-            # deck that `prep` itself just made.
-            # THE CONFIG THIS ELEMENT RENDERS FROM, as the kind's rung says
-            # (a lead's own label, the junction's state) -- identity for
-            # every kind with no steps of its own.
-            cfg = rung.configure(element.render_config())
-            # WHO SET EACH VALUE THE DECKS WRITE, the rung's own steps
-            # included (`job-contracts.md` § 3.2).
-            from ..resolve import SET_AFTER, said_by
-            _sources = rung.sources(element)
-            if element.is_trial:
-                # The deck's OWN identity line carries the trial label -- this,
-                # not the filename, is what keys SIESTA's warm files away from
-                # the real run's (generator.md § 4.2).
-                with _calling("relabel", engine=task.engine,
-                              where=element.label):
-                    cfg = seam.relabel(cfg, element.label)
-                # ...said on the field the engine's record names as its
-                # identity (``identity_field``).
-                from ..engine_table import engine as _engine_rec
-                _sources = said_by(_sources,
-                                   _engine_rec(task.engine).identity_field,
-                                   SET_AFTER["trial_label"])
-                # The forced cold has ONE setter -- the measurement pin
-                # (`template.TRIAL_PINS`, resolved with provenance "pin") --
-                # and ONE verifier, the submission door
-                # (`agreement.check_trial_starts_cold`; user-settled
-                # 2026-08-21: prep bakes the intent, submission determines
-                # the actual state).
-            # The render's refusals (missing pseudos above all) are user-fixable
-            # and translate to PrepError -- see user_error_as_prep
-            # (2026-08-12 plan A8).
-            # STEP 3, WHOLE, IN ONE CALL: validate the settings, render the deck,
-            # write it through the one writer (which keeps the reader's USER-CUSTOM
-            # block), then read the file back and refuse one that does not say what
-            # it was meant to say.  The conductor says WHEN; the framework owns the
-            # order (`script-preparation.md` § 4.3).
-            log.phase(f"STEP 3 · DECK — {script}")
-            log.received("config", f"{type(cfg).__name__}"
-                                   + f", stage_token={token}"
-                                   + (f", trial {element.label}"
-                                      if element.is_trial else ""))
-            # EVERY DECK THIS ELEMENT WRITES: its own folder's -- or, for a
-            # swept rung, one in each point's folder, written at its point
-            # and none at the stage level (`engines/transport.md` § 2a.11).
-            spec = None
-            # EACH POINT'S OWN SPEC: a frame set's points are its frames,
-            # each placed by the engine where its own deck puts it.  A
-            # BENCHMARK TRIAL IS ONE DECK in its own folder: it measures the
-            # one call that costs, never a run of points.
-            spec_at: dict = {}
-            _points_of = [] if element.is_trial else list(rung.points)
-            for _out, _point in (_points_of or [(_jdir, None)]):
-                # A POINT'S FOLDER BELOW ITS STAGE says what it is, as every
-                # folder this tree makes below the root does
-                # (`project-layout.md` invariant 6b): a container, holding
-                # the point's deck and run script every run copies.
-                if _point is not None:
-                    open_container(base, _out, plan)
-                else:
-                    plan.folder(_out)
-                _at = rung.at_point(cfg, _point)
-                _struct = (rung.struct_at(_point)
-                           if rung.struct_at is not None
-                           and _point is not None else rung.struct)
-                with user_error_as_prep():
-                    with _calling("spec_for", engine=task.engine,
-                                  where=script):
-                        _spec = seam.spec_for(
-                            _struct, _at, names=_names,
-                            calculation=rung.render_kind,
-                            **rung.spec_extra(element, cfg, _point),
-                            # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
-                            # K12) -- the bench lane is SIESTA's alone.
-                            **({"trial": _trial} if _trial else {}))
-                    # WHAT THE RUNG WRITES BESIDE THE DECK, before the deck
-                    # is checked as the engine will read it (`Rung.beside`).
-                    if rung.beside is not None:
-                        rung.beside(_point, _spec, _out, plan)
-                    _sc.prepare_deck(_spec, _struct, _at, _out / script,
-                                     log=log, dest_dir=base,
-                                     findings=findings, plan=plan,
-                                     sources=_rows_read(
-                                         _sources, rung.role_at(_point),
-                                         engine=str(task.engine),
-                                         kind=str(task.calculation),
-                                         stage=token))
-                    # WHAT THIS DECK'S OWN TEXT PROMISES, beside it -- each
-                    # point's deck its own, so every run folder a launch
-                    # brings it into holds it (`materialize.bring_files`).
-                    if seam.sibling_artifacts is not None:
-                        with _calling("sibling_artifacts",
-                                      engine=task.engine, where=script):
-                            seam.sibling_artifacts(
-                                _struct, _at, _out / script,
-                                kind=rung.render_kind, names=_names,
-                                plan=plan)
-                spec = spec or _spec
-                spec_at[_out] = _spec
-            # THE PROGRESS LOG IS SEEDED BESIDE THE DECK IT FOLLOWS -- the
-            # element's own, or for a sweep each point's -- and moved into the
-            # run that writes it (`_move_progress_channel_into`), never left
-            # in a folder nothing writes to again.  AND NAMED FOR ITS DECK
-            # (`job-contracts.md` § 6.3: the trajectory log takes the deck's
-            # basename): the element's label, the deck's own.
-            for _seed_dir, _point in (_points_of or [(_jdir, None)]):
-                _seed_trajectory_log((rung.struct_at(_point)
-                                      if rung.struct_at is not None
-                                      and _point is not None
-                                      else rung.struct),
-                                     cfg, _seed_dir,
-                                     engine=task.engine,
-                                     kind=task.calculation, names=_names,
-                                     frame=spec_at[_seed_dir].engine_frame,
-                                     relaxes=(rung.relaxes_at(_point)
-                                              if rung.relaxes_at is not None
-                                              else _kind(rung.render_kind)
-                                              .relaxes),
-                                     plan=plan)
-            log.step("what this deck's text PROMISES, kept")
-            log.produced("sibling_artifacts",
-                         "written" if seam.sibling_artifacts is not None
-                         else "nothing (W5)")
-            log.produced("trajectory log",
-                         "seeded" if getattr(cfg, "write_molwatch_log", False)
-                         else "not asked for")
-            # A BENCHMARK TRIAL IS NOT FINISHED: it measures how long a
-            # setting takes under capped SCFs, and modes derived from those
-            # would be a spectrum of nothing (`engines/vibration.md` § 5.5).
-            jobs.append(rung.job_facts(_job_for(
-                element, script, task, pset.stage, seam, base,
-                finish=(None if element.is_trial else spec.finish),
-                program=spec.program, scratch_dir=spec.scratch_dir,
-                # WHERE IT WAS PLACED (`job-system.md` § 6.0): a run's
-                # queue, and a benchmark's one queue on each trial, recorded
-                # on its job -- what launch sends to.
-                placement=resolved.placement)))
-    finally:
-        REPORT_STREAM.reset(_scope)
-        _once.flush()
-    if _once.dropped:
-        # TRUE OF A PREVIEW TOO, which writes nothing: the report is the
-        # deck's, written with it when the prep is.
-        print(f"  (each warning shown once; {_once.dropped} repeat(s) "
-              f"across this prep's other decks suppressed -- each deck's "
-              f"own {ROLE_VALIDATION}, written with it when the prep is, "
-              f"carries its full findings)", file=_sys.stderr)
+                plan.folder(_out)
+            _at = rung.at_point(cfg, _point)
+            _struct = (rung.struct_at(_point)
+                       if rung.struct_at is not None
+                       and _point is not None else rung.struct)
+            with user_error_as_prep():
+                with _calling("spec_for", engine=task.engine,
+                              where=script):
+                    _spec = seam.spec_for(
+                        _struct, _at, names=_names,
+                        calculation=rung.render_kind,
+                        **rung.spec_extra(element, cfg, _point),
+                        # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
+                        # K12) -- the bench lane is SIESTA's alone.
+                        **({"trial": _trial} if _trial else {}))
+                # WHAT THE RUNG WRITES BESIDE THE DECK, before the deck
+                # is checked as the engine will read it (`Rung.beside`).
+                if rung.beside is not None:
+                    rung.beside(_point, _spec, _out, plan)
+                _sc.prepare_deck(_spec, _struct, _at, _out / script,
+                                 log=log, dest_dir=base,
+                                 findings=findings, plan=plan,
+                                 sources=_rows_read(
+                                     _sources, rung.role_at(_point),
+                                     engine=str(task.engine),
+                                     kind=str(task.calculation),
+                                     stage=token))
+                # WHAT THIS DECK'S OWN TEXT PROMISES, beside it -- each
+                # point's deck its own, so every run folder a launch
+                # brings it into holds it (`materialize.bring_files`).
+                if seam.sibling_artifacts is not None:
+                    with _calling("sibling_artifacts",
+                                  engine=task.engine, where=script):
+                        seam.sibling_artifacts(
+                            _struct, _at, _out / script,
+                            kind=rung.render_kind, names=_names,
+                            plan=plan)
+            spec = spec or _spec
+            spec_at[_out] = _spec
+        # THE PROGRESS LOG IS SEEDED BESIDE THE DECK IT FOLLOWS -- the
+        # element's own, or for a sweep each point's -- and moved into the
+        # run that writes it (`_move_progress_channel_into`), never left
+        # in a folder nothing writes to again.  AND NAMED FOR ITS DECK
+        # (`job-contracts.md` § 6.3: the trajectory log takes the deck's
+        # basename): the element's label, the deck's own.
+        for _seed_dir, _point in (_points_of or [(_jdir, None)]):
+            _seed_trajectory_log((rung.struct_at(_point)
+                                  if rung.struct_at is not None
+                                  and _point is not None
+                                  else rung.struct),
+                                 cfg, _seed_dir,
+                                 engine=task.engine,
+                                 kind=task.calculation, names=_names,
+                                 frame=spec_at[_seed_dir].engine_frame,
+                                 relaxes=(rung.relaxes_at(_point)
+                                          if rung.relaxes_at is not None
+                                          else _kind(rung.render_kind)
+                                          .relaxes),
+                                 plan=plan)
+        log.step("what this deck's text PROMISES, kept")
+        log.produced("sibling_artifacts",
+                     "written" if seam.sibling_artifacts is not None
+                     else "nothing (W5)")
+        log.produced("trajectory log",
+                     "seeded" if getattr(cfg, "write_molwatch_log", False)
+                     else "not asked for")
+        # A BENCHMARK TRIAL IS NOT FINISHED: it measures how long a
+        # setting takes under capped SCFs, and modes derived from those
+        # would be a spectrum of nothing (`engines/vibration.md` § 5.5).
+        jobs.append(rung.job_facts(_job_for(
+            element, script, task, pset.stage, seam, base,
+            finish=(None if element.is_trial else spec.finish),
+            program=spec.program, scratch_dir=spec.scratch_dir,
+            # WHERE IT WAS PLACED (`job-system.md` § 6.0): a run's
+            # queue, and a benchmark's one queue on each trial, recorded
+            # on its job -- what launch sends to.
+            placement=resolved.placement)))
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
     # ``kind`` is INTENT, not length (review 2026-08-12: a one-point grid is
@@ -1610,7 +1618,8 @@ def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
 #
 # `prep` has two doors -- `molbuilder jobset prep` and the Task setup tab's
 # Prep buttons.  This is the act, once; it prints nothing and asks nothing, and returns what it
-# found and decided as data for each door to show in its own way.
+# found and decided as data, and :func:`prep_said` composes what a person
+# reads of it, once.
 
 
 @dataclass
@@ -1738,69 +1747,249 @@ class PrepAnswer:
 
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
-        what the Task setup tab's prep route returns (`web/web-api.md`)."""
-        from .placement import placement_line, stated_line
-        base = Path(base)
-
-        def rel(p):
-            try:
-                return str(Path(p).resolve().relative_to(base.resolve()))
-            except ValueError:
-                return str(p)
-
-        a = self.attempt
+        what the Task setup tab's prep route returns beside the stage's lines
+        (`web/web-api.md`): what the page draws its findings, its status and a
+        preview's header and files from."""
+        from .ledger import rel_to
         return {
-            "kind": self.kind, "stage": self.stage,
+            "stage": self.stage,
             "unchanged": self.unchanged,
-            "differs": list(self.differs),
             # THE ONE WIRE FORM of a finding (`Issue.to_json`).
             "findings": [i.to_json() for i in self.findings],
             "deck_findings": [i.to_json() for i in self.deck_findings],
-            "notes": list(self.notes),
-            "saved": self.saved,
-            "dirs": [rel(d) for d in self.dirs],
-            "provenance": self.provenance,
+            "dirs": [rel_to(base, d) for d in self.dirs],
             "machine": self.machine,
-            "launched": self.launched,
-            "attempt": ({"dir": rel(a.dir), "fresh": a.fresh,
-                         "brought": list(a.brought)}
-                        if a is not None else None),
-            "points": [{"attempt": rel(att), **pt.to_wire()}
-                       for att, pt in self.points],
-            "takes": [dict(t) for t in self.takes],
-            "resources": self.resources,
-            "deck": self.deck,
-            "pipeline_log": rel(self.pipeline_log) if self.pipeline_log else None,
-            "linked": self.linked,
-            # THE PLACEMENT, and the line both doors say of it.
-            "placement": (dict(self.placement,
-                               line=placement_line(self.placement),
-                               fit=self.fit)
-                          if self.placement else None),
-            # NO HEADER: where each value it states came from, the line the
-            # terminal prints in place of a placement.
-            "stated": ("" if self.placement else
-                       stated_line(self.sources)),
-            "need": (self.need.to_wire() if self.need is not None
-                     else None),
-            "launch": self.launch,
-            "group": self.group,
-            "copied": (self.copied.to_wire(base) if self.copied is not None
-                       else None),
+            # WHAT A PREVIEW SHOWS LINE FOR LINE, and a group's one job in
+            # place of a member's own.
+            "launch": (None if self.launch is None else
+                       {key: self.launch[key]
+                        for key in ("header", "run_script")}),
+            "group": (None if self.group is None else
+                      {"number": self.group["number"],
+                       "members": self.group["members"],
+                       "writes": self.group["writes"],
+                       "launch": {"header": self.group["launch"]["header"]}}),
             "preview": self.preview,
             "plan_id": self.plan_id,
             "writes": list(self.writes),
-            "shelves": [dict(sh) for sh in self.shelves],
-            "sources": dict(self.sources or {}),
         }
+
+    def lines(self, base, *, above=()) -> List[str]:
+        """THIS STAGE'S OWN LINES, as a person reads them -- the terminal
+        prints them and the page draws them (`job-system.md`, *What prep
+        answers*), a preview's said as what it would do.  ``above`` the notes
+        the prep says once above its stages (:func:`prep_said`)."""
+        from .ledger import rel_to
+        from .placement import placement_line, stated_line
+        if self.recorded or self.unchanged:
+            return [self.recorded or self.unchanged]
+        base, stage = Path(base), self.stage
+        prepared, brought, again = _PREPARED_WORDS[self.preview]
+        notes = [n for n in self.notes if n not in above]
+        log = ([f"pipeline log: {rel_to(base, self.pipeline_log)}"]
+               if self.pipeline_log is not None and not self.preview else [])
+        if self.kind == "bench":
+            # WHAT THE INPUTS SAID, each line as its grid lays it out, THEN
+            # THE TRIALS: the path from the calculation's folder, every
+            # trial's dir ending in its run-<n>; each shelf as its header
+            # asks it, the one job its launch sends (`shelves.shelves_of`).
+            where = f" for stage {stage!r}" if stage else ""
+            out = notes + [f"{prepared} {len(self.dirs)} trial dir(s){where} "
+                           f"under {base}:"]
+            out += [f"  {rel_to(base, d)}" for d in self.dirs]
+            if self.placement:
+                out.append("  " + placement_line(self.placement))
+            for shelf in self.shelves:
+                out.append(f"  {shelf['name']}  {shelf['said']}")
+                if shelf["fit"]:
+                    out.append(f"    {shelf['fit']}")
+            return out + log
+        # WHAT THIS PREP OPENED first -- the points, the copies, a launched
+        # stage's runs kept, or its run -- then what every stage says alike.
+        out: List[str] = []
+        copies = self.copied.copies_of(stage) if self.copied is not None else ()
+        if self.points:
+            out += [f"{prepared} {stage} @ {pt.words()}: {rel_to(base, att)}"
+                    for att, pt in self.points]
+        elif copies:
+            # ITS RUNS ARE THE FINISHED CALCULATION'S, launched runs of this
+            # one (`engines/transport.md` § 2a.16).
+            out.append(f"{prepared} {stage}: copied in -- "
+                       + ", ".join(rel_to(base, c.run) for c in copies)
+                       + f" from {self.copied.name}; its next launch opens "
+                         f"its next run with these files")
+        elif self.launched:
+            # FOR ITS JOB REQUEST (`execution/job-request.md` § 5).
+            out.append(f"{prepared} {stage} again: launched -- its runs are "
+                       f"kept, and its next launch opens its next run with "
+                       f"these files")
+        else:
+            rep = self.attempt
+            out.append(f"{prepared} {rep.stage}: {rel_to(base, rep.dir)}"
+                       + ("" if rep.fresh else "  (reused -- not launched yet)"))
+            out.append(f"  {brought}: {', '.join(rep.brought)}")
+        # PREPARED AGAIN, never launched: what of it differed from what this
+        # prep writes now (`job-system.md` § 5.0, checkpoint 2a).
+        if self.differs:
+            out.append(f"  {again} -- differed from what was prepared: "
+                       + ", ".join(self.differs))
+        # WHAT ITS FIRST LAUNCH WILL TAKE (*a preview*): nothing is copied at
+        # prep.
+        out += ["  " + t["line"] for t in self.takes]
+        if not self.takes:
+            out.append("  takes nothing from another run"
+                       + ("" if self.linked else
+                          " (the first stage, or one that starts clean)"))
+        # WHERE IT WAS PLACED, where each value came from, and the FIT of what
+        # it sends (`job-system.md` § 6.0; `scheduler.md` R6); with no header,
+        # where each value it states came from.
+        if self.placement:
+            out.append("  " + placement_line(self.placement))
+            if self.fit:
+                out.append("  " + self.fit)
+        elif stated_line(self.sources):
+            out.append("  " + stated_line(self.sources))
+        # THE MEMORY IT NEEDS at the ranks it is prepared with: a hint,
+        # refusing nothing (`job-request.md` § 3.1a).
+        if self.need is not None:
+            out.append("  memory need: " + self.need.line)
+        # WHAT IT IS SENT WITH, as the header its launch sends carries it --
+        # a run of points', its walk's.  A member of a group of several is
+        # sent in the group's one job, said after its last member; a preview
+        # shows the header line for line.
+        launch = self.launch or {}
+        if self.group is None:
+            sent = [said for said in (launch.get("walk"),
+                                      None if self.preview
+                                      else launch.get("said")) if said]
+            if sent:
+                out.append("  " + " -- ".join(sent))
+        # WHAT ITS REQUEST MEANS, said where a value can still change, and
+        # what a rendering says and does not refuse (`gpu.md` G6).
+        out += ["  " + note for note in notes]
+        # WHAT IS STATED, and nothing else: a PySCF run has no rank count.
+        r = self.resources or {}
+        asks = [f"{word} {r[key]}" for word, key in (("mpi_np", "mpi_np"),
+                                                     ("omp", "cpus_per_task"))
+                if r.get(key)]
+        if r.get("max_memory_mb"):
+            asks.append(f"memory cap {r['max_memory_mb']} MB")
+        if asks:
+            out.append(f"  resources: {' | '.join(asks)}")
+        out += log
+        # A GROUP'S ONE JOB, once, after its last member: the header its first
+        # launch sends, not a member's own (§ 5.0, checkpoint 6).
+        g = self.group
+        if g is not None and stage == g["members"][-1]:
+            out.append(f"group {g['number']} -- one job: "
+                       f"{', '.join(g['members'])}, one after another (their "
+                       f"walls summed, the largest memory)"
+                       + (f"; its header: {g['header']}" if g["header"] else ""))
+            out += _one_job_lines(g, self.preview)
+        # THE SEQUENCE'S ONE JOB, once, after the last answer: and each group
+        # asking less than it (§ 6.0, *A sequence of groups*).
+        seq = self.sequence
+        if seq is not None:
+            nums = ", ".join(map(str, seq["numbers"]))
+            out.append(f"groups {nums} -- one job, each group launched when "
+                       f"the one before has finished (the largest request "
+                       f"any asks, their walls summed)"
+                       + (f"; its header: {seq['header']}" if seq["header"]
+                          else ""))
+            out += _one_job_lines(seq, self.preview)
+            out += ["  " + line for line in seq["less"]]
+        return out
+
+
+#: How a prep and a preview say the same act: each stage's run, what it
+#: brought in, and a stage prepared again.
+_PREPARED_WORDS = {False: ("prepared", "brought in", "prepared again"),
+                   True: ("would prepare", "would bring in",
+                          "would prepare it again")}
+
+
+def _one_job_lines(job: dict, preview: bool) -> List[str]:
+    """A group's or a sequence's one job: the header's lines in one line --
+    but on a preview, which shows them line for line -- its fit, and the
+    memory it needs."""
+    sent = (None if preview else job["launch"]["said"], job["launch"]["fit"])
+    return (["  " + said for said in sent if said]
+            + ["  memory need: " + job["need"]["line"]])
+
+
+@dataclass(frozen=True)
+class PrepSaid:
+    """WHAT A PREP SAYS, composed once, for the terminal to print and the page
+    to draw (`job-system.md`, *What prep answers*): ``above`` what the prep
+    did once, ``findings`` what every stage found alike, ``stages`` each
+    answer's own lines, in order; ``base`` the calculation's folder."""
+    answers: tuple
+    base: Path
+    findings: tuple
+    above: tuple
+    stages: tuple
+
+    def to_wire(self) -> dict:
+        """The route's ``above`` and ``answers``: each answer's findings its
+        own, what ``above`` says not said again."""
+        said = {_finding_key(i) for i in self.findings}
+        answers = []
+        for a, lines in zip(self.answers, self.stages):
+            d = a.as_dict(self.base)
+            d["lines"] = list(lines)
+            for key in ("findings", "deck_findings"):
+                d[key] = [j for j in d[key] if repr(j) not in said]
+            answers.append(d)
+        return {"above": {"findings": [i.to_json() for i in self.findings],
+                          "lines": list(self.above)},
+                "answers": answers}
+
+
+def _finding_key(issue) -> str:
+    return repr(issue.to_json())
+
+
+def _alike(lists, key=lambda item: item) -> list:
+    """What every list holds, in the first's order, once."""
+    seen: set = set()
+    return [item for item in (lists[0] if lists else ())
+            if all(key(item) in {key(x) for x in other} for other in lists[1:])
+            and not (key(item) in seen or seen.add(key(item)))]
+
+
+def prep_said(answers, base) -> PrepSaid:
+    """A prep's answers as a person reads them, once: the state saved, which
+    configuration files answered and a reused calculation's manifest, from the
+    first stage it wrote; then what every stage it wrote says alike, above
+    them -- the description's own findings, which every answer carries, among
+    it -- then each stage's own lines."""
+    from ..runtime_config import format_provenance
+    written = [a for a in answers if a.unchanged is None]
+    several = len(written) > 1
+    found = (_alike([a.findings for a in answers], key=_finding_key)
+             if len(answers) > 1 else [])
+    found += (_alike([a.deck_findings for a in written], key=_finding_key)
+              if several else [])
+    notes = _alike([a.notes for a in written]) if several else []
+    above: List[str] = []
+    if written:
+        lead = written[0]
+        if lead.saved:
+            above.append(lead.saved)
+        if lead.provenance is not None:
+            above += format_provenance(lead.provenance).splitlines()
+        if lead.copied is not None:
+            above += lead.copied.lines(base, preview=lead.preview)
+    above += notes
+    return PrepSaid(tuple(answers), Path(base), tuple(found), tuple(above),
+                    tuple(tuple(a.lines(base, above=notes)) for a in answers))
 
 
 def opened_no_run(answers) -> bool:
     """Every group a prep was asked for copied in from a finished
     calculation, already as it plans it, or launched and prepared again for
     its job request -- it opened no run of its own, so what comes next is
-    the ladder's own step (`job-system.md`, *The next step*): what both
-    doors that say what comes next ask."""
+    the ladder's own step (`job-system.md`, *The next step*)."""
     return bool(answers) and all(a.unchanged is not None or a.launched
                                  for a in answers)
 
@@ -1908,7 +2097,7 @@ def plan_stage(described: Described, kind: str, stage: str, *,
                target: Optional[str] = None, allocation=None,
                env: Optional[str] = None,
                emit_sbatch: bool = True, plan, notes: Optional[list] = None,
-               on_inputs=None, copied: bool = False,
+               copied: bool = False,
                reuse=None) -> PrepAnswer:
     """**THE MEMBER PLANNER** -- one stage, planned into ``plan``, nothing
     written, saved or recorded (`job-system.md` § 5.0, checkpoints 4–4b):
@@ -1924,9 +2113,7 @@ def plan_stage(described: Described, kind: str, stage: str, *,
     the groups it picks, into its one plan; `prep bench`.  The doors save,
     write and record; this never does.
     ``described`` is the calculation as the door opened and checked it
-    (`calculation.open`, :func:`checked`); ``on_inputs`` is called
-    once the inputs and their checks stand, before anything is rendered --
-    so a terminal says a benchmark's grid ahead of what its decks say.
+    (`calculation.open`, :func:`checked`).
     ``copied`` plans a member of a group copied in (:func:`prep_calculation`):
     its answer is a launched stage's.  ``reuse`` -- what the kind's own reuse
     decided for this prep -- is the caller's, handed to the stage's rung
@@ -2046,8 +2233,6 @@ def plan_stage(described: Described, kind: str, stage: str, *,
     # overlay once (`Calculation.as_planned`, A16): the rung builders and
     # the plan's merge read this.
     pcalc = described.calc.as_planned(plan)
-    if on_inputs is not None:
-        on_inputs()
 
     # 4b · THE STEPS, PLANNED -- every deck, wrapper and data file, the
     #      plan's row, the run and what it receives, decided with nothing
@@ -2069,7 +2254,7 @@ def plan_stage(described: Described, kind: str, stage: str, *,
         kind, stage, findings=described.findings, notes=notes,
         dirs=list(dirs),
         # ONE OF EACH: a sweep's trials repeat one finding per deck, and the
-        # terminal said each once (`prep_calculation`).
+        # terminal said each once (`_each_warning_once`).
         deck_findings=[i for i in deck_findings
                        if not (repr(i.to_json()) in seen
                                or seen.add(repr(i.to_json())))],
@@ -2193,8 +2378,8 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
     stage not named, or one prepared as a benchmark already refused --
     a prepared benchmark is not prepared again (its way back, the state
     saved before its prep); the description's preflight and the machine
-    (:func:`checked`); the stage planned (:func:`plan_stage`), its grid
-    said to ``on_found`` before anything is rendered.  ``preview`` stops
+    (:func:`checked`), its notes said to ``on_found``; the stage planned
+    (:func:`plan_stage`).  ``preview`` stops
     there; a Prep naming ``plan_id`` is refused when the plan it makes now
     differs.  Then the folder is saved, always, asking nothing; the plan is
     written, deciding nothing; then the record.  A refusal can only come
@@ -2209,7 +2394,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
 
     def _refused(exc: PrepError) -> PrepError:
         # WHAT WAS FOUND RIDES WITH THE REFUSAL: a sentence that points at
-        # "the cells left out above" is honest only if the list is shown
+        # "the cells left out" is honest only if the list is shown
         # -- and the refusal is a decision too, written down in a described
         # calculation (W52); a preview records nothing.
         findings = described.findings if described is not None else []
@@ -2251,14 +2436,13 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
         if why:
             raise PrepError(why)
         checked(described, target=target)
+        if on_found is not None:
+            on_found(described.findings)
         plan = Plan()
-        out = plan_stage(described, "bench", stage, target=target,
-                         allocation=allocation, env=env,
-                         emit_sbatch=emit_sbatch, plan=plan, notes=notes,
-                         # THE GRID, said before anything is rendered.
-                         on_inputs=(None if on_found is None else
-                                    lambda: on_found(described.findings,
-                                                     notes)))
+        with _each_warning_once():
+            out = plan_stage(described, "bench", stage, target=target,
+                             allocation=allocation, env=env,
+                             emit_sbatch=emit_sbatch, plan=plan, notes=notes)
         identity = plan.identity()
         if plan_id is not None and plan_id != identity:
             raise PrepError(PLAN_CHANGED)
@@ -2322,11 +2506,13 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
                            env=env, emit_sbatch=emit_sbatch,
                            on_found=on_found, preview=preview,
                            plan_id=plan_id)]
-    return _prep_groups(calc, list(groups), target=target,
-                        allocation=allocation,
-                        env=env, emit_sbatch=emit_sbatch, on_found=on_found,
-                        preview=preview, plan_id=plan_id, asked=asked,
-                        one_job=one_job)
+    with _each_warning_once():
+        return _prep_groups(calc, list(groups), target=target,
+                            allocation=allocation,
+                            env=env, emit_sbatch=emit_sbatch,
+                            on_found=on_found,
+                            preview=preview, plan_id=plan_id, asked=asked,
+                            one_job=one_job)
 
 
 def _record_the_order(calc, record_order, *, refuse, asked, preview,
@@ -2704,7 +2890,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         try:
             checked(description, target=target)
             if on_found is not None:
-                on_found(description.findings, [])
+                on_found(description.findings)
             # 4a · A CALCULATION THAT REUSES A FINISHED ONE
             #      (`engines/transport.md` § 2a.16): each group none of
             #      whose members is launched here, COPIED IN or prepared
@@ -2964,7 +3150,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         # ...ITS DESCRIPTION'S NOTES KEPT, as every answer carries them.
         kept_as_is = [PrepAnswer(
             kind="task", stage=a.stage, machine=a.machine, preview=preview,
-            findings=list(a.findings),
+            findings=list(a.findings), deck_findings=list(a.deck_findings),
             unchanged=(f"{a.stage} ({stage_home(base, task, a.stage).dir.name}"
                        f"): prepared, never launched, and already as this "
                        f"prep would prepare it now -- nothing to write "
@@ -3084,4 +3270,4 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
 
 __all__ = ["checked", "plan_stage", "Described",
            "prep_bench", "prep_task", "group_header", "PrepAnswer",
-           "prepared_already"]
+           "PrepSaid", "prep_said", "prepared_already"]

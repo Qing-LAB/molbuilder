@@ -1238,13 +1238,20 @@ is not taken.
 
 #### What prep answers
 
-**What you get back** is the whole of what was found and decided: the terminal
-prints it, Task setup shows it. The entry returns a `PrepAnswer` per stage:
+**What you get back** is the whole of what was found and decided. The entry
+returns a `PrepAnswer` per stage, and **what a person reads of them is composed
+once (`prep.prep_said`): the terminal prints those lines and Task setup draws
+the same lines**, a preview's said as what it would do. What the prep did once
+stands above the stages: the state saved, which configuration files answered, a
+reused calculation's manifest, and a note every stage prepared says alike. Each
+stage's own lines follow, a group's one job after its last member. The terminal
+ends with the launch to type; the page's card lists each group's next step
+instead ([`task-setup.md`](?doc=web/task-setup.md) § 11).
 
 | in the answer | what it is |
 |---|---|
 | `findings` | the description's preflight notes ([`engines/stages.md`](?doc=engines/stages.md) § 6.6); an error refuses instead |
-| `notes` | what the inputs said: a bench's grid — enumerated, left out, kept |
+| `notes` | what the inputs said: a bench's grid — enumerated, left out, kept; a run's GPUs over its ranks; what a rendering says and does not refuse |
 | `saved` | the folder's state saved before the writing (checkpoint 5), or the one it already stood at, and its note; none for a prep with nothing to write |
 | `unchanged` | a stage of a group prepared, never launched, and already as this prep plans it: the sentence both doors say |
 | `differs` | a stage prepared again: each file, its row and its group's header that differ from what this prep writes now; empty for a first prep |
@@ -1257,8 +1264,8 @@ prints it, Task setup shows it. The entry returns a `PrepAnswer` per stage:
 | `copied` | a transport calculation reusing a finished one: its manifest — each group copied in or prepared here, and why ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 | `points` | a transport bias scan's point folders |
 | `need` | the stage's memory need at the ranks it is prepared with, or that nothing has measured it ([`job-request.md`](?doc=execution/job-request.md) § 3.1a) — a hint that refuses nothing |
-| `placement` | the queue it was placed on, where each value came from, and the fit of what it sends; none for a benchmark or a member of a group of several, whose shelves and group say theirs |
-| `stated` | a stage prepared with no header: where each value it states came from |
+| `placement` | the queue it was placed on, and where each value came from |
+| `fit` | the fit of what it sends on that queue's machines; none for a benchmark or a member of a group of several, whose shelves and group say theirs |
 | `shelves` | a benchmark's: each shelf's name, its header's lines, its fit |
 | `resources` · `deck` | what the stage will launch with, and its deck |
 | `pipeline_log` | the step-by-step record of the plan and the writing ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) |

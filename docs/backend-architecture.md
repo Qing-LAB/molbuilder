@@ -103,9 +103,9 @@ writing a lone geometry, moved onto it and the writers stopped taking a path
 wrapper … not yet deleted" until 2026-09-06. It is not vestigial and is not
 pending deletion: it is the composer for the documented response shape, and
 [`web/web-api.md`](?doc=web/web-api.md) — which owns the HTTP API — lists the
-legacy aliases it mirrors (`xyz`, `elements`, `atom_names`, `residue_ids`,
-`residue_names`, `chain_ids`, `n_residues`) as part of that shape, with no
-deprecation. `model/structure.md` said the same. This page was the one out of
+per-atom columns it serves at the root (`atom_names`, `residue_ids`,
+`residue_names`, `chain_ids`) as part of that shape. `model/structure.md` said
+the same. This page was the one out of
 step, and being out of step with the contract that owns a surface is how a
 reader gets opposite instructions from two documents.*
 

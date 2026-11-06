@@ -25,9 +25,9 @@ JSON shape:
   /api/build/molecule -- body: {"kind": "peptide|dna|rna|smiles|name",
                                 "input": "<sequence-or-smiles-or-name>",
                                 ...optional kind-specific knobs}
-                         returns: {"ok": True, "xyz": "...", "pdb": "...",
+                         returns: {"ok": True, "text": "...", "pdb": "...",
                                    "n_atoms": N, "summary": "...",
-                                   "title": "...", "elements": [...]}
+                                   "title": "...", "structure": {...}}
 
       DNA / RNA tri-state add_hydrogens semantics:
         "auto"  (default) -- backend-aware: 3DNA gets H, AmberTools/3DNA-fiber
@@ -1320,7 +1320,7 @@ def api_task_setup_prep():
     from molbuilder.calculation import NotACalculation, open as open_calc
     from molbuilder.jobset.model import Resources
     from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.prep import prep_task
+    from molbuilder.jobset.prep import prep_said, prep_task
     try:
         calc = open_calc(dest)
     except (NotACalculation, OSError, ValueError) as exc:
@@ -1347,28 +1347,14 @@ def api_task_setup_prep():
     # THE MACHINE IT IS FOR, in the tab's word: the entry's answer -- the
     # one named, else the one the calculation's copy of its record names.
     from molbuilder.scheduler.record import LOCAL_LABEL, LOCAL_TARGET
-    said = [a.as_dict(dest) for a in answers]
+    wire = prep_said(answers, dest).to_wire()
+    said = wire["answers"]
     for d in said:
         if d.get("machine") == LOCAL_TARGET:
             d["machine"] = LOCAL_LABEL
-    # WHAT COMES NEXT, as the terminal's prep ends: the launch with nothing
-    # named, which sends the group that can go -- or, the prep opening no
-    # run of its own (`prep.opened_no_run`),
-    # the ladder's own next step.  Launching stays at the terminal
-    # (`task-setup.md` § 1).
-    from molbuilder.jobset.commands import launch_lines
-    from molbuilder.jobset.prep import opened_no_run
-    from molbuilder.jobset.runstatus import jobset_status, render_steps
-    ladder_next = opened_no_run(answers)
-    nxt = ([] if (preview and not ladder_next) or not said else
-           render_steps(jobset_status(open_calc(dest))).splitlines()
-           if ladder_next else
-           launch_lines("task", base=dest)
-           if kind == "task" else
-           launch_lines("bench", stages[0].strip(), base=dest))
     # THE PLAN, the prep's own -- named on the answers it wrote; a pick
     # with nothing to write names none.
-    return jsonify({"ok": True, "answers": said, "next": nxt,
+    return jsonify({"ok": True, "above": wire["above"], "answers": said,
                     "plan_id": next((d["plan_id"] for d in said
                                      if d.get("plan_id")), None)})
 
@@ -2668,6 +2654,9 @@ def _folder_ladder(calc) -> dict:
                                "copied_from": r["copied_from"]}
                               for r in s["runs"] if r["copied_from"]]
                   for s in ladder["stages"]}
+        # ...and each stage's one line about the scratch folder its run keeps
+        # (`engines/transport.md` § 2a.11), as `status` says it.
+        scratch = {s["name"]: s["scratch"] for s in ladder["stages"]}
         # EACH STAGE'S ROW; the reader's check (`group.check_groups`)
         # refuses at Save what the rule forbids after edits.
         rows = []
@@ -2691,6 +2680,7 @@ def _folder_ladder(calc) -> dict:
             "ladder": {"stages": [{"stage": a.stage, "group": a.group,
                                    "state": a.state, "detail": a.detail,
                                    "why": a.why,
+                                   "scratch": scratch.get(a.stage),
                                    "copied": copied.get(a.stage, [])}
                                   for a in answers],
                        "offer": state.prep_offer},

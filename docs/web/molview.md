@@ -2597,9 +2597,9 @@ passed the whole suite. Measured, 2026-08-30. `stores.js` deleted it, and
   the point the row becomes a rule, through the one translation that owns it
   (§ 11.5). Every other row compares names to names and never touches a number.
 
-- **Which rows are worth offering is read from the structure, not hard-coded.**
-  The label names in the by-label list, and whether a by-residue row makes sense
-  at all, come from looking at the atoms. That reading decides *what to offer*;
+- **The four kinds are always offered; what a by-label row offers is read from
+  the structure.** The label names in the by-label list come from looking at the
+  atoms. That reading decides *what to offer*;
   the four rules above decide *how to match*. Keeping those apart is why a new
   label needs no panel change, and why filtering for frozen atoms needs no case
   of its own (§ 6.6).

@@ -1236,6 +1236,16 @@ SCRATCH_OPENS = ("the engine's scratch of the run above (its leads' surface "
                  "Green's function files, one voltage's pair at a time): "
                  "nothing in it opens")
 
+#: What the page says of a folder with nothing of its own to open, by what the
+#: folder is (`web/results.md` § 2).  ``None`` for a role that says nothing.
+PLACE_SAYS = {
+    calcdirs.CONTAINER: ("This is a container, not a run \u2014 its results "
+                         "are in the run directories below it."),
+    calcdirs.RUN: ("This is a run directory, but nothing in it is this "
+                   "calculation's result yet."),
+    calcdirs.SCRATCH: SCRATCH_OPENS,
+}
+
 
 def openable(directory) -> Tuple[Optional[str], List[str]]:
     """``(path, trail)`` -- the file a viewer should load in ``directory``,
@@ -1455,7 +1465,8 @@ def folder_answer(directory) -> Dict[str, Any]:
                       # A RUN OF POINTS' ROOT, its points the folders below
                       # it (`calcdirs.Where.of_points`) -- read with its
                       # view (`runstatus.views_of`).
-                      "of_points": at.of_points},
+                      "of_points": at.of_points,
+                      "says": PLACE_SAYS.get(place.role)},
             "engine": engine,
             "engine_words": engine_words,
             "noun": noun,

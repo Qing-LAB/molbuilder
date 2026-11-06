@@ -117,6 +117,93 @@ def _init(args):
 _TRANSPORT = ["--calculation", "transport", "--bundle", "BDT-Au/transport/T"]
 
 
+def _cited_transport(tree, *, frames, bias):
+    """`molbuilder describe` of a transport calculation citing a structure
+    pair of ``frames`` frames, each moving its bridge as a frame set's must, its
+    electrodes held.  No run made this pair, a run being the engine's: it
+    states a level of theory through the door that names one, which is all a
+    citation asks of it, and the subject here is what comes after."""
+    from conftest import write_pseudos
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.parse.contract import contract_fields_of
+    from molbuilder.transport.sort import REGION_BRIDGE
+    from molbuilder.workingcopy_structure import StructureCodec
+    from support.junction import _junction_struct
+    built = _junction_struct()
+    built.set_info("calculation", {
+        "engine": "siesta", "source": "J.fdf",
+        "contract": contract_fields_of(SiestaConfig(system_label="J"),
+                                       kind="optimization")})
+    if frames > 1:
+        moved = [built.positions.copy() for _ in range(frames)]
+        for i, at in enumerate(moved):
+            at[built.regions[REGION_BRIDGE]] += 0.01 * i
+        built = built.with_frames(moved)
+    (tree / "BDT-Au" / "structure").mkdir(parents=True)
+    StructureCodec().write(built, tree / "BDT-Au" / "structure" / "j.xyz")
+    (tree / "pseudopotential").mkdir()
+    write_pseudos(tree / "pseudopotential", sorted(set(built.elements)))
+    r = _init(_TRANSPORT + ["--slot", "junction=BDT-Au/structure/j.xyz",
+                            "--psml-lib", "pseudopotential", "--bias", bias]
+              + (["--no-low-bias-approximation"] if "," in bias else []))
+    assert r.exit_code == 0, r.output
+    return tree / "BDT-Au" / "transport" / "T"
+
+
+@pytest.mark.parametrize("frames, bias, walk", [
+    (2, "0,0.2", "one job walking its 4 points (each point's wall, summed)"),
+    (2, "0", "one job walking its 2 points (each point's wall, summed)"),
+    (1, "0,0.2", "one job walking its 2 points (each point's wall, summed)"),
+    (1, "0", None),
+], ids=["two frames, two voltages", "two frames, one voltage",
+        "one frame, two voltages", "one frame, one voltage"])
+def test_a_run_of_points_is_told_from_its_citation_before_any_prep(
+        tree, frames, bias, walk):
+    """`execution/runs-of-points.md` § 1.2: its wall is typed before its first
+    prep, so the run card says what the job walks then, and the count is what
+    the cited frame set holds.
+
+    THE SILENT FAILURE: the count read from the record prep writes -- *its 2
+    points* said of a run of 4, and of a frame set with one voltage nothing, so
+    its wall is typed for one run rather than each point's."""
+    from support.road import _road_points_before_prep
+    _road_points_before_prep({"device": walk},
+                             _cited_transport(tree, frames=frames, bias=bias))
+
+
+def test_the_device_s_scratch_folder_is_said_on_every_page(
+        tree, web_client):
+    """`engines/transport.md` § 2a.11: the device stage's row on `jobset status`,
+    Task setup and the Results ladder carries one line about the files its run
+    keeps, read by one door.
+
+    THE SILENT FAILURE: the person choosing a queue on Task setup is not told a
+    run will want tens of GiB of scratch, which only the terminal said."""
+    from support.road import jobset
+    bundle = _cited_transport(tree, frames=1, bias="0,0.2")
+    r = jobset("prep", "task", "--group", "1", "--group", "2", "--group", "3",
+               "--bundle", bundle, "--target", "this", "--np", "2",
+               "--cpus-per-task", "1")
+    assert r.exit_code == 0, r.output
+    status = jobset("status", "--bundle", bundle)
+    rows = web_client.get(f"/api/task-setup/folder?dir={bundle}").get_json()[
+        "ladder"]["stages"]
+    said = {row["stage"]: row["scratch"] for row in rows}
+    assert said["device"] and said["device"].startswith("tsgf/: ")
+    assert said["device"] in status.output, status.output
+    assert said["transmission"] is None
+    # ...AND THE FOLDER ITSELF SAYS WHAT IT IS on the Results tab, where nothing
+    # in it opens (`web/results.md` § 2): the place note is drawn from this.
+    place = web_client.get(
+        "/api/results/dir?path=" + str(bundle / "04_device" / "run-0" / "tsgf")
+    ).get_json()["place"]
+    assert place["role"] == "scratch" and "the engine's scratch" in place["says"]
+    run = web_client.get(
+        "/api/results/dir?path=" + str(bundle / "04_device" / "run-0")
+    ).get_json()["place"]
+    assert "the engine's scratch" not in run["says"]
+
+
 class TestInitCLI:
 
     def test_an_engine_that_runs_no_transport_is_refused_in_the_tabs_words(

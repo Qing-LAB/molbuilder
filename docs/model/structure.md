@@ -114,7 +114,7 @@ Three methods on `Structure` (`structure.py`), all shipped:
 |---|---|---|
 | `to_dict()` → `dict` (`:1008`) | The ONE canonical serializer: coordinates + per-atom columns + the full metadata block (via `metadata_to_dict()`). | **Yes** — `from_dict(s.to_dict())` reproduces `s` exactly. |
 | `from_dict(d)` → `Structure` (`:1034`) | The ONE canonical deserializer: builds the object, then `apply_metadata_dict` (the same validator a fresh Structure runs). | inverse of `to_dict` |
-| `to_wire()` → `dict` (`:1077`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`engine_offset`/`offset_by`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`box_corner` the client must not recompute — `structure-periodicity.md` § 6.0) + `annotations`. It carries **no** `positions`, **no** flat `atoms` render list, and **no** legacy aliases. | No — a different, flatter view (not a superset of `to_dict`) |
+| `to_wire()` → `dict` (`:1077`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`engine_offset`/`offset_by`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`box_corner` the client must not recompute — `structure-periodicity.md` § 6.0) + `annotations`. It carries **no** `positions` and **no** flat `atoms` render list. | No — a different, flatter view (not a superset of `to_dict`) |
 
 ```python
 # to_dict() — the loss-free round-trip unit; NOBODY else assembles this dict
@@ -141,9 +141,9 @@ drop.
 > **Verified against code (2026-07-26):** `_shared.structure_to_dict`
 > (`web/blueprints/_shared.py:329`) was **not** deleted (as an earlier draft
 > of this contract claimed). It is the web layer's **composer**: it combines
-> `workspace_payload(struct)` (the render `atoms` list, `text`/`xyz`, `issues`,
+> `workspace_payload(struct)` (the render `atoms` list, `text`, `issues`,
 > `extra`) with `struct.to_wire()` (identity columns + periodicity +
-> annotations) and adds the legacy top-level aliases existing consumers read.
+> annotations).
 > `ok_structure_response` (`:417`) wraps it. Code that needs only the metadata
 > view calls `to_wire()` directly.
 
@@ -1373,7 +1373,7 @@ language.
 (`parser.js`) with every consumer above repointed; the JS periodicity
 field-whitelist replaced by verbatim deep-clone; the old `molview.data` file
 stack + `/api/workingcopy/*` door path removed. `_shared.structure_to_dict`
-retained as the web composer (`workspace_payload` + `to_wire` + legacy aliases),
+retained as the web composer (`workspace_payload` + `to_wire`),
 not deleted.
 
 **Consolidated 2026-07-31.** Every adapter now has exactly one door: `write` →

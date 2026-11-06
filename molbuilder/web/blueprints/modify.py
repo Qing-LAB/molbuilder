@@ -30,8 +30,8 @@ JSON response shape (shared):
 
     {
       "ok":            True,
-      "xyz":           "...",
-      "elements":      [...],
+      "text":          "...",
+      "structure":     {...},
       "atom_names":    [...],
       "residue_ids":   [...],
       "residue_names": [...],
@@ -41,9 +41,8 @@ JSON response shape (shared):
       "issues":        [{severity, message, where}, ...],
     }
 
-This matches `/api/build/load` so the front end can keep one
-``applyStructure(response)`` path for both initial load and
-modify-op responses.
+This matches `/api/build/load`, so a viewer reads an initial load and a
+modify-op's response one way.
 
 Body parsing, response building, validation, and the error
 response shape all live in ``_shared.py`` so the build and modify

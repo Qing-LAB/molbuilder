@@ -264,19 +264,10 @@
         }
     }
 
-    //: WHAT A DIRECTORY IS -> what the empty state should say about it.
-    //: `project-layout.md` § 1.4a's vocabulary, and the only copy of it in
-    //: the browser: the server answers `place.role` in the same response the
-    //: menu is built from, so the page states that answer.  `null` is not
-    //: "neither" -- it is *unknown*, and says so.
-    const PLACE_NOTE = {
-        container:
-            "This is a container, not a run \u2014 its results are in the "
-            + "run directories below it.",
-        run:
-            "This is a run directory, but nothing in it is this "
-            + "calculation's result yet.",
-    };
+    //: WHAT THE EMPTY STATE SAYS OF A FOLDER: the server's sentence for what
+    //: the folder is (`place.says`, `runs.PLACE_SAYS`), in the same response
+    //: the menu is built from.  No role is not "neither" -- it is *unknown*,
+    //: and says so.
     const PLACE_NOTE_UNKNOWN =
         "This directory is not marked as part of a calculation, so only "
         + "what is in it can be shown \u2014 nothing about what it belongs to.";
@@ -294,7 +285,7 @@
         const role = place && place.role;
         el.textContent = !role ? PLACE_NOTE_UNKNOWN
             : points ? PLACE_NOTE_POINTS
-            : (PLACE_NOTE[role] || "");
+            : (place.says || "");
         el.hidden = !el.textContent;
     }
 
@@ -397,12 +388,12 @@
             // A QUEUED RUNG SAYS ITS STANDING as its scheduler states it
             // here, or where to ask (results.md § 2.4) -- the server's
             // words, beside the detail.
-            tr.appendChild(tdWords((s.detail || "")
-                + (s.standing && s.standing.say ? " \u00b7 " + s.standing.say : "")
-                + (s.scratch ? " \u00b7 " + s.scratch : "")
+            tr.appendChild(tdWords([s.detail,
+                s.standing && s.standing.say, s.scratch,
                 // A RUN COPIED IN from a finished calculation this one
                 // reuses (engines/transport.md \u00a7 2a.16).
-                + (s.copied_from ? " \u00b7 copied from " + s.copied_from : "")));
+                s.copied_from && "copied from " + s.copied_from,
+            ].filter(Boolean).join(" \u00b7 ")));
             tr.appendChild(td(""));
             tr.appendChild(td(""));
             table.appendChild(tr);

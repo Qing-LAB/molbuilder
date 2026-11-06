@@ -314,14 +314,11 @@ def structure_to_dict(
     *,
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """The canonical-plus-legacy serialised shape for any
-    Structure-returning endpoint.
+    """The serialised shape for any Structure-returning endpoint.
 
     Routes through :func:`workspace_payload` for the canonical
-    keys (every key it serves) and adds the
-    legacy aliases that the existing modify-tab front-end's
-    ``applyStructure(r)`` reads directly (``xyz``, ``elements``,
-    flat per-atom columns, ``n_residues``).
+    keys (every key it serves) and adds the per-atom columns a viewer folds
+    into its atoms (`molview/model-jobs.js`).
 
     The optional ``extra`` dict threads endpoint-specific keys (``pdb``, ``summary``,
     ``backend_used``, ``add_hydrogens_mode``) into BOTH places at
@@ -347,7 +344,7 @@ def structure_to_dict(
     # `model/structure.md` § 2.1 + § 4).  This helper hand-lists no metadata
     # field and re-runs no resolver, so a field added to `metadata_to_dict`
     # rides onto every endpoint automatically.  The web layer only adds its
-    # OWN concerns (render `atoms`, `issues`, `text`/`xyz`, `extra`).
+    # OWN concerns (render `atoms`, `issues`, `text`, `extra`).
     wire = struct.to_wire()
     return {
         # THE ENVELOPE (web-api.md § 1) is the structure's OWN canonical dict --
@@ -358,8 +355,7 @@ def structure_to_dict(
         # field added to the structure reaches the wire with no edit in this file.
         #
         # It sits BESIDE the keys below rather than replacing them, and both are
-        # derived from this one Structure, so they cannot come to disagree. The
-        # legacy keys go when nothing reads them -- a question the code can answer.
+        # derived from this one Structure, so they cannot come to disagree.
         "structure":     struct.to_dict(),
         # THE CANONICAL KEYS, every one `workspace_payload` serves, whole --
         # the labels among them -- so a key added there reaches every
@@ -375,20 +371,13 @@ def structure_to_dict(
         # like the resolved box (`model/overview.md` § 2.2a): what a viewer
         # holding an engine's order marks itself with; none in the user order.
         "atom_order_said": wire["atom_order_said"],
-        # Legacy aliases for existing modify-tab consumers (identity columns
-        # also sourced from the ONE view so they can't diverge).
-        #
-        # They stay: the envelope was "added not swapped" on purpose
-        # (tests/test_structure_envelope_protocol.py), and
-        # `test_a_response_carries_the_envelope_beside_todays_keys` guards each
-        # one by name.
-        "xyz":           base["text"],
-        "elements":      wire["elements"],
+        # THE PER-ATOM COLUMNS A VIEWER FOLDS INTO ITS ATOMS
+        # (`molview/model-jobs.js`), sourced from the ONE view so they can't
+        # diverge.
         "atom_names":    wire["atom_names"],
         "residue_ids":   wire["residue_ids"],
         "residue_names": wire["residue_names"],
         "chain_ids":     wire["chain_ids"],
-        "n_residues":    wire["n_residues"],
         # Endpoint-specific keys at the top level for the JS consumers
         # that read them off the response root.
         **extras,

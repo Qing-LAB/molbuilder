@@ -166,15 +166,15 @@ def test_a_response_carries_the_envelope_beside_todays_keys(client):
                                "filename": "x.xyz"}).get_json()
 
     assert answer["ok"] is True
-    for legacy in ("text", "atoms", "periodicity", "annotations",
-                   "xyz", "elements", "atom_names", "residue_names"):
-        assert legacy in answer, f"the legacy key '{legacy}' stopped being sent"
+    for key in ("text", "atoms", "periodicity", "annotations",
+                "atom_names", "residue_names"):
+        assert key in answer, f"the key '{key}' stopped being sent"
 
     envelope = answer["structure"]
     assert "document" not in envelope, (
         "a coordinate document is the export door's answer, not a per-response cost"
     )
-    assert envelope["elements"] == answer["elements"]
+    assert envelope["elements"] == [a["element"] for a in answer["atoms"]]
     assert envelope["positions"] == [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
 
 
@@ -196,7 +196,7 @@ def test_the_two_views_cannot_disagree_because_they_come_from_one_structure(clie
     assert answer["ok"] is True, answer
     envelope, per = answer["structure"], answer["periodicity"]
 
-    assert envelope["elements"] == answer["elements"]
+    assert envelope["elements"] == [a["element"] for a in answer["atoms"]]
     assert envelope["metadata"]["cell"] == per["cell"]
     assert envelope["metadata"]["engine_offset"] == per["engine_offset"] == [1.0, 1.0, 1.0]
     assert per["box_corner"] == [-1.0, -1.0, -1.0]

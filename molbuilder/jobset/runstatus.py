@@ -982,9 +982,10 @@ def render_status(status: JobSetStatus) -> str:
              str(s.group) if s.group is not None else "-",
              s.attempt or "-", s.state,
              s.converged or "-", ", ".join(s.warm_files) or "-",
-             s.detail + (f" \u00b7 {s.scratch}" if s.scratch else "")
-             + (f" \u00b7 copied from {s.copied_from}" if s.copied_from
-                else ""))
+             " \u00b7 ".join(
+                 part for part in (s.detail, s.scratch,
+                                   s.copied_from
+                                   and f"copied from {s.copied_from}") if part))
             for s in status.stages]
     # Widths and the rule are both driven off `hdr`, never off a literal count.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]

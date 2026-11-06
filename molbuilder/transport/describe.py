@@ -464,7 +464,8 @@ def _manifest_of(where) -> Tuple[Optional[Tuple[str, ...]], List[object]]:
     except (PrepError, ValueError, OSError) as exc:
         return None, [Issue("warn", f"what it will reuse is not known yet "
                                     f"-- {exc}")]
-    return (tuple(reuse.lines(where)) if reuse is not None else None), []
+    return (tuple(reuse.lines(where, preview=True))
+            if reuse is not None else None), []
 
 
 __all__ = ["Described", "NotDescribed", "describe", "fit", "not_taken",

@@ -115,7 +115,14 @@ def _post(client, *, stage=None, group=None, **body):
     if r.status_code != 200:
         return r.status_code, j
     (one,) = j["answers"]
-    return r.status_code, dict(one, ok=j["ok"], plan_id=j["plan_id"])
+    return r.status_code, dict(one, ok=j["ok"], plan_id=j["plan_id"],
+                               above=j["above"])
+
+
+def _saved(answer):
+    """The state a prep saved, as its answer says it above its stages."""
+    return next((line for line in answer["above"]["lines"]
+                 if line.startswith("the folder's state was")), None)
 
 
 def _prep(client, **body):
@@ -349,8 +356,8 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
     assert pv["plan_id"] and pv["writes"], pv
     # ...and WHICH FILES ANSWERED, as the prep read them -- on the preview
     # too, so the page can say it before anything is written.
-    assert any(s["found"] for s in (pv["provenance"] or {}).get("sources")
-               or ()), pv["provenance"]
+    assert "config:" in pv["above"]["lines"] and any(
+        "(found" in line for line in pv["above"]["lines"]), pv["above"]
     assert sorted(p.relative_to(calc) for p in calc.rglob("*")) == before, (
         "the preview wrote")
 
@@ -377,7 +384,7 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
 
     st, j = _post(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET, plan_id=pv["plan_id"])
-    assert st == 200 and j["saved"] and not j["preview"], j
+    assert st == 200 and _saved(j) and not j["preview"], j
 
 
 def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
@@ -402,7 +409,7 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
     assert notes and any("starts clean" in n for n in notes), j["findings"]
     for n in notes:
         assert f"note: {n}" in r.output, n
-    assert j["attempt"]["dir"] == "01_coarse/run-0"
+    assert "prepared coarse: 01_coarse/run-0" in j["lines"], j["lines"]
     assert "prepared coarse: 01_coarse/run-0" in r.output
     assert _ledger_decisions(calc) == _ledger_decisions(twin)
     assert ("prep", "preflight-report") in _ledger_decisions(calc)
@@ -441,7 +448,7 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
     st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200 and j["dirs"], j
-    assert j["saved"].startswith("the folder's state was saved first:"), j
+    assert _saved(j).startswith("the folder's state was saved first:"), j
     r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
              "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
@@ -518,7 +525,7 @@ def test_a_benchmark_is_answered_alike_on_both_doors(web_client, described):
              "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
     assert j["dirs"] and f"prepared {len(j['dirs'])} trial dir(s)" in r.output
-    assert any("combination(s) enumerated" in n for n in j["notes"]), j["notes"]
+    assert any("combination(s) enumerated" in n for n in j["lines"]), j["lines"]
 
 
 def test_a_preflight_refusal_keeps_its_notes_on_both_doors(

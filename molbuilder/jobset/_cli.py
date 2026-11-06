@@ -1140,18 +1140,15 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
 
     shown: list = []
 
-    def _show(findings, notes):
-        # The preflight's notes and what the inputs said, ONCE, before the
-        # decks are written -- the entry hands them over as soon as it has
-        # them (`on_found`) -- or from a refusal that carries them
-        # (`prep.PrepError`), which the terminal prints before its sentence.
+    def _show(findings):
+        # The preflight's notes, ONCE, before the decks are written -- the
+        # entry hands them over as soon as it has them (`on_found`) -- or from
+        # a refusal that carries them (`prep.PrepError`).
         if shown:
             return
         shown.append(True)
         for issue in findings:
             click.echo(f"note: {issue.message}", err=True)
-        for line in notes:
-            click.echo(line)
 
     try:
         answers = prep_task(calc, kind, groups=groups, stage=bench_stage,
@@ -1160,17 +1157,20 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
                             emit_sbatch=emit_sbatch, on_found=_show,
                             asked=asked, one_job=one_job)
     except PrepError as e:
-        _show(e.findings, e.notes)
+        # WHAT IT HAD FOUND, before the refusal's sentence.
+        _show(e.findings)
+        for line in e.notes:
+            click.echo(line)
         raise click.ClickException(str(e))
-    from .prep import opened_no_run
-    ladder_next = opened_no_run(answers)
-    # WHAT THE PREP DID, ONCE -- the state it saved, its config, its
-    # manifest -- with the first stage it wrote, not one it left as it stood.
-    lead = next((i for i, a in enumerate(answers) if a.unchanged is None), 0)
-    for i, ans in enumerate(answers):
-        _echo_prep_answer(ans, base, first=(i == lead),
-                          last=(i == len(answers) - 1),
-                          ladder_next=ladder_next)
+    from .prep import opened_no_run, prep_said
+    said = prep_said(answers, base)
+    for line in said.above:
+        click.echo(line)
+    for lines in said.stages:
+        for line in lines:
+            click.echo(line)
+    if answers:
+        _echo_next_step(answers[-1], base, ladder_next=opened_no_run(answers))
 
 
 def _launch_unit(calc, *, told: dict, dry_run: bool = False):
@@ -1296,7 +1296,7 @@ def _ask_which_groups(calc, named) -> tuple:
     except PrepError as exc:
         raise _refuse(str(exc)) from None
     if reuse is not None:
-        text += "\n" + "\n".join(reuse.lines(base))
+        text += "\n" + "\n".join(reuse.lines(base, preview=True))
     picked = choose(text, [str(n) for n in pre],
                     question="which group(s) to prepare?")
     if not picked.asked:
@@ -1314,214 +1314,29 @@ def _ask_which_groups(calc, named) -> tuple:
     return answer, asked
 
 
-def _echo_prep_answer(ans, base, *, first: bool = True,
-                      last: bool = True, ladder_next: bool = False) -> None:
-    """The prep report, from the entry's answer -- `job-system.md` § 5.0,
-    *What prep answers*: prep prints what it resolved, which is what makes
-    launch a plain yes.  Where the configuration came from, what was
-    written, the run and its own files, what its first launch will take,
-    what it will launch with, whether the deck agrees -- then the next
-    command, naming the bundle so it works from anywhere
-    (`job-contracts.md` § 2.5b).  The Task setup tab shows the same
-    answer.  The stages of the groups prepared are reported one after
-    another, the saved state with the ``first``, and after the ``last``
-    the launch with nothing named -- it sends the group that can go, asks
-    which when several can, and says what each waits for when none can
-    (`job-system.md`, *The task*).  ``ladder_next``: the
-    prep opened no run of its own (`prep.opened_no_run`), so what comes
-    next is the ladder's own step.
-    """
-    def say_next(line):
-        click.echo(line)
-
-    if ans.recorded:
-        # NO GROUP NAMED: the calculation's own record, and nothing else.
-        if ans.saved:
-            click.echo(ans.saved)
-        click.echo(ans.recorded)
-        return
-    if ans.unchanged:
-        # A GROUP ALREADY AS THIS PREP PLANS IT: nothing written for it --
-        # said, with what comes next (`job-system.md` § 5.0, checkpoint
-        # 2a).
-        click.echo(ans.unchanged)
-        if last:
-            _echo_next_step(ans, base, ladder_next=ladder_next)
-        return
-
-    from ..runtime_config import format_provenance
-    from .ledger import rel_to as _rel
-    if ans.saved and first:
-        # THE STATE A REDO RESTORES, named where the person reads it --
-        # saved now, or the one the folder already stood at; once.
-        click.echo(ans.saved)
-    if ans.provenance is not None and first:
-        # WHERE the effective config came from (user request 2026-08-12;
-        # secrets excluded by design) -- also in the bundle's ledger, since
-        # the terminal is gone when a job misbehaves hours later.
-        click.echo(format_provenance(ans.provenance))
-    if ans.copied is not None and first:
-        # THE MANIFEST, once: what this calculation copied in from the
-        # finished one it reuses, and what it runs (`engines/transport.md`
-        # § 2a.16).
-        click.echo("\n".join(ans.copied.lines(base)))
-    stage = ans.stage
-    from .commands import block, command, launch_lines
-    if ans.kind == "bench":
-        where = f" for stage {stage!r}" if stage else ""
-        click.echo(f"prepared {len(ans.dirs)} trial dir(s){where} under "
-                   f"{base}:")
-        for d in ans.dirs:
-            # the path from the calculation's folder, not the bare run
-            # name -- every trial's dir ends in its run-<n> (user,
-            # 2026-08-28)
-            click.echo(f"  {_rel(base, d)}")
-        if ans.placement:
-            # THE ONE QUEUE IT MEASURES ON, placed at prep and recorded on
-            # every trial (`job-system.md` § 6.0) -- said as a run's is.
-            from .placement import placement_line
-            click.echo("  " + placement_line(ans.placement))
-        for shelf in ans.shelves:
-            # EACH SHELF AS ITS HEADER ASKS IT -- the one job its launch
-            # sends (`shelves.shelves_of`).
-            click.echo(f"  {shelf['name']}  {shelf['said']}")
-            if shelf["fit"]:
-                click.echo(f"    {shelf['fit']}")
-        _echo_pipeline_log(ans, base)
-        # ONE COMMAND A LINE, prose after `#`; the report's `execution`
-        # block is the person's to copy into job-request.json (job-system.md
-        # § 7).
-        say_next("next -- launch the sweep (to the queue it goes as one "
-                 "job per resource shelf):\n"
-                 + block(launch_lines("bench", stage, base=base)))
-        say_next("then -- a report to read; its `execution` block is "
-                 f"yours to copy onto a run card in {JOB_REQUEST_FILE}:\n"
-                 + block([command("summarize", "bench", stage,
-                                  base=base)]))
-        return
-    # WHAT THIS PREP OPENED first -- the points, the copies, a launched
-    # stage's runs kept, or its run -- then what every stage says alike:
-    # what its first launch will take, the resources, the pipeline log, what
-    # to do next.
-    if ans.points:
-        for att, pt in ans.points:
-            click.echo(f"prepared {stage} @ {pt.rel}: "
-                       f"{Path(att).relative_to(base)}")
-    elif ans.copied is not None and ans.copied.copies_of(stage):
-        # COPIED IN: its runs are the finished calculation's, launched runs
-        # of this one (`engines/transport.md` § 2a.16).
-        click.echo(f"prepared {stage}: copied in -- "
-                   + ", ".join(str(c.run.relative_to(base))
-                               for c in ans.copied.copies_of(stage))
-                   + f" from {ans.copied.name}; its next launch opens its "
-                     f"next run with these files")
-    elif ans.launched:
-        # PREPARED AGAIN FOR ITS JOB REQUEST (`execution/job-request.md`
-        # § 5): its runs kept, its next launch opening its next run.
-        click.echo(f"prepared {stage} again: launched -- its runs are kept, "
-                   f"and its next launch opens its next run with these "
-                   f"files")
-    else:
-        rep = ans.attempt
-        click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
-                   f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
-        click.echo(f"  brought in: {', '.join(rep.brought)}")
-    # PREPARED AGAIN, never launched: what of it differed from what this
-    # prep writes now (`job-system.md` § 5.0, checkpoint 2a).
-    if ans.differs:
-        click.echo("  prepared again -- differed from what was prepared: "
-                   + ", ".join(ans.differs))
-    # WHAT ITS FIRST LAUNCH WILL TAKE (`job-system.md` § 5.0, *a preview*):
-    # nothing is copied at prep.
-    for t in ans.takes:
-        click.echo("  " + t["line"])
-    if not ans.takes:
-        click.echo("  takes nothing from another run"
-                   + ("" if ans.linked else
-                      " (the first stage, or one that starts clean)"))
-    from .placement import placement_line, stated_line
-    if ans.placement:
-        # WHERE IT WAS PLACED, where each value came from, and the FIT of
-        # what it sends -- a run of points', its walk's (`job-system.md`
-        # § 6.0; `scheduler.md` R6) -- the lines the tab shows too.
-        click.echo("  " + placement_line(ans.placement))
-        if ans.fit:
-            click.echo("  " + ans.fit)
-    elif stated_line(ans.sources):
-        # NO HEADER -- where each value it states came from, all the same.
-        click.echo("  " + stated_line(ans.sources))
-    if ans.need is not None:
-        # THE MEMORY IT NEEDS at the ranks it is prepared with, beside the
-        # ask -- a hint, refusing nothing (`job-request.md` § 3.1a).
-        click.echo("  memory need: " + ans.need.line)
-    if ans.launch and ans.launch.get("header") and ans.group is None:
-        # EVERY VALUE IT IS SENT WITH, as the header its launch sends carries
-        # it -- a run of points', its walk's -- the line above saying where
-        # each came from.  A member of a group of several is sent in the
-        # group's one job, said after its last member.
-        click.echo("  " + (ans.launch["walk"] + " -- "
-                           if ans.launch.get("walk") else "")
-                   + ans.launch["said"])
-    for line in ans.notes:
-        # WHAT ITS REQUEST MEANS, said where a value can still change -- its
-        # ranks over its GPUs (`ask.gpu_share_notes`) -- and what a rendering
-        # says and does not refuse (`gpu.md` G6).
-        click.echo("  " + line)
-    if ans.resources is not None:
-        r = ans.resources
-        # WHAT IS STATED, and nothing else: no launch value is left for
-        # the run script to decide (`architecture.md` § 5.2), and a PySCF run
-        # has no rank count at all.
-        asks = [f"{word} {r[key]}" for word, key in (("mpi_np", "mpi_np"),
-                                                     ("omp", "cpus_per_task"))
-                if r.get(key)]
-        if r.get("max_memory_mb"):
-            asks.append(f"memory cap {r['max_memory_mb']} MB")
-        if asks:
-            click.echo(f"  resources: {' | '.join(asks)}")
-    _echo_pipeline_log(ans, base)
-    g = ans.group
-    if g is not None and ans.stage == g["members"][-1]:
-        # A GROUP'S ONE JOB, once, after its last member: the header its
-        # first launch sends, not a member's own (`job-system.md` § 5.0,
-        # checkpoint 6).
-        click.echo(f"group {g['number']} -- one job: "
-                   f"{', '.join(g['members'])}, one after another (their "
-                   f"walls summed, the largest memory)"
-                   + (f"; its header: {g['header']}" if g["header"] else ""))
-        if g["launch"]["header"]:
-            click.echo("  " + g["launch"]["said"])
-            click.echo("  " + g["launch"]["fit"])
-        click.echo("  memory need: " + g["need"]["line"])
-    seq = ans.sequence
-    if seq is not None:
-        # THE SEQUENCE'S ONE JOB, once, after the last answer: its header,
-        # what it launches with, its fit, and each group asking less than
-        # it (`job-system.md` § 6.0, *A sequence of groups*).
-        nums = ", ".join(map(str, seq["numbers"]))
-        click.echo(f"groups {nums} -- one job, each group launched when the "
-                   f"one before has finished (the largest request any "
-                   f"asks, their walls summed)"
-                   + (f"; its header: {seq['header']}" if seq["header"]
-                      else ""))
-        if seq["launch"]["header"]:
-            click.echo("  " + seq["launch"]["said"])
-            click.echo("  " + seq["launch"]["fit"])
-        click.echo("  memory need: " + seq["need"]["line"])
-        for line in seq["less"]:
-            click.echo("  " + line)
-    if not last:
-        return
-    _echo_next_step(ans, base, ladder_next=ladder_next)
-
-
 def _echo_next_step(ans, base, *, ladder_next: bool) -> None:
-    """What comes next, after a prep's last answer: a sequence of groups'
-    one job; the ladder's own step when the prep opened no run of its own
-    -- every group copied in, already as it plans it, or launched and
-    prepared again for its job request (`job-system.md`,
-    *The next step*); else the launch with nothing named."""
-    from .commands import block, launch_lines
+    """What comes next, after a prep's last answer: nothing after the
+    calculation's own record; a benchmark's launch and its report, one
+    command a line, prose after `#`; a sequence of groups' one job; the
+    ladder's own step when the prep opened no run of its own -- every group
+    copied in, already as it plans it, or launched and prepared again for its
+    job request (`job-system.md`, *The next step*); else the launch with
+    nothing named.  The page's card lists these itself (`task-setup.md`
+    § 11)."""
+    from .commands import block, command, launch_lines
+    if ans.recorded:
+        return
+    if ans.kind == "bench":
+        # The report's `execution` block is the person's to copy into
+        # job-request.json (job-system.md § 7).
+        click.echo("next -- launch the sweep (to the queue it goes as one "
+                   "job per resource shelf):\n"
+                   + block(launch_lines("bench", ans.stage, base=base)))
+        click.echo("then -- a report to read; its `execution` block is "
+                   f"yours to copy onto a run card in {JOB_REQUEST_FILE}:\n"
+                   + block([command("summarize", "bench", ans.stage,
+                                    base=base)]))
+        return
     seq = ans.sequence
     if seq is not None:
         click.echo("next -- send them as one job:\n"
@@ -1534,16 +1349,6 @@ def _echo_next_step(ans, base, *, ladder_next: bool) -> None:
         return
     click.echo("next -- launch the group that can go, each group one job:\n"
                + block(launch_lines("task", base=base)))
-
-
-def _echo_pipeline_log(ans, base) -> None:
-    """Where this prep's pipeline log is -- every prep writes one
-    (`script-preparation.md` § 4.5); a refused prep's answer may not say.
-    A line of its own, not indented under what the prep listed: the log is
-    the prep's record, beside its `STAGE-PLAN.md`, not one of the trials or
-    a fact of the attempt."""
-    if ans.pipeline_log is not None:
-        click.echo(f"pipeline log: {Path(ans.pipeline_log).relative_to(base)}")
 
 
 @jobset_group.command("summarize",

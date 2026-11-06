@@ -662,13 +662,13 @@ class Reuse:
         return {key: c for d in self.groups for st, key, c in d.contours
                 if st == stage}
 
-    def lines(self, base) -> List[str]:
+    def lines(self, base, *, preview: bool = False) -> List[str]:
         """The manifest in words, one group after another in the ladder's
-        order, then the totals."""
+        order, then the totals -- a preview's said as what it would do."""
         from ..units import size_words
         base = Path(base)
-        out = [f"reuses {self.reuses} -- what this calculation copies, and "
-               f"what it runs"]
+        out = [f"reuses {self.reuses} -- what this calculation "
+               f"{'would copy' if preview else 'copies'}, and what it runs"]
         copies = [c for d in self.groups for c in d.copies]
         width = max((len(", ".join(d.members)) for d in self.groups),
                     default=0)
@@ -678,7 +678,8 @@ class Reuse:
         for d in self.groups:
             head = f"  group {d.number}  {', '.join(d.members):<{width}}  "
             if d.copied:
-                out.append(head + "copied in")
+                out.append(head + ("would be copied in" if preview
+                                   else "copied in"))
                 for c in d.copies:
                     left = (f"  ({', '.join(c.left)} left behind)"
                             if c.left else "")
@@ -692,7 +693,8 @@ class Reuse:
                                f"{c.shown:<{w_from}}  {c.ended}  "
                                f"{size_words(c.size)}{left}")
             else:
-                out.append(head + "prepared here -- " + d.why[0])
+                out.append(head + ("would be prepared here -- " if preview
+                                   else "prepared here -- ") + d.why[0])
                 out.extend(f"           {w}" for w in d.why[1:])
                 for t in d.takes:
                     out.append(f"           at its first launch, {t.line()}")
@@ -704,36 +706,15 @@ class Reuse:
         size = sum(c.size for c in copies)
         shares = sum(d.shares for d in self.groups)
         if size or shares:
-            out.append(f"  copied now: {size_words(size)}"
+            out.append(f"  {'would copy now' if preview else 'copied now'}: "
+                       f"{size_words(size)}"
                        + (f" -- the transmission's first launch copies "
                           f"{size_words(shares)} into its points' shared/"
                           if shares else "")
-                       + f" -- the next save stores it again: "
+                       + f" -- the next save "
+                         f"{'would store' if preview else 'stores'} it again: "
                          f"{size_words(size + shares)}")
         return out
-
-    def to_wire(self, base) -> dict:
-        return {"reuses": self.reuses, "lines": self.lines(base),
-                "groups": [{"number": d.number, "members": list(d.members),
-                            "copied": d.copied, "why": list(d.why),
-                            "runs": [{"stage": c.stage,
-                                      "run": str(c.run.relative_to(base)),
-                                      "from": c.copied_from,
-                                      "ended": c.ended, "size": c.size,
-                                      "left": list(c.left),
-                                      "unasked": list(c.unasked)}
-                                     for c in d.copies],
-                            "energies": list(d.energies),
-                            "unfinished": list(d.unfinished),
-                            "takes": [{"stage": t.stage, "line": t.line(),
-                                       "why": list(t.why),
-                                       "taken": [{**x.point.to_wire(),
-                                                  "from": x.copied_from}
-                                                 for x in t.taken],
-                                       "walked": [p.to_wire()
-                                                  for p in t.walked]}
-                                      for t in d.takes]}
-                           for d in self.groups]}
 
 
 def tree_of(base) -> Path:

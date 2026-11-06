@@ -651,8 +651,13 @@
     color: var(--text-secondary);
 }
 .ts-prep-answer-head { font-weight: var(--weight-semibold); color: var(--text-primary); }
-.ts-prep-answer-line { overflow-wrap: anywhere; }
-.ts-prep-answer-line[data-state="warn"] { color: var(--warn-soft); }
+/* The terminal's lines, laid out as it prints them: its indents and tables. */
+.ts-prep-answer-line {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+}
 .ts-prep-answer-notes {
     margin: var(--space-xs) 0;
     font-family: var(--font-mono);

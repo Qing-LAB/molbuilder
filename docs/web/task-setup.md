@@ -1630,8 +1630,12 @@ The task's **Prep** and **Prep bench here** reach the same entry
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3) **naming the preview's
 plan**: when the plan it makes now differs — the folder, the machine's record or
 a library file it takes, or molbuilder itself, changed between — it is refused,
-saying to preview again; the door takes no Prep that names none. So the tab shows what the terminal prints,
-from the same answer:
+saying to preview again; the door takes no Prep that names none. **So the tab
+draws the lines the terminal prints, as the server composed them once**
+([`job-system.md`](?doc=execution/job-system.md), *What prep answers*), what the
+whole prep says once above its stages, and keeps no wording of its own for
+them. Above them its one status line says what the button did; beside a
+preview's, the header line for line and the files it would write:
 
 * **the description's preflight notes**, each with its severity — an error
   refuses, in its own words, and nothing is written;
@@ -1647,8 +1651,7 @@ from the same answer:
   [`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
   run** — opened, and what was brought in: the stage's own files — or, on
-  a run of points, each prepared point opened, named as the UI names a point
-  (`lib/results/point-words.js`, `runPointWords`);
+  a run of points, each prepared point, by its words and its folder;
 * **what each stage's first launch will take** — the stage before it's newest
   run, a transport rung's gather — copied at that launch, never at prep;
 * **where it was placed, and the fit of what it sends** — the queue and

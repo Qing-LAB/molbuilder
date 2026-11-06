@@ -123,7 +123,7 @@ class TestInputValidation:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "1\\nA\\nC 0 0 0\\n",
+                            ok: true, text: "1\\nA\\nC 0 0 0\\n",
                             n_atoms: 1,
                         }),
                     };
@@ -168,7 +168,7 @@ class TestHappyPath:
                             },
                             // The flattened rendering rides along and is
                             // deliberately NOT what gets installed.
-                            xyz: "23\\nACD peptide\\nN 0 0 0\\n...\\n",
+                            text: "23\\nACD peptide\\nN 0 0 0\\n...\\n",
                             n_atoms: 23,
                         }),
                     };
@@ -230,7 +230,7 @@ class TestErrorPaths:
                 fetch: async () => ({
                     ok: true,
                     json: async () => ({
-                        ok: true, xyz: "1\\nA\\nC 0 0 0\\n", n_atoms: 1,
+                        ok: true, text: "1\\nA\\nC 0 0 0\\n", n_atoms: 1,
                     }),
                 }),
                 structurePage: {

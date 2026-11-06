@@ -638,3 +638,58 @@ before = [["prep", "task", "--group", "1"]]
 launched = ["coarse", "medium"]
 stage = ""
 refused = ["it offers no group", "molbuilder jobset status"]
+
+# ONE ANSWER, TWO DOORS (`job-system.md`, *What prep answers*): what a person
+# reads is composed once, the terminal printing the lines the page draws.  THE
+# SILENT FAILURE: a door keeping wording of its own -- the page's resources line
+# never said a memory cap, and it said "takes nothing" of a benchmark.
+[[case]]
+name = "both doors say one stage's answer in the same lines, and its preview says them as what it would do -- no state saved, no log written, the header shown line for line beside it"
+run = { max_memory_mb = 2048 }
+both_doors = true
+said = ["memory cap 2048 MB"]
+preview_said = ["would prepare coarse: 01_coarse/run-0", "would bring in: ", "takes nothing from another run", "memory cap 2048 MB"]
+preview_lacks = ["the folder's state was saved first", "pipeline log:", "prepared coarse:", "brought in: H2"]
+
+[[case]]
+name = "both doors say a group's answer in the same lines, what the prep did once standing above its stages -- the state saved, its config -- and its one job after its last member"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+stage = ["coarse", "medium"]
+both_doors = true
+said_once = ["the folder's state was saved first:", "config:", "group 1 -- one job:", "held fixed"]
+said = ["header: -J H2_group-01_coarse-02_medium"]
+preview_said = ["would prepare coarse: 01_coarse/run-0", "would prepare medium: 02_medium/run-0", "group 1 -- one job: coarse, medium"]
+# ...its header's lines shown line for line beside a preview, never again in one.
+preview_lacks = ["header: -J"]
+preview_group_header = ["#SBATCH -J H2_group-01_coarse-02_medium"]
+page_found_once = ["held fixed"]
+
+[[case]]
+name = "both doors say a benchmark's answer in the same lines -- its grid, its trials, its shelves -- and nothing of a stage's first launch, which a trial has none of"
+bench = { mpi_np = [1, 2], omp_threads = [1] }
+both_doors = true
+said = ["bench grid: 2 combination(s) enumerated"]
+said_lacks = ["takes nothing from another run"]
+preview_said = ["bench grid: 2 combination(s) enumerated", "would prepare 2 trial dir(s) for stage 'coarse'"]
+preview_lacks = ["takes nothing from another run", "pipeline log:", "prepared 2 trial dir(s)"]
+
+[[case]]
+name = "both doors name a run of points in the same words -- each point as a message names it, beside its folder -- and walk it as one job"
+calculation = "vibration"
+stage = "freq"
+both_doors = true
+said = ["prepared freq @ the relaxation: 01_freq/run-0/relax", "prepared freq @ the force constants: 01_freq/run-0/fc", "one job walking its 2 calls"]
+preview_said = ["would prepare freq @ the relaxation: 01_freq/run-0/relax", "one job walking its 2 calls"]
+
+[[case]]
+name = "a pick that finds one group as planned and prepares another says each warning once -- and the finding of the one it prepares stays under it, not above as if both said it"
+groups = [1, 2]
+stage_run = { medium = { restart = "clean" } }
+stage = ["coarse", "medium"]
+before = [["prep", "task", "--group", "1"]]
+both_doors = true
+said = ["coarse (01_coarse): prepared, never launched, and already as this prep would prepare it now -- nothing to write (group 1)"]
+said_once = ["held fixed"]
+# ...the page told of the group left as it stands too, as the terminal is.
+page_stage_found = { coarse = ["held fixed"], medium = ["held fixed"] }

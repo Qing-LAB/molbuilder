@@ -141,7 +141,7 @@ class TestHappyPath:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
                             n_atoms: 5,
                         }),
                     };
@@ -177,7 +177,7 @@ class TestBackendSelection:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "20\\ndna\\nC 0 0 0\\n",
+                            ok: true, text: "20\\ndna\\nC 0 0 0\\n",
                             n_atoms: 20, backend_used: "rdkit",
                         }),
                     };
@@ -200,7 +200,7 @@ class TestBackendSelection:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
                             n_atoms: 5, backend_used: "rdkit",
                         }),
                     };
@@ -300,7 +300,7 @@ class TestZFormGuard:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
                             n_atoms: 5, backend_used: "threedna",
                         }),
                     };
@@ -326,7 +326,7 @@ class TestZFormGuard:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
                             n_atoms: 5, backend_used: "rdkit",
                         }),
                     };
@@ -373,7 +373,7 @@ class TestErrorPaths:
                 fetch: async () => ({
                     ok: true,
                     json: async () => ({
-                        ok: true, xyz: "1\\nx\\nC 0 0 0\\n",
+                        ok: true, text: "1\\nx\\nC 0 0 0\\n",
                         n_atoms: 1,
                     }),
                 }),

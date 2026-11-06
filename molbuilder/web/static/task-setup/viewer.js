@@ -27,7 +27,6 @@ import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
 import { clear as clearFindings,
          render as renderFindings } from "../lib/validation-findings.js";
 import { renderFrameSet } from "../lib/frameset/card.js";
-import { runPointWords } from "../lib/results/point-words.js";
 import { fitRow } from "../lib/transport/fit.js";
 // THE PAGE'S FENCE (`ui-contract.md` § 10): every card edit, Save, Preview
 // and Prep takes it.
@@ -3223,7 +3222,8 @@ function taskPrepCard(task) {
         for (const st of g.members) {
             const r = said[st] || {};
             const detail = el("span", { class: "ts-plan-detail" },
-                              codeWords(r.detail || ""));
+                codeWords([r.detail, r.scratch].filter(Boolean)
+                          .join(" \u00b7 ")));
             if (r.why) detail.title = r.why;
             members.appendChild(el("li", {},
                 el("span", { class: "ts-planrow" },
@@ -3763,220 +3763,83 @@ async function _prepCall(kind, picks, plan, planId) {
     }
 }
 
-/** Show the entry's answer under its buttons: a refusal, or each picked
- *  stage's answer in order -- a group's members one after another, the
- *  command line's report from the same data (`_echo_prep_answer`). */
+/** One box of the entry's answer: its findings through the one renderer
+ *  (science/validation.md § 4.1 R2), then its lines as the terminal prints
+ *  them, composed once by the server (`job-system.md`, *What prep answers*);
+ *  ``head`` names the stage when it is one of several. */
+function _prepAnswerBox(wrap, { head, findings, lines }) {
+    const box = el("div", { class: "ts-prep-answer" });
+    if (head) box.appendChild(el("div", { class: "ts-prep-answer-head" }, head));
+    for (const list of findings) {
+        if (!(list || []).length) continue;
+        const ul = el("ul", { class: "issues-panel" });
+        renderFindings(list, { panel: ul });
+        box.appendChild(ul);
+    }
+    for (const text of lines || []) {
+        box.appendChild(el("div", { class: "ts-prep-answer-line" },
+                           codeWords(text)));
+    }
+    if (box.childNodes.length) wrap.appendChild(box);
+}
+
+/** Show the entry's answer under its buttons: a refusal, with what it points
+ *  at -- the preflight's notes and what the inputs said -- beside its own
+ *  sentence (a refused prep wrote nothing, `job-system.md` § 5.0), or what the
+ *  prep says once, then each picked stage's own answer in order. */
 function _showPrepAnswers(wrap, say, r) {
     for (const old of wrap.querySelectorAll(".ts-prep-answer")) old.remove();
-    if (!r.ok) return _showPrepAnswer(wrap, say, r);
+    if (!r.ok) {
+        say.textContent = "";
+        say.append(codeWords(r.error));
+        say.setAttribute("data-state", "bad");
+        _prepAnswerBox(wrap, { findings: [r.findings], lines: r.notes });
+        return;
+    }
     const all = r.answers || [];
+    _prepAnswerBox(wrap, { findings: [(r.above || {}).findings],
+                           lines: (r.above || {}).lines });
     for (const a of all) {
-        _showPrepAnswer(wrap, say, Object.assign({ ok: true }, a),
-                        all.length > 1 ? a.stage : null);
+        _prepAnswerBox(wrap, { head: all.length > 1 ? a.stage : null,
+                               findings: [a.findings, a.deck_findings],
+                               lines: a.lines });
     }
-    /* WHAT A CALCULATION THAT REUSES A FINISHED ONE COPIES, AND WHAT IT
-     * RUNS -- the manifest, once, above the stages' answers: the terminal's
-     * lines, from the same answer (task-setup.md § 11.1;
-     * engines/transport.md § 2a.16). */
-    const copied = all.length && all[0].copied;
-    if (copied && (copied.lines || []).length) {
-        wrap.insertBefore(el("div", { class: "ts-prep-answer" },
-            el("div", { class: "ts-prep-answer-head" },
-               all[0].preview ? "What it would copy, and what it runs"
-                              : "What it copied, and what it runs"),
-            el("pre", { class: "ts-cmd" }, copied.lines.join("\n"))),
-            wrap.querySelector(".ts-prep-answer"));
-    }
+    say.setAttribute("data-state", "ok");
     const written = all.filter((a) => !a.unchanged);
-    if (all.length && !written.length) {
+    if (!written.length) {
         /* EVERY GROUP PICKED ALREADY AS THIS PREP PLANS IT: nothing to
          * write, and nothing to Prep (`job-system.md` § 5.0, checkpoint
          * 2a). */
-        say.textContent = "Nothing to write \u2014 every group picked is "
+        say.textContent = "Nothing to write — every group picked is "
             + "already prepared as this prep would prepare it now.";
-        say.setAttribute("data-state", "ok");
-    } else if (written.length > 1 && say.getAttribute("data-state") === "ok") {
+        return;
+    }
+    const first = written[0];
+    const would = first.preview;
+    if (written.length > 1) {
         /* EACH GROUP ONE JOB, as the saved description groups them. */
         const named = written.map((a) => a.stage);
         const jobs = (_fs.groups.groups || [])
             .filter((g) => g.members.some((st) => named.indexOf(st) !== -1))
             .map((g) => "group " + g.number + " (" + g.members.join(", ")
                         + ")");
-        say.textContent = (written[0].preview ? "Previewed " : "Prepared ")
+        say.textContent = (would ? "Previewed " : "Prepared ")
             + (jobs.length ? jobs.join(", ") + ", each one job,"
                            : named.join(", "))
-            + " for " + written[0].machine
-            + (written[0].preview ? " — nothing is written until Prep." : ".");
-    }
-    /* WHAT COMES NEXT is the card's own list, each group's next step from
-     * the folder read again after the Prep (§ 11) -- said once. */
-}
-
-/** Show one stage's prep answer -- the command line's report, from the
- *  same data (`job-system.md` § 5.0, `task-setup.md` § 11.1); ``head``
- *  names the stage when it is one of a group's. */
-function _showPrepAnswer(wrap, say, r, head) {
-    const box = el("div", { class: "ts-prep-answer" });
-    const line = (text, state) => {
-        const d = el("div", { class: "ts-prep-answer-line" },
-                     codeWords(text));
-        if (state) d.setAttribute("data-state", state);
-        box.appendChild(d);
-        return d;
-    };
-    /* THE FINDINGS, through the one renderer (science/validation.md § 4.1
-     * R2) -- the preflight's, and the settings gate's on each deck. */
-    const findingLines = (list) => {
-        if (!(list || []).length) return;
-        const ul = el("ul", { class: "issues-panel" });
-        renderFindings(list, { panel: ul });
-        box.appendChild(ul);
-    };
-    if (head) box.appendChild(el("div", { class: "ts-prep-answer-head" }, head));
-    findingLines(r.findings);
-    if ((r.notes || []).length) {
-        box.appendChild(el("pre", { class: "ts-prep-answer-notes" },
-                           r.notes.join("\n")));
-    }
-    if (!r.ok) {
-        /* A REFUSAL SHOWS WHAT IT POINTS AT: the preflight's notes and what
-         * the inputs said -- a bench's cells left out -- beside its own
-         * sentence.  A refused prep wrote nothing (`job-system.md` § 5.0). */
-        say.textContent = "";
-        say.append(codeWords(r.error));
-        say.setAttribute("data-state", "bad");
-        if (box.childNodes.length) wrap.appendChild(box);
+            + " for " + first.machine
+            + (would ? " — nothing is written until Prep." : ".");
         return;
     }
-    findingLines(r.deck_findings);
-    /* NOTHING TO WRITE: a stage of a group already as this prep plans it
-     * -- its sentence, nothing else (`job-system.md` § 5.0, checkpoint
-     * 2a). */
-    if (r.unchanged) {
-        line(r.unchanged, "ok");
-        wrap.appendChild(box);
-        return;
-    }
-    /* A PREVIEW IS SAID AS ONE: what prep WOULD do, nothing yet written
-     * (`job-system.md` § 5.0) -- the same lines, from the same answer. */
-    const would = !!r.preview;
-    // THE STATE A REDO RESTORES, named where the person reads it -- saved
-    // now, or the one the folder already stood at (`checkpointing.md` § 9).
-    if (r.saved) line(r.saved);
-    const dirs = r.dirs || [];
+    const dirs = first.dirs || [];
     say.textContent = would
-        ? "Previewed for " + r.machine + " — nothing is written until Prep."
-        : "Prepared for " + r.machine + " — "
+        ? "Previewed for " + first.machine
+          + " — nothing is written until Prep."
+        : "Prepared for " + first.machine + " — "
           + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")
           + ": " + dirs.slice(0, 3).join(", ")
           + (dirs.length > 3 ? ", …" : "");
-    say.setAttribute("data-state", "ok");
-    /* PREPARED AGAIN, never launched: what of it differed from what this
-     * prep writes now (`job-system.md` § 5.0, checkpoint 2a). */
-    if ((r.differs || []).length) {
-        line((would ? "would prepare it again \u2014 " : "prepared again \u2014 ")
-             + "differed from what was prepared: " + r.differs.join(", "));
-    }
-    /* A STAGE COPIED IN from the finished calculation this one reuses:
-     * its runs are the copies (engines/transport.md \u00a7 2a.16). */
-    const copies = ((r.copied || {}).groups || [])
-        .flatMap((g) => g.runs || []).filter((x) => x.stage === r.stage);
-    if (copies.length) {
-        line((would ? "would copy " : "copied ") + r.stage + " in \u2014 "
-             + copies.map((x) => x.run + " \u2190 " + x.from).join(", ")
-             + "; its next launch opens its next run with these files");
-    } else if (r.launched) {
-        /* A LAUNCHED STAGE PREPARED AGAIN for its job request: no run
-         * opened, its runs kept (`execution/job-request.md` § 5) -- the
-         * terminal's line. */
-        line((would ? "would prepare " : "prepared ") + r.stage
-             + " again: launched \u2014 its runs are kept, and its next "
-             + "launch opens its next run with these files");
-    }
-    const a = r.attempt;
-    if (a) {
-        line((would ? "would open run " : "Run ") + a.dir
-             + (a.fresh ? "" : " (reused — not launched yet)"));
-        line((would ? "would bring in: " : "brought in: ")
-             + (a.brought || []).join(", "));
-    }
-    for (const p of (r.points || [])) {
-        /* THE POINT IT IS, named as everywhere in the UI (point-words.js):
-         * a vibration's call by its phase, a transport point by its frame
-         * and its voltage. */
-        const at = runPointWords(p);
-        line((would ? "would open " : "opened ") + p.attempt
-             + (at ? " \u2014 " + at : ""));
-    }
-    /* A FORCE-CONSTANT STAGE'S `relax` RUN, its deck written at it -- the
-     * server's line (`Continuation.line`, `engines/vibration.md` § 5.2a). */
-    if (r.continuation) line("written at: " + r.continuation.line);
-    /* WHAT ITS FIRST LAUNCH WILL TAKE, the terminal's own lines
-     * (`job-system.md` § 5.0, *a preview*): nothing is copied at prep. */
-    for (const t of (r.takes || [])) line(t.line);
-    if (!(r.takes || []).length && !r.continuation) {
-        line("takes nothing from another run"
-             + (r.linked ? "" : " (the first stage, or one that starts clean)"));
-    }
-    /* WHERE IT WAS PLACED, where each value came from, and the FIT of what
-     * it sends -- a run of points', its walk's -- then the header that job
-     * is sent with: the server's lines, the ones the terminal prints
-     * (`job-system.md` § 6.0; `scheduler.md` R6: shown, never a veto).  A
-     * member of a group of several is sent in the group's one job, said
-     * after its last member. */
-    if (r.placement && r.placement.line) line(r.placement.line);
-    if (r.placement && r.placement.fit) line(r.placement.fit);
-    // NO HEADER: where each value it states came from, in its place.
-    if (!r.placement && r.stated) line(r.stated);
-    /* THE MEMORY IT NEEDS at the ranks it is prepared with -- the terminal's
-     * line (`job-request.md` § 3.1a): a hint, refusing nothing. */
-    if (r.need) line("memory need: " + r.need.line);
-    if (r.launch && !r.group) {
-        // A RUN OF POINTS' ONE JOB, in the words prep composed for both
-        // doors (`prep.walk_words`) -- and the header in one line where no
-        // block shows it line for line: a Prep's answer, not a preview's.
-        if (r.launch.walk) line(r.launch.walk);
-        if (r.launch.said && !would) line(r.launch.said);
-    }
-    /* A BENCHMARK'S SHELVES, each the one job its launch sends, with its
-     * fit on the benchmark's queue. */
-    for (const sh of (r.shelves || [])) {
-        line(sh.name + "  " + sh.said);
-        if (sh.fit) line(sh.fit);
-    }
-    /* A GROUP'S ONE JOB, once, after its last member. */
-    const grp = r.group;
-    if (grp && r.stage === grp.members[grp.members.length - 1]) {
-        line("group " + grp.number + " -- one job: " + grp.members.join(", ")
-             + ", one after another (their walls summed, the largest memory)"
-             + (grp.header ? "; its header: " + grp.header : ""));
-        if (grp.launch.said) line(grp.launch.said);
-        if (grp.launch.fit) line(grp.launch.fit);
-        if (grp.need) line("memory need: " + grp.need.line);
-    }
-    if (r.resources) {
-        const rs = r.resources;
-        // WHAT IS STATED, and nothing else -- the terminal's line
-        // (`_echo_prep_answer`): no launch value is left to a wrapper, and a
-        // PySCF run has no rank count at all.
-        const asks = [["mpi_np", rs.mpi_np], ["omp", rs.cpus_per_task]]
-            .filter(([, v]) => v).map(([k, v]) => k + " " + v);
-        if (asks.length) line("resources: " + asks.join(" | "));
-    }
-    /* WHICH FILES ANSWERED, as the prep read them with the machine's record
-     * (`configuration.md` § 2.2): the first found is the record that won.
-     * The terminal prints the table. */
-    const prov = r.provenance;
-    if (prov && (prov.sources || []).length) {
-        const found = prov.sources.filter((s) => s.found)
-            .map((s) => s.path + (s.via ? " (" + s.via + ")" : ""));
-        if (found.length) line("read from: " + found.join(", "));
-        if ((prov.domains || []).length) {
-            line("its queues: " + prov.domains.join(", "));
-        }
-    }
-    if (r.pipeline_log && !would) line("pipeline log: " + r.pipeline_log);
-    if (box.childNodes.length) wrap.appendChild(box);
+    /* WHAT COMES NEXT is the card's own list, each group's next step from
+     * the folder read again after the Prep (§ 11) -- said once. */
 }
 
 /* ---------- the machine rows ---------- */
@@ -4178,7 +4041,7 @@ function setMachine(name) {
      * `molbuilder.json`, which no machine choice changes.  Which machine
      * RECORD answers does depend on the choice -- and on whether the
      * calculation has its copy yet -- so it is the prep answer's, a
-     * preview's too (`_showPrepAnswer`), never this card's. */
+     * preview's too (`_showPrepAnswers`), never this card's. */
     /* AND THE COMMANDS THEMSELVES.  The machine reaches each stage's
      * lines at RENDER time (`commandsFor` asks the server with it), and
      * `renderNext` runs from `loadFolder` -- which finishes before anyone
@@ -4677,7 +4540,7 @@ function paintNotifyNote() {
  *
  * A PURE RENDER.  This machine's `molbuilder.json` is the same whatever the
  * folder is prepared for, so it comes with the rest of the folder's answer;
- * which machine RECORD answers is the prep answer's (`_showPrepAnswer`),
+ * which machine RECORD answers is the prep answer's (`_showPrepAnswers`),
  * since it turns on the machine a prep names.
  */
 function renderResolved(d) {

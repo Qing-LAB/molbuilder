@@ -655,7 +655,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
                     "only the CPU family.")
             else:
                 raise PrepError(
-                    "no GPU cell is left -- see the cells left out above.  "
+                    "no GPU cell is left -- see the cells left out.  "
                     f"Raise this prep's ask, or change mpi_np / gpu_count in "
                     f"{JOB_REQUEST_FILE}.")
         cells.extend((fam, cell) for cell in fcells)
@@ -667,7 +667,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # `job-set.json`'s per-trial ``point``.
     if not cells:
         raise PrepError(
-            "no bench cell is left -- see the cells left out above.  Raise "
+            "no bench cell is left -- see the cells left out.  Raise "
             f"this prep's ask, or change the bench in {JOB_REQUEST_FILE}.")
     combos = [{}]
     for name, vals in value_axes.items():

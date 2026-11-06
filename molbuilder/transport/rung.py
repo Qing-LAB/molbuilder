@@ -293,19 +293,26 @@ def junction_record(calc):
 def frames_had(calc, *, read=None) -> int:
     """HOW MANY FRAMES THE JUNCTION THIS CALCULATION HAS OR WILL HAVE HOLDS
     -- its record's, on disk or in a prep's plan (`stages.frames_of`,
-    ``read``); an extension's before its first prep has written one, the
+    ``read``).  Before its first prep has written one: an extension's, the
     junction that prep will take (:func:`junction_record`;
-    `engines/transport.md` § 2a.16).  A junction that prep would refuse is
-    the prep's to say: until then the record's count answers."""
-    from .compose import read_provenance
+    `engines/transport.md` § 2a.16); any other's, what its citation holds
+    (`compose.cited_frames`).  A junction that prep would refuse is the
+    prep's to say: until then the record's count answers."""
+    from ..projects import find_projects_root
+    from .compose import cited_frames, read_provenance
     from .stages import frames_of
-    if calc.task.reuses and read_provenance(calc.base, read=read) is None:
-        try:
-            composed = junction_record(calc)[0]
-        except PrepError:
-            composed = None
-        if composed is not None:
-            return composed.junction.n_frames
+    if read_provenance(calc.base, read=read) is None:
+        if calc.task.reuses:
+            try:
+                composed = junction_record(calc)[0]
+            except PrepError:
+                composed = None
+            if composed is not None:
+                return composed.junction.n_frames
+        root = find_projects_root(calc.base)
+        citation = citation_of(calc.task)
+        if root is not None and citation:
+            return int(cited_frames(citation, root)["n_frames"] or 1)
     return frames_of(calc.base, read=read)
 
 

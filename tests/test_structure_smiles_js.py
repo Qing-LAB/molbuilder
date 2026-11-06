@@ -122,7 +122,7 @@ class TestLazyResolve:
             root.fetch = async () => ({
                 ok: true,
                 json: async () => ({
-                    ok: true, xyz: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
+                    ok: true, text: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
                 }),
             });
             const r = await smiles.generate("C");
@@ -215,7 +215,7 @@ class TestHappyPath:
                             },
                             // The flattened rendering rides along and is
                             // deliberately NOT what gets installed.
-                            xyz: "3\\nethanol\\nC 0 0 0\\nC 1 0 0\\nO 2 0 0\\n",
+                            text: "3\\nethanol\\nC 0 0 0\\nC 1 0 0\\nO 2 0 0\\n",
                             n_atoms: 3,
                             title: "ethanol",
                         }),
@@ -265,7 +265,7 @@ class TestHappyPath:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "1\\nC\\nC 0 0 0\\n",
+                            ok: true, text: "1\\nC\\nC 0 0 0\\n",
                             n_atoms: 1,
                         }),
                     };
@@ -359,7 +359,7 @@ class TestCanvasGate:
                 fetch: async () => ({
                     ok: true,
                     json: async () => ({
-                        ok: true, xyz: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
+                        ok: true, text: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
                     }),
                 }),
                 structurePage: {
@@ -419,7 +419,7 @@ class TestCanvasGate:
                 fetch: async () => ({
                     ok: true,
                     json: async () => ({
-                        ok: true, xyz: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
+                        ok: true, text: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
                     }),
                 }),
                 structurePage: {

@@ -4656,12 +4656,13 @@ def reused(junction, tmp_path_factory):
 
 def _copied_in(plan: str) -> list:
     """The groups a plan says are copied in, each by its own line --
-    `group N  <members>  copied in` (`engines/transport.md` § 2a.16, *The
-    manifest*) -- never a count of the words, which a group prepared here
-    may say of a stage it takes inputs from."""
+    `group N  <members>  copied in`, or `would be copied in` before anything
+    is written (`engines/transport.md` § 2a.16, *The manifest*) -- never a
+    count of the words, which a group prepared here may say of a stage it
+    takes inputs from."""
     import re
     return [int(m.group(1)) for m in re.finditer(
-        r"^\s*group (\d+)  .*  copied in$", plan, re.M)]
+        r"^\s*group (\d+)  .*  (?:would be )?copied in$", plan, re.M)]
 
 
 def _runs_of(made, stage):

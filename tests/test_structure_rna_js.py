@@ -142,7 +142,7 @@ class TestHappyPath:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
                             n_atoms: 5,
                         }),
                     };
@@ -172,7 +172,7 @@ class TestHappyPath:
                     return {
                         ok: true,
                         json: async () => ({
-                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
                             n_atoms: 5,
                         }),
                     };
@@ -219,7 +219,7 @@ class TestErrorPaths:
                 fetch: async () => ({
                     ok: true,
                     json: async () => ({
-                        ok: true, xyz: "1\\nx\\nC 0 0 0\\n",
+                        ok: true, text: "1\\nx\\nC 0 0 0\\n",
                         n_atoms: 1,
                     }),
                 }),

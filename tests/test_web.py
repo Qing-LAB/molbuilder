@@ -161,14 +161,14 @@ def test_build_dna(web_client):
     r = web_client.post("/api/build/molecule", json={"kind": "dna", "input": "ATGC"})
     body = r.get_json()
     assert body["ok"] is True
-    assert body["n_residues"] == 4
+    assert len(set(body["residue_ids"])) == 4
 
 
 def test_build_rna(web_client):
     r = web_client.post("/api/build/molecule", json={"kind": "rna", "input": "AUGC"})
     body = r.get_json()
     assert body["ok"] is True
-    assert "P" in body["elements"]
+    assert "P" in body["structure"]["elements"]
 
 
 def test_build_smiles_optional(web_client):
@@ -193,7 +193,7 @@ def peptide_xyz(web_client):
     """xyz string of an ARNDC peptide via the build endpoint."""
     r = web_client.post("/api/build/molecule",
                         json={"kind": "peptide", "input": "ARNDC"})
-    return r.get_json()["xyz"]
+    return r.get_json()["text"]
 
 
 _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
@@ -421,32 +421,27 @@ def test_build_load_response_includes_atom_metadata(web_client):
 # --------------------------------------------------------------------- #
 #  Phase 2: every Structure-returning endpoint emits the canonical      #
 #  workspace_payload shape (text / source_format / lattice / extra)     #
-#  alongside the legacy aliases.                                        #
+#  alongside the per-atom columns.                                      #
 # --------------------------------------------------------------------- #
 
 _CANONICAL_KEYS = {
     "text", "source_format", "title", "n_atoms",
     "atoms", "lattice", "issues", "extra",
 }
-_LEGACY_ALIAS_KEYS = {
-    "xyz", "elements", "atom_names", "residue_ids",
-    "residue_names", "chain_ids", "n_residues",
+_ATOM_COLUMN_KEYS = {
+    "atom_names", "residue_ids", "residue_names", "chain_ids",
 }
 
 
 def _assert_canonical_workspace_shape(body, *, endpoint):
-    """Every endpoint returns the canonical + legacy keys."""
+    """Every endpoint returns the canonical keys and the atom columns."""
     for k in _CANONICAL_KEYS:
         assert k in body, (
             f"{endpoint}: canonical key {k!r} missing — "
             f"Phase 2 workspace_payload contract broken")
-    for k in _LEGACY_ALIAS_KEYS:
+    for k in _ATOM_COLUMN_KEYS:
         assert k in body, (
-            f"{endpoint}: legacy alias {k!r} missing — "
-            f"existing modify-tab front-end will break")
-    assert body["xyz"] == body["text"], (
-        f"{endpoint}: legacy xyz alias must equal canonical text"
-    )
+            f"{endpoint}: the column {k!r} a viewer folds in is missing")
     assert isinstance(body["extra"], dict), (
         f"{endpoint}: canonical extra must be a dict, not "
         f"{type(body['extra']).__name__}"
@@ -456,7 +451,7 @@ def _assert_canonical_workspace_shape(body, *, endpoint):
 def test_build_load_returns_workspace_payload(web_client):
     """Phase 2 of the workspace-state migration (§ 6 step 2):
     /api/build/load emits the canonical workspace_payload shape
-    (text/source_format/lattice/extra) alongside the legacy aliases
+    (text/source_format/lattice/extra) alongside the per-atom columns
     that existing front-end code reads.  Endpoint extras
     (pdb, summary, source_format) live BOTH at top level (back-
     compat) AND inside the canonical extra sub-dict (Phase 4+
@@ -609,7 +604,7 @@ def test_modify_delete_drops_listed_indices(web_client):
     body = r.get_json()
     assert body["ok"] is True
     assert body["n_atoms"] == 1
-    assert body["elements"] == ["O"]
+    assert body["structure"]["elements"] == ["O"]
 
 
 def test_modify_responses_carry_atoms_list(web_client):
@@ -670,7 +665,7 @@ def test_modify_add_atom_appends_at_offset(web_client):
     body = r.get_json()
     assert body["ok"] is True
     assert body["n_atoms"] == 4
-    assert body["elements"][-1] == "H"
+    assert body["structure"]["elements"][-1] == "H"
     # New atom lands in a fresh residue named MOD (default).
     assert body["residue_names"][-1] == "MOD"
 
@@ -690,9 +685,9 @@ def test_modify_add_atom_without_anchor_measures_from_the_origin(web_client):
     body = r.get_json()
     assert body["ok"] is True, body
     assert body["n_atoms"] == 4
-    assert body["elements"][-1] == "S"
+    assert body["structure"]["elements"][-1] == "S"
     # The offset IS the position -- read it back off the xyz the route returns.
-    x, y, z = [float(v) for v in body["xyz"].splitlines()[-1].split()[1:4]]
+    x, y, z = [float(v) for v in body["text"].splitlines()[-1].split()[1:4]]
     assert (round(x, 6), round(y, 6), round(z, 6)) == (1.25, -0.5, 2.0)
 
 
@@ -850,7 +845,7 @@ def test_modify_orient_default_lays_anchor_pair_along_z(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    coords = _coords_from_xyz(body["xyz"])
+    coords = _coords_from_xyz(body["text"])
     a0, a3 = coords[0], coords[3]
     # x and y of the anchors collapse to ~0 (vector lies along z).
     assert abs(a0[0]) < 1e-6 and abs(a0[1]) < 1e-6
@@ -880,7 +875,7 @@ def test_modify_rotate_z_90_degrees(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    coords = _coords_from_xyz(body["xyz"])
+    coords = _coords_from_xyz(body["text"])
     # atom 1 was at (1, 1, 0); after a +90° rotation around z it
     # becomes (-1, 1, 0).
     assert abs(coords[1][0] - (-1.0)) < 1e-6, coords[1]
@@ -921,7 +916,7 @@ def test_modify_translate_recenter_puts_centroid_at_origin(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    coords = _coords_from_xyz(body["xyz"])
+    coords = _coords_from_xyz(body["text"])
     cx = sum(c[0] for c in coords) / len(coords)
     cy = sum(c[1] for c in coords) / len(coords)
     cz = sum(c[2] for c in coords) / len(coords)
@@ -956,7 +951,7 @@ def test_modify_translate_recenter_centres_THE_GROUP_and_moves_only_it(web_clien
     })
     body = r.get_json()
     assert body["ok"] is True, body
-    out = _coords_from_xyz(body["xyz"])
+    out = _coords_from_xyz(body["text"])
     assert abs(out[0][0] + 0.5) < 1e-9 and abs(out[0][1] + 0.5) < 1e-9, out[0]
     assert abs(out[1][0] - 0.5) < 1e-9 and abs(out[1][1] - 0.5) < 1e-9, out[1]
     # The atoms outside the group are the point: they stay put.
@@ -977,7 +972,7 @@ def test_modify_translate_recenter_with_no_group_is_one_rigid_move(web_client):
                   "indices": []}):
         r = web_client.post("/api/modify/translate", json=body).get_json()
         assert r["ok"] is True, r
-        both.append(r["xyz"])
+        both.append(r["text"])
     assert both[0] == both[1], "an empty group must mean the whole structure"
 
 
@@ -1029,7 +1024,7 @@ def test_modify_translate_offset_shifts_every_atom_by_delta(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    out = _coords_from_xyz(body["xyz"])
+    out = _coords_from_xyz(body["text"])
     src = _coords_from_xyz(_LINEAR_XYZ)
     for s, o in zip(src, out):
         assert abs(o[0] - s[0] - 10.0) < 1e-9
@@ -1046,7 +1041,7 @@ def test_modify_translate_recenter_wins_over_dxdydz(web_client):
         "recenter": True,
         "dx": 999.0, "dy": -999.0, "dz": 999.0,
     })
-    coords = _coords_from_xyz(r.get_json()["xyz"])
+    coords = _coords_from_xyz(r.get_json()["text"])
     cx = sum(c[0] for c in coords) / len(coords)
     # Centroid at origin -- the dx/dy/dz fields were ignored.
     assert abs(cx) < 1e-9, cx
@@ -1059,7 +1054,7 @@ def test_modify_translate_zero_default_is_a_noop(web_client):
     body = r.get_json()
     assert body["ok"] is True
     src = _coords_from_xyz(_LINEAR_XYZ)
-    out = _coords_from_xyz(body["xyz"])
+    out = _coords_from_xyz(body["text"])
     for s, o in zip(src, out):
         for a, b in zip(s, o):
             assert abs(a - b) < 1e-12

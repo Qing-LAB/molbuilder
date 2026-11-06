@@ -530,7 +530,11 @@ def calls_made(calls: Path):
 # its ledger holds and does not hold (`ledger_holds`, `ledger_lacks` -- a
 # decision, or a verb's, `"launch continues"`; in `ledger_holds`, a table
 # names one with its facts, `{decision = "launch launched", time = "3h"}`);
-# a prep that was not refused says nothing of `said_lacks`.
+# a prep that was not refused says nothing of `said_lacks`, and each of
+# `said_once` once.  `both_doors`: the page's prep door on the same folder as it
+# stood serves the lines the terminal printed (`_road_both_doors`:
+# `preview_said`, `preview_lacks`, `preview_group_header`, `page_found_once`,
+# `page_stage_found`).
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
 # `save_refused`'s words, with `save_status`, 409 unless the row says (400:
@@ -831,6 +835,69 @@ def _road_changed(case, bundle) -> bool:
         else:
             request[key] = value
     return _saved_or_refused(case, bundle, task, request)
+
+
+def _road_both_doors(case, kind, named, target, twin, bundle, printed) -> None:
+    """The page's prep door on ``twin``, the folder as the terminal's prep
+    found it: its preview said as what it would do (``preview_said``,
+    ``preview_lacks``), then every line it serves is one the terminal printed,
+    in order, none between them -- a state's id and its time apart, which are
+    each prep's own (`job-system.md`, *What prep answers*); a finding of
+    ``page_found_once`` is drawn once, above the stages or on one, and one of
+    ``page_stage_found`` under its stage; a preview's last member holds its
+    group's header lines, ``preview_group_header``, what the page shows of the
+    group line for line."""
+    import re
+    from molbuilder.web.app import create_app
+    client = create_app(config={}).test_client()
+    pick = ({"stages": list(named)} if kind == "bench"
+            else {"groups": [int(n) for n in named if n != "--group"]})
+    body = dict(pick, dest=str(twin), kind=kind, target=target)
+
+    def lines_of(answer):
+        return (answer["above"]["lines"]
+                + [line for a in answer["answers"] for line in a["lines"]])
+
+    preview = client.post("/api/task-setup/prep",
+                          json=dict(body, plan=True)).get_json()
+    assert preview["ok"], preview
+    said = "\n".join(lines_of(preview))
+    for words in case.get("preview_said", []):
+        assert words in said, said
+    for words in case.get("preview_lacks", []):
+        assert words not in said, said
+    for words in case.get("preview_group_header", []):
+        assert words in preview["answers"][-1]["group"]["launch"]["header"], \
+            preview["answers"][-1]
+    done = client.post("/api/task-setup/prep",
+                       json=dict(body, plan_id=preview["plan_id"])).get_json()
+    assert done["ok"], done
+
+    def plain(line):
+        return re.sub(r"(saved first: )\S+ -- \S+ \S+", r"\1",
+                      line.replace(str(twin), str(bundle)))
+
+    served = [plain(line) for line in lines_of(done)]
+    terminal = [plain(line) for line in printed.splitlines()]
+    # ...FROM THE STATE IT SAVED TO THE NEXT STEP: nothing the terminal says of
+    # the prep left out of what the page is served.
+    start = next((i for i, line in enumerate(terminal)
+                  if line.startswith("the folder's state was")), None)
+    end = next((i for i, line in enumerate(terminal) if i > (start or 0)
+                and line.startswith(("next --", "each group, and what is next"))),
+               None)
+    assert start is not None and end is not None and (
+        terminal[start:end] == served), (served, terminal)
+    found = [f["message"] for f in done["above"]["findings"]]
+    for a in done["answers"]:
+        found += [f["message"] for f in a["findings"] + a["deck_findings"]]
+    for words in case.get("page_found_once", []):
+        assert sum(words in message for message in found) == 1, found
+    for stage, want in case.get("page_stage_found", {}).items():
+        (one,) = [a for a in done["answers"] if a["stage"] == stage]
+        own = [f["message"] for f in one["findings"] + one["deck_findings"]]
+        for words in want:
+            assert any(words in message for message in own), (stage, own)
 
 
 def _road_saved(case, bundle) -> None:
@@ -1582,6 +1649,12 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     kept = {where: _as_written(bundle / where)
             for where in case.get("kept", [])}
     named = _named(kind, case.get("stage", "coarse"), bundle)
+    # THE SAME FOLDER FOR THE PAGE'S DOOR, as it stands before this prep.
+    twin = None
+    if case.get("both_doors"):
+        import shutil
+        twin = bundle.with_name(bundle.name + "-page")
+        shutil.copytree(bundle, twin)
     r = jobset("prep", kind, *named, "--bundle", bundle,
                "--target", target, *case.get("prep", []),
                input=case.get("answers"))
@@ -1607,6 +1680,10 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         assert words in r.output, _one_line(r)
     for words in case.get("said_lacks", []):
         assert words not in r.output, _one_line(r)
+    for words in case.get("said_once", []):
+        assert r.output.count(words) == 1, (words, _one_line(r))
+    if twin is not None:
+        _road_both_doors(case, kind, named, target, twin, bundle, r.output)
     _road_after_prep(case, bundle)
     _road_saved(case, bundle)
 

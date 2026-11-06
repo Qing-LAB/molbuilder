@@ -166,30 +166,28 @@ class TestWorkspacePayloadCanonicalKeys:
         assert payload["extra"]["backend_used"] == "rdkit"
 
 
-class TestStructureToDictLegacyShim:
-    """structure_to_dict keeps the legacy wire shape, routed through
-    workspace_payload.  Pin that:
+class TestStructureToDict:
+    """structure_to_dict routes through workspace_payload.  Pin that:
 
-      1. Legacy keys still emit (the modify-tab front-end reads them).
+      1. The keys a viewer reads are emitted.
       2. The canonical keys are ALSO emitted.
       3. ``atoms`` is the same list workspace_payload exposes
          (single source of truth across both helpers).
     """
 
-    def test_emits_every_legacy_key(self):
+    def test_emits_every_key_a_viewer_reads(self):
         d = structure_to_dict(_h2o())
-        legacy = {
-            "xyz", "elements", "atom_names", "residue_ids",
-            "residue_names", "chain_ids", "n_atoms", "n_residues",
-            "title", "atoms",
+        read = {
+            "atom_names", "residue_ids", "residue_names", "chain_ids",
+            "n_atoms", "title", "atoms",
         }
-        missing = legacy - set(d.keys())
+        missing = read - set(d.keys())
         assert not missing, (
-            f"structure_to_dict dropped legacy keys "
-            f"the modify-tab front-end reads: {sorted(missing)}"
+            f"structure_to_dict dropped keys a viewer reads: "
+            f"{sorted(missing)}"
         )
 
-    def test_emits_canonical_keys_alongside_legacy(self):
+    def test_emits_the_canonical_keys(self):
         """Every key the canonical door sends -- the second serializer adds
         to it, never re-lists it.  THE SILENT FAILURE (2.65.0, found
         headless): a hand-listed copy of the canonical keys dropped the
@@ -201,10 +199,6 @@ class TestStructureToDictLegacyShim:
             f"Phase-2-ready consumers won't be able to read them: "
             f"{sorted(missing)}"
         )
-
-    def test_xyz_alias_equals_canonical_text(self):
-        d = structure_to_dict(_h2o())
-        assert d["xyz"] == d["text"]
 
     def test_atoms_matches_workspace_payload_atoms(self):
         s = _h2o_with_regions()
@@ -271,7 +265,7 @@ class TestStructureToDictExtraThreading:
 class TestOkStructureResponse:
     """Pin the response Flask emits for ``/api/modify/*``.
 
-    ``ok: True`` envelope, every legacy + canonical key from
+    ``ok: True`` envelope, every key from
     structure_to_dict, plus a top-level ``issues`` array — the
     shape every modifier-op caller depends on.
     """
@@ -293,11 +287,10 @@ class TestOkStructureResponse:
                   "n_atoms", "atoms", "lattice", "issues"):
             assert k in body, f"missing canonical key {k!r}"
 
-    def test_carries_legacy_shape_keys(self):
+    def test_carries_the_atom_columns(self):
         body = self._payload(_h2o())
-        for k in ("xyz", "elements", "atom_names", "residue_ids",
-                  "residue_names", "chain_ids", "n_residues"):
-            assert k in body, f"missing legacy key {k!r}"
+        for k in ("atom_names", "residue_ids", "residue_names", "chain_ids"):
+            assert k in body, f"missing column {k!r}"
 
     def test_issues_array_present(self):
         body = self._payload(_h2o())

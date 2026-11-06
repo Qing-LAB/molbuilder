@@ -2728,7 +2728,7 @@ Whoever opens a device run opens its `tsgf/` with it, through the one opener
 § 1.6.2): prep for `run-0`, the launch for every run after. The folder is
 Python's, as every folder of the tree is (invariant 6a), and it is stamped
 with its `calcdir.json`, role **`scratch`** (§ 1.4a, invariant 6b): the run
-door and the Results sidebar read the role and say *the engine's scratch of
+door reads the role, and the Results tab says *the engine's scratch of
 the run above*, and the Results tab opens no file in it. **The checkpoint
 saves the marker and never the files** — what a save and a restore do with an
 engine's scratch is [`checkpointing.md`](?doc=execution/checkpointing.md)
