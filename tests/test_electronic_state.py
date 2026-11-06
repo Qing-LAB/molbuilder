@@ -422,7 +422,7 @@ def test_an_odd_count_under_restricted_runs_half_filled_on_siesta(
                              PySCFConfig(job_name="JOB",
                                          spin_treatment="restricted"))
     report = _report(dest, stage)
-    assert "the electron count and the spin disagree" in report.lower(), report
+    assert "the electron count and the unpaired count disagree" in report.lower(), report
 
 
 # --------------------------------------------- it belongs to the calculation
@@ -442,7 +442,6 @@ def test_a_stage_cannot_change_the_state(isolated_projects_root):
     _d, _s, said = _siesta(isolated_projects_root, WATER(),
                            before_prep=override, refused=True)
     assert "shared by every stage of this calculation" in said, said
-    assert "ES1" in said
 
 
 # ----------------------------------------------- what the structure carries

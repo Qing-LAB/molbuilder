@@ -138,8 +138,8 @@ def _variables() -> Tuple[Var, ...]:
     S = str
     return (
         Var("frame", ("frame",), "coordinate", "1", "frame index",
-            "its index, counted from 0 as MolView's API counts; only the "
-            "UI's display numbers frames from 1 (model/structure.md 2.2e)",
+            "its index, counted from 0 as MolView's API counts; a message and "
+            "the page number it from 1 (model/structure.md 2.2e)",
             dtype="i4"),
         Var("frame_token", ("frame",), "coordinate", "", "the frame's folder",
             "its index: f000 is frame index 0 (engines/transport.md 2a.11); "

@@ -480,7 +480,7 @@ def _values_in_range(task, cls, fields, *, refused=frozenset(),
                     "warn",
                     f"stage {st.name!r} sets {shown} = {v!r}, outside the "
                     f"recommended range [{lo}, {hi}] -- a recommendation, "
-                    f"not a limit (engines/template.md 5.3)",
+                    f"not a limit",
                     where=f"config.{key}", stage=st.name))
     return out
 

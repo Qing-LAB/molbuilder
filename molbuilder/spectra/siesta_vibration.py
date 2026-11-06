@@ -308,8 +308,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         raise FinishError(
             f"{deck.name}: the nudged atoms FC.First {first} .. FC.Last "
             f"{last} are not the trailing run of its {n} atoms, so the deck "
-            f"was not written from the held-first copy "
-            f"(engines/vibration.md 5.2)")
+            f"was not written from the held-first copy")
 
     try:
         offset = extract_engine_offset(text)
@@ -397,7 +396,7 @@ def equilibrium_structure(run: ForceConstantRun) -> dict:
             f"{run.deck.name} states two held sets: its labels hold "
             f"{struct.atoms_named(held_label) or 'no atom'}, and its "
             f"FC.First .. FC.Last leaves {struct.atoms_named(run.held) or 'no atom'} "
-            f"unnudged (engines/vibration.md 6.10.1)")
+            f"unnudged")
     return struct.restored().to_dict(view=False)
 
 

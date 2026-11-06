@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>molbuilder &mdash; Molbuilder workspace</title>
+<title>molbuilder &mdash; Molbuilder</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
@@ -16,6 +16,7 @@
    design.md "Module init contract". #}
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
 <body data-sidebars="projects">
@@ -957,8 +958,7 @@
 </main>
 
 <footer>
-  <p>molbuilder &middot; <a href="/api/health">/api/health</a> &middot;
-     spec: <code>docs/web/tabs.md</code></p>
+  <p>molbuilder &middot; <a href="/api/health">/api/health</a></p>
 </footer>
 </div>{#- /.app-content -#}
 </div>{#- /.app-body -#}

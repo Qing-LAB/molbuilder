@@ -53,10 +53,10 @@ def test_unknown_format_fdf_suggests_out_file(tmp_path):
     assert ".molwatch.log" in msg
 
 
-def test_unknown_format_generic_hint_points_at_docs(tmp_path):
+def test_unknown_format_generic_hint_points_at_the_types_it_reads(tmp_path):
     """For files that don't match either of the targeted hints, the
-    error message must still steer the user somewhere useful -- the
-    README and the spec doc both have a debug section."""
+    error message must still steer the user somewhere useful -- the file
+    types it listed."""
     p = tmp_path / "mystery.dat"
     p.write_text("not a recognised format\n")
     try:
@@ -65,7 +65,7 @@ def test_unknown_format_generic_hint_points_at_docs(tmp_path):
         msg = str(exc)
     else:
         raise AssertionError("expected UnknownFormatError")
-    assert "README" in msg or "docs/model/parse.md" in msg
+    assert "Supported file formats" in msg and "file types above" in msg
 
 
 def test_registry_lists_all_parsers():

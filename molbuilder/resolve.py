@@ -297,7 +297,7 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
                 f"  A sweep is bounded by what you ASKED FOR, not by what the "
                 f"machine has -- asking for less is often the better choice, "
                 f"because how a job is scheduled depends on how much you ask "
-                f"for (generator.md 4.1).\n"
+                f"for.\n"
                 f"  Either raise this prep's ask (--np, --cpus-per-task, "
                 f"--gpus), or drop the point. It is refused rather than "
                 f"clamped, because a clamped trial measures something you "
@@ -608,8 +608,8 @@ def resolve(template_text: str, task, *,
     bad = sorted(set(pins) & machine_facts)
     if bad:
         raise ResolveError(
-            f"pin(s) {', '.join(map(repr, bad))} name machine fact(s) "
-            f"(engines/template.md § 7). A pin overrides a template item "
+            f"pin(s) {', '.join(map(repr, bad))} name machine fact(s)"
+            f". A pin overrides a template item "
             f"for this prep only; the machine's asks travel as the "
             f"allocation, never as items.")
     unknown = sorted(set(pins) - known)
@@ -656,8 +656,7 @@ def resolve(template_text: str, task, *,
                 hint = (f"  ({', '.join(map(repr, mistagged))} is a "
                         f"machine fact -- sweep an allocation axis "
                         f"({', '.join(sorted(ALLOCATION_FIELDS))}) or a "
-                        f"declared translation axis instead, "
-                        f"engines/template.md § 7.)")
+                        f"declared translation axis instead.)")
             raise ResolveError(
                 f"sweep axis(es) {', '.join(repr(k) for k in orphans)} name "
                 f"neither a template item of {config_cls.__name__}, an "
@@ -665,7 +664,7 @@ def resolve(template_text: str, task, *,
                 f"nor a declared translation axis"
                 f"{' (' + ', '.join(sorted(owned)) + ')' if owned else ''}. "
                 f"An axis is a parameter, a machine ask, or the "
-                f"specialisation's own coordinate (generator.md 4)." + hint)
+                f"specialisation's own coordinate." + hint)
         ours = [a for a in (translation.axes if translation else ()) if a in point]
         if ours:
             missing = [a for a in translation.axes if a not in point]
@@ -777,7 +776,7 @@ def resolve(template_text: str, task, *,
                 f"two sweep points render the same label {el.label!r}: "
                 f"{dict(_seen[el.label])!r} and {dict(el.point)!r}.  The "
                 f"coordinate token stays inside [A-Za-z0-9_] by dropping "
-                f"other characters (job-contracts.md 6.3), so distinct "
+                f"other characters, so distinct "
                 f"values can collide -- drop one point or re-spell a "
                 f"declared value.")
         _seen[el.label] = el.point
@@ -911,8 +910,8 @@ def effective_config(template, overrides: Mapping[str, Any], *,
             f"{where + ': ' if where else ''}override(s) "
             f"{', '.join(repr(k) for k in unknown)} name no field of "
             f"{type(template).__name__}. A stage may override any field of "
-            f"the shared schema, but only a field of it "
-            f"(engines/stages.md 1.2, 6.6)."
+            f"the shared schema, but only a field of it"
+            f"."
             + "".join(f"  {g}." for g in gone if g)
         )
 
@@ -1030,7 +1029,7 @@ def point_token(point: Mapping[str, Any]) -> str:
             # its axis is also empty -- caller errors, not user spellings.
             raise ResolveError(
                 f"axis {k}={v!r} renders as {part!r}, which leaves the label "
-                f"charset [A-Za-z0-9_] (job-contracts.md 6.3; the token "
+                f"charset [A-Za-z0-9_] (the token "
                 f"becomes a SystemLabel and a directory name, and `-` inside "
                 f"it would announce a qualifier that is not there). Spell the "
                 f"axis inside the charset, or drop the point.")

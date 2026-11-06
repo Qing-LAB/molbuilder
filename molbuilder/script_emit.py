@@ -107,7 +107,7 @@ _NOT_BENCHMARKABLE = {
     "text":    "verbatim engine text, copied rather than chosen",
     "bool":    "on/off is a FAMILY of runs, not a knob to optimise -- and the "
                "one live case, `use_gpu`, is the person's choice and never an "
-               "override a tool may make (`execution/gpu.md` G2)",
+               "override a tool may make",
 }
 
 
@@ -161,7 +161,7 @@ class BenchField:
         if self.type_ not in _legal:
             raise ValueError(
                 f"field {self.name!r}: type {self.type_!r} is not one of "
-                f"{', '.join(_legal)} (job-contracts.md 3.3). A field "
+                f"{', '.join(_legal)}. A field "
                 "whose type has no name cannot be read back, so the type is "
                 "added to the grammar rather than left off the declaration.")
         # NOT checked here: ``type=enum`` with no ``choices`` --
@@ -769,8 +769,7 @@ def not_set_line(param: "Parameter", keyword: str = "") -> str:
     if not said:
         raise ValueError(
             f"{param.name}: writes nothing here and declares no not_set, so "
-            f"the deck cannot say which default the engine takes "
-            f"(engines/template.md § 5)")
+            f"the deck cannot say which default the engine takes")
     key = keyword or (param.writes[0] if param.writes else param.name)
     return f"# {key} not written: {said}"
 
@@ -1080,7 +1079,7 @@ class RenderedDeck(str):
 #: the deck learns it is not a setting before trying to change it.
 #: Two lines, at the deck's note width (`deck_note` copies ``extra`` as is).
 _FIXED_NOTE = ("Fixed by this rung -- not a setting: no template, stage or",
-               "pin changes it (engines/template.md 6.4).")
+               "pin changes it.")
 
 
 def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
@@ -1314,8 +1313,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         raise ValueError(
             f"the {spec.engine} deck carries no engine frame, so nothing says "
             f"where its atoms were placed: a spec builder places through "
-            f"cell.to_engine and hands the frame over "
-            f"(model/structure-periodicity.md § 6.0)")
+            f"cell.to_engine and hands the frame over")
     from .cell import require_placed as _require_placed
     _kinds = tuple(struct.axis_kind)
     _require_placed(spec.engine_frame, struct)

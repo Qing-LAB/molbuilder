@@ -147,7 +147,7 @@ def test_a_shift_on_a_single_k_point_axis_is_warned_about():
     mine = [i for i in issues if i.where == "config.kgrid_displacement"]
     assert len(mine) == 1, [i.message for i in mine]
     assert mine[0].severity == "warn"
-    assert "kgrid[2] = 1" in mine[0].message
+    assert "along z = 1" in mine[0].message
     # The two shifted axes with 4 points each are a legitimate choice.
     ok = validate(_h2_in_a_box(), SiestaConfig(
         system_label="h2", kgrid=(4, 4, 1),
@@ -180,7 +180,7 @@ def _kgrid_findings(struct, kgrid):
     from molbuilder.validation import validate
     return [i for i in validate(struct, SiestaConfig(kgrid=kgrid),
                                 calculation="optimization")
-            if "kgrid[" in i.message]
+            if i.where == "config.kgrid"]
 
 
 def test_k_equal_one_is_never_validated():
@@ -209,7 +209,7 @@ def test_k_above_one_on_an_isolated_axis_warns_by_axis():
     found = _kgrid_findings(
         _kgrid_struct(["periodic", "periodic", "transport"]), (2, 2, 4))
     assert len(found) == 1, [i.message for i in found]
-    assert "kgrid[2] = 4" in found[0].message
+    assert "along z = 4" in found[0].message
     assert "images sit ~" in found[0].message, found[0].message
 
 

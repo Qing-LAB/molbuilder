@@ -85,7 +85,7 @@ server from the run's `convergence_targets` through the log's one reader
 (`trajectory_log.keys.targets_of`: the one stage's leaf of a nested block,
 or SIESTA's flat echo as it stands) and the one table of the keys' words and
 units (`keys.LEAF_ROWS`: *max |F|* in eV/Å, *rms |F|*, *max displ* in Å,
-*rms displ*, *energy step* in eV, *MaxSCFIterations*, *geom steps cap*, each
+*rms displ*, *energy step* in eV, *max SCF iterations*, *geom steps cap*, each
 reading as the table says: a count whole, a tolerance to three figures); the
 page draws the rows and the threshold line from that answer and spells no key.
 
@@ -174,7 +174,7 @@ such as *stopped before its end: no exit recorded*), *Queued*, *Not launched*,
 started), *Record unreadable* (the reader's own words beneath, naming the file and the
 way out), else *Running*. A file that belongs to no run — an upload — is read by its own
 ending (`run_state`, [`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is
-*Finished*, `stopped` or `out_of_memory` *Stopped*, anything else *Running*.
+*Finished*, `stopped` or `out_of_memory` *Stopped*, `unknown` -- a plain structure file, which states none -- no badge, anything else *Running*.
 *(It read the file alone until 2026-10-03, so an output that ended read
 Finished while its job was still deriving its result, and the Run panel said
 running.)* It carries a detail line beneath it with two different facts:

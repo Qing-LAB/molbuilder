@@ -618,8 +618,8 @@ def _check_fcc_element(element: str) -> None:
             f"{', '.join(SUPPORTED_FCC_ELEMENTS)}.  "
             f"The builder is fcc-only: a bcc or hcp metal has a different "
             f"stacking period and registry, so it is a second set of seam "
-            f"rules rather than a table entry "
-            f"(docs/science/junction-cell.md § 2a)."
+            f"rules rather than a table entry"
+            f"."
         )
 
 
@@ -669,7 +669,7 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
             f"ASE rejected the {element} fcc({plane}) slab with "
             f"size={size}, orthogonal={orthogonal}: {exc}.  "
             f"Adjust (m, n) to satisfy ASE's constraint, or flip "
-            f"the orthogonal switch (see docs/web/tabs.md)."
+            f"the orthogonal switch."
         ) from exc
 
 

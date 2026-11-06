@@ -512,6 +512,8 @@ def calls_made(calls: Path):
 # whether each stage runs as a run of points before any prep, and the words the
 # run card says it in (`points_before_prep`: `{stage = words}`, `""` for a stage
 # that runs once -- `_road_points_before_prep`),
+# what a stage's points are compared by since its prep (`points_compared`, the
+# stage -- `_road_points_compared`),
 # what a person's script reads of each log's run, which has written no step
 # (`steps_read`: `{elements, listed_by}` -- `_road_steps_read`), and of the
 # steps the run's own writer logs (`steps_written`: `{held, energy_hartree,
@@ -966,6 +968,24 @@ def _road_points_before_prep(want, bundle) -> None:
             assert walk_words(calc, stage) == words
 
 
+def _road_points_compared(stage, bundle) -> None:
+    """What the stage's prep recorded against the records as they read now
+    (`job-system.md`, *Changed since prepared*): a point worded otherwise is no
+    difference, as a release may reword one, and a point in another folder is."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset import prepared_with as pw
+    was = pw.read(bundle)[stage]
+    now = pw.values_of(open_calculation(bundle), stage)
+    assert was["point_folders"] and pw.differences(was, now) == []
+    assert pw.differences({**was, "points": ["said otherwise"]}, now) == []
+    moved = pw.differences({**was, "point_folders": ["elsewhere"]}, now)
+    assert [d.kind for d in moved] == [pw.POINTS], moved
+    older = {k: v for k, v in was.items() if k != "point_folders"}
+    assert pw.differences(older, now) == []
+    more = pw.differences({**older, "points": was["points"] + ["1 V"]}, now)
+    assert [d.kind for d in more] == [pw.POINTS], more
+
+
 def _road_steps_written(want, bundle) -> None:
     """The steps the run's own writer logged (`trajectory_log.emitter`, what a
     PySCF deck calls), read as a person's script reads them
@@ -1142,6 +1162,8 @@ def _road_after_prep(case, bundle) -> None:
         _road_progress_log_targets(case["progress_log_targets"], bundle)
     if "plan_carries" in case:
         _road_plan_carries(case["plan_carries"], bundle)
+    if "points_compared" in case:
+        _road_points_compared(case["points_compared"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)

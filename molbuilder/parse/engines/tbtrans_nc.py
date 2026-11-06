@@ -512,8 +512,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
          np.asarray(result.atom, dtype="i4")),
         (Var("atom", ("atom",), "coordinate", "1", "atom index",
              "the atom's engine index, from 0 -- the digest is listed by "
-             "engine index (atoms_listed_by); user_atom_index beside it "
-             "(model/overview.md 2.2b)", dtype="i4"),
+             "engine index (atoms_listed_by); user_atom_index beside it", dtype="i4"),
          np.arange(n_atoms, dtype="i4")),
         (Var("atom_bound", ("atom_bound",), "coordinate", "1",
              "an atom's orbital bound", "from 0 to the atom count: bound i "

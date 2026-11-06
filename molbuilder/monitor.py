@@ -2682,9 +2682,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         prog="mb_monitor",
         description="molbuilder background job-monitor + notifier hooks "
-                    "(reads the run through the framework's readers, which "
-                    "travel in this same file; execution/run-reports.md "
-                    "§ 2.3).  Its other verbs: " + ", ".join(BUNDLE_VERBS)
+                    "(reads the run through the framework's readers, which travel in this same file).  Its other verbs: " + ", ".join(BUNDLE_VERBS)
                     + ".")
     # WHICH RUN, never a path: every file is named through `runfiles`
     # (`run-reports.md` § 2.3), from the identity the wrapper was rendered for.

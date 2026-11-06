@@ -30,8 +30,9 @@
  *                   //   `standing` ones, after every send.
  *     standing,     // issues[] -- what the tab's live check shows now, still
  *                   //   true of the form it sends: a send adds its findings
- *                   //   to these and clears none (handover-procedure.md
- *                   //   § 2.1).  A tab with no live check sends none.
+ *                   //   to these, a refusal replacing what they say of its
+ *                   //   field (handover-procedure.md § 2.1).  A tab with no
+ *                   //   live check sends none.
  *     engine,       // the engine the tab describes on
  *     calculation,  // REQUIRED: the kind, stated by the tab
  *     door,         // REQUIRED: {url, next, writes?, needs?} -- the route
@@ -88,16 +89,23 @@
         const showFindings = (typeof o.showFindings === "function")
             ? o.showFindings : null;
         /* BESIDE WHAT THE LIVE CHECK ALREADY SAYS: its findings are still
-         * true of the form just sent, so a send adds its own and clears none.
+         * true of the form just sent, so a send adds its own.
          * One the live check
          * and the send both carry (the cell gate runs in each for a stated
-         * box) is shown once. */
+         * box) is shown once, and a refusal replaces what the live check said
+         * of the same field: the send knows the folder the live check could
+         * not, so one fact is not said twice in two severities. */
         const standing = Array.isArray(o.standing) ? o.standing : [];
         const beside = (found) => {
             const key = (i) => [i && i.severity, i && i.where,
                                 i && i.message].join("\u0000");
-            const seen = new Set(standing.map(key));
-            return standing.concat((found || []).filter((i) => !seen.has(key(i))));
+            const sent = found || [];
+            const refused = new Set(sent.filter((i) => i && i.severity === "error"
+                                                       && i.where)
+                                        .map((i) => i.where));
+            const kept = standing.filter((i) => !(i && refused.has(i.where)));
+            const seen = new Set(kept.map(key));
+            return kept.concat(sent.filter((i) => !seen.has(key(i))));
         };
         if (!projects || typeof projects.getCurrentDir !== "function") {
             say("error", "The projects sidebar is not available on this page.");

@@ -104,8 +104,8 @@ def structure_for(task, base: Path, pset):
     else:
         raise PrepError(
             f"the structure this calculation describes is not here: "
-            f"{task.structure.source!r}. `{TASK_FILE}` records a REFERENCE to it "
-            f"(engines/stages.md § 6.3), so `prep` needs the file to be either "
+            f"{task.structure.source!r}. `{TASK_FILE}` records a REFERENCE to it"
+            f", so `prep` needs the file to be either "
             f"beside the calculation or still at that path.")
     if task.structure.fingerprint and codec.fingerprint_on_disk(
             candidate) != task.structure.fingerprint:

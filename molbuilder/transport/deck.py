@@ -785,7 +785,7 @@ def transport_spec(struct: Structure, cfg, *, state,
     if shape is None:
         raise ValueError(
             f"{rung!r} is not a transport rung; the ladder is "
-            f"{', '.join(SHAPE_OF_RUNG)} (engines/transport.md 4.2).  "
+            f"{', '.join(SHAPE_OF_RUNG)}.  "
             f"`prep` names the rung and hands it down as `stage_token`.")
 
     # THE RUNG'S K-POINT MESH(ES), worked out once (`kmesh.mesh_for`,

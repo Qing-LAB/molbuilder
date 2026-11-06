@@ -103,8 +103,7 @@ def read_record(path) -> Record:
     from ..persist import check_schema, read_json
     path = Path(path)
     if not path.is_file():
-        raise SequenceError(f"{path}: no sequence's launch record is there "
-                            f"(job-system.md § 6.0, *A sequence of groups*)")
+        raise SequenceError(f"{path}: no sequence's launch record is there")
     try:
         d = read_json(path)
         check_schema(d.get("schema", ""), SEQUENCE_SCHEMA, label=str(path))

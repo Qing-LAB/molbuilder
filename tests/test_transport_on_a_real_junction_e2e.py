@@ -4700,8 +4700,8 @@ def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
                         ("its label", "the label is the finished "
                                       "calculation's"),
                         ("another junction", "P/structure/moved.xyz: its "
-                                             "frame 0 is not the junction T "
-                                             "ran"),
+                                             "first frame is not the junction "
+                                             "T ran"),
                         ("another engine", "engine 'pyscf': T ran on "
                                            "siesta")):
         said, written = reused["refused"][step]
@@ -4718,9 +4718,9 @@ _ANSWERED = [
     ("same", "finished", [0.0, 0.2], "", ()),
     ("narrow", "wider", [0.0, 0.2], "", ("0.4 V",)),
     ("first", "framed", [0.0], "f000",
-     ("frame index 1 (of 3) · 0 V", "frame index 2 (of 3) · 0 V")),
+     ("frame 2 of 3 · 0 V", "frame 3 of 3 · 0 V")),
     ("fone", "F", [0.0, 0.2], "f000",
-     ("frame index 1 (of 3) · 0 V", "frame index 2 (of 3) · 0.2 V")),
+     ("frame 2 of 3 · 0 V", "frame 3 of 3 · 0.2 V")),
     ("lowbias", "finished", [0.0], "v0", ("0.2 V",)),
 ]
 
@@ -5499,12 +5499,12 @@ def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
         assert "a frame set whose first frame is the junction O ran" in line(), \
             line()
         # ...THE PLAN FOLLOWS THE SET: frame 0's results taken over.
-        expect(plan).to_contain_text("takes over frame index 0",
+        expect(plan).to_contain_text("takes over frame 1",
                                      timeout=120000)
         # ANOTHER JUNCTION, refused where it is picked.
         said = pick("P/structure/moved.xyz")
-        assert "its frame 0 is not the junction O ran" in said, said
-        expect(status).to_contain_text("its frame 0 is not the junction O "
+        assert "its first frame is not the junction O ran" in said, said
+        expect(status).to_contain_text("its first frame is not the junction O "
                                        "ran", timeout=30000)
         expect(readout).to_have_text(junction.frame_set)
         # A RELOAD KEEPS THE SET -- and O's own values put back stay put:

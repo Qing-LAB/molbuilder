@@ -127,8 +127,8 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
         where.append(line)
     what = ", ".join(f"{_LAUNCH_WORDS[f][0]} ({k})" for f, k in missing)
     return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states no "
-            f"{what} -- and nothing fills one in "
-            f"(docs/execution/architecture.md § 5.2).  State each:\n"
+            f"{what} -- and nothing fills one in"
+            f".  State each:\n"
             + "\n".join(where))
 
 

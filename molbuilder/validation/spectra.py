@@ -260,7 +260,7 @@ def spectra_render_checks(struct: Structure, cfg, *,
                 f"atoms are held, so the thermochemistry is the vibrational "
                 f"contributions alone, and a pressure enters only a free "
                 f"molecule's gas-phase translation.  The result records no "
-                f"pressure (engines/vibration.md § 4.7)."
+                f"pressure."
             ),
             where="config.pressure_atm",
         ))
@@ -390,8 +390,8 @@ def spectra_render_checks(struct: Structure, cfg, *,
                     f"calculation asks for are built without it: "
                     f"{'; '.join(_routes)}.  "
                     f"{_sentence(', '.join(off for _r, off in _asked))}"
-                    f" -- or remove the solvent "
-                    f"(engines/vibration.md § 4.6)."),
+                    f" -- or remove the solvent"
+                    f"."),
                 where="config.solvent",
             ))
         elif _solv in _SOLV_TABLE:
@@ -547,7 +547,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *, state,
                 f"force constants, to this calculation's own force "
                 f"tolerance ({_tol_text}, the relaxation settings on this "
                 f"form), and the force constants are taken at the relaxed "
-                f"geometry (engines/vibration.md 5.11)."),
+                f"geometry."),
             where="config.already_relaxed"))
     else:
         issues.append(Issue(
@@ -672,8 +672,8 @@ def raman_issues(cfg, *, engine: str) -> List[Issue]:
             severity="info",
             message=("PySCF computes Raman for every mode at once, from its "
                      "polarizability sweep, so the frequency range narrows "
-                     "nothing here; on SIESTA it would pick the modes "
-                     "(engines/vibration.md § 3.1)."),
+                     "nothing here; on SIESTA it would pick the modes"
+                     "."),
             where="config.raman_modes")]
     return []
 
@@ -719,8 +719,7 @@ def validate_vibration_kind(struct: Structure, cfg, cell, *, engine: str,
     raise TypeError(
         f"the vibration kind has no science for engine {engine!r}: its "
         f"checks are written for pyscf and siesta, and an engine with no "
-        f"checks cannot pass this gate as validated "
-        f"(science/validation.md F4)")
+        f"checks cannot pass this gate as validated")
 
 
 __all__ = ["validate_vibration_kind", "spectra_render_checks",

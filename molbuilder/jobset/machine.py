@@ -25,7 +25,7 @@ _NO_RECORD = (
     "      {cmd}\n"
     "  A machine's cores, GPUs and queues are read from a record and never "
     "probed on the fly -- so the numbers in a run script can always be traced "
-    "to a file you can look at (running-a-job.md 3.1)."
+    "to a file you can look at."
 )
 
 
@@ -150,8 +150,8 @@ def require_activation(target: Optional[str], environment,
     whose = "this machine's record" if here else f"the record of {target!r}"
     raise PrepError(
         f"{whose} does not say "
-        f"how a shell enters an environment there, and nothing else may "
-        f"(docs/configuration.md § 4).  Declare it in that machine's "
+        f"how a shell enters an environment there, and nothing else may"
+        f".  Declare it in that machine's "
         f"molbuilder.json --\n"
         f"      \"env_init\": {{\"activation\": \"conda activate\", "
         f"\"preamble\": \"source <conda root>/etc/profile.d/conda.sh\"}}\n"

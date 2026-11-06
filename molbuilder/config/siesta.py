@@ -181,8 +181,7 @@ def _validate_basename(label: str):
                 message=(
                     f"{label}={value!r} is not a valid job basename. "
                     "Must match [A-Za-z0-9_-]+ (letters, digits, hyphens, "
-                    "underscores).  No dots / slashes / spaces.  See "
-                    "docs/execution/job-contracts.md."
+                    "underscores).  No dots / slashes / spaces."
                 ),
                 where=f"config.{label}",
             )

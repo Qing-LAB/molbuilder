@@ -68,7 +68,7 @@ different from atom list in the UI".)*
 | Layer | Count | Where |
 |---|---|---|
 | **Internal / machine** | **index, from 0** | Python `Structure` (`regions`/positions, frames), the `.molstruct.json` sidecar + the `.fdf`/`.py` ATOM-METADATA block, `/api/selection/*` rules, the JS selection store `atom.index`, all wiring |
-| **The command line, the files, every message molbuilder writes** | **index, from 0 — said as one** | what a person types at the CLI (`molbuilder modify --delete 0,3`), which the command says counts from 0 and asks to be agreed before it acts (`jobset.ask.confirm`, `--yes`); every refusal, warning and printed line — *atom index 3 (Au)*, *frame index 1 (of 3)*, through `structure.atom_words` / `structure.frame_words`, the word *index* in each; a folder named for a frame (`f001` is frame index 1) — the code's own index, never reinterpreted |
+| **The command line, the files, every message molbuilder writes** | **index, from 0 — said as one** | what a person types at the CLI (`molbuilder modify --delete 0,3`), which the command says counts from 0 and asks to be agreed before it acts (`jobset.ask.confirm`, `--yes`); every refusal, warning and printed line — *atom index 3 (Au)*, through `structure.atom_words`, the word *index* in each, a frame excepted: *frame 2 of 3*, its number from 1 (`structure.frame_words`, [`model/structure.md`](?doc=model/structure.md) § 2.2e); a folder named for a frame (`f001` is the frame of index 1) — the code's own index, never reinterpreted |
 | **The UI's own display** | **number, from 1** | the atom list's `#` column, the viewer's atom labels, measurement chips, the "by atom number" filter, the frame bar's `1 / F`, a frame picker, the Customized heading's *Frame 2 of 3* |
 | **Engine input, and a format's own numbers** | **engine-specific** | SIESTA `.fdf` (1-based — `elec-pos end` counting back from the last atom, −1), geomeTRIC `$freeze` (1-based), PySCF `mol.atom` (0-based), a PDB file's atom serials (1-based) |
 
@@ -138,9 +138,9 @@ registry so a new engine defines both directions in a single line. The JS
 `_atom.js` (`toDisplay`/`fromDisplay`/`shiftExpression`) is the single
 web-UI implementation — the one place a number is made from an index, and
 the one reading of a number typed (every digit form read as one, `NFKC`; the
-server reads ASCII digits alone). Python makes none: `structure.atom_words` and
-`structure.frame_words` are the one spelling of an atom and a frame in a
-message, the index as it is.
+server reads ASCII digits alone). Python makes one, for a frame:
+`structure.atom_words` is the one spelling of an atom in a message, the index as
+it is, and `structure.frame_words` the one spelling of a frame, its number from 1.
 
 **The load-bearing invariant.** Engine coordinate blocks emit atoms in internal
 `Structure` order for every kind that does not sort, so engine atom

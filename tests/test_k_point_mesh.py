@@ -75,8 +75,8 @@ def test_a_relaxation_samples_every_axis_by_its_kind(isolated_projects_root):
         (Stage(name="relax", overrides={}),), "siesta")
     assert _mesh(deck) == ((2, 3, 1), (0.0, 0.0, 1.0))
     report = next(dest.rglob("*.validation.txt")).read_text()
-    assert "kgrid[1] = 3 on an isolated axis" in report, report
-    assert "kgrid_displacement[2]" not in report, report
+    assert "K-point grid along y = 3 on an isolated axis" in report, report
+    assert "The k-point offset along z" not in report, report
 
 
 def test_the_room_along_a_lattice_vector_is_measured_along_it():

@@ -696,14 +696,13 @@ STOP_MEANINGS: Tuple[Tuple[str, str], ...] = (
      "TranSIESTA builds a lead's self-energy from neighbouring cells only; "
      "the lines above it in the output name the atoms that reach across.  "
      "Label more electrode layers on the junction (a whole stacking period "
-     "more), relax it again and cite that run (engines/transport.md 7.1)"),
+     "more), relax it again and cite that run"),
     # `tbt_init.F90`, at the transmission's start.
     ("gamma calculation while you request transmission k-points",
      "the device ran at the Gamma point alone (kgrid 1 x 1 in the "
      "electrode plane), so its Hamiltonian was saved for that one k-point; "
      "leave tbt_k_grid blank or 1 1 1, or raise kgrid in the electrode "
-     "plane and run the seed, the leads and the device again "
-     "(engines/transport.md 0.3b)"),
+     "plane and run the seed, the leads and the device again"),
 )
 
 

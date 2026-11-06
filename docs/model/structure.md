@@ -610,20 +610,21 @@ facts, `info`, the structure's rows and its own, as written
 (`StructureCodec.frame_choice`, the one rule for which frame a read answers
 with). A one-frame file is what it is.
 
-**Counting — the frame's index, everywhere but the UI's display** *(user,
-2026-10-10: "unify the frame index, we have one api on the molview for frame
-and that should be the starting point and standard"; "anything CLI means
-direct programming, so we don't reinterpret the meaning. only UI display would
-do so")*. The API indexes frames from 0, as MolView's does (`frame_at(0)`,
-`frame=0`, `setCurrentFrame(0)`, a record's `frame`), and so does everything
-molbuilder writes, said as an index — *frame index 1 (of 3)*
-(`structure.frame_words`), **a folder name included**: a transport point's
-frame level is `f001` for frame index 1 (`engines/transport.md` § 2a.11,
-`paths.frame_token`, a vibration's optical calls' too). Only the UI's own display counts from 1 — the
-frame bar's `1 / F`, the Modify tab's frame picker, the Customized heading's
-*Frame 2 of 3* — through MolView's `toDisplay` / `fromDisplay`
-(`web/molview.md` § 11.5), the atom index's own convention
-(`model/overview.md` § 2); nothing else writes a `+ 1`.
+**Counting — a frame's index in code and files, its number wherever a person
+reads** *(the user, 2026-10-10: "unify the frame index, we have one api on the
+molview for frame and that should be the starting point and standard";
+2026-11-05, of what a message says: "From 1 in messages")*. The API indexes
+frames from 0, as MolView's does (`frame_at(0)`, `frame=0`,
+`setCurrentFrame(0)`, a record's `frame`), and so do the files, **a folder name
+included**: a transport point's frame level is `f001` for the frame of index 1
+(`engines/transport.md` § 2a.11, `paths.frame_token`, a vibration's optical
+calls' too). What a person reads counts from 1: every message, on the page and
+in the terminal alike — *frame 2 of 3* (`structure.frame_words`) — and the UI's
+own display — the frame bar's `1 / F`, the Modify tab's frame picker, the
+Customized heading's *Frame 2 of 3* — through MolView's `toDisplay` /
+`fromDisplay` (`web/molview.md` § 11.5); nothing else writes a `+ 1`, those two
+doors the only ones. A script's
+own index, refused, is said as the index it typed: *frame index 5 is outside*.
 
 ### 2.2f A multi-frame structure — what a calculation over it needs, and its maker's rows *(user, 2026-10-18)*
 
@@ -875,7 +876,7 @@ always had it; `load(path, frame=i)` answers frame `i`, an index outside
 `0 … F−1` refused naming `F`; `load(path, frames=True)` answers the whole set.
 A one-frame file answers the same for all three. A door that prints
 (`molbuilder describe`, `molbuilder validate`) says when it took one frame of
-several: *"this file holds 3 frames; frame index 0 (of 3) was taken"* — a
+several: *"this file holds 3 frames; frame 1 of 3 was taken"* — a
 line, never a refusal. **`molbuilder modify` refuses a file of several frames**
 (user, 2026-10-10: *"on a cli, we do not allow direct operation on a
 multiframe file because it creates a whole cluster of options and cases"*): an

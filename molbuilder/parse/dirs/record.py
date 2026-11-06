@@ -503,7 +503,7 @@ def _one_source(rows: Tuple[Contributor, ...]) -> None:
                         raise ValueError(
                             f"run record: {field_!r} ({row.name}) and "
                             f"{other!r} ({name}) answer one field for "
-                            f"{engine} -- one source per quantity (§ 5d.1b)")
+                            f"{engine} -- one source per quantity")
                 owner[(field_, engine)] = row.name
 
 

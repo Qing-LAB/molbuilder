@@ -178,7 +178,7 @@ function manifest(description, width, height) {
         width:  width,
         height: height,
         note: "amplitude is meaningful only together with normalization; "
-            + "they are the two halves of one pairing (vibrationview.md 12.2)",
+            + "they are the two halves of one pairing",
         ffmpeg: "ffmpeg -framerate " + description.fps + " -i frame_%04d.png"
               + " -c:v libx264 -pix_fmt yuv420p -crf 18 vibration.mp4",
     }), null, 2);

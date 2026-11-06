@@ -149,7 +149,7 @@ continues = "molbuilder.siesta.vibration_phases:continues_from"
 # Its stages' force constants compared, where it has two or more
 # (`engines/vibration.md` § 5.9).
 sum = "molbuilder.spectra.vibration_sum:SUM"
-retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIESTA vibration is one run of points -- its relaxation the run's first call, switched by already_relaxed (engines/vibration.md 5.11)" }
+retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIESTA vibration is one run of points -- its relaxation the run's first call, switched by already_relaxed" }
 
 # Its run is a run of points: each SIESTA call a point, the phases its rounds
 # (execution/runs-of-points.md 2.1; engines/vibration.md 5.11).  Finished
@@ -179,7 +179,7 @@ noun = "transport calculation"
 topic = "transport"
 # No `handover`: its stages and identity are fixed, so it describes
 # on its own tab (POST /api/transport/describe), nothing awaiting.
-no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json (engines/transport.md 2a.10)"
+no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json"
 roles = [
     { name = "seed",         computes = "scf" },
     { name = "electrode_L",  computes = "scf", lead = "L-electrode", about = "the left lead: bulk metal layers, FROZEN during relaxation, at bulk positions. Transport extracts the left electrode cell from exactly these atoms -- label only the bulk-like block, not the surface layers" },
@@ -210,7 +210,7 @@ export = "molbuilder.transport.export"
 
 [transport.charge]
 value = 0
-why = "a transport junction is neutral: its boundaries are open, so the electrodes' chemical potentials set its electron number; net charge and gating are deferred by ruling (engines/transport.md 2a.7)"
+why = "a transport junction is neutral: its boundaries are open, so the electrodes' chemical potentials set its electron number; net charge and gating are deferred by ruling"
 
 [transport.description]
 # Its relaxed junction, cited (engines/transport.md § 3.1); the electrode

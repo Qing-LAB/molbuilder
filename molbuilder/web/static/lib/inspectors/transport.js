@@ -38,6 +38,7 @@ const WORKSPACE_TAG = "results:transport";
     "use strict";
 
     const _el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
+    const _words = (tag, cls, text) => root.molbuilder.dom.wordsEl(tag, cls, text);
 
     function _fmt(x, digits, exp) {
         if (x === null || x === undefined) return "—";
@@ -160,10 +161,9 @@ const WORKSPACE_TAG = "results:transport";
         head.appendChild(_el("h3", "transport-title",
             "Transport — " + (rec.label || "(unlabelled)")));
         head.appendChild(_el("p", "transport-sub",
-            "treatment: " + rec.treatment
             /* THE FLAG ITSELF, in the record's words (`record.
              * LOW_BIAS_SAID`; § 2a.10, *The labelling rule*). */
-            + " · " + rec.low_bias_said
+            rec.low_bias_said
             + (state.nFrames > 1 ? " · " + state.nFrames + " frames" : "")
             + " · " + pts.length + " point" + (pts.length === 1 ? "" : "s")
             + " with a transmission"
@@ -473,7 +473,7 @@ const WORKSPACE_TAG = "results:transport";
             orb.appendChild(o);
         });
         step2.appendChild(orb);
-        if (menu.note) step2.appendChild(_el("p", "transport-note", menu.note));
+        if (menu.note) step2.appendChild(_words("p", "transport-note", menu.note));
         const step3 = _el("li", null, "Name the curve: ");
         const name = _el("input", "transport-pdos-name");
         name.type = "text";
@@ -614,7 +614,7 @@ const WORKSPACE_TAG = "results:transport";
         pending.concat(notRun, failed).forEach((p) => {
             const st = _el("td");
             st.appendChild(_chip(p.state));
-            const why = _el("td", null, [p.why, _loopWords(p.progress)]
+            const why = _words("td", null, [p.why, _loopWords(p.progress)]
                 .filter(Boolean).join(" · "));
             why.setAttribute("colspan", "2");
             pickRow(_pf(p), p.bias_v, [st, why],
@@ -623,8 +623,7 @@ const WORKSPACE_TAG = "results:transport";
         panel.appendChild(table);
         state.nodes.table = table;
         Object.keys(rec.current_means || {}).sort().forEach((spin) => {
-            panel.appendChild(_el("p", "transport-note",
-                                  spin + ": " + rec.current_means[spin]));
+            panel.appendChild(_el("p", "transport-note", rec.current_means[spin]));
         });
         /* WHAT A POINT IS A COPY OF, AND WHAT IT SHARES -- a calculation
          * that reuses a finished one (engines/transport.md § 2a.16): the
@@ -727,8 +726,8 @@ const WORKSPACE_TAG = "results:transport";
                               + _fmt(src.negf.d_change_from_0v_e, 3, false)
                               + " e");
             }
-            line.appendChild(_el("span", "transport-stage-detail",
-                                 " " + bits.join(" · ")));
+            line.appendChild(_words("span", "transport-stage-detail",
+                                    " " + bits.join(" · ")));
             const any = runs.some((x) => x.rows.length);
             e.hidden = !any;
             r.hidden = !any;
@@ -758,8 +757,8 @@ const WORKSPACE_TAG = "results:transport";
                 s.appendChild(_chip(st.state));
                 const said = [st.detail, _rungLoopWords(st.progress)]
                     .filter(Boolean).join(" · ");
-                if (said) s.appendChild(_el("span", "transport-stage-detail",
-                                            " " + said));
+                if (said) s.appendChild(_words("span", "transport-stage-detail",
+                                               " " + said));
             }
             tr.appendChild(s);
             /* A DEVICE'S E_F IS ITS NEGF PHASE'S, never the periodic
@@ -792,7 +791,7 @@ const WORKSPACE_TAG = "results:transport";
          * sentence (`record.fermi_frames`), so 5.17 eV beside −1.92 eV is
          * never read as a mismatch (§ 2a.12). */
         if (rec.fermi_frames && rec.fermi_frames.note) {
-            card.appendChild(_el("p", "transport-note", rec.fermi_frames.note));
+            card.appendChild(_words("p", "transport-note", rec.fermi_frames.note));
         }
 
         /* THE CHAIN -- what each rung's attempt was gathered from

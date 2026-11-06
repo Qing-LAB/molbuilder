@@ -597,8 +597,8 @@ def require_placed(frame: "EngineFrame", struct: Structure) -> None:
             raise ValueError(
                 "the atoms handed to the engine still carry an offset of "
                 + str(tuple(round(float(v), 6) for v in left))
-                + " Å: they were not placed by cell.to_engine "
-                "(model/structure-periodicity.md § 6.0), so the engine would "
+                + " Å: they were not placed by cell.to_engine"
+                ", so the engine would "
                 "see them where nobody put them")
     kinds = tuple(struct.axis_kind)
     # THE ATOMS NAMED IN THE USER ORDER: the frame is the deck's copy, in the
@@ -614,8 +614,7 @@ def require_placed(frame: "EngineFrame", struct: Structure) -> None:
             f"Along a non-periodic axis the engine would get an atom outside "
             f"its box. Make the cell longer there, or move the origin the "
             f"structure states -- one you assigned, or an engine's own -- or "
-            f"set it back to Automatic on the Cell page "
-            f"(model/structure-periodicity.md § 6.0, check 3)",
+            f"set it back to Automatic on the Cell page",
             "deck.atoms_outside")])
 
 
@@ -1051,10 +1050,10 @@ def _failing_condition(n_layers: int, period: Optional[int]) -> str:
     both electrodes together, so this counts every layer, not one side's.
     """
     if period and n_layers % period:
-        return (f"The LAYER COUNT is what fails (junction-cell.md § 3.1): "
+        return (f"The LAYER COUNT is what fails: "
                 f"{n_layers} layers is not a whole number of "
                 f"{period}-layer stacking periods")
-    return ("The PLACEMENT is what fails (junction-cell.md § 3.2): the layer "
+    return ("The PLACEMENT is what fails: the layer "
             "count is a whole number of stacking periods, so it is where the "
             "layers were put -- mirrored rather than translated")
 
@@ -1148,8 +1147,7 @@ def classify_seam(positions, cell) -> SeamVerdict:
         return SeamVerdict(
 "collision", gap, z_room, *pair, period=None,
             message=(f"the boundary leaves {z_room:.2f} Å of room -- the box is "
-                     f"not padded, and no engine can use it "
-                     f"(science/junction-cell.md § 1)"))
+                     f"not padded, and no engine can use it"))
 
     if spacing > 0 and z_room > SEAM_VACUUM_FACTOR * spacing:
         return SeamVerdict(

@@ -229,8 +229,8 @@ def misplaced() -> List[str]:
             f"{root / SECRETS_DIRNAME} -- credentials would follow it out of "
             f"the config directory and every check below would agree with "
             f"it.\n  This is a CODE defect: `config_dir.secrets_dir` no "
-            f"longer answers with a child of `config_dir` "
-            f"(docs/configuration.md 3.1).")
+            f"longer answers with a child of `config_dir`"
+            f".")
 
     for place in places():
         if not place.credential_store:
@@ -251,8 +251,8 @@ def misplaced() -> List[str]:
             f"{home} -- every credential molbuilder keeps belongs there "
             f"({place.why}).\n"
             f"  This is a CODE defect, not a permissions one: the resolver "
-            f"that owns this file points out of the secrets directory "
-            f"(docs/configuration.md 3.1).")
+            f"that owns this file points out of the secrets directory"
+            f".")
     return out
 
 

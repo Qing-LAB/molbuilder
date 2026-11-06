@@ -46,10 +46,10 @@ label, its device stage `04_device`).
 | **launch** | plans the walk: two rounds, 0 V then 0.2 V; each 0.2 V point starts from its frame's 0 V point | the index `run-0/T_04_device.points.json`, four points; the walk `launch/T_04_device-sweep.run.sh` | 2, 5, 7 |
 | **the walk** | runs `f000/v0` and `f001/v0` from what the run gathered; then `f000/v0.2` and `f001/v0.2`, each from its frame's 0 V `.TSDE`, copied just before it runs | each point's output in its folder; its start, end and exit in the index | 8, 9, 10 |
 | **the events** | where the description asks for reports: `start` as the first point starts; `milestone` as the 0 V round ends; `finish`, with the run's state, once no point is left | `run-0/notified.json` | 9, 10 |
-| **status** | say `f001/v0.2` exited 1: the run *failed*, naming it, *frame index 1 (of 2) · 0.2 V*, and why; its count *3 of 4 points done, 1 failed (2 frames × 2 voltages)*; its next step, a launch again | nothing | 12 – 16 |
+| **status** | say `f001/v0.2` exited 1: the run *failed*, naming it, *frame 2 of 2 · 0.2 V*, and why; its count *3 of 4 points done, 1 failed (2 frames × 2 voltages)*; its next step, a launch again | nothing | 12 – 16 |
 | **launch again** | warm: opens `run-1/`, takes over the three points done in `run-0` — copied whole, each naming the point that computed it — and walks `f001/v0.2` again, from the `.TSDE` of `f001/v0` taken over | `run-1/` and its own index | 2, 3, 5 |
 
-The 0 V milestone reads *0 V -- frame index 0 (of 2): converged in 41 NEGF iterations; frame index 1 (of 2):
+The 0 V milestone reads *0 V -- frame 1 of 2: converged in 41 NEGF iterations; frame 2 of 2:
 converged in 38 NEGF iterations*.
 
 ---

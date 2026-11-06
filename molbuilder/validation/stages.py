@@ -97,8 +97,7 @@ def check_ladder_does_not_loosen(
                     "warn",
                     f"{it.name} loosens from {prev_val:g} in stage "
                     f"{prev_name!r} to {val:g} in stage {name!r}. A ladder "
-                    f"tightens as it goes (engines/tuning.md 2, the tier "
-                    f"tables); a later stage that is coarser discards what "
+                    f"tightens as it goes; a later stage that is coarser discards what "
                     f"the earlier one paid for. Deliberate? Then nothing is "
                     f"wrong -- this is advice, not a refusal",
                     where=f"stages.loosens.{it.name}",
@@ -140,8 +139,7 @@ def check_a_relaxation_takes_a_step(
             "error",
             f"stage {name!r} relaxes ({cfg.relax_type}) in relax_steps = 0 steps -- "
             f"MD.Steps 0 is a single point (read_options.F90), so the rung "
-            f"relaxes nothing.  Give it at least one step "
-            f"(engines/template.md 5.3)",
+            f"relaxes nothing.  Give it at least one step",
             where="config.relax_steps", stage=name))
     return out
 

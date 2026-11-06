@@ -915,8 +915,7 @@ def older_run(folder, stage: str, base) -> Optional[str]:
         return None
     return (f"{older[0].path.name}: its files carry the try's number, as "
             f"molbuilder named them before {ONE_START_SINCE} -- "
-            f"`{migrate_as_typed(base)}` names a run that started once anew "
-            f"(project-layout.md § 1.6.1)")
+            f"`{migrate_as_typed(base)}` names a run that started once anew")
 
 
 def concluded(folder, names, *, base, launched_in=None):
@@ -1229,13 +1228,13 @@ def _opens_the_report(place: Place) -> bool:
 #: said to be (:func:`openable`).
 NOT_IN_A_RUN = ("this folder says it is a run, but it lies in no run-<n>/ of "
                 "a stage: no run of molbuilder's, so only what is in it is "
-                "shown (project-layout.md § 1.4a)")
+                "shown")
 
 #: What the engine's scratch of the run above opens -- nothing
 #: (`engines/transport.md` § 2a.11).
 SCRATCH_OPENS = ("the engine's scratch of the run above (its leads' surface "
                  "Green's function files, one voltage's pair at a time): "
-                 "nothing in it opens (engines/transport.md § 2a.11)")
+                 "nothing in it opens")
 
 
 def openable(directory) -> Tuple[Optional[str], List[str]]:
@@ -1276,7 +1275,7 @@ def _opens(d: Path, place: Place) -> Tuple[Optional[str], List[str]]:
     if _opens_the_report(place):
         attempts.append("a transmission run's result is its calculation's "
                         "report at its point -- TBtrans writes no file a "
-                        "viewer reads on its own (web/results.md 0.1)")
+                        "viewer reads on its own")
         return str(calcdirs.description_path(place.root)), attempts
     if place.role == calcdirs.CONTAINER:
         return _container_product(d, place, label, stage, attempts), attempts
@@ -1389,7 +1388,7 @@ def folder_answer(directory) -> Dict[str, Any]:
             # alone too, its reader's words said above -- never *not marked*.
             attempts.append(
                 "this folder is not marked as part of a calculation, so only "
-                "what is in it is shown (project-layout.md § 1.4a)")
+                "what is in it is shown")
     else:
         engine = place.task.engine
         # THE ONE RULE for what a folder opens (:func:`openable`), with the
@@ -1422,15 +1421,14 @@ def folder_answer(directory) -> Dict[str, Any]:
                 "the energies the point above shares with "
                 + (said or "a point it names nowhere")
                 + ", copied from it: read with that point, whose report "
-                  "opens (engines/transport.md § 2a.16)")
+                  "opens")
         elif place.role == calcdirs.CONTAINER:
             # A CONTAINER, a run of points' root among them: no state, no
             # record (`model/parse.md` § 5.2) -- its runs, or its points,
             # are the folders below it.
             attempts.append(
                 "this directory is a container, not a run -- it has no "
-                "run state; its runs are the directories below it "
-                "(project-layout.md § 1.4)")
+                "run state; its runs are the directories below it")
     files = [file_row(entry, place)
              for entry in sorted(d.iterdir(), key=lambda e: e.name)
              if entry.is_file()]

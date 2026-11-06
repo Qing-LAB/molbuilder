@@ -28,8 +28,7 @@ def _bench_anew(folder) -> str:
     """A trial's deck redone: a prepared benchmark is not prepared again, so
     the way back is the state saved before its prep (`job-system.md`
     § 5.0), the calculation's folder named (`identity.checkpoint_words`)."""
-    return ("a prepared benchmark is not prepared again (job-system.md "
-            "§ 5.0): go back to the state saved before its prep -- "
+    return ("a prepared benchmark is not prepared again: go back to the state saved before its prep -- "
             + checkpoint_words(folder) + " -- and prep it anew.")
 
 
@@ -75,5 +74,5 @@ def check_trial_starts_cold(job_dir, job, *, engine: str) -> None:
         raise TrialNotCold(
             f"trial {job.name!r}: {deck.name} would WARM-start "
             f"({', '.join(warm)} true) -- that measures a continued run, "
-            f"not its point (generator.md § 4.3a).  For the cold deck, "
+            f"not its point.  For the cold deck, "
             + _bench_anew(root_of(job_dir)))

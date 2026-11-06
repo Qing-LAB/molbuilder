@@ -262,8 +262,9 @@
         const sel = el("select", { id: f.id });
         const now = st.drawn === true ? "true"
                   : st.drawn === false ? "false" : "auto";
+        const said = { auto: "(default)", true: "yes", false: "no" };
         for (const c of f.choices) {       // ["auto", "true", "false"]
-            const opt = el("option", { value: c }, c);
+            const opt = el("option", { value: c }, said[c]);
             if (c === now) opt.selected = true;
             sel.appendChild(opt);
         }
@@ -377,7 +378,9 @@
         // a bit nicer + lets us style border/background).
         const body = document.createElement("div");
         body.className = "schema-help-body";
-        body.textContent = help;
+        const dom = (window.molbuilder || {}).dom;
+        if (dom) body.appendChild(dom.codeWords(help));
+        else body.textContent = help;
         det.appendChild(body);
         // References -- resolved server-side from the one bibliography
         // (docs/science/references.bib); each renders as title + a DOI
@@ -443,7 +446,7 @@
             class: "schema-field schema-field-" + f.kind,
             // Short help in title= (single-line native tooltip); long
             // help moves below the input via <details>.
-            title: helpIsLong(f.help) ? "" : (f.help || ""),
+            title: helpIsLong(f.help) ? "" : (f.help || "").replace(/`/g, ""),
         });
         if (f.tier === "advanced") {
             labelEl.classList.add("is-advanced");

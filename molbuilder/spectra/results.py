@@ -417,8 +417,7 @@ def _refuse_unknown_keys(d, known, where: str) -> None:
     unknown = sorted(str(k) for k in d if k not in known)
     if unknown:
         raise ValueError(
-            f"{where}: unknown key(s) {unknown} -- every key of this file "
-            f"has a row in engines/vibration.md 6.2-6.4, and a key this reader does "
+            f"{where}: unknown key(s) {unknown} -- a key this reader does "
             f"not know is a number it would throw away in silence")
 
 
@@ -1064,8 +1063,7 @@ class SpectraResults:
         if free_list != sorted(free_list):
             raise ValueError(
                 "SpectraResults: free_atom_idxs must be ascending -- the "
-                "order of every mode's eigenvector rows (engines/vibration.md "
-                "6.10.2)")
+                "order of every mode's eigenvector rows")
         free_set   = set(free_list)
         frozen_set = set(int(i) for i in self.frozen_atom_idxs)
         # THE SCOPE AGREES WITH THE HELD SET: `all` only where nothing is
@@ -1074,11 +1072,11 @@ class SpectraResults:
             raise ValueError(
                 "SpectraResults: hessian_scope 'all' with atoms held "
                 f"({sorted(frozen_set)[:20]}) -- a held atom is outside the "
-                "Hessian (engines/vibration.md 6.10.2)")
+                "Hessian")
         if self.hessian_scope == "free" and not frozen_set:
             raise ValueError(
                 "SpectraResults: hessian_scope 'free' with no atom held -- "
-                "the Hessian is over every atom (engines/vibration.md 6.10.2)")
+                "the Hessian is over every atom")
         if free_set & frozen_set:
             raise ValueError(
                 f"SpectraResults: free_atom_idxs and frozen_atom_idxs overlap "
@@ -1100,8 +1098,8 @@ class SpectraResults:
             more = "..." if len(union) + len(missing) < n else ""
             raise ValueError(
                 f"SpectraResults: free_atom_idxs + frozen_atom_idxs must "
-                f"partition range({n}) "
-                f"(web/spectra.md § 8); "
+                f"partition range({n})"
+                f"; "
                 f"missing={missing}{more} out-of-range/extra={extra}"
             )
         # Phase status validation.
@@ -1200,7 +1198,7 @@ class SpectraResults:
             raise ValueError(
                 f"SpectraResults: a schema-{self.schema_version} result states "
                 f"its geometry without its masses -- equilibrium.masses_amu "
-                f"travels with it (engines/vibration.md 6.2)")
+                f"travels with it")
 
         # THE HESSIAN'S SCOPE, stated and checked (§ 6.6): `free` holds the
         # free atoms' count, `all` every atom's.
@@ -1410,7 +1408,7 @@ class SpectraResults:
         else:
             raise ValueError(
                 "SpectraResults: neither a structure nor frozen_atom_idxs "
-                "states which atoms were held (engines/vibration.md 6.10.2)")
+                "states which atoms were held")
         # THE DERIVED VALUES A v7 FILE STATES ARE ITS INPUTS' (§ 6.6): each
         # computed again by the one derivation, and a file stating another
         # is refused by name.  A file before v7 states them or not; they are
@@ -1420,7 +1418,7 @@ class SpectraResults:
             if wrong:
                 raise ValueError(
                     "SpectraResults: the derived values this file states are "
-                    "not its own inputs' (engines/vibration.md 6.6) -- "
+                    "not its own inputs' -- "
                     + "; ".join(wrong[:5])
                     + (f"; and {len(wrong) - 5} more" if len(wrong) > 5
                        else ""))

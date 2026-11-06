@@ -192,8 +192,7 @@ class Stage:
         if not isinstance(self.name, str) or not STAGE_NAME_RE.fullmatch(self.name):
             raise ValueError(
                 f"stage name {self.name!r} must match [A-Za-z0-9_]+ -- it "
-                "becomes a filename and a shell word "
-                "(engines/stages.md 6.6)")
+                "becomes a filename and a shell word")
 
 
 def label_of(name: str, *, calculation: str,
@@ -313,15 +312,15 @@ class Task:
         if not isinstance(self.calculation, str) \
                 or not STAGE_NAME_RE.fullmatch(self.calculation):
             raise ValueError(
-                f"task: calculation {self.calculation!r} must match "
+                f"calculation {self.calculation!r} must match "
                 "[A-Za-z0-9_]+ -- it names a section of the engine's "
-                "warm-file vocabulary (job-contracts.md 4.2a)")
+                "warm-file vocabulary")
         if (self.varies is None) != (self.stages is None):
             raise ValueError(
-                "task: 'varies' and 'stages' travel together "
+                "'varies' and 'stages' travel together "
                 f"(varies={self.varies!r}, stages={self.stages!r}) -- "
                 "'varies' is what differs ACROSS the stages, so neither is "
-                "meaningful without the other (engines/stages.md 6.5)")
+                "meaningful without the other")
         # A KIND THE KIND TABLE HOLDS, ON AN ENGINE IT RUNS ON
         # (`execution/architecture.md` § 3.3), each refused in the table's
         # sentence; and what its part on this engine fixes -- the stages,
@@ -337,11 +336,10 @@ class Task:
             names = tuple(st.name for st in (self.stages or ()))
             if names != fixed.stages:
                 raise ValueError(
-                    f"task: {_kind(self.calculation).with_article}'s stages "
+                    f"{_kind(self.calculation).with_article}'s stages "
                     f"are its rungs, every one, in order -- "
                     f"{', '.join(fixed.stages)} (got "
-                    f"{', '.join(names) or 'none'}) -- the kind table's "
-                    f"(execution/architecture.md § 3.3)")
+                    f"{', '.join(names) or 'none'}) -- the kind table's")
         # WHAT THE KIND'S DESCRIPTION CARRIES BEYOND EVERY KIND'S FIELDS
         # (the kind table's ``description``): a kind that cites carries that
         # one slot and no structure block -- its structure IS the citation
@@ -351,64 +349,61 @@ class Task:
         if desc.cites:
             if set(self.slots) != {desc.cites}:
                 raise ValueError(
-                    f"task: {_kind(self.calculation).with_article} carries "
+                    f"{_kind(self.calculation).with_article} carries "
                     f"exactly one slot, {desc.cites!r} (got "
                     f"{sorted(self.slots) or 'none'}) -- what it composes "
                     f"from")
             if self.structure is not None:
                 raise ValueError(
-                    f"task: {_kind(self.calculation).with_article} carries "
+                    f"{_kind(self.calculation).with_article} carries "
                     f"no 'structure' block -- its structure IS the "
                     f"{desc.cites} citation, copied in at prep")
         else:
             if self.slots:
                 raise ValueError(
-                    f"task: 'slots' belongs to a kind that cites -- "
+                    f"'slots' belongs to a kind that cites -- "
                     f"{_carriers(None)} -- not {self.calculation!r}")
             if self.structure is None:
                 raise ValueError(
-                    f"task: 'structure' is required for "
+                    f"'structure' is required for "
                     f"{_kind(self.calculation).with_article}; only a kind "
                     f"that cites carries none ({_carriers(None)})")
         from .kind_table import DESCRIPTION_FIELDS
         for key in DESCRIPTION_FIELDS:
             if getattr(self, key) and key not in desc.carries:
                 raise ValueError(
-                    f"task: {key!r} belongs to {_carriers(key)} alone (this "
+                    f"{key!r} belongs to {_carriers(key)} alone (this "
                     f"is {self.calculation!r})")
         for name, cite in self.slots.items():
             if not isinstance(cite, str) or not _CITATION_RE.fullmatch(cite):
                 raise ValueError(
-                    f"task: slot {name!r} must cite its junction by its "
+                    f"slot {name!r} must cite its junction by its "
                     f"tree-relative path (no leading '/', no '..', no "
                     f"whitespace); got {cite!r}: a finished relaxation "
-                    f"run's folder, or a structure pair's .xyz "
-                    f"(engines/transport.md § 3.1)")
+                    f"run's folder, or a structure pair's .xyz")
         if self.reuses and not _CITATION_RE.fullmatch(self.reuses):
             raise DescriptionError(
-                f"task: reuses names the finished transport calculation by "
+                f"reuses names the finished transport calculation by "
                 f"its folder's tree-relative path (no leading '/', no '..', "
-                f"no whitespace); got {self.reuses!r} "
-                f"(engines/transport.md § 2a.16)", where="reuses")
+                f"no whitespace); got {self.reuses!r}", where="reuses")
         if "bias" in desc.carries and not self.bias:
             raise DescriptionError(
-                f"task: {_kind(self.calculation).with_article}'s description "
-                f"states its voltages -- [0.0] for a single bias "
-                f"(engines/transport.md 2a.10); one written before 2.16.3 "
+                f"{_kind(self.calculation).with_article}'s description "
+                f"states its voltages -- [0.0] for a single bias"
+                f"; one written before 2.16.3 "
                 f"states none: `jobset migrate` writes it", where="bias")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):
                 raise DescriptionError(
-                    f"task: bias voltages must be numbers (got {self.bias!r})",
+                    f"bias voltages must be numbers (got {self.bias!r})",
                     where="bias")
             if float(self.bias[0]) != 0.0:
                 raise DescriptionError(
-                    f"task: the bias list must start at 0.0 (got "
+                    f"the bias list must start at 0.0 (got "
                     f"{self.bias[0]!r}) -- a list starts from equilibrium: "
                     "the low-bias approximation converges its device there, "
-                    "and a sweep starts each point from the one before "
-                    "(engines/transport.md § 2a.10, § 2a.11)", where="bias")
+                    "and a sweep starts each point from the one before", where="bias")
             # TWO POINTS IN ONE FOLDER -- a repeated voltage, or two whose
             # folder names are one (`bias_token`: 0.1 and 0.1000001 are both
             # `v0.1/`) -- refused here, the one door every road reads a
@@ -426,35 +421,32 @@ class Task:
                         f"puts {' and '.join(repr(v) + ' V' for v in vs)} "
                         f"in one folder ({tok}/)")
                 raise DescriptionError(
-                    f"task: the bias list {said} -- each point is one device "
-                    f"run in its own folder, so they would share it "
-                    f"(engines/transport.md 2a.10)", where="bias")
+                    f"the bias list {said} -- each point is one device "
+                    f"run in its own folder, so they would share it", where="bias")
         # THE TREATMENT, STATED where there is a choice -- a list of more
         # than one voltage -- and nowhere else (`engines/transport.md`
         # § 2a.10, TD7): never inferred from the count.
         if (len(self.bias) > 1
                 and not isinstance(self.low_bias_approximation, bool)):
             raise DescriptionError(
-                f"task: a bias list of {len(self.bias)} voltages states "
-                f"bias.low_bias_approximation -- true (the device and the "
-                f"transmission once, at 0 V; each voltage's current from "
-                f"T(E, 0), the low-bias approximation) or false (every voltage "
-                f"its own "
-                f"device SCF and transmission); got "
-                f"{self.low_bias_approximation!r} (engines/transport.md "
-                f"2a.10)", where="bias.low_bias_approximation")
+                "Several voltages: choose yes or no under \u201cthe low-bias "
+                "approximation?\u201d (--low-bias-approximation or "
+                "--no-low-bias-approximation): yes, the device and the "
+                "transmission run once, at 0 V; no, every voltage runs its own "
+                "device SCF and transmission"
+                + ("" if self.low_bias_approximation is None
+                   else f"; got {self.low_bias_approximation!r}"),
+                where="bias.low_bias_approximation")
         if len(self.bias) <= 1 and self.low_bias_approximation is not None:
             raise DescriptionError(
-                f"task: bias.low_bias_approximation answers a list of "
+                f"bias.low_bias_approximation answers a list of "
                 f"several voltages; this one has "
-                f"{len(self.bias) or 'no'} point (engines/transport.md "
-                f"2a.10)", where="bias.low_bias_approximation")
+                f"{len(self.bias) or 'no'} point", where="bias.low_bias_approximation")
         if self.stages is not None and not self.stages:
             raise ValueError(
-                "task: 'stages' is present but empty. A job has at least one "
+                "'stages' is present but empty. A job has at least one "
                 "stage -- give it a single entry rather than emptying it, "
-                "because an absent 'stages' is refused too "
-                "(engines/stages.md 6.5)")
+                "because an absent 'stages' is refused too")
         # The two LADDER-level refusals live here, in the codec, because
         # every route to a Task -- describe on a laptop, `task.of` on the
         # cluster, a hand-edited file -- passes through this constructor.
@@ -466,12 +458,11 @@ class Task:
             dups = sorted({n for n in names if names.count(n) > 1})
             if dups:
                 raise ValueError(
-                    f"task: duplicate stage name(s) "
+                    f"duplicate stage name(s) "
                     f"{', '.join(map(repr, dups))} (compared "
                     f"case-insensitively). A stage's name keys its "
                     f"directory, its deck and its status row -- two stages "
-                    f"sharing one silently hand one the other's files "
-                    f"(engines/stages.md 6.6)")
+                    f"sharing one silently hand one the other's files")
         self._check_id()
 
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
@@ -524,13 +515,12 @@ class Task:
                           stage_names=self._stage_names())
         if self.run.id != expected:
             raise ValueError(
-                f"task: run.id {self.run.id!r} is not what this description "
+                f"run.id {self.run.id!r} is not what this description "
                 f"derives. run.name {self.run.name!r} + identity "
                 f"{identity!r} give {expected!r}. The id is "
                 f"normalised once and then quoted everywhere, so a mismatch "
                 f"means one of the three was edited without the others -- and "
-                f"which one is right is not something this reader may guess "
-                f"(run-identity.md 2.0a and 3 rule 1)")
+                f"which one is right is not something this reader may guess")
 
     # ----- persistence (task@2) -------------------------------------- #
     # ``to_dict`` / ``from_dict`` are the house names for a dataclass<->JSON
@@ -588,7 +578,7 @@ def refuse_another_layout(obj) -> None:
     if shape != LAYOUT:
         _refuse(f"shape {shape!r} is not a layout molbuilder lays out: every "
                 f"calculation is {LAYOUT!r} -- a folder per stage, a folder "
-                f"per run in it (execution/project-layout.md 1). Describe the "
+                f"per run in it. Describe the "
                 f"calculation again, in a folder of its own.")
 
 
@@ -649,8 +639,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     for key in _JOB_KEYS:
         if key in obj:
             _refuse(f"{key!r} says how the calculation runs, which is its job "
-                    f"request's, {JOB_REQUEST_FILE} -- not the description's "
-                    f"(execution/job-request.md 1)", where=key)
+                    f"request's, {JOB_REQUEST_FILE} -- not the description's", where=key)
     _check_keys(obj, _TOP_KEYS, where="")
 
     engine_obj = _as_object(_require(obj, "engine", where=""), where="engine")
@@ -670,13 +659,11 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # required depends on it (transport's structure IS its citation).
     if "calculation" not in obj:
         _refuse("names no 'calculation' -- every description states its kind "
-                "(job-contracts.md 6.1; an optimization left it out until "
-                "2026-10-06)")
+                "(an optimization left it out until 2026-10-06)")
     calc = obj["calculation"]
     if not isinstance(calc, str) or not STAGE_NAME_RE.fullmatch(calc):
         _refuse(f"calculation {calc!r} must match [A-Za-z0-9_]+ -- it "
-                "names a section of the engine's warm-file vocabulary "
-                "(job-contracts.md 4.2a)")
+                "names a section of the engine's warm-file vocabulary")
 
     from .kind_table import kind as _kind
     cites = _kind(calc).description.cites
@@ -684,7 +671,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         if "structure" in obj:
             _refuse(f"{_kind(calc).with_article} carries no 'structure' "
                     f"block -- its structure IS the {cites} citation, "
-                    f"copied in at prep (engines/transport.md § 3.1)",
+                    f"copied in at prep",
                     where="structure")
         structure = None
     else:
@@ -746,14 +733,14 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         # artifacts with NO token, and adding a second stage then left that
         # run belonging to no token at all.
         _refuse("no 'stages'. A job has at least one stage -- one is the "
-                "ordinary case, not a special shape (engines/stages.md 6.5). "
+                "ordinary case, not a special shape. "
                 "Give it a single entry: "
                 '"stages": [{"name": "coarse", "overrides": {}}]')
 
     raw_stages = obj["stages"]
     if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
         _refuse("'stages' is present but empty. A job has at least one stage "
-                "(engines/stages.md 6.5) -- give it a single entry rather "
+                "-- give it a single entry rather "
                 "than removing the key, which is refused the same way: "
                 '"stages": [{"name": "coarse", "overrides": {}}]')
 
@@ -787,28 +774,28 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     # read and dropped on Save until 2026-10-19).
     if "enabled" in obj:
         _refuse("\"enabled\" -- a stage has no on/off switch since 2026-10-03: "
-                "it is in the description or it is not (engines/stages.md 2).  "
+                "it is in the description or it is not.  "
                 "A description written before carries the key: `jobset "
                 "migrate` removes it", where=where)
     for key in _JOB_STAGE_KEYS:
         if key in obj:
             _refuse(f"{key!r} says how the stage runs, which is the job "
                     f"request's, {JOB_REQUEST_FILE} -- its entry under "
-                    f"'stages' (execution/job-request.md 3.2, 3.3)",
+                    f"'stages'",
                     where=where)
     _check_keys(obj, STAGE_FIELDS, where=where)
     if "name" not in obj:
         _refuse("missing required key 'name'", where=where)
     if not STAGE_NAME_RE.fullmatch(name):
         _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
-                "a filename (engines/stages.md 6.6)")
+                "a filename")
     overrides = dict(_as_object(obj.get("overrides") or {},
                                 where=f"{where} overrides"))
     for key in overrides:
         if key in STAGE_FIELDS:
             _refuse(f"override {key!r} names a stage field. A stage has "
                     f"exactly {', '.join(STAGE_FIELDS)}; an override may not "
-                    "redefine one (engines/stages.md 2)", where=where)
+                    "redefine one", where=where)
 
     # § 6.2 -- a SUBSET of `varies`, never a superset.
     #
@@ -822,8 +809,7 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     if extra:
         _refuse(f"override(s) {', '.join(repr(k) for k in extra)} not listed "
                 "in 'varies'. A stage may only override a field the user "
-                "promoted, or a demoted parameter leaves a value hiding "
-                "(engines/stages.md 6.2)", where=where)
+                "promoted, or a demoted parameter leaves a value hiding", where=where)
 
     return Stage(name=name, overrides=overrides)
 
@@ -868,7 +854,7 @@ def _refuse_duplicate_stage_names(stages) -> None:
             _refuse(f"two stages named {st.name!r}"
                     + (f" and {seen[low]!r}" if seen[low] != st.name else "")
                     + " -- names are compared case-insensitively because they "
-                      "become filenames (engines/stages.md 6.6)")
+                      "become filenames")
         seen[low] = st.name
 
 

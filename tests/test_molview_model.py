@@ -711,8 +711,15 @@ def test_a_trajectory_arrives_whole_in_one_install():
             await m.installMolecule({ text: "x", filename: "b.xyz",
                                       frames: [[[0,0,0]]] });
         } catch (e) { refused = e.message; }
+        // ...and a set whose frames differ names the frame by its number.
+        let uneven = null;
+        try {
+            await m.installMolecule({ text: "x", filename: "b.xyz",
+                                      frames: [[[0,0,0],[1,0,0]], [[0,0,0]]] });
+        } catch (e) { uneven = e.message; }
 
         console.log(JSON.stringify({
+            uneven,
             installed, seen: seenAtInstall, beforeRetract,
             afterRetract: m.frameCount(), refused,
         }));
@@ -739,7 +746,8 @@ def test_a_trajectory_arrives_whole_in_one_install():
         f"got {out['afterRetract']}.  1 means point 0 was laid down before the "
         "frames arrived (§ 11.2); 4 means it restored nothing at all"
     )
-    assert out["refused"] and "§ 10.8" in out["refused"], (
+    assert "frame 2 has 1 atoms, expected 2" in out["uneven"], out["uneven"]
+    assert out["refused"] and "cannot join" in out["refused"], (
         f"a frame that does not fit the loaded atoms was accepted: {out['refused']}"
     )
 

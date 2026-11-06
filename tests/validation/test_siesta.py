@@ -310,16 +310,14 @@ class TestSiestaPseudoCoverageInPreflight:
         psml_issues = [i for i in issues if i.where == "config.psml_lib"]
         assert psml_issues
         assert psml_issues[0].severity == "warn"
-        assert "psml_lib is not set" in psml_issues[0].message
-        # Actionable: mentions PseudoDojo + the projects/pseudopotential/
-        # convention.
-        assert "pseudo-dojo.org" in psml_issues[0].message
+        msg = psml_issues[0].message
+        assert "No pseudopotential folder is set" in msg
+        # It names the elements this structure needs, and the way on.
+        assert "each of O, H" in msg, msg
         # The convention is the BARE name: "projects/pseudopotential"
         # cannot work, because the walk-up finds the tree and joining
         # its name again nests it inside itself (job-contracts.md 2.5a).
-        msg = psml_issues[0].message
         assert "`pseudopotential`" in msg
-        assert "do NOT write the projects/ prefix" in msg
 
     def test_where_the_pseudos_come_from_is_stated_or_the_folder_has_them(
             self, tmp_path):

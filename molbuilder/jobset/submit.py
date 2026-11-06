@@ -236,8 +236,7 @@ def _machine_of(base) -> "Environment":
     if rec is None:
         raise SubmitError(
             f"{base} holds no record of its machine -- a calculation is "
-            f"launched after its prep, which copies it (configuration.md "
-            f"M-3)")
+            f"launched after its prep, which copies it")
     return rec
 
 
@@ -322,8 +321,7 @@ def _no_sbatch(what: str, name: str, *, base, told, machine,
                 f"--no-sbatch: "
                 + (redo or rollback("the benchmark's prep", base=base)))
     return (f"{what}: there is no scheduler header ({name}) -- the "
-            f"machine it was prepared for names no queue (its record's "
-            f"scheduler has none, scheduler.md § 6a).  To run it here:\n"
+            f"machine it was prepared for names no queue (its record's scheduler has none).  To run it here:\n"
             f"{here}\n  For a machine with a queue, prep it for that "
             f"machine (--target, its record's name) -- a calculation is "
             f"set to the machine of its first prep, so "
@@ -386,8 +384,7 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
             f"every header, so this one was edited since.  Prepare it again "
             f"where nothing of it was launched, or restore the state saved "
             f"before it was edited (`molbuilder checkpoint list`); --time "
-            f"states the wall for this launch alone (job-system.md § 6.0, "
-            f"R-L44).")
+            f"states the wall for this launch alone.")
     restated = (kind.restated(row.says, sent.time) if sent.restated
                 else [])
     # The launch-door claim, EXPLICIT on the line: environment inheritance
@@ -640,8 +637,7 @@ class _Member:
                                   or self.walk is not None)
         return (f"launched{' again' if self.again else ''} {self._where()}: "
                 f"it " + self._takes(would=False)
-                + (".  To start it over, launch it again with --cold "
-                   "(job-system.md § 5.4)" if self.again and warm else ""))
+                + (".  To start it over, launch it again with --cold" if self.again and warm else ""))
 
 
 @dataclass
@@ -760,7 +756,7 @@ class Inside:
             rec = read_record(record_path(base, GroupNames(name)))
         except (SequenceError, ValueError) as exc:
             raise SubmitError(f"--in-sequence {name}: {exc} -- a sequence's "
-                              f"own launch types it (job-system.md R-L46).")
+                              f"own launch types it.")
         return cls(name=name, record=rec, job=str(job))
 
     @property
@@ -900,7 +896,7 @@ class LaunchPlan:
 #: gathers, and a flag that would not be read is refused by name.
 GATHER_AT_FIRST = ("--gather takes a rung's inputs anew when it is launched "
                    "again; its first launch gathers them from each upstream "
-                   "rung's newest run already (job-system.md § 5.4).")
+                   "rung's newest run already.")
 
 
 def _no_run_open(who: str, container: Path, base: Path,
@@ -911,8 +907,7 @@ def _no_run_open(who: str, container: Path, base: Path,
     (`project-layout.md` § 1.5, § 1.6.2); ``way_on`` opens one."""
     return SubmitError(
         f"{who}: no run is open under {_rel(container, base)}/ -- it runs "
-        f"in run-<n>, never in its own folder (project-layout.md § 1.5, "
-        f"1.6.2).  To open it, " + way_on)
+        f"in run-<n>, never in its own folder.  To open it, " + way_on)
 
 
 def _read_back(folder: Path, base: Path) -> str:
@@ -973,11 +968,10 @@ def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str,
     said = launch_record_path(where)
     raise SubmitError(
         f"trial {job.name!r}: already launched -- {said} records it.  A "
-        f"trial measures its point ONCE (project-layout.md § 1.5: immutable "
-        f"once it has run).\n"
+        f"trial measures its point ONCE (immutable once it has run).\n"
         f"  read what it measured:\n    {_read_back(container, base)}\n"
-        f"  measure it again -- a prepared benchmark is not prepared again "
-        f"(job-system.md § 5.0): "
+        f"  measure it again -- a prepared benchmark is not prepared again"
+        f": "
         + rollback("the benchmark's prep", base=base))
 
 
@@ -1022,20 +1016,20 @@ def _plan_member(calc, job, *, writes: Plan,
         raise SubmitError(
             "--gather takes a rung's inputs anew from the rungs upstream, "
             "where its kind names them, and this calculation's rungs take "
-            "none (job-system.md § 5.4).")
+            "none.")
     if gather and not inputs(task, job.name):
         raise SubmitError(
             f"--gather takes a rung's inputs anew from the rungs upstream, "
-            f"and {job.name} takes none -- it is launched again without it "
-            f"(job-system.md § 5.4, R-L14).")
+            f"and {job.name} takes none -- it is launched again without it"
+            f".")
     if first and gather:
         raise SubmitError(GATHER_AT_FIRST)
     if not first and from_attempt and gather:
         raise SubmitError(
             "--from and --gather are two answers to one question: --from "
             "names the run an independent stage continues from, --gather "
-            "takes a rung's inputs anew from the rungs upstream "
-            "(job-system.md § 5.4).")
+            "takes a rung's inputs anew from the rungs upstream"
+            ".")
     points = _a_sweep(calc, job.name)
     if first:
         return _first_launch(calc, job, member=member,
@@ -1501,7 +1495,7 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
                 f"and the sequence {inside.name} was sent with "
                 f"{', '.join(sent) if sent else 'no such group'} -- the "
                 f"job request changed since the job went, so this group is "
-                f"not launched in it (job-system.md § 6.0; R-L46).")
+                f"not launched in it.")
     if number is not None:
         # A GROUP A SEQUENCE STILL GOING HOLDS is that job's to launch
         # (`job-system.md` § 6.0, R-L45) -- but by its own walk.
@@ -1580,7 +1574,7 @@ def _the_group(calc, *, group, only,
                 f"`{only}` was never launched, and its group {number} holds "
                 f"{', '.join(f'`{n}`' for n in described if stage_key(n) != stage_key(only))}"
                 f" too -- a group goes whole the first time; a member is "
-                f"launched alone only again (job-system.md, *The task*):\n"
+                f"launched alone only again:\n"
                 + block(launch_lines("task", base=base, groups=[number])))
         why = regrouped(calc, only)
         if why:
@@ -1591,7 +1585,7 @@ def _the_group(calc, *, group, only,
         raise SubmitError(
             f"group {group}: the job request holds groups "
             f"{', '.join(map(str, request.numbers))}"
-            f" (execution/job-request.md § 3.3).")
+            f".")
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED (`job-system.md`, *The task*),
     # asked of the one rule and said in its words; a record that does not
     # read is :func:`plan_launch`'s one catch's (R-L21).
@@ -1613,7 +1607,7 @@ def _the_group(calc, *, group, only,
             f"--from / --cold / --gather speak for one stage, and group "
             f"{group} holds {', '.join(f'`{m}`' for m in members)} -- its "
             f"members each take their default; a member launched again "
-            f"alone takes them with --stage (job-system.md § 5.3).")
+            f"alone takes them with --stage.")
     if not ran:
         why = next((w for w in (regrouped(calc, m) for m in members)
                     if w), None)
@@ -3277,7 +3271,7 @@ def _held_by(held, number: int) -> str:
             + "; launch it alone or in another sequence once that job has "
               "ended, or stop the job first:\n"
             + block([jobs_as_typed("stop", job.id)])
-            + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
+            + "\n")
 
 
 def _molbuilder_env_entry(machine) -> str:
@@ -3342,14 +3336,13 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     base, task = Path(calc.base), calc.task
     if jobset.kind != KIND_LADDER:
         raise SubmitError("several groups go as one job in a task, and this "
-                          "is a benchmark (job-system.md § 6.0).")
+                          "is a benchmark.")
     numbers = sorted(set(int(n) for n in numbers))
     if one:
         raise SubmitError(
             "--stage, --cold, --from and --gather speak for one stage, and "
             f"groups {', '.join(map(str, numbers))} go as one job of "
-            "several groups -- launch that stage alone (job-system.md "
-            "§ 6.0, *A sequence of groups*; R-L45).")
+            "several groups -- launch that stage alone.")
     for n in numbers:
         # EACH GROUP AS ITS OWN LAUNCH ASKS IT: described, prepared, its
         # members not changed since -- and held by no sequence still going.
@@ -3420,7 +3413,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
             f"them ({names.walked(GROUP_HEADER)}) -- prepare them "
             f"as one job first:\n"
             + block(prep_sequence_lines(numbers, base=base))
-            + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)"),
+            + "\n"),
         sequence=sequence, preview=preview)
     if sub.direct:
         rec = Record(groups=groups, mode="direct", command=sub.command,
@@ -3471,7 +3464,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             "launched again -- and names which; with nothing named, `launch "
             "task` sends the group that can go:\n"
             + block(launch_lines("task", base=base))
-            + "\n  Stages do not chain (project-layout.md § 1.6), in direct "
+            + "\n  Stages do not chain, in direct "
               "mode as much as submit: a stage that builds on another is "
               "launched after you have looked at the one it builds on.")
 

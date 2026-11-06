@@ -191,11 +191,6 @@
 .schema-field > .field-issues .issue-item {
     padding: var(--space-xs) var(--space-sm) var(--space-xs) var(--space-sm2);
 }
-/* The stable id is worth showing in a card list, where a row has to say what
-   it is about.  Beside the field it IS the field -- the label is right there
-   -- so repeating it is noise. */
-.schema-field > .field-issues .issue-where { display: none; }
-
 /* ---- Choice list: a radio or checkbox beside its sentence, one choice a
  * line.  The one owner of the shape This machine's kinds and the transport
  * tab's bias treatment share (ui-contract.md § 1: a widget used on more than

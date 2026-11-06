@@ -448,7 +448,7 @@ def api_load():
                 "error": (
                     f"Nothing here a viewer can open:\n"
                     f"  {raw_path}\n"
-                    f"What was tried (docs/model/parse.md § 5.2):\n"
+                    f"What was tried:\n"
                     f"  {tried}\n"
                     f"Point the viewer at a run's folder -- one prep "
                     f"opened -- or at one of its files."

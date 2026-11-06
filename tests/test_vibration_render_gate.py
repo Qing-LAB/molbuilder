@@ -225,7 +225,7 @@ def test_one_fact_one_finding_on_a_vibration_deck():
              PySCFConfig(spin_treatment="unrestricted",
                          unpaired_electrons=1))):
         parity = [i for i in validate(struct, cfg, calculation=kind)
-                  if "the electron count and the spin disagree"
+                  if "the electron count and the unpaired count disagree"
                   in i.message.lower()]
         assert len(parity) == 1, (
             f"{kind}: {len(parity)} parity findings for one fact: "

@@ -173,4 +173,4 @@ expect = { cell = "none", axis_kind = ["isolated", "isolated", "isolated"], said
 name = "a document whose second frame holds other atoms is refused, naming the frame"
 door = "read_document"
 document = "2\nfirst\nH 0 0 0\nH 0 0 0.74\n2\nsecond\nH 0 0 0\nLi 0 0 0.74\n"
-refused = "frame index 1 (of 2) differs from frame index 0 in its species or atom order"
+refused = "frame 2 of 2 differs from the first in its species or atom order"

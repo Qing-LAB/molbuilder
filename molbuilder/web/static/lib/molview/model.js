@@ -21,6 +21,7 @@ import {
     structureForServer, groupByLabel, effectiveCell, customizedRow,
     resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
+import { toDisplay } from "./_atom.js";
 import { createSelectionStore, createMeasurementStore, createViewStore }
     from "./stores.js";
 import { createHistory } from "./history.js";
@@ -519,12 +520,12 @@ export function createModel(opts) {
     // the identity being checked against is the one still being installed.
     function requireCount(coords, n, label) {
         if (!n) {
-            throw new Error(label + ": no atoms to check against (§ 10.8)");
+            throw new Error(label + ": no atoms to check against");
         }
         const got = Array.isArray(coords) ? coords.length : 0;
         if (got !== n) {
             throw new Error(label + ": a frame of " + got + " atoms cannot join "
-                            + "a structure of " + n + " (§ 10.8)");
+                            + "a structure of " + n);
         }
     }
 
@@ -533,7 +534,7 @@ export function createModel(opts) {
     function requireMatch(coords, label) {
         if (unit === EMPTY) {
             throw new Error(label + ": nothing loaded — there is no atom "
-                            + "identity to append to (§ 10.8)");
+                            + "identity to append to");
         }
         requireCount(coords, atomCount(), label);
     }
@@ -550,7 +551,7 @@ export function createModel(opts) {
     function noFrameSetWhereEdited(count) {
         if (!readOnly && count > 1) {
             throw new Error("installMolecule: a frame set is not edited -- "
-                            + "pick a frame (molview.md § 9.4)");
+                            + "pick a frame");
         }
     }
 
@@ -565,8 +566,8 @@ export function createModel(opts) {
         list.forEach((frame, i) => {
             const got = Array.isArray(frame) ? frame.length : 0;
             if (got !== n0) {
-                throw new Error(label + ": frame " + i + " has " + got
-                                + " atoms, expected " + n0 + " (§ 10.8)");
+                throw new Error(label + ": frame " + toDisplay(i) + " has " + got
+                                + " atoms, expected " + n0);
             }
         });
         return n0;
@@ -920,7 +921,7 @@ export function createModel(opts) {
                 if (frame == null) return null;
                 const count = Array.isArray(frames) ? frames.length : 0;
                 if (!Number.isInteger(frame) || frame < 0 || frame >= count) {
-                    throw new Error("frame " + frame + " is outside this "
+                    throw new Error("frame index " + frame + " is outside this "
                                     + "structure's " + count + " frame(s)");
                 }
                 return frame;

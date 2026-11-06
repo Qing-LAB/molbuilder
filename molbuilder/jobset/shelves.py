@@ -123,7 +123,7 @@ def shelf_request(trials) -> "Resources":
         raise ShelfError(
             f"the shelf's trials ({', '.join(j.name for j in trials)}) do "
             f"not share one request -- prep states one allocation over a "
-            f"sweep (generator.md § 4.3a); prepare the benchmark again.")
+            f"sweep; prepare the benchmark again.")
     r = trials[0].resources
     return Resources(mpi_np=r.mpi_np, cpus_per_task=r.cpus_per_task,
                      gres=r.gres, use_gpu=_uses_gpu(trials[0]),

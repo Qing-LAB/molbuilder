@@ -205,8 +205,8 @@ def _check_fixed_on_every_rung(cfg, calculation: str,
                 "error",
                 f"``{name}`` is {have!r}, and the rung fixes it at "
                 f"{answer!r}: {why_role(name)}.  A deck is rendered from "
-                f"the config `resolve` answered, which lays it on "
-                f"(engines/template.md § 6.4).",
+                f"the config `resolve` answered, which lays it on"
+                f".",
                 f"config.{name}"))
     return issues
 

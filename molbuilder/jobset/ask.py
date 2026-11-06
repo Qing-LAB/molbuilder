@@ -94,13 +94,13 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
             f"  WARNING {busiest} ranks/GPU exceeds MPS's own "
             f"ceiling of {MPS_MAX_CLIENTS_PER_DEVICE} clients/device -- "
             f"ranks past the {MPS_MAX_CLIENTS_PER_DEVICE}th on one device "
-            f"will FAIL TO ATTACH, not just run slowly "
-            f"(engines/tuning.md § 2.12).")
+            f"will FAIL TO ATTACH, not just run slowly"
+            f".")
     elif busiest > GPU_TUNED_RANKS_PER_DEVICE:
         lines.append(
             f"  NOTE {busiest} ranks/GPU; this stack's tuned point "
-            f"(no NCCL) is ~{GPU_TUNED_RANKS_PER_DEVICE} "
-            f"(engines/tuning.md § 2.12).")
+            f"(no NCCL) is ~{GPU_TUNED_RANKS_PER_DEVICE}"
+            f".")
     return lines
 
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -35,7 +36,9 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     """THE VALUES ``stage`` IS PREPARED WITH, from ``calc``'s records --
     ``settings``: every field of its configuration as resolved for it, but
     the run settings, which are its run card's (`template.run_settings`);
-    ``points``: a rung of points' points, in words, else ``None``;
+    ``points``: a rung of points' points, in words, else ``None``, and
+    ``point_folders``, the same points by their folders: what they are compared
+    by, since a release may reword a point and a folder stays;
     ``run_card``: the job request's values that reach it (its run card,
     the calculation's allocation and notification), else ``None``.
     ``calc`` holds the plan as this prep leaves it (its rows merged in);
@@ -55,11 +58,12 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     settings = {f.name: _plain(getattr(cfg, f.name))
                 for f in dataclasses.fields(cfg)
                 if f.name not in on_the_card}
-    points = None
+    points = folders = None
     declared = points_of(task)
     if declared is not None:
         pts = declared.rung_points(calc, stage, read=read)
         points = [pt.words() for pt in pts] or None
+        folders = [pt.rel for pt in pts] or None
     request = calc.request
     run_card = None
     if request is not None:
@@ -68,7 +72,8 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
             "execution": request.run_condition(stage),
             "allocation": dataclasses.asdict(request.allocation),
             "notify": whole.get("notify")})
-    return {"settings": settings, "points": points, "run_card": run_card}
+    return {"settings": settings, "points": points,
+            "point_folders": folders, "run_card": run_card}
 
 
 def _stages_in(load, path: Path) -> Dict[str, Dict[str, Any]]:
@@ -167,6 +172,19 @@ class Difference:
     said: str
 
 
+#: A frame as a record written before 2.67.2 words it.
+_OLDER_FRAME = re.compile(r"frame index (\d+) \(of (\d+)\)")
+
+
+def _words_now(points) -> List[str]:
+    """A record's points in today's words, a frame numbered as
+    :func:`structure.frame_words` numbers it."""
+    from ..structure import frame_words
+    return [_OLDER_FRAME.sub(
+                lambda m: frame_words(int(m[1]), int(m[2])), str(p))
+            for p in points or ()]
+
+
 def differences(was: Dict[str, Any], now: Dict[str, Any]
                  ) -> List[Difference]:
     """Each value that differs, ``name: was → now`` -- the settings by
@@ -177,17 +195,20 @@ def differences(was: Dict[str, Any], now: Dict[str, Any]
     an item added or retired since -- never the person's, and is not
     compared; in a block that holds only what is stated (:data:`_STATED`)
     a key one side lacks is the person's, *run card mpi_np: not stated →
-    4*."""
+    4*.  Points are compared by their folders, never their words; a record
+    written before it held them, by the words it holds (:func:`_words_now`)."""
     out: List[Difference] = []
     s_was, s_now = was.get("settings") or {}, now.get("settings") or {}
     for name in sorted(set(s_was) & set(s_now)):
         if s_was[name] != s_now[name]:
             out.append(Difference(SETTINGS, f"{name}: {_words(s_was[name])}"
                                             f" → {_words(s_now[name])}"))
-    if was.get("points") != now.get("points"):
+    p_was, p_now = _words_now(was.get("points")), _words_now(now.get("points"))
+    if (was["point_folders"] != now.get("point_folders")
+            if "point_folders" in was else p_was != p_now):
         out.append(Difference(
-            POINTS, f"points: {', '.join(was.get('points') or ['none'])} → "
-                    f"{', '.join(now.get('points') or ['none'])}"))
+            POINTS, f"points: {', '.join(p_was or ['none'])} → "
+                    f"{', '.join(p_now or ['none'])}"))
     rc_was, rc_now = was.get("run_card") or {}, now.get("run_card") or {}
     for block in sorted(set(rc_was) & set(rc_now)):
         a, b = rc_was.get(block) or {}, rc_now.get(block) or {}

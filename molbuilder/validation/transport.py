@@ -76,8 +76,8 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                 f"stops a device run below {MIN_TS_TEMPERATURE_K:g} K before "
                 f"it starts -- \"TranSiesta electronic temperature *must* be "
                 f"larger than 10 kT\".  At least "
-                f"{MIN_TS_TEMPERATURE_K:g} K runs; 300 K is the default "
-                f"(engines/transport.md 6.1c).",
+                f"{MIN_TS_TEMPERATURE_K:g} K runs; 300 K is the default"
+                f".",
                 where="config.electronic_temperature"))
         else:
             n = pole_count(pole, temp)
@@ -96,8 +96,8 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                     f"20 poles\", after the queue wait.  The count is "
                     f"DERIVED, N = int(E / (pi kT)), so it moves with the "
                     f"temperature: at {float(temp):g} K the least energy is "
-                    f"{need:.2f} eV.  The default is 10 eV "
-                    f"(engines/transport.md 6.1c).",
+                    f"{need:.2f} eV.  The default is 10 eV"
+                    f".",
                     where="config.negf_eq_pole_ev"))
     # THE TRANSMISSION WINDOW REACHES THE BIAS WINDOW (P2, `engines/
     # transport.md` § 2a.10, § 6.1c): on the transmission rung alone, whose
@@ -175,8 +175,7 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                         "warn",
                         f"axis {name} is declared periodic, but {label} is "
                         f"one atom, so whether it reaches across that "
-                        f"boundary cannot be measured (engines/transport.md "
-                        f"6.1c).",
+                        f"boundary cannot be measured.",
                         where="cell.transverse_vacuum"))
                 elif reach > SEAM_VACUUM_FACTOR * bond:
                     out.append(Issue(
@@ -189,8 +188,7 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                         f"isolated across the transport axis: declare the "
                         f"axis isolated on the structure (the Cell page), "
                         f"relax it, and cite that relaxation -- its deck "
-                        f"records the axis kinds (engines/transport.md "
-                        f"6.1c).",
+                        f"records the axis kinds.",
                         where="cell.transverse_vacuum"))
     return out
 
@@ -223,7 +221,7 @@ def _bias_points_in_range(task) -> List[Issue]:
         "warn",
         f"the bias list holds {', '.join(f'{v:g}' for v in out)} V, outside "
         f"the recommended range [{lo:g}, {hi:g}] V -- a recommendation, not "
-        f"a limit (engines/template.md 5.3)",
+        f"a limit",
         where="task.bias")] if out else []
 
 
@@ -264,7 +262,7 @@ def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
     from ..transport.energies import sampled_window, window_short_of
     short = window_short_of(*sampled_window(emin, emax, n), bias,
                             BOLTZMANN_EV_K * float(temp))
-    return [Issue("error", short + " (engines/transport.md 2a.10)",
+    return [Issue("error", short,
                   where="config.transmission_emax_ev",
                   stage=stage)] if short else []
 

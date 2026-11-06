@@ -394,16 +394,16 @@ def no_usable_record(calc, why, *, root, afresh: bool) -> "str | None":
         # whatever made the record unusable.
         return (f"this calculation's junction is not composed again: "
                 f"{reason}.  `{launched}` ran on the junction recorded, and a "
-                f"launched stage's junction is never replaced "
-                f"(engines/transport.md § 1.1); to compose it again, "
+                f"launched stage's junction is never replaced"
+                f"; to compose it again, "
                 + redo_launched(launched, calc=calc))
     if root is None:
         return (f"this transport calculation cannot be composed here: "
                 f"{reason}.  And {base} is not inside a projects tree, so the "
                 f"citation {citation_of(task)!r} cannot be resolved to "
                 f"compose afresh.  Prep once inside the tree that holds the "
-                f"cited junction -- the record then travels with the folder "
-                f"(engines/transport.md § 3.1).")
+                f"cited junction -- the record then travels with the folder"
+                f".")
     if not afresh:
         numbers = calc.request.numbers
         return (f"this calculation's junction is not composed again here: "

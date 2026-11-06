@@ -223,7 +223,7 @@ def _receiver(kind: str, spec: Any, refuse) -> Receiver:
     cap = WIRE_LIMIT.get(kind)
     if cap is not None and (limit == 0 or limit > cap):
         raise refuse(f"{at}.limit is {limit}{' (no limit)' if limit == 0 else ''}; "
-                     f"{kind} takes {cap} fields at most (run-reports.md 4.1b)")
+                     f"{kind} takes {cap} fields at most")
     order_in = spec.get("order")
     if not isinstance(order_in, dict):
         raise refuse(f"{at}.order must be an object of event -> fields")

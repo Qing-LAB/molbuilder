@@ -2031,11 +2031,11 @@ addable without rework. Citing a pair is § 3.1's second citation kind
 | **the same cell as frame 0** | the leads must tile one cell for every frame (I6, § 2a.9 above) | the same — the cell is shared, a frame cannot state another |
 | **no electrode atom moved**, within the tolerance the citation door's frozen-atom check uses (`wizard.FROZEN_TOL_ANG`, 10⁻³ Å) | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame, naming the frame and the atom (`compose.classify_citation`) |
 
-**The frame token is the frame's index**: `f000` is the base — frame index 0,
+**The frame token is the frame's index**: `f000` is the base — the first frame,
 the undisplaced reference every displaced curve is compared against, and it
-runs too — and `f001`… follow in file order, so a folder and a message say the
-same index (*frame index 1 (of 3)* is `f001`; `model/structure.md` § 2.2e: the
-code's index everywhere, a folder name included, a number only on the UI's
+runs too — and `f001`… follow in file order: *frame 2 of 3* in a message is the
+folder `f001` (`model/structure.md` § 2.2e: the code's index in a folder name, a
+number wherever a person reads
 display; `paths.frame_token`).
 
 **One mode per frame set, and what each frame is, stated in the pair**
@@ -3111,7 +3111,7 @@ smooth over the thermal range (`vibrational-averaging.md` § 5.3) — is the
 person's, as weighing one mode against another is. A point not done is a gap in
 the family and the average at that voltage waits for it — never computed from
 the frames that happen to be there. Every frame is named by its index:
-*frame index 1 (of 3)* is `f001` (`model/structure.md` § 2.2e).
+*frame 2 of 3* is `f001` (`model/structure.md` § 2.2e).
 
 **The data file, `<label>.transport.nc`** *(user, 2026-10-10: "doing a
 derivative is trivial if the result are saved with these parameter and

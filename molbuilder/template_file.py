@@ -70,7 +70,7 @@ def of(base, label: str, *, raw: bool = False) -> Optional[TemplateFile]:
             f"{base} holds {len(found)} templates "
             f"({', '.join(p.name for p in found)}), so which one describes "
             f"this calculation is not answerable from the folder alone. A "
-            f"folder is ONE calculation (project-layout.md § 1.4); this one's "
+            f"folder is ONE calculation; this one's "
             f"is {template_filename(label)} -- remove the other.")
     if found[0].name != template_filename(label):
         raise ValueError(
@@ -112,8 +112,7 @@ def _refuse_run_settings(path, text: str, base) -> None:
            "hand-over again from its tab.")
     raise ValueError(
         f"{path.name} holds {', '.join(held)}: a run setting is the job "
-        f"request's, never the template's (engines/template.md § 2; "
-        f"execution/job-request.md § 2).  {way}")
+        f"request's, never the template's.  {way}")
 
 
 __all__ = ["TemplateFile", "of", "template_filename", "template_path"]

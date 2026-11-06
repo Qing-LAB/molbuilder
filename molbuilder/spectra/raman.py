@@ -79,9 +79,7 @@ WHAT = ("the Raman strengths of a SIESTA vibration's picked modes at a "
         "cell_volume_a3, complex at the laser (its imaginary part V/4pi "
         "eps2); dalpha/dQ = [alpha(+dQ) - alpha(-dQ)] / 2dQ and the strength "
         "R = |dalpha/dQ|^2 for light along direction -- a strength, not an "
-        "intensity: no laser-frequency or temperature factor "
-        "(engines/vibration.md 5.11 10; "
-        "science/vibrational-optical-response.md 3.2a)")
+        "intensity: no laser-frequency or temperature factor")
 
 
 class RamanError(ValueError):
@@ -554,7 +552,7 @@ def _view_vars():
             "the Raman channel's band floor",
             "at or below it the strongest mode sets no relative scale: "
             "relative is NaN -- set on the Placzek activity's scale, which "
-            "runs above the strength R (engines/vibration.md 5.11 10)"),
+            "runs above the strength R"),
     )
 
 

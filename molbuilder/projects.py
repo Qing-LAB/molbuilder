@@ -79,7 +79,7 @@ def validate_name(name: str, *, kind: str = "name") -> str:
         raise InvalidName(
             f"{kind} {name!r} contains characters outside [A-Za-z0-9_-]; "
             f"these would clash with SIESTA's basename-based file "
-            f"discovery (see docs/execution/job-contracts.md)."
+            f"discovery."
         )
     return name
 
@@ -218,8 +218,8 @@ def named_projects(path: Path, said_by: str) -> Path:
             f"{said_by} names {path}, a folder called {path.name!r}: the "
             f"projects tree is a folder named {PROJECTS_ROOT_NAME!r}, because "
             f"a calculation finds its tree by walking up to that name -- "
-            f"under any other name its citations and psml_lib name nothing "
-            f"(docs/execution/job-contracts.md § 2.5).  Rename the folder to "
+            f"under any other name its citations and psml_lib name nothing.  "
+            f"Rename the folder to "
             f"{PROJECTS_ROOT_NAME!r}, or set {path / PROJECTS_ROOT_NAME}.")
     return path
 

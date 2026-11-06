@@ -60,6 +60,13 @@
     <div id="transport-extend-out" class="action-row" hidden></div>
     <div id="transport-junction-intro" data-new-only>
     <p class="hint">
+      Cite a finished relaxation run's folder or a structure pair saved from
+      one &mdash; or a transport calculation's folder to reuse it.  The line
+      under the button says what you picked.
+    </p>
+    <details class="hint">
+    <summary>What can be cited, and what happens to it</summary>
+    <p class="hint">
       <strong>Point the calculation at one relaxed junction.</strong>
       Every later stage is derived from it: the sorted copy, both
       electrode cells, the device, the transmission.  Nothing is
@@ -116,12 +123,11 @@
       other lead.  That case is detected below and offers a rename.
     </p>
     <p class="hint">
-      Reference —
+      More in the
       <a href="/documents?doc=engines/transport.md" target="_blank"
-         rel="noopener">Transport contract</a>:
-      § 3.1 what you can cite, § 4 how region labels drive the five
-      stages.
+         rel="noopener">transport document</a>.
     </p>
+    </details>
     </div>{#- /#transport-junction-intro -#}
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
@@ -270,11 +276,10 @@
       reasoning.
     </p>
     <p class="hint">
-      Reference —
+      More in the
       <a href="/documents?doc=engines/transport.md" target="_blank"
-         rel="noopener">Transport contract</a>:
-      § 2a.13 every parameter and what it writes, § 0.2 the three k-point
-      grids, § 0.4 the four things that must agree.
+         rel="noopener">transport document</a>: every parameter and what it
+      writes, the three k-point grids, the four things that must agree.
     </p>
     {#- ONE PANEL PER ENGINE (engines/transport.md 3.8.8): a tab per engine
         molbuilder knows (`transport.stages.engine_tabs`); the panel is the
@@ -332,11 +337,10 @@
       one under this project and select it in the sidebar.
     </p>
     <p class="hint">
-      Reference —
+      More in the
       <a href="/documents?doc=engines/transport.md" target="_blank"
-         rel="noopener">Transport contract</a>:
-      § 1 one citation → five derived stages, § 1.1 the workflow end to
-      end.
+         rel="noopener">transport document</a>: one citation → five derived
+      stages, the workflow end to end.
     </p>
     {#- THE PLAN, BEFORE ANYTHING IS WRITTEN: for an extension, what is
         copied from the finished calculation and what is computed, worked
@@ -498,7 +502,7 @@
       et al. 2002; Lopez Sancho et al. 1985; Papior et al. 2017; Thygesen
       and Jacobsen 2005; Strange et al. 2008 &mdash; in the
       <a href="/documents?doc=engines/transport.md" target="_blank"
-         rel="noopener">Transport contract</a> &sect;&nbsp;0.2&ndash;0.3b,
+         rel="noopener">transport document</a>,
       with a diagram of what each stage hands the next.</p>
   </section>
 

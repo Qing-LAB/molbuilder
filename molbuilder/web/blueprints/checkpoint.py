@@ -294,7 +294,7 @@ def api_checkpoint_save():
     if not note:
         return _protocol_error(
             "a state needs a note saying what happened and what you were "
-            "about to do (checkpointing.md L3)")
+            "about to do")
     repo = Repo(str(path))
     if not repo.initialized:
         return _protocol_error(
@@ -379,7 +379,7 @@ def api_checkpoint_restore():
     if "include_binaries" in body:
         return _protocol_error(
             "include_binaries is not accepted: a restore returns the whole "
-            "folder or it does not happen (checkpointing.md A4)")
+            "folder or it does not happen")
     repo = Repo(str(path))
     if not repo.initialized:
         return _protocol_error(

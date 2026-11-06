@@ -231,14 +231,14 @@ _GPU_NO_COUNT = (
     "default) and states no GPU count.  Write it on the run card -- "
     f"\"execution\": {{\"gpu_count\": N}} in {JOB_REQUEST_FILE}, the "
     "calculation's or this stage's -- "
-    "or say it on the prep: --gpus N (docs/execution/gpu.md G5).")
+    "or say it on the prep: --gpus N.")
 _GPU_NOT_USED = (
     "this run asks for {count} GPU(s) and does not use the GPU (`use_gpu` is "
     "off -- its run card, else the catalogue's default): its deck runs on "
     "the CPU, so "
     "the GPUs would be held and never used.  Set `use_gpu` on the run card "
     "to run it on the GPU, or remove the count -- `gpu_count` on the run "
-    "card, or --gpus on the prep (docs/execution/gpu.md G5).")
+    "card, or --gpus on the prep.")
 
 
 @dataclass(frozen=True)

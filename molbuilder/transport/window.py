@@ -37,8 +37,7 @@ def window_rung() -> str:
         raise RuntimeError(
             f"catalogue.template.toml: the window items "
             f"{', '.join(WINDOW_ITEMS)} name {sorted(rungs)} as their rungs "
-            f"-- they are read by one rung together (engines/transport.md "
-            f"§ 2a.16)")
+            f"-- they are read by one rung together")
     return next(iter(rungs))[0]
 
 

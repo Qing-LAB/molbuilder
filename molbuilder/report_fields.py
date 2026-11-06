@@ -205,13 +205,13 @@ def refusal(name: str, engine: Optional[str] = None,
     field = BY_NAME.get(name)
     if field is None:
         return (f"{name!r} is not a report field. The fields are "
-                f"{', '.join(NAMES)} -- the report's own names "
-                f"(run-reports.md 4.1a), not labels. The calculation's name "
+                f"{', '.join(NAMES)} -- the report's own names"
+                f", not labels. The calculation's name "
                 f"and job id are always sent and are not on the list")
     if not field.applies(engine, calculation):
         where = " ".join(w for w in (engine, calculation) if w)
         can = ", ".join(f.name for f in for_run(engine, calculation))
         return (f"{name!r} is never reported for a {where} run -- nothing "
-                f"such a run writes states it (stages.md 6.9). It can carry "
+                f"such a run writes states it. It can carry "
                 f"{can}")
     return None

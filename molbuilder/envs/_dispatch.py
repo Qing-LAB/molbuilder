@@ -152,8 +152,7 @@ def route(tool: str, *, env: Optional[str] = None) -> Optional[str]:
         raise FileNotFoundError(
             f"`{tool}`: not reachable.  Its routed env `{routed_name}` "
             f"does not exist on this machine, and `{tool}` is not on "
-            f"host PATH.  Either create the env (see "
-            f"docs/ops/installation.md) or install `{tool}` on the host."
+            f"host PATH.  Either create the env or install `{tool}` on the host."
         )
     raise FileNotFoundError(
         f"`{tool}`: not on host PATH, and no conda env routing is "

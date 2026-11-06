@@ -299,8 +299,7 @@ class Scheduler:
             raise ValueError(
                 f"the machine record's {self.kind} scheduler names no submit "
                 f"command -- probe where `{k.commands['submit']}` is on PATH, "
-                f"or declare it: --set scheduler.submit=PATH "
-                f"(configuration.md M-2)")
+                f"or declare it: --set scheduler.submit=PATH")
         if not k.queue and named:
             queues = [n for n in names() if kind(n).queue]
             raise ValueError(
@@ -326,8 +325,7 @@ class Scheduler:
     def from_dict(cls, d: Mapping[str, Any]) -> "Scheduler":
         from .kinds import ROLES
         if not isinstance(d, Mapping) or not isinstance(d.get("kind"), str):
-            raise ValueError("the machine record's scheduler states its kind "
-                             "(configuration.md M-2)")
+            raise ValueError("the machine record's scheduler states its kind")
         return cls(kind=d["kind"], **{r: (str(d[r]) if d.get(r) else None)
                                       for r in ROLES})
 
@@ -442,8 +440,7 @@ class Environment:
         if not isinstance(self.scheduler, Scheduler):
             raise ValueError(
                 f"the machine record's scheduler is {self.scheduler!r} -- it "
-                f"states its kind and where its commands are "
-                f"(configuration.md M-2)")
+                f"states its kind and where its commands are")
 
     @property
     def kind(self):
@@ -918,7 +915,7 @@ def _probe_slurm_queues(env: Environment, user: str
             "this Slurm did not accept MaxSubmitJobsPerUser in the QoS format "
             "list, so no domain records a submitted-job cap -- the wall and "
             "core caps were read as usual.  A sweep will find that limit at "
-            "sbatch time instead of before it (scheduler.md R14).")
+            "sbatch time instead of before it.")
     if not policy:
         notes.append("scontrol was not reachable, so no per-core memory "
                      "default was measured -- a job that states no --mem "
@@ -1528,8 +1525,7 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
                 f"re-probe it -- {probe} -- then go back to the state saved "
                 f"before its first prep ({checkpoint_words(bundle_dir)}) "
                 f"and prep anew: a calculation is set to "
-                f"the record it was first prepared with (configuration.md "
-                f"M-3)")
+                f"the record it was first prepared with")
     return ("this machine's" if target in (None, LOCAL_TARGET)
             else f"{target}'s",
             f"re-probe it --\n    {probe_line(target)}\n ")

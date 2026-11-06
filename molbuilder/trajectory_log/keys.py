@@ -46,7 +46,7 @@ LEAF_ROWS = (
     (MAX_DISPL,       "max displ",      "Å",    ".3g"),
     (RMS_DISPL,       "rms displ",      "Å",    ".3g"),
     (ENERGY_STEP_TOL, "energy step",    "eV",   ".3g"),
-    (MAX_SCF_ITER,    "MaxSCFIterations", "",   ".0f"),
+    (MAX_SCF_ITER,    "max SCF iterations", "", ".0f"),
     (MAX_GEOM_ITER,   "geom steps cap", "",     ".0f"),
 )
 LEAF_KEYS = tuple(r[0] for r in LEAF_ROWS)

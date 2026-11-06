@@ -234,9 +234,11 @@ same values from the records as they read now — a read that renders and
 writes nothing — and name each that differs: `mesh_cutoff: 300 → 400`.
 
 - **Only what the person changed is a difference.** A deck a newer molbuilder
-  words otherwise is none, nor an item a newer molbuilder added or retired. A
-  run-card value stated or taken away is one: *run card mpi_np: not stated →
-  4*.
+  words otherwise is none, nor an item a newer molbuilder added or retired, nor
+  a point it words otherwise: points are compared by their folders, and a record
+  written before 2.67.2, which holds none, by the words it holds, read as today
+  words them. A run-card value stated or taken away is one: *run card
+  mpi_np: not stated → 4*.
 - **A record that does not read** — not JSON, or another file's schema — is
   said in its reader's words, naming the file and the way back: the state
   saved before the last prep, or the file removed and every group prepared

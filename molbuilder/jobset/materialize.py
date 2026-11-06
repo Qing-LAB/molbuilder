@@ -784,8 +784,7 @@ def continuation_files(calc, stage_name: str, continue_from: str, *,
             f"  A stage whose description says `restart: clean` carries "
             f"none of the group -- its deck omits MD.UseSaveXV / "
             f"DM.UseSaveDM / MD.UseSaveCG, so files copied in would sit "
-            f"there unread (run-identity.md § 4, *present but not "
-            f"honoured*).  A stage continues when its `restart` is "
+            f"there unread.  A stage continues when its `restart` is "
             f"`continue` in {runfiles.TASK_FILE} at its prep; or start it "
             f"cold.")
     if not any((src / name).is_file() for name in names):

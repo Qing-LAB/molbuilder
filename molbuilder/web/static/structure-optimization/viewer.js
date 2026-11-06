@@ -265,16 +265,14 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // junction.pdb that failed to parse -- a lie to the user
         // about what's currently loaded.  ``reason`` is the
         // short string to show in #info-title (e.g. "load failed",
-        // "no structure built").  The atoms/residues/formula slots
+        // "no structure built").  The atoms and formula slots
         // go to the em-dash placeholder so the user can't read
         // numbers off them.
         const title = $("info-title");
         const atoms = $("info-atoms");
-        const resi  = $("info-residues");
         const form  = $("info-formula");
         if (title) title.textContent = reason || "no structure built";
         if (atoms) atoms.textContent = "—";   // em-dash
-        if (resi)  resi.textContent  = "—";
         if (form)  form.textContent  = "—";
     }
 
@@ -296,7 +294,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // so they can never desync (unified-API access, no state.* copy).
         $("info-title").textContent     = filename;
         $("info-atoms").textContent     = n_atoms;
-        $("info-residues").textContent  = "—";
         $("info-formula").textContent   = formula(elements);
         // The BlockSize placeholder is left as the catalogue's own
         // ``null_label`` -- "(auto)": a

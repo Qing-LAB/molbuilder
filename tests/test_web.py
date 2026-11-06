@@ -354,7 +354,7 @@ def test_molbuilder_page_loads(web_client):
     body = r.data.decode()
     for needle in (
         "molbuilder",
-        "Molbuilder workspace",
+        "<title>molbuilder &mdash; Molbuilder</title>",
         # Static asset paths the template references.
         "modify/style.css",
         # THE PAGE'S OWNER, and the only modify/ module with a <script> tag.

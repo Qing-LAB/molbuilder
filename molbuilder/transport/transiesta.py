@@ -280,7 +280,7 @@ def _emit_geometry(struct: Structure, cfg=None, frame=None) -> List[str]:
             f"species_order does not list {', '.join(missing)}, which this "
             f"structure contains.  The order is honoured verbatim, so every "
             f"species has to appear in it -- or leave it unset and the "
-            f"default rule orders them (model/chemistry.md 3a)")
+            f"default rule orders them")
 
     # THE BOX, THEN ONE PLACEMENT (`engine_frame_for`).  A deck passes the
     # frame it records; a direct call gets the same answer computed here.

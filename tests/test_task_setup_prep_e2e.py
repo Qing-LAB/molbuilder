@@ -369,7 +369,7 @@ def test_a_stage_with_no_axes_says_to_state_them(
 def test_a_description_prep_bench_refuses_offers_no_measure_step(
         page, flask_server, isolated_projects_root_module):
     """The Measure step is offered exactly where `prep bench` takes the
-    description: a PySCF one it refuses ("the benchmark lane only speaks
+    description: a PySCF one it refuses ("Benchmarks measure SIESTA runs
     SIESTA today"), so its stage panel teaches the run and no bench -- the
     folder answer's `bench_refusal`, the entry's own words (found by review,
     2026-09-29: the block showed on every PySCF and transport stage)."""

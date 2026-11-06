@@ -67,8 +67,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
         raise BackendUnavailable(
             "AmberTools `tleap` not found.  Either:\n"
             "  - install `tleap` on the host env's PATH, or\n"
-            "  - create the molbuilder-MDtools conda env (see "
-            "docs/ops/installation.md § molbuilder-MDtools).",
+            "  - create the molbuilder-MDtools conda env.",
             missing="amber"
         )
     if kind not in ("dna", "rna"):

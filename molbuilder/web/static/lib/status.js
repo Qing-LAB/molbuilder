@@ -65,8 +65,12 @@
         if (classes.indexOf("status") === -1) classes.unshift("status");
         if (kind) classes.push(kind);
         var cls = classes.join(" ");
-        if (el.textContent === text && el.className === cls) return true;
-        el.textContent = text;
+        // A command in the words is drawn as code, its backticks gone.
+        var plain = text.replace(/`/g, "");
+        if (el.textContent === plain && el.className === cls) return true;
+        var dom = (root.molbuilder || {}).dom;
+        if (dom && plain !== text) el.replaceChildren(dom.codeWords(text));
+        else el.textContent = text;
         el.className = cls;
         return true;
     }

@@ -606,7 +606,7 @@ a new clock or count is a report field.
   its one reader and rules (`runpoints.read_index`, `rows_of`, `still_to_run`) and the count's words the index
   names (`runpoints.count`), all of which travel in the monitor's bundle; it is read again only when it changes.
   *the run: relax done · fc done · optical 0 of 121 done | this call: the equilibrium*; *the run: 7 of 12 points
-  done, 1 failed (3 frames × 4 voltages) | this point: frame index 1 (of 3) · 0.4 V*. A point's *not run* is
+  done, 1 failed (3 frames × 4 voltages) | this point: frame 2 of 3 · 0.4 V*. A point's *not run* is
   counted only once the walk has ended ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.5), so a
   member's line, its own point running, never says it.
 - **The clocks.** A member's run clock starts at its run's first point's start in the index — the points this run
@@ -674,10 +674,10 @@ and why — *&lt;words&gt;: failed -- &lt;why&gt;*, *&lt;words&gt;: not done -- 
   the largest force on the free atoms 0.38 eV/Ang (tol 0.04) -- not a stationary point at this level of theory;
   121 optical calls planned* (frame 0 and each mode's two sides). This is the moment the person may stop a Raman
   phase that would be wasted.
-- **A device round**: *0.2 V -- frame index 0 (of 3): converged in 41 NEGF iterations; frame index 1 (of 3): not
-  done -- finished, not converged (SCF NO); frame index 2 (of 3): converged in 44 NEGF iterations*. A run of one
+- **A device round**: *0.2 V -- frame 1 of 3: converged in 41 NEGF iterations; frame 2 of 3: not
+  done -- finished, not converged (SCF NO); frame 3 of 3: converged in 44 NEGF iterations*. A run of one
   frame says the voltage and its point alone.
-- **A transmission round**: *0.2 V -- G/G0: frame index 0 (of 3) 0.02134, frame index 1 (of 3) 0.01987, frame
+- **A transmission round**: *0.2 V -- G/G0: frame 1 of 3 0.02134, frame 2 of 3 0.01987, frame
   index 2 (of 3) 0.02311; the frames' average 0.02145*. The conductance is the record's own rule
   (`transport.conductance.at_fermi`) on the point's k-averaged transmission per spin channel, a polarized point's
   two channels averaged, (T↑ + T↓)/2 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12). It is read from
@@ -693,7 +693,7 @@ The milestone says which it was; what to do about it is the person's.
 
 **What a part's failure says**: the point, by its words (`Call.words`, `transport.stages.Point.words`), and why
 it is short of done, its own state's word and the one rule's why — the exit, what its own step could not do, or
-`_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: failed -- exit 1*; *frame index 1 (of 3) · 0.4 V: not done
+`_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: failed -- exit 1*; *frame 2 of 3 · 0.4 V: not done
 -- finished, not converged (SCF NO)*. A failure is said once per reason
 ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.6).
 

@@ -238,11 +238,13 @@ class TestSeverityIsUniform:
             cls: panel.children[0].className,
             sev: panel.children[0].getAttribute("data-severity"),
             kids: panel.children[0].children.map(function (c) {{
-                return c.className + ":" + c.textContent; }})}}));
+                return c.className + ":" + c.textContent; }}),
+            where: panel.children[0].getAttribute("data-where")}}));
         """)
         assert got["cls"] == "issue-item"
         assert got["sev"] == "error"
-        assert got["kids"] == ["issue-msg:m", "issue-where:cell.x"]
+        assert got["kids"] == ["issue-msg:m"]
+        assert got["where"] == "cell.x"
 
 
 class TestStaleStateCannotSurvive:

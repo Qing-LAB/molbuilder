@@ -185,7 +185,7 @@ class Permutation:
             raise PermutationError(
                 f"{source}: the order record states the identity order, which "
                 f"is never recorded -- a structure in its own order carries "
-                f"none (model/overview.md § 2.2a)")
+                f"none")
         return perm
 
     def map_rows_to_user_order(self, rows, sorted_indices):

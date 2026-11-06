@@ -263,7 +263,7 @@ def test_a_group_the_job_holds_goes_in_it(road):
     # a bare launch offers no group the job holds, and says where each goes
     ("bare", ["goes in job", "molbuilder jobs status"]),
     # R-P23: a group the job holds is not prepared again under it
-    ("prep_held", ["goes in job", "jobs stop", "R-P23"]),
+    ("prep_held", ["goes in job", "jobs stop"]),
 ])
 def test_what_the_job_holds_is_not_taken_from_it(road, verb, says):
     """While the job runs, its groups are its own: nothing else launches

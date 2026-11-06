@@ -60,7 +60,7 @@ from .rung import cited_pair_path, described_rung, structure_path
 #: what prep would write now is not the plan the person was shown.
 PLAN_CHANGED = ("what prep would write now differs from the plan you "
                 "previewed -- something it is made from changed since.  "
-                "Preview again (job-system.md § 5.0).")
+                "Preview again.")
 
 if TYPE_CHECKING:                      # annotations only
     from ..calculation import Calculation
@@ -980,7 +980,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                                 + ([f"taken away: {', '.join(gone)}"]
                                    if gone else []))
                     + ".  A launched stage is prepared again for its job "
-                      "request alone (execution/job-request.md § 5); to "
+                      "request alone; to "
                       "change what it computes, "
                     + redo_launched(stage, calc=calc))
         reports = _open_attempts(planned, stage, plan=plan, copied=copied,
@@ -1848,7 +1848,7 @@ def prepared_already(calc, stage: str) -> Optional[str]:
         return None
     return (f"the benchmark of stage {stage!r} is already prepared "
             f"({home.relative_to(base)}/) -- a prepared benchmark is not "
-            f"prepared again (job-system.md § 5.0).  To redo it, "
+            f"prepared again.  To redo it, "
             + rollback("its prep", base=base))
 
 
@@ -1894,8 +1894,8 @@ def checked(described: Described, *, target) -> Described:
     errors = [i for i in issues if i.severity == "error"]
     if errors:
         raise PrepError(
-            "the description or its job request fails its own preflight "
-            "(engines/stages.md § 6.6; execution/job-request.md § 7):\n  - "
+            "the description or its job request fails its own preflight"
+            ":\n  - "
             + "\n  - ".join(i.message for i in errors))
     described.environment = machine_record(base, target)
     require_activation(target, described.environment, base=base)
@@ -2148,8 +2148,7 @@ def plan_stage(described: Described, kind: str, stage: str, *,
                    "line": "at its next launch: launched again, "
                            + relaunch_words(
                                points=bool(_rung_pts),
-                               continues=job.relaunch_continues)
-                           + " (job-system.md § 5.4)"}]
+                               continues=job.relaunch_continues)}]
                  if out.launched
                  else at_launch(pcalc, stage))
     if job is not None and run_dir is not None:
@@ -2240,8 +2239,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
                 "`prep bench` names the stage it measures; "
                 + (name_a_stage("prep", "bench", takes, base=base) if takes
                    else "every stage is prepared already, and a prepared "
-                        "benchmark is not prepared again (job-system.md "
-                        "§ 5.0)."))
+                        "benchmark is not prepared again."))
         # 2 · THE STAGE GRAMMAR (user-settled 2026-08-21): named by its
         #     NAME, or by `#N` -- the NN of its directory -- through the ONE
         #     resolver, so `prep bench '#2'` and `status #2` cannot disagree.
@@ -2465,8 +2463,7 @@ def sequence_header(base, task, request, numbers: Sequence[int], jobs_of,
     try:
         shared = sequence_request(requests)
     except GroupError as exc:
-        raise PrepError(f"groups {words} as one job: {exc} "
-                        f"(job-system.md R-P22)") from None
+        raise PrepError(f"groups {words} as one job: {exc}") from None
     less = []
     for n, r in requests:
         short = [w for w, mine, all_ in (
@@ -2594,8 +2591,8 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     if unknown:
         raise _refuse(
             f"group {', '.join(map(str, unknown))}: the job request holds "
-            f"groups {', '.join(map(str, described))} "
-            f"(execution/job-request.md § 3.3).")
+            f"groups {', '.join(map(str, described))}"
+            f".")
     numbers = sorted(set(numbers))
     # A SEQUENCE OF GROUPS (`--one-job`, `job-system.md` § 6.0): the groups
     # named, and of them the ones launched -- read as prepared, never
@@ -2608,8 +2605,8 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         if len(sequence) < 2:
             raise _refuse("--one-job sends several groups as one job, and "
                           f"names group {', '.join(map(str, sequence))} "
-                          "alone -- name every group it launches "
-                          "(job-system.md R-P22).")
+                          "alone -- name every group it launches"
+                          ".")
         old_rows = description.calc.jobset
         launched_groups = []
         for n in sequence:
@@ -2638,7 +2635,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             raise _refuse(
                 f"--one-job: every group named ({named_}) is launched "
                 f"already, so nothing is prepared -- send them one by one, "
-                f"each launched again (job-system.md R-P22).")
+                f"each launched again.")
     members = {n: request.members(n) for n in numbers}
     group_of = {stage_key(n): e.group for n, e in request.stages.items()}
     # 1a · THE JOBS PREPARED, matched by membership: a job whose members
@@ -2729,9 +2726,8 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                         f"{'are' if len(copied_) > 1 else 'is'} copied in "
                         f"from {reuse.name} -- launched by no job -- "
                         f"leaving {', '.join(map(str, sequence)) or 'none'} "
-                        f"to send: prepare without --one-job "
-                        f"(engines/transport.md § 2a.16; job-system.md "
-                        f"R-P22).")
+                        f"to send: prepare without --one-job"
+                        f".")
             for n in numbers:
                 previews[n] = [plan_stage(
                     description, "task", at, target=target,
@@ -2765,7 +2761,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                     f"stage {a.stage!r} was launched, and its deck rendered "
                     f"now is not the calculation its runs ran -- {differs}.  "
                     f"A launched stage is prepared again for its job request "
-                    f"alone (execution/job-request.md § 5); to change what it "
+                    f"alone; to change what it "
                     f"computes, " + redo_launched(a.stage,
                                                    calc=description.calc))
     # 2b · EACH GROUP'S OWN FILE AND REQUEST, in the same plan -- its one

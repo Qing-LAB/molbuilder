@@ -141,18 +141,18 @@ ROWS: Tuple[Row, ...] = (
         text=True),
     Row("displacement_ang", "frame", "measured", "angstrom",
         "Displacement", "Å",
-        "the frame's plain displacement from frame 0, sqrt(sum_A |R_A - "
+        "the frame's plain displacement from the first frame, sqrt(sum_A |R_A - "
         "R0_A|^2) over every atom -- no masses"),
     Row("max_atom_displacement_ang", "frame", "measured", "angstrom",
         "Largest atom move", "Å",
-        "its largest single atom's displacement from frame 0, "
+        "its largest single atom's displacement from the first frame, "
         "max_A |R_A - R0_A|"),
     Row("q_amu12_ang", "frame", "derived", "amu^1/2 angstrom",
         "Position along the mode, q", "amu½·Å",
         "its position along the mode, the mass-weighted normal coordinate: "
         "every atom displaced by q L_A, with sum_A m_A |L_A|^2 = 1 over the "
         "mass_amu masses; |q| = sqrt(sum_A m_A |R_A - R0_A|^2), its sign "
-        "the side of frame 0 it sits on; the frame's node, sqrt(2) sigma "
+        "the side of the first frame it sits on; the frame's node, sqrt(2) sigma "
         "x_f"),
     Row("node_sigma", "frame", "derived", None,
         "q in units of σ", None,
@@ -214,8 +214,7 @@ def warnings_of(frame_set) -> List[str]:
          f"{'is' if one else 'are'} written without "
          f"{'its' if one else 'their'} meaning (the row's note): "
          f"{'it is' if one else 'each is'} read with the meaning "
-         f"molbuilder's frame-set table gives it (model/structure.md "
-         f"2.2f)"]
+         f"molbuilder's frame-set table gives it"]
         if named else [])
 
 
@@ -297,7 +296,7 @@ def motion_weights(q, *, temperature_k, swing_quanta,
         raise ReaverageError(
             "the frames state no position along a mode (q_amu12_ang) -- a "
             "family of structures, or one structure: there is no motion to "
-            "weight them by (model/structure.md 2.2f)")
+            "weight them by")
     for i in range(m):
         for j in range(i + 1, m):
             if math.isclose(q[i], q[j], rel_tol=1e-12, abs_tol=1e-12):
@@ -313,7 +312,7 @@ def motion_weights(q, *, temperature_k, swing_quanta,
         raise ReaverageError(
             "the frames state no mode's frequency and zero-point amplitude "
             "(frequency_cm1, zero_point_amplitude_amu12_ang): a temperature "
-            "gives no spread without them (model/structure.md 2.2f)")
+            "gives no spread without them")
     try:
         t = checked_temperature_k(temperature_k)
     except ValueError:
@@ -339,8 +338,7 @@ def motion_weights(q, *, temperature_k, swing_quanta,
             f"the swing turns at q = ±{q0:.6g} amu^1/2 Angstrom, beyond the "
             f"outermost frame at ±{q_out:.6g}: its average would come from "
             f"values extrapolated past the frames -- frames written at a "
-            f"higher temperature, or more of them, reach further "
-            f"(science/vibrational-averaging.md 5.4)")
+            f"higher temperature, or more of them, reach further")
     # THE WEIGHTS, from the motion's moments, the positions scaled by the
     # outermost so the system stays well conditioned for seven frames.
     scale = q_out
@@ -352,8 +350,7 @@ def motion_weights(q, *, temperature_k, swing_quanta,
         said.append(
             "three frames carry only the curvature, where a swing and a bell "
             "curve of the same spread agree: this average is blind to the "
-            "swing's shape -- five or seven frames see it "
-            "(science/vibrational-averaging.md 5.4)")
+            "swing's shape -- five or seven frames see it")
     below = [f for f, w in enumerate(weights) if w < 0.0]
     if below:
         said.append(
@@ -361,7 +358,7 @@ def motion_weights(q, *, temperature_k, swing_quanta,
             f"{'is' if len(below) == 1 else 'are'} weighted below zero "
             f"({', '.join(f'{weights[f]:.3g}' for f in below)}): the frames "
             f"do not suit this motion's shape well -- frames written at its "
-            f"spread suit it (science/vibrational-averaging.md 5.4)")
+            f"spread suit it")
     return {
         "motion": {"temperature_k": t, "thermal_quanta": n_th,
                    "thermal_spread_amu12_ang": sigma_t,
@@ -429,8 +426,7 @@ def average_block(n_frames: Optional[int], frame_set,
         return block
     if weights is None:
         block["why"] = (f"the frames do not each state a {WEIGHT_ROW} -- no "
-                        f"average; each frame's curve is its own point "
-                        f"(model/structure.md 2.2f)")
+                        f"average; each frame's curve is its own point")
         return block
     voltages: List[float] = []
     for p in list(points) + list(missing):
@@ -474,7 +470,7 @@ def at_voltage(v: float, n: int, weights: List[float],
         if not same_grid(here[f]["energy_ev"], grid):
             raise AverageError(
                 f"at {v:g} V the transmission of {frame_words(f, n)} is on "
-                f"another energy grid than {frame_words(0, n)}'s -- every "
+                f"another energy grid than the first frame's -- every "
                 f"frame's transmission deck is the one template's")
     curves = np.asarray([here[f]["transmission"] for f in range(n)],
                         dtype=float)
@@ -613,7 +609,7 @@ def check_units(rows) -> None:
                 raise AverageError(
                     f"the frame set's row {r['name']!r} is written with the "
                     f"unit {unit!r}; the vocabulary's name means "
-                    f"{known.unit_spelled!r} (model/structure.md 2.2f) -- "
+                    f"{known.unit_spelled!r} -- "
                     f"write the value in that unit, or give the row another "
                     f"name")
 

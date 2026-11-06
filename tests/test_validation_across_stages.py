@@ -141,7 +141,7 @@ def test_the_message_names_both_stages_and_both_values():
         ("final", SiestaConfig(mesh_cutoff=150.0))], engine="siesta",
         kind="optimization")
     msg = found[0].message
-    for bit in ("warmup", "final", "500", "150", "mesh_cutoff", "tuning.md"):
+    for bit in ("warmup", "final", "500", "150", "mesh_cutoff"):
         assert bit in msg, (bit, msg)
 
 

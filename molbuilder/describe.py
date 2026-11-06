@@ -148,7 +148,7 @@ def build_description(
     if not ladder:
         raise DescribeError(
             "no stages. A job has at least one stage -- one is the ordinary "
-            "case, not a special shape (engines/stages.md 6.5). Pass a single "
+            "case, not a special shape. Pass a single "
             "Stage carrying no overrides for a calculation that is just the "
             "template.")
     stage_names = tuple(s.name for s in ladder)

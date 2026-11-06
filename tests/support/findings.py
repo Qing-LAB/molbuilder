@@ -14,13 +14,14 @@ _DRAWN = """(scopes) => {
     return [...rows].map((li) => [
         li.dataset.severity,
         li.querySelector(".issue-msg").textContent,
-        (li.querySelector(".issue-where") || {}).textContent || null]);
+        li.dataset.where || null]);
 }"""
 
 
 def _said(issues) -> list:
-    return [[i["severity"], i["message"], i.get("where") or None]
-            for i in issues]
+    # A command in a message is drawn as code, its backticks gone.
+    return [[i["severity"], i["message"].replace("`", ""),
+             i.get("where") or None] for i in issues]
 
 
 def assert_every_finding_drawn(page, scopes, issues, *, timeout=10_000):

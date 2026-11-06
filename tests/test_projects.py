@@ -312,7 +312,7 @@ class TestTheProjectsRootIsOneConfigurableDoor:
         with pytest.raises(RuntimeConfigError) as e:
             self._pj().projects_root()
         msg = str(e.value)
-        assert door in msg and "'mb'" in msg and "§ 2.5" in msg, msg
+        assert door in msg and "'mb'" in msg, msg
         assert str(mine / "projects") in msg, msg
 
 

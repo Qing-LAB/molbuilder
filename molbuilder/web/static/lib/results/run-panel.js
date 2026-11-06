@@ -108,7 +108,7 @@ function build(v) {
 function machine(v) {
     if (!v || typeof v !== "object") return words(v);
     return [v.node,
-            v.cores !== undefined ? `${v.cores} cores` : "",
+            v.cores !== undefined ? `${v.cores} logical cores` : "",
             v.mem_gb !== undefined ? gb(v.mem_gb) : "",
             v.gpu].filter(Boolean).join(" · ");
 }
@@ -343,7 +343,7 @@ function verdictSection(rec) {
     const s = section("Verdict");
     const head = el("p", "rp-verdict");
     if (v.state) head.appendChild(chip(v.state));
-    if (v.detail && v.detail !== v.state) head.appendChild(el("span", "rp-detail", v.detail));
+    if (v.detail && v.detail !== v.state) head.appendChild(NS.dom.wordsEl("span", "rp-detail", v.detail));
     s.appendChild(head);
     const box = el("div", "rp-rows");
     const line = (label, text, cls) => {

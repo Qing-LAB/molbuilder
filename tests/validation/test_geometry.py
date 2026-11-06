@@ -288,7 +288,7 @@ def test_kgrid_on_isolated_axis_is_warn():
     cfg = SiestaConfig(kgrid=(4, 4, 1))
     msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
-    assert any("kgrid[0]" in i.message and "isolated" in i.message
+    assert any("K-point grid along x" in i.message and "isolated" in i.message
                for i in msgs)
 
 
@@ -302,7 +302,7 @@ def test_kgrid_one_on_a_periodic_axis_is_silent():
     cfg = SiestaConfig(kgrid=(1, 4, 1))   # k=1 on the periodic x
     msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
-    assert not any("kgrid[0]" in i.message for i in msgs)
+    assert not any("along x" in i.message for i in msgs)
 
 
 def test_kgrid_periodic_crystal_partial_span_no_false_positive():
@@ -334,7 +334,7 @@ def test_kgrid_long_vacuum_padded_axis_no_false_positive():
     cfg = SiestaConfig(kgrid=(1, 1, 1))    # Gamma-only, correct for vacuum
     msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
-    assert not any("kgrid[2]" in i.message for i in msgs)
+    assert not any("along z" in i.message for i in msgs)
 
 
 

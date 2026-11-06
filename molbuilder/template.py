@@ -722,7 +722,7 @@ class Item:
         # conditional three above: a producer building Items by hand must get
         # the same refusal the parser gives.
         if not self.category:
-            _refuse("no 'category' -- § 3 requires one on every item, and "
+            _refuse("no 'category' -- every item needs one: "
                     "without it a surface has no panel to put this on "
                     f"(the vocabulary is {', '.join(CATEGORIES)})",
                     where=self.name)
@@ -735,7 +735,7 @@ class Item:
         for _r in self.read_by:
             if _r not in KINDS:
                 _refuse(f"read_by names {_r!r}, which is not a layer -- the "
-                        f"vocabulary is {', '.join(KINDS)} (§ 6.1)",
+                        f"vocabulary is {', '.join(KINDS)}",
                         where=self.name)
         # § 6.4: `stages` names ROLES of the kinds that carry the item -- a
         # name no such kind has is a misspelling that would let no rung read
@@ -752,13 +752,12 @@ class Item:
                 if _s not in _known:
                     _refuse(f"stages names {_s!r}, which is no rung role of "
                             f"the kinds that carry this item -- they are "
-                            f"{', '.join(sorted(_known)) or '(none)'} "
-                            f"(engines/template.md § 6.4)", where=self.name)
+                            f"{', '.join(sorted(_known)) or '(none)'}", where=self.name)
             for _k in (k for k in self.calculations if _roles_of(k)):
                 if not set(self.stages) & set(_roles_of(_k)):
                     _refuse(f"stages names no rung of {_kinds.kind(_k).with_article}, which "
                             f"carries this item -- none of its rungs would "
-                            f"read it (engines/template.md § 6.4)",
+                            f"read it",
                             where=self.name)
         # `group` is OPTIONAL (presentation), but when present it is closed --
         # a typo would put the item on no card at all, which renders it loose
@@ -1131,8 +1130,7 @@ def catalogue() -> "Template":
         if (it.optional and it.kind in ("engine", "deck")
                 and not it.allocation and not it.not_set):
             _refuse("an optional item the deck may leave out declares no "
-                    "not_set -- what the engine does when it writes nothing "
-                    "(engines/template.md § 5)", where=it.name)
+                    "not_set -- what the engine does when it writes nothing", where=it.name)
         # THE ENGINE'S OWN VALUE IS STATED, OR WHAT IT FOLLOWS (§ 5): every
         # item whose anchor is a keyword of a deck its engine reads as
         # keywords (the engine record names its ``keyword_reader`` --
@@ -1148,15 +1146,13 @@ def catalogue() -> "Template":
                 and not it.engine_default and not it.engine_unfixed):
             _refuse("an item with a keyword of a deck of keywords states its "
                     "engine_default -- the engine's value and the line of "
-                    "its source, or what that value follows "
-                    "(engines/template.md § 5)",
+                    "its source, or what that value follows",
                     where=it.name)
         # A RUN SETTING STATES NO `value` (§ 5.4): no template starts from
         # one -- its default is `default`, asked through `default_of`.
         if is_run_setting(it) and it.value is not None:
             _refuse("a run setting states no value -- its default is "
-                    "`default`, the one every reader asks "
-                    "(engines/template.md § 5.4)", where=it.name)
+                    "`default`, the one every reader asks", where=it.name)
         # WHAT GREYS A SETTING OUT IS A SETTING OF THE SAME CALCULATION (§ 5):
         # an item serving every engine and kind this one does, each value
         # one its own type takes -- else the form would wait on a field it
@@ -1171,8 +1167,7 @@ def catalogue() -> "Template":
                     other.calculations and k not in other.calculations
                     for k in (it.calculations or _kinds.kinds())):
                 _refuse(f"active_when names {other_name!r}, which is not an "
-                        f"item of every engine and kind this one serves "
-                        f"(engines/template.md § 5)", where=it.name)
+                        f"item of every engine and kind this one serves", where=it.name)
             if values == ACTIVE_WHEN_SET:
                 # ANY VALUE is a state only an optional setting lacks -- on
                 # any other, "set" would always hold.
@@ -1180,7 +1175,7 @@ def catalogue() -> "Template":
                     _refuse(f"active_when.{other_name} = \"set\", and "
                             f"{other_name} is not optional -- it always "
                             f"holds a value: list the values it waits on "
-                            f"instead (engines/template.md § 5)",
+                            f"instead",
                             where=it.name)
                 continue
             for v in values:
@@ -1193,8 +1188,7 @@ def catalogue() -> "Template":
                 it.name in STATE_ITEMS or it.name in IDENTITY_ITEMS
                 or it.stages):
             _refuse("a `shared` item no rule of `shared` explains states its "
-                    "own `why_shared` -- why its stages must hold one value "
-                    "(engines/template.md § 5)", where=it.name)
+                    "own `why_shared` -- why its stages must hold one value", where=it.name)
     return parsed
 
 
@@ -1230,7 +1224,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     bad = sorted({v for v in told.values() if v is not None} - set(SOURCES))
     if bad:
         raise ValueError(f"source(s) {', '.join(map(repr, bad))} are not "
-                         f"one of {', '.join(SOURCES)} (§ 6.6)")
+                         f"one of {', '.join(SOURCES)}")
     eng = engine or engine_of_config(config)
     items = [
         dataclasses.replace(
@@ -1364,8 +1358,8 @@ def _emit(items, *, engines, title: str = "") -> str:
     if got != payload:
         raise ValueError(
             f"template: emitted TOML does not read back as written -- "
-            f"{_first_difference(payload, got)}. This is a bug in the writer "
-            f"(engines/template.md § 4.1 asks for exactly this check).")
+            f"{_first_difference(payload, got)}. This is a bug in the writer"
+            f".")
     return text
 
 
@@ -1434,7 +1428,7 @@ def _source_from(name: str, raw) -> Optional[str]:
     if raw not in SOURCES:
         raise ValueError(
             f"item {name!r}: source = {raw!r} is not one of "
-            f"{', '.join(SOURCES)} (engines/template.md 6.6)")
+            f"{', '.join(SOURCES)}")
     return str(raw)
 
 _KNOWN_ITEM_KEYS = frozenset(_ITEM_KEY_ORDER)
@@ -1470,7 +1464,7 @@ def read_template(text: str) -> Template:
             not all(isinstance(e, str) and e for e in engines):
         _refuse("missing required key 'engines' -- without it a reader cannot "
                 "know which config classes these items belong to, and would "
-                "have to infer it from their names (engines/template.md § 3)")
+                "have to infer it from their names")
     engines_t = tuple(engines)
     table = raw.get("item") or {}
     if not isinstance(table, Mapping):
@@ -1491,8 +1485,7 @@ def read_template(text: str) -> Template:
             _refuse(
                 f"declares engines {_stray} that the template does not list "
                 f"(engines = {list(engines_t)}). An item's `engines` narrows "
-                f"the file's list; it cannot widen it (engines/template.md "
-                f"§ 6.3)", where=_it.name)
+                f"the file's list; it cannot widen it", where=_it.name)
     written_by = raw.get("written_by")
     if written_by is not None and not (
             isinstance(written_by, str) and _VERSION.fullmatch(written_by)):
@@ -1760,8 +1753,7 @@ def _stages_from(name: str, raw) -> Tuple[str, ...]:
         if raw not in _kinds.COMPUTES:
             _refuse(f"stages names the set {raw!r}, which is not one -- the "
                     f"sets are what a rung computes, "
-                    f"{', '.join(_kinds.COMPUTES)}; or list the roles "
-                    f"(engines/template.md § 6.4)", where=name)
+                    f"{', '.join(_kinds.COMPUTES)}; or list the roles", where=name)
         return _kinds.role_set(raw)
     return tuple(raw)
 
@@ -1774,8 +1766,7 @@ def _tightens_from(name: str, raw) -> str:
         return ""
     if raw not in ("up", "down"):
         _refuse(f"tightens must be \"up\" or \"down\", not {raw!r} -- which "
-                f"way a ladder makes this item tighter (engines/stages.md "
-                f"§ 4 R3)", where=name)
+                f"way a ladder makes this item tighter", where=name)
     return raw
 
 
@@ -1901,8 +1892,8 @@ def _check_raw_value(name: str, key: str, raw, type_: str,
     if why:
         raise ValueError(
             f"template: item {name!r}: its {key} is {raw!r}{why} -- the "
-            f"item's declared type, the contract for an edit "
-            f"(engines/template.md § 5).")
+            f"item's declared type, the contract for an edit"
+            f".")
 
 
 def is_member(value, choices) -> bool:
@@ -2116,7 +2107,7 @@ def _check_engine(t: "Template", engine) -> None:
             f"this template describes a calculation for {list(t.engines)}, "
             f"not {engine!r}. An empty result would read as 'no items "
             f"matched' when the truth is 'this calculation does not run on "
-            f"that engine' (engines/template.md § 3).")
+            f"that engine'.")
 
 
 #: The electronic state's four items (`science/chemistry-correctness.md`
@@ -2150,8 +2141,8 @@ def why_run_setting(name: str) -> str:
     after *"stage <s> overrides <name>"* or *"'varies' names <name>"*."""
     return (f"a run setting: the rung states it on its run card in "
             f"{JOB_REQUEST_FILE} -- \"execution\": {{\"{name}\": ...}} on the "
-            f"stage's entry, or on the calculation for every rung "
-            f"(execution/job-request.md 2) -- never in the description")
+            f"stage's entry, or on the calculation for every rung"
+            f" -- never in the description")
 
 
 #: The calculation's identity -- `shared` for every SIESTA kind (2026-09-29,
@@ -2187,17 +2178,16 @@ def why_shared(name: str) -> str:
     if name in STATE_ITEMS:
         return ("the electronic state belongs to the calculation, never to "
                 "a stage -- every stage's warm files are a density for one "
-                "state (science/chemistry-correctness.md § 2a, ES1)")
+                "state")
     if name in IDENTITY_ITEMS:
         return (f"a calculation has one name, one species table and one set "
                 f"of pseudopotentials -- each stage reads what the one before "
                 f"it wrote under that name, numbered by that table (the "
                 f"`{SIESTA_XV}` holds each atom's species index) and built on "
-                f"that set (engines/template.md § 5, `shared`)")
+                f"that set")
     if _scoped_shared(name) is not None:
         return ("they are the rungs that read it, and must not be able to "
-                "disagree about it (engines/template.md § 5, `shared` with "
-                "`stages`)")
+                "disagree about it")
     raise ValueError(f"{name}: no catalogue item states why its stages share "
                      f"it, and no rule of `shared` explains it")
 
@@ -2284,8 +2274,7 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
     it = one(catalogue(), name, engine=engine)
     if it.calculations and kind not in it.calculations:
         return (f"which {_kinds.kind(kind).with_article} does not carry -- no rung of it reads "
-                f"it, so the value would change nothing (engines/template.md "
-                f"6.3)")
+                f"it, so the value would change nothing")
     roles = stage_roles(engine, kind, stage) or (stage,)
     # ...THE RUNGS OF THIS KIND that read it, never another kind's roles.
     mine = [r for r in it.stages if r in (_roles_of(kind) or it.stages)]
@@ -2294,8 +2283,7 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
             else f"{stage!r} (its {' + '.join(roles)} rung)")
     return (f"which only the {who} rung{'s' if len(mine) > 1 else ''} "
             f"of {_kinds.kind(kind).with_article} read{'' if len(mine) > 1 else 's'}, not "
-            f"{rung} -- {then} (engines/template.md 6.4, the `stages` "
-            f"declaration)")
+            f"{rung} -- {then}")
 
 
 def fixed_by_role(engine: str, kind: str) -> frozenset:
@@ -2333,7 +2321,7 @@ def role_answers(engine: str, kind: str,
                 f"catalogue item {it.name!r} is fixed by the rung for "
                 f"{kind!r} (`role`) and answers nothing for rung "
                 f"{stage!r}: give it a `value`, or the rung's own in "
-                f"`role_values` (engines/template.md § 6.4).")
+                f"`role_values`.")
         out[it.name] = answer
     return out
 
@@ -2577,8 +2565,7 @@ def why_role(name: str) -> str:
     `role`'s own reason."""
     own = next((it.why_fixed for it in catalogue().items
                 if it.name == name and it.why_fixed), None)
-    return own or ("it is what makes the rung that rung -- a choice with "
-                   "one correct answer (engines/template.md § 6.4)")
+    return own or "this stage needs this value"
 
 
 # --------------------------------------------------------------------- #
@@ -2664,31 +2651,27 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
     ``stages``, :func:`reads`)."""
     if home not in HOMES:
         raise ValueError(f"no home {home!r} -- a setting's homes are "
-                         f"{', '.join(HOMES)} (engines/template.md 5.4)")
+                         f"{', '.join(HOMES)}")
     name, run = item.name, is_run_setting(item)
     if item.calculations and kind not in item.calculations:
         return (f", which {_kinds.kind(kind).with_article} does not carry -- no rung of it "
-                f"reads it, so the value would change nothing "
-                f"(engines/template.md 6.3)")
+                f"reads it, so the value would change nothing")
     if home == "flag" and not item.allocation:
         return (", which no prep flag states -- a flag states the launch "
-                "shape alone: ranks, threads, GPUs, the memory cap "
-                "(execution/architecture.md 5.2)")
+                "shape alone: ranks, threads, GPUs, the memory cap")
     if home == "run_card" and not run:
         return (f", which is not an execution setting of {engine}.  A run "
                 f"card says what the RUN uses -- ranks, threads, the device, "
                 f"the solver.  A physics value belongs in the template, and "
-                f"a per-stage one in that stage's `overrides` in {TASK_FILE} "
-                f"(engines/stages.md 6.2)")
+                f"a per-stage one in that stage's `overrides` in {TASK_FILE}")
     if home == "bench" and not run:
         return (f", which {engine} does not declare as an `execution` "
                 f"parameter -- so sweeping it would measure a different "
                 f"calculation at each point and the comparison would mean "
-                f"nothing (execution/job-request.md 3.4)")
+                f"nothing")
     if home == "bench" and item.allocation and name not in GRID_AXES:
         return (f", which a benchmark's grid does not sweep -- its machine "
-                f"axes are {', '.join(GRID_AXES)} (execution/generator.md "
-                f"4.3a)")
+                f"axes are {', '.join(GRID_AXES)}")
     if home == "override" and run:
         return ", " + why_run_setting(name)
     if home == "override" and kind in item.role:
@@ -2767,12 +2750,11 @@ def accepts(item: "Item", value: Any, home: str, *, engine: str, kind: str,
     if value is None:
         if home == "bench":
             return (", but a benchmark row's points are values to try -- "
-                    "leave the setting off the row to run at its own "
-                    "(engines/template.md 5.4)")
+                    "leave the setting off the row to run at its own")
         return None if item.optional else (
             ", but this setting has no unset -- null is taken only by a "
             "setting whose unset is an answer; state a value, or leave it "
-            "out (engines/template.md 5.4)")
+            "out")
     spelled = spell(item, value)
     return (_type_refusal(item.type, item.choices, spelled)
             or why_not(item, spelled, engine=engine, kind=kind))
@@ -2991,7 +2973,7 @@ def one(t: "Template", name: str, *, engine: str = None) -> Optional[Item]:
         f"no item {name!r} in this template (engines={list(t.engines)}). If the "
         f"parameter exists for another engine it would still be listed, so "
         f"this is a name this template never carried -- not an item that "
-        f"does not apply here (engines/template.md § 8.0).")
+        f"does not apply here.")
 
 
 #: A molbuilder version: three whole numbers.
@@ -3061,7 +3043,7 @@ def why_zeros_written_before(tmpl: "Template", where: List[str]) -> str:
             f"rule, a tenth of the leads' broadening) and since means no "
             f"broadening on the device.  `{migrate_as_typed()}` in the "
             f"calculation's folder rewrites it as not set, which is what it "
-            f"meant (docs/process/changelog.md 2.1.0).")
+            f"meant.")
 
 
 def config_from_template(text: str, config_cls):
@@ -3120,7 +3102,7 @@ def config_from_template(text: str, config_cls):
         if migrated:
             why.append(
                 "template carries item(s) the electronic state replaced on "
-                "2026-09-28 (science/chemistry-correctness.md § 2a): "
+                "2026-09-28: "
                 + ", ".join(f"{k!r} ({MIGRATED_ITEMS[k]})" for k in migrated)
                 + ".  " + MIGRATE_HINT)
         # A RETIRED OR RENAMED ITEM is named as such, in the one sentence
@@ -3135,7 +3117,7 @@ def config_from_template(text: str, config_cls):
             why.append(
                 f"template names item(s) the {config_cls.__name__} schema "
                 f"does not declare: {', '.join(map(repr, other))}.  A "
-                f"template item is a schema field (engines/template.md § 7); "
+                f"template item is a schema field; "
                 f"check the spelling against the schema's own names.")
         raise ValueError("  ".join(why))
     # A VALUE MUST BE ONE OF THE CATALOGUE'S CHOICES -- today's, not the ones
@@ -3153,8 +3135,8 @@ def config_from_template(text: str, config_cls):
         raise ValueError(
             f"template's {k} = {v!r} is not one of today's choices "
             f"({', '.join(map(repr, decls[k].choices))})."
-            + (f"  It was written before the electronic state's items "
-               f"(science/chemistry-correctness.md § 2a).  {MIGRATE_HINT}"
+            + (f"  It was written before the electronic state's items"
+               f".  {MIGRATE_HINT}"
                if k in STATE_ITEMS else ""))
     return config_cls(**vals)
 
@@ -3230,29 +3212,27 @@ SIESTA_RAMAN_SELECTOR = ("es_mode_selection", "es_explicit_indices",
 #: (`engines/template.md` § 3).
 RETIRED_ITEMS: Dict[str, Retired] = {
     "es_top_n": Retired(
-        "the top_n selector, retired 2026-09-28 -- engines/vibration.md "
-        "§ 4.8", "2026-09-28"),
+        "the top_n selector, retired 2026-09-28", "2026-09-28"),
     "es_threshold": Retired(
-        "the threshold selector, retired 2026-09-28 -- engines/vibration.md "
-        "§ 4.8", "2026-09-28"),
+        "the threshold selector, retired 2026-09-28", "2026-09-28"),
     "optimizer": Retired(
         "geomeTRIC is the one PySCF optimizer; berny and with it the choice "
-        "were retired 2026-09-29 -- engines/pyscf.md § 3", "2026-09-29",
+        "were retired 2026-09-29", "2026-09-29",
         runs=("geometric",)),
     "continue_retries": Retired(
         "the run script's warm retry, retired at 2.60.0: a run is one "
-        "start, and to continue it is to launch the stage again -- "
-        "execution/project-layout.md § 1.6.1", "2.60.0", runs=None),
+        "start, and to continue it is to launch the stage again",
+        "2.60.0", runs=None),
     "copy_psml": Retired(
         "the pseudopotential staging switch, retired at 2.10.0: nothing read "
         "it, and prep always copies the calculation's pseudopotentials "
-        "beside its decks -- engines/template.md § 3", "2.10.0",
+        "beside its decks", "2.10.0",
         runs=(True, False)),
     **{name: Retired(
         f"SIESTA's molecular dynamics ({what}) left the optimization kind "
         f"at 2.40.2 with the Verlet and Nose run types: no calculation of "
-        f"molbuilder runs dynamics, and no relaxation's deck ever wrote it "
-        f"-- engines/template.md § 3", "2.40.2", runs=None)
+        f"molbuilder runs dynamics, and no relaxation's deck ever wrote it",
+        "2.40.2", runs=None)
        for name, what in (("md_initial_temperature", "its initial "
                            "temperature"),
                           ("md_target_temperature", "its thermostat's "
@@ -3261,14 +3241,14 @@ RETIRED_ITEMS: Dict[str, Retired] = {
     **{name: Retired(
         f"a SIESTA vibration's {what}, fixed by the kind until 2.45.0, "
         f"when Compute IR became a setting of both engines and the "
-        f"force-constant block writes the charges when it is on -- "
-        f"engines/vibration.md 5.3", "2.45.0", runs=None)
+        f"force-constant block writes the charges when it is on",
+        "2.45.0", runs=None)
        for name, what in (("charge_hirshfeld", "Hirshfeld charges"),
                           ("charge_voronoi", "Voronoi charges"))},
     **{name: Retired(
         f"SIESTA's Raman modes are Compute Raman and Raman for since "
-        f"2.45.0; {name} is PySCF's orbital probe's alone -- "
-        f"engines/vibration.md 3.1", "2.45.0", runs=None,
+        f"2.45.0; {name} is PySCF's orbital probe's alone",
+        "2.45.0", runs=None,
         engines=("siesta",),
         migrate_does=("states Compute Raman and Raman for from it -- an "
                       "explicit list of modes, or a stage's own value, is "
@@ -3287,7 +3267,7 @@ RETIRED_ITEMS: Dict[str, Retired] = {
 RENAMED_ITEMS = {
     "elecs_bulk": ("electrodes_bulk",
                    "renamed 2026-09-29, and shared by the device and the "
-                   "transmission -- engines/transport.md 6.1b",
+                   "transmission",
                    "2026-09-29"),
 }
 

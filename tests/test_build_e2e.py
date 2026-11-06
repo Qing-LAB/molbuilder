@@ -943,6 +943,9 @@ class TestSendToTaskSetup:
             "  return {top: b.top, bottom: b.bottom,"
             "          height: window.innerHeight}; }")
         assert seen is not None, "the refusal is not beside the field"
+        assert page.evaluate(
+            f"() => {field}.querySelectorAll('.field-issues .issue-item').length"
+        ) == 1, "one fact said twice beside the field, in two severities"
         assert 0 <= seen["top"] and seen["bottom"] <= seen["height"], seen
 
         page.fill("#p-psml-lib", "pseudopotential")

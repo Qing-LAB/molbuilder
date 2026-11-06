@@ -224,18 +224,15 @@ def test_check_tls_readable_rejects_unreadable_key_mode_0000(tmp_path):
         key.chmod(0o600)
 
 
-def test_check_tls_readable_error_mentions_deployment_doc(tmp_path):
+def test_check_tls_readable_error_names_the_recommended_shape(tmp_path):
     """The error body must point at the recommended deploy shape so
     the operator doesn't reach for ``chmod 0644 privkey.pem`` (which
-    weakens security to make the error go away).  Pins that the
-    docs/ops/deployment.md mention + the reverse-proxy suggestion both
-    show up in the failure message."""
+    weakens security to make the error go away): the reverse proxy."""
     with pytest.raises(click.UsageError) as excinfo:
         _check_tls_readable(str(tmp_path / "no.pem"),
                             str(tmp_path / "no.key"))
     msg = str(excinfo.value)
     assert "reverse proxy" in msg
-    assert "docs/ops/deployment.md" in msg
 
 
 # --------------------------------------------------------------------- #

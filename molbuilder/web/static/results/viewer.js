@@ -411,8 +411,8 @@
                  * the other stages kept (results.md § 2.4). */
                 const row = document.createElement("tr");
                 row.className = "is-run";
-                const cell = td("Its runs could not be listed: "
-                                + s.runs_unread);
+                const cell = tdWords("Its runs could not be listed: "
+                                     + s.runs_unread);
                 cell.setAttribute("colspan", "7");
                 row.appendChild(cell);
                 table.appendChild(row);

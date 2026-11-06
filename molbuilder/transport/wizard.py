@@ -219,8 +219,8 @@ def seam_finding(pos, cell) -> Issue:
                 f"tiles into -- ABAB and ABC agree on everything it "
                 f"contains, which on fcc(111) is the difference between "
                 f"gold and hcp.  A lead that states its own stacking is "
-                f"at least one whole period thick (3 layers for (111); "
-                f"junction-cell.md § 3.1).", where=SEAM_WHERE)
+                f"at least one whole period thick (3 layers for (111)).",
+                where=SEAM_WHERE)
     if v.verdict == "continues":
         per = (f" (stacking period {v.period} "
                f"layer{'' if v.period == 1 else 's'})" if v.period else "")
@@ -232,7 +232,7 @@ def seam_finding(pos, cell) -> Issue:
                          f"{v.message}.  This lead is what TranSIESTA turns "
                          f"into the self-energy, so a faulted seam is a "
                          f"faulted bulk Hamiltonian.  Not refused: you may "
-                         f"mean it (junction-cell.md § 3.1).",
+                         f"mean it.",
                  where=SEAM_WHERE)
 
 
@@ -313,8 +313,8 @@ def _refuse_unless_frozen_bulk(
         more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
         raise ValueError(
             f"{len(moved)} atom(s) in {label!r} MOVED during the cited "
-            f"relaxation: {shown}{more}.  Frozen means unmoved "
-            f"(engines/transport.md § 4): the "
+            f"relaxation: {shown}{more}.  Frozen means unmoved"
+            f": the "
             f"electrode blocks "
             f"are the seam the self-energies attach to.  Re-relax the "
             f"junction with the electrode atoms constrained, or fix the "

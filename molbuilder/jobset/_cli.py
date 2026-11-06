@@ -87,7 +87,7 @@ def _nothing_prepared(calc) -> str:
              f"bench`." if sweeps else "")
     return (f"{what}: this calculation is described "
             f"but no run is prepared yet.  `prep` derives the set from the "
-            f"description (job-system.md § 4):\n"
+            f"description:\n"
             f"    {command('prep', *words_for('task', groups=first), base=base)}"
             + bench)
 
@@ -123,7 +123,7 @@ def _load(bundle: str) -> tuple:
         raise click.ClickException(refusal(base))
     raise click.ClickException(
         f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
-        "describes it and `prep` derives it (job-system.md § 4); run "
+        "describes it and `prep` derives it; run "
         "`molbuilder describe` first.")
 
 
@@ -162,17 +162,17 @@ def _calc_of(folder):
 
 @click.group("jobset", short_help="run a calculation (stage ladder / sweep)")
 def jobset_group() -> None:
-    """The calculation's verbs, one grammar (job-system.md § 5.3).
+    """The calculation's verbs, one grammar.
     Describing is not one of them: ``describe``, molbuilder's own command,
     writes the portable folder; ``prep`` derives everything else FOR the
     machine that runs it, from that machine's record (``prep --target``)
     -- prep runs here or there -- and ``launch`` sends a prepared group's
     job, a stage launched again, or a benchmark's trials.  Floor 3
-    (``job-set.json``) is DERIVED at prep (job-system.md § 5.0).
+    (``job-set.json``) is DERIVED at prep.
 
     ``probe`` measures a machine and ``machines`` lists the records that
     measuring produced, which is how a calculation is prepared for a
-    machine other than this one (preparing-for-another-machine.md)."""
+    machine other than this one."""
     _echo_config_root()
 
 
@@ -301,8 +301,8 @@ def _bundle_option(must_exist: bool = True):
         help="the calculation, as a path from the PROJECTS ROOT -- e.g. "
              "`--bundle <project>/<topic>/<calculation>` -- which works from "
              "any directory.  Omit it to use the current directory.  Either "
-             "way it must be inside the projects tree "
-             "(job-contracts.md 2.5b)."
+             "way it must be inside the projects tree"
+             "."
              + ("" if must_exist else "  It need not exist yet."))
 
 
@@ -395,7 +395,7 @@ def _described_by_its_kind(rec, *, out_dir, reuses, engine, run_name,
     if finer != 1 and not window_opt:
         raise click.ClickException(
             "--finer cuts the window fitted by --window finer -- name the "
-            "window too (engines/transport.md § 2a.16).")
+            "window too.")
     window = None
     if window_opt:
         try:
@@ -460,14 +460,14 @@ def _bias_of(bias_opt: str) -> tuple:
               help="the structure to describe, as a path from the PROJECTS "
                    "ROOT -- e.g. `--structure <project>/structure/water.xyz`. "
                    "It lives in the tree like everything else a calculation "
-                   "cites (job-contracts.md 2.5b).  Required for every "
+                   "cites.  Required for every "
                    "calculation EXCEPT transport, whose structure IS its "
                    "junction citation (--slot).")
 @click.option("--stage-strategy", default=None,
               help="which shipped ladder to describe (e.g. publishable). Omit "
                    "for a calculation with a SINGLE parameter set, which is "
                    "described as ONE stage named 'coarse' -- named and "
-                   "tokened like any other (6.5).")
+                   "tokened like any other.")
 @click.option("--name", default=None, metavar="NAME",
               help="what you call this calculation; the label and the run id "
                    "derive from it. Default: the destination folder's name.")
@@ -493,19 +493,19 @@ def _bias_of(bias_opt: str) -> tuple:
 @click.option("--calculation", "calculation", required=True, metavar="TYPE",
               help="which KIND of calculation this describes -- "
                    "optimization, vibration or transport; the key into the "
-                   "engine's warm-file vocabulary (job-contracts 4.2a).  "
+                   "engine's warm-file vocabulary.  "
                    "REQUIRED -- never assumed.")
 @click.option("--slot", "slots_opt", multiple=True, metavar="NAME=CITATION",
               help="a composite input (transport only): "
                    "--slot junction=<path> -- a finished relaxation run's "
                    "folder, or a structure pair's .xyz that records its "
-                   "optimization (engines/transport.md § 3.1).  Named "
+                   "optimization.  Named "
                    "explicitly, never picked.  Beside --reuses, a frame "
                    "set whose frame 0 is the finished calculation's "
                    "junction, cited in its place (2a.16).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
               help="transport only: the bias points in volts, starting at "
-                   "0.0 (engines/transport.md 2a.10).  Several state "
+                   "0.0.  Several state "
                    "--low-bias-approximation or --no-low-bias-approximation.")
 @click.option("--low-bias-approximation/--no-low-bias-approximation",
               "low_bias_approximation", default=None,
@@ -513,14 +513,14 @@ def _bias_of(bias_opt: str) -> tuple:
                    "approximation, the device and the transmission run once, "
                    "at 0 V, and each voltage's current is computed from T(E, 0) "
                    "-- T(E, V) taken as T(E, 0); without it, every voltage gets its own "
-                   "device SCF and transmission (engines/transport.md 2a.10).  "
+                   "device SCF and transmission.  "
                    "Required with several points, never inferred.")
 @click.option("--window", "window_opt", default=None, metavar="LO,HI",
               help="with --reuses: the transmission window wanted, in eV "
                    "-- fitted to the finished calculation's grid, its "
                    "spacing and alignment, extended outward by whole "
                    "spacings until the range is covered, so every finished "
-                   "energy stays a point (engines/transport.md 2a.16).")
+                   "energy stays a point.")
 @click.option("--finer", default=1, type=int, metavar="N",
               help="with --window: the grid N times finer, an odd number, "
                    "so every finished energy stays a point.")
@@ -529,8 +529,8 @@ def _bias_of(bias_opt: str) -> tuple:
                    "folder, from the projects root.  The new calculation "
                    "starts as its description; its first prep takes its "
                    "junction and pseudopotentials and copies in every group "
-                   "the finished one already computed "
-                   "(engines/transport.md 2a.16).")
+                   "the finished one already computed"
+                   ".")
 def describe_cmd(structure, bundle: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
                  calculation: str, slots_opt, bias_opt,
@@ -538,11 +538,11 @@ def describe_cmd(structure, bundle: str,
     """Write the portable description and its job request: the template,
     ``task.json``, ``job-request.json`` (each stage's group, nothing else
     asked yet), and the data files.  Describing is not a job verb, so it is
-    not under `molbuilder jobset` (execution/job-request.md 9).
+    not under `molbuilder jobset`.
 
     **It writes no deck.**  A deck carries values that depend
     on how it will be launched, so rendering belongs to ``prep``, for the
-    machine that will run it (job-system.md § 5.0).  What this writes names no
+    machine that will run it.  What this writes names no
     machine and therefore means the same thing wherever you copy it.
 
     Names and values are validated HERE, on your laptop, not on the cluster: a
@@ -585,8 +585,8 @@ def describe_cmd(structure, bundle: str,
         if "reuses" not in _rec.description.carries:
             raise click.ClickException(
                 f"--reuses belongs to --calculation "
-                f"{' or '.join(carrying('reuses'))} alone "
-                f"(engines/transport.md § 2a.16).")
+                f"{' or '.join(carrying('reuses'))} alone"
+                f".")
         _described_by_its_kind(
             _rec, out_dir=out_dir, reuses=reuses, engine=engine,
             run_name=run_name, given=_given, slots_opt=slots_opt,
@@ -596,8 +596,8 @@ def describe_cmd(structure, bundle: str,
     if window_opt is not None or finer != 1:
         raise click.ClickException(
             "--window and --finer fit a transmission window to a finished "
-            "calculation's grid -- they go with --reuses "
-            "(engines/transport.md § 2a.16).")
+            "calculation's grid -- they go with --reuses"
+            ".")
     if engine is None:
         raise click.ClickException(
             "--engine is required -- never assumed or inferred.")
@@ -617,8 +617,8 @@ def describe_cmd(structure, bundle: str,
         raise click.ClickException(
             f"--slot belongs to --calculation {' or '.join(_citing)}, and "
             f"--bias / --low-bias-approximation to "
-            f"{' or '.join(carrying('bias'))}, alone "
-            f"(engines/transport.md § 3.1).")
+            f"{' or '.join(carrying('bias'))}, alone"
+            f".")
     if structure is None:
         raise click.ClickException(
             f"--structure is required -- it is what this calculation "
@@ -838,7 +838,7 @@ def _stage_words(kind: str, words, stages, verb: str, *, groups=()):
             f"`{verb} task` names its groups with --group N"
             + (f", or one stage with --stage {words[0]}"
                if verb == "launch" else "")
-            + " (job-system.md § 5.3).")
+            + ".")
     return (None, None, list(stages))
 
 
@@ -857,8 +857,8 @@ def _check_kind(kind: str, js=None) -> None:
         raise click.ClickException(
             f"this calculation's job set is a {js.kind}, which the grammar calls "
             f"{actual!r} -- and the command says {kind!r}.  The kind states "
-            f"what the calculation IS, it does not switch modes "
-            f"(job-system.md § 5.3).")
+            f"what the calculation IS, it does not switch modes"
+            f".")
 
 
 def _described_stage(stage, calc):
@@ -975,14 +975,13 @@ TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
              "number of minutes.  A run on a scheduler states one -- here, "
              "or `allocation.time` / the run card's `time` in "
              f"{JOB_REQUEST_FILE} -- "
-             "or prep refuses.  Never derived, never estimated "
-             "(architecture.md § 5.2).")
+             "or prep refuses.  Never derived, never estimated"
+             ".")
 MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
             "a bare number of GB.  `0` asks for all of the node's.  A run "
             "on a scheduler states one -- here, or `allocation.mem` in "
-            f"{JOB_REQUEST_FILE} -- or prep refuses (architecture.md "
-            "§ 5.2).")
+            f"{JOB_REQUEST_FILE} -- or prep refuses.")
 
 
 def _duration(text):
@@ -1013,8 +1012,7 @@ def _resolve_stage_name(js, stage: str) -> str:
 @click.option("--group", "groups", multiple=True, type=int, metavar="N",
               help="task: a group to prepare, by its number in "
                    f"{JOB_REQUEST_FILE} -- "
-                   "repeated for several, each one job (engines/stages.md "
-                   "2).  A group prepared and never launched is prepared "
+                   "repeated for several, each one job.  A group prepared and never launched is prepared "
                    "again.")
 @_bundle_option()
 @click.option("--env", default=None,
@@ -1024,8 +1022,8 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "needs).")
 @click.option("--np", "mpi_np", type=int, default=None, metavar="N",
               help="MPI ranks for this prep -- the launch shape, which "
-                   "the job request's run card states for every prep "
-                   "(project-layout.md D2); prep renders the deck for it.  "
+                   "the job request's run card states for every prep"
+                   "; prep renders the deck for it.  "
                    "Stated nowhere, a SIESTA run is refused.")
 @click.option("--cpus-per-task", type=int, default=None, metavar="C",
               help="cores per rank (OMP threads), the header's cores per "
@@ -1034,7 +1032,7 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "`threads` -- a run is refused.")
 @click.option("--gpus", "gres", default=None, metavar="N",
               help="how many GPUs -- a count; which card a node carries is "
-                   "the machine's business (scheduler.md R2a).")
+                   "the machine's business.")
 @click.option("--time", "time_", default=None, metavar=TIME_METAVAR,
               help=TIME_HELP)
 @click.option("--mem", default=None, metavar=MEM_METAVAR, help=MEM_HELP)
@@ -1057,12 +1055,10 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "otherwise prep refuses, listing them; a calculation "
                    "already prepared keeps the machine of its first prep.  "
                    "Naming it is how a bench prepared on a workstation "
-                   "measures the cluster instead of the desk "
-                   "(preparing-for-another-machine.md 4).")
+                   "measures the cluster instead of the desk"
+                   ".")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
-              help=f"write the {ROLE_HEADER} headers (default on; withheld "
-                   "where the target's record names a kind with no queue, "
-                   "`workstation` -- scheduler.md § 6a).  --no-sbatch "
+              help=f"write the {ROLE_HEADER} headers (default on; withheld where the target's record names a kind with no queue, `workstation`).  --no-sbatch "
                    "writes none, and then no queue, wall or memory is "
                    "asked for.")
 @click.option("--one-job", "one_job", is_flag=True,
@@ -1071,8 +1067,8 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "one header written too: one queue, the largest request "
                    "any group asks for, the walls summed.  A group named "
                    "that is launched already is read as prepared.  Then "
-                   "`launch task` with the same --group lines sends it "
-                   "(job-system.md 6.0, A sequence of groups).")
+                   "`launch task` with the same --group lines sends it"
+                   ".")
 def prep_cmd(kind: str, words, groups, bundle: str, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
              domain, target, emit_sbatch: bool, one_job: bool) -> None:
@@ -1086,8 +1082,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
     makes the launch a plain yes.**
 
     Bare ``prep task`` shows the groups and asks which, every one not
-    prepared and preparable offered; ``--group`` answers without a terminal
-    (`job-system.md` § 5.0).
+    prepared and preparable offered; ``--group`` answers without a terminal.
     """
     # THE ONE ENTRY (`job-system.md` § 5.0, plan W38 F7): the Task setup
     # tab's Prep buttons call it too.  This verb collects what the person
@@ -1104,8 +1099,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
         if one_job and kind != "task":
             raise click.ClickException(
                 "--one-job sends a task's groups as one job; a benchmark's "
-                "trials are sent by their shelves (job-system.md 6.0, "
-                "R-P22).")
+                "trials are sent by their shelves.")
         # A SPELLING THAT IS NO AMOUNT is refused in the verb's voice,
         # naming the flag -- through the same readers the record uses
         # (`Resources`) -- before anything is asked, so an answer is never
@@ -1564,23 +1558,19 @@ def _echo_pipeline_log(ans, base) -> None:
                    "whose frequency spreads by more than this across the "
                    "force-constant stages (cm^-1).  Without it nothing is "
                    "flagged -- the numbers are stated and the judgement is "
-                   "yours (engines/vibration.md 5.9).")
+                   "yours.")
 def summarize_cmd(kind: str, words, bundle: str,
                   tolerance_cm1: Optional[float]) -> None:
-    """Summarize results that exist -- never derive a run's own
-    (`job-system.md` § 5.3, *The verbs*).  Three summaries, by what was
+    """Summarize results that exist -- never derive a run's own.  Three summaries, by what was
     described:
 
     \b
     * ``summarize bench`` reads a benchmark's trials and writes
-      ``bench-result.json`` -- a recommendation, not a decision
-      (`generator.md` § 4.3a): you read it, you decide;
+      ``bench-result.json`` -- a recommendation, not a decision: you read it, you decide;
     * ``summarize task`` on a transport calculation reads its transmission
-      points into ``<label>.transport.json`` (`engines/transport.md`
-      § 2a.12);
+      points into ``<label>.transport.json``;
     * ``summarize task`` on a SIESTA vibration with two or more
-      force-constant stages compares them into ``<label>.fc-sweep.json``
-      (`engines/vibration.md` § 5.9), ``--tolerance-cm1`` flagging a mode
+      force-constant stages compares them into ``<label>.fc-sweep.json``, ``--tolerance-cm1`` flagging a mode
       whose spread exceeds it.
 
     **Asynchronous by design** (user, 2026-08-12): each reads what has
@@ -1590,7 +1580,7 @@ def summarize_cmd(kind: str, words, bundle: str,
     point or a force-constant stage without its result
     reads as pending, and one whose run failed says so.  Discovery is keyed
     by the description and ``job-set.json``'s own data, never by parsing
-    directory names back (`job-contracts.md` § 6.3).
+    directory names back.
     """
     # A TASK'S SUMMARY reads the whole calculation, and names no stage
     # (`job-system.md` § 5.3); a benchmark's, its stage.
@@ -1614,8 +1604,7 @@ def summarize_cmd(kind: str, words, bundle: str,
     def _no_tolerance() -> str:
         # Composed when said: the words import every pair's summary.
         return (f"--tolerance-cm1 is read by the summary of "
-                f"{_summing('tolerance_cm1')} alone -- drop it here "
-                f"(engines/vibration.md 5.9)")
+                f"{_summing('tolerance_cm1')} alone -- drop it here")
     if kind != "bench":
         # WHAT THE CALCULATION ADDS UP: the summary its kind's record names
         # on its engine (`summarize.TaskSum`, `execution/architecture.md`
@@ -1646,8 +1635,8 @@ def summarize_cmd(kind: str, words, bundle: str,
                 f"`summarize task` adds up what a calculation's kind names "
                 f"on its engine -- {_summing()} -- and {_what} names "
                 f"nothing to add up: its stages each write their own "
-                f"result, which `jobset status` and the Results tab read "
-                f"(job-system.md § 5.3).  A benchmark's sweep is "
+                f"result, which `jobset status` and the Results tab read"
+                f".  A benchmark's sweep is "
                 f"`summarize bench`.")
         # A DESCRIPTION WITH NOTHING TO ADD UP, said in its summary's words.
         _why = _sum.why_none(_tt)
@@ -1772,12 +1761,11 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @click.option("--group", "groups", multiple=True, type=int, metavar="N",
               help="task: the group to launch, by its number in "
                    f"{JOB_REQUEST_FILE} "
-                   "-- its stages as one job (engines/stages.md 2).  A "
+                   "-- its stages as one job.  A "
                    "group goes whole the first time.  Repeated: the groups "
                    "as ONE job that launches each in turn, when the one "
                    "before has finished -- its header the one `prep task "
-                   "--group ... --one-job` wrote (job-system.md 6.0, A "
-                   "sequence of groups).")
+                   "--group ... --one-job` wrote.")
 @click.option("--stage", "stages", multiple=True, metavar="NAME",
               help="task: ONE stage, by name or '#N' -- a member launched "
                    "again alone, or a group holding only it.")
@@ -1794,8 +1782,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "prep and "
                    "ask again before committing.  'ask' needs a login "
                    "node -- there is no prediction without the cluster.  "
-                   "**Defaults to `launch.mode` in molbuilder.json** "
-                   "(configuration.md § 4); pass it only to override that.")
+                   "**Defaults to `launch.mode` in molbuilder.json**"
+                   "; pass it only to override that.")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing, write nothing.")
@@ -1803,12 +1791,12 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
               help="submit and ask: a submitted job's wall, restated on the "
                    "line that sends it -- for a run launched again that ran "
                    "out of it.  Every other value -- the queue, ranks, cores, "
-                   "GPUs, memory -- is the header prep wrote, sent as it is "
-                   "(job-system.md 6.0).")
+                   "GPUs, memory -- is the header prep wrote, sent as it is"
+                   ".")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="take what is shown without being asked.  The request is "
                    "still printed -- --yes skips the question, never the "
-                   "output (submission.md S4).")
+                   "output.")
 @click.option("--cold", is_flag=True,
               help="ONE stage: at its first launch, it takes nothing from "
                    "the stage it continues from -- it starts from the "
@@ -1818,7 +1806,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "before it; a SIESTA displacement sweep's later stage, "
                    "the first, whose relaxation it takes over -- which must "
                    "have finished, and a launch again continues from its own "
-                   "latest run, however it ended (job-system.md 5.4).")
+                   "latest run, however it ended.")
 @click.option("--from", "from_attempt", default=None,
               metavar="NN_STAGE/run-N",
               help="ONE stage: the run it continues from, by its folder -- "
@@ -1826,12 +1814,12 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "launched again, taken as said; its restart files are "
                    "COPIED in -- a SIESTA displacement sweep's later stage, "
                    "the run's relaxation.  A transport rung has no run to "
-                   "name (job-system.md 5.4).")
+                   "name.")
 @click.option("--gather", is_flag=True,
               help="ONE transport rung launched again: take its inputs anew "
                    "-- the newest run of each rung upstream, under the "
                    "gather's gates -- instead of those its last run was "
-                   "given (engines/transport.md 6.1).")
+                   "given.")
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
               type=click.IntRange(min=1), metavar="MINUTES",
               help="a benchmark's walk (`launch bench <stage>`, here or "
@@ -1850,11 +1838,11 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    f"{ROLE_SESSION_LOG} in the run folder, a walk appends "
                    "each member's output to its log under launch/, and `jobset "
                    "status` follows the run.  Either way the question "
-                   "offers the other one (job-system.md 6.0).")
+                   "offers the other one.")
 @click.option("--in-sequence", "in_sequence", default=None, metavar="NAME",
               help="typed by a sequence of groups' walk alone: this group's "
                    "launch runs inside the sequence NAME's job, each run "
-                   "recording that job (job-system.md 6.0).")
+                   "recording that job.")
 @click.option("--in-job", "in_job", default=None, metavar="ID",
               help="typed by a sequence of groups' walk alone, with "
                    "--in-sequence: the job's address -- a queue job's id, "
@@ -1862,7 +1850,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @click.option("--only", "only_side", default=None,
               type=click.Choice(["cpu", "gpu"]),
               help="a grouped bench: send just this side of a sweep that "
-                   "spans CPU and GPU trials (generator.md § 4.3a).  The "
+                   "spans CPU and GPU trials.  The "
                    "other side stays pending; a later `launch bench` sends "
                    "it.")
 def submit_cmd(kind: str, words, groups, stages, bundle: str, mode: str,
@@ -1876,7 +1864,7 @@ def submit_cmd(kind: str, words, groups, stages, bundle: str, mode: str,
     the exact line is shown and you are asked; ``--dry-run`` shows it and
     sends nothing.
 
-    ``--mode`` falls back to ``launch.mode`` (`configuration.md` § 4).
+    ``--mode`` falls back to ``launch.mode``.
     """
     # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 6.0, step 5): the
     # entry writes its own, and the verb the ones it says before it calls
@@ -1906,16 +1894,16 @@ def submit_cmd(kind: str, words, groups, stages, bundle: str, mode: str,
             raise click.ClickException(
                 "--in-sequence and --in-job are typed by a sequence of "
                 "groups' walk alone: both, with one --group, --mode direct "
-                "--foreground --yes (job-system.md 6.0; R-L46).")
+                "--foreground --yes.")
         if kind == "task" and len(stages) > 1:
             raise click.ClickException(
                 "--stage names ONE stage -- a member launched again alone; "
                 "stages launched together are a group, by its number: "
-                "--group N (job-system.md § 5.3).")
+                "--group N.")
         if kind == "task" and stages and groups:
             raise click.ClickException(
                 "--group and --stage are two answers to one question: the "
-                "group to launch, or one stage (job-system.md § 5.3).")
+                "group to launch, or one stage.")
         if kind == "task" and stages:
             stage = stages[0]
         told.update(stage=stage, trial=trial)
@@ -2082,7 +2070,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
             # A malformed config is ITS OWN error.
             raise click.ClickException(
                 f"the launch block could not be resolved from config: "
-                f"{exc}\n  Fix the config (configuration.md § 4).") from exc
+                f"{exc}\n  Fix the config.") from exc
         if not mode:
             # Unset is a refusal, never a derivation: deciding `submit` from
             # a DETECTED scheduler would gate submission on detection, which
@@ -2091,8 +2079,8 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
             raise click.ClickException(
                 "no --mode, and molbuilder.json sets no `launch.mode`.\n"
                 "  'direct' runs it here with bash; 'submit' hands it to the "
-                "scheduler.  Set launch.mode once for this machine "
-                "(configuration.md § 4), or say the mode on the line:\n"
+                "scheduler.  Set launch.mode once for this machine"
+                ", or say the mode on the line:\n"
                 + each_mode())
         mode_source = "launch.mode (config)"
     told.update(mode=mode, mode_source=mode_source)
@@ -2534,7 +2522,7 @@ def migrate_cmd(bundle: str) -> None:
     scripts.  A run's files an older molbuilder named with its try's number
     are named once, every byte kept; a run it cannot name so -- one that
     started more than once among them -- is left as it is, said with its
-    reason (`job-request.md` § 8).
+    reason.
 
     What the calculation was is KEPT: every value carried, every blank left
     blank, each change printed with the rule it follows; a change that would
@@ -2606,15 +2594,13 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
     data file ``<label>.transport.nc`` or the same as tables,
     ``<label>.transport-csv/`` -- from what is already there, no data file
     read: the points without their DOS by region said; a ladder in progress
-    exports what exists, a point short of done an empty cell
-    (engines/transport.md 2a.12, *Export*).  A VIBRATION calculation: its
+    exports what exists, a point short of done an empty cell.  A VIBRATION calculation: its
     stage's newest result's data files as they are, and with ``--laser-nm``
     the Raman view at that laser, ``<label>.vibration-netcdf/`` or
-    ``<label>.vibration-csv/`` (engines/vibration.md 5.11 10).  An
+    ``<label>.vibration-csv/``.  An
     OPTIMIZATION: every step its runs have finished, its data file
     ``<label>.optimization.nc`` or the same as tables,
-    ``<label>.optimization-csv/``, the runs with none said
-    (engines/optimization-postprocessing.md 6).  What is
+    ``<label>.optimization-csv/``, the runs with none said.  What is
     there already under that name is refused before anything is composed,
     naming it."""
     from pathlib import Path as _P
@@ -2694,8 +2680,7 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
     carried, never saved by a checkpoint.  A transport run's walk empties
     its scratch folder as it ends; what a run leaves behind stays until
     emptied here.  Listed with each file's stage and size; ``--empty``
-    removes them from every run not queued or running, after one question
-    (job-system.md § 5.3)."""
+    removes them from every run not queued or running, after one question."""
     from ..units import size_words
     from .ask import confirm
     from .commands import command
@@ -2706,8 +2691,7 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
     if not answer.found:
         click.echo(f"no engine scratch in {base}.")
         return
-    click.echo("the engine's scratch its runs hold (never saved, "
-               "checkpointing.md S1):")
+    click.echo("the engine's scratch its runs hold (never saved):")
     for f in answer.found:
         click.echo(f"  {f.stage or '-':<14} {size_words(f.size):>10}  "
                    f"{f.path.relative_to(base)}")
@@ -2758,7 +2742,7 @@ def cmd_machines() -> None:
     """Which machines a calculation can be prepared FOR, and where each lives.
 
     The answer to *"did the record I copied over actually arrive, and does it
-    parse?"* (`preparing-for-another-machine.md` § 1a).
+    parse?"*.
 
     Prints the same list `GET /api/task-setup/machines` serves, from the same
     function, so the terminal and the tab cannot disagree.  An unreadable
@@ -2852,7 +2836,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     reason named records exist.
 
     The unnamed form writes ``environment.json`` at the machine scope, so one
-    probe serves every calculation here (`configuration.md` § 5).
+    probe serves every calculation here.
 
     **Facts only** -- M-1: a probe never chooses on your behalf.  Which queue
     a job uses is that job's own statement (`allocation.domain`, --domain).
@@ -2861,7 +2845,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     molbuilder.json (`env_init`), into whichever record it writes.
 
     Run it on a login node for a cluster; on a workstation it records the same
-    shape with no domains (M-2), rather than refusing.
+    shape with no domains, rather than refusing.
     """
     import getpass
     from datetime import datetime, timezone
@@ -2933,7 +2917,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
             f"this machine's molbuilder.json ({machine_config_path()}) states "
             f"no `env_init.activation` -- how a shell enters an environment "
             f"here, which every record this probe writes carries and every "
-            f"prep for this machine reads (configuration.md § 4).  It is "
+            f"prep for this machine reads.  It is "
             f"required: `molbuilder envs init-config` asks for it, or state "
             f"it in that file; then probe again.")
 

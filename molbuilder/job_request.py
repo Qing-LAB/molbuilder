@@ -200,16 +200,14 @@ class JobRequest:
             if not isinstance(g, int) or isinstance(g, bool) or g < 1:
                 raise ValueError(
                     f"{FILENAME}: stage {name!r}: group {g!r} must be a whole "
-                    f"number from 1 -- the job this stage runs in "
-                    f"(execution/job-request.md 3.3)")
+                    f"number from 1 -- the job this stage runs in")
             if g not in (above, above + 1):
                 raise ValueError(
                     f"{FILENAME}: stage {name!r} is in group {g}"
                     + (f", after group {above}" if above else "")
                     + " -- the first stage is group 1, and each later one "
                       "repeats the number above it or adds one, so the "
-                      "groups run in the ladder's order "
-                      "(execution/job-request.md 3.3)")
+                      "groups run in the ladder's order")
             above = g
 
     # ----- the groups (§ 3.3) ------------------------------------------ #
@@ -339,7 +337,7 @@ def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
 #: A key of the description written here, said where it belongs.
 _DESCRIPTION_NOTE = (f". What is computed -- the stages' overrides, what "
                      f"varies, the structure -- is the description's, "
-                     f"{TASK_FILE} (execution/job-request.md 1)")
+                     f"{TASK_FILE}")
 
 
 # --------------------------------------------------------------------- #
@@ -375,7 +373,7 @@ def _stages_from_obj(obj: Mapping[str, Any], description: "Task"
     raw = _as_object(obj.get("stages", {}), where="stages")
     if "stages" not in obj:
         _refuse(f"no 'stages' -- every stage of {DESCRIPTION} has its entry "
-                f"here, its group (execution/job-request.md 3)")
+                f"here, its group")
     names = [st.name for st in (description.stages or ())]
     by_key = {stage_key(n): n for n in names}
     seen: Dict[str, str] = {}
@@ -385,7 +383,7 @@ def _stages_from_obj(obj: Mapping[str, Any], description: "Task"
         if k not in by_key:
             _refuse(f"stage {key!r} is no stage of {DESCRIPTION} (its "
                     f"stages: {', '.join(names) or 'none'}) -- the two files "
-                    f"hold one ladder (execution/job-request.md 3)",
+                    f"hold one ladder",
                     where="stages")
         if k in seen:
             _refuse(f"two entries, {seen[k]!r} and {key!r}, are one stage -- "
@@ -395,8 +393,7 @@ def _stages_from_obj(obj: Mapping[str, Any], description: "Task"
     missing = [n for n in names if n not in entries]
     if missing:
         _refuse(f"no entry for {', '.join(repr(n) for n in missing)} -- every "
-                f"stage of {DESCRIPTION} states the job it runs in here "
-                f"(execution/job-request.md 3.3)", where="stages")
+                f"stage of {DESCRIPTION} states the job it runs in here", where="stages")
     out: Dict[str, StageRequest] = {}
     for name in names:
         where = f"stages {name!r}"
@@ -405,8 +402,7 @@ def _stages_from_obj(obj: Mapping[str, Any], description: "Task"
                     note=f". A stage's overrides are the description's "
                          f"({TASK_FILE})")
         if "group" not in body:
-            _refuse("no 'group' -- every stage states the job it runs in "
-                    "(execution/job-request.md 3.3)", where=where)
+            _refuse("no 'group' -- every stage states the job it runs in", where=where)
         out[name] = StageRequest(group=body["group"],
                                  execution=_execution_from_obj(body,
                                                                where=where))
@@ -426,8 +422,7 @@ def bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
     if not isinstance(raw, Mapping) or not raw:
         _refuse("'bench' is present but not a non-empty object. Omit the key "
                 "entirely when no benchmark is planned -- absent and empty "
-                "would be two spellings of one state "
-                "(execution/job-request.md 3.4)")
+                "would be two spellings of one state")
     out: Dict[str, Tuple[Any, ...]] = {}
     for name, points in raw.items():
         if not isinstance(points, (list, tuple)) or not points:
@@ -460,8 +455,7 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> Allocation:
                 where="allocation",
                 note=". Ranks, threads and GPUs are not asked here -- they "
                      "are the run card's (`execution`: \"mpi_np\": 8), and "
-                     "a benchmark's axes (`bench`) "
-                     "(execution/job-request.md 3.2)")
+                     "a benchmark's axes (`bench`)")
     for k in _ALLOCATION_KEYS:
         v = raw.get(k)
         if v is not None and not isinstance(v, str):
@@ -591,8 +585,7 @@ def _execution_from_obj(obj: Mapping[str, Any], *,
         if isinstance(val, (list, tuple)):
             _refuse(f"{key!r} takes ONE value here, not a list -- a list of "
                     f"points to try is `bench`'s shape, and the two are "
-                    f"separate blocks on purpose "
-                    f"(execution/job-request.md 3.2)", where=at)
+                    f"separate blocks on purpose", where=at)
         if isinstance(val, Mapping):
             _refuse(f"{key!r} takes a scalar, got an object", where=at)
         if key in LANE_ASKS:
@@ -618,7 +611,7 @@ def read_lane_ask(key: str, val: Any) -> str:
              if key == "time" else
              "'domain' is a queue's name, written as text; left out, the "
              "allocation's is used")
-            + f" (got {shown(val)}; execution/job-request.md 3.2a)")
+            + f" (got {shown(val)})")
     if key == "time":
         try:
             return canonical_time(val)

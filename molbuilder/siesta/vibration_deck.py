@@ -131,7 +131,7 @@ def fc_facts(struct: Structure, cfg) -> dict:
             "the free atoms are not one trailing run of atom numbers, so "
             "no FC.First/FC.Last can name them.  The vibration deck is "
             f"rendered from a copy sorted with the {SORT_HELD_FIRST!r} key, "
-            "which records its order (model/overview.md 2.2a) -- `prep` "
+            "which records its order -- `prep` "
             "does this; a deck rendered "
             "from the user order is a deck rendered from the wrong "
             "structure.")

@@ -53,12 +53,8 @@ def _siesta_describe_findings(struct, cfg, *, calculation: str,
                                      dest_dir=dest_dir)
     if not any(i.severity == "error" for i in found):
         return found, None
-    return found, ("the pseudopotentials are not settled: SIESTA needs a "
-                   ".psml file for every species, named for it, so this "
-                   "would write a "
-                   "calculation that cannot start -- the findings are "
-                   "beside the pseudopotential field "
-                   "(handover-procedure.md 2.2)")
+    return found, ("the pseudopotentials are not settled, so this would "
+                   "write a calculation that cannot start")
 
 
 def pseudo_dir(base: Path, plan=None) -> Path:
@@ -162,8 +158,7 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
             f"pseudopotential directory is set.  Set `psml_lib` in the "
             f"template to the library they live in -- the convention is the "
             f"bare name `pseudopotential`, which means that folder in the "
-            f"projects tree this calculation lives in (job-contracts.md "
-            f"§ 2.5a).")
+            f"projects tree this calculation lives in.")
     from ..pseudos import PsmlLibError
     try:
         lib = resolve_psml_lib(str(lib_raw), dest_dir=base)
@@ -221,7 +216,7 @@ def screen_pseudos(species, cfg, base: Path) -> None:
     if blocking:
         raise PrepError(
             "the pseudopotentials in this calculation do not pass the "
-            "screening (science/pseudopotentials.md § 1):\n  - "
+            "screening:\n  - "
             + "\n  - ".join(f"{e.element}: {e.message}" for e in blocking)
             + "\n  These are the checks that exist because a dead-channel "
               "S.psml once shipped into a real run -- wrong bonding, and a "

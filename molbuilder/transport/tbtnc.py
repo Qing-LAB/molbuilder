@@ -110,7 +110,7 @@ def _checked(reading, expected, name: str) -> None:
         raise TbtError(
             f"{name}: its atoms' index map is not the composed junction's "
             f"-- a reading of another structure, or of none of ours; read "
-            f"it again (model/overview.md 2.2b)")
+            f"it again")
 
 
 def _by_label(reading, regions: Dict[str, Sequence[int]]

@@ -205,7 +205,7 @@ CITATION_CONDITION = (
     "Results tab or `molbuilder xv2xyz --from-run` saves a finished "
     "relaxation, or a frame set, the junction moved along one vibration "
     "mode, as the Results tab's Write frame set saves it from a vibration's "
-    "result (engines/transport.md 3.1).  Relax the junction through "
+    "result.  Relax the junction through "
     "`molbuilder describe` -> `prep task` -> `launch task`, then cite that "
     "run or the pair saved from it; to move it along a vibration, open the "
     "vibration's result on the Results tab, select the mode, press Write "
@@ -367,9 +367,9 @@ def frames_keep_the_leads(struct: Structure, path: Path) -> None:
         raise ComposeError(
             f"{path.name}: {'; '.join(broken)} -- every frame of a set "
             f"shares the leads' calculation, so an electrode atom stays where "
-            f"the base, {frame_words(0, len(frames))}, has it, within "
-            f"{FROZEN_TOL_ANG:g} A "
-            f"(engines/transport.md 2a.9).  Write the frames with the "
+            f"the base, the first frame, has it, within "
+            f"{FROZEN_TOL_ANG:g} A"
+            f".  Write the frames with the "
             f"electrodes held.")
 
 
@@ -424,7 +424,7 @@ def refuse_failed_citation(cited, citation: str) -> None:
             f"whatever the engine left when it failed, and a calculation "
             f"citing it could never be prepared.  Launch the relaxation "
             f"again and cite the run that finishes, or cite another "
-            f"relaxation (engines/transport.md 3.1).")
+            f"relaxation.")
 
 
 def _with_transport(across, where: str) -> Tuple[str, str, str]:
@@ -442,7 +442,7 @@ def _with_transport(across, where: str) -> Tuple[str, str, str]:
         raise ComposeError(
             f"{where} records the axis kinds {kinds!r}; across the transport "
             f"axis a junction is periodic or isolated, so this record does "
-            f"not say which (engines/transport.md 6.1c)")
+            f"not say which")
     kinds[TRANSPORT_AXIS] = "transport"
     return tuple(kinds)
 
@@ -545,8 +545,7 @@ def _run_geometry(cited: CitedRun, kinds):
         raise ComposeError(
             f"the cited relaxation in {cited.path} carries no region labels "
             f"for its {struct.n_atoms} atoms: {why}.  "
-            f"Transport derives the electrodes FROM the labels (L-electrode / "
-            f"R-electrode; engines/transport.md 3.1, 4) -- label the junction "
+            f"Transport derives the electrodes FROM the labels (L-electrode / R-electrode) -- label the junction "
             f"on the Molbuilder tab and relax it through `molbuilder describe` -> "
             f"`prep task` -> `launch task`, then cite that run from a new "
             f"calculation folder.")
@@ -666,8 +665,8 @@ def _refuse_outside(struct: Structure) -> None:
             f"the junction, centred in its cell, has {where} outside it "
             f"along z, the transport direction: "
             + (said[0] if said else
-               "its atoms span more than the cell's length there "
-               "(engines/transport.md 6.1c, I12)."))
+               "its atoms span more than the cell's length there"
+               "."))
     # THE WAY OUT IS THE PAIR'S OWN: a one-geometry pair is saved on the
     # Molbuilder tab; a frame set, which the tab opens one frame of, is
     # written again by what made it (`model/structure.md` § 2.2e).
@@ -681,7 +680,7 @@ def _refuse_outside(struct: Structure) -> None:
         f"transport direction, where TranSIESTA requires every atom inside "
         f"-- the origin assigned on the cited pair puts them there.  "
         f"{how[0].upper()}{how[1:]}: the next prep composes the junction "
-        f"from it again (engines/transport.md 4).")
+        f"from it again.")
 
 
 def refuse_inside_citation(dest, cited, *, what: str = "the cited junction",
@@ -701,8 +700,8 @@ def refuse_inside_citation(dest, cited, *, what: str = "the cited junction",
             f"{shown or there} {'is' if there == home else 'is inside'} "
             f"{what} {home.name} -- the calculation never lives inside its "
             f"citation.  Make a folder for this transport calculation (under "
-            f"the project's transport topic) and describe it there "
-            f"(engines/transport.md 3.1).")
+            f"the project's transport topic) and describe it there"
+            f".")
 
 
 def _held_by_its_relaxation(relaxed: Structure):
@@ -797,7 +796,7 @@ def _pair_parts(cited: CitedPair, swap_electrodes: bool):
         raise ComposeError(
             f"the cited pair {cited.path.name} {_bad} -- a junction needs its "
             f"lattice: state it on the Molbuilder tab's Cell page and save "
-            f"the pair again (science/junction-cell.md).")
+            f"the pair again.")
     files = {f.name: sha256_of(f) for f in (cited.path, cited.sidecar)}
     return struct, None, None, files, {"frames": cited.n_frames}
 
@@ -812,17 +811,15 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
     if cited.concluded is None:
         raise ComposeError(
             f"the cited relaxation {citation!r} has not CONCLUDED -- it is "
-            f"still running, or it was force-stopped (the two look "
-            f"identical on disk; project-layout.md 1.6.3).  Let it finish; "
-            f"transport never decides this over you (engines/transport.md "
-            f"3.1).")
+            f"still running, or it was force-stopped (the two look identical on disk).  Let it finish; "
+            f"transport never decides this over you.")
     if cited.exit_code != 0:
         raise ComposeError(
             f"the cited relaxation {citation!r} ended with exit code "
             f"{cited.exit_code} ({cited.concluded}) -- its last geometry is "
             f"whatever the engine left when it failed, not a relaxed "
-            f"junction.  Run the relaxation to its end, then cite it "
-            f"(engines/transport.md 3.1).")
+            f"junction.  Run the relaxation to its end, then cite it"
+            f".")
     struct, start, output = _run_geometry(cited, junction_axis_kind(cited))
     # A swap renames the labels on this calculation's copy
     # (`with_swapped_leads`) and never writes the cited run.
@@ -836,7 +833,7 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
     if _bad:
         raise ComposeError(
             f"the cited relaxation in {cited.path} {_bad} -- a junction "
-            f"needs its lattice (science/junction-cell.md).")
+            f"needs its lattice.")
     files = {f.name: sha256_of(f) for f in (output, deck)}
     said = {
         # HOW THE CITED RUN ENDED -- its record's line -- and what it
@@ -906,8 +903,8 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
             f"{'holds' if len(changed) == 1 else 'hold'} the bytes "
             f"{PROVENANCE_FILE} pinned.  This calculation's stages ran on "
             f"the pair as it was; cite the pair as it is now in a new "
-            f"transport calculation (`molbuilder describe`), or restore it "
-            f"(engines/transport.md 3.1).")
+            f"transport calculation (`molbuilder describe`), or restore it"
+            f".")
 
 
 def read_provenance(base_dir, *, read=None) -> Optional[Dict]:

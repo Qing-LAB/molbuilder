@@ -190,7 +190,7 @@ def check_groups(task, request, template_text: Optional[str] = None
                     f"it builds on: one job runs its members one after "
                     f"another with nothing handed between them, so "
                     f"`{st.name}` would start before you have looked at "
-                    f"what {on} produced (execution/job-request.md § 3.3).  "
+                    f"what {on} produced.  "
                     f"Give `{st.name}` a new group -- one more than the "
                     f"group above" + (f"; or, for it to start from its own "
                                       f"deck rather than from {on}, set its "
@@ -227,7 +227,7 @@ def envelope(jobs: Sequence) -> "Resources":
                 + ", ".join(f"{k} {got[k]!r} against {want[k]!r}"
                             for k in differ)
                 + ".  A group's members share one job's request; state "
-                  "the same for each (execution/job-request.md § 3.3), or "
+                  "the same for each, or "
                   "give them groups of their own.")
     walls = [j.resources.time for j in jobs]
     wall = (slurm_time(sum(parse_walltime(str(w)) for w in walls))

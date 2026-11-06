@@ -525,19 +525,19 @@ def check_spin_charge_parity(struct: Structure, charge: int,
     # (Parity alone let 2S = 10 on H2 pass.)
     if unpaired > n_elec:
         return (
-            f"unpaired_electrons = {unpaired} exceeds the electron count "
-            f"(ΣZ - charge = {n_elec}): there cannot be more unpaired "
-            f"electrons than electrons.  Use at most {n_elec}."
+            f"the unpaired count {unpaired} exceeds the electron count "
+            f"({n_elec}): use at most {n_elec}."
         )
     if (n_elec % 2) != (unpaired % 2):
         parity = "even" if n_elec % 2 == 0 else "odd"
+        needs = "even" if unpaired % 2 == 0 else "odd"
+        right = " or ".join(str(c) for c in (unpaired - 1, unpaired + 1)
+                            if c >= 0)
         return (
-            f"the electron count and the spin disagree: ΣZ - charge = "
-            f"{n_elec} is {parity}, and unpaired_electrons = {unpaired} "
-            f"needs an{'n' if unpaired % 2 == 0 else ''} "
-            f"{'even' if unpaired % 2 == 0 else 'odd'} count.  Change the "
-            f"charge by ±1, or the count to "
-            f"{unpaired + 1} / {max(0, unpaired - 1)}."
+            f"the electron count and the unpaired count disagree: the "
+            f"electron count ({n_elec}) is {parity}, and the unpaired count "
+            f"{unpaired} needs an {needs} one.  Change the charge by 1, or "
+            f"the unpaired count to {right}."
         )
     return None
 

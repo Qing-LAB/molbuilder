@@ -248,7 +248,7 @@ def held_why(number: int, held: tuple) -> str:
             f"still going ({state}) launches it with the files it was "
             f"prepared with, and preparing it again would rewrite them under "
             f"the job.  Prepare it once that job has ended, or stop the job "
-            f"first: {jobs_as_typed('stop', job.id)}  (job-system.md R-P23)")
+            f"first: {jobs_as_typed('stop', job.id)}")
 
 
 def held_by_sequence(calc, number: int, *, asked=None
@@ -493,8 +493,8 @@ def regrouped(calc, stage: str) -> Optional[str]:
             return str(exc)
         if hit:
             return said + "; " + joined_launched(calc, n, *hit)
-    return (said + ", so its prep forms the job again "
-            "(engines/stages.md § 2) --\n"
+    return (said + ", so its prep forms the job again"
+            " --\n"
             + block(prep_group_lines(numbers, base=base)))
 
 
@@ -597,7 +597,7 @@ def first_launch_takes(calc, stage: str, *,
                 f"computing it itself --\n"
                 + block(launch_lines("task", stage, base=base,
                                      flags=("--cold",)))
-                + "\n(job-system.md § 5.4)")
+                + "\n")
         # WHAT IT WOULD COPY, in the points' own words (`Continuation.line`).
         return (dataclasses.replace(cont, carries=tuple(
             pt.words() for _p, pt in took)), None, None)

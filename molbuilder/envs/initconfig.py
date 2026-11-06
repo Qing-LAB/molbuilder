@@ -174,8 +174,8 @@ def seed_document(activation: str, preamble: Optional[str] = None,
             f"      GPUs -- are stated by the job: its {JOB_REQUEST_FILE}, or the",
             "      prep flags.  Prep refuses one stated nowhere.",
             "",
-            "Secrets are SEPARATE 0600 files; this file carries their PATHS,",
-            "never their bytes.  See secrets/README beside this file.",
+            "Secrets are SEPARATE 0600 files; this file never holds their",
+            "bytes.  See secrets/README beside this file.",
             "",
             "Every key this file may hold, and what it is for:",
             "docs/configuration.md section 4.",
@@ -511,7 +511,7 @@ def _config_note() -> str:
         return f'left as it is (env_init.activation = "{said}")'
     return ("left as it is -- but it declares no env_init.activation, so the "
             "probe has nothing to copy and every prep for this machine "
-            "refuses (configuration.md § 4)")
+            "refuses")
 
 
 def seed_environment_record() -> Step:

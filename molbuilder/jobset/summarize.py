@@ -396,7 +396,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
         out += [""]
     out += [f"Until you do, `prep task` launches at what {JOB_REQUEST_FILE} "
             "states, and",
-            "refuses a launch value it states nowhere (architecture.md 5.2) --",
+            "refuses a launch value it states nowhere --",
             "a benchmark does not steer a run.",
             ""]
     return "\n".join(out)

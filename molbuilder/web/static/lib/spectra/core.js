@@ -1805,7 +1805,7 @@
         link.href = "/documents?doc=science/vibrational-optical-response.md";
         link.target = "_blank";
         link.rel = "noopener";
-        link.textContent = "the method, § 3.1";
+        link.textContent = "the method";
         return [" — the same, in the limit of zero light frequency, so it "
                 + "does not depend on the laser (absorption spectrum smoothed "
                 + "by " + view.broaden_words + " eV). When this "
@@ -2952,7 +2952,7 @@
                 ? "This route computes the modes, not the electrons' "
                   + "response along them.\nThat response is the projected "
                   + "density of states at structures displaced along a mode "
-                  + "-- planned (engines/vibration.md § 5.10), not built yet."
+                  + "-- planned, not built yet."
                 : r.config.es_mode_selection === "skip"
                 ? "The per-mode orbital check was not requested in this run "
                   + "(Mode selection: skip)."

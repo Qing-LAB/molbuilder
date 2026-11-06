@@ -228,8 +228,7 @@ def no_charges_reason(result: SpectraResults) -> str:
     if result.phase_ir in (PHASE_EMPTY, PHASE_RUNNING):
         return "the run has not computed its infrared yet"
     if not asked(result):
-        return ("Compute IR was off, so the run computed no infrared "
-                "(engines/vibration.md 3.1)")
+        return ("Compute IR was off, so the run computed no infrared")
     if _setting(result) is None and \
             int(result.schema_version) < CHARGES_SCHEMA:
         return (f"the result was written before molbuilder "
@@ -239,8 +238,7 @@ def no_charges_reason(result: SpectraResults) -> str:
                 f"none).  Prepare the vibration with "
                 f"{CHARGES_KEPT_SINCE} or later and run it again -- once "
                 f"launched, from the state saved before its group's first "
-                f"launch (execution/job-system.md, How the checkpoint "
-                f"supports you)")
+                f"launch")
     return "the run recorded none -- its log says why"
 
 

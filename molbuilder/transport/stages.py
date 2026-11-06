@@ -205,7 +205,7 @@ class Point:
         return 0.0 if self.volts is None else float(self.volts)
 
     def words(self) -> str:
-        """The point as a message names it, in full: ``frame index 1 (of 3)
+        """The point as a message names it, in full: ``frame 2 of 3
         · 0.2 V`` (`structure.frame_words`) -- the voltage said where the
         axis does not vary too, the 0 V it runs at; its folder
         ``f001/v0.2``."""

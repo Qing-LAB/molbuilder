@@ -215,7 +215,7 @@ OFFSET_BY = ("person", "engine")
 #: sentence, so every door says the same thing.
 FRAME_SET_NOT_EDITED = (
     "a frame set is not edited -- take one frame with frame_at(i), or build "
-    "the set again with with_frames (model/structure.md § 2.2e)")
+    "the set again with with_frames")
 
 #: What every door that would edit, reorder or merge a REMAPPED structure
 #: answers (``model/overview.md`` § 2.2a): a structure in an engine's order
@@ -224,7 +224,7 @@ FRAME_SET_NOT_EDITED = (
 #: door says the same thing.
 REMAPPED_NOT_EDITED = (
     "the structure is in an engine's order, which its order record states -- "
-    "restore it to the user order with restored() first (model/overview.md § 2.2a)")
+    "restore it to the user order with restored() first")
 
 
 def restored_said(what: str, order) -> str:
@@ -495,12 +495,13 @@ _DEFAULT_ISOLATED_VACUUM = 3.0
 
 
 def frame_words(frame: int, n_frames: Optional[int] = None) -> str:
-    """A frame as every message names it -- by its index, counted from 0 as
-    in code, said as one: ``frame index 1 (of 3)`` (`model/structure.md`
-    § 2.2e; `model/overview.md` § 2).  THE ONE SPELLING of a frame on this
-    side; only the UI's display counts from 1 (MolView's `toDisplay`)."""
-    of = f" (of {int(n_frames)})" if n_frames is not None else ""
-    return f"frame index {int(frame)}{of}"
+    """A frame as a person reads it -- its number, from 1, as the page's frame
+    bar says it, of an index ``frame`` counted from 0: ``frame 2 of 3``
+    (`model/structure.md` § 2.2e; `model/overview.md` § 2).  THE ONE SPELLING
+    of a frame in a message; a folder's ``f001`` and a script's ``frame=`` stay
+    the index."""
+    of = f" of {int(n_frames)}" if n_frames is not None else ""
+    return f"frame {int(frame) + 1}{of}"
 
 
 def atom_words(indices: Union[int, Sequence[int]],
@@ -895,7 +896,7 @@ class Structure:
             if not np.array_equal(frames[0], self.positions):
                 raise ValueError(
                     "Structure.positions is frame 0 of Structure.frames -- "
-                    "one coordinate store (model/structure.md § 2.2e)")
+                    "one coordinate store")
             if len(frames) == 1:
                 self.frames = None
             else:
@@ -1412,7 +1413,7 @@ class Structure:
             raise ValueError(
                 "Structure.from_dict: the dict carries both 'positions' and "
                 "'frames'; a frame set states 'frames' alone, its frame 0 "
-                "being the positions (model/structure.md § 2.1)")
+                "being the positions")
         frames = (np.asarray(data["frames"], dtype=float) if has_frames
                   else None)
         if frames is not None and (frames.ndim != 3 or len(frames) == 0):
@@ -1777,7 +1778,7 @@ class Structure:
         f = int(frame)
         if not 0 <= f < self.n_frames:
             raise ValueError(
-                f"{frame_words(f)} is outside this structure's "
+                f"frame index {f} is outside this structure's "
                 f"{self.n_frames} frame(s): 0 … {self.n_frames - 1}")
         return f
 
@@ -2179,9 +2180,9 @@ class Structure:
             if differs:
                 raise ValueError(
                     f"{frame_words(k, len(images))} differs from "
-                    f"{frame_words(0)} in its {differs}; the frames of one "
+                    f"the first in its {differs}; the frames of one "
                     f"document are one frame set -- the same atoms in the "
-                    f"same order (model/structure.md § 2.3)")
+                    f"same order")
         coordinates = np.asarray([im.get_positions() for im in images],
                                  dtype=float)
 
@@ -2659,7 +2660,7 @@ class Structure:
         if not isinstance(data, dict):
             raise ValueError(
                 f"Structure.apply_info_dict: `info` is an object of "
-                f"cluster-name -> value (§ 2.2a); got {type(data).__name__}")
+                f"cluster-name -> value; got {type(data).__name__}")
         bad = [k for k in data if not isinstance(k, str) or not k]
         if bad:
             raise ValueError(

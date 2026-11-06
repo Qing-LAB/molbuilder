@@ -2039,7 +2039,7 @@ _NETCDF_FORTRAN = BuildComponent(
         '"$FC" -I"{install}/include" -c $d/p.f90 -o $d/p.o || '
         '( echo "[molbuilder] netcdf.mod is not readable by $FC --"'
         ' "the module ABI does not match this toolchain"'
-        ' " (docs/ops/installation.md 6.3)" >&2; rm -rf $d; false ); '
+        ' >&2; rm -rf $d; false ); '
         'rm -rf $d'
     ),
     clone_recurse_submodules=False,
@@ -2654,11 +2654,11 @@ _JUPYTER = Recipe(
     system_preconditions=(
         "Nothing beyond what `serve` already has: the notebook listens on "
         "127.0.0.1 only, and the browser reaches it through molbuilder's "
-        "own port, at /jupyter/ (docs/web/jupyter.md § 2).",
+        "own port, at /jupyter/.",
         "A free TCP port at <serve port> + 1 on 127.0.0.1.  A live kernel "
         "is arbitrary code execution as the account running the server, "
-        "which is why starting, stopping and reaching it are admin actions "
-        "(docs/web/jupyter.md § 6).",
+        "which is why starting, stopping and reaching it are admin actions"
+        ".",
     ),
 )
 

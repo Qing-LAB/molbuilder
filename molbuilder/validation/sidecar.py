@@ -158,8 +158,8 @@ def check_junction_boundary(struct: Structure, cell=None, *,
             "warn",
             f"the lead has fewer than two atomic layers, so its layer "
             f"spacing -- and whether the {room:.2f} Å at the transport "
-            f"boundary is a seam or vacuum -- cannot be measured "
-            f"(engines/transport.md 6.1c).",
+            f"boundary is a seam or vacuum -- cannot be measured"
+            f".",
             where="cell.transport_vacuum")]
     if room > SEAM_VACUUM_FACTOR * spacing:
         if not vacuum:
@@ -171,8 +171,8 @@ def check_junction_boundary(struct: Structure, cell=None, *,
             f"spacings.  The leads continue through that boundary into "
             f"the periodic image, so the room there is one layer "
             f"spacing, not a gap; above {SEAM_VACUUM_FACTOR:g} spacings "
-            f"it is vacuum, and the lead is a surface rather than a lead "
-            f"(engines/transport.md 6.1c, I12).  Set the cell's c so "
+            f"it is vacuum, and the lead is a surface rather than a lead"
+            f".  Set the cell's c so "
             f"the boundary closes to one spacing (the Cell page).",
             where="cell.transport_vacuum")]
     if room < spacing / SEAM_VACUUM_FACTOR:
@@ -186,8 +186,8 @@ def check_junction_boundary(struct: Structure, cell=None, *,
             f"the periodic image, so the room there is one layer spacing; "
             f"below 1/{SEAM_VACUUM_FACTOR:g} of it the two leads' end layers "
             f"meet through the image -- a collision: the seed's SCF and "
-            f"TranSIESTA's Hamiltonian are taken on a fused cell "
-            f"(engines/transport.md 6.1c, I12).  Set the cell's c to "
+            f"TranSIESTA's Hamiltonian are taken on a fused cell"
+            f".  Set the cell's c to "
             f"{c_now - room + spacing:.3f} Å so the boundary closes to one "
             f"spacing (the Cell page).",
             where="cell.transport_collision")]

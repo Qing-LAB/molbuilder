@@ -70,7 +70,7 @@ def provide_pseudos(struct, cfg, base: Path,
                 f" and there is none in {base.name}/{PSEUDO_DIRNAME}/ or in "
                 f"the cited "
                 f"directory ({citation}).  The pseudopotentials travel "
-                f"with the citation (engines/transport.md § 3.1): a "
+                f"with the citation: a "
                 f"relaxation run of molbuilder's own holds the .psml it "
                 f"ran with, so relax the junction through `molbuilder describe` -> "
                 f"`prep task` -> `launch task` and cite that run.")

@@ -294,7 +294,7 @@ def holds_a_start(log: str, way: str) -> str:
     trial's): one sentence for the run script and a run of points' walk
     (`project-layout.md` § 1.6.1)."""
     return (f"this run already holds a start ({log}): a run is one start; "
-            f"{way} (project-layout.md 1.6.1)")
+            f"{way}")
 
 
 def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
@@ -381,7 +381,7 @@ def started_by_launch(stage: str, bench: bool = False) -> str:
     launch = (" ".join((JOBSET_PROG, "launch", *words_for(BENCH, stage)))
               if bench else launch_as_typed(stage))
     return (f"a run is started by '{launch}', which writes its records; "
-            f"no other start is taken (job-contracts.md 2.6)")
+            f"no other start is taken")
 
 
 def deck_launch(stage_token: str,
@@ -604,8 +604,7 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
         raise ValueError(
             f"{raw!r} is not a usable {what}: {ch!r} is a letter or a digit "
             f"outside [A-Za-z0-9_-], and dropping it would silently make a "
-            f"different name. Rename it using unaccented ASCII "
-            f"(run-identity.md § 3, rule 3)")
+            f"different name. Rename it using unaccented ASCII")
 
     # -- the transform, in § 3's order -------------------------------------
     out = "".join(c if _ALLOWED_CHAR.fullmatch(c) else "_" for c in text)
@@ -616,8 +615,7 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
     if not out:
         raise ValueError(
             f"{raw!r} is not a usable {what}: it is entirely separators, so "
-            f"nothing is left to name the calculation "
-            f"(run-identity.md § 3, rule 3)")
+            f"nothing is left to name the calculation")
 
     cap = _cap_for(stage_names) - label_tail
     if len(out.encode("utf-8")) > cap:
@@ -625,7 +623,7 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
             f"{raw!r} is not a usable {what}: it normalises to {len(out)} "
             f"characters and the limit is {cap}. It is refused rather than "
             f"truncated -- a shortened name is a different calculation wearing "
-            f"the same one (run-identity.md § 3)")
+            f"the same one")
     return out
 
 

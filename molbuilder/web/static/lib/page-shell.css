@@ -825,16 +825,6 @@ button.danger:disabled {
     content: "i";
     color: var(--accent);
 }
-/* The stable id (R1), shown so a user can quote it. */
-.issues-panel .issue-where {
-    flex: 0 0 auto;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    opacity: 0.65;
-    margin-left: auto;
-    padding-left: var(--space-sm2);
-}
-
 /* The message text of a finding.  One owner (lib/validation-findings.js
  * writes it, this rule styles it). */
 .issues-panel .issue-msg {

@@ -212,7 +212,7 @@ def _map_state(engine: str, vals: Dict[str, Any]
             raise MigrateError(
                 f"spin_total = {total!r} is a fixed moment, not a whole "
                 f"number of unpaired electrons, and unpaired_electrons is a "
-                f"count (science/chemistry-correctness.md § 2a.1).  State the "
+                f"count.  State the "
                 f"count this calculation should hold, or 'free', by editing "
                 f"the template, then run the migration again.")
         else:
@@ -246,7 +246,7 @@ def _map_raman(vals: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
             f"become, so nothing was written.  Edit the template: "
             f"es_mode_selection = 'all', with freq_min_cm1 / freq_max_cm1 "
             f"for a range, or 'skip' for no Raman; then run the migration "
-            f"again (engines/vibration.md 3.1).")
+            f"again.")
     if sel != "all":
         out["compute_raman"] = False
         said.append(f"es_mode_selection = {sel!r}"
@@ -515,8 +515,7 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
                     f"`{name}` was prepared in one job with "
                     f"{', '.join(f'`{n}`' for n in job if n != stage_key(name))}"
                     f", which the ladder does not hold one after another -- "
-                    f"a group is stages one after another (engines/stages.md "
-                    f"§ 2), so no number states that job.  Which to keep "
+                    f"a group is stages one after another, so no number states that job.  Which to keep "
                     f"is yours, the migration run again after: remove the "
                     f"stage between from the description, or "
                     + rollback("that prep", base=base))
@@ -657,8 +656,8 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
         raise MigrateError(
             f"{TASK_FILE}'s bench measures {', '.join(map(repr, measured))}, "
             f"which say{'s' if len(measured) == 1 else ''} what is computed, "
-            f"never how fast -- a benchmark measures run settings alone "
-            f"(execution/job-request.md § 2).  Remove "
+            f"never how fast -- a benchmark measures run settings alone"
+            f".  Remove "
             f"{'it' if len(measured) == 1 else 'them'} from the bench, then "
             f"run the migration again; nothing was written.")
     # WHAT A STAGE'S CARD SAID OF WHAT IS COMPUTED is already among its overrides
@@ -780,8 +779,8 @@ def _migrate_description(rec: "_Records", said: List[str], writes: "_Writes"):
             raise MigrateError(
                 f"stage {name!r} is switched off (\"enabled\": "
                 f"{json.dumps(st['enabled'])}) -- a stage has no on/off switch since "
-                f"2026-10-03: it is in the description or it is not "
-                f"(engines/stages.md § 2), and which this one is, is yours.  "
+                f"2026-10-03: it is in the description or it is not"
+                f", and which this one is, is yours.  "
                 f"Remove the stage from {TASK_FILENAME} to leave it out, or "
                 f"its \"enabled\" to run it, then run the migration again; "
                 f"nothing was written.")
@@ -912,7 +911,7 @@ def _fold_retired_stage(rec: "_Records", obj: dict, lines: list) -> None:
                         f"{', '.join(clash)}, which stage {st.get('name')!r} "
                         f"does not state the same way -- one run of points "
                         f"carries one value for each, every phase computed "
-                        f"at it (engines/vibration.md 5.11 9): state "
+                        f"at it: state "
                         f"{'it' if len(clash) == 1 else 'them'} on "
                         f"{st.get('name')!r} or remove "
                         f"{'it' if len(clash) == 1 else 'them'}, in "
@@ -1584,8 +1583,8 @@ def _decide_template(rec: "_Records", task):
             f"{'; '.join(raman_said)}, which picked that stage's Raman modes "
             f"on SIESTA -- since 2.45.0 Compute Raman and Raman for say it.  "
             f"Nothing was written: state them on the stage instead (or take "
-            f"the override out), then run the migration again "
-            f"(engines/vibration.md 3.1).")
+            f"the override out), then run the migration again"
+            f".")
     stuck = ([(f"the template says {it.name} = {it.value!r}", it.name)
               for it in retired
               if it.is_set
@@ -1684,8 +1683,8 @@ def _decide_template(rec: "_Records", task):
         raise MigrateError(
             f"stage {name!r} overrides {item!r}, and the electronic state "
             f"belongs to the calculation, never to a stage -- every stage's "
-            f"warm files are a density for one state "
-            f"(science/chemistry-correctness.md § 2a, ES1).  Decide which "
+            f"warm files are a density for one state"
+            f".  Decide which "
             f"value the whole calculation carries, put it in the template, "
             f"remove the override from {TASK_FILE}, and run the migration "
             f"again.")

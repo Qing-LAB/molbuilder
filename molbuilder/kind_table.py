@@ -457,7 +457,7 @@ def _run_of_points(where: str, body: object) -> RunOfPoints:
     missing = [k for k in _POINTS_KEYS if k != "steps" and k not in body]
     if missing:
         _refuse(where, f"no {', '.join(missing)} -- a run of points states "
-                       f"each (execution/runs-of-points.md 2.1)")
+                       f"each")
     for key, words in (("finished", FINISHED), ("wall", WALLS)):
         if body[key] not in words:
             _refuse(where, f"{key} is {body[key]!r} -- one of "

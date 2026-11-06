@@ -84,7 +84,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function _requireTag(tag) {
         if (!tag || typeof tag !== "string") {
             throw new Error(
-                "workspace: every save and load names its tag (workspace.md § 4)");
+                "workspace: every save and load names its tag");
         }
     }
 

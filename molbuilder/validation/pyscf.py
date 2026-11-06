@@ -297,15 +297,15 @@ def _gpu_library_limits(struct: Structure, cfg, state) -> List[Issue]:
                 "use_gpu with an unrestricted reference: gpu4pyscf has no "
                 "stability analysis, so on the GPU the SCF keeps its first "
                 "solution unchecked -- the CPU path checks it, and may find "
-                "a lower state (engines/pyscf.md § 7.3).  The run's log says "
+                "a lower state.  The run's log says "
                 "`stability: NOT CHECKED`.",
                 "config.use_gpu"))
     if str(getattr(cfg, "solvent", "") or "").strip():
         out.append(Issue(
             "warn",
             "use_gpu with a solvent model: gpu4pyscf's solvent has not been "
-            "compared with PySCF's here -- the numbers are its own "
-            "(engines/pyscf.md § 7.3).",
+            "compared with PySCF's here -- the numbers are its own"
+            ".",
             "config.use_gpu"))
     return out
 

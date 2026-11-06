@@ -88,8 +88,7 @@ _SCHEDULER_RETIRED = (
     "--cpus-per-task, --gpus) -- prep refuses one stated nowhere;\n"
     "  * a machine's scheduler and queues are its RECORD's: `{probe}` ON that "
     "machine -- with --name and the name you prep it by when it is not this "
-    "one, and the file it writes copied into environments/ here.\n"
-    "(docs/configuration.md § 4; docs/execution/architecture.md § 5.2)")
+    "one, and the file it writes copied into environments/ here.\n")
 
 #: The section is named for what it holds -- how a shell on THIS machine
 #: initialises a conda environment.  The machine record carries it under the
@@ -99,7 +98,7 @@ _SCRIPT_GENERATION_RENAMED = (
     "how a shell on this machine enters a conda environment, the same two "
     "keys.  Write\n"
     "    \"env_init\": {env_init}\n"
-    "instead.  (docs/configuration.md § 4)")
+    "instead.")
 
 #: `execution` is the RUN CARD in job-request.json -- ranks, threads, GPUs, wall,
 #: queue.  This file used the same name for how a launch is sent, and carried a
@@ -108,7 +107,7 @@ _EXECUTION_RENAMED = (
     "{path}: 'execution' is now 'launch', so that "
     "`execution` means only the run card in " + JOB_REQUEST_FILE + ".  Write\n"
     "    \"launch\": {launch}\n"
-    "instead.{dropped}  (docs/configuration.md § 4)")
+    "instead.{dropped}")
 
 
 #: Same shape as `_SCHEDULER_RETIRED`: a retired key gets its own sentence,
@@ -116,7 +115,7 @@ _EXECUTION_RENAMED = (
 _SECRET_KEY_MOVED = (
     "{path}: 'secret_key_file' is no longer configured.  The session key has "
     "ONE home -- <config dir>/secrets/secret_key -- and is created "
-    "there on first run (docs/configuration.md § 2.1e).  Delete the line; "
+    "there on first run.  Delete the line; "
     "move the file there if you want the sessions it signed to survive.")
 
 
@@ -254,7 +253,7 @@ def _require_str_list(entry: Mapping[str, Any], key: str, idx: int,
 #: molbuilder.json except the cert files").
 _NAMED_SECRET_REFUSED = (
     "{path}: auth.providers[{idx}]: '{key}' is refused -- molbuilder.json "
-    "names no secret but the cert files (docs/configuration.md § 3.1).  "
+    "names no secret but the cert files.  "
     "The {kind} client secret's home is {home}: write it there, mode 0600 "
     "(`molbuilder auth-setup` does it for Google), and delete '{key}'.")
 
@@ -487,7 +486,7 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
     out = validate(out, idx)
     _refuse_unknown(out, _PROVIDER_COMMON_KEYS + keys,
                     f"auth.providers[{idx}]",
-                    hint=f"(kind {kind!r}: docs/ops/deployment.md § 3)")
+                    hint=f"(kind {kind!r})")
     return out
 
 
@@ -524,8 +523,7 @@ def _read_tls(raw: Mapping[str, Any]):
 #: What a config naming the host env is told (`configuration.md` § 2.1c).
 _HOST_ENV_FIXED = (
     "{path}: 'envs.host' is no longer configured -- delete it.  The host env "
-    "is always 'molbuilder' (docs/configuration.md § 2.1c; user, "
-    "2026-10-02: \"let's enforce one name\").")
+    "is always 'molbuilder'.")
 
 
 def _is_comment(key) -> bool:
@@ -665,13 +663,13 @@ def _read_launch(raw: Mapping[str, Any]):
     if section is None:
         return None
     _refuse_unknown(section, ("mode",), "launch",
-                    hint="A job's queue, wall and shape are the job's own "
-                         "(docs/execution/architecture.md § 5.2).")
+                    hint="A job's queue, wall and shape are the job's own"
+                         ".")
     mode = section.get("mode")
     if mode is not None and mode not in _LAUNCH_MODES:
         raise RuntimeConfigError(
             f'{CONFIG_FILENAME}: launch.mode must be "direct" or "submit"; '
-            f"got {mode!r} (docs/configuration.md § 4).")
+            f"got {mode!r}.")
     return section
 
 
@@ -821,7 +819,7 @@ _PATH_KEYS = ("projects",)
 _OPERATIONAL_PATHS_MOVED = (
     "{path}: 'paths.{key}' is no longer configured.  Operational state follows "
     "XDG's own directories -- $XDG_STATE_HOME for logs and reports, "
-    "$XDG_RUNTIME_DIR for pidfiles (docs/configuration.md § 2.1d).  A config "
+    "$XDG_RUNTIME_DIR for pidfiles.  A config "
     "key said the same thing a second way, and being a second way is what put "
     "the answer out of reach of the layer that needs it: the `serve` "
     "supervisor writes its log before any config is read.  Set the variable "
@@ -863,7 +861,7 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
             _OPERATIONAL_PATHS_MOVED.format(path=CONFIG_FILENAME,
                                             key=retired[0]))
     _refuse_unknown(section, _PATH_KEYS, "paths",
-                    hint="(docs/configuration.md § 2.1d)")
+                    hint="")
     for key in _PATH_KEYS:
         val = section.get(key)
         if val is None:
@@ -903,10 +901,10 @@ def _read_rate_limit(raw: Mapping[str, Any]):
             f"{CONFIG_FILENAME}: 'rate_limit.admin_emails' moved to the "
             f"top-level 'admin' section on 2026-08-03 -- write "
             f'"admin": {{"emails": [...]}} instead: one list answers who may '
-            f"clear the block list and who may restart the server "
-            f"(docs/ops/access-control.md § 5).")
+            f"clear the block list and who may restart the server"
+            f".")
     _refuse_unknown(section, tuple(_RATE_LIMIT_KEYS), "rate_limit",
-                    hint="(docs/ops/deployment.md § 4)")
+                    hint="")
     for key, kind in _RATE_LIMIT_KEYS.items():
         if key not in section:
             continue
@@ -1031,8 +1029,8 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"{', '.join(n for n, s in _SECTIONS.items() if not s.get('retired'))}"
             f".  A key this loader does not "
             f"know would be silently ineffective -- refused instead, so a "
-            f"typo cannot masquerade as configuration "
-            f"(docs/configuration.md § 4).  A key starting with '_' is a "
+            f"typo cannot masquerade as configuration"
+            f".  A key starting with '_' is a "
             f"comment and is ignored by design."
         )
     out: Dict[str, Any] = {}
@@ -1187,7 +1185,7 @@ def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"{type(raw).__name__}."
         )
     _refuse_unknown(raw, ("size_limit_bytes", "engines"), "checkpoint",
-                    hint="(docs/execution/checkpointing.md § 4)")
+                    hint="")
     out: Dict[str, Any] = {
         "size_limit_bytes": _CHECKPOINT_DEFAULTS["size_limit_bytes"],
         "engines": {k: list(v)
@@ -1234,8 +1232,8 @@ def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
                         f"'/'.  These name FAMILIES of files (`{family(SIESTA_DM)}`), not "
                         f"paths: git would read the slash as a path while the "
                         f"size check reads only the file's name, and a file "
-                        f"they disagree about is stored nowhere "
-                        f"(checkpointing.md S1, S1a)."
+                        f"they disagree about is stored nowhere"
+                        f"."
                     )
             out["engines"][str(name)] = cleaned
     return out
@@ -1362,7 +1360,7 @@ def machine_config_shadow() -> Optional[str]:
         f"{CONFIG_FILENAME} in the working directory is NOT READ: {here}",
         f"  The machine config has one location, and this is not it: {home}"
         + ("" if home.is_file() else "  (no file there yet)"),
-        "  Move it there, or delete it (configuration.md § 2.1a).",
+        "  Move it there, or delete it.",
     ])
 
 

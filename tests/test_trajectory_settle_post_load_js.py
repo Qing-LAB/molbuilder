@@ -70,7 +70,7 @@ CASES = [
     ("an upload is never followed, whatever its file says",
      None, "running", "LOADED", "running"),
     ("an upload whose file can state no ending is loaded",
-     None, "unknown", "LOADED", "running"),
+     None, "unknown", "LOADED", None),
 ]
 
 
@@ -124,7 +124,8 @@ def test_the_badge_reads_the_run_or_the_files_own_ending(
     -- Finished, Stopped (failed), Queued, Not launched, Record unreadable,
     else Running -- and
     a file that belongs to no run by its own ending: `ended` Finished,
-    `stopped` or `out_of_memory` Stopped, anything else Running.
+    `stopped` or `out_of_memory` Stopped, `unknown` no badge, anything else
+    Running.
 
     THE SILENT FAILURE: an uploaded output that ran out of memory, or ended,
     shown Running for as long as anyone looks -- the viewer spelling the

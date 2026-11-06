@@ -56,22 +56,21 @@ if TYPE_CHECKING:
 #: G0 = 2e²/h, both channels.
 CURRENT_MEANS = {
     "non-polarized": (
-        "the total current is the junction's, both spin channels: "
+        "The total current is the junction's, both spin channels: "
         "TBtrans prints one spin channel's (its Landauer integral has no "
         "factor 2 for spin), and the two channels of a non-polarized "
         "calculation carry the same current, so the total is twice the "
         "figure TBtrans printed."),
     "polarized": (
-        "the total current is the junction's, the sum of its two spin "
+        "The total current is the junction's, the sum of its two spin "
         "channels' currents as TBtrans printed each (empty when it printed "
         "only one)."),
     # A POINT THAT SHARES ENERGIES with a finished calculation's point
     # (`engines/transport.md` § 2a.16): TBtrans printed its own run's
     # energies' current alone.
     "joined": (
-        "a point whose current_from is joined shares energies with a "
-        "finished calculation's point: its current is the record's, over "
-        "its joined grid -- each energy's transmission, times the grid's "
+        "A point sharing energies with a finished calculation's point: its "
+        "current is summed over the joined grid -- each energy's transmission, times the grid's "
         "spacing, times the two leads' Fermi functions' difference, G0 times "
         "the sum (TBtrans's own rule) -- and no figure TBtrans printed "
         "is its current, TBtrans having printed its own run's energies' "
@@ -1236,7 +1235,6 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     named for a frame set and for nothing else.  :class:`RecordError` names
     what is missing."""
     from ..atom_permutation import AtomIndexError
-    from ..structure import frame_words
     from .stages import Point, frames_of, same_volts
     from ..parse.engines.tbtrans_nc import data_files
     from .tbtnc import TbtError, selection_pdos as _pdos
@@ -1250,13 +1248,13 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     if n == 1 and frame is not None:
         raise RecordError(f"this calculation cites one structure, so a "
                           f"point names no frame: leave out "
-                          f"{frame_words(int(frame))}")
+                          f"frame index {int(frame)}")
     if frame is not None and (isinstance(frame, bool)
                               or int(frame) != frame):
         raise RecordError(f"a frame is named by its index, a whole number: "
                           f"{frame!r}")
     if frame is not None and not 0 <= int(frame) < n:
-        raise RecordError(f"{frame_words(int(frame))} is not one of this "
+        raise RecordError(f"frame index {int(frame)} is not one of this "
                           f"calculation's {n} frame(s): 0 … {n - 1}")
     want = Point(frame=None if frame is None else int(frame), volts=bias_v,
                  of=n if frame is not None else None)
@@ -1548,17 +1546,17 @@ def iv_table_text(record: Dict) -> str:
                 if record.get("not_run") else "")
              + (f", {len(record['failed'])} failed"
                 if record.get("failed") else "")]
-    lines.append(f"  {'frame':>5}  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
+    from ..structure import frame_words
+    lines.append(f"  {'':>8}  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
                  f"{'I total [A]':>12}  {'I printed [A]':>13}")
 
     def _frame(p) -> str:
-        return (p["tokens"].split("/")[0] if p.get("frame") is not None
-                else "--")
+        return frame_words(p["frame"]) if p.get("frame") is not None else "--"
     for p in record["points"]:
         g = p["conductance_g0"]
         i, i0 = p["current_a"], p.get("current_a_printed")
         lines.append(
-            f"  {_frame(p):>5}  {p['bias_v']:>8.3f}  "
+            f"  {_frame(p):>8}  {p['bias_v']:>8.3f}  "
             + (f"{g:>12.4f}" if g is not None else f"{'--':>12}")
             + "  "
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
@@ -1567,7 +1565,7 @@ def iv_table_text(record: Dict) -> str:
     for what, said in (("pending", "not ended"), ("not_run", "not run"),
                        ("failed", "failed")):
         for p in record.get(what, ()):
-            lines.append(f"  {_frame(p):>5}  {p['bias_v']:>8.3f}  "
+            lines.append(f"  {_frame(p):>8}  {p['bias_v']:>8.3f}  "
                          f"{said:>12}  {p['state']:>12}  ({p['why']})")
     iv = record.get("iv") or {}
     if iv.get("computed") == "low-bias-approximation":
@@ -1587,7 +1585,7 @@ def iv_table_text(record: Dict) -> str:
             note = notes.get(str(k)) or (
                 notes.get(frame_token(f)) if f is not None
                 else notes.get("all"))
-            lines.append(f"  {frame_token(f) if f is not None else '--':>5}  "
+            lines.append(f"  {frame_words(f) if f is not None else '--':>8}  "
                          f"{v:>8.3f}  {'':>12}  "
                          + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
                          + (f"  ({note})" if note else ""))

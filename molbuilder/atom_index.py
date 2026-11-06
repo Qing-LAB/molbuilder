@@ -111,8 +111,7 @@ def _counted(p: Path, atoms: AtomIndexMap) -> AtomIndexMap:
     words = (f"{p.name} is an engine's input: its own text numbers the atoms "
              + " and ".join(f"as {e} counts, from "
                             f"{convert_to_engine_numbering(0, e)}"
-                            for e in engines)
-             + " (model/overview.md 2.2b, F5)")
+                            for e in engines))
     return replace(atoms, said=f"{atoms.said}; {words}" if atoms.said
                    else words)
 
@@ -176,8 +175,8 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
                 raise AtomIndexUnknown(
                     f"{p.name} is the {stage} rung's file, gathered here: "
                     f"its cell is "
-                    f"{own_structure(task.calculation, stage)} "
-                    f"(model/overview.md 2.2a, I6) -- its atoms are "
+                    f"{own_structure(task.calculation, stage)}"
+                    f" -- its atoms are "
                     f"answered by {_lead_run_words(p, point, stage)}")
     if run is None:
         raise AtomIndexUnknown(_no_run_words(p, point, task))
@@ -203,8 +202,8 @@ def _no_run_words(p: Path, folder: Path, task) -> str:
     if task is None:
         return f"{p.name} states no atom index map, and no run of ours holds it"
     if is_scratch(p.name):
-        return (f"{p.name} is the engine's scratch, recomputed by every run "
-                f"(model/overview.md 2.2a, I6) -- it lists no atom of the "
+        return (f"{p.name} is the engine's scratch, recomputed by every run"
+                f" -- it lists no atom of the "
                 f"structure")
     runs = _runs_under(folder)
     named = ", ".join(str(r.relative_to(folder)) for r in runs[:_RUNS_NAMED])

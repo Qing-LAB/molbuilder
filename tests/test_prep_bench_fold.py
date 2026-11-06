@@ -1240,7 +1240,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
     with pytest.raises(PrepError) as e:
         bench_inputs(open_calculation(dest), None)
     msg = str(e.value)
-    assert "'pyscf'" in msg and "SIESTA" in msg, (
+    assert "PySCF" in msg and "SIESTA" in msg, (
         "the refusal must name the engine and the reason")
     assert "max_scf_iter" not in msg, (
         "the refusal blames measurement pins the user never wrote")

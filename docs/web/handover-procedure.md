@@ -111,7 +111,9 @@ findings panel — the one renderer, `lib/validation-findings.js`
 ([`science/validation.md`](?doc=science/validation.md) § 4.1 R2, R2a: a notice
 is a finding) — beside the findings the tab's live check already shows, which
 are still true of the form it sent: a Send adds its notices and clears nothing,
-and a finding both carry is shown once — says in the status line how many came
+a finding both carry is shown once, and a refusal replaces what the live check
+said of the same field, the Send knowing the folder the live check could not —
+says in the status line how many came
 back, and stays on the page. The Transport tab's describe hands back its description check's findings
 the same way. *(A tab does not decide for its user — `tabs.md`. The sender
 listed each notice as a bullet in the status line until 2026-09-30 — a

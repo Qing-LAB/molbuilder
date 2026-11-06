@@ -285,7 +285,7 @@ def _apply_block(s: Structure, payload: Any,
     if "periodic" in kinds and cell is None:
         raise ValueError(
             "a periodic axis needs an explicit cell — a derived bounding box "
-            "is not a lattice (§ 4)")
+            "is not a lattice")
 
     raw_corner = payload.get("box_corner")
     if raw_corner is None:
@@ -302,8 +302,7 @@ def _apply_block(s: Structure, payload: Any,
         if cell is None:
             raise ValueError(
                 "an origin is assigned on a typed cell only -- a box sized "
-                "from the vacuum stays centred, its vacuum a per-side gap "
-                "(model/structure-periodicity.md § 6.0)")
+                "from the vacuum stays centred, its vacuum a per-side gap")
 
     raw_vac = payload.get("vacuum")
     if raw_vac is None:
@@ -351,7 +350,7 @@ def _apply_block(s: Structure, payload: Any,
         notices.append(_notice(
             "info",
             f"the box is the explicit cell, with {where}. Vacuum "
-            f"values are reference-only from now on (§ 6.1)."))
+            f"values are reference-only from now on."))
     return s
 
 
@@ -403,7 +402,7 @@ def apply_edit(struct: Structure, op: str,
             raise ValueError(
                 "cannot re-derive the box while an axis is periodic (a "
                 "bounding box is not a lattice) — make the axis isolated "
-                "first, or edit the cell explicitly (§ 6.2)")
+                "first, or edit the cell explicitly")
         s.vacuum = None if v is None else tuple(v)
         if v is None:
             # A RECEIPT, not an explanation: what the default now is, and what
@@ -427,7 +426,7 @@ def apply_edit(struct: Structure, op: str,
             if s.cell is None:
                 raise ValueError(
                     "a periodic axis needs an explicit commensurate cell "
-                    "first — set the cell, then the axis kind (§ 4)")
+                    "first — set the cell, then the axis kind")
             s.axis_kind = new_kinds
             s.__post_init__()
             notices.append(_notice(
@@ -445,7 +444,7 @@ def apply_edit(struct: Structure, op: str,
             if "periodic" in kinds:
                 raise ValueError(
                     "cannot clear the cell while an axis is periodic — a "
-                    "derived bounding box is not a lattice (§ 4)")
+                    "derived bounding box is not a lattice")
             s.cell = None
             s.engine_offset = None      # an assigned origin goes with the cell
             s.__post_init__()
@@ -474,7 +473,7 @@ def apply_edit(struct: Structure, op: str,
             ("explicit cell set; the stated origin is kept. "
              if s.engine_offset is not None else
              "explicit cell set; the atoms are centred in it (Automatic). ")
-            + "Vacuum values are reference-only from now on (§ 6.1)."))
+            + "Vacuum values are reference-only from now on."))
         return s, notices
 
     # op == "box_corner" -- the person assigns the box's origin, or clears it
@@ -486,14 +485,13 @@ def apply_edit(struct: Structure, op: str,
         s.__post_init__()
         notices.append(_notice(
             "info",
-            "origin set back to Automatic: the atoms are centred in the cell "
-            "(model/structure-periodicity.md § 6.0)."))
+            "origin set back to Automatic: the atoms are centred in the cell"
+            "."))
         return s, notices
     if s.cell is None:
         raise ValueError(
             "an origin is assigned on a typed cell only -- a box sized from "
-            "the vacuum stays centred, its vacuum a per-side gap "
-            "(model/structure-periodicity.md § 6.0)")
+            "the vacuum stays centred, its vacuum a per-side gap")
     try:
         corner = [float(x) for x in payload]
     except (TypeError, ValueError):

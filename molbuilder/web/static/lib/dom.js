@@ -12,6 +12,7 @@
  * Exports (on window.molbuilder.dom):
  *   el(tag, cls, text) -> Element
  *   codeWords(text)    -> DocumentFragment
+ *   wordsEl(tag, cls, text) -> Element  `el`, its text through `codeWords`
  */
 (function (root) {
     "use strict";
@@ -23,9 +24,16 @@
         return e;
     }
 
+    function wordsEl(tag, cls, text) {
+        const e = el(tag, cls);
+        e.appendChild(codeWords(text));
+        return e;
+    }
+
     function codeWords(text) {
         const out = root.document.createDocumentFragment();
-        String(text == null ? "" : text).split("`").forEach((part, i) => {
+        // ``a`` as the catalogue's help writes it is `a`.
+        String(text == null ? "" : text).replace(/``/g, "`").split("`").forEach((part, i) => {
             if (!part) return;
             out.appendChild(i % 2 ? el("code", "", part)
                                   : root.document.createTextNode(part));
@@ -35,5 +43,5 @@
 
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.dom = Object.assign(root.molbuilder.dom || {},
-                                        { el: el, codeWords: codeWords });
+                                        { el: el, codeWords: codeWords, wordsEl: wordsEl });
 })(typeof window !== "undefined" ? window : this);

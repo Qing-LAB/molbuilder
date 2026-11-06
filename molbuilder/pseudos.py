@@ -781,7 +781,7 @@ def check_coverage(labels: Iterable[str],
                 message=(f"{key!r} is not a species label a pseudopotential "
                          f"can be named for -- SIESTA opens <label>.psml, "
                          f"and a label is an element and an optional index "
-                         f"(Au, Au1; model/chemistry.md 3).  Rename the "
+                         f"(Au, Au1).  Rename the "
                          f"species."),
                 path=None))
             continue
@@ -892,8 +892,7 @@ def check_coverage(labels: Iterable[str],
                          f"wrong bonding, not a crash you would notice.  "
                          f"PseudoDojo v0.5 re-generated eleven elements this "
                          f"way (Ba, Bi, I, Pb, Po, Rb, Rn, S, Te, Tl, Xe); "
-                         f"v0.4.1 of the same element does not.  See "
-                         f"science/pseudopotentials.md 2a.2."),
+                         f"v0.4.1 of the same element does not."),
                 path=info.path,
             ))
             continue
@@ -917,7 +916,7 @@ def check_coverage(labels: Iterable[str],
                          f"transferability rather than correctness.  "
                          f"PseudoDojo v0.5 ships six elements this way (Bi, "
                          f"Pb, Po, Rn, Te, Tl); v0.4.1 of the same element "
-                         f"does not.  science/pseudopotentials.md 2a.2."),
+                         f"does not."),
                 path=info.path,
             ))
             continue

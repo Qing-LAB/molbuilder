@@ -138,5 +138,5 @@ def test_a_calculation_with_no_benchmark_says_so_first(tmp_path,
                  ("launch", "bench", "--mode", "direct")):
         r = jobset(*verb, "--bundle", bundle)
         assert r.exit_code != 0, (verb, r.output)
-        assert "only speaks SIESTA" in r.output, (verb, r.output)
+        assert "Benchmarks measure SIESTA runs only" in r.output, (verb, r.output)
         each_is_taken(r.output)

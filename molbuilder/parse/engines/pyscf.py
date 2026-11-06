@@ -493,7 +493,7 @@ class PySCFOutFileParser(FileParser):
             f"the trajectory lives in the file whose role is "
             f"`{_ROLE_GEOM_TRAJ}`"
             + (f", {traj}, beside it" if traj else "")
-            + " (job-contracts.md § 2.2a). Point molbuilder at that instead."
+            + ". Point molbuilder at that instead."
         )
     label  = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
     hint   = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "

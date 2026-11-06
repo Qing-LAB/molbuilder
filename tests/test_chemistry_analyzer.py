@@ -118,6 +118,22 @@ def test_unknown_element_raises_keyerror():
         analyze_structure(_mk(["Xx"]))
 
 
+
+@pytest.mark.parametrize("elements, unpaired, offers", [
+    (["H"], 0, "the unpaired count to 1."),
+    (["O", "H", "H"], 1, "the unpaired count to 0 or 2."),
+], ids=["a stated 0 is not offered back", "both neighbours where both work"])
+def test_the_parity_refusal_offers_only_counts_that_work(elements, unpaired,
+                                                         offers):
+    """The way out of an impossible electron count and unpaired count.  THE
+    SILENT FAILURE: *the unpaired count to 1 / 0* said of a stated 0, the value
+    just refused offered as its own fix."""
+    from molbuilder.chemistry import check_spin_charge_parity
+    struct = Structure(elements=elements,
+                       positions=np.arange(3.0 * len(elements)).reshape(-1, 3))
+    assert offers in check_spin_charge_parity(struct, 0, unpaired)
+
+
 def test_spin_upper_bound_and_electron_sanity():
     """Beyond parity: 2S cannot exceed the electron count
     (n_beta = (n_e - spin)/2 >= 0), and an over-ionised system

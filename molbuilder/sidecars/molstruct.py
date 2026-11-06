@@ -761,8 +761,7 @@ def _map_agrees(block, struct) -> None:
     if not agrees:
         raise MolstructJsonError(
             "the sidecar's atom_index_map states another order than its "
-            "atom_order record -- one pair, one order (model/overview.md "
-            "2.2b)")
+            "atom_order record -- one pair, one order")
 
 
 def load(sidecar_path: Union[str, Path], *,

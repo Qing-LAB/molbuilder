@@ -68,25 +68,19 @@ class Described:
 _NOT_TAKEN = {
     False: {
         "structure": "its structure IS the junction citation, copied in at "
-                     "prep (engines/transport.md § 3.1)",
-        "vacuum": "the cell comes with the cited junction "
-                  "(engines/transport.md § 3.1)",
-        "stage_strategy": "its stages are fixed by design{stages} "
-                          "(engines/transport.md § 3.1)",
+                     "prep",
+        "vacuum": "the cell comes with the cited junction",
+        "stage_strategy": "its stages are fixed by design{stages}",
     },
     True: {
         "name": "the label is the finished calculation's: SystemLabel names "
                 "every file a deck reads and writes, and decks under two "
-                "labels are never the same calculation "
-                "(engines/transport.md § 2a.16)",
+                "labels are never the same calculation",
         "psml_lib": "the pseudopotentials are the finished calculation's, "
-                    "copied with it (engines/transport.md § 2a.16)",
-        "structure": "its structure IS the junction citation "
-                     "(engines/transport.md § 2a.16)",
-        "vacuum": "the cell comes with the junction "
-                  "(engines/transport.md § 2a.16)",
-        "stage_strategy": "its stages are fixed by design "
-                          "(engines/transport.md § 2a.16)",
+                    "copied with it",
+        "structure": "its structure IS the junction citation",
+        "vacuum": "the cell comes with the junction",
+        "stage_strategy": "its stages are fixed by design",
     },
 }
 
@@ -223,7 +217,7 @@ def describe(*, calculation: str, engine: Optional[str],
                 f"engine {engine!r}: {finished.base.name} ran on {ran}, and "
                 f"a calculation that reuses it runs on the engine it ran -- "
                 f"on {engine} it would be another calculation, nothing "
-                f"reused (engines/transport.md § 2a.16)")
+                f"reused")
         engine = ran
     if not engine:
         raise NotDescribed("engine: name the engine the calculation runs "
@@ -273,7 +267,7 @@ def describe(*, calculation: str, engine: Optional[str],
     # calculation's (§ 2a.16).
     if bias is not None and not bias:
         raise NotDescribed("bias: state the voltages -- [0.0] for a single "
-                           "bias (engines/transport.md 2a.10)")
+                           "bias")
     if bias is None and finished is None:
         bias = (0.0,)
     if finished is not None:
@@ -295,8 +289,8 @@ def describe(*, calculation: str, engine: Optional[str],
                     f"{item!r} is not a parameter this calculation can "
                     f"carry: `prep` resolves each rung against the {engine} "
                     f"schema, and either no field of it has that name or it "
-                    f"is a machine fact the description must never carry "
-                    f"(engines/template.md 7).")
+                    f"is a machine fact the description must never carry"
+                    f".")
     chosen, blank = shared_of(shared, engine=engine, calculation=rec.name)
     if finished is None and not name:
         raise NotDescribed("name: the calculation has no name -- send its "

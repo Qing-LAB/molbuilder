@@ -304,13 +304,8 @@ def bench_refusal(engine: str, calculation: str):
         from ..engine_table import engines as _engines
         lanes = " and ".join(_engine(e).words for e in _engines()
                              if _engine(e).benchmark)
-        return (f"this description's engine is {engine!r}, and the "
-                f"benchmark lane only speaks {lanes} today: its measurement "
-                f"pins (a capped-SCF probe run) name {lanes} settings, so a "
-                f"{engine} bench would measure nothing meaningful.  "
-                f"Benchmark support for other engines is a recorded design "
-                f"(execution/job-request.md § 3.4); for now, size the run from "
-                f"the engine's own scaling guidance in docs/engines/tuning.md.")
+        return (f"Benchmarks measure {lanes} runs only; a {_engine(str(engine)).words} run is "
+                f"sized from that engine's own scaling guidance.")
     return None
 
 
@@ -541,7 +536,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
             f"points to try on Task setup's \"What to measure\" card, or in "
             f"{JOB_REQUEST_FILE}'s bench ("
             + ", ".join(f'"{name}": [N, ...]' for name in unstated)
-            + ") -- generator.md § 4.3a.")
+            + ").")
     # ``mpi_np`` is the TOTAL rank count a point runs -- the same meaning it
     # has everywhere else -- and ``omp_threads`` the cores per rank.  A point
     # is measured as stated, never clamped: a clamped point would measure a

@@ -203,8 +203,7 @@ function renderStages(task) {
 
     const hrow = el("tr", null, el("th", null, "Stage"),
                     el("th", { title: "the job each stage runs in -- the "
-                               + "stages with one number are one job "
-                               + "(engines/stages.md \u00a7 2)" }, "Group"));
+                               + "stages with one number are one job" }, "Group"));
     for (const col of varies) {
         // A COLUMN A KEPT RUNG STATES stays: removing it drops that rung's
         // value, which an extension keeps (§ 3) -- held, in the one door's
@@ -354,7 +353,7 @@ function renderStages(task) {
                     class: "ts-cell", value: "", disabled: "yes",
                     placeholder: "\u2014",
                     title: col + " is read by the " + owners.join(" / ")
-                           + " rung \u2014 not this one (template.md \u00a7 6.4)",
+                           + " rung \u2014 not this one",
                     "aria-label": name + " " + col + " (not this rung's)",
                     "data-foreign": "yes",
                 });
@@ -4206,10 +4205,10 @@ function setMachine(name) {
     if (title) title.textContent = chosen.readable
         ? (_fs.setTo ? "Set to " : "To prepare for ") + chosen.name
         : "Cannot prepare for " + chosen.name;
-    if (body) body.textContent = chosen.readable
+    if (body) body.replaceChildren(codeWords(chosen.readable
         ? chosen.summary + (chosen.detected_at
             ? "\nmeasured " + chosen.detected_at : "")
-        : chosen.summary;
+        : chosen.summary));
 }
 
 /* ===================================================================== *
@@ -4760,7 +4759,7 @@ async function loadMachines() {
         host.appendChild(el("button", {
             type: "button", class: "opt", "data-machine": m.name,
             "aria-pressed": "false",
-        }, el("b", {}, m.name), el("span", {}, m.summary)));
+        }, el("b", {}, m.name), el("span", {}, codeWords(m.summary))));
     }
     for (const b of host.querySelectorAll(".opt")) {
         b.addEventListener("click", () => {
@@ -5365,10 +5364,7 @@ function paintReportTicks(chosen) {
         });
         const span = document.createElement("span");
         span.textContent = label;
-        const code = document.createElement("span");
-        code.className = "ts-notify-sub";
-        code.textContent = key;
-        span.appendChild(code);
+        span.title = key;
         row.appendChild(box);
         row.appendChild(span);
         host.appendChild(row);

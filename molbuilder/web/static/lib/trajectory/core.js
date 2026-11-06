@@ -1940,7 +1940,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 "trajectory-run-state-not-run", "trajectory-run-state-finished",
                 "trajectory-run-state-ongoing", "trajectory-run-state-error",
             );
-            badge.hidden = false;
+            badge.hidden = !kind;
             // "Last result at <time>": prefer the per-frame
             // `wall_clock_s` from the simulation log (authoritative;
             // this is when the simulation itself produced the result),
@@ -1987,11 +1987,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 const reasonTag = _fileStopped()
                     ? _stopReason(state.data, errMsg)
                     : ((run && run.detail) || _stopReason(state.data, errMsg));
-                badgeDet.textContent = joinParts(
+                badgeDet.replaceChildren(window.molbuilder.dom.codeWords(joinParts(
                     reasonTag ? "Reason: " + reasonTag : "",
                     endedTs ? "stopped " + endedTs : "",
                     elapsedTxt ? "total " + elapsedTxt : "",
-                );
+                )));
                 // Full raw message available on hover (and for screen
                 // readers via aria, since title is announced by most).
                 if (errMsg) badgeDet.setAttribute("title", errMsg);
@@ -2001,14 +2001,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // which name the file and the way out (web/results.md § 4.1).
                 badge.classList.add("trajectory-run-state-error");
                 badgeLab.textContent = "Record unreadable";
-                badgeDet.textContent = (run && run.detail) || "";
+                badgeDet.replaceChildren(window.molbuilder.dom.codeWords((run && run.detail) || ""));
                 badgeDet.removeAttribute("title");
             } else if (kind === "not run") {
                 // Over, and never started: its run's walk ended first. The
                 // run's own words beneath (`runs-of-points.md` § 1.3).
                 badge.classList.add("trajectory-run-state-not-run");
                 badgeLab.textContent = "Not run";
-                badgeDet.textContent = (run && run.detail) || "";
+                badgeDet.replaceChildren(window.molbuilder.dom.codeWords((run && run.detail) || ""));
                 badgeDet.removeAttribute("title");
             } else if (kind === "queued" || kind === "pending") {
                 // Launched with its start not begun, or prepared and never
@@ -2017,9 +2017,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 badge.classList.add("trajectory-run-state-ongoing");
                 badgeLab.textContent = kind === "queued" ? "Queued"
                                                          : "Not launched";
-                badgeDet.textContent = (run && run.detail) || "";
+                badgeDet.replaceChildren(window.molbuilder.dom.codeWords((run && run.detail) || ""));
                 badgeDet.removeAttribute("title");
-            } else {
+            } else if (kind) {
                 badge.classList.add("trajectory-run-state-ongoing");
                 badgeLab.textContent = "Running";
                 badgeDet.textContent = joinParts(
@@ -2048,6 +2048,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                           || RUN_STATE.RUNNING).toLowerCase();
         if (rs === RUN_STATE.ENDED) return "finished";
         if (rs === RUN_STATE.STOPPED || rs === RUN_STATE.OOM) return "stopped";
+        // A plain structure file: it belongs to no run and states no ending.
+        if (rs === RUN_STATE.UNKNOWN) return null;
         return "running";
     }
 

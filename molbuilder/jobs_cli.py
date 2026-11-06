@@ -21,7 +21,7 @@ from .identity import jobs_as_typed
 def jobs_group() -> None:
     """The jobs launched from this machine -- a run here or a queue job --
     each kept by its address, the way `molbuilder serve status` keeps a
-    server's (`job-system.md` § 6.0a).
+    server's.
 
     \b
         molbuilder jobs status          every job, and what each is doing

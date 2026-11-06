@@ -96,8 +96,8 @@ def reused(raw, *, tree_root):
         raise ReuseError(
             f"{raw}: it is not a transport calculation (its "
             f"description says {calc.task.calculation!r}) -- a calculation "
-            f"reuses a finished transport calculation "
-            f"(engines/transport.md 2a.16).")
+            f"reuses a finished transport calculation"
+            f".")
     return calc, str(calc.base.relative_to(root))
 
 
@@ -124,12 +124,12 @@ def frame_set_refusal(junction, frame_set, *, name: str,
     differs = junction_difference(frame_0(junction), frame_0(frame_set))
     if differs is None:
         return None
-    return (f"{citation}: its frame 0 is not the junction {name} ran -- "
+    return (f"{citation}: its first frame is not the junction {name} ran -- "
             f"{differs}.  A calculation that extends {name} uses its "
             f"junction, or a frame set whose first frame is that junction: "
             f"the same atoms in the same order at the same places, the same "
             f"cell and axes, the same L-electrode, R-electrode, bridge and "
-            f"buffer (engines/transport.md 2a.16).  A frame set of another "
+            f"buffer.  A frame set of another "
             f"junction is a new calculation of its own, not an extension of "
             f"{name}.")
 
@@ -158,8 +158,7 @@ def frame_set_of(finished, citation: str, *, tree_root, composed=None):
     if ran is None:
         raise ReuseError(
             f"{citation} is compared with the junction {finished.base.name} "
-            f"ran, as its record holds it -- {'; '.join(why)} "
-            f"(engines/transport.md 2a.16)")
+            f"ran, as its record holds it -- {'; '.join(why)}")
     if composed is None:
         try:
             composed = compose_junction(
@@ -593,8 +592,7 @@ class Takes:
         group copies it in; the launch adds the ways on."""
         return (f"every point is one {self.run} computed the same, so its "
                 f"first launch has nothing to run -- prepare its group again, "
-                f"and it is copied in (engines/transport.md § 2a.16, *A "
-                f"narrower question*)")
+                f"and it is copied in")
 
     def line(self) -> str:
         took = (f"takes over {', '.join(t.point.words() for t in self.taken)}"
@@ -1053,8 +1051,7 @@ def finished_window(finished) -> Tuple[float, float, int]:
     raise ValueError(
         f"{Path(finished.base).name} holds no transmission point done"
         + (f" -- {said}" if said else "")
-        + " -- a window is fitted to the energies its transmission computed "
-          "(engines/transport.md 2a.16)")
+        + " -- a window is fitted to the energies its transmission computed")
 
 
 def _shared_files(src: Path, label: str) -> List[Path]:
@@ -1829,8 +1826,7 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
         raise ValueError(
             f"{_words(pt)} shares energies with {contours.source}, which "
             f"holds none now, and no run of this calculation holds them -- "
-            f"prepare the transmission again: it decides on what is there "
-            f"(engines/transport.md § 2a.16)")
+            f"prepare the transmission again: it decides on what is there")
     plan.text(*calcdirs.record(dest, role=calcdirs.SHARED, root=calc.base))
     for f in files:
         plan.copy(f, dest / f.name)

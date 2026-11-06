@@ -303,7 +303,7 @@ def parse_gres_flag(text) -> int:
     raise ValueError(
         f"{text!r} is not a GPU ask: it is a count of GPUs (e.g. ``2``), "
         f"and names no card -- which card a node carries is the machine's "
-        f"business (docs/execution/scheduler.md R2a).")
+        f"business.")
 
 
 def canonical_gres(text) -> Optional[str]:

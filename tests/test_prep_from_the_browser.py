@@ -616,7 +616,7 @@ def test_the_page_is_offered_a_bench_only_where_prep_takes_one(
 
     assert _folder(calc)["bench_refusal"] is None
     why = _folder(py)["bench_refusal"]
-    assert why and "only speaks SIESTA" in why, why
+    assert why and "Benchmarks measure SIESTA runs only" in why, why
     # The write names a plan, as every Prep does; the entry refuses the
     # bench before it compares one.
     for plan in (True, False):

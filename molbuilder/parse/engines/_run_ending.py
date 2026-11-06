@@ -419,8 +419,7 @@ def ending_of(path, *, stderr=None) -> RunEnding:
         raise ValueError(
             f"{Path(path).name!r} is not a run-output file: its role is "
             f"{role!r}, and the run-output roles are "
-            f"{', '.join(_rf.run_output_roles())} (`runfiles.WRITTEN`'s `output` "
-            f"column, `model/parse.md` § 5.5).")
+            f"{', '.join(_rf.run_output_roles())}.")
     if stderr is not None and not _rf.stderr_apart(role):
         raise ValueError(
             f"{Path(path).name!r} carries its engine's stderr itself; only an "

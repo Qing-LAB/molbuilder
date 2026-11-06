@@ -191,7 +191,7 @@ FIELDS: "dict[str, Field]" = {
     "species": Field(
         what="the species label a pseudopotential is for -- an element and "
              "an optional index, `Au` or `Au1`: SIESTA opens "
-             "`<label>.psml` (model/chemistry.md § 3)",
+             "`<label>.psml`",
         shape=r"[A-Z][a-z]?[0-9]*",
         example="Au1"),
     "jobid": Field(
@@ -391,8 +391,8 @@ def stem(label: str, stage: Optional[str] = None) -> str:
     """
     if not _LABEL.fullmatch(label or ""):
         raise RunFileError(
-            f"label {label!r} is not a single [A-Za-z0-9_-]+ token "
-            f"(job-contracts.md § 2.1).  A label carrying a dot or a space "
+            f"label {label!r} is not a single [A-Za-z0-9_-]+ token"
+            f".  A label carrying a dot or a space "
             f"cannot be read back out of a filename.")
     if stage is None:
         return label
@@ -408,8 +408,7 @@ def stem(label: str, stage: Optional[str] = None) -> str:
             f"a name keyed on one reassigns itself when the ladder grows.")
     if not _STAGE.fullmatch(stage):
         raise RunFileError(
-            f"stage token {stage!r} is not `NN_name` (job-contracts.md "
-            f"§ 2.3).  Pass None for a file that CARRIES between rungs; a "
+            f"stage token {stage!r} is not `NN_name`.  Pass None for a file that CARRIES between rungs; a "
             f"malformed token would produce a name nothing can parse back.")
     return f"{label}_{stage}"
 
@@ -1479,7 +1478,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`parse.engines.tbtrans_nc`), on the person's word: "
                     "the Results tab's DOS tab, `jobset summarize task`",
              door="parse.engines.tbtrans_nc.kept",
-             only="its data file read",
+             only="a transmission point, its data file read",
              listed_by="engine_index"),
     Artifact(ROLE_TBT_DIGEST_CLAIM,
              "the claim of a data file's reading under way: who reads, "
@@ -1734,8 +1733,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="the SIESTA vibration's own steps -- each call's `plan` "
                   "and `record` and the run's `finish-run`: the coordinates, "
                   "the index, the modes from `.FC`, the result and the "
-                  "optical calls' data file (`engines/vibration.md` § 5.11 "
-                  "§ 3)",
+                  "optical calls' data file",
              engine="siesta", calculation="vibration",
              when="prep", level="stage", kind="derived",
              writer="prep, in each phase's folder beside its run script "
@@ -2304,8 +2302,8 @@ class RunNames:
         if self.stage is None:
             raise RunFileError(
                 f"{self.label!r}: a run's files are named by its stage, and "
-                f"no stage was given -- every calculation has at least one "
-                f"(`stages.md` § 6.5).")
+                f"no stage was given -- every calculation has at least one"
+                f".")
         stem(self.label, self.stage)    # a malformed label or token, refused
 
     @property

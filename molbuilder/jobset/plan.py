@@ -123,13 +123,13 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
         lines.append(f"Order: {len(js.jobs)} stage(s) -- each group one job, "
                      "its members one after another; a group's first launch "
                      "takes what each member builds on from the newest run "
-                     "of the stage it builds on, which must have finished "
-                     "(job-system.md, *The task*), and `molbuilder jobset "
+                     "of the stage it builds on, which must have finished"
+                     ", and `molbuilder jobset "
                      "status` names the next command.")
     else:
         lines.append(f"Order: {len(js.jobs)} independent job(s) -- no ordering "
                      "between them.  Submit one at a time; a scheduler is "
-                     "never handed several at once (job-system.md § 5.3).")
+                     "never handed several at once.")
     return "\n".join(lines)
 
 

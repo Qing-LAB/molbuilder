@@ -101,7 +101,7 @@ def _trajectory_parser_for(resolved):
     from .parse.types import answers_a_trajectory
     if _P(resolved).is_dir():
         click.echo(f"Error: {resolved} is a directory.  These verbs read one "
-                   f"run artifact; name the file inside it (the Watch tab "
+                   f"run artifact; name the file inside it (the Results tab "
                    f"resolves a directory for you, through the run door, "
                    f"`runs.openable`).", err=True)
         sys.exit(2)
@@ -524,8 +524,8 @@ def _struct_for_validate(path, *, editing: bool = False):
     if whole.n_frames > 1 and editing:
         raise click.ClickException(
             f"{Path(path).name} holds {whole.n_frames} frames -- molbuilder "
-            f"modify edits one structure, and a frame set is not edited "
-            f"(model/structure.md 2.3): take the frame you mean out first, "
+            f"modify edits one structure, and a frame set is not edited"
+            f": take the frame you mean out first, "
             f"with a script (StructureCodec().load(path, frame=i)) or in the "
             f"Modify tab, which asks which")
     if whole.n_frames > 1:
@@ -896,7 +896,7 @@ def cmd_modify(input_path, output_path,
 
         # the two registries differ on purpose: with both slabs on the same
         # one the boundary twins instead of continuing the crystal
-        # (junction-cell.md 3.2).  Omit `registry=` and both stay on A.
+        #.  Omit `registry=` and both stay on A.
 
     Stepped 3×3 + 4×4 contact on the same side:
 
@@ -911,8 +911,7 @@ def cmd_modify(input_path, output_path,
         molbuilder modify step1.xyz junction.xyz \\
             --electrode Cu:111:3x3x2@contact=2.0:-z=0
 
-    See docs/web/tabs.md for the full per-(plane, orthogonal)
-    constraint table; ASE's own error message bubbles up if the
+    ASE's own error message bubbles up if the
     requested (m, n) doesn't satisfy the chosen cell shape.
     """
     import numpy as np
@@ -1119,7 +1118,7 @@ def cmd_modify(input_path, output_path,
 def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     """Convert a SIESTA ``.XV`` final-coordinates file to a structure pair.
 
-    THE PAIR IS THE FILE (`model/structure.md` § 2.4): what reopens it
+    THE PAIR IS THE FILE: what reopens it
     reads the pair.
 
     TWO MODES, and the difference is whether a metadata source is there.
@@ -1273,7 +1272,7 @@ def _apply_run_metadata(struct, xv_path: Path):
         raise click.ClickException(
             f"--from-run: no run of ours holds {xv_path} -- nothing marks its "
             f"folder as part of a calculation ({CALCDIR_FILE}, or {TASK_FILE} "
-            f"above it; project-layout.md § 1.4a), so nothing declares its "
+            f"above it), so nothing declares its "
             f"atoms.  Without --from-run the {SIESTA_XV} converts on its "
             f"own.")
     try:
@@ -1315,7 +1314,7 @@ def _apply_run_metadata(struct, xv_path: Path):
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_monitor(args) -> None:
     """Run the monitor every job runs beside it, from the package: the same
-    command line as ``mb_monitor.pyz`` (`execution/run-reports.md` § 2.6),
+    command line as ``mb_monitor.pyz``,
     handed to ``monitor.main`` whole -- ``--dir`` names the run's directory,
     ``--help`` lists the rest.  One command line, so the two cannot drift.
     """
@@ -1374,7 +1373,7 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
             f"WARNING: --host={host} binds a non-loopback interface "
             f"WITHOUT TLS.  --allow-insecure-binding bypasses the "
             f"safety check.  Make sure your reverse proxy terminates "
-            f"TLS and gates auth.  See docs/ops/deployment.md.",
+            f"TLS and gates auth.",
             err=True,
         )
         return
@@ -1387,13 +1386,13 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
         f"non-public endpoint needs a session and /api/* answers 401; "
         f"with no `auth` section there is no sign-in at all, and the "
         f"projects/ tree is served read + write + delete to anyone who "
-        f"can reach the interface (docs/ops/access-control.md 1.1).\n\n"
+        f"can reach the interface.\n\n"
         f"For a real deployment you have three reasonable options:\n"
         f"  1. Pass --cert / --key to enable TLS.  TLS IS NOT "
         f"AUTHENTICATION -- it encrypts the wire and gates nothing; if "
         f"sign-in is not on, turn it on too (`molbuilder auth-setup`).\n"
         f"  2. Put molbuilder behind a reverse proxy that adds TLS + "
-        f"auth (recommended -- see docs/ops/deployment.md).\n"
+        f"auth (recommended).\n"
         f"  3. Pass --allow-insecure-binding to override this check "
         f"(only sensible when something OUTSIDE molbuilder gates "
         f"access -- a same-host proxy, a VPN tunnel, etc.).\n"
@@ -1537,8 +1536,7 @@ def _check_tls_readable(cert, key) -> None:
           "  * Don't read those paths directly from molbuilder.  Put "
           "molbuilder behind a reverse proxy (nginx / Caddy) that "
           "owns TLS termination and forwards plain HTTP to molbuilder "
-          "on 127.0.0.1.  See docs/ops/deployment.md for the recommended "
-          "shape.\n"
+          "on 127.0.0.1.\n"
           "  * Or: copy cert + key into a directory the molbuilder "
           "user can read (mode 0600 on the key) and point "
           "molbuilder.json at the copy.  Add a renewal hook so the "
@@ -1624,13 +1622,12 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
 
     The session key is NOT this wizard's.  The server creates
     ``<config dir>/secrets/secret_key`` on its first start and reads it from then
-    on (§ 2.1e).
+    on.
 
     Re-running is idempotent except for the Google client secret, which is
     re-prompted each run.  ``--force`` replaces the providers list and
     nothing else: the write is a merge through
-    ``runtime_config.write_config_scope``, the one door for this file
-    (§ 2.3), so ``auth.trust_proxy`` and every other section survive.
+    ``runtime_config.write_config_scope``, the one door for this file, so ``auth.trust_proxy`` and every other section survive.
 
     Where the file lives: the machine config has ONE location, the config
     directory, and the door resolves it -- so the auth block cannot land in
@@ -1836,8 +1833,7 @@ def _indices(text: str):
 @click.option("--to-user", "to_user", default=None, metavar="I,J",
               help="engine indices (from 0) to translate to user indices.")
 def cmd_atom_index(path, to_engine, to_user):
-    """The atom index map of a file or a run folder (model/overview.md
-    § 2.2b): which index its atoms are listed by -- the user's (the
+    """The atom index map of a file or a run folder: which index its atoms are listed by -- the user's (the
     structure the user built or cited) or the engine's (the order the run
     gave the engine) -- and both indices of each atom, every index counted
     from 0; where it came from said first -- the file itself, its sidecar,
@@ -1889,7 +1885,7 @@ def cmd_atom_index(path, to_engine, to_user):
                       "multi-frame structure pair a transport calculation "
                       "cites")
 def frameset_group():
-    """A mode's frame set (engines/vibration.md § 5.10 ③): one vibration
+    """A mode's frame set: one vibration
     mode written as one multi-frame structure pair, its frames at the
     Gauss-Hermite nodes and each its weight -- the pair a transport
     calculation cites, every frame a point and their weighted average its
@@ -1930,8 +1926,8 @@ def _in_the_tree(ctx, param, value):
 def cmd_frameset_from_mode(run, mode, temperature, nodes, out):
     """Write vibration RUN's mode as one multi-frame pair: frame 0 the
     geometry the Hessian was taken at, then the Gauss-Hermite nodes of the
-    Gaussian the mode spreads over at the temperature, each frame its weight
-    (engines/vibration.md § 5.10 ③).  RUN is the vibration run's folder and
+    Gaussian the mode spreads over at the temperature, each frame its weight.
+    RUN is the vibration run's folder and
     OUT the pair's .xyz, each read from the projects tree as --bundle is.  A
     pair already at OUT is refused, never written over.
 
@@ -2153,7 +2149,7 @@ def cmd_notify_token(user, host, route, channel, replace):
         reads beside a running job.  This adds one to it.
 
     Both are mode 0600 and neither is ever placed in `molbuilder.json`:
-    the config carries PATHS (`ops/deployment.md` 5.1).  It carried
+    the config carries PATHS.  It carried
     `notify_keys_file` and `notify_route` until 2026-08-31, which was one
     fact in two places -- a path to a file molbuilder had itself written,
     and a copy of a segment molbuilder had itself issued.  Both are retired
@@ -2163,7 +2159,7 @@ def cmd_notify_token(user, host, route, channel, replace):
     this issued until 2026-08-27 -- is on the wire on every report, so one
     capture yields a credential good forever and for any body.  A signature
     is valid for one exact body: it cannot be altered and cannot mint a new
-    report (`access-control.md` § 8 rule 7).
+    report.
 
     **The key is printed once, and that is a deliberate exception.**
     `auth-setup` never prints a secret, and is right not to -- a session
@@ -2173,7 +2169,7 @@ def cmd_notify_token(user, host, route, channel, replace):
     does not have.  Copy it now; it is not recoverable from the server's
     file in a form you can read back out of this command.
 
-    **`serve` never generates or rotates these** (`run-reports.md` § 4.4).
+    **`serve` never generates or rotates these**.
     The counterpart lives on a cluster molbuilder cannot reach, so a
     startup rotation would leave every running job signing with the old key
     -- refused, and silently, because a notifier swallows failures by
@@ -2289,7 +2285,7 @@ def serve_group():
     """The web server, as verbs: ``start`` (background, logged, rotated),
     ``status`` / ``restart`` / ``stop`` (acting on your own instance,
     verified before signalled), and ``foreground`` (the terminal-bound
-    development run).  `docs/ops/deployment.md` § 1.  A verb is named,
+    development run).  A verb is named,
     never implied.
     """
 
@@ -2340,7 +2336,7 @@ def _serve_flags(f):
         click.option("--allow-insecure-binding", is_flag=True,
                      help="Bypass the loopback-or-TLS guard.  Only sensible "
                           "when something outside molbuilder (proxy / VPN) "
-                          "gates access -- see docs/ops/deployment.md."),
+                          "gates access."),
         click.option("--no-auth", is_flag=True,
                      help="Run with NO authentication (ignores "
                           "molbuilder.json's auth/TLS).  Loopback hosts "
@@ -2445,8 +2441,7 @@ def _harden_tls_accept_loop() -> None:
                    "server back.  Turn it OFF when something else already owns "
                    "restarts (systemd, Docker, gunicorn) -- a supervisor inside "
                    "one of those is a second answer to a question already "
-                   "answered.  --debug turns it off on its own.  "
-                   "See docs/archive/2026-08-19-server-reload-plan.md.")
+                   "answered.  --debug turns it off on its own.")
 def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
               supervise):
     """Run the server in THIS terminal -- the development mode."""
@@ -2564,7 +2559,7 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
                     log_max_mb, log_keep):
     """Detach, then run the same supervisor+child pair ``foreground``
-    runs.  `deployment.md` 1.0a: pidfile and logs under YOUR OWN home,
+    runs: pidfile and logs under YOUR OWN home,
     which is what makes every bit of this per-user."""
     from .config_dir import serve_log, serve_pidfile
     from .serve_daemon import daemonize, pid_state, read_pid, supervise
@@ -2690,7 +2685,7 @@ def jupyter_group():
 
     **The tab's buttons do the same thing through the same door**, so a
     notebook that will not start is debuggable without a browser --
-    `docs/web/jupyter.md` § 5, the same reason ``serve`` has these verbs.
+    the same reason ``serve`` has these verbs.
 
     The server is parented to the molbuilder SUPERVISOR, not to the web
     server, so a code reload does not destroy notebook state and
@@ -2830,7 +2825,7 @@ def cmd_jupyter_stop(port):
 
     The stop takes the shepherd's process group, which is the shepherd, the
     manager's `run` and jupyter-server.  The kernels go because the SERVER
-    goes -- Jupyter collects its own (`jupyter.md` § 3.2).
+    goes -- Jupyter collects its own.
     """
     import signal as _signal
     _jupyter_signal(port, _signal.SIGUSR2, "stop")
@@ -2887,11 +2882,11 @@ def cmd_jupyter_restart(port):
                        short_help="is it up, is it ANSWERING, where")
 @_serve_port_filter
 def cmd_jupyter_status(port):
-    """Two questions, answered separately -- `deployment.md` § 1.0b's rule:
+    """Two questions, answered separately:
     the failure worth catching is a process that is up and not answering.
 
     **With no `--port`, every notebook is surveyed** -- the same reason
-    `serve status` does (`plan.md` § 5n, J14).  A notebook is keyed by the
+    `serve status` does.  A notebook is keyed by the
     SERVE port it belongs to, and that number is on disk; defaulting to 8000
     reported *"not running"* to somebody whose notebook was up beside a
     server on another port.
@@ -3065,7 +3060,7 @@ def _note_wedge(port: int, pid: int) -> None:
 @serve_group.command("status", short_help="is it up, is it ANSWERING, where")
 @_serve_port_filter
 def cmd_serve_status(port):
-    """Two questions, answered separately (`deployment.md` 1.0b): the
+    """Two questions, answered separately: the
     2026-08-28 wedge was a server that was UP and not ANSWERING, and a
     status that conflates the two calls that healthy.
 
@@ -3200,10 +3195,10 @@ def _survey() -> int:
 def cmd_serve_restart(port):
     """Signal the supervisor to recycle the child -- the Reload button's
     effect, workable from a script, and workable when the child is HUNG
-    and the button's route cannot answer (`deployment.md` 1.0b).
+    and the button's route cannot answer.
 
     READS molbuilder.json FIRST, as the fresh child will: a child that cannot
-    read it exits nonzero and the supervisor does not respawn it (§ 1.0c), so
+    read it exits nonzero and the supervisor does not respawn it, so
     a restart over a broken file would leave no server.  The refusal comes
     here, `Error: ...` (`cli.main`), and the running server is left alone."""
     import signal as _signal
@@ -3249,7 +3244,7 @@ def cmd_checkpoint():
     ONE RULE FOR YOU: use these verbs, not bare git.  The folder IS a git
     repository, but git alone sees only half of it -- the big files live in a
     side archive it is told to ignore -- so `git checkout` leaves the folder in
-    a state no save ever produced.  See docs/execution/checkpointing.md § 2.0.
+    a state no save ever produced.
     """
 
 
@@ -3565,9 +3560,9 @@ def cmd_checkpoint_config(path):
                "engines' own")
     click.echo(f"              {WARM_FILES_FILE} and molbuilder's file "
                f"catalogue, not by")
-    click.echo("              molbuilder.json (checkpointing.md S1)")
+    click.echo("              molbuilder.json")
     click.echo("\nedit molbuilder.json to change the size limit or the "
-               "families (docs/execution/checkpointing.md § 4)")
+               "families")
 
 
 # --------------------------------------------------------------------- #
@@ -3658,7 +3653,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
         molbuilder watch tail run.out | head -5
 
     Loop ends when the run is over -- run_state one of 'ended',
-    'stopped' or 'out_of_memory' (`model/parse.md` § 2b, P-S1) -- or
+    'stopped' or 'out_of_memory' -- or
     after --max-frames frames, whichever comes first.  'unknown' keeps
     polling: no evidence either way is not evidence of ending.
     Ctrl-C also exits cleanly.

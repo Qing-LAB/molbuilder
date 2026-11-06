@@ -1298,8 +1298,8 @@ def api_task_setup_prep():
     if not preview and not plan_id:
         return jsonify({"ok": False,
                         "error": "a Prep names the plan its preview showed "
-                                 "(plan_id) -- preview first "
-                                 "(job-system.md § 5.0)."}), 400
+                                 "(plan_id) -- preview first"
+                                 "."}), 400
     if not dest_raw:
         return jsonify({"ok": False,
                         "error": "no calculation folder given"}), 400
@@ -1409,8 +1409,7 @@ def api_task_setup_save():
     if not isinstance(request_text, str) or not request_text.strip():
         return jsonify({"ok": False, "error":
                         "no job request to save beside the description -- "
-                        "the two are written together "
-                        "(execution/job-request.md § 7)"}), 400
+                        "the two are written together"}), 400
 
     dest = _resolve_within_roots(dest_raw)
     if not dest.is_dir():
@@ -1423,7 +1422,7 @@ def api_task_setup_save():
         return jsonify({"ok": False, "error":
                         "the save names no read_as -- what each record was "
                         "when the page read it; a write that cannot say "
-                        "what it writes over is refused (task-setup.md § 8)"
+                        "what it writes over is refused"
                         }), 400
     on_disk = _read_as(dest)
     stale = [path_of(dest).name for which, path_of in _RECORDS
@@ -1481,8 +1480,7 @@ def api_task_setup_save():
         return jsonify({
             "ok": False,
             "error": "the description or its job request fails its own "
-                     "preflight (engines/stages.md § 6.6; "
-                     "execution/job-request.md § 7):\n  - "
+                     "preflight:\n  - "
                      + "\n  - ".join(i.message for i in _pf_errs),
             "findings": _issues_to_json(_pf, cfg=_pf_cfg,
                                         calculation=task.calculation),
@@ -2071,7 +2069,7 @@ def api_task_setup_prep_plan():
     raw_request = body.get("request")
     if not isinstance(raw, dict):
         return jsonify({"ok": False,
-                        "error": "task: must be the description object"}), 400
+                        "error": "must be the description object"}), 400
     if not isinstance(raw_request, dict):
         return jsonify({"ok": False,
                         "error": "request: must be the job request object"

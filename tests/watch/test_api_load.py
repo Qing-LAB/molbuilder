@@ -107,10 +107,8 @@ def test_load_directory_empty_returns_chain_error(client, tmp_path):
     body = r.get_json()
     assert r.status_code == 404
     assert body["ok"] is False
-    # The trail cites the rule it followed (`model/parse.md` § 5.2) and says
-    # what it found: a folder no calculation claims, holding no file a run
-    # of ours writes.
-    assert "docs/model/parse.md" in body["error"]
+    # The trail says what it found: a folder no calculation claims, holding no
+    # file a run of ours writes.
     assert "no file here is one a run of ours writes" in body["error"]
 
 

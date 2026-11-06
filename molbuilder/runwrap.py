@@ -454,10 +454,9 @@ def _one_start_usage(trial: bool) -> str:
     """The run script's usage says what a run is -- one start; a trial's,
     that it measures its point once (`project-layout.md` § 1.6.1)."""
     return ("Starts once in its run's folder: a run is one start, and to\n"
-            "continue it is to launch the stage again (project-layout.md\n"
-            "1.6.1).\n\n" if not trial else
+            "continue it is to launch the stage again.\n\n" if not trial else
             "Starts once in its run's folder: a run is one start, and a\n"
-            "trial measures its point once (project-layout.md 1.6.1).\n\n")
+            "trial measures its point once.\n\n")
 
 
 def _args_parse(*, stated: str, omp_aliases: str, usage: str,
@@ -2075,7 +2074,7 @@ def _prior_state_words(eng, resumes: bool, continues: bool,
                 "not resume, so each run starts from its deck.")
     elif continues:
         text = (head + "reads the restart files launch copies in: its "
-                "stage continues from a run (run-identity.md § 4).")
+                "stage continues from a run.")
     else:
         text = (head + "is given none: its stage takes nothing from a run, "
                 "so launch copies none in.")
@@ -2218,8 +2217,8 @@ def render_run_wrapper(script_path: Path, *,
         if not _it.optional and getattr(r, _it.name) is None:
             raise WrapperError(
                 f"the job states no {_it.name} -- every job carries it, its "
-                f"run card's or the catalogue's default, laid at prep "
-                f"(engines/template.md 5.4); prepare it again.")
+                f"run card's or the catalogue's default, laid at prep; "
+                f"prepare it again.")
     # A FINISH THE LAUNCHER CANNOT SHIP IS REFUSED, never dropped: a job
     # told to finish that ran without finishing would conclude rc=0 with no
     # result (`engines/vibration.md` § 5.5).
@@ -2231,8 +2230,7 @@ def render_run_wrapper(script_path: Path, *,
     if point is not None and point.steps and finish is None:
         raise WrapperError(
             f"`{script_path.name}`: a point's own steps are verbs of its "
-            f"job's bundle, and the job names none "
-            f"(execution/runs-of-points.md 2.1)")
+            f"job's bundle, and the job names none")
 
     # WHETHER THIS RUN USES THE GPU is its request -- `jobset.model.
     # gpu_request`, the one door (`execution/architecture.md` § 3.2) -- read
@@ -2278,8 +2276,8 @@ def render_run_wrapper(script_path: Path, *,
         raise WrapperError(
             f"engine_table.toml [{engine}] names the environment category "
             f"{category!r}, and no environment is registered for it -- the "
-            f"categories are configuration.md § 4's "
-            f"(diagnostics.DEFAULT_ENV_NAMES); pass --env to name one.")
+            f"categories are diagnostics.DEFAULT_ENV_NAMES; pass --env to name "
+            f"one.")
 
     # THE GPU BUILD'S PRESENCE IS SAID, NEVER A VETO (`gpu.md` G6; the
     # user, 2026-10-17: the record is shown, the person decides).  When the
@@ -2320,8 +2318,7 @@ def render_run_wrapper(script_path: Path, *,
             f"{eng.words}'s GPU build.  The run script enters it at its "
             f"start and stops there if it is absent -- so install it before "
             f"launching, {_there}: ``{_hints.fix_cmd('install', target_env)}`` "
-            f"-- or turn ``Use GPU`` off and prep again (execution/gpu.md "
-            f"G6).")
+            f"-- or turn ``Use GPU`` off and prep again.")
         if notes is not None and _said not in notes:
             notes.append(_said)
 
@@ -2629,7 +2626,7 @@ def render_run_wrapper(script_path: Path, *,
           f'echo "{lead("Wall")}${{{WALL_VAR}}}s from the job\'s start; '
         + (f'{words} stops ${{{WALL_SLACK_VAR}}}s before it ' if takes_wall
            else f'{words} checks no clock and runs to it ')
-        + '(running-a-job.md 3.6)"; '
+        + '"; '
           f'else echo "{lead("Wall")}none stated -- runs until done"; fi\n'
         + f'echo "{lead("Stdout")}$_out_file (live; tail -f to follow)"\n'
         + 'echo "========================================="\n'
@@ -2831,7 +2828,7 @@ def render_run_wrapper(script_path: Path, *,
            + (f"    _mb_wall_args=({_wall_array})\n" if _wall_words else "")
            + f'    _log INFO "wall: ${{_mb_wall_left}}s left of ${{{WALL_VAR}}}s; '
            f'{words} stops ${{{WALL_SLACK_VAR}}}s '
-           f'before it (running-a-job.md 3.6)"\n'
+           f'before it"\n'
            f"fi\n" if takes_wall else "")
         + "_t_start=$(date +%s.%N)\n"
         "set +e\n"
@@ -3429,7 +3426,7 @@ from .runfiles import PYSCF_BUNDLE  # noqa: E402 -- the catalogue's name
 _PYSCF_MAIN = (
     "import sys\n"
     f"sys.stderr.write({PYSCF_BUNDLE!r} + ' is not run: the PySCF script "
-    "beside it imports molbuilder code from it (engines/pyscf.md 3)\\n')\n"
+    "beside it imports molbuilder code from it\\n')\n"
     "raise SystemExit(2)\n")
 
 
@@ -3818,8 +3815,7 @@ def render_sbatch(names, *, scheduler,
                         ("mem", mem)):
         if not (isinstance(value, str) and value.strip()):
             raise WrapperError(
-                f"render_sbatch: {name} is required and was not stated "
-                f"(docs/execution/architecture.md § 5.2).")
+                f"render_sbatch: {name} is required and was not stated.")
     if qos is not None and not (isinstance(qos, str) and qos.strip()):
         raise WrapperError(
             "render_sbatch: qos is the domain's, a name or None; got "

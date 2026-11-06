@@ -147,10 +147,11 @@ class TestTheFailuresAreToldApart:
         cell = cell.copy()
         cell[2, 2] = (both[:, 2].max() - both[:, 2].min()) + d
         mirrored = classify_seam(both, cell)
-        assert "§ 3.2" in mirrored.message and "§ 3.1" not in mirrored.message
+        assert ("PLACEMENT" in mirrored.message
+                and "LAYER COUNT" not in mirrored.message)
 
         short = classify_seam(*_padded("111", False, 4))
-        assert "§ 3.1" in short.message and "§ 3.2" not in short.message
+        assert "LAYER COUNT" in short.message and "PLACEMENT" not in short.message
 
 
 class TestItRefusesToGuess:

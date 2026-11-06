@@ -319,7 +319,7 @@ def _transport_order(struct: Structure) -> Tuple[List[int], Tuple[str, ...]]:
             f"electrode blocks along the transport axis: {shown}{more}.  "
             f"Buffer means padding OUTSIDE the electrodes -- below "
             f"z={z_lo_min:.3f} or above z={z_hi_max:.3f} A -- and is "
-            f"excluded from the NEGF region (engines/transport.md 4).  "
+            f"excluded from the NEGF region.  "
             f"Relabel the atoms, or move them beyond the electrode "
             f"blocks.")
 

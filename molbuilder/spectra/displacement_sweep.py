@@ -118,8 +118,7 @@ def why_no_sweep(task) -> Optional[str]:
         return (f"this vibration has {len(names)} force-constant stage(s) "
                 f"({', '.join(names) or 'none'}): a sweep compares two or "
                 f"more.  Describe another stage with its own fc_displacement "
-                f"(or mesh_cutoff), prep and launch it, then summarize again "
-                f"(engines/vibration.md 5.9)")
+                f"(or mesh_cutoff), prep and launch it, then summarize again")
     return None
 
 
@@ -203,8 +202,7 @@ def collect_sweep(calc, *,
                     entry["detail"] = (
                         f"the run finished without writing {spectrum_name} "
                         f"({detail}) -- its finish did not write the "
-                        f"result; the run's session log says why "
-                        f"(engines/vibration.md 5.11)")
+                        f"result; the run's session log says why")
                 failed.append(entry)
             continue
         try:
@@ -301,8 +299,8 @@ def collect_sweep(calc, *,
                                            base=base))
             raise SweepError(
                 lead + f"A later stage takes the first stage's relaxation "
-                f"from its newest run at its first launch "
-                f"(engines/vibration.md 5.9); one launched --cold relaxed on "
+                f"from its newest run at its first launch"
+                f"; one launched --cold relaxed on "
                 f"its own, and one that took it before the first stage "
                 f"relaxed again holds the older one.  To measure {name!r} "
                 f"at the geometry {ref_name!r} was measured at, launch it "

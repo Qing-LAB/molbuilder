@@ -51,16 +51,24 @@ WHY_OPEN = ("one k-point along z, the transport direction: the device and "
             "single k-point there (ts_kpoint_scf.F90, m_tbt_kpoint.F90); "
             "the seed's density is only their starting point; and each "
             "lead samples z by its own count, electrode_kz.  So no stage "
-            "reads this component as a choice (engines/transport.md 0.2)")
+            "reads this component as a choice")
 WHY_NO_OFFSET = ("along z, the transport direction, both engines sample "
                  "with no offset -- TranSIESTA in ts_kpoint_scf.F90, tbtrans "
                  "in m_tbt_kpoint.F90 -- and TranSIESTA compares each "
-                 "lead's offset with the device's on z too "
-                 "(engines/siesta.md 6.1)")
+                 "lead's offset with the device's on z too")
 
 #: The items that answer a k-point grid's counts -- an axis's ``source`` is
 #: one of them, or ``open`` when the axis itself answers.
 ITEMS = ("kgrid", "tbt_k_grid", "electrode_kz")
+
+
+def _grid_words(source: str) -> str:
+    """A grid as a sentence names it: its item's label, the axes it lists left
+    out."""
+    from .template import catalogue
+    label = next((it.label for it in catalogue().items
+                  if it.name == source and it.label), source).split(" (")[0]
+    return label[:1].upper() + label[1:]
 
 #: What a kind with leads fixes in each item a k-point grid reads -- the
 #: transport axis's component, on every rung.
@@ -316,7 +324,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
     for mesh in judged:
         for i, axis in enumerate(mesh.axes):
             where = f"config.{axis.source}"
-            name = f"{axis.source}[{i}]"
+            name = f"{_grid_words(axis.source)} along {AXES[i]}"
             if axis.role == "gamma" and axis.count > 1 and _a_stripe(mesh, i):
                 out.append(Issue(
                     "error",
@@ -328,8 +336,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                     f"has no neighbours (ts_electrode.F90, \"found "
                     f"incompatible k-grids\"), and the seed and both leads "
                     f"would have run before the device stops.  Set it to 1; "
-                    f"such a junction is refused for now "
-                    f"(engines/siesta.md 6.1)",
+                    f"such a junction is refused for now",
                     where))
             elif axis.role == "gamma" and axis.count > 1:
                 out.append(Issue(
@@ -338,7 +345,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                     f"structure does not repeat there, so the extra k-points "
                     f"only sample its periodic images, separated by vacuum "
                     f"-- they add cost and nothing else; 1 is the usual "
-                    f"choice (engines/siesta.md 6.1)",
+                    f"choice",
                     where))
             elif (axis.role == "sampled" and axis.count == 1
                   and mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")
@@ -352,13 +359,13 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                         f"{AXES[i]}" if lengths is not None else "")
                 out.append(Issue(
                     "warn",
-                    f"{name} = 1 along {AXES[i]}, a direction the electrodes "
+                    f"{name} = 1, a direction the electrodes "
                     f"repeat in: a single k-point there treats every sideways "
                     f"copy of the cell as in phase, so the metal's bands are "
                     f"seen at one place only.  This is known to add false "
                     f"peaks to T(E) and to shift the conductance by tens of "
                     f"per cent.  The benchmark used 4 x 4 for a cell about "
-                    f"9 A wide{wide} (engines/transport.md 0.3b)",
+                    f"9 A wide{wide}",
                     where))
             elif (axis.role == "sampled" and axis.count > 1
                   and lengths is not None):
@@ -366,7 +373,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 if gap >= VACUUM_HINT_A:
                     out.append(Issue(
                         "warn",
-                        f"{name} = {axis.count} k-points along an axis whose "
+                        f"{name} = {axis.count}, an axis whose "
                         f"periodic images sit ~{gap:.1f} A apart, with vacuum "
                         f"between them; if the images are meant not to "
                         f"interact, one k-point (k = 1) is the usual choice "
@@ -392,8 +399,9 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                         for a in tbt.axes)):
             out.append(Issue(
                 "warn",
-                f"tbt_k_grid = {' '.join(str(a.count) for a in tbt.axes)} "
-                f"asks tbtrans for T(E) at several k-points, but kgrid = "
+                f"{_grid_words('tbt_k_grid')} of "
+                f"{' '.join(str(a.count) for a in tbt.axes)} "
+                f"asks tbtrans for T(E) at several k-points, but the shared k-point grid of "
                 f"1 1 1 computes the device at one k-point only, so SIESTA "
                 f"saves its Hamiltonian in a form that works at that one "
                 f"point.  tbtrans stops as it starts (\"Transiesta "
@@ -402,10 +410,10 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 f"electrode plane are 3 or more; with a 1 or a 2 along x or "
                 f"y its grid starts at k = 0 and tbtrans runs on with the "
                 f"k = 0 Hamiltonian at every k-point, and its T(E) is "
-                f"invalid.  Raise kgrid in the "
+                f"invalid.  Raise the k-point grid in the "
                 f"electrode plane (x, y) -- "
                 f"it re-runs the seed, the leads and the device -- or leave "
-                f"tbt_k_grid blank or 1 1 1 (engines/transport.md 0.3b)",
+                f"the transmission's grid blank or 1 1 1",
                 "config.tbt_k_grid"))
         for i, (t, s) in enumerate(zip(tbt.axes, scf.axes)):
             # ONE POINT IS THE ONE-POINT WARNING'S to say (above), never
@@ -414,13 +422,12 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                     and 1 < t.count < s.count):
                 out.append(Issue(
                     "warn",
-                    f"tbt_k_grid[{i}] = {t.count} is coarser than the shared "
-                    f"k-point grid's {s.count} along {AXES[i]}: T(E) needs at "
+                    f"{_grid_words('tbt_k_grid')} along {AXES[i]} = {t.count} is coarser than the shared "
+                    f"k-point grid's {s.count}: T(E) needs at "
                     f"least the k-points the density was converged on, and "
                     f"usually many more -- the SIESTA manual: tbtrans's "
                     f"sampling \"should generally be much denser\".  Raise "
-                    f"it, or leave it blank for three times the shared grid "
-                    f"(engines/transport.md 0.3b)",
+                    f"it, or leave it blank for three times the shared grid",
                     "config.tbt_k_grid"))
     for i in range(3):
         # ...read modulo 1, as both engines read it (`kpoint_t.F90`,
@@ -429,10 +436,11 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                   if m.axes[i].count == 1 and m.axes[i].shift % 1.0 != 0.0]
         if single:
             counts = ", ".join(dict.fromkeys(
-                f"{a.source}[{i}] = 1" for a in single))
+                f"{_grid_words(a.source).lower()} along {AXES[i]} = 1"
+                for a in single))
             out.append(Issue(
                 "warn",
-                f"kgrid_displacement[{i}] = {single[0].shift} shifts an "
+                f"The k-point offset along {AXES[i]} = {single[0].shift} shifts an "
                 f"axis sampled at a SINGLE k-point ({counts}), which moves "
                 f"that k-point off Gamma, the point k = 0.  For an "
                 f"isolated molecule only Gamma is meaningful -- set this "

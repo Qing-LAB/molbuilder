@@ -123,8 +123,8 @@ def engine_seam(engine: str) -> EngineSeam:
     except EngineTableError as exc:
         raise PrepError(
             f"no deck writer for engine {engine!r}. An engine supplies its "
-            f"catalogue rows and an answer at each preparation step "
-            f"(script-preparation.md § 4); {exc}") from exc
+            f"catalogue rows and an answer at each preparation step"
+            f"; {exc}") from exc
     return part(rec.seam, record=f"engine {rec.name}", key="seam")()
 
 

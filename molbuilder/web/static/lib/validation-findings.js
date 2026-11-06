@@ -106,18 +106,16 @@ const _module = (function (root) {
         var li = doc.createElement("li");
         li.className = "issue-item";
         li.setAttribute("data-severity", _severityOf(issue));
+        // ``where`` is the STABLE identifier (contract R1): the row's name for
+        // a page or a test to bind to, never words on the page.
+        if (issue && issue.where) li.setAttribute("data-where", issue.where);
         var msg = doc.createElement("span");
         msg.className = "issue-msg";
-        msg.textContent = (issue && issue.message) || "";
+        var words = (issue && issue.message) || "";
+        var dom = (root.molbuilder || {}).dom;
+        if (dom) msg.appendChild(dom.codeWords(words));
+        else msg.textContent = words;
         li.appendChild(msg);
-        // ``where`` is the STABLE identifier (contract R1) -- shown so a user
-        // can quote it, and never parsed from the prose message.
-        if (issue && issue.where) {
-            var where = doc.createElement("span");
-            where.className = "issue-where";
-            where.textContent = issue.where;
-            li.appendChild(where);
-        }
         return li;
     }
 

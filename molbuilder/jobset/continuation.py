@@ -332,7 +332,7 @@ def cannot_be_named(calc, stage: str, from_attempt, cold: bool
                 f"{kind(task.calculation).with_article}'s rung takes its "
                 f"inputs from the rungs upstream, gathered by its kind at "
                 f"its first launch, and anew with --gather when it is "
-                f"launched again (job-system.md § 5.4).")
+                f"launched again.")
     if not independent(task):
         # A LINKED STAGE THAT CONTINUES FROM NONE -- a vibration's first
         # stage, a PySCF vibration's -- builds on the calculation's
@@ -350,8 +350,7 @@ def cannot_be_named(calc, stage: str, from_attempt, cold: bool
             return (f"{'--from ' + repr(from_attempt) if from_attempt else '--cold'}"
                     f": `{stage}` builds on the calculation's structure -- "
                     f"no run of another stage is its input, and its first "
-                    f"launch takes nothing to start cold from (job-system.md "
-                    f"§ 5.4).")
+                    f"launch takes nothing to start cold from.")
     if from_attempt:
         p = PurePosixPath(str(from_attempt))
         if p.is_absolute() or ".." in p.parts:
@@ -424,14 +423,13 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
              f"{g_stage} with {', '.join(f'`{m}`' for m in mates)}, so give "
              f"it a group of its own first (Task setup, or {JOB_REQUEST_FILE}) "
              f"and prepare that group\n")
-    rule = "(job-system.md § 5.4)"
     relation = _relation(task, stage, prev)
     lead = f"`{stage}` continues from {relation}, `{prev}`"
 
     attempt = latest_attempt(container)
     if attempt is None:
         return None, (f"{lead}, which has not run yet.  Run it "
-                      f"first --\n{run_prev}\n{clean}{rule}")
+                      f"first --\n{run_prev}\n{clean}")
     source = str(attempt.relative_to(base))
     concluded, state, converged, detail = read_run(
         calc, prev, attempt, verdict=verdict)
@@ -460,7 +458,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
            + block(_taking("--from", other)) + "\n"
            if other else "")
     return None, (f"`{stage}` continues from {what} {why}.  {first}\n"
-                  f"{alt}{clean}{rule}")
+                  f"{alt}{clean}")
 
 
 def earlier_run(base, home, current, holds) -> Optional[str]:
@@ -562,7 +560,7 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
     if state in LIVE_STATES:
         return f"which is {state}", "Let it finish"
     return ("which stopped without its conclusion marker -- killed, or out "
-            "of time (project-layout.md § 1.6)", again)
+            "of time", again)
 
 
 def continue_from_choices(calc, stage: str) -> Optional[dict]:

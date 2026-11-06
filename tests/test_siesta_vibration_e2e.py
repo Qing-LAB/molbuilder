@@ -1388,7 +1388,7 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
             "§ Raman strength, static — the same, in the limit of zero light "
             "frequency, so it does not depend on the laser (absorption "
             f"spectrum smoothed by {width} eV). When this limit is "
-            "meaningful: the method, § 3.1."), \
+            "meaningful: the method."), \
             page.inner_text("#note-raman-static")
         laser = column(".raman-col:not(.raman-static-col)")
         static = column(".raman-static-col")

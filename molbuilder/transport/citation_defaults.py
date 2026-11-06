@@ -186,7 +186,7 @@ def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
             f"{answers.net_charge:+d} ({answers.source_name or 'its record'}), "
             f"and a transport calculation cannot: its boundaries are open and "
             f"the leads set the electron number, so the junction must be "
-            f"neutral (engines/transport.md § 2a.7).  Relax the junction "
+            f"neutral.  Relax the junction "
             f"neutral and cite that run, or the pair saved from it.")
     kw = {k: v for k, v in answers.values.items() if k not in blank}
     kw.update(_the_persons(chosen))
@@ -226,12 +226,12 @@ def check_pseudopotentials(cited, psml_lib) -> None:
             f"pseudopotentials: name the directory that holds them all "
             f"(`molbuilder describe --psml-lib DIR`, the template's `psml_lib`), as a "
             f"structure optimization does -- the convention is the bare name "
-            f"`pseudopotential`, the projects tree's own "
-            f"(engines/transport.md § 3.1).")
+            f"`pseudopotential`, the projects tree's own"
+            f".")
     if not asked and psml_lib:
         raise ValueError(
             "a pseudopotential directory does not apply to a cited run -- its "
-            "pseudopotentials travel with it (engines/transport.md § 3.1).")
+            "pseudopotentials travel with it.")
 
 
 def _the_persons(chosen) -> Dict[str, Any]:

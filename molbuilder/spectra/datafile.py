@@ -583,8 +583,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         if MAP_KEY not in payload:
             raise SpectraDataError(
                 "the result states no atom_index_map: its data file says "
-                "which index its atoms are listed by (model/overview.md "
-                "2.2b)")
+                "which index its atoms are listed by")
         atoms = AtomIndexMap.from_dict(payload[MAP_KEY],
                                        n_atoms=n_atoms,
                                        source="the result's atom_index_map")

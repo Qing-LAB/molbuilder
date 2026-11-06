@@ -119,8 +119,7 @@ def _detect_one(path: Path,
             lines.append(f"\nHint: {n}")
     else:
         lines.append(
-            "\nHint: see README / docs/model/parse.md for the "
-            "list of recognised file types."
+            "\nHint: point the viewer at one of the file types above."
         )
     raise UnknownFormatError("\n".join(lines))
 

@@ -178,8 +178,8 @@ def struct_from_body(body: Dict[str, Any], key: str = "structure") -> Structure:
     envelope = body.get(key)
     if not isinstance(envelope, dict):
         raise ValueError(
-            f"no {key!r} provided: a structure crosses in the envelope "
-            "(web-api.md § 1) -- {elements, positions, metadata}")
+            f"no {key!r} provided: a structure crosses in the envelope"
+            " -- {elements, positions, metadata}")
     return _struct_from_envelope(envelope)
 
 

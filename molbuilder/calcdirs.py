@@ -120,7 +120,7 @@ def record(directory, *, role: str, root) -> Tuple[Path, str]:
         raise ValueError(
             f"placement role must be one of {ROLES}, got {role!r} -- what a "
             f"folder is (a stage's, an attempt, a point's, a trial...) is read "
-            f"off its place, not a role (project-layout.md § 1.4a)")
+            f"off its place, not a role")
     directory = Path(directory)
     of = os.path.relpath(Path(root).resolve(), directory.resolve())
     return (directory / FILENAME,

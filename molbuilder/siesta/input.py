@@ -439,8 +439,7 @@ def _parallel_facts(cfg, mesh) -> dict:
     if cfg.diag_algorithm is None:
         raise ValueError(
             "diag_algorithm is not set -- every job carries it, its run "
-            "card's or the catalogue's default, laid at prep "
-            "(engines/template.md 5.4)")
+            "card's or the catalogue's default, laid at prep")
     _algo = cfg.diag_algorithm.strip()
     from .layout import is_elpa
     _is_elpa = is_elpa(_algo)
@@ -589,8 +588,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         if unread:
             raise ValueError(
                 f"a transport deck reads no {', '.join(unread)} -- its cell "
-                f"is the composed junction's own "
-                f"(docs/engines/transport.md § 2a.9).")
+                f"is the composed junction's own"
+                f".")
         from ..transport.deck import transport_spec
         return transport_spec(struct, config or SiestaConfig(),
                               stage_token=stage_token, state=state,
@@ -599,8 +598,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     if point is not None or scratch_dir is not None or contours is not None:
         raise ValueError(
             f"a {calculation} deck has no point and no scratch folder: a "
-            f"frame, a voltage and the leads' files are a transport rung's "
-            f"(docs/engines/transport.md § 2a.11).")
+            f"frame, a voltage and the leads' files are a transport rung's"
+            f".")
     # WHICH KINDS SIESTA RUNS is the kind table's (`kind(...).on`), which
     # refuses another naming the engines it runs on.
     from ..kind_table import kind as _kind
@@ -617,12 +616,12 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     if _vibration and part not in _vib_deck.PARTS:
         raise ValueError(
             f"a vibration deck is one of its run's parts, "
-            f"{', '.join(_vib_deck.PARTS)} (engines/vibration.md 5.11 4); "
+            f"{', '.join(_vib_deck.PARTS)}; "
             f"part={part!r} is none of them.")
     if not _vibration and part is not None:
         raise ValueError(
             f"a {calculation} deck has no part: the parts are a vibration "
-            f"run's phases (engines/vibration.md 5.11 4).")
+            f"run's phases.")
     # WHAT THIS DECK WRITES is not collected here.  It is read off the
     # LAYOUT below by the framework, which is the only reading that can
     # close the check gate's loop: a list this writer kept would say what
@@ -1070,7 +1069,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                     "# directory is left unread and the run starts from the "
                     "coordinates in this file.")
             out.append(
-                "# Watch the run live: open the Watch tab and point it "
+                "# Watch the run live: open the Results tab and point it "
                 "at this directory")
             out.append("# (the loader opens the run it speaks for -- its "
                        "output, model/parse.md 5.1).")

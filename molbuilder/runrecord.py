@@ -471,7 +471,7 @@ def launch_record(where) -> Optional[dict]:
             f"{p} does not read as a launch record ({e}) -- whether this run "
             f"was launched cannot be told from it.  It is written once, at "
             f"launch, and the decision ledger's `launched` line holds what it "
-            f"said (project-layout.md 1.6.3).") from e
+            f"said.") from e
     return body
 
 

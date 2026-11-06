@@ -116,7 +116,7 @@ def _parse_row(obj: dict, *, where: str) -> WarmRule:
     if unknown:
         raise WarmFilesError(
             f"{where}: unknown key(s) {', '.join(map(repr, unknown))}. "
-            f"The vocabulary is closed (job-contracts.md 4.2a): "
+            f"The vocabulary is closed: "
             f"{', '.join(_ROW_KEYS)}.  A rule it cannot express belongs "
             f"in warm_carry, not in a new key.")
     suffix = obj.get("suffix")
@@ -202,7 +202,7 @@ def warm_list(engine: str, kind: Optional[str] = None,
                 f"engine {engine!r} has no warm-file section for calculation "
                 f"{kind!r}.  Sections: "
                 f"{', '.join(doc.section_names()) or '(none)'} "
-                f"(job-contracts.md 4.2a: a new calculation type is a new "
+                f"(a new calculation type is a new "
                 f"section in {engine}/{FILENAME}, never a branch).")
         rules = tuple(table.get("base", ())) + tuple(table[kind])
         resumes = stated.get(kind, stated.get("base", True))
@@ -284,8 +284,8 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
     if not path.is_file():
         raise WarmFilesError(
             f"no {FILENAME} for engine {engine!r} (expected {path}). "
-            f"An engine's warm-state vocabulary is this ONE file "
-            f"(job-contracts.md 4.2a).")
+            f"An engine's warm-state vocabulary is this ONE file"
+            f".")
     # A FILE THAT DOES NOT READ is this module's refusal, naming it -- the
     # kind every door that reads the vocabulary says as the person's
     # (a launch's among them), never a parser's own exception.
@@ -313,13 +313,13 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
             raise WarmFilesError(
                 f"{path}: section [{name}] must hold only [[{name}.file]] "
                 f"rows and the section-level facts, `resumes`, `along`, "
-                f"`scratch` and `scratch_dir` (job-contracts.md 4.2a).")
+                f"`scratch` and `scratch_dir`.")
         if "scratch_dir" in body and "scratch" not in body:
             raise WarmFilesError(
                 f"{path}: [{name}] states scratch_dir without scratch -- a "
                 f"folder of the run's own for the engine's scratch is stated "
                 f"with the scratch it holds; scratch alone lies beside the "
-                f"run's own files (job-contracts.md 4.2a).")
+                f"run's own files.")
         if "scratch" in body:
             said = body["scratch"]
             if (not isinstance(said, list)
@@ -328,8 +328,8 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
                 raise WarmFilesError(
                     f"{path}: [{name}] scratch = {said!r} -- a list of "
                     f"suffixes, the engine's scratch at a run of this kind: "
-                    f"never carried, never taken over "
-                    f"(engines/transport.md 2a.11).")
+                    f"never carried, never taken over"
+                    f".")
             scratch.append((name, tuple(said)))
         if "scratch_dir" in body:
             where = body["scratch_dir"]
@@ -337,8 +337,8 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
                     or "/" in where or where in (".", "..")):
                 raise WarmFilesError(
                     f"{path}: [{name}] scratch_dir = {where!r} -- one folder "
-                    f"name, the folder of the run's own the scratch lives in "
-                    f"(engines/transport.md 2a.11).")
+                    f"name, the folder of the run's own the scratch lives in"
+                    f".")
             scratch_dir.append((name, where))
         if "resumes" in body:
             if not isinstance(body["resumes"], bool):
@@ -367,7 +367,7 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
                 raise WarmFilesError(
                     f"{path}: [{name}] along = {said!r} -- a list of this "
                     f"section's own suffixes, what a sweep hands from point "
-                    f"to point (engines/transport.md 2a.11).")
+                    f"to point.")
             along.append((name, tuple(said)))
         sections.append((name, tuple(rows)))
     if not any(name == "base" for name, _ in sections):

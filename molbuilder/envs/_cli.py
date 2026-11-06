@@ -142,9 +142,6 @@ def _recipe_named(name: str):
              context_settings={"help_option_names": ["-h", "--help"]})
 def envs_group() -> None:
     """Inspect and install the conda envs molbuilder dispatches into.
-
-    See docs/ops/installation.md for the prose recipes and the rationale
-    for the env layout.
     """
 
 
@@ -477,8 +474,8 @@ def cmd_repair(name: str, include_optional: bool,
     recipe = _recipe_named(name)
     if caps.conda_binary is None:
         raise click.UsageError(
-            "conda/mamba not found; cannot run repair.  See "
-            "docs/ops/installation.md."
+            "conda/mamba not found; cannot run repair.  Install one of "
+            "them, then run this again."
         )
     effective = effective_name(recipe, caps)
     if not caps.env_available(effective):
@@ -1310,8 +1307,8 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         # below calls subprocess.run([None, ...]) and the person gets a
         # TypeError instead of the one sentence that names the fix.
         raise click.UsageError(
-            "conda/mamba not found; cannot install.  See "
-            "docs/ops/installation.md."
+            "conda/mamba not found; cannot install.  Install one of them, "
+            "then run this again."
         )
 
 
@@ -2191,7 +2188,7 @@ def _ask_projects_root(auto_yes: bool,
                    "being asked.  Written into molbuilder.json as `env_init` "
                    "-- the activation has no default; `jobset probe` copies "
                    "it into the record, and without it every prep for this "
-                   "machine refuses (docs/configuration.md § 4).")
+                   "machine refuses.")
 @click.option("--no-probe", "probe", flag_value=False, default=True,
               help=f"do not write {MACHINE_RECORD_FILE}; `molbuilder jobset "
                    "probe --write` makes it later, copying `env_init` into it.")

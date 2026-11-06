@@ -610,8 +610,8 @@ _SIZE_RE   = re.compile(r"^(0|[1-9][0-9]*)$")
 _SEP       = "\t"
 
 def _bad(where: str, why: str) -> "CheckpointError":
-    return CheckpointError(f"malformed MANIFEST in {where}: {why} "
-                           f"(job-contracts.md § 6.1).")
+    return CheckpointError(f"malformed MANIFEST in {where}: {why}"
+                           f".")
 
 
 def format_manifest(entries: Sequence[Tuple[str, int, str]]) -> bytes:
@@ -628,16 +628,16 @@ def format_manifest(entries: Sequence[Tuple[str, int, str]]) -> bytes:
         if not _SHA256_RE.fullmatch(sha256):
             raise CheckpointError(
                 f"cannot write MANIFEST: {sha256!r} is not 64 lowercase hex "
-                f"characters (job-contracts.md § 6.1).")
+                f"characters.")
         if not isinstance(size, int) or isinstance(size, bool) or size < 0:
             raise CheckpointError(
                 f"cannot write MANIFEST: size {size!r} for {key!r} is not a "
-                f"non-negative integer (job-contracts.md § 6.1).")
+                f"non-negative integer.")
         _check_key(key, "cannot write MANIFEST")
         if key in seen:
             raise CheckpointError(
                 f"cannot write MANIFEST: {key!r} appears more than once; a key "
-                f"names one file (job-contracts.md § 6.1).")
+                f"names one file.")
         seen.add(key)
         lines.append(f"{sha256}{_SEP}{size}{_SEP}{key}")
     return ("".join(ln + "\n" for ln in lines)).encode("ascii")
@@ -650,22 +650,22 @@ def _check_key(key: str, prefix: str) -> None:
     if any(ord(c) < 0x20 or ord(c) > 0x7E for c in key):
         raise CheckpointError(
             f"{prefix}: {key!r} contains non-printable or non-ASCII "
-            f"characters (job-contracts.md § 6.1).")
+            f"characters.")
     if key.startswith("/") or "\\" in key:
         raise CheckpointError(
-            f"{prefix}: {key!r} must be a repo-relative POSIX path "
-            f"(job-contracts.md § 6.1).")
+            f"{prefix}: {key!r} must be a repo-relative POSIX path"
+            f".")
     for part in key.split("/"):
         if part in ("", ".", ".."):
             raise CheckpointError(
                 f"{prefix}: {key!r} has an empty or dot component, which "
-                f"could steer a restore outside the folder "
-                f"(job-contracts.md § 6.1).")
+                f"could steer a restore outside the folder"
+                f".")
         if part in NEVER_STORED:
             raise CheckpointError(
                 f"{prefix}: {key!r} names a store ({part}), and a restore "
                 f"writing there would corrupt the history it is restoring "
-                f"from (job-contracts.md § 6.1).")
+                f"from.")
 
 
 def parse_manifest(raw: bytes, where: str) -> Dict[str, Tuple[str, int]]:
@@ -731,7 +731,7 @@ def archive_dir(root: Path, digest: str) -> Path:
     if not _SHA256_RE.fullmatch(digest):
         raise CheckpointError(
             f"archive name {digest!r} is not a sha256 digest; an archive is "
-            f"named by its MANIFEST's content (checkpointing.md § 3).")
+            f"named by its MANIFEST's content.")
     return root / ARCHIVE_DIR / digest
 
 
@@ -882,7 +882,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
             f"cannot read {exc.filename or 'a large file'} in order to "
             f"archive it: {exc}.  Every file "
             f"in the folder is stored, so this stops the save rather than "
-            f"producing a snapshot missing one file (checkpointing.md S1). "
+            f"producing a snapshot missing one file. "
             f"Fix the permissions, or move the file out of the calculation "
             f"folder.") from exc
     raw = format_manifest(entries)
@@ -922,8 +922,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
                 f"removing it and saving again rebuilds it from the files in "
                 f"this folder:\n"
                 f"    rm -rf {archive_dir(root, digest)}\n"
-                f"    molbuilder checkpoint save -m \"…\"\n"
-                f"(checkpointing.md I2b, § 1)."
+                f"    molbuilder checkpoint save -m \"…\""
             ) from exc
         return digest
 
@@ -971,8 +970,8 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
                 raise CheckpointError(
                     f"archive copy of {key!r} is corrupt: it does not match "
                     f"the source it was copied from.  Refusing to publish an "
-                    f"archive that would verify against its own bad checksum "
-                    f"(checkpointing.md § 6).")
+                    f"archive that would verify against its own bad checksum"
+                    f".")
             # AND THIS ARCHIVE'S OWN COPIES ARE OFFERED FOR REUSE TOO
             # (*identical content is stored once*, § 12): the index is built
             # from already-PUBLISHED archives, so without this two paths
@@ -1035,14 +1034,14 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True
     if not man.is_file():
         raise CheckpointError(
             f"archive {digest[:12]}… is missing: no {MANIFEST_NAME} at {adir}. "
-            f"The state that names it recorded this archive, so it was lost "
-            f"(checkpointing.md I2b).")
+            f"The state that names it recorded this archive, so it was lost"
+            f".")
     raw = man.read_bytes()
     if manifest_digest(raw) != digest:
         raise CheckpointError(
             f"archive {digest[:12]}…: its {MANIFEST_NAME} does not hash to the "
-            f"name it is stored under.  The record was modified "
-            f"(checkpointing.md I2b).")
+            f"name it is stored under.  The record was modified"
+            f".")
     # A STATE'S ENTRIES ALONE (:func:`state_entries`): an archive saved
     # before the engines' scratch was left out may hold it, or a save may
     # have cleared it -- no state needs it back (S1).
@@ -1052,11 +1051,11 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True
         if not src.is_file():
             raise CheckpointError(
                 f"archive {digest[:12]}…: {MANIFEST_NAME} lists {key!r} but "
-                f"the file is missing; refusing to restore (I2).")
+                f"the file is missing; refusing to restore.")
         if src.stat().st_size != size:
             raise CheckpointError(
                 f"archive {digest[:12]}…: {key!r} is {src.stat().st_size} "
-                f"bytes, the record says {size}; refusing to restore (I2).")
+                f"bytes, the record says {size}; refusing to restore.")
     if deep:
         keys = sorted(expected)
         try:
@@ -1064,12 +1063,12 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True
         except OSError as exc:
             raise CheckpointError(
                 f"archive {digest[:12]}…: {exc.filename or 'a file'} cannot "
-                f"be read: {exc}; refusing to restore (I2).") from exc
+                f"be read: {exc}; refusing to restore.") from exc
         for key, sha in zip(keys, got):
             if sha != expected[key][0]:
                 raise CheckpointError(
                     f"archive {digest[:12]}…: {key!r} does not match its "
-                    f"recorded sha256; refusing to restore (I2).")
+                    f"recorded sha256; refusing to restore.")
     return expected
 
 
@@ -1094,8 +1093,8 @@ def check_calculation_name(name: str) -> str:
             f"calculation name {name!r} is not [A-Za-z0-9_-]+.  It is written "
             f"verbatim into every state and never rewritten, so a name that "
             f"needs repair is refused rather than quietly changed -- fixing it "
-            f"silently would decouple this history's name from the folder's "
-            f"(checkpointing.md L3).")
+            f"silently would decouple this history's name from the folder's"
+            f".")
     return name
 
 
@@ -1231,7 +1230,7 @@ class Repo:
             raise NestedRepoRefusedError(
                 f"{self.path}: cannot init -- these subdirectories are already "
                 f"checkpoint folders: {inner}.  A history inside a history "
-                f"cannot be restored consistently (L1).")
+                f"cannot be restored consistently.")
         # A CALCULATION'S ROOT IS WHERE ITS DESCRIPTION IS (`calcdirs.
         # described`): the description is what says the subdirectories are
         # its stages, so they share one history.
@@ -1240,7 +1239,7 @@ class Repo:
                 f"{self.path}: cannot init -- nested working dirs present: "
                 f"{working}, and nothing here says they belong to one "
                 f"calculation.  Its root should carry the description that "
-                f"says so ({_TASK_FILENAME}) (L1).")
+                f"says so ({_TASK_FILENAME}).")
         name = check_calculation_name(calculation or self.root.name)
         _run_git(["init", "-q"], cwd=self.path)
         _run_git(["config", "molbuilder.calculation", name], cwd=self.path)
@@ -1331,8 +1330,8 @@ class Repo:
                 f"state {state.short} carries no archive digest, so what it "
                 f"held cannot be read.  Every state carries one from the first "
                 f"onwards — including states that archived nothing — so this "
-                f"is damage rather than a state without big files "
-                f"(checkpointing.md I2b).")
+                f"is damage rather than a state without big files"
+                f".")
         adir = archive_dir(self.root, state.archive)
         man = adir / MANIFEST_NAME
         if not man.is_file():
@@ -1347,14 +1346,13 @@ class Repo:
                 f"archive byte-identically if those large files are "
                 f"unchanged, since an archive is named by its content;\n"
                 f"    molbuilder checkpoint restore <other-state> --force\n"
-                f"        leaves this state, accepting whatever is here.\n"
-                f"(checkpointing.md I2b, § 2.0.)")
+                f"        leaves this state, accepting whatever is here.\n")
         raw = man.read_bytes()
         if manifest_digest(raw) != state.archive:
             raise CheckpointError(
                 f"state {state.short}: its {MANIFEST_NAME} does not hash to "
-                f"the name it is stored under.  The record was modified "
-                f"(checkpointing.md I2b).")
+                f"the name it is stored under.  The record was modified"
+                f".")
         return parse_manifest(raw, str(man))
 
     # -- states ---------------------------------------------------- #
@@ -1693,7 +1691,7 @@ class Repo:
                 "a state needs a note saying what happened and what you were "
                 "about to do -- it is the only thing that answers the question "
                 "you bring to a history a month later, and it is not "
-                "defaulted (checkpointing.md L3).")
+                "defaulted.")
         # L3's other half, checked HERE because this is where the name is
         # written verbatim into a state.  `init` refuses a name needing repair,
         # but a folder somebody had already `git init`-ed never passes that
@@ -1818,7 +1816,7 @@ class Repo:
             raise CheckpointError(
                 f"state {target.short} carries no archive digest, so what it "
                 f"held cannot be checked.  Refusing to restore from a record "
-                f"that cannot be verified (I2b).")
+                f"that cannot be verified.")
         # A STATE'S ENTRIES ALONE -- an engine's scratch is in no state (S1).
         expected = verify_archive(self.root, target.archive)       # refusal 2
 
@@ -1944,7 +1942,7 @@ class Repo:
         if not (note or "").strip():
             raise CheckpointError(
                 "a tag needs a note saying why this state is worth returning "
-                "to (L3).")
+                "to.")
         sha = self.resolve(at) if at else self.resolve("HEAD")
         _run_git(["tag", "-a", name, sha, "-m", note], cwd=self.path)
         return Tag(name=name, state=sha, note=note)

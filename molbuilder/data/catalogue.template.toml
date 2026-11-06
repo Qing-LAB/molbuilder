@@ -28,7 +28,7 @@ kind = "engine"
 category = ["method", "accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 anchor = "PAO.BasisSize"
 engine_key = "PAO.BasisSize"
 manual = "SIESTA 5.4.2 §6.3.3 'Size of the basis set'"
@@ -55,7 +55,7 @@ kind = "engine"
 category = ["method", "accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 anchor = "PAO.EnergyShift"
 engine_key = "PAO.EnergyShift"
 manual = "SIESTA 5.4.2 §6.3.4 'Range of the orbitals'"
@@ -83,7 +83,7 @@ kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 anchor = "MeshCutoff"
 engine_key = "MeshCutoff"
 manual = "SIESTA 5.4.2 §6.10 'The real-space grid and the eggbox-effect'"
@@ -117,7 +117,7 @@ kind = "engine"
 category = ["method"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 anchor = "XC.functional"
 engine_key = "XC.functional"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
@@ -146,7 +146,7 @@ kind = "engine"
 category = ["method"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 anchor = "XC.authors"
 engine_key = "XC.authors"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
@@ -404,7 +404,7 @@ kind = "engine"
 category = ["system", "accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 anchor = "ElectronicTemperature"
 engine_key = "ElectronicTemperature"
 manual = "SIESTA 5.4.2 §6.12.3 'Occupation of electronic states and Fermi level'"
@@ -432,7 +432,7 @@ kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack"
 manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
@@ -458,7 +458,7 @@ Why one grid for all four: the device uses each lead's Hamiltonian as the bulk m
 Its third count, along the transport direction (z), is always 1 here and is shown locked: the device's NEGF cycle forces one k-point along z (ts_kpoint_scf.F90), and the seed's density is only a starting point for the device.
 Two more k-point settings sit on the stages' tabs: each lead's own count along z ("Lead k-points along z"), and the transmission's own grid in the electrode plane ("Transmission k-point grid (x, y)"), which is finer than this one -- three times it, unless you set it.
   To converge it: raise each count about 1.5 times, re-run the leads and the device, and see that the leads' Fermi level and the device's T(E) at the Fermi level do not move.
-  Example, a gold junction three gold atoms wide (about 8.7 A side to side): 4 4 1 here, 100 on each lead's tab, and the transmission's grid 12 12 1 -- three times this one along each direction it samples with more than one point.  One k-point along a direction the electrodes repeat in is warned (engines/transport.md 0.3b).
+  Example, a gold junction three gold atoms wide (about 8.7 A side to side): 4 4 1 here, 100 on each lead's tab, and the transmission's grid 12 12 1 -- three times this one along each direction it samples with more than one point.  One k-point along a direction the electrodes repeat in is warned.
 """
 
 [item.kgrid_displacement]
@@ -466,7 +466,7 @@ kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
-why_shared = "the electrode and the device must not be able to disagree about it (engines/transport.md § 2a.7)"
+why_shared = "the electrode and the device must not be able to disagree about it"
 citation = ["transport"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack  (displ column)"
@@ -484,7 +484,7 @@ Shifts the k-point grid away from Gamma (the point k = 0), one value per axis, i
 Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves the third on Gamma, which is what a slab wants when the third axis is vacuum.
 On a hexagonal cell -- an Au(111) surface -- keep it Gamma-centred: 0.5 does not respect the six-fold symmetry.  SIESTA folds only k with -k, so nothing is computed wrong; the k-points fall unevenly and the sampling converges more slowly.
 In a transport calculation, z (the transport direction) is sampled with no offset on every stage -- one k-point on the seed, the device and the transmission, and the leads' own count (electrode_kz) on the leads -- so the third component is fixed at 0 and shown locked.  TranSIESTA forces the device's offset along z to 0, and compares each lead's offset with the device's on all three axes, z included (ts_kpoint_scf.F90, ts_electrode.F90).
-In the electrode plane (x, y) the offset is one value for every stage, cited from the relaxation, because TranSIESTA refuses a lead whose offset differs from the device's (engines/transport.md 0.2).
+In the electrode plane (x, y) the offset is one value for every stage, cited from the relaxation, because TranSIESTA refuses a lead whose offset differs from the device's.
 """
 
 [item.relax_type]
@@ -627,7 +627,7 @@ tier = "advanced"
 help = """
 How far each free atom is nudged, in Bohr, along x, y and z both ways, to measure the force constants by central differences -- SIESTA's own default is 0.04 Bohr (about 0.02 Å).
 Smaller nudges follow the harmonic curvature more closely but push the force difference toward the SCF's noise floor (tighten DM.Tolerance if you go below 0.02 Bohr); larger ones pick up anharmonic terms.  The run nudges the FREE atoms only: the held atoms are written into Geometry.Constraints and sit outside the FC.First..FC.Last range, so holding atoms reduces the run in proportion (6 force evaluations per free atom, each a whole-system SCF).
-The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the run script after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run (engines/vibration.md 5.5).  With Compute IR on, every atom's Hirshfeld and Voronoi charge is recorded at every nudge, from which the spectrum viewer gives the free atoms' infrared (engines/vibration.md 5.10); with Compute Raman on, the Raman of the modes Raman for picks is derived from the run's optical calls at a laser you name (engines/vibration.md 5.11 § 10).
+The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the run script after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run.  With Compute IR on, every atom's Hirshfeld and Voronoi charge is recorded at every nudge, from which the spectrum viewer gives the free atoms' infrared; with Compute Raman on, the Raman of the modes Raman for picks is derived from the run's optical calls at a laser you name.
 """
 
 [item.wall_slack]
@@ -651,7 +651,7 @@ group = "staging"
 label = "Wall-time slack"
 tier = "advanced"
 help = """
-How long before the job's wall the engine stops itself, with its restart state saved whole (running-a-job.md 3.6). The launch tells the job the wall it was sent with; the run script hands the engine what is left and this slack, and the engine stops once less than the slack is left -- SIESTA told on its command line, a PySCF deck by the deadline it computes.
+How long before the job's wall the engine stops itself, with its restart state saved whole. The launch tells the job the wall it was sent with; the run script hands the engine what is left and this slack, and the engine stops once less than the slack is left -- SIESTA told on its command line, a PySCF deck by the deadline it computes.
 SIESTA checks the clock after every SCF iteration and every geometry step; a PySCF deck after every geometry step, and before every displaced SCF of a spectrum. Set it longer than the longest of those plus the write, or the kill is the scheduler's, mid-write. A step cut by the wall is then re-done from the state saved before it.
 """
 
@@ -702,7 +702,7 @@ Emit inline tuning hints and a Troubleshooting block in the generated script, in
 [item.write_forces]
 # role: every SIESTA run that runs an SCF writes each step's forces -- molbuilder reads them back (template.md 6.4); tbtrans writes none, so a transport calculation's transmission does not carry it (transport.md 6.1b).
 role = ["optimization", "vibration", "transport"]
-why_fixed = "every SIESTA run writes each step's forces and coordinates, because molbuilder reads them back -- the relaxation record, the trajectory and a vibration's finish (engines/template.md § 6.4)"
+why_fixed = "every SIESTA run writes each step's forces and coordinates, because molbuilder reads them back -- the relaxation record, the trajectory and a vibration's finish"
 stages = "scf"
 kind = "engine"
 category = ["procedure"]
@@ -725,7 +725,7 @@ It does NOT control the .FA file.  The last step's forces reach the .FA file wha
 [item.write_coor_step]
 # role: every SIESTA run that runs an SCF writes each step's coordinates -- molbuilder reads them back (template.md 6.4); tbtrans writes none, so a transport calculation's transmission does not carry it (transport.md 6.1b).
 role = ["optimization", "vibration", "transport"]
-why_fixed = "every SIESTA run writes each step's forces and coordinates, because molbuilder reads them back -- the relaxation record, the trajectory and a vibration's finish (engines/template.md § 6.4)"
+why_fixed = "every SIESTA run writes each step's forces and coordinates, because molbuilder reads them back -- the relaxation record, the trajectory and a vibration's finish"
 stages = "scf"
 kind = "engine"
 category = ["procedure"]
@@ -840,7 +840,7 @@ default = true
 group = "output"
 label = "Write the molwatch trajectory log"
 help = """
-Write <job>.molwatch.log alongside the run: per-step coordinates, energy and forces, in one additive file the Watch tab reads.  It exists so a trajectory can be followed while the engine is still running; with it off, nothing can be seen until the job finishes.
+Write <job>.molwatch.log alongside the run: per-step coordinates, energy and forces, in one additive file the Results tab reads.  It exists so a trajectory can be followed while the engine is still running; with it off, nothing can be seen until the job finishes.
 """
 [item.mpi_np]
 kind = "wrapper"
@@ -857,7 +857,7 @@ null_label = "(not stated: prep refuses)"
 optional = true
 help = """
 How many MPI processes SIESTA runs on: the N in ``mpirun -np N siesta`` the run script launches.
-Every run states it -- on its run card, or with ``prep --np N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in, not the machine's cores and not the scheduler.  Typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb.
+Every run states it -- on its run card, or with ``prep --np N`` -- and prep refuses a run that does not: nothing fills one in, not the machine's cores and not the scheduler.  Typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb.
 Another count is a prep again at that count, then a launch, which opens a run of its own: a run folder holds one start, and only ``jobset launch`` starts one.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: propor is a proportionality check in matel_table's MPI-deduplication of radial tables, which is hard to predict from the rank count. If you hit propor, run again with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
 """
 
@@ -881,7 +881,7 @@ group = "staging"
 label = "GPUs (G)"
 help = """
 How many GPUs a run -- or one benchmark trial -- asks the scheduler for: a count, and no card; which card a node carries is that machine's business.  A run that uses the GPU states it; there is no default, and prep refuses a GPU run without one.
-SIESTA: a run spreads its mpi_np ranks over its G GPUs, mpi_np / G to a device; an uneven split is said at prep, never refused.  Declared in the bench block it is an axis: gpu_count = [1, 2, 4] measures exactly those counts, every (mpi_np, G) pair a cell.  A benchmark on the GPU states its counts there, or prep refuses it: molbuilder proposes none (generator.md § 4.3a).
+SIESTA: a run spreads its mpi_np ranks over its G GPUs, mpi_np / G to a device; an uneven split is said at prep, never refused.  Declared in the bench block it is an axis: gpu_count = [1, 2, 4] measures exactly those counts, every (mpi_np, G) pair a cell.  A benchmark on the GPU states its counts there, or prep refuses it: molbuilder proposes none.
 PySCF: one process, on the GPUs the job is given.
 """
 
@@ -895,7 +895,7 @@ engine_key = "BlockSize"
 manual = "SIESTA 5.4.2 §6.27 'Parallel options'"
 type = "int"
 engine_default = { none = "the ranks and the orbitals", source = "SIESTA 5.4.2 initparallel.F:229,230: call set_blocksizedefault(Nodes, no_u, blocksizedefault); BlockSize = fdf_integer('blocksize', blocksizedefault)" }
-above = { value = 0, why = "it is a count of orbitals per rank; leave it unset for SIESTA's own automatic (tuning.md 2.11)" }
+above = { value = 0, why = "it is a count of orbitals per rank; leave it unset for SIESTA's own automatic" }
 group = "staging"
 label = "ScaLAPACK block size"
 null_label = "(auto)"
@@ -920,7 +920,7 @@ manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "bool"
 engine_default = { value = false, source = "SIESTA 5.4.2 diag_option.F90:119: ParallelOverK = fdf_get('Diag.ParallelOverK', .false.)" }
 group = "staging"
-label = "ParallelOverK"
+label = "Parallel over k-points"
 optional = true
 not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point grid and the solver before the deck is written"
 help = """
@@ -942,7 +942,7 @@ null_label = "(not stated: prep refuses)"
 optional = true
 help = """
 How many OpenMP threads each MPI process gets -- the cores per rank.
-Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in.  The deck records it (``# runtime.omp_threads_requested``) and the run script exports it as OMP_NUM_THREADS; another count is a prep again at that count.
+Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not: nothing fills one in.  The deck records it (``# runtime.omp_threads_requested``) and the run script exports it as OMP_NUM_THREADS; another count is a prep again at that count.
 The run script pins BLAS to 1 thread per rank so OMP x BLAS doesn't oversubscribe the node.
 """
 
@@ -996,8 +996,8 @@ label = "Use GPU (NVIDIA)"
 read_by = ["wrapper"]
 help = """
 OPTIONAL: move the heavy linear algebra onto an NVIDIA CUDA GPU.  It means something different for each engine.
-SIESTA: run the ELPA diagonalization on the GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE); this toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  It needs an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU.  This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  Where the target's record lists no such env, prep prepares the job as asked and says so, naming the command that installs it (gpu.md G6).  Affinity hint: GPU favors 1STAGE.
-PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``).  The script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0).  There is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label.  What gpu4pyscf does not do, for you to weigh: it has no stability analysis, so an unrestricted reference (UHF, UKS) keeps its first SCF solution unchecked on the GPU, where the CPU path may find a lower one; and its solvent model has not been compared with PySCF's here.  Said, never refused -- the choice is yours (engines/pyscf.md 7.3).
+SIESTA: run the ELPA diagonalization on the GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE); this toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  It needs an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU.  This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  Where the target's record lists no such env, prep prepares the job as asked and says so, naming the command that installs it.  Affinity hint: GPU favors 1STAGE.
+PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``).  The script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0).  There is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label.  What gpu4pyscf does not do, for you to weigh: it has no stability analysis, so an unrestricted reference (UHF, UKS) keeps its first SCF solution unchecked on the GPU, where the CPU path may find a lower one; and its solvent model has not been compared with PySCF's here.  Said, never refused -- the choice is yours.
 """
 
 [item.diag_algorithm]
@@ -1040,10 +1040,10 @@ required = ["optimization", "vibration"]
 help = """
 Path to a directory of .psml pseudopotential files, one per element.  A pseudopotential stands in for an atom's core electrons, and SIESTA needs one for every element in your structure.
 ONE SOURCE, ONE SET, NO CONFLICTS.  Every file in this directory should come from the SAME download -- same functional, same relativistic level, same standard/stringent tier -- and be named for its element (``Au.psml``), one file per element.  That is the name SIESTA opens, and it has no search path.  Mixing sets, or keeping variants side by side, is the one mistake here that cannot be caught downstream: the run converges and gives you a plausible number computed with something other than what you asked for.  prep copies this set into the calculation for you, so this directory is the only place the set is curated -- get it right once, here.
-Give a path INSIDE the projects tree, measured from the tree root: the convention is ``pseudopotential``.  Do NOT write the ``projects/`` prefix -- paths are measured from the tree root already.  An absolute path is accepted if it lies inside the tree; a ``./`` spelling is not, and pseudos already sitting beside the calculation are used without this field -- except by a transport calculation that cites a structure pair, which takes them from this directory alone (engines/transport.md 3.1).  Tip: where a file-picker sits beside this field, use it rather than typing the path by hand.
+Give a path INSIDE the projects tree, measured from the tree root: the convention is ``pseudopotential``.  Do NOT write the ``projects/`` prefix -- paths are measured from the tree root already.  An absolute path is accepted if it lies inside the tree; a ``./`` spelling is not, and pseudos already sitting beside the calculation are used without this field -- except by a transport calculation that cites a structure pair, which takes them from this directory alone.  Tip: where a file-picker sits beside this field, use it rather than typing the path by hand.
 SIESTA pseudos are NOT bundled with molbuilder -- you have to download them.  RECOMMENDED SOURCE: PseudoDojo (http://www.pseudo-dojo.org) -- well-tested, peer-reviewed, free.  WHICH SET TO PICK from PseudoDojo:
  * Format = PSML (NOT PSP8 -- that's for ABINIT only; PSML is SIESTA's native format).
- * Functional MUST match cfg.xc_authors -- pick the SAME family (PBE-SR for PBE / GGA, PBEsol-SR for PBEsol, PW for LDA, etc.).
+ * Functional MUST match the functional set here -- pick the SAME family (PBE-SR for PBE / GGA, PBEsol-SR for PBEsol, PW for LDA, etc.).
  * Relativistic level: SR (scalar-relativistic) for almost everything.  FR (fully-relativistic, with spin-orbit) only when you actually need spin-orbit coupling (heavy-element spectroscopy, topological insulators).  SR is the safe default.
  * NC vs PAW: PseudoDojo only ships NC (norm-conserving), which is right for SIESTA; PAW is for ABINIT / VASP / Quantum ESPRESSO.
  * Standard vs Stringent: 'standard' is production-quality and takes a smaller mesh cutoff (300-400 Ry); 'stringent' is for benchmarking / publication and needs MeshCutoff >= 500 Ry.
@@ -1185,7 +1185,7 @@ why = "PySCF has no analytic ROHF/ROKS Hessian, and the vibration deck takes the
 [[item.spin_treatment.not_offered]]
 on = "pyscf.vibration"
 values = ["unrestricted"]
-why = "the spectrum record carries one spin channel: a PySCF vibration's orbital block is written one channel wide and its reader refuses a second (engines/vibration.md § 3.1; plan § 5w K17)"
+why = "the spectrum record carries one spin channel: a PySCF vibration's orbital block is written one channel wide and its reader refuses a second"
 
 [item.unpaired_electrons]
 # 2S = N-up - N-down, and NOT the multiplicity 2S+1 -- or `free`, a moment that
@@ -1457,7 +1457,7 @@ unit = "Hartree"
 range = [1e-12, 0.0001]
 tightens = "down"
 group = "stage"
-label = "scf.conv_tol"
+label = "SCF energy tolerance"
 tier = "advanced"
 help = """
 The SCF stops once the total energy changes by less than this between cycles, in Hartree.
@@ -1477,7 +1477,7 @@ value = 0.0
 default = 0.0
 range = [0.0, 0.01]
 group = "stage"
-label = "scf.conv_tol_grad"
+label = "SCF gradient tolerance"
 tier = "advanced"
 not_set = "PySCF takes the square root of the energy tolerance, conv_tol (pyscf.scf.hf.kernel)"
 help = """
@@ -1516,7 +1516,7 @@ value = 100
 default = 100
 range = [10, 1000]
 group = "budget"
-label = "scf.max_cycle"
+label = "Max SCF cycles"
 tier = "advanced"
 help = """
 The most SCF cycles PySCF will run for one single-point before giving up.
@@ -1539,7 +1539,7 @@ choices = ["minao", "atom", "1e", "huckel"]
 value = "minao"
 default = "minao"
 group = "profile"
-label = "scf.init_guess"
+label = "Initial guess"
 help = """
 The starting density PySCF builds before the first SCF cycle.  It decides where the SCF starts, and on a hard system that can decide which solution it finds -- or whether it converges at all.
   minao   -- from atomic densities projected onto a minimal basis.
@@ -1707,7 +1707,7 @@ null_label = "(not stated: prep refuses)"
 optional = true
 help = """
 How many CPU threads PySCF uses -- its cores; it runs one process.
-Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in, not the machine's cores and not the scheduler's.  The deck runs on that many, run by hand too, and the run script exports it as OMP_NUM_THREADS.
+Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not: nothing fills one in, not the machine's cores and not the scheduler's.  The deck runs on that many, run by hand too, and the run script exports it as OMP_NUM_THREADS.
 The deck pins BLAS to 1 thread per worker (OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1) so PySCF threads * BLAS threads don't multiply.
 """
 
@@ -1828,7 +1828,7 @@ label = "Thermochemistry temperature"
 tier = "advanced"
 help = """
 The temperature the thermochemistry is evaluated at.  The standard value is 298.15 K.
-Both engines: on PySCF with nothing held it is the full rigid-rotor harmonic-oscillator (RRHO) answer of thermo.thermo(); with atoms held, and on every SIESTA run, it is the harmonic VIBRATIONAL part alone -- the zero-point energy, the thermal vibrational energy and entropy, and their free energy (engines/vibration.md 4.7 says what those are good for and where they stop).
+Both engines: on PySCF with nothing held it is the full rigid-rotor harmonic-oscillator (RRHO) answer of thermo.thermo(); with atoms held, and on every SIESTA run, it is the harmonic VIBRATIONAL part alone -- the zero-point energy, the thermal vibrational energy and entropy, and their free energy.
 It sets the headline for the thermochemistry block; the viewer's curves run over their own temperature grid, which passes through this temperature.
 It starts at 1 K: near absolute zero every sum is the zero-point energy, and the free molecule's translational entropy has no value at 0 K itself.
 """
@@ -1853,7 +1853,7 @@ label = "Thermochemistry pressure"
 tier = "advanced"
 help = """
 The pressure of the gas-phase translational term of the full rigid-rotor harmonic-oscillator (RRHO) thermochemistry -- PySCF with no atom held.  The standard value is 1 atm.
-Nothing else takes it: with atoms held the thermochemistry is the vibrational part alone, which no pressure enters, and the result records the pressure as not used (null).  A SIESTA vibration does not offer it for the same reason (engines/vibration.md 4.7).
+Nothing else takes it: with atoms held the thermochemistry is the vibrational part alone, which no pressure enters, and the result records the pressure as not used (null).  A SIESTA vibration does not offer it for the same reason.
 """
 
 
@@ -1873,7 +1873,7 @@ label = "Structure is already relaxed"
 tier = "basic"
 help = """
 Is this structure already relaxed at the level of theory about to run?  Your call, and explicit: nothing is assumed either way.
-UNTICKED (the default): the calculation relaxes the free atoms first, to the convergence settings in this form -- recommended tight, a largest remaining force of about 0.01 eV/A -- and then takes the second derivatives at the relaxed geometry.  On PySCF that is the script's first phase; on SIESTA it is the run's relax call, before its force-constant call, which starts from the relaxed geometry (engines/vibration.md 5.11).
+UNTICKED (the default): the calculation relaxes the free atoms first, to the convergence settings in this form -- recommended tight, a largest remaining force of about 0.01 eV/A -- and then takes the second derivatives at the relaxed geometry.  On PySCF that is the script's first phase; on SIESTA it is the run's relax call, before its force-constant call, which starts from the relaxed geometry.
 TICKED: nothing is relaxed.  If the structure is NOT relaxed at this level of theory the frequencies will be off -- an unrelaxed H2 bond gave 3358 cm-1 where the relaxed one gives 3022 (a tenth) -- so the tool measures the forces at the starting geometry and warns with the number when they exceed the force tolerance in this form.  It never refuses: the statement is yours to make.
 A structure exported from a finished relaxation at the same level of theory is the case this box is for; anything drawn, edited or relaxed elsewhere should be left unticked.
 """
@@ -1896,7 +1896,7 @@ help = """
 Compute how strongly each mode scatters laser light in a Raman experiment -- from how much the molecule's polarizability changes as the mode vibrates.  Off unless you turn it on, on both engines: it is the expensive result.
 
 PySCF: the polarizability at small pushes of every free atom along x, y and z -- about 6 x (free atoms) extra SCFs, each with a response calculation -- which gives every mode at once.  It also makes the infrared free, read at the same pushes.
-SIESTA: SIESTA's optical calculation at the equilibrium and at a small push forward and back along each mode Raman for picks -- 1 + 2 x (modes) single points; prep states the count before you launch.  The strength itself is worked out when you open the result, at the laser wavelength you type (engines/vibration.md 5.11 § 10).
+SIESTA: SIESTA's optical calculation at the equilibrium and at a small push forward and back along each mode Raman for picks -- 1 + 2 x (modes) single points; prep states the count before you launch.  The strength itself is worked out when you open the result, at the laser wavelength you type.
 """
 
 [item.raman_modes]
@@ -1984,7 +1984,7 @@ help = """
 Compute how strongly each mode absorbs infrared light (km/mol) -- from how much the dipole changes as the mode vibrates, which is what makes a band bright or dark.  On by default on both engines: it is the cheap result.
 
 PySCF: with no atom held, the dipole derivative from the response the Hessian already solves -- about +14% on the Hessian with Raman off, free with Raman on, which reads it at its own pushes.  With atoms held it is the dipole at small pushes of each free atom -- 6 extra whole-system SCFs per free atom with Raman off; the checks say how many before the run.  If the env lacks `pyscf.prop.infrared` (never released to PyPI -- `envs doctor` reports it and `envs repair --include-optional` installs it), the deck finite-differences the dipole instead: same intensities, 6N extra SCFs.  Which route ran is recorded in the results.  The analytic route reproduces Q-Chem's published NH3 intensities to 0.02 km/mol.
-SIESTA: every atom's Hirshfeld and Voronoi charge at every force-constant step (Charge.Hirshfeld, Charge.Voronoi) -- a grid integration per step, no extra SCF.  The infrared of the free atoms -- the ones the vibration moves -- is worked out from them when you open the result, for the light's direction and the charges you pick (engines/vibration.md 5.10).
+SIESTA: every atom's Hirshfeld and Voronoi charge at every force-constant step (Charge.Hirshfeld, Charge.Voronoi) -- a grid integration per step, no extra SCF.  The infrared of the free atoms -- the ones the vibration moves -- is worked out from them when you open the result, for the light's direction and the charges you pick.
 """
 
 [item.displacement_amplitude_ang]
@@ -2038,7 +2038,7 @@ Which vibrational modes get the displaced-geometry orbital-energy probe -- a loo
   all       -- every mode inside the frequency window (cost ~ 2 N modes).
   explicit  -- you list specific mode numbers.
 Each chosen mode costs two extra SCF calculations (one at +A, one at -A along the mode), so this is the most expensive part of the run and its cost scales linearly with how many modes you pick; the frequency window is the cost control.
-It is not tied to Raman, which has its own choice of modes ("Raman for").  The probe is PySCF's: on SIESTA the electrons' response along a mode is the projected density of states at displaced structures, planned (engines/vibration.md 5.10).
+It is not tied to Raman, which has its own choice of modes ("Raman for").  The probe is PySCF's: on SIESTA the electrons' response along a mode is the projected density of states at displaced structures, planned.
 """
 
 [item.es_explicit_indices]
@@ -2292,7 +2292,7 @@ default = "halt"
 choices = ["proceed", "continue", "halt"]
 result = { vibration = "modes" }
 group = "stage"
-label = "If max_steps runs out"
+label = "If the step cap runs out"
 tier = "advanced"
 help = """
 What this deck does when geomeTRIC reports its 5 criteria unmet at max_steps -- the deck asks geomeTRIC, it never assumes convergence:
@@ -2429,7 +2429,7 @@ LEFT BLANK, it is three times the shared grid's count along each direction that 
 
 TO CONVERGE IT: run the transmission at its start, then again with each count about 1.5 times larger (12 -> 18), and lay the two T(E) over each other.  It has settled when T(E) at the Fermi level moves by less than about 1 % and no peak moves; a peak that moves or vanishes when the grid changes comes from the sampling, not from the junction.  Then keep that one grid for every voltage, so the points of a bias sweep are compared on one sampling (Papior, SIESTA Launchpad 686603).  Once you set it, it is yours and stays; it is warned if it is coarser than the shared grid, and if it is above 1 while the shared grid is 1 1 1: the device is then saved for one k-point only, and tbtrans stops as it starts only when both its counts in the electrode plane are 3 or more -- with a 1 or a 2 along x or y it runs on with that one Hamiltonian at every k-point, and its T(E) is invalid.
 
-A finer grid here cannot rescue a shared grid that was too coarse: the device's Hamiltonian would then be wrong, and evaluating it at more k-points does not fix it.  Settle the shared grid first, then this one (engines/transport.md 0.2).
+A finer grid here cannot rescue a shared grid that was too coarse: the device's Hamiltonian would then be wrong, and evaluating it at more k-points does not fix it.  Settle the shared grid first, then this one.
 """
 
 [item.tbt_spin]
@@ -2453,7 +2453,7 @@ group = "profile"
 label = "Spin channels for T(E)"
 tier = "advanced"
 help = """
-Fixed at 0: tbtrans computes every spin channel -- both of a spin-polarised device, the one of any other.  1 or 2 would compute the up or the down channel alone (`TBT_UP` or `TBT_DN`), and a transmission point is done, and read by the record, with both: each channel's T(E), their total and the junction's current (engines/transport.md 6.1).
+Fixed at 0: tbtrans computes every spin channel -- both of a spin-polarised device, the one of any other.  1 or 2 would compute the up or the down channel alone (`TBT_UP` or `TBT_DN`), and a transmission point is done, and read by the record, with both: each channel's T(E), their total and the junction's current.
 """
 
 [item.tbt_elecs_eta_ev]
@@ -2707,7 +2707,7 @@ kind = "engine"
 category = ["system"]
 engines = ["siesta"]
 role = ["transport"]
-why_fixed = "the bias is the description's bias list -- each rung writes the point it runs, the device and the transmission alike (engines/transport.md § 2a.10); change the list instead"
+why_fixed = "the bias is the description's bias list -- each rung writes the point it runs, the device and the transmission alike; change the list instead"
 per_point_from = "bias"
 calculations = ["transport"]
 anchor = "TS.Voltage"
@@ -2724,7 +2724,7 @@ label = "Bias voltage"
 tier = "basic"
 help = """
 The voltage held across the junction at this rung's point -- the difference between the two leads' chemical potentials.  The device converges at it and the transmission reads the same point.
-It is the description's BIAS LIST, not a value a template or a stage states: each point of the list is one device run and one transmission, written at that point, and the list starts at 0 V (engines/transport.md 2a.10).  Change the list to change the bias.
+It is the description's BIAS LIST, not a value a template or a stage states: each point of the list is one device run and one transmission, written at that point, and the list starts at 0 V.  Change the list to change the bias.
 
 You give it in volts, because that is what a person means and measures.  The deck spells it `TS.Voltage <v> eV`, which is not a mismatch: fdf treats this as an energy, and the energy an electron gains across V volts is exactly V electron-volts, so the number is the same and only the unit word differs.  Do not "fix" either side to match the other.
 
@@ -2899,7 +2899,7 @@ group = "stage"
 label = "Bias window's energy spacing"
 tier = "advanced"
 help = """
-The spacing of the energy points on the line through the bias window, from -cutoff kT - |V|/2 to |V|/2 + cutoff kT (the cutoff is the item above).  0.01 eV is TranSIESTA's own default; the deck writes the whole block at every device point, so the choice is on the card and never the engine's silent one (transport.md 2a.11).
+The spacing of the energy points on the line through the bias window, from -cutoff kT - |V|/2 to |V|/2 + cutoff kT (the cutoff is the item above).  0.01 eV is TranSIESTA's own default; the deck writes the whole block at every device point, so the choice is on the card and never the engine's silent one.
 It is a lever on the leads' surface Green's-function files: the files hold one matrix per energy point, so a coarser spacing means fewer points and smaller files, and a less finely integrated non-equilibrium density.  Unread at 0 V.  Prep refuses a spacing that leaves fewer than two points in the narrowest window the description sweeps.
 """
 
@@ -2920,7 +2920,7 @@ label = "Keep the leads' Green's functions as files"
 tier = "advanced"
 help = """
 Whether TranSIESTA writes each lead's surface Green's function to a file before its first SCF iteration and reads it back at every iteration (true, TranSIESTA's own default), or keeps the self-energies in memory and recomputes them at every iteration (false).
-The files are large -- 16 bytes per lead orbital squared, per k-point, per energy point: 49 GiB a lead on the Au-BDT-Au junction -- and live in the run's tsgf/ folder, one voltage's pair at a time (transport.md 2a.11).  False costs the recursion's time at every iteration and keeps the folder empty.
+The files are large -- 16 bytes per lead orbital squared, per k-point, per energy point: 49 GiB a lead on the Au-BDT-Au junction -- and live in the run's tsgf/ folder, one voltage's pair at a time.  False costs the recursion's time at every iteration and keeps the folder empty.
 """
 
 [item.ts_scf_dq_converge]
@@ -3027,7 +3027,7 @@ type = "int"
 value = 100
 default = 100
 range = [50, 200]
-above = { value = 1, why = "a lead is periodic bulk metal along z, the transport direction: one k-point there gives a wrong lead Hamiltonian and Fermi level, and the device builds its self-energy from both -- a wrong transmission with no runtime error (engines/transport.md 0.2)" }
+above = { value = 1, why = "a lead is periodic bulk metal along z, the transport direction: one k-point there gives a wrong lead Hamiltonian and Fermi level, and the device builds its self-energy from both -- a wrong transmission with no runtime error" }
 group = "stage"
 label = "Lead k-points along z"
 tier = "basic"
@@ -3040,7 +3040,7 @@ The device does not repeat along z -- it is the one piece between the two leads 
 WHY IT MATTERS SO MUCH.  The device never samples z.  It attaches each lead through a self-energy -- a correction that stands in for the endless lead beyond the cell -- built from this run's Hamiltonian and overlap, at each energy and each k-point in the electrode plane, with the endless rest of the lead summed exactly (Lopez Sancho et al. 1985; m_ts_electrode.F90), and shifted by this run's Fermi level less the lead's chemical potential (H - (E_F - mu) S, m_ts_electrode.F90:1462) -- by its own Fermi level at 0 V.  So this count does not smooth the self-energy; it decides the Hamiltonian and the Fermi level the self-energy is made of.  With too few k-points, every self-energy, and so every T(E), is built on a slightly wrong lead, shifted in energy -- and no error message says so.
 
 In the electrode plane (x, y) the leads use the shared k-point grid on the shared panel ("k-point grid"), the same as the device, and they must: TranSIESTA stops on "found incompatible k-grids" otherwise (ts_electrode.F90).
-  Example: 100, the default -- the manual's ("If in doubt, use 100 k-points along the semi-infinite direction"), warned below 50 ("at least >50 should easily be reachable").  It is cheap: only the two lead runs grow with it.  To check it, run the leads again at a higher count and compare each lead's Fermi level with its own at the lower count -- the Results tab sets the two leads beside each other, which says nothing of the count (engines/transport.md 0.2).
+  Example: 100, the default -- the manual's ("If in doubt, use 100 k-points along the semi-infinite direction"), warned below 50 ("at least >50 should easily be reachable").  It is cheap: only the two lead runs grow with it.  To check it, run the leads again at a higher count and compare each lead's Fermi level with its own at the lower count -- the Results tab sets the two leads beside each other, which says nothing of the count.
 """
 
 # ---- The vibration's optical phase on SIESTA (engines/vibration.md 5.11 9) ----
@@ -3070,7 +3070,7 @@ group = "stage"
 label = "Light along"
 tier = "basic"
 help = """
-The direction of the light's electric field, ê, as three numbers in the structure's frame (x, y, z) -- SIESTA normalises them.  Every optical call of the run computes ε₂(ω) for a field along it, and the Raman strength derived from the run at a laser is R(ê) = |∂α_êê/∂Q|², the polarizability along this one direction -- complex at the laser, its imaginary part the absorption there (science/vibrational-optical-response.md 3).
+The direction of the light's electric field, ê, as three numbers in the structure's frame (x, y, z) -- SIESTA normalises them.  Every optical call of the run computes ε₂(ω) for a field along it, and the Raman strength derived from the run at a laser is R(ê) = |∂α_êê/∂Q|², the polarizability along this one direction -- complex at the laser, its imaginary part the absorption there.
 The default is z: for a junction, along the transport axis.  To compare two directions, run the calculation twice.
 """
 
@@ -3148,7 +3148,7 @@ label = "Optical spectrum cutoff"
 tier = "advanced"
 help = """
 A CUTOFF ON THE CALCULATION, in photon energy -- not a field and not an energy given to the molecule: the optical calculation applies no field at all.  What it computes, at the equilibrium and at each displaced geometry: SIESTA takes every pair of an occupied and an empty electronic state it has already solved, computes how strongly light polarized along the chosen direction couples the two (their dipole matrix element), and places that coupling at the energy between them -- together, the absorption spectrum ε₂(ω) (<label>.EPSIMG).  The polarizability at your laser, and so the Raman strength, is one integral over that spectrum (Kramers-Kronig), each pair weighing about one over its energy squared, so pairs far above the laser count little.
-This cutoff is the spectrum's top: a pair whose energy lies above it is skipped -- SIESTA computes no coupling for it -- and the spectrum is written up to it.  3 Ry (41 eV) keeps every valence excitation the basis describes: a DZP basis describes optical properties reasonably below about 10-20 eV, and its empty states far above are artefacts of the confined orbitals, not states a molecule has.  Measured on our runs against 10 Ry, the Raman derivative dα/dQ moved by 0.34 % or less (α itself by 1.1 % on CO2), while a molecule like CO2 needed half the couplings and each spectrum file is 30 % of the size (science/vibrational-optical-response.md § 3.1).
+This cutoff is the spectrum's top: a pair whose energy lies above it is skipped -- SIESTA computes no coupling for it -- and the spectrum is written up to it.  3 Ry (41 eV) keeps every valence excitation the basis describes: a DZP basis describes optical properties reasonably below about 10-20 eV, and its empty states far above are artefacts of the confined orbitals, not states a molecule has.  Measured on our runs against 10 Ry, the Raman derivative dα/dQ moved by 0.34 % or less (α itself by 1.1 % on CO2), while a molecule like CO2 needed half the couplings and each spectrum file is 30 % of the size.
 A DEVIATION from SIESTA's own default, 10 Ry (136 eV): that range reaches only the basis's artefacts.  Raise it for a basis with many more empty states, or to check a result against it.
 """
 

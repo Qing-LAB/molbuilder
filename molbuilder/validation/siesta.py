@@ -12,7 +12,7 @@ from typing import List, Optional
 import numpy as np
 
 from ..issues import Issue
-from ..runfiles import MAKOV_PAYNE_SCRIPT, PSEUDO_FILE, fixed_name
+from ..runfiles import MAKOV_PAYNE_SCRIPT
 from ..structure import Structure
 from .sidecar import _check_frozen_atoms_consumed
 
@@ -77,25 +77,17 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
         #     on a guess is the thing this whole path is being cleared of.
         return [Issue(
             "error" if dest_dir is not None else "warn",
-            (f"cfg.psml_lib is not set -- SIESTA needs a .psml file for "
-             f"every species, named for it "
-             f"({fixed_name(PSEUDO_FILE, species='H')}, "
-             f"{fixed_name(PSEUDO_FILE, species='Au1')}, ...), and "
-             f"will refuse to start without them."
-             + _the_convention_covers(lacking, cfg, dest_dir=dest_dir,
-                                      relativistic=relativistic)
-             + "  Download from "
-             "http://www.pseudo-dojo.org (PBE-SR, standard, PSML "
-             "format) and set cfg.psml_lib to that directory.  "
-             f"Convention: the bare name `{CONVENTIONAL_LIBRARY}`, which "
-             "means the projects tree this calculation lives in "
-             "(job-contracts.md 2.5a) -- do NOT write the projects/ "
-             "prefix.  Once set, this preflight will check "
-             "coverage + XC-family match against your structure's "
-             "species automatically."
-             + ("  Or put the .psml files in the calculation folder itself "
-                "-- pseudos already beside the calculation are used without "
-                "this field." if dest_dir is not None else "")),
+            (f"No pseudopotential folder is set: SIESTA needs a .psml file "
+             f"for each of {', '.join(lacking)}, and will not start without "
+             f"them."
+             + (_the_convention_covers(lacking, cfg, dest_dir=dest_dir,
+                                       relativistic=relativistic)
+                or (f"  Download them from http://www.pseudo-dojo.org (PBE-SR, "
+                    f"standard, PSML format) into the projects tree's "
+                    f"`{CONVENTIONAL_LIBRARY}` folder and set the field to "
+                    f"`{CONVENTIONAL_LIBRARY}`"
+                    + (", or put them in the calculation folder itself"
+                       if dest_dir is not None else "") + "."))),
             "config.psml_lib",
         )]
     if lacking:
@@ -125,7 +117,7 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                         else "warn")
             return [Issue(
                 severity,
-                f"cfg.psml_lib path does not exist or is not a directory: "
+                f"the pseudopotential folder does not exist or is not a directory: "
                 f"{psml_lib}.  SIESTA will not find any pseudopotentials.  "
                 + describe_psml_anchor(psml_lib, dest_dir=dest_dir)
                 + "  Create that directory, use an absolute path, or pick "
@@ -411,8 +403,8 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
              f"monopole correction does not apply (it corrects a molecule "
              f"only).  A point-charge correction in a cubic box is the wrong "
              f"formula for a slab or a defect in a crystal, so molbuilder "
-             f"writes none: the energy needs a defect-specific treatment "
-             f"(science/chemistry-correctness.md § 2b)."),
+             f"writes none: the energy needs a defect-specific treatment"
+             f"."),
             "config.net_charge.makov_payne",
         )]
     # Estimate the correction magnitude at a representative vacuum
@@ -536,8 +528,7 @@ def _bias_window_points(cfg) -> List[Issue]:
         f"negf_neq_spacing_ev = {delta:g} eV leaves the bias window at "
         f"{volts:g} V ({window:.4f} eV wide: |V| plus {cutoff:g} kT each "
         f"side at {kt / BOLTZMANN_EV_K:g} K) {n} point(s); the line needs "
-        f"two or more -- set the spacing below {window / 2:.4f} eV "
-        f"(engines/transport.md 2a.11)",
+        f"two or more -- set the spacing below {window / 2:.4f} eV",
         "config.negf_neq_spacing_ev")]
 
 

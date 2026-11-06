@@ -92,6 +92,7 @@ kept = ["01_freq/relax/H2_01_freq.fdf", "01_freq/relax/H2_01_freq.run.sh", "01_f
 name = "a SIESTA vibration's prep says the run's count and sizes beside its wall -- the relaxation's steps, the force constants' SCFs, the optical calls and each .EPSIMG's size -- and its one job walks the run on the stage's one wall (engines/vibration.md 5.11 9)"
 calculation = "vibration"
 stage = "freq"
+points_compared = "freq"
 template = { compute_raman = true }
 # The road's H2 holds atom 0, so one atom is free -- one mode, every mode
 # Raman for's default picks; a vibration's template

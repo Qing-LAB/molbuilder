@@ -133,15 +133,13 @@ def order_not_stated_said(name: str, why: str = "") -> str:
     """What a read says of a pair that states no atom order
     (`model/overview.md` § 2.2b, F4) -- one saved before 2026-10-14, or one
     whose map states ``not_stated`` and ``why``."""
-    known = (f"{name} states its atom order is not known -- {why}: read "
-             f"as listed by user index." if why else
-             f"{name} states no atom order (saved before 2026-10-14): read "
-             f"as listed by user index. A file saved then from a view of a "
-             f"sorted run may be in the engine's order.")
-    return (f"{known} If you know it is listed by user index -- the order "
-            f"you built it in -- saving it again on the Molbuilder tab "
-            f"records that, and a calculation described from it is then "
-            f"described again from the saved pair.")
+    known = (f"{name} states its atom order is not known -- {why}: read in "
+             f"the order listed." if why else
+             f"{name} does not say which order its atoms are in: read in the "
+             f"order listed, though it may be an engine's.")
+    return (f"{known} If that is the order you built it in, saving it again "
+            f"on the Molbuilder tab records it; a calculation described from "
+            f"it is then described again from the saved pair.")
 
 
 #: WHY A PAIR SAVED FROM A VIEW OF A RUN WHOSE ORDER NOTHING STATES IS
@@ -373,7 +371,7 @@ class StructureCodec:
         if in_user_order and ORDER_UNSTATED in opened:
             raise ValueError("a read in the user order cannot open a run whose "
                              "order nothing states: nothing can put it in "
-                             "the user order (I9)")
+                             "the user order")
         restored_said = None
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
