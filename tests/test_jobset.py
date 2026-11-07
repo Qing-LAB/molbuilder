@@ -1,449 +1,145 @@
-"""The ``jobset`` framework: model + validate + materialize
-+ plan (docs/execution/job-system.md), and the SIESTA
-stage-ladder producer."""
+"""The ``jobset`` model's own rules, and the road's two ends it stands on
+(docs/execution/job-system.md).
+
+WHAT PREP AND LAUNCH DO WITH A PLAN IS ASKED OF THE PLAN PREP WROTE, as rows
+(`tests/data/prep_protocol.toml`: a stage's number and the plan that keeps it,
+what a first prep says; `gpu_contract.toml`: a benchmark's plan;
+`the_catalogue.toml`: where its progress log lies).  What is here: the rules a
+``JobSet`` holds of itself -- in memory, which is correct input for its own
+class -- the one resolver of a typed stage, a folder that is no calculation,
+what a job declares surviving its plan, and the one run script on two machines.
+"""
 
 from __future__ import annotations
 
 import pytest
 
-from molbuilder.jobset.model import Job, JobSet, Resources
-from molbuilder.paths import trial_name
-from molbuilder.jobset.plan import render_plan
+from molbuilder.identity import StageRef, resolve_stage_ref
+from molbuilder.jobset.model import Job, JobSet, WarmFile
 from support.machines import SLURM, WORKSTATION
-
-
-@pytest.fixture(autouse=True)
-def tree(isolated_projects_root):
-    """Tests here hand a folder to a verb.  ``--bundle`` is fenced to the
-    projects tree (`job-contracts.md` § 2.5b), so a test builds inside one:
-    the conftest's per-test tree, a folder named ``projects`` like every tree
-    (§ 2.5).
-    """
-    return isolated_projects_root
-
-
-@pytest.fixture(autouse=True)
-def _sandbox(tmp_path_factory, monkeypatch):
-    """cwd isolation for EVERY test here (I6, 2026-08-13): the prep/submit
-    tests read this machine's config and record, which conftest isolates;
-    this keeps their working directory out of the checkout.
-    Tests that need their own cwd (monkeypatch.chdir) still win: their
-    monkeypatching applies after this fixture's."""
-    box = tmp_path_factory.mktemp("sandbox")
-    monkeypatch.chdir(box)
+from support.road import (describe_calculation, group_words, jobset,
+                          read_request, stage_file, write_request)
 
 
 # --------------------------------------------------------------------- #
-#  model (job-set@1)                                                     #
+#  The model (job-set@1)                                                 #
 # --------------------------------------------------------------------- #
 
 
-def test_validate_catches_empty_and_bad_kind():
-    """A job-set with no jobs, and one whose `kind` is not a known kind, are both
-    reported.
+@pytest.mark.parametrize("wrong, words", [
+    (JobSet("n", "siesta", "ladder", jobs=[]), ["empty"]),
+    (JobSet("n", "siesta", "bogus", jobs=[Job("a", "a.fdf")]), ["kind"]),
+    (JobSet("JOB", "siesta", "ladder",
+            jobs=[Job("s1", "JOB_01_s1.fdf",
+                      warm=[WarmFile("JOB.CG", requires_same="optimizer")])]),
+     ["optimizer", "traits"]),
+], ids=["no job", "a kind no ladder has", "a condition it could never meet"])
+def test_a_plan_no_producer_should_build_is_reported_by_name(wrong, words):
+    """What the engines cannot recover from is a producer's bug, and each is
+    reported naming it (`JobSet.validate`, which prep and the layout ask of the
+    plan they build; `job-system.md` § 3).
 
-    `kind` selects real behaviour downstream -- a ladder runs one stage at a time
-    while a sweep's points are independent (`job-system.md` § 3) -- so an
-    unknown value cannot be defaulted; there is nothing to default TO. And an
-    empty job-set would prep and submit successfully while doing nothing, which
-    reads to the person as a finished launch.
-    """
-    assert any("empty" in e for e in
-               JobSet("n", "siesta", "ladder", jobs=[]).validate())
-    assert any("kind" in e for e in
-               JobSet("n", "siesta", "bogus",
-                      jobs=[Job("a", "a.fdf")]).validate())
-
-
-# --------------------------------------------------------------------- #
-#  materialize engine                                                    #
-# --------------------------------------------------------------------- #
-
-
-def test_job_dir_name():
-    """A job's directory is `bench-<name>` -- one namer, no second speller.
-
-    Every consumer derives the directory through this function: `materialize`
-    creates it, `prep` renders into it, `submit` looks for the wrapper in it, and
-    `status` reads the `.out` from it. A hand-built spelling anywhere else is a
-    directory nothing else can find. `job-contracts.md` § 6.3 owns the
-    identifier conventions.
-    """
-    assert trial_name("stage1") == "bench-stage1"
+    An empty job-set would prep and submit successfully while doing nothing,
+    which reads to the person as a finished launch.  `kind` selects real
+    behaviour downstream -- a ladder runs one stage at a time while a sweep's
+    points are independent -- so an unknown value cannot be defaulted.  A
+    `requires_same` naming a trait the job does not declare can never be
+    satisfied, so the file would simply never be carried: "fail safe" here
+    means starting cold while everything reports success."""
+    (said,) = wrong.validate()
+    for word in words:
+        assert word in said, said
 
 
-# --------------------------------------------------------------------- #
-#  job_dir_names -- two kinds, two conventions (project-layout.md § 4.1) #
-# --------------------------------------------------------------------- #
-
-
-def _token_ladder(*scripts, optimizers=None):
-    """A ladder shaped like the one the described producer emits.
-
-    The warm declaration is part of that shape, not decoration: `prep` reads it
-    to decide what `--from` copies, so a fixture without one stands in for a
-    ladder no producer builds.  Mirrors the shipped rule -- the first stage is
-    ``restart: clean`` and declares nothing; every later one declares SIESTA's
-    group with ``.CG`` conditioned on the optimizer (`run-identity.md` § 4).
-
-    ``optimizers`` gives per-stage traits so a test can make two stages
-    disagree; by default they all match, which is the case that carries `.CG`.
-    """
-    from molbuilder.jobset.model import Job, JobSet, WarmFile
-    from molbuilder.warmfiles import warm_list
-    names = [s.split("_", 2)[2].rsplit(".", 1)[0] for s in scripts]
-    opt = dict(optimizers or {})
-    # DERIVED from the rules file, exactly as `siesta/stages.py`'s
-    # ``warm_for`` derives it, so a test asserting the copy
-    # behaviour tests the system's list rather than the fixture's own.
-    declared = [WarmFile(f"JOB{r.suffix}", requires_same=r.requires_same)
-                for r in warm_list("siesta", "optimization").rules if r.carry]
-    jobs = []
-    for i, (name, script) in enumerate(zip(names, scripts)):
-        jobs.append(Job(
-            name=name, script=script,
-            traits={"optimizer": opt.get(name, "CG")},
-            warm=([] if i == 0 else list(declared)),
-            # STATED, as a described ladder's run card states it -- a run
-            # script is not written for an unstated shape (2026-10-02).
-            resources=Resources(mpi_np=2, cpus_per_task=1),
-        ))
-    return JobSet(name="JOB", engine="siesta", kind="ladder", jobs=jobs)
-
-
-# --------------------------------------------------------------------- #
-#  plan engine                                                          #
-# --------------------------------------------------------------------- #
-
-
-def test_render_plan_sweep_says_independent():
-    """A sweep's plan tells the reader its jobs are INDEPENDENT.
-
-    The plan is what a person reads before launching, and the two kinds carry
-    opposite instructions: a ladder is ordered, a sweep is not (`job-system.md`
-    section 3). The wording matters because of the rule beside it -- a scheduler
-    is handed one job at a time, so the PERSON is the one sequencing; telling them
-    a sweep must be run in order would be a different, and wrong, instruction.
-    """
-    js = JobSet("sweep", "siesta", "sweep",
-                jobs=[Job("a", "a.fdf"), Job("b", "b.fdf")])
-    assert "independent" in render_plan(js)
-
-
-# --------------------------------------------------------------------- #
-#  prep engine (renders wrappers in root, links them into job dirs)     #
-# --------------------------------------------------------------------- #
-
-def _sweep() -> JobSet:
-    # a SHARED-script sweep: both points use the SAME job-gpu.fdf but differ
-    # in resources -- the case that broke the per-job-render model.
-    return JobSet(
-        name="sw", engine="siesta", kind="sweep",
-        jobs=[Job(name="G1N1C4", script="job-gpu.fdf",
-                  resources=Resources(mpi_np=1, cpus_per_task=4,
-                                      use_gpu=True, gres="gpu:1",
-                                      time="0-01:00:00", mem="8G")),
-              Job(name="G1N2C4", script="job-gpu.fdf",
-                  resources=Resources(mpi_np=2, cpus_per_task=4,
-                                      use_gpu=True, gres="gpu:1",
-                                      time="0-01:00:00", mem="8G"))])
-
-
-def _write_fdf(path):
-    # minimal .fdf so write_run_wrapper renders for real (bash -n validated).
-    # The clean restart group rides along: the submission
-    # door verifies a trial's cold start against its deck, and a real deck
-    # always carries the group written out (`siesta/input.py`, 2026-08-18).
-    path.write_text("SystemName test\nSystemLabel test\nNumberOfAtoms 2\n"
-                    "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
-
-
-def test_render_plan_surfaces_per_job_ranks_and_cores():
-    """The plan shows the per-job `-n` / `-c` / `--gres` variation, because for a
-    sweep that variation IS the experiment.
-
-    A benchmark sweep exists to compare resource settings (`job-system.md`
-    section 7). A plan printing one shared resource line -- or the first point's
-    -- shows a table where every row looks the same, and the trial the person is
-    about to launch is not the one they read.
-    """
-    # the plan MUST show the -n/-c variation -- that IS the sweep.
-    txt = render_plan(_sweep())
-    assert "n=1" in txt and "n=2" in txt
-    assert "c=4" in txt and "gpu:1" in txt
-
-
-# --------------------------------------------------------------------- #
-#  molbuilder jobset CLI (status / prep / submit over a bundle)         #
-# --------------------------------------------------------------------- #
-
-def _runner():
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner(), jobset_group
-
-
-def test_cli_errors_without_jobset_json(tree):
-    """A directory that is not a bundle exits non-zero and says `no job-set.json`.
-
-    Pointing `--bundle` at the wrong directory is the ordinary mistake. Exiting 0
-    with an empty plan would read as "this bundle has no jobs" -- a different and
-    much more alarming thing to be told about work you believe you prepared.
-    """
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["status", "--bundle", str(tree)])
-    assert r.exit_code != 0
-    assert "no job-set.json" in r.output
-
-
-def test_cli_prep_is_described_only(tree):
-    """`describe` is floor 2's only writer: a folder without the task.json +
-    template pair is refused with the next
-    step named; hand-built job-sets stay LAUNCHABLE (submit/status read
-    job-set.json directly) -- prep is what they lose."""
-    js = _sweep()
-    js.write(tree)
-    _write_fdf(tree / "job-gpu.fdf")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["prep", "bench", "--bundle", str(tree),
-                            "--no-sbatch"])
-    assert r.exit_code != 0
-    assert "not a described calculation" in r.output
-    assert "molbuilder describe" in r.output
-    # nothing lays out a hand-built set: prep is the described route's
-    # alone, and nothing was laid out here
-    assert not (tree / "bench-G1N1C4").exists()
-
-
-# --------------------------------------------------------------------- #
-#  StageRef — one resolver, six callers (plan § 8f, decision 28)         #
-# --------------------------------------------------------------------- #
-
-
-def test_stage_refs_reads_the_seq_off_the_deck_not_the_row():
-    """The after-produce half: seq comes from each deck's token, so a disabled
-    stage leaves 01/03 rather than being renumbered to the rows 0/1."""
-    from molbuilder.jobset.naming import stage_refs
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    refs = stage_refs(js)
-    assert (refs["coarse"].seq, refs["tight"].seq) == (1, 3)
-    assert refs["tight"].token == "03_tight"
-
-
-def test_stage_refs_carries_the_jobs_name_not_the_tokens():
-    """The CLI resolves to a name and then looks the JOB up by it, so a ref must
-    never hand back a string this JobSet does not have."""
-    from molbuilder.jobset.naming import stage_refs
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                jobs=[Job(name="tight", script="JOB_03_renamed.fdf")])
-    ref = stage_refs(js)["tight"]
-    assert (ref.seq, ref.name) == (3, "tight")
-
-
-def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
-        isolated_projects_root):
-    """The report tells a new attempt from one an earlier prep left behind.
-
-    GOAL: every `prep task` of the 2026-09-25 transport ladder said "(reused --
-    not launched yet)" of a directory it had just made -- `prep_calculation`
-    opens the attempt, and the CLI opened it again for its report and found it
-    unlaunched.  CONTRACT: `Attempt.fresh` (`jobset/materialize.py`) is False
-    only when an unlaunched attempt was REUSED rather than opened
-    (`project-layout.md` § 1.6).
-    """
-    tree = isolated_projects_root
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "h2.xyz").write_text(
-        "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
-    runner, grp = _runner()
-    from molbuilder.jobset._cli import describe_cmd
-    init = runner.invoke(describe_cmd, ["--structure", "P/structure/h2.xyz",
-                                        "--bundle", "P/optimization/h",
-                                        "--engine", "pyscf",
-                                        "--calculation", "optimization"])
-    assert init.exit_code == 0, init.output
-    prep = ["prep", "task", "--group", "1", "--bundle", "P/optimization/h",
-            "--no-sbatch", "--cpus-per-task", "1"]
-    first = runner.invoke(grp, prep)
-    assert first.exit_code == 0, first.output
-    assert "prepared coarse: " in first.output, first.output
-    assert "(reused" not in first.output, first.output
-
-
-# --------------------------------------------------------------------- #
-#  What a run continues from is decided by the PAIR (P6 unit 3)          #
-#                                                                        #
-#  `project-layout.md` § 2.3.4 states it as three rows, and only the     #
-#  third needs two stages:                                               #
-#    .XV  always | .DM  when the description says | .CG  ONLY if both    #
-#    stages use the same algorithm                                       #
-# --------------------------------------------------------------------- #
-
-def _shipped_ladder(coarse_restart=None):
-    """The ladder a user actually gets — coarse (CG), medium + tight (Broyden).
-
-    Built through the real producer rather than by hand, because the claim
-    under test is about the SHIPPED science: the tiers really do change
-    optimizer between rung one and rung two, which is what makes `.CG` a live
-    question rather than a hypothetical one.
-    """
-    # Built the way the LIVE path builds it (`prep._job_for`, u5): each
-    # stage resolved through the one seam, warm + traits from the
-    # engine's own declarations.
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.identity import stage_token
-    from molbuilder.resolve import effective_config
-    from molbuilder.jobset.ladder import engine_ladder
-    from molbuilder.siesta.stages import traits_for, warm_for
-    label = "bdt"
-    jobs = []
-    for i, st in enumerate(engine_ladder("siesta", "vib-quality"), start=1):
-        overrides = dict(getattr(st, "overrides", None) or {})
-        if coarse_restart is not None and i == 1:
-            overrides["restart"] = coarse_restart
-        eff = effective_config(SiestaConfig(system_label=label),
-                               overrides,
-                               where=f"stage {st.name!r}")
-        jobs.append(Job(name=st.name,
-                        script=f"{label}_{stage_token(i, st.name)}.fdf",
-                        resources=Resources(),
-                        warm=warm_for(label, eff, "optimization"),
-                        traits=traits_for(eff)))
-    js = JobSet(name=label, engine="siesta", kind="ladder", jobs=jobs)
+def test_what_a_job_declares_survives_its_plan(tmp_path, monkeypatch):
+    """`prep` writes the plan and `launch` reads it, from the persisted file
+    -- a declaration that does not round-trip is one the machine that runs the
+    job never sees.  Asked of the plan prep wrote for the ladder a person gets:
+    the tiers really do change optimizer between rung one and rung two, which
+    is what makes `.CG` a live question (`job-contracts.md` § 4.2a)."""
+    from molbuilder.persist import read_json
+    bundle = describe_calculation(tmp_path, monkeypatch,
+                                  stage_strategy="vib-quality")
+    r = jobset("prep", "task", *group_words(bundle, "coarse", "medium", "tight"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    plan = JobSet.of(bundle)
     # lowercase: the trait normalizes at its ONE producer so
     # "Broyden" vs "broyden" (one optimizer, two hands) compare equal
-    assert [j.traits["optimizer"] for j in js.jobs] == \
-        ["cg", "broyden", "broyden"], "the fixture's premise moved"
-    return js
-
-
-def test_the_declaration_is_now_the_only_rendering_of_the_rule():
-    """The warm declaration is the one rendering of the warm-start rule.
-    -- the plan's item 12c's *"two lists that agree today and
-    nothing keeps them agreeing"*, held in step by derivation.
-    """
-    js = _shipped_ladder()
-    assert all(j.warm for j in js.jobs[1:])      # the rule travels as `warm`
-
-
-def test_validate_refuses_a_condition_the_job_could_never_meet():
-    """A `requires_same` naming a trait the job does not declare can never be
-    satisfied, so the file would simply never be carried — the wrong kind of
-    silence, because "fail safe" here means starting cold while everything
-    reports success. The comparison stays fail-safe; the DECLARATION is a
-    producer bug and is refused by name."""
-    from molbuilder.jobset.model import Job, JobSet, WarmFile
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                jobs=[Job(name="s1", script="JOB_01_s1.fdf",
-                          warm=[WarmFile("JOB.CG", requires_same="optimizer")])])
-    errs = js.validate()
-    assert len(errs) == 1
-    assert "optimizer" in errs[0] and "traits" in errs[0]
-
-
-def test_warm_and_traits_survive_job_set_at_1():
-    """`prep` runs on the target, from the persisted bundle — a declaration
-    that does not round-trip is one the machine that runs the job never sees."""
-    from molbuilder.jobset.model import JobSet
-    js = _shipped_ladder()
-    back = JobSet.from_dict(js.to_dict())
-    for a, b in zip(js.jobs, back.jobs):
-        assert a.traits == b.traits
-        assert [(w.name, w.requires_same) for w in a.warm] == \
-               [(w.name, w.requires_same) for w in b.warm]
+    assert [j.traits["optimizer"] for j in plan.jobs] == [
+        "cg", "broyden", "broyden"]
+    assert [(w.name, w.requires_same) for w in plan.job("medium").warm] == [
+        ("H2.XV", None), ("H2.DM", None), ("H2.CG", "optimizer")]
     # ABSENT, not null, for an unconditional file (checkpointing.md S3).
-    xv = js.to_dict()["jobs"][1]["warm"][0]
-    assert xv == {"name": "bdt.XV"}
-
-
-def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
-    """Stage names are ``[A-Za-z0-9_]+``, so a stage may legitimately be
-    named ``3`` -- which is exactly why the bare-number spelling died
-    (user-settled 2026-08-21): ``3`` is ONLY ever the name, ``#3`` is ONLY
-    ever the assigned number, and the two can never collide because ``#``
-    cannot appear in a name."""
-    import pytest as _pt
-    from molbuilder.identity import StageRef, resolve_stage_ref
-    refs = [StageRef(1, "3"), StageRef(3, "tight")]
-    assert resolve_stage_ref(refs, "3").name == "3"      # the NAME, seq 1
-    assert resolve_stage_ref(refs, "#3").name == "tight"  # the NUMBER
-    assert resolve_stage_ref(refs, "#1").name == "3"
-    assert resolve_stage_ref(refs, "tight").seq == 3
-    with _pt.raises(ValueError, match="no stage named"):
-        resolve_stage_ref(refs, "03_tight")              # tokens retired
-
-
-def test_a_number_resolves_to_the_seq_and_never_to_the_row():
-    """R5's whole point, and the two differ the moment a stage is disabled:
-    the ladder is 01/03, so `#1` is coarse (row 1 would be tight) and `#3`
-    is tight (there is no row 3 at all)."""
-    from molbuilder.identity import StageRef, resolve_stage_ref
-    refs = [StageRef(1, "coarse"), StageRef(3, "tight")]
-    assert resolve_stage_ref(refs, "#1").name == "coarse"
-    assert resolve_stage_ref(refs, "#3").name == "tight"
-    assert resolve_stage_ref(refs, "tight").name == "tight"     # its identity
-    with pytest.raises(ValueError):
-        resolve_stage_ref(refs, "#2")           # the row of tight; not its seq
-
-
-def test_resolver_refuses_a_number_a_sweep_cannot_have():
-    """One resolver serves both kinds, so the refusal must stop offering
-    ordinals to a job-set that has none."""
-    from molbuilder.identity import StageRef, resolve_stage_ref
-    refs = [StageRef(None, "p1"), StageRef(None, "p2")]
-    assert resolve_stage_ref(refs, "p2").name == "p2"
-    with pytest.raises(ValueError) as e:
-        resolve_stage_ref(refs, "2")
-    assert "p1, p2" in str(e.value) and "number" not in str(e.value)
-
-
-def test_plan_prints_the_seq_not_the_row():
-    """The `#` column was `enumerate()` -- a POSITION where a reader reads the
-    ordinal, which is the number R5 forbids as an identifier."""
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    out = render_plan(js)
-    assert "seq" in out.splitlines()[3]
-    body = [l for l in out.splitlines() if "coarse" in l or "tight" in l]
-    assert body[0].split()[0] == "1"
-    assert body[1].split()[0] == "3"          # NOT "1", which the row would be
+    on_disk = read_json(JobSet.path_of(bundle))
+    assert on_disk["jobs"][1]["warm"][0] == {"name": "H2.XV"}
 
 
 # --------------------------------------------------------------------- #
-#  Where a stage's files live -- its token's folder                       #
+#  A folder that is no calculation                                       #
 # --------------------------------------------------------------------- #
 
 
-def test_each_stage_lays_out_in_the_folder_its_deck_token_names():
-    """`project-layout.md` § 1, § 4.2: a stage's folder is the token its deck
-    carries, read back off the deck -- never a position counted here, so a
-    ladder with a gap keeps it (``03_tight``, not ``02_tight``)."""
-    from molbuilder.jobset.naming import job_dir_names
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    assert job_dir_names(js) == {"coarse": "01_coarse", "tight": "03_tight"}
+@pytest.mark.parametrize("verb, said", [
+    (["status"], ["no job-set.json"]),
+    (["prep", "bench"], ["not a described calculation", "molbuilder describe"]),
+], ids=["status", "prep"])
+def test_a_folder_that_is_no_calculation_is_refused_saying_so(
+        isolated_projects_root, verb, said):
+    """Pointing `--bundle` at the wrong directory is the ordinary mistake.
+    Exiting 0 with an empty plan would read as "this bundle has no jobs" -- a
+    different and much more alarming thing to be told about work you believe
+    you prepared.  `describe` is floor 2's only writer, so prep names it as the
+    next step (`job-system.md` § 5.1), and lays nothing out."""
+    folder = isolated_projects_root / "P" / "not-a-calculation"
+    folder.mkdir(parents=True)
+    r = jobset(*verb, "--bundle", folder)
+    assert r.exit_code != 0, r.output
+    for words in said:
+        assert words in r.output, r.output
+    assert list(folder.iterdir()) == []
 
 
 # --------------------------------------------------------------------- #
-#  P6 unit 1 -- step ONE of the five, lifted out of the benchmark        #
+#  One resolver of a typed stage (`job-system.md` § 5.3)                 #
 # --------------------------------------------------------------------- #
 
+#: A ladder whose stage 2 was removed after its prep, a stage named ``3`` left
+#: in it: stage names are ``[A-Za-z0-9_]+``, so one may legitimately be named
+#: that -- which is exactly why the bare-number spelling died (user-settled
+#: 2026-08-21).
+_LADDER = [StageRef(1, "3"), StageRef(3, "tight")]
+_SWEEP = [StageRef(None, "p1"), StageRef(None, "p2")]
 
-def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
-    """§ 2.3.1a: *"stating it the other way round would make the general case
-    look like a special case of the special case."*
 
-    The module moved out of `bench/` on 2026-08-10. Its persisted artifact was
-    **already** registered under the `molbuilder/environment@N` name
-    (`job-contracts.md` § 6.1) — the schema saying it was never the
-    benchmark's to own. What is asserted is the NAME; the major moved to @2 on
-    2026-08-17 (N2) when the record gained the reachable domains, and pinning
-    the major here would make this test fail for a reason it is not about.
-    """
-    import importlib
-    from molbuilder.scheduler import SCHEMA
-    from molbuilder.persist import schema_name
-    assert schema_name(SCHEMA) == "molbuilder/environment"
-    assert importlib.util.find_spec("molbuilder.bench.environment") is None
+@pytest.mark.parametrize("refs, typed, seq, name", [
+    (_LADDER, "3", 1, "3"),            # ONLY ever the name ...
+    (_LADDER, "#3", 3, "tight"),       # ... `#3` ONLY ever the assigned number
+    (_LADDER, "#1", 1, "3"),
+    (_LADDER, "tight", 3, "tight"),
+    (_SWEEP, "p2", None, "p2"),        # one resolver serves both kinds
+])
+def test_a_stage_is_its_name_or_hash_its_number(refs, typed, seq, name):
+    """``#`` cannot appear in a name, so the two can never collide; and `#N` is
+    the number the stage's folder carries, never its row -- the two differ the
+    moment a stage is removed (`engines/stages.md` R5)."""
+    got = resolve_stage_ref(refs, typed)
+    assert (got.seq, got.name) == (seq, name)
+
+
+@pytest.mark.parametrize("refs, typed, says, lacks", [
+    (_LADDER, "03_tight", "no stage named", None),   # tokens retired
+    (_LADDER, "#2", "no stage numbered", None),      # the row of tight; not its seq
+    (_SWEEP, "2", "p1, p2", "number"),               # no ordinals to offer
+], ids=["a token", "a row", "a number a sweep cannot have"])
+def test_a_stage_nothing_holds_is_refused_naming_the_ones_there_are(
+        refs, typed, says, lacks):
+    """One resolver serves both kinds, so its refusal names what the set holds
+    and stops offering ordinals to a job-set that has none."""
+    with pytest.raises(ValueError) as got:
+        resolve_stage_ref(refs, typed)
+    assert says in str(got.value), got.value
+    assert lacks is None or lacks not in str(got.value), got.value
 
 
 # --------------------------------------------------------------------- #
@@ -473,8 +169,6 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
                                       environments_dir,
                                       named_environment_path,
                                       write_environment)
-    from support.road import (describe_calculation, jobset, read_request,
-                              write_request)
     enters = {"activation": "conda activate",
               "preamble": "source /x/conda.sh"}
     write_machine_record(scheduler=WORKSTATION, env_init=enters)
@@ -498,9 +192,7 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
         r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                    "--target", target)
         assert r.exit_code == 0, r.output
-    # THE STAGE'S FILES LIE IN ITS FOLDER (`project-layout.md` § 5.2).
-    ws, hpc = ws / "01_coarse", hpc / "01_coarse"
-    assert (hpc / "H2_01_coarse.sbatch").is_file(), "the cluster has no header"
+    assert stage_file(hpc, "coarse", ".sbatch"), "the cluster has no header"
 
     def _logic(text: str) -> str:
         """The script without its PROVENANCE timestamp.
@@ -516,48 +208,9 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
         return "\n".join(l for l in text.splitlines()
                           if not l.lstrip("# ").startswith("generated-at"))
 
-    name = "H2_01_coarse.run.sh"
-    a = _logic((ws / name).read_text())
-    b = _logic((hpc / name).read_text())
+    a = _logic(stage_file(ws, "coarse", ".run.sh").read_text())
+    b = _logic(stage_file(hpc, "coarse", ".run.sh").read_text())
     assert a == b, (
-        f"{name} differs between a workstation and a cluster -- the inner "
-        "wrapper is supposed to be the same file, so a laptop run is a "
+        "the run script differs between a workstation and a cluster -- the "
+        "inner wrapper is supposed to be the same file, so a laptop run is a "
         "rehearsal of the cluster run")
-
-
-def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
-        tmp_path, monkeypatch):
-    """One home for the live log, and the home is the run directory.
-
-    `project-layout.md` § 1.0: a run directory "holds everything it
-    produces".  The progress channel is a product -- the deck names it, the
-    engine writes it -- so two copies is one too many, and which copy a
-    reader lands on then depends on which directory they clicked.
-
-    MEASURED, 2026-09-19, on a finished Raman run: `prep` seeds the log
-    beside the deck it renders, which in the hierarchy is the stage
-    CONTAINER.  The run then wrote its own inside the attempt.  Result: a
-    971-byte stub with no `# concluded:` footer in `01_raman/`, and the real
-    1763-byte concluded log in `01_raman/run-0/` -- different inodes, one
-    name.  An unconcluded log is how every reader tells a run is still
-    going, so the stage directory reported a FINISHED calculation as
-    *Running*, permanently, and offered the stub to open.
-
-    Driven through `molbuilder describe` -> `prep task` (`support.road`).
-
-    MUTATION THIS MUST FAIL AGAINST: copy instead of move, or leave the seed
-    where it was rendered.
-    """
-    from support.road import describe_calculation, jobset
-    bundle = describe_calculation(tmp_path, monkeypatch)
-    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
-               "--target", "this", "--np", "2", "--cpus-per-task", "1")
-    assert r.exit_code == 0, r.output
-    log = "H2_01_coarse.molwatch.log"
-    attempt = bundle / "01_coarse" / "run-0"
-    assert (attempt / log).is_file(), (
-        f"the seeded progress log did not reach the run directory; "
-        f"{attempt} holds {sorted(p.name for p in attempt.iterdir())}")
-    assert not (bundle / "01_coarse" / log).exists(), (
-        "the seed is still in the stage container as well -- two homes for "
-        "one log is the state that reported a finished run as 'Running'")

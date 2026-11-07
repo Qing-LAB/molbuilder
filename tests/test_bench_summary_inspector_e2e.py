@@ -17,29 +17,22 @@ from __future__ import annotations
 import json
 import threading
 
-import numpy as np
 import pytest
-from molbuilder.calculation import open as open_calculation
 
 pytestmark = pytest.mark.e2e
 
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
-from molbuilder import describe as D                       # noqa: E402
 from molbuilder import diagnostics                         # noqa: E402
-from molbuilder.config.siesta import SiestaConfig          # noqa: E402
-from molbuilder.jobset.model import Resources              # noqa: E402
-from molbuilder.jobset.prep import prep_bench              # noqa: E402
+from molbuilder.jobset.model import JobSet                 # noqa: E402
 from molbuilder.scheduler import Topology                  # noqa: E402
-from molbuilder.jobset.ladder import engine_ladder  # noqa: E402
-from molbuilder.structure import Structure                 # noqa: E402
-from support.machines import WORKSTATION
-from support.road import read_request, write_request
+from support.road import (describe_calculation, jobset,    # noqa: E402
+                          one_rank, read_request, write_request)
 
 
 @pytest.fixture
-def sweep(isolated_projects_root, monkeypatch):
+def sweep(tmp_path, monkeypatch):
     """A prepared GPU sweep, nothing run — returns
     ``(job_set_path, first_trial_label, n_trials)``.
 
@@ -51,38 +44,19 @@ def sweep(isolated_projects_root, monkeypatch):
     (`task-setup.md` § 6.1).  THE MACHINE IS THIS ONE'S RECORD, one a100,
     where `jobset probe --write` puts it (`conftest.write_machine_record`);
     prep copies it into the calculation (`configuration.md` M-3)."""
-    from conftest import write_machine_record, write_pseudos
-    tree = isolated_projects_root
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    calc = tree / "calc"
-    D.write_description(
-        D.build_description(struct,
-                            SiestaConfig(system_label="JOB"),
-                            engine_ladder("siesta", "publishable"),
-                            engine="siesta",
-                            calculation="optimization",
-                            name="JOB",
-                            source=str(tree / "h2.xyz")),
-        calc)
-    write_pseudos(calc, ["H"])
+    from conftest import write_machine_record
+    write_machine_record(
+        topology=Topology(sockets=1, cores_per_socket=4, gpus_per_node=1,
+                          gpu_type="a100"))
+    calc = describe_calculation(tmp_path, monkeypatch, name="JOB")
+    one_rank(calc, use_gpu=True, diag_algorithm="ELPA-1STAGE", gpu_count=1)
     req = read_request(calc)
-    req["execution"] = {"use_gpu": True, "diag_algorithm": "ELPA-1STAGE",
-                        "gpu_count": 1}
     req["bench"] = {"mpi_np": [1, 2, 4], "omp_threads": [1, 2],
                     "gpu_count": [1]}
     write_request(calc, req)
-    write_machine_record(
-        scheduler=WORKSTATION,
-        topology=Topology(sockets=1, cores_per_socket=4, gpus_per_node=1,
-                          gpu_type="a100"))
-
-    prep_bench(open_calculation(calc), "coarse",
-               allocation=Resources(mpi_np=8, cpus_per_task=8),
-               emit_sbatch=False)
-    from molbuilder.jobset.model import JobSet
+    r = jobset("prep", "bench", "coarse", "--bundle", calc, "--target", "this",
+               "--np", "8", "--cpus-per-task", "8", "--no-sbatch")
+    assert r.exit_code == 0, r.output
     bench = calc / "01_coarse" / "bench"
     js = JobSet.of(bench).to_dict()
     winner = js["jobs"][0]["name"]
@@ -91,7 +65,8 @@ def sweep(isolated_projects_root, monkeypatch):
     caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
                                     conda_envs=frozenset())
     monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tree.resolve(), "projects"),))
+                        lambda self: (((tmp_path / "projects").resolve(),
+                                       "projects"),))
     diagnostics.set_capabilities(caps)
     return bench / "job-set.json", winner, len(js["jobs"])
 

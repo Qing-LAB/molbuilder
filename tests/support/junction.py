@@ -19,17 +19,14 @@ write-then-read path instead of trusting a snapshot of one.
 
 Used by ``tests/test_script_emit.py``.
 
-Below it, THE ROAD TESTS' JUNCTION -- a chain sandwich with its leads labelled,
-its layers' positions here (``tests/test_transport_compose.py``,
-``tests/test_transport_task.py``).
+Below it, the layers' positions of a chain sandwich
+(``tests/test_transport_compose.py``), and the junctions a real relaxation of
+`support.real_runs` starts from.
 """
 from __future__ import annotations
 
 import numpy as np
 from molbuilder.structure import Structure
-from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
-                                         REGION_LEFT_ELECTRODE,
-                                         REGION_RIGHT_ELECTRODE)
 
 #: Two gold electrodes along z with a benzenedithiol bridge between them.
 #: Small enough to read, shaped like the real thing: the OUTER gold layers are
@@ -107,68 +104,50 @@ def frozen() -> list:
     return sorted(regions()["frozen_atoms"])
 
 
-# ---- the road tests' junction --------------------------------------- #
+def au_bdt_au() -> dict:
+    """The committed Au-BDT-Au pair (`tests/data/au_bdt_au.README.md`) as a
+    calculation relaxes it: its labels, its leads held, as a lead must be
+    (`engines/transport.md` § 4), in the cell a transport calculation runs it
+    in, which the junction states and the calculation never derives (§ 2a.9):
+    the gold chain a wire, isolated across in an 8 A box; along transport the
+    atoms' length and one Au-Au spacing of room, so each lead continues into
+    the image."""
+    from pathlib import Path
+
+    from molbuilder.workingcopy_structure import StructureCodec
+    s = StructureCodec().load(Path(__file__).parent.parent / "data"
+                              / "au_bdt_au.xyz")
+    z = s.positions[:, 2]
+    return {"elements": list(s.elements),
+            "positions": s.positions.tolist(),
+            "regions": {**s.regions,
+                        "frozen_atoms": (s.regions["L-electrode"]
+                                         + s.regions["R-electrode"])},
+            "cell": [8.0, 8.0, float(z.max() - z.min()) + abs(z[1] - z[0])],
+            "axis_kind": ["isolated", "isolated", "transport"]}
+
+
+def uneven_chain() -> dict:
+    """Hydrogen on a square lattice, stacked along transport at the spacing
+    it has across, so its leads continue through the side boundaries as they
+    must (`cell.transverse_vacuum`), a buffer atom past its left lead, its
+    leads of eight and nine atoms and held: what a symmetric junction cannot
+    tell, in the seconds hydrogen takes -- a count hardcoded for both leads, a
+    buffer's anchors, the k-points across."""
+    n = 22
+    regions = {"buffer": [0], "L-electrode": list(range(1, 9)),
+               "bridge": list(range(9, 13)), "R-electrode": list(range(13, n))}
+    regions["frozen_atoms"] = regions["L-electrode"] + regions["R-electrode"]
+    return {"elements": ["H"] * n,
+            "positions": [[1.0, 1.0, 2.0 * i] for i in range(n)],
+            "regions": regions, "cell": [2.0, 2.0, 2.0 * n],
+            "axis_kind": ["periodic", "periodic", "transport"]}
+
+
+# ---- a chain sandwich's layers --------------------------------------- #
 
 #: Six 2.5 Å gold layers a side (12.5 Å span -- over the wizard's 12 Å lead
 #: floor), a four-atom bridge between.
 _LAYERS_L = [0.0, 2.5, 5.0, 7.5, 10.0, 12.5]
 _BRIDGE = [("S", 15.0), ("C", 16.4), ("C", 17.8), ("S", 19.2)]
 _LAYERS_R = [22.0, 24.5, 27.0, 29.5, 32.0, 34.5]
-
-#: The fixture's leads are a CHAIN, one gold atom per layer, so they are
-#: ISOLATED across the transport axis in the 8 Å box they sit in -- what the
-#: relaxation deck records and `compose` carries (`engines/transport.md`
-#: § 6.1c).  One layer spacing is the room the transport boundary leaves.
-_ACROSS = ("isolated", "isolated")
-_SPACING = _LAYERS_L[1] - _LAYERS_L[0]
-
-
-def _junction_struct(*, order="canonical", buffers=False, across=_ACROSS,
-                     width=8.0, room=None):
-    """The BDT-ish fixture sandwich; ``order="scrambled"`` writes the
-    same geometry with the bridge FIRST and the leads swapped after it
-    — exactly the order the emitter's preflight refuses.
-
-    *across* and *width* are the transverse axes' kinds and length: the
-    chain in an 8 Å box is a wire, isolated across; ``across=("periodic",
-    "periodic"), width=_SPACING`` is the same chain as a lattice it tiles --
-    the reading a relaxation deck from before the placement record gets
-    (`compose.junction_axis_kind`).  *room* is what the transport boundary
-    leaves, one layer spacing unless a test opens it."""
-    rows = []       # (element, z, label)
-    for z in _LAYERS_L:
-        rows.append(("Au", z, REGION_LEFT_ELECTRODE))
-    for el, z in _BRIDGE:
-        rows.append((el, z, REGION_BRIDGE))
-    for z in _LAYERS_R:
-        rows.append(("Au", z, REGION_RIGHT_ELECTRODE))
-    if buffers:
-        for z in (-5.0, -2.5, 37.0, 39.5):
-            rows.append(("Au", z, REGION_BUFFER))
-    if order == "scrambled":
-        rows = ([r for r in rows if r[2] == REGION_BRIDGE]
-                + [r for r in rows if r[2] == REGION_RIGHT_ELECTRODE]
-                + [r for r in rows if r[2] == REGION_LEFT_ELECTRODE]
-                + [r for r in rows if r[2] == REGION_BUFFER])
-    elements = [r[0] for r in rows]
-    positions = np.array([[1.0, 1.0, r[1]] for r in rows])
-    regions: dict = {}
-    for i, r in enumerate(rows):
-        regions.setdefault(r[2], []).append(i)
-    frozen = [i for i, r in enumerate(rows)
-              if r[2] in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)]
-    # THE CELL MUST CONTAIN THE ATOMS (the buffer padding sits at
-    # z = -5 .. 39.5), so it is sized from the geometry.
-    #
-    # AND IT IS THE STRUCTURE A TRANSPORT RUN CAN USE (M5 step 2, § 6.1c).
-    # The leads continue through the transport boundary into the image, so
-    # the room there is ONE of the lead's layer spacings.
-    # And the leads are a CHAIN, one gold atom per layer, in an 8 A box: a
-    # wire, isolated across transport, which is what it states -- periodic
-    # there would say the chain tiles a plane it does not.
-    zs = positions[:, 2]
-    c = float(zs.max() - zs.min()) + (_SPACING if room is None else room)
-    return Structure(elements=elements, positions=positions,
-                     regions=regions, frozen_atoms=frozen,
-                     cell=np.diag([width, width, c]),
-                     axis_kind=(*across, "transport"))

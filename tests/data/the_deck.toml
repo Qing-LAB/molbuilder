@@ -415,3 +415,131 @@ deck = ["\nJOB = \"H2\""]
 name = "a PySCF deck saves the input geometry right after building the molecule, before relaxing"
 engine = "pyscf"
 deck_order = ["mol = gto.M(", "\n_save_structure(mol, _mb_outfile(JOB + '_initial.xyz'", "= _mb_relax("]
+
+# ===================================================================== #
+#  A PySCF VIBRATION                                                     #
+# ===================================================================== #
+
+# THE KIND'S SCIENCE REACHES PREP.  Until 2026-08-21 the deck's own `validate`
+# call skipped the spectra science: its dispatch keyed on the config's type,
+# and the deck's config view matched no validator, so a green end-to-end run
+# hid a gate that never ran (`engines/vibration.md` I11).  A warning is advice:
+# the deck is written as asked.  With the orbital probe asked, the displacement
+# enters a run, so it is advised on...
+[[case]]
+name = "a PySCF vibration's displacement outside the accepted window is written as asked, with the kind's advice, when the orbital probe enters it"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { displacement_amplitude_ang = 0.5, es_mode_selection = "all" }
+said = ["0.02-0.20"]
+deck_says = { DISPLACEMENT_AMPLITUDE_ANG = 0.5 }
+
+# ...and under `skip` it enters nothing: a person is told so, never told to
+# change a greyed-out field (`engines/template.md` § 5).
+[[case]]
+name = "...and under `skip`, where it enters nothing, is said to have no effect, with no advice on its size"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { displacement_amplitude_ang = 0.5 }
+said = ["has no effect here"]
+said_lacks = ["0.02-0.20"]
+
+[[case]]
+name = "a PySCF vibration's probe set to listed modes and listing none is said at prep: no per-mode data will come"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { es_mode_selection = "explicit", es_explicit_indices = "" }
+said = ["[config.es_explicit_indices]", "no mode indices were entered"]
+
+# A duplicated resolution-and-emission pair shipped 2026-08-21 and made every
+# ECP deck a SyntaxError (`keyword argument repeated`) -- which only the
+# compiler sees, and prep's own deck check asks the compiler
+# (`pyscf/layout.py`, `check_rules`).
+[[case]]
+name = "a gold dimer's ECP vibration deck names its core potential once, in a deck that compiles"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+structure = { elements = ["Au", "Au"], positions = [[5.0, 5.0, 5.0], [5.0, 5.0, 7.47]], cell = [10.0, 10.0, 10.0] }
+template = { ecp = "lanl2dz", ecp_atoms = ["Au"] }
+deck = ["{'Au': 'lanl2dz'},"]
+deck_once = ["ecp ="]
+
+# Raman's displaced SCFs ask for a CPU pick by a run-time flag on a DFT deck;
+# an HF deck imports no `dft`, and that it reads none is the namespace test's
+# (`tests/test_emitted_program_namespace.py`).
+[[case]]
+name = "a DFT Raman deck picks stock PySCF's module when a displaced SCF is forced onto the CPU"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { compute_raman = true }
+deck = ["dft if force_cpu else"]
+
+# WHERE ONE ENGINE HAS NOTHING TO DO WITH A SHARED SETTING'S VALUE, IT IS SAID,
+# NOT HIDDEN (`engines/template.md` § 6.2a): the sweep gives every mode.
+[[case]]
+name = "a PySCF Raman deck says that the range asked narrows nothing, and names the range"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { compute_raman = true, raman_modes = "range", raman_freq_min_cm1 = 200.0 }
+deck = ["narrows nothing here", "the polarizability sweep gives them all at once"]
+said = ["the frequency range narrows nothing here"]
+
+# FROZEN MEANS FROZEN THROUGH EVERY PHASE (the user's ruling, 2026-08-21;
+# `engines/vibration.md` I6): the relaxation before the Hessian takes the held
+# set as geomeTRIC's $freeze file, the optimization deck's own mechanism, and
+# hands it over -- its indices 1-based, the road's held atom 0 its atom 1.
+# Before this the relaxation silently moved them (E-V2e: no constraints reached
+# geomeTRIC).  And it is said out loud, by prep and in the Methods paragraph.
+[[case]]
+name = "a PySCF vibration's held atoms stay held through the relaxation, and prep and the Methods paragraph say what that means"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+deck = ['.write("$freeze', '.write("xyz 1', "constraints=str(", "static field of the fixed", "partial Hessian"]
+said = ["atom index 0 (H)", "taken over the free atoms only"]
+said_once = ["holds them fixed"]
+
+[[case]]
+name = "...and one holding none carries none of it"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+structure = { elements = ["H", "H"], positions = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]], cell = [10.0, 10.0, 10.0] }
+deck_lacks = ["$freeze", "constraints=", "static field of the fixed", "partial Hessian"]
+said_lacks = ["holds them fixed"]
+
+# EACH FACT EARNS ONE FINDING (the dedup ruling, 2026-08-21): the parity of the
+# electronic state is the state's own family, asked once for every kind; the
+# grid's verdict the kind's, the engine's copy deferring on a vibration deck.
+# A PySCF vibration offers `restricted` alone (`engines/template.md` § 6.3a), so
+# its mismatch is a closed shell on an odd count: a methyl's nine electrons.
+[[case]]
+name = "a closed shell on an odd count is one finding on a PySCF vibration"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+structure = { elements = ["C", "H", "H", "H"], positions = [[5.0, 5.0, 5.0], [6.08, 5.0, 5.0], [4.46, 5.935, 5.0], [4.46, 4.065, 5.0]], cell = [10.0, 10.0, 10.0] }
+template = { spin_treatment = "restricted", unpaired_electrons = 0 }
+said_once = ["The electron count and the unpaired count disagree"]
+
+[[case]]
+name = "...an odd count on an even number of electrons, one on an optimization"
+engine = "pyscf"
+stage_strategy = ""
+template = { spin_treatment = "unrestricted", unpaired_electrons = 1 }
+said_once = ["The electron count and the unpaired count disagree"]
+
+[[case]]
+name = "...and a hybrid's grid below its minimum, one on a vibration"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { functional = "b3lyp", grid_level = 1 }
+said_once = ["warn [config.grid_level]"]
+said = ["for a hybrid functional"]

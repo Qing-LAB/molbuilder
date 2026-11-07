@@ -1159,32 +1159,12 @@ class TestTheFolderDoor:
 
     @pytest.fixture
     def described(self, tmp_path, monkeypatch):
-        """A described SIESTA calculation, through the product's own doors."""
-        from conftest import write_pseudos
-        from molbuilder import describe as D
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.projects import PROJECTS_ROOT_ENV
-        from molbuilder.jobset.ladder import engine_ladder
-        from molbuilder.structure import Structure
-        import numpy as np
-
-        root = tmp_path / "projects"
-        root.mkdir()
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
-        st = Structure(elements=["H", "H"],
-                       positions=np.array([[0, 0, 0], [0, 0, 0.74]], float))
-        src = root / "h2.xyz"
-        src.write_text("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
-        dest = root / "proj" / "optimization" / "run"
-        D.write_description(D.build_description(
-            st, SiestaConfig(system_label="JOB", mesh_cutoff=250.0),
-            engine_ladder("siesta", "publishable"),
-            engine="siesta",
-            calculation="optimization", name="JOB",
-            source=str(src)), dest)
-        write_pseudos(dest, ["H"])
+        """A described SIESTA calculation, as `molbuilder describe` leaves
+        one (`support.road`), and the page's client."""
         from molbuilder.web.app import create_app
-        return dest, create_app(config={}).test_client()
+        from support.road import describe_calculation
+        return (describe_calculation(tmp_path, monkeypatch),
+                create_app(config={}).test_client())
 
 
     def test_a_description_its_reader_refuses_is_said_on_the_page(self,

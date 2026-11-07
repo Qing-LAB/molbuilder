@@ -1447,7 +1447,7 @@ repeated.
    ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2, § 2.6).
    *Test:* the SIESTA run script is held by the road — the catalogue rows
    (`tests/data/the_catalogue.toml`) launch it and need the run's files where
-   launch ran it; the PySCF run script is rendered and its text holds no `cd`
+   launch ran it; the PySCF run script prep writes holds no `cd`
    (`tests/test_warm_file_inventory.py`).
 6b. **Every directory made below the calculation root carries a
    `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by the

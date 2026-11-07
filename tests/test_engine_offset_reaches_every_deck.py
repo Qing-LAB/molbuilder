@@ -1,8 +1,8 @@
 """Every engine is handed the design coordinates plus the engine offset, and
 every deck says so -- `model/structure-periodicity.md` § 6.0.
 
-Through the road: a description (the door `molbuilder describe` and the hand-over use),
-then `jobset prep task`, then the deck on disk.  Per engine:
+Through the road: `molbuilder describe` of the structure's pair, then `jobset
+prep task`, then the deck on disk.  Per engine:
 
 * the invariant is coordinates + offset: the deck writes the design
   coordinates plus ``cell.engine_offset`` of the design structure -- one rigid
@@ -13,19 +13,15 @@ then `jobset prep task`, then the deck on disk.  Per engine:
 """
 from __future__ import annotations
 
-from support.road import group_words, read_request, write_request
+from support.road import stage_file
 
 import ast
-import json
 import re
 
 import numpy as np
 import pytest
-from click.testing import CliRunner
 
 from molbuilder import cell as cellmod
-from molbuilder import describe as D
-from molbuilder.jobset._cli import jobset_group
 from molbuilder.deck_record import extract_engine_offset
 from molbuilder.structure import Structure
 
@@ -59,77 +55,12 @@ def _water():
                      vacuum=(5.0, 5.0, 5.0))
 
 
-def _prep(root, struct, cfg, stages, engine, *, stage=None,
-          calculation="optimization", name="JOB", before_prep=None,
-          refused=False):
-    """Describe, then `jobset prep task` one rung (the first unless ``stage``
-    names another); the deck's text.  ``root`` is the per-test projects tree
-    (`isolated_projects_root`): `prep` reads a calculation only from inside
-    the tree.  ``before_prep(dest)`` puts on disk what an earlier rung left --
-    a finished attempt -- before the prep that reads it.  ``refused`` expects
-    prep to refuse, and returns what it said in place of the deck."""
-    # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
-    # live in the sidecar, and a bare `.xyz` would hand prep a molecule in the
-    # default box -- a different structure from the one described.
-    from molbuilder.workingcopy_structure import StructureCodec
-    StructureCodec().write(struct, root / "in.xyz")
-    # ONE CALCULATION PER FOLDER: each call describes a new one, so each has
-    # a folder of its own -- a prepared stage is not prepared again
-    # (`job-system.md` § 5.0).
-    dest, n = root / "t" / "calc", 1
-    while dest.exists():
-        n += 1
-        dest = root / "t" / f"calc{n}"
-    D.write_description(
-        D.build_description(struct, cfg, stages, engine=engine,
-                            name=name,
-                            calculation=calculation,
-                            source=str(root / "in.xyz")),
-        dest, struct=struct)       # as `molbuilder describe` does: the pair travels
-    if engine == "siesta":
-        from conftest import write_pseudos
-        write_pseudos(dest, sorted(set(struct.elements)))
-    # THE RUN CARD STATES THE LAUNCH SHAPE, as a described calculation does
-    # (`architecture.md` § 5.2): four ranks of one thread for SIESTA -- this
-    # record's four cores -- and one thread for PySCF.
-    request = read_request(dest)
-    request["execution"] = ({"mpi_np": 4, "omp_threads": 1}
-                            if engine == "siesta" else {"threads": 1})
-    write_request(dest, request)
-    if before_prep is not None:
-        before_prep(dest)
-    stage = stage or stages[0].name
-    r = CliRunner().invoke(jobset_group, ["prep", "task", *group_words(dest, stage), "--bundle",
-                                          str(dest), "--target", "this"])
-    if refused:
-        assert r.exit_code != 0, r.output
-        return dest, stage, r.output
-    assert r.exit_code == 0, r.output
-    suffix = ".fdf" if engine == "siesta" else ".py"
-    # THE DECK BY ITS NAME, through the catalogue -- not the first file with
-    # the suffix: a stage directory may hold other `.py` files than the deck
-    # (a person's own scripts may).
-    from molbuilder.runfiles import compose
-    stage_dir = next(dest.glob(f"*_{stage}"))
-    deck = stage_dir / compose(name, suffix, stage_dir.name)
-    if engine == "siesta" and calculation == "vibration":
-        # ONE RUN IN PHASES: each phase's deck in its folder below the
-        # stage (`engines/vibration.md` § 5.11 § 2) -- the force-constant
-        # phase's is the one the offset rule speaks of.
-        from molbuilder.siesta.vibration_deck import FC_PART
-        deck = stage_dir / FC_PART / deck.name
-    if engine == "siesta":
-        from molbuilder.parse.fdf import read_deck
-        return dest, stage, read_deck(deck)
-    return dest, stage, deck.read_text()
-
-
 def _design(dest):
     """The ORIGINAL file -- the pair the description names, as prep reads it.
     The invariant is about files: its coordinates plus its offset."""
+    from molbuilder.task import of as task_of
     from molbuilder.workingcopy_structure import StructureCodec
-    task = json.loads((dest / "task.json").read_text())
-    return StructureCodec().load(dest / task["structure"]["source"])
+    return StructureCodec().load(dest / task_of(dest).structure.source)
 
 
 def _assert_placed(design, written, text):
@@ -161,7 +92,7 @@ def _rows(block):
 
 
 def test_a_siesta_deck_writes_the_design_coordinates_plus_the_offset(
-        isolated_projects_root):
+        prepared):
     """A periodic slab on a skewed cell, authored around the origin, reaches
     the SIESTA deck as its design coordinates plus the engine offset -- one
     rigid translation, frozen atoms included, centred in the cell -- and the
@@ -170,12 +101,8 @@ def test_a_siesta_deck_writes_the_design_coordinates_plus_the_offset(
     CONTRACT: `model/structure-periodicity.md` § 6.0 (the rule; the
     invariant; frozen atoms move with the rest).
     """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.ladder import engine_ladder
-    struct = _slab()
-    dest, stage, text = _prep(isolated_projects_root, struct,
-                              SiestaConfig(system_label="JOB"),
-                              engine_ladder("siesta", "publishable"), "siesta")
+    dest, stage, text = prepared(_slab(),
+                                                "siesta")
     block = re.search(r"%block AtomicCoordinatesAndAtomicSpecies\n(.*?)%endblock",
                       text, re.S).group(1)
     written = np.array([[float(v) for v in r[:3]] for r in _rows(block)])
@@ -186,7 +113,7 @@ def test_a_siesta_deck_writes_the_design_coordinates_plus_the_offset(
     # DESIGN coordinates while the deck beside it was placed -- a jump of the
     # whole offset between step 0 and step 1.
     # prep seeds it in the attempt it opens (`01_<stage>/run-0/`)
-    log = next((dest / f"01_{stage}").rglob("*.molwatch.log")).read_text()
+    log = stage_file(dest, stage, ".molwatch.log").read_text()
     step0 = log.split("coordinates (Ang):", 1)[1].split("energy", 1)[0]
     np.testing.assert_allclose(
         np.array([[float(v) for v in r[1:4]] for r in _rows(step0)]),
@@ -195,7 +122,7 @@ def test_a_siesta_deck_writes_the_design_coordinates_plus_the_offset(
 
 @pytest.mark.parametrize("calculation", ["optimization", "vibration"])
 def test_a_pyscf_deck_writes_the_design_coordinates_plus_the_offset(
-        isolated_projects_root, calculation):
+        prepared, calculation):
     """A molecule with no cell reaches the PySCF deck -- the optimisation
     deck and the vibration deck, two spec builders -- as its design
     coordinates plus the engine offset, centred in the box its vacuum sizes.
@@ -203,31 +130,13 @@ def test_a_pyscf_deck_writes_the_design_coordinates_plus_the_offset(
     CONTRACT: `model/structure-periodicity.md` § 6.0 (every engine is handed
     the design coordinates plus the offset).
     """
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.jobset.ladder import engine_ladder, fresh_stages
-    struct = _water()
-    if calculation == "vibration":
-        cfg = PySCFConfig(job_name="JOB", already_relaxed=True)
-        stages = fresh_stages("vibration", "pyscf")
-    else:
-        cfg, stages = PySCFConfig(job_name="JOB"), engine_ladder("pyscf", "publishable")
-    dest, _stage, text = _prep(isolated_projects_root, struct, cfg, stages,
-                               "pyscf", calculation=calculation)
+    dest, _stage, text = prepared(_water(), "pyscf", calculation=calculation,
+        template={"already_relaxed": True} if calculation == "vibration"
+        else None)
     written = _written("pyscf", text)
     design = _design(dest)
     assert tuple(design.vacuum) == (5.0, 5.0, 5.0), "the vacuum reached prep"
     _assert_placed(design, written, text)
-
-
-def _engine(engine):
-    """A description's config and ladder, per engine."""
-    if engine == "siesta":
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.jobset.ladder import engine_ladder
-        return SiestaConfig(system_label="JOB"), engine_ladder("siesta", "publishable")
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.jobset.ladder import engine_ladder
-    return PySCFConfig(job_name="JOB"), engine_ladder("pyscf", "publishable")
 
 
 def _written(engine, text):
@@ -256,7 +165,7 @@ def _assigned(corner):
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_an_assigned_origin_places_the_deck_at_design_minus_it(
-        isolated_projects_root, engine):
+        prepared, engine):
     """T1's assigned-origin clause (plan § 5q.4): on a typed cell with an origin
     the person assigned at P, the deck writes the design coordinates minus P --
     not the rule's centring -- and its record says the offset was stated.
@@ -267,9 +176,7 @@ def test_an_assigned_origin_places_the_deck_at_design_minus_it(
     typed, assigned = _assigned(P)
     assert not np.allclose(-P, cellmod.engine_offset(typed)), (
         "the fixture must be one the rule would place elsewhere")
-    cfg, stages = _engine(engine)
-    dest, _stage, text = _prep(isolated_projects_root, assigned, cfg, stages,
-                               engine)
+    dest, _stage, text = prepared(assigned, engine)
     design = _design(dest)
     np.testing.assert_allclose(design.engine_offset, -P)    # the pair carried it
     np.testing.assert_allclose(_written(engine, text), design.positions - P,
@@ -292,7 +199,7 @@ def test_an_assigned_origin_places_the_deck_at_design_minus_it(
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
-        isolated_projects_root, engine):
+        prepared, engine):
     """The same box with its origin assigned at (-0.5, -1, -1): one hydrogen,
     atom 2, would land at x = -0.257 -- outside along a, every other atom
     inside and every other axis clear.  The deck is refused, and prep names
@@ -303,9 +210,8 @@ def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
     (a gate refuses with the reason, never a stack trace).
     """
     _typed, assigned = _assigned([-0.5, -1.0, -1.0])
-    cfg, stages = _engine(engine)
-    _dest, _stage, said = _prep(isolated_projects_root, assigned, cfg, stages,
-                                engine, refused=True)
+    _dest, _stage, said = prepared(assigned, engine,
+                                                  refused=True)
     assert "outside the cell" in said, said
     assert re.search(r"a \(isolated\): atom index 2(?!\d)", said), said
     assert "b (" not in said and "c (" not in said, said
@@ -316,7 +222,7 @@ def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_a_box_nothing_can_be_placed_in_is_refused_in_a_sentence(
-        isolated_projects_root, engine):
+        prepared, engine):
     """Flat water with no vacuum across its plane has a box with no volume:
     prep refuses it with the checker's own finding.
 
@@ -328,15 +234,14 @@ def test_a_box_nothing_can_be_placed_in_is_refused_in_a_sentence(
     """
     flat = Structure(elements=["O", "H", "H"], positions=_water().positions,
                      vacuum=(5.0, 5.0, 0.0))
-    cfg, stages = _engine(engine)
-    _dest, _stage, said = _prep(isolated_projects_root, flat, cfg, stages,
-                                engine, refused=True)
+    _dest, _stage, said = prepared(flat,
+                                                  engine, refused=True)
     assert "[cell.no_volume]" in said, said
     assert "Traceback" not in said, said
 
 
 def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
-        isolated_projects_root):
+        prepared):
     """Along a periodic vector an atom past a face is legal -- an image the
     engine wraps -- and said.
 
@@ -347,8 +252,6 @@ def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
     § 6.0, checks 1 and 3: warned along a periodic vector, refused along any
     other.
     """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.ladder import engine_ladder
     # 1.2 cells long along a, so no translation fits it -- and the atom past
     # the face sits 3 Å off the others' line, so its image meets no atom.
     wide = Structure(elements=["C", "C", "C"],
@@ -356,16 +259,15 @@ def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
                                          [6.0, 4.0, 1.0]]),
                      cell=np.diag([5.0, 8.0, 8.0]),
                      axis_kind=("periodic", "periodic", "periodic"))
-    dest, stage, _text = _prep(isolated_projects_root, wide,
-                               SiestaConfig(system_label="JOB"),
-                               engine_ladder("siesta", "publishable"), "siesta")
-    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
+    dest, stage, _text = prepared(wide,
+                                                 "siesta")
+    report = stage_file(dest, stage, ".validation.txt").read_text()
     assert "[cell.beyond_periodic_face]" in report, report
     assert "along a, which is periodic" in report, report
 
 
 def test_a_crystal_that_fills_its_cell_is_not_called_tight(
-        isolated_projects_root):
+        prepared):
     """A periodic structure fills its cell by construction, and its report
     does not call the cell tight.
 
@@ -376,12 +278,8 @@ def test_a_crystal_that_fills_its_cell_is_not_called_tight(
     across a periodic or transport axis are intended; only an isolated axis is
     measured).
     """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.ladder import engine_ladder
-    dest, stage, _text = _prep(isolated_projects_root, _slab(),
-                               SiestaConfig(system_label="JOB"),
-                               engine_ladder("siesta", "publishable"), "siesta")
-    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
+    dest, stage, _text = prepared(_slab(), "siesta")
+    report = stage_file(dest, stage, ".validation.txt").read_text()
     assert "[cell.volume]" not in report, report
 
 
@@ -396,30 +294,17 @@ def _engine_frame():
                      engine_offset=[0.0, 0.0, 0.0], offset_by="engine")
 
 
-def _vibration(already_relaxed=False, freq_says=None):
-    """A SIESTA vibration's config and its one stage, `freq` -- the
-    structure stated relaxed by the template, or by ``freq``'s own value
-    over it (``freq_says``)."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.ladder import fresh_stages
-    from molbuilder.task import Stage
-    cfg = SiestaConfig(system_label="JOB", already_relaxed=already_relaxed)
-    if freq_says is None:
-        return cfg, fresh_stages("vibration", "siesta")
-    return cfg, [Stage(name="freq", overrides={"already_relaxed": freq_says})]
-
-
-@pytest.mark.parametrize("calculation, ladder, stage, kept", [
+@pytest.mark.parametrize("calculation, said, kept", [
     # an engine's origin is not carried into a new calculation ...
-    ("optimization", lambda: _engine("siesta"), None, False),
-    ("vibration", lambda: _vibration(), "freq", False),
+    ("optimization", {}, False),
+    ("vibration", {}, False),
     # ... save a SIESTA vibration's input stated relaxed: its grid minimum --
     # by the template, or by the force-constant stage's own value
-    ("vibration", lambda: _vibration(already_relaxed=True), "freq", True),
-    ("vibration", lambda: _vibration(freq_says=True), "freq", True),
+    ("vibration", {"template": {"already_relaxed": True}}, True),
+    ("vibration", {"overrides": {"already_relaxed": True}}, True),
 ])
 def test_an_engines_origin_enters_a_new_calculation_by_the_rule(
-        isolated_projects_root, calculation, ladder, stage, kept):
+        prepared, calculation, said, kept):
     """A structure whose stated origin is the engine's enters a new
     calculation stating none, so the deck is placed by the rule -- unless the
     calculation keeps the engine's frame: a vibration whose input is stated
@@ -436,9 +321,8 @@ def test_an_engines_origin_enters_a_new_calculation_by_the_rule(
     calculation*.
     """
     struct = _engine_frame()
-    cfg, stages = ladder()
-    _dest, _stage, text = _prep(isolated_projects_root, struct, cfg, stages,
-                                "siesta", calculation=calculation, stage=stage)
+    _dest, _stage, text = prepared(struct, "siesta", calculation=calculation,
+        **said)
     record = extract_engine_offset(text)
     rule = cellmod.engine_offset(struct.replace(engine_offset=None))
     assert np.linalg.norm(rule) > 1.0, "the fixture must be one the rule moves"

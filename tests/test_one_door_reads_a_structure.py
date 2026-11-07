@@ -26,35 +26,21 @@ from __future__ import annotations
 
 import numpy as np
 
-from conftest import write_pseudos
-from support.road import molbuilder
+from support.road import describe_calculation, jobset, stage_file
 
 
 #: Two H2 molecules: the first carries a region, the second is held.  An
 #: explicit cell that no bounding box would produce -- 12.5 x 13.5 x 14.5 A --
 #: so a deck written from a structure that lost its sidecar says so in its
 #: lattice as well as in its constraints.
-POSITIONS = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.74],
-             [8.0, 6.0, 5.0], [8.0, 6.0, 5.74]]
-CELL = np.diag([12.5, 13.5, 14.5])
 FROZEN = [2, 3]
 REGIONS = {"anchor": [0, 1]}
-
-
-def _jobset(*args):
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args])
-
-
-def _block(deck: str, name: str) -> list:
-    """The lines between ``%block <name>`` and ``%endblock <name>`` -- none
-    when the deck has no such block, which is itself the answer."""
-    lines = deck.splitlines()
-    if f"%block {name}" not in lines:
-        return []
-    start = lines.index(f"%block {name}")
-    return lines[start + 1:lines.index(f"%endblock {name}", start)]
+EDGES = [12.5, 13.5, 14.5]
+H4 = {"elements": ["H"] * 4,
+      "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 5.74],
+                    [8.0, 6.0, 5.0], [8.0, 6.0, 5.74]],
+      "regions": {"frozen_atoms": FROZEN, **REGIONS},
+      "cell": EDGES}
 
 
 def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
@@ -76,56 +62,38 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     ``Structure.from_xyz(path.read_text())`` instead of
     ``StructureCodec().load(path)``.
     """
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.parse.fdf import fdf_key, read_deck, read_fdf
     from molbuilder.runs import declared, run_of
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
+    from molbuilder.task import of as task_of
 
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    write_pseudos(tree / "pseudopotential", ["H"])
-    s = Structure(elements=["H"] * 4, positions=np.asarray(POSITIONS),
-                  cell=CELL, axis_kind=("isolated",) * 3)
-    s.frozen_atoms = list(FROZEN)
-    s.regions = dict(s.regions or {}, **REGIONS)
-    StructureCodec().write(s, tree / "P" / "structure" / "h4.xyz")
-    sidecar = tree / "P" / "structure" / "h4.molstruct.json"
-    assert sidecar.is_file(), "the codec wrote no sidecar -- nothing to lose"
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tree.parent)
-
-    r = molbuilder("describe", "--structure", "P/structure/h4.xyz",
-                "--bundle", "P/optimization/H4", "--engine", "siesta",
-                "--calculation", "optimization",
-                "--name", "H4",
-                "--psml-lib", "pseudopotential")
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "optimization" / "H4"
-    # THE LAUNCH SHAPE STATED on the prep (`architecture.md` § 5.2); how a
+    bundle = describe_calculation(tmp_path, monkeypatch, name="H4",
+                                  structure=H4)
+    # The launch shape is its run card's (`architecture.md` § 5.2); how a
     # shell enters an environment is the machine record's.
-    r = _jobset("prep", "task", "--group", "1", "--bundle", bundle,
-                "--target", "this", "--np", "2", "--cpus-per-task", "1")
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
+               "--target", "this")
     assert r.exit_code == 0, r.output
 
-    attempt = bundle / "01_coarse" / "run-0"
-    decks = sorted(attempt.glob("*.fdf"))
-    assert len(decks) == 1, [p.name for p in attempt.iterdir()]
-    deck = decks[0].read_text()
+    # THE DECK AS THE ONE FDF READER READS IT: no such block is itself the
+    # answer.
+    blocks = read_fdf(read_deck(stage_file(bundle, "coarse", ".fdf")))[1]
 
-    held = {int(t) for line in _block(deck, "Geometry.Constraints")
-            for t in line.split()[1:]}
+    held = {int(t) for row in blocks.get(fdf_key("Geometry.Constraints"), [])
+            for t in row[1:]}
     assert held == {i + 1 for i in FROZEN}, (
         f"the deck holds atoms {sorted(held)} (1-based); the author froze "
         f"{[i + 1 for i in FROZEN]} -- the rest of the structure would relax "
         f"with them")
 
-    lattice = np.array([[float(x) for x in line.split()]
-                        for line in _block(deck, "LatticeVectors")])
-    assert np.allclose(lattice, CELL, atol=1e-9), (
+    lattice = np.array([[float(x) for x in row]
+                        for row in blocks.get(fdf_key("LatticeVectors"), [])])
+    assert np.allclose(lattice, np.diag(EDGES), atol=1e-9), (
         f"the deck's lattice is not the cell the author stated:\n{lattice}")
 
     # THE RUN'S OWN DECK says what it carries (`runs.declared`).
-    carried = declared(run_of(attempt)).atom_metadata_for(4) or {}
+    run = latest_attempt(stage_home(bundle, task_of(bundle), "coarse").dir)
+    carried = declared(run_of(run)).atom_metadata_for(4) or {}
     assert carried.get("regions", {}).get("anchor") == REGIONS["anchor"], (
         f"the region the author named did not reach the deck: {carried}")

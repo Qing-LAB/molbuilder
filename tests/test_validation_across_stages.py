@@ -8,38 +8,20 @@ finding about it carries **no** stage label) · ``docs/science/validation.md``
 everywhere) · ``docs/engines/tuning.md`` § 2 (**which** parameters must not go
 backwards — that document's to say, not this one's).
 
-P2 unit 6.
+P2 unit 6.  That the findings reach the person about to pay for the recompute,
+on prep's surface, is a row of `tests/data/prep_protocol.toml`.
 """
 from __future__ import annotations
 
 
-import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.issues import Issue
-from molbuilder.structure import Structure
-from molbuilder.task import Stage
 from molbuilder.validation.stages import (
     check_identical_stages,
     check_ladder_does_not_loosen,
 )
-
-
-@pytest.fixture(autouse=True)
-def tree(isolated_projects_root):
-    """These tests build a calculation in the projects tree and hand its path
-    to a verb.  ``--bundle`` is fenced to the projects tree
-    (`job-contracts.md` § 2.5b), so the test builds inside one: the conftest's
-    per-test tree, a folder named ``projects`` like every tree (§ 2.5).
-    """
-    return isolated_projects_root
-
-
-
-def _ladder(*pairs):
-    """``_ladder(("a", {...}), ("b", {...}))`` -> stages, in order."""
-    return [Stage(name=n, overrides=o) for n, o in pairs]
 
 
 # --------------------------------------------------------------------- #
@@ -288,51 +270,3 @@ def test_it_never_refuses():
     before anything is written; this one proceeds if it was meant."""
     assert all(i.severity != "error"
                for i in check_identical_stages(_pair("clean", "clean")))
-
-
-# --------------------------------------------------------------------- #
-#  A-8 — the sequence findings are REACHABLE, not merely implemented     #
-# --------------------------------------------------------------------- #
-
-def test_the_sequence_warnings_reach_the_prep_surface(tree):
-    """A-8 (final review, 2026-08-13): the sequence checks ride the § 6.6
-    preflight when the template is in hand, and `prep` is the surface that
-    has both halves.  Pinned through the CLI: the note must reach the person
-    about to pay for the recompute."""
-    from click.testing import CliRunner
-
-    from molbuilder import describe as D
-    from molbuilder.jobset._cli import jobset_group
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(
-            struct, SiestaConfig(system_label="JOB"),
-            # Stage b resolves identically AND starts clean -- the one case
-            # § 6.6a warns about, and the only way to reach
-            # it: `continue` is the default, and two identical rungs where the
-            # second continues are simply *more steps at these settings*.
-            # `restart` is the stage's own override, what it builds on
-            # (`job-request.md` § 2) -- which the sequence checks read.
-            [Stage(name="a", overrides={"mesh_cutoff": 200.0}),
-             Stage(name="b", overrides={"mesh_cutoff": 200.0,
-                                        "restart": "clean"})],
-            engine="siesta", calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
-        dest)
-    # the launch shape, stated as a person's run card states it -- a run
-    # with none is refused at prep (`architecture.md` § 5.2)
-    from support.road import read_request, write_request
-    request = read_request(dest)
-    request["execution"] = {"mpi_np": 2, "omp_threads": 1}
-    write_request(dest, request)
-    from conftest import write_pseudos
-    write_pseudos(dest, ["H"])
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle", str(dest),
-                                  "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    assert "recomputes" in res.output, res.output

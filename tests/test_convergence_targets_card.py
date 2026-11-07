@@ -1,6 +1,6 @@
 """The Convergence targets card's words (`web/trajectory.md` § 3): a target
 reads as a person reads it.  What a log's header lines say is
-`test_trajectory_log_stage_targets.py`'s.
+`tests/data/prep_protocol.toml`'s (`progress_log_targets`).
 """
 from __future__ import annotations
 

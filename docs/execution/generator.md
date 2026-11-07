@@ -615,8 +615,9 @@ floor is [`architecture.md`](?doc=execution/architecture.md) § 2.1.
 | `jobset/summarize.py` · `bench/result.py` | `bench_record`, `choose_winner`, `recommendation_text`, the `bench-result@1` record |
 
 **Tests:** `test_prep_bench_fold.py` (the benchmark through `prep`, shelves,
-a named trial), `test_value_axes.py` (value axes, declared cells, the GPU
-split), `test_bench_grid_card.py` (the grid the Task setup card shows),
+a named trial), `test_value_axes.py` (value axes, each cell a person
+declares), `tests/data/gpu_contract.toml` (declared GPU counts, the GPU split),
+`test_bench_grid_card.py` (the grid the Task setup card shows),
 `test_bench_result.py` and `test_bench_summarize.py` (the record, the winner),
 `test_machine_in_summary.py` (§ 4.4b), `test_resolve.py` (the resolver).
 

@@ -1320,11 +1320,9 @@ molbuilder describe --structure BDT-Au/structure/bdt.xyz \
   the pseudopotential library too; `describe` takes no positionals.
 - **The engine and the kind are stated, every time** (`--engine`,
   `--calculation`): nothing is guessed from a folder's name.
-- **Names and values are checked here**: a stage name outside
-  `[A-Za-z0-9_]+`, a duplicate stage, an `overrides` key the schema does not
-  know, or a value outside its bounds is refused with the field named — the
-  whole preflight, with the template and the job request it writes
-  ([`engines/stages.md`](?doc=engines/stages.md) § 6.6).
+- **The description is checked here**: the whole preflight, on the template
+  and the job request it writes, refused with the field named before anything
+  is written ([`engines/stages.md`](?doc=engines/stages.md) § 6.6).
 - **The pseudopotentials are covered here** for a kind described from its
   structure, as the hand-over covers them: the engine's describe findings,
   of the folder it writes into

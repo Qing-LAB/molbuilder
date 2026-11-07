@@ -24,35 +24,13 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.config.pyscf import PySCFConfig
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.jobset.ladder import fresh_stages
-from molbuilder.jobset.ladder import engine_ladder
-
 from test_electronic_state import WATER
-from test_engine_offset_reaches_every_deck import _prep
-from test_fixed_and_shared_items import (_first_rung_overrides,
-                                             _template_says)
-
-
-def _siesta(root, kind, *, before_prep=None, refused=False):
-    stages = (engine_ladder("siesta", "publishable") if kind == "optimization"
-              else fresh_stages("vibration", "siesta"))
-    return _prep(root, WATER(), SiestaConfig(system_label="JOB"), stages,
-                 "siesta", calculation=kind, before_prep=before_prep,
-                 refused=refused)
-
-
-def _pyscf_vibration(root, cfg, *, refused=False):
-    return _prep(root, WATER(), cfg,
-                 fresh_stages("vibration", "pyscf"), "pyscf",
-                 calculation="vibration", refused=refused)
 
 
 # ------------------------------------------------- refused by name at prep
 
 @pytest.mark.parametrize("door", ["template", "stage"])
-def test_a_vibration_relaxes_with_a_relaxer(isolated_projects_root, door):
+def test_a_vibration_relaxes_with_a_relaxer(prepared, door):
     """SS-C4, at both doors a value arrives by: the template (`resolve`
     refuses it, naming the template) and the one stage's own override (the
     description's own check, gate ③, refuses it first, naming the stage).
@@ -60,13 +38,10 @@ def test_a_vibration_relaxes_with_a_relaxer(isolated_projects_root, door):
 
     MUTATION THIS MUST FAIL AGAINST: the vibration's set undeclared (the
     relaxation's deck is written with no relaxation)."""
-    def put(dest):
-        if door == "template":
-            _template_says(dest, "relax_type", "none")
-        else:
-            _first_rung_overrides(dest, "relax_type", "none")
-    _d, _s, said = _siesta(isolated_projects_root, "vibration",
-                           before_prep=put, refused=True)
+    said_by = ({"template": {"relax_type": "none"}} if door == "template"
+               else {"overrides": {"relax_type": "none"}})
+    _d, _s, said = prepared(WATER(), "siesta", calculation="vibration",
+                            refused=True, **said_by)
     assert "a vibration does not offer" in said, said
     assert "none relaxes nothing" in said, said
     assert "CG, Broyden, FIRE" in said, said
@@ -74,34 +49,28 @@ def test_a_vibration_relaxes_with_a_relaxer(isolated_projects_root, door):
             else "stage 'freq' sets relax_type = 'none'") in said, said
 
 
-def test_an_optimization_offers_no_transport_solver(isolated_projects_root):
+def test_an_optimization_offers_no_transport_solver(prepared):
     """SO-C13.  MUTATION THIS MUST FAIL AGAINST: the optimization's set
     undeclared (the deck says `SolutionMethod transiesta` and the run dies
     after the queue wait)."""
-    _d, _s, said = _siesta(
-        isolated_projects_root, "optimization",
-        before_prep=lambda dest: _template_says(dest, "solution_method",
-                                                "transiesta"),
-        refused=True)
+    _d, _s, said = prepared(WATER(), "siesta",
+                            template={"solution_method": "transiesta"},
+                            refused=True)
     assert "solution_method = 'transiesta'" in said, said
     assert "does not offer" in said, said
     assert "transport device's solver" in said, said
 
 
-def test_a_pyscf_vibration_is_restricted(isolated_projects_root):
+def test_a_pyscf_vibration_is_restricted(prepared):
     """PS-C2's refusal half: the spectrum record carries one spin channel.
     MUTATION THIS MUST FAIL AGAINST: the PySCF vibration's spin set
     undeclared (the deck renders a UKS vibration)."""
-    _d, _s, said = _pyscf_vibration(
-        isolated_projects_root,
-        PySCFConfig(job_name="JOB", already_relaxed=True,
-                    spin_treatment="unrestricted", unpaired_electrons=0),
-        refused=True)
+    _d, _s, said = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, spin_treatment="unrestricted", unpaired_electrons=0), refused=True)
     assert "spin_treatment = unrestricted (stated)" in said, said
     assert "one spin channel" in said and "offers restricted" in said, said
 
 
-def test_pcm_reaches_one_route(isolated_projects_root):
+def test_pcm_reaches_one_route(prepared):
     """vibration.md § 4.6: with a solvent, the frequencies of a structure
     with no atoms held, IR and Raman off -- the one route whose Hessian
     carries the solvent's response.  Infrared is on by default, so a
@@ -110,31 +79,22 @@ def test_pcm_reaches_one_route(isolated_projects_root):
     MUTATION THIS MUST FAIL AGAINST: the route rule removed (the dipole
     route runs without the solvent's response, under an info saying it has
     it)."""
-    _d, _s, said = _pyscf_vibration(
-        isolated_projects_root,
-        PySCFConfig(job_name="JOB", already_relaxed=True, solvent="water"),
-        refused=True)
+    _d, _s, said = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water"), refused=True)
     assert "PCM solvation (water) reaches one route" in said, said
     assert "IR -- its dipole-derivative route" in said, said
     assert "Turn IR off" in said, said
-    _d, _s, deck = _pyscf_vibration(
-        isolated_projects_root,
-        PySCFConfig(job_name="JOB", already_relaxed=True, solvent="water",
-                    compute_raman=False, compute_ir=False))
+    _d, _s, deck = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water", compute_raman=False, compute_ir=False))
     assert "78.3553" in deck and ("mf = mf.PCM()" in deck
                                   or "_mb_apply_solvent" in deck), (
         "the frequencies-only route with a solvent preps, solvated")
 
 
-def test_an_unknown_solvent_is_one_refusal(isolated_projects_root):
+def test_an_unknown_solvent_is_one_refusal(prepared):
     """One fact, one finding: a solvent the dielectric table does not know
     is the engine's refusal alone -- the route rule speaks of the solvents
     PCM can apply (the K2 review).  MUTATION THIS MUST FAIL AGAINST: the
     route rule asked of any name (two refusals on one field)."""
-    _d, _s, said = _pyscf_vibration(
-        isolated_projects_root,
-        PySCFConfig(job_name="JOB", already_relaxed=True, solvent="xylol"),
-        refused=True)
+    _d, _s, said = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="xylol"), refused=True)
     assert "unknown solvent 'xylol'" in said, said
     assert "reaches one route" not in said, said
 
@@ -193,27 +153,3 @@ def test_the_form_and_the_stage_table_offer_the_kinds_set():
     assert shared["spin_treatment"] == ["restricted", "unrestricted"], shared
     assert shared["unpaired_electrons"] == list(range(11)) + ["free"], \
         shared
-
-
-def test_a_description_refuses_what_its_kind_does_not_offer():
-    """Gate ③ (`validation/task.py`): a rung's value the kind does not offer
-    is refused when the description is WRITTEN -- the describe door
-    `molbuilder describe` and the web hand-over share -- never first at prep, on the
-    machine that runs it (`engines/template.md` § 6.3a).
-
-    MUTATION THIS MUST FAIL AGAINST: the check removed from gate ③ (the
-    description is written, and only prep refuses it)."""
-    from molbuilder import describe as D
-    from molbuilder.task import Stage
-    ladder = tuple(Stage(name=st.name,
-                         overrides={**dict(st.overrides or {}),
-                                    "relax_type": "none"})
-                   for st in fresh_stages("vibration", "siesta"))
-    with pytest.raises(D.DescribeError) as refused:
-        D.build_description(WATER(), SiestaConfig(system_label="JOB"), ladder,
-                            engine="siesta", name="JOB",
-                            calculation="vibration", source="water.xyz")
-    said = str(refused.value)
-    assert "relax_type = 'none'" in said, said
-    assert "a vibration does not offer" in said, said
-    assert "CG, Broyden, FIRE" in said, said

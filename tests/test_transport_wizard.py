@@ -1,8 +1,7 @@
 """Electrode EXTRACTION — pulling a lead out of a labelled junction.
 
 What the composite rests on: `compose.py` calls
-`extract_electrode_model` and prep renders the result through the
-framework (`as_structure` -> `spec_for`)."""
+`extract_electrode_model` and prep writes the result's deck."""
 from __future__ import annotations
 
 import numpy as np
@@ -32,8 +31,7 @@ def _au_device():
         elems.append("Au"); pos.append([1.0, 1.0, z1 + layer * d]); right.append(i); i += 1
     zs = np.asarray(pos, dtype=float)[:, 2]
     # ITS CELL, as every junction states one (`engines/transport.md`
-    # § 2a.9), built as `support.junction` builds its own: a one-atom chain
-    # is a wire, isolated across in an 8 A box, and the transport boundary
+    # § 2a.9): a one-atom chain is a wire, isolated across in an 8 A box, and the transport boundary
     # leaves one layer spacing of room.
     s = Structure(
         elements=elems, positions=np.asarray(pos, dtype=float),
@@ -123,16 +121,6 @@ def test_an_unmoved_lead_passes_with_a_starting_geometry():
     assert m.z_period == pytest.approx(4 * 2.35)
 
 
-def test_without_a_starting_geometry_the_frozen_DECLARATION_still_holds():
-    """Compose's form B — a labelled pair handed in as the finished
-    structure — has nothing to compare against, and that is precisely why
-    the declaration is asked separately."""
-    dev = _au_device()
-    dev.frozen_atoms = []
-    with pytest.raises(ValueError, match="NOT FROZEN"):
-        extract_electrode_model(dev, "L-electrode", prior_positions=None)
-
-
 def test_an_unevenly_spaced_lead_is_refused():
     """Wired, not merely present in `cell`: the extraction is where a
     caller meets this, and the refusal names the spacings."""
@@ -180,8 +168,11 @@ def test_frozen_is_asked_before_moved():
 # what they are owed is the measurement.
 
 
-def _au111_lead(n_layers):
-    """A lead built the way the app builds one — `modify.add_slab`.
+def _au111_junction(n_layers) -> dict:
+    """A junction whose leads are built the way the app builds one --
+    `modify.add_slab`, one grown down from a sulfur and one up: the leads held,
+    in the cell the slab API gave them, the transport axis closed to one layer spacing past the top
+    lead.
 
     THROUGH THE REAL SLAB API, not `ase.build.fcc111` by hand (user,
     2026-09-21: *"Do you even know that we actually have a slab creation
@@ -192,61 +183,56 @@ def _au111_lead(n_layers):
     """
     from molbuilder.modify import add_slab
     seed = Structure(elements=["S"], positions=np.array([[0.0, 0.0, 30.0]]))
-    out = add_slab(seed, element="Au", plane="111",
-                   size=(2, 2, n_layers), grow="-z")
-    st = out.structure if hasattr(out, "structure") else out
-    au = [i for i, e in enumerate(st.elements) if e == "Au"]
-    st.regions = {"L-electrode": au,
-                  "bridge": [i for i in range(len(st.elements))
-                             if i not in au]}
-    st.frozen_atoms = list(au)
-    return st
+    left = add_slab(seed, element="Au", plane="111", size=(2, 2, n_layers),
+                    grow="-z")
+    st = add_slab(left, element="Au", plane="111", size=(2, 2, n_layers),
+                  start_z=5.0, grow="+z")
+    pos = np.asarray(st.positions, dtype=float).copy()
+    pos[0, 2] = 2.5                             # the sulfur, between the leads
+    pos[:, 2] -= pos[:, 2].min()
+    n = 4 * n_layers
+    # Listed lower lead, sulfur, upper lead, as the engine reads a junction.
+    order = list(range(1, n + 1)) + [0] + list(range(n + 1, 2 * n + 1))
+    layers = np.unique(np.round(pos[order[:n], 2], 4))
+    cell = np.asarray(st.cell, dtype=float).copy()
+    cell[2] = [0.0, 0.0, float(pos[:, 2].max()) + layers[1] - layers[0]]
+    return {"elements": [st.elements[i] for i in order],
+            "positions": pos[order].tolist(),
+            "cell": cell.tolist(),
+            "axis_kind": ["periodic", "periodic", "transport"],
+            "regions": {"L-electrode": list(range(n)), "bridge": [n],
+                        "R-electrode": list(range(n + 1, 2 * n + 1)),
+                        "frozen_atoms": [i for i in range(2 * n + 1) if i != n]}}
+
+
+def _lead_model(n_layers):
+    """What the extraction makes of that junction's L lead."""
+    from support.road import road_structure
+    return extract_electrode_model(road_structure(_au111_junction(n_layers)),
+                                   "L-electrode")
 
 
 @pytest.mark.parametrize("n_layers,verdict,severity", [
     (3, "CONTINUES", "info"), (4, "ECLIPSED", "warn"), (5, "TWIN", "warn"),
     (6, "CONTINUES", "info"),
 ])
-def test_the_seam_verdict_is_measured_and_said(n_layers, verdict, severity):
+def test_the_seam_verdict_is_measured(n_layers, verdict, severity):
     """The whole table, because the interesting half is the failures and
-    a test on 3 and 6 alone would pass with the check deleted -- said on
-    the Transport card (the lead's notes) AND in the lead deck's own
-    findings, which prep prints and writes into its `.validation.txt`
-    (`engines/transport.md` § 7.1: measured and reported): a person who
-    never opens the card is told the same, at the same weight."""
-    import dataclasses
-    from molbuilder import script_emit as _sc
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.runfiles import RunNames
-    from molbuilder.electronic_state import electronic_state
-    from molbuilder.siesta.input import spec_for
-    from molbuilder.template import role_answers
-    from molbuilder.kind_table import rung_label
-    junction = _au111_lead(n_layers)
-    m = extract_electrode_model(junction, "L-electrode")
+    a test on 3 and 6 alone would pass with the check deleted: what the
+    Transport card says of the lead's boundary (the lead's notes).  That prep
+    says the same is `test_transport_decks_e2e.py`'s, a transport deck needing
+    a real relaxation."""
+    m = _lead_model(n_layers)
     seam = [n for n in m.notes if n.where == "lead.seam"]
     assert len(seam) == 1, f"exactly one seam note: {m.notes}"
     assert verdict in seam[0].message, f"{n_layers} layers -> {seam[0]}"
     assert seam[0].severity == severity, seam[0]
-    lead, label = m.as_structure(), rung_label("j", "electrode_L")
-    cfg = dataclasses.replace(
-        SiestaConfig(system_label=label),
-        **role_answers("siesta", "transport", "electrode_L"))
-    # THE STATE IS DECIDED ONCE, ON THE WHOLE JUNCTION (`engines/
-    # transport.md` § 3.1), as prep decides it for every rung's deck.
-    spec = spec_for(lead, cfg, calculation="transport",
-                    state=electronic_state(junction, cfg, kind="transport"),
-                    names=RunNames(label, "02_electrode_L"))
-    said = [i for i in _sc.render_deck(spec, lead, cfg).findings
-            if i.where == "lead.seam"]
-    assert [(i.severity, i.message) for i in said] == [
-        (seam[0].severity, seam[0].message)], said
 
 
 def test_a_faulted_seam_is_REPORTED_not_refused():
     """The discriminating half.  A 4-layer lead is not bulk and still
     composes -- the person may be doing exactly what they meant."""
-    m = extract_electrode_model(_au111_lead(4), "L-electrode")
+    m = _lead_model(4)
     assert m.z_period == pytest.approx(9.4182, abs=1e-3)
     assert len(m.elements) == 2 * 2 * 4
 
@@ -254,8 +240,8 @@ def test_a_faulted_seam_is_REPORTED_not_refused():
 def test_the_faulted_seam_note_names_the_LAYER_COUNT_as_the_cause():
     """'Your seam is eclipsed' is not actionable; 'four layers is not a
     whole number of 3-layer periods' is."""
-    m = extract_electrode_model(_au111_lead(4), "L-electrode")
-    note = next(n.message for n in m.notes if n.where == "lead.seam")
+    note = next(n.message for n in _lead_model(4).notes
+                if n.where == "lead.seam")
     assert "LAYER COUNT" in note and "4 layers" in note and "3-layer" in note, note
 
 

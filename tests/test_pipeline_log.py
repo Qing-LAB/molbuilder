@@ -18,73 +18,40 @@ from __future__ import annotations
 import dataclasses
 import re
 
-import numpy as np
 import pytest
-from molbuilder.calculation import open as open_calculation
 
-from conftest import write_pseudos
-from molbuilder import describe as D
-from molbuilder.config.pyscf import PySCFConfig
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.jobset.model import Resources
 from molbuilder.jobset.engines import EngineSeam
-from molbuilder.jobset.prep import prep_bench
-from conftest import prep_the_group_of
-from molbuilder.pipeline_log import log_name
-from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.script_emit import Block, DeckSpec
-from molbuilder.structure import Structure
+from support.road import (describe_calculation, group_words, jobset,
+                          read_request, set_by_the_person, stage_file,
+                          write_request)
 
 
-pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
+def _calculation(tmp_path, monkeypatch, engine: str):
+    """A described calculation, as `molbuilder describe` leaves one: the
+    engine's shipped ladder."""
+    return describe_calculation(tmp_path, monkeypatch, engine=engine,
+                                stage_strategy="publishable")
 
 
-#: 1,4-benzenedithiol — an isolated molecule that relaxes, which is what the
-#: structure-optimization tab is for.
-BDT = Structure(
-    elements=["S", "C", "C", "C", "C", "C", "C", "S", "H", "H", "H", "H"],
-    positions=np.array([
-        [0.000, 0.000, 0.000], [0.000, 0.000, 1.780],
-        [1.210, 0.000, 2.480], [1.210, 0.000, 3.880],
-        [0.000, 0.000, 4.580], [-1.210, 0.000, 3.880],
-        [-1.210, 0.000, 2.480], [0.000, 0.000, 6.360],
-        [2.150, 0.000, 1.940], [2.150, 0.000, 4.420],
-        [-2.150, 0.000, 4.420], [-2.150, 0.000, 1.940]]),
-    vacuum=(12.0, 12.0, 12.0))
-
-
-def _calculation(tmp_path, engine: str, name: str = "BDT"):
-    """A described calculation, as `molbuilder describe` leaves one."""
-    cfg, stages = ((SiestaConfig(system_label=name, mesh_cutoff=300.0),
-                    engine_ladder("siesta", "publishable"))
-                   if engine == "siesta" else
-                   (PySCFConfig(job_name=name),
-                    engine_ladder("pyscf", "publishable")))
-    src = tmp_path / f"{name}.xyz"
-    src.write_text(BDT.to_xyz())
-    dest = tmp_path / f"{name}-{engine}"
-    D.write_description(D.build_description(
-        BDT, cfg, stages, engine=engine,
-        calculation="optimization", name=name,
-        source=str(src)), dest)
-    if engine == "siesta":
-        write_pseudos(dest, ["S", "C", "H"])
-    return dest, [s.name for s in stages]
-
-
-def _prep(dest, stage, **ask):
-    """`prep task <stage>`, through the one entry -- what the command line
-    and the Task setup tab call -- the launch shape stated as its flags:
-    SIESTA's ranks and cores per rank, PySCF's threads (it runs one
-    process).  ``ask`` adds to them."""
+def _prep(bundle, stage="coarse"):
+    """The words of `prep task <stage>`, the launch shape stated as its flags:
+    SIESTA's ranks and cores per rank, PySCF's threads (it runs one process)."""
     from molbuilder.task import of as task_of
-    siesta = task_of(dest).engine == "siesta"
-    return prep_the_group_of(dest, stage, allocation=Resources(
-        **({"mpi_np": 8} if siesta else {}), cpus_per_task=1, **ask))
+    siesta = task_of(bundle).engine == "siesta"
+    return ("prep", "task", *group_words(bundle, stage), "--bundle", bundle,
+            "--target", "this", *(("--np", 8) if siesta else ()),
+            "--cpus-per-task", 1)
 
 
-def _the_log(dest):
-    found = sorted(dest.rglob("*.pipeline.log"))
+def _prepared(bundle, stage="coarse"):
+    """`prep task <stage>`, taken."""
+    r = jobset(*_prep(bundle, stage))
+    assert r.exit_code == 0, r.output
+
+
+def _the_log(bundle):
+    found = sorted(bundle.rglob("*.pipeline.log"))
     assert len(found) == 1, [p.name for p in found]
     return found[0].read_text(encoding="utf-8")
 
@@ -94,19 +61,23 @@ def _the_log(dest):
 # --------------------------------------------------------------------- #
 
 
-def test_the_name_says_its_rung_and_engine(tmp_path):
+def test_the_name_says_its_rung_and_engine(tmp_path, monkeypatch):
     """The file is read after being copied off the machine, where the
     directory it came from no longer says what it was -- and every rung's
     lies at the calculation's root, so its stage token keeps two apart."""
-    assert log_name("BDT", "01_coarse", "siesta") == \
-        "BDT_01_coarse.siesta.hierarchical.pipeline.log"
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    _prepared(bundle, "coarse")
+    _prepared(bundle, "medium")
+    assert sorted(p.name for p in bundle.glob("*.pipeline.log")) == [
+        "H2_01_coarse.siesta.hierarchical.pipeline.log",
+        "H2_02_medium.siesta.hierarchical.pipeline.log"]
 
 
 # --------------------------------------------------------------------- #
 #  3. It answers "where did this value come from"                        #
 # --------------------------------------------------------------------- #
 
-def test_every_resolved_value_carries_its_source(tmp_path):
+def test_every_resolved_value_carries_its_source(tmp_path, monkeypatch):
     """The ⊕ chain, which is the difference between provenance and a dump.
 
     A stage override and the launch shape are the two sources a reader
@@ -115,9 +86,10 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     (`template.SAID`, `engines/template.md` § 5.4): a flag here, never
     *allocation* for a value no allocation holds (the 2.27.0 review).
     """
-    dest, stages = _calculation(tmp_path, "siesta")
-    _prep(dest, stages[0])
-    text = _the_log(dest)
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    set_by_the_person(bundle, {"mesh_cutoff": 300.0})
+    _prepared(bundle)
+    text = _the_log(bundle)
     chosen = [ln for ln in text.splitlines() if ln.startswith("  ⊕")]
     assert chosen, "no ⊕ rows at all"
     assert all("<-" in ln for ln in chosen), \
@@ -134,15 +106,10 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     # THE DECK SAYS THE SAME, in its PROVENANCE block -- the record opened
     # months later, when the log is long gone (`job-contracts.md` § 3.2,
     # `engines/template.md` § 6.6 obligation 5) -- read through its reader.
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import find
     from molbuilder.deck_record import read_provenance_block
-    from molbuilder.task import of as task_of
     from molbuilder.template import SOURCE_WORDS
-    # THE DECK LIES IN ITS STAGE'S FOLDER (`project-layout.md` § 5.2).
-    home = stage_home(dest, task_of(dest), stages[0])
-    (deck, _rf), = find(home.dir, "BDT", role=".fdf")
-    block = read_provenance_block(deck.read_text(encoding="utf-8"))
+    block = read_provenance_block(stage_file(bundle, "coarse", ".fdf").read_text(
+        encoding="utf-8"))
     who = {k.split(".", 1)[1]: v
            for k, v in block.items() if k.startswith("parameters.")}
     assert who["relax_type"] == "this stage's override", who
@@ -163,31 +130,32 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     assert "mpi_np" not in who, who
 
 
-def test_the_engines_derived_context_is_in_the_log(tmp_path):
+def test_the_engines_derived_context_is_in_the_log(tmp_path, monkeypatch):
     """**W10's one per-render context**, which no other record carries.
 
     ``block_size`` and the diagonaliser are worked out from
     ``(struct, cfg)`` and are nobody's config field; the log is where a
     reader outside the engine sees them.
     """
-    dest, stages = _calculation(tmp_path, "siesta")
-    _prep(dest, stages[0])
-    text = _the_log(dest)
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    _prepared(bundle)
+    text = _the_log(bundle)
     assert "this deck's own derived context (W10)" in text
     for name in ("algorithm", "block_size", "relax_kind", "spin_treatment"):
         assert re.search(rf"⊕\s+{name}\s+\S+\s+<- derived", text), \
             f"{name} missing from the derived context"
 
 
-def test_pyscfs_context_is_read_after_the_walk_not_before(tmp_path):
+def test_pyscfs_context_is_read_after_the_walk_not_before(tmp_path,
+                                                          monkeypatch):
     """PySCF fills its context **while its blocks render** — one block works
     a value out and the next reads it — where SIESTA fills its own before the
     layout.  A log that snapshotted the context at spec time would show
     SIESTA's answers and an empty dict for PySCF.
     """
-    dest, stages = _calculation(tmp_path, "pyscf")
-    _prep(dest, stages[0])
-    text = _the_log(dest)
+    bundle = _calculation(tmp_path, monkeypatch, "pyscf")
+    _prepared(bundle)
+    text = _the_log(bundle)
     assert re.search(r"⊕\s+stability_checked\s+\S+\s+<- derived", text), text
     assert re.search(r"⊕\s+emit_constraints\s+\S+\s+<- derived", text), text
 
@@ -196,15 +164,15 @@ def test_pyscfs_context_is_read_after_the_walk_not_before(tmp_path):
 #  4. It says what a Block produced — W11's blind spot                   #
 # --------------------------------------------------------------------- #
 
-def test_each_block_reports_what_it_produced(tmp_path):
+def test_each_block_reports_what_it_produced(tmp_path, monkeypatch):
     """**W11**: a `Block` is free text, so the check gate cannot see inside
     one and it contributes no line to compare.  Recording what each block
     produced is exactly the visibility the gate structurally cannot give —
     and SIESTA's blocks are hundreds of the deck's lines.
     """
-    dest, stages = _calculation(tmp_path, "siesta")
-    _prep(dest, stages[0])
-    text = _the_log(dest)
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    _prepared(bundle)
+    text = _the_log(bundle)
     rendered = re.findall(r"^  out  Block\s+'([^']+)'\s+(.+)$", text, re.M)
     assert rendered, "no Block rows in the render phase"
     titles = [t for t, _ in rendered]
@@ -215,51 +183,74 @@ def test_each_block_reports_what_it_produced(tmp_path):
     assert counted, [d for _, d in rendered]
 
 
-def test_a_section_reports_which_items_declined(tmp_path):
+def test_a_section_reports_which_items_declined(tmp_path, monkeypatch):
     """A conditional item that emitted nothing looks exactly like one that
     was never in the layout.  Telling those apart is most of what a reader
     comes here for — and only the parameters walk knows.
     """
-    dest, stages = _calculation(tmp_path, "siesta")
-    _prep(dest, stages[0])
-    text = _the_log(dest)
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    _prepared(bundle)
+    text = _the_log(bundle)
     assert re.search(r"^  out  Section\s+'Basis & grid'\s+\d+ lines\s+"
                      r"mesh_cutoff", text, re.M), text
 
 
-def test_a_slot_that_answers_nothing_says_so(tmp_path):
+@pytest.mark.parametrize("engine, answer", [("pyscf", r"nothing \(W5\)"),
+                                            ("siesta", "answered")])
+def test_a_slot_that_answers_nothing_says_so(tmp_path, monkeypatch, engine,
+                                             answer):
     """**W5**: *"nothing" is an answer, and it is recorded.*
 
     PySCF declares no bench anchors and needs no ``validate_subject``; SIESTA
     answers both.  A blank where a slot's answer belongs cannot be told from a
     slot nobody looked at, which is the whole reason W5 exists.
     """
-    dest, stages = _calculation(tmp_path, "pyscf")
-    _prep(dest, stages[0])
-    text = _the_log(dest)
-    assert re.search(r"out  bench_marks\s+nothing \(W5\)", text), text
-    assert re.search(r"out  validate_subject\s+nothing \(W5\)", text), text
+    bundle = _calculation(tmp_path, monkeypatch, engine)
+    _prepared(bundle)
+    text = _the_log(bundle)
+    assert re.search(rf"out  bench_marks\s+{answer}", text), text
+    assert re.search(rf"out  validate_subject\s+{answer}", text), text
     assert re.search(r"out  check_rules\s+answered", text), text
 
-    other, other_stages = _calculation(tmp_path, "siesta")
-    _prep(other, other_stages[0])
-    siesta = _the_log(other)
-    assert re.search(r"out  bench_marks\s+answered", siesta), siesta
-    assert re.search(r"out  validate_subject\s+answered", siesta), siesta
+
+@pytest.mark.parametrize("channels, says, lacks", [
+    (["slack", "lab"], "notify_channels=slack,lab", None),
+    ([], "notify_channels=(none)", None),
+    (None, None, "notify_channels"),
+], ids=["named", "nowhere", "not asked"])
+def test_the_decision_log_prints_channel_names_readably(
+        tmp_path, monkeypatch, channels, says, lacks):
+    """The pipeline log's whole value is that a person can read it.
+
+    Every field its resource line renders was a scalar until `notify_channels`
+    (2026-08-31), so the default `f"{v}"` put a Python repr into the file --
+    and a bare `()` for the answer that matters most, *send this calculation
+    nowhere*.  Absent stays absent: not asked for is left out rather than
+    printed as a null."""
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    if channels is not None:
+        request = read_request(bundle)
+        request["notify"] = {"on_scf_converged": True, "every_hours": 6,
+                             "channels": channels, "report": ["*"]}
+        write_request(bundle, request)
+    _prepared(bundle)
+    text = _the_log(bundle)
+    assert says is None or says in text, text
+    assert lacks is None or lacks not in text, text
 
 
 # --------------------------------------------------------------------- #
 #  5. Both gates' verdicts are IN the file                               #
 # --------------------------------------------------------------------- #
 
-def test_both_gates_report_their_verdict(tmp_path):
+def test_both_gates_report_their_verdict(tmp_path, monkeypatch):
     """The two gates answer different questions and neither can do the
     other's job (`script-preparation.md` § 4.3), so the log carries both:
     **validate** on the settings, **check** on the written file.
     """
-    dest, stages = _calculation(tmp_path, "siesta")
-    _prep(dest, stages[0])
-    text = _the_log(dest)
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    _prepared(bundle)
+    text = _the_log(bundle)
     assert "STEP 3.3 · VALIDATE" in text and "STEP 3.11 · CHECK" in text
     assert re.search(r"out  verdict\s+\d+ error, \d+ warn", text), text
     assert re.search(r"out  compared\s+\d+ distinct lines", text), text
@@ -303,9 +294,8 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     writes nothing (`script-preparation.md` § 4.5).  `relabel` is asked only
     of a TRIAL, so it is reached through a benchmark prep.
 
-    API-level: the hook is swapped in-process, and the prep goes through
-    the one entry `jobset prep task` calls; the CLI adds nothing between them
-    for an exception that is not a refusal.
+    The hook is swapped in-process, and the prep is `jobset prep`'s: an
+    exception that is no refusal comes out of the verb as raised.
 
     MUTATION THIS MUST FAIL AGAINST: any one hook called bare, outside its
     ``_calling(...)`` boundary.
@@ -333,22 +323,22 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
             return dataclasses.replace(spec, layout=tuple(layout))
         return dataclasses.replace(seam, spec_for=_spec_for)
 
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
     monkeypatch.setattr(P, "engine_seam", _with_one_hook_swapped)
-    dest, stages = _calculation(tmp_path, "siesta")
-    with pytest.raises(TypeError) as caught:
-        if hook == "relabel":
-            from support.road import read_request, write_request
-            request = read_request(dest)
-            request["bench"] = {"mpi_np": [1], "omp_threads": [1]}
-            write_request(dest, request)
-            prep_bench(open_calculation(dest), stages[0],
-                       allocation=Resources(mpi_np=8))
-        else:
-            _prep(dest, stages[0])
+    if hook == "relabel":
+        request = read_request(bundle)
+        request["bench"] = {"mpi_np": [1], "omp_threads": [1]}
+        write_request(bundle, request)
+        r = jobset("prep", "bench", "coarse", "--bundle", bundle,
+                   "--target", "this", "--np", 8)
+    else:
+        r = jobset(*_prep(bundle))
+    caught = r.exception
+    assert isinstance(caught, TypeError), r.output
 
     owner = f"siesta.{hook}"
-    assert str(caught.value) == "engine bug", "the message was replaced"
-    notes = getattr(caught.value, "__notes__", [])
+    assert str(caught) == "engine bug", "the message was replaced"
+    notes = getattr(caught, "__notes__", [])
     assert any(f"raised inside {owner}" in n for n in notes), (
         f"{owner} raised and the exception does not say whose it was: "
         f"{notes}")
@@ -385,7 +375,7 @@ def test_a_describe_hook_that_raises_says_whose_it_was(
     assert any(f"raised inside siesta.{hook}" in n for n in notes), notes
 
 
-def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
+def test_an_engines_deliberate_refusal_survives_the_boundary():
     """The boundary must not bury a refusal an engine raised ON PURPOSE.
 
     A hook's ``ValueError`` in a sentence written for a person stays a
@@ -406,7 +396,7 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
                for n in getattr(caught.value, "__notes__", [])), caught.value
 
 
-def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
+def test_the_attribution_reaches_the_person_running_the_command():
     """**A note does not reach a person on its own.**  ``str(exc)`` drops
     notes, and `prep` turns a user-fixable refusal into ``PrepError(str(exc))``
     -- so without ``notes_of`` the attribution would stop at a traceback that
@@ -426,7 +416,9 @@ def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
+def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path,
+                                                             monkeypatch,
+                                                             engine):
     """**W13's one format** (`script-preparation.md` § 4.5, *What it
     contains*): every line says what it is in its first column.
 
@@ -441,10 +433,10 @@ def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
     hold; what a test can see is
     the file each engine's prep actually left, and that is held here.
     """
-    dest, stages = _calculation(tmp_path, engine)
-    _prep(dest, stages[0])
+    bundle = _calculation(tmp_path, monkeypatch, engine)
+    _prepared(bundle)
     stray, prev = [], ""
-    for ln in _the_log(dest).splitlines():
+    for ln in _the_log(bundle).splitlines():
         was_rule = bool(re.match(r"^[═─]+$", prev.strip()))
         prev = ln
         if not ln.strip():
@@ -463,7 +455,7 @@ def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
     assert not stray, f"lines that are none of the format's kinds: {stray[:5]}"
 
 
-def test_a_block_row_carries_no_items_values_or_sources(tmp_path):
+def test_a_block_row_carries_no_items_values_or_sources(tmp_path, monkeypatch):
     """**W11, in the log** (`script-preparation.md` § 4.5): what a `Block`
     hides, it hides from the log too.
 
@@ -472,9 +464,9 @@ def test_a_block_row_carries_no_items_values_or_sources(tmp_path):
     grew item names, it would mean something was reaching inside a Block,
     which is the freedom W11 says a Block is paying for.
     """
-    dest, stages = _calculation(tmp_path, "siesta")
-    _prep(dest, stages[0])
-    rows = [ln for ln in _the_log(dest).splitlines()
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    _prepared(bundle)
+    rows = [ln for ln in _the_log(bundle).splitlines()
             if ln.startswith("  out  Block")]
     assert rows, "no Block rows at all"
     for ln in rows:
@@ -484,7 +476,7 @@ def test_a_block_row_carries_no_items_values_or_sources(tmp_path):
         assert "<-" not in ln, f"a Block row carries a source: {ln!r}"
 
 
-def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path):
+def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path, monkeypatch):
     """**W3**: nothing reaches a deck until the last thing that can refuse
     has refused.
 
@@ -498,18 +490,19 @@ def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path):
     has no data-files step to refuse at -- that is W5's *nothing*, a recorded
     answer.
     """
-    from molbuilder.jobset.errors import PrepError
-
-    dest, stages = _calculation(tmp_path, "siesta")
-    for psml in dest.glob("*.psml"):     # what the engine cannot start without
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    # WHAT THE ENGINE CANNOT START WITHOUT, gone from the folder and the
+    # library it names.
+    for psml in (tmp_path / "projects").rglob("*.psml"):
         psml.unlink()
-    with pytest.raises(PrepError):
-        _prep(dest, stages[0])
-    decks = [p for p in dest.rglob("*") if p.suffix in (".fdf", ".py")]
+    r = jobset(*_prep(bundle))
+    assert r.exit_code != 0, r.output
+    assert "this calculation needs H.psml" in r.output, r.output
+    decks = [p for p in bundle.rglob("*") if p.suffix in (".fdf", ".py")]
     assert not decks, f"a deck was written despite the refusal: {decks}"
 
 
-def test_both_engines_traverse_the_same_sequence(tmp_path):
+def test_both_engines_traverse_the_same_sequence(tmp_path, monkeypatch):
     """**W12**: one sequence, and an engine substitutes steps in it -- it
     never brings its own.
 
@@ -524,11 +517,10 @@ def test_both_engines_traverse_the_same_sequence(tmp_path):
     """
     seqs = {}
     for engine in ("siesta", "pyscf"):
-        (tmp_path / engine).mkdir(exist_ok=True)
-        dest, stages = _calculation(tmp_path / engine, engine)
-        _prep(dest, stages[0])
+        bundle = _calculation(tmp_path / engine, monkeypatch, engine)
+        _prepared(bundle)
         seqs[engine] = [re.sub(r" — .*", "", ln.strip())
-                        for ln in _the_log(dest).splitlines()
+                        for ln in _the_log(bundle).splitlines()
                         if ln.strip().startswith("STEP ")]
     assert seqs["siesta"] == seqs["pyscf"], (
         f"the engines ran different sequences:\n"

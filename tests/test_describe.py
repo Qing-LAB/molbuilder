@@ -8,78 +8,56 @@ calculation with one parameter set), § 6.6 (the split preflight).
 
 Written from the contract rather than from the
 implementation — the properties below are the ones the design would be wrong
-without, not the ones the code happens to have.
+without, not the ones the code happens to have.  Every case is the command as
+a person types it (`support.road`), and what it left on disk.
 """
 from __future__ import annotations
 
 import json
 import tomllib
+from pathlib import Path
 
-import numpy as np
 import pytest
 
-from molbuilder import describe as D
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.jobset.ladder import engine_ladder
-from molbuilder.structure import Structure
+from molbuilder.calculation import open as open_calculation
 from molbuilder.task import Stage, of as task_of
 from molbuilder.template import read_template
-from support.road import molbuilder
-from molbuilder.jobset._cli import describe_cmd
+from support.road import (STRUCTURE, _all_written, describe_calculation,
+                          molbuilder)
 
 
-@pytest.fixture
-def struct() -> Structure:
-    return Structure(elements=["S", "C", "C", "H"],
-                     positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.78],
-                                         [1.21, 0.0, 2.48], [2.15, 0.0, 1.94]]),
-                     vacuum=(10.0, 10.0, 10.0))
-
-
-@pytest.fixture
-def cfg() -> SiestaConfig:
-    return SiestaConfig(system_label="relax", mesh_cutoff=300.0)
-
-
-#: § 6.5 (2026-08-16): a job always has at least one stage, so the helper's
-#: default is ONE stage carrying no overrides -- the calculation that is just
-#: the template.
-_ONE_STAGE = (Stage(name="coarse", overrides={}),)
-
-
-def _describe(struct, cfg, stages=_ONE_STAGE, *, name="relax", source="structures/bdt.xyz"):
-    return D.build_description(struct, cfg, stages, engine="siesta",
-                               calculation="optimization",
-                               name=name, source=source)
+def _typed(**flags):
+    """`molbuilder describe` of the road's tree's structure, into a folder of
+    its own, as a person types it -- ``flags`` over what the line says."""
+    words = {"structure": STRUCTURE, "bundle": "P/optimization/JOB",
+             "engine": "siesta", "calculation": "optimization",
+             "name": "JOB", "psml-lib": "pseudopotential", **flags}
+    return molbuilder("describe", *(w for flag, value in words.items()
+                                    for w in (f"--{flag}", value)))
 
 
 # --------------------------------------------------------------------- #
-#  What it must NOT write                                               #
+#  What it writes, and what it must NOT                                 #
 # --------------------------------------------------------------------- #
 
-def test_describing_writes_no_deck(struct, cfg, tmp_path):
+def test_describing_writes_the_description_and_its_request_and_no_deck(
+        tmp_path, monkeypatch):
     """**The route's whole definition.**  A deck carries values that depend on
     how it will be launched — ``BlockSize`` above all — so rendering belongs to
     ``prep``, for the machine that will run it.  A ``describe`` that emitted a
-    deck would put step 3 before step 1 (`script-preparation.md` § 3.0)."""
-    written = D.write_description(_describe(struct, cfg,
-                                            engine_ladder("siesta", "publishable")),
-                                  tmp_path / "calc")
-    assert not [p for p in written if p.suffix == ".fdf"]
-    assert not list((tmp_path / "calc").glob("*.fdf"))
+    deck would put step 3 before step 1 (`script-preparation.md` § 3.0).
+
+    What the folder holds is `job-system.md` § 5.1's list: the template, the
+    description, its job request (`execution/job-request.md` § 9: a
+    calculation's folder holds both, § 7) and the data files -- the structure
+    as its own pair, the pseudopotentials."""
+    bundle = describe_calculation(tmp_path, monkeypatch)
+    assert sorted(p.name for p in bundle.iterdir()) == [
+        "H.psml", "H2.source.molstruct.json", "H2.source.xyz",
+        "H2.template.toml", "job-request.json", "task.json"]
 
 
-def test_it_writes_exactly_the_template_the_description_and_its_request(
-        struct, cfg, tmp_path):
-    """`execution/job-request.md` § 9: describing writes the description and
-    its job request -- a calculation's folder holds both (§ 7)."""
-    written = D.write_description(_describe(struct, cfg), tmp_path / "calc")
-    assert sorted(p.name for p in written) == ["job-request.json",
-                                               "relax.template.toml",
-                                               "task.json"]
-
-
-def test_the_description_names_no_machine(struct, cfg, tmp_path):
+def test_the_description_names_no_machine(tmp_path, monkeypatch):
     """`project-layout.md` § 2.1: *"none of them mention a machine"*, which is
     what makes the folder mean the same thing wherever you copy it -- and
     `engines/template.md` § 2: **no run setting is declared in a template,
@@ -90,8 +68,8 @@ def test_the_description_names_no_machine(struct, cfg, tmp_path):
     valueless again (2.27.x's slot, which migrate's refusal by content and
     its move by version disagreed about)."""
     from molbuilder.template import catalogue, is_run_setting, one
-    D.write_description(_describe(struct, cfg), tmp_path / "calc")
-    raw = tomllib.loads((tmp_path / "calc" / "relax.template.toml").read_text())
+    bundle = describe_calculation(tmp_path, monkeypatch)
+    raw = tomllib.loads(open_calculation(bundle).template_text)
     held = [n for n in raw["item"]
             if is_run_setting(one(catalogue(), n, engine="siesta"))]
     assert held == [], (
@@ -99,192 +77,177 @@ def test_the_description_names_no_machine(struct, cfg, tmp_path):
         f"request's (engines/template.md § 2)")
 
 
-# --------------------------------------------------------------------- #
-#  What it does write                                                   #
-# --------------------------------------------------------------------- #
-
-def test_the_structure_is_a_reference_and_a_witness_never_a_copy(struct, cfg,
-                                                                 tmp_path):
-    """§ 6.3.  The witness is what lets a description opened against a
-    structure that has since changed *say so*, instead of silently building a
-    different calculation under the same id."""
-    D.write_description(_describe(struct, cfg, source="structures/bdt.xyz"),
-                        tmp_path / "calc")
-    task = task_of(tmp_path / "calc")
-    assert task.structure.source == "structures/bdt.xyz"
-    assert task.structure.formula == struct.formula
-    assert task.structure.atoms == struct.n_atoms
-    # The source names a path that does not exist HERE, so there is
-    # nothing to copy -- the reference still records.
-    assert not list((tmp_path / "calc").glob("*.xyz"))
-
-
 def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
                                                             monkeypatch):
     """`molbuilder describe` writes the structure it describes as the calculation's
     own pair, named for the LABEL -- ``<label>.source.xyz`` and its sidecar,
     the catalogue's name and the hand-over's (`job-contracts.md` § 6.3,
-    `StructureCodec.source_files`) -- ``task.json`` records that name, and
-    the ``--vacuum 8`` it was described with travels in the sidecar, so
+    `StructureCodec.source_files`) -- ``task.json`` records that name and a
+    witness, its formula and atom count, which lets a description opened
+    against a structure that has since changed *say so* (`stages.md` § 6.3);
+    and the ``--vacuum 8`` it was described with travels in the sidecar, so
     the loader prep reads the pair with reads it back (the fix of 2026-08-12).
 
-    The structure FILE is ``h2.xyz`` and the label ``JOB``: init named the
-    pair ``h2.source.*`` until 2026-10-04 (plan D20)."""
-    from click.testing import CliRunner
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    # `init` cites both the structure and the calculation FROM THE PROJECTS
-    # ROOT (job-contracts.md 2.5b), so the test says where its tree is --
-    # the same thing a user does when calculations live on scratch.
-    from conftest import write_pseudos
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    xyz = tree / "P" / "structure" / "h2.xyz"
-    xyz.write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
-    # A SIESTA describe covers its pseudopotentials (job-system.md § 5.1).
-    (tree / "pseudopotential").mkdir()
-    write_pseudos(tree / "pseudopotential", ["H"])
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    res = CliRunner().invoke(describe_cmd, [
-        "--structure", "P/structure/h2.xyz",
-        "--bundle", "P/optimization/calc", "--engine", "siesta",
-        "--calculation", "optimization",
-        "--vacuum", "8", "--name", "JOB", "--psml-lib", "pseudopotential"])
-    assert res.exit_code == 0, res.output
-    calc = tree / "P" / "optimization" / "calc"
+    The structure FILE is ``structure.xyz`` and the label ``JOB``: init named
+    the pair after the file until 2026-10-04 (plan D20)."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    describe_calculation(tmp_path, monkeypatch)
+    r = _typed(vacuum=8)
+    assert r.exit_code == 0, r.output
+    calc = tmp_path / "projects" / "P" / "optimization" / "JOB"
     assert sorted(p.name for p in calc.glob("*.source.*")) == [
         "JOB.source.molstruct.json", "JOB.source.xyz"]
     task = task_of(calc)
     assert task.structure.source == "JOB.source.xyz"
-    from molbuilder.workingcopy_structure import StructureCodec
+    assert (task.structure.formula, task.structure.atoms) == ("H2", 2)
     assert StructureCodec().load(calc / task.structure.source).vacuum == (
         8.0, 8.0, 8.0)
 
 
-def test_every_description_states_its_kind(struct, cfg, tmp_path):
+@pytest.mark.parametrize("calculation", ["optimization", "vibration"])
+def test_every_description_states_its_kind(tmp_path, monkeypatch, calculation):
     """U0 (warm-files § 4.2a, 2026-08-13): `calculation` keys the engine's
     warm-file vocabulary, and every description states it, an
     optimization's included (`job-contracts.md` § 6.1; W57 R10, 2026-10-06
-    -- an optimization's was left out until then); a shape-violating value
-    is refused naming the rule.  Membership (does the engine have this
-    section?) is NOT checked here — that is the rules file's question,
-    answered where it is read."""
-    D.write_description(_describe(struct, cfg), tmp_path / "calc")
-    raw = json.loads((tmp_path / "calc" / "task.json").read_text())
-    assert raw["calculation"] == "optimization"
-    assert task_of(tmp_path / "calc").calculation == \
-        "optimization"
-    # ("vibration" stands in for any non-default kind; "transport" is the
-    # COMPOSITE with required slots and no structure block, guarded in
-    # test_transport_task.py.)
-    desc = D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
-                               name="relax",
-                               source="structures/bdt.xyz",
-                               calculation="vibration")
-    D.write_description(desc, tmp_path / "calc2")
-    raw = json.loads((tmp_path / "calc2" / "task.json").read_text())
-    assert raw["calculation"] == "vibration"
-    assert task_of(tmp_path / "calc2").calculation == \
-        "vibration"
-    with pytest.raises(Exception, match=r"calculation.*A-Za-z0-9_"):
-        D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
-                            name="relax",
-                            source="structures/bdt.xyz",
-                            calculation="no-hyphens!")
+    -- an optimization's was left out until then)."""
+    bundle = describe_calculation(tmp_path, monkeypatch,
+                                  calculation=calculation)
+    raw = json.loads((bundle / "task.json").read_text())
+    assert raw["calculation"] == calculation
+    assert task_of(bundle).calculation == calculation
 
 
-def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
-    D.write_description(_describe(struct, cfg,
-                                  engine_ladder("siesta", "publishable")),
-                        tmp_path / "calc")
-    task = task_of(tmp_path / "calc")
+def test_a_ladder_becomes_stages_and_varies(tmp_path, monkeypatch):
+    """`--stage-strategy` names a shipped ladder: its tiers are the stages,
+    and what they set is what the description varies (`stages.md` § 6.5)."""
+    task = task_of(describe_calculation(tmp_path, monkeypatch))
     assert [s.name for s in task.stages] == ["coarse", "medium"]
     assert "relax_type" in task.varies
 
 
-def test_an_empty_ladder_is_refused(struct, cfg):
-    """§ 6.5 (2026-08-16): a job always has at least one stage.
-
-    A stage-less shape produced artifacts with NO stage token, and adding a
-    second stage later left the first run belonging to no token at all. One
-    shape removes the transition; an empty ladder is refused, and the
-    refusal names the fix."""
-    with pytest.raises(D.DescribeError, match="at least one stage"):
-        _describe(struct, cfg, ())
-
-
-def test_the_label_and_the_id_derive_from_the_name(struct, cfg):
+def test_the_label_and_the_id_derive_from_the_name(tmp_path, monkeypatch):
     """§ 3 rule 1: it happens once.  The label is not stored and the id is,
     and ``Task.__post_init__`` proves the two against each other — so a
     description that got here has already been checked."""
-    desc = _describe(struct, cfg, name="bdt-relax")
-    assert desc.label == "bdt-relax"
-    assert desc.task.run.id == f"bdt-relax_{struct.formula}"
+    task = task_of(describe_calculation(tmp_path, monkeypatch,
+                                        name="bdt-relax"))
+    assert task.label == "bdt-relax"
+    assert task.run.id == "bdt-relax_H2"
 
 
 # --------------------------------------------------------------------- #
 #  Ask → check → write, and the order is the point                      #
 # --------------------------------------------------------------------- #
 
+def _a_ladder_of(monkeypatch, **overrides):
+    """The ladder `--stage-strategy` hands describe, as if a shipped preset
+    said ``overrides``: what the command takes is a shipped ladder's name, so
+    a value reaches describe's own check no other way (`job-system.md`
+    § 5.1)."""
+    monkeypatch.setattr("molbuilder.jobset.ladder.engine_ladder",
+                        lambda engine, strategy: [Stage(name="tight",
+                                                        overrides=overrides)])
 
-def test_an_override_the_schema_does_not_know_is_refused_by_name(struct, cfg):
+
+#: ONE ROW A RULE, each refused in its own words: `job-system.md` § 5.1.  The
+#: flags typed over the road's line, and what the refusal says.
+_REFUSED = [
+    # A label becomes a filename and a shell word, so the character set is
+    # narrow; it is refused by name, not a crash (`run-identity.md` § 3).
+    ("a name that cannot be a label", {"name": "Über"}, "letter or a digit"),
+    # The kind is the kind table's to know: nothing is guessed from a word
+    # (`architecture.md` § 3.3).
+    ("a kind nothing describes", {"calculation": "no-hyphens!"},
+     "no calculation kind 'no-hyphens!'"),
+    # A SIESTA run cannot start without a `.psml` for every species, so a
+    # describe naming a library without one is refused by name.  Until 2.65.3
+    # the command line wrote the calculation and said only `WARN: no H.psml`,
+    # a calculation found unable to start at prep.
+    ("a species with no pseudopotential", {"psml-lib": "P/structure"},
+     "no .psml file for H"),
+    # One calculation per folder (user, 2026-10-01), naming where the
+    # description is changed.  PREVENTS (the W52 review, P1a-12): describing
+    # again, silently, under whatever had been prepared from it.
+    ("a folder that already holds a calculation",
+     {"bundle": "P/optimization/H2", "name": "H3"},
+     "already holds a calculation"),
+]
+
+
+@pytest.mark.parametrize("flags, words", [r[1:] for r in _REFUSED],
+                         ids=[r[0] for r in _REFUSED])
+def test_describe_refuses_saying_why_and_writes_nothing(tmp_path, monkeypatch,
+                                                        flags, words):
+    """*"Describing a calculation writes every file or none"*, and a refusal
+    happens while nothing has been written: every file and folder of the tree
+    is as it was."""
+    tree = tmp_path / "projects"
+    describe_calculation(tmp_path, monkeypatch)
+    was = _all_written(tree), set(tree.rglob("*"))
+    r = _typed(**flags)
+    assert r.exit_code != 0, r.output
+    assert words in r.output, r.output
+    assert (_all_written(tree), set(tree.rglob("*"))) == was
+
+
+def test_describes_own_check_refuses_a_stage_the_schema_does_not_know(
+        tmp_path, monkeypatch):
     """§ 6.6's third check, and it is the existing preflight doing it rather
-    than a second implementation."""
-    from molbuilder.task import Stage
-    with pytest.raises(D.DescribeError, match=r"mesh_cutof"):
-        _describe(struct, cfg,
-                  (Stage(name="tight", overrides={"mesh_cutof": 300.0}),))
+    than a second implementation: describe asks it of the ladder it was
+    handed, before anything is written.  The preflight's own cases are
+    `test_task_preflight.py`'s, its hard limits at Save
+    `test_task_setup_tab.py`'s -- what is here is that describe asks it.
+
+    THE SILENT FAILURE: a shipped preset misspelt, described and found at
+    prep, on the cluster."""
+    tree = tmp_path / "projects"
+    describe_calculation(tmp_path, monkeypatch)
+    _a_ladder_of(monkeypatch, mesh_cutof=300.0)
+    r = _typed(**{"stage-strategy": "publishable"})
+    assert r.exit_code != 0, r.output
+    assert "mesh_cutof" in r.output, r.output
+    assert not (tree / "P" / "optimization" / "JOB").exists()
 
 
-def test_a_value_past_its_hard_limit_is_refused(struct, cfg):
-    """A stage's value past its item's hard limit (`above`,
-    `engines/template.md` § 5.3) is refused where the description is
-    written, with the reason; a value merely outside the recommended range
-    describes, the description's own check saying it (`Description.notes`,
-    which the road prints).  API-LEVEL, because the road cannot reach it: `molbuilder describe`
-    describes a non-transport calculation from its ladder presets alone, so
-    no person's value reaches this door but through the library."""
-    from molbuilder.task import Stage
-    with pytest.raises(D.DescribeError, match=r"k-point count"):
-        _describe(struct, cfg,
-                  (Stage(name="tight", overrides={"kgrid": [0, 4, 4]}),))
-    said = _describe(struct, cfg,
-                     (Stage(name="tight", overrides={"mesh_cutoff": 1e9}),))
-    assert any("outside the recommended range" in n.message
-               for n in said.notes), said.notes
+def test_a_value_outside_its_recommended_range_describes_and_says_so(
+        tmp_path, monkeypatch):
+    """A value merely outside the recommended range describes, the
+    description's own check saying it, which the command prints
+    (`engines/template.md` § 5.3): advice, never a refusal."""
+    describe_calculation(tmp_path, monkeypatch)
+    _a_ladder_of(monkeypatch, mesh_cutoff=1e9)
+    r = _typed(**{"stage-strategy": "publishable"})
+    assert r.exit_code == 0, r.output
+    assert "outside the recommended range" in r.output, r.output
 
 
-def test_a_failure_while_writing_publishes_nothing(struct, cfg, tmp_path,
-                                                   monkeypatch):
+def test_a_failure_while_writing_publishes_nothing(tmp_path, monkeypatch):
     """*"Describing a calculation writes every file or none."*
 
     Mutation-tested by construction: the failure is injected, so this proves
     the staging directory is really doing the work rather than the happy path
     merely never failing.
     """
-    import molbuilder.job_request as jr
-    desc = _describe(struct, cfg)
+    tree = tmp_path / "projects"
+    describe_calculation(tmp_path, monkeypatch)
 
     def fails(*_a, **_k):
         raise OSError("the disk filled")
     # THE JOB REQUEST'S WRITER FAILS, after the template and the description
     # were staged: nothing of either may reach the target.
-    monkeypatch.setattr(jr, "write", fails)
-    with pytest.raises(OSError, match="the disk filled"):
-        D.write_description(desc, tmp_path / "calc")
-    assert list((tmp_path / "calc").iterdir()) == []
-    assert not [p for p in tmp_path.iterdir() if p.name.startswith(".calc.")]
+    monkeypatch.setattr("molbuilder.job_request.write", fails)
+    r = _typed()
+    assert r.exit_code != 0, r.output
+    assert "the disk filled" in r.output, r.output
+    optimization = tree / "P" / "optimization"
+    assert list((optimization / "JOB").iterdir()) == []
+    assert not [p for p in optimization.iterdir()
+                if p.name.startswith(".JOB.")]
 
 
 # --------------------------------------------------------------------- #
-#  The name                                                             #
+#  The pseudopotentials                                                 #
 # --------------------------------------------------------------------- #
-
-def test_a_name_that_cannot_normalise_is_a_clean_refusal(struct, cfg):
-    """A label becomes a filename and a shell word, so the character set is
-    narrow.  A name outside it must be refused by name, not crash."""
-    with pytest.raises((ValueError, D.DescribeError)):
-        _describe(struct, cfg, name="Über")
-
 
 def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
                                                                monkeypatch):
@@ -296,63 +259,22 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
     the bare in-tree name, the resolver rejecting the cwd-relative one
     click demanded.  One fact, one door: the click check is gone and the
     resolver decides, so the bare spelling works from any directory."""
-    from click.testing import CliRunner
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-
-    from conftest import write_pseudos
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    write_pseudos(tree / "pseudopotential", ["H"])
-    (tree / "P" / "structure" / "h2.xyz").write_text(
-        "2\n\nH 0 0 0\nH 0 0 0.74\n")
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    # CliRunner's cwd is the test runner's -- ./pseudopotential does NOT
-    # exist here, which is exactly the papercut's shape.
-    res = CliRunner().invoke(describe_cmd, [
-        "--structure", "P/structure/h2.xyz",
-        "--bundle", "P/optimization/calc", "--engine", "siesta",
-        "--calculation", "optimization",
-        "--vacuum", "8", "--name", "JOB",
-        "--psml-lib", "pseudopotential"])
-    assert res.exit_code == 0, res.output
-    assert (tree / "P" / "optimization" / "calc" / "H.psml").exists(), (
+    from molbuilder.template import one
+    bundle = describe_calculation(tmp_path, monkeypatch)
+    # The road stands above the tree: ./pseudopotential does NOT exist here,
+    # which is exactly the papercut's shape.
+    assert not Path("pseudopotential").exists()
+    assert (bundle / "H.psml").exists(), (
         "the bare name must resolve against the tree and the pseudo "
         "must travel with the calculation")
     # ...and the template says whose the folder is (`template.md` § 6.6).
-    from molbuilder.template import one
-    from molbuilder.template_file import of as template_of
-    calc = tree / "P" / "optimization" / "calc"
-    written = read_template(template_of(
-        calc, task_of(calc).label).text)
+    written = read_template(open_calculation(bundle).template_text)
     assert one(written, "psml_lib").source == "person"
 
 
-def test_a_siesta_describe_whose_species_has_no_pseudopotential_is_refused(
-        tmp_path, monkeypatch):
-    """`job-system.md` § 5.1: the pseudopotentials are covered at describe,
-    as the hand-over covers them (`web/handover-procedure.md` § 2.2) -- a
-    SIESTA run cannot start without a `.psml` for every species, so a
-    describe naming a library without one is refused by name and writes
-    nothing.  Until 2.65.3 the command line wrote the calculation and said
-    only `WARN: no H.psml`, a calculation found unable to start at prep."""
-    from click.testing import CliRunner
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "h2.xyz").write_text(
-        "2\n\nH 0 0 0\nH 0 0 0.74\n")
-    (tree / "pseudopotential").mkdir()
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    res = CliRunner().invoke(describe_cmd, [
-        "--structure", "P/structure/h2.xyz",
-        "--bundle", "P/optimization/calc", "--engine", "siesta",
-        "--calculation", "optimization", "--name", "JOB",
-        "--psml-lib", "pseudopotential"])
-    assert res.exit_code != 0, res.output
-    assert "no .psml file for H" in res.output, res.output
-    assert not (tree / "P" / "optimization" / "calc").exists()
-
+# --------------------------------------------------------------------- #
+#  A kind's own start                                                   #
+# --------------------------------------------------------------------- #
 
 @pytest.mark.parametrize("engine, ladder", [("siesta", ["freq"]),
                                             ("pyscf", ["freq"])])
@@ -364,29 +286,13 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     `vibration.md` § 5.11 § 1: one stage, `freq`, on both engines -- on
     SIESTA one run in phases, the relaxation a phase of it, switched by the
     box.  No engine runs: `init` describes."""
-    from click.testing import CliRunner
-    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.template import catalogue, recommended_for, select
-    from molbuilder.template_file import of as template_of
-
-    from conftest import write_pseudos
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "h2.xyz").write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
-    # A SIESTA describe covers its pseudopotentials (job-system.md § 5.1).
-    (tree / "pseudopotential").mkdir()
-    write_pseudos(tree / "pseudopotential", ["H"])
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    res = CliRunner().invoke(describe_cmd, [
-        "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
-        "--engine", engine, "--calculation", "vibration", "--name", "V",
-        *(("--psml-lib", "pseudopotential") if engine == "siesta" else ())])
-    assert res.exit_code == 0, res.output
-    bundle = tree / "P" / "frequency" / "V"
+    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
+                                  calculation="vibration", name="V")
     assert [s.name for s in task_of(bundle).stages] == ladder
 
     written = {it.name: it for it in select(read_template(
-        template_of(bundle, task_of(bundle).label).text))}
+        open_calculation(bundle).template_text))}
     recommended = {it.name: recommended_for(it, "vibration")
                    for it in select(catalogue(), engine=engine)
                    if recommended_for(it, "vibration") is not None}
@@ -399,28 +305,3 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
         assert written[name].source == "default", (name, written[name].source)
     ident = "job_name" if engine == "pyscf" else "system_label"
     assert written[ident].source == "person", written[ident].source
-
-
-def test_init_refuses_a_folder_that_already_holds_a_calculation(
-        tmp_path, monkeypatch):
-    """One calculation per folder (user, 2026-10-01): `init` on a described
-    folder is refused, naming where the description is changed -- and the
-    description stays as it was.  Through the verb (`support.road`).
-
-    PREVENTS (the W52 review, P1a-12): `init` re-describing a calculation
-    silently, under whatever had been prepared from it.
-
-    MUTATION THIS MUST FAIL AGAINST: the refusal removed (the second `init`
-    rewrites task.json -- under another name, so its bytes differ)."""
-    from support.road import STRUCTURE, describe_calculation
-    bundle = describe_calculation(tmp_path, monkeypatch)
-    before = (bundle / "task.json").read_bytes()
-    r = molbuilder("describe", "--structure", STRUCTURE,
-               "--bundle", "P/optimization/H2", "--engine", "siesta",
-               "--calculation", "optimization",
-               "--name", "H3",
-               "--psml-lib", "pseudopotential")
-    assert r.exit_code != 0, r.output
-    assert "already holds a calculation" in r.output, r.output
-    assert (bundle / "task.json").read_bytes() == before
-

@@ -23,7 +23,6 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.chemistry import species_order
-from molbuilder.runfiles import RunNames
 
 
 @pytest.mark.parametrize("elements,expected,why", [
@@ -56,60 +55,3 @@ def test_numbered_labels_stay_distinct_and_hydrogen_lands_after_the_group():
         "a tie keeps first-seen order, so the file's own order survives"
 
 
-def test_the_override_reaches_a_transport_deck_too():
-    """`species_order` is a catalogue row a person can fill in.  Every
-    SIESTA deck honoured it and NO transport deck could see it, because the
-    lifted geometry block took no config -- the config was already in scope
-    at the call site and simply not passed (`deck.py`).  Global means
-    global (user, 2026-09-23).
-    """
-    import numpy as np
-    from molbuilder import script_emit as _sc
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.electronic_state import electronic_state
-    from molbuilder.siesta.input import spec_for
-    from molbuilder.structure import Structure
-
-    struct = Structure(
-        elements=["Au", "C", "H", "S"],
-        positions=np.array([[0., 0, 2. * i] for i in range(4)]),
-        cell=np.diag([10., 10., 8.]),
-        axis_kind=("periodic", "periodic", "transport"),
-        regions={"L-electrode": [0], "bridge": [1, 2], "R-electrode": [3]})
-
-    def _declared(order):
-        cfg = SiestaConfig(system_label="t", species_order=order)
-        deck = _sc.render_deck(
-            spec_for(struct, cfg, calculation="transport",
-                     state=electronic_state(struct, cfg, kind="transport"),
-                     names=RunNames("t", "04_device")),
-            struct, cfg)
-        return [ln.split()[2] for ln in deck.splitlines()
-                if ln.startswith("  ") and len(ln.split()) == 3
-                and ln.split()[0].isdigit()]
-
-    assert _declared(None) == ["C", "H", "S", "Au"], "the default rule"
-    assert _declared(["S", "H", "C", "Au"]) == ["S", "H", "C", "Au"], \
-        "the person's own order, honoured verbatim"
-
-
-def test_both_emitters_ask_the_same_function():
-    """The defect this rule closed: two emitters, two orders, one structure.
-
-    Asked through each emitter's own door rather than by reading the source,
-    so a third rule appearing anywhere would have to pass here too.
-    """
-    els = ["Au", "C", "H", "S"]
-    import numpy as np
-    from molbuilder.structure import Structure
-    from molbuilder.transport.transiesta import _emit_geometry
-    struct = Structure(
-        elements=els,
-        positions=np.array([[0., 0, 2. * i] for i in range(4)]),
-        cell=np.diag([10., 10., 8.]),
-        axis_kind=("periodic", "periodic", "transport"))
-    block = "\n".join(_emit_geometry(struct))
-    rows = [ln.split() for ln in block.splitlines()
-            if ln.startswith("  ") and len(ln.split()) == 3
-            and ln.split()[0].isdigit()]
-    assert [r[2] for r in rows] == species_order(els), block

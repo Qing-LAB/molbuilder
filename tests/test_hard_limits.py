@@ -3,9 +3,10 @@
 
 PINS: ``docs/engines/template.md`` § 5.3 (`range` warned and never refused;
 `above` refused everywhere with one message, through ``template.why_not``;
-the bias list held to its item); ``docs/engines/stages.md`` § 6.6's rows;
+the bias list held to its item, in ``tests/test_transport_decks_e2e.py``, a
+transport calculation needing a real relaxation); ``docs/engines/stages.md`` § 6.6's rows;
 ``docs/workflow.md`` § 9's gate ③ at every describe; ``docs/plans/plan.md``
-§ 5w K3 (SS-C5, PS-C22, T-F15, SO-N4).
+§ 5w K3 (SS-C5, PS-C22, SO-N4).
 
 PREVENTS, each read in the code before 2026-09-30:
 
@@ -16,22 +17,15 @@ PREVENTS, each read in the code before 2026-09-30:
   description is saved while the same value in the template was warned
   (SO-N4).
 
-The transport rows -- a repeated bias point or one outside its range (T-F15),
-the two describe doors' preflight -- have no road case here: a transport calculation cites a finished relaxation, which only a real run makes.
-
 Nothing here launches an engine: prep writes the deck and stops.
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 
-from molbuilder.config.pyscf import PySCFConfig
-
-from test_fixed_and_shared_items import _template_says
-from test_what_a_kind_offers import _siesta
-from support.road import save_both
+from support.road import (_description_with_overrides, describe_calculation,
+                          read_request, save_both, stage_file)
+from test_electronic_state import WATER
 
 pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
@@ -45,33 +39,25 @@ pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
      "PySCF's ideal-gas entropy takes a logarithm of kT/P"),
 ])
 def test_a_value_the_engine_cannot_take_is_refused_with_its_reason(
-        isolated_projects_root, engine, name, reason):
+        prepared, engine, name, reason):
     """A vibration's template stating 0 for a value the engine divides by or
     takes a logarithm of is refused at prep, naming where it came from and
     why -- the item's own declared limit, the one clause every door gives.
 
     MUTATION THIS MUST FAIL AGAINST: the item's `above` removed (the deck is
     written, and the run writes inf or divides by zero)."""
-    put = lambda dest: _template_says(dest, name, 0.0)      # noqa: E731
-    if engine == "siesta":
-        _d, _s, said = _siesta(isolated_projects_root, "vibration",
-                               before_prep=put, refused=True)
-    else:
-        from test_engine_offset_reaches_every_deck import _prep
-        from molbuilder.jobset.ladder import fresh_stages
-        from test_electronic_state import WATER
-        _d, _s, said = _prep(
-            isolated_projects_root, WATER(),
-            PySCFConfig(job_name="JOB", already_relaxed=True),
-            fresh_stages("vibration", "pyscf"), "pyscf",
-            calculation="vibration", before_prep=put, refused=True)
+    _d, _s, said = prepared(
+        WATER(), engine, calculation="vibration",
+        template={name: 0.0, **({"already_relaxed": True}
+                                if engine == "pyscf" else {})},
+        refused=True)
     assert f"the template sets {name} = 0.0: it must be greater than 0" \
         in said, said
     assert reason in said, said
 
 
 def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
-        web_client, isolated_projects_root):
+        web_client, tmp_path, monkeypatch):
     """A stage's value outside the item's recommended range is a choice a
     person may make -- a coarse test run -- so the Task-setup save WARNS and
     saves, as the settings gate warns about the same value in a template; a
@@ -80,25 +66,11 @@ def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
     MUTATIONS THIS MUST FAIL AGAINST: the stage branch back at "error" (the
     save refuses what the template would only warn about); the save checking
     scalars alone (the triple says nothing, the K3 review)."""
-    from molbuilder.identity import run_id
-    from test_task_setup_tab import _fresh_calc_dir
-    d = _fresh_calc_dir(isolated_projects_root)
-    described = {
-        "schema": "molbuilder/task@2", "engine": {"name": "siesta"},
-        "calculation": "optimization",
-        "shape": "hierarchical",
-        "run": {"name": "x", "id": run_id("x", "H2"),
-                "created": "2026-09-30T00:00:00-07:00"},
-        "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
-        "varies": ["kgrid", "mesh_cutoff"],
-        "stages": [{"name": "coarse",
-                    "overrides": {"mesh_cutoff": 2000.0,
-                                  "kgrid": [100, 1, 1]}}]}
-    r = save_both(d, described, {"schema": "molbuilder/job-request@1",
-                                 "stages": {"coarse": {"group": 1}}},
-                  web_client)
+    d = describe_calculation(tmp_path, monkeypatch)
+    r = save_both(d, _description_with_overrides(
+        d, {"coarse": {"mesh_cutoff": 2000.0, "kgrid": [100, 1, 1]}}),
+        read_request(d), web_client)
     assert r.status_code == 200, r.get_json()
-    assert (d / "task.json").is_file()
     for where, said in (("config.mesh_cutoff", "mesh_cutoff = 2000.0"),
                         ("config.kgrid", "kgrid[0] = 100")):
         found = [f for f in r.get_json()["findings"] if f["where"] == where]
@@ -108,8 +80,8 @@ def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
         assert "a recommendation, not a limit" in found[0]["message"], found
 
 
-def test_what_the_save_refuses_it_refuses_once(web_client,
-                                                isolated_projects_root):
+def test_what_the_save_refuses_it_refuses_once(web_client, tmp_path,
+                                               monkeypatch):
     """The description's own check at the Task-setup save, where a person's
     hand-edited description lands:
 
@@ -128,30 +100,15 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
     number); the door asked about the raw value (``0.0`` for a count
     saves); a run card judged without the setting door (it saves -- the
     2.27.0 review)."""
-    from molbuilder.identity import run_id
-    from test_task_setup_tab import _fresh_calc_dir
-    d = _fresh_calc_dir(isolated_projects_root)
-    base = {
-        "schema": "molbuilder/task@2", "engine": {"name": "siesta"},
-        "calculation": "optimization",
-        "shape": "hierarchical",
-        "run": {"name": "x", "id": run_id("x", "H2"),
-                "created": "2026-09-30T00:00:00-07:00"},
-        "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
-        "varies": [],
-        "stages": [{"name": "coarse", "overrides": {}}]}
+    d = describe_calculation(tmp_path, monkeypatch)
+    was = (d / "task.json").read_text()
 
     def save(**change):
-        described = json.loads(json.dumps(base))
-        request = {"schema": "molbuilder/job-request@1",
-                   "stages": {"coarse": {"group": 1}}}
-        for key, value in change.items():
-            if key == "overrides":
-                described["varies"] = sorted(value)
-                described["stages"][0]["overrides"] = value
-            else:
-                request[key] = value
-        r = save_both(d, described, request, web_client)
+        request = read_request(d)
+        overrides = change.pop("overrides", {})
+        request.update(change)
+        r = save_both(d, _description_with_overrides(d, {"coarse": overrides}),
+                      request, web_client)
         assert r.status_code == 400, r.get_json()
         return r.get_json()
 
@@ -172,10 +129,10 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
         assert said in body["error"], body["error"]
         errors = [f for f in body["findings"] if f["severity"] == "error"]
         assert len(errors) == 1, [f["message"] for f in errors]
-    assert not (d / "task.json").exists()
+    assert (d / "task.json").read_text() == was
 
 
-def test_a_triples_range_is_warned_at_prep_too(isolated_projects_root):
+def test_a_triples_range_is_warned_at_prep_too(prepared):
     """The settings gate warns a triple per component, as the save does: a
     ``kgrid`` of 100 along an axis is outside the recommended range, and
     the deck's validation report says so.  Its range was warned nowhere
@@ -183,21 +140,10 @@ def test_a_triples_range_is_warned_at_prep_too(isolated_projects_root):
 
     MUTATION THIS MUST FAIL AGAINST: the metadata pass standing aside for a
     field with a `validate` callable (the report says nothing)."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.ladder import engine_ladder
-    from molbuilder.task import Stage
-    from test_electronic_state import WATER
-    from test_engine_offset_reaches_every_deck import _prep
-    ladder = engine_ladder("siesta", "publishable")
-    first = ladder[0]
-    ladder = (Stage(name=first.name,
-                    overrides={**dict(first.overrides or {}),
-                               "kgrid": (100, 1, 1)}),) + tuple(ladder[1:])
-    dest, stage, _deck = _prep(isolated_projects_root, WATER(),
-                               SiestaConfig(system_label="JOB"), ladder,
-                               "siesta")
-    report = next((dest / p).read_text()
-                  for p in (x.relative_to(dest)
-                            for x in dest.rglob("*.validation.txt")))
+    dest, stage, _deck = prepared(WATER(), "siesta",
+                                  overrides={"kgrid": [100, 1, 1]})
+    report = stage_file(dest, stage, ".validation.txt").read_text()
     assert "[0] = 100 is outside the recommended range [1, 64]" in report, \
         report
+
+

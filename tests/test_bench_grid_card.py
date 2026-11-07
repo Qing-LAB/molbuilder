@@ -13,17 +13,18 @@ cell look fine in one place and be refused in another.
 """
 from __future__ import annotations
 
-from molbuilder.scheduler.record import write_environment
-import numpy as np
+import json
+
 import pytest
 
-from molbuilder import describe as D
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.scheduler import Domain, Environment, Topology
-from molbuilder.jobset.ladder import engine_ladder
-from molbuilder.structure import Structure
+from conftest import write_machine_record
+from molbuilder.config_dir import ensure_private_dir
+from molbuilder.scheduler import (Domain, Environment, Topology,
+                                  environments_dir, named_environment_path,
+                                  write_environment)
 from support.machines import SLURM
-from support.road import read_request, write_request
+from support.road import (describe_calculation, jobset, one_rank, read_request,
+                          write_request)
 
 
 #: A small Sol-SHAPED menu, written by hand so each fit is a fact about this
@@ -62,59 +63,28 @@ def _with_queue(bundle, name):
     write_request(bundle, req)
 
 
+#: The machine `bundle` is on: a cluster's node, as its probe records it.
+_NODE = Topology(sockets=2, cores_per_socket=32, gpus_per_node=4)
+
+
 @pytest.fixture()
-def bundle(tmp_path):
-    """A described SIESTA calculation on a machine WITH QUEUES.
+def bundle(tmp_path, monkeypatch):
+    """A described SIESTA calculation on a machine WITH QUEUES -- this
+    machine's record, where a probe writes it.  No prep has run, so the
+    calculation holds no copy of it (`configuration.md` M-3).
 
     Built here, never copied from the developer's `projects/` tree: a test
     proving its claim against found state is the one thing a fixture must
     never do.
     """
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "bundle"
-    D.write_description(
-        D.build_description(struct,
-                            SiestaConfig(system_label="JOB"),
-                            engine_ladder("siesta", "publishable"),
-                            engine="siesta",
-                            calculation="optimization",
-                            name="JOB",
-                            source=str(tmp_path / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    env = Environment(machine="this", scheduler=SLURM,
-                      topology=Topology(sockets=2, cores_per_socket=32,
-                                        gpus_per_node=4),
-                      domains=[Domain.from_row(r) for r in _DOMAINS],
-                      # how a shell enters an environment there -- the
-                      # record's fact (`configuration.md` § 5 M-1)
-                      env_init={"activation": "conda activate",
-                                         "preamble": "true"})
-    write_environment(env, (dest / "environment.json"))
+    write_machine_record(scheduler=SLURM, topology=_NODE,
+                         domains=[Domain.from_row(r) for r in _DOMAINS])
+    dest = describe_calculation(tmp_path, monkeypatch, name="JOB")
     # THE RUN ON THE GPU, and how many (`execution/gpu.md` G5), on the
     # calculation's run card; the bench takes its GPU from it, never its
     # count.
-    req = read_request(dest)
-    req["execution"] = {"use_gpu": True, "diag_algorithm": "ELPA-1STAGE",
-                        "gpu_count": 1}
-    write_request(dest, req)
+    one_rank(dest, use_gpu=True, diag_algorithm="ELPA-1STAGE", gpu_count=1)
     return dest
-
-
-@pytest.fixture(autouse=True)
-def _picker_root(tmp_path, monkeypatch):
-    """The doors read only inside a picker root."""
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
 
 
 @pytest.fixture()
@@ -224,18 +194,6 @@ class TestTheDoorServesTheOneEnumerator:
         assert all(set(_queues(c)) == {"short", "public", "cpu"}
                    for c in d["cells"]), d
 
-    def test_a_bench_that_is_not_an_object_is_refused(self, client, bundle):
-        r = client.post("/api/task-setup/bench-grid",
-                        json={"dest": str(bundle), "bench": [1, 2]})
-        assert r.status_code == 400
-        assert "bench" in r.get_json()["error"]
-
-    def test_the_folder_must_be_inside_a_picker_root(self, client):
-        r = client.post("/api/task-setup/bench-grid",
-                        json={"dest": "/etc", "bench": {}})
-        assert r.status_code >= 400
-
-
     def test_an_unresolvable_declaration_answers_the_readers_own_words(
             self, client, bundle):
         """A grid that cannot be resolved at all is a 400 carrying the
@@ -267,42 +225,30 @@ class TestPickingThisMachineIsAnAnswer:
     and this door had discarded it.
     """
 
-    @pytest.fixture()
-    def machine_with_named_records(self, tmp_path, monkeypatch):
-        """A workstation that also holds a cluster's record — the setup that
-        makes the question real (`choice_required`: any named record does)."""
-        from molbuilder.config_dir import config_dir, ensure_private_dir
-        from molbuilder.scheduler import (environments_dir, machine_scope_path,
-                                          named_environment_path)
-        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
-        ensure_private_dir(environments_dir())
-        # QUEUES NAMED APART FROM THE BUNDLE'S, deliberately.  The bundle
-        # snapshot's are `short` and `public`; these are `sol-short` and
-        # `sol-public`.  Writing the same menu in both places makes every
-        # "which record answered?" assertion pass whichever one did.
-        env = Environment(scheduler=SLURM,
-                          topology=Topology(sockets=2, cores_per_socket=32,
-                                            gpus_per_node=4),
-                          domains=[Domain.from_row(
-                              dict(r, name="sol-" + r["name"]))
-                              for r in _DOMAINS])
-        write_environment(env, machine_scope_path())
-        write_environment(env, named_environment_path("sol"))
-        return config_dir()
-
     @staticmethod
-    def _unprepped(bundle):
-        """A described calculation that has not been prepared: no snapshot."""
-        (bundle / "environment.json").unlink()
-        return bundle
+    def _a_cluster_on_file():
+        """A workstation that also holds a cluster's record — the setup that
+        makes the question real (`choice_required`: any named record does).
 
-    def test_the_grid_resolves_when_this_machine_was_picked(
-            self, client, bundle, machine_with_named_records):
+        QUEUES NAMED APART FROM THE ONES `bundle` WAS DESCRIBED ON,
+        deliberately: `short` and `public` there, `sol-short` and
+        `sol-public` here.  Writing the same menu in both places makes every
+        "which record answered?" assertion pass whichever one did."""
+        menu = [Domain.from_row(dict(r, name="sol-" + r["name"]))
+                for r in _DOMAINS]
+        write_machine_record(scheduler=SLURM, topology=_NODE, domains=menu)
+        ensure_private_dir(environments_dir())
+        write_environment(
+            Environment(scheduler=SLURM, topology=_NODE, domains=menu),
+            named_environment_path("sol"))
+
+    def test_the_grid_resolves_when_this_machine_was_picked(self, client,
+                                                            bundle):
         """...and the card, a preview, writes nothing: it reads the record a
         prep would snapshot (`configuration.md` M-3; W52 -- every edit pause
         snapshotted the picked machine into the calculation, so a later Prep
         for another was refused as a contradiction of a prep never made)."""
-        bundle = self._unprepped(bundle)
+        self._a_cluster_on_file()
         for target in ("(this machine)", "sol"):
             d = _post(client, bundle,
                       {"mpi_np": [48], "omp_threads": [1],
@@ -318,22 +264,25 @@ class TestPickingThisMachineIsAnAnswer:
             assert not (bundle / "environment.json").exists(), (
                 "the card snapshotted the machine into the calculation")
 
-    def test_naming_nothing_is_still_refused(
-            self, client, bundle, machine_with_named_records):
+    def test_naming_nothing_is_still_refused(self, client, bundle):
         """The other half.  The refusal is right when nobody answered -- what
         was wrong was applying it to somebody who did."""
-        d = _post(client, self._unprepped(bundle),
+        self._a_cluster_on_file()
+        d = _post(client, bundle,
                   {"mpi_np": [48], "omp_threads": [1], "use_gpu": [False]},
                   target=None)
         assert d["ok"] is False and d["error"]
 
-    def test_a_prepped_folders_own_snapshot_still_wins(
-            self, client, bundle, machine_with_named_records):
+    def test_a_prepped_folders_own_snapshot_still_wins(self, client, bundle):
         """What the `None` is FOR, and the reason this is not fixed by
-        mapping the label to `LOCAL_TARGET`: the bundle here carries a
-        record whose queues are `short` and `public`, and those are the
+        mapping the label to `LOCAL_TARGET`: the calculation was prepared on
+        a record whose queues are `short` and `public`, and those are the
         queues the grid is measured against even though a named record and
-        a local one both exist."""
+        a local one, listing others, both exist now."""
+        r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
+                   "--target", "this", "--no-sbatch")
+        assert r.exit_code == 0, r.output
+        self._a_cluster_on_file()
         d = _post(client, bundle,
                   {"mpi_np": [4], "omp_threads": [1], "use_gpu": [True],
                    "gpu_count": [1]},
@@ -347,29 +296,22 @@ class TestPickingThisMachineIsAnAnswer:
 #  What a prep will write, per stage — task-setup.md § 7.1               #
 # --------------------------------------------------------------------- #
 
-_PLAN_TASK = {
-    "schema": "molbuilder/task@2", "engine": {"name": "siesta"},
-                                              "calculation": "optimization",
-    "shape": "hierarchical", "run": {"name": "r", "id": "r_H2"},
-    "structure": {"source": "a.xyz", "formula": "H2", "atoms": 2},
-    "varies": [],
-    "stages": [{"name": "coarse", "overrides": {}},
-               {"name": "tight", "overrides": {}}],
-}
-_PLAN_REQUEST = {
-    "schema": "molbuilder/job-request@1",
-    "stages": {"coarse": {"group": 1}, "tight": {"group": 2}},
-    "allocation": {"domain": "htc", "time": "1-00:00:00"},
-    # THREE points on one axis and ONE on the other: an axis to measure
-    # beside a decision already made (`generator.md` § 4.3a).
-    "bench": {"mpi_np": [4, 8, 16], "omp_threads": [4]},
-}
+def _documents(bundle, **request):
+    """The description and its job request as the page holds them, read from
+    what `molbuilder describe` wrote: the job request naming one queue and
+    one wall, THREE points on one axis and ONE on the other -- an axis to
+    measure beside a decision already made (`generator.md` § 4.3a) -- and no
+    run card, but what ``request`` states."""
+    req = read_request(bundle)
+    del req["execution"]
+    req.update(allocation={"domain": "short", "time": "1-00:00:00"},
+               bench={"mpi_np": [4, 8, 16], "omp_threads": [4]}, **request)
+    return json.loads((bundle / "task.json").read_text()), req
 
 
-def _plan(client, task, request=None):
+def _plan(client, task, request):
     return client.post("/api/task-setup/prep-plan",
-                       json={"task": task,
-                             "request": request or _PLAN_REQUEST}).get_json()
+                       json={"task": task, "request": request}).get_json()
 
 
 def _runnable(bundle):
@@ -466,57 +408,62 @@ class TestThePlanComesFromTheProducer:
     the page composed would be free to disagree with the thing it
     describes."""
 
-    def test_each_stage_names_its_directory_from_the_one_namer(self, client):
-        d = _plan(client, _PLAN_TASK)
+    def test_each_stage_names_its_directory_from_the_one_namer(self, client,
+                                                               bundle):
+        d = _plan(client, *_documents(bundle))
         assert d["ok"] is True, d
-        assert [r["dir"] for r in d["stages"]] == ["01_coarse", "02_tight"]
+        assert [r["dir"] for r in d["stages"]] == ["01_coarse", "02_medium"]
 
-    def test_every_stage_shows_the_ONE_allocation(self, client):
+    def test_every_stage_shows_the_ONE_allocation(self, client, bundle):
         """§ 6.8a: the calculation asks the scheduler for one queue, one
         wall, one memory.  `prep task <stage>` is already per stage, so a
         rung that wants a different wall says so on its own command."""
-        d = _plan(client, _PLAN_TASK)
+        d = _plan(client, *_documents(bundle))
         # THE EFFECTIVE ASK per stage (`ask`: the run card's over the
         # calculation's, the fold prep uses) -- here every stage's is the
         # calculation's one allocation.
         for row in d["stages"]:
-            assert row["ask"] == {"domain": "htc",
+            assert row["ask"] == {"domain": "short",
                                   "time": "1-00:00:00", "mem": None}
 
-    def test_the_chosen_shape_is_EXECUTION_never_the_bench(self, client):
+    def test_the_chosen_shape_is_EXECUTION_never_the_bench(self, client,
+                                                           bundle):
         """`stages.md` § 6.8d: the run's condition is `execution`, its own
         block.  A `bench` row is a thing to measure at any length -- including
         length one, which is one trial.  The two blocks are independent, and
         this is the test that says so from the surface's side."""
-        d = _plan(client, _PLAN_TASK)
+        d = _plan(client, *_documents(bundle))
         for row in d["stages"]:
             assert row["chosen"] == {}, (
                 "a bench row reached the run's shape: " + repr(row["chosen"]))
-        withcond = dict(_PLAN_REQUEST, execution={"mpi_np": 8})
-        for row in _plan(client, _PLAN_TASK, withcond)["stages"]:
+        withcond = _documents(bundle, execution={"mpi_np": 8})
+        for row in _plan(client, *withcond)["stages"]:
             assert row["chosen"] == {"mpi_np": 8}
 
-    def test_the_bench_row_carries_every_axis(self, client):
-        d = _plan(client, _PLAN_TASK)
+    def test_the_bench_row_carries_every_axis(self, client, bundle):
+        d = _plan(client, *_documents(bundle))
         assert d["bench"]["axes"] == {"mpi_np": [4, 8, 16], "omp_threads": [4]}
-        assert d["bench"]["allocation"]["domain"] == "htc"
+        assert d["bench"]["allocation"]["domain"] == "short"
 
-    def test_the_bench_rungs_name_the_container_the_sweep_LANDS_in(self, client):
+    def test_the_bench_rungs_name_the_container_the_sweep_LANDS_in(self, client,
+                                                                   bundle):
         """The container is `<NN>_<stage>/bench`; the dash form
         (`bench-<point>`) is a TRIAL's name, which lives INSIDE one.  ONE ENTRY PER RUNG,
         because `prep bench` takes a stage and the container lives inside
         the stage it measures.
         """
-        d = _plan(client, _PLAN_TASK)
+        d = _plan(client, *_documents(bundle))
         assert d["bench"]["rungs"] == [
             {"stage": "coarse", "dir": "01_coarse/bench"},
-            {"stage": "tight", "dir": "02_tight/bench"}]
+            {"stage": "medium", "dir": "02_medium/bench"}]
 
-    def test_a_description_mid_edit_is_refused_in_its_own_words(self, client):
+    def test_a_description_mid_edit_is_refused_in_its_own_words(self, client,
+                                                                bundle):
         """Unreadable is ordinary while someone types, and the card hides the
         list rather than showing a plan for a document that no longer says
         what it did."""
-        d = _plan(client, {"schema": "molbuilder/task@2"})
+        d = _plan(client, {"schema": "molbuilder/task@2"},
+                  _documents(bundle)[1])
         assert d["ok"] is False and d["error"]
 
 

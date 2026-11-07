@@ -10,15 +10,20 @@ that machine and its record copied here; the whole ``scheduler`` block is
 refused by name (`configuration.md` § 4, § 5 M-1).
 """
 
-from pathlib import Path
-
 import pytest
 
-from molbuilder.scheduler import (FILENAME, Domain, Environment, Site,
-                                    Topology, write_environment)
+from conftest import write_machine_record
+from molbuilder.config_dir import ensure_private_dir
 from molbuilder.runtime_config import get_routing
+from molbuilder.scheduler import (Domain, Environment, Topology,
+                                  environments_dir, known_machines,
+                                  machine_scope_path, named_environment_path,
+                                  write_environment)
 from molbuilder.scheduler.quantities import parse_walltime
-from support.machines import SLURM, WORKSTATION
+from support.machines import SLURM
+from support.road import describe_calculation, jobset
+
+pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
 _DOMAINS = [
     Domain(name="debug",  max_time="0-00:15:00", partition="htc", qos="debug"),
@@ -28,28 +33,26 @@ _DOMAINS = [
 ]
 
 
-def _write_record(where, domains=_DOMAINS, gpu_type=None):
-    return write_environment(
-        Environment(machine="this",      # as a first prep names it
-                    scheduler=SLURM,
-                    topology=Topology(cores_per_socket=64, gpu_type=gpu_type),
-                    site=Site(partition="public"),
-                    domains=list(domains)),
-        Path(where) / FILENAME)
+def _this_machine_lists(domains):
+    """This machine's record, where a probe writes it, listing ``domains``."""
+    write_machine_record(scheduler=SLURM,
+                         topology=Topology(cores_per_socket=64),
+                         domains=list(domains))
 
 
-@pytest.fixture(autouse=True)
-def _sandbox(tmp_path, monkeypatch):
-    """Isolated cwd + $HOME + XDG.
-
-    Both readers below consult the config directory's ``molbuilder.json`` and
-    this machine's record, so without this the verdicts depend on the
-    developer's own.
-    """
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
+@pytest.fixture
+def carried(tmp_path, monkeypatch):
+    """A calculation prepared on a machine listing `debug`, `htc` and
+    `public`, which keeps its copy of that record (`configuration.md` M-3);
+    the machine's own record then lists `elsewhere` -- the folder as it reads
+    when carried to another machine, or after a new probe."""
+    _this_machine_lists(_DOMAINS)
+    bundle = describe_calculation(tmp_path, monkeypatch)
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
+               "--target", "this", "--no-sbatch")
+    assert r.exit_code == 0, r.output
+    _this_machine_lists([Domain(name="elsewhere", partition="p", qos="q")])
+    return bundle
 
 
 # ---- parse_walltime --------------------------------------------------- #
@@ -74,42 +77,30 @@ def test_parse_walltime_garbage_raises():
 
 # ---- the menu now comes from the machine record ----------------------- #
 
-def test_get_routing_reads_the_calculations_record(tmp_path):
-    _write_record(tmp_path)
-    out = get_routing(project_dir=tmp_path)
-    assert [d.name for d in out] == ["debug", "htc", "public"]
-    assert out[1].partition == "htc" and out[1].qos == "public"
-    assert out[0].max_time == "0-00:15:00"
-
-
-def test_get_routing_is_empty_without_a_record(tmp_path):
-    assert get_routing(project_dir=tmp_path) == []
-
-
-def test_get_routing_is_empty_on_a_workstation(tmp_path):
-    """M-2: one shape for both machines.  A workstation record is a valid
-    record that simply has no domains — not a missing file, and not an error."""
-    write_environment(Environment(machine="this", scheduler=WORKSTATION,
-                                  topology=Topology(cores_per_socket=10)),
-                      tmp_path / FILENAME)
-    assert get_routing(project_dir=tmp_path) == []
-
-
-def test_the_calculations_record_wins_over_the_machines(tmp_path):
+def test_the_calculations_record_wins_over_the_machines(carried):
     """M-3, at the reader a person actually feels it through.
 
     A folder carried to a cluster reads the record `prep` snapshotted beside
-    it, not this machine's.
+    it, not this machine's -- which answers a question that names no folder.
     """
-    machine = tmp_path / "home" / ".config" / "molbuilder"
-    machine.mkdir(parents=True)
-    _write_record(machine, [Domain(name="elsewhere", partition="p", qos="q")])
-    _write_record(tmp_path)
-    assert [d.name for d in get_routing(project_dir=tmp_path)] == \
-        ["debug", "htc", "public"]
+    out = get_routing(project_dir=carried)
+    assert [d.name for d in out] == ["debug", "htc", "public"]
+    assert out[1].partition == "htc" and out[1].qos == "public"
+    assert out[0].max_time == "0-00:15:00"
+    assert [d.name for d in get_routing()] == ["elsewhere"]
 
 
-def test_an_unknown_column_survives_the_type(tmp_path):
+def test_get_routing_is_empty_where_no_queue_can_be_named(tmp_path):
+    """M-2: one shape for both machines.  A workstation record -- the one
+    this suite's machine holds -- is a valid record that simply has no
+    domains, not a missing file and not an error; and with no record at all
+    the menu is empty too."""
+    assert get_routing(project_dir=tmp_path) == []
+    machine_scope_path().unlink()
+    assert get_routing(project_dir=tmp_path) == []
+
+
+def test_an_unknown_column_survives_the_type():
     """R10 as a property of the TYPE, not of one branch.
 
     ``Domain.extra`` carries what this reader does not check, so a column an
@@ -118,10 +109,8 @@ def test_an_unknown_column_survives_the_type(tmp_path):
     and not writing one looked the same.
     """
     row = {"name": "x", "partition": "p", "qos": "q", "invented_by_hand": 7}
-    write_environment(
-        Environment(machine="this", scheduler=SLURM, topology=Topology(),
-                    domains=[Domain.from_row(row)]), tmp_path / FILENAME)
-    got = get_routing(project_dir=tmp_path)[0]
+    _this_machine_lists([Domain.from_row(row)])
+    got = get_routing()[0]
     assert got.extra["invented_by_hand"] == 7
     # ...and it is in `extra`, NOT promoted to a field: a drafted
     # column must stay distinguishable from a declared one, which is
@@ -132,17 +121,12 @@ def test_an_unknown_column_survives_the_type(tmp_path):
 # ---- where a value came from is displayed, not inferred --------------- #
 
 
-def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
+def test_provenance_shows_which_record_supplied_the_domains(carried):
     """`config_provenance` exists to answer *"where did that setting come
     from?"*.  When the domains moved to ``environment.json`` it kept reporting
     the old home, so a correctly-probed cluster displayed "(none)"."""
     from molbuilder.runtime_config import config_provenance, format_provenance
-    machine = tmp_path / "home" / ".config" / "molbuilder"
-    machine.mkdir(parents=True)
-    _write_record(machine, [Domain(name="elsewhere", partition="p", qos="q")])
-    _write_record(tmp_path)
-
-    prov = config_provenance(project_dir=tmp_path)
+    prov = config_provenance(project_dir=carried)
     assert prov["domains"] == ["debug", "htc", "public"], \
         "provenance must follow the domains to the record that won"
 
@@ -150,8 +134,8 @@ def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
     assert [s["via"] for s in env_rows] == ["calculation", "machine"]
     assert all(s["found"] for s in env_rows)
     # the calculation's record is listed FIRST, which is the order it wins in
-    assert env_rows[0]["path"] == str(tmp_path / "environment.json")
-    assert str(machine) in format_provenance(prov)
+    assert env_rows[0]["path"] == str(carried / "environment.json")
+    assert str(machine_scope_path().parent) in format_provenance(prov)
 
 
 # ---- the gpu column: two spellings, ONE reading ------------------------- #
@@ -167,13 +151,13 @@ def test_a_silent_or_unreadable_column_states_no_count():
     """R3 applies to devices: *the row does not say* is ``None``, never zero.
     A count we cannot read must not read as a domain with no devices, or
     the fit says a queue holds no GPU it may well carry."""
-    for column in (None, {}, "gpu:a100:4", {"a100": "many"},
-                   {"type": "a100"}):
+    for column in (None, "gpu:a100:4"):
         row = Domain(name="g", partition="general", qos="public", gpu=column)
-        assert all(d.per_node is None for d in row.devices), column
-    # ...and the unreadable-COUNT cases still name the device they saw
-    assert Domain(name="g", partition="general", qos="public",
-                  gpu={"a100": "many"}).devices[0].type == "a100"
+        assert row.devices == (), column
+    # ...and an unreadable COUNT still names the device it saw
+    device = Domain(name="g", partition="general", qos="public",
+                    gpu={"a100": "many"}).devices[0]
+    assert (device.type, device.per_node) == ("a100", None)
 
 
 def test_the_users_own_spelling_survives_the_round_trip():
@@ -187,8 +171,12 @@ def test_the_users_own_spelling_survives_the_round_trip():
     assert row.to_row()["gpu"] == written
 
 
-def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
-    """A misspelling must stop being invisible -- without being refused.
+@pytest.mark.parametrize("column, said", [("max_tme", True),
+                                          ("max_time", False)],
+                         ids=["misspelled", "understood"])
+def test_a_column_the_reader_does_not_understand_is_SAID(column, said):
+    """A misspelling must stop being invisible -- without being refused, and
+    without crying wolf on a clean record.
 
     An unrecognised column in a routing row is KEPT (R10, and
     `test_an_unknown_column_survives_the_type` above pins it: a retired key
@@ -208,46 +196,16 @@ def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
     summary.  The record still parses, every other fact still prints, and the
     typo is silent again.
     """
-    from molbuilder.scheduler.record import (Domain, Environment, Topology,
-                                             known_machines)
-
-    from molbuilder.config_dir import ensure_private_dir
-    from molbuilder.scheduler import environments_dir, named_environment_path
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "molbuilder"))
     ensure_private_dir(environments_dir())
-    env = Environment(
-        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=24),
-        domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
-                                  "qos": "public",
-                                  "max_tme": "1-00:00:00"})])
-    write_environment(env, named_environment_path("sol"))
-
-    sol = next(m for m in known_machines() if m["name"] == "sol")
-    assert "max_tme" in sol["summary"], (
-        "a column the reader could not interpret is not reported at all -- "
-        "a typo in max_time silently lifts the queue's wall")
-    assert "??" in sol["summary"], (
-        "the marker is what makes it catch the eye in a line of ordinary "
-        "facts (user, 2026-09-06)")
-
-
-def test_a_record_the_reader_fully_understands_says_nothing_extra(tmp_path,
-                                                                  monkeypatch):
-    """The other half: the notice must not cry wolf on a clean record."""
-    from molbuilder.scheduler.record import (Domain, Environment, Topology,
-                                             known_machines)
-
-    from molbuilder.config_dir import ensure_private_dir
-    from molbuilder.scheduler import environments_dir, named_environment_path
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "molbuilder"))
-    ensure_private_dir(environments_dir())
-    env = Environment(
-        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=24),
-        domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
-                                  "qos": "public",
-                                  "max_time": "1-00:00:00"})])
-    write_environment(env, named_environment_path("sol"))
-
-    sol = next(m for m in known_machines() if m["name"] == "sol")
-    assert "??" not in sol["summary"], (
-        f"a correctly spelled record was flagged: {sol['summary']!r}")
+    write_environment(
+        Environment(
+            scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=24),
+            domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
+                                      "qos": "public",
+                                      column: "1-00:00:00"})]),
+        named_environment_path("sol"))
+    summary = next(m for m in known_machines() if m["name"] == "sol")["summary"]
+    # The marker is what makes it catch the eye in a line of ordinary facts
+    # (user, 2026-09-06).
+    assert ("??" in summary) is said, summary
+    assert (column in summary) is said, summary

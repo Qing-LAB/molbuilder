@@ -1,0 +1,58 @@
+# WHAT A TRANSPORT CALCULATION'S DECK SAYS -- written as its engines read it:
+# `docs/engines/transport.md`.
+#
+# A transport calculation starts from a finished relaxation, so every row cites
+# the junction a real SIESTA relaxed: `tests/test_transport_decks_e2e.py` runs
+# each case through the runner every contract table shares (`tests/support/
+# road.py`, `run_road_case`, whose header names each key), with that pair as its
+# `structure`.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 1
+omp_threads = 1
+
+[run_base.pyscf]
+threads = 1
+
+# `SolutionMethod` switches the SCF to NEGF; `TS.SolutionMethod` is how the
+# Green's function is inverted, and 5.4.2 stops on `transiesta` there
+# ("Unrecognized TranSiesta solution method", measured): two keywords, two
+# values.
+[[case]]
+name = "the device deck states its label, the NEGF solver and how the Green's function is inverted"
+calculation = "transport"
+stage = "device"
+before = [["prep", "task", "--group", "1"]]
+deck_says = { SystemLabel = "H2", SolutionMethod = "transiesta", "TS.SolutionMethod" = "BTD" }
+
+# THE BIAS WINDOW'S FLOOR is ours -- TranSIESTA stops at none (`engines/
+# transport.md` § 2a.11, *The levers*).  0.001 V at 10 K is a 0.0096 eV
+# window: a spacing of 0.1 eV leaves it no point.
+[[case]]
+name = "a device point under bias whose spacing leaves its window under two points is refused at prep, naming the spacing"
+calculation = "transport"
+bias = "0,0.001"
+stage = "device"
+before = [["prep", "task", "--group", "1"]]
+template = { negf_neq_spacing_ev = 0.1, electronic_temperature = 10.0 }
+refused = ["[config.negf_neq_spacing_ev]", "0 point(s)", "two or more"]
+
+[[case]]
+name = "...a spacing the window holds is written"
+calculation = "transport"
+bias = "0,0.001"
+stage = "device"
+before = [["prep", "task", "--group", "1"]]
+template = { negf_neq_spacing_ev = 0.001, electronic_temperature = 10.0 }
+said_lacks = ["[config.negf_neq_spacing_ev]"]
+
+[[case]]
+name = "...and 0 V has no window and no check"
+calculation = "transport"
+stage = "device"
+before = [["prep", "task", "--group", "1"]]
+template = { negf_neq_spacing_ev = 0.1, electronic_temperature = 10.0 }
+deck = ["delta 0.1 eV"]
+said_lacks = ["[config.negf_neq_spacing_ev]"]

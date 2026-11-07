@@ -615,11 +615,11 @@ is given and asks nothing new.
 ### 3.2 The honesty gate
 
 A form that shows a knob the calculation ignores is a lie *(user, 2026-08-21)*.
-`tests/test_vibration_form_honesty.py` renders the deck once per offered
-parameter with a non-default value and requires the deck text to change; a
-parameter still awaiting its integration sits on an explicit list in that test,
-each row naming its plan item, and the list only shrinks. The kind validator
-refuses by name what the render cannot honour (`validation/spectra.py`).
+`tests/test_every_form_field_reaches_the_deck.py` prepares the deck once per
+offered parameter with a different, legal value and requires what the engine
+runs to change; a parameter whose effect is real and elsewhere sits on an
+explicit list beside it, each row naming why. The kind validator refuses by name
+what the deck cannot honour (`validation/spectra.py`).
 
 ### 3.3 What the person is told before paying for the run
 
@@ -3755,8 +3755,8 @@ Each names where it holds and what pins it.
 | I6 | **The held set has one source** — the structure's `frozen_atoms` region — and reaches every phase from it: the PySCF `$freeze` file, the free-atom Hessian, the SIESTA `Geometry.Constraints` and FC range | `VibrationConfigView.frozen_indices`; `fc_facts` | `tests/test_vibration_render_gate.py`; the wrapper's constraint banner reads the deck's one spelling |
 | I7 | **The reorder is recorded once and inverted once**: the sorted copy's own `atom_order`, made by `sort_by` and stated by its deck, crossed back only by `Structure.restored()` and the record's own methods (`Permutation.map_rows_to_user_order`); the user order never reaches the engine, the sorted order never reaches a person (`model/overview.md` § 2.2a, I3, I5) | `atom_permutation.py` (the record and its one reader), `transport/sort.py`, `deck_record.py`, `spectra/vibrational_analysis.py` | `tests/test_siesta_vibration_e2e.py` (the road's CO2, its carbon last in the user order → the result's oxygens atom indices 0 and 1, the carbon 2) |
 | I8 | **One start state per kind on SIESTA**: the density read, the geometry declined out loud; the vibration warm-file section names `.FC`/`.FCC` inventory-only; the optical section names `.EPSIMG`, its product, an optical call starting from the `.DM` its run's `fc` seeds | `siesta/vibration_deck.start_state_lines`, `siesta/warm-files.toml` | `tests/test_siesta_vibration_deck.py`, `tests/test_warmfiles.py` |
-| I9 | **Every mean field the PySCF deck builds is dressed by the one generated door** (`_mb_configure_scf`, `_mb_configure_theory`), on either method; no SCF knob is spelled twice | `pyscf/scf_setup.py`; every `_build_mf_at` | `tests/test_vibration_render_gate.py::test_the_level_of_theory_has_one_spelling_per_deck`; the honesty gate |
-| I10 | **Every parameter the form shows is honoured by the render, or refused by name** | `tests/test_vibration_form_honesty.py`; `validation/spectra.py` | the same test |
+| I9 | **Every mean field the PySCF deck builds is dressed by the one generated door** (`_mb_configure_scf`, `_mb_configure_theory`), on either method; no SCF knob is spelled twice | `pyscf/scf_setup.py`; every `_build_mf_at` | `tests/test_vibration_render_gate.py::test_the_level_of_theory_is_set_in_one_place_every_mean_field_goes_through`; `tests/test_every_form_field_reaches_the_deck.py` |
+| I10 | **Every parameter the form shows is honoured by the deck, or refused by name** | `tests/test_every_form_field_reaches_the_deck.py`; `validation/spectra.py` | the same test |
 | I11 | **The kind's science gate fails closed**: an engine config the dispatch does not name is refused, never given an empty verdict | `validation/spectra.validate_vibration_kind` | `tests/test_vibration_render_gate.py` |
 | I12 | **A cost claim is read from the code** (R8): the advisories say what the code skips, and what it cannot | `validation/spectra.py`; § 4.4, § 5.7 | review |
 | I13 | **The Methods paragraph is composed once**, route-neutral before the run, the route added at load; the count it states is R2's, and the level of theory `is_dft`'s | `spectra/methods.py`, `_loaded` in `web/blueprints/spectra.py` | `tests/spectra/test_methods.py`; the IR-only and solvated runs assert the text; `test_a_hartree_fock_deck_names_no_functional` the level of theory |
@@ -3939,8 +3939,8 @@ only (V1.17); the δ-convergence comparison run with a mesh rung beside it
 | `tests/spectra/test_raman.py` · `tests/test_siesta_vibration_e2e.py::test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole` · `::test_the_page_asks_the_raman_at_a_laser_and_exports_it` | the Raman at a laser (§ 5.11 § 10): Kramers–Kronig against a Lorentz oscillator's closed form and beside a narrow line, a run widened after it against the wider spread; on CO₂ at 633 nm, light along z, the stretch whose oxygens move together reads 0.5 % of the one whose oxygens move apart — 0.23 against 45.1 Å⁴/amu; the export, NetCDF and CSV, read back through `postprocess` and `xarray` equal to the load door's view, each source named by its sha256, nothing written into the calculation; the page asking the laser, its columns and summary, and its Export |
 | `tests/test_engine_offset_reaches_every_deck.py` | a vibration's force-constant deck keeping the engine's frame when its input is stated relaxed, placed by the rule otherwise — read from the `fc` phase's deck as the engine reads it; the input's relaxation record left behind while its calculation record still sets the electronic state (V1.35) |
 | `tests/test_vibration_e2e.py` · `tests/test_displacement_sweep.py` | matching by shape on free water made on the road (atoms of unequal mass): a rank swap found, a mixed pair's overlap the mass-weighted cosine; a PySCF vibration refused by `summarize task` on the road |
-| `tests/test_vibration_render_gate.py` | the deck runs the science gate; an unknown engine class is refused |
-| `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
+| `tests/data/the_deck.toml` · `tests/test_vibration_render_gate.py` | the deck runs the science gate; an unknown engine class is refused |
+| `tests/test_every_form_field_reaches_the_deck.py` | every offered parameter changes what the engine runs |
 | `tests/spectra/test_types.py` · `test_parsers_json.py` · `test_atom_index_contract.py` | the artifact's gates and round trip; the free-atom invariant |
 | `tests/spectra/test_activity.py` · `test_motion_share.py` · `test_selection.py` · `test_methods.py` · `test_config.py` · `test_blueprint.py` | the derived classes; the element shares; the selector's four rules -- the one the script imports; the prose, its citations and the provenance rows of § 6.4; the defaults; the page and the load door (the old generator's `test_engine.py` / `test_script.py` died at P3) |
 | `tests/spectra/test_spectrumchart_*.py` · `tests/test_vibrationview_*_js.py` · `test_spectra_transition_js.py` · `test_spectra_phase_indicator_js.py` · `test_spectra_no_spectrum_sentence_js.py` · `test_task_setup_tab.py` · `test_spectrum_form_e2e.py` | the chart's maths, seal and box — the mode positions among them, several modes with an imaginary one, and the switch to heights when strengths land; the animation's maths and mount; the viewer's state; the phase indicator; the sentence where no strength is drawn; the send flow, and `dispersion = "none"` reaching the deck as no correction; the form's locks, at load and on each change, and every finding its live check returns drawn on the page |

@@ -35,46 +35,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def calc_dir(isolated_projects_root):
-    """A described calculation under checkpoint control.
-
-    Built through the production doors — `describe.build_description` and
-    `checkpoint`'s own repo — rather than by hand: a description assembled
-    directly carries a default witness that prep and restore both refuse,
-    and a checkpoint state written by hand is not one the route will accept.
-    """
-    import numpy as np
-
-    from conftest import write_pseudos
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.structure import Structure
-    from molbuilder.task import Stage
-
-    root = isolated_projects_root / "restore_e2e"
-    src_dir = root / "structure"
-    src_dir.mkdir(parents=True)
-    d = root / "optimization" / "probe"
-    try:
-        struct = Structure(elements=["H", "H"],
-                           positions=np.array([[0.0, 0.0, 0.0],
-                                               [0.0, 0.0, 0.74]]),
-                           vacuum=(10.0, 10.0, 10.0))
-        src = src_dir / "probe.xyz"
-        src.write_text(struct.to_xyz(), encoding="utf-8")
-        D.write_description(
-            D.build_description(struct,
-                                SiestaConfig(system_label="probe"),
-                                [Stage(name="coarse",
-                                       overrides={"mesh_cutoff": 200})],
-                                engine="siesta",
-                                calculation="optimization",
-                                name="probe", source=str(src)),
-            d, struct=struct)
-        write_pseudos(d, ["H"])
-        yield d
-    finally:
-        pass    # tmp_path removes the tree
+def calc_dir(tmp_path, monkeypatch):
+    """A described calculation, as `molbuilder describe` leaves one
+    (`support.road`), its one stage `coarse`; the test puts it under checkpoint
+    control through the page."""
+    from support.road import describe_calculation
+    return describe_calculation(tmp_path, monkeypatch, name="probe",
+                                stage_strategy="")
 
 
 @pytest.fixture

@@ -20,58 +20,11 @@ Nothing here launches an engine.
 """
 from __future__ import annotations
 
-from support.road import group_words
-
-import json
 import re
 
-import numpy as np
 import pytest
-from support.road import molbuilder, read_request, write_request
 
-
-def _jobset(*args):
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args])
-
-
-def _described(tmp_path, monkeypatch, engine, calculation):
-    """`molbuilder describe` on a held H2 in a box, the way a person starts one."""
-    from conftest import write_pseudos
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    write_pseudos(tree / "pseudopotential", ["H"])
-    StructureCodec().write(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                  regions={"frozen_atoms": [0]},
-                  cell=np.diag([10.0, 10.0, 10.0]),
-                  axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / "h2.xyz")
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tree.parent)
-    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
-                "--bundle", f"P/{calculation}/H2", "--engine", engine,
-                "--calculation", calculation,
-                "--name", "H2",
-                *(("--psml-lib", "pseudopotential") if engine == "siesta"
-                  else ()))
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / calculation / "H2"
-    # THE RUN CARD STATES THE LAUNCH SHAPE, as a person's does: a run whose
-    # shape is stated nowhere is refused at prep (`architecture.md` § 5.2).
-    request = read_request(bundle)
-    request["execution"] = ({"mpi_np": 2, "omp_threads": 1}
-                            if engine == "siesta" else {"threads": 1})
-    write_request(bundle, request)
-    return bundle
+from support.road import describe_calculation, group_words, jobset
 
 
 @pytest.mark.parametrize("engine,calculation", [
@@ -92,23 +45,27 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
     MUTATIONS THIS MUST FAIL AGAINST: a header printing the token again; the
     resolver comparing exact strings; `launch` recording what was typed."""
     from molbuilder.jobset import ledger
-    bundle = _described(tmp_path, monkeypatch, engine, calculation)
-    stage = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
-    r = _jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle, "--target", "this")
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
+                                  calculation=calculation, stage_strategy="")
+    task = task_of(bundle)
+    stage = task.stages[0].name
+    r = jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle,
+               "--target", "this")
     assert r.exit_code == 0, r.output
-    token = next(p.name for p in bundle.iterdir()
-                 if p.is_dir() and p.name.endswith(f"_{stage}"))
-    deck = next(p for p in (bundle / token).iterdir()
-                if p.suffix in (".fdf", ".py"))
+    home = stage_home(bundle, task, stage)
+    deck = home.dir / home.names.name(".fdf" if engine == "siesta" else ".py")
     typed = re.search(r"jobset launch task --stage (\S+)", deck.read_text()).group(1)
-    for spelling in (typed, typed.upper(), f"#{int(token.split('_')[0])}"):
-        r = _jobset("launch", "task", "--stage", spelling, "--bundle", bundle,
-                    "--mode", "direct", "--dry-run")
+    for spelling in (typed, typed.upper(), f"#{home.seq}"):
+        r = jobset("launch", "task", "--stage", spelling, "--bundle", bundle,
+                   "--mode", "direct", "--dry-run")
         assert r.exit_code == 0, (spelling, r.output)
-        assert re.search(rf"WOULD start in the background\s+{stage}\s+bash H2_{token}\.run\.sh",
+        assert re.search(rf"WOULD start in the background\s+{stage}\s+bash "
+                         rf"{re.escape(home.names.name('.run.sh'))}",
                          r.output), (spelling, r.output)
-    r = _jobset("launch", "task", "--stage", typed.upper(), "--bundle", bundle,
-                "--mode", "submit")
+    r = jobset("launch", "task", "--stage", typed.upper(), "--bundle", bundle,
+               "--mode", "submit")
     assert r.exit_code != 0 and "no scheduler header" in r.output, r.output
     last = ledger.read(bundle)[-1]
     assert (last["verb"], last["decision"], last["stage"]) == (

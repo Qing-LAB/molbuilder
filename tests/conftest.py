@@ -295,6 +295,15 @@ def isolated_projects_root(tmp_path, monkeypatch):
     return _point_the_one_door_at(tmp_path, monkeypatch.setenv)
 
 
+@pytest.fixture
+def prepared(tmp_path, monkeypatch):
+    """`support.road.described_and_prepared` in this test's own tree:
+    ``prepared(structure, engine, ...)``."""
+    from functools import partial
+    from support.road import described_and_prepared
+    return partial(described_and_prepared, tmp_path, monkeypatch)
+
+
 # --------------------------------------------------------------------- #
 #  No test resolves the PRODUCT's toolchain from the host              #
 # --------------------------------------------------------------------- #
@@ -1284,32 +1293,6 @@ def pytest_runtest_logreport(report):
 #  Pseudopotentials for a calculation under test                        #
 # --------------------------------------------------------------------- #
 
-#: The smallest PSML ``pseudos.parse_psml_header`` accepts: a real element and
-#: a scalar-relativistic spec, and no projector block -- so no null channel,
-#: and ``check_coverage`` returns ``ok``.
-_PSML_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
-<psml version="1.1" energy_unit="hartree" length_unit="bohr"
-      xmlns="http://launchpad.net/psml">
-  <pseudo-atom-spec atomic-label="{el}" atomic-number="{z}"
-                    z-pseudo="1" core-corrections="no"
-                    relativity="scalar" spin-dft="no" flavor="test-fixture">
-    <valence-configuration total-valence-charge="1"/>
-  </pseudo-atom-spec>
-</psml>
-"""
-
-def prep_the_group_of(base, stage, **kw):
-    """`prep task --group N` for the group ``stage`` is in -- through the one
-    entry the command line and the Task setup tab call (`prep.prep_task`)
-    -- and ``stage``'s answer."""
-    from molbuilder.calculation import open as open_calculation
-    from molbuilder.jobset.prep import prep_task
-    calc = open_calculation(Path(base))
-    answers = prep_task(calc, "task", groups=[calc.request.group_of(stage)],
-                        **kw)
-    return next(a for a in answers if a.stage == stage)
-
-
 def write_pseudos(dest, elements) -> None:
     """Put the ``.psml`` files a SIESTA calculation needs into *dest*.
 
@@ -1318,23 +1301,17 @@ def write_pseudos(dest, elements) -> None:
     (`project-layout.md` § 2.6): SIESTA opens ``<label>.psml`` in the
     directory it runs from and has no search path, so a bundle without them is
     one that cannot start, and laying out a tree for it helps nobody.  A test
-    that preps therefore supplies them, exactly as a person does.
-
-    **Real PSML, not touch-files.**  `prep` also runs the screening in
-    `science/pseudopotentials.md` § 1 over whatever is in the folder -- the
-    checks that exist because a dead-p-channel ``S.psml`` once shipped into a
-    real run, giving wrong sulfur bonding and a `propor: ERROR: IMAX=0` that
-    appeared only at high rank counts.  An unparseable file reads as
-    ``missing``, which blocks.  These parse, name their element and declare no
-    null channel; the physics is not what the tests using this are about.
+    that preps therefore supplies them, exactly as a person does: PseudoDojo's
+    own files (`tests/fixtures/psml/README.md`), one release's, so the
+    screening in `science/pseudopotentials.md` § 1 reads what it reads on a
+    person's machine.
     """
-    from pathlib import Path as _P
-
-    from molbuilder.chemistry import atomic_number
-    # The element's Z from molbuilder's own table.
+    from _road import PSML_DIR
     for el in elements:
-        (_P(dest) / f"{el}.psml").write_text(
-            _PSML_FIXTURE.format(el=el, z=atomic_number(el)))
+        real = next(p for p in (PSML_DIR / f"{el}.psml",
+                                PSML_DIR / "pseudodojo-v0.4" / f"{el}.psml")
+                    if p.is_file())
+        shutil.copy(real, Path(dest) / f"{el}.psml")
 
 
 @pytest.fixture(autouse=True)
@@ -1465,3 +1442,21 @@ def real_co2_vibration(tmp_path_factory):
 def real_h2_pyscf(tmp_path_factory):
     from support.real_runs import pyscf
     return pyscf(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_au_bdt_au(tmp_path_factory):
+    from support.real_runs import au_bdt_au_relaxed
+    return au_bdt_au_relaxed(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_uneven_chain(tmp_path_factory):
+    from support.real_runs import uneven_chain_relaxed
+    return uneven_chain_relaxed(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_charged_formate(tmp_path_factory):
+    from support.real_runs import charged_formate_relaxed
+    return charged_formate_relaxed(tmp_path_factory)

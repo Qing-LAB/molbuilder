@@ -25,6 +25,19 @@ omp_threads = 1
 name = "a SIESTA calculation's pseudopotentials are where its run opens them: its one copy in pseudos/, and a real copy beside the deck in the stage's run folder -- SIESTA opens only its working directory"
 made = ["pseudos/H.psml", "01_coarse/run-0/H.psml"]
 
+# ONE HOME FOR THE LIVE LOG, AND THE HOME IS THE RUN'S FOLDER (`project-layout.md`
+# § 1.0: a run directory "holds everything it produces").  MEASURED, 2026-09-19,
+# on a finished Raman run: prep seeded the log beside the deck it renders, in the
+# stage's folder, and the run then wrote its own inside its run -- a 971-byte
+# stub with no `# concluded:` footer in `01_raman/`, the real concluded log in
+# `01_raman/run-0/`, one name.  An unconcluded log is how every reader tells a
+# run is still going, so the stage's folder reported a FINISHED calculation as
+# Running, permanently, and offered the stub to open.
+[[case]]
+name = "a stage's progress log is seeded in its run and nowhere else -- two homes for one log reported a finished run as running"
+made = ["01_coarse/run-0/H2_01_coarse.molwatch.log"]
+made_lacks = ["01_coarse/H2_01_coarse.molwatch.log"]
+
 [[case]]
 name = "every file the card names for a prepared stage is there as it names it"
 card_written = [{ stage = "coarse", moments = ["prep"] }]

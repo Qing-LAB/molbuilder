@@ -42,6 +42,9 @@ own_warm_files = { withhold = [".DM"] }
 before = [["prep", "task", "--group", "1"]]
 stage = "medium"
 plan_carries = { coarse = ["H2.XV", "H2.CG"], medium = ["H2.XV", "H2.CG"] }
+# ...and the plan names WHICH list answered, so a surprising carry is
+# debuggable from the calculation alone.
+made_says = { "STAGE-PLAN.md" = ["P/optimization/H2/warm-files.toml"] }
 
 # ...and with every carried suffix withheld, no stage declares anything: the
 # producer forces none of its own, `.XV` included.

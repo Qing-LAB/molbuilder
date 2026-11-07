@@ -373,6 +373,16 @@ saved_first = true
 said = ["the folder's state was already saved:", "set up", "nothing changed since"]
 saved_states = ["set up"]
 
+# THE 2026-09-25 TRANSPORT LADDER: every `prep task` said "(reused -- not
+# launched yet)" of a folder it had just made -- `prep_calculation` opened the
+# run, and the command line opened it again for its report and found it
+# unlaunched.  Reused is said only of a run an earlier prep opened
+# (`project-layout.md` § 1.6).
+[[case]]
+name = "a first prep says the run it opened as prepared, never as reused"
+said = ["prepared coarse: 01_coarse/run-0"]
+said_lacks = ["(reused"]
+
 # ===================================================================== #
 #  A STAGE'S NUMBER IS ITS FILES' -- `project-layout.md` § 4.2 (W38 F4) #
 # ===================================================================== #
@@ -388,6 +398,19 @@ before = [["prep", "task", "--group", "1"], ["prep", "task", "--group", "2"]]
 removed = ["coarse"]
 stage = "#2"
 said = ["medium (02_medium): prepared, never launched, and already as this prep would prepare it now -- nothing to write"]
+
+[[case]]
+name = "...and the plan keeps the gap: the stage after one removed is the number its folder carries -- in STAGE-PLAN.md's seq column, its folder, and the run script its launch sends -- never the row it stands on (engines/stages.md R5)"
+stage_strategy = "vib-quality"
+before = [["prep", "task", "--group", "1"], ["prep", "task", "--group", "2"]]
+removed = ["medium"]
+stage = "tight"
+made = ["03_tight/run-0"]
+made_lacks = ["02_tight"]
+made_says = { "STAGE-PLAN.md" = ["seq job input", "1 coarse H2_01_coarse.fdf", "3 tight H2_03_tight.fdf"] }
+launch = ["--cold"]
+launch_stage = "tight"
+line = ["H2_03_tight.sbatch"]
 
 [[case]]
 name = "a stage added after production takes the next number -- the stage with files keeps its own"
@@ -412,6 +435,40 @@ deck = ["MD.TypeOfRun CG", "MD.MaxForceTol 0.05", "# Stage 01_coarse --", "# run
 name = "...a later stage its own"
 stage = "medium"
 deck = ["MD.TypeOfRun Broyden", "MD.MaxForceTol 0.04", "# Stage 02_medium --"]
+
+# A-8 (final review, 2026-08-13): the sequence checks ride the preflight when
+# the template is in hand, and prep is the surface that has both halves -- the
+# note reaches the person about to pay for the recompute.  The later stage
+# resolves as the first does AND starts clean: the one case
+# `engines/stages.md` § 6.6a warns about, `continue` being the default and two
+# alike where the second continues simply *more steps at these settings*.
+[[case]]
+name = "a stage that resolves as the one before it and starts clean is said at prep: it recomputes what that stage produced -- a warning, and the prep goes on"
+stage_strategy = ""
+added = [{ name = "again", overrides = { restart = "clean" } }]
+said = ["recomputes"]
+made = ["01_coarse/run-0"]
+
+# EACH RUN'S PROGRESS LOG HANDS THE WATCH TAB ITS OWN TARGETS, under its token
+# and the names its reader asks for (`web/trajectory.md` § 3; #542): its force
+# tolerance, the line the tab draws, and its geometry-step cap, what its
+# "progress through the stage" reads.  `engines/stages.md` § 2's tiers.
+[[case]]
+name = "a stage's progress log hands the Watch tab that stage's own targets -- coarse, the loose preoptimisation"
+stage_strategy = "vib-quality"
+progress_log_targets = { source = "molwatch_header", "01_coarse" = { max_force_tol_eV_per_A = 0.05, max_geom_iter = 600 } }
+
+[[case]]
+name = "...medium, the publishable tier"
+stage_strategy = "vib-quality"
+stage = "medium"
+progress_log_targets = { source = "molwatch_header", "02_medium" = { max_force_tol_eV_per_A = 0.04, max_geom_iter = 200 } }
+
+[[case]]
+name = "...tight, crystal-tight"
+stage_strategy = "vib-quality"
+stage = "tight"
+progress_log_targets = { source = "molwatch_header", "03_tight" = { max_force_tol_eV_per_A = 0.01, max_geom_iter = 100 } }
 
 [[case]]
 name = "a group the job request does not hold is refused by its number, naming the ones it does"
@@ -470,6 +527,49 @@ refused = ['does not state "MPI ranks (np)" (mpi_np)']
 name = "...and with neither, a value to vary is not a grid: nothing is made up for it"
 bench = { diag_algorithm = ["ELPA-1STAGE", "ELPA-2STAGE"] }
 refused = ['does not state "MPI ranks (np)" (mpi_np) and "OMP threads per rank" (omp_threads)']
+
+# ONE RULE FOR A BENCHMARK'S POINTS (`validation/task.py::
+# bench_points_fit_their_items`), every finding said at once: a point its item
+# does not take, with the choices; a repeated point, which would measure one
+# configuration twice, on a value's row and on the grid's alike (2026-08-21: a
+# matrix saved as 'ELPA-1Stage' failed only at `prep bench` on Sol).
+[[case]]
+name = "a benchmark's points are asked of their items: a choice not taken, named with the choices, and a point repeated, each said"
+bench = { diag_algorithm = ["ELPA-1Stage", "ELPA-2STAGE"], use_gpu = [true, true], mpi_np = [8, 8, 16], omp_threads = [1] }
+refused = ["'ELPA-1Stage'", "ELPA-1STAGE", "ScaLAPACK", "bench declares use_gpu = [true, true]; a repeated point", "bench declares mpi_np = [8, 8, 16]; a repeated point"]
+
+[[case]]
+name = "...and a row that names no run setting changes the answer, not the speed: refused by name"
+bench = { mesh_cutoff = [300] }
+refused = ["mesh_cutoff", "execution"]
+
+[[case]]
+name = "a benchmark names the stage it measures: named nothing, it guesses none, on a ladder"
+bench = { mpi_np = [1], omp_threads = [1] }
+stage = ""
+refused = ["name one"]
+made_lacks = ["01_coarse/bench"]
+
+[[case]]
+name = "...and on one stage alike: a rule that held only at length one would stop holding when a second was added"
+stage_strategy = ""
+bench = { mpi_np = [1], omp_threads = [1] }
+stage = ""
+refused = ["name one"]
+made_lacks = ["01_coarse/bench"]
+
+[[case]]
+name = "a PySCF description has no benchmark, said by name before any grid is enumerated: the refusal names the engine and the one that has one, never the settings the person did not write"
+engine = "pyscf"
+bench = { mpi_np = [1], omp_threads = [1] }
+refused = ["Benchmarks measure SIESTA runs only", "a PySCF run"]
+made_lacks = ["01_coarse/bench"]
+
+[[case]]
+name = "a charged deck tells a person to run the Makov-Payne correction, and prep ships that script beside it (siesta.md, the correction script)"
+template = { net_charge = 1 }
+deck = ["python3 makov_payne_correction.py"]
+made = ["01_coarse/makov_payne_correction.py", "01_coarse/run-0/makov_payne_correction.py"]
 
 # ===================================================================== #
 #  A GROUP: STAGES THAT SHARE ONE JOB -- `engines/stages.md` § 2        #

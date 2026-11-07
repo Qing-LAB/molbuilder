@@ -17,52 +17,23 @@ from __future__ import annotations
 import os
 import subprocess
 
+import pytest
 
 from molbuilder.runtime_config import config_provenance, format_provenance
-from molbuilder.runwrap import write_run_wrapper
-from molbuilder.jobset.model import Resources
-import pytest
-from molbuilder.runfiles import RunNames
 from molbuilder.scheduler.kinds import LAUNCH_CLAIM
-from support.machines import SLURM
-from support.road import SHELL_CARRIED
+from support.road import SHELL_CARRIED, prepared_here
+
+pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
 
-@pytest.fixture(autouse=True)
-def _sandbox(tmp_path, monkeypatch):
-    """An isolated cwd; conftest isolates the config root, so nothing here
-    reads the developer's config."""
-    monkeypatch.chdir(tmp_path)
-
-
-#: Each engine's deck, as small as its run script renders over.
-_DECKS = {"siesta": (".fdf", "SystemLabel JOB\n"),
-          "pyscf": (".py", 'JOB = "JOB"\nimport pyscf\n')}
-
-
-def _wrapper(tmp_path, engine="siesta", activation="conda activate"):
-    names = RunNames("JOB", "01_coarse")
-    suffix, text = _DECKS[engine]
-    deck = tmp_path / names.name(suffix)
-    deck.write_text(text)
-    # A PROBED MACHINE, its record saying how a shell enters an environment
-    # there -- the activation the generator reads (`configuration.md` § 4); a
-    # wrapper is not rendered without one, and prep hands it the record it
-    # read.  Its shape is STATED, as every run's is (`architecture.md`
-    # § 5.2), and it carries the run settings every job carries
-    # (`engines/template.md` § 5.4).
-    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
-    record = _Env(machine="this", scheduler=SLURM,
-                  topology=_Topo(sockets=2, cores_per_socket=32),
-                  env_init={"activation": activation, "preamble": "true"})
-    return write_run_wrapper(deck, env="e", names=names, engine=engine,
-                             machine_record=record,
-                             calculation="optimization",
-                             resources=Resources(
-                                 mpi_np=2 if engine == "siesta" else None,
-                                 cpus_per_task=1, wall_slack=600),
-                             resumes=True, relaunch_continues=True,
-                             trial=False, emit_sbatch=False)
+def _prepared(tmp_path, monkeypatch, engine="siesta", activation="false"):
+    """A stage prepared on the road for this machine, whose record says a
+    shell enters its environment with ``activation`` -- by default one that
+    fails, so a start that gets past the gate goes no further:
+    ``(its run script, the run's folder, the stage's names)``."""
+    _bundle, run, names = prepared_here(tmp_path, monkeypatch, activation,
+                                        engine=engine)
+    return run / names.run_script, run, names
 
 
 def _start(sh, folder, args=(), claim=None):
@@ -82,7 +53,8 @@ def _start(sh, folder, args=(), claim=None):
 
 @pytest.mark.parametrize("claim", [None, "manual"],
                          ids=["no-claim", "a-claim-made-by-hand"])
-def test_a_start_not_made_by_its_launch_is_refused(tmp_path, claim):
+def test_a_start_not_made_by_its_launch_is_refused(tmp_path, monkeypatch,
+                                                    claim):
     """`job-contracts.md` § 2.6 -- the run script takes one start, its
     launch's: started any other way -- by hand, from cron, a header sent
     by hand, whatever it claims -- it refuses with exit 2 before anything
@@ -90,24 +62,25 @@ def test_a_start_not_made_by_its_launch_is_refused(tmp_path, claim):
     "we always have molbuilder as the foundation of the whole system").
     THE SILENT FAILURE: a run no launch recorded, read by nothing -- or a
     stage that builds on another run started from its deck alone."""
-    sh = _wrapper(tmp_path)
-    cp = _start(sh, tmp_path, claim=claim)
+    sh, run, names = _prepared(tmp_path, monkeypatch)
+    cp = _start(sh, run, claim=claim)
     assert cp.returncode == 2, cp.stderr
     assert "molbuilder jobset launch task --stage coarse" in cp.stderr
-    names = RunNames("JOB", "01_coarse")
-    assert not (tmp_path / names.name(".runwrap.log")).exists()
+    assert not (run / names.name(".runwrap.log")).exists()
 
 
-@pytest.mark.parametrize("engine", list(_DECKS))
-def test_a_dry_run_a_person_starts_passes_the_gate(tmp_path, engine):
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_a_dry_run_a_person_starts_passes_the_gate(tmp_path, monkeypatch,
+                                                   engine):
     """`job-contracts.md` § 2.6 -- a dry run starts nothing, so it needs no
     launch's claim: started by a person, it passes the gate, says so in its
     verdict line, and goes on to its bootstrap -- stopped here where this
     machine has no python for the job's env.  THE SILENT FAILURE: the
     preview a person is offered dying on the verdict line itself, a claim
     unset under ``set -u``."""
-    sh = _wrapper(tmp_path, engine, activation="true")
-    cp = _start(sh, tmp_path, ["--dry-run"])
+    sh, run, _names = _prepared(tmp_path, monkeypatch, engine,
+                                activation="true")
+    cp = _start(sh, run, ["--dry-run"])
     assert cp.returncode != 2, (cp.stdout, cp.stderr)
     assert "launched-by: NONE" in cp.stdout.splitlines(), (cp.stdout,
                                                           cp.stderr)
@@ -115,20 +88,21 @@ def test_a_dry_run_a_person_starts_passes_the_gate(tmp_path, engine):
 
 # ---- one start per run ------------------------------------------------- #
 
-def test_a_folder_that_holds_a_start_refuses_another(tmp_path):
+def test_a_folder_that_holds_a_start_refuses_another(tmp_path, monkeypatch):
     """A run folder holds one start, its session log saying it has one: a
     second start there refuses before anything is written, naming the
     launch that opens the next run (`project-layout.md` § 1.6.1).  THE
     SILENT FAILURE: the engine run again over the first start's output,
     its log and its conclusion overwritten."""
-    sh = _wrapper(tmp_path)
-    log = tmp_path / RunNames("JOB", "01_coarse").name(".runwrap.log")
-    log.write_text("the first start's log\n")
-    cp = _start(sh, tmp_path, claim=LAUNCH_CLAIM)
+    sh, run, names = _prepared(tmp_path, monkeypatch)
+    _start(sh, run, claim=LAUNCH_CLAIM)
+    log = run / names.name(".runwrap.log")
+    first = log.read_bytes()
+    cp = _start(sh, run, claim=LAUNCH_CLAIM)
     assert cp.returncode == 2, cp.stderr
     assert "already holds a start" in cp.stderr
     assert "jobset launch" in cp.stderr
-    assert log.read_text() == "the first start's log\n"
+    assert log.read_bytes() == first
 
 
 @pytest.mark.parametrize("engine,args,claim", [
@@ -145,7 +119,7 @@ def test_a_folder_that_holds_a_start_refuses_another(tmp_path):
         "pyscf-a-help-request", "pyscf-an-argument-that-does-not-read",
         "pyscf-a-count-flag-given-no-count"])
 def test_what_starts_nothing_writes_no_session_log(engine, args, claim,
-                                                   tmp_path):
+                                                   tmp_path, monkeypatch):
     """The session log is the run's one start's (`job-contracts.md` § 2.6):
     a help request, a start the launch gate refuses, a dry run and a start
     whose arguments do not read start nothing, so none writes it, nor a
@@ -153,13 +127,12 @@ def test_what_starts_nothing_writes_no_session_log(engine, args, claim,
     for.  THE SILENT FAILURE: a mistyped flag on a dry run by hand, after
     which the corrected command is refused as a second start; or a count
     flag swallowing ``--dry-run`` and running the engine for real.  (The
-    dry run stops at this test's activation, which names an env this
-    machine lacks -- after the point the log would have opened.)"""
-    sh = _wrapper(tmp_path, engine)
-    _start(sh, tmp_path, args, claim)
-    names = RunNames("JOB", "01_coarse")
-    assert not (tmp_path / names.name(".runwrap.log")).exists()
-    assert not (tmp_path / names.name(".concluded")).exists()
+    dry run stops at this test's activation, which fails -- after the point
+    the log would have opened.)"""
+    sh, run, names = _prepared(tmp_path, monkeypatch, engine)
+    _start(sh, run, args, claim)
+    assert not (run / names.name(".runwrap.log")).exists()
+    assert not (run / names.name(".concluded")).exists()
 
 
 # ---- the one exit trap -------------------------------------------------- #
@@ -172,7 +145,7 @@ def test_what_starts_nothing_writes_no_session_log(engine, args, claim,
 ], ids=["an-activation-that-fails", "a-marker-the-main-line-wrote",
         "a-caught-signal", "a-lost-terminal"])
 def test_a_failure_of_its_own_concludes_a_stop_signal_does_not(
-        activation, rc, note, tmp_path):
+        activation, rc, note, tmp_path, monkeypatch):
     """The run script's one exit trap (`job-contracts.md` § 2.6): a start
     that ends before its engine with no signal -- its activation failing
     under ``set -e`` -- concludes, its marker the exit code and *stopped
@@ -186,12 +159,11 @@ def test_a_failure_of_its_own_concludes_a_stop_signal_does_not(
     ended on its own, exit 0, *finished*.  The marker is read through its
     one reader (`runrecord.read_concluded`)."""
     from molbuilder.runrecord import read_concluded
-    sh = _wrapper(tmp_path, activation=activation)
-    cp = _start(sh, tmp_path, claim=LAUNCH_CLAIM)
+    sh, run, names = _prepared(tmp_path, monkeypatch, activation=activation)
+    cp = _start(sh, run, claim=LAUNCH_CLAIM)
     assert cp.returncode == rc, cp.stderr
-    names = RunNames("JOB", "01_coarse")
-    assert (tmp_path / names.name(".runwrap.log")).is_file()
-    marker = tmp_path / names.name(".concluded")
+    assert (run / names.name(".runwrap.log")).is_file()
+    marker = run / names.name(".concluded")
     assert marker.exists() is (note is not None), cp.stderr
     if note is not None:
         said = read_concluded(marker.read_text())

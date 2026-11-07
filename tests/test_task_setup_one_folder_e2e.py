@@ -25,41 +25,27 @@ import json
 
 import pytest
 
-from support.road import read_request, write_request
+from support.road import (describe_calculation, ladder_edited, read_request,
+                          write_request)
 from support.task_setup_page import every_card_text, unfold, wait_for_file
 
 pytestmark = pytest.mark.e2e
 
 
 def _describe(root, name, label, stage):
-    """A described PySCF calculation, through the production door.
+    """A described PySCF calculation in the project ``root``: `molbuilder
+    describe` (`support.road`), its one stage named ``stage`` through Task
+    setup's Save.
 
     Two of these differ in every name a card can print: the label leads the
     filenames, and the stage leads the per-stage rows.
     """
-    import numpy as np
-
-    from molbuilder import describe as D
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.structure import Structure
-    from molbuilder.task import Stage
-
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    src_dir = root / "structure"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    src = src_dir / f"{name}.xyz"
-    src.write_text(struct.to_xyz(), encoding="utf-8")
-
-    dest = root / "optimization" / name
-    D.write_description(D.build_description(
-        struct, PySCFConfig(job_name=label),
-        [Stage(name=stage, overrides={})],
-        engine="pyscf",
-        calculation="optimization", name=label,
-        source=str(src)), dest)
+    with pytest.MonkeyPatch.context() as local:
+        dest = describe_calculation(root.parents[1], local, name=label,
+                                    engine="pyscf", stage_strategy="",
+                                    bundle=f"{root.name}/optimization/{name}")
+    assert ladder_edited({"removed": ["coarse"], "added": [{"name": stage}]},
+                         dest)
     return dest
 
 

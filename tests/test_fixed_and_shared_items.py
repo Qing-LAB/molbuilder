@@ -20,51 +20,26 @@ Nothing here launches an engine: prep writes the deck and stops.
 from __future__ import annotations
 
 import dataclasses
-import json
 
 import pytest
 
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.jobset.ladder import fresh_stages
-from molbuilder.jobset.ladder import engine_ladder
-
 from test_electronic_state import WATER
-from test_engine_offset_reaches_every_deck import _prep
 
 
-def _ladder(kind):
-    return (engine_ladder("siesta", "publishable") if kind == "optimization"
-            else fresh_stages("vibration", "siesta"))
-
-
-def _siesta(root, *, kind="optimization", before_prep=None, refused=False):
-    return _prep(root, WATER(), SiestaConfig(system_label="JOB"),
-                 _ladder(kind), "siesta", calculation=kind,
-                 before_prep=before_prep, refused=refused)
-
-
-def _template_says(dest, name, value):
+def _template_says(name, value):
     """The calculation's template with ``name`` answered ``value`` -- a hand
     edit, or a template written before the item became fixed -- through the
     product's own reader and writer."""
-    from molbuilder.task import of as task_of
-    from molbuilder.template import _emit, read_template
-    from molbuilder.template_file import of as template_of
-    tmpl = template_of(dest, task_of(dest).label)
-    parsed = read_template(tmpl.text)
-    tmpl.path.write_text(_emit(
-        [dataclasses.replace(i, value=value) if i.name == name else i
-         for i in parsed.items], engines=parsed.engines))
-
-
-def _first_rung_overrides(dest, name, value):
-    """The first rung's own value for ``name``, promoted (`varies`) as a
-    stage override must be (`engines/stages.md` § 6.2), so the refusal met
-    is the item's own."""
-    task = json.loads((dest / "task.json").read_text())
-    task["varies"] = sorted(set(task.get("varies") or []) | {name})
-    task["stages"][0].setdefault("overrides", {})[name] = value
-    (dest / "task.json").write_text(json.dumps(task))
+    def edit(dest):
+        from molbuilder.task import of as task_of
+        from molbuilder.template import _emit, read_template
+        from molbuilder.template_file import of as template_of
+        tmpl = template_of(dest, task_of(dest).label)
+        parsed = read_template(tmpl.text)
+        tmpl.path.write_text(_emit(
+            [dataclasses.replace(i, value=value) if i.name == name else i
+             for i in parsed.items], engines=parsed.engines))
+    return edit
 
 
 def _setting(deck: str, keyword: str):
@@ -81,7 +56,7 @@ def _setting(deck: str, keyword: str):
 
 @pytest.mark.parametrize("stated, refused", [(True, False), (False, True)])
 def test_a_template_states_the_fixed_answer_or_is_refused(
-        isolated_projects_root, stated, refused):
+        prepared, stated, refused):
     """Every SIESTA template written before 2026-09-29 carries
     ``write_forces = true`` -- the answer, read as it.  ``false`` is a hand
     edit the rung would lay ``true`` over without a word, so prep refuses
@@ -92,10 +67,9 @@ def test_a_template_states_the_fixed_answer_or_is_refused(
     prepping); the walk skipping a fixed item (the deck's line, or its
     note, goes).  (The answer not being laid on is the transport device
     test's to catch: here the class default is already the answer.)"""
-    _d, _s, said = _siesta(
-        isolated_projects_root,
-        before_prep=lambda dest: _template_says(dest, "write_forces", stated),
-        refused=refused)
+    _d, _s, said = prepared(WATER(), "siesta",
+                            hand_edit=_template_says("write_forces", stated),
+                            refused=refused)
     if refused:
         assert "'write_forces'" in said and "the rung fixes" in said, said
         return
@@ -107,18 +81,16 @@ def test_a_template_states_the_fixed_answer_or_is_refused(
 
 @pytest.mark.parametrize("kind", ["optimization", "vibration"])
 def test_no_rung_turns_the_forces_or_coordinates_off(
-        isolated_projects_root, kind):
+        prepared, kind):
     """SS-C1: on EVERY SIESTA kind -- a vibration's force-constant finish
     reads the reference step's forces and coordinates, an optimization's
     record its forces.  A rung's own ``false`` is refused, naming why.
 
     MUTATION THIS MUST FAIL AGAINST: the kind missing from the item's
     `role` list (the override is honoured and the deck says ``.false.``)."""
-    _d, _s, said = _siesta(
-        isolated_projects_root, kind=kind,
-        before_prep=lambda dest: _first_rung_overrides(
-            dest, "write_coor_step", False),
-        refused=True)
+    _d, _s, said = prepared(WATER(), "siesta", calculation=kind,
+                            overrides={"write_coor_step": False},
+                            refused=True)
     assert "'write_coor_step'" in said and "the rung fixes" in said, said
     assert "reads them back" in said, said
 
@@ -131,16 +103,14 @@ def test_no_rung_turns_the_forces_or_coordinates_off(
     ("psml_lib", "pseudopotential"),
 ])
 def test_no_rung_renames_or_renumbers_the_calculation(
-        isolated_projects_root, name, value):
+        prepared, name, value):
     """SO-C2: one name, one species table, one pseudopotential set per
     calculation -- each rung reads what the one before it wrote under that
     name, numbered by that table.  A rung's own value is refused, saying so.
 
     MUTATION THIS MUST FAIL AGAINST: the kind missing from the item's
     `shared` list (the override is honoured)."""
-    _d, _s, said = _siesta(
-        isolated_projects_root,
-        before_prep=lambda dest: _first_rung_overrides(dest, name, value),
-        refused=True)
+    _d, _s, said = prepared(WATER(), "siesta", overrides={name: value},
+                            refused=True)
     assert f"'{name}'" in said and "shared by every stage" in said, said
     assert "one species table" in said, said

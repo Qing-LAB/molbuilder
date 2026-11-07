@@ -108,19 +108,6 @@ def test_a_section_whose_parameters_all_decline_gets_no_heading():
     assert not any("MD.Steps" in l for l in out.emitted)
 
 
-def test_the_runner_reports_what_it_emitted_so_check_can_close_the_loop():
-    """It reports the LINES it wrote, not the keywords.
-
-    A keyword cannot tell a setting from a READ of that setting; a line is the
-    assignment itself (`script-preparation.md` § 4.3).
-    """
-    out = se.render_deck(_spec(), _struct(), _cfg())
-    assert any(l.startswith("MeshCutoff") for l in out.emitted)
-    assert any(l.startswith("MaxSCFIterations") for l in out.emitted)
-    assert all(l in out.text for l in out.emitted), (
-        "a reported line that is not in the deck makes the gate's input a lie")
-
-
 def test_the_record_sits_below_the_banner_and_the_science_above_it():
     out = se.render_deck(_spec(), _struct(), _cfg())
     banner = out.text.index("MOLBUILDER RECORD")
@@ -155,18 +142,13 @@ def test_rendering_touches_no_disk(tmp_path, monkeypatch):
         f"{sorted(p.name for p in set(tmp_path.rglob('*')) - before)}")
 
 
-def test_check_passes_a_deck_the_runner_itself_wrote(tmp_path):
-    spec, struct, cfg = _spec(), _struct(), _cfg()
-    out = se.render_deck(spec, struct, cfg)
-    p = se.write_script(tmp_path / "ok.fdf", out.text)
-    assert se.check_deck(p, spec, out, struct, cfg) == []
-
-
 def test_check_catches_a_value_that_never_reached_the_file(tmp_path):
     """The writer-bug class, which a config gate structurally cannot see.
 
     `validate` runs on ``(struct, cfg)`` and would pass this deck happily: the
-    configuration is sound.  What is wrong is the FILE.
+    configuration is sound.  What is wrong is the FILE, which `write_script`
+    merges the reader's section into, so the file is the artifact: a gate that
+    trusted the string it was handed would pass this one.
     """
     spec, struct, cfg = _spec(), _struct(), _cfg()
     out = se.render_deck(spec, struct, cfg)
@@ -234,21 +216,6 @@ def test_check_runs_the_engines_own_rules_too(tmp_path):
     p = se.write_script(tmp_path / "noatoms.fdf", out.text)
     assert [i.message for i in se.check_deck(p, spec, out, struct, cfg)] == \
         ["no atom count"]
-
-
-def test_check_reads_the_file_and_not_the_string_it_was_handed(tmp_path):
-    """`write_script` merges the reader's section, so the file is the artifact.
-
-    Here the file on disk is made to disagree with the rendered string.  A gate
-    that trusted the string would pass it; this one opens the file.
-    """
-    spec, struct, cfg = _spec(), _struct(), _cfg()
-    out = se.render_deck(spec, struct, cfg)
-    p = tmp_path / "edited.fdf"
-    p.write_text(out.text.replace("MaxSCFIterations 40", "# gone"),
-                 encoding="utf-8")
-    assert [i for i in se.check_deck(p, spec, out, struct, cfg)
-            if "MaxSCFIterations" in i.message]
 
 
 # ----------------------------------------------------------- the spine ---

@@ -35,7 +35,13 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
   one rank: its run script's dry runs, then the run, waited on;
 * :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF,
-  stretched so it moves: `coarse` launched and waited on.
+  stretched so it moves: `coarse` launched and waited on;
+* :func:`au_bdt_au_relaxed` (``real_au_bdt_au``) -- the Au-BDT-Au junction
+  relaxed one step and saved as a pair, what a transport calculation cites;
+* :func:`uneven_chain_relaxed` (``real_uneven_chain``) -- the same for a
+  hydrogen chain, its leads unequal, a buffer atom past one, on a k-point mesh;
+* :func:`charged_formate_relaxed` (``real_charged_formate``) -- a formate ion
+  relaxed at its charge, and saved as a pair.
 
 A run with one thing changed is a copy of it beside it (:func:`copy_of`).
 """
@@ -76,6 +82,8 @@ class RealRun:
     files_before: Dict[str, tuple] = field(default_factory=dict)
     files_after: Dict[str, tuple] = field(default_factory=dict)
     relaunched: Dict[str, tuple] = field(default_factory=dict)
+    #: The finished relaxation saved as a structure pair (:func:`_relaxed_pair`).
+    pair: "Path | None" = None
 
     def attempt(self, stage: str, n: int = 0) -> Path:
         """Run ``n`` of ``stage`` -- its folder, by molbuilder's own
@@ -406,6 +414,71 @@ def _header_under_a_slurm_grant(run: RealRun, tree: Path,
                           timeout=120, env=_scrubbed(SLURM_NTASKS="2"))
     run.said["header dry run under a SLURM grant of 2 ranks"] = Said(
         done.returncode, done.stdout + done.stderr)
+
+
+#: WHAT A SMALL RELAXATION FINISHES ON IN SECONDS, a metal's included, measured
+#: 2026-11-06: the smallest basis and a coarse mesh, one geometry step, and an
+#: electronic temperature gold's SCF converges at (at 300 K, with a weight of
+#: 0.02, the Au-BDT-Au junction runs out its 200 cycles).  Each differs from
+#: the catalogue's default, so a value that came from a citation is told apart.
+QUICK = dict(mesh_cutoff=80.0, basis_size="SZ", mixing_weight=0.05,
+             max_scf_iter=400, relax_steps=1, dm_tolerance=1e-2,
+             pao_energy_shift=0.05, electronic_temperature=2000.0)
+
+
+def _relaxed_pair(tmp_path_factory, name: str, structure, **settings) -> RealRun:
+    """``structure`` relaxed with the real SIESTA on :data:`QUICK`, one stage,
+    down the road, and the finished relaxation saved as a structure pair
+    (``.pair``) by `molbuilder xv2xyz --from-run`, as the Results tab's export
+    saves one: what the run declared about its atoms and what it says about
+    itself."""
+    from conftest import write_pseudos
+    from molbuilder.runs import run_of
+    from molbuilder.task import of as task_of
+    from support.road import group_words, road_structure, set_by_the_person
+    with _on_the_road(tmp_path_factory, name) as tree:
+        s = road_structure(structure)
+        write_pseudos(tree / "pseudopotential", sorted(set(s.elements)))
+        bundle = _described(tree, "P/opt/J", structure=s, name="J",
+                            calculation="optimization",
+                            execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {**QUICK, **settings})
+        run = RealRun(tree=tree, bundle=bundle)
+        stage = task_of(bundle).stages[0].name
+        _taken(run, "prep", "prep", "task", *group_words(bundle, stage),
+               "--target", "this")
+        _taken(run, "launch", "launch", "task", "--stage", stage, "--mode",
+               "direct", "--foreground", "--yes")
+        run.pair = tree / "P" / "structure" / "relaxed.xyz"
+        r = molbuilder("xv2xyz", str(run_of(run.attempt(stage)).on_label(".XV")),
+                       str(run.pair), "--from-run")
+        assert r.exit_code == 0, r.output
+    return run
+
+
+def au_bdt_au_relaxed(tmp_path_factory) -> RealRun:
+    """The Au-BDT-Au junction, relaxed (:func:`_relaxed_pair`)."""
+    from support.junction import au_bdt_au
+    return _relaxed_pair(tmp_path_factory, "au-bdt-au", au_bdt_au())
+
+
+def uneven_chain_relaxed(tmp_path_factory) -> RealRun:
+    """The uneven hydrogen chain, relaxed on a 3 x 3 x 2 mesh, the closed cell
+    a relaxation is sampling along transport too (:func:`_relaxed_pair`)."""
+    from support.junction import uneven_chain
+    return _relaxed_pair(tmp_path_factory, "uneven-chain", uneven_chain(),
+                         kgrid=(3, 3, 2))
+
+
+def charged_formate_relaxed(tmp_path_factory) -> RealRun:
+    """A formate ion, relaxed at its charge of -1 (:func:`_relaxed_pair`)."""
+    return _relaxed_pair(
+        tmp_path_factory, "formate",
+        {"elements": ["C", "O", "O", "H"],
+         "positions": [[5.0, 5.0, 5.0], [6.26, 5.0, 5.0], [4.37, 6.09, 5.0],
+                       [4.45, 4.05, 5.0]],
+         "cell": [10.0, 10.0, 10.0]},
+        net_charge=-1)
 
 
 def _h2_optimization(tree: Path, where: str, **blocks) -> Path:

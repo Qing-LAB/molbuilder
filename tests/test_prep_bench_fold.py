@@ -7,29 +7,26 @@ grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · 
 """
 from __future__ import annotations
 
-from molbuilder.jobset.model import JobSet
-from molbuilder.scheduler.record import write_environment
-from support.road import (group_words, read_request, shelf_headers,
-                          write_request)
-
-import json
 import pathlib
+import re
 
-import numpy as np
-import pytest
+from conftest import write_machine_record
 from molbuilder.calculation import open as open_calculation
+from molbuilder.jobset import ledger
+from molbuilder.jobset.materialize import bench_owner, latest_attempt
+from molbuilder.jobset.model import JobSet
+from molbuilder.jobset.summarize import sweep_view
+from molbuilder.scheduler import Domain, Topology
+from support.machines import SLURM
+from support.road import (declare_bench, describe_calculation, group_words,
+                          jobset, read_request, shelf_headers, write_request)
 
-from molbuilder import describe as D
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.scheduler import Environment, Topology
-from molbuilder.jobset.prep_inputs import bench_inputs
-from molbuilder.jobset.model import Resources
-from molbuilder.jobset.errors import PrepError
-from molbuilder.jobset.prep import prep_bench
-from molbuilder.jobset.ladder import engine_ladder
-from molbuilder.structure import Structure
-from molbuilder.task import Stage
-from support.machines import SLURM, WORKSTATION
+import pytest
+
+#: This machine, as its probe found it: four cores and one a100 on a
+#: workstation; `_on_a_queue` is the same node behind a scheduler.
+_NODE = Topology(sockets=1, cores_per_socket=4, gpus_per_node=1,
+                 gpu_type="a100")
 
 
 def _artifacts(calc, point, stage="01_coarse"):
@@ -39,34 +36,8 @@ def _artifacts(calc, point, stage="01_coarse"):
     wrapper sit in ``run-<n>`` rather than in the trial directory -- the
     one reader rule, `materialize.latest_attempt`.
     """
-    from molbuilder.jobset.materialize import latest_attempt
     c = pathlib.Path(calc) / stage / "bench" / f"bench-{point}"
     return latest_attempt(c)
-
-
-@pytest.fixture(autouse=True)
-def tree(isolated_projects_root):
-    """These tests build a calculation in the projects tree and hand its path
-    to a verb.  ``--bundle`` is fenced to the projects tree
-    (`job-contracts.md` § 2.5b), so the test builds inside one: the conftest's
-    per-test tree, a folder named ``projects`` like every tree (§ 2.5).
-    """
-    return isolated_projects_root
-
-
-def _one_stage():
-    """The ordinary starting ladder: ONE stage (`engines/stages.md` § 6.5).
-
-    A single stage is still a stage, so it is named, tokened
-    (``01_coarse``) and prepared exactly like a rung of a three-stage ladder.
-    """
-    return (Stage(name="coarse", overrides={}),)
-
-
-#: How a shell enters an environment on the machines these tests prep for --
-#: a fact of each machine, carried by its record (`configuration.md` § 5
-#: M-1), here the calculation's own snapshot.
-_ENTERS = {"activation": "conda activate", "preamble": "true"}
 
 
 def _state_the_run(dest, **card):
@@ -78,16 +49,8 @@ def _state_the_run(dest, **card):
     write_request(dest, req)
 
 
-@pytest.fixture(autouse=True)
-def _sandbox(tmp_path_factory, monkeypatch):
-    """cwd isolation for EVERY test here (I6, 2026-08-13); conftest isolates
-    the config root."""
-    box = tmp_path_factory.mktemp("sandbox")
-    monkeypatch.chdir(box)
-
-
 @pytest.fixture
-def calc(tree):
+def calc(tmp_path, monkeypatch):
     """A GPU calculation, described, on a machine whose probe found one a100.
 
     ``use_gpu=True`` is stated here rather than assumed, because it is the
@@ -95,31 +58,8 @@ def calc(tree):
     `web/task-setup.md` § 6.2, *"use GPU or not is set up only at the Job
     Prep UI"*.  Every test below is about the G × K × C grid.
     """
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(struct,
-                            SiestaConfig(system_label="JOB"),
-                            engine_ladder("siesta", "publishable"),
-                            engine="siesta",
-                            calculation="optimization",
-                            name="JOB",
-                            source=str(tree / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    # The probe's answer, pre-seeded: machine.set_machine early-returns on an
-    # existing environment.json, so the grid enumerates THIS topology.
-    write_environment(
-        Environment(machine="this", scheduler=WORKSTATION,
-                    topology=Topology(sockets=1, cores_per_socket=4,
-                                      gpus_per_node=1,
-                                      gpu_type="a100"),
-                    env_init=_ENTERS),
-        (dest / "environment.json"))
+    write_machine_record(topology=_NODE)
+    dest = describe_calculation(tmp_path, monkeypatch, name="JOB")
     # A RUN STATES ITS LAUNCH SHAPE (`architecture.md` § 5.2), and a GPU run
     # how many GPUs (`execution/gpu.md` G5): the calculation's run card says
     # it once, for every rung that does not say otherwise -- the GPU and
@@ -138,14 +78,16 @@ def calc(tree):
     return dest
 
 
+#: `prep bench coarse`, as typed: this prep's ask bounding the cells.
+_PREP_BENCH = ("prep", "bench", "coarse", "--np", "8", "--cpus-per-task", "8")
+
+
 def _prep_bench(calc):
-    """`prep bench coarse`, through the one entry -- what the command line
-    and the Task setup tab call -- this prep's ask bounding the cells."""
-    prep_bench(open_calculation(calc), "coarse",
-               allocation=Resources(mpi_np=8, cpus_per_task=8),
-               emit_sbatch=False)
-    # The sweep's OWN record lives in the stage's bench/ container
-    # (job-contracts.md § 6.3); the root job-set.json is the RUN plan.
+    """`prep bench coarse`, its trials to run where it is launched -- and the
+    sweep's OWN record, in the stage's bench/ container (job-contracts.md
+    § 6.3); the root job-set.json is the RUN plan."""
+    r = jobset(*_PREP_BENCH, "--bundle", calc, "--no-sbatch")
+    assert r.exit_code == 0, r.output
     return _plan_of(calc / "01_coarse" / "bench")
 
 
@@ -155,48 +97,51 @@ def _plan_of(folder) -> dict:
 
 
 def _on_a_queue(calc):
-    """The calculation's machine names a queue -- a cluster's record, the
-    topology the grid is enumerated on kept, one GPU queue its node fits --
-    and the description names that queue.  A benchmark launched to a
-    scheduler is planned whole, its shelves' headers with it, so a launch
-    the machine could not take is refused, its dry run too (`job-system.md`
-    § 6.0); on the workstation `calc` describes, `--mode submit` is."""
-    rec = json.loads((calc / "environment.json").read_text())
-    rec["scheduler"] = SLURM.to_dict()
-    rec["domains"] = [{"name": "gpu", "partition": "gpu", "qos": "public",
-                       "max_time": "1-00:00:00", "max_cores": 4,
-                       "gpu": {"a100": 1},
-                       "node_types": [{"cores": 4, "nodes": 1,
-                                       "gpu": {"a100": 1}}]}]
-    (calc / "environment.json").write_text(json.dumps(rec, indent=2) + "\n")
+    """This machine's record names a queue -- a cluster's, the topology the
+    grid is enumerated on kept, one GPU queue its node fits -- and the
+    description names that queue.  A benchmark launched to a scheduler is
+    planned whole, its shelves' headers with it, so a launch the machine
+    could not take is refused, its dry run too (`job-system.md` § 6.0); on
+    the workstation `calc` describes, `--mode submit` is."""
+    write_machine_record(
+        scheduler=SLURM, topology=_NODE,
+        domains=[Domain.from_row(
+            {"name": "gpu", "partition": "gpu", "qos": "public",
+             "max_time": "1-00:00:00", "max_cores": 4, "gpu": {"a100": 1},
+             "node_types": [{"cores": 4, "nodes": 1, "gpu": {"a100": 1}}]})])
     req = read_request(calc)
     req["allocation"]["domain"] = "gpu"
     write_request(calc, req)
 
 
 def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
+    """Each trial nests in the stage it measures, `<NN>_<stage>/bench/
+    bench-<point>/` (`job-contracts.md` § 6.3): its deck and run script real
+    files there, never links (`project-layout.md` § 1.5), and nothing
+    rendered at the calculation's root (L1, roadmap 7.10).  Its deck carries
+    the TRIAL's own identity line (§ 2.3.2's relabel, which keys its warm
+    files away from the run's), and the sweep's record points at that very
+    deck."""
     js = _prep_bench(calc)
     assert js["kind"] == "sweep"
     names = [j["name"] for j in js["jobs"]]
     assert len(names) == len(set(names)) and len(names) >= 2
     assert all(n.startswith("G1N") and "C" in n for n in names)
-    # one deck per trial, named by the TRIAL's label + the stage token
-    import re
-    for n in names:
-        # L1 (roadmap 7.10): the deck is born in the TRIAL's directory;
-        # nothing rendered sits at the bundle root.
-        deck = _artifacts(calc, n) \
-            / f"JOB-{n}_01_coarse.fdf"
+    for job in js["jobs"]:
+        n = job["name"]
+        deck = _artifacts(calc, n) / f"JOB-{n}_01_coarse.fdf"
         assert deck.is_file() and not deck.is_symlink()
-        assert not (calc / f"JOB-{n}_01_coarse.fdf").exists()
+        assert job["script"] == deck.name
+        assert not (calc / deck.name).exists()
         assert re.search(rf"^SystemLabel\s+JOB-{n}\s*$",
                          deck.read_text(), re.M)
+        script = deck.with_name(f"JOB-{n}_01_coarse.run.sh")
+        assert script.is_file() and not script.is_symlink()
 
 
 def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
     """The pins are resolved and rendered: the capped SCF, the single
     point, the eigensolver — readable in the deck."""
-    import re
     js = _prep_bench(calc)
     _n0 = js['jobs'][0]['name']
     deck = (_artifacts(calc, _n0)
@@ -223,41 +168,12 @@ def test_each_trials_resources_carry_its_own_coordinate(calc):
         assert r["gres"] == f"gpu:{pt['G']}"
 
 
-def test_trials_nest_inside_the_stage_they_measure(calc):
-    """`job-contracts.md` § 6.3: ``<NN>_<stage>/bench/bench-<point>/`` — the
-    trial in the stage's ``bench/`` CONTAINER, its deck and run script real
-    files in it (`project-layout.md` § 1.5: every file goes in as a real
-    file, never a link)."""
-    js = _prep_bench(calc)
-    name = js["jobs"][0]["name"]
-    d = _artifacts(calc, name)
-    assert d.is_dir()
-    script = d / f"JOB-{name}_01_coarse.fdf"
-    assert script.is_file() and not script.is_symlink()   # L2: real files
-    wrapper = d / f"JOB-{name}_01_coarse.run.sh"
-    assert wrapper.is_file() and not wrapper.is_symlink()
-
-
-def test_cli_prep_bench_requires_a_stage(calc):
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner().invoke(jobset_group,
-                           ["prep", "bench", "--bundle", str(calc)])
-    assert r.exit_code != 0
-    assert "name one" in r.output
-
-
 def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     """The whole verb through the CLI: trials prepared and listed, each
     named by its path from the calculation's folder -- every trial holds
     its run, `run-0`, as a stage does (`project-layout.md` § 1.5a), so a
     bare folder name would name nobody."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner().invoke(jobset_group,
-                           ["prep", "bench", "coarse", "--bundle", str(calc),
-                            "--np", "8", "--cpus-per-task", "8",
-                            "--no-sbatch"])
+    r = jobset(*_PREP_BENCH, "--bundle", calc, "--no-sbatch")
     assert r.exit_code == 0, r.output
     assert "trial dir(s) for stage 'coarse'" in r.output
     # the hint teaches the REAL grammar + the launcher (E-J2 fix,
@@ -302,13 +218,8 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
 
     MUTATION THIS MUST FAIL AGAINST: prep not telling the deck it is a trial
     (the header prints `launch task --stage coarse`)."""
-    import re
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
     _on_a_queue(calc)
-    r = CliRunner().invoke(jobset_group,
-                           ["prep", "bench", "coarse", "--bundle", str(calc),
-                            "--np", "8", "--cpus-per-task", "8"])
+    r = jobset(*_PREP_BENCH, "--bundle", calc)
     assert r.exit_code == 0, r.output
     js = _plan_of(calc / "01_coarse" / "bench")
     trial = js["jobs"][0]["name"]
@@ -316,26 +227,18 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
     line = re.search(r"molbuilder jobset launch (bench \S+ \S+)$",
                      deck, re.M).group(1).split()
     assert line == ["bench", "coarse", trial], line
-    r = CliRunner().invoke(jobset_group, ["launch", *line,
-                                          "--bundle", str(calc),
-                                          "--mode", "submit", "--dry-run",
-                                          "--yes"])
+    r = jobset("launch", *line, "--bundle", calc, "--mode", "submit",
+               "--dry-run", "--yes")
     assert r.exit_code == 0, r.output
     plans = [ln for ln in r.output.splitlines() if "WOULD run" in ln]
     assert len(plans) == 1 and trial in plans[0], plans
 
 
 def _describe_cpu(calc):
-    """Turn this calculation's run card back to CPU.
-
-    The `calc` fixture asks for the GPU because the grid tests are about the
-    G × K × C grid.  A test whose claim is *"the verdict was NOT applied"*
-    cannot use it: `Diag.ELPA.GPU .true.` in the deck only proves a verdict was
-    taken if the run card did not ask for the GPU itself.  So the claim and
-    the fixture are separated here rather than weakened.  A CPU run states
-    no GPU count: one stated for a run that does not use the GPU is refused
-    at prep (`execution/gpu.md` G5).
-    """
+    """Turn this calculation's run card back to CPU, the `calc` fixture asking
+    for the GPU because the grid tests are about the G × K × C grid.  A CPU run
+    states no GPU count: one stated for a run that does not use the GPU is
+    refused at prep (`execution/gpu.md` G5)."""
     _state_the_run(calc, use_gpu=False, diag_algorithm="ELPA-1STAGE")
 
 
@@ -345,25 +248,17 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     so a narrow trial never idles a wide envelope).  The probed grid's every point has its
     own width here, so #groups == #shelves -- still one LAUNCH ACT per
     shelf, never a queue flood; the value-axis cartesian is what shares
-    shelves in real matrices.  Naming a trial still submits that one alone
-    (a single point's re-run); a trial name on `submit run` still
-    refuses."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
+    shelves in real matrices."""
     _on_a_queue(calc)
-    runner = CliRunner()
-    r = runner.invoke(jobset_group, ["prep", "bench", "coarse",
-                                     "--bundle", str(calc), "--np", "8",
-                                     "--cpus-per-task", "8"])
+    r = jobset(*_PREP_BENCH, "--bundle", calc)
     assert r.exit_code == 0, r.output
     js = _plan_of(calc / "01_coarse" / "bench")
     trial = js["jobs"][0]["name"]
-    r = runner.invoke(jobset_group, ["launch", "bench", "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
+    r = jobset("launch", "bench", "--bundle", calc, "--mode", "submit",
+               "--dry-run", "--yes")
     assert r.exit_code != 0 and "name one" in r.output
-    r = runner.invoke(jobset_group, ["launch", "bench", "coarse",
-                                     "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
+    r = jobset("launch", "bench", "coarse", "--bundle", calc,
+               "--mode", "submit", "--dry-run", "--yes")
     assert r.exit_code == 0, r.output
     # one sbatch per SHELF, each an exact fit -- and the shelves submit
     # widest first, so the first planned group asks the widest -n
@@ -372,7 +267,6 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
                 j["resources"].get("gres") or "") for j in js["jobs"]}
     plans = [l for l in r.output.splitlines() if "WOULD run" in l]
     assert len(plans) == len(shelves)
-    assert len(plans) < len(js["jobs"]) or len(shelves) == len(js["jobs"])
     assert "bench-group" in r.output
     assert ".sbatch" in plans[0]
     # TIME IS NEVER INVENTED (user dictation, 2026-08-24): the wall is the
@@ -383,11 +277,8 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     headers = list(shelf_headers(calc, "coarse").values())
     assert all("#SBATCH -t 0-01:00:00" in h for h in headers), (
         f"the stated wall did not ride every shelf-job: {headers}")
-    r2 = runner.invoke(jobset_group, ["launch", "bench", "coarse",
-                                      "--bundle", str(calc),
-                                      "--mode", "submit", "--dry-run",
-                                      "--yes",
-                                      "--time", "4h"])
+    r2 = jobset("launch", "bench", "coarse", "--bundle", calc,
+                "--mode", "submit", "--dry-run", "--yes", "--time", "4h")
     assert r2.exit_code == 0, r2.output
     plans2 = [l for l in r2.output.splitlines() if "WOULD run" in l]
     assert all(" -t 0-04:00:00 " in pl for pl in plans2), (
@@ -401,55 +292,11 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     )
     assert r.output.count("rides the group") == len(js["jobs"])
     assert "next unlaunched trial" not in r.output
-    r = runner.invoke(jobset_group, ["launch", "bench", "coarse", trial,
-                                     "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
+    r = jobset("launch", "bench", "coarse", trial, "--bundle", calc,
+               "--mode", "submit", "--dry-run", "--yes")
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
     assert "bench-group" not in r.output
-
-
-def test_the_benchmarks_memory_reaches_every_shelf_header(calc):
-    """**The regression.**  Job 62039305 (48 ranks, 1 GPU, `htc`) OOM'd at
-    24576M on 2026-08-23 -- a number nobody asked for and nothing told
-    anyone about, because the memory a person stated never reached the
-    shelf's job: `_group_envelope` only ever set
-    mpi_np/cpus_per_task/gres/exclusive, so the actual job asked for no
-    memory no matter what a person typed.
-
-    The memory is prep's (`job-system.md` § 6.0): stated at the benchmark's
-    prep, it is on every trial's request, and the shelf's header -- written
-    at launch from the trials' shared request (`group.envelope`) -- asks it.
-    """
-    _on_a_queue(calc)
-    prep_bench(open_calculation(calc), "coarse",
-               allocation=Resources(mpi_np=8, cpus_per_task=8, mem="128G"))
-    headers = shelf_headers(calc, "coarse")
-    assert headers
-    assert all("#SBATCH --mem=128G" in h for h in headers.values()), (
-        f"--mem 128G never reached a shelf's header: {headers}")
-
-
-def test_the_benchmarks_prep_states_gpu_sharing(calc):
-    """**What a person approves says what will actually be asked for.**
-
-    User, 2026-08-23: *"explicitly note for gpu enabled task: how many
-    task will be sharing the gpu at the same time, and warn if that
-    number is exceedingly high"* -- said by the benchmark's prep, where the
-    grid can still change, once per share.
-    """
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    _on_a_queue(calc)
-    r = CliRunner().invoke(jobset_group, [
-        "prep", "bench", "coarse", "--bundle", str(calc), "--np", "8",
-        "--cpus-per-task", "8"])
-    assert r.exit_code == 0, r.output
-    lines = r.output.splitlines()
-    assert sum("GPU sharing" in l for l in lines) == 1, r.output
-    # ...EACH SHARE IN THE SENTENCE A RUN'S PREP SAYS (`ask.gpu_share_notes`)
-    said = [l for l in lines if "gpu share" in l]
-    assert said and all("rank(s)/GPU" in l for l in said), r.output
 
 
 def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
@@ -457,16 +304,11 @@ def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     (`job-contracts.md` § 6.1): prepping `medium` must not erase `coarse` --
     erasing it broke the status rollup and silently withheld the
     cross-stage ``.CG`` carry."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner()
     # `medium` before `coarse` has run: it starts from the structure, said
     # out loud (`job-system.md` § 5.4) -- what this is about is the plan
-    for stage, more in (("coarse", ()), ("medium", ())):
-        res = r.invoke(jobset_group, ["prep", "task",
-                                      *group_words(calc, stage),
-                                      "--bundle", str(calc), "--no-sbatch",
-                                      *more])
+    for stage in ("coarse", "medium"):
+        res = jobset("prep", "task", *group_words(calc, stage),
+                     "--bundle", calc, "--no-sbatch")
         assert res.exit_code == 0, res.output
     js = _plan_of(calc)
     assert js["kind"] == "ladder"
@@ -477,13 +319,9 @@ def test_a_sweeps_record_never_touches_the_root_plan(calc):
     """Per-kind persistence (§ 6.1): `prep bench` writes the sweep's OWN
     ``job-set.json`` into the stage's container and leaves the root plan
     alone -- a run prepared afterwards is a ladder, not a sweep."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
     _prep_bench(calc)
     assert JobSet.of(calc) is None
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1",
-                                          "--bundle", str(calc),
-                                          "--no-sbatch"])
+    r = jobset("prep", "task", "--group", "1", "--bundle", calc, "--no-sbatch")
     assert r.exit_code == 0, r.output
     js = _plan_of(calc)
     assert js["kind"] == "ladder"
@@ -496,29 +334,19 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     """The bundle's decision ledger (user rule 2026-08-12): what each verb
     decided -- and from which inputs -- is READ BACK from the bundle, in
     order, when the terminal is long gone."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset import ledger
-    r = CliRunner()
     # through the VERB: the ledger is the surface's record of what it
     # decided -- the library returns decision data and never logs
-    res = r.invoke(jobset_group,
-                   ["prep", "bench", "coarse", "--bundle", str(calc),
-                    "--np", "8", "--cpus-per-task", "8", "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    res = r.invoke(jobset_group, ["launch", "bench", "coarse",
-                                  "--bundle", str(calc),
-                                  "--mode", "direct", "--dry-run"])
+    _prep_bench(calc)
+    res = jobset("launch", "bench", "coarse", "--bundle", calc,
+                 "--mode", "direct", "--dry-run")
     assert res.exit_code == 0, res.output
     # ...and sent to a queue this workstation has none of: refused, and the
     # refusal written down with the mode and where it came from
-    res = r.invoke(jobset_group, ["launch", "bench", "coarse",
-                                  "--bundle", str(calc),
-                                  "--mode", "submit", "--yes"])
+    res = jobset("launch", "bench", "coarse", "--bundle", calc,
+                 "--mode", "submit", "--yes")
     assert res.exit_code != 0 and "no scheduler header" in res.output, \
         res.output
-    res = r.invoke(jobset_group, ["summarize", "bench", "coarse",
-                                  "--bundle", str(calc)])
+    res = jobset("summarize", "bench", "coarse", "--bundle", calc)
     assert res.exit_code == 0, res.output
     lines = ledger.read(calc)
     got = [(e["verb"], e["decision"]) for e in lines]
@@ -546,7 +374,6 @@ def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
     trial's .run.sh bakes ITS OWN rank default, N, not the base
     allocation's -- a stomped wrapper launches every trial at the same
     np and the benchmark measures nothing."""
-    import re
     js = _prep_bench(calc)
     seen = set()
     for j in js["jobs"]:
@@ -601,12 +428,8 @@ class TestTheRunsOwnCondition:
         merges_the_root_plan`), so `jobs[0]` is whichever stage was prepared
         first -- which is how a per-stage assertion silently reads the
         previous rung's numbers."""
-        from click.testing import CliRunner
-
-        from molbuilder.jobset._cli import jobset_group
-        r = CliRunner().invoke(jobset_group,
-                               ["prep", "task", *group_words(calc, stage), "--bundle", str(calc),
-                                "--no-sbatch", *extra])
+        r = jobset("prep", "task", *group_words(calc, stage), "--bundle", calc,
+                   "--no-sbatch", *extra)
         assert r.exit_code == 0, r.output
         jobs = _plan_of(calc)["jobs"]
         mine = [j for j in jobs if stage in j["name"]]
@@ -626,6 +449,9 @@ class TestTheRunsOwnCondition:
     def test_a_run_needs_no_bench_at_all(self, calc):
         """*"User can run without bench."*  Not executed, not summarized,
         not even declared."""
+        req = read_request(calc)
+        del req["bench"]
+        write_request(calc, req)
         self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
                                      "use_gpu": True, "gpu_count": 1})
         r = self._run(calc)["resources"]
@@ -636,17 +462,13 @@ class TestTheRunsOwnCondition:
         says nothing about the run, whatever its arity.  With no condition
         the run's shape is stated nowhere, and prep refuses it -- the grid
         does not stand in (`architecture.md` § 5.2)."""
-        from click.testing import CliRunner
-
-        from molbuilder.jobset._cli import jobset_group
         for bench in (self.BENCH, {"mpi_np": [8], "omp_threads": [2]}):
             # ...the run on the GPU, its launch shape stated nowhere
             self._write(calc, bench=bench, execution={"use_gpu": True})
             # The GPU count on the prep: this calculation runs on a GPU, and
             # a GPU run states how many (`gpu.md` G5) -- a count, not a shape.
-            r = CliRunner().invoke(jobset_group,
-                                   ["prep", "task", "--group", "1", "--bundle",
-                                    str(calc), "--no-sbatch", "--gpus", "1"])
+            r = jobset("prep", "task", "--group", "1", "--bundle", calc,
+                       "--no-sbatch", "--gpus", "1")
             assert r.exit_code != 0 and "ranks (mpi_np)" in r.output, (
                 bench, r.output)
 
@@ -680,7 +502,6 @@ class TestTheRunsOwnCondition:
         deck = next((calc / "01_coarse").glob("*.fdf")).read_text()
         assert "Diag.Algorithm     ELPA-2STAGE" in deck
 
-
     def test_a_surface_with_no_flags_passes_an_EMPTY_ask(self, calc):
         """§ 6.0a's contract, and the crash it was written after.
 
@@ -688,17 +509,18 @@ class TestTheRunsOwnCondition:
         `None` is not nothing, it is the absence of the object the verdict is
         folded UNDER field by field.  The tab's prep button died with
         ``'NoneType' object has no attribute 'mpi_np'`` on 2026-09-02 for
-        exactly this."""
-        from molbuilder.jobset.prep_inputs import prep_run_inputs
-        from molbuilder.jobset.model import Resources
-
+        exactly this.  Asked of the tab's own door; the terminal's empty ask
+        is every `_run` here."""
+        from molbuilder.web.app import create_app
         self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
                                      "use_gpu": False})
-        request = open_calculation(calc).request
-        for ask in (None, Resources()):
-            alloc, _pins, chosen = prep_run_inputs(request, "coarse", ask)
-            assert isinstance(alloc, Resources), ask
-            assert chosen["mpi_np"] == 2 and chosen["cpus_per_task"] == 2
+        answer = create_app(config={}).test_client().post(
+            "/api/task-setup/prep",
+            json={"dest": str(calc), "kind": "task", "groups": [1],
+                  "plan": True})
+        assert answer.status_code == 200, answer.get_data(as_text=True)
+        said = answer.get_json()["answers"][0]["launch"]["run_script"]
+        assert {"_mpi_np_default=2", "_omp_threads_default=2"} <= set(said), said
 
     def test_the_RUN_owns_its_wall_and_queue(
             self, calc):
@@ -788,111 +610,25 @@ def test_stage_plan_records_the_config_provenance(calc):
     assert "molbuilder.json" in plan
 
 
-def test_the_verb_renders_the_trial_decks_it_promises(calc):
-    """I5 (2026-08-13): this drives `jobset prep bench coarse` -- the
-    command a user types -- and asserts the CONTENT of what lands: each
-    trial deck carries the TRIAL's own identity line (§ 2.3.2's relabel,
-    which is what keys its warm files away from the run's), and the
-    sweep's record rows point at those very decks."""
-    import re
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    res = CliRunner().invoke(jobset_group, ["prep", "bench", "coarse",
-                                            "--bundle", str(calc),
-                                            "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    js = _plan_of(calc / "01_coarse" / "bench")
-    assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
-    from molbuilder.jobset.naming import job_dir_names
-    from molbuilder.jobset.model import JobSet
-    _dirs = job_dir_names(JobSet.from_dict(js))
-    from molbuilder.jobset.materialize import latest_attempt
-    for j in js["jobs"]:
-        # The reader rule: the latest attempt (`project-layout.md` § 1.5a).
-        # `job_dir_names` answers where a trial LIVES; its deck is in the
-        # attempt.
-        _c = calc / _dirs[j["name"]]
-        deck = (latest_attempt(_c) / j["script"]).read_text()
-        m = re.search(r"^SystemLabel\s+(\S+)", deck, re.M)
-        assert m and m.group(1) == f"JOB-{j['name']}", (
-            f"{j['script']}: identity line {m.group(1) if m else None!r} "
-            f"is not the trial's own label -- its warm files would "
-            f"collide with the run's")
-
-
-def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
-    """U6a (§ 4.2a's template mechanism): a calculation carrying its own
-    warm-files.toml is the fine-tuned state -- nearest file wins, the
-    surgical edit here being 'withhold the density' (the .DM row loses
-    its carry flag).  The plan names WHICH file answered, so the
-    surprising carry is debuggable from the bundle alone."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder import warmfiles as _wf
-    engine_file = _wf._rules_path("siesta")
-    text = engine_file.read_text()
-    text = text.replace(
-        'suffix      = ".DM"             # converged density matrix\n'
-        'carry       = "when-continuing"\n'
-        'honoured_by = "DM.UseSaveDM"',
-        'suffix      = ".DM"             # fine-tuned: NOT carried here')
-    (calc / "warm-files.toml").write_text(text)
-    r = CliRunner()
-    # `medium` with nothing run before it: from the structure, said out loud
-    # (`job-system.md` § 5.4) -- the declaration is what this is about
-    res = r.invoke(jobset_group, ["prep", "task", "--group", "2",
-                                  "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    js = _plan_of(calc)
-    warm = {w["name"] for j in js["jobs"] if j["name"] == "medium"
-            for w in j["warm"]}
-    assert "JOB.XV" in warm and "JOB.CG" in warm
-    assert "JOB.DM" not in warm, (
-        "the calculation's own vocabulary says the density does not "
-        "carry, and the engine default answered anyway")
-    plan = (calc / "STAGE-PLAN.md").read_text()
-    assert f"warm-files: {calc / 'warm-files.toml'}" in plan
-
-
-def test_a_one_stage_calculation_is_one_named_stage(tree):
+def test_a_one_stage_calculation_is_one_named_stage(tmp_path, monkeypatch):
     """R1 (review-4 keystone): the single-parameter-set calculation is a
     FIRST-CLASS run, one NAMED, tokened stage (§ 6.5): prep, launch's plan
     and status all reach it, one rung deep, its run holding real files.
     What a launch writes as its run starts -- its launch
     record -- is read off a real run (plan § 5y)."""
-    from click.testing import CliRunner
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.structure import Structure
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            _one_stage(),
-                            engine="siesta",
-                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    _state_the_run(dest)
-    r = CliRunner()
+    dest = describe_calculation(tmp_path, monkeypatch, name="JOB",
+                                stage_strategy="")
     # § 6.5: the bare verb does NOT guess the lone stage.  A rule that held
     # only at length one would stop holding the moment a second stage was
     # added -- so one rung refuses exactly as three do, listing the ladder.
-    res = r.invoke(jobset_group, ["prep", "task", "--bundle", str(dest),
-                                  "--no-sbatch"])
+    res = jobset("prep", "task", "--bundle", dest, "--no-sbatch")
     assert res.exit_code != 0, res.output
     assert "coarse" in res.output, res.output
     assert not (dest / "01_coarse").exists(), \
         "the bare verb guessed the lone stage and prepared it"
 
-    res = r.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
-                                  str(dest), "--no-sbatch"])
+    res = jobset("prep", "task", "--group", "1", "--bundle", dest,
+                 "--no-sbatch")
     assert res.exit_code == 0, res.output
     rung = dest / "01_coarse"                 # the one rung, tokened
     assert (rung / "run-0").is_dir()          # its first run
@@ -908,93 +644,24 @@ def test_a_one_stage_calculation_is_one_named_stage(tree):
         p.name for p in entries if not p.is_file() or p.is_symlink()]
     js = _plan_of(dest)
     assert js["kind"] == "ladder" and len(js["jobs"]) == 1
-    res = r.invoke(jobset_group, ["launch", "task", "--stage", "coarse", "--bundle",
-                                  str(dest), "--mode", "direct", "--dry-run", "--yes"])
+    res = jobset("launch", "task", "--stage", "coarse", "--bundle", dest,
+                 "--mode", "direct", "--dry-run", "--yes")
     assert res.exit_code == 0, res.output
     assert res.output.count("WOULD start") == 1
-    res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
+    res = jobset("status", "--bundle", dest)
     assert res.exit_code == 0, res.output
 
 
-def test_a_charged_decks_promised_script_ships_with_it(tree):
-    """E6 (redo 2026-08-12): a charged deck's header instructs
-    ``python3 makov_payne_correction.py``, so prep ships that script beside
-    it (the seam's sibling_artifacts hook)."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB",
-                                                 net_charge=1), _one_stage(),
-                            engine="siesta",
-                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
-        dest, struct=struct)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    _state_the_run(dest)
-    res = CliRunner().invoke(jobset_group,
-                             ["prep", "task", "--group", "1", "--bundle", str(dest),
-                              "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    _deck_path = next(dest.glob("01_coarse/*.fdf"))     # L1: in the stage dir
-    deck = _deck_path.read_text()
-    # BOTH halves asserted: the instruction IS the promise; it has to be
-    # there before "kept" can mean anything.
-    # The INSTRUCTION, not the filename: the header mentions the script in
-    # prose on a neighbouring line too.  What is promised is
-    # `python3 <script>`, and that is what has to be shipped.
-    import re as _re
-    m = _re.search(r"python3\s+(\S+\.py)", deck)
-    assert m, ("a charged deck must instruct running the correction script; "
-               "without that line the promise this test checks does not exist")
-    promised = m.group(1)
-    assert (_deck_path.parent / promised).is_file(), (
-        f"the deck instructs `python3 {promised}` and prep did not write it "
-        f"beside the deck")
-
-
-def test_a_one_stage_calculation_can_be_benchmarked(tree):
+def test_a_one_stage_calculation_can_be_benchmarked(tmp_path, monkeypatch):
     """A4 (redo 2026-08-12): a one-stage calculation can be benchmarked,
     and it is benchmarked the way every rung is -- ``prep bench <stage>``,
     trials in THAT stage's container."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            _one_stage(),
-                            engine="siesta",
-                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    write_environment(
-        Environment(machine="this", scheduler=WORKSTATION,
-                    topology=Topology(sockets=1, cores_per_socket=4,
-                                      gpus_per_node=1,
-                                      gpu_type="a100"),
-                    env_init=_ENTERS),
-        (dest / "environment.json"))
+    dest = describe_calculation(tmp_path, monkeypatch, name="JOB",
+                                stage_strategy="")
     req = read_request(dest)
     req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
     write_request(dest, req)
-    r = CliRunner()
-    # a bare bench owes a name here exactly as it does on three rungs
-    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
-                                  "--no-sbatch"])
-    assert res.exit_code != 0 and "name one" in res.output
-    res = r.invoke(jobset_group, ["prep", "bench", "coarse", "--bundle",
-                                  str(dest), "--no-sbatch"])
+    res = jobset("prep", "bench", "coarse", "--bundle", dest, "--no-sbatch")
     assert res.exit_code == 0, res.output
     assert "None" not in res.output, res.output
     bench = dest / "01_coarse" / "bench"
@@ -1002,14 +669,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
     # trial decks carry the rung's token like any other stage's trials
     for j in js["jobs"]:
-        from molbuilder.jobset.naming import job_dir_names as _jdn
-        from molbuilder.jobset.model import JobSet as _JS
-        _dmap = _jdn(_JS.from_dict(js))
-        from molbuilder.jobset.materialize import latest_attempt
-        # the reader rule (`project-layout.md` 1.5a): a trial's
-        # deck is in its attempt.
-        _c = dest / _dmap[j["name"]]
-        assert (latest_attempt(_c) / j["script"]).is_file()
+        assert (_artifacts(dest, j["name"]) / j["script"]).is_file()
         assert "01_coarse" in j["script"], j["script"]
     # A-2 (2026-08-13): the trials live IN their stage's bench container,
     # beside the record just read -- not at the root, where the
@@ -1022,34 +682,20 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     # unnamed bench submits one grouped job per resource shelf -- one
     # LAUNCH ACT per shelf.
     t0, t1 = js["jobs"][0]["name"], js["jobs"][1]["name"]
-    res = r.invoke(jobset_group, ["launch", "bench", "coarse", t1, "--bundle",
-                                  str(dest), "--mode", "direct", "--dry-run", "--yes"])
+    res = jobset("launch", "bench", "coarse", t1, "--bundle", dest,
+                 "--mode", "direct", "--dry-run", "--yes")
     assert res.exit_code == 0, res.output
     would = [l for l in res.output.splitlines() if "WOULD start" in l]
     assert len(would) == 1, res.output
     assert t1 in would[0] and t0 not in would[0], res.output
     # an unknown stage is refused with the ladder listed, not ignored
-    res = r.invoke(jobset_group, ["summarize", "bench", "not-a-stage",
-                                  "--bundle", str(dest)])
+    res = jobset("summarize", "bench", "not-a-stage", "--bundle", dest)
     assert res.exit_code != 0 and "not-a-stage" in res.output
     # ...and with its one stage's bench prepared, there is none to offer
     # (a prepared stage is not prepared again, `job-system.md` § 5.0)
-    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
-                                  "--no-sbatch"])
+    res = jobset("prep", "bench", "--bundle", dest, "--no-sbatch")
     assert res.exit_code != 0, res.output
     assert "every stage is prepared already" in res.output, res.output
-    # the same on a longer ladder -- one rule, not a per-length one
-    ladder = tree / "laddered"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            engine_ladder("siesta", "publishable"),
-                            engine="siesta",
-                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
-        ladder)
-    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(ladder),
-                                  "--no-sbatch"])
-    assert res.exit_code != 0
-    assert "name one" in res.output
 
 
 # --------------------------------------------------------------------- #
@@ -1059,109 +705,37 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
 # portable points, resolved here.
 
 
-def _declare_bench(calc, axes):
-    req = read_request(calc)
-    req["bench"] = axes
-    write_request(calc, req)
-
-
 def test_the_declared_grid_is_the_sweep(calc):
     """Declared axes produce exactly those points — nothing enumerated."""
     _describe_cpu(calc)
-    _declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
-    sweep, _pins, translation = bench_inputs(open_calculation(calc), None)
-    assert sweep == [{"G": 0, "N": 1, "C": 1}, {"G": 0, "N": 2, "C": 1}]
-    assert translation.axes == ("G", "N", "C")
-
-
-def test_a_multi_point_value_entry_is_a_value_axis(calc):
-    """§ 4.3a: a non-machine entry with SEVERAL
-    points multiplies the machine grid, each point carries its coordinate,
-    and the trial names carry it too."""
-    _describe_cpu(calc)
-    _declare_bench(calc, {"block_size": [64, 128],
-                          "mpi_np": [4], "omp_threads": [1]})
-    sweep, pins, _tr = bench_inputs(open_calculation(calc), None)
-    assert len(sweep) == 2
-    assert sorted(p["block_size"] for p in sweep) == [64, 128]
-    assert "block_size" not in pins, "an axis is not a pin"
-    assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
-
-
-def test_a_name_outside_the_execution_category_is_refused(calc):
-    """Pinning or sweeping a non-execution item changes the ANSWER, not the
-    speed (§ 6.8).  ONE door owns membership -- the preflight's
-    `_bench_names_a_speed_knob` (validation/task.py), which the dispatch
-    runs before any pins are computed -- so this pins the CLI surface, not
-    the helper."""
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-
-    _describe_cpu(calc)
-    _declare_bench(calc, {"mesh_cutoff": [300]})
-    r = CliRunner().invoke(jobset_group, ["prep", "bench", "coarse",
-                                          "--bundle", str(calc)])
-    assert r.exit_code != 0
-    assert "mesh_cutoff" in r.output and "execution" in r.output
+    declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
+    assert [j["point"] for j in _prep_bench(calc)["jobs"]] == [
+        {"G": 0, "N": 1, "C": 1}, {"G": 0, "N": 2, "C": 1}]
 
 
 def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
     """The override lane's ONE-point half (user rule, 2026-08-20): a CPU
     description with `bench: {use_gpu: [true]}` enumerates the GPU grid
     -- the declaration overrides the template's answer -- and the value
-    rides every trial as a pin, under the measurement pins."""
+    rides every trial as a pin, under the measurement pins: executed, not
+    assumed, the pinned eigensolver lands in the rendered trial deck,
+    replacing the run card's (`ELPA-1STAGE`)."""
     _describe_cpu(calc)                       # template says use_gpu=false
-    _declare_bench(calc, {"use_gpu": [True],
+    declare_bench(calc, {"use_gpu": [True],
                           "diag_algorithm": ["ELPA-2STAGE"],
                           "mpi_np": [4], "omp_threads": [1],
                           "gpu_count": [1]})
-    sweep, pins, _tr = bench_inputs(open_calculation(calc), None)
-    assert pins["use_gpu"] is True
-    assert pins["diag_algorithm"] == "ELPA-2STAGE"
-    assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
-    assert all("G" in p for p in sweep), (
+    jobs = _prep_bench(calc)["jobs"]
+    assert [j["point"] for j in jobs] == [{"G": 1, "N": 4, "C": 1}], (
         "a declared use_gpu=true must enumerate the GPU grid")
-
-
-def test_a_declared_pin_reaches_the_trial_deck(calc):
-    """Executed, not assumed: the pinned eigensolver lands in the rendered
-    trial deck, replacing the template's (`ELPA-1STAGE` in the fixture)."""
-    _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"],
-                          "mpi_np": [4], "omp_threads": [1],
-                          "gpu_count": [1]})
-    _prep_bench(calc)
-    decks = list((calc / "01_coarse" / "bench").glob("bench-*/**/*.fdf"))
-    assert decks, "no trial decks rendered"
-    text = decks[0].read_text()
-    # The VALUE line, not the catalogue help comments -- those name
-    # every choice, so a substring match passes with the pin broken.
-    import re as _re
-    assert _re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE", text, _re.M), (
-        [ln for ln in text.splitlines()
-         if ln.startswith("Diag.Algorithm")])
-
-
-def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
-    _describe_cpu(calc)
-    _declare_bench(calc, {"diag_algorithm": ["ELPA-9STAGE"]})
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(calc), None)
-    assert "ELPA-9STAGE" in str(e.value) and "ScaLAPACK" in str(e.value)
-    _declare_bench(calc, {"use_gpu": [1]})
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(calc), None)
-    assert "true or false" in str(e.value)
-
-
-def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
-    """Every (mpi_np, gpu_count) pair is a cell, each trial running the
-    declared mpi_np, N, exactly, whatever the record says of the node."""
-    _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1],
-                          "gpu_count": [1, 2]})
-    sweep, _pins, _tr = bench_inputs(open_calculation(calc), None)
-    assert all(p["N"] == 4 for p in sweep)
-    assert {p["G"] for p in sweep} == {1, 2}       # fixture probes one a100
+    name = jobs[0]["name"]
+    deck = (_artifacts(calc, name) / f"JOB-{name}_01_coarse.fdf").read_text()
+    # The VALUE lines, not the catalogue help comments -- those name every
+    # choice, so a substring match passes with the pin broken.
+    assert re.search(r"^Diag\.ELPA\.GPU\s+\.true\.\s*$", deck, re.M)
+    assert re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE\s*$", deck, re.M)
+    assert re.search(r"^MaxSCFIterations\s+3\s*$", deck, re.M), (
+        "the measurement pins still ride")
 
 
 # --------------------------------------------------------------------- #
@@ -1174,11 +748,8 @@ def test_a_verdictless_summarize_prints_no_report(calc):
     """No verdict, no report — a report would recommend a shape with nothing
     measured behind it, and a person reading one cannot tell that from a
     measurement."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
     _prep_bench(calc)
-    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
-                                          "--bundle", str(calc)])
+    r = jobset("summarize", "bench", "coarse", "--bundle", calc)
     assert r.exit_code == 0, r.output
     # `generator.md` § 4.3a, *The summary*: no winner is said, with why
     assert "no winner: no finished, timed trial to rank (" in r.output
@@ -1192,106 +763,15 @@ def test_a_bench_row_never_reaches_the_run_deck(calc):
     run card's.  Until 2026-09-30 `prep task` rendered the row into the run's
     deck -- a second home for a value the card states.
     """
-    import re as _re
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-
     _describe_cpu(calc)
-    _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"]})
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1",
-                                          "--bundle", str(calc)])
+    declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"]})
+    r = jobset("prep", "task", "--group", "1", "--bundle", calc)
     assert r.exit_code == 0, r.output
     deck = next((calc / "01_coarse").glob("run-*/JOB*.fdf"))
-    assert not _re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE",
-                          deck.read_text(), _re.M), (
+    assert not re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE",
+                         deck.read_text(), re.M), (
         "the bench row reached the run deck (the value line, not the "
         "help comments)")
-
-
-def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
-    """E-J1 (restored 2026-08-21): the bench lane speaks SIESTA's
-    vocabulary -- its measurement pins name SiestaConfig fields, and the
-    GPU question is read under `use_gpu`.  A PySCF description used
-    to be stopped only by ACCIDENT: those pins failing resolve, with a
-    refusal blaming settings the user never wrote.  The seam now refuses
-    by NAME, before any grid is enumerated."""
-
-    from molbuilder.config.pyscf import PySCFConfig
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "pycalc"
-    D.write_description(
-        D.build_description(struct, PySCFConfig(job_name="JOB"),
-                            [Stage(name="only", overrides={})],
-                            engine="pyscf",
-                            calculation="optimization",
-                            name="JOB",
-                            source=str(tree / "h2.xyz")),
-        dest)
-    write_environment(
-        Environment(machine="this", scheduler=WORKSTATION,
-                    topology=Topology(sockets=1,
-                                      cores_per_socket=4)),
-        (dest / "environment.json"))
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(dest), None)
-    msg = str(e.value)
-    assert "PySCF" in msg and "SIESTA" in msg, (
-        "the refusal must name the engine and the reason")
-    assert "max_scf_iter" not in msg, (
-        "the refusal blames measurement pins the user never wrote")
-
-
-def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
-    """PySCF's run card names its cores ``threads``; the launch shape gets
-    them as ``cpus_per_task``, as SIESTA's ``omp_threads`` does -- the job's
-    record, which a direct launch hands the wrapper as ``-omp``
-    (`jobset/submit.py::_counts_of`).
-
-    GOAL: ``threads`` had no entry in the catalogue-to-``Resources`` name map,
-    so a value typed on Task setup's run card was dropped and the run sized
-    itself from the machine ("omp auto") -- found on the dev server,
-    2026-09-25.  CONTRACT: `execution/job-contracts.md` § 6.2 (OMP cores per
-    process -> ``cpus_per_task``); `engines/stages.md` § 6.8d (what
-    ``execution`` states is what the run uses).
-    """
-    from click.testing import CliRunner
-
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.jobset._cli import jobset_group
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "pycalc"
-    D.write_description(
-        D.build_description(struct, PySCFConfig(job_name="JOB"),
-                            [Stage(name="only", overrides={})],
-                            engine="pyscf",
-                            calculation="optimization",
-                            name="JOB",
-                            source=str(tree / "h2.xyz")),
-        dest)
-    req = read_request(dest)
-    req["stages"]["only"]["execution"] = {"threads": 3}
-    write_request(dest, req)
-    write_environment(
-        Environment(machine="this", scheduler=WORKSTATION,
-                    topology=Topology(sockets=1, cores_per_socket=4),
-                    env_init=_ENTERS),
-        (dest / "environment.json"))
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
-                                          str(dest), "--no-sbatch"])
-    assert r.exit_code == 0, r.output
-    job = _plan_of(dest)["jobs"][0]
-    assert job["resources"]["cpus_per_task"] == 3, (
-        "the run card asked for 3 threads and the job records something "
-        "else", job["resources"])
 
 
 def _bench_dir(calc):
@@ -1302,15 +782,12 @@ def _load_sweep(calc):
     """The jobset, and the BUNDLE it belongs to -- resolved the way the
     route does it (`materialize.bench_owner`), which is NOT the file's own
     directory."""
-    from molbuilder.jobset.materialize import bench_owner
-    from molbuilder.jobset.model import JobSet
     container = _bench_dir(calc)
     jobset = JobSet.of(container)
     return jobset, bench_owner(container)[0]
 
 
 def test_sweep_view_has_one_trial_per_job_in_the_job_sets_order(calc):
-    from molbuilder.jobset.summarize import sweep_view
     js = _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
     view = sweep_view(open_calculation(bundle), jobset)
@@ -1326,7 +803,6 @@ def test_sweep_view_reports_where_the_RUN_is(calc):
     printed) stood beside it, and the ranking read that one, so a trial
     that failed after its output ended could be crowned.
     """
-    from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
     view = sweep_view(open_calculation(bundle), jobset)
@@ -1341,7 +817,6 @@ def test_sweep_view_reports_where_the_RUN_is(calc):
 
 
 def test_sweep_view_names_the_coordinate_the_sweep_varied(calc):
-    from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
     view = sweep_view(open_calculation(bundle), jobset)
@@ -1370,7 +845,6 @@ def test_sweep_view_never_writes_the_record_or_the_proposal(calc):
     own polling already does that; pinning "no new files at all" would pin
     a promise this stack does not make.
     """
-    from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
     bench = _bench_dir(calc)
@@ -1382,20 +856,18 @@ def test_sweep_view_never_writes_the_record_or_the_proposal(calc):
         "the view wrote a proposal -- that file is the user's")
 
 
-def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):
+def test_the_terminal_says_each_warning_once_across_a_sweep(calc):
     """O5 (user yes, 2026-08-28): the science gate FIRES per trial — every
     trial's own `.validation.txt` carries its findings — but the terminal
     said the same three lines once per trial, sixteen times at 16 trials.
     One line per unique finding now, with the suppression said out loud."""
-    _prep_bench(calc)
-    err = capsys.readouterr().err
-    warn_lines = [l.strip() for l in err.splitlines()
+    said = jobset(*_PREP_BENCH, "--bundle", calc, "--no-sbatch").output
+    warn_lines = [l.strip() for l in said.splitlines()
                   if l.strip().startswith(("warn", "info"))]
     assert warn_lines, ("the bench pins (SCF capped, steps zeroed) must "
                         "produce warnings, or this test tests nothing")
     assert len(warn_lines) == len(set(warn_lines)), (
         "the same finding printed more than once:\n" +
         "\n".join(l for l in warn_lines if warn_lines.count(l) > 1))
-    assert "each warning shown once" in err, (
+    assert "each warning shown once" in said, (
         "suppression must be SAID, not silent")
-

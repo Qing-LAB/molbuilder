@@ -14,6 +14,11 @@ road (`tests/_road.live_siesta`) puts all three in every live tree's library.
 | `C.psml` | `1eef0a7c0f0808ac968b43f3c744206f7ccda4af33313999b6c914552a9af7c6` |
 | `O.psml` | `5ca5d753a995bd054279007ba76be71d622b60460c6f9a0d9bb37d81bdf185fe` |
 | `pseudodojo-v0.4/S.psml` | `f59163a4500c143514f1480eca12c3ca6122331dd7ca5adeb1e47a170429a9a4` |
+| `pseudodojo-v0.4/Au.psml` | `b1d2a2e3626c6656de57470c205cb2428fe66275575357efe1287d6d04fe16a5` |
+| `pseudodojo-v0.4/F.psml` | `3e74844f561066361a50a773268b340048163ef869a080ed334f5ab80eb6a8d2` |
+| `pseudodojo-v0.4/Fe.psml` | `55c55eac2e5f7b872c210775f22d4fa672c51c39289b9dd175375984eaf95724` |
+| `pseudodojo-v0.4/N.psml` | `691c380a778fb6234028c994766364d998a14371860b7e9c855be773158ef43f` |
+| `pseudodojo-v0.4/P.psml` | `057149a6c6d72362347fabcfa84fc2d2afd91fd6debe6fbd59d55ca7faae443d` |
 | `pseudodojo-v0.5/S.psml` | `18956da60521e261696ec75ecdc33e45f45e976f113b0797dea6e72ecf764832` |
 | `pseudodojo-v0.5/Bi.psml` | `e481356f8288038a6c6850809d4af454e6cf2610e77a56aef63a71af7fb8fec6` |
 
@@ -32,13 +37,11 @@ zero; `pseudodojo-v0.5/Bi.psml`, its second p projector zero. Copied 2026-11-06
 from the person's library and from `nc-sr-05_pbe_standard_psml.tgz` beside it,
 bytes unchanged. Prep's and an engine's tests do not read them.
 
-**Why not `conftest.write_pseudos`.** That helper writes real, parseable PSML
-and is the one home for every test that *preps* — prep's screening
-(`science/pseudopotentials.md` § 1) reads it happily. **SIESTA does not
-start on it**: swapping this file for `write_pseudos` output on 2026-09-06
-failed five of this suite's tests with *"SIESTA printed no k-grid read-back;
-it may have died"*. Measured, not assumed — so the two are not
-interchangeable and neither replaces the other.
+**`conftest.write_pseudos` puts these in a test's calculation.** The other
+elements the suite's calculations hold are in `pseudodojo-v0.4/` beside the
+sulfur, copied 2026-11-06 from the person's library, the same release, bytes
+unchanged: gold, fluorine, iron, nitrogen and phosphorus. They sit in a folder so
+an engine's tests, which take the three files above, do not take them too.
 
 **Why not the projects tree.** It was read from
 `projects/BDT/optimization/TJ-BDT-Au111/H.psml` until 2026-09-06 — a specific

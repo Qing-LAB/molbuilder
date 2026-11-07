@@ -2290,28 +2290,16 @@ def render_run_wrapper(script_path: Path, *,
     # env: an empty inventory is "unknown", never "none".
     #
     # WHICH MACHINE IS ASKED WHETHER THE ENV EXISTS: the one that will run
-    # this, its record when there is one (`configuration.md` § 5 M-1) --
-    # including when that record cannot answer.  Falling back to this
-    # box's inventory would re-ask the wrong machine by a different route.
-    if machine_record is not None:
-        _known_envs = [str(e) for e in (
-            getattr(machine_record, "conda_envs", None) or [])]
-        _rec_envs = _known_envs
-    else:
-        _known_envs = list(caps.conda_envs or ())
-        _rec_envs = []
+    # this, by its record (`configuration.md` § 5 M-1) -- including when
+    # that record cannot answer.
+    _known_envs = [str(e) for e in (machine_record.conda_envs or [])]
     if (env is None and category != eng.environment and _known_envs
             and target_env not in _known_envs):
-        if _rec_envs:
-            _probed = getattr(machine_record, "detected_at", None)
-            _where = (f"the record of "
-                      f"{getattr(machine_record, 'machine', None) or 'the target machine'}"
-                      + (f" (probed {_probed})" if _probed else ""))
-            _there = ("on " + (getattr(machine_record, 'machine', None)
-                                or "that machine"))
-        else:
-            _where = "this machine"
-            _there = "here"
+        _probed = machine_record.detected_at
+        _where = (f"the record of "
+                  f"{machine_record.machine or 'the target machine'}"
+                  + (f" (probed {_probed})" if _probed else ""))
+        _there = "on " + (machine_record.machine or "that machine")
         _said = (
             f"`{script_path.name}`'s job asks for the GPU (its GPU "
             f"request), and {_where} lists no ``{target_env}`` environment, "

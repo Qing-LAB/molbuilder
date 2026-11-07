@@ -572,8 +572,7 @@ kind's header language and spells no scheduler of its own.
 `tests/test_the_fit.py`. What survives the reader and what is said:
 `tests/test_routing_domains.py` —
 `test_an_unknown_column_survives_the_type`,
-`test_a_column_the_reader_does_not_understand_is_SAID`,
-`test_a_record_the_reader_fully_understands_says_nothing_extra`.
+`test_a_column_the_reader_does_not_understand_is_SAID`.
 
 ## 6a. The header and the send line — the scheduler kinds
 

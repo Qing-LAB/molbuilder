@@ -1,6 +1,6 @@
 """The window reader in ``tests/_deck.py``, which nothing else checks.
 
-`test_transport_au_bdt_au_validation.py` asserts through it, so an error here
+`test_transport_decks_e2e.py` asserts through it, so an error here
 is an error there -- and the dangerous direction is silent: a unit factor that
 is wrong, or a bound read off the wrong end, makes the caller agree with the
 deck for the wrong reason and nothing goes red.

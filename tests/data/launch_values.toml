@@ -343,6 +343,18 @@ said = ["placed on cpu (", "bench-group-cpu-G0N1C1  header: -J bench-group-cpu-G
         "1 core · 8 GB · 1h fits all 10 nodes of cpu"]
 launch = []
 
+# JOB 62039305 (48 ranks, 1 GPU) OOM'd at 24576M on 2026-08-23 -- a number
+# nobody asked for -- because the memory a person stated never reached the
+# shelf's job.  The memory is prep's (`job-system.md` § 6.0): stated at the
+# benchmark's prep, it is on every trial's request and every shelf's header.
+[[case]]
+name = "...and the memory its prep states is asked by every shelf's header"
+bench = { mpi_np = [1, 2], omp_threads = [1] }
+prep = ["--mem", "128G"]
+bench_header = ["#SBATCH --mem=128G"]
+launch = []
+listing = ["--mem=128G"]
+
 [[case]]
 name = "...and a queue named at prep is the one its shelves are sent to"
 bench = { mpi_np = [1], omp_threads = [1] }

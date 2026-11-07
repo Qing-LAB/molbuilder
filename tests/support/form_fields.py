@@ -21,6 +21,11 @@ NOT_IN_THE_DECK = {
     ("pyscf", "verbose_comments"):
         "it is about the deck's COMMENTS -- what a person reads beside each "
         "setting -- and these tests compare what PySCF runs",
+    **{("pyscf", name):
+       "a setting SIESTA's vibration acts on: a PySCF vibration's polarizability "
+       "sweep gives every mode at once, so a range narrows nothing, which the "
+       "deck says in a comment (`engines/template.md` § 6.2a)"
+       for name in ("raman_modes", "raman_freq_min_cm1", "raman_freq_max_cm1")},
     ("siesta", "write_molwatch_log"):
         "SIESTA honours it at the PROMISES sub-step (3.12), not in the deck: "
         "`prep._seed_trajectory_log` skips seeding "

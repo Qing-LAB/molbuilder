@@ -6530,13 +6530,9 @@ in each rung's block, and the settings gate and the record read the config's
 `test_template_role_and_stages.py` holds the declarations — a role item
 carries no value and is never offered, and each transport item is routed to
 the rung that owns it.
-`test_transport_au_bdt_au_validation.py::test_the_device_deck_states_its_identity_and_method`
-reads the device deck the live path renders for the NEGF solver, and for the
-absence of `TS.SolutionMethod`.  *(It was named
-`…::test_render_script_emits_correct_atom_counts` and drove the deleted
-renderer until 2026-09-17.  `test_transport_prep.py::TestTheRungFixesItsOwn`,
-which prepped the ladder and read each rung's fixed line, was retired with the
-tests that lay a run that never happened, `cdec94da`, 2026-10-03.)*
+`tests/data/the_transport_deck.toml`'s row *the device deck states its label, the NEGF
+solver and how the Green's function is inverted* reads the device deck prep
+writes.
 
 **The general rule this is an instance of.**  Before offering a keyword as a
 parameter, ask who can answer it.  If only the rung can — the value is what

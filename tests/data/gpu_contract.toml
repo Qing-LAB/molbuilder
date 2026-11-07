@@ -298,10 +298,45 @@ machine = "named"
 run = { use_gpu = true, gpu_count = 1 }
 header = ["#SBATCH -p gpu", "#SBATCH --gres=gpu:1"]
 
+# A DECLARED DEVICE COUNT IS MEASURED EXACTLY (user, 2026-08-21: "explicit is
+# what we need"): every (mpi_np, G) pair a trial running the declared total
+# ranks, no divisor invented -- and what its ranks over its devices mean said
+# once, by the benchmark's prep, where the grid can still change, in the
+# sentence a run's prep says (user, 2026-08-23: `ask.gpu_share_notes`).
 [[case]]
-name = "a benchmark's trials ask their own count"
+name = "a benchmark's trials ask their own count, each running the declared total ranks -- what each share means said once"
 bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2], omp_threads = [1] }
 bench_gres = ["gpu:1", "gpu:2"]
+bench_header = ["#SBATCH -n 8"]
+said_once = ["GPU sharing in this family"]
+said = ["gpu share  8 rank(s) / 1 GPU(s) = 8 rank(s)/GPU", "gpu share  8 rank(s) / 2 GPU(s) = 4 rank(s)/GPU"]
+
+# The plan is what a person reads before launching, and a sweep's two
+# instructions are opposite a ladder's: a scheduler is handed one job at a
+# time, so the PERSON sequences, and each trial's own ranks, cores and GPUs ARE
+# the experiment (`job-system.md` § 3, § 7).
+[[case]]
+name = "a benchmark's plan says its trials are independent and shows each one's ranks, cores and GPUs -- one shared resource line would show a table where every row looks the same"
+bench = { use_gpu = [true], mpi_np = [1, 2], gpu_count = [1], omp_threads = [4] }
+made_says = { "01_coarse/bench/STAGE-PLAN.md" = ["independent job(s)", "n=1, c=4, gpu:1", "n=2, c=4, gpu:1"] }
+
+[[case]]
+name = "...an uneven split too: prepared, and said (generator.md 4.3a) -- those counts and no others"
+bench = { use_gpu = [true], mpi_np = [32], gpu_count = [1, 2, 3], omp_threads = [1] }
+bench_gres = ["gpu:1", "gpu:2", "gpu:3"]
+bench_header = ["#SBATCH -n 32"]
+said = ["32 rank(s) / 3 GPU(s)", "uneven"]
+
+[[case]]
+name = "...and a count past what the record says a node carries is prepared as declared, its fit naming the most a node there carries: the scheduler decides (scheduler.md R6)"
+bench = { use_gpu = [true], mpi_np = [32], gpu_count = [8], omp_threads = [1] }
+bench_gres = ["gpu:8"]
+said = ["8 GPUs is over gpu's most GPUs on a node (4 GPUs)"]
+
+[[case]]
+name = "a device count on a CPU benchmark is refused, never ignored"
+bench = { use_gpu = [false], mpi_np = [32], gpu_count = [2], omp_threads = [1] }
+refused = ["silently ignored"]
 
 [[case]]
 name = "a GPU benchmark states its device counts, nothing proposed for it (generator.md 4.3a)"

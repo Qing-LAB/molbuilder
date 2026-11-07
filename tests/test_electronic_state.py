@@ -20,18 +20,13 @@ Nothing here launches an engine: prep writes the deck and stops.
 """
 from __future__ import annotations
 
-import json
 import re
 
 import numpy as np
 import pytest
 
-from molbuilder.config.pyscf import PySCFConfig
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.jobset.ladder import engine_ladder, fresh_stages
 from molbuilder.structure import Structure
-
-from test_engine_offset_reaches_every_deck import _prep
+from support.road import stage_file
 
 
 # --------------------------------------------------------------- structures
@@ -85,19 +80,8 @@ def _bcc_iron():
                      axis_kind=("periodic", "periodic", "periodic"))
 
 
-def _siesta(root, struct, cfg=None, **kw):
-    return _prep(root, struct, cfg or SiestaConfig(system_label="JOB"),
-                 engine_ladder("siesta", "publishable"), "siesta", **kw)
-
-
-def _pyscf(root, struct, cfg=None, **kw):
-    return _prep(root, struct, cfg or PySCFConfig(job_name="JOB"),
-                 engine_ladder("pyscf", "publishable"), "pyscf", **kw)
-
-
 def _report(dest, stage) -> str:
-    return next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")
-                ).read_text()
+    return stage_file(dest, stage, ".validation.txt").read_text()
 
 
 def _spin_lines(fdf: str):
@@ -124,31 +108,29 @@ def _spin_lines(fdf: str):
 ], ids=["water", "methyl", "Au4", "Au1", "Fe-aqua", "gold-lead", "bcc-Fe",
         "H-chain"])
 def test_a_blank_spin_is_decided_from_the_structure(
-        isolated_projects_root, make, spin, total):
+        prepared, make, spin, total):
     """Every spin field blank: the SIESTA deck carries the class's answer,
     written explicitly -- ``Spin`` in every state, the pin only for a count
     beside ``polarized`` -- with where it came from."""
-    _dest, _stage, fdf = _siesta(isolated_projects_root, make())
+    _dest, _stage, fdf = prepared(make(), "siesta")
     assert _spin_lines(fdf) == (spin, total), fdf
     assert re.search(r"^# Spin: \S+ \(detected: ", fdf, re.M), fdf
 
 
-def test_the_charge_is_judged_at_its_own_value(isolated_projects_root):
+def test_the_charge_is_judged_at_its_own_value(prepared):
     """Formate at a stated -1 has 24 electrons: a closed shell.  At charge 0
     the count was 23 and the ion was told to go open-shell."""
-    dest, stage, fdf = _siesta(isolated_projects_root, FORMATE(),
-                               SiestaConfig(system_label="JOB",
-                                            net_charge=-1))
+    dest, stage, fdf = prepared(FORMATE(), "siesta", template=dict(net_charge=-1))
     assert _spin_lines(fdf) == ("non-polarized", None), fdf
     assert re.search(r"^NetCharge\s+-1$", fdf, re.M)
     assert "# NetCharge: -1 (stated)." in fdf
     assert "open-shell" not in _report(dest, stage)
 
 
-def test_a_blank_charge_is_written_with_its_reason(isolated_projects_root):
+def test_a_blank_charge_is_written_with_its_reason(prepared):
     """The deck states the charge that applies at 0 too (`template.md` § 6.6:
     nothing reaches the engine by omission), with why."""
-    _d, _s, fdf = _siesta(isolated_projects_root, WATER())
+    _d, _s, fdf = prepared(WATER(), "siesta")
     assert re.search(r"^NetCharge\s+\+0$", fdf, re.M), fdf
     assert ("# NetCharge: +0 (detected: no deprotonated phosphate groups)."
             in fdf)
@@ -157,34 +139,26 @@ def test_a_blank_charge_is_written_with_its_reason(isolated_projects_root):
 @pytest.mark.parametrize("engine, kind", [("siesta", "optimization"),
                                           ("pyscf", "optimization"),
                                           ("pyscf", "vibration")])
-def test_the_charge_step_on_every_deck(isolated_projects_root,
+def test_the_charge_step_on_every_deck(prepared,
                                        deprotonated_diester, engine, kind):
     """§ 2a.1a's charge step on each deck a charge reaches: a blank takes the
     phosphate rule -- the diester's one deprotonated group, -1 -- and says
     so; a stated value wins, 0 included."""
     def deck(net_charge):
+        stated = {} if net_charge is None else {"net_charge": net_charge}
         if engine == "siesta":
-            return _siesta(isolated_projects_root, deprotonated_diester,
-                           SiestaConfig(system_label="JOB",
-                                        net_charge=net_charge))[2]
-        vib = kind == "vibration"
-        return _prep(isolated_projects_root, deprotonated_diester,
-                     PySCFConfig(job_name="JOB", net_charge=net_charge,
-                                 already_relaxed=vib),
-                     (fresh_stages("vibration", "pyscf") if vib
-                      else engine_ladder("pyscf", "publishable")),
-                     "pyscf", calculation=kind)[2]
+            return prepared(deprotonated_diester, "siesta", template=stated)[2]
+        if kind == "vibration":
+            stated["already_relaxed"] = True
+        return prepared(deprotonated_diester, "pyscf", template=stated,
+                        calculation=kind)[2]
     blank = deck(None)
     why = "detected: 1 deprotonated phosphate group"
     if kind == "vibration":
         # A stated 0 still wins -- and makes the diester a radical, which a
         # PySCF vibration does not offer (`engines/template.md` § 6.3a):
         # refused, saying the treatment was detected from the structure.
-        _d, _s, said = _prep(isolated_projects_root, deprotonated_diester,
-                             PySCFConfig(job_name="JOB", net_charge=0,
-                                         already_relaxed=True),
-                             fresh_stages("vibration", "pyscf"),
-                             "pyscf", calculation="vibration", refused=True)
+        _d, _s, said = prepared(deprotonated_diester, "pyscf", template=dict(net_charge=0, already_relaxed=True), calculation="vibration", refused=True)
         assert "spin_treatment = unrestricted (detected" in said, said
         assert "charge     = -1," in blank and why in blank
         return
@@ -200,7 +174,7 @@ def test_the_charge_step_on_every_deck(isolated_projects_root,
 
 
 def test_a_charged_molecule_is_corrected_and_a_charged_cell_is_not(
-        isolated_projects_root):
+        prepared):
     """§ 2b, through prep.  A charged MOLECULE's deck says SIESTA applies the
     monopole correction itself in a cubic box (`siesta: Emadel`), and prep
     writes the script that reads it first.  A charged REPEATING cell gets no
@@ -211,24 +185,17 @@ def test_a_charged_molecule_is_corrected_and_a_charged_cell_is_not(
     def script(dest, stage):
         return next(dest.glob(f"*_{stage}")) / "makov_payne_correction.py"
 
-    def calc(name):
-        # Each its own calculation, in a folder of its own.
-        (isolated_projects_root / name).mkdir()
-        return isolated_projects_root / name
-
-    dest, stage, fdf = _siesta(calc("molecule"), FORMATE(),
-                               SiestaConfig(system_label="JOB",
-                                            net_charge=-1))
+    dest, stage, fdf = prepared(FORMATE(), "siesta",
+                                template=dict(net_charge=-1))
     assert "siesta: Emadel" in fdf and script(dest, stage).is_file()
 
-    dest, stage, fdf = _siesta(calc("cell"), _gold_lead(),
-                               SiestaConfig(system_label="JOB",
-                                            net_charge=-1))
+    dest, stage, fdf = prepared(_gold_lead(), "siesta",
+                                template=dict(net_charge=-1))
     assert "CHARGED REPEATING CELL" in fdf and "Emadel" not in fdf
     assert not script(dest, stage).exists()
     assert "defect-specific treatment" in _report(dest, stage)
 
-    dest, stage, fdf = _siesta(calc("neutral"), WATER())
+    dest, stage, fdf = prepared(WATER(), "siesta")
     assert "Makov" not in fdf and not script(dest, stage).exists()
 
 
@@ -252,7 +219,7 @@ def _cluster(el, n):
     (_hydrogen_chain, "dft.UKS", 1),
 ], ids=["Au2", "Au3", "Au5", "Cu4", "Pd2", "Au4+Fe", "Mn", "Ru-usual-2",
         "Fe-parity-moved", "H-chain-computed-as-a-molecule"])
-def test_the_detection_table_on_pyscf(isolated_projects_root, make, cls,
+def test_the_detection_table_on_pyscf(prepared, make, cls,
                                       spin):
     """The rest of § 2a.1b's rows, where PySCF writes the answer: a noble
     cluster below four atoms and a closed-d10 pair go by parity; an open-d
@@ -264,7 +231,7 @@ def test_the_detection_table_on_pyscf(isolated_projects_root, make, cls,
     is a doublet here, where SIESTA's repeating cell is not a spin -- judged
     by the structure's axes, PySCF was handed a restricted single electron
     (the M6 review; the door since K8)."""
-    _d, _s, py = _pyscf(isolated_projects_root, make())
+    _d, _s, py = prepared(make(), "pyscf")
     assert re.search(rf"^mf = {re.escape(cls)}\(mol\)$", py, re.M), py
     assert re.search(rf"^\s+spin\s+= {spin},$", py, re.M), py
 
@@ -279,23 +246,20 @@ def test_the_detection_table_on_pyscf(isolated_projects_root, make, cls,
      "scf.ROHF", 1),
     (O2, {"unpaired_electrons": 2}, "dft.UKS", 2),
 ], ids=["water", "methyl", "methyl-HF", "methyl-ROHF", "triplet-O2"])
-def test_pyscf_writes_the_class_it_composed(isolated_projects_root, make, cfg,
+def test_pyscf_writes_the_class_it_composed(prepared, make, cfg,
                                             cls, spin):
     """The class is composed from the method and the treatment and written
     out -- never left for PySCF to re-rule -- and ``gto.M`` pins the count."""
-    _d, _s, py = _pyscf(isolated_projects_root, make(),
-                        PySCFConfig(job_name="JOB", **cfg))
+    _d, _s, py = prepared(make(), "pyscf", template=cfg)
     assert re.search(rf"^mf = {re.escape(cls)}\(mol\)$", py, re.M), py
     assert re.search(rf"^\s+spin\s+= {spin},$", py, re.M), py
 
 
-def test_a_stated_triplet_is_not_second_guessed(isolated_projects_root):
+def test_a_stated_triplet_is_not_second_guessed(prepared):
     """O2 with 2S = 2 stated: an even count the structure would call closed.
     Parity cannot see a triplet, and the person is the authority -- no
     finding (ES9)."""
-    dest, stage, _py = _pyscf(isolated_projects_root, O2(),
-                              PySCFConfig(job_name="JOB",
-                                          unpaired_electrons=2))
+    dest, stage, _py = prepared(O2(), "pyscf", template=dict(unpaired_electrons=2))
     report = _report(dest, stage)
     assert "spin_treatment" not in report and "unpaired" not in report, report
 
@@ -308,46 +272,35 @@ def test_a_stated_triplet_is_not_second_guessed(isolated_projects_root):
      "restricted-open"),                                              # ES5
     ({"spin_treatment": "non-collinear"}, "cannot run here"),         # ES4
 ], ids=["free-on-PySCF", "restricted-with-a-count", "non-collinear"])
-def test_what_pyscf_cannot_run_is_refused_by_name(isolated_projects_root,
+def test_what_pyscf_cannot_run_is_refused_by_name(prepared,
                                                   cfg, words):
-    _d, _s, said = _pyscf(isolated_projects_root, METHYL(),
-                          PySCFConfig(job_name="JOB", **cfg), refused=True)
+    _d, _s, said = prepared(METHYL(), "pyscf", template=cfg, refused=True)
     assert words in said, said
 
 
-def test_a_restricted_open_vibration_is_refused(isolated_projects_root):
+def test_a_restricted_open_vibration_is_refused(prepared):
     """PySCF has no analytic ROHF/ROKS Hessian, and the vibration deck takes
     the analytic Hessian (§ 2a.3)."""
-    _d, _s, said = _prep(
-        isolated_projects_root, METHYL(),
-        PySCFConfig(job_name="JOB", already_relaxed=True,
-                    spin_treatment="restricted-open"),
-        fresh_stages("vibration", "pyscf"), "pyscf",
-        calculation="vibration", refused=True)
+    _d, _s, said = prepared(METHYL(), "pyscf", template=dict(already_relaxed=True, spin_treatment="restricted-open"), calculation="vibration", refused=True)
     assert "no analytic ROHF/ROKS Hessian" in said, said
 
 
 def test_a_closed_shell_stated_on_an_open_d_metal_is_warned(
-        isolated_projects_root):
+        prepared):
     """The hemeC guard, now at the resolved charge: restricted on an Fe
     complex is reported once, naming what the structure implies."""
-    dest, stage, _fdf = _siesta(isolated_projects_root, FE_AQUA(),
-                                SiestaConfig(system_label="JOB",
-                                             spin_treatment="restricted"))
+    dest, stage, _fdf = prepared(FE_AQUA(), "siesta", template=dict(spin_treatment="restricted"))
     report = _report(dest, stage)
     assert "implies unrestricted, 2S = 2" in report, report
 
 
 def test_a_constrained_singlet_on_a_closed_shell_is_written_and_warned(
-        isolated_projects_root):
+        prepared):
     """ES9's second finding: unrestricted at 2S = 0 on a closed-shell
     structure runs -- it is the broken-symmetry singlet's setting -- but costs
     twice restricted for the same answer otherwise.  The deck pins it and
     says so beside it; the report warns once."""
-    dest, stage, fdf = _siesta(isolated_projects_root, WATER(),
-                               SiestaConfig(system_label="JOB",
-                                            spin_treatment="unrestricted",
-                                            unpaired_electrons=0))
+    dest, stage, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="unrestricted", unpaired_electrons=0))
     assert _spin_lines(fdf) == ("polarized", 0.0)
     assert "constrained singlet in open-shell DFT" in fdf
     report = _report(dest, stage)
@@ -355,114 +308,70 @@ def test_a_constrained_singlet_on_a_closed_shell_is_written_and_warned(
 
 
 def test_a_half_stated_spin_is_completed_in_the_one_order(
-        isolated_projects_root):
+        prepared):
     """§ 2a.1a with half the state stated: ``unrestricted`` on closed-shell
     water, the count blank.  The structure's own count, 0, is pinned -- a
     constrained singlet -- and said to be the structure's, not the person's."""
-    _d, _s, fdf = _siesta(isolated_projects_root, WATER(),
-                          SiestaConfig(system_label="JOB",
-                                       spin_treatment="unrestricted"))
+    _d, _s, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="unrestricted"))
     assert _spin_lines(fdf) == ("polarized", 0.0), fdf
     assert "(2S): 0 (detected: the structure has no unpaired electron" in fdf
 
 
 def test_what_siesta_stops_on_is_said_and_what_it_lacks_is_refused(
-        isolated_projects_root):
+        prepared):
     """ES4 / ES6 on SIESTA: non-collinear with the count blank floats -- no
     ``Spin.Fix``, which SIESTA stops on there; with a count stated, the
     deck is written as stated and the stop is said, as information, never
     refused (the user, 2026-11-02); restricted-open, a formalism the kind
     does not offer on SIESTA, is refused by name."""
-    _d, _s, fdf = _siesta(isolated_projects_root, WATER(),
-                          SiestaConfig(system_label="JOB",
-                                       spin_treatment="non-collinear"))
+    _d, _s, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="non-collinear"))
     assert _spin_lines(fdf) == ("non-colinear", None), fdf
-    dest, stage, fdf = _siesta(
-        isolated_projects_root, WATER(),
-        SiestaConfig(system_label="JOB", spin_treatment="non-collinear",
-                     unpaired_electrons=2))
+    dest, stage, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="non-collinear", unpaired_electrons=2))
     assert _spin_lines(fdf) == ("non-colinear", 2.0), fdf
     assert "the engine stops on a fixed count here" in _report(dest, stage)
-    _d, _s, said = _siesta(isolated_projects_root, WATER(),
-                           SiestaConfig(system_label="JOB",
-                                        spin_treatment="restricted-open"),
-                           refused=True)
+    _d, _s, said = prepared(WATER(), "siesta", template=dict(spin_treatment="restricted-open"), refused=True)
     assert "no restricted open-shell formalism" in said, said
 
 
 def test_a_count_a_metal_decided_warns_until_it_is_stated(
-        isolated_projects_root):
+        prepared):
     """ES8: the usual count is a guess about the coordination.  Blank, it
     warns; stated, the warning goes."""
-    dest, stage, _f = _siesta(isolated_projects_root, FE_AQUA())
+    dest, stage, _f = prepared(FE_AQUA(), "siesta")
     assert "was left blank, so it is 2" in _report(dest, stage)
-    dest, stage, _f = _siesta(isolated_projects_root, FE_AQUA(),
-                              SiestaConfig(system_label="JOB",
-                                           unpaired_electrons=4))
+    dest, stage, _f = prepared(FE_AQUA(), "siesta", template=dict(unpaired_electrons=4))
     report = _report(dest, stage)
     assert "left blank" not in report, report
     assert "high-spin" in report, "the stated count is echoed as information"
 
 
 def test_an_odd_count_under_restricted_runs_half_filled_on_siesta(
-        isolated_projects_root):
+        prepared):
     """SIESTA runs a restricted radical, putting 0.5 electron in each spin on
     its highest level -- a warning there, saying so in those words; PySCF
     stops on the pair, which is said, as information, and the job prepared
     as asked (ES3; the user, 2026-11-02)."""
-    dest, stage, _f = _siesta(isolated_projects_root, METHYL(),
-                              SiestaConfig(system_label="JOB",
-                                           spin_treatment="restricted"))
+    dest, stage, _f = prepared(METHYL(), "siesta", template=dict(spin_treatment="restricted"))
     report = _report(dest, stage)
     assert "0.5 electron in each spin" in report, report
     # ONE finding per fact (ES9): the parity finding holds first, so the
     # stated-restricted-on-a-radical finding does not say it again.
     assert "implies unrestricted" not in report, report
-    dest, stage, _f = _pyscf(isolated_projects_root, METHYL(),
-                             PySCFConfig(job_name="JOB",
-                                         spin_treatment="restricted"))
+    dest, stage, _f = prepared(METHYL(), "pyscf", template=dict(spin_treatment="restricted"))
     report = _report(dest, stage)
     assert "the electron count and the unpaired count disagree" in report.lower(), report
 
 
 # --------------------------------------------- it belongs to the calculation
 
-def test_a_stage_cannot_change_the_state(isolated_projects_root):
+def test_a_stage_cannot_change_the_state(prepared):
     """ES1: an override of a state item on one rung is refused by name --
     every rung's warm files are a density for one electronic state."""
-    def override(dest):
-        # Promoted (`varies`) as a stage override must be (`stages.md`
-        # § 6.2), so the refusal met is the state's own.
-        task = json.loads((dest / "task.json").read_text())
-        task["varies"] = sorted(set(task.get("varies") or [])
-                                | {"spin_treatment"})
-        task["stages"][0].setdefault("overrides", {})["spin_treatment"] = \
-            "unrestricted"
-        (dest / "task.json").write_text(json.dumps(task))
-    _d, _s, said = _siesta(isolated_projects_root, WATER(),
-                           before_prep=override, refused=True)
+    _d, _s, said = prepared(WATER(), "siesta",
+                            overrides={"spin_treatment": "unrestricted"},
+                            refused=True)
     assert "shared by every stage of this calculation" in said, said
 
 
 # ----------------------------------------------- what the structure carries
 
-def test_a_structure_carries_the_state_of_the_run_it_came_from(
-        isolated_projects_root):
-    """ES7: a structure exported from a finished run carries that run's
-    record, and a blank item takes the recorded value -- a vibration of a
-    charged relaxation starts charged."""
-    s = FORMATE()
-    s.info["calculation"] = {"engine": "siesta", "source": "relax.fdf",
-                             "contract": {"net_charge": -1,
-                                          "spin_treatment": "restricted",
-                                          "unpaired_electrons": 0}}
-    _d, _s, fdf = _siesta(isolated_projects_root, s)
-    assert re.search(r"^NetCharge\s+-1$", fdf, re.M), fdf
-    assert ("recorded: recorded by the run this structure came out of "
-            "(relax.fdf)") in fdf
-    # EDITED SINCE (a geometry or cell op): no longer the structure that run
-    # came out of, so its record is not assumed (`web/molview.md` § 8.4).
-    s.info["calculation"]["structure_modified"] = True
-    _d, _s, fdf = _siesta(isolated_projects_root, s)
-    assert re.search(r"^NetCharge\s+\+0$", fdf, re.M), fdf
-    assert "recorded by the run" not in fdf

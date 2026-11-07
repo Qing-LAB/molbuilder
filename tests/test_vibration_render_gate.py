@@ -1,269 +1,87 @@
-"""The vibration deck RUNS the spectra science gate -- and it refuses.
+"""What a PySCF vibration's deck does with the settings that reach its several
+mean fields -- read as Python, in the deck prep wrote -- and the kind's science
+gate failing closed.
 
-Between P1 and P3 the deck's ``validate(struct, view)`` call silently
-skipped the spectra science (grid / amplitude / parity / method /
-open-shell): the engine dispatch inside ``validate()`` is keyed on
-``type(cfg)`` and the deck's config view is an ADAPTER over
-PySCFConfig, so no registered validator matched -- a green E2E hid a
-gate that never ran.  Found 2026-08-21 while retiring the engine
-registry (spectra-migration plan P3).  The science moved whole to
-``validation/spectra.py`` and the deck composes it BY NAME; these pins
-hold the composition down at its two observable ends.
+What a row can say of this deck, the science gate's findings at prep among it,
+is a row of ``tests/data/the_deck.toml``.  Here is what only the program's
+shape shows: which object a setting was applied to, whatever the deck calls it.
 """
 from __future__ import annotations
 
-import io
-import sys
+import ast
 
-import numpy as np
 import pytest
 
-from molbuilder.config.pyscf import PySCFConfig
-from molbuilder.pyscf.input import spec_for
-from molbuilder.script_emit import render_deck
-from molbuilder.structure import Structure
-from molbuilder.runfiles import RunNames
+
+def _deck_tree(tmp_path, monkeypatch, **template):
+    """The deck `jobset prep` wrote for a PySCF vibration of the road's H2,
+    with ``template``'s values set in its template, parsed."""
+    from support.road import (describe_calculation, jobset, group_words,
+                              set_by_the_person, stage_file)
+    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf",
+                                  calculation="vibration")
+    set_by_the_person(bundle, template)
+    r = jobset("prep", "task", *group_words(bundle, "freq"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    return ast.parse(stage_file(bundle, "freq", ".py").read_text())
 
 
-def _names(cfg):
-    """The names prep gives this stage's deck (`runfiles.RunNames`),
-    under the config's own label."""
-    label = getattr(cfg, "system_label", None) or cfg.job_name
-    return RunNames(label, '01_freq')
+@pytest.mark.parametrize("soscf", [True, False], ids=["on", "off"])
+def test_the_mean_field_handed_to_the_relaxation_is_the_second_order_one(
+        soscf, tmp_path, monkeypatch):
+    """`engines/pyscf.md` § 7a's role table promises the `newton()` wrap at the
+    vibration RELAXATION site; without it a `scf_soscf=true` run relaxes under
+    DIIS while its equilibrium SCF runs Newton.
+
+    Whichever name the deck gives it: the object the relaxation door takes
+    (`_mb_relax`, `engines/pyscf.md` § 3) is rebound to its `newton()` first."""
+    tree = _deck_tree(tmp_path, monkeypatch, scf_soscf=soscf)
+    relax = next(n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                 and ast.unparse(n.func) == "_mb_relax")
+    given = ast.unparse(relax.args[0])
+    wrapped = [n for n in ast.walk(tree) if isinstance(n, ast.Assign)
+               and n.lineno < relax.lineno
+               and ast.unparse(n) == f"{given} = {given}.newton()"]
+    assert bool(wrapped) is soscf, (given, soscf, wrapped)
 
 
-def _water() -> Structure:
-    return Structure(
-        elements=["O", "H", "H"],
-        positions=np.array([[0.0, 0.0, 0.119],
-                            [0.0, 0.757, -0.477],
-                            [0.0, -0.757, -0.477]]))
+@pytest.mark.parametrize("method, spelled", [
+    ("DFT", {"mf.xc": "'b3lyp'", "mf.grids.level": "4", "mf.disp": "'d3bj'"}),
+    ("HF", {"mf.disp": "'d3bj'"}),
+], ids=["a Kohn-Sham deck", "a Hartree-Fock deck"])
+def test_the_level_of_theory_is_set_in_one_place_every_mean_field_goes_through(
+        method, spelled, tmp_path, monkeypatch):
+    """`engines/pyscf.md` § 7a, `engines/vibration.md` I9: the functional, grid
+    and dispersion were spelled twice until 2026-08-21, the layout's for the
+    optimization deck and hand constants in the vibration deck's constructions,
+    free to disagree.  Whatever object it is on, the deck assigns each once, on
+    either method -- HF has no functional and no grid, and takes the dispersion
+    correction like any method -- in one function, and the function is called
+    for the displaced and relaxing mean fields and for the equilibrium one.
 
+    MUTATION THIS MUST FAIL AGAINST: the dresser emitted for DFT alone; a site
+    that spells the functional itself, or skips the dresser."""
+    tree = _deck_tree(tmp_path, monkeypatch, method=method, functional="b3lyp",
+                      dispersion="d3bj", grid_level=4)
 
-def _methyl() -> Structure:
-    """Nine electrons: odd, so a closed shell stated on it cannot hold."""
-    return Structure(
-        elements=["C", "H", "H", "H"],
-        positions=np.array([[0.0, 0.0, 0.0], [1.08, 0.0, 0.0],
-                            [-0.54, 0.935, 0.0], [-0.54, -0.935, 0.0]]))
+    def spellings(node):
+        return {ast.unparse(n.targets[0]): ast.unparse(n.value)
+                for n in ast.walk(node) if isinstance(n, ast.Assign)
+                and ast.unparse(n.targets[0]).endswith(
+                    (".xc", ".grids.level", ".disp"))}
 
-
-def _render(cfg: PySCFConfig, struct: Structure = None) -> str:
-    s = struct if struct is not None else _water()
-    return render_deck(spec_for(s, cfg, calculation="vibration",
-                                names=_names(cfg)),
-                       s, cfg, verbose=False)
-
-
-def test_amplitude_advisory_reaches_the_person():
-    """A 0.5 A displacement is outside the accepted window; the deck
-    still renders (a warn is advice, not a refusal) and the warning
-    goes where a person sees it -- with the orbital probe asked, the run
-    the displacement enters (a value that enters nothing gets no advice,
-    `engines/template.md` § 5)."""
-    err, old = io.StringIO(), sys.stderr
-    sys.stderr = err
-    try:
-        text = _render(PySCFConfig(displacement_amplitude_ang=0.5,
-                                   es_mode_selection="all"))
-    finally:
-        sys.stderr = old
-    assert "Hessian" in text, "the deck did not render"
-    assert "0.02-0.20" in err.getvalue(), (
-        "the amplitude advisory never surfaced -- the science gate "
-        "is not composed into the deck's render")
-    # ...and under `skip`, where the displacement enters nothing, none.
-    # MUTATION THIS MUST FAIL AGAINST: the probe's advice given whatever the
-    # selector (a person told to change a greyed-out field).
-    err = io.StringIO()
-    sys.stderr = err
-    try:
-        _render(PySCFConfig(displacement_amplitude_ang=0.5))
-    finally:
-        sys.stderr = old
-    assert "0.02-0.20" not in err.getvalue(), err.getvalue()
-
-
-def test_the_kind_door_runs_the_same_gate_body():
-    """One gate, and the door that reaches it is the CALCULATION KIND.
-
-    A vibration's science is the kind's:
-    `validate_vibration_kind` runs `spectra_render_checks` against the
-    deck's config view, which is the object the emitters get.  Same body,
-    reached the way production reaches it: `validate(..., calculation=
-    "vibration")` with the config a person describes, the door `prep` and
-    the Task-setup preflight both go through.
-    """
-    from molbuilder.validation import validate
-    cfg = PySCFConfig(es_mode_selection="explicit", es_explicit_indices="")
-    issues = validate(_water(), cfg, calculation="vibration")
-    assert any(i.where == "config.es_explicit_indices" for i in issues), [
-        (i.where, i.message) for i in issues]
-
-
-def test_an_ecp_deck_compiles_and_carries_one_ecp_kwarg():
-    """The gold-dimer ECP deck: exactly ONE `ecp        =` kwarg in the
-    gto.M call and the whole deck compiles.  A duplicated
-    resolution+emission pair shipped 2026-08-21 made every ECP deck a
-    SyntaxError (`keyword argument repeated`) while the text-diff
-    honesty gate stayed green -- this pin is that failure's shape."""
-    s = Structure(elements=["Au", "Au"],
-                  positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.47]]))
-    cfg = PySCFConfig(ecp="lanl2dz", ecp_atoms=["Au"])
-    text = render_deck(spec_for(s, cfg, calculation="vibration",
-                                names=_names(cfg)),
-                       s, cfg, verbose=False)
-    assert text.count("ecp        =") == 1, "the ECP kwarg must appear once"
-    assert "'Au': 'lanl2dz'" in text
-    compile(text, "<ecp-deck>", "exec")
-
-
-# --------------------------------------------------------------------- #
-#  The U2 correctness pins (2026-08-21)                                  #
-# --------------------------------------------------------------------- #
-
-def test_an_hf_raman_deck_never_mentions_the_dft_name():
-    """E-M4.7's shape, tightened at the U6 close: on an HF deck the
-    import block emits no ``dft``, so ANY reference to that name is a
-    NameError waiting in dead text -- and the original bug fired it
-    with ``force_cpu=True`` AFTER the full Hessian was paid for.  The
-    method is a render-time fact, so an HF deck now carries no DFT arm
-    at all; a DFT deck still evaluates ``dft`` only on its force_cpu
-    pick."""
-    import ast
-    hf = _render(PySCFConfig(method="HF", compute_raman=True))
-    tree = ast.parse(hf)
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "_build_mf_at")
-    loads = [n for n in ast.walk(fn)
-             if isinstance(n, ast.Name) and n.id == "dft"]
-    assert not loads, (
-        f"`dft` appears in an HF deck's _build_mf_at at line(s) "
-        f"{[n.lineno for n in loads]} -- a NameError waiting in dead text")
-    dft_deck = _render(PySCFConfig(method="DFT", compute_raman=True))
-    assert "_dft_mod = dft if force_cpu else _dft" in dft_deck, (
-        "the DFT deck lost its force_cpu module pick -- retarget")
-
-
-def test_soscf_reaches_the_relax_site():
-    """M1.3: the § 7a role table promises the `newton()` wrap at the
-    vibration RELAXATION site; without it a `scf_soscf=true` run
-    relaxes under DIIS while its equilibrium SCF runs Newton."""
-    on = _render(PySCFConfig(scf_soscf=True))
-    off = _render(PySCFConfig(scf_soscf=False))
-    assert "_mf_relax = _mf_relax.newton()" in on
-    assert "_mf_relax.newton()" not in off
-
-
-# --------------------------------------------------------------------- #
-#  Frozen means frozen (the user's ruling, 2026-08-21) + the dedup       #
-# --------------------------------------------------------------------- #
-
-def _frozen_water():
-    from molbuilder.structure import FROZEN_LABEL
-    s = _water()
-    s.regions[FROZEN_LABEL] = [0]
-    return s
-
-
-def test_frozen_atoms_stay_frozen_through_the_relaxation():
-    """The ruling: frozen means frozen through EVERY phase.  The
-    pre-Hessian relaxation takes the frozen set as geomeTRIC's $freeze
-    constraints file -- the optimization deck's own mechanism -- so the
-    fixed atoms never move before the (partial) Hessian is built over
-    the free ones.  Before this the relaxation silently moved them
-    (E-V2e: no constraints reached geomeTRIC)."""
-    s = _frozen_water()
-    cfg = PySCFConfig()
-    text = render_deck(spec_for(s, cfg, calculation="vibration",
-                                names=_names(cfg)),
-                       s, cfg, verbose=False)
-    assert "_FROZEN_CONSTRAINTS_PATH" in text
-    assert "$freeze" in text
-    assert "xyz 1" in text, "geomeTRIC indices are 1-based; atom 0 -> 1"
-    assert "constraints=str(_FROZEN_CONSTRAINTS_PATH)" in text, (
-        "the constraints file is written but never handed to geomeTRIC")
-    # An unfrozen deck carries none of it.
-    free = _render(PySCFConfig())
-    assert "_FROZEN_CONSTRAINTS_PATH" not in free
-
-
-def test_the_frozen_regime_is_said_out_loud():
-    """"It just has to be explicit" -- the preflight names the frozen
-    set and what it means (an info, nothing is wrong), and the deck's
-    Methods paragraph states that the frequencies are those of the free
-    atoms in the static field of the fixed ones."""
-    from molbuilder.validation import validate
-    s = _frozen_water()
-    cfg = PySCFConfig()
-    infos = [i for i in validate(s, cfg, calculation="vibration")
-             if i.severity == "info" and "frozen" in i.message]
-    assert len(infos) == 1, "the frozen regime is not announced"
-    assert "holds them fixed" in infos[0].message
-    assert "taken over the free atoms only" in infos[0].message
-    text = render_deck(spec_for(s, cfg, calculation="vibration",
-                                names=_names(cfg)),
-                       s, cfg, verbose=False)
-    assert "static field of the fixed" in text, (
-        "the Methods paragraph does not state the frozen regime")
-    assert "partial Hessian" in text
-
-
-def test_one_fact_one_finding_on_a_vibration_deck():
-    """The dedup ruling: each fact earns exactly one finding.  The parity
-    of the electronic state is the state's one family, asked once by
-    `validate` for every kind -- and the grid verdict is the kind's, the
-    engine copy DEFERRING on a vibration deck."""
-    from molbuilder.validation import validate
-    # A parity mismatch each kind can reach: a PySCF vibration offers
-    # `restricted` alone (`engines/template.md` § 6.3a), so its mismatch is
-    # a closed shell on an odd count; an optimization's is 2S = 1 on water.
-    for kind, struct, cfg in (
-            ("vibration", _methyl(),
-             PySCFConfig(spin_treatment="restricted", unpaired_electrons=0)),
-            ("optimization", _water(),
-             PySCFConfig(spin_treatment="unrestricted",
-                         unpaired_electrons=1))):
-        parity = [i for i in validate(struct, cfg, calculation=kind)
-                  if "the electron count and the unpaired count disagree"
-                  in i.message.lower()]
-        assert len(parity) == 1, (
-            f"{kind}: {len(parity)} parity findings for one fact: "
-            f"{[i.where for i in parity]}")
-    grid = [i for i in validate(_water(),
-                                PySCFConfig(functional="b3lyp",
-                                            grid_level=1),
-                                calculation="vibration")
-            if i.where == "config.grid_level" and "hybrid" in i.message.lower()]
-    assert len(grid) == 1, f"{len(grid)} grid findings for one fact"
-
-
-def test_the_level_of_theory_has_one_spelling_per_deck():
-    """M1.2: the functional / grid / dispersion trio was spelled twice
-    -- layout's for the optimization deck, hand-constants inside the
-    vibration deck's constructions.  The vibration deck now defines
-    `_mb_configure_theory` (generated from the SAME THEORY_SECTION + line)
-    and every construction site calls it; the hand spellings are gone.
-
-    On a Hartree-Fock deck too: HF has no functional and no grid, and
-    takes the dispersion correction like any method (engines/pyscf.md
-    § 7a), so its dresser holds the dispersion line alone and both of its
-    construction sites call it.
-
-    MUTATION THIS MUST FAIL AGAINST: the dresser emitted for DFT alone."""
-    text = _render(PySCFConfig(functional="b3lyp", dispersion="d3bj",
-                               grid_level=4))
-    assert "def _mb_configure_theory(mf):" in text
-    assert text.count("_mb_configure_theory(") >= 3   # def + 2 call sites
-    assert 'mf.xc = "b3lyp"' in text                  # layout's spelling
-    assert "mf.xc = FUNCTIONAL" not in text           # the hand spelling
-    assert "_mf2.grids.level = GRID_LEVEL" not in text
-    hf = _render(PySCFConfig(method="HF", dispersion="d3bj"))
-    fn = hf[hf.index("def _mb_configure_theory(mf):"):]
-    fn = fn[:fn.index("return mf")]
-    assert 'mf.disp = "d3bj"' in fn, fn
-    assert "mf.xc" not in fn and "mf.grids" not in fn, fn
-    assert hf.count("_mb_configure_theory(") >= 3, "a call site skips it"
+    assigned = [ast.unparse(n.targets[0]) for n in ast.walk(tree)
+                if isinstance(n, ast.Assign)
+                and ast.unparse(n.targets[0]).endswith(
+                    (".xc", ".grids.level", ".disp"))]
+    assert sorted(assigned) == sorted(spelled), assigned
+    (dresser,) = [fn.name for fn in ast.walk(tree)
+                  if isinstance(fn, ast.FunctionDef)
+                  and spellings(fn) == spelled]
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and ast.unparse(n.func) == dresser]
+    assert len(calls) >= 2, f"{dresser} is called {len(calls)} time(s)"
 
 
 def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():
@@ -271,10 +89,16 @@ def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():
     A config no engine's record names is refused at the gate on every
     kind -- it would otherwise come back with an EMPTY verdict, which every
     surface reads as 'checked, nothing found' -- and the vibration kind's
-    own science refuses an engine it has no checks for by name."""
+    own science refuses an engine it has no checks for by name.
+
+    API-level, a refusal the road cannot reach: `molbuilder describe` takes no
+    engine the table does not name, so a config of no engine is handed here."""
     import dataclasses
 
+    import numpy as np
+
     from molbuilder.engine_table import EngineTableError
+    from molbuilder.structure import Structure
     from molbuilder.validation import validate
     from molbuilder.validation.spectra import validate_vibration_kind
 
@@ -282,9 +106,13 @@ def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():
     class OtherEngineConfig:
         basis: str = "x"
 
+    water = Structure(elements=["O", "H", "H"],
+                      positions=np.array([[0.0, 0.0, 0.119],
+                                          [0.0, 0.757, -0.477],
+                                          [0.0, -0.757, -0.477]]))
     for kind in ("vibration", "optimization"):
         with pytest.raises(EngineTableError, match="no engine's config"):
-            validate(_water(), OtherEngineConfig(), calculation=kind)
+            validate(water, OtherEngineConfig(), calculation=kind)
     with pytest.raises(TypeError, match="vibration kind has no science"):
-        validate_vibration_kind(_water(), OtherEngineConfig(), None,
+        validate_vibration_kind(water, OtherEngineConfig(), None,
                                 engine="orca", state=None)

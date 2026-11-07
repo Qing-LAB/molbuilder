@@ -6,47 +6,30 @@ The acceptance case is the USER's live matrix (their
 Sol-shaped record — a login node with NO local GPU, a menu whose
 gpu-capable row carries the sinfo inventory and the probed 48-core cap
 (the GPU node group's own core count; hand-editable).
-Every rule the section states is pinned here: the family split, the
-inventory fallback, each declared cell kept with its fit said, the
-per-trial coordinates in the decks and in ``job-set.json``, and the
-per-side grouped submission, every shelf to the benchmark's one queue.
+The family split, each declared cell kept with its fit said, the per-trial
+coordinates in the decks and in ``job-set.json``, and the per-side grouped
+submission, every shelf to the benchmark's one queue, are pinned here; what a
+declared `gpu_count` means, and what a bench's points may be, are rows
+(`tests/data/gpu_contract.toml`, `tests/data/prep_protocol.toml`).
 """
 from __future__ import annotations
 
-from molbuilder.scheduler.record import write_environment
-import json
+import re
 
-import numpy as np
 import pytest
-from molbuilder.calculation import open as open_calculation
 
-from molbuilder import describe as D
-from molbuilder.config.siesta import SiestaConfig
-from molbuilder.scheduler import Domain, Environment, Topology
-from molbuilder.jobset.prep_inputs import bench_inputs
+from molbuilder.config_dir import ensure_private_dir
 from molbuilder.jobset.materialize import latest_attempt
 from molbuilder.jobset.model import JobSet
-from molbuilder.jobset.errors import PrepError
-from molbuilder.jobset.prep import prep_bench
-from molbuilder.jobset.ladder import engine_ladder
-from molbuilder.structure import Structure
-
-from support.road import read_request, shelf_headers, write_request
+from molbuilder.scheduler import (Domain, Environment, Topology,
+                                  environments_dir, named_environment_path,
+                                  write_environment)
 from support.machines import SLURM
+from support.road import (declare_bench, describe_calculation, jobset, read_request,
+                          shelf_headers, write_request)
 
 
-@pytest.fixture(autouse=True)
-def tree(isolated_projects_root):
-    """These tests build a calculation in the projects tree and hand its path
-    to a verb.  ``--bundle`` is fenced to the projects tree
-    (`job-contracts.md` § 2.5b), so the test builds inside one: the conftest's
-    per-test tree, a folder named ``projects`` like every tree (§ 2.5).
-    """
-    return isolated_projects_root
-
-#: The user's declared matrix, with the catalogue's canonical enum casing
-#: (their saved file spelled "ELPA-1Stage" — the preflight test below pins
-#: that THIS is now caught at describe time, not at prep on Sol).
+#: The user's declared matrix, with the catalogue's canonical enum casing.
 USERS_MATRIX = {
     "mpi_np": [32, 64, 128],
     "omp_threads": [1],
@@ -58,25 +41,29 @@ USERS_MATRIX = {
 
 
 @pytest.fixture
-def sol_calc(tree):
-    """A described calculation on a Sol-shaped machine: 128-core login
-    node, no local GPU, and a probed menu — ``htc`` cpu-only, ``general``
-    carrying the a100 inventory and the probed ``max_cores`` cap."""
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(struct,
-                            SiestaConfig(system_label="JOB"),
-                            engine_ladder("siesta", "publishable"),
-                            engine="siesta",
-                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, ["H"])
+def sol_calc(tmp_path, monkeypatch):
+    """A described calculation, and Sol's record where a record copied here
+    lies (`preparing-for-another-machine.md` § 1): a 128-core login node with
+    no local GPU, and a probed menu -- ``htc`` cpu-only; ``general`` and
+    ``public`` carrying the a100 inventory and the probed ``max_cores`` cap."""
+    ensure_private_dir(environments_dir())
+    write_environment(
+        Environment(
+            scheduler=SLURM,
+            topology=Topology(sockets=2, cores_per_socket=64,
+                              gpus_per_node=None, gpu_type=None),
+            domains=[Domain(name="htc", partition="htc", qos="public",
+                            max_time="0-04:00:00"),
+                     Domain(name="general", partition="general", qos="public",
+                            max_time="7-00:00:00", max_cores=48,
+                            gpu={"a100": 4}),
+                     Domain(name="public", partition="public", qos="public",
+                            max_time="7-00:00:00", max_cores=48,
+                            gpu={"a100": 4})],
+            # how a shell enters an environment there -- the record's fact
+            env_init={"activation": "conda activate", "preamble": "true"}),
+        named_environment_path("sol"))
+    dest = describe_calculation(tmp_path, monkeypatch, name="JOB")
     # The queue, wall and memory every job sent to this scheduler states --
     # the trials share the calculation's (`architecture.md` § 5.2); a
     # benchmark measures on the one queue it names (`generator.md` § 4.3a).
@@ -86,42 +73,52 @@ def sol_calc(tree):
                          "mem": "8G"}
     req["execution"] = {"use_gpu": False, "diag_algorithm": "ELPA-1STAGE"}
     write_request(dest, req)
-    env = Environment(
-        machine="this",                  # as a first prep names it
-        scheduler=SLURM,
-        topology=Topology(sockets=2, cores_per_socket=64,
-                          gpus_per_node=None, gpu_type=None),
-        domains=[Domain(name="htc", partition="htc", qos="public",
-                        max_time="0-04:00:00"),
-                 Domain(name="general", partition="general", qos="public",
-                        max_time="7-00:00:00", max_cores=48,
-                        gpu={"a100": 4})],
-        # how a shell enters an environment there -- the record's fact
-        env_init={"activation": "conda activate",
-                           "preamble": "true"})
-    write_environment(env, (dest / "environment.json"))
     return dest
 
 
-def _declare(calc, axes):
-    req = read_request(calc)
-    req["bench"] = axes
-    write_request(calc, req)
+def _prep_on(calc, queue="general"):
+    """`prep bench coarse --domain QUEUE --target sol`, as typed: the
+    benchmark's one queue, its headers written (`job-system.md` § 6.0).
+    What it said."""
+    r = jobset("prep", "bench", "coarse", "--bundle", calc, "--target", "sol",
+               "--domain", queue)
+    assert r.exit_code == 0, r.output
+    return r.output
+
+
+def _bench(calc):
+    return calc / "01_coarse" / "bench"
+
+
+def _trials(calc) -> list:
+    """The sweep's plan, each trial's point and resources, through its door
+    (`JobSet.of`)."""
+    return JobSet.of(_bench(calc)).to_dict()["jobs"]
+
+
+def _deck_of(calc, trial) -> str:
+    """The deck a trial's run holds (`project-layout.md` § 1.5a)."""
+    run = latest_attempt(_bench(calc) / f"bench-{trial}")
+    return next(run.glob("*.fdf")).read_text()
 
 
 # --------------------------------------------------------------------- #
-#  enumeration: families, inventory fallback, cap drop                   #
+#  enumeration: families, inventory fallback                             #
 # --------------------------------------------------------------------- #
 
 def test_the_users_matrix_enumerates_both_families(sol_calc):
     """The acceptance matrix on `general`: 18 CPU trials and 54 GPU trials,
     every stated cell kept whatever the record says, its fit said under it
     (`generator.md` § 4.3a): np64 and np128 are over the GPU nodes' 48 cores,
-    and the scheduler decides (`scheduler.md` R4, R6).  Both prep doors show
-    these notes (`prep.prep_bench`)."""
-    _declare(sol_calc, USERS_MATRIX)
-    notes: list = []
-    points, pins, tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
+    and the scheduler decides (`scheduler.md` R4, R6).  `gpu_count` shapes
+    only the GPU family, and `use_gpu`'s two points beside it are no
+    cpu-only refusal.  The record's TOPOLOGY has no GPU (a login node), and a
+    stated count does not ask it: a trial asks what it states, a count naming
+    no card (`scheduler.md` R2a), and a CPU trial asks no device at all."""
+    declare_bench(sol_calc, USERS_MATRIX)
+    out = _prep_on(sol_calc)
+    jobs = _trials(sol_calc)
+    points = [j["point"] for j in jobs]
 
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
@@ -133,28 +130,26 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
     assert all(p["use_gpu"] is True for p in gpu)
     # every point carries the full value coordinate
     assert all({"diag_algorithm", "block_size"} <= set(p) for p in points)
-    out = "\n".join(notes)
+    for job in jobs:
+        res, pt = job["resources"], job["point"]
+        assert res["mpi_np"] == pt["N"]
+        assert res.get("gres") == (f"gpu:{pt['G']}" if pt["G"] else None), job
     assert "left out" not in out, out
-    assert "G1N64C1" in out and "G1N128C1" in out
-    assert "64 cores is over general's largest machine (48 cores)" in out
+    # EVERY np64 AND np128 GPU CELL IS OVER THE GPU NODES' 48 CORES, whatever
+    # its G -- a trial's total cores are what a node must hold -- kept as
+    # declared, each named with its fit under it.
+    lines = [ln.strip() for ln in out.splitlines()]
+    for cell, cores in (("G1N64C1", 64), ("G2N64C1", 64), ("G4N64C1", 64),
+                        ("G1N128C1", 128)):
+        at = next((i for i, ln in enumerate(lines)
+                   if ln.startswith(f"{cell} ")), None)
+        assert at is not None, f"the kept cell {cell} must be named"
+        assert (f"{cores} cores is over general's largest machine (48 cores)"
+                in lines[at + 1]), lines[at + 1]
     # an axis is never a pin; the measurement pins still ride
-    assert "block_size" not in pins and pins["max_scf_iter"] == 3
-
-
-def test_a_trial_asks_the_device_count_it_states(sol_calc):
-    """The fixture's TOPOLOGY has no GPU (a login node), and a stated count
-    does not ask it: a trial asks what it states, a count naming no card
-    (`scheduler.md` R2a)."""
-    _declare(sol_calc, USERS_MATRIX)
-    points, _pins, tr = bench_inputs(open_calculation(sol_calc), None)
-    g2 = next(p for p in points if p["G"] == 2)
-    res = tr.to_resources(g2, None)
-    assert res["gres"] == "gpu:2"
-    assert res["mpi_np"] == g2["N"]
-    # and a CPU point of the SAME translation asks for no device at all
-    c = next(p for p in points if not p["G"])
-    res_c = tr.to_resources(c, None)
-    assert "gres" not in res_c and res_c["mpi_np"] == c["N"]
+    deck = _deck_of(sol_calc, jobs[0]["name"])
+    assert re.search(rf"^BlockSize\s+{points[0]['block_size']}\s*$", deck, re.M)
+    assert re.search(r"^MaxSCFIterations\s+3\s*$", deck, re.M)
 
 
 # --------------------------------------------------------------------- #
@@ -173,22 +168,15 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     ``block_size`` render different ``BlockSize`` lines; the CPU-family
     deck says ``Diag.ELPA.GPU .false.`` while its GPU sibling says
     ``.true.`` — and `job-set.json` records every trial's point as data."""
-    _declare(sol_calc, _small_matrix())
-    dirs = _prep_on(sol_calc, "general")
-    assert len(dirs) == 2 + 3 * 2       # cpu: 1 cell x2 blocks; gpu: G in 1,2,4
-
-    def deck(sub):
-        # MATCHED ON THE PATH, not the leaf.  A trial keeps attempts
-        # (`project-layout.md` § 1.5a), so the leaf is `run-0`
-        # and the coordinate names the directory above it.
-        d = next(p for p in dirs if sub in str(p))
-        return next(d.glob("*.fdf")).read_text()
+    declare_bench(sol_calc, _small_matrix())
+    _prep_on(sol_calc)
+    assert len(_trials(sol_calc)) == 2 + 3 * 2   # cpu: 1 cell x2 blocks; gpu: G in 1,2,4
 
     # ``diag_algorithm`` has ONE declared point, so it is a PIN, not an
     # axis (§ 4.3a: one point = the value in force) -- it reaches every
     # deck but never a name.  Only the multi-point axes coordinate.
-    b64 = deck("G0N4C1block_size64")
-    b128 = deck("G0N4C1block_size128")
+    b64 = _deck_of(sol_calc, "G0N4C1block_size64")
+    b128 = _deck_of(sol_calc, "G0N4C1block_size128")
     def kw(text, key):
         # the KEYWORD line, not the item's comment banner above it
         return next(l for l in text.splitlines()
@@ -199,11 +187,10 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     assert kw(b128, "BlockSize").split()[1] == "128"
     assert ".false." in kw(b64, "Diag.ELPA.GPU")
     assert "ELPA-1STAGE" in b64, "the one-point pin reaches the deck"
-    gpu = deck("G1N4C1block_size64")
+    gpu = _deck_of(sol_calc, "G1N4C1block_size64")
     assert ".true." in kw(gpu, "Diag.ELPA.GPU")
 
-    js = JobSet.of(sol_calc / "01_coarse" / "bench").to_dict()
-    for job in js["jobs"]:
+    for job in _trials(sol_calc):
         assert job["point"]["block_size"] in (64, 128)
         assert isinstance(job["point"]["use_gpu"], bool)
 
@@ -212,22 +199,11 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
 #  split submission: one group per side and shelf, on the one queue     #
 # --------------------------------------------------------------------- #
 
-def _prep_on(calc, queue):
-    """`prep bench coarse --domain QUEUE`, through the one entry: the
-    benchmark's one queue, its headers written (`job-system.md` § 6.0)."""
-    from molbuilder.jobset.model import Resources
-    return prep_bench(open_calculation(calc), "coarse", allocation=Resources(domain=queue),
-                      emit_sbatch=True).dirs
-
-
 def _submit_dry(calc, *extra):
     """A scripted submit, as a person types it -- `--yes` because there is
     no terminal to ask; its output."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner().invoke(
-        jobset_group, ["launch", "bench", "coarse", "--bundle", str(calc),
-                       "--mode", "submit", "--dry-run", "--yes", *extra])
+    r = jobset("launch", "bench", "coarse", "--bundle", calc,
+               "--mode", "submit", "--dry-run", "--yes", *extra)
     assert r.exit_code == 0, r.output
     return r.output
 
@@ -240,7 +216,7 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     groups -- a G1 trial never idles inside a gres:4 envelope.  Every shelf
     goes to the benchmark's one queue, and only GPU shelves ask for
     devices."""
-    _declare(sol_calc, _small_matrix())
+    declare_bench(sol_calc, _small_matrix())
     _prep_on(sol_calc, "general")
     shelves = shelf_headers(sol_calc, "coarse")
     assert len(shelves) == 4
@@ -264,12 +240,7 @@ def test_only_sends_one_side_to_the_queue_its_prep_named(sol_calc):
     """``--only gpu`` carries just that side, to the queue the benchmark's
     prep named -- a second queue with GPUs here, not the first on the
     menu."""
-    env = json.loads((sol_calc / "environment.json").read_text())
-    env["domains"].append({"name": "public", "partition": "public",
-                           "qos": "public", "max_time": "7-00:00:00",
-                           "max_cores": 48, "gpu": {"a100": 4}})
-    (sol_calc / "environment.json").write_text(json.dumps(env, indent=2))
-    _declare(sol_calc, _small_matrix())
+    declare_bench(sol_calc, _small_matrix())
     _prep_on(sol_calc, "public")
     shelves = shelf_headers(sol_calc, "coarse", side="gpu")
     assert len(shelves) == 3
@@ -283,7 +254,7 @@ def test_the_shelves_submit_widest_first(sol_calc):
     SHELVES (nothing idles inside a group), submitted widest first so the
     expensive measurements land first and an early stop still summarizes
     to a verdict.  Declared ASCENDING here, so the order must flip it."""
-    _declare(sol_calc, {"mpi_np": [2, 4], "omp_threads": [1],
+    declare_bench(sol_calc, {"mpi_np": [2, 4], "omp_threads": [1],
                         "use_gpu": [False]})
     _prep_on(sol_calc, "htc")
     shelves = shelf_headers(sol_calc, "coarse")
@@ -305,136 +276,27 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     so the door verifies the artifact.  A trial deck edited to warm-start
     is refused by name; one with its restart group stripped cannot be
     vouched for and refuses too."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    _declare(sol_calc, {"mpi_np": [4], "omp_threads": [1],
+    declare_bench(sol_calc, {"mpi_np": [4], "omp_threads": [1],
                         "use_gpu": [False], "block_size": [64, 128]})
     _prep_on(sol_calc, "htc")
     # The trial's ARTIFACT directory, not its container: the deck lives in
     # the trial's run (`project-layout.md` § 1.5a).
-    _c = sol_calc / "01_coarse" / "bench" / "bench-G0N4C1block_size64"
-    deck = next(latest_attempt(_c).glob("*.fdf"))
+    deck = next(latest_attempt(_bench(sol_calc) / "bench-G0N4C1block_size64"
+                               ).glob("*.fdf"))
     text = deck.read_text()
     assert "DM.UseSaveDM" in text and ".false." in text
 
-    import re
     warm_text = re.sub(r"(DM\.UseSaveDM\s+)\.false\.", r"\1.true.", text)
     assert warm_text != text, "the flip must actually land"
     deck.write_text(warm_text)
-    r = CliRunner().invoke(
-        jobset_group, ["launch", "bench", "coarse", "--bundle",
-                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes"])
+    r = jobset("launch", "bench", "coarse", "--bundle", sol_calc,
+               "--mode", "submit", "--dry-run", "--yes")
     assert r.exit_code != 0
     assert "WARM-start" in r.output and "G0N4C1block_size64" in r.output
 
     deck.write_text(re.sub(r"^[ \t]*[A-Za-z.]*UseSave.*$", "",
                            text, flags=re.M))
-    r = CliRunner().invoke(
-        jobset_group, ["launch", "bench", "coarse", "--bundle",
-                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes"])
+    r = jobset("launch", "bench", "coarse", "--bundle", sol_calc,
+               "--mode", "submit", "--dry-run", "--yes")
     assert r.exit_code != 0
     assert "no restart group" in r.output
-
-
-# --------------------------------------------------------------------- #
-#  gpu_count: the device count is DECLARED, not derived                  #
-# --------------------------------------------------------------------- #
-
-def test_declared_gpu_count_is_exact(sol_calc):
-    """User ruling, 2026-08-21 ("explicit is what we need"): declared
-    device counts are measured exactly -- no divisor invention -- and every
-    (mpi_np, G) pair is a trial, an uneven one too: 32 ranks on 3 GPUs is
-    prepared, its split said as a run's prep says it (`generator.md`
-    § 4.3; a request is prepared, never vetoed)."""
-    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
-                        "use_gpu": [True], "gpu_count": [1, 2, 3]})
-    notes: list = []
-    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None,
-                                      notes=notes)
-    assert sorted(p["G"] for p in points) == [1, 2, 3], \
-        "exactly the declared counts -- G4 must NOT appear, G3 must"
-    assert all(p["N"] == 32 for p in points)
-    out = "\n".join(notes)
-    assert "32 rank(s) / 3 GPU(s)" in out and "uneven" in out, out
-
-
-def test_a_gpu_count_past_the_record_is_kept_with_its_fit(sol_calc):
-    """`scheduler.md` R6: a declared device count past what the record
-    says a node carries is prepared as declared, its fit naming the most a
-    node there carries -- the scheduler decides."""
-    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [True],
-                        "gpu_count": [8]})
-    notes: list = []
-    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
-    assert {(p["G"], p["N"]) for p in points} == {(8, 32)}
-    assert "8 GPUs is over general's most GPUs on a node (4 GPUs)" \
-        in "\n".join(notes)
-
-
-def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
-    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [False],
-                        "gpu_count": [2]})
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(sol_calc), None)
-    assert "silently ignored" in str(e.value)
-
-
-def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
-    """tuning.md § 2.12's own worked declaration, end to end: gpu_count
-    filters ONLY the GPU family (the CPU family keeps every declared rank
-    count); use_gpu as a two-point axis beside gpu_count does NOT
-    trigger the cpu-only refusal; and a declared cell wider than the GPU
-    nodes' 48 cores (np64 × G1 = 64 cores) is kept, its fit naming the
-    numbers (`scheduler.md` R6)."""
-    _declare(sol_calc, {"mpi_np": [32, 64], "omp_threads": [1],
-                        "use_gpu": [True, False],
-                        "gpu_count": [1, 2, 4]})
-    notes: list = []
-    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
-    cpu = [p for p in points if not p["G"]]
-    gpu = [p for p in points if p["G"]]
-    assert sorted({p["N"] for p in cpu}) == [32, 64], \
-        "gpu_count must not touch the CPU family's rank counts"
-    # a trial's TOTAL cores (ranks × cores-per-rank) are what a node must
-    # hold, so EVERY np64 GPU cell is over the GPU nodes' 48 whatever its
-    # G -- kept as declared, each named with its fit
-    assert sorted((p["G"], p["N"]) for p in gpu) == \
-        [(1, 32), (1, 64), (2, 32), (2, 64), (4, 32), (4, 64)]
-    out = "\n".join(notes)
-    assert "64 cores is over general's largest machine (48 cores)" in out
-    for cell in ("G1N64C1", "G2N64C1", "G4N64C1"):
-        assert cell in out, f"the kept cell {cell} must be named"
-
-
-# --------------------------------------------------------------------- #
-#  the describe-time shape checks (the casing that hit Sol)              #
-# --------------------------------------------------------------------- #
-
-def test_preflight_flags_a_typod_choice_per_point(sol_calc):
-    """The live 2026-08-21 case: a matrix saved as 'ELPA-1Stage' (pre-U1
-    UI) failed only at `prep bench` on Sol.  The preflight now says it at
-    describe time, per point, with the choices — and a repeated point is
-    refused too."""
-    from molbuilder.validation.task import preflight
-    _declare(sol_calc, {"diag_algorithm": ["ELPA-1Stage", "ELPA-2STAGE"],
-                        "use_gpu": [True, True]})
-    calc = open_calculation(sol_calc)
-    issues = preflight(calc.task, request=calc.request)
-    msgs = [i.message for i in issues]
-    assert any("'ELPA-1Stage'" in m and "ELPA-1STAGE" in m for m in msgs), \
-        "the typo'd point must be named WITH the choices"
-    assert any("repeated point" in m for m in msgs)
-
-
-def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
-    """R2-5's named divergence, closed: the shape rules live ONCE
-    (`validation/task.py::bench_points_fit_their_items`) and prep's
-    reader calls that same checker.  Before the fold, prep's local copy
-    classified allocation entries before checking them, so
-    ``mpi_np: [8, 8, 16]`` was refused at describe and ACCEPTED at prep
-    -- two identical grid cells measuring one configuration twice."""
-    _declare(sol_calc, {"mpi_np": [8, 8, 16], "omp_threads": [1]})
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(sol_calc), None)
-    assert "repeated point" in str(e.value)
-    assert "mpi_np" in str(e.value)

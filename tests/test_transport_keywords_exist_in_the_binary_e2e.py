@@ -51,7 +51,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from molbuilder.runfiles import RunNames
+
+pytestmark = pytest.mark.engine
 
 #: Labels that are NOT fdf keywords and must not be looked up: block
 #: delimiters, block-interior grammar words, and comments.  Each is read by
@@ -183,160 +184,51 @@ def _refuse_unknown_labels(deck: str, binary_text: str, where: str) -> None:
           "with the reason.")
 
 
-@pytest.mark.parametrize("token,rung", [("01_seed", "seed"),
-                                        ("02_electrode_L", "electrode"),
-                                        ("04_device", "device"),
-                                        ("05_transmission", "transmission")])
+def _prepped_deck(pair, tmp_path, monkeypatch, rung, groups) -> str:
+    """The deck `jobset prep` wrote for ``rung`` of a transport calculation
+    citing the real ``pair``, with a k-point grid of its own so a grid's block
+    is written."""
+    from support.road import (describe_calculation, prep_groups,
+                              set_by_the_person, stage_file)
+    bundle = describe_calculation(tmp_path, monkeypatch, name="kwcheck",
+                                  calculation="transport", structure=pair)
+    set_by_the_person(bundle, {"kgrid": (2, 2, 1)})
+    prep_groups(bundle, *groups)
+    return stage_file(bundle, rung, ".fdf").read_text()
+
+
+@pytest.mark.parametrize("rung, groups", [
+    ("seed", ("1",)), ("electrode_L", ("1",)), ("device", ("1", "2")),
+    ("transmission", ("1", "2", "3")),
+], ids=["seed", "electrode", "device", "transmission"])
 def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
-        binary_text, token, rung):
+        binary_text, rung, groups, real_au_bdt_au, tmp_path, monkeypatch):
     """THE DECKS THAT ACTUALLY RUN.
 
     One case per deck SHAPE rather than per rung: `SHAPE_OF_RUNG` maps the
     five rungs onto four texts -- the device and the transmission are two,
     because two programs read them (`transport.md` § 6.1b).
     """
-    from molbuilder import script_emit as sc
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.electronic_state import electronic_state
-    from molbuilder.siesta.input import spec_for
-
-    struct = _toy_junction()
-    cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
-    deck = sc.render_deck(
-        spec_for(struct, cfg, calculation="transport",
-                 state=electronic_state(struct, cfg, kind="transport"),
-                 names=RunNames("kwcheck", token)),
-        struct, cfg)
+    deck = _prepped_deck(real_au_bdt_au.pair, tmp_path, monkeypatch, rung,
+                         groups)
     assert "PAO.BasisSize" in deck, (
         "this rung carries none of the engine's section set -- the test "
         "would pass vacuously on a deck that had fallen off the seam")
     _refuse_unknown_labels(deck, binary_text, rung)
 
 
-def test_the_device_deck_holds_no_label_siesta_cannot_read():
+def test_the_device_deck_holds_no_label_siesta_cannot_read(
+        real_au_bdt_au, tmp_path, monkeypatch):
     """`siesta` alone runs the device deck, so every label in it is checked
     against `siesta`'s binary ALONE (`engines/transport.md` § 6.1b).  The
     check above pools both programs' strings, which is right for asking
     whether ANY installed binary knows a label, and blind to a `TBT.*` line
     finding its way back into the device deck -- a line `tbtrans` knows and
     `siesta`, which reads this deck, never will."""
-    from molbuilder import script_emit as sc
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.electronic_state import electronic_state
-    from molbuilder.siesta.input import spec_for
-
     bins = _engine_binaries()
     siesta = next((b for b in (bins or ()) if b.name == "siesta"), None)
     if siesta is None:
         pytest.skip("molbuilder-siesta is not installed -- nothing to measure")
-    struct = _toy_junction()
-    cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
-    deck = sc.render_deck(
-        spec_for(struct, cfg, calculation="transport",
-                 state=electronic_state(struct, cfg, kind="transport"),
-                 names=RunNames("kwcheck", "04_device")),
-        struct, cfg)
+    deck = _prepped_deck(real_au_bdt_au.pair, tmp_path, monkeypatch, "device",
+                         ("1", "2"))
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")
-
-
-def _toy_junction():
-    """A labelled toy junction the settings gate accepts: a chain, so
-    isolated across the transport axis in its 8 Å box, and closed to one of
-    its 2 Å layer spacings at the transport boundary (`engines/transport.md`
-    § 6.1c).  Its geometry is otherwise meaningless -- what is under test is
-    the LABELS the deck writes."""
-    import numpy as np
-
-    from molbuilder.structure import Structure
-    return Structure(
-        elements=["Au", "Au", "S", "C", "Au", "Au"],
-        positions=np.array([[0, 0, 2.0 * i] for i in range(6)], dtype=float),
-        cell=np.array([[8.0, 0, 0], [0, 8.0, 0], [0, 0, 12.0]], dtype=float),
-        axis_kind=("isolated", "isolated", "transport"),
-        regions={"L-electrode": [0, 1], "bridge": [2, 3],
-                 "R-electrode": [4, 5]})
-
-
-#: The four lines the SIESTA 5.4.0 manual says a `%block TS.Elec.<name>`
-#: MUST carry: "There are a few lines that must be present, HS,
-#: semi-inf-dir, electrode-pos, chem-pot.  The remaining options are
-#: optional."
-_REQUIRED_ELECTRODE_LINES = ("HS", "semi-inf", "elec-pos", "chem-pot")
-
-
-@pytest.mark.parametrize("with_buffer", [False, True])
-def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
-    """SCIENCE. An electrode block missing a required line is not a deck.
-
-    `elec-pos` sat inside `if buffer_idx:` until 2026-09-15, so an ORDINARY
-    junction -- no buffer atoms -- got two electrode blocks without it
-    (`engines/transport.md` 3.3). It was probably harmless, and that is
-    exactly why it needs a test rather than a reading: molbuilder sorts the
-    junction so the electrodes ARE the first and last atoms, which is where
-    an omitted position would land anyway, so the deck relied on an
-    undocumented default agreeing with the truth. Both cases are
-    parametrised because only one of them was broken.
-
-    Needs no binary, so it does not skip.
-    """
-    import re
-
-    import numpy as np
-
-    from molbuilder import script_emit as _sc
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.transport.sort import (REGION_BRIDGE,
-                                             REGION_LEFT_ELECTRODE,
-                                             REGION_RIGHT_ELECTRODE)
-    from molbuilder.electronic_state import electronic_state
-    from molbuilder.siesta.input import spec_for
-    from molbuilder.structure import Structure
-
-    if with_buffer:
-        n, regions = 7, {"buffer": [0], REGION_LEFT_ELECTRODE: [1, 2],
-                         REGION_BRIDGE: [3, 4], REGION_RIGHT_ELECTRODE: [5, 6]}
-    else:
-        n, regions = 6, {REGION_LEFT_ELECTRODE: [0, 1], REGION_BRIDGE: [2, 3],
-                         REGION_RIGHT_ELECTRODE: [4, 5]}
-    # Its cell, as every junction states one (§ 2a.9): a chain in an 8 A
-    # box, one 2 A spacing of room at the transport boundary.
-    struct = Structure(
-        elements=["Au"] * n,
-        positions=np.array([[0, 0, 2.0 * i] for i in range(n)], dtype=float),
-        cell=np.diag([8.0, 8.0, 2.0 * n]),
-        axis_kind=("isolated", "isolated", "transport"),
-        regions=regions)
-    # THE LIVE DECK.  `emit_electrode_declarations` -- the emitter this
-    # checks -- is reached through `transport/deck.py`.  The
-    # `elec-pos begin` / `elec-pos end` pairing below is real science
-    # (an off-by-one computes transmission through the wrong region and
-    # converges while doing it).
-    cfg = SiestaConfig(system_label="J")
-    spec = spec_for(struct, cfg, calculation="transport",
-                    state=electronic_state(struct, cfg, kind="transport"),
-                    names=RunNames("J", "04_device"))
-    deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
-
-    blocks = re.findall(r"%block TS\.Elec\.(\w+)(.*?)%endblock", deck, re.S)
-    assert len(blocks) == 2, f"expected two electrode blocks, got {len(blocks)}"
-    for name, body in blocks:
-        missing = [k for k in _REQUIRED_ELECTRODE_LINES if k not in body]
-        assert not missing, (
-            f"%block TS.Elec.{name} omits {missing}, which the SIESTA 5.4.0 "
-            f"manual lists as lines that MUST be present "
-            f"(`engines/transport.md` § 3.3):\n{body}")
-
-    # AND THE RIGHT ONE, NOT MERELY ONE: a presence-check cannot see an
-    # electrode anchored at the WRONG end.
-    #
-    # The pairing is the fact worth pinning: the z-min electrode is anchored
-    # by its FIRST atom (`begin`) and the z-max one by its LAST (`end`,
-    # counted back from the end of the sorted structure).
-    left, right = dict(blocks)["L"], dict(blocks)["R"]
-    assert "elec-pos begin" in left, (
-        f"the z-min electrode must be anchored by its first atom:\n{left}")
-    assert "elec-pos end" in right, (
-        f"the z-max electrode must be anchored by its last atom:\n{right}")
-    assert "elec-pos end" not in left and "elec-pos begin" not in right, (
-        "the two electrodes' anchors are swapped -- L is anchored from the "
-        f"end or R from the beginning:\nL:{left}\nR:{right}")

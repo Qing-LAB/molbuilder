@@ -545,10 +545,8 @@ def describe_cmd(structure, bundle: str,
     machine that will run it.  What this writes names no
     machine and therefore means the same thing wherever you copy it.
 
-    Names and values are validated HERE, on your laptop, not on the cluster: a
-    stage name outside [A-Za-z0-9_]+, a duplicate stage, an override key the
-    schema does not know, or a value outside its bounds is refused with the
-    field named -- and refused before anything is written.
+    The description is checked HERE, on your laptop, not on the cluster: what
+    it cannot run is refused with the field named, before anything is written.
     """
     from pathlib import Path as _P
 

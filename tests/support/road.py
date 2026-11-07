@@ -126,14 +126,27 @@ CO2_ENGINE_ELEMENTS = [CO2["elements"][i]
                        for i in CO2_HELD_FIRST["sorted_to_original"]]
 
 
-def road_structure(s: dict):
+#: Water, closed shell and free, in its box.
+WATER = {"elements": ["O", "H", "H"],
+         "positions": [[5.0, 5.0, 5.0], [5.96, 5.0, 5.0], [4.76, 5.93, 5.0]],
+         "cell": [10.0, 10.0, 10.0]}
+
+
+def road_structure(s):
     """A road structure -- :data:`H2`, :data:`CO2`, a row's -- as a
     ``Structure``: its ``elements``, ``positions`` (Å), ``regions``
     (``frozen_atoms`` among them), its box's three edges or three vectors,
     ``cell`` (Å), each axis's ``axis_kind`` (isolated unless given) and the
     origin a person assigned, ``engine_offset`` (none unless given).
-    THE ONE BUILDER of the road's structures."""
+    THE ONE BUILDER of the road's structures -- one a test already holds as
+    a ``Structure`` (a box its vacuum sizes, an origin the Cell page's own op
+    assigned), as it stands; a pair on disk, as its read door opens it."""
     from molbuilder.structure import Structure
+    if isinstance(s, Structure):
+        return s
+    if isinstance(s, Path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        return StructureCodec().load(s)
     return Structure(
         elements=list(s["elements"]),
         positions=np.array(s["positions"], dtype=float),
@@ -157,49 +170,152 @@ def co2_in_engine_order():
 def describe_calculation(tmp_path, monkeypatch, *, name: str = "H2",
                          calculation: str = "optimization",
                          engine: str = "siesta",
-                         structure: "dict | None" = None,
-                         stage_strategy: "str | None" = None) -> Path:
-    """`molbuilder describe` on ``structure`` -- :data:`H2` unless given: its
-    ``elements``, ``positions`` (Å), ``regions`` (``frozen_atoms`` among
-    them), its box's three edges, ``cell`` (Å), and each axis's
-    ``axis_kind`` (isolated unless given) -- the bundle, at
-    ``<projects>/P/<calculation>/<name>``: a SIESTA optimization's shipped
+                         structure=None,
+                         stage_strategy: "str | None" = None,
+                         bundle: "str | None" = None,
+                         bias: str = "0", frames: int = 1,
+                         refused: bool = False) -> Path:
+    """`molbuilder describe` on ``structure`` -- :data:`H2` unless given
+    (:func:`road_structure`: its ``elements``, ``positions`` (Å), ``regions``
+    (``frozen_atoms`` among them), its box's three edges, ``cell`` (Å), and
+    each axis's ``axis_kind`` (isolated unless given)) -- the bundle, at
+    ``<projects>/P/<calculation>/<name>`` unless ``bundle`` names another
+    folder from the projects root (a second calculation in one tree takes a
+    name or a folder of its own): a SIESTA optimization's shipped
     `publishable` ladder, unless ``stage_strategy`` names another (``""``
     for the one stage the template alone describes), or a vibration's own
     (`freq`).
+
+    A TRANSPORT CALCULATION CITES ``structure``, the pair a real relaxation
+    was saved as (`support.real_runs`, `engines/transport.md` § 3.1), at
+    ``bias`` (volts, as `--bias` takes them; several say
+    `--no-low-bias-approximation`), ``frames`` frames, each moving its bridge
+    as a frame set's must.
 
     ITS RUN CARD STATES THE LAUNCH SHAPE -- two ranks and one thread for
     SIESTA, one thread for PySCF -- in its job request, as a described
     calculation does: a run whose shape is stated nowhere is refused at prep
     (`architecture.md` § 5.2).  A test about that refusal takes the card
-    away."""
+    away.
+
+    ``refused`` expects describe to refuse, and returns what it said."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.workingcopy_structure import StructureCodec
     tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    s = structure or H2
-    write_pseudos(tree / "pseudopotential", sorted(set(s["elements"])))
-    StructureCodec().write(road_structure(s), tree / STRUCTURE)
+    (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
+    (tree / "pseudopotential").mkdir(exist_ok=True)
+    transport = calculation == "transport"
+    s = road_structure(H2 if structure is None else structure)
+    siesta = engine == "siesta"
+    if siesta:
+        write_pseudos(tree / "pseudopotential", sorted(set(s.elements)))
+    if transport:
+        from molbuilder.transport.sort import REGION_BRIDGE
+        if frames > 1:
+            moved = [s.positions.copy() for _ in range(frames)]
+            for i, at in enumerate(moved):
+                at[s.regions[REGION_BRIDGE]] += 0.01 * i
+            s = s.with_frames(moved)
+    StructureCodec().write(s, tree / STRUCTURE)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
-    siesta = engine == "siesta"
     strategy = (stage_strategy if stage_strategy is not None
                 else "publishable" if calculation == "optimization" and siesta
                 else "")
-    r = molbuilder("describe", "--structure", STRUCTURE,
-               "--bundle", f"P/{calculation}/{name}", "--engine", engine,
+    where = bundle or f"P/{calculation}/{name}"
+    told = (("--slot", f"junction={STRUCTURE}", "--bias", bias,
+             *(("--no-low-bias-approximation",) if "," in bias else ()))
+            if transport else ("--structure", STRUCTURE))
+    r = molbuilder("describe", *told,
+               "--bundle", where, "--engine", engine,
                "--name", name, "--calculation", calculation,
                *(("--stage-strategy", strategy) if strategy else ()),
                *(("--psml-lib", "pseudopotential") if siesta else ()))
+    if refused:
+        assert r.exit_code != 0, r.output
+        return r.output
     assert r.exit_code == 0, r.output
-    bundle = tree / "P" / calculation / name
-    request = read_request(bundle)
+    described = tree / where
+    request = read_request(described)
     request.setdefault("execution", {"mpi_np": 2, "omp_threads": 1} if siesta
                        else {"threads": 1})
-    write_request(bundle, request)
-    return bundle
+    write_request(described, request)
+    return described
+
+
+def prep_groups(calculation: Path, *groups) -> None:
+    """`jobset prep task` of each of ``groups``, in turn, for this machine."""
+    for group in groups:
+        r = jobset("prep", "task", "--group", group, "--bundle", calculation,
+                   "--target", "this")
+        assert r.exit_code == 0, r.output
+
+
+def a_new_folder(tmp_path, under: str) -> str:
+    """A calculation's folder nothing holds yet, from the projects root: each
+    calculation one of its own, in a tree a test describes in twice."""
+    held = (tmp_path / "projects" / "P" / under).glob("JOB*")
+    return f"P/{under}/JOB{1 + sum(1 for _ in held)}"
+
+
+def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
+                           calculation="optimization", template=None,
+                           overrides=None, hand_edit=None, refused=False):
+    """`molbuilder describe` of ``struct``, then `jobset prep task` of its
+    first rung: ``(the calculation, that stage, the deck's text)``.  Each call
+    is a calculation of its own, in a folder of its own.  An optimization's
+    ladder is its engine's shipped one, a vibration's its own; ``template`` is
+    what the person set in its template, ``overrides`` what its first stage
+    says over that, through Task setup's Save, ``hand_edit(calculation)`` a
+    file changed by hand.
+
+    ``refused`` expects the step that refuses -- Save, for ``overrides``, else
+    prep -- and returns what it said in place of the deck."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
+    # live in the sidecar, and a bare `.xyz` would hand prep a molecule in the
+    # default box -- a different structure from the one described.
+    dest = describe_calculation(
+        tmp_path, monkeypatch, name="JOB", structure=struct, engine=engine,
+        calculation=calculation,
+        bundle=a_new_folder(tmp_path, calculation),
+        stage_strategy="publishable" if calculation == "optimization" else None)
+    stage = task_of(dest).stages[0].name
+    if template:
+        set_by_the_person(dest, template)
+    if hand_edit is not None:
+        hand_edit(dest)
+    if overrides:
+        saved = save_both(dest,
+                          _description_with_overrides(dest, {stage: overrides}),
+                          read_request(dest))
+        if refused:
+            assert saved.status_code == 400, saved.get_json()
+            return dest, stage, saved.get_json()["error"]
+        assert saved.status_code == 200, saved.get_json()
+    r = jobset("prep", "task", *group_words(dest, stage), "--bundle", dest,
+               "--target", "this")
+    if refused:
+        assert r.exit_code != 0, r.output
+        return dest, stage, r.output
+    assert r.exit_code == 0, r.output
+    # THE DECK BY ITS NAME, through the catalogue -- not the first file with
+    # the suffix: a stage directory may hold other `.py` files than the deck
+    # (a person's own scripts may).
+    home = stage_home(dest, task_of(dest), stage)
+    deck = home.dir / home.names.name(".fdf" if engine == "siesta" else ".py")
+    if engine == "siesta" and calculation == "vibration":
+        # ONE RUN IN PHASES: each phase's deck in its folder below the
+        # stage (`engines/vibration.md` § 5.11 § 2) -- the force-constant
+        # phase's is the one the offset rule speaks of.
+        from molbuilder.siesta.vibration_deck import FC_PART
+        deck = home.dir / FC_PART / deck.name
+    if engine == "siesta":
+        from molbuilder.parse.fdf import read_deck
+        return dest, stage, read_deck(deck)
+    return dest, stage, deck.read_text()
 
 
 def until(holds, *, within: float, what: str) -> None:
@@ -305,6 +421,14 @@ def read_as(bundle: Path, client) -> dict:
     r = client.get("/api/task-setup/folder", query_string={"dir": str(bundle)})
     assert r.status_code == 200, r.get_json()
     return r.get_json()["read_as"]
+
+
+def declare_bench(calculation: Path, axes: dict) -> None:
+    """``axes`` as the benchmark the job request declares
+    (`execution/generator.md` § 4.3a)."""
+    request = read_request(calculation)
+    request["bench"] = axes
+    write_request(calculation, request)
 
 
 def save_both(bundle: Path, task: dict, request: dict, client=None):
@@ -426,7 +550,8 @@ def calls_made(calls: Path):
 #      `line_lacks`); a benchmark's trials (`bench_gres`, their headers'
 #      `bench_header` and `bench_header_lacks`).
 #
-# INPUTS: `engine` (siesta | pyscf); `groups` -- each stage's group, in
+# INPUTS: `engine` (siesta | pyscf); `bias` -- a transport calculation's, as
+# `--bias` takes it, its `structure` cited; `groups` -- each stage's group, in
 # order, over the ones `molbuilder describe` gave; `stage_run` -- a stage's
 # own run card, `{name = {...}}`; `run` -- the calculation's run card, the
 # job request's `execution`, over the table's `run_base` for the engine (a
@@ -449,8 +574,8 @@ def calls_made(calls: Path):
 # record named `sol` listing `queues`), "workstation" (no queues at all) or
 # "unprobed" (this machine never probed: no record at all), the table's own
 # `machine` unless the row names one;
-# `record` -- more fields of THIS machine's record; `named_record` -- more
-# fields of the named target's; `queues` -- replaces the table's menu;
+# `record` -- more fields of THIS machine's record; `queues` -- replaces the
+# table's menu;
 # `probe` -- the record made as a person makes it instead, by `jobset probe
 # --write --yes`, once per list of flags, in order, after `machine_config`
 # and over `record` when the row gives them; a `--name` among the flags names
@@ -480,7 +605,8 @@ def calls_made(calls: Path):
 # status (409 unless the row says: a job request its preflight refuses is
 # 400); `change_refused` --
 # what Save's refusal of the row's `changed` or `removed` says, nothing
-# saved or written, the row ending there (`_saved_or_refused`);
+# saved or written, the row ending there (`_saved_or_refused`), its way back
+# restoring the state whose note ends with `restores_state`;
 # `source_edited` --
 # `{atom, line}`: the calculation's structure file edited by hand after it was
 # described, its `atom`-th atom line replaced by `line`, its sidecar
@@ -491,8 +617,7 @@ def calls_made(calls: Path):
 # (`_road_own_warm_files`),
 # before anything is prepared; `stage` -- the
 # stage (or a list of stages) the row's prep names, `coarse` unless given --
-# typed as the group each is in; `answers` -- what
-# the person types at the row's prep's question ("" is EOF, no terminal);
+# typed as the group each is in;
 # `calculation` -- the kind `molbuilder describe` describes, an optimization unless
 # given; `structure` -- the structure it describes, H2 unless given
 # (`describe_calculation`: `elements`, `positions`, `regions`, `cell`,
@@ -529,9 +654,9 @@ def calls_made(calls: Path):
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
 # (`status_says`, and what it does not, `status_lacks`), and the decisions
-# its ledger holds and does not hold (`ledger_holds`, `ledger_lacks` -- a
-# decision, or a verb's, `"launch continues"`; in `ledger_holds`, a table
-# names one with its facts, `{decision = "launch launched", time = "3h"}`);
+# its ledger holds (`ledger_holds` -- a decision, or a verb's, `"launch
+# continues"`, or a table naming one with its facts, `{decision = "launch
+# launched", time = "3h"}`);
 # a prep that was not refused says nothing of `said_lacks`, and each of
 # `said_once` once.  `both_doors`: the page's prep door on the same folder as it
 # stood serves the lines the terminal printed (`_road_both_doors`:
@@ -623,7 +748,6 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
                   topology=Topology(sockets=2, cores_per_socket=24),
                   env_init={"activation": "conda activate",
                             "preamble": "true"})
-    fields.update(case.get("named_record", {}))
     write_environment(Environment(**fields), named_environment_path("sol"))
     return "sol"
 
@@ -708,7 +832,10 @@ def _saved_or_refused(case, bundle, task, request) -> bool:
     from molbuilder.checkpoint import Repo
     records = ("task.json", "job-request.json")
     was = {f: _as_written(bundle / f) for f in records}
-    states = len(Repo(str(bundle)).states())
+    # A folder saves its first state at its first prep: a Save before that
+    # has none to count.
+    repo = Repo(str(bundle))
+    states = len(repo.states()) if repo.initialized else 0
     r = save_both(bundle, task, request)
     said = (r.get_json() or {}).get("error") or ""
     if "change_refused" not in case:
@@ -721,7 +848,7 @@ def _saved_or_refused(case, bundle, task, request) -> bool:
         _restores_by_id(case, bundle, said)
     assert {f: _as_written(bundle / f) for f in records} == was, \
         "a refused Save wrote a record"
-    assert len(Repo(str(bundle)).states()) == states, \
+    assert (len(repo.states()) if repo.initialized else 0) == states, \
         "a refused Save saved a state"
     return False
 
@@ -805,6 +932,19 @@ def _road_launched(case, bundle) -> None:
                      command=["bash", names.stem + ".run.sh"])
 
 
+def _description_with_overrides(bundle, overrides) -> dict:
+    """``bundle``'s description as Task setup's Save would be handed it with
+    ``overrides``, ``{stage: {name: value}}``, each name joining `varies`
+    (`engines/stages.md` § 6.2)."""
+    import json
+    task = json.loads((bundle / "task.json").read_text())
+    for stage, values in overrides.items():
+        st = next(s for s in task["stages"] if s["name"] == stage)
+        st["overrides"] = {**st.get("overrides", {}), **values}
+        task["varies"] = sorted(set(task["varies"]) | set(values))
+    return task
+
+
 def _road_changed(case, bundle) -> bool:
     """The records changed before the row's prep: ``changed``'s
     ``template``, ``{name: value}``, in the template's file as a person
@@ -814,7 +954,6 @@ def _road_changed(case, bundle) -> bool:
     `varies` -- taken, or refused (:func:`_saved_or_refused`)."""
     if "changed" not in case:
         return True
-    import json
     saved = {k: v for k, v in case["changed"].items() if k != "template"}
     if "template" in case["changed"]:
         from molbuilder.template import run_settings
@@ -826,16 +965,9 @@ def _road_changed(case, bundle) -> bool:
         set_by_the_person(bundle, case["changed"]["template"])
     if not saved:
         return True
-    task = json.loads((bundle / "task.json").read_text())
+    task = _description_with_overrides(bundle, saved.pop("overrides", {}))
     request = read_request(bundle)
-    for key, value in saved.items():
-        if key == "overrides":
-            for stage, values in value.items():
-                st = next(s for s in task["stages"] if s["name"] == stage)
-                st["overrides"] = {**st.get("overrides", {}), **values}
-                task["varies"] = sorted(set(task["varies"]) | set(values))
-        else:
-            request[key] = value
+    request.update(saved)
     return _saved_or_refused(case, bundle, task, request)
 
 
@@ -1199,7 +1331,7 @@ def _road_after_prep(case, bundle) -> None:
     `after_launch`, what its launch left: the folder's saved states, newest
     first (`saved_states`), what `status` says of the calculation
     (`status_says`, and what it does not, `status_lacks`), and the decisions
-    its ledger holds and does not hold (`ledger_holds`, `ledger_lacks`)."""
+    its ledger holds (`ledger_holds`)."""
     if "saved_states" in case:
         import re
         from molbuilder.checkpoint import Repo
@@ -1240,16 +1372,14 @@ def _road_after_prep(case, bundle) -> None:
             assert words in st.output, _one_line(st)
         for words in case.get("status_lacks", []):
             assert words not in st.output, _one_line(st)
-    if "ledger_lacks" in case or "ledger_holds" in case:
+    if "ledger_holds" in case:
         from molbuilder.jobset import ledger
         lines = ledger.read(bundle)
         # A DECISION, or a verb's decision (``launch continues``): prep and
         # launch both record what a stage continues from.
         decided = ({e["decision"] for e in lines}
                    | {f"{e['verb']} {e['decision']}" for e in lines})
-        for decision in case.get("ledger_lacks", []):
-            assert decision not in decided, f"the ledger holds: {decided}"
-        for decision in case.get("ledger_holds", []):
+        for decision in case["ledger_holds"]:
             if isinstance(decision, dict):
                 # A DECISION AND ITS FACTS: some line of it holds each.
                 want = dict(decision)
@@ -1374,7 +1504,8 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
                                   calculation=calculation,
                                   structure=case.get("structure"),
-                                  stage_strategy=case.get("stage_strategy"))
+                                  stage_strategy=case.get("stage_strategy"),
+                                  bias=case.get("bias", "0"))
     from molbuilder.template import run_settings
     on_card = run_settings(engine)
     values = (dict(table.get("siesta_template", {}))
@@ -1654,8 +1785,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         twin = bundle.with_name(bundle.name + "-page")
         shutil.copytree(bundle, twin)
     r = jobset("prep", kind, *named, "--bundle", bundle,
-               "--target", target, *case.get("prep", []),
-               input=case.get("answers"))
+               "--target", target, *case.get("prep", []))
     for where, was in kept.items():
         assert _as_written(bundle / where) == was, \
             f"{where} was written again by the row's prep"

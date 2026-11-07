@@ -28,22 +28,18 @@ keeps running.
 from __future__ import annotations
 
 import ast
-import dataclasses
+import builtins
 import itertools
 
-import numpy as np
+import pytest
 
-from molbuilder import script_emit as _sc
-from molbuilder.config.pyscf import PySCFConfig
-from molbuilder.pyscf.input import spec_for
-from molbuilder.structure import Structure
-from molbuilder.runfiles import RunNames
+from support.road import (WATER, describe_calculation, group_words, jobset,
+                          read_request, set_by_the_person, stage_file,
+                          write_request)
+from molbuilder.calculation import open as open_calculation
 
-_STRUCT = Structure(
-    elements=["O", "H", "H"],
-    positions=np.array([[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.24, 0.93, 0.0]]),
-    vacuum=(8.0, 8.0, 8.0))
-
+#: The road's water, closed shell and free: an even count an open-shell axis
+#: can hold two unpaired electrons on.
 #: The axes that change WHICH CODE is emitted — not which values it carries.
 #: A value axis (``mesh_cutoff``) cannot affect a namespace; an axis that turns
 #: a callback, a solvent wrapper or a GPU shim on and off can.
@@ -69,31 +65,34 @@ _VIB_AXES = {
 }
 
 
-def _decks():
-    """Every deck the generator emits over the code-shaping axes, the
-    optimization deck's and the vibration deck's.
-
-    A generator that refused EVERYTHING would make every consumer pass
-    over nothing, so this raises if no combination rendered at all --
-    the swallow is for individual refused combinations only."""
-    yielded = 0
-    for calculation, axes in (("optimization", _AXES),
-                              ("vibration", _VIB_AXES)):
-        for combo in itertools.product(*axes.values()):
-            over = dict(zip(axes, combo))
-            if over.get("spin_treatment") == "unrestricted":
-                over["unpaired_electrons"] = 2   # water's even count
-            try:
-                cfg = dataclasses.replace(PySCFConfig(job_name="w"), **over)
-                deck = str(_sc.render_deck(
-                    spec_for(_STRUCT, cfg, calculation=calculation,
-                             names=RunNames("w", "01_coarse")),
-                    _STRUCT, cfg, verbose=cfg.verbose_comments))
-            except ValueError:       # a refused combination is not this
-                continue             # test's subject; the gate owns that
-            yielded += 1
-            yield {"calculation": calculation, **over}, deck
-    assert yielded, "every combination refused; the sweep rendered nothing"
+def _decks(tmp_path, monkeypatch, calculation, stage, axes):
+    """Every deck `jobset prep` writes over the code-shaping axes, one
+    calculation prepared again for each -- the template's values as a person
+    sets them, the GPU's on the run card, their home -- each what prep takes:
+    a combination skipped here is a deck the rule no longer asks about, which
+    is how half this sweep once went unasked, every GPU deck refused for a
+    count it did not state."""
+    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf",
+                                  calculation=calculation, stage_strategy="",
+                                  structure=WATER)
+    template = open_calculation(bundle).template.path
+    as_described, request = template.read_text(), read_request(bundle)
+    for combo in itertools.product(*axes.values()):
+        over = dict(zip(axes, combo))
+        card = {"use_gpu": over["use_gpu"],
+                **({"gpu_count": 1} if over["use_gpu"] else {})}
+        values = {k: v for k, v in over.items()
+                  if k != "use_gpu" and v is not None}
+        if over.get("spin_treatment") == "unrestricted":
+            values["unpaired_electrons"] = 2   # water's even count
+        template.write_text(as_described)
+        write_request(bundle, {**request,
+                               "execution": {**request["execution"], **card}})
+        set_by_the_person(bundle, values)
+        r = jobset("prep", "task", *group_words(bundle, stage),
+                   "--bundle", bundle, "--target", "this")
+        assert r.exit_code == 0, (over, r.output)
+        yield over, stage_file(bundle, stage, ".py").read_text()
 
 
 def _imported(tree):
@@ -122,19 +121,44 @@ def _bound_in_scope(fn):
     return out
 
 
-def test_no_emitted_function_rebinds_a_name_the_deck_imported():
+def _read_and_never_bound(tree):
+    """The names a deck reads that nothing in it binds, scope aside: each a
+    NameError waiting for the line that reads it to run."""
+    bound = set(dir(builtins)) | {"__file__", "__name__"}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Load):
+            bound.add(n.id)
+        elif isinstance(n, (ast.FunctionDef, ast.ClassDef)):
+            bound.add(n.name)
+        elif isinstance(n, ast.arg):
+            bound.add(n.arg)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            bound.add(n.name)
+    return ({n.id for n in ast.walk(tree) if isinstance(n, ast.Name)
+             and isinstance(n.ctx, ast.Load)} - bound - _imported(tree))
+
+
+@pytest.mark.parametrize("calculation, stage, axes", [
+    ("optimization", "coarse", _AXES),
+    ("vibration", "freq", _VIB_AXES),
+], ids=["optimization", "vibration"])
+def test_every_deck_keeps_to_its_own_namespace(
+        calculation, stage, axes, tmp_path, monkeypatch):
     """**The rule.**  molbuilder's emitted machinery may not take a name the
-    engine owns.
+    engine owns, and a deck reads no name it never bound.
 
     Stated over every deck the generator can emit, because a rule that holds
     for the one deck someone happened to open is not a rule.  ``mol`` and
-    ``mf`` are deliberately NOT covered: they are module-level assignments,
-    not imports, and a callback receiving ``mol`` from the optimizer's
-    environment is *supposed* to shadow it.
-    """
-    offenders = []
+    ``mf`` are deliberately NOT covered by the first half: they are
+    module-level assignments, not imports, and a callback receiving ``mol``
+    from the optimizer's environment is *supposed* to shadow it.
+
+    The second half is E-M4.7's shape: an HF deck imports no ``dft``, its
+    method a render-time fact, and the original bug read that name with
+    ``force_cpu=True`` AFTER the full Hessian was paid for."""
+    offenders, unbound = [], []
     n = 0
-    for over, text in _decks():
+    for over, text in _decks(tmp_path, monkeypatch, calculation, stage, axes):
         n += 1
         tree = ast.parse(text)
         imported = _imported(tree)
@@ -144,8 +168,11 @@ def test_no_emitted_function_rebinds_a_name_the_deck_imported():
             for name in sorted(_bound_in_scope(fn) & imported):
                 offenders.append(f"{fn.name}() rebinds imported {name!r} "
                                  f"[{over}]")
-    assert n, "no decks were rendered -- the matrix is broken, not the rule"
+        unbound += [f"{name!r} [{over}]" for name in _read_and_never_bound(tree)]
     assert not offenders, (
         f"{len(offenders)} of {n} decks rebind a name the deck imports; "
         f"molbuilder's emitted code is prefixed (`_mb_`, `_`) so that it "
         f"cannot:\n  " + "\n  ".join(sorted(set(offenders))[:8]))
+    assert not unbound, (
+        "decks read names nothing binds, a NameError on the line that does:"
+        "\n  " + "\n  ".join(sorted(set(unbound))[:8]))

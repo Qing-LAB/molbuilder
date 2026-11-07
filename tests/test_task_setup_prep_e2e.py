@@ -41,7 +41,8 @@ pytest.importorskip("flask")
 
 from pathlib import Path
 
-from support.road import read_request, write_request
+from support.road import (H2, _road_changed, describe_calculation,
+                          ladder_edited, read_request, write_request)
 from support.task_setup_page import file_text, unfold, wait_for_file
 from support.machines import SLURM, WORKSTATION
 
@@ -67,34 +68,28 @@ def this_machine_is_a_cluster():
         env_init={"preamble": "true", "activation": "conda activate"})
 
 
-def _described_h2(root, name, stages):
-    """An H2 optimization on SIESTA, ``name``, its ``stages``, under
-    ``root`` -- described by the production door (`describe.
-    write_description`; a hand-built `StructureRef` carries the default
-    witness, which prep refuses as a structure changed since it was
-    described), its pseudopotentials beside it.  Its folder."""
-    import numpy as np
+#: THE ROAD'S H2 with no atom held: what these cards say of a held atom is not
+#: their subject.
+_FREE_H2 = {**H2, "regions": {}}
 
-    from conftest import write_pseudos
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.structure import Structure
-    src_dir = root / "structure"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    d = root / "optimization" / name
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    src = src_dir / f"{name}.xyz"
-    src.write_text(struct.to_xyz(), encoding="utf-8")
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label=name),
-                            list(stages), engine="siesta",
-                            calculation="optimization",
-                            name=name, source=str(src)),
-        d, struct=struct)
-    write_pseudos(d, ["H"])
+
+def _described_h2(root, name, *, engine="siesta", **stages):
+    """An H2 optimization, ``name``, in the project ``root`` of the projects
+    tree -- `molbuilder describe` (`support.road`), its one stage `coarse` --
+    and ``stages``, each one's overrides, `coarse`'s and any stage after it,
+    through Task setup's Save.  Its folder.  The tree may be a module's, so
+    describing moves nothing for the test."""
+    with pytest.MonkeyPatch.context() as local:
+        d = describe_calculation(root.parents[1], local, name=name,
+                                 engine=engine, structure=_FREE_H2,
+                                 stage_strategy="",
+                                 bundle=f"{root.name}/optimization/{name}")
+    coarse = stages.pop("coarse", None)
+    if stages:
+        assert ladder_edited({"added": [{"name": n, "overrides": o}
+                                        for n, o in stages.items()]}, d)
+    if coarse:
+        assert _road_changed({"changed": {"overrides": {"coarse": coarse}}}, d)
     return d
 
 
@@ -122,9 +117,7 @@ def _a_described_probe(root, execution=None):
     a run on the cluster's `public` queue that STATES its queue, wall,
     memory and cores per rank (`architecture.md` § 5.2) -- the job request
     says them, and the card adds the rank count the test types."""
-    from molbuilder.task import Stage
-    d = _described_h2(root, "probe",
-                      [Stage(name="coarse", overrides={"mesh_cutoff": 200})])
+    d = _described_h2(root, "probe", coarse={"mesh_cutoff": 200})
     req = read_request(d)
     req["execution"] = execution or {"omp_threads": 1}
     req["allocation"] = {"domain": "public", "time": "0-04:00:00",
@@ -373,27 +366,8 @@ def test_a_description_prep_bench_refuses_offers_no_measure_step(
     SIESTA today"), so its stage panel teaches the run and no bench -- the
     folder answer's `bench_refusal`, the entry's own words (found by review,
     2026-09-29: the block showed on every PySCF and transport stage)."""
-    import numpy as np
-
-    from molbuilder import describe as D
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.structure import Structure
-    from molbuilder.task import Stage
-
-    root = isolated_projects_root_module / "prep_pyscf"
-    src_dir = root / "structure"
-    src_dir.mkdir(parents=True)
-    d = root / "optimization" / "pyscf"
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    src = src_dir / "pyscf.xyz"
-    src.write_text(struct.to_xyz(), encoding="utf-8")
-    D.write_description(
-        D.build_description(struct, PySCFConfig(), [Stage(name="coarse")],
-                            engine="pyscf",
-                            calculation="optimization", name="pyscf", source=str(src)),
-        d, struct=struct)
+    d = _described_h2(isolated_projects_root_module / "prep_pyscf", "pyscf",
+                      engine="pyscf")
     _open(page, flask_server, d)
     panel = "[id^=ts-steppanel]"
     page.wait_for_selector(
@@ -414,10 +388,8 @@ def filled_dir(isolated_projects_root_module):
     values are on disk before the page opens, which is the state a person is
     in every time they come back to a folder.
     """
-    from molbuilder.task import Stage
-    d = _described_h2(isolated_projects_root_module / "prep_filled",
-                      "filled",
-                      [Stage(name="coarse", overrides={"mesh_cutoff": 200})])
+    d = _described_h2(isolated_projects_root_module / "prep_filled", "filled",
+                      coarse={"mesh_cutoff": 200})
     # THE THREE ROW STATES, one of each, arranged on purpose
     # (`task-setup.md` § 6.2b):
     #   `omp_threads`  chosen    -- this rung says 4
@@ -440,9 +412,8 @@ def filled_dir(isolated_projects_root_module):
 def binding_dir(isolated_projects_root_module):
     """A described calculation that says nothing about the GPU binding --
     its own folder, so what the test saves reaches no other test."""
-    from molbuilder.task import Stage
     return _described_h2(isolated_projects_root_module / "prep_binding",
-                         "binding", [Stage(name="coarse")])
+                         "binding")
 
 
 def _saved_allocation(where, ok, timeout=20.0):
@@ -1098,10 +1069,8 @@ def _two_stages(root):
     """
     from conftest import write_machine_record
     from molbuilder.scheduler import Topology
-    from molbuilder.task import Stage
-    d = _described_h2(root, "ladder",
-                      [Stage(name="coarse", overrides={"mesh_cutoff": 200}),
-                       Stage(name="tight", overrides={"mesh_cutoff": 400})])
+    d = _described_h2(root, "ladder", coarse={"mesh_cutoff": 200},
+                      tight={"mesh_cutoff": 400})
     # The axes to measure, declared once for the calculation -- which is
     # exactly why every enabled stage can be measured.
     req = read_request(d)
@@ -1122,7 +1091,7 @@ def two_stage_dir(isolated_projects_root):
     `isolated_projects_root` points `$MOLBUILDER_PROJECTS` at it, and
     `file_picker_roots()` calls `projects_root()` at CALL time, so the live
     server serves it and the page opens a folder inside it."""
-    return _two_stages(isolated_projects_root)
+    return _two_stages(isolated_projects_root / "P2")
 
 
 def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
@@ -1199,16 +1168,16 @@ def a_named_machine(two_stage_dir):
     so the page will not auto-select: a person has to click, which is exactly
     the interaction the claim is about.
     """
+    from molbuilder.config_dir import ensure_private_dir
     from molbuilder.scheduler import (Environment, Topology, environments_dir,
-                                      write_environment)
-    d = environments_dir()
-    d.mkdir(parents=True, exist_ok=True)
+                                      named_environment_path, write_environment)
+    ensure_private_dir(environments_dir())
     write_environment(
         Environment(scheduler=SLURM,
                     topology=Topology(sockets=2, cores_per_socket=64),
                     env_init={"preamble": "true",
                                        "activation": "conda activate"}),
-        d / "sol.json")
+        named_environment_path("sol"))
     return "sol"
 
 
