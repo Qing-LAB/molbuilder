@@ -1,29 +1,15 @@
-"""Spectra blueprint tests -- the two routes that remain.
+"""Spectra blueprint tests: the page, and what `POST /api/spectra/load` and
+`POST /api/spectra/frameset` refuse before they read any result.
 
-    GET  /spectrum-calculation   -- page renders, has the tab nav
-    POST /api/spectra/load       -- parse an uploaded .spectra.json into
-                                    typed results; typed error shapes
-                                    (404 missing / 422 wrong schema /
-                                    400 malformed)
+What the load door serves of a result is asked of a result a run wrote, in
+`tests/test_spectrum_results_e2e.py`.
 """
 
 from __future__ import annotations
 
 import json
 
-import numpy as np
 import pytest
-
-from molbuilder.sidecars.spectra import dump_spectra_json
-from molbuilder.spectra import (
-    ModeData,
-    SpectraResults,
-)
-from molbuilder.spectra.results import (
-    PHASE_COMPLETE,
-    PHASE_EMPTY,
-    SCHEMA_VERSION,
-)
 
 
 # --------------------------------------------------------------------- #
@@ -47,41 +33,6 @@ def _allowed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(type(caps), "file_picker_roots",
                         lambda self: ((tmp_path.resolve(), "projects"),))
     diagnostics.set_capabilities(caps)
-
-
-def _make_minimal_results() -> SpectraResults:
-    mode = ModeData(
-        index_1based          = 1,
-        frequency_cm1         = 412.3,
-        raman_activity_a4_amu = 12.5,
-        ir_intensity_km_mol   = None,
-        eigenvector_canonical = np.array([[0.7, 0., 0.],
-                                          [-0.7, 0., 0.]]),
-        eigenvector_display   = np.array([[0.7, 0., 0.],
-                                          [-0.7, 0., 0.]]),
-        has_imag              = False,
-    )
-    return SpectraResults(
-        schema_version             = SCHEMA_VERSION,
-        engine                     = "pyscf",
-        engine_version             = "2.6.0",
-        molbuilder_version         = "1.2.0",
-        timestamp                  = "2026-05-11T12:00:00Z",
-        n_atoms_total              = 2,
-        free_atom_idxs             = [0, 1],
-        frozen_atom_idxs           = [],
-        equilibrium_scf_eh         = -76.4,
-        equilibrium_mo_energies_eh = np.array([-1.0, -0.5, -0.2, 0.1, 0.3]),
-        equilibrium_homo_idx       = 2,
-        modes                      = [mode],
-        selected_mode_idxs_1based  = [],
-        config                     = {},
-        methods_text               = "",
-        bibliography_keys          = [],
-        phase_frequencies          = PHASE_COMPLETE,
-        phase_raman                = PHASE_COMPLETE,
-        phase_es                   = PHASE_EMPTY,
-    )
 
 
 # --------------------------------------------------------------------- #
@@ -180,26 +131,6 @@ class TestSpectraPage:
         body = r.data.decode()
         assert 'href="/spectrum-calculation"' in body
 
-    def test_path_load_endpoint_works(self, web_client, tmp_path):
-        """End-to-end sanity: POST /api/spectra/load with {path}
-        succeeds for a real on-disk spectra.json (what the viewer's
-        loadByPath sends for the dropdown's pick).  Regression check
-        against a future blueprint change accidentally breaking the
-        path mode of the load endpoint."""
-        from molbuilder.sidecars.spectra import dump_spectra_json
-        results = _make_minimal_results()
-        p = tmp_path / "live.spectra.json"
-        dump_spectra_json(results, p)
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"path": str(p)}),
-            content_type="application/json",
-        )
-        body = r.get_json()
-        assert r.status_code == 200, body
-        assert body["ok"]
-        assert body["results"]["engine"] == "pyscf"
-
     def test_plotly_not_loaded_on_spectra_generator(self, web_client):
         """/spectrum-calculation is the GENERATOR tab (configure +
         emit script).  Plotly is a results-viewing library used only
@@ -258,102 +189,7 @@ class TestSpectraPage:
         )
 
 
-# --------------------------------------------------------------------- #
-#  Dead-controls test: every interactive element in the partial must    #
-#  have a handler bound somewhere in loaded JS.                         #
-# --------------------------------------------------------------------- #
-
-
 class TestLoadEndpoint:
-
-    def test_the_thermal_spread_is_served_at_the_temperature_asked(
-            self, web_client, tmp_path):
-        """`web/spectra.md` § 4.1: the load door serves each mode's thermal
-        spread at the request's `temperature_k`; the tab computes nothing.
-        The contract's own table: at 298 K a 100 cm-1 mode swings 2.1x its
-        zero-point, a 3000 cm-1 mode 1.00x; asked for no temperature, no
-        mode carries the key.  Silent failure otherwise: a page drawing a
-        thermal size the server never derived."""
-        import dataclasses
-        base = _make_minimal_results()
-        soft = dataclasses.replace(base.modes[0], index_1based=1,
-                                   frequency_cm1=100.0)
-        stiff = dataclasses.replace(base.modes[0], index_1based=2,
-                                    frequency_cm1=3000.0)
-        results = dataclasses.replace(base, modes=[soft, stiff])
-        p = tmp_path / "t.spectra.json"
-        dump_spectra_json(results, p)
-
-        def load(**extra):
-            r = web_client.post("/api/spectra/load",
-                                data=json.dumps({"path": str(p), **extra}),
-                                content_type="application/json")
-            return r.status_code, r.get_json()
-
-        code, body = load(temperature_k=298)
-        assert code == 200, body
-        modes = body["results"]["modes"]
-        ratios = [m["thermal_spread_amu12_ang"]
-                  / m["zero_point_amplitude_amu12_ang"] for m in modes]
-        assert abs(ratios[0] - 2.1) < 0.05, ratios
-        assert abs(ratios[1] - 1.00) < 0.005, ratios
-
-        code, body = load()
-        assert code == 200, body
-        assert all("thermal_spread_amu12_ang" not in m
-                   for m in body["results"]["modes"])
-
-        code, body = load(temperature_k="warm")
-        assert code == 400 and "temperature_k" in body["error"], body
-
-    @pytest.mark.parametrize("kelvin, quanta, spread, moves", [
-        (4, 0.0, 1.000, (0.088, 0.145, 0.190)),
-        (298, 0.007, 1.007, (0.088, 0.146, 0.191)),
-        (1000, 0.29, 1.26, (0.110, 0.182, 0.239)),
-        (2159, 1.0, 1.73, (0.152, 0.251, 0.329)),
-    ])
-    def test_what_a_frame_sets_temperature_means_is_served_per_rule(
-            self, web_client, tmp_path, kelvin, quanta, spread, moves):
-        """`web/spectra.md` § 4.3: at the frame-set dialog's temperature the
-        load door serves each mode's mean number of quanta, its spread and
-        the outermost frames' largest atom move for three, five and seven
-        frames, and says the temperature back.  A row of the contract's own
-        example (`science/vibrational-averaging.md` § 5, mode 48 of the
-        user's AuBDTAu: 1039.9 cm-1, the atom that moves most 0.3977
-        amu^-1/2 along it), to the digits the table prints.  The silent
-        failure: a dialog whose numbers are not the frames the generator
-        writes -- another rule's node, a spread without the temperature --
-        or a notebook's door (`molbuilder.postprocess.outermost_move`)
-        answering otherwise than the page's."""
-        import dataclasses
-        base = _make_minimal_results()
-        mode = dataclasses.replace(
-            base.modes[0], frequency_cm1=1039.9,
-            eigenvector_canonical=np.array([[0.3977, 0., 0.],
-                                            [0., -0.2, 0.]]),
-            eigenvector_display=np.array([[0.3977, 0., 0.],
-                                          [0., -0.2, 0.]]))
-        p = tmp_path / "m48.spectra.json"
-        dump_spectra_json(dataclasses.replace(base, modes=[mode]), p)
-        r = web_client.post("/api/spectra/load", data=json.dumps(
-            {"path": str(p), "frameset_temperature_k": kelvin}),
-            content_type="application/json")
-        body = r.get_json()
-        assert r.status_code == 200, body
-        assert body["results"]["frameset_temperature_k"] == kelvin
-        (m,) = body["results"]["modes"]
-        said = m["frameset"]
-        assert said["mean_quanta"] == pytest.approx(quanta, abs=0.005)
-        assert said["sigma_over_zero_point"] == pytest.approx(
-            spread, abs=0.0005 if spread < 1.01 else 0.005)
-        assert said["sigma_amu12_ang"] == pytest.approx(
-            said["sigma_over_zero_point"]
-            * m["zero_point_amplitude_amu12_ang"], rel=1e-12)
-        assert [said["outermost_move_ang"][n] for n in ("3", "5", "7")] \
-            == pytest.approx(list(moves), abs=0.0005)
-        from molbuilder.postprocess import outermost_move
-        assert [outermost_move(p, mode=1, temperature_k=kelvin, nodes=n)
-                for n in (3, 5, 7)] == pytest.approx(list(moves), abs=0.0005)
 
     @pytest.mark.parametrize("ask, refused", [
         ({}, "temperature"),
@@ -378,105 +214,16 @@ class TestLoadEndpoint:
         assert r.status_code == 400 and refused in said["error"], said
         assert not (tmp_path / "frames.xyz").exists()
 
-    def test_a_frame_sets_temperature_not_stated_is_none(
-            self, web_client, tmp_path):
-        """`web/spectra.md` § 4.3: a result stating no thermochemistry
-        temperature, asked none, serves no mode a frame set -- a temperature
-        stated nowhere is never assumed -- and a temperature that is not a
-        number of kelvin, 0 or more, is refused by name."""
-        p = tmp_path / "t.spectra.json"
-        dump_spectra_json(_make_minimal_results(), p)
-
-        def load(**extra):
-            r = web_client.post("/api/spectra/load",
-                                data=json.dumps({"path": str(p), **extra}),
-                                content_type="application/json")
-            return r.status_code, r.get_json()
-        code, body = load()
-        assert code == 200, body
-        assert "frameset_temperature_k" not in body["results"], body
-        assert all("frameset" not in m for m in body["results"]["modes"])
-        code, body = load(frameset_temperature_k=-1)
-        assert code == 400 and "temperature_k" in body["error"], body
-
-    def test_path_input(self, web_client, tmp_path):
-        original = _make_minimal_results()
-        p = tmp_path / "y.spectra.json"
-        dump_spectra_json(original, p)
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"path": str(p)}),
-            content_type="application/json",
-        )
-        body = r.get_json()
-        assert r.status_code == 200, body
-        assert body["ok"] is True
-        assert body["results"]["n_atoms_total"] == 2
-
-    def test_load_says_which_atoms_each_mode_belongs_to(self, web_client,
-                                                        tmp_path):
-        """The panel describes a mode by the atoms that CARRY it, and working
-        that out needs atomic masses — which the browser does not have; a
-        schema-7 result states the masses its modes were weighted by
-        (`engines/vibration.md` § 6.2).  So the server computes it at load,
-        from those.
-
-        The fixture is the trap in miniature: the hydrogen has the larger
-        displacement (1.15 against 0.98) and the carbon owns the mode.  Read
-        by distance alone this is a hydrogen mode; it is not.
-
-        Computed at LOAD rather than written into the file, so results already
-        on disk gain it the moment they are opened.
-        """
-        original = _make_minimal_results()
-        original.equilibrium_elements      = ["C", "H"]
-        original.equilibrium_positions_ang = np.array([[0., 0., 0.],
-                                                       [1.09, 0., 0.]])
-        original.equilibrium_masses_amu    = np.array([12.011, 1.008])
-        original.modes[0].eigenvector_canonical = np.array([[0.98, 0., 0.],
-                                                            [1.15, 0., 0.]])
-        original.modes[0].eigenvector_display   = original.modes[0].eigenvector_canonical
-        p = tmp_path / "ch.spectra.json"
-        dump_spectra_json(original, p)
-
-        r = web_client.post("/api/spectra/load",
-                            data=json.dumps({"path": str(p)}),
-                            content_type="application/json")
-        body = r.get_json()
-        assert r.status_code == 200, body
-        share = body["results"]["modes"][0]["motion_share_by_element"]
-
-        assert share["C"] > share["H"], (
-            "carbon moves less than hydrogen here and still carries the mode; "
-            "reporting the furthest-moving atom instead would say hydrogen")
-        assert share["C"] == pytest.approx(0.885, abs=0.02)
-        assert sum(share.values()) == pytest.approx(1.0, abs=1e-12)
-
-    def test_the_on_disk_format_does_not_grow_the_computed_field(self, web_client):
-        """``to_dict`` is the file format and round-trips through
-        ``from_dict``; the share is derived and belongs to the reply only.  A
-        field that leaked into the file would be written by the emitter as if
-        the schema declared it."""
-        original = _make_minimal_results()
-        original.equilibrium_elements      = ["C", "H"]
-        original.equilibrium_positions_ang = np.array([[0., 0., 0.],
-                                                       [1.09, 0., 0.]])
-        assert "motion_share_by_element" not in original.to_dict()["modes"][0]
-
-    def test_a_result_without_a_geometry_still_loads(self, web_client,
-                                                     tmp_path):
-        """No elements stored means no shares can be computed — the spectrum
-        must still open, one clause shorter."""
-        p = tmp_path / "bare.spectra.json"
-        dump_spectra_json(_make_minimal_results(), p)
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"path": str(p)}),
-            content_type="application/json")
-        body = r.get_json()
-        assert r.status_code == 200, body
-        assert body["ok"] is True
-        assert "motion_share_by_element" not in body["results"]["modes"][0]
+    @pytest.mark.parametrize("ask", [{"temperature_k": "warm"},
+                                     {"frameset_temperature_k": -1}],
+                             ids=["not a number", "below zero"])
+    def test_a_temperature_that_is_not_one_is_refused_by_name(self, web_client,
+                                                              ask):
+        """`web/spectra.md` § 4.1, § 4.3: a temperature that is not a number of
+        kelvin, 0 or more, is refused by name, before any result is read.  The
+        silent failure: a spread or a frame set at a temperature nobody said."""
+        r = web_client.post("/api/spectra/load", json={"path": "x", **ask})
+        assert r.status_code == 400 and "temperature_k" in r.get_json()["error"]
 
     def test_no_input_400(self, web_client):
         r = web_client.post(
@@ -499,17 +246,6 @@ class TestLoadEndpoint:
         assert r.status_code == 404
         body = r.get_json()
         assert body["kind"] == "not_found"
-
-
-# ===================================================================== #
-#  The fence (web-api.md § 2.1)                                         #
-# ===================================================================== #
-
-def test_load_still_reads_a_spectra_file_inside_the_roots(
-        web_client, tmp_path):
-    """...and the fence does not break the ordinary case."""
-    good = tmp_path / "job.spectra.json"
-    dump_spectra_json(_make_minimal_results(), good)
-    r = web_client.post("/api/spectra/load", json={"path": str(good)})
-    assert r.status_code == 200, r.get_json()
-    assert r.get_json()["ok"] is True
+        # ...naming it: the poller watches one path and the person picked
+        # another, and the sentence is what there is to compare.
+        assert str(bad) in body["error"], body

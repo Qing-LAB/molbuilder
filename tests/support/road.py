@@ -588,13 +588,8 @@ def calls_made(calls: Path):
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "task", "--group", "1"]`), the calculation
-# and the target named as the row's own prep names them;
-# `first_launch_refused` -- group 1's first launch then sent, the folder's
-# state saved before it and the send refused by the suite's scheduler
-# (`a_machine_with_queues`); `launched` -- the
-# stages then launched, each its newest run's launch record written by its
-# writer, no engine started (`_road_launched`); `changed` -- the records then
-# changed: `template`, `{name = value}`, in the template's file as a person
+# and the target named as the row's own prep names them; `changed` -- the
+# records then changed: `template`, `{name = value}`, in the template's file as a person
 # changes it (no run setting); and through Task setup's Save, blocks of the
 # job request (`{execution = {...}}`), and `overrides`,
 # `{stage = {name = value}}`, into the description (`_road_changed`); `removed` / `added` -- the
@@ -642,10 +637,7 @@ def calls_made(calls: Path):
 # what a stage's points are compared by since its prep (`points_compared`, the
 # stage -- `_road_points_compared`),
 # what a person's script reads of each log's run, which has written no step
-# (`steps_read`: `{elements, listed_by}` -- `_road_steps_read`), and of the
-# steps the run's own writer logs (`steps_written`: `{held, energy_hartree,
-# gradient_hartree_bohr, force_tolerance_ev_ang, converged}` --
-# `_road_steps_written`),
+# (`steps_read`: `{elements, listed_by}` -- `_road_steps_read`),
 # the files each stage's job declares it carries from a run it continues,
 # as the plan states it and its reader reads it -- the declaration, which
 # the launch's `warm_carry` then judges pair by pair (`plan_carries`,
@@ -913,25 +905,6 @@ def _road_regrouped(groups, bundle, refused=None, status=409) -> bool:
     return True
 
 
-def _road_launched(case, bundle) -> None:
-    """Each stage ``launched`` names, its newest run recorded as launched
-    here -- the record a launch writes, by its writer
-    (`runrecord.write_launch`): no engine starts, and the stage is launched
-    as every reader asks it (`materialize.ever_launched`)."""
-    if not case.get("launched"):
-        return
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.paths import attempt_dir, attempts_in
-    from molbuilder.runrecord import write_launch
-    calc = open_calculation(bundle)
-    for stage in case["launched"]:
-        home = stage_home(bundle, calc.task, stage)
-        names = home.names
-        where = attempt_dir(home.dir, attempts_in(home.dir)[-1])
-        write_launch(where, mode="direct",
-                     command=["bash", names.stem + ".run.sh"])
-
-
 def _description_with_overrides(bundle, overrides) -> dict:
     """``bundle``'s description as Task setup's Save would be handed it with
     ``overrides``, ``{stage: {name: value}}``, each name joining `varies`
@@ -1181,137 +1154,6 @@ def _road_points_compared(stage, bundle) -> None:
     assert pw.differences({**was, "points": ["said otherwise"]}, now) == []
     moved = pw.differences({**was, "point_folders": ["elsewhere"]}, now)
     assert [d.kind for d in moved] == [pw.POINTS], moved
-    older = {k: v for k, v in was.items() if k != "point_folders"}
-    assert pw.differences(older, now) == []
-    more = pw.differences({**older, "points": was["points"] + ["1 V"]}, now)
-    assert [d.kind for d in more] == [pw.POINTS], more
-
-
-def _road_steps_written(want, bundle) -> None:
-    """The steps the run's own writer logged (`trajectory_log.emitter`, what a
-    PySCF deck calls), read as a person's script reads them
-    (`runs.StepsTable`): the input geometry the log opens with is no step; each
-    energy and force is the step's; the largest force is over every atom and
-    over the atoms the run moved, by the engines' one rule; the geometry stands
-    from the person's structure by the offset the deck states; the atoms held
-    and the elements are the deck's."""
-    import numpy as np
-    from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from molbuilder.parse import detect
-    from molbuilder.postprocess import (RunStepsError, list_runs,
-                                        read_optimization_data, read_steps,
-                                        read_structure)
-    from pathlib import PurePosixPath
-    from molbuilder.runrecord import RunRef, write_continued_from
-    from molbuilder.runs import run_of
-    from molbuilder.trajectory_log import MolwatchEmitter
-    from molbuilder.workingcopy_structure import StructureCodec
-    from molbuilder.trajectory_log.keys import MAX_FORCE_TOL
-    logs = _road_runs(bundle, "*.molwatch.log")
-    assert len(logs) == 2, logs
-    log, unstarted = logs
-    refused = molbuilder("jobset", "export", "--format", "netcdf", "--to",
-                         bundle.parent / "too_soon", "--bundle", bundle)
-    assert refused.exit_code != 0 and "holds no step a run has finished" in (
-        refused.output)
-    assert not (bundle.parent / "too_soon").exists()
-    seed = detect(log).parse(str(log))
-    input_geometry = seed.frames[0].structure
-
-    class Molecule:
-        """What the writer asks of a molecule (`emitter.opt_step_hook`)."""
-        natm = input_geometry.n_atoms
-
-        def atom_coords(self, unit="Ang"):
-            assert unit == "Ang"
-            return input_geometry.positions
-
-        def atom_symbol(self, i):
-            return input_geometry.elements[i]
-
-    mol = Molecule()
-    writer = MolwatchEmitter(
-        str(log), "job", mol, frozen_atoms=want["held"],
-        convergence_targets={MAX_FORCE_TOL: want["force_tolerance_ev_ang"]})
-    for energy, gradient in zip(want["energy_hartree"],
-                                want["gradient_hartree_bohr"]):
-        writer.opt_step_hook({"mol": mol, "energy": energy,
-                              "gradients": np.array(gradient)})
-    steps = read_steps(log.parent)
-    assert steps.atom_index_map.listed_by == "user_index"
-    assert list(steps.elements) == list(input_geometry.elements)
-    assert list(steps.held_atoms) == want["held"]
-    assert steps.positions_ang.shape == (
-        len(want["energy_hartree"]), input_geometry.n_atoms, 3)
-    assert np.allclose(steps.energy_ev,
-                       np.array(want["energy_hartree"]) * HARTREE_EV)
-    assert steps.final_energy_ev == pytest.approx(
-        want["energy_hartree"][-1] * HARTREE_EV)
-    forces = -np.array(want["gradient_hartree_bohr"]) \
-        * HARTREE_BOHR_EV_ANGSTROM_ASE
-    assert np.allclose(steps.forces_ev_per_ang, forces)
-    assert np.allclose(steps.max_force_ev_per_ang,
-                       np.abs(forces).max(axis=(1, 2)))
-    moved = [k for k in range(input_geometry.n_atoms)
-             if k not in want["held"]]
-    assert np.allclose(steps.max_force_free_ev_per_ang,
-                       np.abs(forces[:, moved]).max(axis=(1, 2)))
-    assert steps.relaxation["max_force_free_ev_ang"] == pytest.approx(
-        steps.max_force_free_ev_per_ang[-1])
-    assert steps.relaxation["converged"] is want["converged"]
-    mine = read_structure(next(bundle.glob("*.source.xyz")))[0]
-    assert np.allclose(steps.positions_ang[0],
-                       mine.positions + np.array(steps.applied_offset_ang))
-    assert np.allclose(steps.last.positions, steps.positions_ang[-1])
-    # A PAIR SAVED BESIDE THE RUN'S FILES is in the person's order already, and
-    # crossing it again would stand every atom on another's place.
-    pair = log.parent / "saved.xyz"
-    StructureCodec().write(steps.last, pair)
-    with pytest.raises(RunStepsError, match="no file its run writes its steps"):
-        read_steps(pair)
-    pair.unlink()
-    pair.with_suffix(".molstruct.json").unlink()
-    # THE SAME STEPS, EXPORTED (`jobset export`): every row what `read_steps`
-    # hands back, the map on the file, and nothing written into the calculation.
-    assert list_runs(bundle) == [log.parent, unstarted.parent]
-    first_run = log.parent.relative_to(bundle).as_posix()
-    # WHAT A HAND-OVER RECORDS OF THE NEXT RUN, by the record's one writer.
-    write_continued_from(unstarted.parent, RunRef(PurePosixPath(first_run)))
-    inside = molbuilder("jobset", "export", "--format", "netcdf", "--to",
-                        bundle / "exported", "--bundle", bundle)
-    assert inside.exit_code != 0 and "is inside the calculation" in inside.output
-    assert not (bundle / "exported").exists()
-    to = bundle.parent / "exported"
-    for form in ("netcdf", "csv"):
-        said = molbuilder("jobset", "export", "--format", form, "--to", to,
-                          "--bundle", bundle)
-        assert said.exit_code == 0, said.output
-    assert not list(bundle.rglob("*.optimization*"))
-    label = run_of(log).label
-    assert (to / f"{label}.optimization-csv" / "step_atom_xyz.csv").is_file()
-    data = read_optimization_data(to / f"{label}.optimization.nc")
-    assert data["atom_index_map"].listed_by == "user_index"
-    got = {k: v["data"] for k, v in data["variables"].items()}
-    # THE RUN WITH NO STEP STANDS ON THE AXIS AT ITS FILL, saying why: never read
-    # as a rung that was not asked.
-    assert list(got["run"]) == [p.parent.relative_to(bundle).as_posix()
-                                for p in logs]
-    assert list(got["rung_of_run"]) == [run_of(p).stage.split("_", 1)[1]
-                                        for p in logs]
-    assert list(got["run_of_step"]) == [got["run"][0]] * len(steps.energy_ev)
-    assert "holds no step its run finished" in got["said"][1]
-    assert np.isnan(got["final_energy_ev"][1])
-    assert got["force_within_tolerance"][1] is None
-    assert list(got["continued_from"]) == ["", first_run]
-    assert list(got["element"]) == list(steps.elements)
-    assert np.allclose(got["position_ang"], steps.positions_ang)
-    assert np.allclose(got["force_ev_per_ang"], steps.forces_ev_per_ang)
-    assert np.allclose(got["energy_ev"], steps.energy_ev)
-    assert np.allclose(got["max_force_free_ev_per_ang"],
-                       steps.max_force_free_ev_per_ang)
-    assert np.allclose(got["applied_offset_ang"][0], steps.applied_offset_ang)
-    assert [i for i, h in enumerate(got["held"][0]) if h] == want["held"]
-    assert got["force_within_tolerance"][0] is want["converged"]
 
 
 def _road_progress_log_targets(want, bundle) -> None:
@@ -1357,8 +1199,6 @@ def _road_after_prep(case, bundle) -> None:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
     if "steps_read" in case:
         _road_steps_read(case["steps_read"], bundle)
-    if "steps_written" in case:
-        _road_steps_written(case["steps_written"], bundle)
     if "progress_log_targets" in case:
         _road_progress_log_targets(case["progress_log_targets"], bundle)
     if "plan_carries" in case:
@@ -1728,14 +1568,17 @@ def group_words(bundle, *stages) -> tuple:
     return _named("task", list(stages), bundle)
 
 
-def run_road_case(table, case, tmp_path, monkeypatch) -> None:
+def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
     """ONE ROW of a contract's case table, down the road, every layer it
-    names checked."""
+    names checked -- on the calculation it describes, or on ``ran``, a copy
+    of one a real run made (`support.real_runs.copy_of`), which it starts
+    from as it stands."""
     import json
     target = _road_target(table, case, tmp_path, monkeypatch)
     if case.get("ends_at") == "probe":
         return
-    bundle = _road_describe(table, case, tmp_path, monkeypatch)
+    bundle = (ran if ran is not None
+              else _road_describe(table, case, tmp_path, monkeypatch))
     if "points_before_prep" in case:
         _road_points_before_prep(case["points_before_prep"], bundle)
     if "own_warm_files" in case:
@@ -1751,16 +1594,6 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         got = jobset(*words, "--bundle", bundle,
                      *(("--target", target) if words[0] == "prep" else ()))
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
-    if case.get("first_launch_refused"):
-        # THE STATE A WAY BACK RESTORES is saved by a group's first launch,
-        # before its send (`job-system.md` § 6.0, step 4) -- sent here, and
-        # refused by the suite's scheduler.
-        got = jobset("launch", "task", "--group", "1", "--bundle", bundle,
-                     "--mode", "submit", "--yes")
-        assert (got.exit_code != 0
-                and "the folder's state was saved first" in got.output), \
-            _one_line(got)
-    _road_launched(case, bundle)
     if not _road_changed(case, bundle):
         return
     if ("removed" in case or "added" in case) and not ladder_edited(

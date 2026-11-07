@@ -24,6 +24,8 @@ Each is the session fixture of its name in `tests/conftest.py`:
   on it and sent by a launch that names no stage, left in the background,
   and the jobs launched from here asked twice once it ended; and the run
   script's own dry runs, on a copy of `coarse`'s prepared folder;
+* :func:`one_group` (``real_h2_one_group``) -- the same H2's two stages one
+  group: prepared, launched by the group, one job, waited on;
 * :func:`bench` (``real_h2_bench``) -- a two-trial benchmark of the same
   H2's `coarse`: one trial launched by name, then the rest by a launch of
   the benchmark under a per-trial bound;
@@ -36,8 +38,17 @@ Each is the session fixture of its name in `tests/conftest.py`:
   one rank: its run script's dry runs, then the run, waited on;
 * :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF,
   stretched so it moves: `coarse` launched and waited on;
-* :func:`au_bdt_au_relaxed` (``real_au_bdt_au``) -- the Au-BDT-Au junction
-  relaxed one step and saved as a pair, what a transport calculation cites;
+* :func:`water` (``real_water_vibration``), :func:`water_held`
+  (``real_water_held``), :func:`water_probed` (``real_water_probed``),
+  :func:`water_linear` (``real_water_linear``) -- the vibration kind on PySCF,
+  on the road's water: Raman and no infrared; the oxygen held, its infrared by
+  finite differences; the probe on the modes a list names; straight and stated
+  relaxed, so its bends are imaginary, its hydrogens labelled;
+* :func:`held_water_pyscf` (``real_held_water_pyscf``) -- H2O on PySCF, its
+  oxygen held: `coarse` launched and waited on, `medium` prepared and left;
+* :func:`bridged_chain_relaxed` (``real_bridged_chain``) -- a hydrogen chain
+  with a two-element bridge, relaxed one step and saved as a pair, what a
+  transport calculation cites;
 * :func:`uneven_chain_relaxed` (``real_uneven_chain``) -- the same for a
   hydrogen chain, its leads unequal, a buffer atom past one, on a k-point mesh;
 * :func:`charged_formate_relaxed` (``real_charged_formate``) -- a formate ion
@@ -84,6 +95,9 @@ class RealRun:
     relaunched: Dict[str, tuple] = field(default_factory=dict)
     #: The finished relaxation saved as a structure pair (:func:`_relaxed_pair`).
     pair: "Path | None" = None
+    #: Every version of a vibration's result as the run wrote it, oldest
+    #: first (:func:`_result_kept_as_it_grows`).
+    versions: "list[Path]" = field(default_factory=list)
 
     def attempt(self, stage: str, n: int = 0) -> Path:
         """Run ``n`` of ``stage`` -- its folder, by molbuilder's own
@@ -95,6 +109,17 @@ class RealRun:
         from molbuilder.task import of as task_of
         task = task_of(self.bundle)
         return attempt_dir(stage_home(self.bundle, task, stage).dir, n)
+
+    def version_where(self, holds) -> Path:
+        """The first version of the run's result, as the run wrote it, whose
+        JSON ``holds`` -- a state lasting long enough to be kept
+        (:func:`_result_kept_as_it_grows`)."""
+        import json
+        for path in self.versions:
+            if holds(json.loads(path.read_text(encoding="utf-8"))):
+                return path
+        raise AssertionError(f"none of {len(self.versions)} versions of the "
+                             f"result is the state asked")
 
     def call(self, stage: str, phase: str, n: int = 0) -> Path:
         """The SIESTA call of ``phase`` in run ``n`` of ``stage`` -- a
@@ -416,11 +441,10 @@ def _header_under_a_slurm_grant(run: RealRun, tree: Path,
         done.returncode, done.stdout + done.stderr)
 
 
-#: WHAT A SMALL RELAXATION FINISHES ON IN SECONDS, a metal's included, measured
-#: 2026-11-06: the smallest basis and a coarse mesh, one geometry step, and an
-#: electronic temperature gold's SCF converges at (at 300 K, with a weight of
-#: 0.02, the Au-BDT-Au junction runs out its 200 cycles).  Each differs from
-#: the catalogue's default, so a value that came from a citation is told apart.
+#: WHAT A SMALL RELAXATION FINISHES ON IN SECONDS, measured 2026-11-06: the
+#: smallest basis and a coarse mesh, one geometry step, and an electronic
+#: temperature a metallic chain's SCF converges at.  Each differs from the
+#: catalogue's default, so a value that came from a citation is told apart.
 QUICK = dict(mesh_cutoff=80.0, basis_size="SZ", mixing_weight=0.05,
              max_scf_iter=400, relax_steps=1, dm_tolerance=1e-2,
              pao_energy_shift=0.05, electronic_temperature=2000.0)
@@ -456,10 +480,10 @@ def _relaxed_pair(tmp_path_factory, name: str, structure, **settings) -> RealRun
     return run
 
 
-def au_bdt_au_relaxed(tmp_path_factory) -> RealRun:
-    """The Au-BDT-Au junction, relaxed (:func:`_relaxed_pair`)."""
-    from support.junction import au_bdt_au
-    return _relaxed_pair(tmp_path_factory, "au-bdt-au", au_bdt_au())
+def bridged_chain_relaxed(tmp_path_factory) -> RealRun:
+    """The bridged hydrogen chain, relaxed (:func:`_relaxed_pair`)."""
+    from support.junction import bridged_chain
+    return _relaxed_pair(tmp_path_factory, "bridged-chain", bridged_chain())
 
 
 def uneven_chain_relaxed(tmp_path_factory) -> RealRun:
@@ -479,6 +503,31 @@ def charged_formate_relaxed(tmp_path_factory) -> RealRun:
                        [4.45, 4.05, 5.0]],
          "cell": [10.0, 10.0, 10.0]},
         net_charge=-1)
+
+
+def held_water_pyscf(tmp_path_factory) -> RealRun:
+    """H2O on PySCF with both bonds stretched and its oxygen held, so the atom
+    the run does not move feels a larger force than the two it does, the forces
+    summing to nothing: `coarse` launched and waited on, and `medium` prepared
+    and left, a run that has written no step."""
+    water = {"elements": ["O", "H", "H"],
+             "positions": [[5.0, 5.0, 5.0], [5.83, 5.64, 5.0],
+                           [4.17, 5.64, 5.0]],
+             "regions": {"frozen_atoms": [0]},
+             "cell": [10.0, 10.0, 10.0]}
+    with _on_the_road(tmp_path_factory, "held-water", engine="pyscf") as tree:
+        bundle = _described(tree, "P/opt/W", structure=water, name="W",
+                            calculation="optimization", engine="pyscf",
+                            stage_strategy="publishable",
+                            execution={"threads": 1})
+        run = RealRun(tree=tree, bundle=bundle)
+        _taken(run, "prep coarse", "prep", "task", "--group", "1",
+               "--target", "this")
+        _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+               "--mode", "direct", "--foreground", "--yes")
+        _taken(run, "prep medium", "prep", "task", "--group", "2",
+               "--target", "this")
+    return run
 
 
 def _h2_optimization(tree: Path, where: str, **blocks) -> Path:
@@ -526,6 +575,30 @@ def layered(tmp_path_factory) -> RealRun:
         run.jobs["after it ended"] = molbuilder("jobs", "status")
         run.jobs["again"] = molbuilder("jobs", "status")
         _taken(run, "status", "status")
+    return run
+
+
+def one_group(tmp_path_factory) -> RealRun:
+    """The road's H2 with its two stages one group, as Task setup saves them
+    -- `medium` starting clean, a stage building on one in its own job being
+    refused -- on :data:`QUICK`, prepared and launched by the group: one job,
+    each stage's run-0, waited on."""
+    from support.road import (_description_with_overrides, read_request,
+                              save_both, set_by_the_person)
+    with _on_the_road(tmp_path_factory, "one-group") as tree:
+        bundle = _h2_optimization(tree, "P/opt/H2",
+                                  execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, QUICK)
+        request = read_request(bundle)
+        request["stages"]["medium"]["group"] = 1
+        saved = save_both(bundle, _description_with_overrides(
+            bundle, {"medium": {"restart": "clean"}}), request)
+        assert saved.status_code == 200, saved.get_json()
+        run = RealRun(tree=tree, bundle=bundle)
+        _taken(run, "prep group 1", "prep", "task", "--group", "1",
+               "--target", "this")
+        _taken(run, "launch group 1", "launch", "task", "--group", "1",
+               "--mode", "direct", "--foreground", "--yes")
     return run
 
 
@@ -615,6 +688,50 @@ def co2_vibration(tree: Path, where: str = "P/freq/CO2", *,
     return bundle
 
 
+@contextmanager
+def _result_kept_as_it_grows(run: RealRun, tmp_path_factory, stage: str):
+    """While the run of ``stage`` is launched, every version of its
+    ``<label>.spectra.json`` as the run writes it -- atomically, phase by phase
+    (`engines/vibration.md` § 4.9) -- kept whole, under its own name, in a tree
+    of its own, ``run.versions``: what a reader meets while the run goes, which
+    only a run can show (`process/testing.md` § 6).  A version that lasts less
+    than the look here may be missed; a test asks for a state that lasts."""
+    import threading
+    import time
+
+    from molbuilder.runfiles import ROLE_SPECTRA, compose
+    from molbuilder.task import of as task_of
+    name = compose(task_of(run.bundle).label, ROLE_SPECTRA)
+    result = run.attempt(stage) / name
+    home = tmp_path_factory.mktemp("as-it-grew") / "projects"
+    ended = threading.Event()
+
+    def keep():
+        last = None
+        while True:
+            ending = ended.is_set()
+            try:
+                now = result.read_bytes()
+            except OSError:
+                now = last
+            if now != last:
+                kept = home / f"{len(run.versions):03d}" / name
+                kept.parent.mkdir(parents=True)
+                kept.write_bytes(now)
+                run.versions.append(kept)
+                last = now
+            if ending:
+                return
+            time.sleep(0.02)
+    keeper = threading.Thread(target=keep, daemon=True)
+    keeper.start()
+    try:
+        yield
+    finally:
+        ended.set()
+        keeper.join()
+
+
 def vibration(tmp_path_factory) -> RealRun:
     """The vibration kind's one run in phases of the road's CO2
     (`engines/vibration.md` § 5.11): the one stage `freq`, one rank, one
@@ -626,8 +743,9 @@ def vibration(tmp_path_factory) -> RealRun:
         run = RealRun(tree=tree, bundle=co2_vibration(tree, optical=True))
         _taken(run, "prep freq", "prep", "task", "--group", "1",
                "--target", "this")
-        _taken(run, "launch freq", "launch", "task", "--stage", "freq",
-               "--mode", "direct", "--foreground", "--yes")
+        with _result_kept_as_it_grows(run, tmp_path_factory, "freq"):
+            _taken(run, "launch freq", "launch", "task", "--stage", "freq",
+                   "--mode", "direct", "--foreground", "--yes")
     # IT REACHED ITS END, by the one status door: every reader of the run
     # reads a run that finished, every call of it done.
     status = stage_status(run.bundle, "freq")
@@ -674,3 +792,75 @@ def pyscf(tmp_path_factory) -> RealRun:
         _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
                "--mode", "direct", "--foreground", "--yes")
     return run
+
+
+def water_vibration(tmp_path_factory, name: str, *, structure=None,
+                    settings=None, **blocks) -> RealRun:
+    """The vibration kind on PySCF: ``structure``, the road's water unless
+    given, described in a tree of its own under the label ``W``, one thread,
+    ``settings`` the person's in its template and the job request's ``blocks``
+    as given, `freq` prepared and launched, waited on, its result kept as it
+    grew -- THE ONE MAKER of a shared water vibration."""
+    from support.road import WATER, set_by_the_person
+    with _on_the_road(tmp_path_factory, name, engine="pyscf") as tree:
+        bundle = _described(tree, f"P/frequency/{name}",
+                            structure=WATER if structure is None else structure,
+                            name="W", calculation="vibration", engine="pyscf",
+                            execution={"threads": 1}, **blocks)
+        if settings:
+            set_by_the_person(bundle, settings)
+        run = RealRun(tree=tree, bundle=bundle)
+        _taken(run, "prep freq", "prep", "task", "--group", "1",
+               "--target", "this")
+        with _result_kept_as_it_grows(run, tmp_path_factory, "freq"):
+            _taken(run, "launch freq", "launch", "task", "--stage", "freq",
+                   "--mode", "direct", "--foreground", "--yes")
+    return run
+
+
+def water(tmp_path_factory) -> RealRun:
+    """Free water, RAMAN ASKED AND INFRARED NOT -- the polarizability sweep is
+    the run this is for (both defaults are the other way round,
+    `engines/vibration.md` § 3.1) -- and a converged SCF asked to be told, as a
+    person asks it in the job request (`notify.on_scf_converged`), so the
+    monitor beside the run is told to send them."""
+    return water_vibration(
+        tmp_path_factory, "water",
+        settings={"compute_raman": True, "compute_ir": False},
+        notify={"on_scf_converged": True, "every_hours": None,
+                "channels": ["*"], "report": ["*"]})
+
+
+def water_held(tmp_path_factory) -> RealRun:
+    """Water with its oxygen held, infrared on -- the default -- so its
+    infrared is finite-difference dipoles, the held route's, twelve small SCFs
+    during which the file says its infrared is running
+    (`engines/vibration.md` § 4.6, § 4.9)."""
+    from support.road import WATER
+    return water_vibration(tmp_path_factory, "held", structure={
+        **WATER, "regions": {"frozen_atoms": [0]}})
+
+
+def water_probed(tmp_path_factory) -> RealRun:
+    """Free water, infrared on, the per-mode probe on the modes the list names
+    -- ``1, 3, 9``, of three: 9 names none (`engines/vibration.md` § 4.8).
+    Raman's 6N SCFs are not its subject, and Raman is off by default."""
+    return water_vibration(
+        tmp_path_factory, "probed",
+        settings={"es_mode_selection": "explicit",
+                  "es_explicit_indices": "1, 3, 9"})
+
+
+def water_linear(tmp_path_factory) -> RealRun:
+    """Water drawn straight and stated relaxed, nothing asked but the modes: a
+    saddle by symmetry, its two bends imaginary (`engines/vibration.md` § 6.3),
+    which is how a run reaches a negative wavenumber -- its hydrogens each
+    with a species label of its own (`model/chemistry.md` § 3), which PySCF
+    takes as hydrogen."""
+    from support.road import WATER
+    return water_vibration(
+        tmp_path_factory, "linear",
+        structure={**WATER, "elements": ["O", "H1", "H2"],
+                   "positions": [[5.0, 5.0, 5.0], [5.96, 5.0, 5.0],
+                                 [4.04, 5.0, 5.0]]},
+        settings={"already_relaxed": True, "compute_ir": False})

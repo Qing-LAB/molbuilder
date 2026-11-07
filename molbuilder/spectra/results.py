@@ -751,6 +751,7 @@ def motion_share_by_element(elements: List[str],
     (`engines/vibration.md` § 6.6).  Shares are returned largest first, and
     a mode with no motion at all returns ``{}`` rather than dividing by zero.
     """
+    from ..chemistry import resolve_element
     rows = np.asarray(eigenvector, dtype=float)
     if rows.ndim != 2 or rows.shape[1] != 3:
         raise ValueError(
@@ -775,7 +776,7 @@ def motion_share_by_element(elements: List[str],
                 f"motion_share_by_element: atom index {at} is outside the "
                 f"structure ({len(elements)} atoms)"
             )
-        el = str(elements[at])
+        el = resolve_element(str(elements[at]))
         w = mass_of(at, elements, masses_amu) * float(np.dot(row, row))
         weight[el] = weight.get(el, 0.0) + w
         total += w

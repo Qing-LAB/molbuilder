@@ -1029,7 +1029,6 @@ def test_the_calculation_is_named_the_same_however_many_runs_appear(staged):
         for stage in ("01_coarse", "02_tight"):
             run = staged.root / stage / f"run-{n}"
             run.mkdir()
-            (run / "run.json").write_text('{"mode": "local"}')
             (run / "job.DM").write_bytes(BIG + stage.encode() + bytes([n]))
         names.add(staged.save(f"attempt {n} in both stages").calculation)
 
@@ -1803,14 +1802,14 @@ def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
 
 
 def _staged(root, stages=("01_coarse", "02_tight"), attempts=2, dm=BIG):
-    """A calculation folder shaped like `project-layout.md` § 1.1's nested form."""
-    (root / "task.json").write_text('{"engine": "siesta"}')
+    """A folder shaped like `project-layout.md` § 1.1's nested form, as the
+    folder tool meets one: folders and bytes, a size deciding each file's
+    store.  No calculation's records: the tool reads none, and a run record
+    typed here would be a run that never happened (`process/testing.md` § 6)."""
     (root / "Au.psml").write_text("<pseudo/>\n")
-    (root / "job.template.toml").write_text("SystemLabel job\n")
     for stage in stages:
         sdir = root / stage
         sdir.mkdir(exist_ok=True)
-        (sdir / "job.fdf").write_text(f"# {stage}\n")
         # a stage LINKS the shared pseudopotential rather than copying it
         link = sdir / "Au.psml"
         if not link.exists():
@@ -1818,7 +1817,6 @@ def _staged(root, stages=("01_coarse", "02_tight"), attempts=2, dm=BIG):
         for n in range(attempts):
             run = sdir / f"run-{n}"
             run.mkdir(exist_ok=True)
-            (run / "run.json").write_text('{"mode": "local"}')
             (run / "job.out").write_text(f"{stage} attempt {n}\n")
             (run / "job.XV").write_text(f"{stage}-{n} coords\n")
             (run / "job.DM").write_bytes(dm + stage.encode() + str(n).encode())
@@ -1836,7 +1834,7 @@ def staged(tmp_path, checkpoint_config):
     return repo
 
 
-def test_s1_holds_over_a_real_staged_tree(staged):
+def test_s1_holds_over_a_staged_tree(staged):
     """L2 and S1 together, at depth, with symlinks in the tree.
 
     A flat fixture cannot fail this: the defect it guards is that a gitignore
@@ -2131,8 +2129,8 @@ def test_identical_content_is_stored_once(staged):
     costs a directory entry.  It is the reason the archive is
     content-addressed rather than merely checksummed."""
     first = staged.standing_at()
-    (staged.root / "task.json").write_text('{"engine": "siesta", "v": 2}')
-    second = staged.save("only the description changed")
+    (staged.root / "Au.psml").write_text("<pseudo v='2'/>\n")
+    second = staged.save("only a small file changed")
 
     assert first.archive == second.archive, (
         "the big files did not change, so it is the same archive")
@@ -2272,12 +2270,12 @@ def test_a_deep_forked_history_lists_children_before_parents(staged):
     """
     made = [staged.standing_at()]
     for i in range(3):                                  # a trunk
-        (staged.root / "task.json").write_text(f'{{"v": {i}}}')
+        (staged.root / "Au.psml").write_text(f"trunk {i}\n")
         made.append(staged.save(f"trunk {i}"))
     forks = []
     for i in range(3):                                  # three from one point
         staged.restore(made[1].id, force=True)
-        (staged.root / "task.json").write_text(f'{{"fork": {i}}}')
+        (staged.root / "Au.psml").write_text(f"fork {i}\n")
         forks.append(staged.save(f"fork {i}"))
 
     listed = [s.id for s in staged.states()]

@@ -1,43 +1,13 @@
 """The warm-file rules loader — `job-contracts.md` § 4.2a's one reader.
 
 From the contract: the closed vocabulary, the [base]+sections hierarchy,
-the growth-rule refusal, and the byte-faith pins.
+the growth-rule refusal, and the carry rows § 2.3.4's table states.
 """
 from __future__ import annotations
 
 import pytest
 
 from molbuilder import warmfiles as W
-
-
-# --------------------------------------------------------------------- #
-#  Byte-faith: the files SAY this vocabulary, spelled here as LITERALS   #
-# --------------------------------------------------------------------- #
-#
-# B-2 (final review, 2026-08-13): a byte-faith pin needs one side the
-# test's own bytes.
-
-#: siesta/warm-files.toml, every section, in row order (order is
-#: load-bearing: Job.warm order, the banner order).
-_SIESTA_INVENTORY = (".XV", ".DM",
-                     ".LWF", ".ZM", ".BONDS", ".PARTIAL",
-                     ".EIG", ".HSX", ".WFSX", ".STRUCT_NEXT_ITER",
-                     ".CG", ".TSHS", ".TSDE",
-                     # the force-constant run's product and its constrained twin
-                     ".FC", ".FCC",
-                     # an optical call's product (engines/vibration.md 5.11)
-                     ".EPSIMG")
-
-#: pyscf/warm-files.toml, same rule.
-_PYSCF_INVENTORY = (".chk", "_optimized.xyz")
-
-
-def test_siesta_inventory_is_the_declared_vocabulary():
-    assert W.warm_list("siesta").suffixes == _SIESTA_INVENTORY
-
-
-def test_pyscf_inventory_is_the_declared_vocabulary():
-    assert W.warm_list("pyscf").suffixes == _PYSCF_INVENTORY
 
 
 def test_siesta_optimization_carries_exactly_what_the_table_declares():

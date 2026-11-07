@@ -238,159 +238,9 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
         set_capabilities(None)
 
 
-class TestAnEditOutdatesTheContractWithoutErasingIt:
-    """`molview.md` § 8.4a: an edit VOIDS a recorded calculation, and the
-    way it says so is a flag ON the record — `structure_modified` for a
-    geometry or cell op, `labels_modified` for a name.
-    `transport.compose.recorded_contract_of` reads the first back as
-    *"the mesh cutoff and transverse k-mesh below were converged for a
-    cell that is no longer there"*.
-
-    Rebuilding a Structure without `info` deletes the thing that warning
-    reads, so the flag has nothing to mark and a form-B citation quietly
-    inherits catalogue defaults instead. Voiding is a MARK on the record;
-    a record that is gone cannot carry one.
-    """
-
-    def _with_contract(self):
-        import numpy as np
-        from molbuilder.structure import Structure
-        s = Structure(elements=["H", "H", "O"],
-                      positions=np.array([[0., 0, 0], [1., 0, 0], [0, 1., 0]]))
-        s.cell = np.diag([8., 8., 8.])
-        s.info = {"calculation": {"engine": "siesta",
-                                  "contract": {"mesh_cutoff": 300}}}
-        return s
-
-    @pytest.mark.parametrize("name", [
-        "copy", "delete_atoms", "add_atom", "translate", "translate_subset",
-        "rotate", "orient", "append",
-    ])
-    def test_every_atom_edit_carries_the_recorded_contract(self, name):
-        import numpy as np
-        from molbuilder.structure import Structure
-        from molbuilder import modify as M
-        s = self._with_contract()
-        other = Structure(elements=["C"], positions=np.array([[4., 4, 4]]))
-        ops = {
-            "copy":             lambda x: x.copy(),
-            "delete_atoms":     lambda x: M.delete_atoms(x, [2]),
-            "add_atom":         lambda x: M.add_atom(x, "C", 0, [2., 2., 2.]),
-            "translate":        lambda x: M.translate(x, [1., 0, 0]),
-            "translate_subset": lambda x: M.translate(x, [1., 0, 0], indices=[0]),
-            "rotate":           lambda x: M.rotate_around_axis(x, "z", 90.0),
-            "orient":           lambda x: M.orient_along_axis(x, [0, 1], "z"),
-            "append":           lambda x: M.append_structure(x, other),
-        }
-        out = ops[name](s)
-        if isinstance(out, tuple):
-            out = out[0]
-        out = getattr(out, "structure", out)
-        assert out.info.get("calculation", {}).get("contract"), (
-            f"{name} dropped info.calculation -- the flag that marks this "
-            f"edit as outdating the contract now has nothing to mark")
-
-    def test_the_contract_carries_its_OUTDATED_flag_through_an_edit(self):
-        """The flag is the point: it must survive the very edit that set
-        it, or the warning downstream can never fire."""
-        from molbuilder.modify import delete_atoms
-        s = self._with_contract()
-        s.info["calculation"]["structure_modified"] = True
-        out = delete_atoms(s, [2])
-        out = getattr(out, "structure", out)
-        assert out.info["calculation"]["structure_modified"] is True
-
-    @pytest.mark.parametrize("op,mark", [
-        ("delete_atoms",  "structure_modified"),
-        ("add_atom",      "structure_modified"),
-        ("translate",     "structure_modified"),
-        ("rotate",        "structure_modified"),
-    ])
-    def test_a_python_edit_marks_the_contract_outdated(self, op, mark):
-        """The backend marks what MolView marks.
-
-        `molview/model.js` sets this flag on every `applyOp`; Python set
-        it nowhere, so `molbuilder modify IN OUT --delete N` wrote an
-        edited pair still carrying the relaxation's mesh cutoff and
-        k-mesh with no staleness mark — and a transport citation of that
-        pair sealed to settings converged for a structure that no longer
-        exists, silently.  `compose.py` reads this flag to warn.
-        """
-        from molbuilder import modify as M
-        s = self._with_contract()
-        out = {
-            "delete_atoms": lambda: M.delete_atoms(s, [2]),
-            "add_atom":     lambda: M.add_atom(s, "H", 0, [1.0, 1.0, 1.0]),
-            "translate":    lambda: M.translate(s, [1.0, 0.0, 0.0]),
-            "rotate":       lambda: M.rotate_around_axis(s, "z", 30.0),
-        }[op]()
-        assert out.info["calculation"][mark] is True
-        assert out.info["calculation"]["contract"], "the record was erased, not marked"
-        assert "structure_modified" not in s.info["calculation"], \
-            "the edit marked its SOURCE too"
-
-    @pytest.mark.parametrize("op, payload", [
-        ("vacuum",      [4.0, 4.0, 4.0]),
-        ("axis_kind",   ["periodic", "periodic", "isolated"]),
-        ("cell",        [[9., 0, 0], [0, 9., 0], [0, 0, 9.]]),
-        ("box_corner",  [-1.0, -1.0, -1.0]),
-        ("block",       {"cell": [[9., 0, 0], [0, 9., 0], [0, 0, 9.]],
-                         "box_corner": None,
-                         "axis_kind": ["periodic", "periodic", "periodic"],
-                         "vacuum": None}),
-    ])
-    def test_a_box_edit_marks_the_contract_outdated(self, op, payload):
-        """Every op of the periodicity door, not just the geometry ones.
-
-        Mesh cutoff is a grid density over the CELL and the transverse
-        k-mesh samples the reciprocal cell, so changing the box is
-        exactly what invalidates the inherited settings — as much as
-        moving an atom is.  The door marks and the answer carries it,
-        so the decision is pinned HERE, in the language that makes it.
-        """
-        from molbuilder.periodicity_gate import apply_edit
-        s = self._with_contract()
-        out, _notices = apply_edit(s, op, payload)
-        assert out.info["calculation"]["structure_modified"] is True
-        assert out.info["calculation"]["contract"], \
-            "the record was erased, not marked"
-        assert out.info["calculation"].get("labels_modified") is None, \
-            "a box edit claimed the labels moved"
-        assert "structure_modified" not in s.info["calculation"], \
-            "the edit marked its SOURCE too"
-
-    def test_a_refused_box_edit_marks_nothing(self):
-        """The mark rides the returned copy, and a refusal returns none.
-
-        `apply_edit` marks immediately after `struct.copy()`, before the
-        per-op branches — which is only safe because every refusal
-        raises instead of answering. If one ever returned the copy on a
-        rejected edit, the pair would carry a staleness flag for an edit
-        that never happened.
-        """
-        from molbuilder.periodicity_gate import apply_edit
-        s = self._with_contract()
-        with pytest.raises(ValueError):
-            apply_edit(s, "axis_kind", ["periodic", "sideways", "isolated"])
-        assert "structure_modified" not in s.info["calculation"]
-
-    def test_a_reorder_is_not_an_edit(self):
-        """The transport sort (`sort_by`) derives through the same door but changes
-        no geometry, so marking there would warn about every composed
-        junction."""
-        import numpy as np
-        from molbuilder.structure import Structure
-        from molbuilder.transport.sort import SORT_TRANSPORT, sort_by
-        s = Structure(
-            elements=["Au", "S", "S", "Au"],
-            positions=np.array([[0., 0, 0], [0, 0, 2.], [0, 0, 4.], [0, 0, 6.]]),
-            cell=np.diag([8., 8., 12.]),
-            regions={"L-electrode": [0], "bridge": [1, 2], "R-electrode": [3]},
-            info={"calculation": {"engine": "siesta",
-                                  "contract": {"mesh_cutoff": 300}}})
-        out = sort_by(s, SORT_TRANSPORT).structure
-        assert "structure_modified" not in out.info["calculation"]
-        assert out.info["calculation"]["contract"]
+class TestAnAppendKeepsTheCanvasFacts:
+    """`model/structure.md` § 2.2b.  What an edit does to the record a real run
+    left on its structure: `test_an_edit_on_a_recorded_structure_e2e.py`."""
 
     def test_appending_to_a_derived_box_keeps_its_axes_and_its_vacuum(self):
         """A cell nobody STATED still has facts on it.
@@ -459,22 +309,6 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         assert out.engine_offset is None, out.engine_offset
         assert any("stated origin was dropped" in n for n in notes), notes
 
-    def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
-        """Not from whichever structure happens to carry the cell --
-        `concat` picks the lattice that way and `info` rode along, so a
-        base with no box lost its contract to the incoming one."""
-        import numpy as np
-        from molbuilder.structure import Structure
-        from molbuilder.modify import append_structure
-        base = self._with_contract()
-        base.cell = None
-        other = Structure(elements=["C"], positions=np.array([[4., 4, 4]]))
-        other.cell = np.diag([9., 9., 9.])
-        out = append_structure(base, other)
-        out = getattr(out[0] if isinstance(out, tuple) else out, "structure",
-                      out[0] if isinstance(out, tuple) else out)
-        assert out.info.get("calculation", {}).get("contract")
-
 
 class TestInfoIsANamespaceOfClusters:
     """PINS: `model/structure.md` § 2.2a — `info` is a namespace, one
@@ -490,27 +324,28 @@ class TestInfoIsANamespaceOfClusters:
     """
 
     @staticmethod
-    def _recorded():
+    def _clustered():
+        """One cluster in the store -- any subsystem's: the door reads no
+        cluster's name or what it holds, so this is no run's record."""
         s = Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]))
-        s.set_info("calculation", {"engine": "siesta",
-                                   "contract": {"mesh_cutoff_ry": 400}})
+        s.set_info("a_subsystem", {"nested": {"a_value": 400}})
         return s
 
     def test_one_cluster_does_not_disturb_another(self):
         """The whole point: this is what a bare `struct.info = {...}` got
         wrong."""
-        s = self._recorded()
+        s = self._clustered()
         s.set_info("provenance", {"built_by": "the slab wizard"})
-        assert s.info["calculation"]["contract"] == {"mesh_cutoff_ry": 400}
+        assert s.info["a_subsystem"] == {"nested": {"a_value": 400}}
         assert s.info["provenance"] == {"built_by": "the slab wizard"}
 
     def test_a_cluster_is_dropped_explicitly_and_alone(self):
         """§ 2.2a: a strip is explicit. `drop_info` says it for one cluster,
         `replace(info={})` for the whole store."""
-        s = self._recorded()
+        s = self._clustered()
         s.set_info("provenance", {"built_by": "x"})
         assert s.drop_info("provenance") is True
-        assert sorted(s.info) == ["calculation"]
+        assert sorted(s.info) == ["a_subsystem"]
         assert s.drop_info("provenance") is False, "already gone is not an error"
 
     def test_a_cluster_must_survive_the_sidecar(self):
@@ -518,19 +353,19 @@ class TestInfoIsANamespaceOfClusters:
         JSON is refused HERE — with the caller and the bad value both in
         hand — rather than at the writer, several steps later, on a
         structure that has since been edited."""
-        s = self._recorded()
+        s = self._clustered()
         with pytest.raises(ValueError, match="JSON"):
             s.set_info("bad", {"fn": object()})
         with pytest.raises(ValueError, match="non-empty"):
             s.set_info("", {})
-        assert sorted(s.info) == ["calculation"], "a refusal changed nothing"
+        assert sorted(s.info) == ["a_subsystem"], "a refusal changed nothing"
 
     def test_the_whole_store_door_checks_the_shape(self):
         """`apply_info_dict` is the in-place sibling of `replace(info=...)`
         and the one the three whole-store writers needed — a sidecar load, a
         caller-stated block, and the Results tab's run record each adopt an
         entire store rather than one cluster."""
-        s = self._recorded()
+        s = self._clustered()
         with pytest.raises(ValueError, match="cluster-name"):
             s.apply_info_dict(["not", "a", "dict"])
 
@@ -542,8 +377,8 @@ class TestInfoIsANamespaceOfClusters:
         # present and leak the other forward the day a caller stopped
         # starting empty.
         s.set_info("provenance", {"built_by": "the slab wizard"})
-        s.apply_info_dict({"calculation": {"engine": "pyscf"}})
-        assert s.info == {"calculation": {"engine": "pyscf"}}, (
+        s.apply_info_dict({"a_subsystem": {"replaced": True}})
+        assert s.info == {"a_subsystem": {"replaced": True}}, (
             "the store was merged, not replaced -- `provenance` survived a "
             "call that did not name it")
 

@@ -149,50 +149,25 @@ def test_each_call_returns_independent_stages():
 
 
 
-def _as_2_65_7_wrote_it(now):
-    """The same structure, at version 16, a field the structure reader retires
-    in it: `selection_rules`, which 2.65.7 still wrote, empty."""
-    import ast
-    from molbuilder.pyscf.script_input import SIDECAR_NAME
-    head = f"{SIDECAR_NAME} = "
-    line = next(ln for ln in now.splitlines() if ln.startswith(head))
-    payload = ast.literal_eval(line[len(head):])
-    assert "selection_rules" not in payload
-    return now.replace(line, head + repr({**payload, "schema_version": 16,
-                                          "selection_rules": {}}))
-
-
-def _as_another_release_wrote_it(now):
-    """The line a vibration script names the release that wrote it by, for its
-    result (`deck_record.BUILD_NAME`)."""
-    from molbuilder import __version__
-    from molbuilder.deck_record import BUILD_NAME
-    line = f"{BUILD_NAME} = {__version__!r}"
-    assert line in now
-    return now.replace(line, f"{BUILD_NAME} = '0.0.0'")
-
-
-@pytest.mark.parametrize(
-    "calculation, stage, as_ran",
-    [("optimization", "coarse", _as_2_65_7_wrote_it),
-     ("vibration", "freq", _as_another_release_wrote_it)],
-    ids=["a field the structure reader retires", "the release that wrote it"])
-def test_what_says_nothing_of_the_computation_is_no_difference(
-        tmp_path, monkeypatch, calculation, stage, as_ran):
+def test_the_release_that_wrote_a_deck_is_no_difference(tmp_path, monkeypatch):
     """`execution/job-request.md` § 5–6: *the test is the engine's input*.  A
-    PySCF deck carries its structure as the structure reader's payload, and a
-    vibration's names the release that wrote it; neither a retired field, nor
-    the record's version number, nor the release says what PySCF computes.
-    THE FAILURE: a launched PySCF stage refused when prepared again for its job
-    request, over a line that changed nothing -- every vibration, at every
-    version move."""
-    from molbuilder.deck_record import same_calculation
+    PySCF vibration's deck names the release that wrote it, for its result
+    (`deck_record.BUILD_NAME`), and that says nothing of what PySCF computes.
+    THE FAILURE: every vibration refused when prepared again for its job
+    request, at every version move, over a line that changed nothing."""
+    import molbuilder
+    from molbuilder.deck_record import BUILD_NAME, same_calculation
     from molbuilder.runfiles import deck_role
     from support.road import prepared_here
-    _bundle, run, names = prepared_here(
-        tmp_path, monkeypatch, "conda activate", calculation=calculation,
-        stage=stage, engine="pyscf")
-    now = (run / names.name(deck_role("pyscf"))).read_text()
-    ran = as_ran(now)
-    assert ran != now
+
+    def deck(where):
+        _bundle, run, names = prepared_here(
+            tmp_path / where, monkeypatch, "conda activate",
+            calculation="vibration", stage="freq", engine="pyscf")
+        return (run / names.name(deck_role("pyscf"))).read_text()
+    now = deck("now")
+    with monkeypatch.context() as moved:
+        moved.setattr(molbuilder, "__version__", "0.0.0")
+        ran = deck("then")
+    assert f"{BUILD_NAME} = '0.0.0'" in ran and ran != now
     assert same_calculation("pyscf", ran, now) == []

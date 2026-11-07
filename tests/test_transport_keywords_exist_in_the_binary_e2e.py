@@ -202,14 +202,14 @@ def _prepped_deck(pair, tmp_path, monkeypatch, rung, groups) -> str:
     ("transmission", ("1", "2", "3")),
 ], ids=["seed", "electrode", "device", "transmission"])
 def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
-        binary_text, rung, groups, real_au_bdt_au, tmp_path, monkeypatch):
+        binary_text, rung, groups, real_bridged_chain, tmp_path, monkeypatch):
     """THE DECKS THAT ACTUALLY RUN.
 
     One case per deck SHAPE rather than per rung: `SHAPE_OF_RUNG` maps the
     five rungs onto four texts -- the device and the transmission are two,
     because two programs read them (`transport.md` § 6.1b).
     """
-    deck = _prepped_deck(real_au_bdt_au.pair, tmp_path, monkeypatch, rung,
+    deck = _prepped_deck(real_bridged_chain.pair, tmp_path, monkeypatch, rung,
                          groups)
     assert "PAO.BasisSize" in deck, (
         "this rung carries none of the engine's section set -- the test "
@@ -218,7 +218,7 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
 
 
 def test_the_device_deck_holds_no_label_siesta_cannot_read(
-        real_au_bdt_au, tmp_path, monkeypatch):
+        real_bridged_chain, tmp_path, monkeypatch):
     """`siesta` alone runs the device deck, so every label in it is checked
     against `siesta`'s binary ALONE (`engines/transport.md` § 6.1b).  The
     check above pools both programs' strings, which is right for asking
@@ -229,6 +229,6 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read(
     siesta = next((b for b in (bins or ()) if b.name == "siesta"), None)
     if siesta is None:
         pytest.skip("molbuilder-siesta is not installed -- nothing to measure")
-    deck = _prepped_deck(real_au_bdt_au.pair, tmp_path, monkeypatch, "device",
+    deck = _prepped_deck(real_bridged_chain.pair, tmp_path, monkeypatch, "device",
                          ("1", "2"))
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")

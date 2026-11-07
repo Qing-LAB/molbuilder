@@ -1198,7 +1198,7 @@ thermochemistry and its bars),
 `tests/test_siesta_vibration_e2e.py::test_the_page_asks_the_raman_at_a_laser_and_exports_it`
 (a SIESTA result with optical calls: no number before a laser, the laser
 applied, the columns, the summary and the Export, § 3.3),
-`test_spectra_no_spectrum_sentence_js.py` (the four cases of § 2, by role —
+`test_spectra_no_spectrum_sentence_e2e.py` (the four cases of § 2, by role —
 a SIESTA result with and without its charges among them — and when the viewer
 stops waiting, infrared's own flag included, § 7),
 `test_vibrationview_maths_js.py` (the animation's eigenvector math).

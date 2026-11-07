@@ -140,7 +140,7 @@ def test_state_does_not_read_big_files_it_does_not_have_to(
 
 
 def test_a_calculation_is_named_by_its_description_not_by_its_depth(
-        client, tmp_path):
+        client, tmp_path, monkeypatch):
     """`is_calculation` is what decides whether the panel appears.
 
     It has to be separate from `initialized`, because the case the Set-up
@@ -153,20 +153,10 @@ def test_a_calculation_is_named_by_its_description_not_by_its_depth(
     offered a repository.  A description is the answer at any depth, so this
     test uses two folders SIDE BY SIDE at the same one.
     """
-    import json as _json
-    from molbuilder.task import FILENAME as TASK_FILENAME
+    from support.road import describe_calculation
 
-    described = tmp_path / "described"
-    described.mkdir()
-    (described / TASK_FILENAME).write_text(_json.dumps({
-        "schema": "molbuilder/task@1",
-        "engine": {"name": "siesta"},
-                   "calculation": "optimization", "shape": "hierarchical",
-        "run": {"name": "JOB", "id": "JOB_H2"},
-        "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
-        "varies": [], "stages": [],
-    }))
-    loose = tmp_path / "loose"
+    described = describe_calculation(tmp_path, monkeypatch)
+    loose = described.parent / "loose"
     loose.mkdir()
     (loose / "a.xyz").write_text("1\nx\nH 0 0 0\n")
 

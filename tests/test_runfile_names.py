@@ -279,16 +279,12 @@ def test_the_file_beside_another_is_named_on_its_stem(name, role, beside):
 
 @pytest.mark.parametrize("name,label", [
     ("my-job-v2.out", LABEL),
-    ("my-job_01_coarse-run2.out", LABEL),
-    ("my-job_01_coarse-run2.out", "my-job_01_coarse"),
-], ids=["a-longer-label", "a-try-number-on-the-label",
-        "a-try-number-on-the-stem"])
+    ("my-job_01_coarse-v2.out", LABEL),
+], ids=["a-longer-label", "a-hyphen-after-the-stage"])
 def test_a_hyphen_after_the_label_or_the_stage_is_no_file_of_it(name, label):
     """`-v2` after the label is part of a longer LABEL -- which is why a
-    bench trial's `bdt-G1N4C6` reads as a label of its own -- and a name an
-    older molbuilder gave a try (``-run2``) is no file of the run: runs
-    written before one start per run are not read (`project-layout.md`
-    § 1.6.1)."""
+    bench trial's `bdt-G1N4C6` reads as a label of its own -- and after a
+    stage it is no file of that stage."""
     assert parse(name, label) is None
     assert parse("my-job-v2.out", "my-job-v2") == expect("my-job-v2", None,
                                                          ".out")

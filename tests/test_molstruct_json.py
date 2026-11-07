@@ -426,55 +426,21 @@ class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
     schemas this build accepts (`structure-molstruct.md` § 2)."""
 
-    @pytest.mark.parametrize("version, why", [
-        (99, "a version from the future"),
-        (None, "no version at all"),
-    ])
-    def test_any_version_but_the_current_one_is_refused(self, tmp_path,
-                                                        version, why):
-        """One gate, one answer: a version this build does not read is refused,
-        naming the ones it does.
+    def test_a_version_this_build_does_not_read_is_refused(self, tmp_path):
+        """One gate, one answer: a pair as the writer writes it, stating a
+        version this build does not read, is refused, naming the ones it does.
         """
-        payload = {
-            "n_atoms_total":  3,
-            "structure_hash": "b" * 32,
-            "regions":        {"L-electrode": [0]},
-        }
-        if version is not None:
-            payload["schema_version"] = version
-        p = tmp_path / "old.molstruct.json"
-        p.write_text(_json.dumps(payload))
+        from molbuilder.workingcopy_structure import StructureCodec
+        pair = tmp_path / "pair.xyz"
+        StructureCodec().write(Structure.from_xyz(_toy_xyz_text(3)), pair)
+        side = msj.sidecar_path_for(pair)
+        payload = _json.loads(side.read_text(encoding="utf-8"))
+        payload["schema_version"] = 99
+        side.write_text(_json.dumps(payload), encoding="utf-8")
         # The set is `READABLE_VERSIONS`' to state; the message names it.
         with pytest.raises(MolstructJsonError, match=re.escape(
                 f"reads versions {sorted(msj.READABLE_VERSIONS)} only")):
-            msj.load(p)
-
-    def test_a_pair_the_release_before_wrote_reads_whole(self, tmp_path):
-        """v17 retired `selection_rules`, so every pair on disk is a v16 file
-        holding it, empty.  It reads as the same structure, and a save drops
-        the key.  THE SILENT FAILURE: every structure a person has refused the
-        day the schema's version moved."""
-        from molbuilder.structure import Structure
-        from molbuilder.workingcopy_structure import StructureCodec
-        struct = Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n")
-        geometry = tmp_path / "pair.xyz"
-        StructureCodec().write(struct, geometry)
-        sidecar = msj.sidecar_path_for(geometry)
-        written = _json.loads(sidecar.read_text(encoding="utf-8"))
-        assert "selection_rules" not in written
-        # AS 2.65.7 WROTE IT.
-        sidecar.write_text(_json.dumps(
-            {**written, "schema_version": 16, "selection_rules": {}}),
-            encoding="utf-8")
-        back = StructureCodec().load(geometry)
-        assert back.metadata_to_dict() == struct.metadata_to_dict()
-        assert back.elements == struct.elements
-        again = tmp_path / "again.xyz"
-        StructureCodec().write(back, again)
-        rewritten = _json.loads(
-            msj.sidecar_path_for(again).read_text(encoding="utf-8"))
-        assert rewritten["schema_version"] == msj.SCHEMA_VERSION
-        assert "selection_rules" not in rewritten
+            msj.load(side)
 
     def test_writes_the_reserved_label_into_the_one_label_store(self, tmp_path):
         """Canonical write: the reserved label is a label, and no top-level
@@ -550,7 +516,7 @@ class TestInfoBlock:
         """
         from molbuilder.workingcopy_structure import StructureCodec
         s = self._struct()
-        s.info = {"calculation": {"engine": "siesta",
+        s.info = {"a_subsystem": {"engine": "siesta",
                                   "contract": {"basis_size": "DZP"}}}
         StructureCodec().write(s, tmp_path / "j.xyz")
         back = StructureCodec().load(tmp_path / "j.xyz")

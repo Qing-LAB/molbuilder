@@ -76,6 +76,15 @@ def test_a_ladder_is_its_five_rungs_every_one(names):
             "electrode_L, electrode_R, device, transmission") in str(got.value)
 
 
+def test_the_k_points_are_counted_as_transiesta_places_them():
+    """`find_kgrid.F`: an even grid holds Gamma and the zone boundary unshifted
+    -- 4 x 4 x 1 is 10 points, 8 with the half-step shift.  THE SILENT FAILURE:
+    a scratch size counted on the grid's 25 where the engine holds 13."""
+    from molbuilder.transport.gf_files import k_points_time_reversed
+    assert k_points_time_reversed([(4, 0.0), (4, 0.0), (1, 0.0)]) == 10
+    assert k_points_time_reversed([(4, 0.5), (4, 0.5), (1, 0.0)]) == 8
+
+
 def test_two_points_in_one_folder_are_refused_by_the_reader():
     """`engines/template.md` § 5.3: each voltage is one device run in a folder
     of its own, so a repeated one is refused by the door every road reads a
@@ -112,10 +121,9 @@ def test_a_kind_on_an_engine_it_does_not_run_on_is_refused_by_the_reader():
 def tree(tmp_path, monkeypatch):
     from molbuilder.projects import PROJECTS_ROOT_ENV
     root = tmp_path / "projects"
-    attempt = (root / "BDT-Au" / "optimization" / "JunctionRelax"
-               / "01_coarse" / "run-2")
-    attempt.mkdir(parents=True)
-    # The refusals below fire before a citation is read.
+    root.mkdir()
+    # The refusals below fire before a citation is read, so no run is made
+    # for one: `_CITE` names a folder nothing ran in, and none is there.
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
     return root
 

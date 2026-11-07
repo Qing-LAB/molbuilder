@@ -60,16 +60,19 @@ def _save(web_client, dest, described):
 
 
 #: A transport calculation's five rungs, in their default groups, and the
-#: relaxation it cites.
+#: relaxation it cites, which no run made: Task setup's Save holds a citation
+#: as a string and opens no run (`api_task_setup_save`, the description's own
+#: checks), so what these tests read stands on none.  What a rung reads once
+#: it is prepared, on a junction a real SIESTA relaxed:
+#: `tests/data/the_transport_deck.toml`.
 _RUNGS = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 _GROUPS = (1, 1, 1, 2, 3)
 _CITE = "J/optimization/relax/01_coarse/run-0"
 
 
-def _transport(*, execution=None, on=None, rung_execution=None):
+def _transport(*, on=None, rung_execution=None):
     """A transport description and its job request as Task setup's Save
-    takes them: ``execution`` the calculation's run card, ``rung_execution``
-    the card of rung ``on``."""
+    takes them, ``rung_execution`` the card of rung ``on``."""
     from molbuilder.identity import run_id
     from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
     from molbuilder.task import SCHEMA as TASK_SCHEMA
@@ -87,8 +90,6 @@ def _transport(*, execution=None, on=None, rung_execution=None):
                                   **({"execution": rung_execution}
                                      if n == on else {}))
                           for n, g in zip(_RUNGS, _GROUPS)}}
-    if execution is not None:
-        request["execution"] = execution
     return task, request
 
 
@@ -176,52 +177,6 @@ def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(
     r = _save(web_client, d, _transport(on="device", rung_execution={
         "gpu_count": 1, "use_gpu": True}))
     assert r.status_code == 200, r.get_json()
-
-
-def test_a_calculation_wide_value_is_taken_by_the_rungs_that_read_it(
-        web_client, isolated_projects_root):
-    """`engines/stages.md` § 6.8d, `execution/gpu.md` § 1.1: a calculation-
-    wide value reaches the rungs the item's ``stages`` names.  A transport
-    calculation run on the GPU is saved, and each SCF rung resolves to a run
-    on one GPU, while the transmission -- `tbtrans` runs on no GPU --
-    resolves to a run on none, its other values kept, so prep's G5 has
-    nothing to refuse there.  Read through prep's two steps for a rung
-    (`resolve.declared_run_shape`, `resolve.card_settings`, then `resolve`), not prep's files: a
-    transport rung is prepared on a finished relaxation, which only the
-    engine makes, and the real junction's e2e runs on the CPU.  Without it
-    the transmission was a GPU job, holding a device it never uses
-    (measured 2026-10-17).
-
-    MUTATION THIS MUST FAIL AGAINST: the calculation's card handed whole to
-    every rung (`JobRequest.run_condition`)."""
-    from molbuilder.calculation import open as open_calculation
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.model import Resources, gpu_request
-    from molbuilder.resolve import card_settings, declared_run_shape, resolve
-    from molbuilder.template import template_with_values
-    from molbuilder.template_file import template_path
-    d = isolated_projects_root / "J" / "transport" / "t"
-    d.mkdir(parents=True)
-    text = template_with_values(SiestaConfig(), engine="siesta",
-                                calculation="transport")
-    template_path(d, "t").write_text(text, encoding="utf-8")
-    r = _save(web_client, d, _transport(execution={
-        "use_gpu": True, "gpu_count": 1, "mpi_np": 4, "omp_threads": 1}))
-    assert r.status_code == 200, r.get_json()
-    calc = open_calculation(d)
-    asked = {}
-    for rung in _RUNGS:
-        shape = declared_run_shape(calc.request, rung)
-        settings = card_settings(calc.request, rung)
-        assert (shape.get("mpi_np"), shape.get("cpus_per_task")) == (4, 1), \
-            (rung, shape)
-        ps = resolve(text, calc.task,
-                     allocation=Resources(**shape), stage=rung,
-                     run_settings=settings)
-        g = gpu_request(ps.elements[0].resources)
-        asked[rung] = (g.uses, g.count)
-    assert asked == {**{rung: (True, 1) for rung in _RUNGS[:-1]},
-                     "transmission": (False, None)}, asked
 
 
 def test_a_relaxation_that_takes_no_step_is_refused(web_client,

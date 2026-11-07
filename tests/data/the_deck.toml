@@ -446,6 +446,70 @@ template = { displacement_amplitude_ang = 0.5 }
 said = ["has no effect here"]
 said_lacks = ["0.02-0.20"]
 
+# A VALUE THE RUN CANNOT USE IS SAID AT PREP, AND ONLY THEN (`engines/vibration.md`
+# § 3.1; user, 2026-09-28).  The pressure: with atoms held the thermochemistry is
+# the vibrational contributions alone; on the free molecule it enters the gas-phase
+# translation.  The frequency window filters the modes `all` selects and nothing
+# else (§ 4.8).
+[[case]]
+name = "with an atom held the pressure enters nothing, and under `skip` the frequency window enters nothing: each said at prep"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { pressure_atm = 10.0, freq_min_cm1 = 500.0 }
+said = ["pressure_atm = 10 atm has no effect here", "freq_min_cm1 = 500 cm⁻¹ has no effect here"]
+
+[[case]]
+name = "...and on the free molecule, under `all`, neither is said"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+structure = { elements = ["H", "H"], positions = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]], cell = [10.0, 10.0, 10.0] }
+template = { pressure_atm = 10.0, es_mode_selection = "all", freq_min_cm1 = 500.0 }
+said_lacks = ["pressure_atm = 10 atm has no effect here", "freq_min_cm1 = 500 cm⁻¹ has no effect here"]
+
+# THE LEVEL OF THEORY IS ONE ANSWER, `is_dft` (`engines/vibration.md` § 4.10): a
+# Hartree-Fock deck, the functional and the grid changed, names no functional and
+# carries no grid; prep says the functional enters nothing, and the grid advisory
+# a hybrid at level 3 draws says nothing.  Dispersion is not a DFT question
+# (`engines/pyscf.md` § 7a; user, 2026-09-28): HF takes it like any method, with
+# no warning.  What the header, the Methods paragraph and the dresser say of it is
+# `tests/test_vibration_render_gate.py`'s: only the program's shape can tell them
+# from the rest of the deck.
+[[case]]
+name = "a Hartree-Fock vibration's prep says the functional enters nothing, with no grid advice, and its constants name no functional and no grid"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { method = "HF", functional = "PBE0", dispersion = "d4", grid_level = 3 }
+said = ["functional = 'PBE0' has no effect here"]
+said_lacks = ["dispersion =", "Grid level"]
+made = ["01_freq/H2_01_freq.py"]
+deck = ["FUNCTIONAL = None", "GRID_LEVEL = None", "DISPERSION = 'd4'"]
+
+[[case]]
+name = "...and dispersion none on it is said no differently, its constant none"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { method = "HF", functional = "PBE0", dispersion = "none", grid_level = 3 }
+said = ["functional = 'PBE0' has no effect here"]
+said_lacks = ["dispersion =", "Grid level"]
+deck = ["DISPERSION = 'none'"]
+
+# THE LISTED MODES ARE READ AT PREP, by the one index-list reader
+# (`PySCFConfig.explicit_modes`; `engines/vibration.md` § 4.8): the modes count
+# from 1.  What a list of modes the run does not have does is the run's
+# (`test_vibration_e2e.py`).
+[[case]]
+name = "a PySCF vibration's list of modes that does not read is refused at prep, before a deck exists"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+template = { es_mode_selection = "explicit", es_explicit_indices = "0, 2" }
+refused = "can't be read: 0 is below 1"
+made_lacks = ["01_freq/H2_01_freq.py"]
+
 [[case]]
 name = "a PySCF vibration's probe set to listed modes and listing none is said at prep: no per-mode data will come"
 engine = "pyscf"

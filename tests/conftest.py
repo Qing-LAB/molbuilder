@@ -1421,6 +1421,12 @@ def real_h2_layered(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
+def real_h2_one_group(tmp_path_factory):
+    from support.real_runs import one_group
+    return one_group(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
 def real_h2_gpu(tmp_path_factory):
     from support.real_runs import gpu
     return gpu(tmp_path_factory)
@@ -1445,9 +1451,39 @@ def real_h2_pyscf(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def real_au_bdt_au(tmp_path_factory):
-    from support.real_runs import au_bdt_au_relaxed
-    return au_bdt_au_relaxed(tmp_path_factory)
+def real_held_water_pyscf(tmp_path_factory):
+    from support.real_runs import held_water_pyscf
+    return held_water_pyscf(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_water_vibration(tmp_path_factory):
+    from support.real_runs import water
+    return water(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_water_held(tmp_path_factory):
+    from support.real_runs import water_held
+    return water_held(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_water_probed(tmp_path_factory):
+    from support.real_runs import water_probed
+    return water_probed(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_water_linear(tmp_path_factory):
+    from support.real_runs import water_linear
+    return water_linear(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_bridged_chain(tmp_path_factory):
+    from support.real_runs import bridged_chain_relaxed
+    return bridged_chain_relaxed(tmp_path_factory)
 
 
 @pytest.fixture(scope="session")

@@ -1,0 +1,74 @@
+# WHAT A STAGE THAT HAS RUN STILL TAKES, AND WHAT IT REFUSES -- `docs/execution/
+# job-system.md` § 5.0, `execution/job-request.md` § 5, `web/task-setup.md` § 5,
+# § 8 (user, 2026-10-21, 2026-10-25, 2026-10-27).
+#
+# Every row starts from a calculation a real SIESTA ran, on a copy of its own:
+# `tests/test_a_stage_that_has_run_e2e.py` runs each through the runner every
+# contract table shares (`tests/support/road.py`, `run_road_case`, whose header
+# names each key).  `on` names the run:
+#
+# * `layered` -- `real_h2_layered`: `coarse` launched three times, `medium` on
+#   it once, each its own group and each first launch saving the folder's state;
+# * `one_group` -- `real_h2_one_group`: `coarse` and `medium` launched as one
+#   job, once;
+# * `short_of_its_relaxation` -- `real_co2_vibration`, `freq` launched again cold
+#   under a wall already passed: run-0 has its relaxation done, run-1 has not.
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+# ===================================================================== #
+#  ITS JOB REQUEST, AND WHAT IT COMPUTES                                 #
+# ===================================================================== #
+
+[[case]]
+name = "a launched group is prepared again for its job request -- its runs kept, no run opened, each deck the same calculation as the one its run ran"
+on = "layered"
+changed = { execution = { mpi_np = 4, omp_threads = 1 } }
+kept = ["01_coarse/run-0/H2_01_coarse.fdf", "01_coarse/run-0/run.json", "01_coarse/run-2/H2_01_coarse.fdf", "01_coarse/run-2/run.json"]
+# ...and no progress log left beside the stage's deck, which no run writes:
+# a log with no closing line reads as a run still going.
+made_lacks = ["01_coarse/run-3", "01_coarse/H2_01_coarse.molwatch.log"]
+said = ["prepared coarse again: launched -- its runs are kept", "mpi_np 4",
+        "at its next launch: launched again, it continues from its own latest run, or `--cold` starts it over"]
+
+[[case]]
+name = "...and a change to what it computes is refused at Save, nothing saved or written -- naming the stage, what differs and the way back, which starts the group from the beginning: the folder saved as it stands, the state saved before its first launch restored by its id, its prep (task-setup.md 8; the user, 2026-10-25, 2026-10-27)"
+on = "layered"
+changed = { overrides = { coarse = { mesh_cutoff = 400.0 } } }
+change_refused = ["`coarse` has run", "mesh_cutoff", "start group 1 (coarse) from the beginning", "molbuilder checkpoint save -p", "molbuilder jobset prep task --group 1"]
+restores_state = "before launch task group 1 (coarse)"
+
+[[case]]
+name = "...and a launched member given another group is refused at Save, naming it and the way back -- the group's members are fixed (task-setup.md 5)"
+on = "one_group"
+regrouped = [1, 2]
+regroup_refused = ["`coarse` was launched in one job with `medium`, and group 1 now holds `coarse` without it", "put `medium` back beside `coarse` in one group"]
+
+[[case]]
+name = "...and a stage that has run is not taken out of the description: Save refuses it, naming the stage and the way back (task-setup.md 8, 9)"
+on = "one_group"
+removed = ["medium"]
+change_refused = ["`medium` has run", "taken out of the description", "start group 1 (coarse, medium) from the beginning"]
+
+[[case]]
+name = "...and `prep task` naming no group, on a calculation whose every group has run and is unchanged, offers none and says how to see where each stands"
+on = "one_group"
+stage = ""
+refused = ["it offers no group", "molbuilder jobset status"]
+
+# ===================================================================== #
+#  WHAT A LATER STAGE TAKES FROM IT (`engines/vibration.md` § 5.9)       #
+# ===================================================================== #
+
+[[case]]
+name = "a later stage's --from naming a run of the first whose relaxation is not done is refused, naming the ways on -- a run that has it, or --cold"
+on = "short_of_its_relaxation"
+added = [{ name = "freq_half", overrides = { fc_displacement = 0.02 } }]
+stage = "freq_half"
+launch = ["--from", "01_freq/run-1"]
+launch_stage = "freq_half"
+launch_mode = "direct"
+launch_refused = ["`freq_half` takes the relaxation over from the run it continues from, and 01_freq/run-1 holds none of it done", "--from 01_freq/run-0", "--stage freq_half --cold"]
+launch_writes_nothing = true

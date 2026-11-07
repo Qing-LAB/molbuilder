@@ -1,7 +1,6 @@
 """L2 tests for the sidecar FileParsers: what molbuilder's writers write, the
 registry claims, under the right parser and schema tag.  A vibration's
-`.spectra.json` is asked in `tests/spectra/test_parsers_json.py`, beside the
-results that writer takes.
+`.spectra.json` is asked in `tests/test_spectrum_results_e2e.py`, on a real run's.
 """
 
 from __future__ import annotations

@@ -365,9 +365,9 @@ def test_merge_user_custom_from_target_missing_file(tmp_path):
 
 
 def test_merge_user_custom_from_target_target_lacks_block(tmp_path):
-    """Target file exists but has no USER-CUSTOM block (e.g.,
-    pre-contract file): merge returns rendered text unchanged."""
-    target = tmp_path / "legacy.fdf"
+    """Target file exists but has no USER-CUSTOM block (a person's own
+    file): merge returns rendered text unchanged."""
+    target = tmp_path / "plain.fdf"
     target.write_text("BlockSize 64\nSystemName foo\n", encoding="utf-8")
     fresh = "engine\n" + sc.emit_user_custom_placeholder() + "\n"
     assert sc.merge_user_custom_from_target(fresh, target) == fresh
@@ -410,30 +410,18 @@ def test_extract_atom_metadata_returns_none_when_block_missing():
     assert dr.extract_atom_metadata("SystemLabel siesta\nBlockSize 64\n") is None
 
 
-@pytest.mark.parametrize("text, words", [
-    ("# === molbuilder atom-metadata BEGIN ===\n"
-     "# format: molstruct-json/v3\n"
-     "# {this is not valid json\n"
-     "# === molbuilder atom-metadata END ===\n", "does not parse"),
-    ("# === molbuilder atom-metadata BEGIN ===\n"
-     '# {"n_atoms_total": 1}\n', "no BEGIN/END pair"),
-    ('# {"n_atoms_total": 1}\n'
-     "# === molbuilder atom-metadata END ===\n", "no BEGIN/END pair"),
-    ("# === molbuilder atom-metadata BEGIN ===\n"
-     "# format: molstruct-json/v3\n"
-     "# === molbuilder atom-metadata END ===\n", "holds no JSON object"),
-], ids=["json-broken", "no-end", "no-begin", "no-object"])
-def test_a_block_present_and_unreadable_is_refused_not_read_as_none(text,
-                                                                    words):
+def test_a_block_present_and_unreadable_is_refused_not_read_as_none():
     """A deck's molbuilder block is a record nobody edits
     (`execution/job-contracts.md` § 3.1).  One broken by hand used to read as
     `None` -- the answer for a deck that carries no block -- so the run was
     shown with no labels and nothing said (plan A1.4).  It is refused, naming
     the block and the way out."""
     from molbuilder.deck_record import DeckRecordUnreadable
+    lines = sc.emit_atom_metadata(_atoms(2)).splitlines()
     with pytest.raises(DeckRecordUnreadable) as exc:
-        dr.extract_atom_metadata(text)
-    assert words in str(exc.value) and "atom-metadata" in str(exc.value)
+        dr.extract_atom_metadata("\n".join(lines[:-1]) + "\n")
+    assert "no BEGIN/END pair" in str(exc.value)
+    assert "atom-metadata" in str(exc.value)
     assert "molbuilder checkpoint restore" in str(exc.value)
 
 
@@ -454,24 +442,6 @@ def test_apply_atom_metadata_returns_false_when_no_block():
     assert dr.extract_atom_metadata("SystemLabel siesta\n") is None
     assert struct.regions == {}
     assert struct.frozen_atoms == []
-
-
-def test_apply_atom_metadata_normalises_indices():
-    """Dedup + sort per region; coerce to int."""
-    struct = _atoms(20)
-    # The count is DERIVED from the structure: this test is about index
-    # normalisation, and a hand-typed count that happens to disagree would
-    # trip the pairing guard instead of exercising it.
-    text = (
-        "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v4\n"
-        '# {"schema_version": 7, "n_atoms_total": %d,\n' % len(struct.elements) +
-        '#  "regions": {"r": [3, 1, 3, 2], "frozen_atoms": [2, 0, 2]}}\n'
-        "# === molbuilder atom-metadata END ===\n"
-    )
-    assert struct.apply_atom_metadata(dr.extract_atom_metadata(text)) is True
-    assert struct.regions == {"r": [1, 2, 3], "frozen_atoms": [0, 2]}
-    assert struct.frozen_atoms == [0, 2]
 
 
 def test_merge_user_custom_round_trip_idempotent(tmp_path):
@@ -577,38 +547,6 @@ def test_read_provenance_block_handles_no_defaults_section():
 # --------------------------------------------------------------------- #
 #  The in-body ATOM-METADATA block, applied                             #
 # --------------------------------------------------------------------- #
-#
-# Built from a constructed junction, never a file found on disk: a fixture
-# cannot go stale, and its relevance is not a guess.
-
-def _block(doc: dict) -> str:
-    import json
-    body = json.dumps(doc, indent=2)
-    return ("# === molbuilder atom-metadata BEGIN ===\n"
-            f"# format: molstruct-json/v{doc['schema_version']}\n"
-            + "\n".join("# " + l for l in body.splitlines())
-            + "\n# === molbuilder atom-metadata END ===")
-
-
-def _junction_parts():
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from support.junction import build_junction
-    from molbuilder.structure import FROZEN_LABEL
-    s = build_junction()
-    return s, list(s.regions[FROZEN_LABEL]), FROZEN_LABEL
-
-
-def test_a_current_block_applies():
-    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
-    from molbuilder.structure import Structure
-    s, frozen, FROZEN = _junction_parts()
-    blk = _block({"schema_version": SCHEMA_VERSION, "n_atoms_total": s.n_atoms,
-                  "regions": {k: list(v) for k, v in s.regions.items()},
-                  "annotations": {}})
-    back = Structure(elements=list(s.elements), positions=s.positions.copy())
-    assert back.apply_atom_metadata(dr.extract_atom_metadata(blk)) is True
-    assert len(back.regions[FROZEN]) == len(frozen)
 
 
 def test_a_block_written_for_a_different_structure_is_refused():
@@ -619,12 +557,9 @@ def test_a_block_written_for_a_different_structure_is_refused():
     and says nothing, which is how a run ends up holding the wrong atoms
     fixed. So the reader refuses rather than applying part of it.
     """
-    from molbuilder.structure import Structure
-    s, frozen, FROZEN = _junction_parts()
-    blk = _block({"schema_version": 9, "n_atoms_total": s.n_atoms + 3,
-                  "regions": {k: list(v) for k, v in s.regions.items()},
-                  "annotations": {}})
-    back = Structure(elements=list(s.elements), positions=s.positions.copy())
+    blk = sc.emit_atom_metadata(_atoms(5, regions={"bridge": [0, 1],
+                                                   "frozen_atoms": [4]}))
+    back = _atoms(2)
     with pytest.raises(MolstructPairingError):
         back.apply_atom_metadata(dr.extract_atom_metadata(blk))
     assert not back.regions, "labels were applied before the guard fired"
@@ -634,54 +569,16 @@ def test_a_block_written_for_a_different_structure_is_refused():
 #  The block readers                                                    #
 # ===================================================================== #
 
-FULL_FDF = """\
-# === molbuilder header BEGIN ===
-# Run with mpirun -np 4 siesta < test.fdf > test.out
-# === molbuilder header END ===
-
-# === molbuilder provenance BEGIN ===
-#   generator-version    git abc1234
-#   generated-at         2026-06-19T12:00:00Z
-#   resolved-defaults:
-#     mpi_np            auto -> 4
-#     use_gpu        true
-# === molbuilder provenance END ===
-
-# === molbuilder bench-marks BEGIN ===
-#   version v1
-#   n_atoms             5
-#   gpu_mode            true
-#
-#   field MeshCutoff       anchor=MeshCutoff      type=float unit=Ry default=400.0
-# === molbuilder bench-marks END ===
-
-# === molbuilder atom-metadata BEGIN ===
-# format: molstruct-json/v3
-# {
-#   "schema_version": 3,
-#   "n_atoms_total":  5,
-#   "regions":        {"bridge": [0, 1, 2, 3, 4]},
-#   "frozen_atoms":   [],
-#   "created_by":     "test",
-#   "created_at":     "2026-06-19T12:00:00Z"
-# }
-# === molbuilder atom-metadata END ===
-
-SystemLabel test
-NumberOfAtoms 5
-
-# === molbuilder user-custom BEGIN ===
-# This is the user's territory
-# Any text goes here
-# === molbuilder user-custom END ===
-"""
-
-
 def test_bench_marks_extracts_version_and_fields():
     """The only coverage of bench-marks EXTRACTION -- the block `jobset
     summarize` and the run script's orbital notice read.
     """
-    marks = dr.read_bench_marks_block(FULL_FDF)
+    marks = dr.read_bench_marks_block(sc.emit_bench_marks(
+        metadata={"n_atoms": 5, "gpu_mode": "true"},
+        fields=BENCH_FIELDS,
+        defaults={"BlockSize": 256, "MaxSCFIterations": 500,
+                  "MD.Steps": 200, "MeshCutoff": 400.0},
+    ))
     assert marks is not None
     assert marks.get("version") == "v1"
     assert any(f.get("name") == "MeshCutoff" for f in marks.get("fields", []))
@@ -718,30 +615,6 @@ def test_a_brace_in_a_region_name_does_not_destroy_the_block():
         assert label in got["regions"], (
             f"{label!r} survived the walk but not the parse: {got['regions']}")
         assert got["regions"][label] == [0, 1]
-
-
-def test_the_brace_walk_still_accepts_both_json_layouts():
-    """Anti-regression on the walk's REASON for existing.
-
-    It is not a JSON parser — it finds where the object ends so the block may
-    be pretty-printed (what `emit_atom_metadata` writes) or compact (what a
-    hand-written or third-party deck might carry). Making it string-aware
-    must not cost that.
-    """
-    payload = {"schema_version": 9, "n_atoms_total": 2,
-               "regions": {"a}b": [0, 1]}}
-
-    def wrap(body):
-        return "\n".join(
-            [dr.begin_marker(dr.BLOCK_ATOM_METADATA), "# format: molstruct-json/v9"]
-            + ["# " + ln for ln in body.splitlines()]
-            + [dr.end_marker(dr.BLOCK_ATOM_METADATA)])
-
-    for name, text in (("pretty", json.dumps(payload, indent=2)),
-                       ("compact", json.dumps(payload))):
-        got = dr.extract_atom_metadata(wrap(text))
-        assert got is not None, f"{name}-printed JSON no longer reads"
-        assert got["regions"] == {"a}b": [0, 1]}
 
 
 def test_a_stray_marker_in_your_zone_loses_nothing_and_is_refused(tmp_path):

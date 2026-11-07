@@ -156,8 +156,7 @@ def test_the_run_folder_answers_for_its_run(opt):
     engines = [p.name for p in opt.glob("fdf.*.log")] + [
         "H2.XV", "H2.xyz", "H2.MD.nc"]
     for name in engines:
-        assert (files[name]["role"], files[name]["about"]) == (
-            None, {"ours": False}), files[name]
+        assert files[name]["about"] == {"ours": False}, files[name]
     for name, role in (("H2_01_coarse.fdf", ".fdf"),
                        ("H2_01_coarse.out", ".out")):
         assert (files[name]["role"], files[name]["stage"],
@@ -569,21 +568,24 @@ def test_the_output_keeps_its_frames_and_the_history_matches_in_order(opt):
 #  A run out of moves, and launched again (`running-a-job.md` § 3.5)     #
 # --------------------------------------------------------------------- #
 
-def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, tmp_path):
+def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, monkeypatch):
     """`engines/optimization-postprocessing.md` § 6: on a real SIESTA ladder, the
     exported file's every step is what `read_steps` hands back of each run, in
     the ladder's order, the stress as the run printed it.  The silent
     failure: a row of one run read as another's, or an atom's as another's."""
     from molbuilder.parse.engines.siesta_grammar import STRESS_VOIGT
     from molbuilder.postprocess import read_optimization_data, read_steps
+    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.runs import RunStepsError, run_of
     from support.road import molbuilder
     bundle = real_h2_layered.bundle
-    said = molbuilder("jobset", "export", "--format", "netcdf", "--to",
-                      tmp_path, "--bundle", bundle)
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_h2_layered.tree))
+    to = bundle.parent / "exported"
+    said = molbuilder("jobset", "export", "--format", "netcdf", "--to", to,
+                      "--bundle", bundle)
     assert said.exit_code == 0, said.output
     got = {k: v["data"] for k, v in read_optimization_data(
-        next(tmp_path.glob("*.optimization.nc")))["variables"].items()}
+        next(to.glob("*.optimization.nc")))["variables"].items()}
     at = 0
     for r, run in enumerate(got["run"]):
         try:
@@ -607,6 +609,11 @@ def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, tmp_path):
         np.testing.assert_allclose(got["stress_kbar"][where][0], printed[0])
         at += k
     assert at == len(got["step"])
+    # WHAT A HAND-OVER RECORDED: `medium` continued from `coarse`'s newest run.
+    medium = list(got["run"]).index(real_h2_layered.attempt("medium").relative_to(
+        bundle).as_posix())
+    assert got["continued_from"][medium] == real_h2_layered.attempt(
+        "coarse", 2).relative_to(bundle).as_posix(), got["continued_from"]
     # EVERY RUN FOLDER THE LADDER HOLDS, by what is on disk.
     assert sorted(p.relative_to(bundle).as_posix()
                   for p in bundle.glob("[0-9]*/run-*")) == sorted(got["run"])

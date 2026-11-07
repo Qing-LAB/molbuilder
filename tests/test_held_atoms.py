@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -49,30 +48,37 @@ def test_a_data_file_of_another_schema_is_not_read_as_an_optimizations(tmp_path)
         read_optimization_data(other)
 
 
-def test_a_force_block_still_being_written_states_no_figure():
-    """`contract.force_figures`: the largest force of a step is over its atoms,
-    the held ones left out of the second figure, and a block with rows for only
-    some of them answers neither, so a relaxation's record stands on the step
-    before it.  The silent failure: the largest of the rows written so far read
-    as the step's, `converged` on a real run whose figure was 0.0185 eV/Å against
-    a tolerance of 0.01."""
-    from molbuilder.frame import Frame
-    from molbuilder.parse.contract import force_figures, relaxation_of_output
-    from molbuilder.structure import Structure
-    from molbuilder.trajectory_log.keys import MAX_FORCE_TOL
+def test_an_export_before_any_run_has_finished_a_step_is_refused(tmp_path,
+                                                                 monkeypatch):
+    """`engines/optimization-postprocessing.md` § 6: nothing to export is said,
+    and nothing written.  The silent failure: an empty data file a person
+    takes for a result."""
+    from support.road import describe_calculation, molbuilder, prep_groups
+    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf")
+    prep_groups(bundle, "1")
+    to = bundle.parent / "too_soon"
+    refused = molbuilder("jobset", "export", "--format", "netcdf", "--to", to,
+                         "--bundle", bundle)
+    assert refused.exit_code != 0, refused.output
+    assert "holds no step a run has finished" in refused.output
+    assert not to.exists()
 
-    def step(index, forces):
+
+def test_the_force_figures_are_over_every_atom_and_the_atoms_moved():
+    """The two figures of one step: the largest component over every atom, and
+    over the atoms not held; every atom held has no second figure, and a step
+    whose rows are not all there has neither (the real output cut mid-block is
+    `test_siesta_relax_run_e2e.py`'s)."""
+    from molbuilder.frame import Frame
+    from molbuilder.parse.contract import force_figures
+    from molbuilder.structure import Structure
+
+    def step(forces):
         return Frame(structure=Structure(elements=["H", "O", "F"],
                                          positions=np.zeros((3, 3))),
-                     step_index=index, forces=np.array(forces))
-    whole = step(0, [[0.0, 0.0, 9.0], [0.5, -0.2, 0.0], [0.0, 0.1, 0.0]])
-    torn = step(1, [[0.0, 0.0, 9.0], [0.001, 0.0, 0.0]])
+                     step_index=0, forces=np.array(forces))
+    whole = step([[0.0, 0.0, 9.0], [0.5, -0.2, 0.0], [0.0, 0.1, 0.0]])
+    torn = step([[0.0, 0.0, 9.0], [0.001, 0.0, 0.0]])
     assert force_figures(whole, [0]) == (9.0, 0.5)
     assert force_figures(whole, [0, 1, 2]) == (9.0, None)
     assert force_figures(torn, [0]) == (None, None)
-    record = relaxation_of_output("job.out", SimpleNamespace(
-        frames=[whole, torn], run_state="running",
-        runtime_info={"frozen_atoms": [0],
-                      "convergence_targets": {MAX_FORCE_TOL: 0.01}}))
-    assert record["max_force_free_ev_ang"] == 0.5
-    assert record["converged"] is False

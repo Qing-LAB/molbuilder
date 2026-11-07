@@ -20,8 +20,6 @@ prep`'s (`support.road`).  The rules a road row holds:
 """
 from __future__ import annotations
 
-import pytest
-
 from conftest import write_pseudos
 from support.road import (CO2, H2, STRUCTURE, describe_calculation,
                           group_words, jobset, molbuilder, one_rank, stage_file)
@@ -138,22 +136,6 @@ def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(
     assert CURRENT in r.output, r.output
     after = sorted(p.relative_to(calc) for p in calc.rglob("*") if p.is_file())
     assert after == before, set(after) ^ set(before)
-
-
-@pytest.mark.parametrize("now, changed", [
-    (["frame 1 of 2 · 0 V", "frame 2 of 2 · 0 V"], False),
-    (["frame 1 of 2 · 0 V", "frame 2 of 2 · 0 V", "frame 1 of 2 · 0.2 V"], True),
-], ids=["only reworded", "a voltage added"])
-def test_a_record_from_before_it_held_folders_still_compares_its_points(
-        now, changed):
-    """`job-system.md`, *Changed since prepared*: a stage prepared before 2.67.2
-    holds its points in the words of then, as a real frame set's record does.
-    THE SILENT FAILURE: a voltage added, no change said, and the launch running
-    the old points; or every such frame set called changed for a rewording."""
-    from molbuilder.jobset.prepared_with import POINTS, differences
-    was = {"points": ["frame index 0 (of 2) · 0 V", "frame index 1 (of 2) · 0 V"]}
-    found = differences(was, {"points": now, "point_folders": ["a"]})
-    assert [d.kind for d in found] == ([POINTS] if changed else []), found
 
 
 def test_a_template_that_does_not_read_is_refused_by_migrate(tmp_path,

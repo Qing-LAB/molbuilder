@@ -9,8 +9,6 @@ Pins:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from molbuilder.parse import (
@@ -23,33 +21,22 @@ from molbuilder.parse.base import FileParser
 from molbuilder.parse.registry import _FILE_PARSERS
 
 
-REPO = Path(__file__).resolve().parents[1].parent
-MOLSTRUCT_FX = REPO / "tests" / "data" / "au_bdt_au.molstruct.json"
-
-
-def _need(p: Path) -> Path:
-    """Assert the fixture is there.
-
-    Every fixture it guards is COMMITTED under tests/ -- so absence means a
-    broken checkout or a deleted file, and a missing committed fixture is a
-    failure, loudly.
-    """
-    assert p.exists(), (
-        f"committed fixture missing: {p}.  It is versioned with these tests; "
-        f"a checkout without it is broken, not a reason to skip.")
-    return p
-
-
 # ---- AmbiguousFormatError code path ----------------------------- #
 
 
-def test_registry_ambiguous_raises():
+def test_registry_ambiguous_raises(tmp_path):
     """`model/parse.md` § 3: `detect()` raises `AmbiguousFormatError` when
     more than one parser claims a path.  Register a
     bogus FileParser that claims the same path as molstruct, then
     confirm detect() raises AmbiguousFormatError.  Cleans up after
     itself so the real registry survives."""
-    p = _need(MOLSTRUCT_FX)
+    from molbuilder.sidecars import molstruct
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    h2 = tmp_path / "h2.xyz"
+    StructureCodec().write(Structure(elements=["H", "H"],
+                                     positions=[[0, 0, 0], [0, 0, 0.74]]), h2)
+    p = molstruct.sidecar_path_for(h2)
 
     class _GreedyParser(FileParser):
         name = "_test-greedy"

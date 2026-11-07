@@ -8,7 +8,8 @@ beside the transport data file's `energy_ev`), or an axis a reader cannot
 select by value -- each found only by a person whose script breaks on one
 file and not the other.  The writer is the one door every data file goes
 through, so its refusal is the rule's whole enforcement; the files' own
-tests write through it (`tests/spectra/test_datafile.py`, the transport e2e).
+tests write through it (`tests/test_spectrum_results_e2e.py`, the transport
+e2e).
 """
 from __future__ import annotations
 

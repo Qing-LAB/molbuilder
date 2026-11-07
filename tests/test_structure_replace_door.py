@@ -90,7 +90,8 @@ class TestTheDerivedCopyIsACopy:
     the structure it returns shares ``positions``, ``cell`` and the ``info``
     dict with its source — writing to one writes to the other; enumerating
     fields in order to copy them is how fields come to be forgotten
-    (`model/structure.md` § 2.2a).
+    (`model/structure.md` § 2.2a).  ``info``, on the record a real run left:
+    `test_an_edit_on_a_recorded_structure_e2e.py`.
     """
 
     @pytest.fixture
@@ -99,8 +100,7 @@ class TestTheDerivedCopyIsACopy:
             elements=["C", "H"], positions=np.array([[0.0, 0.0, 0.0],
                                                      [0.0, 0.0, 1.1]]),
             cell=np.diag([8.0, 8.0, 8.0]),
-            engine_offset=np.array([1.0, 1.0, 1.0]),
-            info={"calculation": {"contract": {"mesh_cutoff_ry": 400}}})
+            engine_offset=np.array([1.0, 1.0, 1.0]))
 
     def test_writing_to_the_derived_copy_does_not_reach_the_source(
             self, carrying):
@@ -108,24 +108,17 @@ class TestTheDerivedCopyIsACopy:
         out.positions[0, 0] = 7.0
         out.cell[0, 0] = 99.0
         out.engine_offset[0] = 5.0
-        out.info["calculation"]["contract"]["mesh_cutoff_ry"] = 1
         assert carrying.positions[0, 0] == 0.0
         assert carrying.cell[0, 0] == 8.0
         assert carrying.engine_offset[0] == 1.0
-        assert (carrying.info["calculation"]["contract"]["mesh_cutoff_ry"]
-                == 400), "the nested info dict was shared, not copied"
 
-    def test_info_travels_through_a_change_nobody_named_it_in(self, carrying):
+    def test_the_stated_offset_travels_through_a_change_nobody_named_it_in(
+            self, carrying):
         """§ 2.2a: it travels; a strip is explicit, never a field a
         rebuild forgot."""
         out = carrying.replace(positions=carrying.positions + 1.0)
-        assert out.info["calculation"]["contract"]["mesh_cutoff_ry"] == 400
         assert out.engine_offset is not None and np.allclose(
             out.engine_offset, [1.0, 1.0, 1.0]), "the stated offset went with it"
-
-    def test_a_strip_is_something_a_caller_says(self, carrying):
-        assert carrying.replace(info={}).info == {}
-        assert carrying.info, "stripping the copy emptied the source"
 
 
 def test_replace_carries_every_field_the_dataclass_declares():
@@ -157,7 +150,7 @@ def test_replace_carries_every_field_the_dataclass_declares():
         axis_kind=("periodic", "isolated", "transport"),
         vacuum=(1.0, 2.0, 0.0),
         regions={"lead": [0], FROZEN_LABEL: [1]},
-        info={"calculation": {"engine": "siesta"}},
+        info={"a_subsystem": {"a_value": 1}},
     )
     out = s.replace(title="derived")          # one field stated, no more
 

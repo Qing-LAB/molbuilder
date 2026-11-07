@@ -12,8 +12,9 @@ is what resolves the IR prefactor's NOT-VALIDATED flag at the band level
 later, and the item's help says so).
 
 Needs the ``molbuilder-pySCF`` env + conda hook on this machine; skipped
-cleanly anywhere else.  Wall cost ~1 min total (water is 17 s a run); a plain water run is made once
-for every test that reads one (:func:`water`).
+cleanly anywhere else.  Wall cost ~1 min total (water is 17 s a run); a run
+another module reads too is made once, in `support.real_runs` (:func:`water`,
+``real_water_held``, ``real_water_probed``).
 """
 from __future__ import annotations
 
@@ -124,35 +125,19 @@ def _prep_and_run(bundle):
     return json.loads(art.read_text())
 
 
+def _as_written(run):
+    """A shared run's calculation folder, and its result as the run wrote it."""
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    return run.bundle, json.loads(
+        on_label_at(run.attempt("freq"), ROLE_SPECTRA).read_text())
+
+
 @pytest.fixture(scope="module")
-def water(tmp_path_factory):
-    """Free water's vibration, described, prepared and launched once for
-    every test that reads a plain water run (`process/testing.md` tier 3:
-    each run made once a pass) -- a converged SCF asked to be told, as a
-    person asks it in the job request.  The bundle and its result; the
-    process environment as it was, after."""
-    from conftest import outside_the_developers_folders
-    mp = pytest.MonkeyPatch()
-    try:
-        outside_the_developers_folders(mp.setenv, mp.delenv,
-                                       tmp_path_factory)
-        bundle = _describe(tmp_path_factory.mktemp("water"), mp)
-        # RAMAN ASKED, INFRARED NOT -- the polarizability sweep is the run
-        # this fixture is for (both defaults are the other way round,
-        # `engines/vibration.md` § 3.1), stated as the person states it.
-        _asks(bundle, compute_raman=True, compute_ir=False)
-        # A converged SCF is worth a message (`stages.md` § 6.9's
-        # neighbour, `notify.on_scf_converged`): asked for the way a person
-        # asks, so the monitor beside the run is told to send them.
-        from support.road import read_request, write_request
-        request = read_request(bundle)
-        request["notify"] = {"on_scf_converged": True, "every_hours": None,
-                             "channels": ["*"], "report": ["*"]}
-        write_request(bundle, request)
-        d = _prep_and_run(bundle)
-    finally:
-        mp.undo()
-    return bundle, d
+def water(real_water_vibration):
+    """Free water's vibration, Raman asked and infrared not, a converged SCF
+    asked to be told (`support.real_runs.water`): the bundle and its result."""
+    return _as_written(real_water_vibration)
 
 
 def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
@@ -229,9 +214,9 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
     # The geometry in the file is the one the Hessian was taken at -- the
     # RELAXED one, not the input (§ 4.2): the relaxation moved
     # atoms, so the two must differ.
-    from molbuilder.structure import Structure
+    from support.road import WATER as ROAD_WATER, road_structure
     _moved = np.abs(np.asarray(d["structure"]["positions"])
-                    - Structure.from_xyz(WATER).positions).max()
+                    - road_structure(ROAD_WATER).positions).max()
     assert _moved > 1e-4, f"the structure is still the input geometry ({_moved})"
 
     # Water's three modes at B3LYP/def2-SVP (harmonic): bend ~1639,
@@ -369,8 +354,7 @@ def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
     assert overlap[2] == pytest.approx(1.0, abs=1e-9)
 
 
-def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
-        tmp_path, monkeypatch):
+def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(real_water_probed):
     """The 2026-08-20 ruling executed: IR without Raman (a dipole read per
     displacement), and the intensities in water's literature windows at
     B3LYP/def2-SVP -- bend strongest (~55 km/mol), asym stretch middle
@@ -379,9 +363,7 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     enough for method/BLAS wiggle and narrow enough that a wrong
     prefactor (off by any structural factor) cannot pass."""
     # The defaults: infrared on, Raman off (`engines/vibration.md` § 3.1).
-    bundle = _describe(tmp_path, monkeypatch)
-
-    d = _prep_and_run(bundle)
+    _bundle, d = _as_written(real_water_probed)
     modes = sorted(d["modes"], key=lambda m: m["frequency_cm1"])
     ir = [m["ir_intensity_km_mol"] for m in modes]
     assert all(v is not None for v in ir), "IR-only must fill every mode"
@@ -608,7 +590,7 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
             assert all(abs(o - 1.0) < 1e-6 for o in r["overlaps"]), (name, r["overlaps"])
 
 
-def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
+def test_water_with_its_oxygen_held_reports_three_vibrations(real_water_held,
                                                              monkeypatch):
     """The demonstrator (`science/normal-modes.md` § 7, the water row with
     O held; `engines/vibration.md` § 4.4, § 4.7): hold water's oxygen
@@ -621,11 +603,12 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     the held molecule's column is its stored dipole change read along the
     light, the three axes averaging back to the file's own intensity
     (`engines/vibration.md` § 4.6)."""
-    bundle = _describe(tmp_path, monkeypatch, frozen=(0,))
     # INFRARED ON -- the default -- so the held molecule's column is read
     # along the light (`engines/vibration.md` § 4.6): finite-difference
     # dipoles, the held route's, twelve small SCFs.
-    d = _prep_and_run(bundle)
+    bundle, d = _as_written(real_water_held)
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_water_held.tree))
 
     # THE HELD ATOMS are the structure's own label (schema 9).
     from molbuilder.structure import Structure
@@ -756,167 +739,17 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
         assert route == "finite-difference" and dmu_none == "True", (name, route)
 
 
-def test_a_setting_that_enters_nothing_is_said_to_at_prep(tmp_path,
-                                                          monkeypatch):
-    """`engines/vibration.md` § 3.1 (user, 2026-09-28): a value the person set
-    that the run cannot use is warned about at prep -- and only then.
-
-    * The PRESSURE: with atoms held the thermochemistry is the vibrational
-      contributions alone and no pressure enters it; on the free molecule
-      it enters the gas-phase translation, and nothing is said.
-    * The FREQUENCY WINDOW: it filters the modes `all` selects and nothing
-      else (§ 4.8); set under `skip` it is said to do nothing, under `all`
-      it is not.
-
-    Prep alone; nothing is launched.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the pressure warning keyed on the
-    pressure alone (it would speak for the free molecule too); the window
-    warning keyed on the window alone (it would speak under `all`).
-    """
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    said = {}
-    for held, selector in (((0,), '"skip"'), ((), '"all"')):
-        sub = tmp_path / ("held" if held else "free")
-        sub.mkdir()
-        bundle = _describe(sub, monkeypatch, frozen=held)
-        tpl = bundle / "W.template.toml"
-        t = tpl.read_text()
-        for item, old, new in (("pressure_atm", "value = 1.0", "value = 10.0"),
-                               ("es_mode_selection", 'value = "skip"',
-                                f"value = {selector}")):
-            i = t.index(f"[item.{item}]"); j = t.index("[item.", i + 1)
-            assert old in t[i:j], t[i:j]
-            t = t[:i] + t[i:j].replace(old, new, 1) + t[j:]
-        # the window is valueless until set: its value line goes in first
-        i = t.index("[item.freq_min_cm1]"); j = t.index("[item.", i + 1)
-        assert "\nvalue = " not in t[i:j], t[i:j]
-        t = (t[:i] + t[i:j].replace('\ntype = "float"\n',
-                                    '\ntype = "float"\nvalue = 500.0\n', 1)
-             + t[j:])
-        tpl.write_text(t)
-        r = CliRunner().invoke(jobset_group, ["prep", "task",
-                                              *group_words(bundle, "freq"),
-                                              "--bundle", str(bundle)])
-        assert r.exit_code == 0, r.output
-        said[bool(held)] = (
-            "pressure_atm = 10 atm has no effect here" in r.output,
-            "freq_min_cm1 = 500 cm⁻¹ has no effect here" in r.output)
-    assert said == {True: (True, True), False: (False, False)}, said
-
-
-def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
-    """`engines/vibration.md` § 4.10 (V1.8): the level of theory is one
-    answer, `is_dft`.  Described as Hartree-Fock with the functional changed
-    to the hybrid PBE0 and the grid to 3, the prepared deck's header and
-    Methods paragraph name Hartree-Fock and no functional, its constants
-    carry no functional and no grid, prep says the changed functional enters
-    nothing, and the grid advisory -- which a hybrid DFT run at level 3
-    draws -- says nothing, since HF has no grid.
-
-    THE DISPERSION CORRECTION IS NOT A DFT QUESTION (`engines/pyscf.md`
-    § 7a; user, 2026-09-28: "scientifically correct decision applied"): HF
-    takes it like any method, so d4 reaches the deck as `mf.disp = "d4"` in
-    the dresser every construction calls, is named in the header and in the
-    Methods paragraph with its own paper, and draws no warning; "none" is
-    plain Hartree-Fock.  Prep alone; nothing is launched.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the paragraph reading `cfg.functional`
-    whatever the method; the grid advisory asking the functional without
-    asking the method; the dispersion dropped under Hartree-Fock.
-    """
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    for disp in ("d4", "none"):
-        sub = tmp_path / disp
-        sub.mkdir()
-        bundle = _describe(sub, monkeypatch)
-        tpl = bundle / "W.template.toml"
-        t = tpl.read_text()
-        for item, old, new in (("method", '"DFT"', '"HF"'),
-                               ("functional", '"B3LYP"', '"PBE0"'),
-                               ("dispersion", '"d3bj"', f'"{disp}"'),
-                               ("grid_level", "4", "3")):
-            i = t.index(f"[item.{item}]"); j = t.index("[item.", i + 1)
-            assert f"value = {old}" in t[i:j], t[i:j]
-            t = (t[:i] + t[i:j].replace(f"value = {old}", f"value = {new}", 1)
-                 + t[j:])
-        tpl.write_text(t)
-        r = CliRunner().invoke(jobset_group, ["prep", "task",
-                                              *group_words(bundle, "freq"),
-                                              "--bundle", str(bundle)])
-        assert r.exit_code == 0, r.output
-        assert "functional = 'PBE0' has no effect here" in r.output, r.output
-        assert "dispersion =" not in r.output, r.output
-        assert "Grid level" not in r.output, r.output
-        deck = next((bundle / "01_freq").glob("*.py")).read_text()
-        head = deck[:deck.index('"""', 3)]
-        assert "Method    : RHF (Hartree-Fock)" in head, head
-        start = deck.index('METHODS_TEXT = """') + len('METHODS_TEXT = """')
-        methods = deck[start:deck.index('"""', start)]
-        assert "Hartree-Fock (RHF)" in methods, methods[:600]
-        for dft_word in ("PBE", "B3LYP"):
-            assert dft_word not in methods, (dft_word, methods[:600])
-        assert "FUNCTIONAL                 = None" in deck
-        assert "GRID_LEVEL                 = None" in deck
-        assert f"DISPERSION                 = '{disp}'" in deck
-        fn = deck[deck.index("def _mb_configure_theory(mf):"):]
-        fn = fn[:fn.index("return mf")]
-        if disp == "d4":
-            assert "Dispersion: d4" in head, head
-            assert ("with the D4 dispersion correction [Caldeweyher2019]"
-                    in methods), methods[:600]
-            assert 'mf.disp = "d4"' in fn, fn
-        else:
-            assert "Dispersion:" not in head, head
-            assert "dispersion correction" not in methods, methods[:600]
-            assert "mf.disp" not in fn, fn
-
-
-def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
+def test_the_listed_modes_get_the_probe_and_no_other(real_water_probed):
     """`engines/vibration.md` § 4.8: `explicit` gives the per-mode probe to
-    the modes its list names -- TEXT, "1, 3, 9", read by the one index-list
-    reader (`PySCFConfig.explicit_modes`); water has three modes, so 9 names
+    the modes its list names -- "1, 3, 9"; water has three modes, so 9 names
     none: dropped from the selection and said in the run's output, the
-    count known only once the Hessian is done.  A list the reader cannot
-    take -- "0, 2", the modes count from 1 -- is refused at prep, before a
-    deck exists.
+    count known only once the Hessian is done.  (A list the reader cannot
+    take is refused at prep: `tests/data/the_deck.toml`.)
 
     MUTATION THIS MUST FAIL AGAINST: the deck's constant written as
     `list(cfg.es_explicit_indices)`.
     """
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    bundle = _describe(tmp_path, monkeypatch)
-    tpl = bundle / "W.template.toml"
-    original = tpl.read_text()
-
-    def _answer(listed):
-        t = original
-        # the probe is the subject; Raman's 6N SCFs are not, and Raman is
-        # off by default
-        for item, old, new in (("es_mode_selection", '"skip"', '"explicit"'),
-                               ("es_explicit_indices", '""', f'"{listed}"')):
-            i = t.index(f"[item.{item}]"); j = t.index("[item.", i + 1)
-            assert f"value = {old}" in t[i:j], t[i:j]
-            t = (t[:i] + t[i:j].replace(f"value = {old}", f"value = {new}", 1)
-                 + t[j:])
-        tpl.write_text(t)
-
-    _answer("0, 2")
-    r = CliRunner().invoke(jobset_group,
-                           ["prep", "task", *group_words(bundle, "freq"),
-                            "--bundle", str(bundle)])
-    assert r.exit_code != 0, r.output
-    assert "can't be read: 0 is below 1" in r.output, r.output
-    assert not list((bundle / "01_freq").glob("*.py")), "a deck was written"
-
-    _answer("1, 3, 9")
-    d = _prep_and_run(bundle)
+    bundle, d = _as_written(real_water_probed)
     from molbuilder.runs import run_of
     out = run_of(bundle / "01_freq" / "run-0").stdout
     said = out.read_text(errors="replace")

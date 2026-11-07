@@ -59,14 +59,16 @@ class TestKnownAdvisorySitesAreHTTP200:
 
 
 @pytest.mark.parametrize("kind, text", [("dna", "5'-ATGC"), ("rna", "3'-UGCA"),
-                                        ("rna", "AC,GU")])
+                                        ("rna", "AC,GU"), ("rna", "ACGT")])
 def test_a_strand_the_build_does_not_read_is_the_requests_fault(web_client,
                                                                 kind, text):
     """`web-api.md`, *Status codes*: a bad request is a 4xx, in the build's
     own words -- not a crash on our side.
 
-    THE SILENT FAILURE: `5'-ATGC`, a typo, answered as a server fault, which
-    tells the person molbuilder broke when their label is one end short."""
+    THE SILENT FAILURES: `5'-ATGC`, a typo, answered as a server fault, which
+    tells the person molbuilder broke when their label is one end short; a
+    thymine let through RNA's alphabet, and a strand with a T built and
+    answered 200 (only the page's own check refused it)."""
     r = web_client.post("/api/build/molecule",
                         json={"kind": kind, "input": text})
     assert r.status_code == 400, r.get_json()

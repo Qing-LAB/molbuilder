@@ -84,6 +84,44 @@ def test_the_level_of_theory_is_set_in_one_place_every_mean_field_goes_through(
     assert len(calls) >= 2, f"{dresser} is called {len(calls)} time(s)"
 
 
+@pytest.mark.parametrize("dispersion", ["d4", "none"])
+def test_a_hartree_fock_deck_says_hartree_fock_where_it_says_its_method(
+        dispersion, tmp_path, monkeypatch):
+    """`engines/vibration.md` § 4.10 (V1.8): the level of theory is one
+    answer, `is_dft`.  Described as Hartree-Fock with the functional changed
+    to the hybrid PBE0, the deck's header and Methods paragraph name
+    Hartree-Fock and no functional.  Dispersion is not a DFT question
+    (`engines/pyscf.md` § 7a; user, 2026-09-28: "scientifically correct
+    decision applied"): d4 reaches the deck in the dresser every construction
+    calls, is named in the header and in the Methods paragraph with its own
+    paper; "none" is plain Hartree-Fock.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the paragraph reading `cfg.functional`
+    whatever the method; the dispersion dropped under Hartree-Fock."""
+    tree = _deck_tree(tmp_path, monkeypatch, method="HF", functional="PBE0",
+                      dispersion=dispersion, grid_level=3)
+    head = ast.get_docstring(tree)
+    methods = next(ast.literal_eval(n.value) for n in ast.walk(tree)
+                   if isinstance(n, ast.Assign)
+                   and ast.unparse(n.targets[0]) == "METHODS_TEXT")
+    dresser = ast.unparse(next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+        and n.name == "_mb_configure_theory"))
+    assert "RHF (Hartree-Fock)" in head, head
+    assert "Hartree-Fock (RHF)" in methods, methods[:600]
+    for dft_word in ("PBE", "B3LYP"):
+        assert dft_word not in methods, (dft_word, methods[:600])
+    if dispersion == "d4":
+        assert "Dispersion: d4" in head, head
+        assert ("with the D4 dispersion correction [Caldeweyher2019]"
+                in methods), methods[:600]
+        assert "mf.disp = 'd4'" in dresser, dresser
+    else:
+        assert "Dispersion:" not in head, head
+        assert "dispersion correction" not in methods, methods[:600]
+        assert "mf.disp" not in dresser, dresser
+
+
 def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():
     """A check is never skipped in silence (science/validation.md F4).
     A config no engine's record names is refused at the gate on every

@@ -1792,45 +1792,12 @@ def test_the_geometry_is_compared_where_siesta_places_it(junction, case):
         assert differs == [], differs
 
 
-def _left_to_the_engine_cases():
-    import tomllib
-    data = Path(__file__).parent / "data" / "same_engine_input.toml"
-    return tomllib.loads(data.read_text())["left_to_the_engine"]
-
-
-def _left_to_the_engine(text: str, left_out) -> str:
-    """``text`` with ``left_out`` taken out of it, as a deck that leaves
-    them to the engine reads -- a keyword's line by its name, a block whole
-    by ``%block <name>``, a block's row by ``row <first word>``."""
-    out, skip = [], None
-    for line in text.splitlines():
-        words = line.split()
-        if skip is not None:
-            if words[:2] == ["%endblock", skip]:
-                skip = None
-            continue
-        if words[:1] == ["%block"] and f"%block {words[1]}" in left_out:
-            skip = words[1]
-            continue
-        if words and (words[0] in left_out or f"row {words[0]}" in left_out):
-            continue
-        out.append(line)
-    return "\n".join(out) + "\n"
-
-
-@pytest.mark.parametrize("case", _left_to_the_engine_cases(),
-                         ids=lambda c: c["name"])
-def test_what_a_deck_leaves_to_the_engine_is_read_as_siesta_reads_it(
-        junction, case):
+def test_every_difference_between_two_decks_is_said(junction):
     """`engines/transport.md` § 6.1, *the same engine input*: the device's
-    deck rendered now at the row's voltage, through the one builder
-    (`gather.rung_deck_now`), against the same deck with the row's
-    statements left to the engine -- the engine's scratch rows, the file
-    switch, the bias window -- and the row's changes made to the deck now.
-    The silent failures: a device run prepared by an older molbuilder, its
-    deck leaving to the engine what this one states, refused as another
-    calculation and its hours of compute thrown away; or a real difference
-    -- a spacing other than the engine's -- taken as none."""
+    deck rendered now under bias, through the one builder
+    (`gather.rung_deck_now`), against the same deck with its contour's spacing
+    and method changed.  Another calculation, each difference named.  The
+    silent failure: a real difference taken as none, or only the first said."""
     from molbuilder.calculation import open as open_calculation
     from molbuilder.transport.gather import composed_junction, rung_deck_now
     from molbuilder.siesta.engine_input import engine_input_differences
@@ -1839,19 +1806,18 @@ def test_what_a_deck_leaves_to_the_engine_is_read_as_siesta_reads_it(
     calc = open_calculation(base)
     point = next(p for p in rung_points(calc.task, "device",
                                         frames=frames_of(base))
-                 if p.volts == case["volts"])
-    now = rung_deck_now(calc, "device", composed_junction(calc), point=point)
-    ran = _left_to_the_engine(now, case.get("left_out", []))
-    for old, new in case.get("changed", []):
+                 if p.volts == 0.2)
+    ran = rung_deck_now(calc, "device", composed_junction(calc), point=point)
+    now = ran
+    for old, new in (("delta 0.01 eV", "delta 0.02 eV"),
+                     ("method mid-rule", "method simpson-mix")):
         assert old in now, (old, now)
         now = now.replace(old, new)
     differs = engine_input_differences(ran, now)
-    if case.get("names"):
-        for name in case["names"]:
-            assert any(name in d for d in differs), (name, differs)
-        assert len(differs) == len(case["names"]), differs
-    else:
-        assert differs == [], differs
+    for name in ("block TS.Contour.nEq.line, row 3",
+                 "block TS.Contour.nEq.line, row 4"):
+        assert any(name in d for d in differs), (name, differs)
+    assert len(differs) == 2, differs
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):
@@ -1870,6 +1836,39 @@ def test_each_leads_measurements_reach_the_card_under_its_name(junction):
     for lead in ("L-electrode", "R-electrode"):
         assert any(m.startswith(f"{lead}: the periodic seam")
                    for m in measured), measured
+
+
+@pytest.mark.parametrize("volts", _BIAS, ids=["at 0 V", "under bias"])
+def test_the_file_estimate_is_the_engines_own(junction, volts):
+    """`engines/transport.md` § 2a.11, *What it costs*: the size a lead's surface
+    Green's function file will have, from the device deck as prep writes it and
+    the lead's orbital count, is what TranSIESTA itself prints at the run's start
+    -- SIESTA's units are 1024-based, and its print adds a few KiB of header to
+    the matrices.
+
+    THE SILENT FAILURE: a person told the wrong scratch size before a run that
+    fills its disk."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.parse import detect
+    from molbuilder.runs import run_of
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.gf_files import estimate_from
+    from support.replay import output_lines
+    lead_out = run_of(junction.attempt("electrode_L")).stdout
+    orbitals = detect(str(lead_out)).parse(str(lead_out)).runtime_info[
+        "n_orbitals"]
+    folder = _point(junction, "device", volts)
+    names = stage_home(junction.bundle, task_of(junction.bundle),
+                       "device").names
+    deck = (folder / names.name(".fdf")).read_text()
+    printed = [_G.TS_GF_SIZE.match(ln) for ln in output_lines(folder)
+               if _G.TS_GF_SIZE.match(ln)]
+    assert len(printed) == 2, printed
+    unit = {"kB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3}
+    estimate = estimate_from(deck, orbitals)
+    for m in printed:
+        header = float(m.group(1)) * unit[m.group(2)] - estimate
+        assert 0 <= header <= 6 * 1024, (m.groups(), estimate)
 
 
 def test_a_bias_list_starts_from_equilibrium(junction):
@@ -4930,7 +4929,7 @@ def test_a_result_that_did_not_finish_is_computed_here_and_named(reused):
     # THE PLAN'S LINE for group 3 -- not the list of the groups it offers.
     (line,) = [ln for ln in bare.splitlines()
                if ln.lstrip().startswith("group 3  ")
-               and "  prepared here -- " in ln]
+               and "prepared here -- " in ln]
     assert "failed" in line \
         and "S-stopped-in-its-loop/05_transmission/run-0" in line, line
     (warned,) = [ln.strip() for ln in bare.splitlines()

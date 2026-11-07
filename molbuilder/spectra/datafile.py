@@ -157,7 +157,7 @@ _RELAXATION = {
         "the largest force component on any atom",
         "the largest absolute Cartesian component, held atoms included, "
         "at the same geometry", source="the engine's forces at that geometry"),
-    "converged": "flag?", "warning": "text", "record": "json",
+    "converged": "flag?", "warning": "text?", "record": "json",
 }
 #: The ``thermo`` block but its grid, as attributes and variables of
 #: ``/thermo``.
@@ -216,7 +216,7 @@ _ES_WINDOWS = (
 
 
 def _encode(kind: str, value):
-    if kind == "text":
+    if kind in ("text", "text?"):
         return "" if value is None else str(value)
     if kind == "int":
         return int(value)
@@ -232,6 +232,8 @@ def _encode(kind: str, value):
 def _decode(kind: str, value):
     if kind == "text":
         return str(value)
+    if kind == "text?":
+        return str(value) or None
     if kind == "int":
         return int(value)
     if kind == "int?":

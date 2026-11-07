@@ -85,8 +85,7 @@ class TestMotionShare:
         `sum(shares) == 1` cannot fail -- `results.py` returns `w / total` where `total` is that same sum, so
         the claim is division, not behaviour (measured 2026-09-09).  What can
         fail is the element set (an atom silently dropped, or two rows mapped
-        to one atom) and the ORDER, which the docstring promises largest-first
-        and the Spectra panel renders in the order it is given.
+        to one atom) and the ORDER, which the docstring promises largest-first.
         """
         elements = ["C", "H", "S", "Au"]
         rows = [[0.4, 0.1, 0], [1.0, 0, 0.2], [0.3, 0.3, 0], [0.05, 0, 0.05]]
@@ -155,3 +154,14 @@ class TestAgainstKnownSpectroscopy:
         share = motion_share_by_element(
             ["C", "H"], [[0.08, 0, 0], [1.0, 0, 0]])
         assert share["H"] > 0.9
+
+
+def test_a_labelled_atom_s_share_is_its_element_s():
+    """`web/spectra.md` § 4.2: each ELEMENT's share of the mode; a species is a
+    label and an element (`model/chemistry.md` § 3).  THE SILENT FAILURE: water's
+    labelled hydrogens read "44% H1, 44% H2", the mode's owner split in two."""
+    rows = [[0.0, 0.0, 0.1], [0.0, 0.5, 0.0], [0.0, 0.5, 0.0]]
+    labelled = motion_share_by_element(["O", "H1", "H2"], rows)
+    plain = motion_share_by_element(["O", "H", "H"], rows)
+    assert labelled == pytest.approx(plain)
+    assert set(labelled) == {"O", "H"}

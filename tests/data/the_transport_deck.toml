@@ -16,6 +16,16 @@ omp_threads = 1
 [run_base.pyscf]
 threads = 1
 
+# THE ONE QUEUE A ROW ON A MACHINE WITH A SCHEDULER SENDS TO, `machine = "this"`.
+[[queues]]
+name = "gpu"
+partition = "gpu"
+qos = "public"
+max_time = "1-00:00:00"
+max_cores = 48
+gpu = { a100 = 4 }
+node_types = [{ cores = 48, nodes = 5, gpu = { a100 = 4 } }]
+
 # `SolutionMethod` switches the SCF to NEGF; `TS.SolutionMethod` is how the
 # Green's function is inverted, and 5.4.2 stops on `transiesta` there
 # ("Unrecognized TranSiesta solution method", measured): two keywords, two
@@ -56,3 +66,37 @@ before = [["prep", "task", "--group", "1"]]
 template = { negf_neq_spacing_ev = 0.1, electronic_temperature = 10.0 }
 deck = ["delta 0.1 eV"]
 said_lacks = ["[config.negf_neq_spacing_ev]"]
+
+# A VALUE OF THE CALCULATION'S RUN CARD reaches the rungs the item's `stages`
+# names (`engines/stages.md` § 6.8d, `execution/gpu.md` § 1.1): each SCF rung's
+# job asks the GPU, and the transmission's -- `tbtrans` runs on no GPU -- holds
+# none, so prep's G5 has nothing to refuse there (measured 2026-10-17: the
+# transmission a GPU job, holding a device it never uses).
+[[case]]
+name = "a calculation run on the GPU: its first group's job asks it"
+calculation = "transport"
+stage = "seed"
+machine = "this"
+run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
+allocation = { domain = "gpu", time = "01:00:00", mem = "8G" }
+header = ["#SBATCH --gres=gpu:1"]
+
+[[case]]
+name = "...its device's job asks it"
+calculation = "transport"
+stage = "device"
+machine = "this"
+before = [["prep", "task", "--group", "1"]]
+run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
+allocation = { domain = "gpu", time = "01:00:00", mem = "8G" }
+header = ["#SBATCH --gres=gpu:1"]
+
+[[case]]
+name = "...and its transmission's holds none"
+calculation = "transport"
+stage = "transmission"
+machine = "this"
+before = [["prep", "task", "--group", "1"], ["prep", "task", "--group", "2"]]
+run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
+allocation = { domain = "gpu", time = "01:00:00", mem = "8G" }
+header_lacks = ["--gres"]

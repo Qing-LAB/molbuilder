@@ -139,9 +139,10 @@ def test_a_finished_relaxation_answers_its_record(relaxed):
     deck = _as_its_deck_states(_run(relaxed))
     lines = deck.geometry_lines()
     assert rec["held_atom_keys"] == [lines[i] for i in deck.frozen_atoms]
+    # JUDGED ON THE ATOMS THE RUN MOVED: the held carbon still feels more than
+    # the tolerance, and the run is converged all the same.
     assert rec["converged"] is True and rec["run_state"] == "ended"
-    assert rec["max_force_free_ev_ang"] <= tol
-    assert rec["max_force_ev_ang"] >= rec["max_force_free_ev_ang"]
+    assert rec["max_force_free_ev_ang"] <= tol < rec["max_force_ev_ang"], rec
     final = _final_geometry(relaxed)
     assert rec["geometry_sha256"] == final.geometry_fingerprint()
     swapped = Structure(elements=final.elements[::-1],
@@ -253,6 +254,30 @@ def test_a_relaxation_cut_short_is_said_as_it_stands(relaxed, tmp_path):
         already_relaxed=False, force_tolerance_ev_ang=None))
     assert "not reaching it (the run had not ended)" in said, said
     assert "relaxed on SIESTA to" not in said, said
+
+
+def test_a_force_block_still_being_written_states_no_figure(relaxed, tmp_path):
+    """`model/parse.md` § 5b.1: a force block the engine has only begun to write
+    states nothing: the figures are the last whole block's.  The input: this
+    relaxation's own output, cut after the first row of its last block.  THE
+    SILENT FAILURE: the largest of the rows written so far read as the step's,
+    `converged` on a run whose figure was still above its tolerance."""
+    from molbuilder.parse.contract import relaxation_of_output
+    from molbuilder.parse.registry import parse
+    out = _out(relaxed)
+    text = out.read_text(errors="replace")
+    block = [m.end() for m in re.finditer(r"^.*Atomic forces \(eV/Ang\):\n", text,
+                                          re.M)][-2]
+    first_row_ends = text.index("\n", block) + 1
+    torn, before = tmp_path / out.name, tmp_path / "before" / out.name
+    before.parent.mkdir()
+    torn.write_text(text[:first_row_ends])
+    before.write_text(text[:text.rindex("\n", 0, block - 1) + 1])
+    got = relaxation_of_output(torn, parse(torn), engine="siesta")
+    whole = relaxation_of_output(before, parse(before), engine="siesta")
+    assert got["max_force_free_ev_ang"] == pytest.approx(
+        whole["max_force_free_ev_ang"]), (got, whole)
+    assert got["max_force_ev_ang"] == pytest.approx(whole["max_force_ev_ang"])
 
 
 def _ev(x: float) -> str:
