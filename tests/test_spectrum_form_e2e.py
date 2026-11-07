@@ -17,7 +17,7 @@ _FIELDS = ("py-es-explicit-indices", "py-freq-min-cm1", "py-freq-max-cm1")
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
@@ -54,6 +54,17 @@ def test_the_selection_locks_what_it_would_ignore(page, flask_server):
     assert live == {"skip":     [False, False, False],
                     "all":      [False, True, True],
                     "explicit": [True, False, False]}, live
+
+
+def _water_picked(page, base, root):
+    """Water, a structure of the person's in a projects tree of the test's
+    own, picked in the Spectrum tab's sidebar by its rows -- its Load
+    button awake (`support.sidebar.picked`)."""
+    from support.sidebar import picked
+    water = root / "w" / "water.xyz"
+    water.parent.mkdir()
+    water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+    picked(page, base, "spectrum-calculation", water)
 
 
 #: Raman for, then its range's two ends -- the shared part's fields, drawn
@@ -108,7 +119,7 @@ def test_raman_for_is_live_only_while_raman_is_asked(page, flask_server):
 
 
 def test_every_finding_the_live_check_returns_is_on_the_page(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """Every finding the tab's live check returns for the structure loaded is
     drawn on the page, a row each, by the one renderer
     (`science/validation.md` § 4.1 R2, R3; `web/ui-contract.md` § 5.1).
@@ -118,8 +129,7 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
     draws nothing, so a structure the check has something to say about
     reads as a clean one.
 
-    Water set as the sidebar's selection and loaded with the tab's Load
-    button; what the check answered is read off the page's own request --
+    Water picked in the sidebar and loaded with the tab's Load button; what the check answered is read off the page's own request --
     a finding about the structure among it -- and the rows drawn in the
     tab's findings panel and its form's parts are those findings.
 
@@ -127,21 +137,7 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
     global entry point; the tab drawing only the findings about a field; a
     finding drawn twice."""
     from support.findings import assert_every_finding_drawn
-    from test_chemistry_card_e2e import (_ready_for_a_pick,
-                                         _register_tmp_as_picker_root)
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    water = tmp_path / "w" / "water.xyz"
-    water.parent.mkdir()
-    water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
-    page.goto(f"{flask_server}/spectrum-calculation",
-              wait_until="domcontentloaded")
-    _ready_for_a_pick(page)
-    page.evaluate(
-        "(p) => window.molbuilder.projects.setShared("
-        "  p.substring(0, p.lastIndexOf('/')), p)", str(water))
-    page.wait_for_function(
-        "() => !document.getElementById('load-from-sidebar-btn').disabled",
-        timeout=5000)
+    _water_picked(page, flask_server, isolated_projects_root)
     with page.expect_response(lambda r: "/api/build/preflight" in r.url,
                               timeout=15000) as answered:
         page.locator("#load-from-sidebar-btn").click()
@@ -156,7 +152,7 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
 
 
 def test_an_edit_in_the_shared_part_is_checked_live_beside_its_field(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """`web/spectra.md` § 5 step 3: the settings both engines share are
     checked as they are edited, like the engine's own -- the live check's
     request follows an edit above the strip, and its finding lands beside
@@ -167,21 +163,7 @@ def test_an_edit_in_the_shared_part_is_checked_live_beside_its_field(
 
     MUTATION THIS MUST FAIL AGAINST: the live check's listener on the
     engine forms' wrapper only (no request after the shared part's edit)."""
-    from test_chemistry_card_e2e import (_ready_for_a_pick,
-                                         _register_tmp_as_picker_root)
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    water = tmp_path / "w" / "water.xyz"
-    water.parent.mkdir()
-    water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
-    page.goto(f"{flask_server}/spectrum-calculation",
-              wait_until="domcontentloaded")
-    _ready_for_a_pick(page)
-    page.evaluate(
-        "(p) => window.molbuilder.projects.setShared("
-        "  p.substring(0, p.lastIndexOf('/')), p)", str(water))
-    page.wait_for_function(
-        "() => !document.getElementById('load-from-sidebar-btn').disabled",
-        timeout=5000)
+    _water_picked(page, flask_server, isolated_projects_root)
     with page.expect_response(lambda r: "/api/build/preflight" in r.url,
                               timeout=15000):
         page.locator("#load-from-sidebar-btn").click()
@@ -199,7 +181,7 @@ def test_an_edit_in_the_shared_part_is_checked_live_beside_its_field(
 
 
 def test_a_charge_stated_in_the_chemistry_card_is_what_the_form_carries(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """`web/spectra.md` § 5 step 2, `form-schema.md` § 1.3: the charge and
     spin are drawn in the chemistry card, once for both engines, and read
     with the form's other parts -- the live check sends what the Send
@@ -212,28 +194,14 @@ def test_a_charge_stated_in_the_chemistry_card_is_what_the_form_carries(
     MUTATIONS THIS MUST FAIL AGAINST: the state part left out of the
     form's parts (`_formParts`); the live check not listening in the
     chemistry card."""
-    from test_chemistry_card_e2e import (_ready_for_a_pick,
-                                         _register_tmp_as_picker_root)
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    water = tmp_path / "w" / "water.xyz"
-    water.parent.mkdir()
-    water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
-    page.goto(f"{flask_server}/spectrum-calculation",
-              wait_until="domcontentloaded")
-    _ready_for_a_pick(page)
-    page.evaluate(
-        "(p) => window.molbuilder.projects.setShared("
-        "  p.substring(0, p.lastIndexOf('/')), p)", str(water))
-    page.wait_for_function(
-        "() => !document.getElementById('load-from-sidebar-btn').disabled",
-        timeout=5000)
+    _water_picked(page, flask_server, isolated_projects_root)
     with page.expect_response(lambda r: "/api/build/preflight" in r.url,
                               timeout=15000):
         page.locator("#load-from-sidebar-btn").click()
     page.wait_for_selector("#chemistry-card #common-net-charge",
                            timeout=15000)
+    from support.sidebar import committed
     with page.expect_request(lambda r: "/api/build/preflight" in r.url,
                              timeout=15000) as asked:
-        page.fill("#common-net-charge", "1")
-        page.press("#common-net-charge", "Tab")
+        committed(page, "#common-net-charge", "1")
     assert asked.value.post_data_json["params"]["net_charge"] == 1

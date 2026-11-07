@@ -1,18 +1,25 @@
 """Unit tests for the DNA generator panel module.
 
-Pins the public API of ``molbuilder/web/static/modify/structure/
-dna.js``: validates ACGT-only sequences, accepts a helix form
-(B/A/Z), POSTs the right body to /api/build/molecule, routes
-the result through structurePage.loadIntoCanvas.
+Pins the DNA panel, ``molbuilder/web/static/modify/structure/dna.js``:
+what it refuses before any request (no sequence, a letter not ACGT, Z-DNA
+on a sequence 3DNA cannot build it on), the form and backend it sends the
+server, and what the build's answer leaves in its envelope and under the
+panel.
+
+The panel runs under node (`_node_esm.run_node`), wired as the page wires
+it, its request answered by the app's own `/api/build/molecule`
+(`_node_esm.served`).  What the generate chain does with the load door's
+answer is `panel-deps.js`'s, tested through SMILES
+(`test_structure_smiles_js.py`).
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import run_node, served
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,350 +29,135 @@ MODULE = ROOT / "molbuilder/web/static/modify/structure/dna.js"
 #: skips it is testing a module the browser never runs.
 PANEL_DEPS = ROOT / "molbuilder/web/static/modify/structure/panel-deps.js"
 
-
-def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    module_path = MODULE.resolve()
-    bootstrap = f"""
-        require({json.dumps(str(PANEL_DEPS.resolve()))});
-        const dna = require({json.dumps(str(module_path))});
-        try {{
-            (async () => {{
-                {snippet}
-            }})().catch(err => {{
-                console.log(JSON.stringify({{
-                    __test_unexpected_throw: true,
-                    message: err && err.message ? err.message : String(err),
-                }}));
-            }});
-        }} catch (err) {{
-            console.log(JSON.stringify({{
-                __test_unexpected_throw: true,
-                message: err && err.message ? err.message : String(err),
-            }}));
-        }}
-    """
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True, text=True, timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
-        )
-    out = json.loads(proc.stdout.strip().splitlines()[-1])
-    if isinstance(out, dict):
-        assert "__test_unexpected_throw" not in out, (
-            "module threw: " + str(out))
-    return out
+#: The panel wired as the page wires it -- its findings list named
+#: (`wirePanel`), the one renderer a recorder (`drawn`) -- its builds asked
+#: of the server and handed to a load door that takes them.
+WIRED = """
+    const list = {id: "dna-findings"};
+    dna.wirePanel({doc: {getElementById: (id) =>
+        id === "dna-findings" ? list
+            : {addEventListener() {}, value: "", checked: false}}});
+    const drawn = [];
+    dna.configure({
+        structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+        findings: {render: (rows, opts) => drawn.push(
+            {rows: rows.map(r => r.where), under: opts.panel === list})},
+    });
+"""
 
 
-class TestInputValidation:
+def _run(snippet: str, app_at: str) -> object:
+    """``snippet`` against the panel (``dna``), wired as the page wires it
+    (:data:`WIRED`), the page's ``fetch`` answered by the app serving at
+    ``app_at`` (`_node_esm.served`: ``__calls`` each request as it left,
+    ``__answered`` each answer, read)."""
+    return run_node(
+        [PANEL_DEPS],
+        f"const dna = (await import({json.dumps(MODULE.as_uri())})).default;\n"
+        f"{WIRED}\n{snippet}",
+        globals_js=served(app_at))
 
-    def test_empty_sequence_rejected(self):
-        out = _run_node('''
-            let fetchCalls = 0;
-            dna.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await dna.generate("");
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "DNA sequence" in out["envelope"]["error"]
-        assert out["fetchCalls"] == 0
 
-    def test_illegal_bases_rejected_client_side(self):
-        """RNA / amino acids / random text MUST be rejected before
-        the request hits the network."""
-        out = _run_node('''
-            let fetchCalls = 0;
-            dna.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            // U is RNA, not DNA.
-            const r = await dna.generate("AUGCAUGC");
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "ACGT" in out["envelope"]["error"]
-        assert out["fetchCalls"] == 0
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the panel (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
 
-    def test_invalid_form_rejected_client_side(self):
-        out = _run_node('''
-            let fetchCalls = 0;
-            dna.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await dna.generate("ACGT", {form: "Q"});
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "B, A, Z" in out["envelope"]["error"]
-        assert out["fetchCalls"] == 0
+
+@pytest.mark.parametrize("seq, opts, said", [
+    ("", {}, "DNA sequence"),
+    ("AUGCAUGC", {}, "ACGT"),
+    ("ATGC", {"form": "Z"}, "Z-DNA"),
+], ids=["no sequence", "U is RNA's, not DNA's",
+        "Z-DNA on a sequence not poly-(GC)"])
+def test_what_cannot_be_built_is_refused_before_any_request(app_at, seq,
+                                                            opts, said):
+    """The panel's own checks, each in its words, before the request
+    leaves -- the backend would fail with a less actionable error.
+
+    Z-DNA (bug #2, 2026-06-07): 3DNA's ``fiber`` builds Z only for
+    alternating poly-d(GC) (GCGC, CGCGCG, ...); on any other sequence it
+    fell into an interactive 'Number of repeats' prompt that stalled reading
+    stdin until the 60-second subprocess timeout -- a 'hang' to the user.
+    Caught upfront: it must not even reach the server."""
+    out = _run(f'''
+        const r = await dna.generate({json.dumps(seq)}, {json.dumps(opts)});
+        console.log(JSON.stringify({{r, calls: __calls.length}}));
+    ''', app_at)
+    assert out["r"]["ok"] is False
+    assert said in out["r"]["error"]
+    assert out["calls"] == 0
 
 
 class TestHappyPath:
 
-    def test_explicit_form_forwarded(self):
-        out = _run_node('''
-            let capturedBody = null;
-            dna.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
-                            n_atoms: 5,
-                        }),
-                    };
-                },
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            // Use GCGC for the Z-form payload check: the client-
-            // side Z-only-poly-(GC) guard added 2026-06-07 rejects
-            // non-(GC)n sequences with form=Z + auto/threedna
-            // backend BEFORE the fetch, so ACGT would have skipped
-            // the network call this test is asserting on.  Forcing
-            // backend=rdkit also bypasses the guard, but GCGC is
-            // the most direct way to exercise the existing assertion.
+    def test_explicit_form_forwarded(self, app_at):
+        """GCGC for the Z-form payload: the client-side Z-only-poly-(GC)
+        guard rejects other sequences with form=Z and the auto/threedna
+        backend before the request leaves."""
+        out = _run('''
             await dna.generate("GCGC", {form: "Z"});
-            console.log(JSON.stringify(capturedBody));
-        ''')
-        assert out["form"] == "Z"
+            console.log(JSON.stringify({body: __calls[0].body,
+                                        answer: __answered[0]}));
+        ''', app_at)
+        assert out["body"]["form"] == "Z"
+        assert out["answer"]["ok"] is True, out["answer"]
 
 
 class TestBackendSelection:
     """Backend selector for the DNA generator panel, plumbed through
-    generate()."""
+    generate(), each build the server's."""
 
-    def test_default_backend_is_auto(self):
-        out = _run_node('''
-            let capturedBody = null;
-            dna.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, text: "20\\ndna\\nC 0 0 0\\n",
-                            n_atoms: 20, backend_used: "rdkit",
-                        }),
-                    };
-                },
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            await dna.generate("ACGT");
-            console.log(JSON.stringify(capturedBody.backend));
-        ''')
-        assert out == "auto"
+    @pytest.mark.parametrize("opts, sent", [
+        ({}, "auto"), ({"backend": "rdkit"}, "rdkit"),
+    ], ids=["the default is auto", "an explicit backend is forwarded"])
+    def test_the_backend_asked_is_sent(self, app_at, opts, sent):
+        out = _run(f'''
+            await dna.generate("ACGT", {json.dumps(opts)});
+            console.log(JSON.stringify({{body: __calls[0].body,
+                                         answer: __answered[0]}}));
+        ''', app_at)
+        assert out["body"]["backend"] == sent
+        assert out["answer"]["ok"] is True, out["answer"]
 
-    def test_explicit_backend_forwarded(self):
-        out = _run_node('''
-            let capturedBody = null;
-            dna.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
-                            n_atoms: 5, backend_used: "rdkit",
-                        }),
-                    };
-                },
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            await dna.generate("ACGT", {backend: "rdkit"});
-            console.log(JSON.stringify(capturedBody.backend));
-        ''')
-        assert out == "rdkit"
-
-    def test_unknown_backend_rejected_client_side(self):
-        out = _run_node('''
-            let fetchCalls = 0;
-            dna.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await dna.generate("ACGT", {backend: "bogus"});
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "Backend must be one of" in out["envelope"]["error"]
-        assert out["fetchCalls"] == 0
-
-    def test_backend_used_propagated_through_envelope(self):
-        """If the server resolves auto to a different name, the
-        client envelope must surface backend_used so the status
-        text can show which backend actually ran -- and what the build
-        found (its notices: a steric clash) is drawn under the panel
-        through the one renderer, the panel's earlier findings cleared
-        first (`science/validation.md` § 4.1 R5; `web/tabs.md`, *One chain
-        for the five generators*).  Wired as the page wires it
-        (`wirePanel`), the renderer a fake through the test door."""
-        out = _run_node('''
-            const list = {id: "dna-findings"};
-            dna.wirePanel({doc: {getElementById: (id) =>
-                id === "dna-findings" ? list
-                    : {addEventListener() {}, value: "", checked: false}}});
-            const drawn = [];
-            dna.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, structure: {}, n_atoms: 5,
-                        backend_used: "threedna",
-                        notices: [{severity: "warn", where:
-                                   "build.steric_clash", message: "clash"}],
-                    }),
-                }),
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-                findings: {render: (rows, opts) => drawn.push(
-                    {rows: rows.map(r => r.where), under: opts.panel === list})},
-            });
+    def test_backend_used_propagated_through_envelope(self, app_at):
+        """When the server resolves auto to a backend, the client envelope
+        must surface backend_used so the status text can show which backend
+        actually ran -- and what the build found (its notices) is drawn
+        under the panel through the one renderer, the panel's earlier
+        findings cleared first (`science/validation.md` § 4.1 R5;
+        `web/tabs.md`, *One chain for the five generators*).  Wired as the
+        page wires it (`wirePanel`), the renderer a recorder through the
+        test door."""
+        out = _run('''
             const r = await dna.generate("GCGC", {backend: "auto"});
-            console.log(JSON.stringify({r, drawn}));
-        ''')
-        assert out["r"] == {"ok": True, "n_atoms": 5,
-                            "backend_used": "threedna"}, out["r"]
+            console.log(JSON.stringify({r, drawn, answer: __answered[0]}));
+        ''', app_at)
+        answer = out["answer"]
+        assert answer["ok"] is True and answer["notices"], answer
+        assert out["r"] == {"ok": True, "n_atoms": answer["n_atoms"],
+                            "backend_used": answer["backend_used"]}, out["r"]
         assert out["drawn"] == [
             {"rows": [], "under": True},
-            {"rows": ["build.steric_clash"], "under": True}], out["drawn"]
+            {"rows": [n["where"] for n in answer["notices"]],
+             "under": True}], out["drawn"]
 
 
-class TestZFormGuard:
-    """Bug #2 fix (2026-06-07): Z-DNA via 3DNA's ``fiber`` only
-    supports alternating poly-d(GC) sequences (GCGC, CGCGCG, ...).
-    Other sequences cause fiber to fall into an interactive
-    'Number of repeats' prompt that stalls reading from stdin
-    until the 60-second subprocess timeout — perceived as a 'hang'
-    by the user.  Catch upfront."""
-
-    def test_z_form_with_non_gc_sequence_rejected_client_side(self):
-        out = _run_node('''
-            let fetchCalls = 0;
-            dna.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await dna.generate("ATGC", {form: "Z"});
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "Z-DNA" in out["envelope"]["error"]
-        assert out["fetchCalls"] == 0, (
-            "Z + non-(GC)n must not even reach the server"
-        )
-
-    def test_z_form_with_gcgc_passes_guard(self):
-        out = _run_node('''
-            let fetchCalls = 0;
-            dna.configure({
-                fetch: async (url, init) => {
-                    fetchCalls++;
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
-                            n_atoms: 5, backend_used: "threedna",
-                        }),
-                    };
-                },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await dna.generate("GCGCGC", {form: "Z"});
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is True
-        assert out["fetchCalls"] == 1
-
-    def test_z_form_with_rdkit_backend_skips_guard(self):
-        """The Z-DNA guard only kicks in for the threedna/auto
-        backends — RDKit ignores form anyway, so blocking Z would
-        force the user to pick A or B for a request that's already
-        producing a folded conformer."""
-        out = _run_node('''
-            let fetchCalls = 0;
-            dna.configure({
-                fetch: async () => {
-                    fetchCalls++;
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, text: "5\\nx\\nC 0 0 0\\n",
-                            n_atoms: 5, backend_used: "rdkit",
-                        }),
-                    };
-                },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await dna.generate("ATGC", {
-                form: "Z", backend: "rdkit",
-            });
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is True
-        assert out["fetchCalls"] == 1
-
-
-class TestErrorPaths:
-
-    def test_backend_failure_surfaces_message(self):
-        out = _run_node('''
-            dna.configure({
-                fetch: async () => ({
-                    ok: false,
-                    json: async () => ({
-                        ok: false,
-                        error: "3DNA not installed: rebuild backend",
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            const r = await dna.generate("ACGT");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "3DNA" in out["error"]
-
-    def test_canvas_cancel_passes_through_as_cancelled(self):
-        """The load door returns cancelled → envelope carries
-        cancelled, called through the single load door exactly once."""
-        out = _run_node('''
-            let loadCalls = 0;
-            dna.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, text: "1\\nx\\nC 0 0 0\\n",
-                        n_atoms: 1,
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async () => {
-                        loadCalls++;
-                        return { ok: false, cancelled: true };
-                    },
-                },
-            });
-            const r = await dna.generate("A");
-            console.log(JSON.stringify({envelope: r, loadCalls}));
-        ''')
-        assert out["envelope"] == {"ok": False, "cancelled": True}
-        assert out["loadCalls"] == 1
+@pytest.mark.parametrize("seq, opts", [
+    ("GCGCGC", {"form": "Z"}),
+    ("ATGC", {"form": "Z", "backend": "rdkit"}),
+], ids=["poly-(GC) passes the guard",
+        "RDKit, which ignores the form, skips it"])
+def test_what_the_z_guard_lets_through_is_built(app_at, seq, opts):
+    """The Z-DNA guard only kicks in for the threedna/auto backends --
+    RDKit ignores form anyway, so blocking Z would force the user to
+    pick A or B for a request that's already producing a folded
+    conformer.  What passes reaches the server once, and is built."""
+    out = _run(f'''
+        const r = await dna.generate({json.dumps(seq)}, {json.dumps(opts)});
+        console.log(JSON.stringify({{envelope: r, calls: __calls.length}}));
+    ''', app_at)
+    assert out["envelope"]["ok"] is True, out["envelope"]
+    assert out["calls"] == 1

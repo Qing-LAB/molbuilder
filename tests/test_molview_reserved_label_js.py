@@ -15,17 +15,21 @@ WHAT THESE TESTS EXIST TO PREVENT: a translator at either boundary (an
 `frozen_atoms` field outbound) is a second storage, so the tests below assert
 the absence directly: the label crosses BOTH boundaries as a label, untouched.
 
-THE STAND-IN (§ 13.1) speaks the server's names. Its atom rows carry `regions`
-and nothing else — no `is_frozen` — because that is what `/api/selection/atoms`
-and `/api/build/load` now send. A stand-in that still offered the flag would let
-an inbound translator pass its own test forever.
+THE SERVER IS THE APP'S OWN (`_node_esm.served`): the structure is a pair on
+disk, written as the road writes one (`StructureCodec`) with an ordinary label
+on one atom and the reserved one on the other, opened by `/api/build/load` and
+edited by `/api/modify/*`.  Its atom rows carry `regions` and nothing else — no
+`is_frozen` — because that is what the routes send; asked of them, not of a
+stand-in that could still offer the flag.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from tests._node_esm import run_node
+import pytest
+
+from tests._node_esm import run_node, served
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -33,62 +37,59 @@ MODEL = MODULE_DIR / "model.js"
 
 FROZEN = "frozen_atoms"          # the label's one name, on both sides
 
-SERVER = """
-globalThis.__requests = [];
-globalThis.__nextPayload = null;
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the viewer (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
 
-/* An atom row as the server sends it: the labels it carries, and nothing
- * beside them.  A reserved label is IN `regions`. */
-globalThis.__atomRow = function (i, element, x, opts) {
-    return Object.assign({ index: i, element, x, y: 0, z: 0, regions: [] },
-                         opts || {});
-};
 
-globalThis.fetch = async function (route, init) {
-    const body = JSON.parse(init.body);
-    globalThis.__requests.push({ route, body });
-    const payload = globalThis.__nextPayload || globalThis.__payload([
-        globalThis.__atomRow(0, "C", 0), globalThis.__atomRow(1, "O", 1),
-    ]);
-    return { ok: true, status: 200, json: async () => payload };
-};
+@pytest.fixture
+def pair(isolated_projects_root):
+    """Two atoms on disk as the road writes a structure (`support.road.
+    road_structure`, `StructureCodec`) -- one with an ordinary label, one
+    with the reserved one -- in this test's own projects tree."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    from support.road import road_structure
+    path = isolated_projects_root / "P" / "structure" / "co.xyz"
+    path.parent.mkdir(parents=True)
+    StructureCodec().write(road_structure(
+        {"elements": ["C", "O"],
+         "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 6.13]],
+         "regions": {"L-electrode": [0], FROZEN: [1]},
+         "cell": [10.0, 10.0, 10.0]}), path)
+    return path
 
-globalThis.__payload = function (atoms, extra) {
-    return Object.assign({ atoms }, extra || {});
-};
-"""
 
-PRELUDE = f"""
+def _prelude(path) -> str:
+    return f"""
 const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
 
-/* Two atoms: one ordinary label, one reserved. */
+/* The pair, opened as a tab opens a project file: by its path. */
 async function labelled() {{
-    globalThis.__requests = [];
-    globalThis.__nextPayload = globalThis.__payload([
-        globalThis.__atomRow(0, "C", 0, {{ regions: ["L-electrode"] }}),
-        globalThis.__atomRow(1, "O", 1, {{ regions: ["{FROZEN}"] }}),
-    ]);
     const m = createModel({{}});
-    await m.installMolecule({{ text: "x", filename: "x.xyz" }});
-    globalThis.__requests = [];
+    await m.installMolecule({{ path: {json.dumps(str(path))} }});
+    globalThis.__calls.length = 0;
     return m;
 }}
 """
 
 
-def _run(snippet: str):
-    return run_node([], PRELUDE + snippet, globals_js=SERVER)
+def _run(app_at, path, snippet: str):
+    return run_node([], _prelude(path) + snippet, globals_js=served(app_at))
 
 
 # ---------------------------------------------------------------------------
 # It arrives as a label, and is one all the way down
 # ---------------------------------------------------------------------------
 
-def test_the_reserved_label_arrives_as_an_ordinary_label():
+def test_the_reserved_label_arrives_as_an_ordinary_label(app_at, pair):
     """§ 6.2: an atom's facts are its labels and its residue — there is no
-    frozen field. The reserved name sits in the same list as any other, so
-    nothing downstream needs to know it is special."""
-    out = _run(
+    frozen field. The reserved name sits in the same list as any other, once,
+    so nothing downstream needs to know it is special, and the panel has no
+    rule about which of two representations to believe."""
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         console.log(JSON.stringify({
@@ -105,14 +106,14 @@ def test_the_reserved_label_arrives_as_an_ordinary_label():
     )
 
 
-def test_the_designated_read_is_a_cut_of_the_same_list():
+def test_the_designated_read_is_a_cut_of_the_same_list(app_at, pair):
     """§ 9.3: "exactly one is the main one and the rest are narrower cuts of it;
     a cut may disappear, but it must never grow into a rival."
 
     `getFrozen` is a cut of the labels — so it cannot disagree with `getRegions`,
     because there is nothing for it to disagree with.
     """
-    out = _run(
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         console.log(JSON.stringify({
@@ -129,12 +130,12 @@ def test_the_designated_read_is_a_cut_of_the_same_list():
     )
 
 
-def test_the_designated_read_cannot_be_used_to_write():
+def test_the_designated_read_cannot_be_used_to_write(app_at, pair):
     """§ 9.4 / § 9.3: every read returns a copy, so changing what you were given
     can never change the viewer. That holds for the reserved label's read like
     any other — otherwise the one door that owns the name is also a way around
     it."""
-    out = _run(
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         m.getFrozen().push(0);
@@ -145,36 +146,19 @@ def test_the_designated_read_cannot_be_used_to_write():
     assert out["frozen"] == [1], "a read wrote through to the master copy"
 
 
-def test_no_atom_carries_the_fact_twice():
-    """The defect the server's second store caused, at this end: an atom with
-    both a label and a flag renders its frozen state twice in the panel. One
-    representation means the panel needs no rule about which to believe."""
-    out = _run(
-        """
-        const m = await labelled();
-        const a = m.getAtoms()[1];
-        console.log(JSON.stringify({
-            labels: a.labels,
-            occurrences: a.labels.filter(l => l === "%s").length,
-        }));
-        """ % FROZEN
-    )
-    assert out["occurrences"] == 1, f"the fact appears twice on the atom: {out['labels']}"
-
-
 # ---------------------------------------------------------------------------
 # It leaves as a label too
 # ---------------------------------------------------------------------------
 
-def test_what_leaves_carries_the_reserved_label_in_the_label_field():
+def test_what_leaves_carries_the_reserved_label_in_the_label_field(app_at, pair):
     """The outbound half. There is no split at this boundary: the
     server's shape IS the label store, so what leaves is what was held -- in
     `metadata`, where the envelope keeps it (web-api.md § 1)."""
-    out = _run(
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
-        const sent = globalThis.__requests[globalThis.__requests.length - 1].body;
+        const sent = globalThis.__calls[globalThis.__calls.length - 1].body;
         console.log(JSON.stringify({
             keys:    Object.keys(sent.structure).sort(),
             regions: sent.structure.metadata.regions,
@@ -189,24 +173,21 @@ def test_what_leaves_carries_the_reserved_label_in_the_label_field():
     )
 
 
-def test_a_structure_that_goes_out_and_comes_back_is_unchanged():
+def test_a_structure_that_goes_out_and_comes_back_is_unchanged(app_at, pair):
     """The round trip is the real test of "no translation": if either boundary
     still renamed or moved the fact, one of the two directions would show it."""
-    out = _run(
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         const before = m.getRegions();
-
-        globalThis.__nextPayload = globalThis.__payload([
-            globalThis.__atomRow(0, "C", 0, { regions: ["L-electrode"] }),
-            globalThis.__atomRow(1, "O", 1, { regions: ["%s"] }),
-        ]);
         await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
 
         console.log(JSON.stringify({ before, after: m.getRegions(),
-                                     frozen: m.getFrozen() }));
-        """ % FROZEN
+                                     frozen: m.getFrozen(),
+                                     moved: globalThis.__calls.length }));
+        """
     )
+    assert out["moved"] == 1, out
     assert out["before"] == out["after"], f"the round trip changed the labels: {out}"
     assert out["frozen"] == [1]
 
@@ -215,17 +196,17 @@ def test_a_structure_that_goes_out_and_comes_back_is_unchanged():
 # The edit actually reaches the route (§ 11.1)
 # ---------------------------------------------------------------------------
 
-def test_an_op_sends_its_arguments_where_the_route_reads_them():
+def test_an_op_sends_its_arguments_where_the_route_reads_them(app_at, pair):
     """§ 11.1: the table drives one generic piece of code. The route reads its
     own arguments off the BODY ROOT — `dx`, `indices`, `anchors` — so nesting
     them under a `params` object sends them where nothing looks. That shipped:
     `translate` answered 200 and moved the structure by (0, 0, 0)."""
-    out = _run(
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         await m.applyOp("translate", { dx: 1.5, dy: 0, dz: 0 });
-        const sent = globalThis.__requests[globalThis.__requests.length - 1];
-        console.log(JSON.stringify({ route: sent.route, keys: Object.keys(sent.body).sort(),
+        const sent = globalThis.__calls[globalThis.__calls.length - 1];
+        console.log(JSON.stringify({ route: sent.url, keys: Object.keys(sent.body).sort(),
                                      dx: sent.body.dx }));
         """
     )
@@ -236,15 +217,15 @@ def test_an_op_sends_its_arguments_where_the_route_reads_them():
     )
 
 
-def test_the_selection_lands_under_the_key_its_operation_names():
+def test_the_selection_lands_under_the_key_its_operation_names(app_at, pair):
     """§ 11.1's table names WHERE the resolved selection goes: knowing how many
     atoms an op needs and not where to put them cannot build a body."""
-    out = _run(
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         m.selection.adopt([1]);
         await m.applyOp("delete");
-        const del = globalThis.__requests[globalThis.__requests.length - 1].body;
+        const del = globalThis.__calls[globalThis.__calls.length - 1].body;
         console.log(JSON.stringify({ indices: del.indices,
                                      keys: Object.keys(del).sort() }));
         """
@@ -252,10 +233,10 @@ def test_the_selection_lands_under_the_key_its_operation_names():
     assert out["indices"] == [1], f"the selection did not land: {out['keys']}"
 
 
-def test_a_second_edit_while_one_is_running_is_refused():
+def test_a_second_edit_while_one_is_running_is_refused(app_at, pair):
     """One mutation in flight. Two responses applying over each other produce a
     structure neither edit asked for, and a history state the user never saw."""
-    out = _run(
+    out = _run(app_at, pair,
         """
         const m = await labelled();
         let release;
@@ -269,7 +250,7 @@ def test_a_second_edit_while_one_is_running_is_refused():
         await first;
         console.log(JSON.stringify({
             secondRefused: second === null,
-            requests: globalThis.__requests.length,
+            requests: globalThis.__calls.length,
         }));
         """
     )

@@ -514,6 +514,16 @@ and greys out frozen atoms).
 > static input structure (§5); the **mode box** is *VibrationView* showing an
 > animated eigenvector. Different modules, different jobs.
 
+**The mode box belongs to one result.** It is built the first time a mode is
+shown, kept while you move between that result's modes, and built afresh against
+the new structure when another result loads. Putting the panel away releases it,
+so opening and closing spectra any number of times leaves on the page what one
+open and close left ([`vibrationview.md`](?doc=web/vibrationview.md) § 8). That
+includes a box still being built when the panel goes. Building it is
+asynchronous, so a box that arrives after the panel has gone (its state machine
+back at `IDLE`, [`results.md`](?doc=web/results.md) § 4.2) is released as it
+arrives and never kept.
+
 ### 4.1 How big to draw the motion — and why the choice is not cosmetic
 
 The eigenvector fixes the **shape** of the motion: which atoms move, in which
@@ -1183,9 +1193,14 @@ V1.13; the fingerprint reads `phase_ir` since that flag has been written,
 The calculation's own tests — the rank rule, the decks, the artifact's gates,
 the end-to-end runs on both engines — are mapped in
 [`engines/vibration.md`](?doc=engines/vibration.md) § 9. This tab's: `test_spectra_transition_js.py` (the viewer's
-state: a file switch, the follow, a poll, dispose, an answer under its own
-file's name, the legacy names), `test_spectra_phase_indicator_js.py` (the phase indicator, the
-relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
+state on each transition, and the older names), `test_the_viewers_follow_a_real_run_e2e.py` (the follow, a poll,
+an answer under its own file's name, and the phase indicator, the
+relaxation dot included, on every phase record real runs wrote),
+`test_inspector_registry_e2e.py::test_a_spectrum_put_away_while_its_mode_box_is_built_leaves_nothing`
+(§ 4's mode box still being built when the panel goes, released as it arrives:
+the box's stylesheet request held at the browser while another file is picked
+from the Results menu, then let go, so the box arrives after its panel has
+gone), `test_task_setup_tab.py` (the send flow: the shared
 door, the kind, and the browser-vs-CLI byte-compat pin),
 `tests/data/the_deck.toml` (the deck runs the science gate),
 `tests/test_vibration_e2e.py` (the live water runs),
@@ -1198,7 +1213,10 @@ thermochemistry and its bars),
 `tests/test_siesta_vibration_e2e.py::test_the_page_asks_the_raman_at_a_laser_and_exports_it`
 (a SIESTA result with optical calls: no number before a laser, the laser
 applied, the columns, the summary and the Export, § 3.3),
-`test_spectra_no_spectrum_sentence_e2e.py` (the four cases of § 2, by role —
-a SIESTA result with and without its charges among them — and when the viewer
-stops waiting, infrared's own flag included, § 7),
+`test_spectra_no_spectrum_sentence_e2e.py` (§ 2's sentence on real results:
+a SIESTA result that asked for no infrared and one whose range kept no mode, a
+PySCF result with infrared off and one before and during its dipole sweep; and
+when the viewer stops waiting, infrared's own flag included, § 7 — the
+sentence for an infrared asked of charges that could not be given goes
+unseen, no run writing it),
 `test_vibrationview_maths_js.py` (the animation's eigenvector math).

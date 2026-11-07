@@ -82,7 +82,9 @@ def config_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def flask_server(config_home):
+def flask_server(config_home, isolated_projects_root):
+    """A server for this test, on the test's own projects tree
+    (`support.live_server.serve`)."""
     from support.live_server import serve
     with serve() as base_url:
         yield base_url

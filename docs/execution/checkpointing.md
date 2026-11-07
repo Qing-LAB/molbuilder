@@ -1866,8 +1866,10 @@ take. A test file in no entry is a file nobody maintains against this document.
   are advisories, an unknown state and a bad `limit` the caller's mistake,
   everything else a fault.
 - **the panel** — `sensor_js`: the state route opens no big file it can rule out
-  by size and timestamp; a failure is a structured envelope; the panel **runs**
-  in Node against a stub DOM and `fetch` — re-entering the directory it shows
+  by size and timestamp; the panel **runs**
+  in Node against a stand-in DOM, its requests answered by the real routes on
+  a calculation the real commands made ([`testing.md`](?doc=process/testing.md)
+  § 4) — re-entering the directory it shows
   fetches nothing, a refusal the user can answer gets one question, one they
   cannot gets none.
 

@@ -339,8 +339,8 @@ header. The header's source-path line has the username redacted.
   a page shown again from the cache, and a tab made visible, each send
   `/api/watch/data` once.
 - § 4's badge and § 5's follow read the run the server sends:
-  `test_trajectory_settle_post_load_js.py` (the settle, as a case table) and
-  `test_trajectory_transition_js.py` (a quiet poll's answer taken) —
+  `test_the_viewers_follow_a_real_run_e2e.py` (the settle and a quiet poll's answer, on what the server said of
+  real runs) —
   `results.md` § 10 lists the server's half.
 - **Which file the viewer is showing, and why it is the log.**
   *(Corrected 2026-09-04: an earlier note here said "the discovery chain
@@ -364,10 +364,8 @@ header. The header's source-path line has the username redacted.
   `.xyz` carries geomeTRIC's iterations only. Both counts are right for
   what they are; which you see is decided by which file you opened.
 
-- `test_trajectory_rebuild_js.py` — § 5's rebuild reaching the read-only
-  viewer: the viewer's own `rebuildModel` against MolView's real read-only
-  model, four frames then six with the fourth moved.
-- `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
-  reads the timestamp series and a running run's "total" the duration
-  series, neither standing in for the other; and an ended run's "total" its
-  answer's engine wall, none where it states none.
+- `test_the_viewers_follow_a_real_run_e2e.py` — § 5's rebuild reaching the read-only viewer, the viewer's own
+  `rebuildModel` against MolView's real read-only model as a real run grows;
+  and the two clocks, on real answers: the badge's "when" reads the timestamp
+  series and a running run's "total" the duration series, neither standing in
+  for the other, an ended run's "total" its answer's engine wall.

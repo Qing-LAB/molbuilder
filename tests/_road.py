@@ -105,9 +105,9 @@ def live_siesta(tree: Path, tmp_path_factory):
 @contextmanager
 def live_pyscf(tree: Path, tmp_path_factory):
     """The road with the real PySCF (:func:`_live`): its run script enters
-    ``molbuilder-pySCF`` through the record's activation alone, so nothing
-    is put on ``PATH`` -- SIESTA's ``bin`` there would stand ahead of the
-    activated env, and the run would find SIESTA's python.  Yields the
+    ``molbuilder-pySCF`` through the record's activation alone and runs the
+    activated env's own python (``$CONDA_PREFIX/bin/python3``), so a PySCF
+    run needs nothing on ``PATH`` and nothing is put there.  Yields the
     monkeypatch, undone on exit."""
     with _live(tree, tmp_path_factory) as mp:
         yield mp

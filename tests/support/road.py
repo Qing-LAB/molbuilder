@@ -199,10 +199,9 @@ def describe_calculation(tmp_path, monkeypatch, *, name: str = "H2",
     away.
 
     ``refused`` expects describe to refuse, and returns what it said."""
-    from conftest import write_pseudos
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at, write_pseudos
     from molbuilder.workingcopy_structure import StructureCodec
-    tree = tmp_path / "projects"
+    tree = point_the_one_door_at(tmp_path, monkeypatch.setenv)
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
     (tree / "pseudopotential").mkdir(exist_ok=True)
     transport = calculation == "transport"
@@ -218,7 +217,6 @@ def describe_calculation(tmp_path, monkeypatch, *, name: str = "H2",
                 at[s.regions[REGION_BRIDGE]] += 0.01 * i
             s = s.with_frames(moved)
     StructureCodec().write(s, tree / STRUCTURE)
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
     strategy = (stage_strategy if stage_strategy is not None
                 else "publishable" if calculation == "optimization" and siesta
@@ -252,10 +250,11 @@ def prep_groups(calculation: Path, *groups) -> None:
         assert r.exit_code == 0, r.output
 
 
-def a_new_folder(tmp_path, under: str) -> str:
-    """A calculation's folder nothing holds yet, from the projects root: each
-    calculation one of its own, in a tree a test describes in twice."""
-    held = (tmp_path / "projects" / "P" / under).glob("JOB*")
+def a_new_folder(tree: Path, under: str) -> str:
+    """A calculation's folder nothing holds yet, from the projects root
+    ``tree``: each calculation one of its own, in a tree a test describes in
+    twice."""
+    held = (tree / "P" / under).glob("JOB*")
     return f"P/{under}/JOB{1 + sum(1 for _ in held)}"
 
 
@@ -272,6 +271,7 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
 
     ``refused`` expects the step that refuses -- Save, for ``overrides``, else
     prep -- and returns what it said in place of the deck."""
+    from conftest import point_the_one_door_at
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
     # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
@@ -280,7 +280,8 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
     dest = describe_calculation(
         tmp_path, monkeypatch, name="JOB", structure=struct, engine=engine,
         calculation=calculation,
-        bundle=a_new_folder(tmp_path, calculation),
+        bundle=a_new_folder(point_the_one_door_at(tmp_path, monkeypatch.setenv),
+                            calculation),
         stage_strategy="publishable" if calculation == "optimization" else None)
     stage = task_of(dest).stages[0].name
     if template:
@@ -1014,7 +1015,6 @@ def _road_saved(case, bundle) -> None:
     if "saved" not in case:
         return
     import json
-    from molbuilder.web.app import create_app
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)
     # EACH CHANGED KEY INTO ITS RECORD: how it runs into the job request,
@@ -1022,8 +1022,7 @@ def _road_saved(case, bundle) -> None:
     for key, value in case["saved"].items():
         (request if key in ("allocation", "execution", "bench", "notify")
          else task)[key] = value
-    client = create_app(config={}).test_client()
-    r = save_both(bundle, task, request, client)
+    r = save_both(bundle, task, request)
     said = (r.get_json() or {}).get("error") or ""
     if "save_refused" not in case:
         assert r.status_code == 200, said
@@ -1584,10 +1583,7 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
     if "own_warm_files" in case:
         _road_own_warm_files(case, bundle)
     if case.get("saved_first"):
-        from click.testing import CliRunner
-        from molbuilder.cli import cli
-        got = CliRunner().invoke(cli, ["checkpoint", "init", "-p",
-                                       str(bundle), "-m", "set up"])
+        got = molbuilder("checkpoint", "init", "-p", bundle, "-m", "set up")
         assert got.exit_code == 0, _one_line(got)
     for words in case.get("before", []):
         # A machine is named at prep; the other verbs read the one prep set.

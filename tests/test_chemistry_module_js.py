@@ -1,12 +1,17 @@
 """``lib/chemistry.js`` and ``lib/detection-chip.js`` -- the chemistry card
-and each form's chip, under node.
+and each form's chip, under node (`_node_esm.run_node`), each request
+answered by the app's own ``/api/structure/analyze`` (`_node_esm.served`),
+each answer the card was handed read back from ``__answered``.
 
 Three things are pinned here that no browser test pins well:
 
   * the SUPERSEDE protocol.  "An answer that arrives after the person loaded
     a different structure, or edited a field again, must not touch the page"
     is a race, and a race is exactly what an end-to-end test cannot schedule.
-    Driving ``fetch`` by hand makes the interleaving deterministic.
+    What each real request comes to -- the server's answer, or the runtime's
+    AbortError once the card let it go -- is HELD until the test releases
+    it, so the interleaving is chosen rather than raced for; the answers
+    stay the server's, the aborts the runtime's.
   * that an answer for ANOTHER structure never stays on screen: with no
     structure, or no answer, the card and the chips go;
   * what the card and the chip SAY for each form's answer
@@ -21,10 +26,10 @@ from __future__ import annotations
 
 import json
 import pathlib
-import shutil
-import subprocess
 
 import pytest
+
+from tests._node_esm import run_node, served
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 STATIC = REPO / "molbuilder/web/static/lib"
@@ -34,12 +39,9 @@ STATIC = REPO / "molbuilder/web/static/lib"
 MODULES = [STATIC / "fetch-error.js", STATIC / "dom.js",
            STATIC / "detection-chip.js", STATIC / "chemistry.js"]
 
-pytestmark = pytest.mark.skipif(shutil.which("node") is None,
-                                reason="node not available")
-
-#: A DOM stub with just enough semantics for the modules, plus a fetch whose
-#: responses are resolved BY THE TEST so request interleaving is chosen
-#: rather than raced for.
+#: A DOM stub with just enough semantics for the modules, and a fetch whose
+#: answers -- the server's -- are released BY THE TEST, so request
+#: interleaving is chosen rather than raced for.
 _STUB = r"""
 function El(tag) {
   this.tagName = tag; this.children = []; this.className = "";
@@ -66,247 +68,226 @@ globalThis.document = {
   createElement: function (t) { return new El(t); },
 };
 
-// Every fetch parks here; the test resolves them in the order it wants.
+// Every request goes to the server at once, with the card's own signal; what
+// it comes to -- the server's answer, or the runtime's AbortError when the
+// card let it go -- parks here until the test releases it, in the order the
+// test wants.  ``settled``: what each request came to on the wire.
 var pending = [];
+var __served = globalThis.fetch;
 globalThis.fetch = function (url, opts) {
+  var real = __served(url, opts);
+  real.catch(function () {});     // parked: handled when released
   return new Promise(function (resolve, reject) {
-    pending.push({ url: url, opts: opts, resolve: resolve, reject: reject });
+    pending.push({ url: url, opts: opts, real: real,
+                   resolve: resolve, reject: reject });
   });
 };
-function reply(i, status, body) {
-  pending[i].resolve({
-    ok: status >= 200 && status < 300,
-    status: status,
-    json: function () {
-      return (body === "__nonjson__")
-        ? Promise.reject(Object.assign(new SyntaxError("Unexpected token <"),
-                                       { name: "SyntaxError" }))
-        : Promise.resolve(body);
-    },
-  });
+var settled = [];
+async function release(i) {
+  var p = pending[i];
+  try { var r = await p.real; settled[i] = "answered"; p.resolve(r); }
+  catch (e) { settled[i] = e.name; p.reject(e); }
 }
-var aborted = [];
-globalThis.AbortController = function () {
-  var self = this;
-  this.signal = { id: aborted.length };
-  this.abort = function () { aborted.push(self.signal.id); };
-};
 function out(v) { console.log(JSON.stringify(v)); }
 """
 
 
-def _run(script: str):
-    src = "\n".join(m.read_text(encoding="utf-8") for m in MODULES)
-    prog = (f"{_STUB}\n{src}\n"
-            f"var C = globalThis.molbuilder.chemistry;\n"
-            f"var chip = globalThis.molbuilder.detectionChip;\n"
-            f"(async function () {{\n{script}\n}})();")
-    res = subprocess.run(["node", "-e", prog], capture_output=True,
-                         text=True, timeout=60)
-    assert res.returncode == 0, f"node failed:\n{res.stderr}"
-    return json.loads(res.stdout.strip().splitlines()[-1])
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the card (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
 
 
-def _item(value, source, why=None):
-    """One item as the server sends it -- the class's own serialisation, so
-    the fixture cannot drift from the route's shape."""
-    from molbuilder.electronic_state import Resolved
-    return Resolved(value, source, why or source).as_dict()
+def _run(app_at, script: str):
+    """``script`` against the card (``C``) and the chip (``chip``), loaded in
+    the page's order onto the stub (:data:`_STUB`), the card's requests
+    answered by the app serving at ``app_at``."""
+    return run_node(MODULES,
+                    "var C = globalThis.molbuilder.chemistry;\n"
+                    "var chip = globalThis.molbuilder.detectionChip;\n"
+                    + script,
+                    globals_js=served(app_at) + _STUB)
 
 
-#: The structure a page would hand over -- any envelope; the server is faked.
-_S = "{elements: ['Fe'], positions: [[0, 0, 0]], metadata: {}}"
+#: A repeating cell holding an iron atom and two oxygens -- the structure a
+#: page would hand over, in the envelope (`support.envelope`).
+def _iron_cell() -> dict:
+    import numpy as np
+
+    from support.envelope import envelope
+    return envelope(["Fe", "O", "O"],
+                    [[2.5, 2.5, 2.5], [4.1, 2.5, 2.5], [0.9, 2.5, 2.5]],
+                    cell=np.diag([5.0, 5.0, 5.0]),
+                    axis_kind=("periodic",) * 3)
 
 
-#: Two forms saying different things about one repeating cell with an iron
-#: atom: SIESTA's form is blank (a floating moment, detected), PySCF's says
-#: charge -1 and closed shell.  The same shape `/api/structure/analyze`
-#: returns (`ElectronicState.as_dict`).
-_RESP = json.dumps({
-    "ok": True, "n_atoms": 3, "metals": ["Fe"],
-    "metal_hints": [{"element": "Fe",
-                     "common_spins": [{"spin": 4, "label": "high-spin"}]}],
-    "state": {
-        "siesta": {
-            "net_charge": _item(0, "detected",
-                                "no deprotonated phosphate groups"),
-            "spin_treatment": _item("unrestricted", "detected",
-                                    "Fe is an open-d metal in a repeating "
-                                    "cell"),
-            "unpaired_electrons": _item("free", "detected",
-                                        "Fe is an open-d metal in a "
-                                        "repeating cell"),
-            "method": _item("DFT", "rule",
-                            "SIESTA is a density-functional code"),
-            "n_electrons": 42, "finite": False,
-        },
-        "pyscf": {
-            "net_charge": _item(-1, "stated"),
-            "spin_treatment": _item("restricted", "stated"),
-            "unpaired_electrons": _item(0, "implied",
-                                        "restricted: every electron paired"),
-            "method": _item("HF", "stated"),
-            "n_electrons": 43, "finite": True,
-        },
-    },
-    "engine_words": {"siesta": "SIESTA", "pyscf": "PySCF"},
-})
+_S = json.dumps(_iron_cell())
+#: Two forms saying different things about it: SIESTA's blank -- work it
+#: out -- and PySCF's stating a charge of -1, restricted, Hartree-Fock.
+_FORMS = {"siesta": {},
+          "pyscf": {"net_charge": -1, "spin_treatment": "restricted",
+                    "method": "HF"}}
+_ASK = json.dumps({"kind": "optimization", "forms": _FORMS})
 
 
 class TestTheCard:
 
-    def test_each_form_gets_its_own_lines_with_their_reasons(self):
-        got = _run(f"""
-            C.renderPanel({_RESP}, {{}});
-            var blocks = els["chemistry-state"].children.map(text);
-            out({{hidden: els["chemistry-panel"].hidden, blocks: blocks}});
+    def test_each_form_gets_its_own_lines_with_their_reasons(self, app_at):
+        """Each engine's block, headed by its name as the server says it:
+        the charge with the server's reason, the spin in words -- a closed
+        shell said so, a free moment said so -- with each reason, the method
+        only where someone chose it, and the electrons of a repeating cell
+        said not to be a spin."""
+        got = _run(app_at, f"""
+            var p = C.analyze({_S}, {_ASK});
+            await release(0);
+            C.renderPanel((await p).body, {{}});
+            out({{hidden: els["chemistry-panel"].hidden,
+                  blocks: els["chemistry-state"].children.map(text),
+                  answer: __answered[0]}});
         """)
+        resp = got["answer"]
+        siesta, pyscf = resp["state"]["siesta"], resp["state"]["pyscf"]
+        assert siesta["unpaired_electrons"]["value"] == "free", siesta
+        assert siesta["method"]["source"] == "rule", siesta
+        assert pyscf["spin_treatment"]["value"] == "restricted", pyscf
         assert got["hidden"] is False
-        siesta, pyscf = got["blocks"]
-        assert siesta.startswith("SIESTA") and pyscf.startswith("PySCF")
-        assert "0 — detected: no deprotonated phosphate groups" in siesta
-        assert "unrestricted, the moment floats (free)" in siesta
-        assert "a repeating cell" in siesta
+        words = resp["engine_words"]
+        assert len(got["blocks"]) == len(resp["state"]) == 2, got["blocks"]
+        blocks = {engine: next(b for b in got["blocks"]
+                               if b.startswith(words[engine]))
+                  for engine in resp["state"]}
+        for engine, block in blocks.items():
+            st = resp["state"][engine]
+            assert st["net_charge"]["said"] in block, (engine, block)
+            assert st["spin_treatment"]["said"] in block, (engine, block)
+        assert "unrestricted, the moment floats (free)" in blocks["siesta"]
+        assert "a repeating cell" in blocks["siesta"]
         # a rule is not a choice anyone made: SIESTA's method is not shown
-        assert "Method" not in siesta
-        assert "-1 — stated" in pyscf
-        assert "restricted (closed shell, 2S = 0)" in pyscf
-        # the treatment was stated and the count implied: both reasons
-        assert ("stated; the count: implied: restricted: every electron "
-                "paired") in pyscf
-        assert "HF — stated" in pyscf
+        assert "Method" not in blocks["siesta"]
+        assert "-1 — " + pyscf["net_charge"]["said"] in blocks["pyscf"]
+        assert "restricted (closed shell, 2S = 0)" in blocks["pyscf"]
+        assert ("HF — " + pyscf["method"]["said"]) in blocks["pyscf"]
 
-    def test_the_metals_box_shows_only_when_there_is_a_metal(self):
-        """An empty box left visible is an empty box on the page."""
-        got = _run(f"""
-            C.renderPanel({_RESP}, {{}});
+    def test_the_metals_box_shows_only_when_there_is_a_metal(self, app_at):
+        """An empty box left visible is an empty box on the page: the iron
+        cell's answer names iron and its usual spins; water's names no
+        metal."""
+        water = json.dumps(__import__("support.envelope", fromlist=["x"])
+                           .envelope(["O", "H", "H"],
+                                     [[0, 0, 0], [0.96, 0, 0],
+                                      [-0.24, 0.93, 0]]))
+        got = _run(app_at, f"""
+            var p = C.analyze({_S}, {_ASK});
+            await release(0);
+            C.renderPanel((await p).body, {{}});
             var a = {{hidden: els["chemistry-metals-box"].hidden,
                      lines: els["chemistry-metals"].children.map(text)}};
-            var none = {_RESP};
-            none.metal_hints = [];
-            C.renderPanel(none, {{}});
-            out({{with: a, without: els["chemistry-metals-box"].hidden}});
+            var q = C.analyze({water}, {{kind: "optimization"}});
+            await release(1);
+            C.renderPanel((await q).body, {{}});
+            out({{with: a, without: els["chemistry-metals-box"].hidden,
+                  answer: __answered[0]}});
         """)
-        assert got["with"] == {"hidden": False,
-                               "lines": ["Fe", "2S = 4 — high-spin"]}
+        hints = got["answer"]["metal_hints"]
+        assert [h["element"] for h in hints] == ["Fe"], hints
+        assert got["with"]["hidden"] is False
+        assert got["with"]["lines"][0] == "Fe"
+        assert got["with"]["lines"][1:] == [
+            f"2S = {c['spin']} — {c['label']}"
+            for c in hints[0]["common_spins"]]
         assert got["without"] is True
 
 
 class TestNothingStaleStays:
 
-    def test_with_no_structure_the_card_hides_and_asks_nobody(self):
-        got = _run(f"""
-            C.renderPanel({_RESP}, {{}});
+    def test_with_no_structure_the_card_hides_and_asks_nobody(self, app_at):
+        got = _run(app_at, f"""
+            var p = C.analyze({_S}, {_ASK});
+            await release(0);
+            C.renderPanel((await p).body, {{}});
             var card = C.attach({{structure: function () {{ return null; }}}});
             await card.refresh();
             out({{hidden: els["chemistry-panel"].hidden,
                   lines: els["chemistry-state"].children.length,
                   calls: pending.length}});
         """)
-        assert got == {"hidden": True, "lines": 0, "calls": 0}
+        assert got == {"hidden": True, "lines": 0, "calls": 1}
 
-    def test_a_failed_answer_takes_the_last_one_away(self):
-        """The server could not answer for THIS structure: the card must
-        not go on showing the previous structure's answer under the error."""
-        got = _run(f"""
-            var card = C.attach({{structure: function () {{ return {_S}; }}}});
+    def test_a_failed_answer_takes_the_last_one_away(self, app_at):
+        """The server could not answer for THIS structure -- an element it
+        cannot read: the card must not go on showing the previous
+        structure's answer under the error, which is the server's."""
+        bad = json.loads(_S)
+        bad["elements"] = ["Xx", "O", "O"]
+        got = _run(app_at, f"""
+            var which = {_S};
+            var card = C.attach({{structure: function () {{ return which; }},
+                                 kind: "optimization"}});
             var first = card.refresh();
-            reply(0, 200, {_RESP});
+            await release(0);
             await first;
             var shown = !els["chemistry-panel"].hidden;
+            which = {json.dumps(bad)};
             var second = card.refresh();
-            reply(1, 400, {{ok: false, error: "unreadable element symbol 'Xx'"}});
+            await release(1);
             await second;
             out({{shown: shown, hidden: els["chemistry-panel"].hidden,
                   lines: els["chemistry-state"].children.length,
-                  status: els["chemistry-status"].textContent}});
+                  status: els["chemistry-status"].textContent,
+                  refused: __answered[1]}});
         """)
+        refused = got.pop("refused")
+        assert refused["ok"] is False, refused
         assert got == {"shown": True, "hidden": True, "lines": 0,
-                       "status": "unreadable element symbol 'Xx'"}
+                       "status": refused["error"]}
 
 
 class TestTheChip:
 
-    def test_each_form_reads_its_own_answer(self):
+    def test_each_form_reads_its_own_answer(self, app_at):
         """One form, one chip, from that form's own answer: the two forms
         say different things, so their chips differ.  A zero charge is not
         worth a word; a closed shell is said in words, not as a count."""
-        got = _run(f"""
-            out({{siesta: chip.buildText({_RESP}, "siesta").profile,
-                 pyscf:  chip.buildText({_RESP}, "pyscf").profile}});
+        got = _run(app_at, f"""
+            var p = C.analyze({_S}, {_ASK});
+            await release(0);
+            var r = (await p).body;
+            out({{siesta: chip.buildText(r, "siesta").profile,
+                 pyscf:  chip.buildText(r, "pyscf").profile,
+                 answer: __answered[0]}});
         """)
+        resp = got.pop("answer")
+        assert resp["state"]["siesta"]["net_charge"]["value"] == 0
         assert got == {"siesta": "3 atoms · Fe · unrestricted, moment free",
                        "pyscf": "3 atoms · Fe · closed shell · charge -1"}
 
 
 class TestTheAnalyzeProtocol:
 
-    def test_the_forms_and_the_kind_travel_with_the_structure(self):
-        got = _run(f"""
-            var p = C.analyze({_S}, {{kind: "vibration",
-                                     forms: {{pyscf: {{net_charge: -1}}}}}});
-            reply(0, 200, {{ok: true, state: {{}}}});
-            var res = await p;
-            out({{ok: res.ok, sent: JSON.parse(pending[0].opts.body)}});
-        """)
-        assert got == {"ok": True,
-                       "sent": {"structure": {"elements": ["Fe"],
-                                              "positions": [[0, 0, 0]],
-                                              "metadata": {}},
-                                "kind": "vibration",
-                                "forms": {"pyscf": {"net_charge": -1}}}}
+    def test_a_newer_analyze_supersedes_the_older_one(self, app_at):
+        """Two edits: the newer request lets the older one go ON THE WIRE --
+        the card's signal reaches the request, and the runtime fails it with
+        its own AbortError -- and the older one comes back as superseded,
+        never as an error: a scary message flashed on an ordinary second
+        edit, or the card repainted with the older answer.  The newer one
+        answers first, then the older one's end is let through.
 
-    def test_a_newer_analyze_supersedes_the_older_one(self):
-        """The race the counter exists for: two edits, and the FIRST server
-        answer arrives last.  Without the gate it would repaint the card
-        with the superseded answer."""
-        got = _run(f"""
-            var first  = C.analyze({_S});
-            var second = C.analyze({_S});
-            reply(1, 200, {{ok: true}});     // the newer one answers first
-            reply(0, 200, {{ok: true}});     // ...then the stale one
+        WHAT NO TEST HERE SCHEDULES: the counter's gate on an answer that
+        arrives anyway -- the older body read whole before the abort, its
+        resolution not yet run.  A browser queues that resolution as a task,
+        so an edit can land between; node resolves it in the same turn."""
+        got = _run(app_at, f"""
+            var first  = C.analyze({_S}, {_ASK});
+            var second = C.analyze({_S}, {_ASK});
+            await release(1);     // the newer one answers first
+            await release(0);     // ...then the older one's end
             var a = await first, b = await second;
-            out({{first: a, second_ok: b.ok, aborted: aborted.length}});
+            out({{first: a, second_ok: b.ok, wire: settled}});
         """)
         assert got["first"] == {"ok": False, "superseded": True}
         assert got["second_ok"] is True
         # the older request was killed on the wire, not merely ignored
-        assert got["aborted"] == 1
-
-    def test_the_servers_own_message_is_what_the_person_gets(self):
-        got = _run(f"""
-            var p = C.analyze({_S});
-            reply(0, 400, {{ok: false, error: "unreadable element symbol 'Xx'"}});
-            out(await p);
-        """)
-        assert got == {"ok": False,
-                       "error": "unreadable element symbol 'Xx'"}
-
-    def test_an_error_page_says_so_instead_of_unexpected_token(self):
-        """A 5xx HTML page parses as neither JSON nor a server message.
-        "Unexpected token <" tells a chemist nothing about what broke."""
-        got = _run(f"""
-            var p = C.analyze({_S});
-            reply(0, 500, "__nonjson__");
-            out(await p);
-        """)
-        assert got["ok"] is False
-        assert "non-JSON" in got["error"] and "server log" in got["error"]
-
-    def test_an_abort_is_a_supersede_not_a_failure(self):
-        """AbortError means a newer request took over -- reporting it as an
-        error would flash a scary message on an ordinary second edit."""
-        got = _run(f"""
-            var p = C.analyze({_S});
-            pending[0].reject(Object.assign(new Error("aborted"),
-                                            {{name: "AbortError"}}));
-            out(await p);
-        """)
-        assert got == {"ok": False, "superseded": True}
-
-    def test_no_structure_is_answered_without_calling_the_server(self):
-        got = _run("""
-            var res = await C.analyze(null);
-            out({ok: res.ok, calls: pending.length});
-        """)
-        assert got["ok"] is False and got["calls"] == 0
+        assert got["wire"] == ["AbortError", "answered"], got["wire"]

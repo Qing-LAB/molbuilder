@@ -84,9 +84,9 @@ _EDITS = {
 
 
 def _route_load(tmp_path, monkeypatch, built, body, client=None):
-    from conftest import _point_the_one_door_at
+    from conftest import point_the_one_door_at
     from molbuilder.web.app import create_app
-    tree = _point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
+    tree = point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
     (tree / "P").mkdir()
     path = tree / "P" / "set.xyz"
     StructureCodec().write(built, path)
@@ -236,9 +236,9 @@ def test_frame_set(case, tmp_path, monkeypatch):
         written = None
         act = lambda: Structure.from_xyz(case["document"])  # noqa: E731
     elif door == "lone_file":
-        from conftest import _point_the_one_door_at
+        from conftest import point_the_one_door_at
         from molbuilder.web.app import create_app
-        tree = _point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
+        tree = point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
         (tree / "P").mkdir()
         lone = tree / "P" / "lone.xyz"
         lone.write_text(case["document"])

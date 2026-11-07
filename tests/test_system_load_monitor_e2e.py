@@ -45,7 +45,7 @@ _REASON = ("nvidia-smi exited 18: "
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url

@@ -13,29 +13,6 @@ import pytest
 
 
 # --------------------------------------------------------------------- #
-#  Fixtures                                                             #
-# --------------------------------------------------------------------- #
-
-
-@pytest.fixture(autouse=True)
-def _allowed_root(tmp_path, monkeypatch):
-    """Say where this test's tree IS.
-
-    Since web-api.md § 2.1 every route fences a browser-supplied path to the
-    allowed roots BEFORE calling the module behind it, so a test driving those
-    routes at its own ``tmp_path`` has to declare that path the way a
-    deployment declares its projects root.  Without this the routes correctly
-    refuse — which is the point of the fence, not a test-harness quirk.
-    """
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
-                                    conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
-
-
-# --------------------------------------------------------------------- #
 #  Page route                                                           #
 # --------------------------------------------------------------------- #
 
@@ -43,26 +20,19 @@ def _allowed_root(tmp_path, monkeypatch):
 class TestSpectraPage:
 
     def test_page_loads(self, web_client):
+        """The page answers, with its tab, its stylesheet and its scripts in
+        the order they need each other.  The elements the page's scripts
+        bind are asked by the scripts themselves: the inspector core's, by
+        mounting it on what is served (`test_results_blueprint.py`,
+        `test_every_element_the_inspector_asks_for_is_served`); the
+        structure card's host and its Load button, by a browser loading a
+        structure with that button (`test_spectrum_form_e2e.py`)."""
         r = web_client.get("/spectrum-calculation")
         assert r.status_code == 200
         body = r.data.decode()
         # Tab nav present + Spectrum-calculation tab marked active.
         assert "Spectrum calculation" in body
         assert "app-tabs" in body
-        # Generate-side ids (the only surface the page carries; the
-        # inspect-side surface lives in _spectra_inspector.html and
-        # is served only to /results).
-        assert 'id="spectra-form-container"' in body
-        # The Inspect-structure card is the sole entry point for the
-        # structure: an EMPTY ``#spectra-molview-host`` that molview.mount
-        # builds the read-only fused card into.
-        assert 'id="spectra-molview-host"'      in body
-        assert 'id="load-from-sidebar-btn"'     in body
-        assert 'id="send-to-task-setup"'        in body
-        # The tab hands over, it renders no script.
-        assert 'id="send-status"'             in body
-        # Gate ① -- the live science panel beside the form.
-        assert 'id="spectra-issues"'          in body
         # Static assets pinned in the template.
         assert 'spectra/style.css'            in body
         assert 'spectra/viewer.js'            in body
@@ -78,48 +48,35 @@ class TestSpectraPage:
 
     def test_page_is_generate_only(self, web_client):
         """The Spectrum-calculation page is generate-only -- the
-        inspect-side surface (load controls, modes table, mode viewer,
-        ES panel) lives in _spectra_inspector.html and is served only
-        to /results via GET /partials/spectra-inspector.
+        inspect-side surface (the run's progress, the modes table, the mode
+        viewer, the ES panel) is the inspector partial, served only to
+        /results via GET /partials/spectra-inspector.  So no element of the
+        partial, as served, is on the page as served.
 
         Pinning the EXCLUSION here gives a clear failure mode if a
         future commit accidentally re-includes the partial on the
         generator page (which would re-introduce the UX-debt the
-        generator/inspector split was made to clean up).
+        generator/inspector split was made to clean up).  The inspect
+        side is the partial's own ids, asked of it; this test holds no list
+        of them.
         """
+        from support.pages import ids_of
         r = web_client.get("/spectrum-calculation")
         assert r.status_code == 200, (
             f"/spectrum-calculation returned {r.status_code}; this "
             f"test's negative-body assertions would pass trivially "
             f"against an error page"
         )
-        body = r.data.decode()
-        for inspect_only_id in (
-            "watch-status",            # the run's progress line
-            "load-from-selection-btn", # sidebar handoff
-            "phase-indicator",         # phase-progress chips
-            "results-summary",         # results meta + chart container
-            "spectrum-chart",          # plotly chart
-            "broadening-fwhm",         # FWHM input
-            "modes-tbody",             # modes table body
-            "modes-filter",            # modes filter input
-            "modes-csv-btn",           # CSV export
-            "mode-viewer-wrap",        # 3D mode viewer card
-            "mode-viewer",             # 3Dmol canvas
-            "anim-amplitude",          # animation controls
-            "anim-speed",
-            "anim-toggle",
-            "es-panel",                # ES bar diagram panel
-            "es-bar-diagram",
-            "workspace-indicator",     # workspace readout
-        ):
-            needle = f'id="{inspect_only_id}"'
-            assert needle not in body, (
-                f"/spectrum-calculation body unexpectedly carries "
-                f"{needle!r} -- the page is generate-only; inspect-side "
-                f"ids belong in the _spectra_inspector.html partial "
-                f"served by GET /partials/spectra-inspector"
-            )
+        partial = web_client.get("/partials/spectra-inspector")
+        assert partial.status_code == 200
+        inspect_side = set(ids_of(partial.get_data(as_text=True)))
+        assert inspect_side, "the partial served no element at all"
+        on_the_page = inspect_side & set(ids_of(r.get_data(as_text=True)))
+        assert not on_the_page, (
+            f"/spectrum-calculation carries {sorted(on_the_page)} -- the "
+            f"page is generate-only; inspect-side ids belong in the "
+            f"_spectra_inspector.html partial served by GET "
+            f"/partials/spectra-inspector")
 
     def test_app_header_includes_spectrum_tab(self, web_client):
         """The shared header lists Spectrum calculation among the
@@ -139,6 +96,7 @@ class TestSpectraPage:
         that the generator template does NOT pull Plotly, and that
         the chart id lives ONLY in the inspector partial (consumed
         by /results)."""
+        from support.pages import ids_of
         r = web_client.get("/spectrum-calculation")
         assert r.status_code == 200
         body = r.data.decode()
@@ -149,40 +107,29 @@ class TestSpectraPage:
         )
         # ``spectrum-chart`` is an inspect-side id; verify it's served
         # by the partial endpoint rather than by /spectra.
-        partial = web_client.get("/partials/spectra-inspector").data.decode()
-        assert 'id="spectrum-chart"' in partial
+        partial = web_client.get("/partials/spectra-inspector")
+        assert partial.status_code == 200
+        assert "spectrum-chart" in ids_of(partial.get_data(as_text=True))
 
     def test_vendor_plotly_route_serves_js(self, web_client):
-        """The /vendor/plotly.min.js route serves the file from the
-        installed plotly package.  Returns JS bytes when plotly is
-        importable; 404 otherwise (the spectra page degrades to the
-        existing 'Plotly not loaded' fallback)."""
+        """The /vendor/plotly.min.js route serves the JS bundle the
+        installed plotly package ships -- plotly is one of molbuilder's
+        dependencies (`pyproject.toml`), so the browser needs no CDN."""
         r = web_client.get("/vendor/plotly.min.js")
-        try:
-            assert r.status_code == 200, r.status_code
-            assert "application/javascript" in r.content_type
-            # First few bytes of plotly.min.js are an IIFE / use-strict
-            # banner.  Just confirm we got a sizeable JS payload.
-            assert len(r.data) > 100_000, len(r.data)
-        except ImportError:
-            assert r.status_code == 404
+        assert r.status_code == 200, r.status_code
+        assert "application/javascript" in r.content_type
+        # First few bytes of plotly.min.js are an IIFE / use-strict
+        # banner.  Just confirm we got a sizeable JS payload.
+        assert len(r.data) > 100_000, len(r.data)
 
-    def test_no_cdn_fallback_in_spectrum_page(self, web_client):
-        """The 3Dmol script tag on /spectrum-calculation must point
-        at the vendored copy (``/static/vendor/3Dmol-min.js``) —
-        never a CDN.  Pin so
-        a future refactor that "just adds a CDN fallback" silently
-        introducing a third-party load surfaces."""
+    def test_the_spectrum_page_names_the_vendored_3Dmol(self, web_client):
+        """The Inspect-structure card draws with the vendored 3Dmol
+        (``/static/vendor/3Dmol-min.js``), so the page must name it.  That
+        no page names an asset off molbuilder's own origin -- a CDN -- is
+        `test_wheel_ships_the_front_end.py`'s, over every page served."""
         r = web_client.get("/spectrum-calculation")
         assert r.status_code == 200
         body = r.data.decode()
-        assert "cdnjs.cloudflare.com" not in body, (
-            "/spectrum-calculation must not load 3Dmol from a CDN; "
-            "use the vendored copy at /static/vendor/3Dmol-min.js"
-        )
-        # And the vendored path IS present (positive assertion so
-        # the test fails clearly if the script tag is removed
-        # entirely rather than swapped for a CDN).
         assert "/static/vendor/3Dmol-min.js" in body, (
             "/spectrum-calculation should ship the vendored 3Dmol "
             "for the inspect-structure card (task #296)"
@@ -198,21 +145,22 @@ class TestLoadEndpoint:
         ({"temperature_k": 300, "nodes": 9}, "3, 5 or 7"),
     ], ids=["none", "below zero", "not a number", "nine frames"])
     def test_a_frame_set_asked_without_its_temperature_or_rule_is_refused(
-            self, web_client, tmp_path, ask, refused):
+            self, web_client, isolated_projects_root, ask, refused):
         """`engines/vibration.md` § 5.10 ③: the write door refuses, in the
         generator's words and before it reads any run, a temperature stated
         nowhere -- never defaulted -- one that is not a number of kelvin, 0
         or more, and another rule than three, five or seven frames.  The
         silent failure: a set written at a temperature the person never
         stated, or at a rule the page does not offer."""
-        body = {"path": str(tmp_path / "x.spectra.json"), "mode": 1,
+        tree = isolated_projects_root
+        body = {"path": str(tree / "x.spectra.json"), "mode": 1,
                 "nodes": 3,
-                "out": str(tmp_path / "frames.xyz"), **ask}
+                "out": str(tree / "frames.xyz"), **ask}
         r = web_client.post("/api/spectra/frameset", data=json.dumps(body),
                             content_type="application/json")
         said = r.get_json()
         assert r.status_code == 400 and refused in said["error"], said
-        assert not (tmp_path / "frames.xyz").exists()
+        assert not (tree / "frames.xyz").exists()
 
     @pytest.mark.parametrize("ask", [{"temperature_k": "warm"},
                                      {"frameset_temperature_k": -1}],
@@ -236,8 +184,9 @@ class TestLoadEndpoint:
         assert body["ok"] is False
         assert "path" in body["error"].lower(), body
 
-    def test_missing_file_path_404(self, web_client, tmp_path):
-        bad = tmp_path / "does_not_exist.json"
+    def test_missing_file_path_404(self, web_client,
+                                   isolated_projects_root):
+        bad = isolated_projects_root / "does_not_exist.json"
         r = web_client.post(
             "/api/spectra/load",
             data=json.dumps({"path": str(bad)}),

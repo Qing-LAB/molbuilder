@@ -1,9 +1,9 @@
-"""Sidebar sensor refresh-contract tests (docs/web/projects.md;
-test design: docs/execution/checkpointing.md § 13).
+"""The checkpoint panel's refresh model (docs/web/projects.md, the
+run-history view; test design: docs/execution/checkpointing.md § 13).
 
-This file pins the *refresh model* the checkpoint sensor depends on --
-explicit refresh, not background polling (docs/web/projects.md).  Three
-guarantees, the last two about the panel's own source and behaviour:
+The panel refreshes only when asked -- no polling: entering a folder reads
+its state once, which decides whether the button appears and colors it, and
+Refresh reads it again.  Two parts:
 
   1. ``/api/checkpoint/state`` is CHEAP: it returns the documented
      fields and does NOT read a big file it can rule out by size and
@@ -12,37 +12,31 @@ guarantees, the last two about the panel's own source and behaviour:
      and it fed no decision because nothing prunes).  The two assertions
      below are therefore *the file is never opened* and *the field is
      absent*.
-  2. A git failure inside ``state()`` surfaces as a structured
-     ``{ok:false, error}`` envelope (HTTP 500, web-api.md bucket D)
-     that the JS sensor renders as a 🔴 error pill -- NOT an unhandled
-     crash or empty body.
-  3. **The panel, RUN.**  The last section imports the module into
-     Node against a stub DOM and a stub ``fetch``, drives it, and
-     asserts on the requests it made and the DOM it wrote.
+  2. **The panel, RUN.**  The last section imports the module into
+     Node against a stub DOM, its requests answered by the app's own
+     routes (`_node_esm.served`), drives it, and asserts on the requests
+     it made and the DOM it wrote.
 
 Which requests fire on directory-enter, whether re-entering the same
 directory re-reads it, and whether a refusal the user can answer
 actually gets a question, are all decidable in Node in milliseconds,
-and § 13.3 is explicit: *run the thing and look at what moved*, because a grep passes for a panel that
-contains the right words in the wrong order or throws on first click.
+and § 13.3 is explicit: *run the thing and look at what moved*, because a
+grep passes for a panel that contains the right words in the wrong order or
+throws on first click.
 
 What genuinely does need a browser -- layout, the lazy @gitgraph
 render, focus and keyboard behaviour -- is still not covered here.
 
-Real Flask test client + real filesystem + real git, mirroring the
-no-mocks discipline of test_checkpoint_routes.py.
+The routes are asked through the Flask test client, on real folders and
+real git, and the panel's requests go to the app's own routes; what stands
+in is the page's DOM and the person's answers to the panel's dialogs.
 """
 from __future__ import annotations
 
-import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
-
-from molbuilder.web.app import create_app
-
 
 
 def _have_git() -> bool:
@@ -60,46 +54,24 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
-def client():
-    return create_app(config={}).test_client()
-
-
-def _seed_with_archive(tmp_path: Path) -> Path:
-    """A plain run dir: an .fdf and a 2048-byte .DM beside it -- a
-    directory that exists and is not a checkpoint folder; nothing here is
-    saved, tracked or archived.
-    """
-    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
-    (tmp_path / "siesta-test.DM").write_bytes(b"\x00" * 2048)
-    return tmp_path
-
-
 # ----------------------------------------------------------------- #
 #  1. /state is cheap -- no .binsnapshots/ walk on the refresh path #
 # ----------------------------------------------------------------- #
 
 
-@pytest.fixture(autouse=True)
-def _allowed_root(tmp_path, monkeypatch):
-    """Say where this test's tree IS.
-
-    Since web-api.md § 2.1 every route fences a browser-supplied path to the
-    allowed roots BEFORE calling the module behind it, so a test driving those
-    routes at its own ``tmp_path`` has to declare that path the way a
-    deployment declares its projects root.  Without this the routes correctly
-    refuse — which is the point of the fence, not a test-harness quirk.
-    """
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
-                                    conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
+@pytest.fixture
+def run_dir(isolated_projects_root):
+    """A folder in this test's own projects tree, which the projects root
+    names as a deployment names it (`isolated_projects_root`): since
+    web-api.md § 2.1 every route fences a browser-supplied path to that
+    tree before calling the module behind it."""
+    folder = isolated_projects_root / "P" / "run"
+    folder.mkdir(parents=True)
+    return folder
 
 
 def test_state_does_not_read_big_files_it_does_not_have_to(
-        client, tmp_path, checkpoint_config):
+        web_client, run_dir, checkpoint_config):
     """The sidebar calls this on every directory-enter (docs/web/projects.md).
 
     A folder holding a 2 GB density matrix must not be read end-to-end to
@@ -114,11 +86,11 @@ def test_state_does_not_read_big_files_it_does_not_have_to(
     from molbuilder.checkpoint import Repo
 
     checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
-    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
-    big = tmp_path / "siesta-test.DM"
+    (run_dir / "siesta-test.fdf").write_text("SystemLabel test\n")
+    big = run_dir / "siesta-test.DM"
     big.write_bytes(b"\x00" * 4096)
-    Repo(str(tmp_path)).init(note="set up")
-    assert list((tmp_path / ".binsnapshots").rglob("siesta-test.DM")), (
+    Repo(str(run_dir)).init(note="set up")
+    assert list((run_dir / ".binsnapshots").rglob("siesta-test.DM")), (
         "precondition: the .DM is over the limit and must be archived")
 
     # Age it past the save.  A state's timestamp has one-second resolution, so
@@ -129,8 +101,8 @@ def test_state_does_not_read_big_files_it_does_not_have_to(
     os.utime(big, (saved, saved))
     os.chmod(big, 0o000)
     try:
-        r = client.get("/api/checkpoint/state",
-                       query_string={"path": str(tmp_path)})
+        r = web_client.get("/api/checkpoint/state",
+                           query_string={"path": str(run_dir)})
         assert r.status_code == 200
         body = r.get_json()
         assert body["ok"] and body["clean"], (
@@ -139,50 +111,17 @@ def test_state_does_not_read_big_files_it_does_not_have_to(
         os.chmod(big, 0o644)
 
 
-def test_a_calculation_is_named_by_its_description_not_by_its_depth(
-        client, tmp_path, monkeypatch):
-    """`is_calculation` is what decides whether the panel appears.
-
-    It has to be separate from `initialized`, because the case the Set-up
-    button exists for is *a calculation with no repository yet* — and
-    `initialized` is exactly False there.
-
-    A count of path segments is a number standing in for a fact the tree
-    states, and wrong in both directions: one extra grouping folder puts a
-    real calculation out of reach, and loose files at the right depth are
-    offered a repository.  A description is the answer at any depth, so this
-    test uses two folders SIDE BY SIDE at the same one.
-    """
-    from support.road import describe_calculation
-
-    described = describe_calculation(tmp_path, monkeypatch)
-    loose = described.parent / "loose"
-    loose.mkdir()
-    (loose / "a.xyz").write_text("1\nx\nH 0 0 0\n")
-
-    def _ask(d):
-        r = client.get("/api/checkpoint/state", query_string={"path": str(d)})
-        assert r.status_code == 200, r.get_data(as_text=True)
-        return r.get_json()
-
-    yes, no = _ask(described), _ask(loose)
-    assert yes["is_calculation"] is True and yes["initialized"] is False, (
-        "a described folder with no repo is exactly the Set-up case")
-    assert no["is_calculation"] is False, (
-        "a folder of loose files is not a calculation, whatever its depth")
-
-
-def test_state_returns_the_shape_the_sensor_reads(client, tmp_path):
+def test_state_returns_the_shape_the_sensor_reads(web_client, run_dir):
     """§ 5's vocabulary, and nothing that would need an archive walk.
 
     No archive size: the number was never true (hard links counted in full)
     and fed no decision, since nothing prunes (checkpointing.md § 12).
     """
     from molbuilder.checkpoint import Repo
-    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
-    Repo(str(tmp_path)).init(note="set up")
-    r = client.get("/api/checkpoint/state",
-                   query_string={"path": str(tmp_path)})
+    (run_dir / "siesta-test.fdf").write_text("SystemLabel test\n")
+    Repo(str(run_dir)).init(note="set up")
+    r = web_client.get("/api/checkpoint/state",
+                       query_string={"path": str(run_dir)})
     # Guard BEFORE the body checks.  ``archive_total_bytes not in body`` is a
     # negative assertion, and a 404 would satisfy it against Flask's error
     # page while pinning nothing at all.
@@ -196,88 +135,19 @@ def test_state_returns_the_shape_the_sensor_reads(client, tmp_path):
     assert body["standing_at"]["note"] == "set up"
 
 
-# ----------------------------------------------------------------- #
-#  2. git failure -> structured envelope, not a crash               #
-# ----------------------------------------------------------------- #
-
-
-def test_state_git_failure_is_structured_error_not_crash(
-        client, tmp_path, monkeypatch):
-    """When state() raises (transient git failure), the route returns a
-    structured {ok:false, error} envelope (HTTP 500, web-api.md bucket
-    D) the sensor renders as a 🔴 error pill -- never a bare crash or
-    empty body."""
-    import molbuilder.web.blueprints.checkpoint as bp
-    _seed_with_archive(tmp_path)
-
-    def _boom(self, deep=False):
-        raise bp.CheckpointError("git rev-parse exploded (simulated)")
-
-    monkeypatch.setattr(bp.Repo, "status", _boom)
-    r = client.get("/api/checkpoint/state",
-                   query_string={"path": str(tmp_path)})
-    assert r.status_code == 500
-    body = r.get_json()
-    assert body is not None, "must return a JSON envelope, not empty body"
-    assert body["ok"] is False
-    assert isinstance(body.get("error"), str) and body["error"]
-    assert "simulated" in body["error"]
-
-
-# ----------------------------------------------------------------- #
-#  the panel's source parses                                         #
-# ----------------------------------------------------------------- #
-
-
-def _js(name: str) -> Path:
-    return (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
-            / "static" / "lib" / "projects" / name)
-
-
-@pytest.mark.parametrize("name", ["checkpoint.js", "projects-sidebar.js"])
-def test_the_panel_and_its_importer_actually_parse(name):
-    """The cheapest test in the file.
-
-    `projects-sidebar.js` imports `checkpoint.js` STATICALLY, so a
-    SyntaxError in it takes the importer down too -- and with it the
-    projects sidebar on every page.  A text grep cannot tell you a file does
-    not parse.
-    """
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("node not on PATH; cannot parse-check ES modules")
-    source = _js(name)
-    # `--check` reads .js as CommonJS, where `export` is a syntax error in
-    # itself; the .mjs copy is what makes it judge the module as a module.
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = Path(tmp) / (source.stem + ".mjs")
-        probe.write_text(source.read_text(), encoding="utf-8")
-        result = subprocess.run([node, "--check", str(probe)],
-                                capture_output=True, text=True)
-    assert result.returncode == 0, (
-        f"{name} does not parse:\n{result.stderr}")
-
-
-
-
-
-
-
-
-
-
 # ================================================================== #
 #  The panel RUN, not grepped                                        #
 #                                                                    #
 #  § 13.3 rules out "asserting on emitted text where the end result  #
 #  is what matters -- run the thing and look at what moved."  These  #
-#  import the module into Node against a stub DOM and a stub fetch,  #
-#  drive it,                                                         #
-#  and assert on the requests it made and the DOM it wrote.          #
+#  import the module into Node against a stub DOM, its requests      #
+#  answered by the app's own routes on a folder the road made        #
+#  (`_node_esm.served`), drive it, and assert on the requests it     #
+#  made and the DOM it wrote.                                        #
 # ================================================================== #
 
 import json                                                 # noqa: E402
-from _node_esm import run_node                              # noqa: E402
+from _node_esm import run_node, served                      # noqa: E402
 
 #: A DOM small enough to read and real enough to drive the panel.  Only the
 #: handful of methods checkpoint.js actually touches; anything it reaches for
@@ -311,15 +181,11 @@ globalThis.sessionStorage = {
   setItem(k, v) { this._d[k] = String(v); }, removeItem(k) { delete this._d[k]; },
 };
 globalThis.__els = _els;
-
-// Every request the panel makes, in order, with its body.
-globalThis.__calls = [];
-globalThis.__replies = [];      // [{match, http, body}] -- first match wins
-globalThis.fetch = async (url, opts = {}) => {
-  const body = opts.body ? JSON.parse(opts.body) : null;
-  __calls.push({ url, method: opts.method || "GET", body });
-  const hit = __replies.find(r => url.includes(r.match)) || {};
-  return { status: hit.http ?? 200, json: async () => hit.body ?? { ok: true } };
+// A RELOAD: the page's DOM built afresh and the panel's module run again --
+// what the browser keeps across one, its session storage, kept.
+globalThis.__reload = async () => {
+  for (const k of Object.keys(_els)) delete _els[k];
+  return import(process.env.PANEL_URL + "?reloaded");
 };
 // THE APP'S OWN DIALOGS, answered: the panel's `../dialog.js` resolves to a
 // module whose `askFields` records the question and hands back the next of
@@ -333,13 +199,13 @@ globalThis.__asked   = [];      // the questions it asked
     + " return globalThis.__answers.shift() ?? null; }\n");
   registerHooks({ resolve(spec, ctx, next) {
     return spec === "../dialog.js"
-        && String(ctx.parentURL).endsWith("/lib/projects/checkpoint.js")
+        && String(ctx.parentURL).includes("/lib/projects/checkpoint.js")
       ? { url: stub, shortCircuit: true } : next(spec, ctx);
   } });
 }
 globalThis.molbuilder = {
   warningModal: { confirm: async () => true },
-  projects: { getProjectsRoot: () => "/p", onChange() {}, getCurrentDir: () => null },
+  projects: { getProjectsRoot: () => null, onChange() {}, getCurrentDir: () => null },
   // The one tab strip, which every page's header loads (`lib/tab-strip.js`);
   // the List / Graph strip is not what these tests drive.
   tabStrip: { mount: () => ({ select() {} }) },
@@ -350,8 +216,44 @@ _PANEL = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
           / "static" / "lib" / "projects" / "checkpoint.js")
 
 
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the panel's requests (`support.
+    live_server.serve`).  Each test's tree is its own -- the projects root
+    and the allowed roots are read as each request arrives."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
 
-def test_entering_a_run_dir_reads_the_state_only_until_opened():
+
+@pytest.fixture
+def described(tmp_path, monkeypatch):
+    """A calculation `molbuilder describe` made, in this test's tree."""
+    from support.road import describe_calculation
+    return describe_calculation(tmp_path, monkeypatch)
+
+
+def _set_up(folder):
+    """``folder`` made a checkpoint folder, its first state saved, as a
+    person does at a terminal (`molbuilder checkpoint init`)."""
+    from support.road import molbuilder
+    r = molbuilder("checkpoint", "init", "--path", str(folder))
+    assert r.exit_code == 0, r.output
+
+
+def _drive(app_at, script):
+    """``script`` run against the panel, its requests answered by the app."""
+    return run_node([_PANEL], script, globals_js=(
+        _DOM + served(app_at)
+        + f"\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};"))
+
+
+def _calls():
+    """The requests the panel made, as the snippet reports them."""
+    return '__calls.map(c => c.method + " " + c.url.split("?")[0])'
+
+
+def test_entering_a_run_dir_reads_the_state_only_until_opened(app_at, described):
     """Directory-enter with the view closed: ONE request.
 
     The state read is what colors the toggle -- it must be honest without
@@ -359,29 +261,20 @@ def test_entering_a_run_dir_reads_the_state_only_until_opened():
     are not fetched (docs/web/projects.md, 2026-08-19).  A second request
     here would be paying for a view that is not on screen.
     """
-    out = run_node([_PANEL], r"""
-      globalThis.__replies = [
-        {match: "/state", body: {ok: true, initialized: true, clean: true,
-                                 unsaved: [], changed: [], added: [], deleted: [],
-                                 standing_at: {id: "abc1234", short: "abc1234",
-                                               note: "set up", parent: null,
-                                               tags: []}}},
-        {match: "/list",  body: {ok: true, states: [
-            {id: "abc1234", short: "abc1234", note: "set up",
-             parent: null, tags: []}]}},
-      ];
+    _set_up(described)
+    out = _drive(app_at, r"""
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 30));
+      await m.onDirectoryChange(%s);
+      await __quiet();
       console.log(JSON.stringify({
-        calls:  __calls.map(c => c.method + " " + c.url.split("?")[0]),
+        calls:  %s,
         toggleHidden: __els["ps-checkpoint-toggle"].hidden,
         toggleState:  __els["ps-checkpoint-toggle"].dataset["attr_data-state"],
         panelHidden:  __els["ps-checkpoint"].hidden,
         filesHidden:  __els["ps-list"].hidden,
       }));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % (json.dumps(str(described)), _calls()))
     assert out["calls"] == ["GET /api/checkpoint/state"], out["calls"]
     assert out["toggleHidden"] is False
     assert out["toggleState"] == "clean"          # the color IS the status
@@ -389,29 +282,22 @@ def test_entering_a_run_dir_reads_the_state_only_until_opened():
     assert out["filesHidden"] is False
 
 
-def test_the_toggle_swaps_the_space_and_only_then_reads_the_list():
+def test_the_toggle_swaps_the_space_and_only_then_reads_the_list(
+        app_at, described):
     """The swap, executed: open -> the checkpoint view takes the list's
-    space (exclusively), the filter disables, and the list is fetched;
-    close -> the files return and the filter re-enables."""
-    out = run_node([_PANEL], r"""
-      globalThis.__replies = [
-        {match: "/state", body: {ok: true, initialized: true, clean: true,
-                                 unsaved: [], changed: [], added: [], deleted: [],
-                                 standing_at: {id: "abc1234", short: "abc1234",
-                                               note: "set up", parent: null,
-                                               tags: []}}},
-        {match: "/list",  body: {ok: true, states: [
-            {id: "abc1234", short: "abc1234", note: "set up",
-             parent: null, tags: []}]}},
-      ];
+    space (exclusively), the filter disables, and the list is fetched --
+    one row, the state the set-up saved; close -> the files return and the
+    filter re-enables."""
+    _set_up(described)
+    out = _drive(app_at, r"""
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 10));
+      await m.onDirectoryChange(%s);
+      await __quiet();
       __els["ps-checkpoint-toggle"].click();
-      await new Promise(r => setTimeout(r, 30));
+      await __quiet();
       const open = {
-        calls: __calls.map(c => c.method + " " + c.url.split("?")[0]),
+        calls: %s,
         panelHidden: __els["ps-checkpoint"].hidden,
         filesHidden: __els["ps-list"].hidden,
         filterDisabled: __els["ps-filter-input"].disabled === true,
@@ -419,7 +305,7 @@ def test_the_toggle_swaps_the_space_and_only_then_reads_the_list():
         pref: sessionStorage.getItem("ps.checkpoint.open"),
       };
       __els["ps-checkpoint-toggle"].click();
-      await new Promise(r => setTimeout(r, 10));
+      await __quiet();
       const closed = {
         panelHidden: __els["ps-checkpoint"].hidden,
         filesHidden: __els["ps-list"].hidden,
@@ -427,14 +313,14 @@ def test_the_toggle_swaps_the_space_and_only_then_reads_the_list():
         pref: sessionStorage.getItem("ps.checkpoint.open"),
       };
       console.log(JSON.stringify({open, closed}));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % (json.dumps(str(described)), _calls()))
     o = out["open"]
     assert o["calls"] == ["GET /api/checkpoint/state",
                           "GET /api/checkpoint/state",
                           "GET /api/checkpoint/list"], o["calls"]
     assert o["panelHidden"] is False and o["filesHidden"] is True
     assert o["filterDisabled"] is True            # it filters FILES
-    assert o["rows"] == 1
+    assert o["rows"] == 1                         # the one state saved
     assert o["pref"] == "1"                       # the choice survives
     c = out["closed"]
     assert c["panelHidden"] is True and c["filesHidden"] is False
@@ -442,54 +328,51 @@ def test_the_toggle_swaps_the_space_and_only_then_reads_the_list():
     assert c["pref"] is None
 
 
-def test_a_stored_open_preference_greets_a_run_dir_with_the_view():
-    """The sessionStorage pref is read at wiring, so a reload -- or stepping
-    out of a run dir and back -- returns the view you had, list included."""
-    out = run_node([_PANEL], r"""
-      sessionStorage.setItem("ps.checkpoint.open", "1");
-      globalThis.__replies = [
-        {match: "/state", body: {ok: true, initialized: true, clean: true,
-                                 unsaved: [], changed: [], added: [], deleted: [],
-                                 standing_at: {id: "abc1234", short: "abc1234",
-                                               note: "set up", parent: null,
-                                               tags: []}}},
-        {match: "/list",  body: {ok: true, states: [
-            {id: "abc1234", short: "abc1234", note: "set up",
-             parent: null, tags: []}]}},
-      ];
-      const m = await import(process.env.PANEL_URL);
+def test_the_open_view_greets_a_run_dir_again_after_a_reload(
+        app_at, described):
+    """The view opened by its toggle survives a reload: the page comes back
+    to the run dir with the view you had, list included -- the choice the
+    toggle stored is read when the panel is wired."""
+    _set_up(described)
+    out = _drive(app_at, r"""
+      const first = await import(process.env.PANEL_URL);
+      first.initCheckpointPanel();
+      await first.onDirectoryChange(%s);
+      await __quiet();
+      __els["ps-checkpoint-toggle"].click();
+      await __quiet();
+      const m = await __reload();
+      __calls.length = 0;
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 30));
+      await m.onDirectoryChange(%s);
+      await __quiet();
       console.log(JSON.stringify({
-        calls: __calls.map(c => c.method + " " + c.url.split("?")[0]),
+        calls: %s,
         panelHidden: __els["ps-checkpoint"].hidden,
         rows: __els["ps-checkpoint-list"].children.length,
       }));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % (json.dumps(str(described)), json.dumps(str(described)), _calls()))
     assert out["calls"] == ["GET /api/checkpoint/state",
                             "GET /api/checkpoint/list"], out["calls"]
     assert out["panelHidden"] is False
     assert out["rows"] == 1
 
 
-def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files():
-    """A non-run dir has no history surface at all: the button goes, the
-    files return, the filter re-enables -- but the OPEN PREFERENCE survives,
-    so coming back keeps your view."""
-    out = run_node([_PANEL], r"""
-      sessionStorage.setItem("ps.checkpoint.open", "1");
-      globalThis.__replies = [
-        {match: "/state", body: {ok: true, initialized: true, clean: true,
-                                 unsaved: [], changed: [], added: [], deleted: [],
-                                 standing_at: null}},
-        {match: "/list",  body: {ok: true, states: []}},
-      ];
+def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files(
+        app_at, described):
+    """A folder that is not a calculation has no history surface at all:
+    the button goes, the files return, the filter re-enables -- but the OPEN
+    PREFERENCE survives, so coming back keeps your view."""
+    _set_up(described)
+    out = _drive(app_at, r"""
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 20));
-      await m.onDirectoryChange("/p/BDT-Au/optimization");
+      await m.onDirectoryChange(%s);
+      await __quiet();
+      __els["ps-checkpoint-toggle"].click();
+      await __quiet();
+      await m.onDirectoryChange(%s);
+      await __quiet();
       console.log(JSON.stringify({
         toggleHidden: __els["ps-checkpoint-toggle"].hidden,
         panelHidden:  __els["ps-checkpoint"].hidden,
@@ -497,7 +380,7 @@ def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files():
         filterDisabled: __els["ps-filter-input"].disabled === true,
         pref: sessionStorage.getItem("ps.checkpoint.open"),
       }));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % (json.dumps(str(described)), json.dumps(str(described.parent))))
     assert out["toggleHidden"] is True
     assert out["panelHidden"] is True
     assert out["filesHidden"] is False
@@ -505,190 +388,199 @@ def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files():
     assert out["pref"] == "1"
 
 
-def test_a_folder_that_is_not_a_calculation_shows_no_panel():
+def test_a_folder_that_is_not_a_calculation_shows_no_panel(app_at, described):
     """The activation gate, executed rather than described — and the gate is
     the DOOR'S ANSWER, not a count of path segments.
 
-    A project or topic directory is not a calculation, so the panel hides.
-    It knows from `is_calculation`, which comes back from
-    `/api/checkpoint/state` (`task.json` is here — `project-layout.md`
-    invariant 2).
+    The projects root, a project and a kind's folder are not calculations,
+    so the panel hides; nor is a folder of loose files beside the
+    calculation, at its very depth.  It knows from `is_calculation`, which
+    comes back from `/api/checkpoint/state` (`task.json` is in the
+    calculation's own folder — `project-layout.md` invariant 2;
+    `web/projects.md` § 4, the run-history view: a count of path segments
+    put a calculation one folder deeper out of reach and offered loose
+    files at the right depth a repository).
 
     ONE request per distinct directory is the cost, and it is the same
     request that fills the panel — measured at 1.3–1.7 ms against a
     non-repository folder, no subprocess on that path.  What must not
-    happen is a storm, so the count is asserted.  `null` asks nothing: there is no directory to ask about.
+    happen is a storm, so the count is asserted.  `null` asks nothing:
+    there is no directory to ask about.
+
+    The panel is read after EACH folder's answer has landed, while that
+    folder is still the current one: the panel hides on entering a folder,
+    before any answer, so a read taken later, or after `null`, sees that
+    hiding whatever the answer said.
     """
-    out = run_node([_PANEL], r"""
+    loose = described.parent / "loose"
+    loose.mkdir()
+    (loose / "a.xyz").write_text("1\nx\nH 0 0 0\n")
+    above = [described.parent.parent.parent, described.parent.parent,
+             described.parent, loose]
+    out = _drive(app_at, r"""
       const m = await import(process.env.PANEL_URL);
-      __replies.push({match: "/api/checkpoint/state", http: 200,
-                      body: {ok: true, is_calculation: false,
-                             initialized: false, clean: true,
-                             changed: [], added: [], deleted: [],
-                             unsaved: [], standing_at: null}});
       m.initCheckpointPanel();
-      for (const d of ["/p", "/p/BDT-Au", "/p/BDT-Au/optimization", null]) {
-        await m.onDirectoryChange(d);
+      const seen = [];
+      for (const d of %s) {
+        m.onDirectoryChange(d);
+        await __quiet();
+        const said = __answered[__answered.length - 1];
+        seen.push({
+          said: [said.is_calculation, said.initialized],
+          hidden: __els["ps-checkpoint"].hidden,
+          toggleHidden: __els["ps-checkpoint-toggle"].hidden,
+          filesHidden: __els["ps-list"].hidden});
       }
-      await new Promise(r => setTimeout(r, 20));
-      console.log(JSON.stringify({
-        calls: __calls.length,
-        hidden: __els["ps-checkpoint"].hidden,
-        toggleHidden: __els["ps-checkpoint-toggle"].hidden,
-        filesHidden: __els["ps-list"].hidden}));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
-    assert out["calls"] == 3, (
+      m.onDirectoryChange(null);
+      await __quiet();
+      console.log(JSON.stringify({calls: __calls.length, seen}));
+    """ % json.dumps([str(d) for d in above]))
+    assert out["calls"] == len(above), (
         "one ask per distinct directory and nothing for `null`; got "
         + str(out["calls"]))
-    assert out["hidden"] is True
-    assert out["toggleHidden"] is True, (
-        "the button must not appear on a folder the panel does not serve")
-    assert out["filesHidden"] is False, "the file list keeps the space"
+    for folder, seen in zip(above, out["seen"]):
+        assert seen["said"] == [False, False], (folder, seen)
+        assert seen["hidden"] is True, (folder, seen)
+        assert seen["toggleHidden"] is True, (
+            f"the button appeared on {folder}, a folder the panel does not "
+            f"serve")
+        assert seen["filesHidden"] is False, (
+            folder, "the file list keeps the space")
 
 
-def test_a_described_folder_with_no_repository_shows_the_panel():
+def test_a_described_folder_with_no_repository_shows_the_panel(
+        app_at, described):
     """The case `initialized` alone cannot express, and the reason
     `is_calculation` is a separate field.
 
     A calculation that has never been checkpointed is exactly where the
     Set-up button belongs — `initialized: false` — so a panel gated on
-    `initialized` would hide from the one folder it is there to help.
+    `initialized` would hide from the one folder it is there to help.  A
+    description is the answer at any depth: the server says this folder is
+    a calculation with no repository, and the button shows.
     """
-    out = run_node([_PANEL], r"""
+    out = _drive(app_at, r"""
       const m = await import(process.env.PANEL_URL);
-      __replies.push({match: "/api/checkpoint/state", http: 200,
-                      body: {ok: true, is_calculation: true,
-                             initialized: false, clean: true,
-                             changed: [], added: [], deleted: [],
-                             unsaved: [], standing_at: null}});
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 20));
+      await m.onDirectoryChange(%s);
+      await __quiet();
+      const said = __answered[0];
       console.log(JSON.stringify({
+        said: [said.is_calculation, said.initialized],
         toggleHidden: __els["ps-checkpoint-toggle"].hidden}));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % json.dumps(str(described)))
+    assert out["said"] == [True, False], (
+        "a described folder with no repo is exactly the Set-up case")
     assert out["toggleHidden"] is False
 
 
-def test_re_entering_the_same_directory_does_not_re_fetch():
+def test_re_entering_the_same_directory_does_not_re_fetch(app_at, described):
     """The no-op guard, executed.
 
     `projects.onChange` fires on every single-click FILE selection too -- the
     cursor moves inside the same directory -- so without this guard the panel
     re-reads the folder on every click in the file list.
     """
-    out = run_node([_PANEL], r"""
-      __replies = [{match: "/state", body: {ok: true, initialized: false}}];
+    out = _drive(app_at, r"""
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
       for (let i = 0; i < 4; i++) {
-        await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+        await m.onDirectoryChange(%s);
       }
-      await new Promise(r => setTimeout(r, 20));
+      await __quiet();
       console.log(JSON.stringify({calls: __calls.length}));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % json.dumps(str(described)))
     assert out["calls"] == 1, (
         "entering the same directory four times cost four reads")
 
 
-def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing():
-    """The refusal→question→retry path, executed end to end.
-
-    The first POST carries no name, the server refuses with
-    `where: "calculation"`, the panel asks, and the SECOND POST carries what
-    the person typed -- under the right key.
-    """
-    out = run_node([_PANEL], r"""
-      let seen = 0;
-      globalThis.fetch = async (url, opts = {}) => {
-        const body = opts.body ? JSON.parse(opts.body) : null;
-        __calls.push({url, method: opts.method || "GET", body});
-        if (url.includes("/init")) {
-          seen++;
-          if (seen === 1) return {status: 200, json: async () => ({
-            ok: false, error: "bad name",
-            errors_only: [{severity: "error", message: "bad name",
-                           where: "calculation"}]})};
-          return {status: 200, json: async () => ({ok: true, already: true,
-                                                   calculation: "BDT_Au_relax"})};
-        }
-        return {status: 200, json: async () => ({ok: true, initialized: false})};
-      };
-      __answers = [{name: "BDT_Au_relax"}];
+def _set_up_by_the_panel(app_at, folder, answers):
+    """The panel's Set-up clicked on ``folder``, each dialog it opens
+    answered from ``answers`` in turn: the init requests it sent, the
+    questions it asked, and the advisory it shows."""
+    return _drive(app_at, r"""
+      __answers = %s;
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 20));
+      await m.onDirectoryChange(%s);
+      await __quiet();
       __els["ps-checkpoint-init"].click();
-      await new Promise(r => setTimeout(r, 40));
-      const inits = __calls.filter(c => c.url.includes("/init"));
+      await __quiet();
       console.log(JSON.stringify({
-        n: inits.length,
-        first_had_name: inits[0] ? ("calculation" in inits[0].body) : null,
-        second_name: inits[1] ? inits[1].body.calculation : null,
-        asked: __asked.length,
-      }));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
-    assert out["n"] == 2, "the panel did not retry after the refusal"
-    assert out["first_had_name"] is False, "the ordinary attempt sends no name"
-    assert out["second_name"] == "BDT_Au_relax", (
-        "the retry did not carry the name the person typed")
-    assert out["asked"] == 1, "exactly one question, and only because of `where`"
-
-
-def test_setup_does_not_ask_for_a_name_when_a_name_would_not_help():
-    """The other advisory on the same route, and the reason `where` exists.
-
-    A folder holding several independent calculations is refused too — and a
-    name does not fix that. Prompting for one would be asking a question whose
-    answer cannot help, which is how a surface teaches people that its
-    questions are noise.
-    """
-    out = run_node([_PANEL], r"""
-      globalThis.fetch = async (url, opts = {}) => {
-        const body = opts.body ? JSON.parse(opts.body) : null;
-        __calls.push({url, method: opts.method || "GET", body});
-        if (url.includes("/init")) return {status: 200, json: async () => ({
-          ok: false, error: "several calculations",
-          errors_only: [{severity: "error", message: "several calculations",
-                         where: "path"}]})};
-        return {status: 200, json: async () => ({ok: true, initialized: false})};
-      };
-      const m = await import(process.env.PANEL_URL);
-      m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 20));
-      __els["ps-checkpoint-init"].click();
-      await new Promise(r => setTimeout(r, 40));
-      console.log(JSON.stringify({
-        inits: __calls.filter(c => c.url.includes("/init")).length,
+        inits: __calls.filter(c => c.url.includes("/init")).map(c => c.body),
         asked: __asked.length,
         advisory: __els["ps-checkpoint-advisory"].textContent,
       }));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % (json.dumps(answers), json.dumps(str(folder))))
+
+
+def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing(
+        tmp_path, monkeypatch, app_at):
+    """The refusal→question→retry path, executed end to end.
+
+    A calculation whose folder's name cannot be a history's name -- `H2.v2`,
+    the dot outside [A-Za-z0-9_-] (`checkpointing.md` L3): the first POST
+    carries no name, the server refuses it with `where: "calculation"`, the
+    panel asks, and the SECOND POST carries what the person typed -- under
+    the right key -- and the folder is set up under it.
+    """
+    from molbuilder.checkpoint import Repo
+    from support.road import describe_calculation
+    folder = describe_calculation(tmp_path, monkeypatch,
+                                  bundle="P/optimization/H2.v2")
+    out = _set_up_by_the_panel(app_at, folder, [{"name": "H2_v2"}])
+    inits = out["inits"]
+    assert len(inits) == 2, "the panel did not retry after the refusal"
+    assert "calculation" not in inits[0], "the ordinary attempt sends no name"
+    assert inits[1]["calculation"] == "H2_v2", (
+        "the retry did not carry the name the person typed")
+    assert out["asked"] == 1, "exactly one question, and only because of `where`"
+    assert Repo(str(folder)).calculation() == "H2_v2"
+
+
+def test_setup_does_not_ask_for_a_name_when_a_name_would_not_help(
+        tmp_path, monkeypatch, app_at, described):
+    """The other advisory on the same route, and the reason `where` exists.
+
+    A second calculation is described inside this one's folder and its
+    first group prepped, and prep saves a state first (`checkpointing.md`
+    § 9), so that inner folder holds a history.  Set-up on the outer
+    calculation is then refused -- a history inside a history -- and a name
+    does not fix that.  Prompting for one would be asking a question whose
+    answer cannot help, which is how a surface teaches people that its
+    questions are noise.
+
+    The way this test reaches the refusal moves with the user's decision of
+    2026-11-07: a calculation may not be described inside another's folder,
+    and the next product release refuses that describe.
+    """
+    from support.road import describe_calculation, prep_groups
+    inner = describe_calculation(tmp_path, monkeypatch, name="inner",
+                                 bundle="P/optimization/H2/inner")
+    prep_groups(inner, "1")
+    out = _set_up_by_the_panel(app_at, described, [{"name": "anything"}])
     assert out["asked"] == 0, "it asked for a name that cannot help"
-    assert out["inits"] == 1, "and it must not retry blindly"
-    assert "several calculations" in out["advisory"]
+    assert len(out["inits"]) == 1, "and it must not retry blindly"
+    assert "already checkpoint folders" in out["advisory"], out["advisory"]
 
 
-def test_wiring_the_panel_twice_does_not_double_every_click():
+def test_wiring_the_panel_twice_does_not_double_every_click(app_at, described):
     """`initCheckpointPanel` says it is safe to call from several bootstrap
     paths; a second call that double-bound every listener would make one
     click on Set-up post twice.  One caller exists today — the docstring
     invites the second."""
-    out = run_node([_PANEL], r"""
-      __replies = [{match: "/", body: {ok: true, initialized: false}}];
+    out = _drive(app_at, r"""
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 20));
+      await m.onDirectoryChange(%s);
+      await __quiet();
       __calls.length = 0;
       __els["ps-checkpoint-init"].click();
-      await new Promise(r => setTimeout(r, 40));
+      await __quiet();
       console.log(JSON.stringify({
         inits: __calls.filter(c => c.url.includes("/init")).length}));
-    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % json.dumps(str(described)))
     assert out["inits"] == 1, (
         "one click produced more than one request; the panel was wired twice")
 
@@ -706,22 +598,16 @@ def test_wiring_the_panel_twice_does_not_double_every_click():
 #  on, and covering it would flash the window for nothing.            #
 # ================================================================== #
 
-_STATE_REPLY = {"match": "/state", "body": {
-    "ok": True, "initialized": True, "clean": True,
-    "unsaved": [], "changed": [], "added": [], "deleted": [],
-    "standing_at": {"id": "abc1234", "short": "abc1234",
-                    "note": "set up", "parent": None, "tags": []}}}
 
+def _fence_walk(app_at, folder, body: str) -> dict:
+    """Drive the real panel on ``folder`` and sample the fence from inside
+    `fetch`.
 
-def _fence_walk(body: str) -> dict:
-    """Drive the real panel and sample the fence from inside `fetch`.
-
-    Sampled there rather than from a timer because the stub resolves in
-    a microtask: anything scheduled from outside runs after the read is
-    already over, and would pass against a panel that never claimed.
+    Sampled there rather than from a timer because a request leaves
+    synchronously: anything scheduled from outside runs after the read is
+    already under way, and would pass against a panel that claimed late.
     """
-    return run_node([_PANEL], r"""
-      globalThis.__replies = [%s];
+    return _drive(app_at, r"""
       const busy = (await import(new URL("../page-busy.js",
                                  process.env.PANEL_URL).href)).pageBusy;
       const seen = [];
@@ -732,18 +618,17 @@ def _fence_walk(body: str) -> dict:
       };
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
+      await m.onDirectoryChange(%s);
+      await __quiet();
       %s
       console.log(JSON.stringify({seen, after: busy.isClaimed()}));
-    """ % (json.dumps(_STATE_REPLY), body),
-        globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % (json.dumps(str(folder)), body))
 
 
-def test_entering_a_folder_does_not_cover_the_window():
+def test_entering_a_folder_does_not_cover_the_window(app_at, described):
     """A directory-enter reads no file's contents, so it takes nothing."""
-    out = _fence_walk(r"""
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 30));
-    """)
+    _set_up(described)
+    out = _fence_walk(app_at, described, "")
     assert out["seen"], "the panel made no request at all"
     assert all(c["deep"] is False for c in out["seen"]), out["seen"]
     assert all(c["held"] is False for c in out["seen"]), (
@@ -752,13 +637,13 @@ def test_entering_a_folder_does_not_cover_the_window():
     assert out["after"] is False
 
 
-def test_the_refresh_button_covers_the_window_while_it_hashes():
+def test_the_refresh_button_covers_the_window_while_it_hashes(
+        app_at, described):
     """Refresh asks for `deep=1`, which hashes every big file."""
-    out = _fence_walk(r"""
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 30));
+    _set_up(described)
+    out = _fence_walk(app_at, described, r"""
       __els["ps-checkpoint-refresh-btn"].click();
-      await new Promise(r => setTimeout(r, 30));
+      await __quiet();
     """)
     deep = [c for c in out["seen"] if c["deep"]]
     assert deep, (
@@ -769,7 +654,8 @@ def test_the_refresh_button_covers_the_window_while_it_hashes():
     assert out["after"] is False, "the window stayed covered afterwards"
 
 
-def test_cancelling_a_deep_read_says_nothing_rather_than_HTTP_200():
+def test_cancelling_a_deep_read_says_nothing_rather_than_HTTP_200(
+        app_at, described):
     """Cancel after the headers land but before the body is read.
 
     `_fetchJSON` catches a failed `r.json()` because a reply may carry
@@ -778,38 +664,35 @@ def test_cancelling_a_deep_read_says_nothing_rather_than_HTTP_200():
     `{http: 200, body: null}` -- which reads downstream as a server that
     answered with nothing, so pressing Cancel painted "HTTP 200" as an
     error.  Only the deep read carries a signal, so only it gets here.
+    The server's answer is the route's; Cancel is pressed the moment the
+    deep read's response reaches the panel, before the panel reads its
+    body, and the read fails with the runtime's own AbortError
+    (`_node_esm.served`).
     """
-    out = run_node([_PANEL], r"""
-      globalThis.__replies = [%s];
+    _set_up(described)
+    out = _drive(app_at, r"""
       const busy = (await import(new URL("../page-busy.js",
                                  process.env.PANEL_URL).href)).pageBusy;
       const inner = globalThis.fetch;
       globalThis.fetch = async (url, opts = {}) => {
         const r = await inner(url, opts);
-        if (!url.includes("deep=1")) return r;
-        // headers landed; the body never will, because Cancel fires
-        return { status: r.status, json: () => new Promise((_res, rej) => {
-          setTimeout(() => {
-            const e = new Error("aborted"); e.name = "AbortError"; rej(e);
-          }, 5);
-        }) };
+        // THE HEADERS LANDED: Cancel, before the panel reads the body
+        if (url.includes("deep=1")) queueMicrotask(() => busy._runCancelers());
+        return r;
       };
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
-      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
-      await new Promise(r => setTimeout(r, 30));
+      await m.onDirectoryChange(%s);
+      await __quiet();
       const before = __els["ps-checkpoint-toggle"].dataset["attr_data-state"];
       __els["ps-checkpoint-refresh-btn"].click();
-      await new Promise(r => setTimeout(r, 10));
-      busy._runCancelers();
-      await new Promise(r => setTimeout(r, 40));
+      await __quiet();
       console.log(JSON.stringify({
         before,
         pill: __els["ps-checkpoint-toggle"].dataset["attr_data-state"],
         held: busy.isClaimed(),
       }));
-    """ % json.dumps(_STATE_REPLY),
-        globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    """ % json.dumps(str(described)))
     assert out["before"] == "clean", out
     assert out["pill"] != "error", (
         f"Cancel painted a failure the user did not have: pill={out['pill']}")

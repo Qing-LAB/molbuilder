@@ -136,7 +136,9 @@ hits a magic width. Three mechanisms carry most of it:
   media query, and a viewport query cannot see a block that is only ~318 px wide
   *because* it sits in a card in a column beside a sidebar. At a 1024 px
   viewport the three-column layout stayed in force where it did not fit and the
-  row overflowed its container by 10 px — `test_content_fits_its_box` caught it.
+  row overflowed its container by 10 px. No test measures it now: the layout
+test opens each tab empty, where that card is hidden (owed, F9-6: Task setup
+measured with a folder open).
   **If a block's width is set by its container rather than the window, a media
   query is the wrong instrument**, and a `minmax(0, 1fr)` floor does not save it
   (measured: it does not).
@@ -647,10 +649,11 @@ claims: there is no click to block, and freezing the page on a timer
 would be the bug.  That class is protected server-side instead
 (subprocess + timeout — the 2026-08-28 GPU fence).
 
-**Programmatic races.**  The cover blocks clicks, not code.  The one
-programmatic mover of shared state, `projects.navigateTo`, refuses while
-the fence is claimed (§ 8.5 defense-in-depth) — a future module that
-moves shared state from code should do the same.
+**Programmatic races.**  The cover blocks clicks, not code.  The
+selection's own setter (`projects` `setShared`, `lib/projects/state.js`)
+refuses while the fence is claimed, and so does `projects.navigateTo`,
+which no page calls today — a future module that moves shared state from
+code goes through them and is refused the same way.
 
 **The honest limit.**  The fence protects this window against its own
 user.  A second browser tab, or another user of a shared server, still

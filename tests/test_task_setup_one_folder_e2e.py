@@ -14,20 +14,20 @@ under a heading naming the new one, and the per-stage card showed its `freq`
 / `01_freq`.  A reload cleared both, so it was the directory-change render
 path rather than bad data.
 
-This drives the DIRECTORY CHANGE, not a reload: `projects.publishCommit` is
-the app's own "the sidebar selected this", which is how `test_build_e2e`
-drives it too.  A reload would prove nothing — it is the one thing that was
-already known to work.
+This drives the DIRECTORY CHANGE, not a reload: the sidebar's rows clicked
+down to the other folder (`support.sidebar.walk_to`), which the page hears
+as the selection moving.  A reload would prove nothing — it is the one thing
+that was already known to work.
 """
 from __future__ import annotations
-
-import json
 
 import pytest
 
 from support.road import (describe_calculation, ladder_edited, read_request,
                           write_request)
-from support.task_setup_page import every_card_text, unfold, wait_for_file
+from support.sidebar import WAIT_MS, committed, walk_to
+from support.task_setup_page import (every_card_text, picked_by_the_page,
+                                     task_setup_on, unfold, wait_for_file)
 
 pytestmark = pytest.mark.e2e
 
@@ -51,26 +51,32 @@ def _describe(root, name, label, stage):
 
 def _hand_over(dest, label):
     """A hand-over as the Structure-optimization tab leaves one -- made by
-    the hand-over route, its files written where the browser writes them.
-    The hand-over file's path."""
+    the hand-over route, its files written through the door the browser
+    writes them by (`lib/task-handover.js`: `projects.writeFile`, `POST
+    /api/files/write`, overwriting), the structure first.  The hand-over
+    file's path."""
     from molbuilder.web.app import create_app
     from support.envelope import envelope
     dest.mkdir(parents=True)
-    out = create_app(config={}).test_client().post(
+    web = create_app(config={}).test_client()
+    out = web.post(
         "/api/task-setup/handover", json=dict(
             {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
             engine="pyscf", calculation="optimization", name=label,
             params={"job_name": label}, dest=str(dest))).get_json()
     assert out["ok"], out
-    for f in out["structure_files"]:
-        (dest / f["name"]).write_text(f["text"])
-    (dest / out["template_name"]).write_text(out["template_text"])
-    (dest / out["handover_name"]).write_text(out["handover_text"])
+    for name, text in [*((f["name"], f["text"])
+                         for f in out["structure_files"]),
+                       (out["template_name"], out["template_text"]),
+                       (out["handover_name"], out["handover_text"])]:
+        wrote = web.post("/api/files/write", json={
+            "path": str(dest / name), "text": text, "overwrite": True})
+        assert wrote.status_code == 200, wrote.get_json()
     return dest / out["handover_name"]
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
@@ -84,20 +90,6 @@ def two_calcs(isolated_projects_root):
     return a, b
 
 
-def _open(page, base, calc):
-    slot = json.dumps(str(calc))
-    page.add_init_script(
-        "try {"
-        f" sessionStorage.setItem('molbuilder.current_dir.task-setup', {slot});"
-        f" sessionStorage.setItem('molbuilder.current_dir', {slot});"
-        "} catch (_) {}")
-    page.goto(f"{base}/task-setup")
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        " return !!(n && n.CodeMirror); }", timeout=20000)
-    unfold(page)
-
-
 def test_opening_another_folder_leaves_nothing_of_the_first(
         page, flask_server, two_calcs):
     """The rule, executed: after moving A -> B, no trace of A is on screen.
@@ -108,19 +100,18 @@ def test_opening_another_folder_leaves_nothing_of_the_first(
     ones added later.
     """
     a, b = two_calcs
-    _open(page, flask_server, a)
+    task_setup_on(page, flask_server, a)
     page.wait_for_function(
-        "() => document.body.innerText.includes('alphalabel')", timeout=20000)
+        "() => document.body.innerText.includes('alphalabel')", timeout=WAIT_MS)
 
-    # The sidebar moves — the app's own publish, not a reload.
-    page.evaluate("(d) => window.molbuilder.projects.publishCommit(d, '')",
-                  str(b))
+    # The sidebar moves -- its rows clicked, not a reload.
+    walk_to(page, b)
     page.wait_for_function(
-        "() => document.body.innerText.includes('betalabel')", timeout=20000)
+        "() => document.body.innerText.includes('betalabel')", timeout=WAIT_MS)
     # ...AND THE READ ENDED, not only its first card painted: the column
     # says so (`aria-busy`, § 9a).
     page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
-                           timeout=20000)
+                           timeout=WAIT_MS)
 
     # THE TASK SETUP SURFACE, not the whole document.  The projects sidebar
     # is a different component with its own contract (`web/projects.md`) and
@@ -157,6 +148,10 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     hand-over's proposal names none (the 2.27.0 review: the last folder's
     queue stayed on the card, and a click on it wrote into no description).
 
+    THE MACHINE IS THE PAGE'S PICK: this machine is the one listed, so no
+    choice is required and the page picks it (`task-setup.md` § 6.4) --
+    which the queue card needs before it says the queue.
+
     MUTATION THIS MUST FAIL AGAINST: the read's reset not hiding *What
     this calculation writes* (`hideWritten` in `_resetPerFolderState`):
     nothing a hand-over draws repaints that card, so the described folder's
@@ -169,31 +164,23 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     bare = isolated_projects_root / "umbrella" / "optimization" / "bare-run"
     _hand_over(bare, "barelabel")
 
-    _open(page, flask_server, a)
+    task_setup_on(page, flask_server, a)
     page.wait_for_function(
-        "() => document.body.innerText.includes('alphalabel')", timeout=20000)
-    if not page.is_visible("#ts-ask-mem"):
-        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+        "() => document.body.innerText.includes('alphalabel')", timeout=WAIT_MS)
+    picked_by_the_page(page)
     page.wait_for_function(
-        "() => document.body.innerText.includes('alphaqueue')", timeout=20000)
+        "() => document.body.innerText.includes('alphaqueue')", timeout=WAIT_MS)
     # ...AND ITS FILES LISTED, so a card the move must clear has something
     # in it (`task-setup.md` § 7.2).
     page.wait_for_selector("#ts-written-card:not([hidden])",
-                           state="attached", timeout=20000)
+                           state="attached", timeout=WAIT_MS)
 
-    page.evaluate("(d) => window.molbuilder.projects.publishCommit(d, '')",
-                  str(bare))
+    walk_to(page, bare)
     # WAIT FOR THE LOAD TO FINISH, not for the first card to paint: the
     # folder's read ends with the hand-over's proposal landed, and the
-    # column says so (`aria-busy`, § 9a) -- the proposal's description
-    # names the new run.
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        "  return !!(n && n.CodeMirror"
-        "            && n.CodeMirror.getValue().includes('barelabel')); }",
-        timeout=20000)
-    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
-                           timeout=20000)
+    # column says so (`aria-busy`, § 9a, which the editor's tab waits on)
+    # -- the proposal's description names the new run.
+    wait_for_file(page, "task", "barelabel")
 
     text = every_card_text(page)
     assert "alphalabel" not in text, (
@@ -230,21 +217,15 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     came_from = _describe(isolated_projects_root / "handover", "came-from",
                           "camefromlabel", "camefromstage")
 
-    _open(page, flask_server, came_from)
+    task_setup_on(page, flask_server, came_from)
     page.wait_for_function(
         "() => document.body.innerText.includes('camefromlabel')",
-        timeout=20000)
-    page.evaluate("(d) => window.molbuilder.projects.publishCommit(d, '')",
-                  str(d))
-    # THE NEW FOLDER READ -- its run named in the editor -- and the read
-    # ended with the proposal landed (`aria-busy`, § 9a).
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        "  return !!(n && n.CodeMirror"
-        "            && n.CodeMirror.getValue().includes('handed')); }",
-        timeout=20000)
-    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
-                           timeout=20000)
+        timeout=WAIT_MS)
+    walk_to(page, d)
+    # THE NEW FOLDER READ -- the read ended with the proposal landed
+    # (`aria-busy`, § 9a, which the editor's tab waits on) -- its run named
+    # in the editor.
+    wait_for_file(page, "task", "handed")
     # THE PROPOSAL, DRAWN AS THE HAND-OVER OPENED (§ 9a): the description
     # it becomes, stating the one layout.
     wait_for_file(page, "task", '"shape": "hierarchical"')
@@ -253,18 +234,17 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     unfold(page, "ts-groups-card")
     field = (".ts-next-step:not([hidden]) .ts-runcard "
              "[aria-label='value for threads']")
-    page.wait_for_selector(field, timeout=20000)
-    page.fill(field, "2")
-    page.dispatch_event(field, "change")
+    page.wait_for_selector(field, timeout=WAIT_MS)
+    committed(page, field, "2")
     wait_for_file(page, "request", '"threads": 2')
 
     page.click("#ts-save")
     page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
-                           timeout=20000)
+                           timeout=WAIT_MS)
     page.wait_for_function(
         "() => { const n = document.getElementById('ts-save-said');"
         " return n && !n.hidden && /Saved/.test(n.textContent); }",
-        timeout=20000)
+        timeout=WAIT_MS)
     said = page.evaluate(
         "() => document.getElementById('ts-save-said').textContent")
     assert "task.json" in said and "job-request.json" in said, said

@@ -14,7 +14,7 @@ between is answered "the structure cannot be exported".
 """
 from __future__ import annotations
 
-_WAIT_MS = 30_000
+from support.sidebar import WAIT_MS
 
 
 def wait_for_viewer(page, *, atoms: int, frames: int) -> None:
@@ -24,13 +24,13 @@ def wait_for_viewer(page, *, atoms: int, frames: int) -> None:
         "(n) => { const m = (document.querySelector("
         "  '.molviewer-selection-count')?.textContent || '')"
         "  .match(/ of (\\d+) selected/); return !!m && Number(m[1]) === n; }",
-        arg=atoms, timeout=_WAIT_MS)
+        arg=atoms, timeout=WAIT_MS)
     if frames > 1:
         page.wait_for_function(
             "(n) => { const m = (document.querySelector("
             "  '.molviewer-frames-counter')?.textContent || '')"
             "  .match(/\\/\\s*(\\d+)/); return !!m && Number(m[1]) === n; }",
-            arg=frames, timeout=_WAIT_MS)
+            arg=frames, timeout=WAIT_MS)
 
 
 def save_to_project(page, name: str, *, frames: int) -> str:
@@ -41,21 +41,21 @@ def save_to_project(page, name: str, *, frames: int) -> str:
         "button", has_text="Save to project").click()
     if frames > 1:
         ask = page.locator(".molviewer-export-dialog")
-        ask.wait_for(state="visible", timeout=_WAIT_MS)
+        ask.wait_for(state="visible", timeout=WAIT_MS)
         for box in ask.locator("input[type=number]").all():
             box.fill("9999")
         ask.locator("[data-action='confirm']").click()
     where = page.locator("dialog .tp-row:not(.tp-row--inert)").first
-    where.wait_for(state="visible", timeout=_WAIT_MS)
+    where.wait_for(state="visible", timeout=WAIT_MS)
     where.click()
     page.locator("dialog [data-action='confirm']").first.click()
     box = page.locator("dialog input[data-role='name']")
-    box.wait_for(state="visible", timeout=_WAIT_MS)
+    box.wait_for(state="visible", timeout=WAIT_MS)
     offered = box.input_value()
     box.fill(name)
     page.locator("dialog [data-action='confirm']").last.click()
     page.wait_for_function(
         "() => /^saved /.test(document.querySelector("
         "  '.molviewer-export-status')?.textContent || '')",
-        timeout=_WAIT_MS)
+        timeout=WAIT_MS)
     return offered

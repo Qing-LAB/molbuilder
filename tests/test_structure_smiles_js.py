@@ -2,88 +2,66 @@
 
 Pins the public API of ``molbuilder/web/static/modify/structure/
 smiles.js`` — the Sources-card panel that POSTs to
-``/api/build/molecule`` and routes the generated XYZ through the
+``/api/build/molecule`` and routes the generated structure through the
 canvas-state gate.
 
-These tests use a fake fetch + structurePage + viewer-loader so
-the state machine can be exercised without a real DOM or HTTP
-roundtrip.  The DOM wiring (``wirePanel`` against actual buttons +
-inputs) is exercised by an e2e test in test_molbuilder_e2e.py.
+The panel runs under node (`_node_esm.run_node`), loaded after the shared
+wiring as the page loads it; its request is answered by the app's own
+`/api/build/molecule` (`_node_esm.served`) -- the real RDKit and 3DNA builds.
+The load door is a recorder handed in through ``configure``, so the state
+machine runs without a canvas.  The DOM wiring (``wirePanel`` against actual
+buttons + inputs) is exercised by an e2e test in test_molbuilder_e2e.py.
 
 The one generate chain is `panel-deps.js`'s, tested here through SMILES.  What
-each other panel asks the server is its own, and is a row of the table at the
-end of this file.
+each other panel asks the server is its own: the RNA panel's are the rows of
+the table at the end of this file, DNA's and the peptide's their own files'
+(`test_structure_dna_js.py`, `test_structure_peptide_js.py`).  The name panel
+has no row: its build asks PubChem, which nothing in this suite may reach
+(`process/testing.md` § 2b), and what it sends is `generateText`'s, the chain
+SMILES is tested through.
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests._node_esm import run_node, served
+
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/modify/structure/smiles.js"
 #: The panel reads its dependency slots from the shared wiring
 #: (`panel-deps.js`), which the page loads before it.  A harness that
 #: skips it is testing a module the browser never runs.
 PANEL_DEPS = ROOT / "molbuilder/web/static/modify/structure/panel-deps.js"
 
 
-def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    module_path = MODULE.resolve()
-    bootstrap = f"""
-        require({json.dumps(str(PANEL_DEPS.resolve()))});
-        const smiles = require({json.dumps(str(module_path))});
-        try {{
-            (async () => {{
-                {snippet}
-            }})().catch(err => {{
-                console.log(JSON.stringify({{
-                    __test_unexpected_throw: true,
-                    message: err && err.message ? err.message : String(err),
-                    stack:   err && err.stack ? err.stack : null,
-                }}));
-            }});
-        }} catch (err) {{
-            console.log(JSON.stringify({{
-                __test_unexpected_throw: true,
-                message: err && err.message ? err.message : String(err),
-                stack:   err && err.stack ? err.stack : null,
-            }}));
-        }}
-    """
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    last_line = proc.stdout.strip().splitlines()[-1]
-    out = json.loads(last_line)
-    if isinstance(out, dict):
-        assert "__test_unexpected_throw" not in out, (
-            "module threw: " + str(out)
-        )
-    return out
+def _run(snippet: str, app_at: "str | None" = None, *,
+         panel: str = "smiles"):
+    """``snippet`` against the builder panel ``panel`` -- its exports under
+    its own name -- loaded after the shared wiring; with ``app_at``, the
+    page's ``fetch`` answered by the app serving there (`_node_esm.served`:
+    ``__calls`` each request as it left, ``__answered`` each answer,
+    read)."""
+    module = (PANEL_DEPS.parent / f"{panel}.js").as_uri()
+    return run_node(
+        [PANEL_DEPS],
+        f"const {panel} = (await import({json.dumps(module)})).default;\n"
+        f"{snippet}",
+        globals_js=served(app_at) if app_at else "")
 
 
-# ----- Input validation ------------------------------------------ #
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the panels (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
 
 
 class TestLazyResolve:
-    """LANDMINE-2 fix (2026-06-07): smiles.js (and the other 5
+    """LANDMINE-2 fix (2026-06-07): smiles.js (and the other four
     generator modules) used to capture window.molbuilder.* at IIFE
     eval time.  A future template change that loaded smiles.js
     before page.js / mol-viewer.js would have left the slots null
@@ -91,81 +69,50 @@ class TestLazyResolve:
     configured".  Pin the lazy-resolve so a later registration is
     picked up."""
 
-    def test_generate_picks_up_late_structurePage(self):
-        out = _run_node('''
-            // Don't call configure().  Simulate: smiles.js IIFE ran
-            // when window.molbuilder.structurePage was still undefined.
-            // Then page.js loaded LATER and registered it.  smiles.js's
-            // next generate() call should pick it up via _lazyResolve.
-            const root = (typeof globalThis !== "undefined") ? globalThis : global;
-            root.molbuilder = {
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            };
-            root.fetch = async () => ({
-                ok: true,
-                json: async () => ({
-                    ok: true, text: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
-                }),
-            });
+    def test_generate_picks_up_slots_registered_after_it_loaded(self,
+                                                                app_at):
+        """Nothing configured: the load door and the findings renderer are
+        registered on the page AFTER the panel loaded, as a template that
+        loads smiles.js before page.js leaves them, and the build -- the
+        server's -- reaches both."""
+        out = _run('''
+            const drawn = [];
+            smiles.wirePanel({ doc: { getElementById: (id) =>
+                (id === "smiles-findings" ? { id } : null) } });
+            globalThis.molbuilder.structurePage = {
+                loadIntoCanvas: async () => ({ ok: true }) };
+            globalThis.molbuilder.validationFindings = {
+                render: (rows) => drawn.push(rows) };
             const r = await smiles.generate("C");
-            console.log(JSON.stringify(r));
-        ''')
-        # Without the lazy-resolve fix this would be
-        # {rejected: true, msg: "smiles: fetch not configured"}.
-        assert out == {"ok": True, "n_atoms": 1}
+            console.log(JSON.stringify({ r, drawn, answer: __answered[0] }));
+        ''', app_at)
+        answer = out["answer"]
+        assert answer["ok"] is True, answer
+        # Without the lazy-resolve fix generate() rejects: "smiles:
+        # structurePage not configured".
+        assert out["r"] == {"ok": True, "n_atoms": answer["n_atoms"],
+                            "backend_used": answer["backend_used"]}
+        assert out["drawn"] == [[], answer["notices"]]
 
 
 class TestInputValidation:
 
-    def test_empty_smiles_rejected_without_fetch(self):
-        """An empty input must NOT hit the network — saves a
-        roundtrip + gives the user a clear inline error."""
-        out = _run_node('''
-            let fetchCalls = 0;
-            smiles.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await smiles.generate("");
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "Enter a SMILES" in out["envelope"]["error"]
-        assert out["fetchCalls"] == 0
-
-    def test_whitespace_only_rejected(self):
-        out = _run_node('''
-            let fetchCalls = 0;
-            smiles.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
+    def test_nothing_to_build_is_refused_without_a_request(self, app_at):
+        """Blank input is refused in the panel's words before anything is
+        sent -- a round trip saved and an inline error the person can act
+        on."""
+        out = _run('''
             const r = await smiles.generate("   \\n\\t  ");
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert out["fetchCalls"] == 0
-
-    def test_non_string_rejected(self):
-        out = _run_node('''
-            smiles.configure({
-                fetch: async () => ({}),
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await smiles.generate(null);
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-
-
-# ----- Happy path ------------------------------------------------ #
+            console.log(JSON.stringify({ r, calls: __calls.length }));
+        ''', app_at)
+        assert out["r"]["ok"] is False
+        assert "Enter a SMILES" in out["r"]["error"]
+        assert out["calls"] == 0
 
 
 class TestHappyPath:
 
-    def test_successful_generate_hands_over_the_envelope(self):
+    def test_successful_generate_hands_over_the_envelope(self, app_at):
         """The build's answer reaches the load door WHOLE.
 
         ``/api/build/molecule`` already built a Structure; it returns it
@@ -174,37 +121,19 @@ class TestHappyPath:
         the server parsed back a flattened copy of what it had just
         built -- and XYZ has no slots for ``residue_names`` or
         ``atom_names``, so a generated peptide arrived with every
-        residue named MOL and CA/CB collapsed to C.  Asserting the
-        identity columns survive is the guard on that: they cannot
-        survive a document, only an envelope."""
-        out = _run_node('''
-            let capturedUrl = null;
-            let capturedBody = null;
+        residue named MOL and CA/CB collapsed to C.  The load door must
+        receive the server's envelope as it came, the document beside it
+        left out: identity columns survive an envelope, never a
+        document."""
+        out = _run('''
             let canvasArgs = null;
             let loadCalls = 0;
+            const drawn = [];
+            // The panel wired as the page wires it: its findings list named.
+            smiles.wirePanel({ doc: { getElementById: (id) =>
+                (id === "smiles-findings" ? { id } : null) } });
             smiles.configure({
-                fetch: async (url, init) => {
-                    capturedUrl = url;
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true,
-                            structure: {
-                                title: "ethanol",
-                                elements: ["C", "C", "O"],
-                                positions: [[0,0,0], [1,0,0], [2,0,0]],
-                                residue_names: ["ETH", "ETH", "ETH"],
-                                atom_names: ["C1", "C2", "O1"],
-                            },
-                            // The flattened rendering rides along and is
-                            // deliberately NOT what gets installed.
-                            text: "3\\nethanol\\nC 0 0 0\\nC 1 0 0\\nO 2 0 0\\n",
-                            n_atoms: 3,
-                            title: "ethanol",
-                        }),
-                    };
-                },
+                findings: { render: (rows) => drawn.push(rows) },
                 structurePage: {
                     loadIntoCanvas: async (struct, src) => {
                         loadCalls++;
@@ -215,21 +144,25 @@ class TestHappyPath:
             });
             const r = await smiles.generate("CCO");
             console.log(JSON.stringify({
+                drawn,
                 envelope:  r,
-                url:       capturedUrl,
-                body:      capturedBody,
+                call:      __calls[0],
+                answer:    __answered[0],
                 canvas:    canvasArgs,
                 loadCalls: loadCalls,
             }));
-        ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 3}
-        assert out["url"] == "/api/build/molecule"
-        assert out["body"] == {"kind": "smiles", "input": "CCO"}
-        # The load door receives the ENVELOPE, and the columns XYZ
-        # cannot carry are still on it.
-        env = out["canvas"]["struct"]["structure"]
-        assert env["residue_names"] == ["ETH", "ETH", "ETH"]
-        assert env["atom_names"] == ["C1", "C2", "O1"]
+        ''', app_at)
+        answer = out["answer"]
+        assert answer["ok"] is True and "text" in answer, answer
+        assert out["envelope"] == {"ok": True, "n_atoms": answer["n_atoms"],
+                                   "backend_used": answer["backend_used"]}
+        # the panel's earlier findings cleared as the build starts, then what
+        # the build said of what it built, drawn under the panel
+        assert out["drawn"] == [[], answer["notices"]]
+        assert out["call"]["url"] == "/api/build/molecule"
+        assert out["call"]["body"] == {"kind": "smiles", "input": "CCO"}
+        # The load door receives the ENVELOPE, whole, as the server sent it
+        assert out["canvas"]["struct"]["structure"] == answer["structure"]
         # ...and NOT the document sitting beside it in the same response.
         assert "text" not in out["canvas"]["struct"]
         assert out["canvas"]["src"]["kind"] == "smiles"
@@ -237,60 +170,41 @@ class TestHappyPath:
         # ...exactly once — no redundant second load.
         assert out["loadCalls"] == 1
 
-    def test_smiles_input_is_trimmed_before_post(self):
+    def test_smiles_input_is_trimmed_before_post(self, app_at):
         """Leading/trailing whitespace is stripped — the server
         side rejects empty input, and a SMILES with surrounding
         space is the same molecule."""
-        out = _run_node('''
-            let capturedBody = null;
+        out = _run('''
             smiles.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, text: "1\\nC\\nC 0 0 0\\n",
-                            n_atoms: 1,
-                        }),
-                    };
-                },
                 structurePage: {
                     loadIntoCanvas: async () => ({ok: true}),
                 },
             });
             await smiles.generate("  C  ");
-            console.log(JSON.stringify(capturedBody));
-        ''')
+            console.log(JSON.stringify(__calls[0].body));
+        ''', app_at)
         assert out["input"] == "C"
-
-
-# ----- Error paths ----------------------------------------------- #
 
 
 class TestErrorPaths:
 
-    def test_http_error_surfaces_message(self):
-        out = _run_node('''
+    def test_http_error_surfaces_message(self, app_at):
+        """A SMILES RDKit cannot read: the server's refusal, in its words."""
+        out = _run('''
             smiles.configure({
-                fetch: async () => ({
-                    ok: false,
-                    json: async () => ({
-                        ok: false,
-                        error: "RDKit could not parse SMILES",
-                    }),
-                }),
                 structurePage: {
                     loadIntoCanvas: async () => ({ok: true}),
                 },
             });
             const r = await smiles.generate("not-a-real-smiles");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "RDKit" in out["error"]
+            console.log(JSON.stringify({r, answer: __answered[0]}));
+        ''', app_at)
+        assert out["answer"]["ok"] is False, out
+        assert out["r"] == {"ok": False, "error": out["answer"]["error"]}
 
     def test_network_failure_returns_envelope_not_throws(self):
-        out = _run_node('''
+        """The browser's own failure to reach the server -- no answer."""
+        out = _run('''
             smiles.configure({
                 fetch: async () => {
                     throw new TypeError("Failed to fetch");
@@ -306,63 +220,37 @@ class TestErrorPaths:
         assert "/api/build/molecule" in out["error"]
         assert "Failed to fetch" in out["error"]
 
-    def test_server_returns_ok_false_envelope(self):
-        """Server reports ok:false in the body (validation error,
-        unknown kind, etc.) even when the HTTP status is 200 — the
-        module must surface the error text."""
-        out = _run_node('''
-            smiles.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: false,
-                        error: "empty input",
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            const r = await smiles.generate("CCO");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert out["error"] == "empty input"
-
-
-# ----- Canvas-gate integration ----------------------------------- #
-
 
 class TestCanvasGate:
 
-    def test_canvas_cancel_passes_through_as_cancelled(self):
+    def test_canvas_cancel_passes_through_as_cancelled(self, app_at):
         """If the load door returns ``cancelled: true``, the result envelope
-        carries ``cancelled: true`` — no ``ok`` success."""
-        out = _run_node('''
+        carries ``cancelled: true`` — no ``ok`` success -- and the door is
+        asked exactly once.  The chain is `panel-deps.js`'s, shared by the
+        five panels: this is its one test."""
+        out = _run('''
+            let loadCalls = 0;
             smiles.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, text: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
-                    }),
-                }),
                 structurePage: {
-                    loadIntoCanvas: async () => ({
-                        ok: false, cancelled: true,
-                    }),
+                    loadIntoCanvas: async () => {
+                        loadCalls++;
+                        return { ok: false, cancelled: true };
+                    },
                 },
             });
             const r = await smiles.generate("C");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": False, "cancelled": True}
+            console.log(JSON.stringify({ r, loadCalls }));
+        ''', app_at)
+        assert out["r"] == {"ok": False, "cancelled": True}
+        assert out["loadCalls"] == 1
 
-    def test_the_build_runs_under_the_fence_and_its_cancel_is_an_answer(self):
+    def test_the_build_runs_under_the_fence_and_its_cancel_is_an_answer(
+            self, app_at):
         """`tabs.md`, *One chain for the five generators*: the build runs
         under the page's fence with a Cancel that aborts the request, and a
         Cancel pressed is answered ``cancelled`` -- nothing on the canvas,
         no error -- never "Could not reach" a server that was reached."""
-        out = _run_node('''
+        out = _run('''
             const claims = [];
             globalThis.molbuilder.pageBusy = {
                 run: async (reason, cancelers, fn) => {
@@ -374,64 +262,27 @@ class TestCanvasGate:
             };
             let loads = 0;
             smiles.configure({
-                fetch: (url, init) => new Promise((resolve, reject) => {
-                    init.signal.addEventListener("abort", () => {
-                        const e = new Error("aborted");
-                        e.name = "AbortError";
-                        reject(e);
-                    });
-                }),
                 structurePage: { loadIntoCanvas: async () => {
                     loads += 1; return { ok: true }; } },
             });
             const r = await smiles.generate("C");
             console.log(JSON.stringify({ claims, r, loads }));
-        ''')
+        ''', app_at)
         assert out["claims"] == [{
-            "reason": "Generating 3-D structure from SMILES\u2026",
+            "reason": "Generating 3-D structure from SMILES…",
             "cancelers": 1}], out
         assert out["r"] == {"ok": False, "cancelled": True}, out
         assert out["loads"] == 0, out
 
-    def test_canvas_accept_returns_ok(self):
-        """The load door accepting the XYZ (loadIntoCanvas resolving
-        ok) is the whole success path — the door parses + renders
-        the structure itself, so the module returns ok:true."""
-        out = _run_node('''
-            let loadCalls = 0;
-            smiles.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, text: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async () => { loadCalls++; return {ok: true}; },
-                },
-            });
-            const r = await smiles.generate("C");
-            console.log(JSON.stringify({envelope: r, loadCalls}));
-        ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 1}
-        assert out["loadCalls"] == 1
-
-
-# ----- Configuration error surface ------------------------------- #
-
 
 class TestConfigurationErrors:
 
-
     def test_generate_rejects_when_structurePage_unconfigured(self):
-        out = _run_node('''
-            smiles.configure({
-                fetch: async () => ({ok: true, json: async () => ({})}),
-                // structurePage NOT configured
-            });
-            const p = smiles.generate("CCO");
+        """No load door configured, and none on the page: the call rejects,
+        naming the slot."""
+        out = _run('''
             let rejected = false, msg = "";
-            try { await p; }
+            try { await smiles.generate("CCO"); }
             catch (e) { rejected = true; msg = e.message; }
             console.log(JSON.stringify({rejected, msg}));
         ''')
@@ -442,17 +293,12 @@ class TestConfigurationErrors:
 # ----- What each panel asks the server --------------------------- #
 
 
-def _ask_panel(panel: str, typed: str, opts: dict) -> dict:
-    """What ``panel`` answers for ``typed``, and what it sent and recorded."""
-    return _run_node(f"""
-        const p = require({json.dumps(str((PANEL_DEPS.parent / (panel + '.js')).resolve()))});
-        let body = null, made = null;
-        p.configure({{
-            fetch: async (url, init) => {{
-                body = JSON.parse(init.body);
-                return {{ ok: true,
-                          json: async () => ({{ ok: true, n_atoms: 1 }}) }};
-            }},
+def _ask_panel(panel: str, typed: str, opts: dict, app_at) -> dict:
+    """What ``panel`` answers for ``typed``, and what it sent and recorded --
+    its request answered by the app serving at ``app_at``."""
+    return _run(f"""
+        let made = null;
+        {panel}.configure({{
             structurePage: {{
                 loadIntoCanvas: async (s, g) => {{
                     made = g;
@@ -460,40 +306,49 @@ def _ask_panel(panel: str, typed: str, opts: dict) -> dict:
                 }},
             }},
         }});
-        const said = await p.generate({json.dumps(typed)}, {json.dumps(opts)});
-        console.log(JSON.stringify({{ said, body, made }}));
-    """)
+        const said = await {panel}.generate({json.dumps(typed)},
+                                            {json.dumps(opts)});
+        const sent = __calls[0];
+        console.log(JSON.stringify({{
+            said, made, body: sent ? sent.body : null,
+            answer: __answered[0] || null }}));
+    """, app_at, panel=panel)
 
 
 @pytest.mark.parametrize("panel,typed,opts,asked,record", [
-    ("name", "ethanol", {}, {"kind": "name", "input": "ethanol"},
-     {"name": "ethanol"}),
-    ("rna", "ACGU", {"form": "A", "backend": "amber"},
-     {"kind": "rna", "input": "ACGU", "form": "A", "backend": "amber"},
-     {"sequence": "ACGU", "form": "A", "backend": "amber"}),
+    ("rna", "ACGU", {"form": "A", "backend": "threedna"},
+     {"kind": "rna", "input": "ACGU", "form": "A", "backend": "threedna"},
+     {"sequence": "ACGU", "form": "A", "backend": "threedna"}),
     ("rna", "5'-ACGU-3'", {},
      {"kind": "rna", "input": "5'-ACGU-3'", "backend": "auto"},
      {"sequence": "5'-ACGU-3'", "backend": "auto"}),
     ("rna", "3'-UGCA", {},
-     {"kind": "rna", "input": "3'-UGCA", "backend": "auto"},
-     {"sequence": "3'-UGCA", "backend": "auto"}),
-], ids=["a name", "RNA with its form and backend",
-        "a strand labelled with its ends", "a strand missing an end"])
-def test_what_a_panel_asks_the_server(panel, typed, opts, asked, record):
+     {"kind": "rna", "input": "3'-UGCA", "backend": "auto"}, None),
+], ids=["RNA with its form and backend", "a strand labelled with its ends",
+        "a strand missing an end"])
+def test_what_a_panel_asks_the_server(panel, typed, opts, asked, record,
+                                      app_at):
     """Each panel's whole request, and the record of what made the structure
-    (`web/tabs.md` § 2).  THE SILENT FAILURES: a chosen form or backend
-    dropped, and the server builds its default with no word; a strand's letters
-    sent in place of what was typed: `3'-UGCA`, which the server refuses for
-    its missing end, built as if unlabelled -- the strand read the other way,
-    nothing said."""
-    got = _ask_panel(panel, typed, opts)
+    (`web/tabs.md` § 2) where the server built it.  THE SILENT FAILURES: a
+    chosen form or backend dropped, and the server builds its default with no
+    word; a strand's letters sent in place of what was typed: `3'-UGCA`,
+    which the server refuses for its missing end -- its refusal said in its
+    words and nothing built -- built as if unlabelled, the strand read the
+    other way, nothing said."""
+    got = _ask_panel(panel, typed, opts, app_at)
     assert got["body"] == asked
-    assert got["made"] == {"kind": panel, "generator_input": record}
+    if record is None:
+        assert got["answer"]["ok"] is False, got
+        assert got["said"] == {"ok": False, "error": got["answer"]["error"]}
+        assert got["made"] is None
+    else:
+        assert got["answer"]["ok"] is True, got
+        assert got["made"] == {"kind": panel, "generator_input": record}
 
 
-def test_dna_thymine_rejected_in_rna_panel():
+def test_dna_thymine_rejected_in_rna_panel(app_at):
     """T is DNA's thymine; RNA uses U.  The letter is refused, naming the
     alphabet, and nothing is sent to be built."""
-    got = _ask_panel("rna", "ACGT", {})
+    got = _ask_panel("rna", "ACGT", {}, app_at)
     assert got["said"]["ok"] is False and "ACGU" in got["said"]["error"]
     assert got["body"] is None

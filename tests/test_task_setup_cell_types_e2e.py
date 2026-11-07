@@ -40,114 +40,69 @@ pytestmark = pytest.mark.e2e
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
-from pathlib import Path
+from support.road import (_description_with_overrides, describe_calculation,
+                          read_request, save_both)
+from support.sidebar import committed
+from support.task_setup_page import edited_by_hand, file_text, task_setup_on
 
-from support.task_setup_page import unfold
 
-ROOT = Path(__file__).resolve().parents[1]
+def _described_h2(root, name, *, calculation="optimization"):
+    """An H2 SIESTA calculation, ``name``, in the project ``root`` of the
+    projects tree: `molbuilder describe` (`support.road`), its one stage --
+    `coarse` for an optimization, `freq` for a vibration.  The tree is the
+    module's, so describing moves nothing for the test."""
+    with pytest.MonkeyPatch.context() as local:
+        return describe_calculation(root.parents[1], local, name=name,
+                                    calculation=calculation,
+                                    stage_strategy="",
+                                    bundle=f"{root.name}/{calculation}/{name}")
+
+
+def _saved(d, task):
+    """``task`` through Task setup's Save, the job request as it lies."""
+    r = save_both(d, task, read_request(d))
+    assert r.status_code == 200, r.get_json()
+
+
+def _varying(d, column):
+    """``d``'s description with ``column`` its one varying parameter and no
+    stage overriding it -- a column every cell of which is blank -- through
+    Task setup's Save (`stages.md` § 6.2)."""
+    task = json.loads((d / "task.json").read_text())
+    task["varies"] = [column]
+    _saved(d, task)
+    return d
 
 
 @pytest.fixture(scope="module")
 def calc_dir(isolated_projects_root_module):
-    """A calculation the tab can open: a template, a structure, and a
-    description whose one column is the one that broke.
+    """A calculation the tab can open, as `molbuilder describe` leaves one,
+    whose one column is the one that broke: `kgrid`, through Save.
 
     Built under the configured projects root, because the picker refuses a
     path outside it — that is the roots guard working, not a test problem.
     """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
-                                 write_task)
-    from molbuilder.template import template_with_values
-
-    d = isolated_projects_root_module / "cell_types/optimization/probe"
-    d.mkdir(parents=True)
-    try:
-        (d / "probe.source.xyz").write_text(
-            "2\nprobe\nH 0 0 0\nH 0 0 0.74\n", encoding="utf-8")
-        (d / "probe.template.toml").write_text(
-            template_with_values(SiestaConfig(system_label="probe"),
-                                 engine="siesta",
-                                 calculation="optimization"),
-            encoding="utf-8")
-        write_task(d, Task(
-            engine="siesta", calculation="optimization",
-            run=derive_run("probe"),
-            structure=StructureRef(source="probe.source.xyz"),
-            varies=("kgrid",),
-            stages=(Stage(name="tight", overrides={}),)))
-        _request_beside(d)
-        yield d
-    finally:
-        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.
-        pass
-
-
-def _request_beside(d):
-    """The job request beside the description written above, each stage
-    its own group -- a calculation's folder holds both
-    (`execution/job-request.md` § 7)."""
-    from molbuilder import job_request
-    from molbuilder.task import of as task_of
-    task = task_of(d)
-    job_request.write(d, job_request.fresh(
-        task, {st.name: i + 1 for i, st in enumerate(task.stages)}))
+    return _varying(_described_h2(isolated_projects_root_module
+                                  / "cell_types", "probe"), "kgrid")
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _open(page, base, calc, ready='input[aria-label="tight kgrid"]'):
-    """Land the tab on the folder the way the app itself does.
-
-    `projects.md` § 5's hand-off writes the TARGET page's own selection slot
-    and the sidebar restores from it at init.  Calling ``navigateTo`` after
-    load instead is a race the sidebar wins: ``restoreSelection`` runs
-    second and puts the tree back at the projects root.
-    """
-    slot = json.dumps(str(calc))
-    page.add_init_script(
-        "try {"
-        f" sessionStorage.setItem('molbuilder.current_dir.task-setup', {slot});"
-        f" sessionStorage.setItem('molbuilder.current_dir', {slot});"
-        "} catch (_) {}")
-    page.goto(f"{base}/task-setup")
-    page.wait_for_selector(ready, state="attached", timeout=20000)
-    # The editor arrives LAST -- CodeMirror is fetched lazily, so the stage
-    # table can be up while `.CodeMirror` is still null.  Everything below
-    # reads the description through the editor, so this is part of "open".
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        " return !!(n && n.CodeMirror); }", timeout=20000)
-    unfold(page)
+#: The one stage's k-grid cell, the column that broke.
+_KGRID = 'input[aria-label="coarse kgrid"]'
 
 
-def _described(page):
-    """The description as the page would write it — read from the editor the
-    tab shows, not from any internal the test would have to know about."""
-    return json.loads(page.evaluate(
-        "() => document.querySelector('.CodeMirror').CodeMirror.getValue()"))
-
-
-def _type(page, cell, text):
-    """Commit a value into one cell, and WAIT FOR THE MODEL TO TAKE IT.
-
-    The repaint IS the signal: the editor's bytes changing means the
-    keystroke reached the description.
-    """
-    sel = f'input[aria-label="{cell}"]'
-    before = page.evaluate(
-        "() => document.querySelector('.CodeMirror').CodeMirror.getValue()")
-    page.fill(sel, text)
-    page.dispatch_event(sel, "change")
-    page.wait_for_function(
-        "b => document.querySelector('.CodeMirror').CodeMirror.getValue() !== b",
-        arg=before, timeout=5000)
+def _overrides(page):
+    """The one stage's overrides in the description as the page would write
+    it -- read from the editor the tab shows (`support.task_setup_page.
+    file_text`), once the cell's write has landed: a cell is committed as a
+    person commits it, typed, then left (`support.sidebar.committed`)."""
+    return json.loads(file_text(page, "task"))["stages"][0]["overrides"]
 
 
 @pytest.mark.parametrize("typed", ["4,4,1", "4x4x1", "4 4 1"])
@@ -155,9 +110,9 @@ def test_a_typed_k_grid_lands_as_three_numbers(page, flask_server, calc_dir,
                                                typed):
     """All three spellings, because a person writes a k-grid all three ways
     and the field means the same thing each time."""
-    _open(page, flask_server, calc_dir)
-    _type(page, "tight kgrid", typed)
-    got = _described(page)["stages"][0]["overrides"]["kgrid"]
+    task_setup_on(page, flask_server, calc_dir)
+    committed(page, _KGRID, typed)
+    got = _overrides(page)["kgrid"]
     assert got == [4, 4, 1], f"typed {typed!r}, description carries {got!r}"
 
 
@@ -165,11 +120,11 @@ def test_an_emptied_cell_still_removes_the_override(page, flask_server,
                                                     calc_dir):
     """Absent means *this stage uses the template's value* (`stages.md`
     § 6.2)."""
-    _open(page, flask_server, calc_dir)
-    _type(page, "tight kgrid", "4,4,1")
-    assert "kgrid" in _described(page)["stages"][0]["overrides"]
-    _type(page, "tight kgrid", "")
-    assert "kgrid" not in _described(page)["stages"][0]["overrides"]
+    task_setup_on(page, flask_server, calc_dir)
+    committed(page, _KGRID, "4,4,1")
+    assert "kgrid" in _overrides(page)
+    committed(page, _KGRID, "")
+    assert "kgrid" not in _overrides(page)
 
 
 def test_text_that_is_not_a_k_grid_is_kept_as_typed(page, flask_server,
@@ -181,9 +136,9 @@ def test_text_that_is_not_a_k_grid_is_kept_as_typed(page, flask_server,
     door says so as it is typed, in the item's words (§ 5.2).
 
     MUTATION THIS MUST FAIL AGAINST: the door's refusal not said."""
-    _open(page, flask_server, calc_dir)
-    _type(page, "tight kgrid", "4,4")
-    assert _described(page)["stages"][0]["overrides"]["kgrid"] == "4,4"
+    task_setup_on(page, flask_server, calc_dir)
+    committed(page, _KGRID, "4,4")
+    assert _overrides(page)["kgrid"] == "4,4"
     said = page.evaluate(
         "() => document.getElementById('ts-state').getAttribute('data-state')"
         " + ' | ' + document.getElementById('ts-state-body').textContent")
@@ -203,33 +158,8 @@ def bool_column_dir(isolated_projects_root_module):
     module-scoped and shared by the three tests above, and widening its
     `varies` would change what they open.
     """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
-                                 write_task)
-    from molbuilder.template import template_with_values
-
-    d = isolated_projects_root_module / "cell_bool/optimization/probe"
-    d.mkdir(parents=True)
-    try:
-        (d / "probe.source.xyz").write_text(
-            "2\nprobe\nH 0 0 0\nH 0 0 0.74\n", encoding="utf-8")
-        (d / "probe.template.toml").write_text(
-            template_with_values(SiestaConfig(system_label="probe"),
-                                 engine="siesta",
-                                 calculation="optimization"),
-            encoding="utf-8")
-        write_task(d, Task(
-            engine="siesta", calculation="optimization",
-            run=derive_run("probe"),
-            structure=StructureRef(source="probe.source.xyz"),
-            varies=("write_coor_xmol",),
-            stages=(Stage(name="tight", overrides={}),)))
-        _request_beside(d)
-        yield d
-    finally:
-        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.
-        pass
+    return _varying(_described_h2(isolated_projects_root_module
+                                  / "cell_bool", "probe"), "write_coor_xmol")
 
 
 def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
@@ -242,17 +172,13 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
     only two answers and the cell must present them rather than invite a
     person to spell one.
     """
-    _open(page, flask_server, bool_column_dir,
-          ready='[aria-label="tight write_coor_xmol"]')
-    cell = page.evaluate(
-        "() => { const n = document.querySelector("
-        "  '[aria-label=\"tight write_coor_xmol\"]');"
-        "  if (!n) return null;"
-        "  return {tag: n.tagName,"
-        "          options: [...(n.options || [])].map(o => o.value)}; }")
-    assert cell and cell["tag"] == "SELECT", (
+    task_setup_on(page, flask_server, bool_column_dir)
+    cell = page.locator('[aria-label="coarse write_coor_xmol"]').evaluate(
+        "n => ({tag: n.tagName,"
+        "       options: [...(n.options || [])].map(o => o.value)})")
+    assert cell["tag"] == "SELECT", (
         f"`write_coor_xmol` is declared bool, and its cell came up as a "
-        f"<{(cell or {}).get('tag')}>.  The catalogue knows the only two "
+        f"<{cell['tag']}>.  The catalogue knows the only two "
         f"answers, so the cell must offer them: a text box invites 'True', "
         f"'yes', '1' and each is a different kind of wrong, discovered at "
         f"run time.")
@@ -266,33 +192,15 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
 
 
 @pytest.fixture
-def out_of_set_dir(isolated_projects_root_module):
-    """A vibration whose one stage holds a relaxer the kind does not
-    offer (`engines/template.md` § 6.3a)."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
-                                 write_task)
-    from molbuilder.template import template_with_values
-
-    d = isolated_projects_root_module / "cell_offered/vibration/probe"
-    d.mkdir(parents=True)
-    (d / "probe.source.xyz").write_text(
-        "2\nprobe\nH 0 0 0\nH 0 0 0.74\n", encoding="utf-8")
-    (d / "probe.template.toml").write_text(
-        template_with_values(SiestaConfig(system_label="probe"),
-                             engine="siesta", calculation="vibration"),
-        encoding="utf-8")
-    write_task(d, Task(
-        engine="siesta", run=derive_run("probe", stage_names=("freq",)),
-        structure=StructureRef(source="probe.source.xyz"),
-        calculation="vibration", varies=("relax_type",),
-        stages=(Stage(name="freq", overrides={"relax_type": "none"}),)))
-    _request_beside(d)
-    yield d
+def vibration_dir(isolated_projects_root_module):
+    """A vibration, as `molbuilder describe` leaves one: its one stage
+    `freq`, overriding nothing."""
+    return _described_h2(isolated_projects_root_module / "cell_offered",
+                         "probe", calculation="vibration")
 
 
 def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
-        page, flask_server, out_of_set_dir):
+        page, flask_server, vibration_dir):
     """The cell's menu offers what a vibration's relaxation may take --
     CG, Broyden, FIRE -- and still shows the override the description
     holds, marked, rather than a blank cell over it; prep refuses it by
@@ -301,17 +209,24 @@ def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
     `none (not offered here)` — beside the offered choices, never a blank
     cell over an override the description still holds"*.
 
+    THE VALUE ARRIVES AS IT CAN: by a person's hand edit of the
+    description.  The description's own check refuses a stage override
+    outside the kind's set when the description is written (gate ③,
+    `engines/template.md` § 6.3a), so Save never writes one; the page's
+    editor takes a hand edit, and reads it back into the stage table
+    (`task-setup.md` § 9a) -- the cell is where the person then picks an
+    offered one.
+
     MUTATION THIS MUST FAIL AGAINST: the viewer without the branch (the
     cell shows nothing selected)."""
-    _open(page, flask_server, out_of_set_dir,
-          ready='[aria-label="freq relax_type"]')
-    cell = page.evaluate(
-        "() => { const n = document.querySelector("
-        "  '[aria-label=\"freq relax_type\"]');"
-        "  if (!n) return null;"
-        "  return {value: n.value, text: n.selectedIndex < 0 ? null"
-        "          : n.options[n.selectedIndex].text,"
-        "          options: [...n.options].map(o => o.value)}; }")
-    assert cell and cell["value"] == "none", cell
+    task_setup_on(page, flask_server, vibration_dir)
+    edited_by_hand(page, "task", json.dumps(_description_with_overrides(
+        vibration_dir, {"freq": {"relax_type": "none"}}), indent=2))
+    # THE CELL THE HAND EDIT DRAWS, once the page has read it back.
+    cell = page.locator('[aria-label="freq relax_type"]').evaluate(
+        "n => ({value: n.value, text: n.selectedIndex < 0 ? null"
+        "       : n.options[n.selectedIndex].text,"
+        "       options: [...n.options].map(o => o.value)})")
+    assert cell["value"] == "none", cell
     assert cell["text"] == "none (not offered here)", cell
     assert {"CG", "Broyden", "FIRE"} <= set(cell["options"]), cell

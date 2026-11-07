@@ -1,19 +1,20 @@
 """`results.md` § 4 and § 4.2 on the TRAJECTORY side, run: the viewer's
-own `transition()` and `applyNewData`.
+own `transition()`, on no answer of the server's.
 
 * `IDLE` clears the file's name, so an answer after dispose fails the
   guard; each target lands the machine and leaves the poll timer right;
-* an answer is written under its own file's name or not at all, and an
-  answer refused draws nothing -- through both of `applyNewData`'s arms,
-  against a stand-in movie;
 * mid-write frames stay out of the plots; the legacy flat names are the
-  buckets' values; the poll wires no listener; the loaders reach the
-  settle (§ 4.1's case table is `test_trajectory_settle_post_load_js.py`).
+  buckets' values; the poll wires no listener.
+
+What the viewer makes of the server's ANSWERS -- an answer written under its
+own file's name or not at all, the poll loop taking how the run is doing,
+the settle -- is fed what the routes answered of real runs:
+`test_the_viewers_follow_a_real_run_e2e.py`.
 
 **These RUN the real functions.** Their source is lifted from the shipped
 module (`tests/_node_esm.lifted`) and executed against a fake state, so
-what is asserted is the OUTCOME -- the path is null, the timer is off, the
-movie holds nothing it should not -- and not the presence of a string.
+what is asserted is the OUTCOME -- the path is null, the timer is off --
+and not the presence of a string.
 
 **One honest limitation, measured.** The harness stubs `transition`'s two
 collaborators BY NAME (`startPolling` / `stopPolling`), so renaming one
@@ -103,15 +104,6 @@ def test_idle_stops_the_timer_and_releases_the_requests():
         f"{out['aborted']}")
 
 
-def test_loaded_stops_polling():
-    """A run that has settled is not polled again."""
-    out = _transition("LOADED")
-    assert out["timerRunning"] is False, (
-        "transition('LOADED') left the poll timer running. A finished run "
-        "is re-fetched every 15 s for as long as the tab is open.")
-    assert out["machine"] == "LOADED"
-
-
 def test_loading_releases_the_previous_files_requests():
     """A file switch must not carry the previous file's work forward: the
     in-flight requests are released, so a late answer for the old file
@@ -131,197 +123,6 @@ def test_loading_forgets_the_last_files_run():
     unwatched -- until an answer for the new file landed.
     """
     assert _transition("LOADING", machine="WATCHING")["run"] is None
-
-
-# --------------------------------------------------------------------- #
-#  An answer is written under its own file's name, or not at all        #
-# --------------------------------------------------------------------- #
-
-_THE_FILE = "/p/H2/01_coarse/run-0/H2.out"
-_ANOTHER = "/p/H2/01_coarse/run-1/H2.out"
-_ONE_FRAME = [[["H", 0.0, 0.0, 0.0], ["H", 0.74, 0.0, 0.0]]]
-_TWO_FRAMES = _ONE_FRAME + [[["H", 0.0, 0.0, 0.0], ["H", 0.75, 0.0, 0.0]]]
-
-
-def _parsed(frames, mark):
-    """A parse of an output, marked so the test can tell whose it is."""
-    return {"frames": frames, "lattice": None, "run_state": "running",
-            "scf_history": [], "mark": mark}
-
-
-_FINISHED = {"state": "finished", "detail": "job_completed", "live": False}
-
-
-def _applied(answer, *, machine, path, held, movie=False):
-    """Run the REAL `applyNewData(answer)` -- and through it the REAL
-    `transition("APPLY")` -- on the REAL state, the viewer in ``machine``
-    showing ``path`` with ``held`` parsed; report the file it then holds,
-    its run and time, what reached the movie, what it drew, or what it
-    threw.
-
-    Faked at the edge: MolView -- with ``movie``, a stand-in holding as many
-    frames as ``held`` that records what is appended to it, so a poll that
-    provably extends the movie takes the append; without, none mounted --
-    and the drawing calls, each recorded by name."""
-    frames = len(held["frames"]) if held else 0
-    harness = f"""
-        const root = globalThis;
-        {lifted(MODULE, "    const state = {",
-                "\n    (function _wireBackcompatAliases")}
-        {lifted(MODULE, "    (function _wireBackcompatAliases",
-                "\n    // Transition orchestrator")}
-        {lifted(MODULE, "    function transition(target, payload) {",
-                "\n    function ")}
-        {lifted(MODULE, "    function _latticeEqual(a, b) {",
-                "\n    // Compare frame")}
-        {lifted(MODULE, "    function _frameEqualAt(", "\n    function _scfFingerprint(")}
-        {lifted(MODULE, "    function _scfFingerprint(data) {",
-                "\n    function ")}
-        {lifted(MODULE, "    function applyNewData(r) {", "\n    function ")}
-        const _appended = [];
-        let _count = {frames};
-        const _movie = {{
-            frameCount: () => _count,
-            currentFrame: () => _count - 1,
-            addFrames: (fs) => {{ _appended.push(...fs); _count += fs.length; }},
-            setCurrentFrame: () => {{}},
-        }};
-        let _mv = {json.dumps(movie)} ? {{}} : null;
-        const _mvdata = () => (_mv ? _movie : null);
-        function startPolling() {{}}
-        function stopPolling() {{}}
-        const _drawn = [];
-        function _renderRuntimeInfo() {{ _drawn.push("runtime info"); }}
-        function _renderParseWarnings() {{ _drawn.push("parse warnings"); }}
-        function makePlots() {{ _drawn.push("plots"); }}
-        function _renderBadge() {{ _drawn.push("badge"); }}
-        function setStatus() {{ _drawn.push("status"); }}
-        function rebuildModel() {{ _drawn.push("movie"); }}
-        function drawForces() {{ _drawn.push("forces"); }}
-        function _announceReady() {{}}
-        function _withRunNotes() {{}}
-        function _cellCameFromTheRun() {{ return false; }}
-        state.machine = {json.dumps(machine)};
-        state.fileState.path = {json.dumps(path)};
-        state.fileState.data = {json.dumps(held)};
-        state.fileState.mtime = 1;
-        let threw = null;
-        try {{ applyNewData({json.dumps(answer)}); }}
-        catch (e) {{ threw = String((e && e.message) || e); }}
-        console.log(JSON.stringify({{
-            path: state.fileState.path,
-            mark: state.fileState.data && state.fileState.data.mark,
-            run: state.fileState.run,
-            mtime: state.fileState.mtime,
-            appended: _appended.length,
-            drawn: _drawn,
-            threw,
-        }}));
-    """
-    return run_node([LIFECYCLE], harness)
-
-
-#: One frame, then a poll whose file has grown to two from the same start --
-#: what two attempts of one stage, begun from the same structure, look like.
-_HELD = _parsed(_ONE_FRAME, "held")
-_GROWN = _parsed(_TWO_FRAMES, "answer")
-
-
-@pytest.mark.parametrize("machine,path,held,answer,movie,holds", [
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"path": _ANOTHER, "mtime": 2, "run": _FINISHED,
-                  "data": _parsed(_ONE_FRAME, "answer")}, False,
-                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1,
-                  "drawn": []},
-                 id="a poll's answer with nothing new, for another file"),
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"path": _ANOTHER, "mtime": 2, "run": _FINISHED,
-                  "data": _GROWN}, False,
-                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1,
-                  "drawn": []},
-                 id="a poll's new frames, for another file"),
-    pytest.param("LOADED", _THE_FILE, _HELD,
-                 {"path": _ANOTHER, "mtime": 2, "data": _GROWN}, False,
-                 {"path": _THE_FILE, "mark": "held", "mtime": 1, "drawn": []},
-                 id="another file's frames, polled as the tab comes back to "
-                    "a file that settled"),
-    pytest.param("ERROR", _THE_FILE, _HELD,
-                 {"path": _ANOTHER, "mtime": 2, "data": _GROWN}, False,
-                 {"path": _THE_FILE, "mark": "held", "mtime": 1, "drawn": []},
-                 id="another file's frames, polled as the tab comes back to "
-                    "a file that stopped"),
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"path": _ANOTHER, "mtime": 2, "data": _GROWN}, True,
-                 {"path": _THE_FILE, "mark": "held", "appended": 0,
-                  "drawn": []},
-                 id="another file's new frames, onto a movie that could take "
-                    "them"),
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"path": _THE_FILE, "mtime": 2, "data": _GROWN}, True,
-                 {"path": _THE_FILE, "mark": "answer", "appended": 1},
-                 id="the file on screen's new frames, appended to its movie"),
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"path": _THE_FILE, "mtime": 2, "run": _FINISHED,
-                  "data": _parsed(_ONE_FRAME, "answer")}, False,
-                 {"path": _THE_FILE, "mark": "answer", "run": _FINISHED,
-                  "mtime": 2, "badge drawn": True},
-                 id="a poll's answer with nothing new, for the file on screen"),
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"path": _THE_FILE, "mtime": 2, "data": _GROWN}, False,
-                 {"path": _THE_FILE, "mark": "answer", "mtime": 2},
-                 id="a poll's new frames, for the file on screen"),
-    pytest.param("LOADING", "/p/H2/01_coarse/run-0", None,
-                 {"path": _THE_FILE, "mtime": 1, "format": "siesta",
-                  "data": _parsed(_ONE_FRAME, "answer")}, False,
-                 {"path": _THE_FILE, "mark": "answer"},
-                 id="a load, under the name of the file the server read"),
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"mtime": 2, "data": _GROWN}, False, "refused",
-                 id="new frames that name no file"),
-    pytest.param("WATCHING", _THE_FILE, _HELD,
-                 {"mtime": 2, "data": _parsed(_ONE_FRAME, "answer")}, False,
-                 "refused",
-                 id="an answer with nothing new that names no file"),
-    pytest.param("IDLE", None, None,
-                 {"path": _THE_FILE, "mtime": 2,
-                  "data": _parsed(_ONE_FRAME, "late")}, False,
-                 {"path": None, "mark": None},
-                 id="after dispose, a late answer for the file"),
-])
-def test_an_answer_is_written_under_its_own_files_name_or_not_at_all(
-        machine, path, held, answer, movie, holds):
-    """`results.md` § 4.2: *"A name and the data that belongs to it are
-    written together, or neither is"* -- an answer that names no file is
-    refused, a poll's answer for a file not on screen is dropped and draws
-    nothing -- whatever the viewer was doing when the poll went out: a tab
-    coming back into view polls a file that settled or stopped too -- an
-    answer after dispose writes nothing, and a load takes the name of the
-    file the server read.
-
-    THE SILENT FAILURE.  `/api/watch/data` answers for whatever file the
-    server is watching, so a poll's answer can belong to another file than
-    the one on screen; written -- or drawn -- its frames appear under this
-    file's name, or its run stops this file's follow, and nothing says so.
-
-    Run through the REAL `applyNewData` -- its arm for an answer with
-    nothing new, its append and its rebuild -- so a write or a draw that
-    went around `APPLY` fails here as a missing guard does.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the poll's guard in `APPLY` gone;
-    either arm writing the data itself; the append drawing an answer
-    `APPLY` refused; another file's run written; a null path exempted from
-    the guard; the guard asked only while the run is followed, when the tab
-    coming back into view polls a file that settled too; an answer with
-    nothing new for the file on screen drawing nothing."""
-    out = _applied(answer, machine=machine, path=path, held=held, movie=movie)
-    if holds == "refused":
-        assert out["threw"] and "APPLY without a path" in out["threw"], out
-        assert out["mark"] == "held", out
-    else:
-        assert out["threw"] is None, out
-        for key, want in holds.items():
-            got = ("badge" in out["drawn"]) if key == "badge drawn" else out[key]
-            assert got == want, (key, out)
 
 
 # --------------------------------------------------------------------- #
@@ -422,7 +223,8 @@ def test_every_target_lands_the_machine_and_settles_the_timer(target, timer):
     """Each target reaches its own branch and leaves the poll timer right.
 
     WATCHING is the one that must leave the timer RUNNING — a run still going is
-    the whole reason the viewer polls at all.
+    the whole reason the viewer polls at all; LOADED and ERROR stop it, or a
+    finished run is re-fetched every 15 s for as long as the tab is open.
 
     **The harness starts the timer in the OPPOSITE state**, or the
     assertion is free: with the timer already running, "WATCHING leaves
@@ -465,106 +267,3 @@ def test_starting_the_poll_wires_no_listener():
         f"startPolling registered {out['registered']!r}. Every load would "
         f"add another handler.")
     assert out["timer"] is not None, "startPolling must actually start a timer"
-
-
-# --------------------------------------------------------------------- #
-#  The loaders must actually CALL the settle                            #
-# --------------------------------------------------------------------- #
-
-def _poll_once(*, changed, run, held=None, path="/p/run.molwatch.log"):
-    """Run the REAL `pollOnce` against a stubbed `/api/watch/data`.
-
-    Everything it reaches is faked at the edge — `fetch`, the applier,
-    the badge, the status line — except `_settlePostLoad`, which is lifted
-    from the module and run for real. That is the point: the call has to
-    happen, not merely be written.
-
-    ``changed`` -- whether the answer brings new content; ``run`` -- the
-    run's state it carries (``"absent"`` for none: a poll with new content
-    leaves it out); ``held`` -- the run's state the viewer already holds.
-    """
-    run_state_const = lifted(MODULE, "const RUN_STATE = Object.freeze",
-                             "});") + "});"
-    settle = lifted(MODULE, "    function _settlePostLoad",
-                    "\n    function plottableFrames")
-    poll = lifted(MODULE, "    async function pollOnce()", "\n    function ")
-    answer = {"ok": True, "changed": changed, "mtime": 2 if changed else 1,
-              "path": path, "data": {"frames": []}}
-    if run != "absent":
-        answer["run"] = run
-    harness = f"""
-        {run_state_const}
-        const _seen = [];
-        function transition(name, payload) {{
-            _seen.push(name);
-            if (name === "APPLY") {{
-                if (payload.run !== undefined) state.fileState.run = payload.run;
-                return;
-            }}
-            state.machine = name;
-        }}
-        function applyNewData(r) {{
-            state.fileState.data = r.data;
-            if (r.run !== undefined) state.fileState.run = r.run;
-        }}
-        function _renderBadge() {{}}
-        function setStatus() {{}}
-        function _withRunNotes() {{}}
-        function dispose() {{}}
-        const state = {{
-            machine: "WATCHING",
-            mtime: 1,
-            data: {{ frames: [] }},
-            fileState: {{ path: {json.dumps(path)}, mtime: 1,
-                         data: {{ run_state: "running", frames: [] }},
-                         run: {json.dumps(held)} }},
-            lifecycle: {{ pollInFlight: false, pollAbort: null }},
-            derived: {{}},
-        }};
-        globalThis.fetch = async () => ({{
-            ok: true,
-            json: async () => ({json.dumps(answer)}),
-        }});
-        {settle}
-        {poll}
-        pollOnce().then(() => console.log(JSON.stringify({{
-            transitions: _seen, machine: state.machine,
-        }})));
-    """
-    return run_node([], harness)
-
-
-_LIVE = {"state": "running", "detail": "running", "live": True}
-
-
-def test_a_quiet_poll_that_finds_the_run_over_settles_it():
-    """THE CASE M2f EXISTS FOR (`results.md` § 4.1).  A run killed mid-step
-    leaves an output that never changes again and states nothing; the
-    quiet poll brings how the run is doing -- failed, its monitor saw it go
-    -- and the poll loop must take it and settle, or the viewer polls for
-    as long as the tab is open."""
-    out = _poll_once(changed=False, held=_LIVE,
-                     run={"state": "failed", "live": False,
-                          "detail": "stopped before its end"})
-    assert out["machine"] == "ERROR", out["transitions"]
-
-
-def test_a_quiet_poll_on_a_live_run_keeps_watching():
-    out = _poll_once(changed=False, held=_LIVE, run=_LIVE)
-    assert out["machine"] == "WATCHING", out["transitions"]
-
-
-def test_a_poll_with_new_content_keeps_the_runs_state_it_held():
-    """New content leaves the run's state out -- the run was writing -- so
-    the viewer keeps following on what it held."""
-    out = _poll_once(changed=True, held=_LIVE, run="absent")
-    assert out["machine"] == "WATCHING", out["transitions"]
-
-
-def test_a_poll_whose_write_ended_the_run_settles_it():
-    """The final write and the run's end arrive together (the server reads
-    the end before the file's last read): settled in that one answer."""
-    out = _poll_once(changed=True, held=_LIVE,
-                     run={"state": "finished", "live": False,
-                          "detail": "job_completed"})
-    assert out["machine"] == "LOADED", out["transitions"]

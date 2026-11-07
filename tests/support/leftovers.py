@@ -1,6 +1,6 @@
 """What a page holds after the thing that put it there is gone -- for a test
-that asks whether opening and closing a viewer again and again leaves on the
-page what doing it once left."""
+that asks whether doing a thing again and again, a viewer opened and put
+away, leaves on the page what doing it once left (:func:`what_grew`)."""
 
 #: A JavaScript expression: a spy put on the page.  It pairs every add of a
 #: listener with its remove on ``EventTarget`` itself, as the browser pairs
@@ -10,9 +10,7 @@ page what doing it once left."""
 #:
 #: ``spy.state()``: what outlives -- the listeners on the window, the
 #: document or an element still on the page, sorted, and the count of
-#: contexts not lost.  ``spy.quietly(target, type, fn, options)`` adds a
-#: listener the spy does not count (a test's own wait).  ``spy.restore()``
-#: takes the spy off.
+#: contexts not lost.  ``spy.restore()`` takes the spy off.
 SPY = r"""(() => {
     const live = [];
     const contexts = [];
@@ -53,7 +51,6 @@ SPY = r"""(() => {
                     name(t) + ":" + type + (c ? " (capture)" : "") + " <= " + by)
                 .sort(),
             contexts: contexts.filter((g) => !g.isContextLost()).length }),
-        quietly: (t, type, fn, o) => add.call(t, type, fn, o),
         restore: () => {
             EventTarget.prototype.addEventListener = add;
             EventTarget.prototype.removeEventListener = remove;
@@ -63,8 +60,33 @@ SPY = r"""(() => {
 })()"""
 
 
-def grew(left: dict) -> list:
-    """The listeners ``left["again"]`` holds more of than ``left["once"]``
-    -- what opening again left that opening once did not."""
-    once, again = left["once"]["listeners"], left["again"]["listeners"]
-    return sorted({x for x in again if again.count(x) > once.count(x)})
+def what_grew(page, act, *, first=None, times: int = 5) -> list:
+    """What ``page`` holds after ``times`` rounds that it did not hold
+    after one: ``first`` done (``act``, when no ``first`` is named), what
+    the page holds read, ``act`` done ``times - 1`` times more, read again
+    -- each listener held more often, named with what added it, and the
+    live GL contexts when their count moved; ``[]`` when the page holds
+    what it held.
+
+    THE SPY GOES ON HERE, ON THE PAGE AS IT STANDS, as ``window.__spy``
+    (:data:`SPY`), and comes off when the rounds end: both readings count
+    from the same moment, so what the page did before -- its own start, the
+    viewer it already shows -- is in neither, and a test's own listener
+    (a wait on the page's word) goes on before this is called, uncounted.
+    ``first`` may wait on ``window.__spy.state()`` for a drawing window made
+    where nothing on the page shows it."""
+    page.evaluate("() => { window.__spy = " + SPY + "; }")
+    try:
+        (first or act)()
+        once = page.evaluate("() => window.__spy.state()")
+        for _ in range(times - 1):
+            act()
+        again = page.evaluate("() => window.__spy.state()")
+    finally:
+        page.evaluate("() => window.__spy.restore()")
+    held, more = once["listeners"], again["listeners"]
+    grew = sorted({x for x in more if more.count(x) > held.count(x)})
+    if again["contexts"] != once["contexts"]:
+        grew.append(f"live GL contexts: {once['contexts']} after one round, "
+                    f"{again['contexts']} after {times}")
+    return grew

@@ -1,24 +1,20 @@
 """Unit tests for ``lib/results/file-picker.js`` driven via node.
 
-These tests cover the tab-level result-file picker's pure helpers
-(``filterToResultFiles``, ``_labelForResult``) under Node in a minimal stub
-environment -- no Chromium, no network.  The page composes no path
-(`web/results.md` § 0.3): every file's path is the server's, whole.
+What stays here is the picker's own logic on what a presenter answers: how
+entries are bucketed into headings and the headings ordered, and an entry's
+label.  The presenters are stand-ins that answer a heading; the entries are
+names and times no line here reads inside.
 
-The DOM-bound mount() path (subscriber wiring, fetch, auto-pick) is
-covered by ``tests/test_results_blueprint.py`` integration smoke
-tests + the Playwright suite (#178).
+What the picker makes of a real run folder's listing -- the files it lists,
+newest first, the path whole; a run as one entry, its master absorbing its
+parts; the heading built from the folder's answer -- is asked of runs made
+in the pass: `test_the_viewers_follow_a_real_run_e2e.py`.
 """
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
-
-from molbuilder.runfiles import compose as _rf
+from tests._node_esm import run_node
 
 
 ROOT   = Path(__file__).resolve().parents[1]
@@ -27,181 +23,10 @@ MODULE = ROOT / "molbuilder/web/static/lib/results/file-picker.js"
 TIME_AGO = ROOT / "molbuilder/web/static/lib/time-ago.js"
 
 
-def _run_node(snippet: str) -> object:
-    """Run a JS snippet under Node with the file-picker module
-    pre-loaded.  ``snippet`` must end with a line that
-    JSON.stringifies its output to stdout.  Returns the parsed
-    value."""
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    # Minimal window/document/fetch stubs so the IIFE runs without
-    # touching real APIs.
-    bootstrap = """
-        global.window = global;
-        global.document = {
-            createElement: () => ({
-                setAttribute: () => {},
-                appendChild: () => {},
-            }),
-            getElementById: () => null,
-            querySelector: () => null,
-        };
-        global.AbortController = function () {
-            this.signal = {};
-            this.abort = () => {};
-        };
-        global.fetch = () => Promise.resolve({ ok: false });
-    """
-    full = "\n".join([bootstrap, TIME_AGO.read_text(), MODULE.read_text(),
-                      snippet])
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", full],
-        capture_output=True, text=True, timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    return json.loads(proc.stdout.strip().splitlines()[-1])
-
-
-class TestFilterToResultFiles:
-    """The directory-listing filter is the core of the tab-level
-    picker.  It must:
-      * keep only the files the server's registry can open (``parser``);
-      * sort by mtime descending;
-      * break ties on name deterministically.
-    """
-
-    def test_filters_by_pick_result(self):
-        """A file the SERVER's registry refused (`parser: null`) is dropped.
-
-        The predicate is `detect()`'s verdict, carried per file by
-        `/api/results/dir`.
-        """
-        out = _run_node(
-            "const entries = [\n"
-            "  {name: 'a.out',          mtime: 100, parser: 'siesta'},\n"
-            "  {name: 'b.config',       mtime: 200, parser: null},\n"
-            "  {name: 'c.spectra.json', mtime: 300, parser: 'spectra-json'},\n"
-            "];\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries);\n"
-            "console.log(JSON.stringify(r.map(x => x.name)));"
-        )
-        assert out == ["c.spectra.json", "a.out"]
-
-    def test_sorts_newest_first(self):
-        out = _run_node(
-            "const entries = [\n"
-            "  {name: 'old.out',    parser: 'siesta', mtime: 100},\n"
-            "  {name: 'middle.out', parser: 'siesta', mtime: 500},\n"
-            "  {name: 'newest.out', parser: 'siesta', mtime: 900},\n"
-            "];\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries);\n"
-            "console.log(JSON.stringify(r.map(x => x.name)));"
-        )
-        assert out == ["newest.out", "middle.out", "old.out"]
-
-    def test_tiebreak_by_name(self):
-        """Filesystems with 1s mtime resolution can report identical
-        mtimes for two files written back-to-back.  The picker's
-        sort must produce the same order on every page load."""
-        out = _run_node(
-            "const entries = [\n"
-            "  {name: 'zzz.out', parser: 'siesta', mtime: 500},\n"
-            "  {name: 'aaa.out', parser: 'siesta', mtime: 500},\n"
-            "  {name: 'mmm.out', parser: 'siesta', mtime: 500},\n"
-            "];\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries);\n"
-            "console.log(JSON.stringify(r.map(x => x.name)));"
-        )
-        # Alphabetical on tie -- aaa before mmm before zzz.
-        assert out == ["aaa.out", "mmm.out", "zzz.out"]
-
-    def test_takes_the_whole_path_the_server_sends(self):
-        """Each entry carries the path the server sent, whole -- the page
-        joins no folder to a name (`web/results.md` § 0.3): the menu's value,
-        the mirror to the sidebar and the announcement are that path."""
-        out = _run_node(
-            "const entries = [{name: 'foo.out', path: '/projects/myjob/foo.out',"
-            " parser: 'siesta', mtime: 100}];\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries);\n"
-            "console.log(JSON.stringify(r[0]));"
-        )
-        assert out["name"] == "foo.out"
-        assert out["path"] == "/projects/myjob/foo.out"
-        assert out["mtime"] == 100
-
-    def test_handles_missing_mtime(self):
-        """A broken-symlink entry has ``mtime: null``; the sort
-        must not crash and the entry must land at the end."""
-        out = _run_node(
-            "const entries = [\n"
-            "  {name: 'good.out',   parser: 'siesta', mtime: 100},\n"
-            "  {name: 'broken.out', parser: 'siesta', mtime: null},\n"
-            "];\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries);\n"
-            "console.log(JSON.stringify(r.map(x => x.name)));"
-        )
-        # null mtime sorts to end (treated as -Infinity).
-        assert out == ["good.out", "broken.out"]
-
-    def test_empty_input_returns_empty(self):
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  []);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == []
-
-    def test_invalid_input_returns_empty(self):
-        """Defensive: non-array input must not throw."""
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  null);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == []
-
-    def test_only_what_the_menu_shows_is_counted(self):
-        """A parser reading it is not the same as the menu listing it.
-
-        `parser != null` is the REGISTRY's verdict; `pickResult` is the
-        PICKER's — a catch-all viewer opts OUT (`isResult: false`) so the
-        dropdown is not flooded with configs and logs.  This list answered
-        only the first while `_populate` answered both, so the meta line
-        counted files nobody could pick.
-
-        MEASURED 2026-09-19 on `BDT-only-init-siesta`: 7 files with a
-        parser, 2 options in the dropdown, and the line under it read
-        "7 of 7".
-        """
-        out = _run_node(
-            "const entries = [\n"
-            "  {name: 'a.out', path: '/proj/a.out', mtime: 300,"
-            " parser: 'siesta'},\n"
-            "  {name: 'a.util.csv', path: '/proj/a.util.csv', mtime: 200,"
-            " parser: 'util-csv'},\n"
-            "  {name: 'a.monitor.log', path: '/proj/a.monitor.log',"
-            " mtime: 100, parser: 'monitor-log'},\n"
-            "];\n"
-            "function pickResult(p) {\n"
-            "  return p.endsWith('.out')\n"
-            "       ? { name: 'trajectory', displayName: 'Traj' } : null;\n"
-            "}\n"
-            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, 'siesta', pickResult);\n"
-            "console.log(JSON.stringify(r.map(x => x.name)));"
-        )
-        assert out == ["a.out"]
+def _run(snippet: str) -> object:
+    """``snippet`` against the picker as `results.html` loads it -- the one
+    "ago" first (`_node_esm.run_node`)."""
+    return run_node([TIME_AGO, MODULE], snippet)
 
 
 class TestGroupResultFiles:
@@ -214,7 +39,7 @@ class TestGroupResultFiles:
 
     def test_buckets_by_category(self):
         """Each entry's category comes from ``pickResult(path).resultCategory``."""
-        out = _run_node(
+        out = _run(
             "const entries = [\n"
             "  {path: '/p/a.out',         name: 'a.out',         mtime: 300},\n"
             "  {path: '/p/b.spectra.json', name: 'b.spectra.json', mtime: 200},\n"
@@ -239,39 +64,10 @@ class TestGroupResultFiles:
             {"label": "PySCF spectrum",      "names": ["b.spectra.json"]},
         ]
 
-    def test_category_is_built_from_the_servers_answer(self):
-        """The heading comes from ``{role, parser, engine}``, not the name.
-
-        Every other case here hands `groupResultFiles` a presenter whose
-        `resultCategory` ignores its arguments, so none of them could see
-        that the entry was passed to `pickResult` and then dropped before
-        `resultCategory` — which is how a SIESTA directory's runs came to
-        sit under the engine-less heading while the same response told the
-        page `engine: "siesta"` (measured 2026-09-19 on
-        `BDT-only-init-siesta`).  This one reads the second argument, so
-        the wire between the response and the heading is what is pinned.
-        """
-        out = _run_node(
-            "const entries = [\n"
-            "  {path: '/p/a.out', name: 'a.out', mtime: 300,\n"
-            "   role: '.out', parser: 'siesta', engine: 'siesta'},\n"
-            "];\n"
-            "function pickResult(_p, _m) { return {\n"
-            "  name: 'trajectory', displayName: 'Traj',\n"
-            "  resultCategory: (_f, meta) =>\n"
-            "      (meta && meta.engine ? meta.engine.toUpperCase() : 'NO META')\n"
-            "      + ' optimization',\n"
-            "}; }\n"
-            "const groups = window.molbuilder.resultsFilePicker.groupResultFiles("
-            "  entries, pickResult);\n"
-            "console.log(JSON.stringify(groups.map(g => g.label)));"
-        )
-        assert out == ["SIESTA optimization"]
-
     def test_groups_sorted_by_newest_entry(self):
         """Group with the newest file overall comes first regardless
         of insertion order in the input list."""
-        out = _run_node(
+        out = _run(
             "const entries = [\n"
             "  {path: '/p/old.spectra.json', name: 'old.json', mtime: 100},\n"
             "  {path: '/p/new.out',          name: 'new.out',  mtime: 999},\n"
@@ -293,7 +89,7 @@ class TestGroupResultFiles:
 
     def test_falls_back_to_display_name(self):
         """An inspector without ``resultCategory`` uses ``displayName``."""
-        out = _run_node(
+        out = _run(
             "const entries = [{path: '/p/x.foo', name: 'x.foo', mtime: 100}];\n"
             "function pickResult(_) { return {"
             "  name: 'i', displayName: 'Fallback label' /* no resultCategory */"
@@ -308,7 +104,7 @@ class TestGroupResultFiles:
         """An inspector whose resultCategory throws still gets bucketed
         (via its displayName) -- a buggy inspector must not lose its
         files from the dropdown."""
-        out = _run_node(
+        out = _run(
             "const entries = [{path: '/p/x.foo', name: 'x.foo', mtime: 100}];\n"
             "function pickResult(_) { return {"
             "  name: 'i', displayName: 'Fallback',"
@@ -321,7 +117,7 @@ class TestGroupResultFiles:
         assert out == ["Fallback"]
 
     def test_empty_input_returns_empty(self):
-        out = _run_node(
+        out = _run(
             "function pickResult(_) { return { name: 'i', displayName: 'd' }; }\n"
             "const r = window.molbuilder.resultsFilePicker.groupResultFiles("
             "  [], pickResult);\n"
@@ -333,7 +129,7 @@ class TestGroupResultFiles:
 class TestLabelForResult:
 
     def test_with_mtime(self):
-        out = _run_node(
+        out = _run(
             "const now = Date.now()/1000;\n"
             "const r = window.molbuilder.resultsFilePicker._labelForResult({"
             "  name: 'job.out', mtime: now - 300"
@@ -341,178 +137,3 @@ class TestLabelForResult:
             "console.log(JSON.stringify(r));"
         )
         assert out == "job.out (5m ago)"
-
-    def test_without_mtime(self):
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker._labelForResult({"
-            "  name: 'plain.out', mtime: null"
-            "});\n"
-            "console.log(JSON.stringify(r));"
-        )
-        # No timestamp suffix when mtime is missing.
-        assert out == "plain.out"
-
-
-class TestAbsorbSatellites:
-    """A run is ONE result, not a pile of files (results.md § 2.3).
-
-    A PySCF relaxation writes its unified ``.molwatch.log`` beside the input it
-    echoed back, the seed the next run warm-starts from, and geomeTRIC's
-    per-stage streams.  Listing those as peers turned one relaxation into five
-    menu entries -- seen 2026-08-04 on a real BDT run whose four outputs all
-    carried the same 10:31:08 mtime.
-    """
-
-    #: THE FIXTURE IS COMPOSED, NOT SPELLED (`runfiles.compose`): names that
-    #: come out of the generator cannot agree with a loose matcher on a
-    #: grammar no generated file uses.
-    _JOB = "pyscf_relax"
-    #: The label the run door reads this folder's run's names back with --
-    #: the description's (`execution/architecture.md` § 3.2).  A file of
-    #: another job in the same folder reads back as nobody's: foreign.
-    _MASTER = "/p/" + _rf(_JOB, ".molwatch.log", "03_tight")
-    #: What THIS rung's master absorbs: the two carried files, which stem on
-    #: the bare job, and its own trajectory, which carries its token.
-    _SATS = [
-        "/p/" + _rf(_JOB, "_initial.xyz"),
-        "/p/" + _rf(_JOB, "_optimized.xyz"),
-        "/p/" + _rf(_JOB, "_geom_optim.xyz", "03_tight"),
-    ]
-    #: ANOTHER rung's trajectory, which this master must NOT absorb: it is
-    #: that rung's result and that rung has a master of its own.
-    _OTHER_RUNG = "/p/" + _rf(_JOB, "_geom_optim.xyz", "01_coarse")
-
-    @staticmethod
-    def _absorb(paths):
-        """Run absorbSatellites over ``paths`` with the REAL trajectory
-        presenter's ``absorbs`` -- loaded from source, not re-implemented, so a
-        change to the presenter's naming rules breaks this test rather than
-        sliding past it.
-
-        The shared harness loads only the picker, so the factory the presenter
-        is built from and the presenter itself are prepended here.
-        """
-        _INSP = MODULE.parent.parent / "inspectors"
-        extra = ("global.window.molbuilder = global.window.molbuilder || {};\n"
-                 "global.window.molbuilder.inspectors ="
-                 "  global.window.molbuilder.inspectors || {};\n"
-                 + (_INSP / "_partial_inspector_factory.js").read_text()
-                 + "\n"
-                 + (_INSP / "trajectory.js").read_text() + "\n")
-        return _run_node(extra + TestAbsorbSatellites._snippet(paths))
-
-    @staticmethod
-    def _snippet(paths):
-        """The entries the picker builds, INCLUDING the server's reading.
-
-        `role` / `label` / `stage` come from `runfiles.parse` -- the same
-        function `/api/results/dir` calls -- rather than being spelled here,
-        so the Python door and the JS that consumes it are pinned to each
-        other.  Composing the name and then reading it back is the whole
-        round trip in one test.
-        """
-        import json
-        from molbuilder.runfiles import parse as rf_parse, roles
-        rows = []
-        for p in paths:
-            name = p.rsplit("/", 1)[-1]
-            # READ BACK AS THE SERVER READS IT (`runs.folder_answer`): with
-            # the run's own label, a declared role or nothing.
-            rec = rf_parse(name, TestAbsorbSatellites._JOB)
-            if rec is not None and rec.role not in roles():
-                rec = None
-            # ...AND THE PARSER THAT CLAIMS IT, the registry's own name, as
-            # `runs.file_row` asks `parse.registry.detect` of a real file:
-            # the inspector claims and absorbs by it (`presenters.md` § 2).
-            from molbuilder.runfiles import (PYSCF_OPTIMIZED, ROLE_GEOM_TRAJ,
-                                             ROLE_INITIAL, ROLE_MOLWATCH)
-            parser = ({ROLE_MOLWATCH: "molwatch", ROLE_GEOM_TRAJ: "pyscf",
-                       ROLE_INITIAL: "pyscf-geom",
-                       PYSCF_OPTIMIZED: "pyscf-geom"}.get(rec.role)
-                      if rec else None)
-            rows.append({"name": name, "path": p, "mtime": 1000,
-                         "role": rec.role if rec else None,
-                         "label": rec.label if rec else None,
-                         "stage": rec.stage if rec else None,
-                         "parser": parser})
-        names = json.dumps(rows)
-        return (
-            "const entries = " + names + ";\n"
-            "const traj = window.molbuilder.inspectors.trajectoryInspector;\n"
-            "function pickResult(p, m) {\n"
-            "  return traj.match(p, m) ? traj\n"
-            "       : (p.endsWith('.xyz') ? { name: 'structure',\n"
-            "            displayName: 'Structure' } : null);\n"
-            "}\n"
-            "const kept = window.molbuilder.resultsFilePicker.absorbSatellites(\n"
-            "  entries, pickResult);\n"
-            "console.log(JSON.stringify(kept.map(e => e.name)));"
-        )
-
-    def test_the_master_log_absorbs_its_working_files(self):
-        out = self._absorb(([self._MASTER] + self._SATS))
-        assert out == [self._MASTER.rsplit("/", 1)[-1]], (
-            "one PySCF rung must be ONE menu entry; got: " + repr(out)
-        )
-
-    def test_a_rung_does_not_absorb_another_rungs_trajectory(self):
-        """A LADDER IS N RESULTS, one per rung -- each writes its own master
-        and its own trajectory (`stages.md` § 1.1a).  So 03_tight's master
-        absorbs 03_tight's stream and leaves 01_coarse's alone; the rung that
-        wrote it has a master of its own to absorb it.
-        """
-        out = self._absorb(([self._MASTER, self._OTHER_RUNG]))
-        assert sorted(out) == sorted([self._MASTER.rsplit("/", 1)[-1],
-                                      self._OTHER_RUNG.rsplit("/", 1)[-1]])
-
-    def test_the_stage_token_is_stripped_before_matching(self):
-        """The master is ``<job>_<token>.molwatch.log`` while ``_initial`` /
-        ``_optimized`` satellites stem on the bare ``<job>``.  Without
-        stripping the token the prefixes never match and nothing is
-        absorbed."""
-        out = self._absorb((
-            ["/p/pyscf_relax_03_tight.molwatch.log", "/p/pyscf_relax_optimized.xyz"]))
-        assert out == ["pyscf_relax_03_tight.molwatch.log"]
-
-    def test_without_the_master_the_parts_still_list(self):
-        """Absorption needs the master PRESENT.  A deleted or never-written
-        master must not make its files unreachable from the menu."""
-        out = self._absorb((self._SATS))
-        assert sorted(out) == sorted(p.rsplit("/", 1)[-1] for p in self._SATS)
-
-
-    def test_a_label_holding_a_stage_shaped_run_is_still_one_entry(self):
-        """The label is READ BACK, never cut out of the name.
-
-        `absorbs` used to find the label itself —
-
-            const job = stem.replace(/_\\d+_[A-Za-z0-9_]+$/, "");
-
-        — which is the boundary `runfiles.parse`'s own docstring says cannot
-        be found from the string alone, because a role may contain `_` and so
-        may a label.  It matches LEFTMOST, so a chemistry-shaped job name
-        like `au_2_bdt` was cut to `au`: none of the run's satellites matched
-        the truncated prefix and one relaxation listed as four entries.
-        Measured 2026-09-19.
-        """
-        job = "au_2_bdt"
-        names = [_rf(job, ".molwatch.log", "02_fine"),
-                 _rf(job, "_initial.xyz"),
-                 _rf(job, "_optimized.xyz"),
-                 _rf(job, "_geom_optim.xyz", "02_fine")]
-        old_job = TestAbsorbSatellites._JOB
-        TestAbsorbSatellites._JOB = job
-        try:
-            out = self._absorb(["/p/" + n for n in names])
-        finally:
-            TestAbsorbSatellites._JOB = old_job
-        assert out == [names[0]], (
-            "one run must be ONE menu entry whatever its label looks like; "
-            "got: " + repr(out))
-
-    def test_a_master_in_another_directory_absorbs_nothing(self):
-        out = self._absorb((
-            ["/p/a/pyscf_relax_03_tight.molwatch.log",
-             "/p/b/pyscf_relax_optimized.xyz"]))
-        assert sorted(out) == ["pyscf_relax_03_tight.molwatch.log",
-                               "pyscf_relax_optimized.xyz"]

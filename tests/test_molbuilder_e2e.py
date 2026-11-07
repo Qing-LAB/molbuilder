@@ -6,8 +6,10 @@ else; § 5.6 says a viewer belongs to whoever mounted it and there is no
 registry.  A test that reaches the model is asserting on a thing the page's own
 controls do not use — so it can pass while every control is dead.
 
-So every assertion below is something a user can see: DOM in, DOM out.  The
-walk is the tab's own: a file loads, and a second one is added
+So every assertion below is on what a person sees on the page, or on what
+the server answered the page for the person's act -- the structure an op's
+door sent back, the lattice a measurement read: never on the model behind
+the seal.  The walk is the tab's own: a file loads, and a second one is added
 (`web/tabs.md` § 2; molview § 6.6, § 6.7); the cell reads alike on both
 surfaces and changes through its one door (molview § 9.3;
 `model/structure-periodicity.md` § 7); an edit lays down its own point and
@@ -33,36 +35,22 @@ import pytest
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
+from support.sidebar import WAIT_MS, walk_to  # noqa: E402
+
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                             #
 # --------------------------------------------------------------------- #
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    """Pin ``tmp_path`` as the only Capabilities picker root, so the files
-    blueprint will serve what the test writes there."""
-    from molbuilder import diagnostics
-    _orig = diagnostics.get_capabilities()
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-    monkeypatch.setattr(diagnostics, "_snapshot", _orig)
-
-
 @pytest.fixture
-def labelled_xyz(tmp_path, monkeypatch):
+def labelled_xyz(isolated_projects_root):
     """A structure WITH its sidecar — the pair a project file really is.
 
     The label matters: it is carried only by the ``.molstruct.json``, so a load
@@ -73,7 +61,6 @@ def labelled_xyz(tmp_path, monkeypatch):
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
 
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
     struct = Structure(
         elements=["O", "H", "H"],
         positions=np.array([
@@ -83,7 +70,7 @@ def labelled_xyz(tmp_path, monkeypatch):
         ]),
     )
     struct.regions = {"SOLVENT": [0, 1, 2]}
-    xyz = tmp_path / "water.xyz"
+    xyz = isolated_projects_root.resolve() / "water.xyz"
     # WRITTEN BY THE CODEC THAT OWNS THE PAIR, not hand-authored JSON.  A sidecar
     # assembled by hand is missing the schema fields the load door checks (it
     # answers 400), and hand-authoring one here would also be the test asserting
@@ -95,9 +82,6 @@ def labelled_xyz(tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 #  Helpers — the page's OWN controls, nothing else                      #
 # --------------------------------------------------------------------- #
-
-_BOOT_MS = 15_000
-_ACT_MS = 15_000
 
 #: The card MolView builds into the tab's empty host (§ 8: one call builds it).
 _CARD = "#molview-host .molviewer-card"
@@ -115,13 +99,15 @@ def _open(page, base_url):
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"{base_url}/molbuilder")
-    page.wait_for_selector(_CARD, timeout=_BOOT_MS)
-    page.wait_for_selector(f"{_CARD} canvas", timeout=_BOOT_MS)
+    page.wait_for_selector(_CARD, timeout=WAIT_MS)
+    page.wait_for_selector(f"{_CARD} canvas", timeout=WAIT_MS)
     return errors
 
 
 def _load(page, path: Path, answer=None):
-    """Pick the file in the sidebar, then press Load — the only supported route.
+    """Pick the file in the sidebar, then press Load -- one of the two ways a
+    person loads a file; a double-click on its row is the other, the same
+    action (`tabs.md` § 2).
 
     Picking is browsing; loading is a separate intent that can discard unsaved
     work, which is why the tab makes it two acts (tabs.md).  With a structure
@@ -129,20 +115,17 @@ def _load(page, path: Path, answer=None):
     (tabs.md § 2, user 2026-10-09): ``answer`` is ``"add"`` -- Enter, the
     focused default -- or ``"clear"``.
     """
-    page.evaluate(
-        "(a) => window.molbuilder.projects.setShared(a.dir, a.file)",
-        {"dir": str(path.parent.resolve()), "file": str(path.resolve())},
-    )
+    walk_to(page, path)
     btn = page.locator("#load-candidate-btn")
-    btn.wait_for(state="visible", timeout=_ACT_MS)
+    btn.wait_for(state="visible", timeout=WAIT_MS)
     page.wait_for_function(
         "() => !document.getElementById('load-candidate-btn').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     before = _atom_count_or_zero(page)
     btn.click()
     if answer is not None:
         asked = page.locator("dialog.molbuilder-warning-modal[open]")
-        asked.wait_for(state="visible", timeout=_ACT_MS)
+        asked.wait_for(state="visible", timeout=WAIT_MS)
         assert ("add the structure to the existing view or clear the current "
                 "view") in asked.inner_text(), asked.inner_text()
         if answer == "add":
@@ -156,7 +139,7 @@ def _load(page, path: Path, answer=None):
         "  '.molviewer-selection-count')?.textContent || '';"
         "  const m = /\\d+ of (\\d+) selected/.exec(t);"
         "  return !!m && Number(m[1]) !== n; }",
-        arg=before, timeout=_ACT_MS)
+        arg=before, timeout=WAIT_MS)
 
 
 def _atom_count_or_zero(page) -> int:
@@ -189,7 +172,7 @@ def _clear_ruler(page):
 
 
 @pytest.fixture
-def two_files(tmp_path, monkeypatch):
+def two_files(isolated_projects_root):
     """Two DIFFERENT structures, each a real pair, SHARING one label name.
 
     The shared name is the point: `Structure.concat` unions labels by name, so
@@ -201,7 +184,6 @@ def two_files(tmp_path, monkeypatch):
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
 
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
     made = []
     for name, elements, xs in (
         ("water", ["O", "H", "H"], [0.0, 0.957, -0.239]),
@@ -212,7 +194,7 @@ def two_files(tmp_path, monkeypatch):
             positions=np.array([[x, 0.0, 0.0] for x in xs]),
         )
         struct.regions = {"FRAG": list(range(len(elements)))}
-        path = tmp_path / f"{name}.xyz"
+        path = isolated_projects_root.resolve() / f"{name}.xyz"
         StructureCodec().write(struct, path)
         made.append(path)
     return made
@@ -301,7 +283,7 @@ def test_start_empty_then_load_is_how_you_replace(
     page.locator("button:has-text('Clear structure')").last.click()
     page.wait_for_function(
         "() => (document.getElementById('edit-status')?.textContent || '')"
-        ".includes('Cleared')", timeout=_ACT_MS)
+        ".includes('Cleared')", timeout=WAIT_MS)
 
     _load(page, pair)
     assert _atom_count(page) == 2, (
@@ -341,7 +323,7 @@ def test_each_append_is_a_point_the_timeline_can_come_back_to(
     page.wait_for_function(
         "() => /\\d+ of 3 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     assert _atom_count(page) == 3, (
         "Retract did not step back exactly one load")
 
@@ -398,7 +380,7 @@ def test_loading_a_project_file_shows_its_atoms_and_its_labels(
     page.wait_for_function(
         "(sel) => [...document.querySelectorAll(sel + ' option')]"
         "  .some((o) => o.value === 'SOLVENT')",
-        arg=chooser, timeout=_ACT_MS)
+        arg=chooser, timeout=WAIT_MS)
     assert _offered(page, chooser) == want, _offered(page, chooser)
     assert page.locator(chooser).input_value() == want[0], (
         "the Assign chooser does not show the head of the list while nobody "
@@ -410,7 +392,7 @@ def test_loading_a_project_file_shows_its_atoms_and_its_labels(
     page.locator(f"{_CARD} .molviewer-filter-row .molviewer-filter-kind"
                  ).first.select_option("by_label")
     by_label = f"{_CARD} .molviewer-filter-row select.molviewer-filter-text"
-    page.wait_for_selector(by_label, timeout=_ACT_MS)
+    page.wait_for_selector(by_label, timeout=WAIT_MS)
     assert _offered(page, by_label) == want, _offered(page, by_label)
 
 
@@ -441,20 +423,16 @@ def test_the_loader_readout_tells_picked_from_loaded(
     guard of not allowing to pick the same file again?"*).
     """
     _open(page, flask_server)
-    page.evaluate(
-        "(a) => window.molbuilder.projects.setShared(a.dir, a.file)",
-        {"dir": str(labelled_xyz.parent.resolve()),
-         "file": str(labelled_xyz.resolve())},
-    )
+    walk_to(page, labelled_xyz)
     page.wait_for_function(
         "() => /^Picked:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#load-candidate-btn").click()
     page.wait_for_function(
         "() => /^Loaded:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     assert not page.locator("#load-candidate-btn").is_disabled(), (
         "loading the same file again is how you discard your edits and go "
         "back to what is on disk -- the button must stay live")
@@ -493,7 +471,7 @@ def test_the_cell_reads_the_same_on_both_surfaces(
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
-    page.wait_for_selector("#pv-vac-a", state="visible", timeout=_ACT_MS)
+    page.wait_for_selector("#pv-vac-a", state="visible", timeout=WAIT_MS)
 
     # This structure states no vacuum, so the tab's vacuum row is marked
     # derived...
@@ -517,7 +495,7 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
-    page.wait_for_selector("#pv-vac-a", state="visible", timeout=_ACT_MS)
+    page.wait_for_selector("#pv-vac-a", state="visible", timeout=WAIT_MS)
     before = page.locator(f"{_CARD} .molviewer-cell-readout").inner_text()
 
     for box in ("#pv-vac-a", "#pv-vac-b", "#pv-vac-c"):
@@ -528,7 +506,7 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
     page.wait_for_function(
         "(prev) => (document.querySelector("
         "  '.molviewer-cell-readout')?.innerText || '') !== prev",
-        arg=before, timeout=_ACT_MS)
+        arg=before, timeout=WAIT_MS)
     assert "default" not in page.locator("#pv-vac-tag").inner_text().lower(), \
         "a vacuum the user typed is explicit, and must stop reading as derived"
     row = _cell_row(page, "Vacuum")
@@ -550,7 +528,7 @@ def _cell_explicit(page):
     """
     page.locator('input[name="pv-regime"][value="explicit"]').check()
     page.wait_for_selector("#pv-cell-grid input", state="visible",
-                           timeout=_ACT_MS)
+                           timeout=WAIT_MS)
 
 
 def _cell_boxes(page):
@@ -586,7 +564,7 @@ def test_two_picked_atoms_become_a_lattice_vector_and_commit_nothing(
     _pick_atom(page, 2)                       # H at (0.957, 0, 0)
     page.wait_for_function(
         "() => !document.getElementById('pv-cell-from-selection').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#pv-cell-from-selection").click()
 
     row_a = [float(v) for v in _cell_boxes(page)[:3]]
@@ -622,7 +600,7 @@ def test_the_click_order_is_the_axis_direction(page, flask_server, labelled_xyz)
     _pick_atom(page, 2)
     page.wait_for_function(
         "() => !document.getElementById('pv-cell-from-selection').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#pv-cell-from-selection").click()
     forward = [float(v) for v in _cell_boxes(page)[:3]]
 
@@ -634,7 +612,7 @@ def test_the_click_order_is_the_axis_direction(page, flask_server, labelled_xyz)
     _pick_atom(page, 1)
     page.wait_for_function(
         "() => !document.getElementById('pv-cell-from-selection').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#pv-cell-from-selection").click()
     back = [float(v) for v in _cell_boxes(page)[:3]]
 
@@ -689,7 +667,7 @@ def test_one_picked_atom_becomes_the_box_origin(page, flask_server,
     _pick_atom(page, 3)                       # H at (-0.239, 0.927, 0.000)
     page.wait_for_function(
         "() => !document.getElementById('pv-org-from-selection').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#pv-org-from-selection").click()
 
     got = [float(page.locator(f"#pv-org-{ax}").input_value()) for ax in "abc"]
@@ -704,7 +682,7 @@ def _apply_and_wait(page):
     page.wait_for_function(
         "(prev) => (document.querySelector("
         "  '.molviewer-cell-readout')?.innerText || '') !== prev",
-        arg=before, timeout=_ACT_MS)
+        arg=before, timeout=WAIT_MS)
 
 
 def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
@@ -777,7 +755,7 @@ def test_the_panel_says_left_handed_before_the_server_refuses_it(
         page.locator("#pv-cell-grid input").nth(i).fill(str(v))
     note = page.locator("#pv-cell-hand")
     page.wait_for_function(
-        "() => !document.getElementById('pv-cell-hand').hidden", timeout=_ACT_MS)
+        "() => !document.getElementById('pv-cell-hand').hidden", timeout=WAIT_MS)
     said = note.inner_text()
     assert "left-handed" in said, said
     # It must carry the way OUT, not just the diagnosis.
@@ -786,7 +764,7 @@ def test_the_panel_says_left_handed_before_the_server_refuses_it(
     # Flip that axis back and the note goes — the sign is read live.
     page.locator("#pv-cell-grid input").nth(8).fill("1")
     page.wait_for_function(
-        "() => document.getElementById('pv-cell-hand').hidden", timeout=_ACT_MS)
+        "() => document.getElementById('pv-cell-hand').hidden", timeout=WAIT_MS)
 
 
 # --------------------------------------------------------------------- #
@@ -811,7 +789,7 @@ def test_selecting_an_atom_wakes_the_controls_that_need_one(
     _pick_atom(page, 1)
     page.wait_for_function(
         "() => !document.getElementById('delete-apply').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     assert "#1" in page.locator("#add-anchor-readout").inner_text()
 
 
@@ -834,26 +812,26 @@ def test_the_edit_survives_a_page_reload(
     _pick_atom(page, 1)
     page.wait_for_function(
         "() => !document.getElementById('delete-apply').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#delete-apply").click()
     page.wait_for_function(
         f"() => /of {before - 1} selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     # The edit is ON the sequence now, so this is where it put us -- and it is
     # the fact the reopened page below has to bring back.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     page.reload()
-    page.wait_for_selector(_CARD, timeout=_BOOT_MS)
-    page.wait_for_selector(f"{_CARD} canvas", timeout=_BOOT_MS)
+    page.wait_for_selector(_CARD, timeout=WAIT_MS)
+    page.wait_for_selector(f"{_CARD} canvas", timeout=WAIT_MS)
     page.wait_for_function(
         "() => /\\d+ of [1-9]\\d* selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_BOOT_MS)
+        timeout=WAIT_MS)
 
     assert _atom_count(page) == before - 1, (
         f"the reopened page shows {_atom_count(page)} atoms, not the {before - 1} "
@@ -883,23 +861,27 @@ def test_an_edit_changes_the_structure_and_records_itself(
     page.wait_for_function(
         "() => /saved #0/.test("
         "  document.getElementById('timeline-status').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     _pick_atom(page, 1)
     page.wait_for_function(
         "() => !document.getElementById('delete-apply').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#delete-apply").click()
 
     page.wait_for_function(
         "() => /of 2 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
-        timeout=_ACT_MS)
-    assert "2 atoms" in page.locator("#edit-status").inner_text(), \
+        timeout=WAIT_MS)
+    # THE OP LINE SAYS WHAT IS LEFT, off the structure the door handed back:
+    # the measured defect U1-4 (closed 2.67.1,
+    # `docs/archive/2026-10-31-finish-line-review.md`) -- one atom deleted,
+    # and the line said "Deleted: 18 atoms.", the count it held after.
+    assert ": 2 left." in page.locator("#edit-status").inner_text(), \
         "the op line reports the count off the structure the door handed back"
 
 
@@ -912,25 +894,23 @@ def test_an_edit_changes_the_structure_and_records_itself(
 # --------------------------------------------------------------------- #
 
 def _slide(page, slider: str, value) -> None:
-    """A range control moved as a drag moves it: its value, then the `input`
-    its readout listens to."""
-    page.locator(f"#{slider}").evaluate(
-        "(el, v) => { el.value = v;"
-        "  el.dispatchEvent(new Event('input', {bubbles: true})); }",
-        str(value))
+    """A range control set to ``value`` as the browser sets one a person
+    moves (Playwright's ``fill`` on a range: the value, then the `input` and
+    `change` a drag ends with)."""
+    page.locator(f"#{slider}").fill(str(value))
 
 
 def _ready(page, button: str) -> None:
     page.wait_for_function(
         "(id) => !document.getElementById(id).disabled",
-        arg=button, timeout=_ACT_MS)
+        arg=button, timeout=WAIT_MS)
 
 
 def _applied(page, op: str, button: str) -> dict:
     """``button`` pressed: the structure its door answered the page."""
     with page.expect_response(
             lambda r: r.url.endswith(f"/api/modify/{op}"),
-            timeout=_ACT_MS) as answered:
+            timeout=WAIT_MS) as answered:
         page.locator(f"#{button}").click()
     answer = answered.value.json()
     assert answer["ok"] is True, answer
@@ -941,7 +921,16 @@ def _said(page, words: str) -> None:
     """The op line says ``words``."""
     page.wait_for_function(
         "(w) => document.getElementById('edit-status').textContent"
-        "  .includes(w)", arg=words, timeout=_ACT_MS)
+        "  .includes(w)", arg=words, timeout=WAIT_MS)
+
+
+def _at_point(page, point: int) -> None:
+    """The timeline line says the tab stands on saved point ``point``
+    (molview § 11.2a: the tab shows where Save state and Retract stand)."""
+    page.wait_for_function(
+        "(n) => new RegExp('saved #' + n + '(?!\\d)')"
+        "  .test(document.getElementById('timeline-status').textContent)",
+        arg=point, timeout=WAIT_MS)
 
 
 def test_add_atom_lands_where_its_sliders_say_from_the_picked_atom(
@@ -954,7 +943,7 @@ def test_add_atom_lands_where_its_sliders_say_from_the_picked_atom(
     _pick_atom(page, 2)                       # H at (0.957, 0, 0)
     page.wait_for_function(
         "() => document.getElementById('add-anchor-readout').textContent"
-        "  .includes('#2 H')", timeout=_ACT_MS)
+        "  .includes('#2 H')", timeout=WAIT_MS)
 
     page.locator("#add-element").fill("F")
     _slide(page, "add-dx", 0.5)
@@ -1017,8 +1006,8 @@ def test_rotate_turns_the_structure_by_the_angle_its_slider_says(
     assert page.locator("#rotate-angle-val").inner_text() == "90°"
 
     made = _applied(page, "rotate", "rotate-apply")
-    drawn = np.array([[0.000, 0.000, 0.000], [0.957, 0.000, 0.000],
-                      [-0.239, 0.927, 0.000]])
+    from molbuilder.workingcopy_structure import StructureCodec
+    drawn = StructureCodec().load(labelled_xyz).positions
     centroid = drawn.mean(axis=0)
     away = drawn - centroid
     want = centroid + np.c_[-away[:, 1], away[:, 0], away[:, 2]]
@@ -1044,30 +1033,30 @@ def test_retract_puts_the_atom_back_with_no_save_state_pressed(
     _load(page, labelled_xyz)
     page.wait_for_function(
         "() => !document.getElementById('save-state').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     assert page.locator("#undo-op").is_disabled(), \
         "nothing has happened yet, so there is nothing to retract"
 
     _pick_atom(page, 1)
     page.wait_for_function(
         "() => !document.getElementById('delete-apply').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#delete-apply").click()
     page.wait_for_function(
         "() => /of 2 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     # THE EDIT ITSELF PUT THIS HERE.  No Save state was pressed.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     page.locator("#undo-op").click()
     page.wait_for_function(
         "() => /of 3 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     assert "#0" in page.locator("#timeline-status").inner_text()
 
 
@@ -1082,36 +1071,39 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
     styling, N being the position it was ALREADY at.  The user was told a
     retraction happened that did not.
 
-    Reaching it for real would take 31 saves.  The state files are the test's
-    own (conftest's `_isolated_workspace_store`), so deleting point 0 reproduces
-    exactly what the rolling window does, in one line and without the wait.
+    Reached as a person reaches it: an edit lays down #1 and Save state #2 to
+    #30 -- 31 points, so the server's window drops #0 when #30 lands
+    (`workspace_storage._STATE_WINDOW`) -- then Retract, back to #1, and once
+    more, for the #0 that is gone (measured 2026-11-07: the test takes 11 s,
+    8 s more than one that retracts once).
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.wait_for_function(
         "() => !document.getElementById('save-state').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     _pick_atom(page, 1)
     page.wait_for_function(
         "() => !document.getElementById('delete-apply').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#delete-apply").click()
     # The EDIT lays down #1 (§ 11.2); Retract wants #0.
-    page.wait_for_function(
-        "() => /saved #1/.test("
-        "  document.getElementById('timeline-status').textContent)",
-        timeout=_ACT_MS)
+    _at_point(page, 1)
 
-    # Drop point 0 the way the rolling window would -- in the store this
-    # test's server writes to.
-    from molbuilder.web.blueprints import workspace_storage
-    states = (workspace_storage.projects_root() / workspace_storage.SCRATCH_DIR
-              / "states")
-    gone = [p for p in states.glob("*.0.wc.json") if "-draft" not in p.name]
-    assert gone, f"expected a point 0 to delete, found {list(states.iterdir())}"
-    for p in gone:
-        p.unlink()
+    for point in range(2, 30):
+        page.locator("#save-state").click()
+        _at_point(page, point)
+    # The 31st point, #30: its write is the one the window drops #0 on.
+    with page.expect_response(
+            lambda r: r.url.endswith("/api/workspace-storage/write")
+            and (r.request.post_data_json or {}).get("state_index") == 30,
+            timeout=WAIT_MS):
+        page.locator("#save-state").click()
+    _at_point(page, 30)
+    for point in range(29, 0, -1):
+        page.locator("#undo-op").click()
+        _at_point(page, point)
 
     # Retract is offered -- we are at #1, so the button is enabled and the user
     # has every reason to expect it to work.
@@ -1122,7 +1114,7 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
     page.wait_for_function(
         "() => /Nothing changed/.test("
         "  document.getElementById('edit-status').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     text = status.inner_text()
     assert "Retracted to state" not in text, \
         f"retract claimed a move that did not happen: {text!r}"
@@ -1148,19 +1140,19 @@ def test_the_timeline_indicator_says_where_you_are(
     page.wait_for_function(
         "() => /saved #0/.test("
         "  document.getElementById('timeline-status').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     _pick_atom(page, 1)
     page.wait_for_function(
         "() => !document.getElementById('delete-apply').disabled",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     page.locator("#delete-apply").click()
     # THE EDIT IS ON THE SEQUENCE, so the indicator says where that put you and
     # which point Retract goes back to.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
     assert "#0" in page.locator("#timeline-status").inner_text(), \
         "the indicator names the point Retract will return to"
 
@@ -1170,7 +1162,7 @@ def test_the_timeline_indicator_says_where_you_are(
 # --------------------------------------------------------------------- #
 
 def test_saving_to_the_project_writes_the_pair_and_remembers_where(
-        page, flask_server, labelled_xyz, tmp_path):
+        page, flask_server, labelled_xyz):
     """A save writes BOTH files, and the page records the target.
 
     The pair is the point: coordinates alone lose the labels, and a browser must
@@ -1190,26 +1182,27 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     #    selected -- clicking a row is the selection, which is what a person
     #    does.
     row = page.locator("dialog .tp-row:not(.tp-row--inert)").first
-    row.wait_for(state="visible", timeout=_ACT_MS)
+    row.wait_for(state="visible", timeout=WAIT_MS)
+    where = Path(row.locator("xpath=..").get_attribute("data-path"))
     row.click()
     page.locator("dialog [data-action='confirm']").first.click()
 
     # 2. WHAT TO CALL IT.
     name = page.locator("dialog input[data-role='name']")
-    name.wait_for(state="visible", timeout=_ACT_MS)
+    name.wait_for(state="visible", timeout=WAIT_MS)
     name.fill("saved_by_test")
     page.locator("dialog [data-action='confirm']").last.click()
 
     page.wait_for_function(
         "() => /Saved/.test(document.getElementById('save-status').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
-    assert (tmp_path / "saved_by_test.xyz").exists()
-    assert (tmp_path / "saved_by_test.molstruct.json").exists(), \
+    assert (where / "saved_by_test.xyz").exists()
+    assert (where / "saved_by_test.molstruct.json").exists(), \
         "the sidecar carries the labels; a lone .xyz silently loses them"
     # The saved pair opens through the one read door, its labels with it.
     from molbuilder.workingcopy_structure import StructureCodec
-    assert StructureCodec().load(tmp_path / "saved_by_test.xyz").regions == {
+    assert StructureCodec().load(where / "saved_by_test.xyz").regions == {
         "SOLVENT": [0, 1, 2]}
     assert "saved_by_test.xyz" in page.locator("#save-readout").inner_text()
 
@@ -1234,20 +1227,20 @@ def test_the_page_remembers_which_file_it_is_showing_across_a_reload(
     page.wait_for_function(
         "() => /^Loaded:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     # Come back to the tab.
     page.goto(f"{flask_server}/molbuilder")
-    page.wait_for_selector(_CARD, timeout=_BOOT_MS)
+    page.wait_for_selector(_CARD, timeout=WAIT_MS)
     page.wait_for_function(
         "() => /\\d+ of [1-9]\\d* selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     page.wait_for_function(
         "() => /^Loaded:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
 
 def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):
@@ -1264,21 +1257,18 @@ def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):
     page.wait_for_function(
         "() => /^Loaded:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     # Now generate.  It ADDS to what is open (user, 2026-09-07) -- 3 + 9 = 12 --
     # and the note goes to null either way: the canvas is no longer that file.
-    page.evaluate(
-        "() => { [...document.querySelectorAll('.modify-init-tab')]"
-        "  .find(b => /SMILES/i.test(b.textContent)).click();"
-        "  const i = document.getElementById('smiles-input');"
-        "  i.value = 'CCO';"
-        "  i.dispatchEvent(new Event('input', {bubbles:true})); }")
+    page.locator(".modify-init-tab", has_text=re.compile("SMILES", re.I)
+                 ).click()
+    page.fill("#smiles-input", "CCO")
     page.locator("#smiles-generate-btn").click()
     page.wait_for_function(
         "() => /of 12 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=30_000)
+        timeout=WAIT_MS)
 
     readout = page.locator("#load-candidate-readout").inner_text()
     assert not readout.startswith("Loaded:"), (
@@ -1313,7 +1303,7 @@ def test_a_checkbox_sits_beside_its_own_text(page, flask_server):
     _open(page, flask_server)
     page.locator("#optab-btn-slab").click()
     page.wait_for_selector("#optab-panel-slab", state="visible",
-                           timeout=_ACT_MS)
+                           timeout=WAIT_MS)
 
     box = page.locator("#slab-orthogonal").bounding_box()
     txt = page.locator('label[for="slab-orthogonal"]').bounding_box()
@@ -1345,7 +1335,7 @@ def test_a_checkbox_sits_beside_its_own_text(page, flask_server):
 # --------------------------------------------------------------------- #
 
 @pytest.fixture
-def stretched_gold(tmp_path, monkeypatch):
+def stretched_gold(isolated_projects_root):
     """A perfect fcc gold crystal stretched to a = 4.35 Å -- 7% from the
     experimental constant and 5% from PBE's, which the route says at two
     severities."""
@@ -1353,12 +1343,11 @@ def stretched_gold(tmp_path, monkeypatch):
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
 
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
     a = 4.35
     base = np.array([[0, 0, 0], [.5, .5, 0], [.5, 0, .5], [0, .5, .5]]) * a
     pos = np.vstack([base + np.array([i, j, k]) * a
                      for i in range(2) for j in range(2) for k in range(2)])
-    path = tmp_path / "Au-stretched.xyz"
+    path = isolated_projects_root.resolve() / "Au-stretched.xyz"
     StructureCodec().write(
         Structure(elements=["Au"] * len(pos), positions=pos,
                   cell=np.diag([2 * a] * 3)), path)
@@ -1378,16 +1367,16 @@ def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
     _open(page, flask_server)
     page.locator("#optab-btn-slab").click()
     page.wait_for_selector("#optab-panel-slab", state="visible",
-                           timeout=_ACT_MS)
+                           timeout=WAIT_MS)
     # The panel's menu is in: the element the measurement names is Au.
     page.wait_for_function(
         "() => document.getElementById('slab-element').value === 'Au'",
-        timeout=_ACT_MS)
+        timeout=WAIT_MS)
 
     page.locator("#slab-pick-run").click()
     row = page.locator(
         f"dialog li.tp-node[data-path$='/{stretched_gold.name}'] > .tp-row")
-    row.wait_for(state="visible", timeout=_ACT_MS)
+    row.wait_for(state="visible", timeout=WAIT_MS)
     row.click()
     with page.expect_response("**/api/modify/lattice-from-run") as answer:
         page.locator("dialog [data-action='confirm']").click()
@@ -1398,7 +1387,7 @@ def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
         f"the crystal should draw notes at two severities; it drew {notes}")
 
     findings = page.locator("#slab-lattice-findings")
-    findings.wait_for(state="visible", timeout=_ACT_MS)
+    findings.wait_for(state="visible", timeout=WAIT_MS)
     rows = findings.locator("li.issue-item").all()
     assert [(r.get_attribute("data-severity"),
              r.locator(".issue-msg").inner_text()) for r in rows] == [
@@ -1412,5 +1401,5 @@ def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
     assert not [n for n in notes if n["message"] in line], line
 
     page.locator("#slab-a").fill("4.2")
-    findings.wait_for(state="hidden", timeout=_ACT_MS)
+    findings.wait_for(state="hidden", timeout=WAIT_MS)
     assert findings.locator("li.issue-item").count() == 0

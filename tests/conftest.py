@@ -228,13 +228,23 @@ def checkpoint_config(tmp_path, monkeypatch):
     return _set
 
 
-def _point_the_one_door_at(root, setenv) -> "Path":
-    """Point ``projects_root()`` at *root*. THE implementation, both scopes.
+def point_the_one_door_at(root, setenv) -> "Path":
+    """Point ``projects_root()`` at the projects tree under *root*, made if
+    it is not there, and return it. THE implementation: both fixture scopes
+    below, the road's `describe_calculation` and `described_and_prepared`,
+    and the real runs' trees (`support.real_runs.road_at`) call this -- it
+    lives here, beside the two fixtures that are its first callers, where
+    `support/` already reaches this file for `write_pseudos` and
+    `write_machine_record`.  A test pointing it at a real run's tree calls
+    ``point_the_one_door_at(run.tree.parent, monkeypatch.setenv)`` -- the
+    call that run's tree was made by -- and at a tree of its own,
+    ``point_the_one_door_at(tmp_path, monkeypatch.setenv)``.  A test that
+    sets ``PROJECTS_ROOT_ENV`` itself spells the same act a second way; those
+    sites are the sweep plan F9 owes, not a second door.
 
     ``file_picker_roots()`` calls ``projects_root()`` at CALL time and nothing
     caches the answer, so setting the variable is all it takes -- a live
-    server started before this still serves the new tree.  Verified by driving
-    the Task-setup page against a calculation built under it.
+    server started before this still serves the new tree.
     """
     from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
     root = root / PROJECTS_ROOT_NAME
@@ -265,7 +275,7 @@ def isolated_projects_root_module(tmp_path_factory):
     from _pytest.monkeypatch import MonkeyPatch
     mp = MonkeyPatch()
     try:
-        yield _point_the_one_door_at(tmp_path_factory.mktemp("tree"), mp.setenv)
+        yield point_the_one_door_at(tmp_path_factory.mktemp("tree"), mp.setenv)
     finally:
         mp.undo()
 
@@ -292,7 +302,7 @@ def isolated_projects_root(tmp_path, monkeypatch):
     :func:`isolated_projects_root_module`, its module-scoped sibling) and
     builds under the root it returns.
     """
-    return _point_the_one_door_at(tmp_path, monkeypatch.setenv)
+    return point_the_one_door_at(tmp_path, monkeypatch.setenv)
 
 
 @pytest.fixture
@@ -1427,6 +1437,12 @@ def real_h2_one_group(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
+def real_h2_stopped(tmp_path_factory):
+    from support.real_runs import stopped
+    return stopped(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
 def real_h2_gpu(tmp_path_factory):
     from support.real_runs import gpu
     return gpu(tmp_path_factory)
@@ -1442,6 +1458,12 @@ def real_h2_bench(tmp_path_factory):
 def real_co2_vibration(tmp_path_factory):
     from support.real_runs import vibration
     return vibration(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_h2_sweep(tmp_path_factory):
+    from support.real_runs import sweep
+    return sweep(tmp_path_factory)
 
 
 @pytest.fixture(scope="session")

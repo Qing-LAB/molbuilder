@@ -3445,6 +3445,16 @@
                 handle = { ok: false, error: (e && e.message) || String(e) };
             }
             state.vibMounting = false;
+            // PUT AWAY WHILE IT WAS BEING BUILT: the inspector was disposed
+            // during the await (dispose -> IDLE), so the viewer just built is
+            // released at once, its window back to the pool, never kept by an
+            // inspector that is gone (spectra.md § 4, vibrationview.md § 8).
+            if (state.machine === "IDLE") {
+                if (handle && handle.ok !== false) {
+                    try { handle.dispose(); } catch (_) {}
+                }
+                return;
+            }
             if (!handle || handle.ok === false) {
                 setStatus(els.viewerStatus,
                           "mode animation unavailable"

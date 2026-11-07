@@ -29,7 +29,7 @@ pytest.importorskip("flask")
 # --------------------------------------------------------------------- #
 
 @pytest.fixture(scope="module")
-def molview_server():
+def molview_server(isolated_projects_root_module):
     """The app on a free port, through THE way a test starts one
     (`support/live_server.serve`): the no-auth, no-TLS build, with a
     projects tree of its own (`process/testing.md` § 2a)."""

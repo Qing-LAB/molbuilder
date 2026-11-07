@@ -562,9 +562,9 @@ class _Answer:
 
 def _at_the_runs_tree(calc, monkeypatch) -> None:
     """The one door pointed at the run's projects tree -- the tree every
-    route and command of the test reads (`conftest._point_the_one_door_at`)."""
-    from conftest import _point_the_one_door_at
-    _point_the_one_door_at(calc.tree.parent, monkeypatch.setenv)
+    route and command of the test reads (`conftest.point_the_one_door_at`)."""
+    from conftest import point_the_one_door_at
+    point_the_one_door_at(calc.tree.parent, monkeypatch.setenv)
 
 
 def _ask(row, calc, client, tmp_path, monkeypatch) -> _Answer:

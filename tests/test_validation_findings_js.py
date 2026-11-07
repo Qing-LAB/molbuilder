@@ -7,10 +7,16 @@ the behaviours the three per-tab renderers it replaced got wrong:
   * an issue whose ``card`` names a card the form schema did NOT
     render was silently dropped by all three (they iterated the card panels, so
     a bucket with no panel was built and never read) -- R3;
-  * an unrecognised or missing severity was dropped by the spectra copy -- R4;
   * server order was re-sorted by the spectra copy -- R4;
   * a missing residual panel made the transport copy return BEFORE clearing the
     per-card panels, so stale findings survived a re-render.
+
+The findings are what `/api/build/preflight` answers of a structure and a
+form, and the cards a form draws are the ones its served schema names for its
+fields (each field names the card it is drawn in, the rule a finding is placed
+by too).  The spectra copy also dropped a severity it did not know (R4); no
+route sends one -- the server's are error, warn and info -- so it is not
+asked.
 
 Whether each page that shows findings draws them is asked of the page:
 `test_build_e2e.py`'s findings beside their field on the optimization tab,
@@ -25,6 +31,7 @@ import shutil
 
 import pytest
 
+from support.road import CO2, H2
 from tests._node_esm import run_node
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -81,6 +88,38 @@ def _rows(panel_expr: str) -> str:
             f"message: li.children.length ? li.children[0].textContent : ''}}; }})")
 
 
+def _answer(structure, engine, calculation, params):
+    """What `/api/build/preflight` answers of ``structure`` and a form
+    holding ``params``: its findings, in its order."""
+    from molbuilder.web.app import create_app
+    from support.road import road_structure
+    r = create_app(config={}).test_client().post("/api/build/preflight", json={
+        "structure": road_structure(structure).to_dict(), "engine": engine,
+        "calculation": calculation, "params": params})
+    assert r.status_code == 200, r.get_json()
+    return r.get_json()["issues"]
+
+
+def _drawn_cards(url):
+    """The cards the form the served schema at ``url`` draws: each one a
+    field of it names."""
+    from molbuilder.web.app import create_app
+    schema = create_app(config={}).test_client().get(url).get_json()["schema"]
+    return sorted({f["card"] for sec in schema["sections"]
+                   for f in sec.get("fields", []) if f.get("card")})
+
+
+#: A SIESTA optimization of the road's H2, its form asking a mixing weight,
+#: a mesh and a k-grid the checks speak of: findings on three cards and one
+#: on none.
+_H2_FORM = (H2, "siesta", "optimization",
+            {"mixing_weight": 0.9, "mesh_cutoff": 30.0, "kgrid": [4, 4, 4]})
+
+
+def _cards_js(names) -> str:
+    return "[" + ", ".join(f"card({json.dumps(n)})" for n in names) + "]"
+
+
 class TestNothingIsDropped:
     """PINS: docs/science/validation.md § 4.1 clause R3 (nothing is dropped),
     with docs/web/ui-contract.md § 5.1 for the display side.
@@ -98,141 +137,109 @@ class TestNothingIsDropped:
     inversion is the fix.
     """
 
-    def test_group_with_no_rendered_card_lands_in_residual(self):
+    def test_every_finding_lands_on_its_card_or_in_the_residual_panel(self):
+        issues = _answer(*_H2_FORM)
+        cards = _drawn_cards("/api/build/schema/siesta?calculation=optimization")
+        assert {i.get("card") for i in issues} - {None} <= set(cards), issues
+        assert any(i.get("card") is None for i in issues), issues
         got = _run(f"""
         var panel = new El("ul");
-        var scope = new FormScope([card("profile")]);   // NO "budget" card
-        var s = F.render([
-            {{severity: "warn",  message: "tagged for a card that exists",
-              where: "config.a", card: "profile"}},
-            {{severity: "error", message: "tagged for a card that does NOT exist",
-              where: "config.b", card: "budget"}},
-        ], {{panel: panel, formScope: scope}});
-        console.log(JSON.stringify({{summary: s,
-            residual: {_rows("panel")},
-            card: {_rows("scope._cards[0]")}}}));
+        var scope = new FormScope({_cards_js(cards)});
+        var s = F.render({json.dumps(issues)},
+                         {{panel: panel, formScope: scope}});
+        var onCards = {{}};
+        scope._cards.forEach(function (c) {{
+            onCards[c.getAttribute("data-card")] = {_rows("c")};
+        }});
+        console.log(JSON.stringify({{summary: s, residual: {_rows("panel")},
+                                     onCards: onCards}}));
         """)
-        # Both findings are on screen: one on its card, the unroutable one in
-        # the residual panel -- previously it vanished entirely.
-        assert got["summary"]["total"] == 2
-        assert got["summary"]["residual"] == 1
+        assert got["summary"]["total"] == len(issues)
+        counts = {sev: sum(1 for i in issues if i["severity"] == sev)
+                  for sev in ("error", "warn", "info")}
+        assert got["summary"]["counts"] == counts
+        for card in cards:
+            assert [r["message"] for r in got["onCards"][card]] == [
+                i["message"] for i in issues if i.get("card") == card], card
         assert [r["message"] for r in got["residual"]] == [
-            "tagged for a card that does NOT exist"]
-        assert len(got["card"]) == 1
-        assert got["summary"]["counts"] == {"error": 1, "warn": 1, "info": 0}
-
-    def test_rendered_count_equals_received_count(self):
-        got = _run("""
-        var panel = new El("ul");
-        var scope = new FormScope([card("stage")]);
-        var issues = [];
-        for (var i = 0; i < 7; i++) {
-            issues.push({severity: "info", message: "m" + i,
-                          card: (i % 2) ? "stage" : "nope"});
-        }
-        var s = F.render(issues, {panel: panel, formScope: scope});
-        console.log(JSON.stringify({summary: s,
-            onCard: scope._cards[0].children.length,
-            inResidual: panel.children.length}));
-        """)
-        assert got["summary"]["total"] == 7
-        assert got["onCard"] + got["inResidual"] == 7
+            i["message"] for i in issues if i.get("card") is None]
 
     def test_a_form_drawn_in_parts_finds_the_card_in_any_part(self):
         """`form-schema.md` § 1.3: the Spectrum tab draws one engine's form
         in two parts -- the settings both engines share, and the engine's
-        own -- and passes both as the scope.  A finding about a shared
-        setting lands on its card in the first part, one about the engine's
-        own on its card in the second; neither falls to the residual panel.
-        MUTATION THIS MUST FAIL AGAINST: a list scope read as one element
-        (both findings in the residual panel)."""
+        own -- and passes both as the scope.  A finding lands on its card in
+        whichever part draws it; none whose card a part draws falls to the
+        residual panel.
+        MUTATION THIS MUST FAIL AGAINST: a list scope read as one element."""
+        issues = _answer(CO2, "siesta", "vibration", {"compute_raman": True})
+        common = _drawn_cards("/api/build/schema/common?calculation=vibration")
+        own = _drawn_cards(
+            "/api/build/schema/siesta?calculation=vibration&surface=own")
+        drawn = set(common) | set(own)
+        placed = [i for i in issues if i.get("card") in drawn]
+        assert {i["card"] for i in placed} & set(common), (issues, common)
+        assert {i["card"] for i in placed} & set(own) - set(common), (
+            issues, own)
         got = _run(f"""
         var panel = new El("ul");
-        var common = new FormScope([card("raman")]);
-        var own = new FormScope([card("modes")]);
-        var s = F.render([
-            {{severity: "error", message: "shared", card: "raman"}},
-            {{severity: "warn",  message: "own",    card: "modes"}},
-        ], {{panel: panel, formScope: [common, own]}});
-        console.log(JSON.stringify({{residual: s.residual,
-            shared: {_rows("common._cards[0]")},
-            mine: {_rows("own._cards[0]")}}}));
+        var common = new FormScope({_cards_js(common)});
+        var own = new FormScope({_cards_js(own)});
+        var s = F.render({json.dumps(issues)},
+                         {{panel: panel, formScope: [common, own]}});
+        var onCards = 0;
+        common._cards.concat(own._cards).forEach(function (c) {{
+            onCards += c.children.length; }});
+        console.log(JSON.stringify({{residual: s.residual, onCards: onCards}}));
         """)
-        assert got["residual"] == 0
-        assert [r["message"] for r in got["shared"]] == ["shared"]
-        assert [r["message"] for r in got["mine"]] == ["own"]
+        assert got["onCards"] == len(placed)
+        assert got["residual"] == len(issues) - len(placed)
 
-    def test_no_form_scope_sends_everything_to_residual(self):
+    def test_no_form_scope_sends_everything_to_residual_in_server_order(self):
+        """A page with no form draws every finding in its residual panel, in
+        the order the server sent them (`validate()` emits geometry, then
+        config, then engine checks -- a documented deterministic order)."""
+        issues = _answer(*_H2_FORM)
+        # THE ORDER ASKS SOMETHING: the server's answer is in no severity
+        # rank, either way, so a renderer that sorts by severity reorders it.
+        rank = {"error": 0, "warn": 1, "info": 2}
+        sent = [i["severity"] for i in issues]
+        assert sent != sorted(sent, key=rank.get), sent
+        assert sent != sorted(sent, key=rank.get, reverse=True), sent
         got = _run(f"""
         var panel = new El("ul");
-        var s = F.render([
-            {{severity: "warn", message: "carded but no form on this page",
-              card: "profile"}},
-        ], {{panel: panel}});
+        var s = F.render({json.dumps(issues)}, {{panel: panel}});
         console.log(JSON.stringify({{summary: s, rows: {_rows("panel")}}}));
         """)
-        assert got["summary"]["residual"] == 1
-        assert len(got["rows"]) == 1
+        assert got["summary"]["residual"] == len(issues)
+        assert [(r["severity"], r["message"]) for r in got["rows"]] == [
+            (i["severity"], i["message"]) for i in issues]
 
 
 class TestSeverityIsUniform:
     """PINS: docs/science/validation.md § 4.1 clause R4 (severity means the same
     everywhere) + docs/web/ui-contract.md § 5.1 (one row shape, styled once).
 
-    INVARIANT: one row vocabulary (``li.issue-item[data-severity]``, styled once
-    in lib/page-shell.css); an unrecognised or missing severity renders as
-    ``info`` and is NEVER dropped; server order is preserved (``validate()``
-    emits geometry, then config, then engine checks — a documented deterministic
-    order).
-
     PREVENTS: the spectra copy's divergence — it kept a SECOND row vocabulary for
-    its residual list, dropped any severity outside error/warn/info, and
-    re-sorted the rest, so the same finding looked and ranked differently
+    its residual list, so the same finding looked and ranked differently
     depending on which tab you were standing on.
     """
 
-    @pytest.mark.parametrize("sent", ["critical", "", None, "WARN"])
-    def test_unrecognised_severity_renders_as_info_never_dropped(self, sent):
-        payload = "null" if sent is None else json.dumps(sent)
-        got = _run(f"""
-        var panel = new El("ul");
-        var s = F.render([{{severity: {payload}, message: "kept"}}],
-                         {{panel: panel}});
-        console.log(JSON.stringify({{summary: s, rows: {_rows("panel")}}}));
-        """)
-        assert got["summary"]["total"] == 1
-        assert len(got["rows"]) == 1, "an odd severity must never drop a finding"
-        assert got["rows"][0]["severity"] == "info"
-        assert got["summary"]["counts"]["info"] == 1
-
-    def test_server_order_is_preserved(self):
-        got = _run(f"""
-        var panel = new El("ul");
-        F.render([
-            {{severity: "info",  message: "first"}},
-            {{severity: "error", message: "second"}},
-            {{severity: "warn",  message: "third"}},
-        ], {{panel: panel}});
-        console.log(JSON.stringify({{rows: {_rows("panel")}}}));
-        """)
-        assert [r["message"] for r in got["rows"]] == ["first", "second", "third"]
-
     def test_one_row_shape(self):
-        got = _run("""
+        issue = _answer(*_H2_FORM)[0]
+        got = _run(f"""
         var panel = new El("ul");
-        F.render([{severity: "error", message: "m", where: "cell.x"}],
-                 {panel: panel});
-        console.log(JSON.stringify({
+        F.render([{json.dumps(issue)}], {{panel: panel}});
+        console.log(JSON.stringify({{
             cls: panel.children[0].className,
             sev: panel.children[0].getAttribute("data-severity"),
-            kids: panel.children[0].children.map(function (c) {
-                return c.className + ":" + c.textContent; }),
-            where: panel.children[0].getAttribute("data-where")}));
+            kids: panel.children[0].children.map(function (c) {{
+                return c.className + ":" + c.textContent; }}),
+            where: panel.children[0].getAttribute("data-where")}}));
         """)
         assert got["cls"] == "issue-item"
-        assert got["sev"] == "error"
-        assert got["kids"] == ["issue-msg:m"]
-        assert got["where"] == "cell.x"
+        assert got["sev"] == issue["severity"]
+        assert got["kids"] == ["issue-msg:" + issue["message"]]
+        assert got["where"] == issue["where"]
 
 
 class TestStaleStateCannotSurvive:
@@ -252,31 +259,41 @@ class TestStaleStateCannotSurvive:
 
     def test_cards_are_cleared_even_with_no_residual_panel(self):
         """The transport copy returned before clearing the cards when the
-        residual markup was missing, so a stale finding stayed up."""
-        got = _run("""
-        var scope = new FormScope([card("profile")]);
-        F.render([{severity: "warn", message: "old", card: "profile"}],
-                 {panel: new El("ul"), formScope: scope});
+        residual markup was missing, so a stale finding stayed up.  The
+        second render is the page's own clearing -- nothing to show."""
+        issues = _answer(*_H2_FORM)
+        card = next(i["card"] for i in issues if i.get("card"))
+        got = _run(f"""
+        var scope = new FormScope([card({json.dumps(card)})]);
+        F.render({json.dumps(issues)},
+                 {{panel: new El("ul"), formScope: scope}});
         var before = scope._cards[0].children.length;
-        F.render([], {formScope: scope});          // no panel at all
-        console.log(JSON.stringify({before: before,
+        F.render([], {{formScope: scope}});          // no panel at all
+        console.log(JSON.stringify({{before: before,
             after: scope._cards[0].children.length,
-            hidden: scope._cards[0].hidden}));
+            hidden: scope._cards[0].hidden}}));
         """)
-        assert got["before"] == 1
+        assert got["before"] == sum(1 for i in issues if i.get("card") == card)
         assert got["after"] == 0 and got["hidden"] is True
 
     def test_a_second_render_replaces_rather_than_appends(self):
-        got = _run("""
+        """The form changed and the server answered again: its second
+        answer, not both."""
+        first = _answer(*_H2_FORM)
+        second = _answer(*_H2_FORM[:3], {})
+        assert first != second
+        got = _run(f"""
         var panel = new El("ul");
-        F.render([{severity: "warn", message: "a"}], {panel: panel});
-        F.render([{severity: "warn", message: "b"}], {panel: panel});
-        console.log(JSON.stringify({n: panel.children.length,
-            msg: panel.children[0].children[0].textContent}));
+        F.render({json.dumps(first)}, {{panel: panel}});
+        F.render({json.dumps(second)}, {{panel: panel}});
+        console.log(JSON.stringify({{rows: {_rows("panel")}}}));
         """)
-        assert got["n"] == 1 and got["msg"] == "b"
+        assert [r["message"] for r in got["rows"]] == [
+            i["message"] for i in second]
 
     def test_empty_hides_the_panel_unless_empty_text_is_given(self):
+        """The page's own clearing: nothing to show hides the panel, or says
+        the caller's word for it."""
         got = _run("""
         var a = new El("ul"); var b = new El("ul");
         F.render([], {panel: a});

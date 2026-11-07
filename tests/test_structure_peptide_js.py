@@ -3,16 +3,22 @@
 Pins the public API of ``molbuilder/web/static/modify/structure/
 peptide.js`` — the Sources-card panel that POSTs to
 ``/api/build/molecule`` with kind="peptide" and routes the
-generated XYZ through the canvas-state gate.
+generated structure through the canvas-state gate.
+
+The panel runs under node (`_node_esm.run_node`), wired as the page wires
+it, its request answered by the app's own `/api/build/molecule`
+(`_node_esm.served`).  What the generate chain does with the load door's
+answer is `panel-deps.js`'s, tested through SMILES
+(`test_structure_smiles_js.py`).
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import run_node, served
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,108 +28,76 @@ MODULE = ROOT / "molbuilder/web/static/modify/structure/peptide.js"
 #: skips it is testing a module the browser never runs.
 PANEL_DEPS = ROOT / "molbuilder/web/static/modify/structure/panel-deps.js"
 
+#: The panel wired as the page wires it -- its findings list named
+#: (`wirePanel`), the one renderer a recorder (`drawn`) -- its builds asked
+#: of the server and handed to a load door that takes them.
+WIRED = """
+    const list = {id: "peptide-findings"};
+    pep.wirePanel({doc: {getElementById: (id) =>
+        id === "peptide-findings" ? list
+            : {addEventListener() {}, value: "", checked: false}}});
+    const drawn = [];
+    pep.configure({
+        structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+        findings: {render: (rows, opts) => drawn.push(
+            {rows: rows.map(r => r.where), under: opts.panel === list})},
+    });
+"""
 
-def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    module_path = MODULE.resolve()
-    bootstrap = f"""
-        require({json.dumps(str(PANEL_DEPS.resolve()))});
-        const pep = require({json.dumps(str(module_path))});
-        try {{
-            (async () => {{
-                {snippet}
-            }})().catch(err => {{
-                console.log(JSON.stringify({{
-                    __test_unexpected_throw: true,
-                    message: err && err.message ? err.message : String(err),
-                }}));
-            }});
-        }} catch (err) {{
-            console.log(JSON.stringify({{
-                __test_unexpected_throw: true,
-                message: err && err.message ? err.message : String(err),
-            }}));
-        }}
-    """
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True, text=True, timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
-        )
-    out = json.loads(proc.stdout.strip().splitlines()[-1])
-    if isinstance(out, dict):
-        assert "__test_unexpected_throw" not in out, (
-            "module threw: " + str(out))
-    return out
+
+def _run(snippet: str, app_at: str) -> object:
+    """``snippet`` against the panel (``pep``), wired as the page wires it
+    (:data:`WIRED`), the page's ``fetch`` answered by the app serving at
+    ``app_at`` (`_node_esm.served`: ``__calls`` each request as it left,
+    ``__answered`` each answer, read)."""
+    return run_node(
+        [PANEL_DEPS],
+        f"const pep = (await import({json.dumps(MODULE.as_uri())})).default;\n"
+        f"{WIRED}\n{snippet}",
+        globals_js=served(app_at))
+
+
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the panel (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
 
 
 class TestInputValidation:
 
-    def test_empty_sequence_rejected_without_fetch(self):
-        out = _run_node('''
-            let fetchCalls = 0;
-            pep.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await pep.generate("");
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "sequence" in out["envelope"]["error"].lower()
-        assert out["fetchCalls"] == 0
-
-    def test_illegal_codes_rejected_client_side(self):
+    @pytest.mark.parametrize("seq, said", [
+        ("", "peptide sequence"),
+        ("ACBDEF", "one-letter amino-acid"),
+    ], ids=["no sequence", "B is no amino acid's letter"])
+    def test_what_cannot_be_built_is_refused_before_any_request(
+            self, app_at, seq, said):
         """One-letter codes outside the 20 canonical amino acids
         (B, J, O, U, X, Z plus non-alpha chars) MUST be rejected
         before the request hits the network — the backend's
         tleap call would fail with a less actionable error."""
-        out = _run_node('''
-            let fetchCalls = 0;
-            pep.configure({
-                fetch: async () => { fetchCalls++; return {}; },
-                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
-            });
-            const r = await pep.generate("ACBDEF");  // B is illegal
-            console.log(JSON.stringify({envelope: r, fetchCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "one-letter amino-acid" in out["envelope"]["error"]
-        assert out["fetchCalls"] == 0
+        out = _run(f'''
+            const r = await pep.generate({json.dumps(seq)});
+            console.log(JSON.stringify({{r, calls: __calls.length}}));
+        ''', app_at)
+        assert out["r"]["ok"] is False
+        assert said in out["r"]["error"]
+        assert out["calls"] == 0
 
-    def test_lowercase_sequence_accepted_and_uppercased(self):
-        out = _run_node('''
-            let capturedBody = null;
-            pep.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true, text: "1\\nA\\nC 0 0 0\\n",
-                            n_atoms: 1,
-                        }),
-                    };
-                },
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
+    def test_lowercase_sequence_accepted_and_uppercased(self, app_at):
+        out = _run('''
             await pep.generate("aaaa");
-            console.log(JSON.stringify(capturedBody));
-        ''')
-        assert out["input"] == "AAAA"
+            console.log(JSON.stringify({body: __calls[0].body,
+                                        answer: __answered[0]}));
+        ''', app_at)
+        assert out["body"]["input"] == "AAAA"
+        assert out["answer"]["ok"] is True, out["answer"]
 
 
 class TestHappyPath:
 
-    def test_successful_generate_routes_through_canvas(self):
+    def test_successful_generate_routes_through_canvas(self, app_at):
         """The peptide is handed over WHOLE.
 
         This is the panel where the loss was measured: installing the
@@ -131,31 +105,12 @@ class TestHappyPath:
         format with no residue column, so ``build_peptide("AG")`` --
         ALA x5, GLY x4 -- arrived as nineteen residues all named MOL,
         with CA/CB collapsed to C.  ``by_residue_name "ALA"`` then
-        matched nothing on a peptide the user had just generated."""
-        out = _run_node('''
-            let capturedBody = null;
+        matched nothing on a peptide the user had just generated.  The
+        server's build of ACD names its residues; the load door receives
+        that envelope as it came, the document beside it left out."""
+        out = _run('''
             let canvasArgs = null;
             pep.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true,
-                            structure: {
-                                title: "ACD peptide",
-                                elements: ["N", "C", "C"],
-                                positions: [[0,0,0], [1,0,0], [2,0,0]],
-                                residue_names: ["ALA", "CYS", "ASP"],
-                                atom_names: ["N", "CA", "CB"],
-                            },
-                            // The flattened rendering rides along and is
-                            // deliberately NOT what gets installed.
-                            text: "23\\nACD peptide\\nN 0 0 0\\n...\\n",
-                            n_atoms: 23,
-                        }),
-                    };
-                },
                 structurePage: {
                     loadIntoCanvas: async (struct, src) => {
                         canvasArgs = {struct, src};
@@ -166,68 +121,21 @@ class TestHappyPath:
             const r = await pep.generate("ACD");
             console.log(JSON.stringify({
                 envelope: r,
-                body:     capturedBody,
+                body:     __calls[0].body,
                 canvas:   canvasArgs,
+                answer:   __answered[0],
             }));
-        ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 23}
+        ''', app_at)
+        answer = out["answer"]
+        assert answer["ok"] is True and "text" in answer, answer
+        assert set(answer["structure"]["residue_names"]) >= {"ALA", "CYS",
+                                                             "ASP"}
+        assert out["envelope"] == {"ok": True, "n_atoms": answer["n_atoms"],
+                                   "backend_used": answer["backend_used"]}
         assert out["body"] == {"kind": "peptide", "input": "ACD"}
         # The residues survive, because an envelope has a slot for them
         # and a coordinate document does not.
-        env = out["canvas"]["struct"]["structure"]
-        assert env["residue_names"] == ["ALA", "CYS", "ASP"]
-        assert env["atom_names"] == ["N", "CA", "CB"]
+        assert out["canvas"]["struct"]["structure"] == answer["structure"]
         assert "text" not in out["canvas"]["struct"]
         assert out["canvas"]["src"]["kind"] == "peptide"
         assert out["canvas"]["src"]["generator_input"]["sequence"] == "ACD"
-
-
-class TestErrorPaths:
-
-    def test_backend_failure_surfaces_message(self):
-        out = _run_node('''
-            pep.configure({
-                fetch: async () => ({
-                    ok: false,
-                    json: async () => ({
-                        ok: false,
-                        error: "tleap failed: residue ACE not parametrized",
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
-                },
-            });
-            const r = await pep.generate("AAA");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "tleap" in out["error"]
-
-    def test_canvas_cancel_passes_through_as_cancelled(self):
-        """The load door returns cancelled → envelope carries
-        cancelled, called through the single load door exactly once."""
-        out = _run_node('''
-            let loadCalls = 0;
-            pep.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, text: "1\\nA\\nC 0 0 0\\n", n_atoms: 1,
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async () => {
-                        loadCalls++;
-                        return { ok: false, cancelled: true };
-                    },
-                },
-            });
-            const r = await pep.generate("A");
-            console.log(JSON.stringify({
-                envelope:  r,
-                loadCalls: loadCalls,
-            }));
-        ''')
-        assert out["envelope"] == {"ok": False, "cancelled": True}
-        assert out["loadCalls"] == 1

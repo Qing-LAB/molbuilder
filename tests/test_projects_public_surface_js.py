@@ -1,116 +1,98 @@
-"""Unit tests for the public projects.* mutator surface (sidebar
-gap M4, #175).
+"""`window.molbuilder.projects` -- the sidebar's one door (`web/projects.md`
+§ 1): the selection and its channels, and the file calls a tab reaches
+through it, run under node (`_node_esm.run_node`), each request answered
+by the app's own files routes on a tree of the test's own
+(`_node_esm.served`).
 
-Promotes ``readFile / createProject / mkdir / deleteEntry / upload /
-navigateTo`` onto ``window.molbuilder.projects.*`` so external
-callers (the /results tab-level file-picker dropdown at
-``lib/results/file-picker.js``, future programmatic file
-managers) don't need to import ``./api.js`` directly.
+What is pinned here is what `state.js` decides on top of `api.js`, whose
+requests and envelopes are `test_projects_api_envelope_js.py`'s:
 
-Each wrapper auto-fires a sidebar refresh on success so the tree
-stays in sync.  These tests pin:
-  * Success path delegates to the matching apiX function +
-    triggers refreshHandler with the right argument.
-  * Failure path passes through the apiX response verbatim AND
-    does NOT trigger refresh (the mutation didn't land).
-  * navigateTo is a thin shim over setShared (lock guard inherited).
-  * Refresh-handler failure is swallowed (a flaky listing fetch
-    shouldn't fail an otherwise-successful mutation).
+  * the selection: a single click is `onChange`, a double click
+    `onCommit`, its file a full path; the same callback registered twice
+    is an error (§ 2);
+  * each organizing call refreshes the folder it changed, only when the
+    change landed, and a refresh that fails does not fail the change (§ 5);
+  * every call answers `{ok, ...}` and never throws (§ 5) -- `refresh`,
+    `readCurrentFile`, a refused `writeFile`, `upload`;
+  * `navigateTo` refuses while the page's busy fence is held
+    (`ui-contract.md` § 10, *Programmatic races*).
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests._node_esm import run_node, served
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/projects/state.js"
+PAGE_BUSY = ROOT / "molbuilder/web/static/lib/page-busy.js"
+
+#: What a browser has and node lacks, as a page starts: an empty
+#: ``sessionStorage``, a document with nothing on it.
+_BROWSER = """
+const _store = new Map();
+globalThis.sessionStorage = {
+    getItem:    k => _store.has(k) ? _store.get(k) : null,
+    setItem:    (k, v) => _store.set(k, String(v)),
+    removeItem: k => _store.delete(k),
+    clear:      () => _store.clear(),
+};
+globalThis.document = {
+    addEventListener: () => {},
+    getElementById:   () => null,
+};
+"""
 
 
-def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    module_url = MODULE.resolve().as_uri()
-    bootstrap = f"""
-        const _store = new Map();
-        global.sessionStorage = {{
-            getItem:    k => _store.has(k) ? _store.get(k) : null,
-            setItem:    (k, v) => _store.set(k, String(v)),
-            removeItem: k => _store.delete(k),
-            clear:      () => _store.clear(),
-        }};
-        global.window = global;
-        global.document = {{
-            addEventListener: () => {{}},
-            getElementById:   () => null,
-        }};
-        global.navigator = {{ language: "en-US" }};
-        // Default fetch must throw if called -- the wrappers should
-        // route through the captured-fetch the tests install per-case.
-        global.fetch = () => {{
-            throw new Error(
-                "test must override global.fetch; api.js called "
-                + "the default stub"
-            );
-        }};
-        global.FormData = function () {{ this.append = () => {{}}; }};
-        const statePromise = import("{module_url}");
-        statePromise.then(async (state) => {{
-            const pageBusy = (await import("{(ROOT / 'molbuilder/web/static/lib/page-busy.js').resolve().as_uri()}")).pageBusy;
-            {snippet}
-        }}).catch(err => {{
-            console.log(JSON.stringify({{
-                __test_unexpected_throw: true,
-                message: err && err.message ? err.message : String(err),
-                stack:   err && err.stack ? err.stack : null,
-            }}));
-        }});
-    """
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    last_line = proc.stdout.strip().splitlines()[-1]
-    out = json.loads(last_line)
-    # The throw-marker check only applies when the snippet emits a
-    # JSON object (the typical case).  Tests that legitimately emit
-    # a scalar / array bypass the check.
-    if isinstance(out, dict):
-        assert "__test_unexpected_throw" not in out, (
-            "module threw: " + str(out)
-        )
-    return out
+def _run(snippet: str, app_at: "str | None" = None) -> object:
+    """``snippet`` with state.js imported as ``state`` and the page's fence
+    as ``pageBusy``.  With ``app_at``, each request goes to the app serving
+    there (`_node_esm.served`: each request kept as it left in ``__calls``,
+    its options as ``init``, and each answer, read, in ``__answered``)."""
+    return run_node(
+        [], f"const state = await import({json.dumps(MODULE.as_uri())});\n"
+            f"const {{ pageBusy }} = await import("
+            f"{json.dumps(PAGE_BUSY.as_uri())});\n"
+            f"{snippet}",
+        globals_js=_BROWSER + (served(app_at) if app_at else ""))
+
+
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the wrappers (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
+
+
+@pytest.fixture
+def tree(isolated_projects_root):
+    """This test's projects tree (`isolated_projects_root`): a project
+    folder holding a note and a megabyte log."""
+    (isolated_projects_root / "P").mkdir()
+    (isolated_projects_root / "P" / "notes.txt").write_text("hello\n")
+    (isolated_projects_root / "P" / "big.log").write_text("x" * 1_000_000)
+    return isolated_projects_root
 
 
 # ----- onCommit + publishCommit (B.5.2) --------------------------- #
 
 
 class TestOnCommit:
-    """The universal commit-event subscription per docs/web/
-    tabs.md.  Sidebar single-click = preview
-    (fires onChange).  Double-click = commit (fires onCommit
-    only).  This keeps subscribers from mistaking a casual
-    browse-click for a tab-level action."""
+    """`web/projects.md` § 2: a single click is a preview (`onChange`), a
+    double click is a commit (`onCommit` only) -- so a subscriber does not
+    mistake a casual browse-click for a tab-level action."""
 
     def test_onCommit_does_NOT_fire_on_subscribe(self):
         """Commits are discrete events, not states.  Firing on
         subscribe would over-react the first time a tab mounts;
         the published payload would be the empty initial state
         and subscribers would think the user committed nothing."""
-        out = _run_node('''
+        out = _run('''
             const calls = [];
             state.projects.onCommit(p => calls.push(p));
             console.log(JSON.stringify({
@@ -119,37 +101,19 @@ class TestOnCommit:
         ''')
         assert out["callsAfterSubscribe"] == []
 
-    def test_publishCommit_fires_subscribers(self):
-        """`publishCommit` delivers `{dir, file}` -- the file's FULL path -- to every
-        `onCommit` subscriber.
-
-        `web/projects.md` § 5 states the payload and is explicit that `path` is
-        the full path, "not its name -- subscribers use it as one". A publisher
-        sending the basename hands every tab a string it then resolves against its own
-        current directory: the double-click opens a different file, or none, with no
-        error anywhere. Cross-language: this payload is the whole contract between the
-        sidebar and every tab that follows it.
-        """
-        out = _run_node('''
-            const calls = [];
-            state.projects.onCommit(p => calls.push(p));
-            state.publishCommit("/p/proj", "/p/proj/water.xyz");
-            console.log(JSON.stringify(calls));
-        ''')
-        assert out == [{"dir": "/p/proj", "file": "/p/proj/water.xyz"}]
-
     def test_publishCommit_also_updates_global_pick_via_setShared(self):
-        """publishCommit's contract: it fires the commit subscribers
-        AND updates the global pick (via setShared) so a
-        cross-tab handoff via sessionStorage works without
-        publishers needing to call both.  Mirrors the real-user
-        flow: dblclick's first click sets setShared, the second
-        fires publishCommit; programmatic callers shouldn't have
-        to know that detail.
+        """`publishCommit` delivers `{dir, file}` -- the file's FULL path --
+        to every `onCommit` subscriber, AND moves the pick (`setShared`) when
+        it differs, so `onChange` follows too.
 
-        Practical consequence: publishCommit fires BOTH onChange
-        (preview/candidate update) AND onCommit (commit signal)."""
-        out = _run_node('''
+        `web/projects.md` § 5 states the payload and is explicit that `path`
+        is the full path, "not its name -- subscribers use it as one". A
+        publisher sending the basename hands every tab a string it then
+        resolves against its own current directory: the double-click opens
+        a different file, or none, with no error anywhere.  A commit that
+        left the pick behind would leave `getCurrentFile()` naming the file
+        before."""
+        out = _run('''
             const onChangeCalls = [];
             const onCommitCalls = [];
             state.projects.onChange(p => onChangeCalls.push(p));
@@ -183,7 +147,7 @@ class TestOnCommit:
         (the dblclick's first click), then publishCommit.  Without
         the dedup, onChange would fire twice (initial + inner
         setShared); with it, only the first call fires."""
-        out = _run_node('''
+        out = _run('''
             // First click fires setShared.
             state.setShared("/p", "/p/x.xyz");
             // Now wire the subscriber + reset its initial fire.
@@ -201,31 +165,12 @@ class TestOnCommit:
             f"matches sessionStorage; got {out}"
         )
 
-    def test_publishCommit_fires_setShared_when_pick_changes(self):
-        """The flip side: publishCommit with a NEW pick (different
-        from sessionStorage) DOES need to update setShared so
-        cross-tab handoff via sessionStorage works."""
-        out = _run_node('''
-            state.setShared("/p", "/p/old.xyz");
-            const onChangeCalls = [];
-            state.projects.onChange(p => onChangeCalls.push(p));
-            onChangeCalls.length = 0;
-            // Different file — must update sessionStorage.
-            state.publishCommit("/p", "/p/new.xyz");
-            console.log(JSON.stringify({
-                onChange:    onChangeCalls,
-                currentFile: state.projects.getCurrentFile(),
-            }));
-        ''')
-        assert out["onChange"] == [{"dir": "/p", "file": "/p/new.xyz"}]
-        assert out["currentFile"] == "/p/new.xyz"
-
     def test_setShared_does_NOT_fire_onCommit_subscribers(self):
         """Single-click → setShared → onChange.  publishCommit is
         separate; setShared MUST NOT also fire onCommit, or every
         sidebar click would commit and the candidate-only model
         collapses."""
-        out = _run_node('''
+        out = _run('''
             const onCommitCalls = [];
             state.projects.onCommit(p => onCommitCalls.push(p));
             state.setShared("/p", "/p/y.xyz");
@@ -243,7 +188,7 @@ class TestOnCommit:
         callback twice is an error -- then refuses the re-subscribe. Together
         those turn a leak into a tab that cannot be re-entered.
         """
-        out = _run_node('''
+        out = _run('''
             const calls = [];
             const unsub = state.projects.onCommit(p => calls.push(p));
             unsub();
@@ -251,19 +196,6 @@ class TestOnCommit:
             console.log(JSON.stringify(calls));
         ''')
         assert out == []
-
-    def test_duplicate_onCommit_throws(self):
-        """Same subscriber-dedup contract every other onChange-style
-        API enforces (per design § 5.5 + § 11.5)."""
-        out = _run_node('''
-            const cb = () => {};
-            state.projects.onCommit(cb);
-            let threw = false;
-            try { state.projects.onCommit(cb); }
-            catch (e) { threw = true; }
-            console.log(JSON.stringify(threw));
-        ''')
-        assert out is True
 
 
 # ----- setShared -------------------------------------------------- #
@@ -276,339 +208,96 @@ class TestSetSharedOnTheDoor:
         (`results/file-picker.js`), and every other test here reaches
         `state.setShared` directly.  THE SILENT FAILURE: the name gone from the
         public object, and picking a run's file failing on Results alone."""
-        out = _run_node('''
+        out = _run('''
             const r = state.projects.setShared("/a", "/a/b.xyz");
             console.log(JSON.stringify({ok: r.ok}));
         ''')
         assert out["ok"] is True
 
 
-# ----- readFile --------------------------------------------------- #
+# ----- readRange: a network drop -------------------------------- #
 
 
-class TestReadFile:
-
-    def test_delegates_to_apiRead(self):
-        """`projects.readFile`, the door every inspector reads through
-        (`inspectors/registry.js`), reaches `/api/files/read` with the path
-        URL-encoded and the options it was handed: a source inspector's `maxBytes`
-        lost is a large file it cannot open.
-        """
-        out = _run_node('''
-            let capturedUrl = null;
-            global.fetch = async (url) => {
-                capturedUrl = url;
-                return {
-                    ok: true,
-                    status: 200,
-                    json: async () => ({
-                        ok: true, text: "hello", mtime: 42
-                    }),
-                };
-            };
-            const r = await state.projects.readFile("/projects/job/a.xyz",
-                                                    {maxBytes: 1024});
-            console.log(JSON.stringify({
-                envelope: r,
-                url:      capturedUrl,
-            }));
-        ''')
-        assert out["envelope"] == {"ok": True, "text": "hello", "mtime": 42}
-        assert "/api/files/read" in out["url"]
-        # Path is URL-encoded -- ``/`` becomes ``%2F``.
-        assert "%2Fprojects%2Fjob%2Fa.xyz" in out["url"]
-        assert "max_bytes=1024" in out["url"]
-
-
-# ----- readRange (#189, 2026-06-02) ------------------------------- #
-
-
-class TestReadRange:
-    """The v2 paginated source inspector goes through
-    ``projects.readRange`` instead of raw ``fetch`` on
-    ``/api/files/read_range``.  These tests pin the wrapper's
-    URL composition, envelope passthrough, and abort plumbing so
-    a future refactor can't quietly drop one of them."""
-
-    def test_default_offset_and_max_bytes_omitted_from_url(self):
-        """When ``offset`` and ``maxBytes`` are undefined, the wrapper
-        emits the bare ``?path=...`` URL and lets the server apply
-        its default 256 KB window starting at byte 0."""
-        out = _run_node('''
-            let capturedUrl = null;
-            global.fetch = async (url) => {
-                capturedUrl = url;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({
-                        ok: true, path: "/p/big.log", offset: 0,
-                        length: 262144, file_size: 1000000,
-                        mtime: 42, text: "first chunk", eof: false,
-                    }),
-                };
-            };
-            const r = await state.projects.readRange("/p/big.log");
-            console.log(JSON.stringify({envelope: r, url: capturedUrl}));
-        ''')
-        assert out["envelope"]["ok"] is True
-        assert out["envelope"]["length"] == 262144
-        assert "/api/files/read_range" in out["url"]
-        assert "%2Fp%2Fbig.log" in out["url"]
-        # No offset / max_bytes params when they weren't passed.
-        assert "offset=" not in out["url"]
-        assert "max_bytes=" not in out["url"]
-
-    def test_explicit_offset_and_max_bytes_in_url(self):
-        """`readRange(path, offset, maxBytes)` puts both on the query string.
-
-        The property is real -- a dropped `offset` makes the paginated source
-        inspector re-read the first chunk forever.  Asked through the wrapper, so it
-        holds both layers: `state.readRange` handing the values on, and
-        `api.js::apiReadRange` composing them.
-        """
-        out = _run_node('''
-            let capturedUrl = null;
-            global.fetch = async (url) => {
-                capturedUrl = url;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({
-                        ok: true, path: "/p/big.log", offset: 524288,
-                        length: 262144, file_size: 1000000,
-                        mtime: 42, text: "second chunk", eof: false,
-                    }),
-                };
-            };
-            const r = await state.projects.readRange(
-                "/p/big.log", 524288, 262144);
-            console.log(JSON.stringify({envelope: r, url: capturedUrl}));
-        ''')
-        assert out["envelope"]["offset"] == 524288
-        assert "offset=524288" in out["url"]
-        assert "max_bytes=262144" in out["url"]
-
-    def test_negative_offset_for_tail_read(self):
-        """``offset = -N`` reads the last N bytes; URL-encoding must
-        preserve the minus sign (encodeURIComponent leaves ``-``
-        alone but the wrapper still has to pass the raw value)."""
-        out = _run_node('''
-            let capturedUrl = null;
-            global.fetch = async (url) => {
-                capturedUrl = url;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({
-                        ok: true, path: "/p/big.log", offset: 737856,
-                        length: 262144, file_size: 1000000,
-                        mtime: 42, text: "tail chunk", eof: true,
-                    }),
-                };
-            };
-            await state.projects.readRange("/p/big.log", -262144, 262144);
-            console.log(JSON.stringify({url: capturedUrl}));
-        ''')
-        assert "offset=-262144" in out["url"]
-
-    def test_network_drop_returns_uniform_envelope(self):
-        """Same shape as every other projects.* wrapper -- network
-        drop must NOT throw."""
-        out = _run_node('''
-            global.fetch = async () => {
-                throw new TypeError("Failed to fetch");
-            };
-            const r = await state.projects.readRange("/p/x.log");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "network error" in out["error"]
-
-    def test_abort_signal_threads_into_fetch(self):
-        """`opts.signal` reaches `fetch`, so a slow range read can be cancelled.
-
-        Asked through the wrapper, so it holds both layers: `state.readRange` handing
-        its options on, and `apiReadRange` handing the signal to `fetch`.
-        """
-        out = _run_node('''
-            let capturedSignal = null;
-            global.fetch = async (url, init) => {
-                capturedSignal = init && init.signal;
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({ok: true, text: "x"}),
-                };
-            };
-            const ac = new AbortController();
-            await state.projects.readRange(
-                "/p/x.log", 0, 1024, {signal: ac.signal});
-            console.log(JSON.stringify({
-                signal_present: capturedSignal !== null
-                              && capturedSignal !== undefined,
-            }));
-        ''')
-        assert out["signal_present"] is True
+def test_readRange_network_drop_returns_uniform_envelope():
+    """Same shape as every other projects.* wrapper -- network
+    drop must NOT throw."""
+    out = _run('''
+        global.fetch = async () => {
+            throw new TypeError("Failed to fetch");
+        };
+        const r = await state.projects.readRange("/p/x.log");
+        console.log(JSON.stringify(r));
+    ''')
+    assert out["ok"] is False
+    assert "network error" in out["error"]
 
 
 # ----- createProject / mkdir / upload: refresh on success --------- #
 
 
+def _refreshed(app_at, tree, call):
+    """``call`` through the public surface, the sidebar's refresh recorded
+    and its projects root the tree's: what came back, what the server
+    answered, and what was refreshed."""
+    return _run(f"""
+        const refreshArgs = [];
+        state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
+        state.setProjectsRoot({json.dumps(str(tree))});
+        const P = {json.dumps(str(tree / "P"))};
+        const r = await {call};
+        console.log(JSON.stringify({{
+            envelope: r, answer: __answered[0] || null, refreshArgs }}));
+    """, app_at)
+
+
 class TestRefreshOnSuccess:
+    """`web/projects.md` § 5: each organizing call "refreshes the sidebar on
+    success" -- the wrapper's OWN decision (`api.js` knows nothing about the
+    sidebar), and the directory it refreshes is what makes it correct:
+    refreshing the wrong one leaves the change invisible while re-listing
+    something else; a file that lands and does not appear reads as an
+    upload that failed, and a row left for a deleted file is one someone
+    clicks.  Each call is answered by the route, and lands on disk."""
 
-    def test_createProject_refreshes_root(self):
-        """createProject success -> refreshHandler(projects_root)."""
-        out = _run_node('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => {
-                refreshArgs.push(dir);
-            });
-            // setProjectsRoot is module-private; we can prime it by
-            // calling the public setter (exposed for the sidebar init).
-            state.setProjectsRoot("/projects");
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({ ok: true, path: "/projects/myjob" }),
-            });
-            const r = await state.projects.createProject("myjob");
-            console.log(JSON.stringify({
-                envelope:     r,
-                refreshArgs:  refreshArgs,
-            }));
-        ''')
+    @pytest.mark.parametrize("call, refreshed, landed", [
+        ("state.projects.createProject('myjob')", "", "myjob"),
+        ("state.projects.mkdir(P, 'optimization')", "P", "P/optimization"),
+        ("state.projects.upload(P, new File(['x'], 'f.xyz'))", "P", "P/f.xyz"),
+        ("state.projects.rename(P + '/notes.txt', 'new.txt')", "P",
+         "P/new.txt"),
+        ("state.projects.deleteEntry(P + '/notes.txt', false)", "P", None),
+    ], ids=["createProject refreshes the root", "mkdir its parent",
+            "upload its target", "rename the old path's parent",
+            "delete its parent"])
+    def test_a_change_that_landed_refreshes_where_it_landed(
+            self, app_at, tree, call, refreshed, landed):
+        out = _refreshed(app_at, tree, call)
+        assert out["answer"]["ok"] is True, out["answer"]
         assert out["envelope"]["ok"] is True
-        # Refresh was called with the projects root.
-        assert out["refreshArgs"] == ["/projects"]
-
-    def test_mkdir_refreshes_parent(self):
-        """A successful `mkdir` refreshes the PARENT directory, so the new folder appears
-        without a manual reload.
-
-        `web/projects.md` § 5: each organizing call "refreshes the sidebar on
-        success". This is the wrapper's OWN decision -- `api.js` knows nothing about
-        the sidebar -- and the argument is what makes it correct: refreshing the wrong
-        directory leaves the new folder invisible while re-listing something else.
-        """
-        out = _run_node('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({ ok: true, path: "/p/parent/new" }),
-            });
-            await state.projects.mkdir("/p/parent", "new");
-            console.log(JSON.stringify(refreshArgs));
-        ''')
-        assert out == ["/p/parent"]
-
-    def test_upload_refreshes_target_dir(self):
-        """A successful upload refreshes the directory it was uploaded INTO.
-
-        The same rule (`web/projects.md` § 5) with a different derivation: the
-        target directory is an argument here rather than derived from a path. A file
-        that lands on disk and does not appear in the sidebar reads to the user as an
-        upload that failed, and the usual response is to upload it a second time.
-        """
-        out = _run_node('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({ ok: true, path: "/p/dest/f.xyz" }),
-            });
-            await state.projects.upload("/p/dest", { name: "f.xyz" });
-            console.log(JSON.stringify(refreshArgs));
-        ''')
-        assert out == ["/p/dest"]
-
-    def test_rename_refreshes_parent_dir(self):
-        """A successful rename refreshes the parent, derived from the OLD path.
-
-        The wrapper strips the last path segment itself, falling back to the projects
-        root for a top-level entry -- logic `api.js` does not have. Getting it wrong
-        leaves the sidebar showing the old name for a file that no longer has it, so
-        the next click acts on a path the server will refuse.
-        """
-        out = _run_node('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
-            global.fetch = async () => ({
-                ok: true, status: 200,
-                json: async () => ({ ok: true, path: "/p/parent/new.xyz" }),
-            });
-            await state.projects.rename("/p/parent/old.xyz", "new.xyz");
-            console.log(JSON.stringify(refreshArgs));
-        ''')
-        assert out == ["/p/parent"]
-
-    def test_rename_409_does_not_refresh(self):
-        """A 409 destination-conflict must NOT trigger refresh — the
-        source path didn't change and the destination was already
-        listed in the sidebar."""
-        out = _run_node('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
-            global.fetch = async () => ({
-                ok: false, status: 409,
-                json: async () => ({
-                    ok: false, error: "destination already exists",
-                }),
-            });
-            const r = await state.projects.rename("/p/old.xyz", "exists.xyz");
-            console.log(JSON.stringify({
-                envelope:    r,
-                refreshArgs: refreshArgs,
-            }));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "destination already exists" in out["envelope"]["error"]
-        assert out["refreshArgs"] == []
-
-    def test_deleteEntry_refreshes_parent_dir(self):
-        """A successful delete refreshes the containing directory.
-
-        The same parent derivation as rename, with a sharper consequence: a row left
-        in the sidebar for a deleted file is a row someone clicks, and the tab then
-        tries to open a file that is gone. `web/projects.md` § 5.
-        """
-        out = _run_node('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({ ok: true }),
-            });
-            await state.projects.deleteEntry("/p/parent/file.xyz", false);
-            console.log(JSON.stringify(refreshArgs));
-        ''')
-        assert out == ["/p/parent"]
+        assert out["refreshArgs"] == [str(tree / refreshed).rstrip("/")]
+        if landed:
+            assert (tree / landed).exists()
+        else:
+            assert not (tree / "P" / "notes.txt").exists()
 
 
 # ----- Failure path: no refresh ----------------------------------- #
 
 
 class TestNoRefreshOnFailure:
+    """A refused change must NOT trigger the listing refresh -- the folder
+    did not change -- and comes back in the server's words."""
 
-    def test_mkdir_failure_does_not_refresh(self):
-        """A failed mutation must NOT trigger the listing refresh --
-        otherwise a stale 4xx (e.g. 409 conflict) would silently
-        force the sidebar to re-fetch the parent for no reason."""
-        out = _run_node('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
-            global.fetch = async () => ({
-                ok: false,
-                status: 409,
-                json: async () => ({ ok: false, error: "already exists" }),
-            });
-            const r = await state.projects.mkdir("/p", "dup");
-            console.log(JSON.stringify({
-                envelope:    r,
-                refreshArgs: refreshArgs,
-            }));
-        ''')
+    @pytest.mark.parametrize("call", [
+        "state.projects.rename(P + '/notes.txt', 'big.log')",
+        "state.projects.mkdir(P, 'not-a-topic')",
+    ], ids=["a rename onto an existing name (409)",
+            "a folder the project's topics do not name"])
+    def test_a_refused_change_does_not_refresh(self, app_at, tree, call):
+        out = _refreshed(app_at, tree, call)
+        assert out["answer"]["ok"] is False, out["answer"]
         assert out["envelope"]["ok"] is False
+        assert out["envelope"]["error"] == out["answer"]["error"]
         assert out["refreshArgs"] == []
 
     def test_upload_network_failure_does_not_refresh(self):
@@ -621,7 +310,7 @@ class TestNoRefreshOnFailure:
         failed upload re-lists a directory that did not change, which on a slow
         filesystem makes a failure look like a success that has not appeared yet.
         """
-        out = _run_node('''
+        out = _run('''
             const refreshArgs = [];
             state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
             global.fetch = async () => {
@@ -642,45 +331,41 @@ class TestNoRefreshOnFailure:
 
 class TestRefreshFailureSwallowed:
 
-    def test_mkdir_success_with_failing_refresh_still_succeeds(self):
+    def test_mkdir_success_with_failing_refresh_still_succeeds(self, app_at,
+                                                               tree):
         """If the post-success refresh itself throws (e.g. transient
         listing fetch failure), the mutation envelope should still
-        report success -- the file/dir DID land on disk; the user
-        can refresh manually."""
-        out = _run_node('''
-            state.setRefreshHandler(async () => {
+        report success -- the dir DID land on disk; the user can
+        refresh manually."""
+        out = _run(f"""
+            state.setRefreshHandler(async () => {{
                 throw new Error("listing fetch failed");
-            });
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({ ok: true, path: "/p/new" }),
-            });
-            const r = await state.projects.mkdir("/p", "new");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is True
-        assert out["path"] == "/p/new"
+            }});
+            const r = await state.projects.mkdir(
+                {json.dumps(str(tree / "P"))}, "optimization");
+            console.log(JSON.stringify({{ r, answer: __answered[0] }}));
+        """, app_at)
+        assert out["answer"]["ok"] is True
+        assert out["r"] == out["answer"]
+        assert (tree / "P" / "optimization").is_dir()
 
 
-# ----- navigateTo per design § C7 (openDir-aliased) -------------- #
+# ----- navigateTo ------------------------------------------------ #
 
 
 class TestNavigateTo:
-    """navigateTo per design § C7 is the openDir-aliased async lister:
-    takes ``(absPath, opts?)``, fetches the directory listing, updates
-    the cursor, and returns ``{ok, path, entries}`` (or ``{ok:false,
-    error}`` on failure).  Wired by ``setNavigateToImpl`` at sidebar
-    init; falls back to a clean "unavailable" envelope when init
-    hasn't run yet (so tabs that subscribe + immediately call it
-    don't throw)."""
+    """`navigateTo(path)` lists a folder and moves there (`web/projects.md`
+    § 5): the sidebar's own lister, wired by ``setNavigateToImpl`` at the
+    sidebar's init.  Before that, it answers a clean "unavailable"
+    envelope rather than throwing, and it refuses while the page's busy
+    fence is held."""
 
     def test_unavailable_before_setNavigateToImpl_wires_it(self):
         """Without setNavigateToImpl being called, navigateTo returns
         the documented "unavailable" envelope -- NOT throws.  Pins
         the fail-safe contract for tabs that race against sidebar
         init."""
-        out = _run_node('''
+        out = _run('''
             // sidebar's init NOT run; setNavigateToImpl never called.
             const r = await state.projects.navigateTo("/d");
             console.log(JSON.stringify(r));
@@ -689,56 +374,14 @@ class TestNavigateTo:
         assert "unavailable" in out["error"]
         assert "sidebar not initialised" in out["error"]
 
-    def test_after_wiring_delegates_to_impl(self):
-        """When setNavigateToImpl(fn) has been called, navigateTo
-        calls fn(absPath, opts) and returns its envelope verbatim."""
-        out = _run_node('''
-            let capturedArgs = null;
-            state.setNavigateToImpl(async (absPath, opts) => {
-                capturedArgs = { absPath: absPath, opts: opts };
-                return {
-                    ok:      true,
-                    path:    absPath,
-                    entries: [{ name: "a.out", kind: "file" }],
-                };
-            });
-            const r = await state.projects.navigateTo("/p/sub", {
-                signal: "fake-signal-token",
-            });
-            console.log(JSON.stringify({
-                envelope:     r,
-                argsAbsPath:  capturedArgs.absPath,
-                argsOptsSig:  capturedArgs.opts.signal,
-            }));
-        ''')
-        assert out["envelope"] == {
-            "ok": True,
-            "path": "/p/sub",
-            "entries": [{"name": "a.out", "kind": "file"}],
-        }
-        assert out["argsAbsPath"] == "/p/sub"
-        assert out["argsOptsSig"] == "fake-signal-token"
-
-    def test_impl_failure_envelope_returned_verbatim(self):
-        """openDir-side failure ({ok:false, error}) flows through
-        navigateTo unchanged."""
-        out = _run_node('''
-            state.setNavigateToImpl(async () => ({
-                ok:    false,
-                error: "Failed to list directory.",
-            }));
-            const r = await state.projects.navigateTo("/missing");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": False, "error": "Failed to list directory."}
-
     def test_busy_navigateTo_rejects_without_calling_impl(self):
-        """Per § 8.5, navigateTo MUST check pageBusy.isClaimed() and
-        refuse while the fence is held -- without calling the
-        underlying impl.  The impl (openDir) is intentionally NOT
-        guarded because it doubles as the refreshHandler that runs
-        mid-Save-pipeline; the public-surface wrapper enforces § 8.5."""
-        out = _run_node('''
+        """`ui-contract.md` § 10, *Programmatic races*: the cover blocks
+        clicks, not code, so `navigateTo` refuses while the fence is held
+        -- without calling the lister.  The lister (`openDir`) is not
+        guarded because it doubles as the refresh handler a held
+        operation's own Save calls; the refusal lives on the public
+        call."""
+        out = _run('''
             let implCalled = false;
             state.setNavigateToImpl(async () => {
                 implCalled = true;
@@ -757,13 +400,15 @@ class TestNavigateTo:
         assert out["implCalled"] is False
 
 
-# ----- readCurrentFile envelope (design § C3) -------------------- #
+# ----- readCurrentFile ------------------------------------------- #
 
 
 class TestReadCurrentFileEnvelope:
-    """Per design § C3: ReadResult = ReadOk | ReadErr | null.
-    null only for the no-file-selected case.  ReadOk is
-    {ok:true, path, text}; ReadErr is {ok:false, error}."""
+    """`readCurrentFile` reads the selected file (`web/projects.md` § 5) and
+    answers one of three: `null` when nothing is picked, `{ok:true, path,
+    text}` for a read, `{ok:false, error}` for a failure (`state.js`).  The
+    file is picked as the sidebar picks it (`setShared`), and read by the
+    route."""
 
     def test_no_file_selected_returns_null(self):
         """With nothing selected, `readCurrentFile()` returns `null` -- distinct from an
@@ -774,13 +419,13 @@ class TestReadCurrentFileEnvelope:
         `null` first, so folding it into an error envelope makes every tab show a read
         error on a page where the user has simply not picked anything yet.
         """
-        out = _run_node('''
+        out = _run('''
             const r = await state.projects.readCurrentFile();
             console.log(JSON.stringify(r));
         ''')
         assert out is None
 
-    def test_success_returns_envelope_with_ok(self):
+    def test_success_returns_envelope_with_ok(self, app_at, tree):
         """A successful `readCurrentFile()` returns the read envelope with `ok:true`.
 
         The middle of the three states above. It also pins that the file read is the
@@ -788,46 +433,44 @@ class TestReadCurrentFileEnvelope:
         passed in -- a reader pointed at the wrong slot returns another file's
         contents with `ok:true`, which no caller checks for.
         """
-        out = _run_node('''
-            sessionStorage.setItem("molbuilder.current_file", "/p/f.xyz");
-            global.fetch = async () => ({
-                ok: true, status: 200,
-                json: async () => ({
-                    ok: true, path: "/p/f.xyz", text: "hello",
-                }),
-            });
+        note = tree / "P" / "notes.txt"
+        out = _run(f"""
+            state.setShared({json.dumps(str(tree / "P"))},
+                            {json.dumps(str(note))});
             const r = await state.projects.readCurrentFile();
             console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": True, "path": "/p/f.xyz", "text": "hello"}
+        """, app_at)
+        assert out == {"ok": True, "path": str(note), "text": "hello\n"}
 
-    def test_failure_returns_envelope_not_null(self):
+    def test_failure_returns_envelope_not_null(self, app_at, tree):
         """A failed read of the selected file returns `{ok:false, error}` -- NOT `null`.
 
         The third state, and the one that actually goes wrong: `null` is the caller's
         "nothing is selected" signal, so returning it for a read failure makes a
         missing or unreadable file look like an empty selection, and the tab silently
-        does nothing instead of reporting the error.
+        does nothing instead of reporting the error.  Here the picked file was
+        deleted since it was picked.
         """
-        out = _run_node('''
-            sessionStorage.setItem("molbuilder.current_file", "/p/f.xyz");
-            global.fetch = async () => ({
-                ok: false, status: 404,
-                json: async () => ({ ok: false, error: "not found" }),
-            });
+        note = tree / "P" / "notes.txt"
+        note.unlink()
+        out = _run(f"""
+            state.setShared({json.dumps(str(tree / "P"))},
+                            {json.dumps(str(note))});
             const r = await state.projects.readCurrentFile();
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "not found" in out["error"]
+            console.log(JSON.stringify({{ r, answer: __answered[0] }}));
+        """, app_at)
+        assert out["answer"]["ok"] is False
+        assert out["r"] == {"ok": False, "error": out["answer"]["error"]}
 
 
-# ----- refresh envelope (design § C6) ---------------------------- #
+# ----- refresh --------------------------------------------------- #
 
 
 class TestRefreshEnvelope:
-    """Per design § C6: refresh returns {ok:true} | {ok:false, error}.
-    Previously returned undefined on every path, violating Principle 6."""
+    """`refresh()` re-lists the current folder and, as every call on the
+    door, answers `{ok:true}` or `{ok:false, error}` and never throws
+    (`web/projects.md` § 5).  It answered `undefined` on every path
+    before."""
 
     def test_no_current_dir_returns_envelope_not_undefined(self):
         """`refresh()` with no current directory returns `{ok:false, error}`, not
@@ -838,7 +481,7 @@ class TestRefreshEnvelope:
         of undefined instead of handling the case. Every call on this surface returns
         a uniform result (`web/projects.md` § 5).
         """
-        out = _run_node('''
+        out = _run('''
             const r = await state.projects.refresh();
             console.log(JSON.stringify({
                 r: r,
@@ -858,8 +501,8 @@ class TestRefreshEnvelope:
         tab loading -- for a condition that resolves itself a moment later. The same
         fail-safe shape `navigateTo` has before `setNavigateToImpl` runs.
         """
-        out = _run_node('''
-            sessionStorage.setItem("molbuilder.current_dir", "/p");
+        out = _run('''
+            state.setShared("/p", "");
             const r = await state.projects.refresh();
             console.log(JSON.stringify(r));
         ''')
@@ -873,8 +516,8 @@ class TestRefreshEnvelope:
         that always reported failure would satisfy every one of them. Asserted as an
         equality, which also pins that no internal detail rides out on the result.
         """
-        out = _run_node('''
-            sessionStorage.setItem("molbuilder.current_dir", "/p");
+        out = _run('''
+            state.setShared("/p", "");
             state.setRefreshHandler(async (dir) => { /* success */ });
             const r = await state.projects.refresh();
             console.log(JSON.stringify(r));
@@ -889,8 +532,8 @@ class TestRefreshEnvelope:
         nothing, so the handler's own message is carried inside it. A transient
         listing failure must not take down the caller that asked for the refresh.
         """
-        out = _run_node('''
-            sessionStorage.setItem("molbuilder.current_dir", "/p");
+        out = _run('''
+            state.setShared("/p", "");
             state.setRefreshHandler(async () => {
                 throw new Error("listing failed");
             });
@@ -902,16 +545,17 @@ class TestRefreshEnvelope:
         assert "listing failed" in out["error"]
 
 
-# ----- writeFile preserves actual_mtime on 409 (design § C4) ----- #
+# ----- writeFile: what a refusal carries -------------------------- #
 
 
 class TestWriteFileEdgeFields:
-    """Per design § C4 WriteErr includes actual_mtime? on a 409
-    edit-conflict.  Previously writeFile destructured only `error`
-    and dropped actual_mtime, so tabs couldn't distinguish edit-
-    conflict programmatically per § 6.2."""
+    """A refused write keeps what the server said beside its words: the
+    preview's Save uses the file's on-disk timestamp so a change on disk
+    since it opened is caught (`web/projects.md` § 4, the preview pop-up),
+    and the 409's `actual_mtime` is how the editor knows that is what
+    happened.  `writeFile` once kept only `error`."""
 
-    def test_writeFile_preserves_actual_mtime_on_409(self):
+    def test_writeFile_preserves_actual_mtime_on_409(self, app_at, tree):
         """A 409 edit-conflict carries `actual_mtime` out of `writeFile`, not just
         `error`.
 
@@ -919,142 +563,80 @@ class TestWriteFileEdgeFields:
         `actual_mtime`, so a tab could not tell an edit conflict from any other
         failure programmatically -- the file on disk had changed under the editor and
         the only thing offered was a generic error. That field is what lets the caller
-        offer "reload and re-apply" instead.
+        offer "reload and re-apply" instead.  The editor's copy is of a time
+        before the file last changed; the server refuses it, saying when the
+        file changed.
         """
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: false, status: 409,
-                json: async () => ({
-                    ok: false, error: "edit conflict",
-                    actual_mtime: 1717174420.5,
-                }),
-            });
-            const r = await state.projects.writeFile("/p/f", "text");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert out["error"] == "edit conflict"
-        assert out["actual_mtime"] == 1717174420.5
+        note = tree / "P" / "notes.txt"
+        out = _run(f"""
+            const r = await state.projects.writeFile(
+                {json.dumps(str(note))}, "text",
+                {{ overwrite: true, expected_mtime: 1 }});
+            console.log(JSON.stringify({{ r, answer: __answered[0] }}));
+        """, app_at)
+        answer = out["answer"]
+        assert answer["ok"] is False and answer["actual_mtime"], answer
+        assert out["r"] == {"ok": False, "error": answer["error"],
+                            "actual_mtime": answer["actual_mtime"]}
+        assert note.read_text() == "hello\n"
 
-    def test_writeFile_preserves_aborted_flag(self):
-        """AbortError envelope carries aborted:true; writeFile must
-        not drop the flag."""
-        out = _run_node('''
-            global.fetch = async () => {
-                const err = new Error("aborted");
-                err.name = "AbortError";
-                throw err;
-            };
-            const r = await state.projects.writeFile("/p/f", "text");
+    def test_writeFile_preserves_aborted_flag(self, app_at, tree):
+        """A Cancel before the write lands: the AbortError envelope carries
+        aborted:true, and writeFile must not drop the flag."""
+        out = _run(f"""
+            const ac = new AbortController();
+            ac.abort();
+            const r = await state.projects.writeFile(
+                {json.dumps(str(tree / "P" / "notes.txt"))}, "text",
+                {{ overwrite: true, signal: ac.signal }});
             console.log(JSON.stringify(r));
-        ''')
+        """, app_at)
         assert out["ok"] is False
         assert out["aborted"] is True
 
 
-class TestIsCancelError:
-    """Predicate accepting every shape the cancellation contract
-    arrives in across the codebase:
-
-      - DOMException ``name === "AbortError"`` — thrown by fetch
-        when an AbortSignal aborts (the 4 wrapper-install / pseudo-
-        install catches in SIESTA/PySCF/Spectra pipelines).
-      - ``{aborted: true}`` — the raw envelope shape returned by
-        api.js / writeFile.
-      - ``{cancelled: true}`` — a door's answer for a question the
-        person declined (projects.parser, molview-doors).
-      - ``{code: "aborted"}`` — the ViewerError shape produced by
-        mol-viewer-embed.
-
-    Each shape exists in production code paths; the predicate
-    centralises the match so a future change to the cancellation
-    contract has ONE place to touch."""
-
-    def test_isCancelError_matches_abort_error_name(self):
-        """The shape fetch throws on abort."""
-        out = _run_node('''
-            const e = new Error("aborted");
-            e.name = "AbortError";
-            console.log(JSON.stringify({
-                hit: state.projects.isCancelError(e),
-            }));
-        ''')
-        assert out["hit"] is True
-
-    def test_isCancelError_matches_aborted_flag(self):
-        """The raw api.js / writeFile envelope shape."""
-        out = _run_node('''
-            console.log(JSON.stringify({
-                hit: state.projects.isCancelError(
-                    { ok: false, aborted: true, error: "x" }),
-            }));
-        ''')
-        assert out["hit"] is True
-
-    def test_isCancelError_matches_aborted_code(self):
-        """The ViewerError shape produced by mol-viewer-embed."""
-        out = _run_node('''
-            console.log(JSON.stringify({
-                hit: state.projects.isCancelError(
-                    { code: "aborted", message: "x" }),
-            }));
-        ''')
-        assert out["hit"] is True
-
-    def test_isCancelError_matches_a_cancelled_envelope(self):
-        """A door's answer for a question the person declined.  A
-        caller holding one naturally passes it here; pinning that the match
-        works avoids the footgun where mixed use leaks cancels as
-        errors."""
-        out = _run_node('''
-            console.log(JSON.stringify({
-                hit: state.projects.isCancelError(
-                    { ok: false, cancelled: true }),
-            }));
-        ''')
-        assert out["hit"] is True
-
-    def test_isCancelError_does_NOT_match_disposed(self):
-        """``code: "disposed"`` is a distinct lifecycle event (host
-        tore an embed down), not a user-initiated cancel.  Pinning
-        the exclusion so a future widening is a conscious decision,
-        not accidental drift."""
-        out = _run_node('''
-            console.log(JSON.stringify({
-                hit: state.projects.isCancelError(
-                    { code: "disposed", message: "x" }),
-            }));
-        ''')
-        assert out["hit"] is False
-
-    def test_isCancelError_rejects_null_and_other_errors(self):
-        """Null/undefined guard + non-cancel error rejection."""
-        out = _run_node('''
-            console.log(JSON.stringify({
-                forNull:    state.projects.isCancelError(null),
-                forUndef:   state.projects.isCancelError(undefined),
-                forNetwork: state.projects.isCancelError(
-                    new TypeError("Failed to fetch")),
-                forGeneric: state.projects.isCancelError(
-                    { ok: false, error: "permission denied" }),
-            }));
-        ''')
-        assert out["forNull"] is False
-        assert out["forUndef"] is False
-        assert out["forNetwork"] is False
-        assert out["forGeneric"] is False
+#: What a cancellation arrives as across the page, and what is not one:
+#: ``(the value, a cancel?)``.  A fetch aborted by its signal throws an
+#: ``AbortError``; api.js and ``writeFile`` answer ``aborted: true``; a
+#: door's answer for a question the person declined is ``cancelled: true``
+#: (projects.parser, molview-doors); mol-viewer-embed's ViewerError says
+#: ``code: "aborted"``.  ``code: "disposed"`` is a host tearing an embed
+#: down, not the person's cancel.
+CANCEL_SHAPES = [
+    ('Object.assign(new Error("aborted"), { name: "AbortError" })', True),
+    ('{ ok: false, aborted: true, error: "x" }', True),
+    ('{ ok: false, cancelled: true }', True),
+    ('{ code: "aborted", message: "x" }', True),
+    ('{ code: "disposed", message: "x" }', False),
+    ('new TypeError("Failed to fetch")', False),
+    ('{ ok: false, error: "permission denied" }', False),
+    ('null', False),
+    ('undefined', False),
+]
 
 
-# ----- upload adds relPath (design § C6) ------------------------- #
+def test_isCancelError_tells_a_cancel_from_an_error():
+    """`isCancelError` tells a person's cancel apart from a real error
+    (`web/projects.md` § 5), whichever shape the cancel arrives in
+    (:data:`CANCEL_SHAPES`).  THE SILENT FAILURE: a shape missed is a
+    cancel shown as an error; a shape too many is a failure dismissed as
+    the person's choice."""
+    out = _run("console.log(JSON.stringify([%s].map("
+               "(e) => state.projects.isCancelError(e))));"
+               % ", ".join(js for js, _ in CANCEL_SHAPES))
+    assert dict(zip((js for js, _ in CANCEL_SHAPES), out)) == dict(
+        CANCEL_SHAPES)
+
+
+# ----- upload adds relPath --------------------------------------- #
 
 
 class TestUploadEnvelopeShape:
-    """Per design § C6 UploadOk = WriteOk = {ok, path, relPath,
-    size, mtime}.  Backend's /api/files/upload returns only
-    {ok, path, size, mtime} (no relPath); state.upload computes
-    relPath from the projects root."""
+    """`/api/files/upload` answers `{ok, path, size, mtime}`; `upload`
+    adds `relPath` from the projects root, so its answer has the shape of
+    a `writeFile`'s (`state.js`)."""
 
-    def test_upload_computes_relPath_from_projects_root(self):
+    def test_upload_computes_relPath_from_projects_root(self, app_at, tree):
         """`upload` adds `relPath` -- the path relative to the projects root -- which the
         server does not send.
 
@@ -1064,37 +646,26 @@ class TestUploadEnvelopeShape:
         envelope. A caller displaying `relPath` otherwise shows the absolute
         filesystem path -- a home directory and username in the UI -- or `undefined`.
         """
-        out = _run_node('''
-            state.setProjectsRoot("/home/u/projects");
-            global.fetch = async () => ({
-                ok: true, status: 200,
-                json: async () => ({
-                    ok: true,
-                    path: "/home/u/projects/myjob/data.xyz",
-                    size: 1234, mtime: 999,
-                }),
-            });
+        out = _run(f"""
+            state.setProjectsRoot({json.dumps(str(tree))});
             const r = await state.projects.upload(
-                "/home/u/projects/myjob", { name: "data.xyz" }
-            );
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is True
-        assert out["path"] == "/home/u/projects/myjob/data.xyz"
-        assert out["relPath"] == "myjob/data.xyz"
-        assert out["size"] == 1234
-        assert out["mtime"] == 999
+                {json.dumps(str(tree / "P"))}, new File(["xyz"], "data.xyz"));
+            console.log(JSON.stringify({{ r, answer: __answered[0] }}));
+        """, app_at)
+        answer = out["answer"]
+        assert answer["ok"] is True and "relPath" not in answer, answer
+        assert out["r"] == {**answer, "relPath": "P/data.xyz"}
+        assert (tree / "P" / "data.xyz").read_text() == "xyz"
 
 
-# ----- setShared sessionStorage failure (design § 11.4) ---------- #
+# ----- setShared when sessionStorage throws ----------------------- #
 
 
 class TestSetSharedStorageFailure:
-    """Per design § 11.4: sessionStorage write may throw (quota,
-    private-mode SecurityError, storage denied).  setShared MUST NOT
-    propagate the throw (violates Principle 6); it MUST publish the
-    new state regardless so subscribers update; the cursor just
-    won't survive a reload."""
+    """A sessionStorage write may throw (quota, private-mode SecurityError,
+    storage denied).  `setShared` publishes its payload even then
+    (`web/projects.md` § 5, the `showPreview` row): subscribers update,
+    and only the cursor's survival of a reload is lost."""
 
     def test_setShared_swallows_sessionStorage_error_and_publishes(self):
         """A `sessionStorage` write that throws must not stop the selection being
@@ -1108,7 +679,7 @@ class TestSetSharedStorageFailure:
         than the `/before` still on disk. Without it, every tab quietly follows a
         selection the user has already moved away from.
         """
-        out = _run_node('''
+        out = _run('''
             // Make sessionStorage.setItem throw.  Use a wrapper
             // so we can flip it on/off.
             let storageBroken = false;
@@ -1144,60 +715,38 @@ class TestSetSharedStorageFailure:
         assert out["calls"][2] == {"dir": "/after", "file": "/after/y"}
 
 
-# ----- Subscriber contract: throw on duplicate (A1b) ------------- #
+# ----- Subscriber contract: throw on duplicate ------------------- #
 
 
 class TestSubscribeDedupThrows:
-    """Per design § 5.5 + § 11.5 (2026-05-31): registering the SAME
-    callback (by reference) twice on any subscribe API is a
-    programming error and must throw an Error.  Catches forgotten-
-    unsubscribe + double-init bugs at the call site."""
+    """`web/projects.md` § 2: "Registering the same callback twice is an
+    error, on purpose" -- on each subscribe call, each of which keeps its
+    own set.  It catches a forgotten unsubscribe or a double init at the
+    call site."""
 
-    def test_onChange_throws_on_duplicate(self):
-        """Registering the same `onChange` callback twice throws, and the message names
-        the API.
-
-        `web/projects.md` § 2: "Registering the same callback twice is an error,
-        on purpose." It catches a forgotten unsubscribe or a double-init at the call
-        site; without it the callback fires twice per event and the tab does its work
-        twice -- which for a save pipeline or a schema reload is a real double
-        execution, not a cosmetic one.
-        """
-        out = _run_node('''
-            const cb = (p) => {};
-            state.projects.onChange(cb);
-            let threw = false;
-            let msg = "";
-            try { state.projects.onChange(cb); }
-            catch (e) { threw = true; msg = e.message; }
-            console.log(JSON.stringify({ threw: threw, msg: msg }));
+    @pytest.mark.parametrize("call", ["onChange", "onCommit",
+                                      "onProjectsRootResolved"])
+    def test_the_same_callback_twice_throws_naming_the_call(self, call):
+        """Without it the callback fires twice per event and the tab does
+        its work twice -- for a save pipeline or a schema reload a real
+        double execution, not a cosmetic one; `onProjectsRootResolved` is
+        the one most likely missed, a one-shot callers assume cannot
+        leak."""
+        out = _run(f'''
+            const cb = (p) => {{}};
+            state.projects.{call}(cb);
+            let said = null;
+            try {{ state.projects.{call}(cb); }}
+            catch (e) {{ said = e.message; }}
+            console.log(JSON.stringify(said));
         ''')
-        assert out["threw"] is True
-        assert "onChange" in out["msg"]
-        assert "already registered" in out["msg"]
-
-    def test_onProjectsRootResolved_throws_on_duplicate(self):
-        """The same duplicate-registration rule holds on `onProjectsRootResolved`.
-
-        One rule, several subscribe APIs -- and each keeps its own registration set,
-        so the guard has to be present on each. This is the one most likely to be
-        missed, because it fires once and callers assume a one-shot cannot leak.
-        `web/projects.md` § 5 lists it beside `onChange` and `onCommit`.
-        """
-        out = _run_node('''
-            const cb = (p) => {};
-            state.projects.onProjectsRootResolved(cb);
-            let threw = false;
-            try { state.projects.onProjectsRootResolved(cb); }
-            catch (e) { threw = true; }
-            console.log(JSON.stringify(threw));
-        ''')
-        assert out is True
+        assert out is not None, f"{call} took the same callback twice"
+        assert call in out and "already registered" in out, out
 
     def test_different_callbacks_register_independently(self):
         """Two DIFFERENT callbacks (different fn objects) both register
         and both fire.  Only by-reference duplicates throw."""
-        out = _run_node('''
+        out = _run('''
             const calls = [];
             const cb1 = (p) => calls.push("cb1");
             const cb2 = (p) => calls.push("cb2");
@@ -1214,7 +763,7 @@ class TestSubscribeDedupThrows:
     def test_unsubscribe_then_resubscribe_succeeds(self):
         """The throw only fires for duplicate REGISTRATIONS.  After
         an unsub() the same callback can be re-registered."""
-        out = _run_node('''
+        out = _run('''
             const cb = (p) => {};
             const unsub = state.projects.onChange(cb);
             unsub();
@@ -1230,10 +779,9 @@ class TestSubscribeDedupThrows:
 
 
 class TestPublishSnapshotSemantics:
-    """Per design § 5.5: publish snapshots subscribers BEFORE
-    iterating.  Subscribers registered DURING a publish loop fire
-    only on subsequent events -- they got the current state via
-    fire-once-immediately on their own subscribe call."""
+    """A publish takes its subscribers BEFORE iterating (`state.js`,
+    `_publishToSet`): one registered DURING a publish loop fires only on
+    later events -- it got the current state on its own subscribe call."""
 
     def test_new_subscriber_registered_during_publish_loop_does_not_fire_in_progress(self):
         """A subscriber registered from INSIDE a publish loop does not also receive that
@@ -1245,7 +793,7 @@ class TestPublishSnapshotSemantics:
         while callbacks add to it is also where a non-terminating publish lives. The
         expected sequence is spelled out in the body's comment.
         """
-        out = _run_node('''
+        out = _run('''
             const calls = [];
             const lateCb = (p) => calls.push({fn:"late", file:p.file});
             let lateRegistered = false;
@@ -1289,7 +837,7 @@ class TestPublishSnapshotSemantics:
         Set.delete on the live set takes effect immediately, and the
         snapshot iteration checks membership before invoking each
         entry."""
-        out = _run_node('''
+        out = _run('''
             const calls = [];
             const cb1 = (p) => calls.push("cb1");
             let unsub2;
@@ -1311,15 +859,12 @@ class TestPublishSnapshotSemantics:
         assert out == ["cb1", "cb2", "cb3"]
 
 
-# ----- onProjectsRootResolved (design § C2) ---------------------- #
+# ----- onProjectsRootResolved ------------------------------------ #
 
 
 class TestOnProjectsRootResolved:
-    """Design § C2 requires a one-shot-ish subscriber that fires
-    when init resolves the projects root.  Subscribers registered
-    BEFORE resolution receive the call when resolution lands;
-    subscribers registered AFTER get an immediate fire-once-with-
-    resolved-state per the standard contract."""
+    """`onProjectsRootResolved(cb)`: the projects root, once it is resolved;
+    a subscriber after that is called at once (`web/projects.md` § 5)."""
 
     def test_subscriber_fires_when_setProjectsRoot_lands(self):
         """A subscriber registered BEFORE the root resolves is called when it does, and
@@ -1330,7 +875,7 @@ class TestOnProjectsRootResolved:
         tab an empty root that it then joins paths onto; not firing at all leaves the
         tab waiting forever for a resolution that already happened.
         """
-        out = _run_node('''
+        out = _run('''
             const calls = [];
             state.projects.onProjectsRootResolved(p => calls.push(p));
             // Initially no fire (root not resolved).
@@ -1345,11 +890,9 @@ class TestOnProjectsRootResolved:
         assert out["after"] == [{"root": "/home/u/projects"}]
 
     def test_subscriber_registered_after_resolution_fires_immediately(self):
-        """Late subscribers (e.g. a tab that loads after the
-        sidebar's init completes) MUST still receive the resolved
-        root.  Fire-once-immediately per the standard subscribe
-        contract in § 6."""
-        out = _run_node('''
+        """A tab that loads after the sidebar's init has resolved the root
+        still receives it, at once (`web/projects.md` § 5)."""
+        out = _run('''
             state.setProjectsRoot("/p");
             const calls = [];
             state.projects.onProjectsRootResolved(p => calls.push(p));
@@ -1368,7 +911,7 @@ class TestOnProjectsRootResolved:
         failure is silent -- a tab that half-initialises something it has
         already thrown away.
         """
-        out = _run_node('''
+        out = _run('''
             const calls = [];
             const unsub = state.projects.onProjectsRootResolved(
                 p => calls.push(p)
@@ -1378,18 +921,3 @@ class TestOnProjectsRootResolved:
             console.log(JSON.stringify(calls));
         ''')
         assert out == []
-
-    def test_only_fires_once_per_resolution(self):
-        """A second setProjectsRoot call (theoretical; sidebar only
-        calls once) does NOT re-fire subscribers.  Otherwise tabs
-        would over-react to a no-op setProjectsRoot."""
-        out = _run_node('''
-            const calls = [];
-            state.projects.onProjectsRootResolved(p => calls.push(p));
-            state.setProjectsRoot("/p");
-            state.setProjectsRoot("/p");
-            state.setProjectsRoot("/p-different");
-            console.log(JSON.stringify(calls));
-        ''')
-        # Single fire from the first non-empty resolution.
-        assert out == [{"root": "/p"}]

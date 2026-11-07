@@ -14,9 +14,15 @@ side-effect, the ES module executes + exports. So ONE loader serves both.
 ``lifted(module, start, end)``: a function or a literal of a shipped file, its text from
   ``start`` up to ``end``, for a harness that runs it against fakes.
 
+``served(base)``: ``globals_js`` that answers the page's ``fetch`` from the app serving
+  at ``base`` -- the real route's reply to the page's own request.
+
 ``run_node(files, snippet, *, globals_js="", timeout=20)``:
   * ``files``   : ordered list of Path/str module files to load (dependencies first). Each is
                   dynamically imported (side effects apply; a later file sees earlier globals).
+                  A classic file that hands its api to ``module.exports`` when it sees
+                  ``module`` (the builder panels) loads as CommonJS and publishes no global:
+                  the snippet takes it as ``(await import(<its file URL>)).default``.
   * ``snippet`` : JS run after the imports. Top-level ``await`` is allowed (module context). It
                   MUST ``console.log(JSON.stringify(...))`` its result as the LAST stdout line.
   * ``globals_js``: extra browser-stub JS injected BEFORE the imports (fetch/AbortController/…).
@@ -50,6 +56,76 @@ def lifted(module, start: str, end: str) -> str:
     if j < 0:
         raise ValueError(f"{Path(module).name}: no {end!r} after {start!r}")
     return src[i:j].rstrip()
+
+
+def served(base: str) -> str:
+    """Browser-stub JS for ``globals_js``: the page's ``fetch`` answered by
+    the app serving at ``base`` (`support.live_server.serve`) -- each request
+    the page makes, its path, method, body and signal as the page built them,
+    sent to the real route, and the route's answer handed back as a browser
+    hands it.  A page test's input is what the server answers
+    (`process/testing.md` § 4).
+
+    Each request is kept, in order, in ``globalThis.__calls``: ``url``,
+    ``method``, ``body`` (the JSON it carries, parsed) and ``init``, the
+    options as the page passed them (its signal, its cache); each answer,
+    read, in ``globalThis.__answered``, in the order the answers came.
+
+    THE ANSWER IS READ WHOLE before the page is handed it, so a request is
+    on the wire until its body is in hand: ``await __quiet()`` -- until no
+    request is on the wire, twice in a row, a moment apart -- then waits on
+    the page's own work, which takes the body from memory within the same
+    turn.  The body is handed over as a browser's is: the page's abort,
+    until the page has read it, makes the read fail with the runtime's own
+    ``AbortError``; an abort while the answer is still coming makes the
+    request fail with it (node's ``fetch`` honours the signal)."""
+    return (
+        "globalThis.__calls = [];\n"
+        "globalThis.__answered = [];\n"
+        "globalThis.__inflight = 0;\n"
+        "globalThis.__quiet = async () => {\n"
+        "  for (let calm = 0; calm < 2; ) {\n"
+        "    await new Promise((r) => setTimeout(r, 25));\n"
+        "    calm = globalThis.__inflight ? 0 : calm + 1;\n"
+        "  }\n"
+        "};\n"
+        "{\n"
+        f"  const __served = {json.dumps(base)};\n"
+        "  const __fetch = globalThis.fetch;\n"
+        "  const __noBody = [101, 103, 204, 205, 304];\n"
+        "  globalThis.fetch = async (url, opts = {}) => {\n"
+        "    let body = null;\n"
+        "    try { body = opts.body ? JSON.parse(opts.body) : null; }\n"
+        "    catch (_e) { body = opts.body; }\n"
+        "    globalThis.__calls.push({ url: String(url),\n"
+        "                              method: opts.method || 'GET', body,\n"
+        "                              init: opts });\n"
+        "    globalThis.__inflight++;\n"
+        "    try {\n"
+        "      const r = await __fetch(new URL(String(url), __served), opts);\n"
+        "      const bytes = new Uint8Array(await r.arrayBuffer());\n"
+        "      const text = new TextDecoder().decode(bytes);\n"
+        "      let answer = text;\n"
+        "      try { answer = JSON.parse(text); } catch (_e) { /* not JSON */ }\n"
+        "      globalThis.__answered.push(answer);\n"
+        "      const signal = opts.signal;\n"
+        "      const held = __noBody.includes(r.status) ? null\n"
+        "        : new ReadableStream({ start(c) {\n"
+        "            c.enqueue(bytes); c.close();\n"
+        "            if (!signal) return;\n"
+        "            const cut = () => c.error(signal.reason);\n"
+        "            if (signal.aborted) cut();\n"
+        "            else signal.addEventListener('abort', cut, { once: true });\n"
+        "          } });\n"
+        "      return new Response(held, { status: r.status,\n"
+        "                                  statusText: r.statusText,\n"
+        "                                  headers: r.headers });\n"
+        "    } finally {\n"
+        "      globalThis.__inflight--;\n"
+        "    }\n"
+        "  };\n"
+        "}\n"
+    )
 
 
 def run_node(files, snippet: str, *, globals_js: str = "", static_root=None, timeout: int = 20):

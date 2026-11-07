@@ -195,6 +195,10 @@ somewhere temporary and builds inside it:
   fixture a whole file shares. It exists because a module-scoped fixture
   cannot ask for `tmp_path`; it uses `MonkeyPatch()` and `tmp_path_factory`
   directly.
+- **A real run's tree** (`support.real_runs`, § 6) — the run was made under a
+  tree pointed the same way; a test that reads it points the door at it again
+  with the same call, `conftest.point_the_one_door_at(run.tree.parent,
+  monkeypatch.setenv)`. Both fixtures are that call too.
 
 Nothing is cached: `file_picker_roots()` calls `projects_root()` at CALL
 time, so pointing the door is enough and the live server serves the tmp tree.
@@ -698,15 +702,24 @@ plus a handful of others. `tests/_node_esm.py` is **the harness to use**, and
 its `run_node(files, snippet)` loads an ordered list of module files via
 dynamic `import()` and then runs a JS snippet against them.
 
-> **It is the harness to use, not the harness in use.** Measured 2026-09-29:
-> of the **41** `*_js.py` files, **8** drive `_node_esm` (23 files across the
-> whole suite do), and **27** of the rest hand-roll their own
-> `subprocess.run(["node", ...])` — the duplication
-> recorded as **B4** in [`plans/plan.md`](?doc=plans/plan.md). This paragraph
-> claimed all of them did, which is the shape of drift worth naming: a
-> document describing the intended state in the present tense, so nobody
-> looking for the gap can see it. Reach for `_node_esm` in anything new;
-> converting the rest is B4's job.
+**A page test's input is what the server answers** *(F9, 2.67.9)*. The page's
+requests go to the real routes of a live app (`served(base)`, the app started by
+`support.live_server.serve`), on a folder the real commands made or on a real
+run's folder (§ 6); a reply typed in the test is not an input. The answer is
+read whole before the page is handed it, so `await __quiet()` waits on the
+page's own work, not on time. Each request is kept, in order, in `__calls`,
+each answer in `__answered`. The page's own arithmetic on analytic numbers (a
+unit conversion, a layout rule) needs no server and is tested as it is.
+
+> **It is the harness to use, not the harness in use.** Measured 2026-11-07,
+> after 2.67.9 moved the page tests onto it: of the **31** `*_js.py` files,
+> **20** run on `_node_esm` (42 files across the whole suite import it); **9**
+> still start node with their own `subprocess.run` (`format_fetch_error`,
+> `molbuilder_runtime`, `page_busy`, `projects_render_sidebar`,
+> `projects_state_busy_guard`, `structure_page`, `structure_save`,
+> `tab_strip`, `task_setup_save_bar`), and **2** drive a browser under a
+> fast-tier name (`form_schema_diff`, `form_schema_setvalues`). Converting
+> them is plan F9-6's sweep. Reach for `run_node` in anything new.
 
 The clever part is that it spans the ESM migration: a classic IIFE file publishes
 its `window.molbuilder.*` global as a side effect, and a converted ES module
@@ -725,20 +738,32 @@ The `*_e2e.py` tests use **Playwright** against a real headless Chromium — the
 name is the gate: a file so named drives a browser or a real engine and skips
 without one; an engine-less road test is tier 1 and named plainly *(2026-10-08,
 B8 S4: five such files lost the suffix)*. Each
-spins up a **live Flask server** in a fixture (`flask_server`) built from
-`create_app`, and drives the `page` fixture (`page.goto(f"{base}/molbuilder")`, …).
+starts the app on a **live server** through `support.live_server.serve`, which
+stands on the test's own projects tree: a module's server asks
+`isolated_projects_root_module`, a server started per test asks
+`isolated_projects_root`, a test serving a real run's tree points the door
+at it first (§ 2a), and with no tree pointed `serve` refuses. The test drives
+the `page` fixture (`page.goto(f"{base}/molbuilder")`, …).
 The default `web_client` fixture builds the app with **rate-limiting disabled**
 (`create_app(config={"rate_limit": {"enabled": False}})`) so the limiter never
 trips the test client; the rate-limit tests build their own enabled client.
 
 These are the durable patterns — follow them and the e2e tests stay stable:
 
-- **Locate what the *user* clicks, not what the DOM says.** Target the visible
-  label/button, not a hidden input by id. Where a control is backed by an invisible
-  element (a hidden radio, a 3Dmol atom), don't fight the click pipeline — set state
-  via `page.evaluate(...)` and dispatch the event the JS listener actually cares
-  about. (3Dmol atoms live inside a canvas — there's nothing to click; you go
-  through `page.evaluate`.)
+- **Drive the page as a person does.** Target the visible label or button, not a
+  hidden input by id; reach a folder or a file by the sidebar's rows
+  (`tests/support/sidebar.py`); type with the keyboard. A test never writes the
+  page's state or dispatches an event a person's click, key or the server would
+  make. An event is dispatched only where no action can make it in a headless
+  browser — `visibilitychange`, which headless Chromium never changes — and the
+  test says so. 3Dmol atoms live inside a canvas with nothing to click: a test
+  picks them through the selection the canvas click calls.
+- **An order is held, never timed and never answered.** Where a test needs two
+  of the page's events in a known order (an answer landing after a person's
+  next click), it holds the real request (`page.route(...)`, then
+  `route.continue_()` once the click is made): the answer is still the
+  server's. A test never answers a request itself (`route.fulfill`) and never
+  leaves the order to time (a slowed network, a sleep).
 - **Wait on *state*, not time.** Prefer `page.wait_for_function(...)` /
   `expect(locator).to_*` over `sleep`. A time-based wait is either flaky or slow;
   a state-based wait is neither.
@@ -1057,7 +1082,11 @@ deliberately not installed there.
 - `tests/support/` — the shared roads: `pages.py` (the pages the app serves,
   signed out and in), `findings.py` (a page's findings, drawn row for row),
   `leftovers.py` (what opening again leaves on the page), `road.py` (the
-  contract tables' one runner), `live_server.py`, `real_runs.py`.
+  contract tables' one runner), `live_server.py` (the app on a live server,
+  on the test's tree), `real_runs.py` (the real runs a pass makes once),
+  `sidebar.py` (a folder or a file reached as a person reaches it, the
+  Results tab bound, a field committed), `task_setup_page.py` (the Task
+  setup page's editor and its file).
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `molbuilder describe → prep`, because the pair is one file. Written

@@ -11,54 +11,31 @@ what that door needs before sending anything.  Which fields a tab hands it
 is that tab's (`transport/core.js` hands Describe's body whole); a browser
 reads that composition (the F9 e2e), not this file.
 
-Category: API -- the sender runs in Node against a stand-in `fetch`, and the
-request it builds is read back.  No engine is involved.
+Category: API -- the sender runs in node (`_node_esm.run_node`), its request
+answered by the app's own route (`_node_esm.served`) and read back.  No
+engine is involved, so each door refuses, by its own rule: the describe door
+a junction no relaxation wrote, the hand-over door a SIESTA calculation with
+no pseudopotential to start from.  An accepted request is the browser's to
+follow: Describe on a junction a real relaxation wrote
+(`test_transport_on_a_real_junction_e2e.py`), and a hand-over's files
+written through the file layer (`test_build_e2e.py`, Send to Task setup).
+What is read here of an answer is the sender's own rule for a refusal: the
+door's sentence, word for word, and nothing written.
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from support.envelope import envelope
+from tests._node_esm import run_node, served
+
 _ROOT = Path(__file__).resolve().parents[1]
 _SENDER = _ROOT / "molbuilder/web/static/lib/task-handover.js"
 
-pytestmark = [
-    pytest.mark.module,
-    pytest.mark.skipif(shutil.which("node") is None,
-                       reason="node not installed; L2 Node-driven test"),
-]
-
-_DRIVER = r"""
-const fs = require("fs"), vm = require("vm");
-globalThis.window = globalThis;
-let sent = null;
-globalThis.fetch = async (url, init) => {
-    sent = { url: url, body: JSON.parse(init.body) };
-    return { ok: true, status: 200,
-             json: async () => ({ ok: true, label: "T",
-                                  written: ["T.template.toml", "task.json"],
-                                  notices: [] }) };
-};
-vm.runInThisContext(fs.readFileSync(process.argv[2], "utf8"));
-const choice = JSON.parse(process.argv[3]);
-const projects = {
-    getCurrentDir: () => "/tree/P/transport/T",
-    relativeToProjects: () => "P/transport/T",
-    refresh: async () => ({ ok: true }),
-};
-const handover = window.molbuilder.taskHandover;
-const door = choice.door === "handover" ? handover.HANDOVER : choice.door;
-const said = [];
-handover.send({
-    projects: projects, say: (tone, words) => said.push([tone, words]),
-    engine: "siesta",
-    calculation: choice.calculation, door: door, fields: choice.fields,
-}).then(() => process.stdout.write(JSON.stringify({sent, said})));
-"""
+pytestmark = pytest.mark.module
 
 _JUNCTION = "P/optimization/R/01_x/run-0"
 
@@ -73,26 +50,65 @@ ROWS = [
                   "shared": {}, "swap_electrodes": True},
                  id="a-writing-door"),
     pytest.param("handover", "vibration",
-                 {"structure": {"atoms": []}, "params": {"temperature_k": 1}},
+                 {"structure": envelope(["H", "H"], [[0, 0, 0],
+                                                     [0, 0, 0.74]]),
+                  "params": {"temperature_k": 1}},
                  id="the-hand-over-door"),
 ]
 
 
-def _send(tmp_path, door, calculation, fields):
-    driver = tmp_path / "drive.js"
-    driver.write_text(_DRIVER)
-    out = subprocess.run(
-        ["node", str(driver), str(_SENDER),
-         json.dumps({"door": door, "calculation": calculation,
-                     "fields": fields})],
-        capture_output=True, text=True, timeout=60, check=True).stdout
-    return json.loads(out)
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the sender (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
+
+
+@pytest.fixture
+def dest(isolated_projects_root):
+    """The folder the tab names -- the sidebar's, so one that is there --
+    under this test's projects tree (`isolated_projects_root`)."""
+    folder = isolated_projects_root / "P" / "transport" / "T"
+    folder.mkdir(parents=True)
+    return str(folder)
+
+
+def _send(app_at, dest, door, calculation, fields):
+    """What the sender sent through ``door`` with ``fields``, the sidebar's
+    folder ``dest``; what the door answered; and what the sender said.  The
+    sidebar's file layer answers its folder and nothing else: a write
+    through it fails the run."""
+    choice = json.dumps({"door": door, "calculation": calculation,
+                         "fields": fields, "dest": dest})
+    return run_node([_SENDER], f"""
+        const choice = {choice};
+        const projects = {{
+            getCurrentDir: () => choice.dest,
+            relativeToProjects: () => "P/transport/T",
+            refresh: async () => ({{ ok: true }}),
+        }};
+        const handover = window.molbuilder.taskHandover;
+        const door = choice.door === "handover" ? handover.HANDOVER
+                                                : choice.door;
+        const said = [];
+        await handover.send({{
+            projects, say: (tone, words) => said.push([tone, words]),
+            engine: "siesta",
+            calculation: choice.calculation, door, fields: choice.fields,
+        }});
+        const c = __calls[0];
+        console.log(JSON.stringify({{
+            sent: c ? {{ url: c.url, body: c.body }} : null, said,
+            answer: __answered[0] || null }}));
+    """, globals_js=served(app_at))
 
 
 @pytest.mark.parametrize("door,calculation,fields", ROWS)
 def test_the_request_goes_through_the_tabs_door_with_its_fields(
-        tmp_path, door, calculation, fields):
-    sent = _send(tmp_path, door, calculation, fields)["sent"]
+        app_at, dest, door, calculation, fields):
+    got = _send(app_at, dest, door, calculation, fields)
+    sent = got["sent"]
     assert sent["url"] == (door["url"] if isinstance(door, dict)
                            else "/api/task-setup/handover")
     # EVERY FIELD AS THE TAB GAVE IT -- the rename included.
@@ -100,14 +116,17 @@ def test_the_request_goes_through_the_tabs_door_with_its_fields(
         assert sent["body"][key] == value, key
     assert sent["body"]["calculation"] == calculation
     # THE FOLDER THE DOOR WRITES INTO (§ 3.8.2a).
-    assert sent["body"]["dest"] == "/tree/P/transport/T"
+    assert sent["body"]["dest"] == dest
+    # THE DOOR'S REFUSAL, in its words, is the sender's last.
+    assert got["answer"]["ok"] is False, got["answer"]
+    assert got["said"][-1] == ["error", got["answer"]["error"]]
 
 
 def test_a_field_the_door_needs_is_asked_for_before_anything_is_sent(
-        tmp_path):
+        app_at, dest):
     """The hand-over door needs a structure -- a description is OF one --
     and says so in its words, sending nothing (`handover-procedure.md`)."""
-    got = _send(tmp_path, "handover", "vibration", {"params": {}})
+    got = _send(app_at, dest, "handover", "vibration", {"params": {}})
     assert got["sent"] is None
     assert got["said"] == [["warn", "Load a structure first — a description "
                                     "is of something."]]

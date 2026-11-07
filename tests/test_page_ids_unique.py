@@ -26,22 +26,7 @@ same way.
 """
 from __future__ import annotations
 
-from html.parser import HTMLParser
-
 import pytest
-
-
-class _Ids(HTMLParser):
-    """Each element's ``id``, as the browser parses the page."""
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.ids = []
-
-    def handle_starttag(self, tag, attrs):
-        self.ids += [value for name, value in attrs if name == "id"]
-
-    handle_startendtag = handle_starttag
 
 
 def test_no_page_declares_an_id_twice(isolated_projects_root):
@@ -52,13 +37,11 @@ def test_no_page_declares_an_id_twice(isolated_projects_root):
     an element of a partial it includes -- the account strip a signed-in
     page alone carries among them."""
     pytest.importorskip("flask")
-    from support.pages import every_served_page
+    from support.pages import every_served_page, ids_of
     offenders = {}
     for path, html in sorted(every_served_page().items()):
-        parsed = _Ids()
-        parsed.feed(html)
-        parsed.close()
-        dupes = sorted({i for i in parsed.ids if parsed.ids.count(i) > 1})
+        ids = ids_of(html)
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
         if dupes:
             offenders[path] = dupes
     assert not offenders, (

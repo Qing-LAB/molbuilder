@@ -15,15 +15,23 @@
 #   [[heading]]   -- the dropdown heading it sits under (`resultCategory`);
 #                    no `heading`, none.
 #
-# Each asked with the directory's answer about the file when the Results
-# tab has one (`meta`, `/api/results/dir`, `runs.folder_answer`: the file's
-# `role` in the catalogue, the `parser` the registry gives it, the `engine`
-# that ran in the folder with its `engine_words` from the engine table and
-# the calculation's `noun` from the kind table -- `presenters.md` § 2), as
-# the dropdown passes it; without one where no run declares the file.  The
-# test checks each row's role, parser, words and noun are ones the server
-# can answer (`runfiles.roles`, the parse registry, `engine_table`,
-# `kind_table`).
+# A row naming an `answer` is asked of a REAL file, with what the server
+# says of it: the first file of the named run's calculation the route
+# answers (`/api/results/dir`, `runs.folder_answer` -- `presenters.md` § 2)
+# with that `role`, or with that `parser` and no role, in that `folder` of
+# the run's tree when one is named -- its record composed by the page as the
+# dropdown passes it.  With `copied_to`, that file is copied, as a person
+# copies one, into a folder of that name in a projects tree no calculation
+# claims, and asked there.  The runs are the session's (`tests/conftest.py`):
+# `siesta` an H2 optimization (`real_h2_layered`), `pyscf` one on PySCF
+# (`real_h2_pyscf`), `vibration` CO2's SIESTA vibration
+# (`real_co2_vibration`), `sweep` a SIESTA vibration's displacement sweep on
+# H2 (`real_h2_sweep`), `bench` an H2 benchmark (`real_h2_bench`),
+# `transport` a calculation described on the relaxed bridged chain
+# (`real_bridged_chain`).  A row naming neither is asked with no answer, as
+# a file no folder answers for is.  A `meta` typed here is left only where
+# no session run makes the file -- each says so -- and each field it
+# carries is checked to be one the server can give (`test_presenters_rows.py`).
 #
 # A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
 
@@ -35,8 +43,7 @@
 # (structure claimed it and drew frame 0 alone, 2026-06-12).
 [[pick]]
 name = "a geomeTRIC *_geom_optim.xyz opens as a trajectory"
-file = "/tmp/BDT/optimization/BDT_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz", parser = "pyscf", engine = "pyscf" }
+answer = { run = "pyscf", role = "_geom_optim.xyz" }
 opens = "trajectory"
 
 # A file the directory answers nothing about is claimed by no run viewer
@@ -55,23 +62,22 @@ file = "/tmp/water_demo/water.xyz"
 opens = "structure"
 
 # ...with the directory's answer too: the trajectory parser reads any .xyz,
-# and no catalogue row names this one (2.16.3 opened it as a trajectory).
+# and no catalogue row names this one (2.16.3 opened it as a trajectory) --
+# the structure a calculation was described from, in a folder no
+# calculation claims, its engine `unknown`.
 [[pick]]
 name = "...and with the answer the directory gives it, no role, still"
-file = "/projects/foo/w.xyz"
-meta = { parser = "pyscf", engine = "unknown" }
+answer = { run = "pyscf", folder = "P/structure", parser = "pyscf" }
 opens = "structure"
 
 [[pick]]
 name = "a .molwatch.log opens as a trajectory"
-file = "/tmp/run/foo.molwatch.log"
-meta = { role = ".molwatch.log", parser = "molwatch", engine = "siesta" }
+answer = { run = "siesta", role = ".molwatch.log" }
 opens = "trajectory"
 
 [[pick]]
 name = "a SIESTA .out opens as a trajectory"
-file = "/tmp/run/foo.out"
-meta = { role = ".out", parser = "siesta", engine = "siesta" }
+answer = { run = "siesta", role = ".out" }
 opens = "trajectory"
 
 [[pick]]
@@ -111,8 +117,7 @@ opens = "markdown"
 # Claimed by exact basename, ahead of the text pane, which takes every .json.
 [[pick]]
 name = "a sweep's job-set.json opens as its benchmark summary"
-file = "/p/calc/01_coarse/bench/job-set.json"
-meta = { parser = "job-set-sweep" }
+answer = { run = "bench", parser = "job-set-sweep" }
 opens = "bench-summary"
 
 [[pick]]
@@ -128,19 +133,20 @@ opens = "source"
 # The compound suffix wins over the plain .json the text pane also takes.
 [[pick]]
 name = "a .spectra.json opens as a spectrum"
-file = "/projects/foo/spectrum/water.spectra.json"
-meta = { role = ".spectra.json", parser = "spectra-json", engine = "pyscf" }
+answer = { run = "vibration", role = ".spectra.json" }
 opens = "spectra"
 
 [[pick]]
 name = "a .fc-sweep.json opens as its displacement sweep"
-file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
-meta = { role = ".fc-sweep.json", parser = "fc-sweep-json", engine = "siesta" }
+answer = { run = "sweep", role = ".fc-sweep.json" }
 opens = "fc-sweep"
 
 # The transport record is `summarize task`'s copy, opened as a file
 # (`results.md` § 0.1): the report is claimed on the registry's word for the
 # description, never on a name.
+# TYPED: the record is `summarize task`'s on a finished transport ladder,
+# which no session fixture runs (`test_transport_on_a_real_junction_e2e.py`
+# runs one for its module).
 [[pick]]
 name = "a transport record by name alone opens in the text pane"
 file = "/projects/BDT/transport/bdt.transport.json"
@@ -149,8 +155,7 @@ opens = "source"
 
 [[pick]]
 name = "...and the calculation's task.json, on the registry's word, as its report"
-file = "/projects/BDT/transport/task.json"
-meta = { parser = "transport-task", engine = "siesta" }
+answer = { run = "transport", parser = "transport-task" }
 opens = "transport"
 
 [[pick]]
@@ -172,28 +177,27 @@ file = ""
 
 [[result]]
 name = "a .out is listed by the trajectory viewer"
-file = "/projects/foo/bar.out"
-meta = { role = ".out", parser = "siesta", engine = "siesta" }
+answer = { run = "siesta", role = ".out" }
 lists = "trajectory"
 
 [[result]]
 name = "a .molwatch.log too"
-file = "/projects/foo/run.molwatch.log"
-meta = { role = ".molwatch.log", parser = "molwatch", engine = "pyscf" }
+answer = { run = "pyscf", role = ".molwatch.log" }
 lists = "trajectory"
 
 [[result]]
 name = "...and a geomeTRIC *_geom_optim.xyz"
-file = "/projects/foo/BDT_01_coarse_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz", parser = "pyscf", engine = "pyscf" }
+answer = { run = "pyscf", role = "_geom_optim.xyz" }
 lists = "trajectory"
 
 [[result]]
 name = "a .spectra.json by the spectrum viewer"
-file = "/projects/foo/raman.spectra.json"
-meta = { role = ".spectra.json", parser = "spectra-json", engine = "pyscf" }
+answer = { run = "vibration", role = ".spectra.json" }
 lists = "spectra"
 
+# TYPED: the record is `summarize task`'s on a finished transport ladder,
+# which no session fixture runs (`test_transport_on_a_real_junction_e2e.py`
+# runs one for its module).
 [[result]]
 name = "a transport record by name alone is no result"
 file = "/projects/BDT/transport/bdt.transport.json"
@@ -201,22 +205,19 @@ meta = { role = ".transport.json", parser = "transport-json", engine = "siesta" 
 
 [[result]]
 name = "...but a transport calculation's task.json is, as its report"
-file = "/projects/BDT/transport/task.json"
-meta = { parser = "transport-task", engine = "siesta" }
+answer = { run = "transport", parser = "transport-task" }
 lists = "transport"
 
 # A result presenter registered ahead of the text pane, or the dropdown
 # never offers a SIESTA vibration's sweep (`engines/vibration.md` § 5.9).
 [[result]]
 name = "a .fc-sweep.json by its sweep viewer"
-file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
-meta = { role = ".fc-sweep.json", parser = "fc-sweep-json", engine = "siesta" }
+answer = { run = "sweep", role = ".fc-sweep.json" }
 lists = "fc-sweep"
 
 [[result]]
 name = "a sweep's job-set.json by its benchmark summary"
-file = "/p/calc/01_coarse/bench/job-set.json"
-meta = { parser = "job-set-sweep" }
+answer = { run = "bench", parser = "job-set-sweep" }
 lists = "bench-summary"
 
 [[result]]
@@ -259,39 +260,29 @@ file = ""
 # calculation's noun (2.65.0: until then every run read *... optimization*).
 [[heading]]
 name = "a .out in a SIESTA optimization sits under SIESTA optimization"
-file = "/projects/foo/bar.out"
-meta = { engine = "siesta", engine_words = "SIESTA", noun = "optimization", role = ".out", parser = "siesta" }
+answer = { run = "siesta", role = ".out" }
 heading = "SIESTA optimization"
 
 # Every engine writes a .molwatch.log: filed by suffix, SIESTA runs once sat
 # under PySCF while the plot title said SIESTA (2026-09-04).
 [[heading]]
-name = "a .molwatch.log in a PySCF vibration, under PySCF vibration"
-file = "/projects/foo/run.molwatch.log"
-meta = { engine = "pyscf", engine_words = "PySCF", noun = "vibration", role = ".molwatch.log", parser = "molwatch" }
-heading = "PySCF vibration"
+name = "a .molwatch.log in a SIESTA vibration, under SIESTA vibration"
+answer = { run = "vibration", role = ".molwatch.log" }
+heading = "SIESTA vibration"
 
-# Without either, the file is named for what it is, neither the engine nor
-# the kind claimed.
+# A RUN'S FILE COPIED INTO A FOLDER OF THE PERSON'S OWN: that folder is no
+# calculation's, so the server claims none of its files -- no role, no noun
+# (`runs.folder_answer`) -- and no run viewer lists the copy, under any
+# heading.
 [[heading]]
-name = "...and a *_geom_optim.xyz whose answer names neither, under Trajectory"
-file = "/projects/foo/BDT_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz", parser = "pyscf" }
-heading = "Trajectory"
-
-# `unknown` is the directory declining to name an engine, read as no answer.
-[[heading]]
-name = "a run whose engine is unknown names none"
-file = "/projects/foo/BDT_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz", parser = "pyscf", engine = "unknown" }
-heading = "Trajectory"
+name = "a run's .out copied into a folder of the person's own sits under none"
+answer = { run = "siesta", role = ".out", copied_to = "P/mine" }
 
 # A transport calculation's report opens through its description, on the
 # registry's word for it -- `task.json` by name is every calculation's.
 [[heading]]
 name = "a transport calculation's task.json sits under Transport"
-file = "/projects/BDT/transport/task.json"
-meta = { parser = "transport-task" }
+answer = { run = "transport", parser = "transport-task" }
 heading = "Transport"
 
 [[heading]]
@@ -300,20 +291,17 @@ file = "/projects/BDT/relax/task.json"
 
 [[heading]]
 name = "a sweep's job-set.json sits under Benchmark sweeps"
-file = "/p/calc/01_coarse/bench/job-set.json"
-meta = { parser = "job-set-sweep" }
+answer = { run = "bench", parser = "job-set-sweep" }
 heading = "Benchmark sweeps"
 
 [[heading]]
 name = "a .fc-sweep.json sits under Spectrum"
-file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
-meta = { parser = "fc-sweep-json" }
+answer = { run = "sweep", role = ".fc-sweep.json" }
 heading = "Spectrum"
 
 [[heading]]
 name = "a .spectra.json sits under Vibrational spectrum"
-file = "/projects/foo/r.spectra.json"
-meta = { parser = "spectra-json" }
+answer = { run = "vibration", role = ".spectra.json" }
 heading = "Vibrational spectrum"
 
 [[heading]]

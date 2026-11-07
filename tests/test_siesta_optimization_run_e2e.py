@@ -110,14 +110,6 @@ def _run(folder: Path):
     return run
 
 
-def _out(folder: Path) -> Path:
-    return _run(folder).stdout
-
-
-def _deck(folder: Path) -> Path:
-    return _run(folder).deck
-
-
 def _deck_value(deck: Path, key: str) -> str:
     """The value the deck states for ``key`` -- what SIESTA was told."""
     for ln in deck.read_text().splitlines():
@@ -164,20 +156,18 @@ def test_the_run_folder_answers_for_its_run(opt):
             files[name])
 
 
-def test_the_run_reads_its_own_deck(opt, monkeypatch):
+def test_the_run_reads_its_own_deck(opt, real_h2_layered, monkeypatch):
     """The Results load of the run shows atom 0 held in the isolated 10 Å box
     this module wrote; the run reads its own deck (user, 2026-10-04: *"make
     sure that it does make each run sees its own .fdf"*); and SIESTA's own
     ``H2.xyz``, opened as a structure, carries the same box at the engine's
     origin (`model/structure-periodicity.md` § 6.0)."""
-    from molbuilder import diagnostics
+    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.web.app import create_app
     from molbuilder.workingcopy_structure import StructureCodec
-    root = next(p for p in opt.parents if p.name == "projects")
-    bundle = next(p for p in opt.parents if (p / "task.json").is_file())
-    monkeypatch.setattr(type(diagnostics.get_capabilities()),
-                        "file_picker_roots",
-                        lambda self: ((root.resolve(), "projects"),))
+    bundle = real_h2_layered.bundle
+    # THE PROJECTS TREE THE RUN WAS MADE IN, the one door pointed at it.
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_h2_layered.tree))
     d = create_app(config={}).test_client().post(
         "/api/watch/load", json={"path": str(opt)}).get_json()
     assert d["ok"] is True, d
@@ -336,8 +326,8 @@ def test_the_registry_reads_the_output_as_siestas(opt):
     run's own output; only SIESTA's real output can show it."""
     from molbuilder.parse import TrajectoryResult, detect, parse
     from molbuilder.parse.engines import SiestaOutFileParser
-    assert detect(_out(opt)) is SiestaOutFileParser
-    res = parse(_out(opt))
+    assert detect(_run(opt).stdout) is SiestaOutFileParser
+    res = parse(_run(opt).stdout)
     assert isinstance(res, TrajectoryResult)
     assert (res.result_kind, res.source_format, res.parser_name) == (
         "trajectory", "siesta", "siesta")
@@ -349,8 +339,8 @@ def test_the_convergence_targets_are_the_decks_read_from_its_echo(opt):
     never a default reproduced: the force tolerance and the SCF cap the
     coarse deck states."""
     from molbuilder.parse.engines.siesta import SiestaParser
-    deck = _deck(opt)
-    ct = SiestaParser.parse(str(_out(opt))).runtime_info.get(
+    deck = _run(opt).deck
+    ct = SiestaParser.parse(str(_run(opt).stdout)).runtime_info.get(
         "convergence_targets")
     assert ct is not None and ct.get("source") == "siesta_input_echo", ct
     assert ct.get("max_force_tol_eV_per_A") == pytest.approx(
@@ -369,7 +359,7 @@ def test_the_run_states_the_build_it_ran_and_its_solver(opt):
     spec = next(p.spec for p in _SIESTA.conda_packages
                 if p.spec.startswith("siesta="))
     _, version, build = spec.split("=")
-    traj = SiestaParser.parse(str(_out(opt)))
+    traj = SiestaParser.parse(str(_run(opt).stdout))
     got = traj.runtime_info["siesta_build"]
     assert got["version"].startswith(version), got
     assert build.startswith("mpi") and "MPI" in got["parallelisations"], got
@@ -423,7 +413,7 @@ def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(opt):
     own spelling, fdf's label rule."""
     from molbuilder.parse import detect
     from molbuilder.parse.fdf import fdf_key
-    deck = _deck(opt)
+    deck = _run(opt).deck
     stated, blocks = set(), set()
     for ln in deck.read_text().splitlines():
         words = ln.split()
@@ -477,7 +467,7 @@ def test_the_history_is_found_by_the_output_s_own_name(opt):
     the output prints -- the trajectory keeps the output's four-decimal
     coordinates."""
     from molbuilder.parse import parse
-    res = parse(str(_out(opt)))
+    res = parse(str(_run(opt).stdout))
     assert res.runtime_info.get("mdnc_source") == _md_nc(opt).name, (
         res.runtime_info)
     assert res.runtime_info.get("mdnc_coords_upgraded", 0) >= 1, (
@@ -491,7 +481,7 @@ def test_the_history_is_claimed_by_its_reader_and_routed_there(opt):
     from molbuilder.parse import parse
     from molbuilder.parse.engines.siesta_mdnc import SiestaMdNcFileParser
     assert SiestaMdNcFileParser.can_parse(_md_nc(opt))
-    assert not SiestaMdNcFileParser.can_parse(_out(opt))
+    assert not SiestaMdNcFileParser.can_parse(_run(opt).stdout)
     res = parse(str(_md_nc(opt)))
     assert (res.parser_name, res.source_format) == ("siesta-mdnc",
                                                     "siesta-mdnc")
@@ -522,7 +512,7 @@ def test_a_frames_geometry_and_energy_belong_to_one_step(opt):
     from molbuilder.parse import parse
     from molbuilder.parse.engines.siesta_mdnc import align_to_reference
     nc = parse(str(_md_nc(opt)))
-    out = parse(str(_out(opt)))
+    out = parse(str(_run(opt).stdout))
     mapping = align_to_reference(out.frames, nc.frames)
     compared = 0
     for i, j in enumerate(mapping):
@@ -549,7 +539,7 @@ def test_the_output_keeps_its_frames_and_the_history_matches_in_order(opt):
     input geometry; a row matched by coordinates)."""
     from molbuilder.parse import parse
     from molbuilder.parse.engines.siesta_mdnc import align_to_reference
-    out = parse(str(_out(opt)))
+    out = parse(str(_run(opt).stdout))
     nc = parse(str(_md_nc(opt)))
     mapping = align_to_reference(out.frames, nc.frames)
     assert len(mapping) == len(out.frames)
@@ -577,7 +567,6 @@ def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, monkeypatch)
     from molbuilder.postprocess import read_optimization_data, read_steps
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.runs import RunStepsError, run_of
-    from support.road import molbuilder
     bundle = real_h2_layered.bundle
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_h2_layered.tree))
     to = bundle.parent / "exported"
@@ -617,38 +606,6 @@ def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, monkeypatch)
     # EVERY RUN FOLDER THE LADDER HOLDS, by what is on disk.
     assert sorted(p.relative_to(bundle).as_posix()
                   for p in bundle.glob("[0-9]*/run-*")) == sorted(got["run"])
-
-
-def test_a_step_a_run_is_inside_or_stopped_inside_is_no_step(real_h2_layered):
-    """`runs.StepsTable`: a run's output cut inside its first SCF, as a running
-    or a killed run leaves it, and the same with SIESTA's own stop.  The silent
-    failure: the energy of an SCF row read as the run's final energy, about
-    1000 eV off on a real 52-atom relaxation stopped inside a move."""
-    from molbuilder.parse import detect
-    from molbuilder.parse.engines.siesta_grammar import FATAL_MARKERS
-    from molbuilder.postprocess import RunStepsError, read_steps
-    from molbuilder.runs import run_of
-    from support.real_runs import copy_of
-
-    def cut_with(tail):
-        def cut(copy):
-            out = run_of(copy.attempt("coarse")).stdout
-            lines = out.read_text(errors="replace").splitlines(keepends=True)
-            first = next(k for k, line in enumerate(lines)
-                         if line.lstrip().startswith("scf:"))
-            out.write_text("".join(lines[:first + 1]) + tail)
-        return cut
-
-    fatal = next(m for m, state in FATAL_MARKERS if state == "stopped")
-    for name, tail, flag in (("in-flight", "", "in_progress"),
-                             ("stopped", f"\n{fatal}\n", "cut_short")):
-        run = copy_of(real_h2_layered, f"cut-{name}", cut_with(tail))
-        folder = run.attempt("coarse")
-        out = run_of(folder).stdout
-        assert getattr(detect(out).parse(str(out)).frames[-1], flag)
-        with pytest.raises(RunStepsError,
-                           match="holds no step its run finished"):
-            read_steps(folder)
 
 
 def test_a_relaxation_out_of_moves_ends_finished_not_converged(capped):

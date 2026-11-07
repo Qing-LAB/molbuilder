@@ -7,7 +7,7 @@ confirmation and refreshes the sidebar.  What this file owns is the readout,
 the button's enabled state, and recording where the bytes went.
 
 The door's own behaviour is `test_molview_files_door_js.py`; the server's 409
-overwrite contract is `test_web.py`; the menu-to-door handoff is
+overwrite contract is `test_structure_save_endpoint.py`; the menu-to-door handoff is
 `test_molview_mount.py`.  Those are where the rules live, so a copy here would
 be a second statement of them free to drift.
 
@@ -123,13 +123,21 @@ def test_save_hands_the_viewers_export_to_the_project_door():
         f"the loaded file's stem should be SUGGESTED as the name: {call}")
 
 
-def test_the_page_records_the_path_the_SERVER_answered():
-    """Not the one we asked for: `auto_rename` may have written
-    `<stem>-2.xyz`, and confirming a name we merely proposed would name a
-    file that does not exist."""
+def test_the_page_records_the_path_the_door_answered():
+    """The page records where the door says the bytes went, never the name
+    the panel suggested.  The door answers the path the person chose in its
+    save-where dialog (`molview-doors.js`, `projects.md` § 3), which may be
+    any name, not the suggested stem: recording the suggestion would name a
+    file nobody saved.
+
+    The door here is a stand-in answering with a path other than the
+    suggestion -- the person typed another name.  The panel is handed its
+    collaborators (`configure`), and the real door's dialog is a person's
+    answer, run in the browser by `test_results_export_e2e.py`; what this
+    pins is only that the panel takes the door's answer."""
     out = _run_node("""
         molbuilder.projects = { molviewFiles:
-            fakeDoor([{ ok: true, path: "/p/bdt-2.xyz" }]) };
+            fakeDoor([{ ok: true, path: "/p/bdt-relaxed.xyz" }]) };
         const page = fakePage(null, "/p/bdt.xyz");
         mod.configure({ projects: molbuilder.projects, structurePage: page,
                         workspace: fakeModel() });
@@ -138,8 +146,8 @@ def test_the_page_records_the_path_the_SERVER_answered():
                                          target: mod.targetPath() }));
         });
     """)
-    assert out["marks"] == ["/p/bdt-2.xyz"]
-    assert out["target"] == "/p/bdt-2.xyz"
+    assert out["marks"] == ["/p/bdt-relaxed.xyz"]
+    assert out["target"] == "/p/bdt-relaxed.xyz"
 
 
 def test_a_cancelled_save_records_nothing():

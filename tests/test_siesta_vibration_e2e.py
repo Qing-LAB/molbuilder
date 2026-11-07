@@ -101,27 +101,27 @@ def unticked(real_co2_vibration, tmp_path_factory):
     `engines/vibration.md` § 5.9 -- and summarized (``record``), and summarized again
     under a tolerance (``flagged``).  What each step answered is written
     down by its name."""
-    from support.real_runs import _road_at, _taken, _typed, copy_of
+    from support.real_runs import road_at, taken, typed, copy_of
 
     def on_the_run(run):
         record = run.bundle / "CO2.fc-sweep.json"
-        with _road_at(run.tree.parent, tmp_path_factory):
-            _typed(run, "summarize", "summarize", "task")
-            _typed(run, "launch freq again", "launch", "task", "--stage",
-                   "freq", "--mode", "direct", "--foreground", "--yes")
+        with road_at(run.tree.parent, tmp_path_factory):
+            typed(run, "summarize", "summarize", "task")
+            typed(run, "launch freq again", "launch", "task", "--stage",
+                  "freq", "--mode", "direct", "--foreground", "--yes")
             ladder_edited({"added": [{"name": "freq_half",
                                       "overrides": {"fc_displacement": 0.02}}]},
                           run.bundle)
-            _taken(run, "prep freq_half", "prep", "task",
-                   *group_words(run.bundle, "freq_half"), "--target", "this")
-            _taken(run, "summarize early", "summarize", "task")
+            taken(run, "prep freq_half", "prep", "task",
+                  *group_words(run.bundle, "freq_half"), "--target", "this")
+            taken(run, "summarize early", "summarize", "task")
             run.early = json.loads(record.read_text())
-            _taken(run, "launch freq_half", "launch", "task", "--stage",
-                   "freq_half", "--mode", "direct", "--foreground", "--yes")
-            _taken(run, "summarize the sweep", "summarize", "task")
+            taken(run, "launch freq_half", "launch", "task", "--stage",
+                  "freq_half", "--mode", "direct", "--foreground", "--yes")
+            taken(run, "summarize the sweep", "summarize", "task")
             run.record = json.loads(record.read_text())
-            _taken(run, "summarize with a tolerance", "summarize", "task",
-                   "--tolerance-cm1", "1e-6")
+            taken(run, "summarize with a tolerance", "summarize", "task",
+                  "--tolerance-cm1", "1e-6")
             run.flagged = json.loads(record.read_text())
     return copy_of(real_co2_vibration, "unticked", on_the_run)
 
@@ -131,16 +131,16 @@ def ticked(tmp_path_factory):
     """The box ticked, on the road: the template's `already_relaxed` true
     and its temperature 350 K, `freq` prepared and launched -- one run, its
     `fc` call alone -- each answer written down."""
-    from support.real_runs import (RealRun, _on_the_road, _taken,
+    from support.real_runs import (RealRun, on_the_road, taken,
                                    co2_vibration)
-    with _on_the_road(tmp_path_factory, "ticked") as tree:
+    with on_the_road(tmp_path_factory, "ticked") as tree:
         run = RealRun(tree=tree, bundle=co2_vibration(tree))
         set_by_the_person(run.bundle, {"already_relaxed": True,
                                        "temperature_K": 350.0})
-        _taken(run, "prep freq", "prep", "task",
-               *group_words(run.bundle, "freq"), "--target", "this")
-        _taken(run, "launch freq", "launch", "task", "--stage", "freq",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(run, "prep freq", "prep", "task",
+              *group_words(run.bundle, "freq"), "--target", "this")
+        taken(run, "launch freq", "launch", "task", "--stage", "freq",
+              "--mode", "direct", "--foreground", "--yes")
     return run
 
 
@@ -1012,6 +1012,7 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from support.live_server import serve
+    from support.sidebar import results_on
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(ticked.tree))
     d = _the_result(ticked)
     attempt = ticked.attempt("freq")
@@ -1034,10 +1035,7 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
     page.on("console", lambda m: (errors.append(m.text)
                                   if m.type == "error" else None))
     with serve() as base:
-        page.add_init_script(
-            "try { sessionStorage.setItem('molbuilder.current_dir', "
-            f"{json.dumps(str(attempt))}); }} catch (_) {{}}")
-        page.goto(f"{base}/results")
+        results_on(page, base, attempt)
         page.wait_for_function(
             "(want) => [...document.querySelectorAll("
             "  '#results-file-picker-select option')]"
@@ -1120,13 +1118,15 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
                 window.__claims.push(reason);
                 return claim.call(fence, reason, cancelers); }; }""")
         # HELD, THEN CANCELLED (§ 2.1): while Update's ask is out the window
-        # is covered; Cancel aborts it and nothing is committed -- the view
-        # stays along z and the bar still reads *changed*.
+        # is covered; Cancel aborts it and nothing is committed -- the ask
+        # withdrawn, no answer reaching the page, the view still along z
+        # and the bar still reading *changed*.  OUT UNTIL CANCEL IS PRESSED
+        # (`process/testing.md` § 5, *An order is held*): Update's real
+        # request held at the browser and let go once Cancel is pressed, so
+        # an answer, if one came, would be the server's -- never one made up
+        # here.
         held = []
-
-        def hold(route):
-            held.append(route)
-        page.route("**/api/spectra/load", hold)
+        page.route("**/api/spectra/load", lambda route: held.append(route))
         page.click("#view-update")
         page.wait_for_function(
             "() => window.molbuilder.pageBusy.isClaimed()", timeout=20000)
@@ -1134,8 +1134,13 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
         page.click(".page-busy-cancel")
         page.wait_for_function(
             "() => !window.molbuilder.pageBusy.isClaimed()", timeout=20000)
+        assert len(held) == 1, f"Update asked the load door {len(held)} times"
+        update = held.pop()
+        update.continue_()
         page.unroute("**/api/spectra/load")
-        assert len(held) == 1, held
+        assert update.request.response() is None, (
+            "Cancel left Update's ask out: the server's answer reached the "
+            "page")
         assert page.inner_text("#note-ir").startswith(
             "* IR — how strongly this vibration absorbs infrared light "
             "polarized along z."), \
@@ -1244,6 +1249,7 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.siesta.vibration_phases import FC, RELAX, calls_of
     from support.live_server import serve
+    from support.sidebar import results_on
     run = real_co2_vibration
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
 
@@ -1267,10 +1273,7 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     with serve() as base:
-        page.add_init_script(
-            "try { sessionStorage.setItem('molbuilder.current_dir', "
-            f"{json.dumps(str(run.bundle))}); }} catch (_) {{}}")
-        page.goto(f"{base}/results")
+        results_on(page, base, run.bundle)
         page.locator(".results-ladder").wait_for(state="visible",
                                                   timeout=30000)
         page.locator(".results-ladder-table tr.is-run").first.wait_for(
@@ -1310,6 +1313,7 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
     from molbuilder.runs import on_label_at
     from molbuilder.task import of as task_of
     from support.live_server import serve
+    from support.sidebar import results_on
     run = real_co2_vibration
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
     d = _the_result(run)
@@ -1333,10 +1337,7 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
     page.on("console", lambda m: (errors.append(m.text)
                                   if m.type == "error" else None))
     with serve() as base:
-        page.add_init_script(
-            "try { sessionStorage.setItem('molbuilder.current_dir', "
-            f"{json.dumps(str(attempt))}); }} catch (_) {{}}")
-        page.goto(f"{base}/results")
+        results_on(page, base, attempt)
         page.wait_for_function(
             "(want) => [...document.querySelectorAll("
             "  '#results-file-picker-select option')]"
@@ -1557,16 +1558,16 @@ def stopped(real_co2_vibration, tmp_path_factory):
     (``stopped_index``).  Each road launched after the stop is a copy of
     this one."""
     from molbuilder.siesta.vibration_phases import OPTICAL
-    from support.real_runs import (_road_at, _stopped_by_its_line, _taken,
+    from support.real_runs import (road_at, stopped_by_its_line, taken,
                                    copy_of, stage_status)
     from support.road import until
 
     def stop(c):
-        with _road_at(c.tree.parent, tmp_path_factory):
+        with road_at(c.tree.parent, tmp_path_factory):
             run1 = c.attempt("freq", 1).name
-            launched = _taken(c, "launch freq cold", "launch", "task",
-                              "--stage", "freq", "--mode", "direct", "--yes",
-                              "--cold")
+            launched = taken(c, "launch freq cold", "launch", "task",
+                             "--stage", "freq", "--mode", "direct", "--yes",
+                             "--cold")
 
             def one_done_and_the_next_started():
                 # RUN-1'S CALLS, by the done rule launch takes them over by
@@ -1584,7 +1585,7 @@ def stopped(real_co2_vibration, tmp_path_factory):
                            for r in index["points"])
             until(one_done_and_the_next_started, within=900,
                    what="an optical call of run-1 done, the next started")
-            _stopped_by_its_line(c, "stop as its launch said", launched)
+            stopped_by_its_line(c, "stop as its launch said", launched)
             c.stopped = stage_status(c.bundle, "freq")
             c.stopped_index = _index_of(c, "freq", 1)
     return copy_of(real_co2_vibration, "stopped", stop)
@@ -1595,13 +1596,13 @@ def stopped_after_fc(stopped, tmp_path_factory):
     """THE STOPPED RUN LAUNCHED AGAIN (:func:`stopped`): a copy of it, `freq`
     launched again warm, in the foreground -- run-2 -- the stop's status and
     index kept beside it."""
-    from support.real_runs import _road_at, _typed, copy_of
+    from support.real_runs import road_at, typed, copy_of
 
     def warm(c):
         c.stopped, c.stopped_index = stopped.stopped, stopped.stopped_index
-        with _road_at(c.tree.parent, tmp_path_factory):
-            _typed(c, "launch freq warm", "launch", "task", "--stage",
-                   "freq", "--mode", "direct", "--foreground", "--yes")
+        with road_at(c.tree.parent, tmp_path_factory):
+            typed(c, "launch freq warm", "launch", "task", "--stage",
+                  "freq", "--mode", "direct", "--foreground", "--yes")
     return copy_of(stopped, "warm", warm)
 
 
@@ -1736,18 +1737,18 @@ def failed_parts(stopped, tmp_path_factory):
     (`running-a-job.md` § 3.6; `siesta.md` § 8.9) -- every call it runs
     ending alike, not done."""
     from support.road import read_request, write_request
-    from support.real_runs import _road_at, _taken, _typed, copy_of
+    from support.real_runs import road_at, taken, typed, copy_of
 
     def walled(c):
         request = read_request(c.bundle)
         request["execution"] = {**request.get("execution", {}),
                                 "time": "00:00:20"}
         write_request(c.bundle, request)
-        with _road_at(c.tree.parent, tmp_path_factory):
-            _taken(c, "prep freq for the wall", "prep", "task", "--group",
-                   "1", "--target", "this")
-            _typed(c, "launch freq warm", "launch", "task", "--stage",
-                   "freq", "--mode", "direct", "--foreground", "--yes")
+        with road_at(c.tree.parent, tmp_path_factory):
+            taken(c, "prep freq for the wall", "prep", "task", "--group",
+                  "1", "--target", "this")
+            typed(c, "launch freq warm", "launch", "task", "--stage",
+                  "freq", "--mode", "direct", "--foreground", "--yes")
     return copy_of(stopped, "walled", walled)
 
 

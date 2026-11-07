@@ -501,7 +501,11 @@ into the Documents tab). These are tracked as known gaps.
   hand-off landing in the other tab's own slot.
 - `test_sidebar_e2e.py` — in the browser: each tab back to its own folder and file
   (§ 2), and a project deleted only once its name is typed.
-- `test_projects_public_surface_js.py` — the public API surface stays complete.
+- `test_projects_public_surface_js.py` — what the public calls do, fed the real
+  files routes: a change that landed refreshes where it landed, a refused one
+  refreshes nothing, a commit names the whole path and moves the selection,
+  a read and a write answer the uniform result, a subscription taken twice is
+  refused by name.
 - `test_projects_render_sidebar_js.py` — the sidebar render + wiring.
 - `test_projects_api_envelope_js.py` — the uniform `{ ok, … }` result shape.
 - `test_web_files.py` — the `/api/files/*` server routes.

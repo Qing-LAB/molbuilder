@@ -20,8 +20,8 @@ not.  So this test does what a person does — type, Save, Preview, Prep — and
 then reads the `.sbatch` that came out.
 
 WHAT ELSE THIS FILE DRIVES, and why it is here rather than in a file of its
-own: the fixtures.  `two_stage_dir` + `_open` give a real folder with a real
-description, open in a real browser against a real server, and every claim
+own: the fixtures.  `two_stage_dir` + `task_setup_on` give a real folder with
+a real description, open in a real browser against a real server, and every claim
 below needs exactly that.  A second copy of them elsewhere would be the
 duplication worth more than a tidier filename: the machine choice reaching
 the copied command and the resolved-facts block, the notify card offering
@@ -31,6 +31,7 @@ after the axes have moved on.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -41,12 +42,15 @@ pytest.importorskip("flask")
 
 from pathlib import Path
 
+from playwright.sync_api import expect
 from support.road import (H2, _road_changed, describe_calculation,
-                          ladder_edited, read_request, write_request)
-from support.task_setup_page import file_text, unfold, wait_for_file
+                          ladder_edited, read_request, stage_file,
+                          write_request)
+from support.sidebar import committed, walk_to
+from support.task_setup_page import (edited_by_hand, file_text, machine,
+                                     page_free, picked_by_the_page,
+                                     task_setup_on, unfold, wait_for_file)
 from support.machines import SLURM, WORKSTATION
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)
@@ -64,8 +68,7 @@ def this_machine_is_a_cluster():
     write_machine_record(
         scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=32),
         domains=[Domain(name="public", partition="public", qos="public",
-                        max_time="1-00:00:00")],
-        env_init={"preamble": "true", "activation": "conda activate"})
+                        max_time="1-00:00:00")])
 
 
 #: THE ROAD'S H2 with no atom held: what these cards say of a held atom is not
@@ -127,24 +130,17 @@ def _a_described_probe(root, execution=None):
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _open(page, base, calc):
-    slot = json.dumps(str(calc))
-    page.add_init_script(
-        "try {"
-        f" sessionStorage.setItem('molbuilder.current_dir.task-setup', {slot});"
-        f" sessionStorage.setItem('molbuilder.current_dir', {slot});"
-        "} catch (_) {}")
-    page.goto(f"{base}/task-setup")
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        " return !!(n && n.CodeMirror); }", timeout=20000)
-    unfold(page)
+def _add_a_run_setting(page, name):
+    """*+ Add setting* on the run card on show, ``name`` picked first."""
+    card = page.locator(".ts-next-step:not([hidden]) .ts-runcard")
+    card.locator("select.ts-pick").select_option(name)
+    card.locator("button", has_text="Add setting").click()
 
 
 def _commands_shown(page):
@@ -162,14 +158,10 @@ def _commands_shown(page):
 def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         page, flask_server, calc_dir):
     """Type · Save · Preview · Prep — then read the `.sbatch`."""
-    _open(page, flask_server, calc_dir)
+    task_setup_on(page, flask_server, calc_dir)
 
     # ── the machine, because prep refuses without one ──────────────────
-    page.wait_for_selector("#ts-target-card button", timeout=20000)
-    page.evaluate(
-        "() => { for (const b of document.querySelectorAll('button'))"
-        "  if ((b.textContent||'').trim().startsWith('(this machine)'))"
-        "    { b.click(); return; } }")
+    picked_by_the_page(page)
 
     # ── SAVE IS HELD WITH NOTHING UNSAVED (task-setup.md § 8) ──────────
     page.wait_for_selector("#ts-save", state="attached", timeout=20000)
@@ -187,8 +179,7 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     assert row.get("kind") == "unstated" and row.get("value") == "", (
         "the rank count, stated nowhere, does not stand blank on the run "
         f"card: {row}")
-    page.fill(sel, "8")
-    page.dispatch_event(sel, "change")
+    committed(page, sel, "8")
     wait_for_file(page, "request", '"mpi_np"')
     # ...and offered once the page holds an edit.
     page.wait_for_function(
@@ -233,13 +224,12 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
         " .some(n => /Prepared for/.test(n.textContent))", timeout=60000)
 
-    sbatch = list((calc_dir / "01_coarse").glob("*.sbatch"))
-    assert sbatch, ("the button reported success and wrote no .sbatch: "
-                    + repr(sorted(p.name for p in
-                                  (calc_dir / "01_coarse").iterdir())))
+    # THE STAGE'S FILES BY MOLBUILDER'S OWN NAMES (`support.road.stage_file`),
+    # each asserted written.
+    sbatch = stage_file(calc_dir, "coarse", ".sbatch").read_text()
     header = dict(
         (parts[1], " ".join(parts[2:]))
-        for parts in (ln.split() for ln in sbatch[0].read_text().splitlines()
+        for parts in (ln.split() for ln in sbatch.splitlines()
                       if ln.startswith("#SBATCH"))
         if len(parts) > 2)
 
@@ -249,15 +239,14 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     # preview once said `-c` was unset while the header took the config
     # default, which is the lie A13 forbids -- and only comparing the two
     # catches it.
-    written = [ln.strip() for ln in sbatch[0].read_text().splitlines()
+    written = [ln.strip() for ln in sbatch.splitlines()
                if ln.startswith("#SBATCH")]
     assert lines == written, (
         f"the preview showed {lines} and the .sbatch carries {written}")
 
     # the deck and the run script came out too -- a folder you can run
-    d = calc_dir / "01_coarse"
-    assert list(d.glob("*.fdf")), "no deck"
-    assert list(d.glob("*.run.sh")), "no run script"
+    stage_file(calc_dir, "coarse", ".fdf")
+    stage_file(calc_dir, "coarse", ".run.sh")
 
 
 def test_the_tab_saves_the_folder_first_and_says_so(
@@ -270,15 +259,15 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     (`task-setup.md` § 11): its box unticked, so nothing is prepared until
     it is picked again, and its tab's lines are its launch (§ 11, *Each
     group's next step is always there*)."""
-    import re
     from molbuilder.checkpoint import Repo
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.paths import attempt_dir
+    from molbuilder.task import of as task_of
     calc = unprepped_dir
-    _open(page, flask_server, calc)
-    page.wait_for_selector("#ts-target-card button", timeout=20000)
-    page.evaluate(
-        "() => { for (const b of document.querySelectorAll('button'))"
-        "  if ((b.textContent||'').trim().startsWith('(this machine)'))"
-        "    { b.click(); return; } }")
+    # THE STAGE'S FOLDER, by the one door prep names it by.
+    home = stage_home(calc, task_of(calc), "coarse").dir
+    task_setup_on(page, flask_server, calc)
+    picked_by_the_page(page)
     box = ".ts-task-prep"
     preview = f"{box} .ts-prep button:has-text('Preview task')"
     prep_sel = f"{box} .ts-prep button:has-text('Prep task here')"
@@ -290,26 +279,41 @@ def test_the_tab_saves_the_folder_first_and_says_so(
             "b => /Prep task here/.test(b.textContent) && !b.disabled)",
             arg=f"{box} .ts-prep button", timeout=30000)
 
-    # AN UNSAVED EDIT IS NOT IN THE FILES PREP READS, so Prep refuses it
-    # and nothing renders -- an edit of value (§ 8: a column added), its
-    # spelling aside.
+    # AN UNSAVED EDIT IS NOT IN THE FILES PREP READS, so the page refuses a
+    # Preview or a Prep while the save bar says *edited* (§ 7a, § 11.1) and
+    # nothing renders -- an edit of value (§ 8: a column added), its
+    # spelling aside, made by hand in the page's editor.  The panels drawn
+    # again from the edit hold Prep, unpreviewed; the Preview a person can
+    # still press says why.
     ready()
-    original = page.evaluate(
-        "() => document.querySelector('.CodeMirror').CodeMirror.getValue()")
-    page.evaluate(
-        "() => { const cm = document.querySelector('.CodeMirror').CodeMirror;"
-        " const o = JSON.parse(cm.getValue());"
-        " o.varies = [...(o.varies || []), 'mesh_cutoff'];"
-        " cm.setValue(JSON.stringify(o, null, 2) + '\\n'); }")
-    page.locator(prep_sel).first.click()
+    original = file_text(page, "task")
+    edited = json.loads(original)
+    edited["varies"] = [*edited.get("varies", []), "mesh_cutoff"]
+    edited_by_hand(page, "task", json.dumps(edited, indent=2) + "\n")
+    page.wait_for_selector("#ts-dirty:not([hidden])", state="attached",
+                           timeout=20000)
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "b => /Prep task here/.test(b.textContent) && b.disabled)",
+        arg=f"{box} .ts-prep button", timeout=20000)
+    page.locator(preview).first.click()
     page.wait_for_function(
         "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
         " .some(n => /Save first/.test(n.textContent))", timeout=20000)
-    assert not (calc / "01_coarse").exists(), (
-        "Prep rendered a deck over an unsaved edit")
-    page.evaluate(
-        "(v) => document.querySelector('.CodeMirror').CodeMirror.setValue(v)",
-        original)
+    assert page.locator(prep_sel).first.is_disabled(), (
+        "Prep is offered over an unsaved edit")
+    # ...AND THE TWO PREVIEWS, the one answered and the one refused over the
+    # edit, wrote nothing: a preview is prep's entry stopping before it
+    # writes (`job-system.md` § 5.0).
+    assert not home.exists(), (
+        "a Preview wrote the stage's folder: a preview writes nothing")
+    edited_by_hand(page, "task", original)
+    # The edit put back: the save bar says nothing is edited, and the panels
+    # drawn again from it hold no refusal.
+    page.wait_for_selector("#ts-dirty", state="hidden", timeout=20000)
+    page.wait_for_function(
+        "() => !Array.from(document.querySelectorAll('.ts-prep-say'))"
+        " .some(n => /Save first/.test(n.textContent))", timeout=20000)
 
     # PREP: the folder saved first, then prepared -- and said
     ready()
@@ -324,11 +328,11 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     notes = [x.note for x in Repo(str(calc)).states()]
     assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · before "
                     r"prep task group 1 \(coarse\)$", notes[0]), notes
-    assert (calc / "01_coarse" / "run-0").is_dir()
+    assert attempt_dir(home, 0).is_dir()
 
     # PREPARED, NEVER LAUNCHED: the folder opened again says so, ticks
     # nothing -- a Prep again is a group picked -- and gives its launch
-    _open(page, flask_server, calc)
+    task_setup_on(page, flask_server, calc)
     page.wait_for_function(
         "(sel) => Array.from(document.querySelectorAll(sel)).some("
         "n => /prepared, never launched/.test(n.textContent))",
@@ -347,7 +351,7 @@ def test_a_stage_with_no_axes_says_to_state_them(
         page, flask_server, calc_dir):
     """`generator.md` § 4.3a, on this door too: a benchmark states its grid,
     so the measure block says so, beside its Prep bench button."""
-    _open(page, flask_server, calc_dir)
+    task_setup_on(page, flask_server, calc_dir)
     panel = "[id^=ts-steppanel]"
     page.wait_for_selector(f"{panel} .ts-prep", state="attached",
                            timeout=20000)
@@ -368,7 +372,7 @@ def test_a_description_prep_bench_refuses_offers_no_measure_step(
     2026-09-29: the block showed on every PySCF and transport stage)."""
     d = _described_h2(isolated_projects_root_module / "prep_pyscf", "pyscf",
                       engine="pyscf")
-    _open(page, flask_server, d)
+    task_setup_on(page, flask_server, d)
     panel = "[id^=ts-steppanel]"
     page.wait_for_selector(
         ".ts-task-prep .ts-prep button:has-text('Prep task here')",
@@ -408,6 +412,17 @@ def filled_dir(isolated_projects_root_module):
     yield d
 
 
+@pytest.fixture
+def filled_dir_put_back(filled_dir):
+    """`filled_dir` for a test that writes its job request -- the page's
+    Save, or a person's editor -- its request put back as the fixture left
+    it once the test ends, so the module's other tests read the folder
+    `filled_dir` made."""
+    kept = read_request(filled_dir)
+    yield filled_dir
+    write_request(filled_dir, kept)
+
+
 @pytest.fixture(scope="module")
 def binding_dir(isolated_projects_root_module):
     """A described calculation that says nothing about the GPU binding --
@@ -429,15 +444,6 @@ def _saved_allocation(where, ok, timeout=20.0):
         time.sleep(0.1)
 
 
-def _page_free(page, timeout=20000):
-    """Wait as a person waits: until the busy cover is gone.  A Save
-    re-reads the folder under it, and a box the re-read repaints from the
-    file reads ticked midway -- reset, then painted -- so `check` finds it
-    ticked, clicks nothing, and the paint unticks it."""
-    page.wait_for_selector(".page-busy-cover", state="hidden",
-                           timeout=timeout)
-
-
 def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
                                                binding_dir):
     """`execution/gpu.md` G9, from the page's side: the queue card's GPU
@@ -446,11 +452,9 @@ def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
     whole `allocation` block, so a switch it did not carry it would erase.
     This is the page's half; what a prep makes of the switch is the GPU
     contract's table (`test_gpu_contract.py`)."""
-    _open(page, flask_server, binding_dir)
+    task_setup_on(page, flask_server, binding_dir)
     box = "#ts-ask-gpu-binding"
-    page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
-    if not page.is_visible(box):
-        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+    picked_by_the_page(page)
     page.wait_for_selector(box, state="visible", timeout=20000)
     assert page.is_checked(box), "ticked is the rule: the binding is sent"
 
@@ -460,7 +464,11 @@ def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
                               lambda a: a.get("gpu_binding") is False)
     assert alloc.get("gpu_binding") is False, alloc
 
-    _page_free(page)
+    # THE SAVE ENDED FIRST: it re-reads the folder under the cover, and a
+    # box the re-read repaints from the file reads ticked midway -- reset,
+    # then painted -- so `check` would find it ticked, click nothing, and
+    # the paint untick it.
+    page_free(page)
     page.check(box)
     page.click("#ts-save")
     alloc = _saved_allocation(binding_dir, lambda a: "gpu_binding" not in a)
@@ -488,20 +496,16 @@ def test_the_queue_the_request_names_stays_through_a_machine_and_an_ask(
     write_machine_record(
         scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=32),
         domains=[Domain(name="general", partition="general", qos="public",
-                        max_time="1-00:00:00")],
-        env_init={"preamble": "true", "activation": "conda activate"})
-    _open(page, flask_server, d)
+                        max_time="1-00:00:00")])
+    task_setup_on(page, flask_server, d)
     mem = "#ts-ask-mem"
-    page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
-    if not page.is_visible(mem):
-        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+    picked_by_the_page(page)
     page.wait_for_selector(mem, state="visible", timeout=20000)
     said = page.text_content("#ts-queue-needs")
     assert ("The job request names the queue public, which" in said
             and "does not list; it stays as stated" in said), said
-    page.fill(mem, "16G")
-    page.dispatch_event(mem, "change")
-    _page_free(page)
+    committed(page, mem, "16G")
+    page_free(page)
     page.click("#ts-save")
     alloc = _saved_allocation(d, lambda a: a.get("mem") == "16G")
     assert alloc == {"domain": "public", "time": "0-04:00:00",
@@ -520,18 +524,15 @@ def test_a_value_put_back_on_a_card_is_no_edit(page, flask_server,
 
     MUTATION THIS MUST FAIL AGAINST: `edited()` comparing the buffers'
     text."""
-    _open(page, flask_server, filled_dir)
+    task_setup_on(page, flask_server, filled_dir)
     mem = "#ts-ask-mem"
-    page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
-    if not page.is_visible(mem):
-        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+    picked_by_the_page(page)
     page.wait_for_selector(mem, state="visible", timeout=20000)
     held = "() => document.getElementById('ts-save').disabled"
     assert page.evaluate(held), "the folder as it lies holds no edit"
     for value in ("32G", "16G"):                 # changed, and put back
-        page.fill(mem, value)
-        page.dispatch_event(mem, "change")
-        _page_free(page)
+        committed(page, mem, value)
+        page_free(page)
     page.wait_for_function(held, timeout=20000)
     assert page.evaluate(
         "() => document.getElementById('ts-dirty').hidden"), (
@@ -582,7 +583,7 @@ def test_a_folder_opens_showing_what_it_already_states(
     has not, standing empty (*—*) on the card, or the structure's formula
     and atom count not drawn from the folder answer.
     """
-    _open(page, flask_server, filled_dir)
+    task_setup_on(page, flask_server, filled_dir)
     # WHAT CAME OVER, every row with what the folder states for it.
     page.wait_for_selector("#ts-facts > div", state="attached",
                            timeout=20000)
@@ -659,13 +660,12 @@ def test_the_every_stage_card_writes_the_calculations_own_card(
     MUTATION THIS MUST FAIL AGAINST: the view's writes going to the
     members' own cards."""
     calc = _a_described_probe(isolated_projects_root_module / "every_stage")
-    _open(page, flask_server, calc)
+    task_setup_on(page, flask_server, calc)
     page.click("#ts-groups .ts-steptab[data-tab='every']")
     field = (".ts-next-step:not([hidden]) .ts-runcard "
              "[aria-label='value for omp_threads']")
     page.wait_for_selector(field, timeout=20000)
-    page.fill(field, "3")
-    page.dispatch_event(field, "change")
+    committed(page, field, "3")
     wait_for_file(page, "request", '"omp_threads": 3')
     request = json.loads(file_text(page, "request"))
     assert request["execution"]["omp_threads"] == 3, request
@@ -678,36 +678,27 @@ def test_the_every_stage_card_writes_the_calculations_own_card(
 
 
 def test_what_you_typed_is_still_there_when_you_come_back(
-        page, flask_server, filled_dir, calc_dir):
+        page, flask_server, filled_dir_put_back, calc_dir):
     """**Persistency is the files, and nothing else** (§ 7a).
 
     There is no page-level store to remember a form: the value is written to
     the file by Save, and the file is what the page reads on the way back in.
-    So the file is changed under the page once it is saved -- as a person's
-    editor changes it -- and each of the three ways of coming back --
-    another tab, a full reload, and re-opening the folder -- shows the
-    file's value, never the one the page last held.
+    So the file is changed under the page once it is saved, and again while
+    another folder is open -- as a person's editor changes it -- and each of
+    the three ways of coming back -- another tab, a full reload, and the
+    folder opened again by the sidebar's rows, with no reload between --
+    shows the file's value, never the one the page last held.
 
     MUTATION THIS MUST FAIL AGAINST: the card restored from a store of the
-    page's own (it would show 6).
+    page's own (it would show 6) -- or, across the folder change, from what
+    the page kept of the folder (it would show 7).
     """
-    kept = read_request(filled_dir)
-    try:
-        _came_back_to_the_files_value(page, flask_server, filled_dir,
-                                      calc_dir)
-    finally:
-        write_request(filled_dir, kept)
-
-
-def _came_back_to_the_files_value(page, flask_server, filled_dir, calc_dir):
-    """:func:`test_what_you_typed_is_still_there_when_you_come_back`'s
-    walk."""
-    _open(page, flask_server, filled_dir)
+    filled_dir = filled_dir_put_back
+    task_setup_on(page, flask_server, filled_dir)
     sel = '.ts-runcard input[aria-label="value for omp_threads"]'
     page.wait_for_selector(sel, timeout=20000)
 
-    page.fill(sel, "6")
-    page.dispatch_event(sel, "change")
+    committed(page, sel, "6")
     page.click("#ts-save")
     page.wait_for_function(
         "() => { const n = document.getElementById('ts-save-said');"
@@ -724,7 +715,7 @@ def _came_back_to_the_files_value(page, flask_server, filled_dir, calc_dir):
     # 1 -- away to another tab, and back.
     page.goto(f"{flask_server}/molbuilder")
     page.wait_for_load_state("domcontentloaded")
-    _open(page, flask_server, filled_dir)
+    task_setup_on(page, flask_server, filled_dir)
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
     assert _rows(page)["omp_threads"]["value"] == "7", (
         "leaving the tab and coming back did not read the file")
@@ -736,12 +727,18 @@ def _came_back_to_the_files_value(page, flask_server, filled_dir, calc_dir):
     assert _rows(page)["omp_threads"]["value"] == "7", (
         "a page reload did not read the file")
 
-    # 3 -- another folder opened, then this one again.
-    _open(page, flask_server, calc_dir)
-    page.wait_for_selector(".ts-runcard", timeout=20000)
-    _open(page, flask_server, filled_dir)
+    # 3 -- another folder opened BY THE SIDEBAR'S ROWS, then this one
+    # again: no reload between, so what the page keeps across a folder
+    # change is what is asked -- the file changed again while the other
+    # folder is shown, and the page last held 7.
+    walk_to(page, calc_dir)
+    wait_for_file(page, "task", '"probe_H2"')
+    on_disk["stages"]["coarse"]["execution"]["omp_threads"] = 8
+    write_request(filled_dir, on_disk)
+    walk_to(page, filled_dir)
+    unfold(page, "ts-groups-card")     # a folder opened anew folds its cards
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
-    assert _rows(page)["omp_threads"]["value"] == "7", (
+    assert _rows(page)["omp_threads"]["value"] == "8", (
         "re-opening the folder did not read the file")
 
 
@@ -755,20 +752,14 @@ def test_a_row_has_a_remove_button_only_where_its_blank_cannot_remove_it(
 
     MUTATIONS THIS MUST FAIL AGAINST: a × on every row (the standing rows
     carry one that can only clear); the added row's × not removing it."""
-    _open(page, flask_server, filled_dir)
+    task_setup_on(page, flask_server, filled_dir)
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
     rows = _rows(page)
     assert {"mpi_np", "omp_threads", "time", "use_gpu"} <= set(rows), rows
     assert not [n for n, r in rows.items() if r["drop"]], (
         "a standing row carries a × that can only clear it: " + repr(rows))
 
-    page.evaluate(
-        "() => { const c = document.querySelector('.ts-runcard');"
-        "  const s = c.querySelector('select.ts-pick');"
-        "  s.value = 'domain';"
-        "  s.dispatchEvent(new Event('change', {bubbles: true}));"
-        "  for (const b of c.querySelectorAll('button'))"
-        "    if (/Add setting/.test(b.textContent)) { b.click(); return; } }")
+    _add_a_run_setting(page, "domain")
     field = '.ts-runcard [aria-label="value for domain"]'
     page.wait_for_selector(field, timeout=10000)
     assert _rows(page)["domain"]["drop"], "the added row has no ×"
@@ -788,35 +779,24 @@ def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
     as a row waiting for a value.  Carried across a folder change it would
     show the next calculation asking for something nobody asked it for.
     """
-    _open(page, flask_server, filled_dir)
+    task_setup_on(page, flask_server, filled_dir)
     page.wait_for_selector(".ts-runcard select.ts-pick", timeout=20000)
-    page.evaluate(
-        "() => { const c = document.querySelector('.ts-runcard');"
-        "  const s = c.querySelector('select.ts-pick');"
-        "  s.value = 'domain';"
-        "  s.dispatchEvent(new Event('change', {bubbles: true}));"
-        "  for (const b of c.querySelectorAll('button'))"
-        "    if (/Add setting/.test(b.textContent)) { b.click(); return; } }")
+    _add_a_run_setting(page, "domain")
     page.wait_for_function(
         "() => !!document.querySelector("
         "  '.ts-runcard [aria-label=\"value for domain\"]')",
         timeout=10000)
 
-    # ...now switch folders THE WAY THE SIDEBAR DOES, without a reload --
-    # a reload would rebuild the page and prove nothing about state that
+    # ...now switch folders BY THE SIDEBAR'S ROWS, without a reload -- a
+    # reload would rebuild the page and prove nothing about state that
     # outlives a directory change.
-    page.evaluate(
-        "(dir) => window.molbuilder.projects.setShared(dir, '')",
-        str(calc_dir))   # one arg, positional -- evaluate's own signature
+    walk_to(page, calc_dir)
     # WAIT ON A POSITIVE SIGNAL -- the editor showing the OTHER
     # calculation's id -- not on the absence of the row, which is the thing
     # being asserted.  The old card stays in the DOM until the new folder's
     # description has been read, so a bare `.ts-runcard` selector matches
     # the card that is on its way out.
-    page.wait_for_function(
-        "() => { const cm = document.querySelector('.CodeMirror');"
-        " return cm && /\"probe_H2\"/.test(cm.CodeMirror.getValue()); }",
-        timeout=20000)
+    wait_for_file(page, "task", '"probe_H2"')
     unfold(page, "ts-groups-card")     # a folder opened anew folds its cards
     page.wait_for_selector(".ts-runcard", timeout=20000)
 
@@ -838,14 +818,13 @@ def test_a_folder_with_no_description_shows_no_plan_from_the_last(
     """
     empty = isolated_projects_root_module / "prep_e2e" / "optimization" / "none"
     empty.mkdir(parents=True, exist_ok=True)
-    _open(page, flask_server, filled_dir)
+    task_setup_on(page, flask_server, filled_dir)
     page.wait_for_selector("#ts-plan:not([hidden])", timeout=20000)
     page.wait_for_selector("#ts-written-card:not([hidden])", timeout=20000)
 
-    # Switch THE WAY THE SIDEBAR DOES, and wait on the new folder's own
+    # Switch BY THE SIDEBAR'S ROWS, and wait on the new folder's own
     # sentence -- a positive signal, not the absence being asserted.
-    page.evaluate(
-        "(dir) => window.molbuilder.projects.setShared(dir, '')", str(empty))
+    walk_to(page, empty)
     page.wait_for_function(
         "() => /No description here yet/.test(document.body.textContent)",
         timeout=20000)
@@ -856,22 +835,23 @@ def test_a_folder_with_no_description_shows_no_plan_from_the_last(
 
 
 def _pick_first(page, select_id):
-    """Choose the first offered option of a picker -- whatever the server
-    offered, since the row is about the fence, not the choice."""
+    """Choose the first offered option of a picker, as a person picks it --
+    whatever the server offered, since the row is about the fence, not the
+    choice."""
     page.wait_for_function(
         f"() => {{ const s = document.getElementById('{select_id}');"
         f" return !!s && Array.from(s.options).some(o => o.value); }}",
         timeout=20000)
-    page.evaluate(
-        f"() => {{ const s = document.getElementById('{select_id}');"
-        f" s.value = Array.from(s.options).find(o => o.value).value; }}")
+    first = page.evaluate(
+        f"() => Array.from(document.getElementById('{select_id}').options)"
+        f"  .find(o => o.value).value")
+    page.select_option(f"#{select_id}", first)
 
 
 def _edit_a_stage_cell(page):
     sel = '.ts-cell[aria-label="coarse mesh_cutoff"]'
     page.wait_for_selector(sel, timeout=20000)
-    page.fill(sel, "250")
-    page.dispatch_event(sel, "change")
+    committed(page, sel, "250")
 
 
 def _add_a_column(page):
@@ -884,7 +864,6 @@ def _add_a_bench_point(page):
     # setting's value in force in the box, and a setting with none is typed
     # its first point -- never a number the page invents.
     _pick_first(page, "ts-add-setting")
-    page.dispatch_event("#ts-add-setting", "change")
     if not page.input_value("#ts-add-setting-value").strip():
         page.fill("#ts-add-setting-value", "1")
     page.click("#ts-add-setting-go")
@@ -895,8 +874,7 @@ def _add_a_stage(page):
 
 
 def _ask_another_wall_time(page):
-    page.fill("#ts-ask-time", "0-05:00:00")
-    page.dispatch_event("#ts-ask-time", "change")
+    committed(page, "#ts-ask-time", "0-05:00:00")
 
 
 #: The card edits beside the run card's value, a row each (`task-setup.md`
@@ -914,7 +892,7 @@ _CARD_EDITS = (
 
 
 def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
-        page, flask_server, filled_dir):
+        page, flask_server, filled_dir_put_back):
     """`ui-contract.md` § 10 — **one cover for every heavy click**, and a
     card edit is one.
 
@@ -938,7 +916,8 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
     10 states — the operation **claims**, and it **releases in a finally**,
     so the window is never left covered.
     """
-    _open(page, flask_server, filled_dir)
+    filled_dir = filled_dir_put_back
+    task_setup_on(page, flask_server, filled_dir)
     sel = '.ts-runcard input[aria-label="value for omp_threads"]'
     page.wait_for_selector(sel, timeout=20000)
 
@@ -964,8 +943,7 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
         return page.evaluate("() => window.__fence.slice()")
 
     def run_card_value():
-        page.fill(sel, "3")
-        page.dispatch_event(sel, "change")
+        committed(page, sel, "3")
 
     logs = [("a run-card value", fenced(run_card_value))]
     # WAIT FOR THE FENCE, not for the message.  The confirmation is said
@@ -1003,7 +981,7 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
 
 
 def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
-        page, flask_server, filled_dir):
+        page, flask_server, filled_dir_put_back):
     """**"I don't know" is an answer; a blank space is not.**
 
     The fit panels used to set `hidden` on any failure, on the reasoning
@@ -1022,32 +1000,30 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     answer, and says why.
     """
     from molbuilder.scheduler import machine_scope_path
+    filled_dir = filled_dir_put_back
     # NOTHING PROBED HERE.
     Path(machine_scope_path()).unlink()
-    # A GRID TO CHECK: two points to measure, stated for this test and put
-    # back after it -- the module's other tests share the folder.
-    kept = read_request(filled_dir)
-    write_request(filled_dir, {**kept, "bench": {"mpi_np": [2, 4],
-                                                 "omp_threads": [1]}})
-    try:
-        with page.expect_response(
-                lambda r: "/api/task-setup/bench-grid" in r.url,
-                timeout=20000) as asked:
-            _open(page, flask_server, filled_dir)
-        answer = asked.value.json()
-        assert not answer.get("ok") and answer.get("error"), answer
-        page.wait_for_function(
-            "() => { const n = document.getElementById('ts-machine-fit');"
-            " return n && !n.hidden && /Cannot say/.test(n.textContent); }",
-            timeout=20000)
-        said = page.evaluate(
-            "() => document.getElementById('ts-machine-fit').textContent")
-        assert "Cannot say whether this fits" in said, said
-        # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own.
-        assert answer["error"] in said, (
-            "the panel said it could not answer but not why: " + said)
-    finally:
-        write_request(filled_dir, kept)
+    # A GRID TO CHECK: two points to measure, stated for this test -- the
+    # fixture puts the request back after it.
+    write_request(filled_dir, {**read_request(filled_dir),
+                               "bench": {"mpi_np": [2, 4],
+                                         "omp_threads": [1]}})
+    with page.expect_response(
+            lambda r: "/api/task-setup/bench-grid" in r.url,
+            timeout=20000) as asked:
+        task_setup_on(page, flask_server, filled_dir)
+    answer = asked.value.json()
+    assert not answer.get("ok") and answer.get("error"), answer
+    page.wait_for_function(
+        "() => { const n = document.getElementById('ts-machine-fit');"
+        " return n && !n.hidden && /Cannot say/.test(n.textContent); }",
+        timeout=20000)
+    said = page.evaluate(
+        "() => document.getElementById('ts-machine-fit').textContent")
+    assert "Cannot say whether this fits" in said, said
+    # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own.
+    assert answer["error"] in said, (
+        "the panel said it could not answer but not why: " + said)
 
 
 # ---------------------------------------------------------------------------
@@ -1080,8 +1056,7 @@ def _two_stages(root):
     write_request(d, req)
     write_machine_record(
         scheduler=WORKSTATION, topology=Topology(sockets=2,
-                                                 cores_per_socket=32),
-        env_init={"preamble": "true", "activation": "conda activate"})
+                                                 cores_per_socket=32))
     return d
 
 
@@ -1110,7 +1085,7 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
       * `launch` never carries `--target`, because launching happens ON the
         machine and there is nothing to target.
     """
-    _open(page, flask_server, two_stage_dir)
+    task_setup_on(page, flask_server, two_stage_dir)
     # `state="attached"`: the stage blocks are TABS -- every stage renders
     # its own and all but the selected one carry `hidden`, so waiting for a
     # VISIBLE one would wait for the tab a person has not clicked.
@@ -1191,13 +1166,10 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
     `pre.ts-cmd` blocks a person actually copies were built before the
     machine existed and kept a command with no `--target` in it.
     """
-    _open(page, flask_server, two_stage_dir)
-    opt = page.locator(f'#ts-target-choice .opt[data-machine="{a_named_machine}"]')
-    opt.wait_for(state="visible", timeout=20000)
+    task_setup_on(page, flask_server, two_stage_dir)
+    opt = machine(page, a_named_machine)
     opt.click()
-    page.wait_for_function(
-        "() => document.querySelector('#ts-target-choice "
-        ".opt[aria-pressed=\"true\"]')", timeout=5000)
+    expect(opt).to_have_attribute("aria-pressed", "true", timeout=5000)
 
     blocks = _commands_shown(page)
 
@@ -1227,9 +1199,8 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     stage is prepared the card shows that machine chosen, offers no other,
     and says why -- the folder's own answer, `set_to`.  The answer's half
     is `test_printed_commands_run.py`'s."""
-    _open(page, flask_server, two_stage_dir)
-    this = page.locator('#ts-target-choice .opt[data-machine="(this machine)"]')
-    this.wait_for(state="visible", timeout=20000)
+    task_setup_on(page, flask_server, two_stage_dir)
+    this = machine(page)
     this.click()
     box = ".ts-task-prep"
     page.locator(f"{box} .ts-prep button:has-text('Preview task')") \
@@ -1245,8 +1216,7 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     assert page.inner_text("#ts-target-set").startswith(
         "Set to (this machine)"), page.inner_text("#ts-target-set")
     assert this.get_attribute("aria-pressed") == "true"
-    assert page.locator(f'#ts-target-choice .opt[data-machine='
-                        f'"{a_named_machine}"]').is_disabled(), (
+    assert machine(page, a_named_machine).is_disabled(), (
         "a calculation set to this machine was offered another")
 
 
@@ -1273,15 +1243,16 @@ def test_the_notify_card_offers_this_machines_channels(
     `test_notify_setup_api.py::test_a_webhook_address_is_masked_because_it_IS
     _the_credential` and `::test_every_address_is_masked_even_a_listeners`.
     """
-    # The monitor's own door, not `config_dir() / "notify"`.
-    from molbuilder.monitor import default_notify_path
-    _n = default_notify_path(); _n.parent.mkdir(parents=True, exist_ok=True)
-    _n.write_text(json.dumps({"channels": {
-        "lab": {"kind": "slack",
-                "url": "https://hooks.example.invalid/services/T0/B0/XyZzY"}}}),
-        encoding="utf-8")
+    # THE CHANNEL CONFIGURED AS A PERSON CONFIGURES IT: through the route
+    # the This machine page saves a channel by (`this-machine.md`), on the
+    # server the page asks.
+    saved = page.request.put(
+        f"{flask_server}/api/notify/channels/lab",
+        data={"kind": "slack",
+              "url": "https://hooks.example.invalid/services/T0/B0/XyZzY"})
+    assert saved.ok, saved.text()
 
-    _open(page, flask_server, two_stage_dir)
+    task_setup_on(page, flask_server, two_stage_dir)
     page.wait_for_function(
         "() => { const c = document.getElementById('ts-notify-card');"
         " return c && !c.hidden; }", timeout=20000)
@@ -1309,10 +1280,13 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
 
     The claim is about ORDER, so this test controls the order, with the
     server's own answers: the first edit's reply is held back by the page's
-    routing, and let through only once the second's has painted.
+    routing -- held, never made up: `route.continue_()` lets the real
+    request through to the real route -- and let through only once the
+    second's has painted.
     """
-    _open(page, flask_server, two_stage_dir)
-    page.wait_for_selector(".ts-pt-add", timeout=20000)
+    task_setup_on(page, flask_server, two_stage_dir)
+    adder = '[aria-label="add a point to mpi_np"]'
+    page.wait_for_selector(adder, timeout=20000)
     held = []
 
     def hold_the_first(route):
@@ -1332,12 +1306,9 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
     page.route("**/api/task-setup/bench-grid", hold_the_first)
 
     def add_a_point(value):
-        page.evaluate("""(v) => {
-            const a = document.querySelector(".ts-pt-add");
-            if (a.tagName === "SELECT") { a.selectedIndex = 1; }
-            else { a.value = v; }
-            a.dispatchEvent(new Event("change", {bubbles: true}));
-        }""", value)
+        """A point of the rank count added as a person adds one: ``value``
+        typed into its row's box, and the box left."""
+        committed(page, adder, value)
 
     def labels():
         return page.eval_on_selector_all(
@@ -1395,7 +1366,7 @@ def test_no_rung_is_taught_a_from_by_default(
     r = jobset("prep", "task", *group_words(two_stage_dir, "coarse"),
                "--bundle", two_stage_dir, "--target", "this")
     assert r.exit_code == 0, r.output
-    _open(page, flask_server, two_stage_dir)
+    task_setup_on(page, flask_server, two_stage_dir)
     cmds = _commands_shown(page)
     assert cmds, "the page taught no commands at all"
     assert not any("--from" in c for c in cmds), (

@@ -64,3 +64,24 @@ def every_served_page() -> dict:
     pages.update({f"{path} (signed in)": html
                   for path, html in served_pages(signed, user=SIGNED_IN)})
     return pages
+
+
+def ids_of(html: str) -> list:
+    """Each element ``id`` the page ``html`` declares, as the browser parses
+    it, in the order declared -- one declared twice is listed twice."""
+    from html.parser import HTMLParser
+
+    class _Ids(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.ids = []
+
+        def handle_starttag(self, tag, attrs):
+            self.ids += [value for name, value in attrs if name == "id"]
+
+        handle_startendtag = handle_starttag
+
+    parser = _Ids()
+    parser.feed(html)
+    parser.close()
+    return parser.ids

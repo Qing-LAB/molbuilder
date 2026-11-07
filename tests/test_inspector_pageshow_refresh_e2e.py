@@ -9,8 +9,15 @@ a restored page kept the frames it held when the person left, and a frame
 written while they were away showed only at the next tick.
 
 The run is a real one, made once in this pass on the road
-(`support/real_runs.py`); the tab return is the event the viewer listens
-for, dispatched in the page (headless Chromium keeps no back/forward cache).
+(`support/real_runs.py`), and the Results tab opened on it as a person opens
+it: the file picked in the sidebar, the tab chosen in the tab bar.  The page
+restored from the cache is the person's own way back: another tab chosen in
+the tab bar, then Back -- in a browser that keeps a page left, which the one
+the suite's ``page`` runs in does not (:func:`caching_browser`).  A tab made
+visible again is the event the viewer listens for, dispatched in the page,
+because no action makes it in a headless browser: a page put behind
+another, in the headless shell and in the full Chromium's headless mode,
+stays `visible` (`process/testing.md` § 5).
 """
 from __future__ import annotations
 
@@ -36,27 +43,10 @@ pytest.importorskip("flask")
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
-
-
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    """Pin tmp_path as the only picker root."""
-    from molbuilder import diagnostics
-    _orig = diagnostics.get_capabilities()
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None,
-        conda_envs=frozenset(),
-    )
-    cls = type(caps)
-    monkeypatch.setattr(
-        cls, "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-    monkeypatch.setattr(diagnostics, "_snapshot", _orig)
 
 
 @pytest.fixture(scope="module")
@@ -71,11 +61,30 @@ def live_output(real_co2_vibration):
     return openable(real_co2_vibration.call("freq", RELAX))[0]
 
 
+@pytest.fixture(scope="module")
+def caching_browser(launch_browser):
+    """A headless Chromium that keeps a page left in its back/forward cache,
+    as a person's browser does: the full Chromium (``channel="chromium"``),
+    launched without the switch Playwright adds to turn the cache off
+    (``--disable-back-forward-cache``).  Measured 2026-11-07, Chromium 153,
+    a page left for `/documents` and gone back to: the headless shell the
+    suite's ``page`` runs in arrives anew, the switch taken out or not
+    (`persisted` false, the reason masked); this one comes back as it was
+    left (`persisted` true, on `/results` and `/molbuilder`)."""
+    browser = launch_browser(
+        channel="chromium",
+        ignore_default_args=["--disable-back-forward-cache"])
+    yield browser
+    browser.close()
+
+
 @pytest.fixture
 def project_with_trajectory(real_co2_vibration, live_output, monkeypatch):
-    """The run's output, its projects tree the only picker root: the
-    absolute path string."""
-    _register_tmp_as_picker_root(real_co2_vibration.tree, monkeypatch)
+    """The run's output, its projects tree the server's (the one door,
+    `projects_root`, read as each request comes): the absolute path
+    string."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_co2_vibration.tree))
     return str(live_output)
 
 
@@ -85,23 +94,16 @@ def project_with_trajectory(real_co2_vibration, live_output, monkeypatch):
 
 
 def _open_results_and_select(page, base_url, file_path):
-    """Open /results with the sidebar driven into ``file_path``'s
-    parent dir + the file selected.  Mirrors the user flow for
-    landing on the trajectory inspector via a sidebar click."""
+    """The file picked in the sidebar on the Molbuilder tab, by its row,
+    then the Results tab opened from the tab bar: a tab never visited
+    starts at the most recent place anywhere (`web/projects.md` § 2), and
+    the Results tab binds to it and opens its result (`web/results.md`
+    § 2.1, *Open the tab*)."""
     from pathlib import Path as P
-    parent = str(P(file_path).parent)
+    from support.sidebar import walk_to
     page.goto(f"{base_url}/molbuilder")
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.projects "
-        "      && typeof window.molbuilder.projects.setShared "
-        "             === 'function'"
-    )
-    page.evaluate(
-        "(c) => window.molbuilder.projects.setShared(c.dir, c.file)",
-        {"dir": parent, "file": file_path},
-    )
-    page.wait_for_timeout(200)
-    page.goto(f"{base_url}/results")
+    walk_to(page, P(file_path))
+    page.locator('.app-tabs a[href="/results"]').click()
     page.wait_for_selector("#inspector-host", timeout=5000)
 
 
@@ -110,28 +112,10 @@ def _open_results_and_select(page, base_url, file_path):
 # --------------------------------------------------------------------- #
 
 
-#: The two ways a person comes back to the tab, as the page hears them: a
-#: page restored from the back/forward cache, and a tab made visible again.
-_TAB_RETURNS = {
-    "pageshow": """() => window.dispatchEvent(
-        new PageTransitionEvent("pageshow", { persisted: true }))""",
-    "visibilitychange": """() => document.dispatchEvent(
-        new Event("visibilitychange"))""",
-}
-
-
-@pytest.mark.parametrize("event", list(_TAB_RETURNS))
-def test_coming_back_to_the_tab_asks_the_server_at_once(
-        page, flask_server, project_with_trajectory, event):
-    """A tab return asks `/api/watch/data` at once, live run or not
-    (`web/trajectory.md` § 5) -- this run finished, so no poll is left to
-    ask in its place.
-
-    MUTATION THIS MUST FAIL AGAINST: the viewer's `pageshow` or
-    `visibilitychange` listener left out, or asking only while the run is
-    live."""
-    _open_results_and_select(page, flask_server, project_with_trajectory)
-    # The trajectory loaded: the frame bar counts its frames.
+def _loaded(page, base_url, file_path):
+    """The Results tab open on ``file_path`` (:func:`_open_results_and_select`)
+    and its trajectory loaded: the frame bar counts its frames."""
+    _open_results_and_select(page, base_url, file_path)
     page.wait_for_selector("#viewer-host", timeout=5000)
     page.wait_for_function(
         """() => {
@@ -143,12 +127,61 @@ def test_coming_back_to_the_tab_asks_the_server_at_once(
         }""",
         timeout=5000,
     )
-    # Armed before the event, so the ask cannot land before the wait.
+
+
+def _asks_at_once(page, came_back, how):
+    """``came_back()`` makes the page ask `/api/watch/data` within 10 s --
+    armed before, so the ask cannot land before the wait."""
     try:
         with page.expect_request(
                 lambda req: "/api/watch/data" in req.url, timeout=10_000):
-            page.evaluate(_TAB_RETURNS[event])
+            came_back()
     except Exception as exc:                                  # pragma: no cover
         raise AssertionError(
-            f"coming back to the tab ({event}) did not ask /api/watch/data "
+            f"coming back to the tab ({how}) did not ask /api/watch/data "
             f"within 10 s") from exc
+
+
+def test_a_page_restored_from_the_cache_asks_the_server_at_once(
+        caching_browser, flask_server, project_with_trajectory):
+    """A page shown again from the browser's back/forward cache asks
+    `/api/watch/data` at once, live run or not (`web/trajectory.md` § 5) --
+    this run finished, so no poll is left to ask in its place.  The person
+    leaves for the Molbuilder tab by the tab bar and comes back by Back; the
+    page that comes back is the one left, not a new load -- its navigation
+    is still the first one, not a back/forward load (a new load asks as it
+    opens its file, whatever the listener does).
+
+    A RESTORE TURNS THE PAGE VISIBLE BEFORE IT SHOWS IT: the page hears
+    `visibilitychange` (visible), then `pageshow` (`persisted`) -- measured
+    2026-11-07, Chromium 153 -- so either of the viewer's two listeners asks.
+
+    MUTATION THIS MUST FAIL AGAINST: the viewer's `pageshow` and
+    `visibilitychange` listeners both left out, or asking only while the run
+    is live."""
+    page = caching_browser.new_page()
+    try:
+        _loaded(page, flask_server, project_with_trajectory)
+        page.locator('.app-tabs a[href="/molbuilder"]').click()
+        page.wait_for_url("**/molbuilder")
+        _asks_at_once(page, lambda: page.go_back(wait_until="commit"),
+                      "back to a page the browser kept")
+        assert page.evaluate("() => performance.getEntriesByType("
+                             "'navigation')[0].type") == "navigate", (
+            "Back loaded the page anew: the browser did not keep it")
+    finally:
+        page.close()
+
+
+def test_a_tab_made_visible_again_asks_the_server_at_once(
+        page, flask_server, project_with_trajectory):
+    """A tab made visible again asks `/api/watch/data` at once, live run or
+    not (`web/trajectory.md` § 5).  The event is dispatched in the page: no
+    action makes it in a headless browser (the module's header).
+
+    MUTATION THIS MUST FAIL AGAINST: the viewer's `visibilitychange`
+    listener left out, or asking only while the run is live."""
+    _loaded(page, flask_server, project_with_trajectory)
+    _asks_at_once(page, lambda: page.evaluate(
+        "() => document.dispatchEvent(new Event('visibilitychange'))"),
+        "a tab made visible again")

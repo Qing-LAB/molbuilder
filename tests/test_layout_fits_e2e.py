@@ -1,13 +1,15 @@
-"""Content fits its box, on every page, at every width that matters.
-
-Nothing in the suite measured layout.  Every UI test asserted presence or
-behaviour, so a card could clip its own text and stay green -- which is how
-the Task-setup facts grid came to declare `minmax(9rem, 1fr)` for values like
-``source /home/u/miniconda3/etc/profile.d/conda.sh``, and simply lose the
-rest off the edge of the card.
+"""Content fits its box, on every tab as it opens empty, at four widths.
 
 `ui-contract.md` § 3 is the rule: layouts reflow because their CONTENT stops
-fitting, and the page body never scrolls sideways.  This measures it.
+fitting, and the page body never scrolls sideways.  This measures it on each
+tab of the tab bar (`web/tabs.TABS`; the `/molview-demo` page is not one and
+is not measured) as it opens with nothing in it -- no folder, no file: the
+tab bar, the sidebar, the load bars and the forms a tab draws on opening.
+A card drawn only for a folder or a structure is hidden on an empty page and
+is not measured here -- the Task setup facts grid among them, shown only once
+a hand-over has come over (`task-setup/viewer.js` ``renderCameOver``), whose
+`minmax(9rem, 1fr)` once lost a conda hook's path off the edge of its card
+with every UI test green.
 
 One correction is built in, and it is the reason a naive version of this test
 is worse than none.  **Children of a closed `<details>` keep layout boxes**,
@@ -27,12 +29,13 @@ pytestmark = pytest.mark.e2e
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
+from molbuilder.web.tabs import TABS                       # noqa: E402
 
-#: The pages measured, each as it opens with nothing in it -- six of the
-#: nine tabs in `web/tabs.TABS` (Transport calculation, This machine and
-#: JupyterNB are not among them).
-PAGES = ["/structure-optimization", "/spectrum-calculation", "/task-setup",
-         "/results", "/molbuilder", "/documents"]
+
+#: The pages measured: every tab in `web/tabs.TABS`, each as it opens with
+#: nothing in it -- a card that waits on a folder or a structure stays
+#: hidden.
+PAGES = [tab["path"] for tab in TABS]
 
 #: Wide, laptop, tablet, phone.  Four rather than every step: the reflow
 #: points are what matter, and each width is a full page load.
@@ -80,7 +83,7 @@ _PROBE = r"""
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
@@ -98,35 +101,28 @@ def _real(findings):
 
 
 @pytest.mark.parametrize("width", WIDTHS)
-def test_no_page_scrolls_sideways(page, flask_server, width):
-    """§ 3's top-level rule: wide content scrolls inside its own container,
-    never by dragging the whole page."""
+def test_every_page_fits_its_width(page, flask_server, width):
+    """§ 3, measured once a tab, as it opens empty: the page body never
+    scrolls sideways -- wide content scrolls inside its own container, never
+    by dragging the whole page -- and a layout reflows because its CONTENT
+    stops fitting: no visible element's content runs past its own box where
+    nothing scrolls it.
+
+    THE SILENT FAILURE: an empty tab's own furniture -- its tab bar,
+    sidebar, load bar or the forms it draws on opening -- clipping its text
+    or pushing the page sideways at one of these widths, every UI test
+    green.  What a folder or a structure brings onto the page is not
+    measured (the module's docstring)."""
     page.set_viewport_size({"width": width, "height": 900})
-    guilty = []
+    sideways, found = [], {}
     for path in PAGES:
         page.goto(f"{flask_server}{path}", wait_until="networkidle")
-        page.wait_for_timeout(250)
-        if page.evaluate(_PROBE)["scrollsX"]:
-            guilty.append(path)
-    assert not guilty, f"these pages scroll sideways at {width}px: {guilty}"
-
-
-@pytest.mark.parametrize("width", WIDTHS)
-def test_content_fits_its_box(page, flask_server, width):
-    """§ 3: a layout reflows because its CONTENT stops fitting -- no
-    element's content runs past its own box where nothing scrolls it.
-
-    THE SILENT FAILURE: the Task-setup facts grid's `minmax(9rem, 1fr)`
-    clipping a conda hook's path off the edge of its card, every UI test
-    green."""
-    page.set_viewport_size({"width": width, "height": 900})
-    found = {}
-    for path in PAGES:
-        page.goto(f"{flask_server}{path}", wait_until="networkidle")
-        page.wait_for_timeout(250)
-        real = _real(page.evaluate(_PROBE)["over"])
+        measured = page.evaluate(_PROBE)
+        if measured["scrollsX"]:
+            sideways.append(path)
+        real = _real(measured["over"])
         if real:
             found[path] = sorted(real, key=lambda f: -f["gap"])[:5]
-    assert not found, (
-        f"content overflows its container at {width}px:\n"
-        + json.dumps(found, indent=2))
+    assert not sideways and not found, (
+        f"at {width}px, these pages scroll sideways: {sideways}; content "
+        f"overflows its container:\n" + json.dumps(found, indent=2))

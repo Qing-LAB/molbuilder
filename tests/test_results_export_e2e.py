@@ -20,14 +20,13 @@ codec every load goes through and compared with the engine's own statement of
 its frame: the output as the Results door parses it (``parse.detect``), or
 the record in the deck it ran.
 
-The two trajectory opens also read the run's heading in the picker
+The PySCF trajectory open also reads the run's heading in the picker
 (`web/presenters.md` § 2): *"the engine's words and the calculation's noun,
-both served with the folder answer"* -- *SIESTA optimization*, *PySCF
-optimization*.
+both served with the folder answer"* -- *PySCF optimization*; a SIESTA
+`.out`'s, *SIESTA optimization*, is a row of `tests/data/presenters.toml`.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -39,45 +38,29 @@ pytestmark = pytest.mark.engine
 
 
 @pytest.fixture(scope="module")
-def siesta_run(real_h2_layered):
-    """The run folder of a finished SIESTA H2 relaxation -- the
-    shared one's first `coarse` run (`support.real_runs.layered`), made once
-    a pass (`process/testing.md` tier 3)."""
-    return real_h2_layered.attempt("coarse")
-
-
-@pytest.fixture(scope="module")
-def pyscf_run(real_h2_pyscf):
-    """The run folder of a finished PySCF H2 optimisation -- its `coarse`
-    stage's first run (`support.real_runs.pyscf`)."""
-    return real_h2_pyscf.attempt("coarse")
-
-
-@pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _open(page, flask_server, monkeypatch, folder, pick):
-    """The Results tab on ``folder`` with ``pick`` chosen from its list --
-    the folder set the way a returning tab finds it."""
-    from molbuilder import diagnostics
-    root = next(p for p in Path(folder).parents if p.name == "projects")
-    monkeypatch.setattr(type(diagnostics.get_capabilities()),
-                        "file_picker_roots",
-                        lambda self: ((root.resolve(), "road"),))
-    page.add_init_script(
-        "try { sessionStorage.setItem('molbuilder.current_dir', "
-        f"{json.dumps(str(folder))}); }} catch (_) {{}}")
-    page.goto(f"{flask_server}/results")
+def _open(page, flask_server, monkeypatch, run, pick):
+    """The Results tab on ``run``'s first `coarse` run (a
+    `support.real_runs.RealRun`, made once a pass, `process/testing.md`
+    tier 3) with ``pick`` chosen from its list -- the tab bound to the
+    folder as a person binds it, by the sidebar's rows and Reload
+    (`support.sidebar.results_on`), in the projects tree the run was made
+    in, the one door pointed at it: that tree."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.sidebar import results_on
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+    results_on(page, flask_server, run.attempt("coarse"))
     page.wait_for_function(
         "(want) => [...document.querySelectorAll("
         "  '#results-file-picker-select option')].some(o => o.value === want)",
         arg=str(pick), timeout=30000)
     page.select_option("#results-file-picker-select", value=str(pick))
-    return root
+    return run.tree
 
 
 def _heading(page, pick):
@@ -132,8 +115,9 @@ def _holds_the_engines_frame(saved, cell, positions):
 
 
 def test_a_siesta_trajectory_saves_the_box_its_output_states(
-        siesta_run, page, flask_server, monkeypatch):
-    """The trajectory viewer on a SIESTA relaxation: the cell is the one the
+        real_h2_layered, page, flask_server, monkeypatch):
+    """The trajectory viewer on a SIESTA relaxation -- the shared H2's first
+    `coarse` run (`support.real_runs.layered`): the cell is the one the
     output states, the origin a stated 0 -- and the name offered is the
     output's own (`web/molview.md`: open ``runs/mine.xyz`` and an Export
     writes ``mine.xyz``), with the frame it holds.
@@ -141,17 +125,13 @@ def test_a_siesta_trajectory_saves_the_box_its_output_states(
     MUTATIONS THIS MUST FAIL AGAINST: the one composer not stating the
     engine's origin (`runs.Declared.frame`), or stating it as the person's;
     the viewer naming its install after the parser's label, which offered
-    " .log_frame6" and saved a hidden ``.log_frame6.xyz`` until 2026-09-27;
-    the served words not reaching the menu -- the run under *Trajectory*
-    (`web/presenters.md` § 2).  (On an optimization a guessed noun reads the
-    same, so a heading guessed from the suffix is not caught here.)
+    " .log_frame6" and saved a hidden ``.log_frame6.xyz`` until 2026-09-27.
     """
     from molbuilder.runs import run_of
-    out = run_of(siesta_run).stdout
+    out = run_of(real_h2_layered.attempt("coarse")).stdout
     frames, cell = _as_the_door_reads(out)
     assert len(frames) > 1, "a relaxation with one frame asks no frame range"
-    root = _open(page, flask_server, monkeypatch, siesta_run, out)
-    assert _heading(page, out) == "SIESTA optimization", _heading(page, out)
+    root = _open(page, flask_server, monkeypatch, real_h2_layered, out)
     wait_for_viewer(page, atoms=2, frames=len(frames))
     offered = save_to_project(page, "siesta-trajectory", frames=len(frames))
     assert offered == f"{out.stem}_frame{len(frames) - 1}", offered
@@ -160,7 +140,7 @@ def test_a_siesta_trajectory_saves_the_box_its_output_states(
 
 
 def test_the_engines_own_geometry_file_saves_the_box_the_run_had(
-        siesta_run, page, flask_server, monkeypatch):
+        real_h2_layered, page, flask_server, monkeypatch):
     """SIESTA's ``<label>.xyz`` -- its final coordinates, written with no
     sidecar -- opened in the structure preview and saved: the pair carries
     the box the run had and a stated 0, as the output states it.
@@ -171,19 +151,20 @@ def test_the_engines_own_geometry_file_saves_the_box_the_run_had(
     """
     from molbuilder.runs import run_of
     from molbuilder.structure import Structure
-    run = run_of(siesta_run)
+    run = run_of(real_h2_layered.attempt("coarse"))
     own = run.on_label(".xyz")
     _frames, cell = _as_the_door_reads(run.stdout)
     positions = Structure.from_xyz(own.read_text()).positions
-    root = _open(page, flask_server, monkeypatch, siesta_run, own)
+    root = _open(page, flask_server, monkeypatch, real_h2_layered, own)
     wait_for_viewer(page, atoms=2, frames=1)
     save_to_project(page, "siesta-own", frames=1)
     _holds_the_engines_frame(root / "siesta-own.xyz", cell, positions)
 
 
 def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
-        pyscf_run, page, flask_server, monkeypatch):
-    """The trajectory viewer on a PySCF optimisation, whose output states no
+        real_h2_pyscf, page, flask_server, monkeypatch):
+    """The trajectory viewer on a PySCF optimisation -- the shared H2's
+    first `coarse` run (`support.real_runs.pyscf`) -- whose output states no
     cell: the box is the one its deck recorded placing the atoms in.
 
     MUTATIONS THIS MUST FAIL AGAINST: the one composer ignoring the deck
@@ -192,12 +173,13 @@ def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
     (`web/presenters.md` § 2).
     """
     from molbuilder.runs import run_of
-    log = run_of(pyscf_run).file(".molwatch.log")
-    assert log is not None, sorted(p.name for p in pyscf_run.iterdir())
+    folder = real_h2_pyscf.attempt("coarse")
+    log = run_of(folder).file(".molwatch.log")
+    assert log is not None, sorted(p.name for p in folder.iterdir())
     frames, _no_cell = _as_the_door_reads(log)
     assert len(frames) > 1, "an optimisation with one frame asks no range"
-    cell = _the_decks_cell(pyscf_run)
-    root = _open(page, flask_server, monkeypatch, pyscf_run, log)
+    cell = _the_decks_cell(folder)
+    root = _open(page, flask_server, monkeypatch, real_h2_pyscf, log)
     assert _heading(page, log) == "PySCF optimization", _heading(page, log)
     wait_for_viewer(page, atoms=2, frames=len(frames))
     save_to_project(page, "pyscf-trajectory", frames=len(frames))

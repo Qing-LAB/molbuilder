@@ -447,10 +447,10 @@ def test_a_file_of_another_version_is_refused_by_that_version(
     second one answers instead, and the page is told a field is malformed
     (400 `field`) about a file only a newer molbuilder can read.  One rule, one
     example (`process/testing.md` § 3b)."""
-    from conftest import _point_the_one_door_at
+    from conftest import point_the_one_door_at
     moved = SCHEMA_VERSION + 1
     final = _final(real_water_probed)
-    path = _point_the_one_door_at(tmp_path, monkeypatch.setenv) / final.name
+    path = point_the_one_door_at(tmp_path, monkeypatch.setenv) / final.name
     path.write_text(json.dumps({**_read(final), "schema_version": moved}),
                     encoding="utf-8")
     with pytest.raises(SpectraJsonSchemaError) as refused:

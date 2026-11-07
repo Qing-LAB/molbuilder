@@ -14,9 +14,6 @@ the page.
 """
 from __future__ import annotations
 
-import json
-import threading
-
 import pytest
 
 pytestmark = pytest.mark.e2e
@@ -24,17 +21,15 @@ pytestmark = pytest.mark.e2e
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
-from molbuilder import diagnostics                         # noqa: E402
-from molbuilder.jobset.model import JobSet                 # noqa: E402
 from molbuilder.scheduler import Topology                  # noqa: E402
-from support.road import (describe_calculation, jobset,    # noqa: E402
-                          one_rank, read_request, write_request)
+from support.road import (declare_bench,                   # noqa: E402
+                          describe_calculation, jobset, one_rank)
 
 
 @pytest.fixture
 def sweep(tmp_path, monkeypatch):
-    """A prepared GPU sweep, nothing run — returns
-    ``(job_set_path, first_trial_label, n_trials)``.
+    """A prepared GPU sweep, nothing run: its folder, the `coarse` stage's
+    benchmark container, whose ``job-set.json`` the Results tab opens.
 
     THE GPU IS THE PERSON'S, ON THE RUN CARD (`execution/gpu.md` § 1.1:
     *"`use_gpu` on the run card"*; G2: nothing derives it from the
@@ -50,77 +45,60 @@ def sweep(tmp_path, monkeypatch):
                           gpu_type="a100"))
     calc = describe_calculation(tmp_path, monkeypatch, name="JOB")
     one_rank(calc, use_gpu=True, diag_algorithm="ELPA-1STAGE", gpu_count=1)
-    req = read_request(calc)
-    req["bench"] = {"mpi_np": [1, 2, 4], "omp_threads": [1, 2],
-                    "gpu_count": [1]}
-    write_request(calc, req)
+    declare_bench(calc, {"mpi_np": [1, 2, 4], "omp_threads": [1, 2],
+                         "gpu_count": [1]})
     r = jobset("prep", "bench", "coarse", "--bundle", calc, "--target", "this",
                "--np", "8", "--cpus-per-task", "8", "--no-sbatch")
     assert r.exit_code == 0, r.output
-    bench = calc / "01_coarse" / "bench"
-    js = JobSet.of(bench).to_dict()
-    winner = js["jobs"][0]["name"]
-
-    # The server may read this tree, and nothing else.
-    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
-                                    conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: (((tmp_path / "projects").resolve(),
-                                       "projects"),))
-    diagnostics.set_capabilities(caps)
-    return bench / "job-set.json", winner, len(js["jobs"])
+    return calc / "01_coarse" / "bench"
 
 
 @pytest.fixture
-def server():
-    from werkzeug.serving import make_server
-    from molbuilder.web.app import create_app
-    srv = make_server("127.0.0.1", 0, create_app(config={}), threaded=True)
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    try:
-        yield f"http://127.0.0.1:{srv.server_port}"
-    finally:
-        srv.shutdown()
-        t.join(timeout=5)
+def server(isolated_projects_root):
+    """A server for this test, on the test's own projects tree -- the one
+    the sweep is described in (`support.live_server.serve`)."""
+    from support.live_server import serve
+    with serve() as base_url:
+        yield base_url
 
 
 def _open(page, base, folder, *, before=""):
-    """The Results tab bound to the sweep's ``folder``, the way a returning
-    tab finds it -- a benchmark's folder opens its ``job-set.json``
-    (`runs._container_product`), which the picker announces with the
-    server's answer for it and the tab's viewer mounts (`web/presenters.md`
-    § 2) -- until the sweep's page is on screen.  ``before`` runs ahead of
-    every page script.  Returns the page's errors, collected as they come."""
+    """The Results tab bound to the sweep's ``folder`` as a person binds it
+    (`support.sidebar.results_on`) -- a benchmark's folder opens its
+    ``job-set.json`` (`runs._container_product`), which the picker announces
+    with the server's answer for it and the tab's viewer mounts
+    (`web/presenters.md` § 2) -- until the sweep's page is on screen.
+    ``before`` runs ahead of every page script.  Returns the page's errors,
+    collected as they come."""
+    from support.sidebar import results_on
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.add_init_script(
-        "try { sessionStorage.setItem('molbuilder.current_dir', "
-        f"{json.dumps(str(folder))}); }} catch (_) {{}}" + before)
-    page.goto(f"{base}/results")
+    if before:
+        page.add_init_script(before)
+    results_on(page, base, folder)
     page.wait_for_selector(".bench-summary", timeout=15000)
     return errors
 
 
 def _put_away(page):
-    """What the tab does when the picker announces nothing to show: the
-    viewer disposes of the page on screen (`results/viewer.js`)."""
-    page.evaluate("""() => document.dispatchEvent(new CustomEvent(
-        window.molbuilder.constants.EVENT_FILE_SELECTED,
-        { detail: { file: "" } }))""")
+    """The tab bound to a folder with nothing to show -- the projects root
+    (`support.sidebar.reload_from`) -- so the picker announces nothing and
+    the viewer disposes of the page on screen (`results/viewer.js`)."""
+    from molbuilder.projects import projects_root
+    from support.sidebar import reload_from
+    reload_from(page, projects_root())
 
 
 def test_the_page_says_when_it_last_looked(page, server, sweep):
     """B4's other half.  "The page is live, AND SAYS WHEN IT LAST LOOKED" --
     a sweep is watched precisely while it runs, so a silently stale verdict
     is worse than none."""
-    jpath, _winner, _n = sweep
-    _open(page, server, jpath.parent)
+    _open(page, server, sweep)
     foot = page.locator(".bench-foot").inner_text().strip()
-    assert "last looked" in foot, foot
-    # and it carries a clock reading, not just the words
+    # The words AND the clock reading they name -- not the server's
+    # `measured` time the foot also carries.
     import re as _re
-    assert _re.search(r"\d{1,2}:\d{2}", foot), foot
+    assert _re.search(r"last looked \d{1,2}:\d{2}", foot), foot
 
 
 def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
@@ -143,8 +121,7 @@ def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
     MUTATION THIS MUST FAIL AGAINST: `POLL_MS` off 15 000 (the re-polls
     armed at another delay).
     """
-    jpath, _winner, _n = sweep
-    errors = _open(page, server, jpath.parent, before="""
+    errors = _open(page, server, sweep, before="""
         window.__starts = [];
         window.__armedBy = [];
         let firing = null;
@@ -171,7 +148,7 @@ def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
     starts = page.evaluate("() => window.__starts")
     cycle_ms = max(b - a for a, b in zip(starts, starts[1:]))
     _put_away(page)
-    assert page.locator(".bench-summary").count() == 0
+    page.wait_for_selector(".bench-summary", state="detached", timeout=15000)
     before = page.evaluate("() => window.__starts.length")
     page.wait_for_timeout(max(2000, 5 * cycle_ms))
     assert page.evaluate("() => window.__starts.length") == before, (

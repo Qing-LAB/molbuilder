@@ -16,7 +16,7 @@ pytest.importorskip("flask")
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
@@ -39,7 +39,7 @@ def _open(page, base):
 
 
 def test_opening_and_closing_a_viewer_again_and_again_leaves_what_once_left(
-        page, flask_server, isolated_projects_root):
+        page, flask_server):
     """§ 8, § 9.3a: a viewer opened, given a structure and a mode, played and
     closed, five times, leaves on the page what doing it once left -- the
     listeners on the window, the document or an element still on the page,
@@ -51,46 +51,32 @@ def test_opening_and_closing_a_viewer_again_and_again_leaves_what_once_left(
     (measured 2026-10-15: twenty of twenty, sixteen contexts).
 
     Paired add to remove on ``EventTarget`` itself, as the browser pairs
-    them, each listener named with what added it (`support/leftovers.SPY`).
+    them, each listener named with what added it
+    (`support.leftovers.what_grew`).
 
     MUTATION THIS MUST FAIL AGAINST: a window made for every mount."""
+    from support.leftovers import what_grew
     _open(page, flask_server)
-    from support.leftovers import SPY, grew
-    left = page.evaluate("""async (c) => {
+    grew = what_grew(page, lambda: page.evaluate("""async (c) => {
         const { mount } = await import("/static/lib/vibrationview/index.js");
-        const spy = """ + SPY + """;
-        const cycle = async () => {
-            const host = document.createElement("div");
-            host.style.width = "400px"; host.style.height = "300px";
-            document.body.appendChild(host);
-            const vib = await mount(host, {});
-            if (!vib.ok) throw new Error(vib.error);
-            vib.setStructure(c.water);
-            vib.showMode(c.mode);
-            vib.play();
-            await new Promise((r) => setTimeout(r, 150));
-            vib.dispose();
-            host.remove();
-        };
-        try {
-            await cycle();
-            const once = spy.state();
-            for (let i = 1; i < c.times; i++) await cycle();
-            return { once, again: spy.state() };
-        } finally {
-            spy.restore();
-        }
-    }""", {"water": WATER, "mode": MODE, "times": 5})
-    assert not grew(left), (
+        const host = document.createElement("div");
+        host.style.width = "400px"; host.style.height = "300px";
+        document.body.appendChild(host);
+        const vib = await mount(host, {});
+        if (!vib.ok) throw new Error(vib.error);
+        vib.setStructure(c.water);
+        vib.showMode(c.mode);
+        vib.play();
+        await new Promise((r) => setTimeout(r, 150));
+        vib.dispose();
+        host.remove();
+    }""", {"water": WATER, "mode": MODE}))
+    assert not grew, (
         "opening a viewer five times left more on the page than opening it "
-        "once:\n  " + "\n  ".join(grew(left)))
-    assert left["again"]["contexts"] == left["once"]["contexts"], (
-        f"{left['once']['contexts']} live graphics context(s) opened once, "
-        f"{left['again']['contexts']} opened five times")
+        "once:\n  " + "\n  ".join(grew))
 
 
-def test_a_viewer_on_a_kept_window_draws_as_a_new_one(
-        page, flask_server, isolated_projects_root):
+def test_a_viewer_on_a_kept_window_draws_as_a_new_one(page, flask_server):
     """§ 9.3a: a window taken is a new one.  Viewer A, on a white ground, is
     given a structure and a mode, turned with the mouse -- its picture
     asserted turned -- and closed in the

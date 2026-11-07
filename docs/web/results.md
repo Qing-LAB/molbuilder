@@ -1212,12 +1212,12 @@ to do this")*: the trajectory viewer draws a real H2 relaxation
 vibration's spectrum, picked from the dropdown
 (`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared`)
 -- a load whose caller lost its `path` draws nothing. The guards themselves
-run on each viewer's shipped functions (`test_trajectory_transition_js.py`,
-`test_spectra_transition_js.py`): an answer for another file, one after
-dispose and one naming no file, through both arms of the trajectory's
-`applyNewData` -- the one for an answer with nothing new among them -- and
-an answer refused draws nothing: another file's frames never reach the
-movie, against a stand-in that would take them.
+are fed what the server answered while real runs ran
+(`test_the_viewers_follow_a_real_run_e2e.py`): an answer for another file and
+one after dispose, through both arms of the trajectory's `applyNewData` --
+the one for an answer with nothing new among them -- and an answer refused
+draws nothing: another file's frames never reach a movie that could take
+them.
 
 `derived` is the one the prose above folds into "the parsed file", and it is a
 separate bucket for a reason: it is **recomputed**, never written by a
@@ -1424,12 +1424,10 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
   line, the four sections, the deck's View, and hidden for a container and
   under a rebind whose scan fails.
 - `test_trajectory_transition_js.py` and `test_spectra_transition_js.py` —
-  § 4 and § 4.2 run on each viewer's own state machine: a file switch, a
-  poll, dispose, and an answer written under its own file's name or not at
-  all.
-- § 4.1, the run followed by the server's answer:
-  `test_trajectory_settle_post_load_js.py` (the trajectory settle, as a case
-  table) and `test_trajectory_transition_js.py` (its poll loop takes a quiet
-  poll's answer).  *(The run's end read before the file's last read, and the
-  spectra viewer letting a run go, had tests that made the run by copying an
-  output; they were retired 2026-10-03, `process/testing.md` § 6.)*
+  § 4.2 run on each viewer's own state machine: each transition, what it
+  clears and the timer it leaves running, and the older names writing
+  through to their buckets.
+- § 4.1, the run followed by the server's answer: `test_the_viewers_follow_a_real_run_e2e.py` (the trajectory's
+  settle, badge and poll loop and the spectra viewer's follow, each fed what the
+  server said of real runs as they ran, finished and failed, and of a
+  calculation prepared and never launched).

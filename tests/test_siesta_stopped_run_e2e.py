@@ -1,11 +1,12 @@
 """A SIESTA run that SIESTA stops, made on the road, and what each reader says
 about it.
 
-``molbuilder describe`` -> ``prep task --group 1`` -> ``launch task --mode direct`` on an
-H2 relaxation whose SCF cannot converge within its cap: ten cycles of plain
-linear mixing at weight 0.001 against a DM tolerance of 1e-8, set in the
-calculation's template, with ``SCF.MustConverge`` left at SIESTA's default --
-abort.  SIESTA prints
+The pass's own stopped run (`support.real_runs.stopped`,
+``real_h2_stopped``): ``molbuilder describe`` -> ``prep task --group 1`` ->
+``launch task --mode direct`` on the road's H2 relaxation, its SCF unable to
+converge within its cap: ten cycles of plain linear mixing at weight 0.001
+against a DM tolerance of 1e-8, set in the calculation's template, with
+``SCF.MustConverge`` left at SIESTA's default -- abort.  SIESTA prints
 ``SCF_NOT_CONV: ... (required)`` and ``die``s, and ``die`` writes its own
 cascade after it; the run ends there, failed, and the run script says what a
 launch again will do (`running-a-job.md` § 3.5: to continue is to launch
@@ -23,18 +24,12 @@ says what launching it again does.
 """
 from __future__ import annotations
 
-import json
-import os
-import shutil
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from _road import conda_hook, env_available, env_bin
-from support.road import group_words, molbuilder, one_rank
+from _road import conda_hook, env_available
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CONDA_SH = conda_hook()
 
 pytestmark = [
@@ -44,113 +39,31 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-#: The calculation's own values: an SCF that cannot reach 1e-8 in ten cycles
-#: of plain linear mixing at 0.001 -- no Pulay history, which otherwise
-#: extrapolates past the small weight and converges H2 in nine (measured) --
-#: each inside its item's declared range.
-_CANNOT_CONVERGE = {"max_scf_iter": "10", "mixing_weight": "0.001",
-                    "pulay_history": "0", "dm_tolerance": "1e-08"}
-
-
-#: What the stopped run's launch answered -- the fixture's, read by the test
-#: that the launch said how it ended.
-_LAUNCH = {}
-
-
-def _jobset(*args):
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, list(args))
-
-
-def _set_item(template: Path, name: str, value: str) -> None:
-    """``[item.<name>]``'s ``value``, as a person sets it in the template."""
-    text = template.read_text()
-    head, sep, tail = text.partition(f"[item.{name}]")
-    assert sep, f"no [item.{name}] in {template.name}"
-    body, nxt, rest = tail.partition("\n[item.")
-    lines = body.split("\n")
-    at = next(i for i, ln in enumerate(lines) if ln.startswith("value = "))
-    lines[at] = f"value = {value}"
-    template.write_text(head + sep + "\n".join(lines) + nxt + rest)
-
 
 @pytest.fixture(scope="module")
-def stopped(isolated_projects_root_module, tmp_path_factory):
-    """The attempt directory of the stopped run, made on the road."""
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    tree = isolated_projects_root_module
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    shutil.copy(FIXTURES / "psml" / "H.psml",
-                tree / "pseudopotential" / "H.psml")
-    StructureCodec().write(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                  cell=np.diag([10.0, 10.0, 10.0]),
-                  axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / "h2.xyz")
-
-    mp = pytest.MonkeyPatch()
-    try:
-        from conftest import outside_the_developers_folders
-        outside_the_developers_folders(mp.setenv, mp.delenv,
-                                       tmp_path_factory)
-        # ...and the box probed, as a real one is before its first prep.
-        # ...its record saying how a shell enters conda here -- the
-        # activation the generator reads (`configuration.md` § 4).
-        from conftest import write_machine_record
-        write_machine_record(env_init={
-            "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-        mp.chdir(tree.parent)
-        # The wrapper finds the engine BY NAME after activating the env; the
-        # env's own bin goes ahead of the suite's stub toolchain so the real
-        # engine is the one on the road.
-        bin_ = env_bin("molbuilder-siesta")
-        assert (bin_ / "siesta").is_file(), bin_
-        mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
-
-        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
-                    "--bundle", "P/opt/R", "--engine", "siesta",
-                    "--calculation", "optimization",
-                    "--name", "H2", "--psml-lib", "pseudopotential",
-                    "--stage-strategy", "publishable")
-        assert r.exit_code == 0, r.output
-        bundle = tree / "P" / "opt" / "R"
-        task = json.loads((bundle / "task.json").read_text())
-        assert [s["name"] for s in task["stages"]] == ["coarse", "medium"], task
-        one_rank(bundle)
-        for name, value in _CANNOT_CONVERGE.items():
-            _set_item(bundle / "H2.template.toml", name, value)
-
-        r = _jobset("prep", "task", *group_words(bundle, "coarse"),
-                    "--bundle", str(bundle), "--target", "this")
-        assert r.exit_code == 0, r.output
-        from molbuilder.jobset.naming import stage_home
-        from molbuilder.paths import FIRST_ATTEMPT, attempt_dir
-        from molbuilder.runs import run_of
-        from molbuilder.task import of as task_of
-        home = stage_home(bundle, task_of(bundle), "coarse")
-        attempt = attempt_dir(home.dir, FIRST_ATTEMPT)
-        deck = (attempt / home.names.name(".fdf")).read_text()
-        assert any(ln.split()[:2] == ["MaxSCFIterations", "10"]
-                   for ln in deck.splitlines()), deck[-2000:]
-        # The run fails -- that is its point -- and the launch says so: its
-        # exit and its words are asserted below, beside what it left.
-        _LAUNCH["coarse"] = _jobset("launch", "task", "--stage", "coarse",
-                                    "--bundle", str(bundle),
-                                    "--mode", "direct", "--foreground", "--yes")
-        assert run_of(attempt).stdout is not None, \
-            sorted(p.name for p in attempt.iterdir())
-        yield attempt
-    finally:
-        mp.undo()
+def stopped(real_h2_stopped):
+    """The run SIESTA stopped: `coarse`'s first run's folder
+    (:meth:`support.real_runs.RealRun.attempt`), its ladder the shipped
+    `publishable` one, its deck stating the cap the person set, and its
+    output there."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runs import run_of
+    from molbuilder.task import of as task_of
+    bundle = real_h2_stopped.bundle
+    assert [s.name for s in task_of(bundle).stages] == [
+        "coarse", "medium"], task_of(bundle).stages
+    attempt = real_h2_stopped.attempt("coarse")
+    home = stage_home(bundle, task_of(bundle), "coarse")
+    deck = (attempt / home.names.name(".fdf")).read_text()
+    assert any(ln.split()[:2] == ["MaxSCFIterations", "10"]
+               for ln in deck.splitlines()), deck[-2000:]
+    assert run_of(attempt).stdout is not None, \
+        sorted(p.name for p in attempt.iterdir())
+    return attempt
 
 
-def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
+def test_the_folder_is_failed_and_says_what_stopped_it(stopped,
+                                                        real_h2_stopped):
     """The folder's status quotes the line that stopped the run -- the SCF's,
     which SIESTA states as fatal, and not the ``die`` lines after it -- and
     the launch that waited on it said the same, in the same words, and
@@ -170,7 +83,7 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     end = st.endings["H2_01_coarse.out"]
     assert (end.run_state, end.cause) == ("stopped", SCF_NOT_CONV_MARKER), end
 
-    said = _LAUNCH["coarse"]
+    said = real_h2_stopped.said["launch coarse"]
     assert said.exit_code == 1, said.output
     line = next(ln for ln in said.output.splitlines()
                 if ln.strip().startswith("FAILED"))
@@ -180,37 +93,23 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     assert "launch task --stage coarse" in steps, steps
 
 
-@pytest.fixture(scope="module")
-def after_the_stop(stopped):
-    """What molbuilder answers about the stopped calculation: the next
-    stage's prep, its launch, and `status`."""
-    bundle = str(stopped.parent.parent)
-    medium = group_words(bundle, "medium")
-    return {"prep medium": _jobset("prep", "task", *medium,
-                                   "--bundle", bundle, "--target", "this"),
-            "launch medium": _jobset("launch", "task", *medium,
-                                     "--bundle", bundle, "--mode", "direct",
-                                     "--dry-run"),
-            "status": _jobset("status", "--bundle", bundle)}
-
-
-def test_a_run_that_failed_is_never_built_on(after_the_stop):
+def test_a_run_that_failed_is_never_built_on(real_h2_stopped):
     """The stage after it is prepared -- prep takes nothing from another
     run -- and its first launch is refused before anything is sent, naming
     the run and how it ended (`job-system.md` § 5.4: the newest run, which
     must have finished; *Every refusal*, R-L11: what it builds on is not
     usable)."""
-    assert after_the_stop["prep medium"].exit_code == 0, \
-        after_the_stop["prep medium"].output
-    r = after_the_stop["launch medium"]
+    said = real_h2_stopped.said
+    assert said["prep medium"].exit_code == 0, said["prep medium"].output
+    r = said["launch medium"]
     assert r.exit_code != 0, r.output
     assert "01_coarse/run-0, which failed -- " in r.output, r.output
 
 
-def test_status_says_what_launching_it_again_does(after_the_stop):
+def test_status_says_what_launching_it_again_does(real_h2_stopped):
     """However it ended, a prepared stage is launched again -- warm, from
     its own latest run, for a relaxation -- and `status` says so."""
-    r = after_the_stop["status"]
+    r = real_h2_stopped.said["status"]
     assert r.exit_code == 0, r.output
     for words in ("failed: coarse",
                   "launch it again -- it continues from its own latest run"):
@@ -218,6 +117,7 @@ def test_status_says_what_launching_it_again_does(after_the_stop):
 
 
 def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
+                                                         real_h2_stopped,
                                                          monkeypatch):
     """The viewer's "Reason:" line is the server's: the file's cause as the
     one ending reader states it, in the SIESTA family's words
@@ -226,20 +126,15 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
 
     MUTATION THIS MUST FAIL AGAINST: take the LAST fatal line as the cause.
     """
-    from molbuilder import diagnostics
-    from molbuilder.diagnostics import Capabilities
     from molbuilder.parse.engines.siesta_grammar import (CAUSE_WORDS,
                                                          SCF_NOT_CONV_MARKER)
+    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.web.app import create_app
 
-    root = next(p for p in stopped.parents if p.name == "projects")
-
-    class _Root(Capabilities):
-        def file_picker_roots(self):  # type: ignore[override]
-            return ((root.resolve(), "road"),)
-
+    # THE PROJECTS TREE THE RUN WAS MADE IN, the one door pointed at it, so
+    # the route reads it.
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_h2_stopped.tree))
     app = create_app(config={})
-    diagnostics.set_capabilities(_Root())
     from molbuilder.runs import run_of
     out = run_of(stopped).stdout
     body = app.test_client().post("/api/watch/load",
@@ -247,6 +142,23 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
     assert body["ok"] is True, body
     assert body["data"]["run_state"] == "stopped"
     assert body["data"]["stop_reason"] == CAUSE_WORDS[SCF_NOT_CONV_MARKER]
+
+
+def test_a_step_siesta_stopped_inside_is_no_step(stopped):
+    """`runs.StepsTable`: the run SIESTA stopped inside its first SCF holds no
+    step it finished -- its last frame read as cut short, and its steps
+    refused by name.  The silent failure: the energy of an SCF row read as
+    the run's final energy, about 1000 eV off on a real 52-atom relaxation
+    stopped inside a move.  MUTATION THIS MUST FAIL AGAINST: a frame the run
+    stopped inside counted among its steps (the ``cut_short`` clause of
+    `runs.steps_table`'s filter)."""
+    from molbuilder.parse import detect
+    from molbuilder.postprocess import RunStepsError, read_steps
+    from molbuilder.runs import run_of
+    out = run_of(stopped).stdout
+    assert detect(out).parse(str(out)).frames[-1].cut_short
+    with pytest.raises(RunStepsError, match="holds no step its run finished"):
+        read_steps(stopped)
 
 
 def test_the_run_is_one_start_that_says_what_a_launch_again_does(stopped):
@@ -293,15 +205,8 @@ def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
     assert "meshcutoff" in written and "meshcutoff" not in rows, written
 
 
-@pytest.fixture(scope="module")
-def flask_server():
-    from support.live_server import serve
-    with serve() as base_url:
-        yield base_url
-
-
 def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
-                                                         flask_server,
+                                                         real_h2_stopped,
                                                          monkeypatch):
     """The Results tab's Run panel (`web/results.md` § 3a) reads this run's
     record: closed, one line -- the engine, the ranks, how it ended (its one
@@ -316,159 +221,186 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     card following a sidebar click by the scope's folder rather than the
     folder its files are from.
     """
-    from molbuilder import diagnostics
+    import shutil
 
-    root = next(p for p in stopped.parents if p.name == "projects")
-    bundle = stopped.parent.parent
-    monkeypatch.setattr(type(diagnostics.get_capabilities()),
-                        "file_picker_roots",
-                        lambda self: ((root.resolve(), "road"),))
-    page.add_init_script(
-        "try { sessionStorage.setItem('molbuilder.current_dir', "
-        f"{json.dumps(str(stopped))}); }} catch (_) {{}}")
-    page.goto(f"{flask_server}/results")
-    panel = page.locator("#results-run-panel")
-    panel.locator(".rp-summary").wait_for(timeout=20000)
-    record = page.evaluate(
-        "(d) => fetch('/api/results/dir?path=' + encodeURIComponent(d))"
-        ".then(r => r.json()).then(b => b.record)", str(stopped))
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.live_server import serve
+    from support.real_runs import CANNOT_CONVERGE
+    from support.sidebar import reload_from, results_on, walk_to
 
-    line = panel.locator(".rp-summary").inner_text()
-    engine = record["computation"]["engine"]
-    assert f"{engine['program']} {engine['version']}" in line, line
-    assert "1 rank" in line and "stopped" in line, line
-    assert "FAILED" in line.upper(), line
+    # THE PROJECTS TREE THE RUN WAS MADE IN, the one door pointed at it, and
+    # the server's (`support.live_server.serve`).
+    root = real_h2_stopped.tree
+    bundle = real_h2_stopped.bundle
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+    with serve() as base:
+        results_on(page, base, stopped)
+        panel = page.locator("#results-run-panel")
+        panel.locator(".rp-summary").wait_for(timeout=20000)
+        record = page.evaluate(
+            "(d) => fetch('/api/results/dir?path=' + encodeURIComponent(d))"
+            ".then(r => r.json()).then(b => b.record)", str(stopped))
 
-    panel.locator(".rp-toggle").click()
-    sections = {s.locator(".rp-section-title").inner_text(): s.inner_text()
-                for s in panel.locator(".rp-section").all()}
-    assert list(sections) == ["Verdict", "Setup", "Computation", "Deck"]
-    assert "stopped before its end: SCF_NOT_CONV" in sections["Verdict"]
-    assert record["computation"]["host"]["hostname"] in sections["Computation"]
+        line = panel.locator(".rp-summary").inner_text()
+        engine = record["computation"]["engine"]
+        assert f"{engine['program']} {engine['version']}" in line, line
+        assert "1 rank" in line and "stopped" in line, line
+        assert "FAILED" in line.upper(), line
 
-    # THE SETUP'S THREE COLUMNS, as the run recorded them: the catalogue
-    # default from the wrapper's block, what the deck asked, what SIESTA read.
-    rows = page.evaluate(
-        "() => [...document.querySelectorAll("
-        "  '#results-run-panel .rp-setup tbody tr')].map(tr => ["
-        "    tr.querySelector('.rp-item').textContent,"
-        "    ...[...tr.children].slice(1).map(td => td.textContent)])")
-    by_item = {r[0]: r[1:] for r in rows}
-    stated = {r["item"]: r for r in record["setup"]["rows"]}
-    default, asked, used = by_item["max_scf_iter"]
-    assert (default, asked, used) == (str(stated["max_scf_iter"]["default"]),
-                                      "10", "10"), by_item["max_scf_iter"]
-    for item, value in _CANNOT_CONVERGE.items():
-        _d, asked, used = by_item[item]
-        assert float(asked) == float(value) == float(used.split()[0]), (
-            item, by_item[item])
-    unset = [r["item"] for r in record["setup"]["rows"] if "asked" not in r]
-    assert unset and all(by_item[i][1] == "engine default" for i in unset)
-    assert (f"({len(record['setup']['engine_only'])})"
-            in panel.locator(".rp-fold > summary").inner_text())
-    assert "H.psml" in sections["Setup"]
+        panel.locator(".rp-toggle").click()
+        sections = {s.locator(".rp-section-title").inner_text():
+                    s.inner_text() for s in panel.locator(".rp-section").all()}
+        assert list(sections) == ["Verdict", "Setup", "Computation", "Deck"]
+        assert "stopped before its end: SCF_NOT_CONV" in sections["Verdict"]
+        assert (record["computation"]["host"]["hostname"]
+                in sections["Computation"])
 
-    panel.locator(".rp-view").click()
-    preview = page.locator("#ps-preview-modal")
-    preview.wait_for(state="visible", timeout=10000)
-    # THE DECK THE RECORD NAMES, whole, opened as it is (`web/results.md`
-    # § 0.3) -- the viewer shows its name.
-    assert Path(record["deck"]["path"]).name in preview.inner_text()
-    page.keyboard.press("Escape")
+        # THE SETUP'S THREE COLUMNS, as the run recorded them: the catalogue
+        # default from the wrapper's block, what the deck asked, what SIESTA
+        # read.
+        rows = page.evaluate(
+            "() => [...document.querySelectorAll("
+            "  '#results-run-panel .rp-setup tbody tr')].map(tr => ["
+            "    tr.querySelector('.rp-item').textContent,"
+            "    ...[...tr.children].slice(1).map(td => td.textContent)])")
+        by_item = {r[0]: r[1:] for r in rows}
+        stated = {r["item"]: r for r in record["setup"]["rows"]}
+        default, asked, used = by_item["max_scf_iter"]
+        assert (default, asked, used) == (
+            str(stated["max_scf_iter"]["default"]), "10", "10"), \
+            by_item["max_scf_iter"]
+        for item, value in CANNOT_CONVERGE.items():
+            _d, asked, used = by_item[item]
+            assert float(asked) == float(value) == float(used.split()[0]), (
+                item, by_item[item])
+        unset = [r["item"] for r in record["setup"]["rows"]
+                 if "asked" not in r]
+        assert unset and all(by_item[i][1] == "engine default" for i in unset)
+        assert (f"({len(record['setup']['engine_only'])})"
+                in panel.locator(".rp-fold > summary").inner_text())
+        assert "H.psml" in sections["Setup"]
 
-    def rebind(folder):
-        page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
-                      str(folder))
-        page.click("#results-file-picker-refresh")
+        panel.locator(".rp-view").click()
+        preview = page.locator("#ps-preview-modal")
+        preview.wait_for(state="visible", timeout=10000)
+        # THE DECK THE RECORD NAMES, whole, opened as it is (`web/results.md`
+        # § 0.3) -- the viewer shows its name.
+        assert Path(record["deck"]["path"]).name in preview.inner_text()
+        page.keyboard.press("Escape")
 
-    # A folder whose scan fails: nothing is announced, and the panel must
-    # not keep the run above under it.  Two levels that do not exist: the
-    # door answers a path that is not a directory for its parent, so one
-    # missing level would be answered as the stage container.
-    rebind(stopped.parent / "no-such" / "attempt")
-    panel.wait_for(state="hidden", timeout=10000)
-    rebind(stopped)
-    panel.locator(".rp-summary").wait_for(timeout=20000)
-    # The calculation root is a container: it has a ladder, not a record.
-    rebind(bundle)
-    page.locator(".results-ladder").wait_for(state="visible", timeout=20000)
-    assert panel.is_hidden()
-    # ...WITH THE NEXT STEP under its rows (`web/results.md` § 2.4): the
-    # ladder door's own answer, the next group's words and lines, and when it
-    # was read.
-    from molbuilder.calculation import open as open_calculation
-    from molbuilder.jobset.runstatus import jobset_status
-    step = next(g for g in jobset_status(open_calculation(bundle)).steps
-                if g.next)
-    shown = page.locator(".results-ladder-steps-list li.is-next").inner_text()
-    assert step.words in shown and step.lines, (step, shown)
-    assert all(line in shown for line in step.lines), (step, shown)
-    assert "read at" in page.locator(".results-ladder-steps-head").inner_text()
+        # A FOLDER WHOSE SCAN FAILS: one of the person's, the sidebar walked
+        # to it, then deleted from the disk elsewhere before Reload -- nothing
+        # is announced, and the panel must not keep the run above under it.
+        # Two levels gone: the door answers a path that is not a directory
+        # for its parent, so one missing level would be answered as its
+        # parent.
+        gone = root / "P" / "gone"
+        (gone / "attempt").mkdir(parents=True)
+        walk_to(page, gone / "attempt")
+        assert panel.locator(".rp-summary").is_visible(), (
+            "browsing moved the panel off the run")
+        shutil.rmtree(gone)
+        page.get_by_role("button",
+                         name="Reload from current project dir").click()
+        panel.wait_for(state="hidden", timeout=10000)
+        reload_from(page, stopped)
+        panel.locator(".rp-summary").wait_for(timeout=20000)
+        # The calculation root is a container: it has a ladder, not a record.
+        reload_from(page, bundle)
+        page.locator(".results-ladder").wait_for(state="visible",
+                                                 timeout=20000)
+        assert panel.is_hidden()
+        # ...WITH THE NEXT STEP under its rows (`web/results.md` § 2.4): the
+        # ladder door's own answer, the next group's words and lines, and when
+        # it was read.
+        from molbuilder.calculation import open as open_calculation
+        from molbuilder.jobset.runstatus import jobset_status
+        step = next(g for g in jobset_status(open_calculation(bundle)).steps
+                    if g.next)
+        shown = page.locator(
+            ".results-ladder-steps-list li.is-next").inner_text()
+        # ...ITS WORDS AS THE PAGE SETS THEM: a `quoted` command drawn as
+        # code, its quotes the marks that say so (`dom.codeWords`, 2.67.2).
+        assert step.words.replace("`", "") in shown and step.lines, (
+            step, shown)
+        assert all(line in shown for line in step.lines), (step, shown)
+        assert "read at" in page.locator(
+            ".results-ladder-steps-head").inner_text()
 
-    # A RUN PICKED OFF THE LADDER: the file card then holds THAT run's files
-    # (`web/results.md` § 2.4) while the sidebar stays on the root -- so a
-    # single click on a root file is not looked up among the run's files, and
-    # the card keeps naming the run's; a click on another file of the run's
-    # own folder is followed (R2-15, `archive/2026-10-13-plan-rows.md`).
-    menu = page.locator("#results-file-picker-select")
-    chosen = "(s) => s.options[s.selectedIndex].textContent"
-    at_root = menu.evaluate(chosen)
-    page.locator(".results-ladder-open[aria-pressed]").first.click()
-    page.locator(".results-ladder-open[aria-pressed='true']").wait_for(
-        timeout=20000)
-    card = page.locator("#results-file-card .fc-name")
-    card.wait_for(timeout=20000)
-    picked = card.inner_text()
-    page.evaluate("([d, f]) => window.molbuilder.projects.setShared(d, f)",
-                  [str(bundle), str(bundle / "task.json")])
-    page.wait_for_timeout(500)
-    assert card.inner_text() == picked, (
-        "a click on a root file was taken for one of the picked run's files")
-    # THE TITLE NAMES THE FILE FROM THE PROJECTS FOLDER, as the sidebar
-    # names a path it only shows (`web/results.md` \u00a7 0.3).
-    opened = page.locator(".results-ladder-open[aria-pressed='true']") \
-        .first.get_attribute("title").split(" \u2014 ")[0]
-    run_dir = root / Path(opened).parent
-    other = next(f for f in sorted(run_dir.iterdir())
-                 if f.is_file() and f.name != picked)
-    page.evaluate("([d, f]) => window.molbuilder.projects.setShared(d, f)",
-                  [str(run_dir), str(other)])
-    page.wait_for_function(
-        "(n) => document.querySelector('#results-file-card .fc-name')"
-        "         .textContent === n", arg=other.name, timeout=10000)
+        # A RUN PICKED OFF THE LADDER: the file card then holds THAT run's
+        # files (`web/results.md` § 2.4) while the sidebar stays on the root
+        # -- so a single click on a root file is not looked up among the
+        # run's files, and the card keeps naming the run's; a click on
+        # another file of the run's own folder is followed (R2-15,
+        # `archive/2026-10-13-plan-rows.md`).
+        menu = page.locator("#results-file-picker-select")
+        chosen = "(s) => s.options[s.selectedIndex].textContent"
+        at_root = menu.evaluate(chosen)
+        page.locator(".results-ladder-open[aria-pressed]").first.click()
+        page.locator(".results-ladder-open[aria-pressed='true']").wait_for(
+            timeout=20000)
+        card = page.locator("#results-file-card .fc-name")
+        card.wait_for(timeout=20000)
+        picked = card.inner_text()
+        walk_to(page, bundle / "task.json")
+        page.wait_for_timeout(500)
+        assert card.inner_text() == picked, (
+            "a click on a root file was taken for one of the picked run's "
+            "files")
+        # THE TITLE NAMES THE FILE FROM THE PROJECTS FOLDER, as the sidebar
+        # names a path it only shows (`web/results.md` \u00a7 0.3).
+        opened = page.locator(".results-ladder-open[aria-pressed='true']") \
+            .first.get_attribute("title").split(" \u2014 ")[0]
+        run_dir = root / Path(opened).parent
+        other = next(f for f in sorted(run_dir.iterdir())
+                     if f.is_file() and f.name != picked)
+        walk_to(page, other)
+        page.wait_for_function(
+            "(n) => document.querySelector('#results-file-card .fc-name')"
+            "         .textContent === n", arg=other.name, timeout=10000)
 
-    # ...AND THE MENU NAMES THE RUN SHOWN (`web/results.md` § 2.2, § 2.4):
-    # the root's menu row names no file of the picked run, so the menu's
-    # first row says which run is shown; *back to the calculation* names the
-    # root's choice again.
-    assert menu.evaluate(chosen) == (
-        f"(showing {Path(opened).name}, a run off the ladder)")
-    page.locator(".results-ladder-back").click()
-    page.wait_for_function(
-        "(t) => { const s = document.querySelector("
-        "'#results-file-picker-select');"
-        " return s.options[s.selectedIndex].textContent === t; }",
-        arg=at_root, timeout=10000)
-    assert menu.locator("option[data-picked-run]").count() == 0
+        # ...AND THE MENU NAMES THE RUN SHOWN (`web/results.md` § 2.2,
+        # § 2.4): the root's menu row names no file of the picked run, so the
+        # menu's first row says which run is shown; *back to the calculation*
+        # names the root's choice again.
+        assert menu.evaluate(chosen) == (
+            f"(showing {Path(opened).name}, a run off the ladder)")
+        page.locator(".results-ladder-back").click()
+        page.wait_for_function(
+            "(t) => { const s = document.querySelector("
+            "'#results-file-picker-select');"
+            " return s.selectedIndex >= 0"
+            "   && s.options[s.selectedIndex].textContent === t; }",
+            arg=at_root, timeout=10000)
+        assert menu.locator("option[data-picked-run]").count() == 0
 
-    # RELOAD KEEPS THE PICK; A CHOICE IN THE MENU LEAVES IT (`web/results.md`
-    # § 2.4).  THE SILENT FAILURE: the run a person opened gone from the screen
-    # on every Reload, or a file chosen in the menu not shown at all, the picked
-    # run put back over it.
-    page.locator(".results-ladder-open[aria-pressed='false']").first.click()
-    page.wait_for_selector(".results-ladder-back", timeout=10000)
-    showing = menu.evaluate(chosen)
-    page.get_by_role("button", name="Reload from current project dir").click()
-    page.wait_for_function(
-        "(t) => { const s = document.querySelector("
-        "'#results-file-picker-select');"
-        " return s.options[s.selectedIndex].textContent === t; }",
-        arg=showing, timeout=10000)
-    assert page.locator(".results-ladder-back").count() == 1
-    a_file = next(v for v in menu.evaluate(
-        "(s) => Array.from(s.options).map((o) => o.value)") if v)
-    menu.select_option(a_file)
-    page.wait_for_function(
-        "() => !document.querySelector('.results-ladder-back')", timeout=10000)
-    assert menu.input_value() == a_file
-    assert menu.locator("option[data-picked-run]").count() == 0
+        # RELOAD KEEPS THE PICK; A CHOICE IN THE MENU LEAVES IT
+        # (`web/results.md` § 2.4).  THE SILENT FAILURE: the run a person
+        # opened gone from the screen on every Reload, or a file chosen in the
+        # menu not shown at all, the picked run put back over it.
+        # THE SIDEBAR BACK ON THE CALCULATION, where the pick lives (§ 2.4:
+        # "while the sidebar stays on the calculation"): Reload binds the
+        # panel to the sidebar's folder, and the click above left it on the
+        # run's.
+        walk_to(page, bundle)
+        page.locator(
+            ".results-ladder-open[aria-pressed='false']").first.click()
+        page.wait_for_selector(".results-ladder-back", timeout=10000)
+        showing = menu.evaluate(chosen)
+        page.get_by_role("button",
+                         name="Reload from current project dir").click()
+        page.wait_for_function(
+            "(t) => { const s = document.querySelector("
+            "'#results-file-picker-select');"
+            " return s.selectedIndex >= 0"
+            "   && s.options[s.selectedIndex].textContent === t; }",
+            arg=showing, timeout=10000)
+        assert page.locator(".results-ladder-back").count() == 1
+        a_file = next(v for v in menu.evaluate(
+            "(s) => Array.from(s.options).map((o) => o.value)") if v)
+        menu.select_option(a_file)
+        page.wait_for_function(
+            "() => !document.querySelector('.results-ladder-back')",
+            timeout=10000)
+        assert menu.input_value() == a_file
+        assert menu.locator("option[data-picked-run]").count() == 0

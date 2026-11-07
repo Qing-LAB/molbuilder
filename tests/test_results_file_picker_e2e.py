@@ -1,39 +1,18 @@
-"""End-to-end Playwright tests for the /results tab-level file picker.
+"""The /results tab's file picker, in the browser, when the tab is shown
+again.
 
-Regression tests for the 2026-06-02 "stale dropdown / no scan on
-first click" bug.  Symptoms reported by the user:
+A tab return -- ``visibilitychange`` to visible -- re-reads the folder the
+panel is bound to (`web/results.md` § 2.1, *Come back to the browser tab*)
+and re-announces the file on screen; the viewer showing it answers ready from
+inside that announcement, so the picker's *Parsing…* line lifts at once, not
+after its safety timer (§ 2.2; `web/presenters.md` § 3, step 4).
 
-    "the results tab does not automatically scan the current directory
-     when first clicked.  if we are already inside a project directory,
-     we will need to manually get out of the directory and get back in
-     to have the results tab to refresh"
-
-Root cause was TWO compounding issues in ``lib/results/file-picker.js``:
-
-  1. The picker rescanned only when the sessionStorage directory
-     CHANGED (``if (dir !== lastScannedDir)`` in _onSelectionChange).
-     A re-visit to /results with the same dir hit the same-dir branch
-     and reused the stale ``cachedResults`` -- which never reflected
-     files generated in another tab since the previous scan.
-
-  2. Even when a fresh scan DID fire, the browser HTTP cache served
-     the previous ``/api/files/list`` response for the same URL.  Same
-     URL + default cache policy = ``304 Not Modified`` -> the picker
-     saw last visit's entries, not what was actually on disk.
-
-The fix:
-
-  * a fresh visit scans once, at mount; a restore from the back/forward
-    cache (``pageshow`` with ``persisted``) and ``visibilitychange`` ->
-    visible re-read the folder the panel is bound to (``_rescanBound``).
-  * ``fetch(..., { cache: "no-store" })`` on the directory listing so
-    the rescan actually reaches the server.
-
-Each test reads the menu only after the scan has landed (``_open_results``): the picker bar is always visible, so
-its visibility says nothing about the scan.
+The menu is read only after the scan has landed (``_open_results``): the
+picker bar is always visible, so its visibility says nothing about the scan.
 """
 from __future__ import annotations
 
+import re
 
 import pytest
 
@@ -50,42 +29,26 @@ pytest.importorskip("flask")
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    from molbuilder import diagnostics
-    _orig = diagnostics.get_capabilities()
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None,
-        conda_envs=frozenset(),
-    )
-    cls = type(caps)
-    monkeypatch.setattr(
-        cls, "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-    monkeypatch.setattr(diagnostics, "_snapshot", _orig)
-
-
 @pytest.fixture
-def project_with_one_xyz(tmp_path, monkeypatch):
+def project_with_one_xyz(isolated_projects_root):
     """A folder holding one structure and nothing else -- no calculation, so
     the server offers no pick and the structure is shown only when a person
     picks it in the menu.  The structure viewer is the one that does NOT
     reload its own file when the tab comes back, so a rescan's
     re-announcement is the only thing that can end the picker's "Parsing…"
-    line for it."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "myproj" / "structure" / "w"
+    line for it.  In a projects tree of the test's own, the one door
+    pointed at it."""
+    proj = isolated_projects_root / "myproj" / "structure" / "w"
     proj.mkdir(parents=True)
     (proj / "w.xyz").write_text(
         "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n")
-    return proj, str(proj)
+    return proj
 
 
 # --------------------------------------------------------------------- #
@@ -94,24 +57,16 @@ def project_with_one_xyz(tmp_path, monkeypatch):
 
 
 #: Installed on the page before any of its own scripts, on every navigation:
-#: counts the page's folder scans -- its calls to the picker's door -- and
-#: the picker's announcements, which close each scan (`results.md` § 2.2);
-#: and marks the task after `pageshow`, by which every `pageshow` handler has
-#: run -- this listener is the first registered, so its timer is queued
-#: before the page's own handlers run.
+#: counts the picker's announcements, which close each scan (`results.md`
+#: § 2.2); and marks the task after `pageshow`, by which every `pageshow`
+#: handler has run -- this listener is the first registered, so its timer is
+#: queued before the page's own handlers run.
 _WATCH_THE_PICKER = """(() => {
-    window.__mbScans = 0;
     window.__mbAnnounced = 0;
     window.__mbShown = false;
     window.addEventListener("pageshow", () => {
         setTimeout(() => { window.__mbShown = true; }, 0);
     });
-    const fetch0 = window.fetch;
-    window.fetch = function (input) {
-        const url = String((input && input.url) || input || "");
-        if (url.indexOf("/api/results/dir") !== -1) window.__mbScans += 1;
-        return fetch0.apply(this, arguments);
-    };
     document.addEventListener("DOMContentLoaded", () => {
         const C = (window.molbuilder || {}).constants || {};
         document.addEventListener(C.EVENT_FILE_SELECTED,
@@ -126,26 +81,21 @@ def _open_results(page, base_url):
     makes once per scan.  What follows reads the menu that scan built.
 
     Not the picker bar's visibility: the bar is always visible, so waiting
-    for it would return at once, mid-scan.  Needs `_WATCH_THE_PICKER`, which `_setup_modify_dir`
-    installs."""
+    for it would return at once, mid-scan.  Needs `_WATCH_THE_PICKER`,
+    which `_setup_modify_dir` installs."""
     page.goto(f"{base_url}/results")
     page.wait_for_function(
         "() => window.__mbShown && window.__mbAnnounced >= 1", timeout=10000)
 
 
 def _setup_modify_dir(page, base_url, dir_path):
+    """The sidebar walked to ``dir_path`` on another tab, by its rows -- the
+    most recent place, where the Results tab opens (`web/projects.md` § 2)
+    -- with `_WATCH_THE_PICKER` installed for every page after."""
+    from support.sidebar import walk_to
     page.add_init_script(_WATCH_THE_PICKER)
     page.goto(f"{base_url}/molbuilder")
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.projects "
-        "      && typeof window.molbuilder.projects.setShared "
-        "             === 'function'"
-    )
-    page.evaluate(
-        "(d) => window.molbuilder.projects.setShared(d, '')",
-        dir_path,
-    )
-    page.wait_for_timeout(300)
+    walk_to(page, dir_path)
 
 
 # --------------------------------------------------------------------- #
@@ -171,8 +121,9 @@ class TestVisibilityChangeForcesRescan:
         MUTATION THIS MUST FAIL AGAINST: `_startParseStatus` called after
         the dispatch in `_emitFileSelected`.
         """
-        proj, dir_str = project_with_one_xyz
-        _setup_modify_dir(page, flask_server, dir_str)
+        from playwright.sync_api import expect
+        proj = project_with_one_xyz
+        _setup_modify_dir(page, flask_server, proj)
         _open_results(page, flask_server)
         xyz = str(proj / "w.xyz")
         page.wait_for_function(
@@ -188,17 +139,21 @@ class TestVisibilityChangeForcesRescan:
             const s = document.querySelector("#inspector-host .structure-status");
             return m && !m.classList.contains("is-busy")
                 && s && /Loaded/.test(s.textContent); }""", timeout=30000)
-        page.evaluate("""() => {
-            const m = document.getElementById("results-file-picker-meta");
-            window.__seen = [];
-            new MutationObserver(() => window.__seen.push(m.textContent))
-                .observe(m, { childList: true, characterData: true,
-                              subtree: true });
-            document.dispatchEvent(new Event("visibilitychange")); }""")
-        page.wait_for_timeout(3000)
-        state = page.evaluate("""() => {
-            const m = document.getElementById("results-file-picker-meta");
-            return { seen: window.__seen, busy: m.classList.contains("is-busy"),
-                     text: m.textContent }; }""")
-        assert any("Scanning" in t for t in state["seen"]), state  # it rescanned
-        assert not state["busy"], state
+        # THE TAB SHOWN AGAIN, as the browser says it: the event a return
+        # fires, the page visible.  Dispatched here because headless
+        # Chromium never changes a page's visibility -- measured 2026-11-07,
+        # Playwright 1.63, headless shell and new headless alike: another
+        # page brought to the front, the window minimized and restored, the
+        # page frozen and resumed, and `visibilityState` stayed "visible"
+        # with no event fired; nor does it restore from the back/forward
+        # cache (`pageshow` never `persisted`).
+        announced = page.evaluate("() => window.__mbAnnounced")
+        page.evaluate(
+            "() => document.dispatchEvent(new Event('visibilitychange'))")
+        # IT RESCANNED: the announcement that closes a scan.
+        page.wait_for_function("(n) => window.__mbAnnounced > n",
+                               arg=announced, timeout=10000)
+        # ...AND THE LINE LIFTED AT ONCE, well inside the 8 s safety timer
+        # that ends a "Parsing…" no answer met (`file-picker.js`).
+        expect(page.locator("#results-file-picker-meta")).not_to_have_class(
+            re.compile(r"\bis-busy\b"), timeout=1000)

@@ -26,6 +26,9 @@ Each is the session fixture of its name in `tests/conftest.py`:
   script's own dry runs, on a copy of `coarse`'s prepared folder;
 * :func:`one_group` (``real_h2_one_group``) -- the same H2's two stages one
   group: prepared, launched by the group, one job, waited on;
+* :func:`stopped` (``real_h2_stopped``) -- the same H2, its SCF unable to
+  converge in its cap: `coarse` launched and waited on until SIESTA stopped
+  it, then `medium` prepared, its launch planned, and `status` asked;
 * :func:`bench` (``real_h2_bench``) -- a two-trial benchmark of the same
   H2's `coarse`: one trial launched by name, then the rest by a launch of
   the benchmark under a per-trial bound;
@@ -34,10 +37,14 @@ Each is the session fixture of its name in `tests/conftest.py`:
   decks are in the engine's held-first order (`support.road.CO2`; plan
   T-CO2): its `relax` call, its `fc` call and the two stretches' five
   optical calls (`engines/vibration.md` § 5.11), waited on;
+* :func:`sweep` (``real_h2_sweep``) -- a SIESTA vibration's displacement
+  sweep on the road's H2: two force-constant stages, each launched and
+  waited on, and the calculation summarized (measured 2026-11-07: 33 s);
 * :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
   one rank: its run script's dry runs, then the run, waited on;
 * :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF,
-  stretched so it moves: `coarse` launched and waited on;
+  stretched so it moves: `coarse` launched and waited on -- labelled ``H2``,
+  or, for a module whose subject is the label, the one it gives;
 * :func:`water` (``real_water_vibration``), :func:`water_held`
   (``real_water_held``), :func:`water_probed` (``real_water_probed``),
   :func:`water_linear` (``real_water_linear``) -- the vibration kind on PySCF,
@@ -55,6 +62,13 @@ Each is the session fixture of its name in `tests/conftest.py`:
   relaxed at its charge, and saved as a pair.
 
 A run with one thing changed is a copy of it beside it (:func:`copy_of`).
+A module that types a command on such a copy, or makes a run of its own,
+takes the doors these runs are made by: the tree with the engine on the
+road (:func:`on_the_road`, or :func:`road_at` for the tree a run was made
+in), the calculation (:func:`described`), each command written down
+(:func:`typed`; :func:`taken`, which must succeed), and a run a launch left
+in the background, waited for (:func:`left_to_end`) or stopped as its
+launch said (:func:`stopped_by_its_line`).
 """
 from __future__ import annotations
 
@@ -98,6 +112,11 @@ class RealRun:
     #: Every version of a vibration's result as the run wrote it, oldest
     #: first (:func:`_result_kept_as_it_grows`).
     versions: "list[Path]" = field(default_factory=list)
+    #: The run a launch left in the background, as the launch returned
+    #: (:func:`left_to_end`): its ``pid``, its session (``sid``), and whether
+    #: it was still this process's to wait for (``waited_here``) -- a launch
+    #: that waited for it would have reaped it.
+    left: Dict[str, object] = field(default_factory=dict)
 
     def attempt(self, stage: str, n: int = 0) -> Path:
         """Run ``n`` of ``stage`` -- its folder, by molbuilder's own
@@ -164,17 +183,17 @@ def _engine_here(engine: str = "siesta") -> bool:
 
 
 @contextmanager
-def _on_the_road(tmp_path_factory, name: str, *, engine: str = "siesta"):
+def on_the_road(tmp_path_factory, name: str, *, engine: str = "siesta"):
     """A projects tree of its own, the one door pointed at it, and the real
     ``engine`` on the road -- while the runs are made; the process
     environment as it was, after."""
-    with _road_at(tmp_path_factory.mktemp(name), tmp_path_factory,
-                  engine=engine) as tree:
+    with road_at(tmp_path_factory.mktemp(name), tmp_path_factory,
+                 engine=engine) as tree:
         yield tree
 
 
 @contextmanager
-def _road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
+def road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
     """The projects tree under ``where`` -- a new one, or the one a run was
     made in, for a command typed on a copy of it -- the one door pointed at
     it, and the real ``engine`` on the road (`_road.live_siesta`,
@@ -182,13 +201,13 @@ def _road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
     from _pytest.monkeypatch import MonkeyPatch
 
     from _road import live_pyscf, live_siesta
-    from conftest import _point_the_one_door_at
+    from conftest import point_the_one_door_at
     if not _engine_here(engine):
         pytest.skip(f"needs the {_ENGINES[engine]} env + a detectable conda "
                     f"hook")
     mp = MonkeyPatch()
     try:
-        tree = _point_the_one_door_at(where, mp.setenv)
+        tree = point_the_one_door_at(where, mp.setenv)
         live = live_siesta if engine == "siesta" else live_pyscf
         with live(tree, tmp_path_factory):
             yield tree
@@ -196,7 +215,7 @@ def _road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
         mp.undo()
 
 
-def _typed(run: RealRun, step: str, *words, input=None) -> Said:
+def typed(run: RealRun, step: str, *words, input=None) -> Said:
     """``molbuilder jobset <words> --bundle <the calculation>``, written down
     under ``step``."""
     from support.road import jobset
@@ -206,8 +225,9 @@ def _typed(run: RealRun, step: str, *words, input=None) -> Said:
     return said
 
 
-def _taken(run: RealRun, step: str, *words) -> Said:
-    said = _typed(run, step, *words)
+def taken(run: RealRun, step: str, *words) -> Said:
+    """:func:`typed`, and it must succeed."""
+    said = typed(run, step, *words)
     assert said.exit_code == 0, f"{step}: {said.output}"
     return said
 
@@ -245,7 +265,7 @@ def _launched_here(run: RealRun) -> int:
                 if e["decision"] == "launched" and e.get("background"))
 
 
-def _stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
+def stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
     """A run here a launch left in the background, stopped as that launch
     said to stop it -- its *to stop it:* line, typed at a terminal and its
     question answered yes, written down under ``step`` -- then waited for
@@ -261,7 +281,7 @@ def _stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
     run.said[step] = said
     assert said.exit_code == 0, f"{step}: {said.output}"
     pid = _launched_here(run)
-    _left_to_end(run)
+    left_to_end(run)
 
     def gone() -> bool:
         try:
@@ -272,13 +292,11 @@ def _stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
     until(gone, within=120, what=f"{line}: its processes ended")
 
 
-def _left_to_end(run: RealRun) -> None:
+def left_to_end(run: RealRun) -> None:
     """A run here the launch left in the background, waited for to its end:
     the process its ledger's ``launched`` line names (`job-system.md`
     § 6.0) -- a child of this process, which the launch started.  What it
-    was as the launch returned is kept in ``run.left``: its pid, its session
-    (``sid``), and whether it was still this process's to wait for
-    (``waited_here``) -- a launch that waited for it would have reaped it."""
+    was as the launch returned is kept in ``run.left``."""
     pid = _launched_here(run)
     run.left = {"pid": pid, "sid": None, "waited_here": False}
     try:
@@ -322,9 +340,9 @@ def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
     return said
 
 
-def _described(tree: Path, where: str, *, structure: dict, name: str,
-               calculation: str, stage_strategy: str = "",
-               engine: str = "siesta", **blocks) -> Path:
+def described(tree: Path, where: str, *, structure: dict, name: str,
+              calculation: str, stage_strategy: str = "",
+              engine: str = "siesta", **blocks) -> Path:
     """`molbuilder describe` of the road's ``structure`` (`support.road`,
     written where `describe` takes it), on ``engine``, the
     ``calculation``'s own ladder or ``stage_strategy``; then the job
@@ -427,8 +445,8 @@ def _header_under_a_slurm_grant(run: RealRun, tree: Path,
             execution={"mpi_np": 1, "omp_threads": 1},
             allocation={"domain": "cpu", "time": "01:00:00", "mem": "1G"})
         on_sol = RealRun(tree=tree, bundle=bundle)
-        _taken(on_sol, "prep coarse for sol", "prep", "task", "--group",
-               "1", "--target", "sol")
+        taken(on_sol, "prep coarse for sol", "prep", "task", "--group",
+              "1", "--target", "sol")
     finally:
         sol.unlink()
     there = scratch / "on-sol"
@@ -460,19 +478,19 @@ def _relaxed_pair(tmp_path_factory, name: str, structure, **settings) -> RealRun
     from molbuilder.runs import run_of
     from molbuilder.task import of as task_of
     from support.road import group_words, road_structure, set_by_the_person
-    with _on_the_road(tmp_path_factory, name) as tree:
+    with on_the_road(tmp_path_factory, name) as tree:
         s = road_structure(structure)
         write_pseudos(tree / "pseudopotential", sorted(set(s.elements)))
-        bundle = _described(tree, "P/opt/J", structure=s, name="J",
-                            calculation="optimization",
-                            execution={"mpi_np": 1, "omp_threads": 1})
+        bundle = described(tree, "P/opt/J", structure=s, name="J",
+                           calculation="optimization",
+                           execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, {**QUICK, **settings})
         run = RealRun(tree=tree, bundle=bundle)
         stage = task_of(bundle).stages[0].name
-        _taken(run, "prep", "prep", "task", *group_words(bundle, stage),
-               "--target", "this")
-        _taken(run, "launch", "launch", "task", "--stage", stage, "--mode",
-               "direct", "--foreground", "--yes")
+        taken(run, "prep", "prep", "task", *group_words(bundle, stage),
+              "--target", "this")
+        taken(run, "launch", "launch", "task", "--stage", stage, "--mode",
+              "direct", "--foreground", "--yes")
         run.pair = tree / "P" / "structure" / "relaxed.xyz"
         r = molbuilder("xv2xyz", str(run_of(run.attempt(stage)).on_label(".XV")),
                        str(run.pair), "--from-run")
@@ -515,66 +533,66 @@ def held_water_pyscf(tmp_path_factory) -> RealRun:
                            [4.17, 5.64, 5.0]],
              "regions": {"frozen_atoms": [0]},
              "cell": [10.0, 10.0, 10.0]}
-    with _on_the_road(tmp_path_factory, "held-water", engine="pyscf") as tree:
-        bundle = _described(tree, "P/opt/W", structure=water, name="W",
-                            calculation="optimization", engine="pyscf",
-                            stage_strategy="publishable",
-                            execution={"threads": 1})
+    with on_the_road(tmp_path_factory, "held-water", engine="pyscf") as tree:
+        bundle = described(tree, "P/opt/W", structure=water, name="W",
+                           calculation="optimization", engine="pyscf",
+                           stage_strategy="publishable",
+                           execution={"threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep coarse", "prep", "task", "--group", "1",
-               "--target", "this")
-        _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
-               "--mode", "direct", "--foreground", "--yes")
-        _taken(run, "prep medium", "prep", "task", "--group", "2",
-               "--target", "this")
+        taken(run, "prep coarse", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
+        taken(run, "prep medium", "prep", "task", "--group", "2",
+              "--target", "this")
     return run
 
 
 def _h2_optimization(tree: Path, where: str, **blocks) -> Path:
     """The road's H2, a SIESTA optimization on the `publishable` ladder
-    (:func:`_described`)."""
+    (:func:`described`)."""
     from support.road import H2
-    return _described(tree, where, structure=H2, name="H2",
-                      calculation="optimization",
-                      stage_strategy="publishable", **blocks)
+    return described(tree, where, structure=H2, name="H2",
+                     calculation="optimization",
+                     stage_strategy="publishable", **blocks)
 
 
 def layered(tmp_path_factory) -> RealRun:
     """Run A of plan § 5y -- see the module's note."""
-    with _on_the_road(tmp_path_factory, "layered") as tree:
+    with on_the_road(tmp_path_factory, "layered") as tree:
         bundle = _h2_optimization(tree, "P/opt/H2",
                                   execution={"mpi_np": 1, "omp_threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep coarse", "prep", "task", "--group", "1",
-               "--target", "this")
+        taken(run, "prep coarse", "prep", "task", "--group", "1",
+              "--target", "this")
         _script_dry_runs(run, run.attempt("coarse"),
                          tmp_path_factory.mktemp("dry-run"))
         _header_under_a_slurm_grant(run, tree,
                                     tmp_path_factory.mktemp("header-dry-run"))
-        _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
         run.files_before = _all_written(bundle)
-        _taken(run, "dry run of launching coarse again", "launch", "task",
-               "--stage", "coarse", "--mode", "direct", "--dry-run", "--yes")
+        taken(run, "dry run of launching coarse again", "launch", "task",
+              "--stage", "coarse", "--mode", "direct", "--dry-run", "--yes")
         run.files_after = _all_written(bundle)
-        _taken(run, "launch coarse again", "launch", "task", "--stage",
-               "coarse", "--mode", "direct", "--foreground", "--yes")
+        taken(run, "launch coarse again", "launch", "task", "--stage",
+              "coarse", "--mode", "direct", "--foreground", "--yes")
         # ASKED AT A TERMINAL, AND ANSWERED THE OTHER WAY: the foreground.
         _answered(run, "launch coarse again cold", "f", "launch", "task",
                   "--stage", "coarse", "--mode", "direct", "--cold")
         run.relaunched = _all_written(bundle)
-        _taken(run, "prep medium", "prep", "task", "--group", "2",
-               "--target", "this")
+        taken(run, "prep medium", "prep", "task", "--group", "2",
+              "--target", "this")
         # A RUN HERE, LEFT IN THE BACKGROUND -- a launch's default
         # (`job-system.md` § 6.0) -- and waited for.
-        _taken(run, "launch naming no stage", "launch", "task", "--mode",
-               "direct", "--yes")
-        _left_to_end(run)
+        taken(run, "launch naming no stage", "launch", "task", "--mode",
+              "direct", "--yes")
+        left_to_end(run)
         # ...AND THE JOBS LAUNCHED FROM HERE, asked once it ended, and again
         # (`job-system.md` § 6.0a).
         run.jobs["after it ended"] = molbuilder("jobs", "status")
         run.jobs["again"] = molbuilder("jobs", "status")
-        _taken(run, "status", "status")
+        taken(run, "status", "status")
     return run
 
 
@@ -585,7 +603,7 @@ def one_group(tmp_path_factory) -> RealRun:
     each stage's run-0, waited on."""
     from support.road import (_description_with_overrides, read_request,
                               save_both, set_by_the_person)
-    with _on_the_road(tmp_path_factory, "one-group") as tree:
+    with on_the_road(tmp_path_factory, "one-group") as tree:
         bundle = _h2_optimization(tree, "P/opt/H2",
                                   execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, QUICK)
@@ -595,10 +613,47 @@ def one_group(tmp_path_factory) -> RealRun:
             bundle, {"medium": {"restart": "clean"}}), request)
         assert saved.status_code == 200, saved.get_json()
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep group 1", "prep", "task", "--group", "1",
-               "--target", "this")
-        _taken(run, "launch group 1", "launch", "task", "--group", "1",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(run, "prep group 1", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch group 1", "launch", "task", "--group", "1",
+              "--mode", "direct", "--foreground", "--yes")
+    return run
+
+
+#: AN SCF THAT CANNOT CONVERGE IN ITS CAP: ten cycles of plain linear mixing
+#: at 0.001 -- no Pulay history, which otherwise extrapolates past the small
+#: weight and converges H2 in nine (measured) -- against a DM tolerance of
+#: 1e-8, each inside its item's declared range; `SCF.MustConverge` left at
+#: SIESTA's default, abort, so SIESTA stops the run.
+CANNOT_CONVERGE = {"max_scf_iter": 10, "mixing_weight": 0.001,
+                   "pulay_history": 0, "dm_tolerance": 1e-08}
+
+
+def stopped(tmp_path_factory) -> RealRun:
+    """The road's H2 optimization on the `publishable` ladder, one rank, its
+    SCF unable to converge in its cap (:data:`CANNOT_CONVERGE`, set by the
+    person in its template): `coarse` prepared and launched, waited on --
+    SIESTA stops it, the run is failed, and the launch says so (``launch
+    coarse``); then what molbuilder answers of the calculation once its run
+    failed: `medium` prepared (``prep medium``), its launch planned
+    (``launch medium``), and `status` (``status``)."""
+    from support.road import group_words, set_by_the_person
+    with on_the_road(tmp_path_factory, "stopped") as tree:
+        bundle = _h2_optimization(tree, "P/opt/H2",
+                                  execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, CANNOT_CONVERGE)
+        run = RealRun(tree=tree, bundle=bundle)
+        taken(run, "prep coarse", "prep", "task",
+              *group_words(bundle, "coarse"), "--target", "this")
+        # THE RUN FAILS -- that is its point -- and the launch says so.
+        typed(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
+        medium = group_words(bundle, "medium")
+        taken(run, "prep medium", "prep", "task", *medium,
+              "--target", "this")
+        typed(run, "launch medium", "launch", "task", *medium,
+              "--mode", "direct", "--dry-run")
+        taken(run, "status", "status")
     return run
 
 
@@ -609,7 +664,7 @@ def gpu(tmp_path_factory) -> RealRun:
     source-built `molbuilder-siesta-gpu`.  Its run script's own dry run as
     prepared, and with ``-np 2`` -- each given GPU 0, as a job asking one GPU
     is given one -- then the run, waited on."""
-    with _on_the_road(tmp_path_factory, "gpu") as tree:
+    with on_the_road(tmp_path_factory, "gpu") as tree:
         from conftest import write_machine_record
         from molbuilder.scheduler import Topology
         from _road import conda_hook
@@ -620,29 +675,29 @@ def gpu(tmp_path_factory) -> RealRun:
         bundle = _h2_optimization(tree, "P/opt/H2gpu", execution={
             "mpi_np": 1, "omp_threads": 1, "use_gpu": True, "gpu_count": 1})
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep coarse", "prep", "task", "--group", "1",
-               "--target", "this")
+        taken(run, "prep coarse", "prep", "task", "--group", "1",
+              "--target", "this")
         _script_dry_runs(run, run.attempt("coarse"),
                          tmp_path_factory.mktemp("gpu-dry-run"),
                          CUDA_VISIBLE_DEVICES="0")
-        _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
     return run
 
 
 def bench(tmp_path_factory) -> RealRun:
     """The benchmark of plan § 5y -- see the module's note."""
-    with _on_the_road(tmp_path_factory, "bench") as tree:
+    with on_the_road(tmp_path_factory, "bench") as tree:
         bundle = _h2_optimization(tree, "P/opt/H2bench", execution=None,
                                   bench={"mpi_np": [1, 2],
                                          "omp_threads": [1]})
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep bench", "prep", "bench", "coarse",
-               "--target", "this")
-        _taken(run, "launch one trial", "launch", "bench", "coarse",
-               "G0N1C1", "--mode", "direct", "--foreground", "--yes")
-        _taken(run, "launch the benchmark", "launch", "bench", "coarse",
-               "--mode", "direct", "--foreground", "--yes", "--trial-timeout", "5")
+        taken(run, "prep bench", "prep", "bench", "coarse",
+              "--target", "this")
+        taken(run, "launch one trial", "launch", "bench", "coarse",
+              "G0N1C1", "--mode", "direct", "--foreground", "--yes")
+        taken(run, "launch the benchmark", "launch", "bench", "coarse",
+              "--mode", "direct", "--foreground", "--yes", "--trial-timeout", "5")
     return run
 
 
@@ -669,22 +724,16 @@ def co2_vibration(tree: Path, where: str = "P/freq/CO2", *,
                   optical: bool = False) -> Path:
     """The road's CO2 (`support.road.CO2`) described as a SIESTA vibration
     in ``tree`` at ``where``: the kind's one stage, `freq`, one rank, one
-    thread (:func:`_described`), its template carrying :data:`CO2_SETTINGS`
-    as the person's (`template.with_values_set`) -- and, ``optical``,
+    thread (:func:`described`), its template carrying :data:`CO2_SETTINGS`
+    as the person's (`support.road.set_by_the_person`) -- and, ``optical``,
     :data:`CO2_OPTICAL` -- THE ONE MAKER of it, for the shared run and for
     a test's own calculation alike."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.template import with_values_set
-    from molbuilder.template_file import template_path
-    from support.road import CO2
-    bundle = _described(tree, where, structure=CO2, name="CO2",
-                        calculation="vibration",
-                        execution={"mpi_np": 1, "omp_threads": 1})
-    path = template_path(bundle, "CO2")
-    path.write_text(with_values_set(
-        path.read_text(), SiestaConfig, calculation="vibration",
-        values={**CO2_SETTINGS, **(CO2_OPTICAL if optical else {})},
-        source="person"))
+    from support.road import CO2, set_by_the_person
+    bundle = described(tree, where, structure=CO2, name="CO2",
+                       calculation="vibration",
+                       execution={"mpi_np": 1, "omp_threads": 1})
+    set_by_the_person(bundle, {**CO2_SETTINGS,
+                               **(CO2_OPTICAL if optical else {})})
     return bundle
 
 
@@ -739,18 +788,47 @@ def vibration(tmp_path_factory) -> RealRun:
     (:data:`CO2_OPTICAL`), prepared and launched here, waited on -- its
     `relax` call, its `fc` call and the five optical calls, the equilibrium
     and each stretch's two sides, each a point of the run."""
-    with _on_the_road(tmp_path_factory, "vibration") as tree:
+    with on_the_road(tmp_path_factory, "vibration") as tree:
         run = RealRun(tree=tree, bundle=co2_vibration(tree, optical=True))
-        _taken(run, "prep freq", "prep", "task", "--group", "1",
-               "--target", "this")
+        taken(run, "prep freq", "prep", "task", "--group", "1",
+              "--target", "this")
         with _result_kept_as_it_grows(run, tmp_path_factory, "freq"):
-            _taken(run, "launch freq", "launch", "task", "--stage", "freq",
-                   "--mode", "direct", "--foreground", "--yes")
+            taken(run, "launch freq", "launch", "task", "--stage", "freq",
+                  "--mode", "direct", "--foreground", "--yes")
     # IT REACHED ITS END, by the one status door: every reader of the run
     # reads a run that finished, every call of it done.
     status = stage_status(run.bundle, "freq")
     assert status.state == "finished", (status.state, status.detail)
     assert all(p["done"] for p in status.points), status.points
+    return run
+
+
+def sweep(tmp_path_factory) -> RealRun:
+    """A SIESTA vibration's displacement sweep (`engines/vibration.md`
+    § 5.9) on the road's H2, its one free atom displaced: stated relaxed,
+    so each stage is its force-constant call alone, on :data:`QUICK`'s mesh
+    and basis; `freq_half` at 0.02 Bohr added beside `freq` in a group of
+    its own, each prepared and launched in turn, waited on, and the
+    calculation summarized -- `summarize task` writes the sweep's record,
+    ``<label>.fc-sweep.json``, at its root."""
+    from support.road import H2, group_words, ladder_edited, set_by_the_person
+    with on_the_road(tmp_path_factory, "sweep") as tree:
+        bundle = described(tree, "P/freq/H2", structure=H2, name="H2",
+                           calculation="vibration",
+                           execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {
+            "already_relaxed": True,
+            **{k: QUICK[k] for k in ("mesh_cutoff", "basis_size",
+                                     "pao_energy_shift", "max_scf_iter")}})
+        assert ladder_edited({"added": [{"name": "freq_half", "overrides":
+                                         {"fc_displacement": 0.02}}]}, bundle)
+        run = RealRun(tree=tree, bundle=bundle)
+        for stage in ("freq", "freq_half"):
+            taken(run, f"prep {stage}", "prep", "task",
+                  *group_words(bundle, stage), "--target", "this")
+            taken(run, f"launch {stage}", "launch", "task", "--stage", stage,
+                  "--mode", "direct", "--foreground", "--yes")
+        taken(run, "summarize", "summarize", "task")
     return run
 
 
@@ -775,22 +853,26 @@ def copy_of(run: RealRun, name: str, alter) -> RealRun:
     return _MADE[bundle]
 
 
-def pyscf(tmp_path_factory) -> RealRun:
-    """An H2 optimization on PySCF -- its run `01_coarse/run-0/`
-    (:meth:`RealRun.attempt`) -- one thread, the bond stretched to 0.80 A so the optimization
-    takes steps: `coarse` prepared, launched and waited on.  Each module that
-    reads a finished PySCF run reads this one (`process/testing.md` tier 3)."""
+def pyscf(tmp_path_factory, label: str = "H2") -> RealRun:
+    """An H2 optimization on PySCF under ``label`` -- its run
+    `01_coarse/run-0/` (:meth:`RealRun.attempt`) -- one thread, the bond
+    stretched to 0.80 A so the optimization takes steps: `coarse` prepared,
+    launched and waited on.  THE ONE MAKER of it: each module that reads a
+    finished PySCF run reads the shared one, labelled ``H2``
+    (`process/testing.md` tier 3); a module whose subject is the label makes
+    its own under the label it needs."""
     from support.road import H2
     stretched = {**H2, "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 5.80]]}
-    with _on_the_road(tmp_path_factory, "pyscf", engine="pyscf") as tree:
-        bundle = _described(tree, "P/opt/H2", structure=stretched, name="H2",
-                            calculation="optimization", engine="pyscf",
-                            execution={"threads": 1})
+    with on_the_road(tmp_path_factory, f"pyscf-{label}",
+                     engine="pyscf") as tree:
+        bundle = described(tree, f"P/opt/{label}", structure=stretched,
+                           name=label, calculation="optimization",
+                           engine="pyscf", execution={"threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep coarse", "prep", "task", "--group", "1",
-               "--target", "this")
-        _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(run, "prep coarse", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
     return run
 
 
@@ -802,19 +884,19 @@ def water_vibration(tmp_path_factory, name: str, *, structure=None,
     as given, `freq` prepared and launched, waited on, its result kept as it
     grew -- THE ONE MAKER of a shared water vibration."""
     from support.road import WATER, set_by_the_person
-    with _on_the_road(tmp_path_factory, name, engine="pyscf") as tree:
-        bundle = _described(tree, f"P/frequency/{name}",
-                            structure=WATER if structure is None else structure,
-                            name="W", calculation="vibration", engine="pyscf",
-                            execution={"threads": 1}, **blocks)
+    with on_the_road(tmp_path_factory, name, engine="pyscf") as tree:
+        bundle = described(tree, f"P/frequency/{name}",
+                           structure=WATER if structure is None else structure,
+                           name="W", calculation="vibration", engine="pyscf",
+                           execution={"threads": 1}, **blocks)
         if settings:
             set_by_the_person(bundle, settings)
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep freq", "prep", "task", "--group", "1",
-               "--target", "this")
+        taken(run, "prep freq", "prep", "task", "--group", "1",
+              "--target", "this")
         with _result_kept_as_it_grows(run, tmp_path_factory, "freq"):
-            _taken(run, "launch freq", "launch", "task", "--stage", "freq",
-                   "--mode", "direct", "--foreground", "--yes")
+            taken(run, "launch freq", "launch", "task", "--stage", "freq",
+                  "--mode", "direct", "--foreground", "--yes")
     return run
 
 

@@ -39,13 +39,12 @@ why).
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
+from pathlib import Path
 
 import pytest
 
-from test_spectra_phase_indicator_js import _extract_fn_source
 from test_spectrum_results_e2e import _load
+from tests._node_esm import lifted, run_node
 
 from _road import conda_hook, env_available
 from molbuilder.runfiles import ROLE_SPECTRA
@@ -66,20 +65,20 @@ def _h2_with_compute_ir_off(tmp_path_factory, name: str, **settings):
     with Compute IR off -- one force-constant call of seven single points, the
     smallest a SIESTA result is -- ``settings`` the person's beside: its result
     on the label."""
-    from support.real_runs import (CO2_SETTINGS, RealRun, _described,
-                                   _on_the_road, _taken)
+    from support.real_runs import (CO2_SETTINGS, RealRun, described,
+                                   on_the_road, taken)
     from support.road import H2, set_by_the_person
-    with _on_the_road(tmp_path_factory, name) as tree:
-        bundle = _described(tree, f"P/freq/{name}", structure=H2, name="H2",
-                            calculation="vibration",
-                            execution={"mpi_np": 1, "omp_threads": 1})
+    with on_the_road(tmp_path_factory, name) as tree:
+        bundle = described(tree, f"P/freq/{name}", structure=H2, name="H2",
+                           calculation="vibration",
+                           execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, {**CO2_SETTINGS, "already_relaxed": True,
                                    "compute_ir": False, **settings})
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep freq", "prep", "task", "--group", "1",
-               "--target", "this")
-        _taken(run, "launch freq", "launch", "task", "--stage", "freq",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(run, "prep freq", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch freq", "launch", "task", "--stage", "freq",
+              "--mode", "direct", "--foreground", "--yes")
     return on_label_at(run.attempt("freq"), ROLE_SPECTRA)
 
 
@@ -98,25 +97,27 @@ def siesta_range_kept_no_mode(tmp_path_factory):
                                    optical_mesh=[1, 1, 1])
 
 
+#: The spectra viewer the sentence and the done-rule are lifted from.
+_CORE = (Path(__file__).resolve().parents[1]
+         / "molbuilder/web/static/lib/spectra/core.js")
+
+
 def _judge(files):
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    src = "\n".join(_extract_fn_source(n) for n in
+    """What the viewer's own sentence, summary and done-rule, lifted from
+    the shipped core (`_node_esm.lifted`), say of each of ``files`` -- run
+    in Node (`_node_esm.run_node`)."""
+    src = "\n".join(lifted(_CORE, f"    function {n}(", "\n    function ")
+                    for n in
                     ("_ramanOptical", "_asked", "_ramanAsked", "_irAsked",
                      "_running",
                      "_ramanNoneComputed", "_irFromCharges",
                      "_noSpectrumSentence", "_irRouteLabel",
                      "allPhasesComplete"))
-    script = (f"{src}\nconst files = {json.dumps(files)};\n"
-              "console.log(JSON.stringify(files.map(f => ({"
-              "sentence: _noSpectrumSentence(f), "
-              "summary: _irRouteLabel(f), "
-              "done: allPhasesComplete(f)}))));")
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", script],
-                          capture_output=True, text=True, timeout=10)
-    assert proc.returncode == 0, proc.stderr
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node([], f"{src}\nconst files = {json.dumps(files)};\n"
+                        "console.log(JSON.stringify(files.map(f => ({"
+                        "sentence: _noSpectrumSentence(f), "
+                        "summary: _irRouteLabel(f), "
+                        "done: allPhasesComplete(f)}))));")
 
 
 def test_the_sentence_names_the_case_and_the_viewer_waits_for_infrared(

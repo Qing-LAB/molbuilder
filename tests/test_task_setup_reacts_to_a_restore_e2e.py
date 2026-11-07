@@ -21,17 +21,15 @@ gives.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
+from support.road import ladder_edited
+from support.sidebar import WAIT_MS
+from support.task_setup_page import file_text, task_setup_on, wait_for_file
 
 pytestmark = pytest.mark.e2e
 
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -45,16 +43,12 @@ def calc_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def flask_server():
+def flask_server(isolated_projects_root):
+    """A server for this test, on the test's own projects tree -- the one
+    its calculation is described in (`support.live_server.serve`)."""
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
-
-
-def _editor_text(page):
-    return page.evaluate(
-        "() => { const cm = document.querySelector('.CodeMirror');"
-        "        return cm ? cm.CodeMirror.getValue() : ''; }")
 
 
 def _note(page, note):
@@ -62,7 +56,7 @@ def _note(page, note):
     dialog (`ui-contract.md` § 11), its note field filled and its answer
     clicked."""
     asked = page.locator("dialog.mb-dialog[open]")
-    asked.wait_for(state="visible", timeout=20000)
+    asked.wait_for(state="visible", timeout=WAIT_MS)
     asked.locator("input[data-role='note']").fill(note)
     asked.locator("[data-action='confirm']").click()
 
@@ -71,7 +65,7 @@ def _yes(page):
     """Answer the one confirm (`warningModal.confirm`) with its costly
     choice -- Restore asks before rewriting the folder."""
     asked = page.locator("dialog.molbuilder-warning-modal[open]")
-    asked.wait_for(state="visible", timeout=20000)
+    asked.wait_for(state="visible", timeout=WAIT_MS)
     asked.locator("[data-action='discard']").click()
 
 
@@ -82,17 +76,17 @@ def _show_panel(page):
     which one is showing, so a second unconditional click after a reload
     puts the tree back.
     """
-    page.wait_for_selector("#ps-checkpoint-toggle", timeout=20000)
+    page.wait_for_selector("#ps-checkpoint-toggle", timeout=WAIT_MS)
     showing = page.evaluate(
         "() => { const p = document.getElementById('ps-checkpoint');"
         "        return !!(p && !p.hidden && p.offsetParent !== null); }")
     if not showing:
         page.click("#ps-checkpoint-toggle")
-    page.wait_for_selector("#ps-checkpoint", state="visible", timeout=20000)
+    page.wait_for_selector("#ps-checkpoint", state="visible", timeout=WAIT_MS)
 
 
 def _rows(page):
-    """Every checkpoint state on the panel, as {note-ish text: handle}."""
+    """Every checkpoint state on the panel, the text of its row."""
     return page.evaluate(
         "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
         "        .map(li => li.textContent)")
@@ -106,37 +100,27 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     The selection never changes and nothing is committed, so the only thing
     that can carry the news is `publishFolderChanged` -> `onFolderChanged`.
 
-    **Every step is a control on the page** -- Set up, Save a state, expand
-    a row, Restore -- because the defect was a gap BETWEEN two surfaces and
-    only a walk that uses both can stand in it.  The one thing done behind
-    the page's back is rewriting `task.json` on disk, and that is the
-    premise rather than a shortcut: `projects.md` § 2 is about *"anything
-    that rearranges a folder behind an open tab"*, which is by definition
-    something the tab did not do.
+    **Every step is a control on the page** -- the folder's rows, Set up,
+    Save a state, expand a row, Restore -- because the defect was a gap
+    BETWEEN two surfaces and only a walk that uses both can stand in it.
+    The one thing done behind the page's back is another client's Save
+    renaming the stage, and that is the premise rather than a shortcut:
+    `projects.md` § 2 is about *"anything that rearranges a folder behind
+    an open tab"*, which is by definition something the tab did not do.
     """
     native = []
     page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
 
-    slot = json.dumps(str(calc_dir))
-    page.add_init_script(
-        "try {"
-        f" sessionStorage.setItem('molbuilder.current_dir.task-setup', {slot});"
-        f" sessionStorage.setItem('molbuilder.current_dir', {slot});"
-        "} catch (_) {}")
-    page.goto(f"{flask_server}/task-setup")
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        " return !!(n && n.CodeMirror); }", timeout=20000)
-    page.wait_for_function(
-        "() => document.querySelector('.CodeMirror')"
-        ".CodeMirror.getValue().includes('coarse')", timeout=20000)
+    # The folder opened as a person opens it: its rows in the sidebar.
+    task_setup_on(page, flask_server, calc_dir)
+    wait_for_file(page, "task", "coarse")
 
     # ── put the folder under checkpoint control, and save state A ───────
     # The panel shares its slot with the file tree; the filter bar's toggle
     # is how a person brings it forward.
     _show_panel(page)
     page.wait_for_selector("#ps-checkpoint-init", state="visible",
-                           timeout=20000)
+                           timeout=WAIT_MS)
     page.click("#ps-checkpoint-init")
     # Set-up SAVES the first state itself, noted "set up" -- so this is
     # state A and there is nothing to commit yet.  Pressing Save-a-state
@@ -145,49 +129,33 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     page.wait_for_function(
         "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
         "        .some(li => li.textContent.includes('set up'))",
-        timeout=20000)
-    assert "coarse" in _editor_text(page)
+        timeout=WAIT_MS)
+    assert "coarse" in file_text(page, "task")
 
     # ── rewrite the folder behind the tab, then record that as state B ──
-    # THROUGH THE PROJECT'S OWN DOOR.  `molbuilder.task` owns this format
-    # and exposes `task.of` / `write_task`; hand-editing the JSON is a
-    # second writer, and a second writer can produce a `task.json` the app
-    # would refuse or read differently -- which would make this test's
-    # premise ("the folder changed underneath the tab") a lie about a file
-    # the tab could not have shown in the first place.
-    import dataclasses
-
-    from molbuilder import job_request
-    from molbuilder.task import of as task_of, write_task
-
-    # ...AND ITS JOB REQUEST BESIDE IT, which names the stages too
-    # (`execution/job-request.md` § 3): the two records are one ladder.
-    before = task_of(calc_dir)
-    asked = job_request.of(calc_dir, before)
-    renamed = dataclasses.replace(before.stages[0], name="afterwards")
-    write_task(calc_dir,
-               dataclasses.replace(before, stages=(renamed,)))
-    job_request.write(calc_dir, dataclasses.replace(
-        asked, stages={"afterwards": asked.stages[before.stages[0].name]}))
+    # BY ANOTHER WRITER THROUGH THE PROJECT'S OWN DOOR: Task setup's Save,
+    # from another client, renames the one stage -- the description and the
+    # job request beside it, which names the stages too
+    # (`execution/job-request.md` § 3), as one ladder.  Nothing this tab
+    # did, which is the premise: `projects.md` § 2 is about *"anything that
+    # rearranges a folder behind an open tab"*.
+    assert ladder_edited({"removed": ["coarse"],
+                          "added": [{"name": "afterwards"}]}, calc_dir)
     page.click("#ps-checkpoint-commit-btn")
     _note(page, "after the edit")
     page.wait_for_function(
         "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
         "        .some(li => li.textContent.includes('after the edit'))",
-        timeout=20000)
+        timeout=WAIT_MS)
 
     # The tab is still showing the OLD text -- nothing announced the write,
     # and that is correct.  Reload so the tab is honestly showing B before
     # the restore, or "it changed" could just be the tab catching up.
     page.reload()
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        " return !!(n && n.CodeMirror)"
-        "   && n.CodeMirror.getValue().includes('afterwards'); }",
-        timeout=20000)
+    wait_for_file(page, "task", "afterwards")
     _show_panel(page)
     page.wait_for_selector(".ps-checkpoint-list-item", state="visible",
-                           timeout=20000)
+                           timeout=WAIT_MS)
 
     notes = _rows(page)
     assert sum("set up" in t for t in notes) == 1, (
@@ -200,27 +168,21 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     # ── RESTORE to state A, picked BY NAME ──────────────────────────────
     # Not by position: the panel's order is its own decision, and a test
     # that says "the last row" silently changes meaning the day that flips.
-    page.evaluate("""() => {
-        const row = [...document.querySelectorAll(".ps-checkpoint-list-item")]
-            .find(li => li.textContent.includes("set up"));
-        row.click();                          // expand to reveal the actions
-        row.querySelector('[data-action="restore"]').click();
-    }""")
+    row = page.locator(".ps-checkpoint-list-item", has_text="set up")
+    row.click()                               # expand to reveal the actions
+    row.locator('[data-action="restore"]').click()
     _yes(page)
 
     # ── the tab must catch up on its own ────────────────────────────────
     # The wait is bounded and its failure is SWALLOWED, so the assertion
     # below is what a person reads.  Letting `wait_for_function` raise
-    # reports "Timeout 20000ms exceeded" and nothing else -- which is the
+    # reports only that the wait timed out -- which is the
     # correct verdict delivered in a form that teaches nobody what broke.
     try:
-        page.wait_for_function(
-            "() => { const n = document.querySelector('.CodeMirror');"
-            " return n && n.CodeMirror.getValue().includes('coarse'); }",
-            timeout=20000)
+        wait_for_file(page, "task", "coarse")
     except Exception:                      # noqa: BLE001 - see above
         pass
-    after = _editor_text(page)
+    after = file_text(page, "task")
     assert "coarse" in after and "afterwards" not in after, (
         "the Task-setup tab is still showing the description the folder had "
         "BEFORE the restore.  The selection never moved and nothing was "

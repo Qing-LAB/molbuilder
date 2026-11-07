@@ -3,9 +3,10 @@ View/Preview modal — view → edit → save with mtime-based safe
 overwrite (task #302, 2026-06-09), through /api/files/write and its
 ``expected_mtime`` conflict detection.
 
-The editor is a single CodeMirror 5 instance.  The tests drive CM via the
-test handle exposed on ``elModal.__molbuilder_test_cm`` so they don't depend
-on CM's internal DOM.
+The editor is a single CodeMirror 5 instance.  The tests open a file as a
+person does -- its sidebar row's *View* -- and type into the editor; they READ
+it through the test handle exposed on ``elModal.__molbuilder_test_cm`` so they
+don't depend on CM's internal DOM.
 """
 from __future__ import annotations
 
@@ -17,71 +18,59 @@ pytestmark = pytest.mark.e2e
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
+from support.sidebar import WAIT_MS, replace_text, row, walk_to  # noqa: E402
+
 
 @pytest.fixture
-def flask_server():
+def flask_server(isolated_projects_root):
+    """A server for this test, on the test's own projects tree
+    (`support.live_server.serve`)."""
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-
-
-def _setup(page, base_url, target_path):
-    """Open /molbuilder, prime the sidebar's current file pointer
-    to ``target_path``, open the preview modal, and wait for the
-    CodeMirror instance to mount.
-
-    All E2E tests below assume the CM test handle is reachable
-    via ``modalEl.__molbuilder_test_cm`` once this returns; that's
-    the contract preview.js carries (set in ``_ensureCmMounted``).
-    """
-    page.goto(f"{base_url}/molbuilder", wait_until="domcontentloaded")
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.projects "
-        "      && typeof window.molbuilder.projects.setShared "
-        "             === 'function'",
-        timeout=5000,
-    )
-    page.evaluate(
-        "(p) => window.molbuilder.projects.setShared("
-        "  p.substring(0, p.lastIndexOf('/')), p)",
-        target_path,
-    )
-    # Open the preview modal programmatically — the per-entry View
-    # button click depends on the sidebar list re-render landing
-    # for the right file row, which adds flake for no value.
-    # The exported showPreview() function is the same code path
-    # the button would reach.
-    page.evaluate(
-        "async () => {"
-        "  const mod = await import("
-        "    '/static/lib/projects/preview.js');"
-        "  await mod.showPreview();"
-        "}"
-    )
+def _view(page, target_path):
+    """``target_path`` opened in the preview modal as a person opens it: its
+    row's menu, *View* (`projects.md` § 4), the sidebar walked to its folder
+    first -- and the CodeMirror instance mounted."""
+    from pathlib import Path
+    target = Path(target_path)
+    walk_to(page, target)
+    row(page, target).locator(".ps-entry-kebab").click()
+    page.get_by_role("menuitem", name="View", exact=True).click()
     page.wait_for_function(
         "() => !document.getElementById('ps-preview-modal').hidden",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
     # Wait for the CM test handle to attach — _ensureCmMounted
     # sets it after the vendored bundle finishes loading.  Without
-    # this, downstream getValue() / setValue() calls would race.
+    # this, downstream getValue() calls would race.
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal')"
         "         .__molbuilder_test_cm !== undefined",
-        timeout=10000,
+        timeout=WAIT_MS,
     )
+
+
+def _setup(page, base_url, target_path):
+    """Open /molbuilder and view ``target_path`` (:func:`_view`).
+
+    All E2E tests below read the editor through the CM test handle
+    ``modalEl.__molbuilder_test_cm`` once this returns; that's the contract
+    preview.js carries (set in ``_ensureCmMounted``).
+    """
+    page.goto(f"{base_url}/molbuilder", wait_until="domcontentloaded")
+    _view(page, target_path)
+
+
+def _close(page):
+    """The modal closed by its footer's Close, when it is open."""
+    if not page.evaluate(
+            "() => document.getElementById('ps-preview-modal').hidden"):
+        page.locator(".ps-preview-close-footer").click()
+        page.wait_for_function(
+            "() => document.getElementById('ps-preview-modal').hidden")
 
 
 def _cm_value(page):
@@ -93,26 +82,14 @@ def _cm_value(page):
 
 
 def _cm_set_value(page, text):
-    """Replace the editor's text via the test handle.  Equivalent
-    to a user clearing the editor and typing — fires the change
-    event that drives the Save-enable + dirty status."""
-    page.evaluate(
-        "(t) => document.getElementById('ps-preview-modal')"
-        "          .__molbuilder_test_cm.setValue(t)",
-        text,
-    )
-
-
-def _cm_line_count(page):
-    """Number of lines currently in the editor doc."""
-    return page.evaluate(
-        "() => document.getElementById('ps-preview-modal')"
-        "         .__molbuilder_test_cm.lineCount()"
-    )
+    """Replace the editor's text as a person does
+    (`support.sidebar.replace_text`) -- the edit that drives the Save-enable
+    + dirty status."""
+    replace_text(page, "#ps-preview-modal .CodeMirror", text)
 
 
 def test_preview_modal_view_edit_save_round_trip(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """The canonical edit-save round trip (`projects.md` § 4, the preview
     pop-up): open modal → click Edit → modify → click Save → verify file
     on disk + status shows "Saved at ..." → close → reopen → verify new
@@ -120,8 +97,7 @@ def test_preview_modal_view_edit_save_round_trip(
 
     THE SILENT FAILURE: an edit Save never wrote to disk, or a reopened
     file showing the text it had before the save."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "myproj"
+    proj = isolated_projects_root.resolve() / "myproj"
     proj.mkdir()
     target = proj / "notes.txt"
     original = "first line\nsecond line\n"
@@ -135,7 +111,7 @@ def test_preview_modal_view_edit_save_round_trip(
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal')"
         "         .__molbuilder_test_cm.getValue().length > 0",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
     assert _cm_value(page) == original
     assert page.locator("#ps-preview-edit-btn").is_enabled()
@@ -151,8 +127,7 @@ def test_preview_modal_view_edit_save_round_trip(
     # Save still disabled — no dirty edits yet.
     assert page.locator("#ps-preview-save-btn").is_disabled()
 
-    # Modify content via the CM handle (equivalent to typing); the
-    # change event flips Save-enable + status.
+    # Type the new content; the edit flips Save-enable + status.
     new_content = original + "third line — edited from the modal\n"
     _cm_set_value(page, new_content)
     page.wait_for_function(
@@ -167,48 +142,33 @@ def test_preview_modal_view_edit_save_round_trip(
     page.wait_for_function(
         "() => /Saved at/.test("
         "  document.getElementById('ps-preview-status').textContent)",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
     # File on disk reflects the edit.
     assert target.read_text() == new_content
 
-    # Save button disabled again (nothing dirty), Edit still
-    # disabled (we're still in edit mode).
+    # Save button disabled again: nothing dirty.
     assert page.locator("#ps-preview-save-btn").is_disabled()
 
-    # Close + re-open → the saved content is what shows up in
-    # both the editor body AND the originalText path.
-    page.locator(".ps-preview-close-footer").click()
-    page.wait_for_function(
-        "() => document.getElementById('ps-preview-modal').hidden"
-    )
-    page.evaluate(
-        "async () => {"
-        "  const mod = await import("
-        "    '/static/lib/projects/preview.js');"
-        "  await mod.showPreview();"
-        "}"
-    )
-    page.wait_for_function(
-        "() => !document.getElementById('ps-preview-modal').hidden"
-    )
+    # Close + re-open → the saved content is what the editor shows.
+    _close(page)
+    _view(page, target)
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal')"
         "         .__molbuilder_test_cm.getValue()"
         "         .includes('third line — edited from the modal')",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
 
 
 def test_preview_modal_save_handles_mtime_conflict(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """If the file changes on disk between Read and Save, the
     server returns 409 with a clear message; the modal surfaces
     that in the error slot instead of silently clobbering
     (`projects.md` § 4: *a concurrent change on disk is caught ...
     instead of being silently overwritten*)."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "myproj"
+    proj = isolated_projects_root.resolve() / "myproj"
     proj.mkdir()
     target = proj / "conflict.txt"
     target.write_text("original\n")
@@ -217,7 +177,7 @@ def test_preview_modal_save_handles_mtime_conflict(
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal')"
         "         .__molbuilder_test_cm.getValue().length > 0",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
     page.locator("#ps-preview-edit-btn").click()
     _cm_set_value(page, "edited in browser\n")
@@ -225,21 +185,24 @@ def test_preview_modal_save_handles_mtime_conflict(
         "() => !document.getElementById('ps-preview-save-btn').disabled"
     )
 
-    # Simulate an out-of-band write: the file gets a NEW mtime
-    # before the user clicks Save.  Set the mtime explicitly via
-    # os.utime so the test doesn't depend on filesystem mtime
-    # resolution — the contract is "different mtime," not "mtime
-    # distinguishable to the second".
-    import os as _os
-    old_mtime = target.stat().st_mtime
-    target.write_text("someone else's edit\n")
-    _os.utime(target, (old_mtime + 2.0, old_mtime + 2.0))
+    # An out-of-band write before the user clicks Save: another writer's
+    # text, written until the file's mtime is not the one the modal read --
+    # the contract is "a different mtime", and a filesystem whose clock
+    # ticks coarser than one write is written again, never given a forged
+    # stamp.
+    import time as _time
+    read_at = target.stat().st_mtime_ns
+    while True:
+        target.write_text("someone else's edit\n")
+        if target.stat().st_mtime_ns != read_at:
+            break
+        _time.sleep(0.01)
 
     page.locator("#ps-preview-save-btn").click()
     page.wait_for_function(
         "() => /mtime|conflict|changed/i.test("
         "  document.getElementById('ps-preview-error').textContent)",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
     # Disk content reflects the OTHER writer, not the browser's
     # edit — the safe-overwrite contract held.
@@ -247,7 +210,7 @@ def test_preview_modal_save_handles_mtime_conflict(
 
 
 def test_preview_modal_disables_edit_for_large_files(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """`projects.md` § 4: files up to 1 MB are editable, larger ones open
     view-only, and very large ones are paged in as you scroll.  In
     `preview.js`: past `VIEW_ONLY_BYTES` (1 MB) Edit is disabled and the
@@ -260,8 +223,7 @@ def test_preview_modal_disables_edit_for_large_files(
     The file is 33 MB of 'A' -- past both caps, so the paged path fires;
     its UTF-8 size is its byte size and its first page lands quickly.  The
     1 MB edit cap alone (a file between 1 and 16 MB) is not reached here."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "myproj"
+    proj = isolated_projects_root.resolve() / "myproj"
     proj.mkdir()
     big = proj / "large.txt"
     # 33 MB > the 16 MB one-read ceiling.  Write in a single shot;
@@ -274,7 +236,7 @@ def test_preview_modal_disables_edit_for_large_files(
     # Edit button must be DISABLED — file is past the cap.
     page.wait_for_function(
         "() => document.getElementById('ps-preview-edit-btn').disabled",
-        timeout=10000,
+        timeout=WAIT_MS,
     )
 
     # Status line explains why + advertises the keybindings.
@@ -292,13 +254,12 @@ def test_preview_modal_disables_edit_for_large_files(
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal')"
         "         .__molbuilder_test_cm.getValue().length > 0",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
     body_len = page.evaluate(
         "() => document.getElementById('ps-preview-modal')"
         "         .__molbuilder_test_cm.getValue().length"
     )
-    assert body_len > 0, "first chunk did not render"
     # And it's nowhere near the full 33 MB — the modal loaded a
     # range chunk, not the whole file.
     assert body_len < 1024 * 1024, (
@@ -318,12 +279,11 @@ def test_preview_modal_disables_edit_for_large_files(
 
 
 def test_preview_modal_close_prompts_when_dirty(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """Closing the modal with unsaved edits asks first -- the one confirm
     (`ui-contract.md` § 11), never the browser's own: Cancel keeps the
     editor open with the edit, the costly answer closes it unsaved."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "myproj"
+    proj = isolated_projects_root.resolve() / "myproj"
     proj.mkdir()
     target = proj / "to_close.txt"
     target.write_text("hello\n")
@@ -332,7 +292,7 @@ def test_preview_modal_close_prompts_when_dirty(
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal')"
         "         .__molbuilder_test_cm.getValue().length > 0",
-        timeout=5000,
+        timeout=WAIT_MS,
     )
     page.locator("#ps-preview-edit-btn").click()
     _cm_set_value(page, "unsaved edit\n")
@@ -346,24 +306,24 @@ def test_preview_modal_close_prompts_when_dirty(
     # Esc asks the same question -- the key that closes the preview must
     # not also answer the confirm it opens.
     page.keyboard.press("Escape")
-    asked.wait_for(state="visible", timeout=5000)
+    asked.wait_for(state="visible", timeout=WAIT_MS)
     page.wait_for_timeout(300)
     assert asked.is_visible(), "Esc answered the question it had just asked"
     asked.locator("[data-action='cancel']").click()
-    asked.wait_for(state="detached", timeout=5000)
+    asked.wait_for(state="detached", timeout=WAIT_MS)
 
     # A close: Cancel; the modal stays open.
     page.locator(".ps-preview-close-footer").click()
-    asked.wait_for(state="visible", timeout=5000)
+    asked.wait_for(state="visible", timeout=WAIT_MS)
     asked.locator("[data-action='cancel']").click()
-    asked.wait_for(state="detached", timeout=5000)
+    asked.wait_for(state="detached", timeout=WAIT_MS)
     assert not page.evaluate(
         "() => document.getElementById('ps-preview-modal').hidden"
     ), "modal closed despite the dirty-confirm declining"
 
     # Second close: the costly answer; the modal closes.
     page.locator(".ps-preview-close-footer").click()
-    asked.wait_for(state="visible", timeout=5000)
+    asked.wait_for(state="visible", timeout=WAIT_MS)
     asked.locator("[data-action='discard']").click()
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal').hidden"
@@ -393,7 +353,7 @@ _JSON = {"data.json": True, "tool.js": False}
 
 
 def test_the_editor_searches_jumps_and_highlights_what_it_says(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """The editor's files are vendored -- served by molbuilder itself, no
     CDN (`static/vendor/README.md`) -- and one the bundle lacks fails in
     silence: its script 404s, its command or mode never registers, and the
@@ -413,8 +373,7 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     out of the loader; markdown
     loaded without xml; JSON highlighted as plain JavaScript; a
     paged file left in the last file's mode."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "myproj"
+    proj = isolated_projects_root.resolve() / "myproj"
     proj.mkdir()
     # Each file's own name its first line; the markdown file an HTML tag
     # after it, which markdown hands to the xml mode.
@@ -435,7 +394,7 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     _setup(page, flask_server, str(proj / _HIGHLIGHTED[0][0]))
     page.locator("#ps-preview-modal .CodeMirror").click()
     page.keyboard.press("Control+f")
-    page.wait_for_selector(dialog, timeout=5000)
+    page.wait_for_selector(dialog, timeout=WAIT_MS)
     # The dialog sits over the editor, as its stylesheet places it.
     assert page.evaluate(
         "(s) => getComputedStyle(document.querySelector(s)).position",
@@ -443,26 +402,22 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     page.keyboard.type("README")
     page.keyboard.press("Enter")
     page.wait_for_function(f"() => {cm}.getSelection() === 'README'",
-                           timeout=5000)
+                           timeout=WAIT_MS)
     # Enter both searches and closes the dialog.
-    page.wait_for_selector(dialog, state="detached", timeout=5000)
+    page.wait_for_selector(dialog, state="detached", timeout=WAIT_MS)
     page.keyboard.press("Alt+g")
-    page.wait_for_selector(dialog, timeout=5000)
+    page.wait_for_selector(dialog, timeout=WAIT_MS)
     page.keyboard.type("2")
     page.keyboard.press("Enter")
     page.wait_for_function(f"() => {cm}.getCursor().line === 1",
-                           timeout=5000)
+                           timeout=WAIT_MS)
 
     shown = {}
     for name, _ in _HIGHLIGHTED:
-        page.evaluate(
-            "async (p) => {"
-            "  window.molbuilder.projects.setShared("
-            "    p.substring(0, p.lastIndexOf('/')), p);"
-            "  const mod = await import('/static/lib/projects/preview.js');"
-            "  await mod.showPreview(); }", str(proj / name))
+        _close(page)
+        _view(page, proj / name)
         page.wait_for_function(f"(t) => {cm}.getValue() === t",
-                               arg=texts[name], timeout=10000)
+                               arg=texts[name], timeout=WAIT_MS)
         if name == "README.md":
             xml_with_markdown = page.evaluate(
                 f"() => String({cm}.getTokenTypeAt({{line: 1, ch: 1}}))"
@@ -477,15 +432,16 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     # A file past the one-read ceiling is paged in -- after a .py.
     big = proj / "big.out"
     big.write_text("big\n" + ("x" * 99 + "\n") * (17 * 1024 * 1024 // 100))
-    for name in ("script.py", "big.out"):
-        page.evaluate(
-            "async (p) => {"
-            "  window.molbuilder.projects.setShared("
-            "    p.substring(0, p.lastIndexOf('/')), p);"
-            "  const mod = await import('/static/lib/projects/preview.js');"
-            "  await mod.showPreview(); }", str(proj / name))
-        page.wait_for_function(f"(t) => {cm}.getValue().startsWith(t)",
-                               arg=name.split(".")[0], timeout=20000)
+    # The sidebar walked up and back down, so the new file has its row.
+    _close(page)
+    walk_to(page, proj.parent)
+    _view(page, proj / "script.py")
+    page.wait_for_function(f"() => {cm}.getMode().name === 'python'",
+                           timeout=WAIT_MS)
+    _close(page)
+    _view(page, big)
+    page.wait_for_function(f"() => {cm}.getValue().startsWith('big')",
+                           timeout=WAIT_MS)
     assert page.evaluate(f"() => {cm}.getMode().name") == "null", (
         "a paged-in file kept the last file's highlighting")
     assert xml_with_markdown, (

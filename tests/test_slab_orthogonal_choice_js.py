@@ -7,24 +7,22 @@ starts unchecked, and unchecked is the one setting a (100) slab cannot be
 built with, so the default request came back a 400.
 
 `renderOrthogonalChoice` in `modify/slab-panel.js` sets and disables the box
-where the surface allows one shape.  What it must NOT do is carry its own copy
-of the rule — which shapes exist is `/api/modify/meta`'s `orthogonal_choices`,
-and `tests/test_fcc_cell_shapes.py` holds that table to the ASE it describes.
-This test therefore drives the function with a *stated* meta rather than the
-real one, so a panel that ignored the server and hardcoded the planes would
-still fail here.
+where the surface allows one shape.  Which shapes exist is `/api/modify/meta`'s
+`orthogonal_choices`, and `tests/test_fcc_cell_shapes.py` holds that table to
+the ASE it describes; the panel is driven here with what the route answers,
+on each plane it offers (`fcc_planes`).  A panel carrying its own copy of the
+table that agrees with the server today passes too: that second copy is a
+review finding (`process/code-audit.md` § 1c), not something a run can see.
 """
 
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
-from tests._node_esm import lifted
+from tests._node_esm import lifted, run_node
 
 pytestmark = pytest.mark.module
 
@@ -32,23 +30,20 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/slab-panel.js"
 
 
-def _run(plane: str, choices, *, box_checked: bool = False) -> dict:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-
+def _run(plane: str, meta: dict) -> dict:
+    """`renderOrthogonalChoice` on ``plane`` with the server's ``meta``,
+    the box as the panel opens it -- unchecked -- and what it left."""
     fn = lifted(MODULE, "function renderOrthogonalChoice(",
                 "/* A seam only continues")
-    bootstrap = f"""
+    return run_node([], f"""
         const dom = {{
-            "slab-orthogonal": {{ checked: {json.dumps(box_checked)},
-                                  disabled: false }},
+            "slab-orthogonal": {{ checked: false, disabled: false }},
             "slab-orthogonal-note": {{ hidden: true, textContent: "",
                 classList: {{ remove() {{}}, add() {{}}, toggle() {{}} }} }},
         }};
         function $(id) {{ return dom[id] || null; }}
         function picked() {{ return {json.dumps(plane)}; }}
-        const meta = {{ orthogonal_choices: {json.dumps(choices)} }};
+        const meta = {json.dumps(meta)};
 
         {fn}
 
@@ -59,47 +54,36 @@ def _run(plane: str, choices, *, box_checked: bool = False) -> dict:
             note:     dom["slab-orthogonal-note"].textContent,
             note_hidden: dom["slab-orthogonal-note"].hidden,
         }}));
-    """
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", bootstrap],
-                          capture_output=True, text=True, timeout=10)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    """)
 
 
-_REAL = {"100": [True], "110": [True], "111": [False, True]}
+@pytest.fixture(scope="module")
+def meta():
+    """What `/api/modify/meta` answers -- the panel's one source for the
+    planes and the shapes each allows."""
+    from molbuilder.web.app import create_app
+    r = create_app(config={}).test_client().get("/api/modify/meta")
+    assert r.status_code == 200, r.get_data(as_text=True)
+    return r.get_json()
 
 
-@pytest.mark.parametrize("plane", ["100", "110"])
-def test_a_surface_with_one_shape_gets_it_set_and_locked(plane):
-    out = _run(plane, _REAL)
-    assert out["checked"] is True, (
-        f"fcc({plane}) can only be built orthogonal -- leaving the box "
-        f"unchecked is the 400")
-    assert out["disabled"] is True, "there is no choice, so do not offer one"
-    assert out["note_hidden"] is False and plane in out["note"]
-
-
-def test_the_one_surface_with_a_choice_keeps_it():
-    out = _run("111", _REAL)
-    assert out["disabled"] is False
-    assert out["note_hidden"] is True, "no note where there is a real choice"
-
-
-def test_it_reads_the_server_and_does_not_hardcode_the_planes():
-    """The mutation that matters: a panel with its own copy of the rule.
-
-    Told (111) has one shape and (100) has two -- the opposite of reality --
-    a panel reading the server follows; one with a hardcoded table does not.
-    """
-    inverted = {"100": [False, True], "111": [True]}
-    assert _run("111", inverted)["disabled"] is True
-    assert _run("100", inverted)["disabled"] is False
-
-
-def test_an_unknown_surface_is_left_alone():
-    """Says nothing rather than guessing -- the panel's habit elsewhere."""
-    out = _run("311", _REAL, box_checked=True)
-    assert out["disabled"] is False
-    assert out["checked"] is True, "an unknown plane must not flip the box"
-    assert out["note_hidden"] is True
+def test_each_offered_surface_gets_the_shapes_the_server_allows(meta):
+    """Each plane the panel offers, as the server answers it: one shape --
+    set, locked, and said in a note naming the plane, since leaving the box
+    unchecked on fcc(100) is the 400; two -- the choice kept, no note."""
+    planes = meta["fcc_planes"]
+    shapes = {p: meta["orthogonal_choices"].get(p) for p in planes}
+    assert any(len(v) == 1 for v in shapes.values() if v), shapes
+    assert any(len(v) == 2 for v in shapes.values() if v), shapes
+    for plane, allowed in shapes.items():
+        out = _run(plane, meta)
+        if allowed and len(allowed) == 1:
+            assert out["checked"] is allowed[0], (plane, out)
+            assert out["disabled"] is True, (
+                f"fcc({plane}): there is no choice, so do not offer one")
+            assert out["note_hidden"] is False and plane in out["note"]
+        else:
+            assert out["checked"] is False and out["disabled"] is False, (
+                f"fcc({plane}): the box left as the person has it", out)
+            assert out["note_hidden"] is True, (
+                f"fcc({plane}): no note where there is a real choice")

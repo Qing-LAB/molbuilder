@@ -306,14 +306,14 @@ def junction(tmp_path_factory):
     citation, ``cited_before`` -- the cited run's files as the relaxation
     left them -- and every answer the road gave, by step."""
     from molbuilder.web.app import create_app
-    from support.real_runs import RealRun, Said, _on_the_road, _taken, _typed
+    from support.real_runs import RealRun, Said, on_the_road, taken, typed
     from support.road import group_words
 
     def seed_and_leads(on):
         # ONE GROUP, ONE JOB (`engines/stages.md` § 2): the defaults put
         # the seed and the two leads in group 1.
         return group_words(on.bundle, "seed", "electrode_L", "electrode_R")
-    with _on_the_road(tmp_path_factory, "junction") as tree:
+    with on_the_road(tmp_path_factory, "junction") as tree:
         # THE RELAXATION -- an ordinary optimization, one stage.
         r = molbuilder("describe", "--structure", _write_junction(tree),
                    "--bundle", "P/opt/J", "--engine", "siesta",
@@ -325,10 +325,10 @@ def junction(tmp_path_factory):
         # person's (`engines/template.md` § 6.6) -- never the whole file
         # rewritten, which records every value as a default nobody chose.
         set_by_the_person(relax.bundle, RELAXED_WITH)
-        _taken(relax, "prep", "prep", "task",
-               *group_words(relax.bundle, "coarse"), "--target", "this")
-        _taken(relax, "launch", "launch", "task", "--stage", "coarse",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(relax, "prep", "prep", "task",
+              *group_words(relax.bundle, "coarse"), "--target", "this")
+        taken(relax, "launch", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
         cite = "P/opt/J/01_coarse/run-0"
         cited_before = _all_written(tree / cite)
 
@@ -413,28 +413,28 @@ def junction(tmp_path_factory):
 
         # THE LADDER, a group at a time, each prepared once the one before
         # it has run.
-        _taken(run, "prep seed and leads", "prep", "task",
-               *seed_and_leads(run), "--target", "this")
-        _taken(run, "launch seed and leads", "launch", "task",
-               *seed_and_leads(run), "--mode", "direct", "--foreground", "--yes")
-        _taken(run, "prep device", "prep", "task",
-               *group_words(run.bundle, "device"), "--target", "this")
-        _taken(run, "launch device", "launch", "task", "--stage", "device",
-               "--mode", "direct", "--foreground", "--yes")
-        _taken(run, "status device", "status", "device")
-        _typed(run, "launch device again", "launch", "task", "--stage",
-               "device", "--mode", "direct", "--foreground", "--yes")
+        taken(run, "prep seed and leads", "prep", "task",
+              *seed_and_leads(run), "--target", "this")
+        taken(run, "launch seed and leads", "launch", "task",
+              *seed_and_leads(run), "--mode", "direct", "--foreground", "--yes")
+        taken(run, "prep device", "prep", "task",
+              *group_words(run.bundle, "device"), "--target", "this")
+        taken(run, "launch device", "launch", "task", "--stage", "device",
+              "--mode", "direct", "--foreground", "--yes")
+        taken(run, "status device", "status", "device")
+        typed(run, "launch device again", "launch", "task", "--stage",
+              "device", "--mode", "direct", "--foreground", "--yes")
         from support.real_runs import stage_status
         run.device_runs_after_refusal = stage_status(run.bundle,
                                                      "device").attempts
-        _taken(run, "launch device cold", "launch", "task", "--stage",
-               "device", "--mode", "direct", "--foreground", "--yes", "--cold")
-        _taken(run, "status device after cold", "status", "device")
-        _taken(run, "prep transmission", "prep", "task",
-               *group_words(run.bundle, "transmission"), "--target", "this")
-        _taken(run, "launch transmission", "launch", "task", "--stage",
-               "transmission", "--mode", "direct", "--foreground", "--yes")
-        _taken(run, "summarize", "summarize", "task")
+        taken(run, "launch device cold", "launch", "task", "--stage",
+              "device", "--mode", "direct", "--foreground", "--yes", "--cold")
+        taken(run, "status device after cold", "status", "device")
+        taken(run, "prep transmission", "prep", "task",
+              *group_words(run.bundle, "transmission"), "--target", "this")
+        taken(run, "launch transmission", "launch", "task", "--stage",
+              "transmission", "--mode", "direct", "--foreground", "--yes")
+        taken(run, "summarize", "summarize", "task")
 
         run.probe = _the_decks_a_person_sets(tree, cite, client)
 
@@ -462,10 +462,10 @@ def junction(tmp_path_factory):
         set_by_the_person(vib.bundle, {**RELAXED_WITH,
                                        "pulay_history": _VIBRATED_HISTORY,
                                        "already_relaxed": True})
-        _taken(vib, "prep freq", "prep", "task",
-               *group_words(vib.bundle, "freq"), "--target", "this")
-        _taken(vib, "launch freq", "launch", "task", "--stage", "freq",
-               "--mode", "direct", "--foreground", "--yes")
+        taken(vib, "prep freq", "prep", "task",
+              *group_words(vib.bundle, "freq"), "--target", "this")
+        taken(vib, "launch freq", "launch", "task", "--stage", "freq",
+              "--mode", "direct", "--foreground", "--yes")
         vibration = "P/frequency/V/01_freq/run-0"
 
         # THE FRAME SET, written from its highest mode by the generator on
@@ -515,37 +515,37 @@ def junction(tmp_path_factory):
                           bundle=tree / "P" / "transport" / "outside")
         one_rank(outside.bundle)
         set_by_the_person(outside.bundle, {"spin_treatment": "restricted"})
-        _typed(outside, "prep outside its cell", "prep", "task",
-               *seed_and_leads(outside), "--target", "this")
+        typed(outside, "prep outside its cell", "prep", "task",
+              *seed_and_leads(outside), "--target", "this")
         codec.write(relaxed.replace(engine_offset=None, offset_by=None),
                     outside_pair)
-        _typed(outside, "prep with its origin set back", "prep", "task",
-               *seed_and_leads(outside), "--target", "this")
+        typed(outside, "prep with its origin set back", "prep", "task",
+              *seed_and_leads(outside), "--target", "this")
         run.outside = outside
-        _taken(from_pair, "prep seed and leads", "prep", "task",
-               *seed_and_leads(from_pair), "--target", "this")
-        _taken(from_pair, "launch seed and leads", "launch", "task",
-               *seed_and_leads(from_pair), "--mode", "direct", "--foreground", "--yes")
-        _taken(from_pair, "prep device", "prep", "task",
-               *group_words(from_pair.bundle, "device"), "--target", "this")
-        _taken(from_pair, "launch device", "launch", "task", "--stage",
-               "device", "--mode", "direct", "--foreground", "--yes")
-        _taken(from_pair, "status device", "status", "device")
+        taken(from_pair, "prep seed and leads", "prep", "task",
+              *seed_and_leads(from_pair), "--target", "this")
+        taken(from_pair, "launch seed and leads", "launch", "task",
+              *seed_and_leads(from_pair), "--mode", "direct", "--foreground", "--yes")
+        taken(from_pair, "prep device", "prep", "task",
+              *group_words(from_pair.bundle, "device"), "--target", "this")
+        taken(from_pair, "launch device", "launch", "task", "--stage",
+              "device", "--mode", "direct", "--foreground", "--yes")
+        taken(from_pair, "status device", "status", "device")
         # ITS RECORD WHILE NO TRANSMISSION HAS RUN, where the Results tab
         # asks it (`engines/transport.md` § 2a.12).
         run.average_waiting = client.get(
             f"/api/transport/record?path={from_pair.bundle}").get_json()
-        _taken(from_pair, "prep transmission", "prep", "task",
-               *group_words(from_pair.bundle, "transmission"),
-               "--target", "this")
-        _taken(from_pair, "launch transmission", "launch", "task", "--stage",
-               "transmission", "--mode", "direct", "--foreground", "--yes")
+        taken(from_pair, "prep transmission", "prep", "task",
+              *group_words(from_pair.bundle, "transmission"),
+              "--target", "this")
+        taken(from_pair, "launch transmission", "launch", "task", "--stage",
+              "transmission", "--mode", "direct", "--foreground", "--yes")
         # A SELECTION'S PDOS BEFORE ANY READING IS KEPT (`web/web-api.md`,
         # `/api/transport/pdos`).
         got = client.get(f"/api/transport/pdos?path={from_pair.bundle}"
                          f"&atoms=0&frame=1&point=0.2&orbitals=all")
         run.pdos_before = (got.status_code, got.get_json())
-        _taken(from_pair, "summarize", "summarize", "task")
+        taken(from_pair, "summarize", "summarize", "task")
 
         # ONE VOLTAGE -- a device that runs once, no points: launched, then
         # again warm (its own density stands), then again --cold, which still
@@ -558,17 +558,17 @@ def junction(tmp_path_factory):
         one_rank(single.bundle)
         set_by_the_person(single.bundle,
                           {"spin_treatment": "restricted"})
-        _taken(single, "prep seed and leads", "prep", "task",
-               *seed_and_leads(single), "--target", "this")
-        _taken(single, "launch seed and leads", "launch", "task",
-               *seed_and_leads(single), "--mode", "direct", "--foreground", "--yes")
-        _taken(single, "prep device", "prep", "task",
-               *group_words(single.bundle, "device"), "--target", "this")
+        taken(single, "prep seed and leads", "prep", "task",
+              *seed_and_leads(single), "--target", "this")
+        taken(single, "launch seed and leads", "launch", "task",
+              *seed_and_leads(single), "--mode", "direct", "--foreground", "--yes")
+        taken(single, "prep device", "prep", "task",
+              *group_words(single.bundle, "device"), "--target", "this")
         for step, extra in (("launch device", ()),
                             ("launch device again", ()),
                             ("launch device cold", ("--cold",))):
-            _taken(single, step, "launch", "task", "--stage", "device",
-                   "--mode", "direct", "--foreground", "--yes", *extra)
+            taken(single, step, "launch", "task", "--stage", "device",
+                  "--mode", "direct", "--foreground", "--yes", *extra)
         run.single = single
 
         # WHAT THE DEVICE RAN, CHANGED SINCE (`_ANOTHER_INPUT`): each a
@@ -580,11 +580,11 @@ def junction(tmp_path_factory):
             def changed_since(c, row=row):
                 set_by_the_person(c.bundle,
                                   {row["item"]: row["value"]})
-                _taken(c, "prep transmission", "prep", "task",
-                       *group_words(c.bundle, "transmission"), "--target",
-                       "this")
+                taken(c, "prep transmission", "prep", "task",
+                      *group_words(c.bundle, "transmission"), "--target",
+                      "this")
             changed = copy_of(single, row["copy"], changed_since)
-            run.another[row["name"]] = _typed(
+            run.another[row["name"]] = typed(
                 changed, "launch transmission dry", "launch", "task",
                 "--stage", "transmission", "--mode", "direct", "--dry-run",
                 "--yes")
@@ -608,10 +608,10 @@ def junction(tmp_path_factory):
                                    "max_memory_mb": 4000}
             write_request(c.bundle, req)
             c.said["runs before"] = Said(0, device_runs(c))
-            _typed(c, "prep device again", "prep", "task",
-                   *group_words(c.bundle, "device"), "--target", "this")
+            typed(c, "prep device again", "prep", "task",
+                  *group_words(c.bundle, "device"), "--target", "this")
             c.said["runs after"] = Said(0, device_runs(c))
-            _typed(c, "status device", "status", "device")
+            typed(c, "status device", "status", "device")
         run.request_changed = copy_of(run, "request-changed",
                                       request_changed)
 
@@ -635,18 +635,18 @@ def junction(tmp_path_factory):
         # once TBtrans states a share done, the jobs launched from here
         # asked (`job-system.md` § 6.0a), the run stopped with the line its
         # launch printed and let end, and the jobs asked twice more.
-        from support.real_runs import _stopped_by_its_line
+        from support.real_runs import stopped_by_its_line
         from support.road import until
         from support.replay import output_lines
 
         def stopped_in_its_loop(c):
             set_by_the_person(c.bundle, {"transmission_n_points": 20001})
-            _taken(c, "prep transmission", "prep", "task",
-                   *group_words(c.bundle, "transmission"), "--target",
-                   "this")
-            launched = _taken(c, "launch transmission", "launch", "task",
-                              "--stage", "transmission", "--mode", "direct",
-                              "--yes")
+            taken(c, "prep transmission", "prep", "task",
+                  *group_words(c.bundle, "transmission"), "--target",
+                  "this")
+            launched = taken(c, "launch transmission", "launch", "task",
+                             "--stage", "transmission", "--mode", "direct",
+                             "--yes")
 
             def underway():
                 try:
@@ -657,7 +657,7 @@ def junction(tmp_path_factory):
                            for ln in lines)
             until(underway, within=600, what="its loop underway")
             c.jobs["while it runs"] = molbuilder("jobs", "status")
-            _stopped_by_its_line(c, "stop as its launch said", launched)
+            stopped_by_its_line(c, "stop as its launch said", launched)
             c.jobs["after its stop"] = molbuilder("jobs", "status")
             c.jobs["again"] = molbuilder("jobs", "status")
         run.stopped = copy_of(single, "stopped-in-its-loop",
@@ -671,20 +671,20 @@ def junction(tmp_path_factory):
         def walk_stopped(c):
             from support.real_runs import point_row, stage_status
             ran = stage_status(c.bundle, "device").attempts
-            launched = _taken(c, "launch device cold", "launch", "task",
-                              "--stage", "device", "--mode", "direct",
-                              "--yes", "--cold")
+            launched = taken(c, "launch device cold", "launch", "task",
+                             "--stage", "device", "--mode", "direct",
+                             "--yes", "--cold")
 
             def first_point_done():
                 # ITS 0 V POINT, as `jobset status` reads the new run.
                 s = stage_status(c.bundle, "device")
                 return s.attempts != ran and point_row(s, _BIAS[0])["done"]
             until(first_point_done, within=600, what="its first point done")
-            _stopped_by_its_line(c, "stop as its launch said", launched)
+            stopped_by_its_line(c, "stop as its launch said", launched)
             # THE STOPPED RUN AS IT ENDED, as `jobset status` reads it.
             run.walk_ended = stage_status(c.bundle, "device")
-            _typed(c, "launch device warm", "launch", "task", "--stage",
-                   "device", "--mode", "direct", "--foreground", "--yes")
+            typed(c, "launch device warm", "launch", "task", "--stage",
+                  "device", "--mode", "direct", "--foreground", "--yes")
         run.walk_stopped = copy_of(run, "walk-stopped", walk_stopped)
 
         # THE SAME FRAMES STATING NO ROWS -- a family, each frame its own
@@ -774,14 +774,14 @@ def junction(tmp_path_factory):
             # back, the way back taken, the template set again, the group
             # prepared.
             set_by_the_person(c.bundle, dict(changes))
-            refused = _typed(c, f"prep {stage} refused", "prep", "task",
-                             *group_words(c.bundle, stage), "--target",
-                             "this")
+            refused = typed(c, f"prep {stage} refused", "prep", "task",
+                            *group_words(c.bundle, stage), "--target",
+                            "this")
             assert refused.exit_code != 0, refused.output
             back_to_before_its_launch(refused.output)
             set_by_the_person(c.bundle, dict(changes))
-            _taken(c, f"prep {stage}", "prep", "task",
-                   *group_words(c.bundle, stage), "--target", "this")
+            taken(c, f"prep {stage}", "prep", "task",
+                  *group_words(c.bundle, stage), "--target", "this")
 
         # A TRANSMISSION WHOSE EVERY POINT FAILS (`run-reports.md` § 2.9): a
         # copy of the frame set, its transmission k-point grid set to 3 x 3
@@ -792,10 +792,10 @@ def junction(tmp_path_factory):
         def transmission_refused(c):
             changed_from_the_beginning(c, "transmission",
                                        [("tbt_k_grid", (3, 3, 1))])
-            _typed(c, "launch transmission", "launch", "task", "--stage",
-                   "transmission", "--mode", "direct", "--foreground",
-                   "--yes")
-            _typed(c, "status transmission", "status", "transmission")
+            typed(c, "launch transmission", "launch", "task", "--stage",
+                  "transmission", "--mode", "direct", "--foreground",
+                  "--yes")
+            typed(c, "status transmission", "status", "transmission")
         run.refused = copy_of(from_pair, "transmission-refused",
                               transmission_refused)
 
@@ -825,11 +825,11 @@ def junction(tmp_path_factory):
                 back_to_before_its_launch(refused.get_json()["error"])
                 saved = save()
                 assert saved.status_code == 200, saved.get_json()
-                _taken(c, "prep device", "prep", "task",
-                       *group_words(c.bundle, "device"), "--target", "this")
-                _typed(c, "launch device", "launch", "task", "--stage",
-                       "device", "--mode", "direct", "--foreground", "--yes")
-                _typed(c, "status device", "status", "device")
+                taken(c, "prep device", "prep", "task",
+                      *group_words(c.bundle, "device"), "--target", "this")
+                typed(c, "launch device", "launch", "task", "--stage",
+                      "device", "--mode", "direct", "--foreground", "--yes")
+                typed(c, "status device", "status", "device")
             return alter
         run.unconverged = copy_of(run, "device-unconverged",
                                   the_devices_own_scf(
@@ -871,7 +871,7 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
                                              read_environment,
                                              write_environment)
     from molbuilder.task import of as task_of
-    from support.real_runs import RealRun, _typed
+    from support.real_runs import RealRun, typed
     from support.road import group_words, read_request, write_request
     from molbuilder.config_dir import ensure_private_dir
     here = read_environment(machine_scope_path())
@@ -904,8 +904,8 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
     for queue in ("short", "long"):
         request["allocation"]["domain"] = queue
         write_request(walk.bundle, request)
-        _typed(walk, f"prep on {queue}", "prep", "task",
-               *group_words(walk.bundle, "device"), "--target", "cluster")
+        typed(walk, f"prep on {queue}", "prep", "task",
+              *group_words(walk.bundle, "device"), "--target", "cluster")
     described = task_of(walk.bundle)
     home = stage_home(walk.bundle, described, "device")
     names = home.names
@@ -1077,40 +1077,47 @@ def test_describe_from_a_citation_writes_the_description_alone(junction):
         f"{tab['label']}.template.toml", "task.json", "job-request.json"]), tab
 
 
+def _picked_in_the_tree(page, opener: str, tree, cite) -> str:
+    """The Transport tab's tree picker, opened by its button ``opener`` --
+    *Choose junction…*, *Choose a frame set…* -- walked to ``cite``, a path
+    from the projects ``tree``'s root, by its rows: the picked one's line,
+    once the describe door answered it, returned, the dialog left open on
+    *Cite this*."""
+    from playwright.sync_api import expect
+    parts = Path(cite).parts
+    page.locator(opener).click()
+    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+    for depth in range(1, len(parts)):
+        folder = tree.joinpath(*parts[:depth])
+        dialog.locator(f'li.tp-node[data-path="{folder}"]'
+                       " > .tp-row > .tp-twisty").click()
+    dialog.locator(f'li.tp-node[data-path="{tree / cite}"]'
+                   " > .tp-row").click()
+    meta = dialog.locator(".tp-meta")
+    expect(meta).not_to_have_text("")
+    expect(meta).not_to_have_text("Reading…", timeout=60000)
+    return meta.inner_text()
+
+
 def _cited_on_the_tab(page, base, junction, cite=None) -> dict:
     """The Transport tab citing the relaxation -- or ``cite``, a path from
-    the tree's root -- as a returning person's tab cites it: its session
-    note, restored through the describe-and-adopt path a pick takes
-    (`lib/transport/core.js` `_restoreSession`) -- and what the describe
-    door answered the page."""
+    the tree's root -- as a person cites it: *Choose junction…*, the tree
+    walked to it, *Cite this* (:func:`_picked_in_the_tree`) -- and what the
+    describe door answered the page for the citation."""
+    from playwright.sync_api import expect
     cite = cite or junction.cite
     page.goto(f"{base}/transport-calculation",
               wait_until="domcontentloaded")
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.workspace "
-        "      && typeof window.molbuilder.workspace.persist "
-        "         === 'function'", timeout=10000)
-    assert page.evaluate(
-        """async (j) => {
-             const ws = window.molbuilder.workspace;
-             const id = {workspace_id: ws.workspaceId('transport:panel'),
-                         state_index: 0};
-             ws.persist('transport:panel', {v: 3, junction: j}, id);
-             for (let i = 0; i < 50; i++) {
-               const n = await ws.readState(id);
-               if (n && n.junction === j) return true;
-               await new Promise(r => setTimeout(r, 100));
-             }
-             return false;
-           }""", cite), "the session note never landed"
+    _picked_in_the_tree(page, "#transport-junction-btn",
+                        junction.tree.resolve(), cite)
+    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
     with page.expect_response(
             lambda r: "/api/transport/describe_attempt" in r.url,
-            timeout=30000) as described:
-        page.reload(wait_until="domcontentloaded")
+            timeout=60000) as described:
+        dialog.get_by_role("button", name="Cite this").click()
     answer = described.value.json()
-    page.wait_for_function(
-        "(j) => (document.getElementById('transport-junction-readout') || {})"
-        "        .textContent === j", arg=answer["citation"], timeout=15000)
+    expect(page.locator("#transport-junction-readout")).to_have_text(
+        answer["citation"], timeout=15000)
     return answer
 
 
@@ -1142,18 +1149,10 @@ def test_the_form_draws_its_rungs_and_choosing_a_junction_cites_the_run(
         assert [tab.get_attribute("data-tab") for tab in tabs.all()] == list(
             TRANSPORT_STAGES)
         expect(form.locator(".tab-panel:not([hidden]) .param-grid")).not_to_be_empty()
-        page.locator("#transport-junction-btn").click()
-        dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
-        for depth in range(1, len(parts)):
-            folder = tree.joinpath(*parts[:depth])
-            dialog.locator(f'li.tp-node[data-path="{folder}"]'
-                           " > .tp-row > .tp-twisty").click()
-        dialog.locator(f'li.tp-node[data-path="{tree / junction.cite}"]'
-                       " > .tp-row").click()
-        meta = dialog.locator(".tp-meta")
-        expect(meta).not_to_have_text("")
-        expect(meta).not_to_have_text("Reading…", timeout=60000)
-        dialog.get_by_role("button", name="Cite this").click()
+        _picked_in_the_tree(page, "#transport-junction-btn", tree,
+                            junction.cite)
+        page.locator("dialog.molbuilder-tree-picker-dialog").get_by_role(
+            "button", name="Cite this").click()
 
         expect(page.locator("#transport-junction-readout")).to_have_text(
             junction.cite, timeout=15000)
@@ -1166,7 +1165,7 @@ def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
     rule; the spin the cited run's -- unrestricted (ES7) -- its count
     floating, since a transport rung cannot hold a fixed one (ES6); and
     stating restricted on the shared panel moves the card to a closed
-    shell.  Cited as a returning person's tab cites it.
+    shell.  Cited as a person cites it (:func:`_cited_on_the_tab`).
 
     MUTATION THIS MUST FAIL AGAINST: the card asked without the panel's
     spin (the analyze door dropping it) -- stating restricted leaves the
@@ -1407,7 +1406,7 @@ def _the_decks_a_person_sets(tree, cite: str, client):
     with nothing set, prepared again with nothing set, with each value a
     rung's tab offers set alone on it, and with each value the shared panel
     offers set alone in the template (the rows below)."""
-    from support.real_runs import RealRun, _taken
+    from support.real_runs import RealRun, taken
     from support.road import group_words
     # AT A VOLTAGE AS WELL AS AT ZERO, each its own device run: TranSIESTA
     # reads its bias window only under bias (`engines/transport.md` § 6.1),
@@ -1422,14 +1421,14 @@ def _the_decks_a_person_sets(tree, cite: str, client):
     one_rank(probe.bundle)
     set_by_the_person(probe.bundle,
                       {"spin_treatment": "restricted"})
-    _taken(probe, "prep", "prep", "task",
-           *group_words(probe.bundle, *_RUNGS), "--target", "this")
+    taken(probe, "prep", "prep", "task",
+          *group_words(probe.bundle, *_RUNGS), "--target", "this")
     probe.unset = {rung: [d.read_text()
                           for d in _prepared_decks(probe, rung)]
                    for rung in _RUNGS}
     # ...PREPARED AGAIN WITH NOTHING SET, every group...
-    _taken(probe, "again", "prep", "task",
-           *group_words(probe.bundle, *_RUNGS), "--target", "this")
+    taken(probe, "again", "prep", "task",
+          *group_words(probe.bundle, *_RUNGS), "--target", "this")
     probe.again = {rung: [d.read_text()
                           for d in _prepared_decks(probe, rung)]
                    for rung in _RUNGS}
@@ -1485,7 +1484,7 @@ def _set_on_its_tab(probe, client, unset: str, rung: str, name: str):
     run setting, the run card's (`execution/job-request.md` § 2) -- and the
     rung's group prepared again: ``{was, value, saved, said, decks}``, the
     decks' texts as prep wrote them."""
-    from support.real_runs import _typed
+    from support.real_runs import typed
     from support.road import group_words, read_request, save_both
     task = json.loads(unset)
     _item, was, value = _another_than_runs(probe, rung, name, task)
@@ -1493,8 +1492,8 @@ def _set_on_its_tab(probe, client, unset: str, rung: str, name: str):
     stage["overrides"] = {name: value}
     task["varies"] = [name]
     saved = save_both(probe.bundle, task, read_request(probe.bundle), client)
-    said = _typed(probe, f"{rung} {name}", "prep", "task",
-                  *group_words(probe.bundle, rung), "--target", "this")
+    said = typed(probe, f"{rung} {name}", "prep", "task",
+                 *group_words(probe.bundle, rung), "--target", "this")
     return {"was": was, "value": value,
             "saved": (saved.status_code, saved.get_json()), "said": said,
             "decks": [d.read_text() for d in _prepared_decks(probe, rung)]}
@@ -1574,7 +1573,7 @@ def _set_in_the_template(probe, unset: str, name: str):
     prepared again: ``{was, value, said, decks}``, the decks of every rung
     that reads the item (`template.reads`)."""
     from molbuilder.template import catalogue, one, reads
-    from support.real_runs import _typed
+    from support.real_runs import typed
     from support.road import group_words
     template = probe.bundle / "D.template.toml"
     template.write_text(unset)
@@ -1583,8 +1582,8 @@ def _set_in_the_template(probe, unset: str, name: str):
     readers = [r for r in _RUNGS if reads(item, "siesta", "transport", r)]
     _item, was, value = _another_than_runs(probe, readers[0], name, task)
     set_by_the_person(probe.bundle, {name: value})
-    said = _typed(probe, f"shared {name}", "prep", "task",
-                  *group_words(probe.bundle, *_RUNGS), "--target", "this")
+    said = typed(probe, f"shared {name}", "prep", "task",
+                 *group_words(probe.bundle, *_RUNGS), "--target", "this")
     return {"was": was, "value": value, "said": said,
             "decks": {r: [d.read_text() for d in _prepared_decks(probe, r)]
                       for r in readers}}
@@ -3695,37 +3694,24 @@ def test_the_report_draws_the_junction_in_the_user_order(junction, page,
     TranSIESTA's order -- put back in the user order, the order its PDOS
     selections are named in, and says so: the viewer's notice names the
     order the file was in, and no line says its atoms are in the engine's
-    order.  Mounted through the registry with the page's default context, on
-    the server's answer for the calculation's `task.json`
-    (`/api/results/dir`), as the Results page's dispatcher mounts it.  The
-    silent
-    failure: a drawing in TranSIESTA's order whose selections the PDOS door
-    reads as yours."""
+    order.  Opened as a person opens it: the Results tab on the
+    calculation's folder, by the sidebar's rows and Reload, its report
+    chosen in the menu.  The silent failure: a drawing in TranSIESTA's
+    order whose selections the PDOS door reads as yours."""
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from support.live_server import serve
+    from support.sidebar import results_on
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
-    task = junction.from_pair.bundle / "task.json"
+    task = (junction.from_pair.bundle / "task.json").resolve()
     with serve() as base:
-        page.goto(f"{base}/results", wait_until="domcontentloaded")
+        results_on(page, base, junction.from_pair.bundle)
         page.wait_for_function(
-            "() => window.molbuilder && window.molbuilder.inspectors"
-            "      && window.molbuilder.inspectors.pick")
-        name = page.evaluate(
-            """async (file) => {
-                const dir = file.slice(0, file.lastIndexOf('/'));
-                const answer = await (await fetch(
-                    '/api/results/dir?path=' + encodeURIComponent(dir))).json();
-                const hit = answer.files.find((f) => f.name === 'task.json');
-                const meta = {role: hit.role, label: hit.label,
-                              stage: hit.stage, parser: hit.parser,
-                              engine: answer.engine};
-                const reg = window.molbuilder.inspectors;
-                const host = document.getElementById('inspector-host');
-                host.innerHTML = '';
-                reg.mount(host, file, reg.createDefaultContext(host), meta);
-                return reg.pick(file, meta).name;
-            }""", str(task))
-        assert name == "transport", name
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=str(task), timeout=30000)
+        page.select_option("#results-file-picker-select", value=str(task))
+        page.locator("#inspector-host .transport-curves-card").wait_for(
+            timeout=60000)
         page.wait_for_function(
             "() => [...document.querySelectorAll('.molviewer-notices')]"
             "      .some((n) => n.textContent.includes('put back in the user order'))",
@@ -4193,16 +4179,11 @@ def test_a_device_says_it_computes_no_forces_where_the_force_would_be(
 
 
 def _on_the_results_tab(page, base, folder):
-    """The Results tab, its folder ``folder`` -- the folder the sidebar
-    shares -- once its file menu has chosen."""
-    page.goto(f"{base}/molbuilder")
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.projects"
-        "      && typeof window.molbuilder.projects.setShared"
-        "         === 'function'")
-    page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
-                  str(folder))
-    page.goto(f"{base}/results")
+    """The Results tab bound to ``folder`` as a person binds it -- the
+    sidebar's rows, then Reload (`support.sidebar.results_on`) -- once its
+    file menu has chosen."""
+    from support.sidebar import results_on
+    results_on(page, base, folder)
     page.wait_for_function(
         "() => document.getElementById('results-file-picker-select')"
         "      .value !== ''", timeout=30000)
@@ -4255,11 +4236,11 @@ def test_the_results_tab_says_a_devices_forces_and_a_leads_stress(
         assert not {"Max force", "Stress in the (x, y) plane"} & set(rows), (
             rows)
         # THE LEAD, the tab re-pointed as a person does it -- the sidebar at
-        # its folder, then Refresh (`results.md` § 2.1: the tab keeps its own
-        # folder); the panel stays open over its new record.
-        page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
-                      str(lead))
-        page.click("#results-file-picker-refresh")
+        # its folder, then *Reload from current project dir*
+        # (`support.sidebar.reload_from`; `results.md` § 2.1: the tab keeps
+        # its own folder); the panel stays open over its new record.
+        from support.sidebar import reload_from
+        reload_from(page, lead)
         page.wait_for_function(
             """() => [...document.querySelectorAll('#results-run-panel .rp-key')]
                 .some((k) => k.textContent === 'Stress in the (x, y) plane')""",
@@ -4327,6 +4308,10 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
             '.transport-iv-row.is-selected')]
             .some((r) => r.dataset.frame === '0' && r.dataset.bias === '0')"""
         page.wait_for_function(mine, timeout=30000)
+        # THE TAB SHOWN AGAIN, as the browser says it: dispatched here,
+        # because headless Chromium never changes a page's visibility nor
+        # restores one from the back/forward cache (measured 2026-11-07,
+        # `test_results_file_picker_e2e.py`).
         page.evaluate("""() => {
             window.__announced = 0;
             document.addEventListener(
@@ -4366,7 +4351,7 @@ def reused(junction, tmp_path_factory):
     calculation reused.  And what a folder that cannot be reused is refused
     with, a set whose frame 0 is another junction among them."""
     from molbuilder.web.app import create_app
-    from support.real_runs import RealRun, Said, _road_at, _taken, _typed
+    from support.real_runs import RealRun, Said, road_at, taken, typed
     from support.road import molbuilder
 
     finished = "P/transport/T"
@@ -4385,7 +4370,7 @@ def reused(junction, tmp_path_factory):
     # EVERY GROUP OF THE DEFAULTS (1 1 1 2 3), named at one prep.
     every_group = ("--group", "1", "--group", "2", "--group", "3")
 
-    with _road_at(junction.tree.parent, tmp_path_factory):
+    with road_at(junction.tree.parent, tmp_path_factory):
         # A SET WHOSE FRAME 0 IS ANOTHER JUNCTION: the mode's outer frame
         # taken out as a pair of its own, through the structure's doors.
         from molbuilder.workingcopy_structure import StructureCodec
@@ -4411,11 +4396,11 @@ def reused(junction, tmp_path_factory):
 
         # THE SAME QUESTION: every group copied in.
         same = described("same")
-        _typed(same, "prep bare", "prep", "task")
-        _taken(same, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(same, "status", "status")
-        _taken(same, "summarize", "summarize", "task")
+        typed(same, "prep bare", "prep", "task")
+        taken(same, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(same, "status", "status")
+        taken(same, "summarize", "summarize", "task")
         out["same"] = same
 
         # A CALCULATION OF ONE VOLTAGE, ITS DEVICE LAUNCHED TWICE, THE
@@ -4436,28 +4421,28 @@ def reused(junction, tmp_path_factory):
         set_by_the_person(once.bundle,
                           {"spin_treatment": "restricted"})
         leads = group_words(once.bundle, "seed", "electrode_L", "electrode_R")
-        _taken(once, "prep seed and leads", "prep", "task", *leads,
-               "--target", "this")
-        _taken(once, "launch seed and leads", "launch", "task", *leads,
-               "--mode", "direct", "--foreground", "--yes")
+        taken(once, "prep seed and leads", "prep", "task", *leads,
+              "--target", "this")
+        taken(once, "launch seed and leads", "launch", "task", *leads,
+              "--mode", "direct", "--foreground", "--yes")
         for rung in ("device", "transmission"):
-            _taken(once, f"prep {rung}", "prep", "task",
-                   *group_words(once.bundle, rung), "--target", "this")
+            taken(once, f"prep {rung}", "prep", "task",
+                  *group_words(once.bundle, rung), "--target", "this")
             for step in ((f"launch {rung}", f"launch {rung} again")
                          if rung == "device" else (f"launch {rung}",)):
-                _taken(once, step, "launch", "task", "--stage", rung,
-                       "--mode", "direct", "--foreground", "--yes")
+                taken(once, step, "launch", "task", "--stage", rung,
+                      "--mode", "direct", "--foreground", "--yes")
         out["once"] = once
         framed = described("framed", "--slot",
                            f"junction={junction.frame_set}",
                            reuses="P/transport/O")
-        _typed(framed, "prep bare", "prep", "task")
-        _taken(framed, "prep", "prep", "task", *every_group,
-               "--target", "this")
+        typed(framed, "prep bare", "prep", "task")
+        taken(framed, "prep", "prep", "task", *every_group,
+              "--target", "this")
         for g in ("2", "3"):
-            _taken(framed, f"launch group {g}", "launch", "task", "--group",
-                   g, "--mode", "direct", "--foreground", "--yes")
-        _taken(framed, "summarize", "summarize", "task")
+            taken(framed, f"launch group {g}", "launch", "task", "--group",
+                  g, "--mode", "direct", "--foreground", "--yes")
+        taken(framed, "summarize", "summarize", "task")
         out["framed"] = framed
 
         # ONE GEOMETRY WHERE THE FINISHED CALCULATION RAN A FRAME SET: the
@@ -4465,19 +4450,19 @@ def reused(junction, tmp_path_factory):
         # in, re-laid, and nothing runs (§ 2a.16, *A narrower question*).
         first = described("first", "--slot", f"junction={junction.cite}",
                           "--bias", "0.0", reuses="P/transport/framed")
-        _typed(first, "prep bare", "prep", "task")
-        _taken(first, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(first, "summarize", "summarize", "task")
+        typed(first, "prep bare", "prep", "task")
+        taken(first, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(first, "summarize", "summarize", "task")
         out["first"] = first
         # ...AND WHERE IT RAN A FRAME SET AT EACH OF TWO VOLTAGES: the first
         # frame's points copied in, re-laid as this calculation's points.
         fone = described("fone", "--slot", f"junction={junction.cite}",
                          reuses="P/transport/F")
-        _typed(fone, "prep bare", "prep", "task")
-        _taken(fone, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(fone, "summarize", "summarize", "task")
+        typed(fone, "prep bare", "prep", "task")
+        taken(fone, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(fone, "summarize", "summarize", "task")
         out["fone"] = fone
         out["F"] = RealRun(tree=junction.tree,
                            bundle=junction.tree / "P" / "transport" / "F")
@@ -4485,24 +4470,24 @@ def reused(junction, tmp_path_factory):
         # MORE VOLTAGES, SELF-CONSISTENT: the done points taken over.
         wider = described("wider", "--bias", "0.0,0.2,0.4",
                           "--no-low-bias-approximation")
-        _typed(wider, "prep bare", "prep", "task")
-        _taken(wider, "prep", "prep", "task", "--group", "1", "--group", "2",
-               "--target", "this")
-        _taken(wider, "prep transmission", "prep", "task", "--group", "3",
-               "--target", "this")
+        typed(wider, "prep bare", "prep", "task")
+        taken(wider, "prep", "prep", "task", "--group", "1", "--group", "2",
+              "--target", "this")
+        taken(wider, "prep transmission", "prep", "task", "--group", "3",
+              "--target", "this")
         for g, stage in ((2, "device"), (3, "transmission")):
-            _taken(wider, f"launch {stage}", "launch", "task", "--group",
-                   str(g), "--mode", "direct", "--foreground", "--yes")
-        _taken(wider, "status transmission", "status", "transmission")
-        _taken(wider, "summarize", "summarize", "task")
+            taken(wider, f"launch {stage}", "launch", "task", "--group",
+                  str(g), "--mode", "direct", "--foreground", "--yes")
+        taken(wider, "status transmission", "status", "transmission")
+        taken(wider, "summarize", "summarize", "task")
         out["wider"] = wider
 
         # VOLTAGES OF BOTH SIGNS, the leads copied in and the device
         # prepared -- what its first launch walks is asked of its plan.
         signed = described("signed", "--bias", "0,0.2,0.4,-0.2,-0.4",
                            "--no-low-bias-approximation")
-        _taken(signed, "prep", "prep", "task", "--group", "1", "--group",
-               "2", "--target", "this")
+        taken(signed, "prep", "prep", "task", "--group", "1", "--group",
+              "2", "--target", "this")
         out["signed"] = signed
 
         # ...THAT LIST NARROWED AGAIN, reusing the wider one: a narrower
@@ -4514,32 +4499,32 @@ def reused(junction, tmp_path_factory):
         assert r.exit_code == 0, r.output
         narrow = RealRun(tree=junction.tree,
                          bundle=junction.tree / "P" / "transport" / "narrow")
-        _typed(narrow, "prep bare", "prep", "task")
-        _taken(narrow, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(narrow, "summarize", "summarize", "task")
+        typed(narrow, "prep bare", "prep", "task")
+        taken(narrow, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(narrow, "summarize", "summarize", "task")
         out["narrow"] = narrow
 
         # THE WINDOW FITTED WIDER: each point computes what the finished
         # one did not.
         fitted = described("fitted", "--window",
                            f"{_WIDER[0]:g},{_WIDER[1]:g}")
-        _typed(fitted, "prep bare", "prep", "task")
-        _taken(fitted, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(fitted, "launch transmission", "launch", "task", "--group",
-               "3", "--mode", "direct", "--foreground", "--yes")
-        _taken(fitted, "summarize", "summarize", "task")
+        typed(fitted, "prep bare", "prep", "task")
+        taken(fitted, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(fitted, "launch transmission", "launch", "task", "--group",
+              "3", "--mode", "direct", "--foreground", "--yes")
+        taken(fitted, "summarize", "summarize", "task")
         out["fitted"] = fitted
 
         # THE SAME WINDOW, THREE TIMES FINER: each point's new energies
         # between the finished ones, its deck's contours interleaved.
         finer = described("finer", "--window", "-2,2", "--finer", "3")
-        _taken(finer, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(finer, "launch transmission", "launch", "task", "--group",
-               "3", "--mode", "direct", "--foreground", "--yes")
-        _taken(finer, "summarize", "summarize", "task")
+        taken(finer, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(finer, "launch transmission", "launch", "task", "--group",
+              "3", "--mode", "direct", "--foreground", "--yes")
+        taken(finer, "summarize", "summarize", "task")
         out["finer"] = finer
 
         # THE LOW-BIAS APPROXIMATION -- the device and the transmission run
@@ -4547,19 +4532,19 @@ def reused(junction, tmp_path_factory):
         # runs -- then its window fitted wider: the transmission that runs
         # once shares as its one point.
         lowbias = described("lowbias", "--low-bias-approximation")
-        _typed(lowbias, "prep bare", "prep", "task")
-        _taken(lowbias, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(lowbias, "summarize", "summarize", "task")
+        typed(lowbias, "prep bare", "prep", "task")
+        taken(lowbias, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(lowbias, "summarize", "summarize", "task")
         lowfit = described("lowfit", "--window",
                            f"{_WIDER[0]:g},{_WIDER[1]:g}",
                            reuses="P/transport/lowbias")
-        _typed(lowfit, "prep bare", "prep", "task")
-        _taken(lowfit, "prep", "prep", "task", *every_group,
-               "--target", "this")
-        _taken(lowfit, "launch transmission", "launch", "task", "--group",
-               "3", "--mode", "direct", "--foreground", "--yes")
-        _taken(lowfit, "summarize", "summarize", "task")
+        typed(lowfit, "prep bare", "prep", "task")
+        taken(lowfit, "prep", "prep", "task", *every_group,
+              "--target", "this")
+        taken(lowfit, "launch transmission", "launch", "task", "--group",
+              "3", "--mode", "direct", "--foreground", "--yes")
+        taken(lowfit, "summarize", "summarize", "task")
         out["lowbias"], out["lowfit"] = lowbias, lowfit
 
         # A CALCULATION WHOSE TRANSMISSION WAS STOPPED IN ITS LOOP, reused:
@@ -4569,7 +4554,7 @@ def reused(junction, tmp_path_factory):
             "again",
             reuses=junction.stopped.bundle.relative_to(junction.tree)
             .as_posix())
-        _typed(again, "prep bare", "prep", "task")
+        typed(again, "prep bare", "prep", "task")
         out["again"] = again
 
         # A RUNG OF POINTS PREPARED, ITS ENERGY POINTS CHANGED BEFORE ITS
@@ -4577,8 +4562,8 @@ def reused(junction, tmp_path_factory):
         # (`job-system.md`, *The task*, *Changed since prepared*).
         from support.road import read_request, save_both
         edited = described("edited", "--window", "-2,2", "--finer", "3")
-        _taken(edited, "prep", "prep", "task", *every_group,
-               "--target", "this")
+        taken(edited, "prep", "prep", "task", *every_group,
+              "--target", "this")
         task_now = json.loads((edited.bundle / "task.json").read_text())
         for st in task_now["stages"]:
             if st["name"] == "transmission":
@@ -5446,21 +5431,16 @@ def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
     showing the set; the reload dropping the set; the picker asking without
     `reuses`, so the moved set cites; a plan not asked again when the
     junction changes."""
-    import json
     from playwright.sync_api import expect
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.task import of as task_of
     from support.live_server import serve
+    from support.sidebar import committed, walk_to
     junction, once = reused["finished"], reused["once"]
     tree = junction.tree.resolve()
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     dest = tree / "P" / "transport" / "tabframed"
     dest.mkdir()
-    # THE SIDEBAR ON THE NEW FOLDER, the most recent place a tab opens on
-    # (`web/projects.md` § 2) -- where Describe writes.
-    page.add_init_script(
-        "try { sessionStorage.setItem('molbuilder.current_dir', "
-        f"{json.dumps(str(dest))}); }} catch (_) {{}}")
     readout = page.locator("#transport-junction-readout")
     status = page.locator("#transport-status")
 
@@ -5468,25 +5448,21 @@ def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
         return page.locator("#transport-extend-junction").inner_text()
 
     def pick(rel):
-        """The frame-set picker, by its rows: P, then structure, opened;
-        ``rel`` selected; its line read once the door answered; cited."""
-        page.locator("#transport-extend-frameset-btn").click()
-        dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
-        for folder in ("P", "P/structure"):
-            dialog.locator(f'li.tp-node[data-path="{tree / folder}"]'
-                           " > .tp-row > .tp-twisty").click()
-        dialog.locator(f'li.tp-node[data-path="{tree / rel}"]'
-                       " > .tp-row").click()
-        meta = dialog.locator(".tp-meta")
-        expect(meta).not_to_have_text("")
-        expect(meta).not_to_have_text("Reading…", timeout=60000)
-        said = meta.inner_text()
-        dialog.get_by_role("button", name="Cite this").click()
+        """*Choose a frame set…*, the tree walked to ``rel``
+        (:func:`_picked_in_the_tree`), cited: the picked one's line."""
+        said = _picked_in_the_tree(page, "#transport-extend-frameset-btn",
+                                   tree, rel)
+        page.locator("dialog.molbuilder-tree-picker-dialog").get_by_role(
+            "button", name="Cite this").click()
         return said
 
     plan = page.locator("#transport-send-manifest")
     with serve() as base:
         _cited_on_the_tab(page, base, junction, cite="P/transport/O")
+        # THE SIDEBAR ON THE NEW FOLDER, walked to by its rows -- where
+        # Describe writes, and where the tab comes back to on a reload
+        # (`web/projects.md` § 2).
+        walk_to(page, dest)
         assert "the one O ran, one frame" in line(), line()
         # AN EXTENSION'S OWN LAYOUT: what you are doing; O's fixed values
         # not drawn as controls, but listed, folded; the plan before
@@ -5515,9 +5491,7 @@ def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
         # the device then computed here, its difference named -- and a
         # reload brings the value back, said, with the way back to O's own.
         page.locator('.tab-btn[data-tab="device"]').click()
-        weight = page.locator("#t-device-mixing-weight")
-        weight.fill("0.07")
-        weight.dispatch_event("change")
+        committed(page, page.locator("#t-device-mixing-weight"), "0.07")
         expect(plan).to_contain_text("ran another calculation",
                                      timeout=120000)
         page.reload(wait_until="domcontentloaded")

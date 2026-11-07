@@ -16,15 +16,28 @@ contract endpoint.  The modules the page names are asked of the server by
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 
 import pytest
 
-
-@pytest.fixture
-def web():
-    pytest.importorskip("flask")
-    from molbuilder.web.app import create_app
-    return create_app(config={}).test_client()
+#: Whatever the inspector reaches for besides the elements it asks its root
+#: for -- the document, the window's listeners, the network -- answered by a
+#: stand-in that takes every call and says nothing, so the mount runs to its
+#: end: the drawing is not what is asked here.
+_ANY_DOM = """
+const __any = () => new Proxy(function () {}, {
+  get: (t, k) => (k === "then" ? undefined
+                  : k === Symbol.toPrimitive ? (() => "")
+                  : k === Symbol.iterator ? (function* () {})
+                  : __any()),
+  apply: () => __any(), construct: () => __any(), set: () => true,
+});
+globalThis.document = __any();
+globalThis.addEventListener = () => {};
+globalThis.removeEventListener = () => {};
+globalThis.fetch = () => new Promise(() => {});
+"""
 
 
 # --------------------------------------------------------------------- #
@@ -34,275 +47,122 @@ def web():
 
 class TestResultsRoute:
 
-    def test_page_has_single_inspector_host(self, web):
+    def test_page_has_single_inspector_host(self, web_client):
         """The registry-driven architecture mounts every inspector
-        inside ONE host element."""
-        body = web.get("/results").get_data(as_text=True)
-        assert 'id="inspector-host"' in body
+        inside ONE host element.  An id declared twice is
+        `test_page_ids_unique.py`'s."""
+        from support.pages import ids_of
+        r = web_client.get("/results")
+        assert r.status_code == 200, r.status_code
+        ids = ids_of(r.get_data(as_text=True))
+        assert "inspector-host" in ids
         # The fallback content lives inside the host until the
         # dispatch detaches it on first selection.
-        assert 'id="results-fallback"' in body
+        assert "results-fallback" in ids
 
 
 # --------------------------------------------------------------------- #
 #  Server-rendered partials                                             #
 # --------------------------------------------------------------------- #
 #
-# The trajectory inspector wrapper (lib/inspectors/trajectory.js)
-# fetches its DOM markup from GET /partials/trajectory-inspector and
-# assigns it to the registry-supplied host's innerHTML.  That endpoint
-# is now load-bearing -- if it 404s or returns the wrong shape, every
-# .molwatch.log click on /results fails to mount.  These tests pin the
-# wire contract.
+# The trajectory and spectra inspectors (lib/inspectors/trajectory.js,
+# spectra.js) fetch their markup from GET /partials/<name> and put it in
+# the registry-supplied host (`_partial_inspector_factory.js`): if the
+# endpoint fails, every click on such a file on /results fails to mount.
 
 
-class TestPartialTrajectoryInspectorEndpoint:
-    """Pin the GET /partials/trajectory-inspector contract.
+class TestThePartials:
 
-    Why each pin matters:
-      * status 200 + text/html content-type: the inspector's fetch
-        path assumes successful HTML; anything else stops the mount
-        cold without a meaningful client-side error.
-      * Cache-Control: private, no-cache -- the browser asks before
-        reusing its copy, as it does for every script: the partial and
-        the scripts that query it change together, and a copy kept
-        without asking put a release's scripts under the last release's
-        controls (2.49.0 on Sol: the removed atoms select still on
-        screen).  ``private`` so intermediaries don't cache.
+    @pytest.mark.parametrize("partial", ["/partials/trajectory-inspector",
+                                         "/partials/spectra-inspector"])
+    def test_a_partial_is_a_fragment_the_browser_asks_about_again(
+            self, web_client, partial):
+        """Each partial answers, and as what the host takes:
 
-    Every element the trajectory viewer looks up on the panel answers
-    when the panel is mounted on a real run
-    (`test_siesta_run_in_the_viewer_e2e.py`).
-    """
-
-    def test_endpoint_returns_html_200(self, web):
-        r = web.get("/partials/trajectory-inspector")
-        assert r.status_code == 200, (
-            f"/partials/trajectory-inspector returned "
-            f"{r.status_code}; the trajectory inspector on /results "
-            f"depends on this endpoint for its DOM"
-        )
-
-    def test_content_type_is_html(self, web):
-        r = web.get("/partials/trajectory-inspector")
-        ctype = r.headers.get("Content-Type", "")
-        assert "text/html" in ctype, (
-            f"expected text/html, got {ctype!r}; the inspector's "
-            f"fetch path assumes HTML"
-        )
-        assert "charset=utf-8" in ctype.lower(), (
-            "missing charset; non-ASCII content in the partial "
-            "(none today, but defensive) could be mis-decoded"
-        )
-
-    def test_cache_control_is_private_and_revalidated(self, web):
-        r = web.get("/partials/trajectory-inspector")
-        cc = r.headers.get("Cache-Control", "")
-        assert "private" in cc, (
-            f"missing 'private' directive (got {cc!r}); the body "
-            f"shouldn't be cached by intermediaries"
-        )
-        assert "no-cache" in cc and "max-age" not in cc, (
-            f"expected no-cache (got {cc!r}); a copy reused without "
-            f"asking outlives a release of the scripts that query it"
-        )
-
-    def test_partial_does_not_carry_page_chrome(self, web):
-        """The partial is a FRAGMENT, not a full page.  It must not
-        wrap the inspector in <html>/<head>/<body> (those would
-        nest inside the host's existing document, which browsers
-        treat as malformed).
-
-        Match on the TAG, not a substring -- otherwise the regex
-        catches semantic HTML5 elements like <header> as false
-        positives (``<head`` is a prefix of ``<header``).  The
-        match pattern is ``<tag>`` or ``<tag `` (open tag with
-        attributes) -- both legal forms of the forbidden top-level
-        wrappers."""
+          * ``Cache-Control: private, no-cache`` -- the browser asks before
+            reusing its copy, as it does for every script: the partial and
+            the scripts that query it change together, and a copy kept
+            without asking put a release's scripts under the last release's
+            controls (2.49.0 on Sol: the removed atoms select still on
+            screen).  ``private`` so intermediaries don't keep it.
+          * a FRAGMENT, not a page: no top-level ``<html>``/``<head>``/
+            ``<body>`` or doctype, which would nest inside the host's
+            document.  Matched on the tag (``<head`` is a prefix of the
+            partials' own ``<header>``)."""
         import re
-        r = web.get("/partials/trajectory-inspector")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        for forbidden_tag in ("html", "head", "body"):
-            pat = re.compile(rf"<{forbidden_tag}[\s>/]", re.IGNORECASE)
-            assert not pat.search(body), (
-                f"partial response contains a top-level <{forbidden_tag}> "
-                f"element; it must be a DOM fragment (the trajectory "
-                f"inspector wrapper injects it into a registry-supplied "
-                f"host)"
-            )
-        # Doctype is its own case (not a tag).
-        assert "<!doctype" not in body.lower(), (
-            "partial response carries a <!DOCTYPE> declaration"
-        )
-
-
-class TestPartialSpectraInspectorEndpoint:
-    """Pin the GET /partials/spectra-inspector contract.
-
-    Mirror of TestPartialTrajectoryInspectorEndpoint -- the two
-    partial endpoints share a wire contract by design so the
-    registry-side wrappers can be near-identical adapters with the
-    same trust boundary + caching semantics.
-
-    Why each pin matters:
-      * status 200 + text/html content-type: the spectra inspector's
-        fetch path assumes successful HTML; anything else stops the
-        mount cold without a meaningful client-side error.
-      * Cache-Control: private, no-cache -- same rationale as the
-        trajectory partial.
-      * Partial-id parity: the body MUST contain every id the
-        spectra inspector JS queries via $().  A drift between this
-        partial and the inspector's selectors silently breaks the
-        inspector on /results.  We sample the most-load-bearing ids
-        from the inspect-side functions in lib/spectra/core.js.
-    """
-
-    # Hand-picked from the inspect-side surface of
-    # lib/spectra/core.js -- a representative slice covering
-    # every functional area (load controls, results summary, chart,
-    # modes table + filter + CSV, mode viewer + animation, ES bar
-    # diagram).
-    REQUIRED_IDS = (
-        # The run's progress: the status line and the phase dots (the
-        # dropdown is the one route to a file, web/spectra.md § 7).
-        "watch-status",
-        "phase-indicator",
-        # Thermochemistry tab (v5 `thermo`; spectra-migration-plan § 2b):
-        # the tab button + panel + the two Plotly boxes + the words.
-        "mode-tabbtn-thermo",
-        "mode-tab-thermo",
-        "thermo-note",
-        "thermo-curves",
-        "thermo-decomp",
-        # Results summary + chart
-        "results-summary",
-        "results-summary-list",
-        "spectrum-chart",
-        "broadening-fwhm",
-        # The spectrum where a strength was computed, the mode positions
-        # where none was (web/spectra.md § 2): the section and its heading,
-        # the controls the core hides when there are no heights, and the
-        # sentence saying why.
-        "spectrum-section",
-        "spectrum-heading",
-        "spectrum-controls",
-        "spectrum-absent",
-        # The intensity floor, and the methods block the spectrum is
-        # reported with.  All six are live: `lib/spectra/core.js` binds
-        # every one through `$()`.
-        "display-floor",
-        "display-floor-out",
-        "methods-block",
-        "methods-text",
-        "methods-copy",
-        "methods-copy-note",
-        # Modes table
-        "modes-table",
-        "modes-tbody",
-        "modes-thead-row",
-        "modes-filter",
-        "modes-filter-count",
-        "modes-csv-btn",
-        # The three views of one selection, as tabs under the spectrum
-        # (2026-08-05).  Both halves of each tab are pinned: the button the
-        # user clicks and the panel it controls, because `aria-controls` ties
-        # them by id and a rename of either alone breaks the pairing silently.
-        "mode-tabs",
-        "mode-tabbtn-table",
-        "mode-tab-table",
-        "mode-tabbtn-viewer",
-        "mode-tab-viewer",
-        "mode-tabbtn-es",
-        "mode-tab-es",
-        # Mode viewer (3D animation)
-        "mode-viewer-wrap",
-        "mode-viewer",
-        "viewer-status",
-        "anim-amplitude",
-        "anim-amplitude-val",
-        "anim-speed",
-        "anim-speed-val",
-        "anim-toggle",
-        # How big to draw the motion (docs/web/spectra.md § 4.1).  The two
-        # ``-row`` wrappers are the seam, not decoration: the core shows and
-        # hides them per amplitude mode, so a missing wrapper leaves the
-        # temperature box on screen under "exaggerated", where it means nothing.
-        "anim-amplitude-mode",
-        "anim-amplitude-row",
-        "anim-temperature",
-        "anim-temperature-row",
-        # Getting the animation out (vibrationview.md § 12).
-        "anim-export-format",
-        "anim-export-width",
-        "anim-export-height",
-        "anim-export-background",
-        "anim-export-cycles",
-        "anim-export-btn",
-        "anim-export-cancel",
-        "anim-export-status",
-        # ES bar diagram
-        "es-panel",
-        "es-bar-diagram",
-        "es-mode-idx",
-        "es-mode-freq",
-        "es-summary",
-    )
-
-    def test_endpoint_returns_html_200(self, web):
-        r = web.get("/partials/spectra-inspector")
+        r = web_client.get(partial)
         assert r.status_code == 200, (
-            f"/partials/spectra-inspector returned {r.status_code}; "
-            f"the spectra inspector on /results depends on this "
-            f"endpoint for its DOM"
-        )
-
-    def test_content_type_is_html(self, web):
-        r = web.get("/partials/spectra-inspector")
-        ctype = r.headers.get("Content-Type", "")
-        assert "text/html" in ctype, f"expected text/html, got {ctype!r}"
-        assert "charset=utf-8" in ctype.lower(), (
-            f"missing charset; got {ctype!r}"
-        )
-
-    def test_cache_control_is_private_and_revalidated(self, web):
-        r = web.get("/partials/spectra-inspector")
+            f"{partial} returned {r.status_code}; the inspector on /results "
+            f"mounts on what it answers")
         cc = r.headers.get("Cache-Control", "")
         assert "private" in cc, f"missing 'private' (got {cc!r})"
         assert "no-cache" in cc and "max-age" not in cc, (
-            f"expected no-cache (got {cc!r})")
-
-    @pytest.mark.parametrize("element_id", REQUIRED_IDS)
-    def test_body_carries_required_inspector_ids(self, web, element_id):
-        """Every id the spectra inspector core scopes against (via $()
-        or els.<key> = document.getElementById(...)) must be present
-        in the partial response.  A missing id silently breaks the
-        inspector on /results."""
-        body = web.get("/partials/spectra-inspector").get_data(as_text=True)
-        needle = f'id="{element_id}"'
-        assert needle in body, (
-            f"partial response is missing {needle!r}; the spectra "
-            f"inspector queries this id and would crash on /results"
-        )
-
-    def test_partial_does_not_carry_page_chrome(self, web):
-        """Fragment, not a full page -- no top-level <html>/<head>/
-        <body>.  Match on tags, not substrings (``<head`` is a
-        prefix of the legitimate HTML5 ``<header>`` element used
-        for section headers within the partial)."""
-        import re
-        r = web.get("/partials/spectra-inspector")
-        assert r.status_code == 200
+            f"expected no-cache (got {cc!r}); a copy reused without asking "
+            f"outlives a release of the scripts that query it")
         body = r.get_data(as_text=True)
-        for forbidden_tag in ("html", "head", "body"):
-            pat = re.compile(rf"<{forbidden_tag}[\s>/]", re.IGNORECASE)
-            assert not pat.search(body), (
-                f"partial response contains a top-level "
-                f"<{forbidden_tag}> element"
-            )
+        for tag in ("html", "head", "body"):
+            assert not re.search(rf"<{tag}[\s>/]", body, re.IGNORECASE), (
+                f"{partial} carries a top-level <{tag}>; it must be a DOM "
+                f"fragment the inspector puts in its host")
         assert "<!doctype" not in body.lower(), (
-            "partial response carries a <!DOCTYPE> declaration"
-        )
+            f"{partial} carries a <!DOCTYPE> declaration")
+
+    def test_every_element_the_inspector_asks_for_is_served(self, web_client):
+        """THE INSPECTOR, MOUNTED ON WHAT IS SERVED, FINDS EVERY ELEMENT IT
+        ASKS FOR.  `lib/spectra/core.js` mounts on two pages: its results side
+        on the spectra partial (`/results`), its form side on the spectrum
+        calculation page; each element it binds by id is asked of the root
+        it is mounted in.  Run here under node against the partial as
+        served, recording each id the mount asks for: every one is in the
+        partial, or on the spectrum calculation page as served.
+
+        THE SILENT FAILURE: an id renamed on one side only -- the inspector
+        binds null, and its guarded uses (the export controls, the methods
+        block, the phase dots) drop that control from the page without an
+        error.  The ids are the inspector's own, asked as it mounts; this
+        test holds no list of them."""
+        from support.pages import ids_of
+        from tests._node_esm import run_node
+        lib = Path(__file__).resolve().parents[1] / "molbuilder/web/static/lib"
+        partial = set(ids_of(web_client.get("/partials/spectra-inspector")
+                             .get_data(as_text=True)))
+        page = set(ids_of(web_client.get("/spectrum-calculation")
+                          .get_data(as_text=True)))
+        asked = run_node(
+            [lib / "inspectors" / "lifecycle.js", lib / "spectra" / "core.js"],
+            """
+            const held = new Set(%s);
+            const asked = [];
+            const rootEl = new Proxy({}, { get: (t, k) => {
+              if (k === "querySelector") return (sel) => {
+                if (!sel.startsWith("#")) return __any();
+                asked.push(sel.slice(1));
+                return held.has(sel.slice(1)) ? __any() : null;
+              };
+              if (k === "querySelectorAll") return () => [];
+              return k === "then" ? undefined : __any();
+            }});
+            window.molbuilder.spectraInspector.mount(rootEl, {});
+            console.log(JSON.stringify(asked));
+            """ % json.dumps(sorted(partial)), globals_js=_ANY_DOM)
+        assert len(asked) > len(set(asked) - partial) > 0, asked
+        assert sorted(set(asked) - partial - page) == []
+
+
+@pytest.fixture
+def relaxation_and_its_bench(tmp_path, monkeypatch):
+    """An H2 relaxation through the road, no engine run: `molbuilder
+    describe`, `prep task` of its first group, and `prep bench` of its first
+    stage's benchmark -- every folder prep makes for it."""
+    from support.road import (declare_bench, describe_calculation, jobset,
+                              prep_groups)
+    bundle = describe_calculation(tmp_path, monkeypatch)
+    prep_groups(bundle, "1")
+    declare_bench(bundle, {"mpi_np": [1, 2], "omp_threads": [1]})
+    got = jobset("prep", "bench", "coarse", "--bundle", bundle,
+                 "--target", "this")
+    assert got.exit_code == 0, got.output
+    return bundle
 
 
 class TestTheContractEndpoint:
@@ -310,17 +170,8 @@ class TestTheContractEndpoint:
     contract a run's own deck states (`model/parse.md` § 5b).  Isolated onto
     a tmp projects root -- tests never touch the real tree."""
 
-    @pytest.fixture
-    def isolated(self, tmp_path, monkeypatch):
-        from molbuilder.projects import PROJECTS_ROOT_ENV
-        root = tmp_path / "projects"
-        root.mkdir()
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
-        from molbuilder.web.app import create_app
-        return root, create_app(config={}).test_client()
-
-
-    def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
+    def test_a_directory_with_no_run_reports_no_run_state(
+            self, isolated_projects_root, web_client):
         """`run_status` cannot say *there is no run here*.
 
         Asked without a launch record, an absence of evidence comes back
@@ -338,11 +189,10 @@ class TestTheContractEndpoint:
         grounded on something: the record saying RUN, or the door finding
         this directory's product.
         """
-        root, client = isolated
-        bare = root / "topic"          # a folder nobody described
+        bare = isolated_projects_root / "topic"   # a folder nobody described
         bare.mkdir()
         (bare / "README.md").write_text("notes\n")
-        body = client.get("/api/results/dir?path=" + str(bare)).get_json()
+        body = web_client.get("/api/results/dir?path=" + str(bare)).get_json()
         assert body["ok"] is True
         assert body["place"]["role"] is None, "nothing marks this directory"
         assert body["status"] is None, (
@@ -353,7 +203,7 @@ class TestTheContractEndpoint:
 
 
     def test_a_saved_pair_in_a_folder_nobody_described_is_molbuilders(
-            self, isolated):
+            self, isolated_projects_root, web_client):
         """`web/results.md` § 3b: the file card says what each half of a
         saved structure pair holds and who saves it; a file beside it that
         molbuilder did not write stays *not written by molbuilder*.  Silent
@@ -363,8 +213,7 @@ class TestTheContractEndpoint:
         from molbuilder.runfiles import SAVED_PAIR_WHAT
         from molbuilder.structure import Structure
         from molbuilder.workingcopy_structure import StructureCodec
-        root, client = isolated
-        shelf = root / "P" / "structure"
+        shelf = isolated_projects_root / "P" / "structure"
         shelf.mkdir(parents=True)
         StructureCodec().write(
             Structure(elements=["H", "H"],
@@ -373,7 +222,7 @@ class TestTheContractEndpoint:
                       info={"note": "a pair with its labels and record"}),
             shelf / "h2.xyz")
         (shelf / "notes.txt").write_text("mine\n")
-        body = client.get("/api/results/dir?path=" + str(shelf)).get_json()
+        body = web_client.get("/api/results/dir?path=" + str(shelf)).get_json()
         about = {f["name"]: f["about"] for f in body["files"]}
         assert about["h2.xyz"]["ours"] is True, about
         assert about["h2.xyz"]["what"] == SAVED_PAIR_WHAT["structure"]
@@ -381,9 +230,9 @@ class TestTheContractEndpoint:
         assert about["notes.txt"] == {"ours": False}, about
 
     def test_a_calculations_folders_are_answered_by_the_run_door(
-            self, isolated, tmp_path, monkeypatch):
-        """Through the road -- `molbuilder describe` and `prep` of an H2 relaxation,
-        no engine run -- the run door answers each folder as what it IS
+            self, web_client, relaxation_and_its_bench):
+        """Through the road (:func:`relaxation_and_its_bench`), the run door
+        answers each folder as what it IS
         (`project-layout.md` § 1.4a; `execution/architecture.md` § 3.2):
 
         * the calculation's ROOT is a container: no run state, no record --
@@ -401,17 +250,9 @@ class TestTheContractEndpoint:
         *(The root's own PRODUCT -- a transport calculation's I–V record --
         is transport's own case, on the minimal junction (plan Q5–Q7).)*
         """
-        from conftest import write_machine_record
-        from support.road import (describe_calculation, jobset, read_request,
-                                  write_request)
-        root, client = isolated
-        write_machine_record()
-        bundle = describe_calculation(tmp_path, monkeypatch)
-        got = jobset("prep", "task", "--group", "1", "--bundle", bundle,
-                     "--target", "this")
-        assert got.exit_code == 0, got.output
-
-        body = client.get("/api/results/dir?path=" + str(bundle)).get_json()
+        bundle = relaxation_and_its_bench
+        body = web_client.get(
+            "/api/results/dir?path=" + str(bundle)).get_json()
         assert body["status"] is None and body["record"] is None, (
             "a container is not a run")
         assert body["ladder"] is not None, "a calculation root has a ladder"
@@ -429,22 +270,17 @@ class TestTheContractEndpoint:
             coarse["runs"])
 
         attempt = bundle / "01_coarse" / "run-0"
-        body = client.get("/api/results/dir?path=" + str(attempt)).get_json()
+        body = web_client.get(
+            "/api/results/dir?path=" + str(attempt)).get_json()
         assert (body["status"]["state"], body["status"]["detail"]) == (
             "pending", "prepared, not launched (no launch record)"), body["status"]
         about = {f["name"]: f["about"] for f in body["files"]}
         assert about["H2_01_coarse.fdf"]["ours"] is True, about
         assert about["calcdir.json"]["ours"] is True, about
 
-        request = read_request(bundle)
-        request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
-        write_request(bundle, request)
-        got = jobset("prep", "bench", "coarse", "--bundle", bundle,
-                     "--target", "this")
-        assert got.exit_code == 0, got.output
         trial = sorted((bundle / "01_coarse" / "bench").glob("bench-*"))[0]
-        body = client.get("/api/results/dir?path="
-                          + str(trial / "run-0")).get_json()
+        body = web_client.get("/api/results/dir?path="
+                              + str(trial / "run-0")).get_json()
         assert body["status"]["state"] == "pending", body["status"]
 
     #: WHERE EACH FOLDER PREP MAKES IS (`project-layout.md` § 1.4a, *Where am
@@ -467,9 +303,9 @@ class TestTheContractEndpoint:
     ]
 
     def test_every_folder_prep_makes_says_where_it_is(
-            self, isolated, tmp_path, monkeypatch):
-        """Through the road -- `molbuilder describe`, `prep task` and `prep bench`
-        of an H2 relaxation, no engine run -- every folder prep made answers
+            self, web_client, relaxation_and_its_bench):
+        """Through the road (:func:`relaxation_and_its_bench`), every folder
+        prep made answers
         the Results tab's door with where it is: its calculation, what it
         is, its role, and the stage, run and trial it sits in
         (`project-layout.md` § 1.4a, *Where am I*; `web/results.md` § 2.3).
@@ -483,19 +319,7 @@ class TestTheContractEndpoint:
         benchmark's child rule), an attempt's index not read, a folder an
         opener left unstamped."""
         from fnmatch import fnmatch
-        from pathlib import Path
-        from conftest import write_machine_record
-        from support.road import (describe_calculation, jobset, read_request,
-                                  write_request)
-        _root, client = isolated
-        write_machine_record()
-        bundle = describe_calculation(tmp_path, monkeypatch)
-        request = read_request(bundle)
-        request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
-        write_request(bundle, request)
-        for verb in (("task", "--group", "1"), ("bench", "coarse")):
-            got = jobset("prep", *verb, "--bundle", bundle, "--target", "this")
-            assert got.exit_code == 0, got.output
+        bundle = relaxation_and_its_bench
         rows = self.EVERY_FOLDER
         # The folders prep made -- not the saved history's own.
         folders = [bundle] + sorted(
@@ -513,7 +337,7 @@ class TestTheContractEndpoint:
             if trial == "*":
                 trial = next(part for part in rel.split("/")
                              if part.startswith("bench-"))[len("bench-"):]
-            place = client.get(
+            place = web_client.get(
                 "/api/results/dir?path=" + str(folder)).get_json()["place"]
             assert Path(place["calculation"]).resolve() == bundle.resolve(), (
                 rel, place)
@@ -525,12 +349,11 @@ class TestTheContractEndpoint:
             "a row no folder answered", sorted({r[0] for r in rows} - answered))
 
 
-    def test_no_deck_answers_null(self, isolated):
-        root, client = isolated
-        d = root / "bare"
+    def test_no_deck_answers_null(self, isolated_projects_root, web_client):
+        d = isolated_projects_root / "bare"
         d.mkdir()
         (d / "chain.xyz").write_text("1\n\nC 0 0 0\n")
-        r = client.get("/api/results/contract?path="
-                       + str(d / "chain.xyz"))
+        r = web_client.get("/api/results/contract?path="
+                           + str(d / "chain.xyz"))
         out = r.get_json()
         assert out["ok"] is True and out["calculation"] is None

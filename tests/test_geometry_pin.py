@@ -194,8 +194,8 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
         built.order_unstated = True
     name = "co." + case.get("format", "xyz")
     if case["door"].startswith("route_"):
-        from conftest import _point_the_one_door_at
-        tree = _point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
+        from conftest import point_the_one_door_at
+        tree = point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
         (tree / "P").mkdir()
         path = tree / "P" / name
     else:

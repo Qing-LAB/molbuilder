@@ -1,172 +1,157 @@
-"""Unit tests for the uniform-envelope contract in ``lib/projects/
-api.js`` (sidebar gap M3, #173).
+"""``lib/projects/api.js`` -- the requests behind the sidebar's file calls,
+and the uniform envelope they answer.
 
-The contract (per docs/web/projects.md Principle 6):
+The contract (`web/projects.md` § 5: the file calls each make one server
+request and return a uniform ``{ok, ...}`` result -- they never throw):
+every async function in api.js returns ``{ok: bool, ...}`` and NEVER
+throws.  Network failures and AbortErrors surface as ``{ok: false,
+error: "..."}``; a server's answer is handed back as it came.
 
-  Every async function in api.js returns ``{ok: bool, ...}`` and
-  NEVER throws.  Network failures, DNS errors, non-JSON responses,
-  and AbortErrors ALL surface as ``{ok: false, error: "..."}``.
-
-Tests stub ``fetch`` under Node to simulate each failure mode +
-the happy path, and verify the returned envelope shape.  No
-backend required.
+The module runs under node (`_node_esm.run_node`) with each request answered
+by the app's own files routes on a tree of the test's own
+(`_node_esm.served`); the browser's own failures -- a network drop, a
+cancel -- are raised where the browser raises them.  An answer that is not
+JSON is no route's of ours (a proxy's error page), and is not asked here.
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
+
+from tests._node_esm import run_node, served
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/projects/api.js"
 
 
-def _run_node(snippet: str) -> object:
-    """Run a JS snippet under Node with api.js pre-loaded via
-    dynamic import.  ``snippet`` must end with a line that calls
-    ``console.log(JSON.stringify(result))`` so the Python side can
-    parse the return value back.
+def _run(snippet: str, app_at: "str | None" = None) -> object:
+    """``snippet`` with api.js imported as ``api``.  With ``app_at``, each
+    request goes to the app serving there (`_node_esm.served`: each request
+    kept as it left in ``__calls``, its options as ``init``, and each
+    answer, read, in ``__answered``)."""
+    return run_node(
+        [], f"const api = await import({json.dumps(MODULE.as_uri())});\n"
+            f"{snippet}",
+        globals_js=served(app_at) if app_at else "")
 
-    Each test sets ``global.fetch`` to a stub that returns whatever
-    the test needs, then invokes one of the api functions and
-    checks the envelope shape.
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    # The module uses ES-module syntax (export async function ...).
-    # We import it via dynamic ``import()`` which works under Node
-    # without any tsconfig / package.json so long as we tell Node
-    # to treat the import source as a module.  We do that by
-    # serving the module via a file:// URL.
-    module_url = MODULE.resolve().as_uri()
-    bootstrap = f"""
-        // Node 16+ exposes fetch globally; we OVERRIDE it per-test
-        // so the snippet runs in a controlled environment.  Tests
-        // that don't reassign get the Node-default fetch which
-        // hits the real network -- not what we want.  Default to
-        // "no fetch should be called" so an accidental real-fetch
-        // path produces a visible error.
-        global.fetch = () => {{
-            throw new Error(
-                "test must override global.fetch; api.js called the "
-                + "default no-op stub"
-            );
-        }};
-        const apiPromise = import("{module_url}");
-        // Defer all snippet execution until the dynamic import
-        // resolves; that way the snippet can reference the api
-        // module under its alias ``api``.
-        apiPromise.then(async (api) => {{
-            {snippet}
-        }}).catch(err => {{
+
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers api.js (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
+
+
+@pytest.fixture
+def tree(isolated_projects_root):
+    """This test's projects tree (`isolated_projects_root`): a project
+    folder holding a note and a megabyte log."""
+    (isolated_projects_root / "P").mkdir()
+    (isolated_projects_root / "P" / "notes.txt").write_text("hello\n")
+    (isolated_projects_root / "P" / "big.log").write_text("x" * 1_000_000)
+    return isolated_projects_root
+
+
+def _js(path) -> str:
+    return json.dumps(str(path))
+
+
+# ----- A write: the request it makes, the answer handed back ------- #
+
+
+class TestWrites:
+
+    def test_apiWrite_post_with_overwrite_flag(self, app_at, tree):
+        note = tree / "P" / "notes.txt"
+        out = _run(f"""
+            const r = await api.apiWrite({_js(note)}, "text",
+                                         {{overwrite: true}});
             console.log(JSON.stringify({{
-                __test_unexpected_throw: true,
-                message: err && err.message ? err.message : String(err),
-            }}));
-        }});
-    """
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    # Last JSON line is the test result; earlier lines may include
-    # diagnostic prints from the module.
-    last_line = proc.stdout.strip().splitlines()[-1]
-    out = json.loads(last_line)
-    assert "__test_unexpected_throw" not in out, (
-        "api.js threw instead of returning envelope: " + str(out)
-    )
-    return out
-
-
-# ----- Happy path: server returns valid JSON envelope -------------- #
-
-
-class TestHappyPath:
-
-    def test_apiList_returns_server_body_verbatim(self):
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({ ok: true, entries: ["a","b"] }),
-            });
-            const r = await api.apiList("/some/path");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": True, "entries": ["a", "b"]}
-
-    def test_apiRead_returns_server_body_verbatim(self):
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({ ok: true, text: "hello", mtime: 12345 }),
-            });
-            const r = await api.apiRead("/x");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": True, "text": "hello", "mtime": 12345}
-
-    def test_apiReadRange_returns_server_body_verbatim(self):
-        """The raw wrapper (#189, 2026-06-02) mirrors apiRead's shape
-        but takes offset + maxBytes and surfaces the server's range-
-        read envelope (file_size + eof in addition to text + mtime)."""
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({
-                    ok: true, path: "/p/big.log", offset: 0,
-                    length: 262144, file_size: 1000000,
-                    mtime: 42, text: "first chunk", eof: false,
-                }),
-            });
-            const r = await api.apiReadRange("/p/big.log", 0, 262144);
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is True
-        assert out["length"] == 262144
-        assert out["eof"] is False
-        assert out["text"] == "first chunk"
-
-    def test_apiWrite_post_with_overwrite_flag(self):
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = { url, init };
-                return {
-                    ok: true,
-                    status: 200,
-                    json: async () => ({ ok: true, mtime: 999 }),
-                };
-            };
-            const r = await api.apiWrite("/p", "text", {overwrite: true});
-            console.log(JSON.stringify({
                 envelope: r,
-                url:      captured.url,
-                method:   captured.init.method,
-                body:     JSON.parse(captured.init.body),
-            }));
-        ''')
-        assert out["envelope"] == {"ok": True, "mtime": 999}
+                answer:   __answered[0],
+                url:      __calls[0].url,
+                method:   __calls[0].method,
+                body:     __calls[0].body,
+            }}));
+        """, app_at)
+        assert out["answer"]["ok"] is True, out["answer"]
+        assert out["envelope"] == out["answer"]
         assert out["url"] == "/api/files/write"
         assert out["method"] == "POST"
-        assert out["body"] == {"path": "/p", "text": "text",
-                                "overwrite": True}
+        assert out["body"] == {"path": str(note), "text": "text",
+                               "overwrite": True}
+        assert note.read_text() == "text"
+
+    def test_apiRename_posts_with_correct_body(self, app_at, tree):
+        """apiRename POSTs {path, new_name} to /api/files/rename."""
+        old = tree / "P" / "notes.txt"
+        out = _run(f"""
+            await api.apiRename({_js(old)}, "new.txt");
+            console.log(JSON.stringify({{
+                url:    __calls[0].url,
+                method: __calls[0].method,
+                body:   __calls[0].body,
+                answer: __answered[0],
+            }}));
+        """, app_at)
+        assert out["url"] == "/api/files/rename"
+        assert out["method"] == "POST"
+        assert out["body"] == {"path": str(old), "new_name": "new.txt"}
+        assert out["answer"]["ok"] is True
+        assert (tree / "P" / "new.txt").read_text() == "hello\n"
+
+
+# ----- A read asks for the window it was given --------------------- #
+
+
+@pytest.mark.parametrize("call, path, asked, unasked, window", [
+    ("api.apiRead({F}, {{ maxBytes: 16777216 }})", "P/notes.txt",
+     ["max_bytes=16777216"], [], {"text": "hello\n"}),
+    ("api.apiRead({F})", "P/notes.txt", [], ["max_bytes"],
+     {"text": "hello\n"}),
+    ("api.apiReadRange({F})", "P/big.log", [], ["offset=", "max_bytes="],
+     {"offset": 0, "length": 262144, "file_size": 1_000_000, "eof": False}),
+    ("api.apiReadRange({F}, 524288, 262144)", "P/big.log",
+     ["offset=524288", "max_bytes=262144"], [],
+     {"offset": 524288, "length": 262144, "eof": False}),
+    ("api.apiReadRange({F}, -262144, 262144)", "P/big.log",
+     ["offset=-262144", "max_bytes=262144"], [],
+     {"offset": 1_000_000 - 262144, "length": 262144, "eof": True}),
+], ids=["apiRead lifts the budget it is given",
+        "apiRead with none leaves the server's",
+        "apiReadRange with no window takes the server's from byte 0",
+        "apiReadRange asks for its offset and size",
+        "apiReadRange's negative offset reads the file's end"])
+def test_a_read_asks_for_the_window_it_was_given(app_at, tree, call, path,
+                                                 asked, unasked, window):
+    """The path URL-encoded, and on the query string exactly what the caller
+    gave: the preview inspector's BULK read lifts the budget above the
+    server's default (``maxBytes`` -> ``&max_bytes=``); the paginated source
+    inspector pages by ``offset`` -- one dropped re-reads the first chunk
+    forever -- and reads a log's end by a negative one (#189, 2026-06-02).
+    Nothing given, nothing sent: the server's default applies.  The server's
+    window comes back as it came."""
+    target = tree / path
+    out = _run(f"""
+        const r = await {call.format(F=_js(target))};
+        console.log(JSON.stringify({{ r, url: __calls[0].url,
+                                      answer: __answered[0] }}));
+    """, app_at)
+    assert out["answer"]["ok"] is True, out["answer"]
+    assert out["r"] == out["answer"]
+    assert quote(str(target), safe="") in out["url"]
+    for part in asked:
+        assert part in out["url"], (part, out["url"])
+    for part in unasked:
+        assert part not in out["url"], (part, out["url"])
+    assert {k: out["r"][k] for k in window} == window
+    if "length" in window:
+        assert out["r"]["text"] == "x" * window["length"]
 
 
 # ----- Network failure: fetch itself rejects ----------------------- #
@@ -177,7 +162,7 @@ class TestNetworkFailure:
     def test_apiList_network_drop_returns_envelope(self):
         """``fetch`` throws TypeError on network drop / offline /
         DNS fail; apiList returns the synthetic envelope."""
-        out = _run_node('''
+        out = _run('''
             global.fetch = async () => {
                 throw new TypeError("Failed to fetch");
             };
@@ -189,255 +174,72 @@ class TestNetworkFailure:
         assert "Failed to fetch" in out["error"]
 
 
-# ----- Non-JSON response: server returns 501 / HTML 5xx ----------- #
-
-
-class TestNonJsonResponse:
-
-    def test_apiDelete_non_json_returns_envelope(self):
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: false,
-                status: 501,
-                json: async () => { throw new SyntaxError("Unexpected token"); },
-            });
-            const r = await api.apiDelete("/x", false);
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "non-JSON" in out["error"]
-        assert "501" in out["error"]
-
-
 # ----- AbortSignal threading (#174 sidebar gap M1) ---------------- #
 
 
 class TestAbortSignal:
 
-    def test_apiWrite_aborted_returns_clean_envelope(self):
+    def test_apiWrite_aborted_returns_clean_envelope(self, app_at, tree):
         """When the caller's AbortSignal fires, fetch rejects with
         AbortError.  api.js produces a CLEAN envelope (no "network
         error" prose) so callers can distinguish user-cancellation
         from connectivity failure."""
-        out = _run_node('''
-            global.fetch = async (url, init) => {
-                // Simulate the runtime aborting mid-flight.
-                const err = new Error("operation aborted");
-                err.name = "AbortError";
-                throw err;
-            };
-            const r = await api.apiWrite("/x", "text");
+        out = _run(f"""
+            const ctl = new AbortController();
+            ctl.abort();
+            const r = await api.apiWrite({_js(tree / "P" / "notes.txt")},
+                                         "text", {{ signal: ctl.signal }});
             console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert out["error"] == "aborted"
-        assert out["aborted"] is True
+        """, app_at)
+        assert out == {"ok": False, "error": "aborted", "aborted": True}
+        assert (tree / "P" / "notes.txt").read_text() == "hello\n"
 
-    def test_apiWrite_forwards_signal_into_fetch(self):
-        """The ``signal`` from opts must reach the fetch init -- pin
-        the wire-format contract so a refactor can't accidentally
-        drop the thread-through.  The lock's three-layer recovery
-        depends on this."""
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = init;
-                return {
-                    ok: true,
-                    status: 200,
-                    json: async () => ({ ok: true }),
-                };
-            };
+    @pytest.mark.parametrize("call", [
+        "api.apiWrite({P} + '/notes.txt', 'text', {{overwrite: true, signal}})",
+        "api.apiDelete({P} + '/notes.txt', false, {{signal}})",
+        "api.apiUpload({P}, new File(['x'], 'f.txt'), {{signal}})",
+        "api.apiRead({P} + '/notes.txt', {{signal}})",
+        "api.apiReadRange({P} + '/big.log', 0, 262144, {{signal}})",
+        "api.apiList({P}, {{signal}})",
+        "api.apiRename({P} + '/notes.txt', 'renamed.txt', {{signal}})",
+        "api.apiMkdir({P}, 'optimization', {{signal}})",
+    ], ids=["apiWrite", "apiDelete", "apiUpload", "apiRead", "apiReadRange",
+            "apiList", "apiRename", "apiMkdir"])
+    def test_the_signal_reaches_fetch_and_the_server_answers(
+            self, app_at, tree, call):
+        """The ``signal`` from opts must reach the fetch init -- the SAME
+        AbortSignal instance, not a copy -- or the sidebar's Cancel (and
+        the lock's three-layer recovery) cancels nothing; and the server's
+        answer comes back as it came."""
+        out = _run(f"""
             const ctl = new AbortController();
-            await api.apiWrite("/x", "text", { signal: ctl.signal });
-            // Identity check: the SAME AbortSignal instance reaches
-            // fetch -- not a copy / wrapper / clone.
-            console.log(JSON.stringify({
-                wasSignalForwarded: captured.signal === ctl.signal,
-            }));
-        ''')
-        assert out == {"wasSignalForwarded": True}
-
-    def test_apiDelete_forwards_signal_into_fetch(self):
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = init;
-                return { ok: true, status: 200, json: async () => ({ok: true}) };
-            };
-            const ctl = new AbortController();
-            await api.apiDelete("/x", false, { signal: ctl.signal });
-            console.log(JSON.stringify({
-                wasSignalForwarded: captured.signal === ctl.signal,
-            }));
-        ''')
-        assert out == {"wasSignalForwarded": True}
-
-    def test_apiUpload_forwards_signal_into_fetch(self):
-        out = _run_node('''
-            global.FormData = function () { this.append = () => {}; };
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = init;
-                return { ok: true, status: 200, json: async () => ({ok: true}) };
-            };
-            const ctl = new AbortController();
-            await api.apiUpload("/x", { name: "f" }, { signal: ctl.signal });
-            console.log(JSON.stringify({
-                wasSignalForwarded: captured.signal === ctl.signal,
-            }));
-        ''')
-        assert out == {"wasSignalForwarded": True}
-
-    def test_no_signal_is_safe(self):
-        """Backwards-compat: callers that don't pass opts.signal
-        still work.  fetch receives ``signal: undefined`` which is
-        equivalent to no signal."""
-        out = _run_node('''
-            global.fetch = async (url, init) => {
-                return { ok: true, status: 200, json: async () => ({ok: true}) };
-            };
-            const r = await api.apiWrite("/x", "text");  // no opts
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": True}
-
-    def test_apiRead_forwards_signal(self):
-        """2026-05-31 (post-design audit): read endpoints also accept
-        opts.signal so a tab can cancel a slow read.  Identity-checked
-        to pin the wire-format contract."""
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = init;
-                return { ok: true, status: 200,
-                         json: async () => ({ ok: true, text: "x" }) };
-            };
-            const ctl = new AbortController();
-            await api.apiRead("/p", { signal: ctl.signal });
-            console.log(JSON.stringify({
-                wasSignalForwarded: captured.signal === ctl.signal,
-            }));
-        ''')
-        assert out == {"wasSignalForwarded": True}
-
-    def test_apiRead_forwards_maxBytes(self):
-        """The preview inspector's BULK read lifts the budget above the
-        server default via ``opts.maxBytes`` -> ``&max_bytes=`` on the wire.
-        Omitting it must NOT append the param (server default applies)."""
-        out = _run_node('''
-            let withCap = null, withoutCap = null;
-            global.fetch = async (url, init) => {
-                if (url.indexOf("max_bytes") >= 0) withCap = url; else withoutCap = url;
-                return { ok: true, status: 200,
-                         json: async () => ({ ok: true, text: "x" }) };
-            };
-            await api.apiRead("/p", { maxBytes: 16777216 });
-            await api.apiRead("/p");
-            console.log(JSON.stringify({
-                capped:    withCap && withCap.indexOf("max_bytes=16777216") >= 0,
-                uncapped:  withoutCap && withoutCap.indexOf("max_bytes") < 0,
-            }));
-        ''')
-        assert out == {"capped": True, "uncapped": True}
-
-    def test_apiList_forwards_signal(self):
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = init;
-                return { ok: true, status: 200,
-                         json: async () => ({ ok: true, entries: [] }) };
-            };
-            const ctl = new AbortController();
-            await api.apiList("/p", { signal: ctl.signal });
-            console.log(JSON.stringify({
-                wasSignalForwarded: captured.signal === ctl.signal,
-            }));
-        ''')
-        assert out == {"wasSignalForwarded": True}
-
-    def test_apiRename_forwards_signal(self):
-        """apiRename (added 2026-05-31 alongside the backend rename
-        endpoint) honours opts.signal like every other writer."""
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = init;
-                return { ok: true, status: 200,
-                         json: async () => ({ ok: true, path: "/x/new" }) };
-            };
-            const ctl = new AbortController();
-            await api.apiRename("/x/old", "new", { signal: ctl.signal });
-            console.log(JSON.stringify({
-                wasSignalForwarded: captured.signal === ctl.signal,
-            }));
-        ''')
-        assert out == {"wasSignalForwarded": True}
-
-    def test_apiRename_posts_with_correct_body(self):
-        """apiRename POSTs {path, new_name} to /api/files/rename."""
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = { url, init };
-                return { ok: true, status: 200,
-                         json: async () => ({ ok: true, path: "/x/new" }) };
-            };
-            await api.apiRename("/x/old", "new");
-            console.log(JSON.stringify({
-                url:    captured.url,
-                method: captured.init.method,
-                body:   JSON.parse(captured.init.body),
-            }));
-        ''')
-        assert out["url"] == "/api/files/rename"
-        assert out["method"] == "POST"
-        assert out["body"] == {"path": "/x/old", "new_name": "new"}
-
-    def test_apiMkdir_forwards_signal(self):
-        out = _run_node('''
-            let captured = null;
-            global.fetch = async (url, init) => {
-                captured = init;
-                return { ok: true, status: 200,
-                         json: async () => ({ ok: true }) };
-            };
-            const ctl = new AbortController();
-            await api.apiMkdir("/p", "new", { signal: ctl.signal });
-            console.log(JSON.stringify({
-                wasSignalForwarded: captured.signal === ctl.signal,
-            }));
-        ''')
-        assert out == {"wasSignalForwarded": True}
+            const signal = ctl.signal;
+            const r = await {call.format(P=_js(tree / "P"))};
+            console.log(JSON.stringify({{
+                forwarded: __calls[0].init.signal === signal,
+                r, answer: __answered[0] }}));
+        """, app_at)
+        assert out["forwarded"] is True
+        assert out["answer"]["ok"] is True, out["answer"]
+        assert out["r"] == out["answer"]
 
 
 class TestApiRoots:
 
-    def test_normalises_to_envelope_on_success(self):
-        """The /api/files/roots backend responds with ``{roots: [...]}``
-        without a top-level ``ok``.  api.js normalises to the uniform
-        envelope shape."""
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: true,
-                status: 200,
-                json: async () => ({
-                    roots: [{ path: "/projects", label: "projects" }],
-                }),
-            });
+    def test_the_roots_come_back_in_the_envelope(self, app_at, tree):
+        """`/api/files/roots` answers the roots the picker may browse;
+        api.js hands them back in the uniform envelope."""
+        out = _run("""
             const r = await api.apiRoots();
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is True
-        assert out["roots"] == [
-            {"path": "/projects", "label": "projects"},
-        ]
+            console.log(JSON.stringify({ r, answer: __answered[0] }));
+        """, app_at)
+        assert out["r"] == {"ok": True, "roots": out["answer"]["roots"]}
+        assert str(tree) in [root["path"] for root in out["r"]["roots"]]
 
     def test_includes_empty_roots_on_failure(self):
         """Failure case carries an empty ``roots`` array so callers
         that destructure ``{roots}`` don't NPE."""
-        out = _run_node('''
+        out = _run('''
             global.fetch = async () => {
                 throw new TypeError("Failed to fetch");
             };
@@ -454,57 +256,17 @@ class TestApiRoots:
 
 class TestNoStoreCache:
     """The central ``_fetchEnvelope`` defaults ``cache: "no-store"`` so
-    every projects.* live-data GET (apiList / apiRead / apiReadRange /
-    apiStat / apiRoots) reaches the server on a same-URL revisit.
-    Without this default the browser HTTP cache served the previous
-    response on every same-URL hit -- the second-half cause of the
-    /results stale-dropdown bug (#192).
+    every projects.* live-data GET reaches the server on a same-URL
+    revisit.  Without this default the browser HTTP cache served the
+    previous response on every same-URL hit -- the second-half cause of
+    the /results stale-dropdown bug (#192).  One caller stands for all of
+    them: every function here reaches `fetch` through that one wrapper.
+    That a caller's signal survives the default beside it is each row of
+    `test_the_signal_reaches_fetch_and_the_server_answers`."""
 
-    These tests pin the default + the override path so a future
-    refactor can't quietly drop either.  One caller stands for all of them:
-    every function here reaches `fetch` through that one wrapper.
-    """
-
-    def test_apiList_passes_cache_no_store(self):
-        out = _run_node('''
-            let capturedInit = null;
-            global.fetch = async (_url, init) => {
-                capturedInit = init || {};
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({ ok: true, entries: [] }),
-                };
-            };
-            await api.apiList("/p");
-            console.log(JSON.stringify({
-                cache: capturedInit ? capturedInit.cache : null,
-            }));
-        ''')
-        assert out["cache"] == "no-store"
-
-    def test_signal_is_preserved_alongside_cache_default(self):
-        """The default-cache injection must NOT clobber the AbortSignal
-        the caller passes -- both have to land in the fetch init.  A
-        regression that drops the signal would silently break the
-        sidebar's Cancel button (#159) without breaking the cache
-        contract above."""
-        out = _run_node('''
-            let ac;
-            let initShape = null;
-            global.fetch = async (_u, init) => {
-                initShape = {
-                    cache:        init && init.cache,
-                    signalIsSet:  init && init.signal !== undefined
-                                       && init.signal !== null,
-                };
-                return {
-                    ok: true, status: 200,
-                    json: async () => ({ ok: true, entries: [] }),
-                };
-            };
-            ac = new AbortController();
-            await api.apiList("/p", { signal: ac.signal });
-            console.log(JSON.stringify(initShape));
-        ''')
-        assert out["cache"] == "no-store"
-        assert out["signalIsSet"] is True
+    def test_the_default_reaches_fetch(self, app_at, tree):
+        out = _run(f"""
+            await api.apiList({_js(tree / "P")});
+            console.log(JSON.stringify(__calls.map(c => c.init.cache)));
+        """, app_at)
+        assert out == ["no-store"]

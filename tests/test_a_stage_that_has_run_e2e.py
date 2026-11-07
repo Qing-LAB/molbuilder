@@ -53,7 +53,7 @@ def short_of_its_relaxation(real_co2_vibration, tmp_path_factory):
     Said by the one status door: run-1 is the newest and its relaxation is not
     done."""
     from molbuilder.siesta.vibration_phases import RELAX
-    from support.real_runs import (_road_at, _taken, _typed, copy_of,
+    from support.real_runs import (road_at, taken, typed, copy_of,
                                    stage_status)
 
     def walled(c):
@@ -61,11 +61,11 @@ def short_of_its_relaxation(real_co2_vibration, tmp_path_factory):
         request["execution"] = {**request.get("execution", {}),
                                 "time": "00:00:20"}
         write_request(c.bundle, request)
-        with _road_at(c.tree.parent, tmp_path_factory):
-            _taken(c, "prep freq for the wall", "prep", "task", "--group",
-                   "1", "--target", "this")
-            _typed(c, "launch freq cold", "launch", "task", "--stage", "freq",
-                   "--mode", "direct", "--foreground", "--yes", "--cold")
+        with road_at(c.tree.parent, tmp_path_factory):
+            taken(c, "prep freq for the wall", "prep", "task", "--group",
+                  "1", "--target", "this")
+            typed(c, "launch freq cold", "launch", "task", "--stage", "freq",
+                  "--mode", "direct", "--foreground", "--yes", "--cold")
         status = stage_status(c.bundle, "freq")
         assert status.attempt == c.attempt("freq", 1).name, status
         assert not any(p["done"] for p in status.points
@@ -76,9 +76,9 @@ def short_of_its_relaxation(real_co2_vibration, tmp_path_factory):
 def _row(case, run, tmp_path, monkeypatch) -> None:
     """``case`` on a copy of ``run`` of its own, the one door pointed at the
     tree the run was made in."""
-    from conftest import _point_the_one_door_at
+    from conftest import point_the_one_door_at
     from support.real_runs import copy_of
-    _point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
     monkeypatch.chdir(run.tree.parent)
     copy = copy_of(run, re.sub(r"\W+", "-", case["name"])[:60], lambda _c: None)
     run_road_case(TABLE, case, tmp_path, monkeypatch, ran=copy.bundle)

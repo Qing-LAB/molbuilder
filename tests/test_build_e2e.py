@@ -10,9 +10,9 @@ What the tests cover:
     form was dead).
   * A field that waits on another (`active_when`) greys out and comes
     back as the catalogue declares, over a reload too.
-  * The sidebar contract: setShared alone must NOT load (candidate-only);
-    publishCommit is the load; a second commit replaces the first
-    (the #51 `enforce` rule).
+  * The sidebar contract, by its rows: a single click alone must NOT load
+    (candidate-only); a double click is the load; a second one replaces the
+    first (the #51 `enforce` rule).
   * Second-visit persistence: the tab keeps its own structure across
     navigation, and only an explicit Load re-reads changed disk bytes.
   * Live preflight findings render beside their own control and clear
@@ -39,79 +39,69 @@ pytestmark = pytest.mark.e2e
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
+from playwright.sync_api import expect  # noqa: E402
+
+from molbuilder.projects import ensure_structure_dir  # noqa: E402
+from molbuilder.structure import Structure  # noqa: E402
+from molbuilder.workingcopy_structure import StructureCodec  # noqa: E402
+from support.sidebar import WAIT_MS, committed, walk_to  # noqa: E402
+
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                              #
 # --------------------------------------------------------------------- #
 
+#: The structures these tests load, each made once and written through the
+#: pair door (`StructureCodec.write`, `model/structure.md` § 2.4): water;
+#: methane, told apart from it by its atom count; and the water in an 18 Å
+#: box it states -- a cell lives in the sidecar (§ 2.3).
+_WATER = Structure(elements=["O", "H", "H"],
+                   positions=[[0.000, 0.000, 0.000], [0.957, 0.000, 0.000],
+                              [-0.239, 0.927, 0.000]])
+_METHANE = Structure(elements=["C", "H", "H", "H", "H"],
+                     positions=[[0.000, 0.000, 0.000],
+                                [0.629, 0.629, 0.629],
+                                [-0.629, -0.629, 0.629],
+                                [-0.629, 0.629, -0.629],
+                                [0.629, -0.629, -0.629]])
+_BOXED = _WATER.replace(positions=_WATER.positions + 9.0,
+                        cell=[[18.0, 0, 0], [0, 18.0, 0], [0, 0, 18.0]])
+
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    """Pin ``tmp_path`` as the only Capabilities picker root so the
-    files blueprint accepts files written under it.  Mirrors the
-    helper in ``test_molbuilder_e2e.py``.
-    """
-    from molbuilder import diagnostics
-    _orig = diagnostics.get_capabilities()
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None,
-        conda_envs=frozenset(),
-    )
-    cls = type(caps)
-    monkeypatch.setattr(
-        cls, "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-    monkeypatch.setattr(diagnostics, "_snapshot", _orig)
+def _structures(root):
+    """Where a person keeps structures: ``P/structure`` under the projects
+    root the server lists (`isolated_projects_root`)."""
+    folder = root.resolve() / "P" / "structure"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 @pytest.fixture
-def water_xyz_file(tmp_path, monkeypatch):
-    """Minimal real XYZ on disk for the sidebar-driven load test."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    p = tmp_path / "water.xyz"
-    p.write_text(
-        "3\nwater\n"
-        "O 0.000  0.000 0.000\n"
-        "H 0.957  0.000 0.000\n"
-        "H -0.239 0.927 0.000\n"
-    )
-    return str(p)
+def water_xyz_file(isolated_projects_root):
+    """The water, where the sidebar lists it."""
+    return StructureCodec().write(_WATER,
+                                  _structures(isolated_projects_root)
+                                  / "water.xyz")
 
 
 @pytest.fixture
-def two_xyz_files(tmp_path, monkeypatch):
-    """TWO structures with DIFFERENT atom counts, in one picker root.
+def two_xyz_files(isolated_projects_root):
+    """TWO structures with DIFFERENT atom counts, in one folder.
 
     Different counts on purpose: the atom-count line is what tells the two
     apart, so a viewer that ignored the second file would show 3 where the test
     demands 5.  Same-sized structures would let that pass.
     """
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    first = tmp_path / "water.xyz"
-    first.write_text(
-        "3\nwater\n"
-        "O 0.000  0.000 0.000\n"
-        "H 0.957  0.000 0.000\n"
-        "H -0.239 0.927 0.000\n"
-    )
-    second = tmp_path / "methane.xyz"
-    second.write_text(
-        "5\nmethane\n"
-        "C  0.000  0.000  0.000\n"
-        "H  0.629  0.629  0.629\n"
-        "H -0.629 -0.629  0.629\n"
-        "H -0.629  0.629 -0.629\n"
-        "H  0.629 -0.629 -0.629\n"
-    )
-    return str(first), str(second)
+    folder = _structures(isolated_projects_root)
+    return (StructureCodec().write(_WATER, folder / "water.xyz"),
+            StructureCodec().write(_METHANE, folder / "methane.xyz"))
 
 
 # --------------------------------------------------------------------- #
@@ -119,16 +109,10 @@ def two_xyz_files(tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 
 
-_BOOT_TIMEOUT_MS = 5000
-
-
-def _open_build(page, base_url):
-    """Navigate to / and wait for the viewer.js wiring to land.
-
-    Capture JS errors so a regression that throws during init() (the
-    same failure mode as the 2026-05 Spectra parse bug) surfaces
-    here with a clear page-name attribution.
-    """
+def _js_errors(page) -> list:
+    """Every error the page throws or logs from here on, collected as it
+    comes -- a throw during init() (the 2026-05 Spectra parse bug) can
+    leave a page that still draws."""
     errors = []
     page.on("pageerror",
             lambda exc: errors.append(("pageerror", str(exc))))
@@ -136,30 +120,32 @@ def _open_build(page, base_url):
         errors.append(("console.error", msg.text))
         if msg.type == "error" else None
     ))
-    # ARRIVE AT A TAB THAT REMEMBERS NOTHING.
-    #
-    # This tab keeps the structure it was showing (workspace.md § 4: several
-    # savers on one page, each deciding what and when), so "open the tab" is not
-    # the same as "open an empty tab" once anything has been loaded.  Two tags
-    # save on this page: the tab's panel, `structure-opt:panel`, where the
-    # structure is kept (structure-optimization/viewer.js, `PANEL_TAG`), and
-    # MolView's own, the bare `structure-opt`.  Each id below is the
-    # dispatcher's `workspaceId` of its tag.
-    #
-    # Cleared through the workspace's own route rather than by deleting files:
-    # a test that hard-codes a filename is pinning a layout the workspace is
-    # free to change.  `above_index = -1` clears the whole id.
-    for workspace_id in ("ws-structure-opt-panel", "ws-structure-opt"):
-        page.request.post(
-            f"{base_url}/api/workspace-storage/prune",
-            data={"workspace_id": workspace_id, "above_index": -1},
-        )
-    page.goto(f"{base_url}/structure-optimization")
-    # The "Load from sidebar selection" button is server-rendered;
-    # waiting for it proves the HTML reached the browser.  The form-
-    # container fields are added by JS after the schema fetch lands.
-    page.wait_for_selector("#load-from-sidebar-btn", timeout=_BOOT_TIMEOUT_MS)
     return errors
+
+
+def _open_build(page, base_url):
+    """The tab opened and LISTENING to the sidebar: its load bar's readout
+    written, which the tab does in the same synchronous step it subscribes
+    to the sidebar's picks and uses (`support.sidebar.picked`) -- a pick or a
+    double click made before that is not heard.  The Load button alone is
+    in the server's HTML from the start and says nothing of it.  The form's
+    fields are added by JS after the schema fetch lands.  Each test arrives
+    at a tab that remembers nothing: its own workspace store
+    (`conftest._isolated_workspace_store`) and a fresh browser context."""
+    page.goto(f"{base_url}/structure-optimization")
+    page.wait_for_function(
+        "() => (document.getElementById('load-source-readout') || {})"
+        "      .textContent", timeout=WAIT_MS)
+
+
+def _use(page, path, atoms):
+    """``path`` used -- its row double-clicked, *use it*
+    (`web/projects.md`) -- and the tab showing its ``atoms``, its form drawn
+    for what comes next to read."""
+    walk_to(page, path, use=True)
+    expect(page.locator("#info-atoms")).to_have_text(str(atoms),
+                                                     timeout=WAIT_MS)
+    page.wait_for_selector("#siesta-form-container input", timeout=WAIT_MS)
 
 
 # --------------------------------------------------------------------- #
@@ -187,10 +173,11 @@ class TestFormSchemasRender:
         can leave a page that still draws its fields, so the error list is
         asked too.
         """
-        errors = _open_build(page, flask_server)
+        errors = _js_errors(page)
+        _open_build(page, flask_server)
         sel = f"#{engine}-form-container"
         page.wait_for_selector(f"{sel} input, {sel} select",
-                               state="attached", timeout=_BOOT_TIMEOUT_MS)
+                               state="attached", timeout=WAIT_MS)
         loose = page.evaluate("""(sel) => {
             const root = document.querySelector(sel);
             if (!root) return {error: "no container"};
@@ -215,33 +202,25 @@ class TestFormSchemasRender:
 
     def test_engine_key_badges_present_after_schema_render(
             self, page, flask_server):
-        """Per the 2026-05-26 source-of-truth contract every form
-        field carries an ``engine_key`` metadata entry which the
-        renderer surfaces as a ``<code class="schema-engine-key">``
-        badge.  Absence here means the schema -> form binding lost
-        the metadata, OR a future field was added without an
-        engine_key (which would also fail the Python-side coverage
-        test in ``test_web.py::test_engine_key_present_on_every_*``,
-        so this test triangulates the contract from the JS side).
+        """Each engine's form draws the control's engine-key badge
+        (`web/form-schema.md` § 1a: `engine_key` is the control's badge).
+
+        THE SILENT FAILURE: the badges gone from a form -- the served schema
+        reaching the page without its ``engine_key`` entries, or the
+        renderer no longer drawing them -- while every field still draws.
+        What this cannot see is one field without its badge: a field
+        lacking its ``engine_key`` is the schema's, asked of every field in
+        ``test_web.py::test_engine_key_present_on_every_form_field``, and
+        every field kind passes the renderer's one badge call
+        (`form-schema.js`), which draws none only where the label already
+        is the keyword.
         """
         _open_build(page, flask_server)
-        page.wait_for_selector(
-            "#siesta-form-container .schema-engine-key",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        # At least one badge in each container.  Existence proves
-        # the renderer reached the badge branch; the text contents
-        # are validated by the Python-side coverage test.
-        siesta_badges = page.locator(
-            "#siesta-form-container .schema-engine-key"
-        ).count()
-        pyscf_badges = page.locator(
-            "#pyscf-form-container .schema-engine-key"
-        ).count()
-        assert siesta_badges > 0, \
-            "SIESTA form rendered without engine_key badges"
-        assert pyscf_badges > 0, \
-            "PySCF form rendered without engine_key badges"
+        for engine in ("siesta", "pyscf"):
+            expect(page.locator(
+                f"#{engine}-form-container .schema-engine-key").first,
+                f"the {engine} form drew no engine-key badge").to_be_attached(
+                    timeout=WAIT_MS)
 
 
 # --------------------------------------------------------------------- #
@@ -261,17 +240,7 @@ class TestSidebarStructureFlow:
         Modify uses, read-only) into #viewer-host, and the structure lives in
         molview.data as the single source of truth."""
         _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => !!(window.molbuilder && window.molbuilder.projects"
-            "         && document.getElementById('viewer-host'))",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        page.evaluate(
-            "(ctx) => window.molbuilder.projects.publishCommit(ctx.dir, ctx.file)",
-            {"dir": str(Path(p).parent), "file": p},
-        )
+        walk_to(page, water_xyz_file, use=True)
         # The full fused card + 3Dmol canvas mount into the host -- AND the
         # count line has been filled.
         #
@@ -293,7 +262,7 @@ class TestSidebarStructureFlow:
             "         || !h.querySelector('canvas')) return false;"
             "  const c = h.querySelector('.molviewer-selection-count');"
             "  return !!c && c.textContent.includes(' of '); }",
-            timeout=15_000,
+            timeout=WAIT_MS,
         )
         # The viewer holds the committed structure, and the panel's own count
         # line is where that is visible.  Asked through the DOM because there is
@@ -303,38 +272,25 @@ class TestSidebarStructureFlow:
         assert count.split(" of ")[1].split()[0] == "3"   # water
 
 
-    def test_setShared_alone_does_NOT_load_structure(
+    def test_a_single_click_alone_does_NOT_load_structure(
             self, page, flask_server, water_xyz_file):
-        """Pins the candidate-only contract for Build: a single
+        """Pins the candidate-only contract for this tab: a single
         sidebar click sets the global pick but MUST NOT auto-
         rebuild the structure section.  Browse-clicking through
         the project tree no longer silently switches the
         molecule the form is configured for."""
         _open_build(page, flask_server)
+        walk_to(page, water_xyz_file)
+        # THE PAGE TOOK THE PICK -- its load bar names the file as
+        # selected -- and a load it began would say so at once: a commit's
+        # first act is "Loading <file>…" (`_commitStructure`).
         page.wait_for_function(
-            "() => window.molbuilder "
-            "&& window.molbuilder.projects "
-            "&& typeof window.molbuilder.projects.setShared "
-            "       === 'function'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        parent = str(Path(p).parent)
-        page.evaluate(
-            """(ctx) => window.molbuilder.projects.setShared(
-                ctx.dir, ctx.file)""",
-            {"dir": parent, "file": p},
-        )
-        # Brief settle so an erroneous auto-load would land in
-        # #info-atoms before the assertion.
-        page.wait_for_timeout(500)
-        n = page.evaluate(
-            "() => document.querySelector('#info-atoms').textContent.trim()"
-        )
-        assert n in ("—", "", "0"), (
-            f"setShared must NOT auto-load; #info-atoms is {n!r}"
-        )
+            "(n) => (document.getElementById('load-source-readout') || {})"
+            "  .textContent === 'Selected: ' + n", arg=water_xyz_file.name,
+            timeout=WAIT_MS)
+        status = page.locator("#load-status").inner_text()
+        assert water_xyz_file.name not in status, (
+            f"a single click began a load: the load bar says {status!r}")
 
     def test_a_second_file_replaces_the_first_in_one_visit(
             self, page, flask_server, two_xyz_files):
@@ -357,66 +313,27 @@ class TestSidebarStructureFlow:
         """
         first, second = two_xyz_files
         _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => window.molbuilder "
-            "&& window.molbuilder.projects "
-            "&& typeof window.molbuilder.projects.publishCommit "
-            "       === 'function'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        from pathlib import Path
-
-        def commit(path):
-            p = str(Path(path).resolve())
-            page.evaluate(
-                """(ctx) => window.molbuilder.projects.publishCommit(
-                    ctx.dir, ctx.file)""",
-                {"dir": str(Path(p).parent), "file": p},
-            )
-
-        commit(first)
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent"
-            ".trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-
-        commit(second)
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent"
-            ".trim() === '5'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        assert page.evaluate(
-            "() => document.querySelector('#info-atoms').textContent.trim()"
-        ) == "5", (
-            "the second file did not replace the first -- a read-only viewer "
-            "refused the install and said nothing, which is exactly what "
-            "`enforce` exists to prevent"
-        )
+        _use(page, first, 3)
+        _use(page, second, 5)
 
 
 # --------------------------------------------------------------------- #
-#  Second-visit + external-change pattern.  Per                        #
-#  docs/process/testing.md, every tab whose UI                          #
-#  is driven by a subscriber-on-state-change needs at least one       #
-#  test exercising the "user navigated away, external state          #
-#  changed, returned" workflow.                                       #
+#  Second visit: the tab keeps what it held; the file changed on disk    #
+#  is read again only on an explicit Load.                               #
 # --------------------------------------------------------------------- #
 
 
 class TestBuildSecondVisitExternalChange:
-    """Audit follow-up: pin the second-visit refresh contract for
-    /build so a future regression that breaks the sidebar-pick →
-    viewer-update wiring on bfcache restore / tab re-entry fails
-    loudly.  The /results file-picker shipped a bug of this exact
+    """The second-visit contract on /structure-optimization: a regression
+    that breaks the sidebar-pick → viewer-update wiring on tab re-entry
+    fails loudly.  The /results file-picker shipped a bug of this exact
     shape (#192) that no single-page-load test could catch."""
 
     def test_external_xyz_replacement_reloads_on_explicit_load(
-            self, page, flask_server, tmp_path, monkeypatch):
-        """User picks water.xyz on /build, leaves the tab, the file
-        content is REPLACED on disk (different atom count), user
-        comes back to /build.
+            self, page, flask_server, isolated_projects_root):
+        """The person loads water.xyz on /structure-optimization, leaves the
+        tab, the file is REPLACED on disk (a different atom count), and
+        comes back.
 
         The contract (persistency wins / explicit load):
         the revisit KEEPS the tab's own loaded data -- the tab does
@@ -427,41 +344,17 @@ class TestBuildSecondVisitExternalChange:
         surfaces the new 5-atom structure.  This pins both halves:
         (a) no silent auto-swap on revisit, (b) explicit Load always
         re-reads current disk bytes."""
-        # Pin tmp_path as picker root + write the initial 3-atom XYZ.
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        xyz_path = tmp_path / "structure.xyz"
-        xyz_path.write_text(
-            "3\nwater\n"
-            "O 0.000  0.000 0.000\n"
-            "H 0.957  0.000 0.000\n"
-            "H -0.239 0.927 0.000\n"
-        )
+        # The water, where the sidebar lists it.
+        xyz_path = StructureCodec().write(
+            _WATER, _structures(isolated_projects_root) / "structure.xyz")
         _open_build(page, flask_server)
-        page.evaluate(
-            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
-            {"dir": str(tmp_path), "file": str(xyz_path)},
-        )
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent"
-            ".trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
+        _use(page, xyz_path, 3)
 
         page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_selector("#projects-sidebar", timeout=WAIT_MS)
 
-        # Replace the file on disk with a different structure
-        # (5 atoms, methane-ish).
-        import time
-        xyz_path.write_text(
-            "5\nmethane\n"
-            "C 0.000  0.000 0.000\n"
-            "H 0.629  0.629 0.629\n"
-            "H -0.629 -0.629 0.629\n"
-            "H -0.629  0.629 -0.629\n"
-            "H 0.629 -0.629 -0.629\n"
-        )
-        time.sleep(0.5)
+        # Replaced on disk by another structure: methane, 5 atoms.
+        StructureCodec().write(_METHANE, xyz_path)
 
         page.goto(f"{flask_server}/structure-optimization")
         # Persistency wins: the tab KEEPS its own 3-atom data on revisit;
@@ -469,7 +362,7 @@ class TestBuildSecondVisitExternalChange:
         page.wait_for_function(
             "() => document.querySelector('#info-atoms').textContent"
             ".trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS,
+            timeout=WAIT_MS,
         )
         # The sidebar still points at the (now-changed) file, so an EXPLICIT
         # Load re-reads it from disk -- the new 5-atom structure appears.
@@ -477,7 +370,7 @@ class TestBuildSecondVisitExternalChange:
         page.wait_for_function(
             "() => document.querySelector('#info-atoms').textContent"
             ".trim() === '5'",
-            timeout=_BOOT_TIMEOUT_MS,
+            timeout=WAIT_MS,
         )
 
 
@@ -494,22 +387,10 @@ class TestFindingsSitBesideTheirField:
     def test_an_out_of_range_value_warns_beside_its_own_control(
             self, page, flask_server, water_xyz_file):
         _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => window.molbuilder && window.molbuilder.projects"
-            "   && typeof window.molbuilder.projects.publishCommit === 'function'",
-            timeout=_BOOT_TIMEOUT_MS)
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        page.evaluate(
-            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
-            {"dir": str(Path(p).parent), "file": p})
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent.trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS)
+        _use(page, water_xyz_file, 3)
 
         # 5 Ry is far below the recommended floor -> one warn on mesh_cutoff.
-        page.fill("#p-mesh-cutoff", "5")
-        page.dispatch_event("#p-mesh-cutoff", "change")
+        committed(page, "#p-mesh-cutoff", "5")
 
         # The warning must appear INSIDE the mesh-cutoff control's own wrapper.
         page.wait_for_function(
@@ -517,7 +398,7 @@ class TestFindingsSitBesideTheirField:
             "  const w = i && i.closest('.schema-field');"
             "  const u = w && w.querySelector('.field-issues .issue-item');"
             "  return !!u; }",
-            timeout=10_000)
+            timeout=WAIT_MS)
         text = page.evaluate(
             "() => document.querySelector('#p-mesh-cutoff')"
             "        .closest('.schema-field')"
@@ -542,32 +423,19 @@ class TestFindingsSitBesideTheirField:
         about a value the user already corrected.
         """
         _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => window.molbuilder && window.molbuilder.projects"
-            "   && typeof window.molbuilder.projects.publishCommit === 'function'",
-            timeout=_BOOT_TIMEOUT_MS)
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        page.evaluate(
-            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
-            {"dir": str(Path(p).parent), "file": p})
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent.trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS)
+        _use(page, water_xyz_file, 3)
 
-        page.fill("#p-mesh-cutoff", "5")
-        page.dispatch_event("#p-mesh-cutoff", "change")
+        committed(page, "#p-mesh-cutoff", "5")
         page.wait_for_function(
             "() => !!document.querySelector('#p-mesh-cutoff')"
             "        .closest('.schema-field').querySelector('.field-issues')",
-            timeout=10_000)
+            timeout=WAIT_MS)
 
-        page.fill("#p-mesh-cutoff", "300")
-        page.dispatch_event("#p-mesh-cutoff", "change")
+        committed(page, "#p-mesh-cutoff", "300")
         page.wait_for_function(
             "() => !document.querySelector('#p-mesh-cutoff')"
             "        .closest('.schema-field').querySelector('.field-issues')",
-            timeout=10_000)
+            timeout=WAIT_MS)
 
 
     def test_a_finding_about_the_mesh_sits_beside_the_mesh(
@@ -578,18 +446,7 @@ class TestFindingsSitBesideTheirField:
         on its three cells alone, so the finding about `kgrid` -- placed by
         that id -- fell back to the card."""
         _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => window.molbuilder && window.molbuilder.projects"
-            "   && typeof window.molbuilder.projects.publishCommit === 'function'",
-            timeout=_BOOT_TIMEOUT_MS)
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        page.evaluate(
-            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
-            {"dir": str(Path(p).parent), "file": p})
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent.trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS)
+        _use(page, water_xyz_file, 3)
 
         # A count of 0 is past the count's limit: one finding, on kgrid.
         for lab, v in zip("xyz", ("0", "4", "4")):
@@ -598,7 +455,7 @@ class TestFindingsSitBesideTheirField:
             "() => { const w = document.querySelector('#p-kgrid-x')"
             "          .closest('.schema-field');"
             "  return !!(w && w.querySelector('.field-issues .issue-item')); }",
-            timeout=10_000)
+            timeout=WAIT_MS)
         in_card = page.evaluate(
             "() => document.querySelectorAll("
             "  '.card-issues[data-card] .issue-item').length")
@@ -622,7 +479,6 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
     MUTATIONS THIS MUST FAIL AGAINST: the page without the renderer's global
     entry point; the tab drawing only the findings about a field, or only
     the others; a finding drawn twice."""
-    from pathlib import Path
     from support.findings import assert_every_finding_drawn
 
     def answer_for(engine):
@@ -630,21 +486,13 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
                           and (r.request.post_data_json or {}).get("engine")
                           == engine)
     _open_build(page, flask_server)
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.projects"
-        "   && typeof window.molbuilder.projects.publishCommit === 'function'",
-        timeout=_BOOT_TIMEOUT_MS)
-    p = str(Path(water_xyz_file).resolve())
     with page.expect_response(answer_for("siesta")), \
             page.expect_response(answer_for("pyscf")) as loaded:
-        page.evaluate(
-            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
-            {"dir": str(Path(p).parent), "file": p})
+        walk_to(page, water_xyz_file, use=True)
     assert_every_finding_drawn(page, ["#pyscf-issues", "#pyscf-form-container"],
                                loaded.value.json()["issues"])
     with page.expect_response(answer_for("siesta")) as edited:
-        page.fill("#p-mesh-cutoff", "5")
-        page.dispatch_event("#p-mesh-cutoff", "change")
+        committed(page, "#p-mesh-cutoff", "5")
     said = edited.value.json()["issues"]
     wheres = [i.get("where") or "" for i in said]
     assert "config.mesh_cutoff" in wheres, said
@@ -664,133 +512,106 @@ class TestSendToTaskSetup:
     `describe.refuse_described`: the description's file is there or it is
     not, and the guard reads nothing of it)."""
 
-    def _calc_dir(self, tmp_path, monkeypatch):
-        """projects/<project>/<topic>/<calc> — the depth the send guard
-        demands (a calculation lives under a topic)."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        calc = tmp_path / "proj" / "opt" / "water-run"
-        calc.mkdir(parents=True)
-        xyz = calc / "water.xyz"
-        xyz.write_text(
-            "3\nwater\n"
-            "O 0.000  0.000 0.000\n"
-            "H 0.957  0.000 0.000\n"
-            "H -0.239 0.927 0.000\n"
-        )
-        # The pseudopotentials already beside the calculation, as a person
-        # leaves them: the Send refuses a SIESTA calculation without them
-        # (`handover-procedure.md` § 2.2).
-        from conftest import write_pseudos
-        write_pseudos(calc, ["O", "H"])
-        return calc, xyz
+    def _calc_dir(self, *, boxed=False, pseudos=True):
+        """A calculation's folder, ``<project>/optimization/<calc>`` -- under
+        a topic, the depth the Send demands -- made by the projects door
+        (`projects.ensure_structure_dir`, which takes only a canonical
+        topic, as a person's tree has: `web/projects.md` § 2) under the
+        projects root the server lists, the test's own
+        (`isolated_projects_root`); the water in it: ``(calc, xyz)``.
 
-    def _calc_dir_with_a_cell(self, tmp_path, monkeypatch):
-        """The same, but the structure STATES its cell.
-
-        Without one the preflight raises `cell.vacuum_defaulted` and the
-        send takes its NOTICES branch, which returns early; this fixture
-        reaches the other one.
-        """
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        calc = tmp_path / "proj" / "opt" / "boxed-run"
-        calc.mkdir(parents=True)
-        # A STRUCTURE THAT STATES ITS CELL is a pair: the cell lives in its
-        # sidecar, never in the comment line (`model/structure.md` § 2.3).
-        from molbuilder.structure import Structure
-        from molbuilder.workingcopy_structure import StructureCodec
-        xyz = StructureCodec().write(
-            Structure(elements=["O", "H", "H"],
-                      positions=[[9.000, 9.000, 9.000],
-                                 [9.957, 9.000, 9.000],
-                                 [8.761, 9.927, 9.000]],
-                      cell=[[18.0, 0, 0], [0, 18.0, 0], [0, 0, 18.0]]),
-            calc / "water.xyz")
-        from conftest import write_pseudos
-        write_pseudos(calc, ["O", "H"])
+        ``boxed``: the water in the box it states (``_BOXED``).  Without
+        one the preflight raises `cell.vacuum_defaulted` and the send
+        answers with notices; with one it answers clean
+        (`web/handover-procedure.md` § 2.1).  ``pseudos``: the
+        pseudopotentials beside the calculation, as a person leaves them --
+        the Send refuses a SIESTA calculation without them (§ 2.2)."""
+        calc = ensure_structure_dir("proj", "optimization",
+                                    "water-run").resolve()
+        xyz = StructureCodec().write(_BOXED if boxed else _WATER,
+                                     calc / "water.xyz")
+        if pseudos:
+            from conftest import write_pseudos
+            write_pseudos(calc, ["O", "H"])
         return calc, xyz
 
     def _open_on(self, page, base_url, folder):
-        """The tab, its sidebar open on ``folder`` -- the most recent place,
-        where a tab never visited starts (`web/projects.md` § 2)."""
-        import json as _json
-        page.add_init_script(
-            "try { sessionStorage.setItem('molbuilder.current_dir', "
-            f"{_json.dumps(str(folder))}); }} catch (_) {{}}")
+        """The tab, its sidebar walked to ``folder`` by its rows -- where
+        the Send writes (`web/projects.md` § 4)."""
         _open_build(page, base_url)
         page.wait_for_function(
             "() => !!(window.molbuilder && window.molbuilder.taskHandover)",
-            timeout=_BOOT_TIMEOUT_MS)
+            timeout=WAIT_MS)
+        walk_to(page, folder)
+
+    def _send(self, page, says="Wrote"):
+        """Send to Task setup pressed, and the tab's status saying
+        ``says``."""
+        page.locator("#send-to-task-setup").click()
+        page.wait_for_function(
+            "(w) => (document.querySelector('#handover-status')?.textContent"
+            "        || '').includes(w)", arg=says, timeout=WAIT_MS)
 
     @staticmethod
-    def _row(page, path):
-        """``path``'s row in the sidebar."""
-        from pathlib import Path
-        return page.locator(f'li.ps-entry[data-path="{Path(path).resolve()}"]')
-
-    def _use(self, page, path, atoms):
-        """A double click on ``path``'s row -- *use it* (`web/projects.md`)
-        -- and the tab showing its ``atoms``, its form drawn for the Send to
-        read."""
-        self._row(page, path).dblclick()
-        page.wait_for_function(
-            "(n) => document.querySelector('#info-atoms')"
-            ".textContent.trim() === String(n)",
-            arg=atoms, timeout=_BOOT_TIMEOUT_MS)
-        page.wait_for_selector("#siesta-form-container input",
-                               timeout=_BOOT_TIMEOUT_MS)
-
-    def _load_and_send(self, page, base_url, calc, xyz, before_send=None):
-        self._open_on(page, base_url, calc)
-        self._use(page, xyz, 3)
-        if before_send is not None:
-            before_send(page)
-        page.locator("#send-to-task-setup").click()
-
-    def _sent(self, page, dest, *, frames=False):
-        """Send to Task setup, and the structure the hand-over written into
-        ``dest`` names, read back through the codec -- every frame it holds
-        with ``frames``."""
+    def _handed_over(dest, *, frames=False):
+        """The structure the hand-over written into ``dest`` names, read
+        back through the codec -- every frame it holds with ``frames``."""
         import json as _json
-        from molbuilder.workingcopy_structure import StructureCodec
-        page.locator("#send-to-task-setup").click()
-        page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('Wrote')",
-            timeout=10_000)
         over = _json.loads((dest / "task.1st.json").read_text())
         return StructureCodec().load(dest / over["structure"]["source"],
                                      frames=frames)
 
-    def test_send_writes_the_handover_into_the_selected_folder(
-            self, page, flask_server, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("boxed", [False, True],
+                             ids=["notices", "clean"])
+    def test_a_send_writes_the_handover_and_stays(
+            self, page, flask_server, isolated_projects_root, boxed):
         """A Send writes the structure's pair, the parameter template and
         `task.1st.json` into the folder selected in the sidebar, for the
         engine on screen, and the page stays where it is, its status naming
         Task setup as the road after it (`web/handover-procedure.md` § 2,
-        steps 1-2; § 3: the hand-over says what it is in its `_what` line).
+        steps 1-2; § 3: the hand-over says what it is in its `_what` line)
+        -- on both of the door's answers: with notices (a structure stating
+        no cell, given the default vacuum) and clean (a box the structure
+        states; § 2.1), each row's branch asked of the answer the page
+        received.
+
+        This tab's job ends when the files are on disk; opening Task setup
+        is the person's move (user, 2026-09-19: *"we just skip the fancy tab
+        to tab jump connection to avoid implicit coupling"*).
 
         THE SILENT FAILURE: the button clicked and nothing written -- every
         route below it green -- or written and the page gone elsewhere, so
-        the person edits whatever folder another tab last showed."""
-        calc, xyz = self._calc_dir(tmp_path, monkeypatch)
-        self._load_and_send(page, flask_server, calc, xyz)
-        page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('Wrote')",
-            timeout=10_000)
+        the person edits whatever folder another tab last showed.  WHAT THE
+        JUMP COST: it relied on the sidebar's selection being shared, but
+        sessionStorage slots are PER PAGE and a page's own slot SHADOWS the
+        shared fallback (`projects/state.js::handOffSelection`), so Task
+        setup opened whatever folder IT last showed.  Measured 2026-09-19:
+        the hand-over landed correctly in `optimization/junction6-hier` and
+        Task setup opened `spectrum/bridge-hier`, ready to edit the wrong
+        calculation."""
+        calc, xyz = self._calc_dir(boxed=boxed)
+        self._open_on(page, flask_server, calc)
+        _use(page, xyz, 3)
+        with page.expect_response(
+                lambda r: "/api/task-setup/handover" in r.url,
+                timeout=WAIT_MS) as answered:
+            self._send(page)
+        notices = answered.value.json()["notices"]
+        assert bool(notices) is not boxed, (
+            "this row must reach its own branch of the door's answer, or "
+            f"the assertions below are about the other; it answered {notices}")
         assert (calc / "task.1st.json").is_file(), (
             "the hand-over never landed")
 
-        # AND IT STAYS PUT (user, 2026-09-19).  This tab's job ends when the
-        # files are on disk; opening Task setup is the person's move.
+        # AND IT STAYS PUT (user, 2026-09-19).
         assert page.evaluate("() => window.location.pathname") == (
             "/structure-optimization"), (
             "the hand-over navigated away; it writes files and stops")
         status = page.evaluate(
             "() => document.querySelector('#handover-status').textContent")
         assert "Task setup" in status, (
-            "the status must say where to go next, since nothing goes there "
-            "for you; got: " + status)
+            "nothing opens Task setup for you, so the status has to say to; "
+            "got: " + status)
         templates = list(calc.glob("*.template.toml"))
         assert templates, "the parameter template never landed"
         sources = list(calc.glob("*.source.xyz"))
@@ -804,86 +625,32 @@ class TestSendToTaskSetup:
         assert f"from the {tab} tab" in over["_what"], (
             "the hand-over's provenance does not name this tab (E-B9)")
 
-    def test_send_writes_and_STAYS(self, page, flask_server, tmp_path,
-                                    monkeypatch):
-        """The clean path: files land, and the tab does not go anywhere.
-
-        This tab's job ends when the files are on disk; opening Task setup
-        is the person's move (user, 2026-09-19: *"we just skip the fancy tab
-        to tab jump connection to avoid implicit coupling"*).
-
-        WHAT THE JUMP COST, and why not jumping beats handing the folder
-        over: it relied on the sidebar's selection being shared, but
-        sessionStorage slots are PER PAGE and a page's own slot SHADOWS the
-        shared fallback (`projects/state.js::handOffSelection` says so in its
-        own docstring).  So Task setup opened whatever folder IT last showed.
-        Measured 2026-09-19: the hand-over landed correctly in
-        `optimization/junction6-hier` and Task setup opened
-        `spectrum/bridge-hier`, ready to edit the wrong calculation.
-
-        THE CLEAN PATH IS THE DOOR'S ANSWER WITH NO NOTICES
-        (`web/handover-procedure.md` § 2.1: a box the gate accepted but
-        wants read comes back as notices) -- asked of the answer the page
-        received, so this fixture's stated 18 Å box is known to reach it.
-        """
-        calc, xyz = self._calc_dir_with_a_cell(tmp_path, monkeypatch)
-        self._open_on(page, flask_server, calc)
-        self._use(page, xyz, 3)
-        with page.expect_response(
-                lambda r: "/api/task-setup/handover" in r.url,
-                timeout=10_000) as answered:
-            page.locator("#send-to-task-setup").click()
-        assert answered.value.json()["notices"] == [], (
-            "this fixture must reach the CLEAN branch, or the assertions "
-            "below are about the notices branch; the hand-over answered "
-            f"{answered.value.json()['notices']}")
-        page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('Wrote')",
-            timeout=10_000)
-        assert (calc / "task.1st.json").is_file()
-
-        assert page.evaluate("() => window.location.pathname") == (
-            "/structure-optimization"), (
-            "the hand-over navigated away; it writes files and stops")
-        status = page.evaluate(
-            "() => document.querySelector('#handover-status').textContent")
-        assert "Task setup" in status, (
-            "nothing opens Task setup for you, so the status has to say to; "
-            "got: " + status)
-
     def test_send_keeps_what_the_live_check_says(
-            self, page, flask_server, tmp_path, monkeypatch):
+            self, page, flask_server, isolated_projects_root):
         """A Send adds its findings to the live check's and clears none
         (`handover-procedure.md` § 2.1): the live check's are still true of
         the form it sent.
 
         MUTATION THIS MUST FAIL AGAINST: the send handing the panel its own
         notices alone (the live warning is gone)."""
-        calc, xyz = self._calc_dir(tmp_path, monkeypatch)
+        calc, xyz = self._calc_dir()
         beside = ("() => { const w = document.querySelector('#p-mesh-cutoff')"
                   "  .closest('.schema-field');"
                   "  return !!w.querySelector('.field-issues .issue-item'); }")
+        self._open_on(page, flask_server, calc)
+        _use(page, xyz, 3)
+        # 5 Ry is far below the recommended floor: one warning, beside the
+        # control.
+        committed(page, "#p-mesh-cutoff", "5")
+        page.wait_for_function(beside, timeout=WAIT_MS)
 
-        def a_live_warning(page):
-            # 5 Ry is far below the recommended floor: one warning, beside
-            # the control.
-            page.fill("#p-mesh-cutoff", "5")
-            page.dispatch_event("#p-mesh-cutoff", "change")
-            page.wait_for_function(beside, timeout=10_000)
-
-        self._load_and_send(page, flask_server, calc, xyz,
-                            before_send=a_live_warning)
-        page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('Wrote')",
-            timeout=10_000)
+        self._send(page)
         # The send's own notice -- the default vacuum this box was given --
         # came back into the panel...
         page.wait_for_function(
             "() => [...document.querySelectorAll('#fdf-issues .issue-item')]"
             "      .some(r => r.textContent.includes('No vacuum set'))",
-            timeout=10_000)
+            timeout=WAIT_MS)
         # ...beside the live warning, which is still there.
         assert page.evaluate(beside), (
             "the send cleared the live check's warning from the form")
@@ -903,13 +670,7 @@ class TestSendToTaskSetup:
         MUTATIONS THIS MUST FAIL AGAINST: the Send not asking the check (the
         files are written); the field not drawn required; the suggestion not
         made; the refusal not brought into view."""
-        calc = isolated_projects_root / "proj" / "opt" / "water-run"
-        calc.mkdir(parents=True)
-        xyz = calc / "water.xyz"
-        xyz.write_text("3\nwater\n"
-                       "O 0.000  0.000 0.000\n"
-                       "H 0.957  0.000 0.000\n"
-                       "H -0.239 0.927 0.000\n")
+        calc, xyz = self._calc_dir(pseudos=False)
         from conftest import write_pseudos
         library = isolated_projects_root / "pseudopotential"
         library.mkdir()
@@ -917,22 +678,17 @@ class TestSendToTaskSetup:
         field = ("document.querySelector('#p-psml-lib')"
                  ".closest('.schema-field')")
 
-        def unset_and_said(page):
-            page.wait_for_function(
-                f"() => {{ const w = {field};"
-                "  return w.classList.contains('is-required')"
-                "    && w.classList.contains('is-empty')"
-                "    && [...w.querySelectorAll('.field-issues .issue-item')]"
-                "       .some(r => r.textContent.includes("
-                "           'folder covers all 2 species')); }",
-                timeout=10_000)
-
-        self._load_and_send(page, flask_server, calc, xyz,
-                            before_send=unset_and_said)
+        self._open_on(page, flask_server, calc)
+        _use(page, xyz, 3)
         page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('pseudopotentials are not settled')",
-            timeout=10_000)
+            f"() => {{ const w = {field};"
+            "  return w.classList.contains('is-required')"
+            "    && w.classList.contains('is-empty')"
+            "    && [...w.querySelectorAll('.field-issues .issue-item')]"
+            "       .some(r => r.textContent.includes("
+            "           'folder covers all 2 species')); }",
+            timeout=WAIT_MS)
+        self._send(page, says="pseudopotentials are not settled")
         assert not (calc / "task.1st.json").exists(), (
             "the refusal still wrote the hand-over")
         seen = page.evaluate(
@@ -949,14 +705,9 @@ class TestSendToTaskSetup:
         assert 0 <= seen["top"] and seen["bottom"] <= seen["height"], seen
 
         page.fill("#p-psml-lib", "pseudopotential")
-        page.dispatch_event("#p-psml-lib", "input")
         assert not page.evaluate(
             f"() => {field}.classList.contains('is-empty')")
-        page.locator("#send-to-task-setup").click()
-        page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('Wrote')",
-            timeout=10_000)
+        self._send(page)
         assert (calc / "task.1st.json").is_file()
 
     def test_send_carries_the_held_atoms_of_the_file_you_loaded(
@@ -975,52 +726,39 @@ class TestSendToTaskSetup:
         its held atoms read with its coordinates (`web/molview.md` § 9.3a);
         the hand-over's pair keeps them (`handover-procedure.md`'s round
         trip).  Driven through the sidebar's own rows: a double click on the
-        pair, a click on the sibling folder, a click on a plain copy in it.
+        pair, a click on the sibling folder, a click on a copy in it that
+        holds nothing still.
 
         MUTATIONS THIS MUST FAIL AGAINST: a single click loading the file;
         the load dropping the sidecar; `exportFile` dropping the held atoms;
         the Send building its structure from the sidebar's file."""
-        from molbuilder.structure import Structure
-        from molbuilder.workingcopy_structure import StructureCodec
         from conftest import write_pseudos
         import numpy as np
-        topic = (isolated_projects_root / "proj" / "opt").resolve()
-        loaded_dir, dest = topic / "relaxed", topic / "next-run"
-        loaded_dir.mkdir(parents=True)
-        dest.mkdir()
-        box = [[18.0, 0, 0], [0, 18.0, 0], [0, 0, 18.0]]
-        at = [[9.000, 9.000, 9.000], [9.957, 9.000, 9.000],
-              [8.761, 9.927, 9.000]]
-        held = StructureCodec().write(
-            Structure(elements=["O", "H", "H"], positions=at, cell=box,
-                      frozen_atoms=[0]),
-            loaded_dir / "water.xyz")
-        # THE FILE CLICKED LAST: the same atoms a little apart, no sidecar.
-        plain = dest / "water.xyz"
-        plain.write_text("3\nwater\n" + "".join(
-            f"{e} {x + 0.3:.3f} {y:.3f} {z:.3f}\n"
-            for e, (x, y, z) in zip("OHH", at)))
+        loaded_dir, dest = (
+            ensure_structure_dir("proj", "optimization", calc).resolve()
+            for calc in ("relaxed", "next-run"))
+        held = StructureCodec().write(_BOXED.replace(frozen_atoms=[0]),
+                                      loaded_dir / "water.xyz")
+        # THE FILE CLICKED LAST: the same atoms a little apart, nothing held.
+        plain = StructureCodec().write(
+            _BOXED.replace(positions=_BOXED.positions + [0.3, 0.0, 0.0]),
+            dest / "water.xyz")
         write_pseudos(dest, ["O", "H"])
 
         self._open_on(page, flask_server, loaded_dir)
-        self._use(page, held, 3)
-        page.locator(f'.ps-crumb[title="{topic}"]').click()
-        self._row(page, dest).click()
-        self._row(page, plain).click()
-        picked = page.evaluate(
-            "() => [window.molbuilder.projects.getCurrentDir(),"
-            "       window.molbuilder.projects.getCurrentFile()]")
-        assert picked == [str(dest), str(plain)], picked
+        _use(page, held, 3)
+        walk_to(page, plain)
         # Whatever the clicks began has ended before the Send asks the
         # viewer: a load a single click started would be on screen by now.
-        from playwright.sync_api import expect
-        expect(page.locator("#load-status")).not_to_contain_text("Loading")
+        expect(page.locator("#load-status")).not_to_contain_text(
+            "Loading", timeout=WAIT_MS)
 
-        sent = self._sent(page, dest)
+        self._send(page)
+        sent = self._handed_over(dest)
         assert sent.frozen_atoms == [0], (
             "the Send dropped the atoms the loaded pair holds still: "
             f"{sent.frozen_atoms}")
-        assert np.allclose(sent.positions, at, atol=1e-5), (
+        assert np.allclose(sent.positions, _BOXED.positions, atol=1e-5), (
             "the Send wrote another structure than the one loaded")
 
     def test_send_writes_the_frame_on_screen(
@@ -1038,8 +776,10 @@ class TestSendToTaskSetup:
         moment it is sent, in one read, for the frame on screen (F1;
         `web/molview.md` § 9.3a); a file opens on its first frame
         (§ 10.8).  Driven through the frame bar's own buttons, on a
-        relaxation's three frames, to the MIDDLE one -- neither the first
-        nor the last, the two frames a shortcut would answer.
+        relaxation's three frames -- a frame set, made through its door
+        (`Structure.with_frames`, `model/structure.md` § 2.2e) -- to the
+        MIDDLE one: neither the first nor the last, the two frames a
+        shortcut would answer.
 
         MUTATIONS THIS MUST FAIL AGAINST: the structure copied once, when
         the file loaded, and sent from the copy; `exportFile` answering the
@@ -1047,27 +787,22 @@ class TestSendToTaskSetup:
         the one on screen to the last."""
         from conftest import write_pseudos
         import numpy as np
-        calc = (isolated_projects_root / "proj" / "opt" / "scan").resolve()
-        calc.mkdir(parents=True)
-        frames = [[[9.000 + 0.1 * k, 9.000, 9.000], [9.957, 9.000, 9.000],
-                   [8.761, 9.927 - 0.1 * k, 9.000]] for k in range(3)]
-        trajectory = calc / "relax.xyz"
-        trajectory.write_text("".join(
-            f"3\nstep {k}\n" + "".join(
-                f"{e} {x:.3f} {y:.3f} {z:.3f}\n"
-                for e, (x, y, z) in zip("OHH", frame))
-            for k, frame in enumerate(frames)))
+        calc = ensure_structure_dir("proj", "optimization", "scan").resolve()
+        step = np.array([[0.1, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, -0.1, 0.0]])
+        frames = [_BOXED.positions + k * step for k in range(3)]
+        trajectory = StructureCodec().write(_BOXED.with_frames(frames),
+                                            calc / "relax.xyz")
         write_pseudos(calc, ["O", "H"])
 
         self._open_on(page, flask_server, calc)
-        self._use(page, trajectory, 3)
-        from playwright.sync_api import expect
+        _use(page, trajectory, 3)
         counter = page.locator(".molviewer-frames-counter")
-        expect(counter).to_have_text("1 / 3")
+        expect(counter).to_have_text("1 / 3", timeout=WAIT_MS)
         page.get_by_role("button", name="Next frame").click()
-        expect(counter).to_have_text("2 / 3")
+        expect(counter).to_have_text("2 / 3", timeout=WAIT_MS)
 
-        sent = self._sent(page, calc, frames=True)
+        self._send(page)
+        sent = self._handed_over(calc, frames=True)
         assert sent.n_frames == 1, (
             f"the Send wrote {sent.n_frames} frames; the one on screen is one")
         assert np.allclose(sent.positions, frames[1], atol=1e-5), (
@@ -1076,18 +811,34 @@ class TestSendToTaskSetup:
 
     def test_send_refuses_a_folder_that_is_already_described(
             self, page, flask_server, tmp_path, monkeypatch):
-        calc, xyz = self._calc_dir(tmp_path, monkeypatch)
-        marker = '{"note": "another calculation lives here"}'
-        (calc / "task.json").write_text(marker)
-        self._load_and_send(page, flask_server, calc, xyz)
-        page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('one calculation per folder')",
-            timeout=10_000)
-        assert (calc / "task.json").read_text() == marker, (
-            "the refusal still overwrote the existing description")
-        assert not (calc / "task.1st.json").exists(), (
-            "the refusal still wrote the hand-over")
+        """A Send into a folder that already holds a calculation is refused,
+        and nothing in the folder changes (one calculation per folder,
+        `describe.refuse_described`).
+
+        The folder is described on the road -- `molbuilder describe`
+        (`support.road`) -- and its own structure is the one loaded: the
+        person double-clicks the pair the description travels with, sets the
+        tree's pseudopotential folder, and sends into the folder it came
+        from.
+
+        THE SILENT FAILURE: a Send overwriting the description in place --
+        a second calculation's files over the first's."""
+        from support.road import describe_calculation
+        calc = describe_calculation(tmp_path, monkeypatch).resolve()
+        before = {f.name: f.read_bytes() for f in calc.iterdir()
+                  if f.is_file()}
+        xyz = next(calc.glob("*.source.xyz"))
+        self._open_on(page, flask_server, calc)
+        _use(page, xyz, 2)
+        page.fill("#p-psml-lib", "pseudopotential")
+        self._send(page, says="one calculation per folder")
+        after = {f.name: f.read_bytes() for f in calc.iterdir()
+                 if f.is_file()}
+        assert after == before, (
+            "the refusal still changed the folder: "
+            f"{sorted(set(after) ^ set(before))} came or went, "
+            f"{sorted(n for n in after if n in before and after[n] != before[n])}"
+            " were rewritten")
 
 
 # --------------------------------------------------------------------- #
@@ -1116,7 +867,7 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
     page.wait_for_function(
         "(e) => document.querySelectorAll("
         "  '#' + e + '-form-container input, #' + e + '-form-container select'"
-        ").length > 0", arg=engine, timeout=_BOOT_TIMEOUT_MS)
+        ").length > 0", arg=engine, timeout=WAIT_MS)
 
     moved = page.evaluate("""(engine) => {
         const box = document.getElementById(engine + "-form-container");
@@ -1131,27 +882,25 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
                          && !isNaN(parseFloat(n.placeholder)));
         if (!num) return {error: "no number field with a recommended hint in "
                                  + "the " + engine + " form"};
-        const was = num.placeholder;
-        num.value = String(parseFloat(was) + 137);
-        // `input` ALONE on the way up, `change` alone on the way back down
-        // (see the reset below).  Each listener is proved separately because
-        // they answer different writers: a person types (input), while the
-        // session restore writes the form without a keystroke and fires
-        // change.  A panel wired to only one of
-        // them shows a stale count exactly when it matters.
-        num.dispatchEvent(new Event("input", {bubbles: true}));
         // The panel tags each row's checkbox with the SCHEMA field name,
         // which is the input's id minus the engine prefix, dashes to
         // underscores -- `p-mesh-cutoff` -> `mesh_cutoff`, `py-basis` ->
         // `basis`.  Matching on that ties the row to the field that moved
         // without depending on how the label happens to be marked up.
-        return {was: was, id: num.id,
+        return {was: num.placeholder, id: num.id,
                 name: num.id.replace(/^p(y)?-/, "").replace(/-/g, "_")};
     }""", engine)
     assert "error" not in moved, moved.get("error")
+    # TYPED, which is `input` ALONE on the way up -- `change` alone on the
+    # way back down (see the reset below).  Each listener is proved
+    # separately because they answer different writers: a person types
+    # (input), while the session restore writes the form without a
+    # keystroke and fires change.  A panel wired to only one of them shows
+    # a stale count exactly when it matters.
+    page.fill(f"#{moved['id']}", f"{float(moved['was']) + 137:g}")
 
     panel = page.locator(f"#{engine}-recommend")
-    panel.wait_for(state="visible", timeout=10_000)
+    panel.wait_for(state="visible", timeout=WAIT_MS)
     rows = page.eval_on_selector_all(
         f"#{engine}-recommend .rec-diff-list li input[type=checkbox]",
         "els => els.map(e => e.value)")
@@ -1170,22 +919,32 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
     page.click(f"#{engine}-recommend > summary")        # it opens folded
     page.check(f"#{engine}-recommend .rec-diff-list input[type=checkbox]")
     page.click(f"#{engine}-recommend .rec-diff-reset")
-    panel.wait_for(state="hidden", timeout=10_000)
+    panel.wait_for(state="hidden", timeout=WAIT_MS)
     assert page.evaluate(
         "(id) => document.getElementById(id).value", moved["id"]) == ""
 
 
 def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
         page, flask_server):
-    """`web/form-schema.md` § 1.1 (plan § 5w K7), on the real Build page: a
-    new calculation's form holds nothing until the person gives it
-    something -- a field is blank, not chosen, the kind's recommendation its
-    hint, and a box nobody answered is indeterminate.  What the person gave
-    survives a reload, and so does what they did not: the restore writes
-    through the form's own writer, so a box nobody answered does not come
-    back "off"."""
-    _open_build(page, flask_server)
-    page.wait_for_selector("#p-mesh-cutoff", timeout=_BOOT_TIMEOUT_MS)
+    """`web/form-schema.md` § 1.1 (plan § 5w K7), on the real
+    Structure-optimization page: a new calculation's form holds nothing
+    until the person gives it something -- a field is blank, not chosen,
+    the kind's recommendation its hint, and a box nobody answered is
+    indeterminate.  What the person gave survives a reload, and so does
+    what they did not: the restore writes through the form's own writer,
+    so a box nobody answered does not come back "off".
+
+    The words are the served schema's -- a source said in `source_words`,
+    the recommendation the kind's `default` in its unit (§ 1.1) -- read off
+    the answer the page received."""
+    with page.expect_response(
+            lambda r: "/api/build/schema/siesta?" in r.url) as served:
+        _open_build(page, flask_server)
+    schema = served.value.json()["schema"]
+    words = schema["source_words"]
+    mesh = next(f for section in schema["sections"]
+                for f in section["fields"] if f["name"] == "mesh_cutoff")
+    page.wait_for_selector("#p-mesh-cutoff", timeout=WAIT_MS)
 
     def state():
         return page.evaluate("""() => {
@@ -1196,10 +955,13 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
                            .querySelector(".schema-source").textContent};
         }""")
 
-    assert state() == {"mesh": "", "hint": "300", "box": True,
-                       "said": "not chosen \u00b7 recommended 300 Ry"}, state()
+    recommended = f"{mesh['default']:g}"
+    assert state() == {
+        "mesh": "", "hint": recommended, "box": True,
+        "said": f"{words['default']} \u00b7 recommended {recommended} "
+                f"{mesh['unit']}"}, (state(), mesh)
     page.fill("#p-mesh-cutoff", "450")
-    assert state()["said"] == "you set this"
+    assert state()["said"] == words["person"]
     # A half-typed mesh beside it does not cost the form its save: the field
     # that will not read keeps what it was last saved with (the K7 review --
     # the whole engine's save was skipped, and the reload lost the 450).
@@ -1208,10 +970,10 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
     page.reload()
     page.wait_for_function(
         "() => (document.getElementById('p-mesh-cutoff') || {}).value === '450'",
-        timeout=_BOOT_TIMEOUT_MS)
+        timeout=WAIT_MS)
     after = state()
     assert after["box"] is True, "the box nobody answered came back answered"
-    assert after["said"] == "you set this", after
+    assert after["said"] == words["person"], after
 
 
 #: The tab's two locks, the catalogue's (`active_when`, `web/form-schema.md`
@@ -1245,10 +1007,11 @@ def test_a_field_waits_on_the_field_the_catalogue_names(page, flask_server):
     model never live); a blank read as no value rather than the default
     (the step settings greyed at load); the lock applied at render only (a
     change, or the restore's write, leaves it as it was)."""
-    errors = _open_build(page, flask_server)
+    errors = _js_errors(page)
+    _open_build(page, flask_server)
     for sel in ("#p-relax-type", "#py-solvent", *(f"#{i}" for i in _WAITING)):
         page.wait_for_selector(sel, state="attached",
-                               timeout=_BOOT_TIMEOUT_MS)
+                               timeout=WAIT_MS)
 
     def states():
         # A FIELD IS LIVE WHEN ITS CONTROLS TAKE AN EDIT and nothing beside
@@ -1280,7 +1043,7 @@ def test_a_field_waits_on_the_field_the_catalogue_names(page, flask_server):
     page.wait_for_function(
         "() => (document.getElementById('p-relax-type') || {}).value === 'none'"
         "   && (document.getElementById('py-solvent') || {}).value === 'water'",
-        timeout=_BOOT_TIMEOUT_MS)
+        timeout=WAIT_MS)
     seen["after a reload"] = states()
 
     steps, pcm = 3, 1

@@ -20,24 +20,18 @@ pytestmark = pytest.mark.e2e
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
+from playwright.sync_api import expect  # noqa: E402
+
+from support.sidebar import WAIT_MS, row, walk_to  # noqa: E402
+
 
 @pytest.fixture
-def flask_server():
+def flask_server(isolated_projects_root):
+    """A server for this test, on the test's own projects tree
+    (`support.live_server.serve`)."""
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
-
-
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
 
 
 def test_each_tab_comes_back_to_its_own_folder_and_file(
@@ -58,7 +52,6 @@ def test_each_tab_comes_back_to_its_own_folder_and_file(
 
     MUTATIONS THIS MUST FAIL AGAINST: the file kept on re-listing read from
     the shared slot; every page keyed alike."""
-    from playwright.sync_api import expect
     proj = isolated_projects_root.resolve() / "P"
     here, there = proj / "structure", proj / "optimization" / "run"
     here.mkdir(parents=True)
@@ -67,28 +60,21 @@ def test_each_tab_comes_back_to_its_own_folder_and_file(
     for f in (x, y):
         f.write_text("1\n\nH 0 0 0\n")
 
-    def row(path):
-        return page.locator(f'.ps-entry[data-path="{path}"]')
-
     def shows(folder, file):
         """The sidebar on ``folder``, ``file`` picked: its row marked
         (`projects.md` § 4: *"The selected file's row is highlighted"*)."""
         expect(page.locator(".ps-crumb.is-current")).to_have_attribute(
-            "title", str(folder))
-        expect(row(file)).to_have_class(re.compile(r"\bis-selected\b"))
+            "title", str(folder), timeout=WAIT_MS)
+        expect(row(page, file)).to_have_class(
+            re.compile(r"\bis-selected\b"), timeout=WAIT_MS)
 
     page.goto(f"{flask_server}/structure-optimization")
-    row(proj).click()
-    row(here).click()
-    row(x).click()
+    walk_to(page, x)
     shows(here, x)
 
     page.locator('.app-tabs a[href="/molbuilder"]').click()
     shows(here, x)
-    page.locator(f'.ps-crumb[title="{proj}"]').click()
-    row(proj / "optimization").click()
-    row(there).click()
-    row(y).click()
+    walk_to(page, y)
     shows(there, y)
 
     page.locator('.app-tabs a[href="/structure-optimization"]').click()
@@ -96,32 +82,31 @@ def test_each_tab_comes_back_to_its_own_folder_and_file(
 
 
 def test_a_project_is_deleted_only_once_its_name_is_typed(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """Esc answers no even with the name typed, Enter on the empty field and
     the disabled Delete answer nothing, and the project stays; its name typed,
     Delete takes it, and the list says so.
     """
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "doomed"
+    proj = isolated_projects_root.resolve() / "doomed"
     (proj / "structure").mkdir(parents=True)
     (proj / "structure" / "x.xyz").write_text("1\n\nH 0 0 0\n")
     native = []
     page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
 
     page.goto(f"{flask_server}/molbuilder", wait_until="domcontentloaded")
-    row = page.locator(f'.ps-entry[data-path="{proj.resolve()}"]')
-    row.wait_for(state="visible", timeout=20000)
+    doomed = row(page, proj)
+    doomed.wait_for(state="visible", timeout=WAIT_MS)
     asked = page.locator("dialog.mb-dialog[open]")
 
     def ask():
-        row.locator(".ps-entry-kebab").click()
+        doomed.locator(".ps-entry-kebab").click()
         page.locator(".ps-entry-menu-item", has_text="Delete project").click()
-        asked.wait_for(state="visible", timeout=5000)
+        asked.wait_for(state="visible", timeout=WAIT_MS)
 
     ask()
     asked.locator("input[data-role='typed']").fill("doomed")
     page.keyboard.press("Escape")
-    asked.wait_for(state="detached", timeout=5000)
+    asked.wait_for(state="detached", timeout=WAIT_MS)
     page.wait_for_timeout(500)
     assert proj.is_dir(), "Esc deleted the project"
 
@@ -138,7 +123,7 @@ def test_a_project_is_deleted_only_once_its_name_is_typed(
     typed.fill("doomed")
     assert delete.is_enabled()
     delete.click()
-    row.wait_for(state="detached", timeout=20000)
+    doomed.wait_for(state="detached", timeout=WAIT_MS)
     assert not proj.exists(), "the dialog closed but the project is still there"
     assert native == [], f"a native dialog was opened: {native}"
 
@@ -152,7 +137,6 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     THE SILENT FAILURE: a button losing its id leaves the JS unable to wire
     it: the control renders and does nothing when clicked, with no error
     anywhere."""
-    from playwright.sync_api import expect
     root = isolated_projects_root.resolve()
     proj = root / "made"
     notes = proj / "user" / "notes"
@@ -161,39 +145,38 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     bar = page.locator(".ps-create-bar")
     asked = page.locator("dialog.mb-dialog[open]")
 
-    def row(path):
-        return page.locator(f'.ps-entry[data-path="{path}"]')
-
     def on(folder):
         expect(page.locator(".ps-crumb.is-current")).to_have_attribute(
-            "title", str(folder))
+            "title", str(folder), timeout=WAIT_MS)
 
     def named(button, name):
         bar.locator(button).click()
-        asked.wait_for(state="visible", timeout=5000)
+        asked.wait_for(state="visible", timeout=WAIT_MS)
         asked.locator("input[data-role='name']").fill(name)
         asked.locator("[data-action='confirm']").click()
-        asked.wait_for(state="detached", timeout=5000)
+        asked.wait_for(state="detached", timeout=WAIT_MS)
 
     page.goto(f"{flask_server}/molbuilder", wait_until="domcontentloaded")
-    expect(bar.locator("#ps-create-project-btn")).to_contain_text("New project")
+    expect(bar.locator("#ps-create-project-btn")).to_contain_text(
+        "New project", timeout=WAIT_MS)
     on(root)    # drawn after the bar's buttons are wired: `projects-sidebar.js`
 
     named("#ps-create-project-btn", "made")
     on(proj)
     assert proj.is_dir()
-    row(proj / "user").click()
-    on(proj / "user")
+    walk_to(page, proj / "user")
 
-    expect(bar.locator("#ps-create-folder-btn")).to_contain_text("New folder")
+    expect(bar.locator("#ps-create-folder-btn")).to_contain_text(
+        "New folder", timeout=WAIT_MS)
     named("#ps-create-folder-btn", "notes")
     on(notes)
     assert notes.is_dir()
 
-    expect(bar.locator("#ps-create-upload-btn")).to_contain_text("Upload")
+    expect(bar.locator("#ps-create-upload-btn")).to_contain_text(
+        "Upload", timeout=WAIT_MS)
     bar.locator("#ps-create-upload-btn").click()
-    asked.wait_for(state="visible", timeout=5000)
+    asked.wait_for(state="visible", timeout=WAIT_MS)
     asked.locator("input[data-role='file']").set_input_files(str(src))
     asked.locator("[data-action='confirm']").click()
-    row(notes / "water.xyz").wait_for(state="visible", timeout=20000)
+    row(page, notes / "water.xyz").wait_for(state="visible", timeout=WAIT_MS)
     assert (notes / "water.xyz").read_bytes() == src.read_bytes()

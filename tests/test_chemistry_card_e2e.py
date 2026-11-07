@@ -7,8 +7,9 @@ one class resolves for exactly what that form says -- each value with its
 source -- and **a blank field stays blank**: nothing is filled in.  Typing a
 charge changes the card.  The chip on each form's Profile card says the same.
 
-Driven the way a person drives it: the file picked in the sidebar, the Load
-button, a field typed into.  Headless chromium through pytest-playwright; no
+Driven the way a person drives it: the file picked in the sidebar by its
+rows (`support.sidebar`), the Load button, a field typed into -- in a
+projects tree of the test's own, the one door pointed at it.  Headless chromium through pytest-playwright; no
 engine runs.  The Transport tab's card answers for a cited junction, which
 only a real relaxation makes: it is asked on the real junction's road
 (`test_transport_on_a_real_junction_e2e.py`).
@@ -22,51 +23,17 @@ pytest.importorskip("flask")
 
 
 @pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-
-
-def _ready_for_a_pick(page):
-    """The tab is LISTENING to the sidebar.  The sidebar's door existing is
-    not enough: each tab subscribes to its changes inside
-    ``whenReady("projects")``, right after it writes the load bar's readout
-    in the same synchronous step -- so a written readout means a pick is
-    heard.  Waiting only for the door let a warm second page pick before the
-    tab subscribed, and the Load button never woke (measured 2026-09-29: the
-    second test of this file, passing alone)."""
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.projects "
-        "      && typeof window.molbuilder.projects.setShared === 'function'"
-        "      && document.getElementById('load-source-readout')"
-        "             .textContent.length > 0",
-        timeout=10000)
-
-
 def _load(page, base, tab, target):
-    """Open ``tab``, pick ``target`` in the sidebar, press Load -- and wait
-    for the card to have answered."""
-    page.goto(f"{base}/{tab}", wait_until="domcontentloaded")
-    _ready_for_a_pick(page)
-    page.evaluate(
-        "(p) => window.molbuilder.projects.setShared("
-        "  p.substring(0, p.lastIndexOf('/')), p)", str(target))
-    page.wait_for_function(
-        "() => !document.getElementById('load-from-sidebar-btn').disabled",
-        timeout=5000)
+    """Open ``tab``, pick ``target`` in the sidebar by its rows, press Load
+    -- and wait for the card to have answered."""
+    from support.sidebar import picked
+    picked(page, base, tab, target)
     page.locator("#load-from-sidebar-btn").click()
     _answered(page)
 
@@ -106,7 +73,7 @@ def _blocks(page) -> dict:
 # --------------------------------------------------------------------- #
 
 def test_the_card_answers_for_each_form_and_fills_nothing(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """Fe with every field blank: both forms' answers are unrestricted, 2S =
     2, detected from an open-d metal and saying to verify it (§ 2.5); the
     PySCF form's Method, left blank, is the catalogue's DFT said *not
@@ -118,9 +85,8 @@ def test_the_card_answers_for_each_form_and_fills_nothing(
     THE SILENT FAILURE on the Method line: the card presenting the
     catalogue's value as the person's choice -- *stated* where nobody
     stated it."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    (tmp_path / "p").mkdir()
-    target = tmp_path / "p" / "fe.xyz"
+    (isolated_projects_root / "p").mkdir()
+    target = isolated_projects_root / "p" / "fe.xyz"
     target.write_text("1\nFe atom\nFe 0 0 0\n")
     _load(page, flask_server, "structure-optimization", target)
     _answered(page, "PySCF")
@@ -162,24 +128,23 @@ def test_the_card_answers_for_each_form_and_fills_nothing(
     assert "free" not in offered["py-unpaired-electrons"]
 
 
-def test_a_typed_charge_changes_the_answer(page, flask_server, tmp_path,
-                                           monkeypatch):
+def test_a_typed_charge_changes_the_answer(page, flask_server,
+                                           isolated_projects_root):
     """Formate, blank: 23 electrons at the detected charge 0, so unrestricted.
     Typed -1 on the PySCF form: that form's answer turns closed-shell at 24
     electrons, stated -- and the SIESTA form, still blank, does not move."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    (tmp_path / "p").mkdir()
-    target = tmp_path / "p" / "formate.xyz"
+    (isolated_projects_root / "p").mkdir()
+    target = isolated_projects_root / "p" / "formate.xyz"
     target.write_text("4\nformate\nC 0 0 0\nO 1.26 0 0\nO -0.63 1.09 0\n"
                       "H -0.55 -0.95 0\n")
     _load(page, flask_server, "structure-optimization", target)
     _answered(page, "PySCF")
     assert _card(page).count("unrestricted, 2S = 1") == 2, _card(page)
 
+    from support.sidebar import committed
     page.locator('.tab-btn[data-tab="pyscf"]').click()
-    field = page.locator("#py-net-charge")
-    field.fill("-1")
-    field.press("Tab")                       # the change the card listens to
+    # The change the card listens to: the field left by Tab.
+    committed(page, "#py-net-charge", "-1")
     _answered(page, "-1")
     card = _card(page)
     assert "-1 — stated" in card, card
@@ -192,12 +157,11 @@ def test_a_typed_charge_changes_the_answer(page, flask_server, tmp_path,
 # --------------------------------------------------------------------- #
 
 def test_the_spectrum_tab_answers_for_its_vibration_forms(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """The same card on the Spectrum tab, for the vibration kind: both
     engines' forms, answered as they stand."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    (tmp_path / "p").mkdir()
-    target = tmp_path / "p" / "fe.xyz"
+    (isolated_projects_root / "p").mkdir()
+    target = isolated_projects_root / "p" / "fe.xyz"
     target.write_text("1\nFe atom\nFe 0 0 0\n")
     _load(page, flask_server, "spectrum-calculation", target)
     _answered(page, "SIESTA")
@@ -213,7 +177,7 @@ def test_the_spectrum_tab_answers_for_its_vibration_forms(
 
 
 def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, isolated_projects_root):
     """`web/spectra.md` § 5 step 4: a structure that repeats along an axis
     switches the Spectrum tab's engine strip to SIESTA and says why, because
     PySCF computes a repeating structure as an isolated cluster -- a note,
@@ -223,9 +187,9 @@ def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
 
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
+    from support.sidebar import picked
 
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "strip_proj"
+    proj = isolated_projects_root / "strip_proj"
     proj.mkdir()
     target = proj / "chain.xyz"
     StructureCodec().write(
@@ -235,21 +199,14 @@ def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
                   axis_kind=("isolated", "isolated", "periodic")),
         target)
 
-    page.goto(f"{flask_server}/spectrum-calculation",
-              wait_until="domcontentloaded")
-    _ready_for_a_pick(page)
+    picked(page, flask_server, "spectrum-calculation", target)
     page.wait_for_selector(
         "#spectra-form-container input, #spectra-form-container select",
         timeout=15000)
+    # PICKED, NOT YET LOADED: the strip still on its default.
     assert page.evaluate(
         "() => document.querySelector('#spectra-engine-strip .tab-btn[aria-selected=\"true\"]').dataset.tab"
     ) == "pyscf"
-    page.evaluate(
-        "(p) => window.molbuilder.projects.setShared("
-        "  p.substring(0, p.lastIndexOf('/')), p)", str(target))
-    page.wait_for_function(
-        "() => !document.getElementById('load-from-sidebar-btn').disabled",
-        timeout=5000)
     page.locator("#load-from-sidebar-btn").click()
     page.wait_for_function(
         "() => document.querySelector('#spectra-engine-strip .tab-btn[aria-selected=\"true\"]')"

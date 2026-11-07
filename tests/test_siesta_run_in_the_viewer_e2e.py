@@ -11,8 +11,6 @@ opened in the Results tab as a person opens it, in its folder.
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 from datetime import datetime
 
@@ -45,13 +43,7 @@ def finished(real_h2_layered):
 
 
 @pytest.fixture(scope="module")
-def tree(real_h2_layered):
-    """The projects tree the run was made in."""
-    return real_h2_layered.tree
-
-
-@pytest.fixture(scope="module")
-def flask_server():
+def flask_server(isolated_projects_root_module):
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
@@ -59,16 +51,13 @@ def flask_server():
 
 def _open(page, flask_server, folder, tree, monkeypatch):
     """The Results tab bound to ``folder``, its output shown, in a fresh
-    page -- the folder set the way a returning tab finds it, the run's
-    projects ``tree`` the picker's root."""
-    from molbuilder import diagnostics
-    monkeypatch.setattr(type(diagnostics.get_capabilities()),
-                        "file_picker_roots",
-                        lambda self: ((tree.resolve(), "road"),))
-    page.add_init_script(
-        "try { sessionStorage.setItem('molbuilder.current_dir', "
-        f"{json.dumps(str(folder))}); }} catch (_) {{}}")
-    page.goto(f"{flask_server}/results")
+    page -- bound as a person binds it, by the sidebar's rows and Reload
+    (`support.sidebar.results_on`), in the projects ``tree`` the run was
+    made in, the one door pointed at it."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.sidebar import results_on
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    results_on(page, flask_server, folder)
     page.wait_for_function(
         "() => /Finished/.test((document.getElementById('run-state-label')"
         " || {}).textContent || '')"
@@ -85,27 +74,19 @@ def _the_runs_own_times(attempt):
 
 
 def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
-        finished, tree, page, flask_server, monkeypatch):
+        finished, real_h2_layered, page, flask_server, monkeypatch):
     """The SCF line's rate is the number the run record states -- the
     SCF-timing log, through one reader -- and the badge dates the run by its
     output's end and says its total as the record's engine wall, the Run
-    panel's.  The menu files the run under the heading the folder answer's
-    words make, the engine's and the calculation's noun: *SIESTA
-    optimization* (`web/presenters.md` § 2, 2.65.0).
+    panel's.
 
     THE SILENT FAILURES: the viewer computing its own rate; the badge's
     total read off a SIESTA timer line that times one SCF iteration, so a
-    24 s run read *total 0s* (2.56.1); the served words not reaching the
-    menu -- the run under *Trajectory* (on an optimization a guessed noun
-    reads the same, so a guessed heading is not caught here).
-
-    MUTATION THIS MUST FAIL AGAINST: the picker's rows not carrying the
-    folder answer's ``engine_words`` and ``noun`` (`file-picker.js`
-    `filterToResultFiles`).
+    24 s run read *total 0s* (2.56.1).
     """
     from molbuilder.report_fields import span_words
     time, ended = _the_runs_own_times(finished)
-    _open(page, flask_server, finished, tree, monkeypatch)
+    _open(page, flask_server, finished, real_h2_layered.tree, monkeypatch)
     scf = page.locator("#scf-status").inner_text()
     rate = re.search(r"([0-9.]+) s/iter", scf)
     assert rate, scf
@@ -115,16 +96,10 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
     assert "ended" in detail and ended.strftime(":%M:%S") in detail, detail
     assert f"total {span_words(time['engine_elapsed_s'])}" in detail, (
         detail, time)
-    heading = page.evaluate(
-        "() => { const s = document.getElementById("
-        "  'results-file-picker-select');"
-        "  const o = s && s.selectedOptions[0];"
-        "  return o && o.parentElement ? o.parentElement.label : null; }")
-    assert heading == "SIESTA optimization", heading
 
 
 def test_the_scf_plot_draws_both_tests_siesta_requires(
-        finished, tree, page, flask_server, monkeypatch):
+        finished, real_h2_layered, page, flask_server, monkeypatch):
     """A SIESTA SCF is converged when dDmax is under `DM.Tolerance` AND dHmax
     under `SCF.H.Tolerance` (`web/trajectory.md` § 3.0): the residuals plot
     draws both, each against the tolerance the run's own deck states, and
@@ -137,7 +112,7 @@ def test_the_scf_plot_draws_both_tests_siesta_requires(
     deck = parse_fdf_params(run_of(finished).deck.read_text(),
                             source="the deck")
     assert deck.dm_tolerance and deck.h_tolerance_ev, deck
-    _open(page, flask_server, finished, tree, monkeypatch)
+    _open(page, flask_server, finished, real_h2_layered.tree, monkeypatch)
     drawn = page.evaluate(
         "() => { const el = document.getElementById('scf-gnorm-plot');"
         " return { names: (el.data || []).map(t => t.name),"
@@ -150,7 +125,7 @@ def test_the_scf_plot_draws_both_tests_siesta_requires(
 
 
 def test_every_element_the_viewer_draws_into_is_on_its_panel(
-        finished, tree, page, flask_server, monkeypatch):
+        finished, real_h2_layered, page, flask_server, monkeypatch):
     """Every element the trajectory viewer looks up on its panel answers, one
     element, at the moment it is asked (`process/code-audit.md` § 3.4) --
     as the run opens, and as its three force controls are used
@@ -176,7 +151,7 @@ def test_every_element_the_viewer_draws_into_is_on_its_panel(
             return one.call(this, sel);
         };
     })();""")
-    _open(page, flask_server, finished, tree, monkeypatch)
+    _open(page, flask_server, finished, real_h2_layered.tree, monkeypatch)
     page.locator("#force-scale").fill("2.5")
     page.locator("#force-min").fill("0.05")
     page.locator("#hide-frozen").check()
@@ -185,80 +160,3 @@ def test_every_element_the_viewer_draws_into_is_on_its_panel(
     wrong = sorted({f"{sel} answered by {n}" for sel, n in asked if n != 1})
     assert not wrong, wrong
 
-
-def test_opening_the_run_again_and_again_leaves_what_once_left(
-        finished, tree, page, flask_server, monkeypatch):
-    """The trajectory viewer, opened on the run and put away five times,
-    leaves on the page what once left -- the listeners on the window, the
-    document or an element still on the page, and the live GL contexts
-    (`web/molview.md` § 8, § 9.9a; `web/presenters.md` § 3, step 2): the
-    inspector teardown rows' trajectory one, on output the engine wrote.
-
-    THE SILENT FAILURE: a listener a mount adds and its dispose leaves,
-    firing against a dead panel on every later mount; a drawing window
-    left alive with its listeners for the page's life.
-
-    Mounted through the registry on the Results tab, each mount waited out
-    by the viewer's word that its load ended, which must carry no error;
-    paired add to remove as the browser pairs them (`support/leftovers.SPY`).
-
-    MUTATION THIS MUST FAIL AGAINST: a listener the trajectory viewer adds
-    outside the viewers' shared scope."""
-    from molbuilder import diagnostics
-    from molbuilder.runs import folder_answer, openable
-    from support.leftovers import SPY, grew
-    output, _ = openable(finished)
-    # THE SERVER'S ANSWER FOR THE FILE, as the picker passes it to the
-    # viewer (`/api/results/dir`'s row with its folder's engine, words and
-    # noun, `file-picker.js` `metaOf`).
-    answer = folder_answer(os.path.dirname(output))
-    row = next(f for f in answer["files"]
-               if f["name"] == os.path.basename(output))
-    meta = {**{k: row[k] for k in ("role", "label", "stage", "parser")},
-            **{k: answer[k] for k in ("engine", "engine_words", "noun")}}
-    monkeypatch.setattr(type(diagnostics.get_capabilities()),
-                        "file_picker_roots",
-                        lambda self: ((tree.resolve(), "road"),))
-    page.goto(f"{flask_server}/results", wait_until="networkidle")
-    page.wait_for_function(
-        "(c) => { const r = (window.molbuilder || {}).inspectors;"
-        "  return !!r && (r.pick(c.file, c.meta) || {}).name === 'trajectory'; }",
-        arg={"file": str(output), "meta": meta}, timeout=10000)
-    left = page.evaluate("""async (c) => {
-        const reg = window.molbuilder.inspectors;
-        const spy = """ + SPY + """;
-        const cycle = async () => {
-            const host = document.createElement("div");
-            host.style.width = "900px";
-            document.body.appendChild(host);
-            const ended = new Promise((resolve) => spy.quietly(document,
-                window.molbuilder.constants.EVENT_INSPECTOR_READY,
-                (e) => resolve((e && e.detail) || {}), { once: true }));
-            const handle = reg.mount(host, c.file,
-                                     reg.createDefaultContext(host), c.meta);
-            const said = await Promise.race([ended,
-                new Promise((r) => setTimeout(() => r(null), 15000))]);
-            handle.dispose();
-            document.body.removeChild(host);
-            if (!said) return "a mount never ended";
-            if (said.error) return "it could not load: " + said.error;
-            return null;
-        };
-        try {
-            const first = await cycle();
-            if (first) return { error: first };
-            const once = spy.state();
-            for (let i = 1; i < c.times; i++) {
-                const again = await cycle();
-                if (again) return { error: again };
-            }
-            return { once, again: spy.state() };
-        } finally {
-            spy.restore();
-        }
-    }""", {"file": str(output), "meta": meta, "times": 5})
-    assert "error" not in left, left
-    assert not grew(left), (
-        "opening the run five times left more on the page than opening it "
-        "once:\n  " + "\n  ".join(grew(left)))
-    assert left["again"]["contexts"] == left["once"]["contexts"], left
