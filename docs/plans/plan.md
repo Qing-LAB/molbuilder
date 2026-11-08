@@ -47,7 +47,10 @@ correction, `TS.dQ`, a device setting written as chosen (the ledger's *Found
 by 2.68.0*; `engines/transport.md` § 2a.12) — found on the walk's transport
 road. **2.68.1**: a blank setting's default said by where it comes from —
 *recommended for a vibration*, *SIESTA's own default*, *default* — and Task
-setup in the forms' words (the ledger's *Found by 2.68.1*).
+setup in the forms' words (the ledger's *Found by 2.68.1*). **2.68.2**: the
+UI review's group A — the Molbuilder page's *Unsaved* from its own note, a
+reload keeping it, the viewer's Export save recorded, the slab box never
+blank (the ledger's *Found by … 2.68.2*); next, groups B, D and C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

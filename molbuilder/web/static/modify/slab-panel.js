@@ -422,11 +422,22 @@ export function init(viewer) {
             dx: num("slab-dx", 0),
             dy: num("slab-dy", 0),
         };
-        // A TYPED `a` WINS, and an empty box means "use the table's".  Sent
-        // only when it is a real length, so the server keeps its own default
-        // rather than being handed NaN.
+        // THE LATTICE CONSTANT IS THE NUMBER IN ITS BOX (the user,
+        // 2026-09-07: "the box is never blank: the panel shows the number it
+        // will build with"; tabs.md, the Slab op-tab): an empty box sends
+        // nothing and says so, under the box, through the one findings
+        // renderer -- never a slab built with a number the panel does not show.
         const a = num("slab-a", NaN);
-        if (Number.isFinite(a) && a > 0) body.lattice_constant = a;
+        // EMPTY is the one state said here; any number is sent, and the
+        // server says what it refuses ('lattice_constant' must be > 0 Å).
+        if (!Number.isFinite(a)) {
+            renderFindings([{ severity: "error", message:
+                "The lattice constant box is empty: type the constant, or "
+                + "pick a reference to fill it. Nothing was built." }],
+                { panel: $("slab-lattice-findings") });
+            return;
+        }
+        body.lattice_constant = a;
         /* THROUGH THE PAGE'S ONE OP WRAPPER (viewer.js `runOp`), which owns
            the in-flight lock and the edit-status line. */
         await runOp("/api/modify/slab", body, "Add slab");

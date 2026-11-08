@@ -73,12 +73,24 @@ def _run_node(snippet: str) -> object:
 
         function fakePage(lastSaveTo, loadedFrom) {{
             let saved = lastSaveTo || null;
+            let edited = false;
             const marks = [];
+            const noteReaders = [];
+            const said = () => noteReaders.slice().forEach((f) => f());
             return {{
                 marks,
-                markSavedTo: (p) => {{ saved = p; marks.push(p); }},
-                getCanvasSnapshot: () => ({{ lastSaveTo: saved }}),
+                markSavedTo: (p) => {{ saved = p; edited = false; marks.push(p);
+                                      said(); }},
+                getCanvasSnapshot: () => ({{ lastSaveTo: saved,
+                                            isDirty: edited }}),
                 getLoadedFrom: () => (loadedFrom || null),
+                // THE PAGE'S NOTE and its own channel (`page.js`,
+                // tabs.md § 6): edited since written.
+                onPanelChange: (fn) => {{ noteReaders.push(fn); return () => {{}}; }},
+                _edit: () => {{ edited = true; said(); }},
+                // marked without a word on its own channel: only the
+                // model's announcement repaints the readout then
+                _mark: () => {{ edited = true; }},
             }};
         }}
 
@@ -248,25 +260,27 @@ def test_the_readout_follows_the_model_whichever_arrives_first():
         }
         molbuilder.status = { set() {} };
 
-        /** A model that can be edited, and tells its subscribers. */
+        /** A model that holds a structure and tells its subscribers of each
+         *  change.  Whether it was edited since it was written is the PAGE's
+         *  note (tabs.md § 6), not the model's. */
         function liveModel() {
-            let dirty = false; const subs = [];
+            const subs = [];
             return {
                 getStructure: () => ({ elements: ["C"] }),
-                get uncommitted() { return dirty; },
                 exportFile: () => ({ structure: {} }),
-                subscribe: (fn) => { subs.push(fn); fn(); return () => {}; },
-                edit() { dirty = true; subs.forEach((f) => f()); },
+                subscribe: (fn) => { subs.push(fn); return () => {}; },
+                announce() { subs.forEach((f) => f()); },
             };
         }
 
-        function readoutAfterEdit(viewerFirst) {
+        function readoutAfterEdit(viewerFirst, byModel) {
             // a fresh module instance per order -- `_wired` is module state
             delete require.cache[require.resolve(MODULE_PATH)];
             const m = require(MODULE_PATH);
             const model = liveModel();
             const doc = panelDoc();
-            m.configure({ structurePage: fakePage("/p/x.xyz") });
+            const pg = fakePage("/p/x.xyz");
+            m.configure({ structurePage: pg });
             if (viewerFirst) {
                 m.useViewer({ ok: true, data: model });
                 m.wirePanel({ doc });
@@ -274,13 +288,15 @@ def test_the_readout_follows_the_model_whichever_arrives_first():
                 m.wirePanel({ doc });
                 m.useViewer({ ok: true, data: model });
             }
-            model.edit();
+            if (byModel) { pg._mark(); model.announce(); }
+            else pg._edit();             // the page tells its own channel
             return doc._nodes["save-readout"].textContent;
         }
 
         console.log(JSON.stringify({
-            viewerFirst: readoutAfterEdit(true),
-            panelFirst:  readoutAfterEdit(false),
+            viewerFirst: readoutAfterEdit(true, true),
+            panelFirst:  readoutAfterEdit(false, true),
+            byTheNote:   readoutAfterEdit(false, false),
         }));
     """)
     for order, said in out.items():

@@ -78,7 +78,12 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
          * "readonly" or it is editable, and there is no third word. */
         const _mounted = await mount(host, window.molbuilder.workspace, {
             owner: WORKSPACE_TAG,
-            files: molviewFiles,
+            // ...THROUGH THE PAGE, which records a structure the viewer's own
+            // Export menu writes to the project (tabs.md § 6, one door out).
+            files: (window.molbuilder && window.molbuilder.structurePage
+                    && window.molbuilder.structurePage.savingThrough)
+                ? window.molbuilder.structurePage.savingThrough(molviewFiles)
+                : molviewFiles,
         });
         if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
 

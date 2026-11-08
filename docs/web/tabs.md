@@ -140,7 +140,12 @@ below. The controller code is deliberately thin glue:
   whole point of the redesign. It is the one
   controller that fetches a route directly: `GET /api/modify/meta`, for the
   element and plane menus, so the closed list of supported metals has one home
-  rather than a copy in the page.
+  rather than a copy in the page. **The lattice constant is the number in its
+  box** *(the user, 2026-09-07: "the box is never blank: the panel shows the
+  number it will build with")*: picking a reference fills it, typing makes it
+  *Custom*, and **Add slab with the box empty sends nothing** and says what
+  to do — type the constant or pick a reference — rather than building with a
+  number the panel does not show *(2.68.2)*.
 - **`modify/periodicity.js`** is the Cell op-tab — vacuum, per-axis periodicity,
   the unit cell, the cell origin — and commits through
   `molview.data.commitPeriodicityOp`, the cell's one door (`POST /api/structure/periodicity`; the server re-resolves the effective cell).
@@ -173,7 +178,10 @@ when a structure is open — *Do you want to add the structure to the existing
 view or clear the current view?* **Add** is the default: its button has the
 focus, and Enter or Escape takes it. **Clear** replaces the view with the file
 — the gate's `how.replace`, `installMolecule` over what was there, the timeline
-starting again — and the question says so when the view holds unsaved changes.
+starting again — and the question says so when the view holds unsaved changes:
+an edit since the structure was last written or loaded, or a structure no file
+was ever written from — the page's own note (§ 6), never the viewer's
+timeline, whose points each edit lays down *(2.68.2)*.
 A file's pair is a whole structure — its labels, its cell, its recorded
 calculation — and adding it to another keeps the other's record, so the
 question is where the person chooses which they meant. With nothing open the
@@ -566,7 +574,23 @@ again, and *"Not saved yet"* for a structure that has never been written —
 the
 button's enabled state, and recording where the bytes went — the page's own
 note, because the viewer tracks contents and not files
-([`molview.md` § 6.7](?doc=web/molview.md)).
+([`molview.md` § 6.7](?doc=web/molview.md)). **Whether the view still holds
+what was written is that note's too** *(2.68.2)*: the page keeps the
+structure it last wrote — the payload the save sent, through Save to project
+or the viewer's own Export → Data → Save to project, which the page's door
+records alike (`savingThrough`, one door out) — or the one a file load
+installed, and at every change the viewer announces it compares what the
+view holds with that. A change that changed nothing (a timeline *Save
+state*) is no edit; a Retract back to the written state reads saved again;
+an edit that lands while a save's dialog is open is not in the file, and
+stays *Unsaved*. A structure a generator built, or one appended to another,
+is held by no file. The readout's *Unsaved* and the Load question's sentence
+(§ 2) read it, never the viewer's timeline flag, which every edit clears by
+laying down its own point and a timeline save raises with nothing changed.
+The note is kept with the page's other facts across a reload (`modify:panel`),
+and read back it repaints its readers; a note written before 2.68.2 carries
+no such fact and reads as edited unless it names the file the structure came
+from or went to, and no note at all as edited.
 
 **The only precondition is that there is something to save.** There is no
 "pick a directory first": the directory is part of the question the dialog

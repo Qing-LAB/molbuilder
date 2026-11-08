@@ -142,7 +142,7 @@
                  * after the person says so, never renamed. */
                 if (res && res.ok && _structurePage
                         && typeof _structurePage.markSavedTo === "function") {
-                    _structurePage.markSavedTo(res.path);
+                    _structurePage.markSavedTo(res.path, payload.structure);
                 }
                 return res;
             });
@@ -152,6 +152,7 @@
 
     var _wired = false;
     var _unsub = null;
+    var _noteUnsub = null;
     var _inFlight = false;
     var _refresh = null;      // set by wirePanel; the panel's own repaint
 
@@ -163,10 +164,19 @@
         _refresh();
         if (typeof _unsub === "function") { _unsub(); _unsub = null; }
         if (_model && typeof _model.subscribe === "function") {
-            // THE MODEL'S subscribe (`molview.md` § 8.4): a subscriber is
-            // handed one state on subscribing, so the first paint needs no
-            // separate fetch, and another after every change.
+            // THE MODEL'S subscribe (`molview.md` § 8.4): another paint after
+            // every change.
             _unsub = _model.subscribe(_refresh);
+        }
+        /* ...AND THE PAGE'S NOTE, on its own channel (`page.js`
+         * `onPanelChange`): whether the structure was edited since it was
+         * written is the page's fact, marked by the page's own listener, so
+         * the readout repaints when the NOTE changes, whichever listener the
+         * viewer called first (tabs.md § 6). */
+        _lazyResolve();
+        if (typeof _noteUnsub === "function") { _noteUnsub(); _noteUnsub = null; }
+        if (_structurePage && typeof _structurePage.onPanelChange === "function") {
+            _noteUnsub = _structurePage.onPanelChange(_refresh);
         }
     }
 
@@ -192,7 +202,11 @@
 
             if (!readout) return;
             var path  = targetPath();
-            var dirty = !!(_model && _model.uncommitted);
+            // EDITED SINCE WRITTEN: the page's own note (tabs.md § 6), never
+            // the viewer's timeline flag, which every edit clears.
+            var snap  = (_structurePage && _structurePage.getCanvasSnapshot)
+                ? _structurePage.getCanvasSnapshot() : null;
+            var dirty = !!(snap && snap.isDirty);
             if (path) {
                 readout.textContent = (dirty ? "Unsaved — " : "")
                                     + "Target: " + _basename(path);

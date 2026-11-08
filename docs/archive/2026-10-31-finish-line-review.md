@@ -1866,6 +1866,22 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group A and 2.68.2's review round (2026-11-08), by the release that owns each
+
+*(group A of the UI review's findings, each reproduced on the dev server before any fix; one review reader over the whole touched page modules, every finding read again in the code)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2682-1 | **closed 2.68.2** | the Molbuilder page's *Unsaved* came from the viewer's timeline flag, which every edit clears by laying down its own point: after a save and an edit the readout said only *"Target: x.xyz"*, and Load's add-or-clear question never said the view held unsaved changes (tabs.md § 2, § 6) | the page's own note compares what the view holds with what it last wrote or loaded (`page.js` `markSavedTo(path, structure)`, `_onCanvasChanged`); kept across a reload |
+| K2682-2 | **closed 2.68.2** | after every reload the Save readout said *"Not saved yet"*, the note read back but its readers never told | `restorePanelNote` repaints its readers |
+| K2682-3 | **closed 2.68.2** | the viewer's own Export → Data → Save to project wrote the file and left the page's note as it was (tabs.md § 6: one door out) | `page.savingThrough(files)`, the door the page hands its viewer |
+| K2682-4 | **closed 2.68.2** | Add slab with the lattice-constant box emptied built with a table value the panel did not show (the user, 2026-09-07: "the box is never blank") | an empty box sends nothing and says so; any number is sent, the server refusing ≤ 0 itself |
+| K2682-5 | **withdrawn at the user's word** | Results' file viewer offers Edit and Save on a finished run's deck — *"Why … would you assume the user is a … idiot who would modify the result folder … If he does so just say so that the dir is messed up"* | none: a folder the person changed is read and said as found |
+| K2682-6 | **withdrawn on reading the code** | Transform turning the measuring tool on: it says so (*"Measuring is on: the Transform tab picks atoms with the ruler…"*, `modify/viewer.js:680-692`), as molview.md § 11.6 asks; staying on is the person's to turn off | none |
+| K2682-7 | **later** | two meanings of *unsaved* side by side: MolView's corner badge *"Unsaved changes"* (the timeline) beside the Save readout's (the file); the Structure-optimization tab (`viewer.js:738-745`) and the projects parser's discard confirm (`parser.js:63`) read the timeline flag | each page's own note, or the badge's words |
+| K2682-8 | **2.67.12** | the slab panel's empty-box answer has no page test; checked on the dev server | the page-side test doors |
+| K2682-9 | **the dead-code release** | `page.markDirtyAfterModification` and `page.onCanvasChange` have no caller in the static JS | its list, shown first |
+
 ## Found by 2.68.1's review round (2026-11-08), by the release that owns each
 
 *(K2680-4 and K2680-5, the user's word; one review reader over the whole touched modules and chapters, every finding read again in the code; the fast batch and the touched browser tests)*

@@ -24,16 +24,20 @@
  *     ``{ok: false}`` when the append did not apply.
  *
  *   markDirtyAfterModification()
- *     -> void.  A NO-OP: the edit raised the unsaved badge itself,
- *     inside the viewer's gate, when it landed (molview.md § 11.2).
+ *     -> void.  A NO-OP: the page follows the viewer's changes itself.
  *
- *   markSavedTo(path)
- *     -> void.  Records where the structure was last saved TO.  The
- *     save handler calls it after a successful project write.  It
- *     does NOT clear anything: whether there is unsaved work is the
- *     viewer's own answer (``uncommitted``), and where a file went is
- *     the page's, because the viewer tracks contents, not files
- *     (molview.md § 6.7).
+ *   markSavedTo(path, structure)
+ *     -> void.  Records where the structure was saved TO, and WHAT was
+ *     written (``structure``, the payload the door sent) -- the page's
+ *     own note (tabs.md § 6): what the view holds is compared with what
+ *     was last written or loaded, never the viewer's timeline flag.
+ *     Called by the Save-to-project handler and by the door this page
+ *     hands the viewer (``savingThrough``).
+ *
+ *   savingThrough(files) -> files
+ *     The file door the page hands its viewer, wrapped: a structure the
+ *     viewer's own Export menu writes to the project is recorded as
+ *     written, as Save to project's is (tabs.md § 6, one door out).
  *
  *   getCanvasSnapshot()
  *     -> {isEmpty, isDirty, structure, lastSaveTo, loadedFrom}, read
@@ -52,8 +56,8 @@
     "use strict";
 
     // The orchestrator works against the viewer this page mounted, through the
-    // surface molview.md § 9.3 lists: installMolecule, getStructure, uncommitted,
-    // subscribe.
+    // surface molview.md § 9.3 lists: installMolecule, getStructure,
+    // exportFile, subscribe.
     /* THE VIEWER THIS PAGE MOUNTED, handed over by modify/selection-bootstrap.js
      * once it has one (`useViewer` below). This is a classic script — it loads
      * before that file and cannot import — so being TOLD is the only way it can
@@ -81,6 +85,7 @@
         }
         _viewer = { ok: true, data: workspaceApi };
         _modal  = modalApi;
+        _followCanvas();
     }
 
     /**
@@ -168,15 +173,26 @@
         return _append();
     }
 
-    /* "There is unsaved work here" is the viewer's own answer, raised inside its
-     * gate after a change lands and cleared when a state is saved (molview.md
-     * § 11.2) — not a flag set from outside. And where a structure was saved TO
-     * is a fact about a file operation the page performed, so the page keeps it
-     * (§ 6.7); the viewer never knew it. */
+    /* WHERE A STRUCTURE WAS SAVED TO, AND WHETHER THE VIEW STILL HOLDS WHAT WAS
+     * WRITTEN, are facts about file operations the page performed, so the page
+     * keeps them (molview.md § 6.7; tabs.md § 6); the viewer never knew them,
+     * and its timeline flag answers another question (§ 11.2). */
     var _lastSavedTo = null;
     var _loadedFrom  = null;
+    /* EDITED SINCE WRITTEN -- the third fact of the page's note (tabs.md § 6,
+     * 2.68.2): what the view holds against what was last written or loaded
+     * (``_writtenAs``, the structure as JSON; ``null`` when no file holds it).
+     * The viewer's timeline flag cannot answer it: every edit lays down its
+     * own point and clears it, and a timeline save announces with nothing
+     * changed. */
+    var _edited      = false;
+    var _writtenAs   = null;
+    /* The note is followed only once it is read back: the viewer's own
+     * restore announces its structure first, and that is no edit. */
+    var _noteReady   = false;
+    var _canvasUnsub = null;
 
-    /* ── The page's own two facts, kept under the page's own tag ────────────
+    /* ── The page's own facts, kept under the page's own tag ────────────────
      *
      * workspace.md § 4: a page can have more than one thing worth keeping, and
      * "the Modify tab has a viewer holding a molecule AND its own panel state".
@@ -189,9 +205,9 @@
      * writes at the moments the page CHANGES one of these — a load, a generate,
      * a save — and never on a timer.
      *
-     * ONE WRITER FOR ONE SLOT. Both facts live here and both are written by this
-     * one function, because two writers on a single state file is how one of
-     * them silently drops the other's field.
+     * ONE WRITER FOR ONE SLOT. Every fact lives here and all are written by
+     * this one function, because two writers on a single state file is how
+     * one of them silently drops the other's field.
      */
     var PANEL_TAG = "modify:panel";
 
@@ -215,11 +231,21 @@
         var ws = _ws();
         if (ws && typeof ws.persist === "function") {
             ws.persist(PANEL_TAG,
-                       { v: 1, loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo },
+                       { v: 1, loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo,
+                         edited: _edited },
                        { workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0 });
         }
+        _tellPanelReaders();
+    }
+
+    /* THE NOTE'S READERS ARE TOLD whenever it changes -- written here, or read
+     * back after a reload: a readout painted before the note came back would
+     * otherwise go on saying "Not saved yet" over a structure saved before
+     * the reload (tabs.md § 6). */
+    function _tellPanelReaders() {
         _panelListeners.slice().forEach(function (fn) {
-            try { fn({ loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo }); }
+            try { fn({ loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo,
+                       edited: _edited }); }
             catch (_) { /* one bad reader cannot muzzle the rest */ }
         });
     }
@@ -238,28 +264,106 @@
      * has never seen are not something to guess at. */
     async function restorePanelNote() {
         var ws = _ws();
-        if (!ws || typeof ws.readState !== "function") return null;
+        if (!ws || typeof ws.readState !== "function") {
+            _noteReady = true;          // nothing to read back: follow from here
+            _writtenAs = _edited ? null : _heldNow();
+            return null;
+        }
         var saved;
         try {
             saved = await ws.readState({
                 workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0,
             });
         } catch (_) {
+            _noteReady = true;
             return null;
         }
-        if (!saved || saved.v !== 1) return null;
+        _noteReady = true;
+        if (!saved || saved.v !== 1) {
+            // NO NOTE: a structure on the view is held by no file we know of.
+            _edited = !!(_model() && _model().getStructure() !== null);
+            _writtenAs = null;
+            _tellPanelReaders();
+            return null;
+        }
         _loadedFrom  = saved.loadedFrom  || null;
         _lastSavedTo = saved.lastSavedTo || null;
-        return { loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo };
+        // A note written before 2.68.2 holds no such fact: edited unless it
+        // names a file the structure came from or went to.
+        _edited      = (saved.edited !== undefined) ? !!saved.edited
+                       : !(_loadedFrom || _lastSavedTo);
+        // ...and not edited, what the view holds IS what was written.
+        _writtenAs   = _edited ? null : _heldNow();
+        _tellPanelReaders();
+        return { loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo,
+                 edited: _edited };
+    }
+
+    /* WHAT THE VIEW HOLDS, as one comparable text: the structure as the
+     * viewer exports it -- the same object a save writes (`save.js`, the
+     * viewer's Export menu). */
+    function _asText(structure) {
+        return structure ? JSON.stringify(structure) : null;
+    }
+    function _heldNow() {
+        var m = _model();
+        var file = (m && typeof m.exportFile === "function") ? m.exportFile() : null;
+        return _asText(file && file.structure);
+    }
+
+    /* THE PAGE FOLLOWS THE CANVAS for its own note: at every change the viewer
+     * announces, what it holds is compared with what was last written or
+     * loaded (tabs.md § 6) -- an announcement that changed nothing (a timeline
+     * save) is no edit, and a Retract back to the written state reads saved. */
+    function _onCanvasChanged() {
+        if (!_noteReady) return;
+        var now = (_writtenAs === null) || (_heldNow() !== _writtenAs);
+        if (now === _edited) return;
+        _edited = now;
+        _rememberPanel();
+    }
+
+    function _followCanvas() {
+        if (typeof _canvasUnsub === "function") { _canvasUnsub(); }
+        _canvasUnsub = null;
+        var m = _model();
+        if (m && typeof m.subscribe === "function") {
+            _canvasUnsub = m.subscribe(_onCanvasChanged);
+        }
     }
 
     function markDirtyAfterModification() {
-        // Nothing to do: the edit itself raised the badge.
+        // Nothing to do: the page's own listener marks the note (_onCanvasChanged).
     }
 
-    function markSavedTo(path) {
+    function markSavedTo(path, structure) {
         _lastSavedTo = path || null;
+        /* WHAT WAS WRITTEN is the payload the door sent, not what the view
+         * holds now: an edit that landed while the save's dialog was open is
+         * not in the file, and stays unsaved. */
+        _writtenAs = (structure !== undefined) ? _asText(structure) : _heldNow();
+        _edited = (_writtenAs === null) || (_heldNow() !== _writtenAs);
         _rememberPanel();
+    }
+
+    /* THE DOOR THE PAGE HANDS ITS VIEWER (tabs.md § 6, one door out): the
+     * viewer's own Export -> Data -> Save to project writes through it, and a
+     * structure written to the project is recorded as Save to project's is.
+     * An image, or a download, records nothing. */
+    function savingThrough(files) {
+        if (!files || typeof files.save !== "function") return files;
+        return Object.assign({}, files, {
+            save: function (destination, stem, payload) {
+                return Promise.resolve(files.save(destination, stem, payload))
+                    .then(function (out) {
+                        if (out && out.ok && destination === "project"
+                                && payload && payload.structure) {
+                            markSavedTo(out.path, payload.structure);
+                        }
+                        return out;
+                    });
+            },
+        });
     }
 
     /* Which file is on the canvas -- or null when what is on it came from a
@@ -276,6 +380,10 @@
          * Cleared here because this is the one gate every generator and
          * the sidebar's own load come through. */
         _lastSavedTo = null;
+        /* ...AND WHAT IT HOLDS IS WRITTEN, or not: a file loaded is what the
+         * file holds; a generator's build, or an append, is held by no file. */
+        _writtenAs = path ? _heldNow() : null;
+        _edited = !path;
         _rememberPanel();
     }
 
@@ -288,7 +396,8 @@
         var structure = _model().getStructure();
         return {
             isEmpty:      structure === null,
-            isDirty:      !!_model().uncommitted,
+            // EDITED SINCE WRITTEN, the page's own note (tabs.md § 6).
+            isDirty:      _edited,
             structure:    structure,
             // The page's own note, not the viewer's: the viewer tracks contents,
             // not files (molview.md § 6.7).
@@ -307,9 +416,13 @@
     var api = {
         _bind:                      _bind,
         // The production door: the page hands over the viewer it mounted.
-        useViewer:                  function (viewer) { _viewer = viewer || null; },
+        useViewer:                  function (viewer) {
+            _viewer = viewer || null;
+            _followCanvas();
+        },
         loadIntoCanvas:             loadIntoCanvas,
         markDirtyAfterModification: markDirtyAfterModification,
+        savingThrough:              savingThrough,
         markSavedTo:                markSavedTo,
         markLoadedFrom:             markLoadedFrom,
         getLoadedFrom:              getLoadedFrom,
