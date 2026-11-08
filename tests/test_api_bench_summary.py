@@ -15,28 +15,15 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder import diagnostics
-
 pytest.importorskip("flask")
 
 
-def _set_picker_root(monkeypatch, tmp_path):
-    """Make ``tmp_path`` the only allowed picker root, so the endpoint's
-    ``_resolve_within_roots`` accepts paths inside it and nothing else."""
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-
-
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(isolated_projects_root):
+    """The app on the test's own projects tree, the one door pointed at it
+    (`isolated_projects_root`): the endpoint's ``_resolve_within_roots``
+    accepts paths inside it and nothing else."""
     from molbuilder.web.app import create_app
-    _set_picker_root(monkeypatch, tmp_path)
     app = create_app(config={})
     app.config.update(TESTING=True)
     return app.test_client()
@@ -57,15 +44,17 @@ def test_a_missing_path_argument_is_refused(client):
 #  What a person can hit by clicking the wrong file                     #
 # --------------------------------------------------------------------- #
 
-def test_a_file_that_is_not_there_is_a_404(client, tmp_path):
-    r = client.get(f"/api/bench/summary?path={tmp_path}/nope/job-set.json")
+def test_a_file_that_is_not_there_is_a_404(client, isolated_projects_root):
+    r = client.get(
+        f"/api/bench/summary?path={isolated_projects_root}/nope/job-set.json")
     assert r.status_code == 404
 
 
-def test_a_file_that_is_not_a_job_set_is_a_400_not_a_500(client, tmp_path):
+def test_a_file_that_is_not_a_job_set_is_a_400_not_a_500(
+        client, isolated_projects_root):
     """The picker lists whatever is on disk, so this is reachable by
     clicking -- it must read as a refusal, never as a crash."""
-    p = tmp_path / "job-set.json"
+    p = isolated_projects_root / "job-set.json"
     p.write_text('{"not": "a job set"}')
     r = client.get(f"/api/bench/summary?path={p}")
     assert r.status_code == 400, r.get_json()

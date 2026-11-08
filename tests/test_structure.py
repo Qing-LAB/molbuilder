@@ -9,6 +9,10 @@ from molbuilder.structure import Structure
 
 
 def test_to_pyscf_list_form(water_structure):
+    """The list `pyscf.gto.M` takes: each atom's element and its x, y, z, in
+    the structure's order.  THE SILENT FAILURE: two axes swapped -- the
+    PySCF program a continuation writes from it (`pyscf/input.py`) computes
+    another geometry, and no other test goes red (measured 2.67.11)."""
     s = water_structure
     py = s.to_pyscf()
     assert py == [
@@ -130,9 +134,6 @@ def test_pdb_round_trip_identity(water_structure):
 
 
 class TestStructureRegions:
-    def test_default_is_empty(self, water_structure):
-        assert water_structure.regions == {}
-
     def test_basic_assignment_round_trips(self):
         s = Structure(
             elements=["C", "C", "C", "C"],
@@ -180,9 +181,6 @@ class TestStructureRegions:
 
 
 class TestStructureFrozenAtoms:
-    def test_default_is_empty(self, water_structure):
-        assert water_structure.frozen_atoms == []
-
     def test_sorted_unique_normalisation(self):
         s = Structure(
             elements=["C"] * 4, positions=np.zeros((4, 3)),

@@ -192,31 +192,6 @@ def test_a_tags_id_is_stable_and_differs_from_the_next_tags():
 # One way in, and it does not read what it stores
 # ---------------------------------------------------------------------------
 
-def test_the_workspace_does_not_open_what_it_was_given():
-    """It cannot tell a molecule from a shopping list.
-
-    It once had two functions that opened your saved work to answer "is there a
-    molecule in here?" and "which file did it come from?". One got it wrong: a
-    molecule built from SMILES was never in a file, so it answered "nothing
-    saved" and the tab wiped work that was there. Both questions belong to
-    whoever wrote the bytes.
-    """
-    out = _run(
-        """
-        const notAMolecule = { v: 1, state: { shopping: ["milk", "bread"] } };
-        ws.persist("some-tag", notAMolecule,
-                   { workspace_id: ws.workspaceId("some-tag"), state_index: 0 });
-        await settle();
-        console.log(JSON.stringify({
-            back:    await readBack("some-tag", 0),
-        }));
-        """
-    )
-    assert out["back"] == {"v": 1, "state": {"shopping": ["milk", "bread"]}}, (
-        f"the workspace changed what it was handed: {out['back']}"
-    )
-
-
 def test_a_call_without_a_tag_is_refused_rather_than_defaulted():
     """A default would be worse than an error: every untagged caller would land
     in one shared place that looks exactly like a private one.
@@ -241,7 +216,10 @@ def test_a_call_without_a_tag_is_refused_rather_than_defaulted():
 
 def test_what_molview_saves_can_be_read_back():
     """The real MolView model against the real workspace: open a molecule, press
-    Save state, then ask for it back the way a reopening page does.
+    Save state, then ask for it back the way a reopening page does.  THE SILENT
+    FAILURE: a workspace that opens what it stores to judge it -- one that once
+    asked "which file did it come from?" answered "nothing saved" for a
+    molecule built from SMILES, and the tab wiped work that was there.
     """
     out = run_node(
         [],

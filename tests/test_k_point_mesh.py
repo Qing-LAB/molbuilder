@@ -19,7 +19,7 @@ Nothing here launches an engine: prep writes the decks and stops.
 """
 from __future__ import annotations
 
-from support.road import describe_calculation, jobset, set_by_the_person
+from support.road import described, jobset, road_tree, set_by_the_person
 
 
 def _mesh(deck: str, block: str = "kgrid_Monkhorst_Pack"):
@@ -46,11 +46,12 @@ def test_a_relaxation_samples_every_axis_by_its_kind(tmp_path, monkeypatch):
     the deck's meshes not handed to the settings gate (the report says
     nothing); the offset compared with 0 rather than read modulo 1 (1.0 is
     warned)."""
-    dest = describe_calculation(tmp_path, monkeypatch, stage_strategy="", structure={
+    dest = described(road_tree(tmp_path, monkeypatch, {
         "elements": ["H"] * 6,
         "positions": [[7.0, 7.0, 3.0 + 1.5 * i] for i in range(6)],
         "cell": [14.0, 14.0, 14.0],
-        "axis_kind": ["periodic", "isolated", "transport"]})
+        "axis_kind": ["periodic", "isolated", "transport"]}),
+        stage_strategy="")
     set_by_the_person(dest, {"kgrid": [2, 3, 1],
                              "kgrid_displacement": [0.0, 0.0, 1.0]})
     r = jobset("prep", "task", "--group", "1", "--bundle", dest,

@@ -19,7 +19,7 @@ creates no job**, which is what makes it safe to run in a loop while tuning.
 from __future__ import annotations
 
 from molbuilder.jobset.ask import Prediction, prediction_table
-from support.road import molbuilder
+from support.road import described, jobset, road_tree
 
 
 # --------------------------------------------------------------------- #
@@ -85,14 +85,6 @@ def test_the_table_does_not_rank_the_queues():
         assert word not in out.lower()
 
 
-def test_the_table_says_the_time_is_an_estimate_that_moves():
-    """A queue prediction is true of the queue as it was asked, and a person
-    who reads it as a promise will be surprised."""
-    out = prediction_table([Prediction(label="htc", start="2026-08-27T14:00")])
-    assert "ESTIMATE" in out or "estimate" in out
-    assert "moves" in out
-
-
 def test_the_table_names_the_next_move():
     """*Come back, tune it, ask again, or say I can live with that.* The
     loop only works if the table says how to re-enter it: the wall at this
@@ -105,32 +97,17 @@ def test_the_table_names_the_next_move():
 #  what `launch --mode ask` says, on the road a person takes             #
 # --------------------------------------------------------------------- #
 
-def _jobset(*args):
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args])
-
-
-def _a_prepped_stage(tree, monkeypatch, *stated):
+def _a_prepped_stage(tmp_path, monkeypatch, *stated):
     """One stage, described and prepared the way a person does it:
-    `molbuilder describe` on a structure in the projects tree, then `prep task
+    `molbuilder describe` on the road's H2 in the projects tree
+    (`support.road.described`, its run card left out), then `prep task
     --target this`, stating its launch values as flags (``stated``) -- a
     run states them or is refused (`architecture.md` § 5.2).  NO engine
     runs -- asking needs a prepared attempt and nothing more."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "h2.xyz").write_text(
-        "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tree.parent)
-    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
-                "--bundle", "P/optimization/H2", "--engine", "pyscf",
-                "--calculation", "optimization",
-                "--name", "H2")
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "optimization" / "H2"
-    r = _jobset("prep", "task", "--group", "1", "--bundle", bundle,
-                "--target", "this", *stated)
+    bundle = described(road_tree(tmp_path, monkeypatch, engine="pyscf"),
+                       engine="pyscf", execution=None)
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
+               "--target", "this", *stated)
     assert r.exit_code == 0, r.output
     attempt = bundle / "01_coarse" / "run-0"
     assert attempt.is_dir(), sorted(p.name for p in bundle.iterdir())
@@ -165,9 +142,9 @@ def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
 
     Contract: `execution/submission.md` S4, *Asking without sending* --
     `--mode ask` submits nothing, and on a machine with no queue there is
-    nothing to wait for, and it says so.  Driven through
-    `init` -> `prep` -> `launch`.  *(A real scheduler's answer is the field
-    tier's, `tests/field/test_ask_the_target.py`.)*
+    nothing to wait for, and it says so.  Driven through `molbuilder
+    describe` -> `prep` -> `launch`.  *(A real scheduler's answer is the
+    field tier's, `tests/field/test_ask_the_target.py`.)*
 
     MUTATION THIS MUST FAIL AGAINST: the ask recording the launch
     (`_record_launch`); the CLI's `would send:` preview printed without its
@@ -176,10 +153,10 @@ def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
     from molbuilder.runrecord import launch_record
 
     bundle, attempt = _a_prepped_stage(
-        tmp_path / "projects", monkeypatch, "--cpus-per-task", "1")
+        tmp_path, monkeypatch, "--cpus-per-task", "1")
     _no_scheduler_on_path(monkeypatch)
-    r = _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-                "--mode", "ask")
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
+               "--mode", "ask")
     assert r.exit_code == 0, r.output
     out = r.output
 

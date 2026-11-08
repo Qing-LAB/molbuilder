@@ -15,17 +15,12 @@ differ where the truth differs.
 from __future__ import annotations
 
 import re
-import subprocess
-import sys
 
 import pytest
 
-from molbuilder.deck_record import (BLOCK_PARAMETERS, BLOCK_USER_CUSTOM,
-                                    begin_marker, end_marker,
-                                    read_parameters_fence)
-from molbuilder.script_emit import parameter
-from support.road import (H2, describe_calculation, jobset, prep_groups,
-                          road_structure)
+from molbuilder.deck_record import BLOCK_USER_CUSTOM, end_marker
+from support.road import (H2, described, jobset, prep_groups, road_structure,
+                          road_tree, the_fence_holds)
 
 #: WHICH SETTINGS A STEP'S RECORD LISTS, by the calculation, the step and --
 #: for a point of a run of points -- the folder of the role it plays
@@ -50,8 +45,8 @@ FENCE_ROWS = [
 def _prepared(tmp_path, monkeypatch, calculation="optimization"):
     """The road's H2 described -- one stage, a relaxation -- and prepared: the
     calculation."""
-    bundle = describe_calculation(
-        tmp_path, monkeypatch, calculation=calculation, stage_strategy="")
+    bundle = described(road_tree(tmp_path, monkeypatch),
+                       calculation=calculation, stage_strategy="")
     prep_groups(bundle, "1")
     return bundle
 
@@ -78,41 +73,6 @@ def test_siesta_s_fence_states_the_step_s_items_and_the_deck_as_launched(
     Only this block runs, so no engine starts."""
     the_fence_holds(_prepared(tmp_path, monkeypatch, calculation), folder,
                     listed, never)
-
-
-def the_fence_holds(bundle, folder, listed, never) -> None:
-    """The block of ``folder``'s run script, run and read back, as the test
-    above says: its rows name ``listed`` and not ``never``."""
-    (script,) = (bundle / folder).glob("*.run.sh")
-    text = script.read_text()
-    begin = f'echo "{begin_marker(BLOCK_PARAMETERS)}"'
-    end = f'echo "{end_marker(BLOCK_PARAMETERS)}"'
-    block = text[text.index(begin):text.index(end) + len(end)]
-
-    def run():
-        return subprocess.run(
-            ["bash", "-c", f'_mb_py="{sys.executable}"\n'
-                           '_runwrap_log=/dev/null\n'
-                           '_log() { echo "$2" >&2; }\n' + block],
-            cwd=script.parent, capture_output=True, text=True,
-            check=True).stdout
-
-    out = run()
-    rows = {r["item"]: r for r in read_parameters_fence(out)}
-    assert listed in rows and never not in rows, sorted(rows)
-    assert rows[listed]["default"] == parameter(listed, "siesta").default
-    assert {(r["asked"], r["used"]) for r in rows.values()} == {(None, None)}
-    echoed = [ln for ln in out.splitlines() if ln.startswith("#   ")
-              and not ln.startswith(("#   [", "#   each row"))]
-    label = bundle.name
-    assert re.search(rf"^#   SystemLabel\s+{label}$", out, re.M), out
-    assert not [ln for ln in echoed if not ln[4:].strip()
-                or ln[4:].lstrip().startswith("#")], echoed
-    # AN EDIT AFTER PREP is what the engine reads, so it is what is echoed.
-    deck = script.parent / script.name.replace(".run.sh", ".fdf")
-    deck.write_text(re.sub(rf"^(SystemLabel\s+){label}$", r"\1edited",
-                           deck.read_text(), flags=re.M))
-    assert re.search(r"^#   SystemLabel\s+edited$", run(), re.M)
 
 
 # ------------------------------------------------- SIESTA's own check rules

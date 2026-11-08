@@ -25,8 +25,6 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
-from support.road import group_words
-from molbuilder.jobset._cli import describe_cmd
 
 CONDA_SH = conda_hook()
 
@@ -36,8 +34,6 @@ pytestmark = [
         not (CONDA_SH.is_file() and env_available("molbuilder-pySCF")),
         reason="needs the molbuilder-pySCF env + a detectable conda hook"),
 ]
-
-WATER = "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n"
 
 
 def _bundle_head(folder, *objects) -> str:
@@ -59,89 +55,23 @@ def _bundle_head(folder, *objects) -> str:
                       *emit_bundle_imports(*objects)])
 
 
-def _describe(tmp_path, monkeypatch, *, frozen=()):
-    """Create the calculation the way a user does: both citations read from
-    the projects root (`job-contracts.md` § 2.5b).  ``frozen`` holds atoms
-    still the way the viewer does -- as the structure's own region, written
-    into its pair by the codec -- never as a form field."""
-    from click.testing import CliRunner
-
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    if frozen:
-        from molbuilder.structure import Structure
-        from molbuilder.workingcopy_structure import StructureCodec
-        s = Structure.from_xyz(WATER)
-        s.frozen_atoms = list(frozen)
-        StructureCodec().write(s, tree / "P" / "structure" / "w.xyz")
-    else:
-        (tree / "P" / "structure" / "w.xyz").write_text(WATER)
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tmp_path)
-    r = CliRunner().invoke(describe_cmd, [
-        "--structure", "P/structure/w.xyz",
-        "--bundle", "P/frequency/V",
-        "--engine", "pyscf", "--calculation", "vibration", "--name", "W"])
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "frequency" / "V"
-    # How a shell enters conda HERE is this machine's record's to say -- and
-    # the run states its threads (`architecture.md` § 5.2).
-    from conftest import write_machine_record
-    write_machine_record(env_init={
-        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    from support.road import read_request, write_request
-    request = read_request(bundle)
-    request["execution"] = {**request.get("execution", {}), "threads": 1}
-    write_request(bundle, request)
-    return bundle
-
-
-def _asks(bundle, **values):
-    """The person's values in the calculation's template, through its one
-    door (`template.with_values_set`)."""
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.template import with_values_set
-    tpl = bundle / "W.template.toml"
-    tpl.write_text(with_values_set(tpl.read_text(), PySCFConfig,
-                                   calculation="vibration", values=values,
-                                   source="person"))
-
-
-def _prep_and_run(bundle):
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner().invoke(jobset_group,
-                           ["prep", "task", *group_words(bundle, "freq"),
-                            "--bundle", str(bundle)])
-    assert r.exit_code == 0, r.output
-    r = CliRunner().invoke(jobset_group,
-                           ["launch", "task", "--stage", "freq", "--bundle", str(bundle),
-                            "--mode", "direct", "--foreground", "--yes"])
-    assert r.exit_code == 0, r.output
-    art = bundle / "01_freq" / "run-0" / "W.spectra.json"
-    assert art.is_file(), "the artifact must land IN THE ATTEMPT DIR"
-    return json.loads(art.read_text())
-
-
 def _as_written(run):
-    """A shared run's calculation folder, and its result as the run wrote it."""
+    """A shared run's result, as the run wrote it."""
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
-    return run.bundle, json.loads(
+    return json.loads(
         on_label_at(run.attempt("freq"), ROLE_SPECTRA).read_text())
 
 
 @pytest.fixture(scope="module")
 def water(real_water_vibration):
     """Free water's vibration, Raman asked and infrared not, a converged SCF
-    asked to be told (`support.real_runs.water`): the bundle and its result."""
+    asked to be told (`support.real_runs.water`): its result."""
     return _as_written(real_water_vibration)
 
 
 def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
-        water, monkeypatch):
+        water, real_water_vibration, web_client, monkeypatch):
     """`engines/vibration.md` § 3.1, `web/spectra.md` § 3.2: a result whose
     run had Compute IR off carries no infrared, and the one door every
     reader asks (`spectra.infrared.infrared_view_of`, through
@@ -153,26 +83,20 @@ def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
     FAIL AGAINST: `no_charges_reason` not asking whether the run asked
     (`infrared.asked`)."""
     from molbuilder.postprocess import infrared_view
-    from molbuilder.projects import PROJECTS_ROOT_ENV, find_projects_root
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from molbuilder.spectra.infrared import InfraredError
-    from molbuilder.web.app import create_app
-    bundle, d = water
-    # THE LOAD DOOR'S FENCE: the result lies in the tree the server serves.
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(find_projects_root(bundle)))
+    from support.pages import spectra_served
+    d = water
     assert d["phase_ir"] == "not requested"
-    path = on_label_at(bundle / "01_freq" / "run-0", ROLE_SPECTRA)
+    path = on_label_at(real_water_vibration.attempt("freq"), ROLE_SPECTRA)
     with pytest.raises(InfraredError) as e:
         infrared_view(path)
     assert "Compute IR was off" in str(e.value), str(e.value)
     # ...and the load route: the result loads, its infrared said absent in
     # the same words, no view (`web/spectra.md` § 3.2).
-    r = create_app(config={}).test_client().post(
-        "/api/spectra/load", json={"path": str(path),
-                                   "infrared": {"direction": "z"}})
-    assert r.status_code == 200, r.get_json()
-    got = r.get_json()["results"]
+    got = spectra_served(web_client, monkeypatch, path,
+                         infrared={"direction": "z"})
     assert "Compute IR was off" in got.get("infrared_absent", ""), got
     assert "infrared" not in got, sorted(got)
     # ...and whether it was asked, read once for every surface of the page
@@ -180,7 +104,8 @@ def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
     assert got["infrared_asked"] is False, got
 
 
-def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
+def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
+        water, real_water_vibration):
     """The plain water run end to end, read back as its readers read it:
     each phase it asked complete and each it did not `not requested`
     (`engines/vibration.md` § 4.9); the relaxation converged and the file's
@@ -194,7 +119,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
     THE SILENT FAILURE: a result that loads and draws while its geometry is
     the input's, its headline thermochemistry a different sum from its
     curves, or its monitor judging a GPU a CPU run never held."""
-    bundle, d = water
+    d = water
 
     from molbuilder.spectra.results import SCHEMA_VERSION
     assert d["schema_version"] == SCHEMA_VERSION
@@ -247,9 +172,10 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
     # (`run-reports.md` § 2.3): how it ended in the Results tab's words,
     # the progress log's last step -- and the JOB's basis, a run started
     # directly being its process tree, a CPU run judged on no GPU (§ 2.1a).
-    from molbuilder.runfiles import compose
-    log = (bundle / "01_freq" / "run-0"
-           / compose("W", ".monitor.log", "01_freq")).read_text()
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at, run_of
+    attempt = real_water_vibration.attempt("freq")
+    log = run_of(attempt).file(".monitor.log").read_text()
     closing = [ln for ln in log.splitlines() if "[STATUS]" in ln][-1]
     assert "finished" in closing and "| step " in closing, closing
     # the force beside the stage's own tolerance, from the header the deck
@@ -278,8 +204,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
 
     # The Results door loads it -- the tab's half of the bar.
     from molbuilder.sidecars.spectra import parse_spectra_json
-    r = parse_spectra_json(str(bundle / "01_freq" / "run-0"
-                               / "W.spectra.json"))
+    r = parse_spectra_json(str(on_label_at(attempt, ROLE_SPECTRA)))
     assert r.engine == "pyscf" and len(r.modes) == 3
 
     # THE RESULT STATES EVERY ATOM'S MASS -- `chemistry.atomic_mass`'s, the
@@ -298,7 +223,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
 
 
 def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
-        water):
+        real_water_vibration):
     """A displacement sweep's question that needs modes over atoms of
     UNEQUAL mass (`engines/vibration.md` § 5.9): which mode of one stage is
     which mode of another.  Free water from the road -- three modes over an
@@ -325,9 +250,10 @@ def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
     from molbuilder.chemistry import atomic_mass
     from molbuilder.sidecars.spectra import parse_spectra_json
     from molbuilder.spectra.displacement_sweep import match_modes
-    bundle, _d = water
-    ref = parse_spectra_json(str(bundle / "01_freq" / "run-0"
-                                 / "W.spectra.json"))
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    ref = parse_spectra_json(str(on_label_at(
+        real_water_vibration.attempt("freq"), ROLE_SPECTRA)))
     m = ref.modes
     masses = [atomic_mass(ref.equilibrium_elements[i])
               for i in ref.free_atom_idxs]
@@ -363,7 +289,7 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(real_water_probed):
     enough for method/BLAS wiggle and narrow enough that a wrong
     prefactor (off by any structural factor) cannot pass."""
     # The defaults: infrared on, Raman off (`engines/vibration.md` § 3.1).
-    _bundle, d = _as_written(real_water_probed)
+    d = _as_written(real_water_probed)
     modes = sorted(d["modes"], key=lambda m: m["frequency_cm1"])
     ir = [m["ir_intensity_km_mol"] for m in modes]
     assert all(v is not None for v in ir), "IR-only must fill every mode"
@@ -410,8 +336,18 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(real_water_probed):
     assert d["raman_route"] == "none" and d["raman_fd_step_ang"] is None
 
 
-def test_water_in_water_runs_the_solvated_chain_end_to_end(
-        tmp_path, monkeypatch):
+@pytest.fixture(scope="module")
+def solvated(tmp_path_factory):
+    """Water in water, by the one maker of a water vibration
+    (`support.real_runs.water_vibration`): water as the solvent, and IR OFF
+    (it defaults on) -- Raman stays off, its default: the one route PCM
+    reaches (`engines/vibration.md` § 4.6)."""
+    from support.real_runs import water_vibration
+    return water_vibration(tmp_path_factory, "solvated",
+                           settings={"solvent": "water", "compute_ir": False})
+
+
+def test_water_in_water_runs_the_solvated_chain_end_to_end(solvated, water):
     """The solvated run on the route PCM reaches (`engines/vibration.md`
     § 4.6, its PCM box): PCM water, the relaxation
     and the Hessian under one solvated Hamiltonian -- PySCF's analytic
@@ -423,18 +359,18 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     gas windows widen; what is being proven is the solvated run completing
     with real numbers, plus the solvated deck actually differing from gas
     (the solvent and its dielectric are in the deck).  The frequencies'
-    windows hold gas water's too: nothing here measures that the energy is
-    the solvated one."""
-    bundle = _describe(tmp_path, monkeypatch)
-    # Water as the solvent, and IR OFF (it defaults on) -- Raman stays off,
-    # its default: the one route PCM reaches (`engines/vibration.md` § 4.6).
-    _asks(bundle, solvent="water", compute_ir=False)
+    windows hold gas water's too, so what only the applied solvent changes
+    is read from the two results: the solvated run's enthalpy below the gas
+    run's (:func:`water`, the same method) by more than 3 mEh (2 kcal/mol)
+    -- the continuum's stabilisation of water is several kcal/mol (measured
+    2.67.11: 9.4 mEh, the regime RRHO in both).
 
-    d = _prep_and_run(bundle)
-    # The deck is born in its STAGE directory (L1, roadmap 7.10).  Bound
-    # AFTER the prep: the file does not exist before.
-    deck = bundle / "01_freq" / "W_01_freq.py"
-    text = deck.read_text()
+    THE SILENT FAILURE: a solvated deck that never applies its solvent --
+    the solvent and its dielectric still in its text, the run gas water."""
+    from support.road import stage_file
+    d = _as_written(solvated)
+    # The deck the stage's prep wrote, by the one composer's names.
+    text = stage_file(solvated.bundle, "freq", ".py").read_text()
     assert "mf = mf.PCM()" in text or "_mb_apply_solvent" in text
     assert "78.3553" in text, "the water dielectric never reached the deck"
 
@@ -448,6 +384,11 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     assert all(m["ir_intensity_km_mol"] is None for m in modes)
     assert d["thermo"]["grid"]["temperatures_K"], "thermo grid missing"
     assert d["raman_route"] == "none"
+    gas = water
+    assert d["thermo"]["regime"] == gas["thermo"]["regime"], (
+        d["thermo"]["regime"], gas["thermo"]["regime"])
+    assert d["thermo"]["h_eh"] < gas["thermo"]["h_eh"] - 3e-3, (
+        d["thermo"]["h_eh"], gas["thermo"]["h_eh"])
 
 
 def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
@@ -591,6 +532,7 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
 
 
 def test_water_with_its_oxygen_held_reports_three_vibrations(real_water_held,
+                                                             web_client,
                                                              monkeypatch):
     """The demonstrator (`science/normal-modes.md` § 7, the water row with
     O held; `engines/vibration.md` § 4.4, § 4.7): hold water's oxygen
@@ -606,9 +548,7 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(real_water_held,
     # INFRARED ON -- the default -- so the held molecule's column is read
     # along the light (`engines/vibration.md` § 4.6): finite-difference
     # dipoles, the held route's, twelve small SCFs.
-    bundle, d = _as_written(real_water_held)
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_water_held.tree))
+    d = _as_written(real_water_held)
 
     # THE HELD ATOMS are the structure's own label (schema 9).
     from molbuilder.structure import Structure
@@ -643,7 +583,7 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(real_water_held,
     # THE RUN SCRIPT'S BANNER states the held atoms as prep read them from
     # the deck's own record (`execution/running-a-job.md` § 1 row 11, § 4.1):
     # one held here.  Read by its label, the padding the banner's own.
-    attempt = bundle / "01_freq" / "run-0"
+    attempt = real_water_held.attempt("freq")
     import re
     from molbuilder.runs import run_of
     wrap_log = run_of(attempt).session_log
@@ -659,15 +599,12 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(real_water_held,
     # Asked of the load door as the page asks it, the result's own path.
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
-    from molbuilder.web.app import create_app
+    from support.pages import spectra_served
     result = on_label_at(attempt, ROLE_SPECTRA)
-    web = create_app(config={}).test_client()
     along = {}
     for axis in "xyz":
-        reply = web.post("/api/spectra/load", json={
-            "path": str(result), "infrared": {"direction": axis}})
-        assert reply.status_code == 200, reply.get_json()
-        got = reply.get_json()["results"]
+        got = spectra_served(web_client, monkeypatch, result,
+                             infrared={"direction": axis})
         assert (got["infrared_source"], got["infrared_orientation"]) == \
             ("dipole", "held"), got.get("infrared_said")
         along[axis] = [m["intensity_km_mol"]
@@ -749,9 +686,9 @@ def test_the_listed_modes_get_the_probe_and_no_other(real_water_probed):
     MUTATION THIS MUST FAIL AGAINST: the deck's constant written as
     `list(cfg.es_explicit_indices)`.
     """
-    bundle, d = _as_written(real_water_probed)
+    d = _as_written(real_water_probed)
     from molbuilder.runs import run_of
-    out = run_of(bundle / "01_freq" / "run-0").stdout
+    out = run_of(real_water_probed.attempt("freq")).stdout
     said = out.read_text(errors="replace")
     assert "no mode numbered [9]" in said, said[-3000:]
     assert d["phase_es"] == "complete", d["phase_es"]

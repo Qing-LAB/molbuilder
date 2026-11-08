@@ -12,18 +12,19 @@ import pytest
 
 pytest.importorskip("flask")
 
-from molbuilder import diagnostics
-
 
 @pytest.fixture
-def client_project(tmp_path, monkeypatch):
-    monkeypatch.setattr(diagnostics.Capabilities, "file_picker_roots",
-                        lambda self: ((tmp_path, "projects"),))
-    # The state routes file under projects_root(); isolate it to tmp.
+def client_project(isolated_projects_root, monkeypatch):
+    """The state routes file under ``projects_root()``, the one door, here
+    pointed at the test's own tree (`isolated_projects_root`).  The suite
+    moves every other test's store aside (`conftest._isolated_workspace_store`
+    rebinds the blueprint's ``projects_root``); this file's subject is where
+    the store lies under the tree, so the blueprint asks the door again."""
     import molbuilder.web.blueprints.workspace_storage as wsbp
-    monkeypatch.setattr(wsbp, "projects_root", lambda: tmp_path)
+    from molbuilder.projects import projects_root
+    monkeypatch.setattr(wsbp, "projects_root", projects_root)
     from molbuilder.web.app import create_app
-    return create_app(config={}).test_client(), tmp_path
+    return create_app(config={}).test_client(), isolated_projects_root
 
 
 def _json(r):

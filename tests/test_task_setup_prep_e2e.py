@@ -35,17 +35,15 @@ import re
 
 import pytest
 
-pytestmark = pytest.mark.e2e
-
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
 from pathlib import Path
 
 from playwright.sync_api import expect
-from support.road import (H2, _road_changed, describe_calculation,
-                          ladder_edited, read_request, stage_file,
-                          write_request)
+from support.road import (H2, described, description_with_overrides,
+                          ladder_edited, read_request, road_tree, save_both,
+                          stage_file, write_request)
 from support.sidebar import committed, walk_to
 from support.task_setup_page import (edited_by_hand, file_text, machine,
                                      page_free, picked_by_the_page,
@@ -83,16 +81,18 @@ def _described_h2(root, name, *, engine="siesta", **stages):
     through Task setup's Save.  Its folder.  The tree may be a module's, so
     describing moves nothing for the test."""
     with pytest.MonkeyPatch.context() as local:
-        d = describe_calculation(root.parents[1], local, name=name,
-                                 engine=engine, structure=_FREE_H2,
-                                 stage_strategy="",
-                                 bundle=f"{root.name}/optimization/{name}")
+        d = described(road_tree(root.parents[1], local, _FREE_H2,
+                                engine=engine),
+                      f"{root.name}/optimization/{name}",
+                      name=name, engine=engine, stage_strategy="")
     coarse = stages.pop("coarse", None)
     if stages:
         assert ladder_edited({"added": [{"name": n, "overrides": o}
                                         for n, o in stages.items()]}, d)
     if coarse:
-        assert _road_changed({"changed": {"overrides": {"coarse": coarse}}}, d)
+        saved = save_both(d, description_with_overrides(d, {"coarse": coarse}),
+                          read_request(d))
+        assert saved.status_code == 200, saved.get_json()
     return d
 
 

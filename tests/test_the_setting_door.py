@@ -182,20 +182,27 @@ def test_the_one_default_is_the_kinds_then_the_items():
     assert default_of(_item("mpi_np"), "optimization") is None
 
 
-def _request(stages_card=None, card=None):
-    """A job request for the one-stage optimization of
-    ``test_job_request_allocation``, with the calculation's card ``card``
-    and the stage's ``stages_card``."""
-    from molbuilder.job_request import SCHEMA, from_dict
-    from test_job_request_allocation import _DESCRIPTION
-    entry = {"group": 1, **({"execution": stages_card}
-                            if stages_card is not None else {})}
-    return from_dict({"schema": SCHEMA, "stages": {"coarse": entry},
-                      **({"execution": card} if card is not None else {})},
-                     _DESCRIPTION)
+def _request(tmp_path, monkeypatch, stages_card=None, card=None):
+    """The job request of a SIESTA optimization `molbuilder describe` wrote
+    (`support.road.described`), in a folder of its own, its calculation's
+    card ``card`` and its `coarse` stage's ``stages_card`` written in as a
+    person writes them, read by its door beside the description
+    (`calculation.open`)."""
+    from molbuilder.calculation import open as open_calculation
+    from support.road import (a_new_folder, described, read_request,
+                              road_tree, write_request)
+    tree = road_tree(tmp_path, monkeypatch)
+    calc = described(tree, a_new_folder(tree, "optimization"), name="JOB",
+                     execution=card)
+    if stages_card is not None:
+        request = read_request(calc)
+        request["stages"]["coarse"]["execution"] = stages_card
+        write_request(calc, request)
+    return open_calculation(calc).request
 
 
-def test_a_stages_unset_gpu_count_runs_that_stage_on_no_gpu():
+def test_a_stages_unset_gpu_count_runs_that_stage_on_no_gpu(tmp_path,
+                                                          monkeypatch):
     """`job-request.md` § 3.2: a rung's ``null`` leaves an optional item
     unset on that rung, over the calculation's card -- a calculation-wide
     GPU card and a rung's ``"use_gpu": false, "gpu_count": null`` run that
@@ -204,7 +211,8 @@ def test_a_stages_unset_gpu_count_runs_that_stage_on_no_gpu():
     MUTATION THIS MUST FAIL AGAINST: the launch shape read without the
     door (``int(None)``, the traceback the 2.27.0 review found)."""
     from molbuilder.resolve import card_settings, declared_run_shape
-    request = _request({"use_gpu": False, "gpu_count": None},
+    request = _request(tmp_path, monkeypatch,
+                       {"use_gpu": False, "gpu_count": None},
                        {"use_gpu": True, "gpu_count": 2, "mpi_np": 4})
     assert declared_run_shape(request, "coarse") == {"mpi_np": 4}
     assert card_settings(request, "coarse")["use_gpu"] == (False,
@@ -212,14 +220,15 @@ def test_a_stages_unset_gpu_count_runs_that_stage_on_no_gpu():
     assert declared_run_shape(request) == {"mpi_np": 4, "gres": "gpu:2"}
 
 
-def test_a_cards_wall_is_spelled_as_the_allocations():
+def test_a_cards_wall_is_spelled_as_the_allocations(tmp_path, monkeypatch):
     """`job-request.md` § 3.2a: a card's ``time`` is read through the
     allocation's door and held in SLURM's spelling; a ``null`` wall or
     queue is refused, naming the key -- left out, the allocation's is used.
 
     MUTATIONS THIS MUST FAIL AGAINST: the card's wall stored as typed; a
     ``null`` wall passed through (it erased the allocation's at the fold)."""
-    request = _request({"time": "4h"}, {"domain": "public"})
+    request = _request(tmp_path, monkeypatch, {"time": "4h"},
+                       {"domain": "public"})
     assert request.stages["coarse"].execution["time"] == "0-04:00:00"
     assert request.to_dict()["stages"]["coarse"]["execution"]["time"] \
         == "0-04:00:00"
@@ -227,7 +236,7 @@ def test_a_cards_wall_is_spelled_as_the_allocations():
                        ({"domain": None}, "'domain' is a queue's name"),
                        ({"time": "soon"}, "time: 'soon' is not a duration")):
         with pytest.raises(ValueError) as e:
-            _request(card)
+            _request(tmp_path, monkeypatch, card)
         assert "stages 'coarse' execution" in str(e.value), e.value
         assert said in str(e.value), e.value
 

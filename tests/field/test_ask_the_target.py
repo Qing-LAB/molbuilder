@@ -75,13 +75,11 @@ def test_ask_reads_the_targets_answer_and_submits_nothing(tmp_path,
         machine_scope_path())
 
     # A held H2, its wall and memory stated, sent to the record's first queue.
-    from support.road import describe_calculation, jobset
+    from support.road import described, jobset, road_tree
     queue = env.domains[0].name
-    bundle = describe_calculation(tmp_path, monkeypatch)
-    from support.road import read_request, write_request
-    req = read_request(bundle)
-    req["allocation"] = {"domain": queue, "time": "0-00:05:00", "mem": "1G"}
-    write_request(bundle, req)
+    bundle = described(road_tree(tmp_path, monkeypatch),
+                       allocation={"domain": queue, "time": "0-00:05:00",
+                                   "mem": "1G"})
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output

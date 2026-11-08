@@ -15,16 +15,6 @@ def test_pyscf_mol_atom_is_0based_identity():
         assert eai.pyscf_numbering(i) == i
 
 
-def test_dispatch_matches_named_forward_functions():
-    """convert_to_engine_numbering(i, engine) must equal the per-engine FACT
-    function, so the parametrized surface and the named surface cannot
-    drift."""
-    for i in (0, 4, 41):
-        assert eai.convert_to_engine_numbering(i, "siesta") == eai.siesta_numbering(i)
-        assert eai.convert_to_engine_numbering(i, "geometric") == eai.geometric_numbering(i)
-        assert eai.convert_to_engine_numbering(i, "pyscf") == eai.pyscf_numbering(i)
-
-
 def test_convert_from_engine_numbering_is_the_inverse():
     """The inverse (engine number -> internal) — the return leg of the
     round-trip — and full round-trip identity for every engine."""

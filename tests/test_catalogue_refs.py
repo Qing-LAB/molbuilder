@@ -28,6 +28,7 @@ def test_every_catalogue_ref_resolves_in_the_bib():
 
 def test_a_resolved_citation_carries_what_a_person_needs():
     """The form shows title + a findable locator -- pin the resolver's
-    shape on a stable entry."""
+    shape on a stable entry.  THE SILENT FAILURE: the form's citation shown
+    without its DOI, which no other test sees (measured 2.67.11)."""
     c = citation_for("Sun2020")
     assert c and c["title"] and c["doi"], c

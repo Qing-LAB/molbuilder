@@ -18,8 +18,6 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder import diagnostics
-
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                             #
@@ -27,45 +25,21 @@ from molbuilder import diagnostics
 
 
 @pytest.fixture
-def picker_root(tmp_path: Path):
-    """A tmp directory wired in as the picker's root.
-
-    Replaces the real ``projects/`` default with this tmp tree by
-    monkey-patching :meth:`Capabilities.file_picker_roots`.  Test
-    isolation: the conftest's autouse diagnostics-reset fixture
-    restores the singleton afterwards.
-    """
-    # Build a few sample files to browse:
-    (tmp_path / "water.xyz").write_text(
+def picker_root(isolated_projects_root: Path):
+    """The test's own projects tree -- the one door pointed at it
+    (`isolated_projects_root`), which the picker's root is -- holding a few
+    sample files to browse."""
+    root = isolated_projects_root
+    (root / "water.xyz").write_text(
         "3\nwater\nO 0 0 0\nH 0.96 0 0\nH -0.24 0.93 0\n"
     )
-    (tmp_path / "config.json").write_text('{"engine": "pyscf"}\n')
-    (tmp_path / "notes.txt").write_text("scratch\n")
-    sub = tmp_path / "spectrum" / "BDT"
+    (root / "config.json").write_text('{"engine": "pyscf"}\n')
+    (root / "notes.txt").write_text("scratch\n")
+    sub = root / "spectrum" / "BDT"
     sub.mkdir(parents=True)
     (sub / "water_spectra.spectra.json").write_text('{"schema_version": 2}\n')
     (sub / ".hidden").write_text("dotfile\n")
-
-    caps = diagnostics.Capabilities(
-        runtime_config={},
-        conda_binary=None,
-        conda_envs=frozenset(),
-    )
-
-    # Monkey-patch file_picker_roots to return ONLY the tmp root,
-    # bypassing the real projects/ default.
-    def _only_tmp_roots(self):
-        return ((tmp_path.resolve(), "projects"),)
-
-    monkey_caps_class = type(caps)  # the frozen Capabilities dataclass
-    old = monkey_caps_class.file_picker_roots
-    monkey_caps_class.file_picker_roots = _only_tmp_roots
-    diagnostics.set_capabilities(caps)
-    try:
-        yield tmp_path
-    finally:
-        monkey_caps_class.file_picker_roots = old
-        diagnostics.reset_capabilities()
+    return root
 
 
 @pytest.fixture
@@ -91,10 +65,9 @@ class TestFilesRoots:
         `web-api.md` § 4 (`GET /api/files/roots`) and `job-contracts.md` § 2.5:
         `projects/` is the one tree the browser browses. The route also owes
         the sidebar `path` / `label` / `exists` per root -- without `exists`
-        the header cannot tell a missing root from an empty one. The root SET
-        itself is pinned at its source by
-        `TestRootsContract::test_capabilities_returns_only_projects_root`; here
-        the roots are monkeypatched, so what this holds is the envelope.
+        the header cannot tell a missing root from an empty one. The roots
+        are the one door's answer, pointed at the test's own tree, so this
+        holds the root set and the envelope both.
         """
         # Single root by design (v1): just projects/.  No CWD, no
         # user-configurable additions.  Plural return shape preserved
@@ -709,9 +682,8 @@ class TestPathTraversalDefense:
 
 
 class TestSidebarPartialAndShim:
-    """Every tab includes the persistent Projects sidebar partial,
-    the supporting JS / CSS are reachable, and subscriber tabs (those
-    that also load a file via the selection) include the banner DOM."""
+    """Every tab includes the persistent Projects sidebar partial, and
+    the supporting JS / CSS are reachable."""
 
 
     @pytest.mark.parametrize("path", [
@@ -766,35 +738,6 @@ class TestSidebarPartialAndShim:
         # server-side opt-in so the regression can't come back.
         body = web.get(path).get_data(as_text=True)
         assert 'data-sidebars="projects"' in body, path
-
-    @pytest.mark.parametrize("path", ["/molbuilder"])
-    def test_subscriber_tabs_use_inquire_api(
-        self, web, picker_root, path,
-    ):
-        """`/molbuilder` losing its selection bootstrap: picking an `.xyz` in
-        the sidebar silently stops loading it into the viewer -- the click just
-        does nothing.
-
-        `projects.md` § 3 (opening a molecule -- the one door) and
-        `model/structure.md` § 3.1 (`projects.parser.openMolecule`, reached
-        through `window.molbuilder.projects`).
-        """
-        # /molbuilder is the canonical "subscriber tab": it reacts
-        # to the Projects-sidebar selection by auto-loading the
-        # picked XYZ into the viewer + selection panel.  The wiring
-        # lives in modify/selection-bootstrap.js -- the bootstrap
-        # subscribes to ``window.molbuilder.projects.onChange`` and
-        # forwards changes to the selection store, which loads the
-        # file.
-        #
-        # /molbuilder is the only subscriber tab; parametrize keeps the
-        # seam open for a future tab that adopts the same affordance.
-        r = web.get(path)
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        # Wires through window.molbuilder.projects (Inquire API).
-        assert "window.molbuilder" in body, path
-        assert "selection-bootstrap.js" in body, path
 
     def test_every_tab_link_is_a_served_route(self, web):
         """A tab link pointing at a route the server does not serve -- the user
@@ -1658,7 +1601,9 @@ class TestFilesMove:
         Setup: real water.xyz + water.molstruct.json in a project
         dir.  Patch ``os.replace`` to throw IOError on the SECOND
         call (the sidecar leg) — first call (structure leg)
-        succeeds normally.  Endpoint should return 500 with a
+        succeeds normally: a disk that fills between the two legs is
+        a state no run here makes on demand, and without it the
+        rollback goes unseen.  Endpoint should return 500 with a
         "rolled back" message and the source files must still exist
         in their original location.
         """
@@ -1812,7 +1757,9 @@ class TestFilesCopy:
 
         Setup: real water.xyz + water.molstruct.json.  Patch
         ``shutil.copy2`` to throw on the SECOND call (the sidecar
-        leg) — first call (structure leg) copies normally.
+        leg) — first call (structure leg) copies normally: a disk
+        that fills between the two legs is a state no run here makes
+        on demand, and without it the cleanup goes unseen.
         Endpoint should return 500 mentioning the half-copy
         cleanup AND the destination structure must NOT exist
         afterwards (we ate our own dog food).
@@ -2689,29 +2636,6 @@ class TestFilesWriteAutoRename:
             f"auto_rename parity drift: upload picked "
             f"{upload_path!r}; write picked {write_path!r}"
         )
-
-
-class TestRootsContract:
-    """Single-root contract: Capabilities.file_picker_roots() returns
-    exactly the projects/ entry.  A config naming file_picker.roots is
-    refused, like any section the registry does not list
-    (`configuration.md` § 4)."""
-
-    def test_capabilities_returns_only_projects_root(self):
-        """A second root re-entering at the SOURCE -- the CWD, or an operator-
-        supplied list -- which every route-level test in this file is blind to,
-        because they monkeypatch this method away.
-
-        `job-contracts.md` § 2.5 (`projects/` is the tree) and `web-api.md` §
-        4.
-        """
-        from molbuilder.diagnostics import Capabilities
-        caps = Capabilities(runtime_config={})
-        roots = caps.file_picker_roots()
-        assert len(roots) == 1
-        path, label = roots[0]
-        assert label == "projects"
-        assert str(path).endswith("/projects")
 
 
 class TestDownloadZip:

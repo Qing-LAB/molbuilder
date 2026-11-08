@@ -231,16 +231,17 @@ def checkpoint_config(tmp_path, monkeypatch):
 def point_the_one_door_at(root, setenv) -> "Path":
     """Point ``projects_root()`` at the projects tree under *root*, made if
     it is not there, and return it. THE implementation: both fixture scopes
-    below, the road's `describe_calculation` and `described_and_prepared`,
-    and the real runs' trees (`support.real_runs.road_at`) call this -- it
+    below, the road's tree (`support.road.road_tree`) and the real runs'
+    trees (`support.real_runs.road_at`) call this -- it
     lives here, beside the two fixtures that are its first callers, where
     `support/` already reaches this file for `write_pseudos` and
     `write_machine_record`.  A test pointing it at a real run's tree calls
     ``point_the_one_door_at(run.tree.parent, monkeypatch.setenv)`` -- the
-    call that run's tree was made by -- and at a tree of its own,
-    ``point_the_one_door_at(tmp_path, monkeypatch.setenv)``.  A test that
-    sets ``PROJECTS_ROOT_ENV`` itself spells the same act a second way; those
-    sites are the sweep plan F9 owes, not a second door.
+    call that run's tree was made by; a test wanting a tree of its own
+    requests :func:`isolated_projects_root` (or its module-scoped sibling)
+    rather than calling this in its body.  Only a test
+    whose subject is how the root is resolved sets ``PROJECTS_ROOT_ENV``
+    itself: `test_projects.py` and `test_psml_anchor.py`.
 
     ``file_picker_roots()`` calls ``projects_root()`` at CALL time and nothing
     caches the answer, so setting the variable is all it takes -- a live
@@ -581,9 +582,11 @@ def the_suite_leaves_your_environments_alone():
             f"  changed: {changed}\n"
             "Some test reached the real env manager -- most likely by faking "
             "it for part of a path and not the rest, or by binding a fake on "
-            "`Capabilities` where the code re-detects.  Record the fake as "
-            "`envs.manager` in an isolated config dir instead; see "
-            "`tests/test_envs_install._recording_manager`.")
+            "`Capabilities` where the code re-detects.  Record the fake -- a "
+            "script that writes down each call -- as `envs.manager` in an "
+            "isolated config dir instead, as `tests/test_envs_install.py`'s "
+            "`test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM` "
+            "does.")
 
 
 @pytest.fixture(scope="session", autouse=True)

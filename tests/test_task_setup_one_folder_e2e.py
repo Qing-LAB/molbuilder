@@ -23,13 +23,11 @@ from __future__ import annotations
 
 import pytest
 
-from support.road import (describe_calculation, ladder_edited, read_request,
+from support.road import (described, ladder_edited, read_request, road_tree,
                           write_request)
 from support.sidebar import WAIT_MS, committed, walk_to
 from support.task_setup_page import (every_card_text, picked_by_the_page,
                                      task_setup_on, unfold, wait_for_file)
-
-pytestmark = pytest.mark.e2e
 
 
 def _describe(root, name, label, stage):
@@ -41,9 +39,10 @@ def _describe(root, name, label, stage):
     filenames, and the stage leads the per-stage rows.
     """
     with pytest.MonkeyPatch.context() as local:
-        dest = describe_calculation(root.parents[1], local, name=label,
-                                    engine="pyscf", stage_strategy="",
-                                    bundle=f"{root.name}/optimization/{name}")
+        dest = described(road_tree(root.parents[1], local, engine="pyscf"),
+                         f"{root.name}/optimization/{name}",
+                         name=label, engine="pyscf",
+                         stage_strategy="")
     assert ladder_edited({"removed": ["coarse"], "added": [{"name": stage}]},
                          dest)
     return dest

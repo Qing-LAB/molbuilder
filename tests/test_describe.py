@@ -22,8 +22,8 @@ import pytest
 from molbuilder.calculation import open as open_calculation
 from molbuilder.task import Stage, of as task_of
 from molbuilder.template import read_template
-from support.road import (STRUCTURE, _all_written, describe_calculation,
-                          molbuilder)
+from support.road import (STRUCTURE, all_written, described, molbuilder,
+                          road_tree)
 
 
 def _typed(**flags):
@@ -51,7 +51,7 @@ def test_describing_writes_the_description_and_its_request_and_no_deck(
     description, its job request (`execution/job-request.md` § 9: a
     calculation's folder holds both, § 7) and the data files -- the structure
     as its own pair, the pseudopotentials."""
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     assert sorted(p.name for p in bundle.iterdir()) == [
         "H.psml", "H2.source.molstruct.json", "H2.source.xyz",
         "H2.template.toml", "job-request.json", "task.json"]
@@ -68,7 +68,7 @@ def test_the_description_names_no_machine(tmp_path, monkeypatch):
     valueless again (2.27.x's slot, which migrate's refusal by content and
     its move by version disagreed about)."""
     from molbuilder.template import catalogue, is_run_setting, one
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     raw = tomllib.loads(open_calculation(bundle).template_text)
     held = [n for n in raw["item"]
             if is_run_setting(one(catalogue(), n, engine="siesta"))]
@@ -91,7 +91,7 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
     The structure FILE is ``structure.xyz`` and the label ``JOB``: init named
     the pair after the file until 2026-10-04 (plan D20)."""
     from molbuilder.workingcopy_structure import StructureCodec
-    describe_calculation(tmp_path, monkeypatch)
+    described(road_tree(tmp_path, monkeypatch))
     r = _typed(vacuum=8)
     assert r.exit_code == 0, r.output
     calc = tmp_path / "projects" / "P" / "optimization" / "JOB"
@@ -110,8 +110,8 @@ def test_every_description_states_its_kind(tmp_path, monkeypatch, calculation):
     warm-file vocabulary, and every description states it, an
     optimization's included (`job-contracts.md` § 6.1; W57 R10, 2026-10-06
     -- an optimization's was left out until then)."""
-    bundle = describe_calculation(tmp_path, monkeypatch,
-                                  calculation=calculation)
+    bundle = described(road_tree(tmp_path, monkeypatch),
+                       calculation=calculation)
     raw = json.loads((bundle / "task.json").read_text())
     assert raw["calculation"] == calculation
     assert task_of(bundle).calculation == calculation
@@ -120,7 +120,7 @@ def test_every_description_states_its_kind(tmp_path, monkeypatch, calculation):
 def test_a_ladder_becomes_stages_and_varies(tmp_path, monkeypatch):
     """`--stage-strategy` names a shipped ladder: its tiers are the stages,
     and what they set is what the description varies (`stages.md` § 6.5)."""
-    task = task_of(describe_calculation(tmp_path, monkeypatch))
+    task = task_of(described(road_tree(tmp_path, monkeypatch)))
     assert [s.name for s in task.stages] == ["coarse", "medium"]
     assert "relax_type" in task.varies
 
@@ -129,8 +129,8 @@ def test_the_label_and_the_id_derive_from_the_name(tmp_path, monkeypatch):
     """§ 3 rule 1: it happens once.  The label is not stored and the id is,
     and ``Task.__post_init__`` proves the two against each other — so a
     description that got here has already been checked."""
-    task = task_of(describe_calculation(tmp_path, monkeypatch,
-                                        name="bdt-relax"))
+    task = task_of(described(road_tree(tmp_path, monkeypatch),
+                             name="bdt-relax"))
     assert task.label == "bdt-relax"
     assert task.run.id == "bdt-relax_H2"
 
@@ -195,12 +195,12 @@ def test_describe_refuses_saying_why_and_writes_nothing(tmp_path, monkeypatch,
     happens while nothing has been written: every file and folder of the tree
     is as it was."""
     tree = tmp_path / "projects"
-    describe_calculation(tmp_path, monkeypatch)
-    was = _all_written(tree), set(tree.rglob("*"))
+    described(road_tree(tmp_path, monkeypatch))
+    was = all_written(tree), set(tree.rglob("*"))
     r = _typed(**flags)
     assert r.exit_code != 0, r.output
     assert words in r.output, r.output
-    assert (_all_written(tree), set(tree.rglob("*"))) == was
+    assert (all_written(tree), set(tree.rglob("*"))) == was
 
 
 def test_describes_own_check_refuses_a_stage_the_schema_does_not_know(
@@ -214,7 +214,7 @@ def test_describes_own_check_refuses_a_stage_the_schema_does_not_know(
     THE SILENT FAILURE: a shipped preset misspelt, described and found at
     prep, on the cluster."""
     tree = tmp_path / "projects"
-    describe_calculation(tmp_path, monkeypatch)
+    described(road_tree(tmp_path, monkeypatch))
     _a_ladder_of(monkeypatch, mesh_cutof=300.0)
     r = _typed(**{"stage-strategy": "publishable"})
     assert r.exit_code != 0, r.output
@@ -227,7 +227,7 @@ def test_a_value_outside_its_recommended_range_describes_and_says_so(
     """A value merely outside the recommended range describes, the
     description's own check saying it, which the command prints
     (`engines/template.md` § 5.3): advice, never a refusal."""
-    describe_calculation(tmp_path, monkeypatch)
+    described(road_tree(tmp_path, monkeypatch))
     _a_ladder_of(monkeypatch, mesh_cutoff=1e9)
     r = _typed(**{"stage-strategy": "publishable"})
     assert r.exit_code == 0, r.output
@@ -242,7 +242,7 @@ def test_a_failure_while_writing_publishes_nothing(tmp_path, monkeypatch):
     merely never failing.
     """
     tree = tmp_path / "projects"
-    describe_calculation(tmp_path, monkeypatch)
+    described(road_tree(tmp_path, monkeypatch))
 
     def fails(*_a, **_k):
         raise OSError("the disk filled")
@@ -273,7 +273,7 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
     click demanded.  One fact, one door: the click check is gone and the
     resolver decides, so the bare spelling works from any directory."""
     from molbuilder.template import one
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     # The road stands above the tree: ./pseudopotential does NOT exist here,
     # which is exactly the papercut's shape.
     assert not Path("pseudopotential").exists()
@@ -300,8 +300,9 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     SIESTA one run in phases, the relaxation a phase of it, switched by the
     box.  No engine runs: `init` describes."""
     from molbuilder.template import catalogue, recommended_for, select
-    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
-                                  calculation="vibration", name="V")
+    bundle = described(road_tree(tmp_path, monkeypatch, engine=engine),
+                       name="V", calculation="vibration",
+                       engine=engine)
     assert [s.name for s in task_of(bundle).stages] == ladder
 
     written = {it.name: it for it in select(read_template(

@@ -26,16 +26,13 @@ pytest.importorskip("flask")
 
 
 @pytest.fixture
-def web(tmp_path, monkeypatch):
-    from molbuilder import diagnostics
+def web(isolated_projects_root):
     from molbuilder.web.app import create_app
 
-    # Point the picker roots at the tmp dir so a save-as target resolves within a root.
-    caps = diagnostics.get_capabilities()
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
+    # The test's own projects tree, the one door pointed at it, so a save-as
+    # target resolves within it.
     client = create_app(config={}).test_client()
-    client._root = tmp_path
+    client._root = isolated_projects_root
     return client
 
 

@@ -18,9 +18,8 @@ sequence and its address); a sequence sent under no header prep wrote.
 
 import pytest
 
-from support.road import (a_machine_with_queues, calls_made,
-                          describe_calculation, jobset, read_request,
-                          write_request)
+from support.road import (a_machine_with_queues, calls_made, described, jobset,
+                          read_request, road_tree, write_request)
 
 
 def _queues():
@@ -47,7 +46,7 @@ def cluster(tmp_path, monkeypatch):
     """The H2 ladder -- `coarse`, group 1; `medium`, group 2, building on
     it -- on the two-queue machine: ``(bundle, calls)``."""
     calls = a_machine_with_queues(tmp_path, monkeypatch, _queues())
-    return describe_calculation(tmp_path, monkeypatch), calls
+    return described(road_tree(tmp_path, monkeypatch)), calls
 
 
 def _header_value(header, name):

@@ -183,8 +183,8 @@ def app_at(isolated_projects_root_module):
 @pytest.fixture
 def calculation(tmp_path, monkeypatch):
     """A calculation as `molbuilder describe` wrote it."""
-    from support.road import describe_calculation
-    return describe_calculation(tmp_path, monkeypatch)
+    from support.road import described, road_tree
+    return described(road_tree(tmp_path, monkeypatch))
 
 
 @pytest.fixture

@@ -126,14 +126,14 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
 
     MUTATION THIS MUST FAIL AGAINST: take the LAST fatal line as the cause.
     """
+    from conftest import point_the_one_door_at
     from molbuilder.parse.engines.siesta_grammar import (CAUSE_WORDS,
                                                          SCF_NOT_CONV_MARKER)
-    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.web.app import create_app
 
     # THE PROJECTS TREE THE RUN WAS MADE IN, the one door pointed at it, so
     # the route reads it.
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_h2_stopped.tree))
+    point_the_one_door_at(real_h2_stopped.tree.parent, monkeypatch.setenv)
     app = create_app(config={})
     from molbuilder.runs import run_of
     out = run_of(stopped).stdout
@@ -223,7 +223,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     """
     import shutil
 
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from support.live_server import serve
     from support.real_runs import CANNOT_CONVERGE
     from support.sidebar import reload_from, results_on, walk_to
@@ -232,7 +232,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     # the server's (`support.live_server.serve`).
     root = real_h2_stopped.tree
     bundle = real_h2_stopped.bundle
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+    point_the_one_door_at(root.parent, monkeypatch.setenv)
     with serve() as base:
         results_on(page, base, stopped)
         panel = page.locator("#results-run-panel")

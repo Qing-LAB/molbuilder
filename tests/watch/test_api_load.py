@@ -16,37 +16,13 @@ from molbuilder.web.app import create_app
 
 
 @pytest.fixture
-def client(tmp_path):
-    """Flask test client with ``tmp_path`` injected as the picker root.
+def client(isolated_projects_root):
+    """Flask test client on the test's own projects tree, the one door
+    pointed at it (`isolated_projects_root`).
 
     2026-06-18 security hotfix (audit B1) routes /api/watch/load
     through ``_resolve_within_roots``, which constrains the JSON-path
-    mode to the configured picker roots (default: ``<cwd>/projects``).
-    These tests want to point /api/watch/load at fixture files under
-    ``tmp_path``, so we inject the tmp directory as the sole picker
-    root for the duration of the test.  The conftest-level
-    ``_reset_caps_each_test`` autouse fixture resets after each test.
-    """
-    from molbuilder import diagnostics
-    from molbuilder.diagnostics import Capabilities
-
-    class _TmpRootCaps(Capabilities):
-        def file_picker_roots(self):  # type: ignore[override]
-            return ((tmp_path.resolve(), "test-tmp"),)
-
-    # ``create_app`` calls ``_initialize_diagnostics()`` which
-    # OVERWRITES any previously-set capabilities, so we must inject
-    # AFTER it runs.  Order-dependent — pin it here.
-    app = create_app(config={})
-    diagnostics.set_capabilities(_TmpRootCaps())
-    return app.test_client()
-
-
-@pytest.fixture
-def client_with_default_roots():
-    """Test client that does NOT inject tmp_path — used by the
-    security regression to verify the default deployment (projects/
-    only) rejects an out-of-root path.
+    mode to the projects tree, so these tests' files lie in it.
     """
     return create_app(config={}).test_client()
 
@@ -56,8 +32,9 @@ def client_with_default_roots():
 # --------------------------------------------------------------------- #
 
 
-def test_load_by_json_path_missing_file(client, tmp_path):
-    r = client.post("/api/watch/load", json={"path": str(tmp_path / "nope.out")})
+def test_load_by_json_path_missing_file(client, isolated_projects_root):
+    r = client.post("/api/watch/load",
+                    json={"path": str(isolated_projects_root / "nope.out")})
     body = r.get_json()
     assert r.status_code == 404
     assert body["ok"] is False
@@ -100,12 +77,14 @@ def test_load_by_multipart_unrecognised_format(client):
 # --------------------------------------------------------------------- #
 
 
-def test_load_directory_empty_returns_chain_error(client, tmp_path):
+def test_load_directory_empty_returns_chain_error(client,
+                                                  isolated_projects_root):
     """A directory no calculation claims returns a 404 whose error message
     says why nothing opens: it holds no run of ours, so none of its files is
     opened on its own (`model/parse.md` § 5.0)."""
     from molbuilder.runs import NOT_MARKED
-    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    r = client.post("/api/watch/load",
+                    json={"path": str(isolated_projects_root)})
     body = r.get_json()
     assert r.status_code == 404
     assert body["ok"] is False
@@ -120,7 +99,7 @@ def test_load_directory_empty_returns_chain_error(client, tmp_path):
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_format_names_the_engine_not_the_parser_that_read_it(
-        client, tmp_path, engine):
+        client, isolated_projects_root, engine):
     """A `.molwatch.log` is read by the parser named `molwatch` whatever
     wrote it — and the wire must still say which ENGINE ran.
 
@@ -147,7 +126,7 @@ def test_format_names_the_engine_not_the_parser_that_read_it(
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]))
-    log = tmp_path / "probe.molwatch.log"
+    log = isolated_projects_root / "probe.molwatch.log"
     # THE PRODUCTION WRITER, with the engine as its own parameter -- the
     # same door SIESTA's parser-on-stdout path and the PySCF emitter use.
     write_initial_preview(struct, log, job="probe", engine=engine)

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from support.road import describe_calculation, read_request, run_road_case
+from support.road import described, read_request, road_tree, run_road_case
 
 TABLE = tomllib.loads(
     (Path(__file__).parent / "data" / "restart_files.toml").read_text())
@@ -47,7 +47,7 @@ def test_the_page_says_which_list_the_calculation_follows(own, tmp_path,
     import json
     from molbuilder.warmfiles import FILENAME, warm_list
     from molbuilder.web.app import create_app
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     if own:
         (bundle / FILENAME).write_text(
             Path(warm_list("siesta").path).read_text())

@@ -40,13 +40,12 @@ def _served(app):
 
 
 @pytest.fixture
-def tree(tmp_path, monkeypatch):
-    """The projects tree the app serves -- with a file, a folder and a
-    link to the folder outside it -- and, beside it, a folder outside it
-    holding a file."""
-    from molbuilder.diagnostics import reset_capabilities
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    root = tmp_path / "projects"
+def tree(isolated_projects_root, tmp_path):
+    """The projects tree the app serves, the one door pointed at it
+    (`isolated_projects_root`) -- with a file, a folder and a link to the
+    folder outside it -- and, beside it, a folder outside it holding a
+    file."""
+    root = isolated_projects_root
     inside = root / "P" / "here"
     # A CALCULATION'S FOLDER, three levels in, where a door that writes a
     # calculation is pointed -- so it reaches the path it is probed with.
@@ -56,10 +55,7 @@ def tree(tmp_path, monkeypatch):
     outside.mkdir()
     (outside / "loot.txt").write_text("loot\n")
     (inside / "out").symlink_to(outside, target_is_directory=True)
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
-    reset_capabilities()
-    yield {"root": root, "inside": inside, "outside": outside}
-    reset_capabilities()
+    return {"root": root, "inside": inside, "outside": outside}
 
 
 def _client():

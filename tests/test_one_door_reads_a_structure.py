@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from support.road import describe_calculation, jobset, stage_file
+from support.road import described, jobset, road_tree, stage_file
 
 
 #: Two H2 molecules: the first carries a region, the second is held.  An
@@ -68,8 +68,7 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     from molbuilder.runs import declared, run_of
     from molbuilder.task import of as task_of
 
-    bundle = describe_calculation(tmp_path, monkeypatch, name="H4",
-                                  structure=H4)
+    bundle = described(road_tree(tmp_path, monkeypatch, H4), name="H4")
     # The launch shape is its run card's (`architecture.md` § 5.2); how a
     # shell enters an environment is the machine record's.
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,

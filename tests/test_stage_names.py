@@ -24,7 +24,7 @@ import re
 
 import pytest
 
-from support.road import describe_calculation, group_words, jobset
+from support.road import described, group_words, jobset, road_tree
 
 
 @pytest.mark.parametrize("engine,calculation", [
@@ -47,8 +47,9 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
     from molbuilder.jobset import ledger
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
-    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
-                                  calculation=calculation, stage_strategy="")
+    bundle = described(road_tree(tmp_path, monkeypatch, engine=engine),
+                       calculation=calculation, engine=engine,
+                       stage_strategy="")
     task = task_of(bundle)
     stage = task.stages[0].name
     r = jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle,

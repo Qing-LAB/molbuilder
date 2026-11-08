@@ -275,21 +275,6 @@ class TestCanvasGate:
         assert out["loads"] == 0, out
 
 
-class TestConfigurationErrors:
-
-    def test_generate_rejects_when_structurePage_unconfigured(self):
-        """No load door configured, and none on the page: the call rejects,
-        naming the slot."""
-        out = _run('''
-            let rejected = false, msg = "";
-            try { await smiles.generate("CCO"); }
-            catch (e) { rejected = true; msg = e.message; }
-            console.log(JSON.stringify({rejected, msg}));
-        ''')
-        assert out["rejected"] is True
-        assert "structurePage" in out["msg"]
-
-
 # ----- What each panel asks the server --------------------------- #
 
 

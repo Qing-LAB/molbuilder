@@ -21,8 +21,8 @@ prep`'s (`support.road`).  The rules a road row holds:
 from __future__ import annotations
 
 from conftest import write_pseudos
-from support.road import (CO2, H2, STRUCTURE, describe_calculation,
-                          group_words, jobset, molbuilder, one_rank, stage_file)
+from support.road import (CO2, H2, described, group_words, jobset, road_tree,
+                          stage_file)
 
 
 def _prep(calc, stage="coarse"):
@@ -37,20 +37,15 @@ def _with_its_files_beside_it(tmp_path, monkeypatch, *, structure=H2,
     """`molbuilder describe` into a folder that already holds its
     pseudopotentials, as a person leaves them there first (`job-system.md`
     § 5.1: covered by *that folder or `--psml-lib`*) -- naming ``library``, the
-    one holding only what it holds, or none.  The tree is the road's; the
-    description's folder, its run card stated."""
-    describe_calculation(tmp_path, monkeypatch, structure=structure)
-    folder = tmp_path / "projects" / "P" / "optimization" / "calc"
-    folder.mkdir()
+    one holding only what it holds, or none.  The tree is the road's, the
+    calculation the one maker's, one rank."""
+    tree = road_tree(tmp_path, monkeypatch, structure)
+    folder = tree / "P" / "optimization" / "calc"
+    folder.mkdir(parents=True)
     write_pseudos(folder, sorted(set(structure["elements"])))
-    r = molbuilder("describe", "--structure", STRUCTURE,
-                   "--bundle", "P/optimization/calc", "--engine", "siesta",
-                   "--calculation", "optimization", "--name", "calc",
-                   "--stage-strategy", "publishable",
-                   *(("--psml-lib", library) if library else ()))
-    assert r.exit_code == 0, r.output
-    one_rank(folder)
-    return folder
+    return described(tree, "P/optimization/calc", name="calc",
+                     psml_lib=library,
+                     execution={"mpi_np": 1, "omp_threads": 1})
 
 
 # --------------------------------------------------------------------- #
@@ -111,7 +106,7 @@ def test_what_a_stage_was_prepared_with_leaves_run_settings_to_its_card(
     start from the beginning."""
     from molbuilder.jobset.prepared_with import read
     from molbuilder.template import run_settings
-    calc = describe_calculation(tmp_path, monkeypatch)
+    calc = described(road_tree(tmp_path, monkeypatch))
     _prep(calc)
     (settings,) = [v["settings"] for k, v in read(calc).items()
                    if k == "coarse"]
@@ -128,7 +123,7 @@ def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(
     older plan lacks, so every current plan is "given" it, rewritten and
     kept beside a copy, on every run."""
     from molbuilder.jobset.migrate import CURRENT
-    calc = describe_calculation(tmp_path, monkeypatch)
+    calc = described(road_tree(tmp_path, monkeypatch))
     _prep(calc)
     before = sorted(p.relative_to(calc) for p in calc.rglob("*") if p.is_file())
     r = jobset("migrate", "--bundle", calc)
@@ -145,7 +140,7 @@ def test_a_template_that_does_not_read_is_refused_by_migrate(tmp_path,
     unchanged and no way on said, as a retired word left by hand in a template
     of today's shape ended in."""
     from molbuilder.calculation import open as open_calculation
-    calc = describe_calculation(tmp_path, monkeypatch)
+    calc = described(road_tree(tmp_path, monkeypatch))
     template = open_calculation(calc).template.path
     text = template.read_text()
     item = "[item.spin_treatment]\n"

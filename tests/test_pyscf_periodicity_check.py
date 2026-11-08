@@ -30,7 +30,6 @@ import pytest
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
-from molbuilder.jobset._cli import describe_cmd
 
 
 WHERE = "cell.periodic_in_gas_phase"
@@ -128,39 +127,24 @@ def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
     MUTATIONS THIS MUST FAIL AGAINST: the door answering the structure's
     kinds for PySCF (the deck counts periodic axes); the Methods count or the
     note reading the structure's kinds (six modes; no note)."""
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.workingcopy_structure import StructureCodec
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
+    from support.road import described, jobset, road_tree
     water = Structure(
         elements=["O", "H", "H"],
         positions=np.array([[5.0, 5.0, 5.119], [5.0, 5.757, 4.523],
                             [5.0, 4.243, 4.523]]),
         cell=np.eye(3) * 10.0, axis_kind=("periodic",) * 3,
         frozen_atoms=[0])
-    StructureCodec().write(water, tree / "P" / "structure" / "w.xyz")
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tmp_path)
-    run = CliRunner()
-    r = run.invoke(describe_cmd, [
-        "--structure", "P/structure/w.xyz", "--bundle",
-        "P/spectrum/V", "--engine", "pyscf",
-        "--calculation", "vibration", "--name", "W"])
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "spectrum" / "V"
     # THE RUN CARD STATES THE THREADS, as a described calculation does
-    # (`architecture.md` § 5.2); how a shell enters an environment is the
-    # machine record's (`configuration.md` § 5 M-1).
+    # (`architecture.md` § 5.2; the road's card, `support.road.described`);
+    # how a shell enters an environment is the machine record's
+    # (`configuration.md` § 5 M-1).
+    bundle = described(road_tree(tmp_path, monkeypatch, water,
+                                 engine="pyscf"),
+                       "P/spectrum/V", name="W", calculation="vibration",
+                       engine="pyscf")
     from molbuilder.task import of as task_of
-    from support.road import read_request, stage_file, write_request
-    request = read_request(bundle)
-    request["execution"] = {"threads": 1}
-    write_request(bundle, request)
-    r = run.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
-                                  str(bundle)])
+    from support.road import stage_file
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle)
     assert r.exit_code == 0, r.output
     assert f"[{WHERE}]" in r.output, r.output
     deck = stage_file(bundle, task_of(bundle).stages[0].name,
@@ -196,8 +180,8 @@ def test_a_gas_phase_script_hears_no_advice_about_a_box_it_does_not_use():
     atoms = dict(elements=["O", "H", "H"],
                  positions=np.array([[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
                                      [0.0, -0.757, -0.477]]))
-    from test_engine_offset_reaches_every_deck import _assigned
-    _typed, outside = _assigned([-0.5, -1.0, -1.0])
+    from support.road import water_with_an_assigned_origin
+    _typed, outside = water_with_an_assigned_origin([-0.5, -1.0, -1.0])
     # A tight box (the geometry's measure of the images), a typed box beside
     # a vacuum it makes inert (the one checker's note) -- advice, SIESTA's
     # alone -- and an assigned origin that leaves an atom outside, the

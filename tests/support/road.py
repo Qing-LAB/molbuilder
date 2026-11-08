@@ -13,9 +13,14 @@ from the road it imitates.  The steps live here once.
 * :func:`jobset` -- the verbs, as a person types them;
 * :func:`each_is_taken` -- every command an output prints, typed back as
   printed (`job-system.md` § 5.3: what molbuilder prints, you can type);
-* :func:`describe_calculation` -- `molbuilder describe` of a held H2 in a box, or
-  the structure a row gives, SIESTA, the shipped `publishable` ladder
-  (coarse, medium);
+* :func:`road_tree` -- the tree a test describes in: the one door pointed,
+  a held H2 in a box, or the structure a row gives, saved there
+  (:func:`structure_saved`), its pseudopotentials beside it;
+* :func:`described` -- THE ONE MAKER of a calculation on the road:
+  `molbuilder describe` in a tree already pointed at, SIESTA's shipped
+  `publishable` ladder (coarse, medium) unless told another, every block of
+  its job request stated -- its run card the road's (:data:`RUN_CARD`)
+  unless its caller states one;
 * :func:`ladder_edited` -- a description's ladder edited through Task
   setup's Save, as the page edits it;
 * :func:`set_by_the_person` -- a calculation's template items changed as a
@@ -157,6 +162,31 @@ def road_structure(s):
         engine_offset=s.get("engine_offset"))
 
 
+def water_in_vacuum():
+    """Water drawn at the origin, its box sized by 8 Å of vacuum each way --
+    a ``Structure``, closed shell, as a molecule that states no cell comes;
+    a new one each call."""
+    from molbuilder.structure import Structure
+    return Structure(elements=["O", "H", "H"],
+                     positions=np.array([[0.0, 0.0, 0.0], [0.757, 0.586, 0.0],
+                                         [-0.757, 0.586, 0.0]]),
+                     vacuum=(8.0, 8.0, 8.0))
+
+
+def water_with_an_assigned_origin(corner):
+    """Water in a typed 10 Å box, and the same with its origin assigned at
+    ``corner`` through the Cell page's own op (`periodicity_gate.apply_edit`,
+    ``box_corner``): ``(typed, assigned)``."""
+    from molbuilder.periodicity_gate import apply_edit
+    from molbuilder.structure import Structure
+    typed = Structure(elements=["O", "H", "H"],
+                      positions=np.array([[0.0, 0.0, 0.0], [0.757, 0.586, 0.0],
+                                          [-0.757, 0.586, 0.0]]),
+                      cell=np.eye(3) * 10.0, axis_kind=("isolated",) * 3)
+    out, _ = apply_edit(typed, "box_corner", list(corner))
+    return typed, out
+
+
 def co2_in_engine_order():
     """The road's CO2 as a SIESTA vibration's decks hold it: sorted by its
     decks' order (`transport.sort.sort_by`, `kind_table.atom_order`), its
@@ -167,79 +197,116 @@ def co2_in_engine_order():
                    atom_order("vibration", "siesta")).structure
 
 
-def describe_calculation(tmp_path, monkeypatch, *, name: str = "H2",
-                         calculation: str = "optimization",
-                         engine: str = "siesta",
-                         structure=None,
-                         stage_strategy: "str | None" = None,
-                         bundle: "str | None" = None,
-                         bias: str = "0", frames: int = 1,
-                         refused: bool = False) -> Path:
-    """`molbuilder describe` on ``structure`` -- :data:`H2` unless given
-    (:func:`road_structure`: its ``elements``, ``positions`` (Å), ``regions``
-    (``frozen_atoms`` among them), its box's three edges, ``cell`` (Å), and
-    each axis's ``axis_kind`` (isolated unless given)) -- the bundle, at
-    ``<projects>/P/<calculation>/<name>`` unless ``bundle`` names another
-    folder from the projects root (a second calculation in one tree takes a
-    name or a folder of its own): a SIESTA optimization's shipped
-    `publishable` ladder, unless ``stage_strategy`` names another (``""``
-    for the one stage the template alone describes), or a vibration's own
-    (`freq`).
-
-    A TRANSPORT CALCULATION CITES ``structure``, the pair a real relaxation
-    was saved as (`support.real_runs`, `engines/transport.md` § 3.1), at
-    ``bias`` (volts, as `--bias` takes them; several say
-    `--no-low-bias-approximation`), ``frames`` frames, each moving its bridge
-    as a frame set's must.
-
-    ITS RUN CARD STATES THE LAUNCH SHAPE -- two ranks and one thread for
-    SIESTA, one thread for PySCF -- in its job request, as a described
-    calculation does: a run whose shape is stated nowhere is refused at prep
-    (`architecture.md` § 5.2).  A test about that refusal takes the card
-    away.
-
-    ``refused`` expects describe to refuse, and returns what it said."""
-    from conftest import point_the_one_door_at, write_pseudos
+def structure_saved(tree: Path, structure=None, *, frames: int = 1) -> str:
+    """``structure`` -- :data:`H2` unless given (:func:`road_structure`) --
+    saved in the projects tree ``tree`` as a pair, through the codec, at
+    :data:`STRUCTURE`: what `molbuilder describe` takes, and the path it
+    takes it by (returned).  ``frames`` > 1 saves it as a frame set, each
+    frame moving its bridge (`transport.sort.REGION_BRIDGE`), as a frame set
+    a transport calculation cites must.  A tree's structure is the one its
+    last call saved; a calculation described from it holds its own copy."""
     from molbuilder.workingcopy_structure import StructureCodec
-    tree = point_the_one_door_at(tmp_path, monkeypatch.setenv)
-    (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-    (tree / "pseudopotential").mkdir(exist_ok=True)
-    transport = calculation == "transport"
     s = road_structure(H2 if structure is None else structure)
-    siesta = engine == "siesta"
-    if siesta:
-        write_pseudos(tree / "pseudopotential", sorted(set(s.elements)))
-    if transport:
+    if frames > 1:
         from molbuilder.transport.sort import REGION_BRIDGE
-        if frames > 1:
-            moved = [s.positions.copy() for _ in range(frames)]
-            for i, at in enumerate(moved):
-                at[s.regions[REGION_BRIDGE]] += 0.01 * i
-            s = s.with_frames(moved)
+        moved = [s.positions.copy() for _ in range(frames)]
+        for i, at in enumerate(moved):
+            at[s.regions[REGION_BRIDGE]] += 0.01 * i
+        s = s.with_frames(moved)
+    (tree / STRUCTURE).parent.mkdir(parents=True, exist_ok=True)
     StructureCodec().write(s, tree / STRUCTURE)
+    return STRUCTURE
+
+
+def road_tree(tmp_path, monkeypatch, structure=None, *,
+              engine: str = "siesta", frames: int = 1) -> Path:
+    """THE TREE A TEST DESCRIBES IN, set up in one step: the one door
+    pointed at ``tmp_path``'s projects tree (`conftest.point_the_one_door_at`),
+    ``structure`` saved there (:func:`structure_saved`, ``frames`` its
+    frames), for a SIESTA ``engine`` the pseudopotentials of its elements in
+    the tree's library (`conftest.write_pseudos`) -- a PySCF calculation
+    reads none, and its structure may hold an element the suite has no file
+    for -- and the working folder beside the tree.  Returns the tree, for
+    :func:`described`.  A real run's tree is set up by
+    `support.real_runs.road_at`, the engine on the road."""
+    from conftest import point_the_one_door_at, write_pseudos
+    tree = point_the_one_door_at(tmp_path, monkeypatch.setenv)
+    (tree / "pseudopotential").mkdir(exist_ok=True)
+    structure_saved(tree, structure, frames=frames)
+    if engine == "siesta":
+        write_pseudos(tree / "pseudopotential", sorted(set(road_structure(
+            H2 if structure is None else structure).elements)))
     monkeypatch.chdir(tree.parent)
+    return tree
+
+
+#: THE ROAD'S RUN CARD, by engine: two ranks and one thread for SIESTA, one
+#: thread for PySCF -- the launch shape :func:`described` states in a
+#: calculation's job request unless its caller states another.  A run whose
+#: shape is stated nowhere is refused at prep (`architecture.md` § 5.2).
+RUN_CARD = {"siesta": {"mpi_np": 2, "omp_threads": 1},
+            "pyscf": {"threads": 1}}
+
+
+def described(tree: Path, bundle: "str | None" = None, *, name: str = "H2",
+              calculation: str = "optimization", engine: str = "siesta",
+              structure: str = STRUCTURE,
+              stage_strategy: "str | None" = None, bias: str = "0",
+              psml_lib: "str | None" = "pseudopotential",
+              refused: bool = False, **blocks):
+    """THE ONE MAKER OF A CALCULATION ON THE ROAD: `molbuilder describe`, in
+    the projects tree ``tree`` the one door already points at, of the
+    structure saved there (``structure``, the path from the projects root
+    `describe` takes, :func:`structure_saved`'s by default) -- its folder
+    ``bundle`` from the projects root, ``P/<calculation>/<name>`` unless
+    given (a second calculation in one tree takes a name or a folder of its
+    own); for SIESTA, the pseudopotentials from the library ``psml_lib``
+    names under the projects root -- the tree's own unless told another,
+    ``None`` naming none (a calculation whose files lie beside it, or one
+    that cites a run, which takes its library from that run).  Its
+    ladder: a SIESTA optimization's shipped `publishable` one, unless
+    ``stage_strategy`` names another (``""``: the one stage the template
+    alone describes, as `describe` writes it told none); any other kind's
+    own (a vibration's `freq`).  A TRANSPORT CALCULATION CITES the
+    structure (`engines/transport.md` § 3.1) at ``bias`` (volts, as
+    `--bias` takes them; several say `--no-low-bias-approximation`).
+
+    THEN THE JOB REQUEST'S BLOCKS, EACH STATED: ``blocks`` as given -- the
+    run card (``execution``), the allocation, the benchmark, what the
+    calculation tells -- ``None`` leaving that block out; and the run card,
+    unless given, the road's own (:data:`RUN_CARD`).  Returns the
+    calculation's folder; with ``refused``, what `describe` said refusing.
+
+    THE SILENT FAILURE: a launch shape a maker states by habit -- a test
+    moved from one maker of calculations to another ran on another rank
+    count, and nothing it asserts said so."""
+    told = (("--slot", f"junction={structure}", "--bias", bias,
+             *(("--no-low-bias-approximation",) if "," in bias else ()))
+            if calculation == "transport" else ("--structure", structure))
     strategy = (stage_strategy if stage_strategy is not None
-                else "publishable" if calculation == "optimization" and siesta
+                else "publishable"
+                if calculation == "optimization" and engine == "siesta"
                 else "")
     where = bundle or f"P/{calculation}/{name}"
-    told = (("--slot", f"junction={STRUCTURE}", "--bias", bias,
-             *(("--no-low-bias-approximation",) if "," in bias else ()))
-            if transport else ("--structure", STRUCTURE))
-    r = molbuilder("describe", *told,
-               "--bundle", where, "--engine", engine,
-               "--name", name, "--calculation", calculation,
-               *(("--stage-strategy", strategy) if strategy else ()),
-               *(("--psml-lib", "pseudopotential") if siesta else ()))
+    r = molbuilder("describe", *told, "--bundle", where, "--engine", engine,
+                   "--name", name, "--calculation", calculation,
+                   *(("--stage-strategy", strategy) if strategy else ()),
+                   *(("--psml-lib", psml_lib)
+                     if engine == "siesta" and psml_lib is not None else ()))
     if refused:
         assert r.exit_code != 0, r.output
         return r.output
     assert r.exit_code == 0, r.output
-    described = tree / where
-    request = read_request(described)
-    request.setdefault("execution", {"mpi_np": 2, "omp_threads": 1} if siesta
-                       else {"threads": 1})
-    write_request(described, request)
-    return described
+    folder = tree / where
+    request = read_request(folder)
+    blocks.setdefault("execution", dict(RUN_CARD[engine]))
+    for block, value in blocks.items():
+        if value is None:
+            request.pop(block, None)
+        else:
+            request[block] = value
+    write_request(folder, request)
+    return folder
 
 
 def prep_groups(calculation: Path, *groups) -> None:
@@ -258,6 +325,16 @@ def a_new_folder(tree: Path, under: str) -> str:
     return f"P/{under}/JOB{1 + sum(1 for _ in held)}"
 
 
+def fresh_calc_dir(root: Path) -> Path:
+    """An empty folder for a calculation under the projects root ``root``
+    -- the picker refuses anything outside it -- made:
+    ``<root>/handover/optimization/probe_calc``, for a hand-over or a Save
+    to write into."""
+    d = root / "handover/optimization/probe_calc"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
                            calculation="optimization", template=None,
                            overrides=None, hand_edit=None, refused=False):
@@ -271,17 +348,15 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
 
     ``refused`` expects the step that refuses -- Save, for ``overrides``, else
     prep -- and returns what it said in place of the deck."""
-    from conftest import point_the_one_door_at
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
     # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
     # live in the sidecar, and a bare `.xyz` would hand prep a molecule in the
     # default box -- a different structure from the one described.
-    dest = describe_calculation(
-        tmp_path, monkeypatch, name="JOB", structure=struct, engine=engine,
+    tree = road_tree(tmp_path, monkeypatch, struct, engine=engine)
+    dest = described(
+        tree, a_new_folder(tree, calculation), name="JOB", engine=engine,
         calculation=calculation,
-        bundle=a_new_folder(point_the_one_door_at(tmp_path, monkeypatch.setenv),
-                            calculation),
         stage_strategy="publishable" if calculation == "optimization" else None)
     stage = task_of(dest).stages[0].name
     if template:
@@ -290,7 +365,7 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
         hand_edit(dest)
     if overrides:
         saved = save_both(dest,
-                          _description_with_overrides(dest, {stage: overrides}),
+                          description_with_overrides(dest, {stage: overrides}),
                           read_request(dest))
         if refused:
             assert saved.status_code == 400, saved.get_json()
@@ -341,7 +416,7 @@ def prepared_here(tmp_path, monkeypatch, activation: str,
                   name: str = "H2here", calculation: str = "optimization",
                   stage: str = "coarse", engine: str = "siesta"):
     """An H2 calculation on ``engine`` prepared for this machine
-    (:func:`describe_calculation`), whose record says a shell enters its
+    (:func:`described`), whose record says a shell enters its
     environment with ``activation`` -- the line its run script runs once
     its session log is open, before anything else -- its ``stage``'s group
     prepared: ``(the calculation, the stage's run's folder, the stage's
@@ -354,8 +429,8 @@ def prepared_here(tmp_path, monkeypatch, activation: str,
         monkeypatch.delenv(var, raising=False)
     write_machine_record(env_init={"activation": activation,
                                    "preamble": "true"})
-    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
-                                  calculation=calculation, name=name)
+    bundle = described(road_tree(tmp_path, monkeypatch, engine=engine),
+                       engine=engine, calculation=calculation, name=name)
     r = jobset("prep", "task", *group_words(bundle, stage),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
@@ -430,6 +505,27 @@ def declare_bench(calculation: Path, axes: dict) -> None:
     request = read_request(calculation)
     request["bench"] = axes
     write_request(calculation, request)
+
+
+def one_stage_h2(tmp_path, monkeypatch):
+    """The description a job request is read beside (`job-request.md`
+    § 3), and the request written with it -- the road's H2 as `molbuilder
+    describe` writes it (:func:`described`), the one stage its template
+    alone describes, no run card: ``.task``, ``.request``."""
+    from types import SimpleNamespace
+
+    from molbuilder.task import of as task_of
+    bundle = described(road_tree(tmp_path, monkeypatch), stage_strategy="",
+                       execution=None)
+    return SimpleNamespace(task=task_of(bundle), request=read_request(bundle))
+
+
+def request_with(h2, **blocks):
+    """A job request for :func:`one_stage_h2`'s description, ``blocks``
+    over the request written with it, as a person adds them -- read by the
+    job request's reader (`job_request.from_dict`)."""
+    from molbuilder.job_request import from_dict
+    return from_dict({**h2.request, **blocks}, h2.task)
 
 
 def save_both(bundle: Path, task: dict, request: dict, client=None):
@@ -616,7 +712,7 @@ def calls_made(calls: Path):
 # typed as the group each is in;
 # `calculation` -- the kind `molbuilder describe` describes, an optimization unless
 # given; `structure` -- the structure it describes, H2 unless given
-# (`describe_calculation`: `elements`, `positions`, `regions`, `cell`,
+# (`road_tree`: `elements`, `positions`, `regions`, `cell`,
 # `axis_kind`, `engine_offset`); `stage_strategy` -- the ladder `molbuilder describe` is told,
 # `publishable` for a SIESTA optimization unless given, `""` for the one
 # stage the template alone describes.
@@ -628,13 +724,13 @@ def calls_made(calls: Path):
 # files it left as they were (`kept`: paths under the calculation whose
 # bytes and write time are the same before and after the row's prep), every
 # file the Task setup card names for a stage on disk as it names it
-# (`card_written`: `{stage, moments}` each -- `_road_card_written`), the
+# (`card_written`: `{stage, moments}` each -- :func:`card_written`), the
 # atoms each of its progress logs states the run holds, read back by
 # the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
 # the targets they hand the Watch tab (`progress_log_targets`),
 # whether each stage runs as a run of points before any prep, and the words the
 # run card says it in (`points_before_prep`: `{stage = words}`, `""` for a stage
-# that runs once -- `_road_points_before_prep`),
+# that runs once -- :func:`points_before_prep`),
 # what a stage's points are compared by since its prep (`points_compared`, the
 # stage -- `_road_points_compared`),
 # what a person's script reads of each log's run, which has written no step
@@ -906,7 +1002,7 @@ def _road_regrouped(groups, bundle, refused=None, status=409) -> bool:
     return True
 
 
-def _description_with_overrides(bundle, overrides) -> dict:
+def description_with_overrides(bundle, overrides) -> dict:
     """``bundle``'s description as Task setup's Save would be handed it with
     ``overrides``, ``{stage: {name: value}}``, each name joining `varies`
     (`engines/stages.md` § 6.2)."""
@@ -939,7 +1035,7 @@ def _road_changed(case, bundle) -> bool:
         set_by_the_person(bundle, case["changed"]["template"])
     if not saved:
         return True
-    task = _description_with_overrides(bundle, saved.pop("overrides", {}))
+    task = description_with_overrides(bundle, saved.pop("overrides", {}))
     request = read_request(bundle)
     request.update(saved)
     return _saved_or_refused(case, bundle, task, request)
@@ -1126,7 +1222,7 @@ def _road_steps_read(want, bundle) -> None:
         read_steps(bundle)
 
 
-def _road_points_before_prep(want, bundle) -> None:
+def points_before_prep(want, bundle) -> None:
     """Whether each stage runs as a run of points, asked of a calculation
     described and not yet prepared (`jobset.points.runs_points`), and the words
     the run card says it in (`prep.walk_words`), so its one wall is told while
@@ -1193,7 +1289,7 @@ def _road_after_prep(case, bundle) -> None:
         _road_lines({"made_says": lines}, "made_says",
                     (bundle / where).read_text())
     if "card_written" in case:
-        _road_card_written(case["card_written"], bundle)
+        card_written(case["card_written"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
     if "steps_read" in case:
@@ -1232,7 +1328,7 @@ def _road_after_prep(case, bundle) -> None:
             assert decision in decided, f"the ledger holds: {decided}"
 
 
-def _road_card_written(specs, bundle) -> None:
+def card_written(specs, bundle) -> None:
     """Every name the Task setup card gives a stage -- the catalogue's
     `manifest`, for the moments asked -- is a file in that stage's folder or
     its runs; a file the catalogue places at the calculation's level --
@@ -1301,7 +1397,7 @@ def _as_written(path: Path):
     return path.read_bytes(), path.stat().st_mtime_ns
 
 
-def _all_written(bundle: Path) -> dict:
+def all_written(bundle: Path) -> dict:
     """Every file under the calculation, by its size and write time -- what a
     step that writes nothing leaves as it was."""
     return {str(p.relative_to(bundle)): (p.stat().st_size,
@@ -1340,11 +1436,11 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     import json
     engine = case.get("engine", "siesta")
     calculation = case.get("calculation", "optimization")
-    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
-                                  calculation=calculation,
-                                  structure=case.get("structure"),
-                                  stage_strategy=case.get("stage_strategy"),
-                                  bias=case.get("bias", "0"))
+    bundle = described(road_tree(tmp_path, monkeypatch, case.get("structure"),
+                                 engine=engine),
+                       engine=engine, calculation=calculation,
+                       stage_strategy=case.get("stage_strategy"),
+                       bias=case.get("bias", "0"))
     from molbuilder.template import run_settings
     on_card = run_settings(engine)
     values = (dict(table.get("siesta_template", {}))
@@ -1513,6 +1609,52 @@ def stage_file(bundle: Path, stage: str, role: str) -> Path:
     return _the_runs(bundle, names.name(role))
 
 
+def the_fence_holds(bundle, folder, listed, never) -> None:
+    """THE PARAMETERS BLOCK OF ``folder``'S RUN SCRIPT, run and read back
+    (`deck_record.BLOCK_PARAMETERS`, its reader `read_parameters_fence`):
+    its rows name the item ``listed`` and not ``never``, ``listed`` with its
+    catalogue default and nothing asked or used; the deck's own lines echoed
+    after them, none blank or a comment, ``SystemLabel`` the calculation's
+    -- and a deck edited after prep echoed as edited, since what the engine
+    reads is what is echoed."""
+    import re
+    import subprocess
+    import sys
+    from molbuilder.deck_record import (BLOCK_PARAMETERS, begin_marker,
+                                        end_marker, read_parameters_fence)
+    from molbuilder.script_emit import parameter
+    (script,) = (bundle / folder).glob("*.run.sh")
+    text = script.read_text()
+    begin = f'echo "{begin_marker(BLOCK_PARAMETERS)}"'
+    end = f'echo "{end_marker(BLOCK_PARAMETERS)}"'
+    block = text[text.index(begin):text.index(end) + len(end)]
+
+    def run():
+        return subprocess.run(
+            ["bash", "-c", f'_mb_py="{sys.executable}"\n'
+                           '_runwrap_log=/dev/null\n'
+                           '_log() { echo "$2" >&2; }\n' + block],
+            cwd=script.parent, capture_output=True, text=True,
+            check=True).stdout
+
+    out = run()
+    rows = {r["item"]: r for r in read_parameters_fence(out)}
+    assert listed in rows and never not in rows, sorted(rows)
+    assert rows[listed]["default"] == parameter(listed, "siesta").default
+    assert {(r["asked"], r["used"]) for r in rows.values()} == {(None, None)}
+    echoed = [ln for ln in out.splitlines() if ln.startswith("#   ")
+              and not ln.startswith(("#   [", "#   each row"))]
+    label = bundle.name
+    assert re.search(rf"^#   SystemLabel\s+{label}$", out, re.M), out
+    assert not [ln for ln in echoed if not ln[4:].strip()
+                or ln[4:].lstrip().startswith("#")], echoed
+    # AN EDIT AFTER PREP is what the engine reads, so it is what is echoed.
+    deck = script.parent / script.name.replace(".run.sh", ".fdf")
+    deck.write_text(re.sub(rf"^(SystemLabel\s+){label}$", r"\1edited",
+                           deck.read_text(), flags=re.M))
+    assert re.search(r"^#   SystemLabel\s+edited$", run(), re.M)
+
+
 def _one_line(text) -> str:
     """A failure's text on ONE line: `tools/testrun.py` reports
     ``--tb=line``, which shows a message's first line and nothing else --
@@ -1579,7 +1721,7 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
     bundle = (ran if ran is not None
               else _road_describe(table, case, tmp_path, monkeypatch))
     if "points_before_prep" in case:
-        _road_points_before_prep(case["points_before_prep"], bundle)
+        points_before_prep(case["points_before_prep"], bundle)
     if "own_warm_files" in case:
         _road_own_warm_files(case, bundle)
     if case.get("saved_first"):
@@ -1696,7 +1838,7 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
     # benchmark -- or its refusal
     if "launch" in case:
         mode = case.get("launch_mode", "submit")
-        was = _all_written(bundle)
+        was = all_written(bundle)
         stage_typed = case.get("launch_stage", "coarse")
         r = jobset("launch", kind, *_named(kind, stage_typed or None, bundle,
                                            verb="launch"),
@@ -1731,7 +1873,7 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
                 all(w in argv for w in words)
                 for argv, words in zip(made, want)), (made, want)
         if case.get("launch_writes_nothing"):
-            now = _all_written(bundle)
+            now = all_written(bundle)
             assert now == was, sorted(set(now.items()) ^ set(was.items()))
         if "after_launch" in case:
             _road_after_prep(case["after_launch"], bundle)

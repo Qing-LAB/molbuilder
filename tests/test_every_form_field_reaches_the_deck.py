@@ -38,7 +38,7 @@ from molbuilder.calculation import open as open_calculation
 from molbuilder.parse.fdf import read_fdf
 from molbuilder.web.blueprints._shared import catalogue_to_form_schema
 from support.form_fields import NOT_IN_THE_DECK, another_value
-from support.road import (WATER, describe_calculation, group_words, jobset,
+from support.road import (WATER, described, group_words, jobset, road_tree,
                           set_by_the_person, stage_file)
 
 #: Contexts that switch a conditional field on, by the calculation; tried in
@@ -155,9 +155,9 @@ def _form_fields(engine, prefix, calculation) -> dict:
 ], ids=["SIESTA", "PySCF", "PySCF vibration"])
 def test_every_field_the_form_offers_changes_what_the_engine_reads(
         engine, prefix, calculation, tmp_path, monkeypatch):
-    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
-                                  calculation=calculation, structure=WATER,
-                                  stage_strategy="")
+    bundle = described(road_tree(tmp_path, monkeypatch, WATER, engine=engine),
+                       calculation=calculation, engine=engine,
+                       stage_strategy="")
     stage = open_calculation(bundle).task.stages[0].name
     suffix = ".fdf" if engine == "siesta" else ".py"
     template = open_calculation(bundle).template.path

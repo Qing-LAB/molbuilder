@@ -2,12 +2,12 @@
 slot, one explicitly named directory, nothing picked for you -- asked where a
 person meets it, `molbuilder describe`.
 
-* `init --calculation transport` refuses: no junction slot or a second one, a
-  citation that is not tree-relative, and an option whose answer arrives
-  via the citation; beside
-  `--reuses`, an option naming what the extension keeps (the kind's
-  `describe.not_taken`), a window flag spelled wrong, and a folder that is
-  not a transport calculation; and `--slot` on any other kind.  Each refusal is
+* `molbuilder describe --calculation transport` refuses: no junction slot or
+  a second one, a citation that is not tree-relative, and an option whose
+  answer arrives via the citation; beside `--reuses`, an option naming what
+  the extension keeps (the kind's `describe.not_taken`), a window flag
+  spelled wrong, and a folder that is not a transport calculation; and
+  `--slot` on any other kind.  Each refusal is
   the door's own -- the codec's where the codec owns the rule (`task.py`),
   surfaced by name.
 * the codec round-trips slots + bias and carries NO structure block for the
@@ -18,12 +18,13 @@ person meets it, `molbuilder describe`.
 from __future__ import annotations
 
 import pytest
-from click.testing import CliRunner
 
 from molbuilder.identity import run_id
 from molbuilder.task import Run, Stage, Task
-from molbuilder.jobset._cli import describe_cmd
+from support.road import molbuilder
 
+#: The refusals below fire before a citation is read, so no run is made for
+#: one: `_CITE` names a folder nothing ran in, and none is there.
 _CITE = "BDT-Au/optimization/JunctionRelax/01_coarse/run-2"
 _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 
@@ -117,64 +118,59 @@ def test_a_kind_on_an_engine_it_does_not_run_on_is_refused_by_the_reader():
             "siesta") in str(got.value)
 
 
-@pytest.fixture
-def tree(tmp_path, monkeypatch):
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    root = tmp_path / "projects"
-    root.mkdir()
-    # The refusals below fire before a citation is read, so no run is made
-    # for one: `_CITE` names a folder nothing ran in, and none is there.
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
-    return root
-
-
-def _init(args):
-    return CliRunner().invoke(describe_cmd,
-                              ["--engine", "siesta"] + args)
+def _describe(args):
+    """`molbuilder describe` on SIESTA, typed with ``args`` -- the command
+    whose refusals these are, in a tree the one door points at."""
+    return molbuilder("describe", "--engine", "siesta", *args)
 
 
 _TRANSPORT = ["--calculation", "transport", "--bundle", "BDT-Au/transport/T"]
 
 
-class TestInitCLI:
+class TestDescribeRefuses:
 
     def test_an_engine_that_runs_no_transport_is_refused_in_the_tabs_words(
-            self, tree):
+            self, isolated_projects_root):
         """`molbuilder describe` refuses an engine the kind runs no part on
         in the one sentence the engine tab and the web doors say -- the
         kind's own (`CalculationKind.why_not_on`, `engines/transport.md`
         § 3.8.8) -- before any citation is read."""
         from molbuilder.kind_table import kind
-        r = CliRunner().invoke(describe_cmd, ["--engine", "pyscf"] + _TRANSPORT
-                               + ["--slot", f"junction={_CITE}"])
+        r = molbuilder("describe", "--engine", "pyscf", *_TRANSPORT,
+                       "--slot", f"junction={_CITE}")
         assert r.exit_code != 0
         assert kind("transport").why_not_on("pyscf") in r.output, r.output
         assert "no PySCF transport backend is built yet" in r.output
 
-    def test_the_junction_slot_is_required(self, tree):
+    def test_the_junction_slot_is_required(self, isolated_projects_root):
         """One slot, `junction`, and nothing else (§ 3.1): none and two are
-        refused by name before any citation is read."""
-        r = _init(_TRANSPORT)
-        assert r.exit_code != 0 and "junction" in r.output
-        r = _init(_TRANSPORT + ["--slot", f"junction={_CITE}",
-                                "--slot", f"other={_CITE}"])
-        assert r.exit_code != 0 and "junction" in r.output
+        refused by name before any citation is read -- in the one-slot
+        rule's own words, as the citation named here names nothing."""
+        for slots in ([], ["--slot", f"junction={_CITE}",
+                           "--slot", f"other={_CITE}"]):
+            r = _describe(_TRANSPORT + slots)
+            assert r.exit_code != 0, slots
+            assert "takes exactly one slot, `junction`" in r.output, r.output
 
-    def test_a_traversing_citation_is_refused(self, tree):
+    def test_a_traversing_citation_is_refused(self, isolated_projects_root):
         """A citation is a tree-relative directory: no leading '/', no '..'
-        (`task.py`, the codec's form; the tree fence, § 2.5b)."""
+        (`task.py`, the codec's form; the tree fence, § 2.5b) -- refused by
+        the fence, in its words, never as a path that names nothing."""
         for bad in ("/abs/path", "a/../b"):
-            r = _init(_TRANSPORT + ["--slot", f"junction={bad}"])
+            r = _describe(_TRANSPORT + ["--slot", f"junction={bad}"])
             assert r.exit_code != 0, bad
-            assert bad in r.output or "tree" in r.output, r.output
+            assert (f"the junction citation {bad!r} leaves the projects tree"
+                    in r.output), r.output
 
-    def test_the_cited_calculation_must_exist_in_the_tree(self, tree):
-        r = _init(_TRANSPORT + ["--slot", "junction=Nope/optimization/Gone/run-0"])
+    def test_the_cited_calculation_must_exist_in_the_tree(
+            self, isolated_projects_root):
+        r = _describe(_TRANSPORT + ["--slot", "junction=Nope/optimization/Gone/run-0"])
         assert r.exit_code != 0
         assert "Nope/optimization/Gone" in r.output
 
-    def test_options_answered_by_the_citation_are_refused(self, tree):
-        r = _init(_TRANSPORT + ["--slot", f"junction={_CITE}", "--vacuum", "8"])
+    def test_options_answered_by_the_citation_are_refused(
+            self, isolated_projects_root):
+        r = _describe(_TRANSPORT + ["--slot", f"junction={_CITE}", "--vacuum", "8"])
         assert r.exit_code != 0
         assert "--vacuum does not apply to" in r.output, r.output
 
@@ -193,21 +189,23 @@ class TestInitCLI:
         description's words -- before anything is written.  THE SILENT
         FAILURE: an option taken and dropped, the extension written as if
         it had been read.  The folder reused is an optimization described
-        by the road (`support.road.describe_calculation`)."""
-        from support.road import describe_calculation
-        finished = describe_calculation(tmp_path, monkeypatch)
+        by the road (`support.road.described`)."""
+        from support.road import described, road_tree
+        finished = described(road_tree(tmp_path, monkeypatch))
         rel = finished.relative_to(tmp_path / "projects").as_posix()
-        r = _init(["--calculation", "transport", "--bundle",
-                   "P/transport/R", "--reuses", rel] + extra)
+        r = _describe(["--calculation", "transport", "--bundle",
+                       "P/transport/R", "--reuses", rel] + extra)
         assert r.exit_code != 0, r.output
         assert words in r.output, r.output
         assert not (tmp_path / "projects" / "P" / "transport").exists()
 
-    def test_slot_on_a_non_transport_init_is_refused(self, tree):
+    def test_slot_on_another_kinds_description_is_refused(
+            self, isolated_projects_root):
+        tree = isolated_projects_root
         (tree / "BDT-Au" / "structure").mkdir(parents=True, exist_ok=True)
         (tree / "BDT-Au" / "structure" / "j.xyz").write_text(
             "1\n\nH 0 0 0\n")
-        r = _init([
+        r = _describe([
             "--calculation", "optimization", "--structure", "BDT-Au/structure/j.xyz",
             "--bundle", "BDT-Au/optimization/X",
             "--slot", f"junction={_CITE}"])

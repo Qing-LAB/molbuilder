@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import pytest
 
+from support.chemistry_card import card_answered, card_blocks
+
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
@@ -35,16 +37,7 @@ def _load(page, base, tab, target):
     from support.sidebar import picked
     picked(page, base, tab, target)
     page.locator("#load-from-sidebar-btn").click()
-    _answered(page)
-
-
-def _answered(page, needle=""):
-    page.wait_for_function(
-        "(n) => { const p = document.getElementById('chemistry-panel');"
-        "  const s = document.getElementById('chemistry-state');"
-        "  return p && !p.hidden && s && s.textContent.length > 0"
-        "    && s.textContent.includes(n); }",
-        arg=needle, timeout=15000)
+    card_answered(page)
 
 
 def _card(page) -> str:
@@ -58,14 +51,6 @@ def _options(page, *ids) -> dict:
         "(ids) => Object.fromEntries(ids.map(id => [id, Array.from("
         "  document.getElementById(id).options).map(o => o.value)]))",
         list(ids))
-
-
-def _blocks(page) -> dict:
-    """Each engine's block of the card, by its heading."""
-    return page.evaluate(
-        "() => Object.fromEntries(Array.from(document.querySelectorAll("
-        "  '#chemistry-state .chemistry-engine')).map(b => ["
-        "    b.querySelector('h3').textContent, b.textContent]))")
 
 
 # --------------------------------------------------------------------- #
@@ -89,7 +74,7 @@ def test_the_card_answers_for_each_form_and_fills_nothing(
     target = isolated_projects_root / "p" / "fe.xyz"
     target.write_text("1\nFe atom\nFe 0 0 0\n")
     _load(page, flask_server, "structure-optimization", target)
-    _answered(page, "PySCF")
+    card_answered(page, "PySCF")
     card = _card(page)
     assert "SIESTA" in card and "PySCF" in card, card
     assert card.count("unrestricted, 2S = 2") == 2, card
@@ -98,7 +83,7 @@ def test_the_card_answers_for_each_form_and_fills_nothing(
     # Each form's own block.  SIESTA's method is a rule -- it is a
     # density-functional code -- so it is no choice anybody made and has no
     # line; PySCF's is the form's, blank here, so the catalogue's default.
-    blocks = _blocks(page)
+    blocks = card_blocks(page)
     assert "Method" not in blocks["SIESTA"], blocks["SIESTA"]
     assert "DFT — " in blocks["PySCF"], blocks["PySCF"]
     assert "not chosen" in blocks["PySCF"], blocks["PySCF"]
@@ -138,14 +123,14 @@ def test_a_typed_charge_changes_the_answer(page, flask_server,
     target.write_text("4\nformate\nC 0 0 0\nO 1.26 0 0\nO -0.63 1.09 0\n"
                       "H -0.55 -0.95 0\n")
     _load(page, flask_server, "structure-optimization", target)
-    _answered(page, "PySCF")
+    card_answered(page, "PySCF")
     assert _card(page).count("unrestricted, 2S = 1") == 2, _card(page)
 
     from support.sidebar import committed
     page.locator('.tab-btn[data-tab="pyscf"]').click()
     # The change the card listens to: the field left by Tab.
     committed(page, "#py-net-charge", "-1")
-    _answered(page, "-1")
+    card_answered(page, "-1")
     card = _card(page)
     assert "-1 — stated" in card, card
     assert "restricted (closed shell, 2S = 0)" in card, card
@@ -164,7 +149,7 @@ def test_the_spectrum_tab_answers_for_its_vibration_forms(
     target = isolated_projects_root / "p" / "fe.xyz"
     target.write_text("1\nFe atom\nFe 0 0 0\n")
     _load(page, flask_server, "spectrum-calculation", target)
-    _answered(page, "SIESTA")
+    card_answered(page, "SIESTA")
     card = _card(page)
     assert "PySCF" in card and "SIESTA" in card, card
     assert "unrestricted, 2S = 2" in card, card
@@ -220,6 +205,6 @@ def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
         "() => document.getElementById('spectra-tab-pyscf').hidden") is True
     # ...and the card is about THAT structure, sidecar and all: the pair's
     # periodicity reached the class through the envelope the viewer holds.
-    _answered(page, "a repeating cell")
-    assert "a repeating cell" in _blocks(page)["SIESTA"]
+    card_answered(page, "a repeating cell")
+    assert "a repeating cell" in card_blocks(page)["SIESTA"]
 

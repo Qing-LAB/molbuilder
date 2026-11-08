@@ -56,7 +56,6 @@ under the wall (`process/testing.md` tier 3: each run made once a pass).
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -65,8 +64,7 @@ import pytest
 from _road import conda_hook, env_available
 from support.real_runs import notified, told
 from support.road import set_by_the_person
-from support.road import (CO2, CO2_HELD_FIRST, _all_written, group_words,
-                          ladder_edited)
+from support.road import CO2, CO2_HELD_FIRST, all_written, group_words
 
 pytestmark = [
     pytest.mark.engine,
@@ -93,36 +91,18 @@ def unticked(real_co2_vibration, tmp_path_factory):
     """The box unticked: a copy of the shared run's calculation
     (`support.real_runs.copy_of`), on which, in order -- `summarize` asked
     of one stage; `freq` launched again, warm, with every call done and the
-    result written; a displacement sweep, `freq_half` at 0.02 Bohr added
-    beside `freq` in a group of its own (a later stage builds on the first,
-    so it never shares that stage's job, `engines/vibration.md` § 5.9),
-    prepared, the sweep summarized (``early``),
-    `freq_half` launched -- taking `freq`'s relaxation over,
-    `engines/vibration.md` § 5.9 -- and summarized (``record``), and summarized again
-    under a tolerance (``flagged``).  What each step answered is written
-    down by its name."""
-    from support.real_runs import road_at, taken, typed, copy_of
+    result written; then a displacement sweep (`support.real_runs.swept`,
+    `engines/vibration.md` § 5.9), its `freq_half` taking `freq`'s
+    relaxation over.  What each step answered is written down by its
+    name."""
+    from support.real_runs import road_at, typed, copy_of, swept
 
     def on_the_run(run):
-        record = run.bundle / "CO2.fc-sweep.json"
         with road_at(run.tree.parent, tmp_path_factory):
             typed(run, "summarize", "summarize", "task")
             typed(run, "launch freq again", "launch", "task", "--stage",
                   "freq", "--mode", "direct", "--foreground", "--yes")
-            ladder_edited({"added": [{"name": "freq_half",
-                                      "overrides": {"fc_displacement": 0.02}}]},
-                          run.bundle)
-            taken(run, "prep freq_half", "prep", "task",
-                  *group_words(run.bundle, "freq_half"), "--target", "this")
-            taken(run, "summarize early", "summarize", "task")
-            run.early = json.loads(record.read_text())
-            taken(run, "launch freq_half", "launch", "task", "--stage",
-                  "freq_half", "--mode", "direct", "--foreground", "--yes")
-            taken(run, "summarize the sweep", "summarize", "task")
-            run.record = json.loads(record.read_text())
-            taken(run, "summarize with a tolerance", "summarize", "task",
-                  "--tolerance-cm1", "1e-6")
-            run.flagged = json.loads(record.read_text())
+            swept(run)
     return copy_of(real_co2_vibration, "unticked", on_the_run)
 
 
@@ -803,7 +783,7 @@ def _stretches(d):
 
 
 def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
-        real_co2_vibration, monkeypatch, tmp_path):
+        real_co2_vibration, web_client, monkeypatch, tmp_path):
     """THE RAMAN AT A LASER (`engines/vibration.md` § 5.11 § 10, § 14): the
     load door's view of the shared run at 633 nm, broadened to the run's own
     width -- **CO2's symmetry**: the held carbon is the molecule's centre of
@@ -824,18 +804,18 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
     calculation's folder."""
     import csv
     import xarray
+    from conftest import point_the_one_door_at
     from molbuilder.persist import sha256_of
     from molbuilder.postprocess import raman_view as script_view
     from molbuilder.postprocess import read_raman_data
-    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.runfiles import ROLE_OPTICAL, ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from molbuilder.spectra.activity import CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU
     from molbuilder.task import of as task_of
-    from molbuilder.web.app import create_app
+    from support.pages import spectra_served
     from support.road import jobset
     run = real_co2_vibration
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
     d = _the_result(run)
     folder = run.attempt("freq")
     result = on_label_at(folder, ROLE_SPECTRA)
@@ -843,12 +823,10 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
     label = task_of(run.bundle).label
 
     # THE LOAD DOOR, asked as the page asks it.
-    got = create_app(config={}).test_client().post(
-        "/api/spectra/load",
-        json={"path": str(result), "raman": {"laser_nm": _LASER_NM}}
-    ).get_json()
-    assert got["ok"] and "raman_said" not in got["results"], got
-    view = got["results"]["raman"]
+    got = spectra_served(web_client, monkeypatch, result,
+                         raman={"laser_nm": _LASER_NM})
+    assert "raman_said" not in got, got
+    view = got["raman"]
     assert view["laser_nm"] == _LASER_NM, view
     assert view["broaden_ev"] == view["run_broaden_ev"], view
     assert view["direction_name"] == "z", view
@@ -863,12 +841,12 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
     assert script_view(result, laser_nm=_LASER_NM).to_wire() == view
 
     # THE EXPORT AT THAT LASER, both forms, outside the calculation.
-    before = _all_written(run.bundle)
+    before = all_written(run.bundle)
     for fmt in ("netcdf", "csv"):
         said = jobset("export", "--bundle", run.bundle, "--format", fmt,
                       "--to", tmp_path, "--laser-nm", _LASER_NM)
         assert said.exit_code == 0, said.output
-    assert _all_written(run.bundle) == before, "nothing written in it"
+    assert all_written(run.bundle) == before, "nothing written in it"
     spectra_nc = result.with_name(f"{label}.spectra.nc")
     out = tmp_path / f"{label}.vibration-netcdf"
     assert sorted(f.name for f in out.iterdir()) == sorted(
@@ -1008,12 +986,12 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
     silent failure: an infrared of another set of atoms than the free ones,
     a bar change applied without Update, or Update asking outside the fence.
     """
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from support.live_server import serve
     from support.sidebar import results_on
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(ticked.tree))
+    point_the_one_door_at(ticked.tree.parent, monkeypatch.setenv)
     d = _the_result(ticked)
     attempt = ticked.attempt("freq")
     result = on_label_at(attempt, ROLE_SPECTRA)
@@ -1246,12 +1224,12 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
 
     MUTATION THIS MUST FAIL AGAINST: the ladder naming a row from its
     voltage alone (a transport point's words only)."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from molbuilder.siesta.vibration_phases import FC, RELAX, calls_of
     from support.live_server import serve
     from support.sidebar import results_on
     run = real_co2_vibration
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
 
     # WHAT EACH ROW IS NAMED BY, the contract's words for each call the
     # run's index lists, read by its one reader.
@@ -1308,14 +1286,14 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
     than it shows."""
     import io
     import zipfile
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from molbuilder.runfiles import ROLE_OPTICAL, ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from molbuilder.task import of as task_of
     from support.live_server import serve
     from support.sidebar import results_on
     run = real_co2_vibration
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
     d = _the_result(run)
     attempt = run.attempt("freq")
     result = on_label_at(attempt, ROLE_SPECTRA)
@@ -1454,8 +1432,9 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     deck would pass the criterion check: that mutation is not caught.)
     """
     from molbuilder.siesta.vibration_phases import FC
-    bundle, early, rec, rec2 = (unticked.bundle, unticked.early,
-                                unticked.record, unticked.flagged)
+    bundle = unticked.bundle
+    early, rec, rec2 = (unticked.sweep[k]
+                        for k in ("early", "record", "flagged"))
     assert [s["name"] for s in early["stages"]] == ["freq"], early["stages"]
     (waiting,) = early["pending"]
     assert (waiting["stage"], waiting["state"]) == ("freq_half", "pending"), \

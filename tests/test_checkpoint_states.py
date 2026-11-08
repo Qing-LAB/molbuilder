@@ -1297,24 +1297,56 @@ def test_a_folder_of_independent_calculations_is_refused(tmp_path):
         Repo(str(root)).init(note="set up")
 
 
-def test_a_folder_that_declares_them_one_calculation_is_accepted(tmp_path):
-    """The description is what says these stages are one unit of work."""
-    root = tmp_path / "BDT_Au_relax"
-    (root / "01_coarse").mkdir(parents=True)
-    (root / "01_coarse" / "job.fdf").write_text("x\n")
-    (root / "task.json").write_text('{"engine": "siesta"}')
+def test_a_folder_that_declares_them_one_calculation_is_accepted(
+        tmp_path, monkeypatch, web_client):
+    """The description is what says these stages are one unit of work.  H2
+    described and its first stage prepared (`molbuilder describe`, `jobset
+    prep`, which saves the folder's first state before it writes the
+    stage), then carried to another machine through the sidebar's Download
+    -- the archive holds the current files and no history (`web/projects.md`
+    § 4, `files._archive_excluded_dirs`) -- and unpacked there: a stage's
+    folder holding its deck, and no history yet, the one case this branch of
+    `init` answers.  THE SILENT FAILURE: a calculation carried without its
+    history refused one there, its stages taken for independent
+    calculations (L1)."""
+    import io
+    import zipfile
+
+    from molbuilder.runfiles import HISTORY_DIR
+    from support.road import described, prep_groups, road_tree
+    calc = described(road_tree(tmp_path, monkeypatch))
+    prep_groups(calc, "1")
+    assert Repo(str(calc)).initialized, "the prep saved no first state"
+    asked = web_client.post("/api/files/zip_prepare",
+                            json={"path": str(calc)})
+    assert asked.status_code == 200, asked.get_json()
+    got = web_client.get("/api/files/download_zip",
+                         query_string={"token": asked.get_json()["token"]})
+    assert got.status_code == 200, got.get_data(as_text=True)
+    far = tmp_path / "another-machine"
+    with zipfile.ZipFile(io.BytesIO(got.data)) as archive:
+        archive.extractall(far)
+    root = far / calc.name
+    assert not (root / HISTORY_DIR).exists(), "the archive carried history"
+    assert list(root.glob("01_coarse/run-0/*.fdf")), sorted(
+        str(p.relative_to(root)) for p in root.rglob("*"))
     state = Repo(str(root)).init(note="set up")
-    assert state.calculation == "BDT_Au_relax"
+    assert state.calculation == root.name
 
 
-def test_a_repository_inside_a_repository_is_refused(tmp_path):
+def test_a_repository_inside_a_repository_is_refused(tmp_path, monkeypatch):
+    """A folder that holds a history of its own, then described: H2 as
+    `molbuilder describe` writes it, into the folder that holds it."""
     from molbuilder.checkpoint import NestedRepoRefusedError
-    root = tmp_path / "outer"
+    from support.road import described, road_tree
+    tree = road_tree(tmp_path, monkeypatch)
+    where = "P/optimization/H2"
+    root = tree / where
     inner = root / "inner"
     inner.mkdir(parents=True)
     (inner / "job.fdf").write_text("x\n")
     Repo(str(inner)).init(note="inner")
-    (root / "task.json").write_text("{}")
+    described(tree, where)
     with pytest.raises(NestedRepoRefusedError):
         Repo(str(root)).init(note="outer")
 
@@ -1333,8 +1365,8 @@ def test_a_folder_inside_a_calculation_is_refused_a_history_of_its_own(
     FAILURE: a second history inside H2's, which H2's restores cannot keep in
     step -- begun, or adopted as molbuilder's and named."""
     from molbuilder.checkpoint import NestedRepoRefusedError
-    from support.road import describe_calculation
-    h2 = describe_calculation(tmp_path, monkeypatch)
+    from support.road import described, road_tree
+    h2 = described(road_tree(tmp_path, monkeypatch))
     notes = h2 / "notes"
     notes.mkdir()
     if by_hand:
@@ -1956,7 +1988,6 @@ def test_a_link_an_ignore_pattern_would_swallow_is_still_saved(
     root = tmp_path / "BDT_Au_relax"
     (root / "stage1").mkdir(parents=True)
     (root / "stage2").mkdir()
-    (root / "task.json").write_text('{"engine": "siesta"}')
     (root / "stage1" / "job.DM").write_bytes(BIG)
     (root / "stage2" / "job.DM").symlink_to("../stage1/job.DM")
 
@@ -2004,7 +2035,6 @@ def test_a_stray_link_that_no_state_holds_is_removed_by_a_restore(
     root = tmp_path / "BDT_Au_relax"
     (root / "stage1").mkdir(parents=True)
     (root / "stage2").mkdir()
-    (root / "task.json").write_text('{"engine": "siesta"}')
     (root / "stage1" / "job.DM").write_bytes(BIG)
     repo = Repo(str(root))
     early = repo.init(engine="siesta", note="no link yet")

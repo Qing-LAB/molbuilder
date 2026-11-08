@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 
 from molbuilder.structure import Structure
-from support.road import stage_file
+from support.road import stage_file, water_in_vacuum
 
 
 # --------------------------------------------------------------- structures
@@ -37,8 +37,6 @@ def _mol(elements, positions, vacuum=8.0, **kw):
                      vacuum=(vacuum,) * 3, **kw)
 
 
-WATER = lambda: _mol("OHH", [[0, 0, 0], [0.757, 0.586, 0],
-                             [-0.757, 0.586, 0]])
 METHYL = lambda: _mol("CHHH", [[0, 0, 0], [1.08, 0, 0], [-0.54, 0.935, 0],
                                [-0.54, -0.935, 0]])                # 9 e-
 FORMATE = lambda: _mol(["C", "O", "O", "H"],
@@ -97,7 +95,7 @@ def _spin_lines(fdf: str):
 # ------------------------------------------- the detection table (§ 2a.1b)
 
 @pytest.mark.parametrize("make, spin, total", [
-    (WATER, "non-polarized", None),        # even count, no metal
+    (water_in_vacuum, "non-polarized", None),        # even count, no metal
     (METHYL, "polarized", 1.0),            # odd count in a molecule
     (AU4, "non-polarized", None),          # a metallic cluster, even count
     (AU1, "polarized", 1.0),               # a single atom's own doublet
@@ -130,7 +128,7 @@ def test_the_charge_is_judged_at_its_own_value(prepared):
 def test_a_blank_charge_is_written_with_its_reason(prepared):
     """The deck states the charge that applies at 0 too (`template.md` § 6.6:
     nothing reaches the engine by omission), with why."""
-    _d, _s, fdf = prepared(WATER(), "siesta")
+    _d, _s, fdf = prepared(water_in_vacuum(), "siesta")
     assert re.search(r"^NetCharge\s+\+0$", fdf, re.M), fdf
     assert ("# NetCharge: +0 (detected: no deprotonated phosphate groups)."
             in fdf)
@@ -195,7 +193,7 @@ def test_a_charged_molecule_is_corrected_and_a_charged_cell_is_not(
     assert not script(dest, stage).exists()
     assert "defect-specific treatment" in _report(dest, stage)
 
-    dest, stage, fdf = prepared(WATER(), "siesta")
+    dest, stage, fdf = prepared(water_in_vacuum(), "siesta")
     assert "Makov" not in fdf and not script(dest, stage).exists()
 
 
@@ -239,7 +237,7 @@ def test_the_detection_table_on_pyscf(prepared, make, cls,
 # ----------------------------------------------------- PySCF's class (§ 2a.1)
 
 @pytest.mark.parametrize("make, cfg, cls, spin", [
-    (WATER, {}, "dft.RKS", 0),
+    (water_in_vacuum, {}, "dft.RKS", 0),
     (METHYL, {}, "dft.UKS", 1),
     (METHYL, {"method": "HF"}, "scf.UHF", 1),
     (METHYL, {"method": "HF", "spin_treatment": "restricted-open"},
@@ -300,7 +298,7 @@ def test_a_constrained_singlet_on_a_closed_shell_is_written_and_warned(
     structure runs -- it is the broken-symmetry singlet's setting -- but costs
     twice restricted for the same answer otherwise.  The deck pins it and
     says so beside it; the report warns once."""
-    dest, stage, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="unrestricted", unpaired_electrons=0))
+    dest, stage, fdf = prepared(water_in_vacuum(), "siesta", template=dict(spin_treatment="unrestricted", unpaired_electrons=0))
     assert _spin_lines(fdf) == ("polarized", 0.0)
     assert "constrained singlet in open-shell DFT" in fdf
     report = _report(dest, stage)
@@ -312,7 +310,7 @@ def test_a_half_stated_spin_is_completed_in_the_one_order(
     """§ 2a.1a with half the state stated: ``unrestricted`` on closed-shell
     water, the count blank.  The structure's own count, 0, is pinned -- a
     constrained singlet -- and said to be the structure's, not the person's."""
-    _d, _s, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="unrestricted"))
+    _d, _s, fdf = prepared(water_in_vacuum(), "siesta", template=dict(spin_treatment="unrestricted"))
     assert _spin_lines(fdf) == ("polarized", 0.0), fdf
     assert "(2S): 0 (detected: the structure has no unpaired electron" in fdf
 
@@ -324,12 +322,12 @@ def test_what_siesta_stops_on_is_said_and_what_it_lacks_is_refused(
     deck is written as stated and the stop is said, as information, never
     refused (the user, 2026-11-02); restricted-open, a formalism the kind
     does not offer on SIESTA, is refused by name."""
-    _d, _s, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="non-collinear"))
+    _d, _s, fdf = prepared(water_in_vacuum(), "siesta", template=dict(spin_treatment="non-collinear"))
     assert _spin_lines(fdf) == ("non-colinear", None), fdf
-    dest, stage, fdf = prepared(WATER(), "siesta", template=dict(spin_treatment="non-collinear", unpaired_electrons=2))
+    dest, stage, fdf = prepared(water_in_vacuum(), "siesta", template=dict(spin_treatment="non-collinear", unpaired_electrons=2))
     assert _spin_lines(fdf) == ("non-colinear", 2.0), fdf
     assert "the engine stops on a fixed count here" in _report(dest, stage)
-    _d, _s, said = prepared(WATER(), "siesta", template=dict(spin_treatment="restricted-open"), refused=True)
+    _d, _s, said = prepared(water_in_vacuum(), "siesta", template=dict(spin_treatment="restricted-open"), refused=True)
     assert "no restricted open-shell formalism" in said, said
 
 
@@ -367,7 +365,7 @@ def test_an_odd_count_under_restricted_runs_half_filled_on_siesta(
 def test_a_stage_cannot_change_the_state(prepared):
     """ES1: an override of a state item on one rung is refused by name --
     every rung's warm files are a density for one electronic state."""
-    _d, _s, said = prepared(WATER(), "siesta",
+    _d, _s, said = prepared(water_in_vacuum(), "siesta",
                             overrides={"spin_treatment": "unrestricted"},
                             refused=True)
     assert "shared by every stage of this calculation" in said, said

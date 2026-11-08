@@ -108,7 +108,10 @@ def test_optional_is_set_for_exactly_the_optional_fields(cls):
 
 
 def test_the_kgrid_displacement_is_its_own_item_and_a_float3():
-    """Two items, not one, and not a general ``matrix``.
+    """Two items, not one, and not a general ``matrix`` -- and the offset's
+    default the origin.  THE SILENT FAILURE: the default offset moved, every
+    deck's k-point mesh shifted with it, and no deck test goes red (measured
+    2.67.11: this test alone).
 
     The mesh (how finely) and the origin (where it sits) are separate
     scientific decisions and a stage may vary one without the other, so they
@@ -127,17 +130,6 @@ def test_the_kgrid_displacement_is_its_own_item_and_a_float3():
     assert d.type == "float3"
     assert d.default == (0.0, 0.0, 0.0)
     assert _cat()["kgrid"].type == "int3"   # still separate
-
-
-def test_range_unit_and_group_come_from_the_CATALOGUE():
-    """§ 4.3: a surface holding the file needs nothing else to bound the
-    control, label it, and decide whether its *vary per stage* box starts
-    ticked — and it reads all three from the catalogue.
-    """
-    d = _cat()["mesh_cutoff"]
-    assert d.range == (100.0, 1000.0)
-    assert d.unit == "Ry"
-    assert d.group == "stage"
 
 
 @pytest.mark.parametrize("table", [

@@ -221,22 +221,22 @@ def test_build_rna_default_form_is_a(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
-    """The --pyscf-atom-block flag is a pipe-friendly stdout emitter
-    documented in cli.py.  Verify it actually writes to stdout."""
-    from molbuilder.structure import Structure
-    monkeypatch.setattr(
-        "molbuilder.peptide.build_peptide",
-        lambda seq, **kwargs: Structure(
-            elements=["C"], positions=np.array([[0.1, 0.2, 0.3]]),
-            title="x", vacuum=(12.0, 12.0, 12.0)),
-    )
-    rc = cli.main(["peptide", "A", "--pyscf-atom-block"])
+def test_pyscf_atom_block_emits_to_stdout(capsys, tmp_path):
+    """`--pyscf-atom-block` writes what was built to stdout as PySCF's atom
+    block, ``<element> <x> <y> <z>`` an atom, for a person to pipe into a
+    PySCF script.  THE SILENT FAILURE: the flag taken and the block never
+    written -- the build still says what it built, on stderr.  The real
+    peptide builder; the block read against the pair the same call wrote."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    pair = tmp_path / "ala.xyz"
+    rc = cli.main(["peptide", "A", "--out", str(pair), "--pyscf-atom-block"])
     assert rc == 0
-    out = capsys.readouterr().out
-    # PySCF atom block format: "<element> <x> <y> <z>" per line.
-    assert "C" in out
-    assert "0.1" in out and "0.2" in out and "0.3" in out
+    built = StructureCodec().load(pair)
+    rows = [ln.split() for ln in capsys.readouterr().out.splitlines()
+            if ln.strip()]
+    assert [r[0] for r in rows] == list(built.elements), rows
+    assert np.allclose([[float(v) for v in r[1:4]] for r in rows],
+                       built.positions, atol=1e-4)
 
 
 # --------------------------------------------------------------------- #
@@ -304,18 +304,23 @@ def test_validate_pretty_json_indents(capsys, tmp_path):
 
 # ---- Modify electrode-spec parser is case-insensitive on key ----- #
 
-def test_modify_electrode_spec_key_case_insensitive():
-    """``@CONTACT=`` / ``@Contact=`` are accepted (R3 fix: the parser
-    lowercases the key).  Catches a regression where the ``.lower()`` call in
-    ``_parse_electrode_spec`` is dropped."""
-    upper_contact = cli._parse_electrode_spec("Au:111:3x3x2@CONTACT=2.4:+z=3")
-    assert upper_contact["mode"] == "single"
-    assert upper_contact["contact_distance"] == 2.4
-
-    mixed_contact = cli._parse_electrode_spec("Au:111:3x3x2@Contact=2.4:-z=7")
-    assert mixed_contact["mode"] == "single"
-    assert mixed_contact["contact_distance"] == 2.4
-    assert mixed_contact["side"] == "-z"
+@pytest.mark.parametrize("key,side", [("CONTACT", "+z"), ("Contact", "-z")])
+def test_modify_electrode_spec_key_case_insensitive(tmp_path, key, side):
+    """``@CONTACT=`` / ``@Contact=`` are ``@contact=`` (R3: the key's case is
+    not significant): `molbuilder modify --electrode` puts the slab on the
+    side named, its closest layer the stated 2.4 Å from its anchor.  THE
+    FAILURE: a key in capitals refused as an unknown key."""
+    from molbuilder.structure import Structure
+    st = Structure(elements=["S", "S"],
+                   positions=np.array([[0., 0., 0.], [0., 0., 2.]]))
+    anchor = 1 if side == "+z" else 0
+    out = _run_electrode(tmp_path, st,
+                         f"Au:111:2x2x1@{key}=2.4:{side}={anchor}")
+    metal = [float(p[2]) for e, p in zip(out.elements, out.positions)
+             if e == "Au"]
+    at = float(st.positions[anchor][2])
+    gap = min(metal) - at if side == "+z" else at - max(metal)
+    assert gap == pytest.approx(2.4, abs=1e-6), (side, metal)
 
 
 # --------------------------------------------------------------------- #
@@ -372,17 +377,6 @@ def test_modify_two_op_types_is_error(tmp_path):
     # `SystemExit` alone proves nothing.
     assert exc.value.code == 2
     assert not outp.exists()
-
-
-def test_modify_delete_only(tmp_path):
-    inp  = tmp_path / "in.xyz"
-    outp = tmp_path / "out.xyz"
-    inp.write_text(_bdt_stub_xyz())
-    rc = cli.main(["modify", str(inp), str(outp), "--delete", "1,2", "--yes"])
-    assert rc == 0
-    text = outp.read_text()
-    assert text.startswith("2\n"), f"expected 2-atom output; got:\n{text}"
-    assert text.count(" S ") == 2 or text.count("S ") >= 2
 
 
 def test_modify_orient_only(tmp_path):
@@ -625,21 +619,8 @@ def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# `--electrode …@gap=` — retired with the pair
+# `--electrode`: one slab a flag
 # ---------------------------------------------------------------------------
-
-def test_electrode_gap_is_refused_by_name_not_as_a_typo():
-    """`gap` is a PAIR's parameter -- the electrode-to-electrode distance,
-    meaningless for one slab -- and a pair is two electrodes.
-
-    Refused by name rather than falling into the generic "unknown key", which
-    would read as a misspelling, and saying what to do instead.
-    """
-    import pytest as _pytest
-    from molbuilder import cli
-    with _pytest.raises(Exception, match=r"'@gap=' .*Pass --electrode twice"):
-        cli._parse_electrode_spec("Au:111:3x3x2@gap=8.0:5,10")
-
 
 def _run_electrode(tmp_path, st, spec):
     """Build `st`, run one `--electrode` flag over it, return the result."""

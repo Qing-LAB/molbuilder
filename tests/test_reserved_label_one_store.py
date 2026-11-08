@@ -258,27 +258,17 @@ def test_the_designated_read_works_on_a_saved_payload_too():
 # --------------------------------------------------------------------- #
 
 @pytest.fixture
-def served(tmp_path):
-    """A labelled structure inside the file-picker root, and a client. The root
-    patching follows `test_selection_blueprint.py` -- these routes resolve a
-    path against the configured roots, so a bare tmp path is refused."""
+def served(isolated_projects_root):
+    """A labelled structure inside the test's own projects tree, the one door
+    pointed at it (`isolated_projects_root`), and a client -- these routes
+    resolve a path against the projects tree, so a path outside it is
+    refused."""
     pytest.importorskip("flask")
-    from molbuilder import diagnostics
     from molbuilder.web.app import create_app
 
-    xyz = tmp_path / "labelled.xyz"
+    xyz = isolated_projects_root / "labelled.xyz"
     StructureCodec().write(_labelled(), xyz)
-
-    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None)
-    cls = type(caps)
-    old = cls.file_picker_roots
-    cls.file_picker_roots = lambda self: ((tmp_path.resolve(), "projects"),)
-    diagnostics.set_capabilities(caps)
-    try:
-        yield create_app(config={}).test_client(), str(xyz.resolve())
-    finally:
-        cls.file_picker_roots = old
-        diagnostics.reset_capabilities()
+    return create_app(config={}).test_client(), str(xyz.resolve())
 
 
 def test_an_atom_carries_the_reserved_label_once_and_only_as_a_label(served):

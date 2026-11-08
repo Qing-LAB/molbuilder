@@ -1,6 +1,6 @@
 """What the env registry must hold (`ops/env-framework.md` § 3.2b): the
-packages every env carries, a recipe for every category, no two recipes on one
-env, and in the host env what the server imports.
+packages every env carries, a recipe for every category, and in the host env
+what the server imports.
 
 The recipes module is the single source of truth for env shape.  A recipe's
 required fields are `Recipe.__post_init__`'s, which refuses at import.
@@ -63,16 +63,6 @@ def test_every_recipe_declares_the_uniform_packages(spec, why):
     )
 
 
-@pytest.mark.parametrize("field", ["name", "category"])
-def test_no_two_recipes_share_a(field):
-    """A name and a category each name one environment (`recipe_by_name`,
-    `effective_name`).  THE SILENT FAILURE: a copied recipe that keeps either
-    installs into one env, the second over the first, and the lookup by name
-    never reaches it."""
-    said = [getattr(r, field) for r in builtin_recipes() if getattr(r, field)]
-    assert len(said) == len(set(said)), said
-
-
 # A routed recipe takes its name FROM the table (`name=DEFAULT_ENV_NAMES[...]`),
 # so the names agree by construction and an unknown category is a `KeyError`
 # at import.  The reverse direction below is not covered by that: a category
@@ -81,7 +71,9 @@ def test_no_two_recipes_share_a(field):
 def test_default_env_names_all_have_recipes():
     """Reverse direction: every category in ``DEFAULT_ENV_NAMES``
     must have a recipe.  Without one, ``envs install <category-env>``
-    would have no plan."""
+    would have no plan.  THE SILENT FAILURE it also catches: a recipe copied
+    with its category kept, which installs into the other's env, the second
+    over the first, while the category it was copied from has no recipe."""
     covered = {r.category for r in builtin_recipes() if r.category}
     missing = set(DEFAULT_ENV_NAMES) - covered
     assert not missing, (

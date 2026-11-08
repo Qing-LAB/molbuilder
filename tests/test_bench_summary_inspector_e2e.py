@@ -16,14 +16,11 @@ from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.e2e
-
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
 from molbuilder.scheduler import Topology                  # noqa: E402
-from support.road import (declare_bench,                   # noqa: E402
-                          describe_calculation, jobset, one_rank)
+from support.road import declare_bench, described, jobset, one_rank, road_tree
 
 
 @pytest.fixture
@@ -43,7 +40,7 @@ def sweep(tmp_path, monkeypatch):
     write_machine_record(
         topology=Topology(sockets=1, cores_per_socket=4, gpus_per_node=1,
                           gpu_type="a100"))
-    calc = describe_calculation(tmp_path, monkeypatch, name="JOB")
+    calc = described(road_tree(tmp_path, monkeypatch), name="JOB")
     one_rank(calc, use_gpu=True, diag_algorithm="ELPA-1STAGE", gpu_count=1)
     declare_bench(calc, {"mpi_np": [1, 2, 4], "omp_threads": [1, 2],
                          "gpu_count": [1]})

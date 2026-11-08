@@ -19,7 +19,6 @@ import pytest
 from _road import conda_hook, env_available
 
 pytestmark = [
-    pytest.mark.e2e,
     pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
@@ -54,9 +53,9 @@ def _open(page, flask_server, folder, tree, monkeypatch):
     page -- bound as a person binds it, by the sidebar's rows and Reload
     (`support.sidebar.results_on`), in the projects ``tree`` the run was
     made in, the one door pointed at it."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from support.sidebar import results_on
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    point_the_one_door_at(tree.parent, monkeypatch.setenv)
     results_on(page, flask_server, folder)
     page.wait_for_function(
         "() => /Finished/.test((document.getElementById('run-state-label')"

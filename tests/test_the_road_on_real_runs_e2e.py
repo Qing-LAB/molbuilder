@@ -335,8 +335,8 @@ def test_every_name_the_card_gives_a_stage_is_on_disk(real_h2_layered):
     THE SILENT FAILURE: the Task setup card naming a file the road writes
     under another name -- the card points a person at a file that is not
     there, while every run goes on."""
-    from support.road import _road_card_written
-    _road_card_written([{"stage": "coarse", "moments": ["prep", "launch", "run"]},
+    from support.road import card_written
+    card_written([{"stage": "coarse", "moments": ["prep", "launch", "run"]},
                         {"stage": "medium", "moments": ["prep"]}],
                        real_h2_layered.bundle)
 

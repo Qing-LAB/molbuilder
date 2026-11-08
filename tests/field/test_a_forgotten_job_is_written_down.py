@@ -55,18 +55,16 @@ def sent(tmp_path, monkeypatch):
     # THIS MACHINE IS THE TARGET: its record, as the probe wrote it.
     from molbuilder.scheduler import machine_scope_path, write_environment
     write_environment(env, machine_scope_path())
-    from support.road import describe_calculation, group_words, jobset
+    from support.road import described, group_words, jobset, road_tree
     if not env.domains:
         pytest.skip("a record that names no queue sends no job")
-    flat = describe_calculation(tmp_path, monkeypatch, engine="siesta",
-                                calculation="optimization", name="H2sent")
     # THE QUEUE, WALL AND MEMORY its header carries, stated in its request
     # (`architecture.md` § 5.2: stated nowhere, prep refuses).
-    from support.road import read_request, write_request
-    req = read_request(flat)
-    req["allocation"] = {"domain": env.domains[0].name,
-                         "time": "0-00:05:00", "mem": "1G"}
-    write_request(flat, req)
+    flat = described(road_tree(tmp_path, monkeypatch, engine="siesta"),
+                     name="H2sent", calculation="optimization",
+                     engine="siesta",
+                     allocation={"domain": env.domains[0].name,
+                                 "time": "0-00:05:00", "mem": "1G"})
     r = jobset("prep", "task", *group_words(flat, "coarse"),
                "--bundle", flat, "--target", "this")
     assert r.exit_code == 0, r.output

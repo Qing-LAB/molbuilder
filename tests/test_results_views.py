@@ -92,15 +92,11 @@ def test_a_folder_is_served_with_the_views_it_is_read_with(
     door's), the views it is read with -- by what it is -- and every path
     whole: each file's, each run's folder, what a ladder row opens."""
     pytest.importorskip("flask")
-    from conftest import write_machine_record
-    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.web.app import create_app
-    from support.road import describe_calculation, jobset
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
+    from support.road import described, jobset, road_tree
+    tree = road_tree(tmp_path, monkeypatch)
     client = create_app(config={}).test_client()
-    write_machine_record()
-    bundle = describe_calculation(tmp_path, monkeypatch,
-                                  calculation=calculation)
+    bundle = described(tree, calculation=calculation)
     got = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                  "--target", "this")
     assert got.exit_code == 0, got.output

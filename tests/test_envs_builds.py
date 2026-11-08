@@ -83,60 +83,26 @@ def tiny_spec() -> BuildSpec:
 
 
 # --------------------------------------------------------------------- #
-#  Phase tuple                                                           #
-# --------------------------------------------------------------------- #
-
-
-def test_phases_in_canonical_order():
-    """Phases run clone -> configure -> build -> install -> verify.
-    Resume semantics rely on this ordering."""
-    assert B.PHASES == ("clone", "configure", "build", "install", "verify")
-
-
-def test_describe_phase_returns_action_and_cost():
-    """describe_phase returns a (action, cost) pair for known phases
-    and falls back to generic strings for unknown ones."""
-    action, cost = B.describe_phase("siesta", "build")
-    assert "compile" in action.lower() or "build" in action.lower()
-    assert cost  # not empty
-    # Unknown component falls back, doesn't raise.
-    a, c = B.describe_phase("nonsense", "phase")
-    assert "nonsense" in a or "phase" in a
-    assert c == "unknown"
-
-
-# --------------------------------------------------------------------- #
 #  BuildSpec validation                                                  #
 # --------------------------------------------------------------------- #
 
 
-def test_buildspec_rejects_empty_components():
-    """Empty components tuple is meaningless; the constructor refuses."""
-    with pytest.raises(ValueError):
-        BuildSpec(artifact_subdir="x", components=())
-
-
-def test_buildspec_rejects_duplicate_component_names():
-    """Names are how sentinels + dep:* templates address components;
-    duplicates break both."""
-    c = BuildComponent(
-        name="dup", repo_url="x", ref="v",
-        configure_argv=(), build_argv=(), install_argv=(),
-    )
-    with pytest.raises(ValueError, match="duplicate"):
-        BuildSpec(artifact_subdir="x", components=(c, c))
-
-
-def test_buildspec_rejects_unsafe_artifact_subdir():
-    """artifact_subdir must be a single path segment so it can't
-    escape $CONDA_PREFIX/opt/."""
+@pytest.mark.parametrize("subdir", [
+    "stack/../../..",   # several segments: the env's own parent
+    "..",               # one segment, leading dot: the env itself
+])
+def test_buildspec_rejects_unsafe_artifact_subdir(subdir):
+    """artifact_subdir must be a single path segment, not starting with a
+    dot, so it can't escape $CONDA_PREFIX/opt/.  THE FAILURE IT STOPS:
+    `envs clean --yes` removes the folder under opt/ it names, and each row
+    names one outside it -- the rule's two halves, a slash and a leading
+    dot, one row each."""
     c = BuildComponent(
         name="a", repo_url="x", ref="v",
         configure_argv=(), build_argv=(), install_argv=(),
     )
-    for bad in ("../escape", "x/y", ".hidden"):
-        with pytest.raises(ValueError):
-            BuildSpec(artifact_subdir=bad, components=(c,))
+    with pytest.raises(ValueError):
+        BuildSpec(artifact_subdir=subdir, components=(c,))
 
 
 # --------------------------------------------------------------------- #
@@ -761,56 +727,6 @@ def test_run_build_calls_on_warnings_callback(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------- #
-#  resolve_paths layout                                                  #
-# --------------------------------------------------------------------- #
-
-
-def test_resolve_paths_layout(siesta_gpu_spec, tmp_path):
-    """The path layout is the contract surface for the activate hook
-    + the engineering doc; pin it."""
-    paths = B.resolve_paths(siesta_gpu_spec, str(tmp_path / "env"))
-    assert paths.root == tmp_path / "env" / "opt" / "siesta-gpu-stack"
-    assert paths.src == paths.root / "src"
-    assert paths.build == paths.root / "build"
-    assert paths.logs == paths.root / "logs"
-    assert paths.sentinels == paths.root / ".sentinels"
-    assert paths.activate_d == (
-        tmp_path / "env" / "etc" / "conda" / "activate.d"
-    )
-    assert paths.activate_hook.name == "zz-siesta-gpu-stack.sh"
-    assert paths.component_install("elpa") == paths.root / "elpa"
-    assert paths.sentinel("elpa", "build") == (
-        paths.root / ".sentinels" / "elpa.build.done"
-    )
-
-
-# --------------------------------------------------------------------- #
-#  Default jobs                                                          #
-# --------------------------------------------------------------------- #
-
-
-def test_default_jobs_capped_at_8(monkeypatch):
-    """Default build concurrency caps at 8 to avoid OOM during
-    template-instantiated cmake builds on big machines."""
-    monkeypatch.delenv("MOLBUILDER_BUILD_JOBS", raising=False)
-    monkeypatch.setattr("os.cpu_count", lambda: 64)
-    assert B._default_jobs() == 8
-
-
-def test_default_jobs_honours_env_override(monkeypatch):
-    """MOLBUILDER_BUILD_JOBS=N overrides the cap."""
-    monkeypatch.setenv("MOLBUILDER_BUILD_JOBS", "12")
-    assert B._default_jobs() == 12
-
-
-def test_default_jobs_floors_at_1(monkeypatch):
-    """If nproc reports something weird, we still get at least one job."""
-    monkeypatch.delenv("MOLBUILDER_BUILD_JOBS", raising=False)
-    monkeypatch.setattr("os.cpu_count", lambda: None)
-    assert B._default_jobs() == 1
-
-
-# --------------------------------------------------------------------- #
 #  Build-env isolation: subprocess env sanitizer                         #
 # --------------------------------------------------------------------- #
 #
@@ -821,72 +737,31 @@ def test_default_jobs_floors_at_1(monkeypatch):
 # from _LEAKAGE_ENV_VARS surfaces immediately.
 
 
-def test_strips_lib_loader_paths():
-    """LD_LIBRARY_PATH / LIBRARY_PATH / LD_RUN_PATH leakage would let
-    the linker resolve libmpi.so against system paths."""
-    base = {
-        "PATH": "/usr/bin",
+#: A PARENT SHELL'S BUILD SETTINGS, the ways the host's MPI, CUDA, compilers
+#: and libraries reach into the env's build: by name, each family under the
+#: line it misleads; and by the prefix of an MPI runtime's or a scheduler's
+#: own variables.
+_LEAKING_SHELLS = [
+    dict(name="by name", env={
+        # the linker: libmpi.so resolved against the system's
         "LD_LIBRARY_PATH": "/usr/lib/x86_64-linux-gnu",
         "LIBRARY_PATH": "/opt/openmpi/lib",
         "LD_RUN_PATH": "/usr/local/lib",
         "LD_PRELOAD": "/usr/lib/libwrap.so",
-    }
-    sanitized = B.build_subprocess_env(base)
-    assert "PATH" in sanitized
-    for k in ("LD_LIBRARY_PATH", "LIBRARY_PATH", "LD_RUN_PATH", "LD_PRELOAD"):
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} (linker leakage)"
-        )
-
-
-def test_strips_compiler_include_paths():
-    """CPATH / C_INCLUDE_PATH / CPLUS_INCLUDE_PATH leakage would let
-    gcc find system mpi.h / cuda.h instead of the env's headers."""
-    base = {
-        "PATH": "/usr/bin",
+        # the compiler's headers: the system's mpi.h / cuda.h
         "CPATH": "/usr/include/openmpi",
         "C_INCLUDE_PATH": "/usr/include/openmpi",
         "CPLUS_INCLUDE_PATH": "/usr/include",
         "OBJC_INCLUDE_PATH": "/usr/include",
         "OBJCPLUS_INCLUDE_PATH": "/usr/include",
-    }
-    sanitized = B.build_subprocess_env(base)
-    for k in base:
-        if k == "PATH":
-            continue
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} (header leakage)"
-        )
-
-
-def test_strips_compiler_driver_flags():
-    """CFLAGS / CXXFLAGS / FFLAGS / LDFLAGS / CPPFLAGS leakage would
-    silently add system include / lib paths to every compile + link
-    command, bypassing the env's clean toolchain."""
-    base = {
-        "PATH": "/usr/bin",
+        # flags on every compile and link
         "CFLAGS": "-I/usr/include/openmpi -L/usr/lib/openmpi",
         "CXXFLAGS": "-I/usr/include/openmpi",
         "FFLAGS": "-I/usr/include/openmpi",
         "LDFLAGS": "-L/usr/lib/openmpi",
         "CPPFLAGS": "-D_GNU_SOURCE",
         "F90FLAGS": "-I/opt/something",
-    }
-    sanitized = B.build_subprocess_env(base)
-    for k in base:
-        if k == "PATH":
-            continue
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} (compiler flag leakage)"
-        )
-
-
-def test_strips_compiler_binary_overrides():
-    """CC / CXX / FC overrides would force the build to use whatever
-    the user set, even if conda's activate.d wants to set them.  We
-    strip first so conda's activate hooks have a clean slate."""
-    base = {
-        "PATH": "/usr/bin",
+        # the compilers themselves, over what conda's activate.d sets
         "CC": "/usr/bin/gcc",
         "CXX": "/usr/bin/g++",
         "FC": "/usr/bin/gfortran",
@@ -894,21 +769,7 @@ def test_strips_compiler_binary_overrides():
         "F90": "/usr/bin/gfortran",
         "AR": "/usr/bin/ar",
         "LD": "/usr/bin/ld",
-    }
-    sanitized = B.build_subprocess_env(base)
-    for k in base:
-        if k == "PATH":
-            continue
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} (compiler binary override)"
-        )
-
-
-def test_strips_mpi_location_overrides():
-    """MPI_HOME / MPI_ROOT / MPICC etc. would force cmake's FindMPI
-    to use a different MPI than the env's openmpi."""
-    base = {
-        "PATH": "/usr/bin",
+        # where cmake's FindMPI looks
         "MPI_HOME": "/usr/lib/x86_64-linux-gnu/openmpi",
         "MPI_ROOT": "/opt/openmpi",
         "MPICC": "/usr/bin/mpicc",
@@ -916,22 +777,7 @@ def test_strips_mpi_location_overrides():
         "MPIFORT": "/usr/bin/mpifort",
         "MPI_INCLUDE": "/usr/include/openmpi",
         "MPIEXEC": "/usr/bin/mpiexec",
-    }
-    sanitized = B.build_subprocess_env(base)
-    for k in base:
-        if k == "PATH":
-            continue
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} (MPI location override)"
-        )
-
-
-def test_strips_cuda_location_overrides():
-    """CUDA_HOME / CUDA_PATH / NVCC etc. would override the env's
-    cuda-nvcc.  We strip first; conda-forge's cuda-nvcc activate.d
-    sets them again pointing at $CONDA_PREFIX."""
-    base = {
-        "PATH": "/usr/bin",
+        # the CUDA toolkit, over the env's cuda-nvcc
         "CUDA_HOME": "/usr/local/cuda",
         "CUDA_PATH": "/opt/cuda",
         "CUDA_ROOT": "/usr/local/cuda-11.8",
@@ -940,21 +786,7 @@ def test_strips_cuda_location_overrides():
         "NVCC": "/usr/local/cuda/bin/nvcc",
         "NVCCFLAGS": "-arch=sm_70",
         "CUDAFLAGS": "-O3",
-    }
-    sanitized = B.build_subprocess_env(base)
-    for k in base:
-        if k == "PATH":
-            continue
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} (CUDA location override)"
-        )
-
-
-def test_strips_blas_fftw_hdf5_overrides():
-    """BLAS_LIBS / FFTW_ROOT / HDF5_DIR / NETCDF_ROOT etc. would force
-    cmake's FindXXX to point at system installs."""
-    base = {
-        "PATH": "/usr/bin",
+        # where cmake's FindBLAS / FFTW / HDF5 / ... look
         "BLAS": "openblas",
         "BLAS_LIBS": "-lopenblas",
         "LAPACK_LIBS": "-llapack",
@@ -965,22 +797,8 @@ def test_strips_blas_fftw_hdf5_overrides():
         "NETCDF_ROOT": "/opt/netcdf",
         "SCALAPACK_ROOT": "/opt/scalapack",
         "LIBXC_ROOT": "/opt/libxc",
-    }
-    sanitized = B.build_subprocess_env(base)
-    for k in base:
-        if k == "PATH":
-            continue
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} (lib location override)"
-        )
-
-
-def test_strips_mpi_prefix_families():
-    """OMPI_* / MPICH_* / I_MPI_* / PMI_* / SLURM_* exports tune MPI
-    runtime behaviour in ways that can bypass the env's MPI launcher
-    and break the build's MPI smoke tests.  Stripped by prefix-match."""
-    base = {
-        "PATH": "/usr/bin",
+    }),
+    dict(name="by prefix: an MPI runtime's and a scheduler's own", env={
         "OMPI_MCA_btl": "tcp,self",
         "OMPI_ALLOW_RUN_AS_ROOT": "1",
         "MPICH_ALLOC_MEM_PG_SZ": "huge",
@@ -988,14 +806,22 @@ def test_strips_mpi_prefix_families():
         "PMI_RANK": "0",
         "PMIX_VERSION": "4.2.0",
         "SLURM_JOB_ID": "12345",
-    }
-    sanitized = B.build_subprocess_env(base)
-    for k in base:
-        if k == "PATH":
-            continue
-        assert k not in sanitized, (
-            f"build_subprocess_env must strip {k} via prefix matching"
-        )
+    }),
+]
+
+
+@pytest.mark.parametrize("shell", _LEAKING_SHELLS,
+                         ids=[s["name"] for s in _LEAKING_SHELLS])
+def test_a_parent_shells_build_settings_never_reach_the_build(shell):
+    """`build_subprocess_env` hands the build the parent shell's environment
+    without what would let the host's MPI, CUDA, compilers or libraries into
+    the env's own build -- each by name, or by its family's prefix -- and
+    keeps ``PATH``.  THE SILENT FAILURE: a build that compiles against the
+    system's headers or links its libmpi, finishes, and fails at a run."""
+    sanitized = B.build_subprocess_env({"PATH": "/usr/bin", **shell["env"]})
+    assert "PATH" in sanitized
+    leaked = sorted(set(shell["env"]) & set(sanitized))
+    assert not leaked, f"build_subprocess_env passed on {leaked}"
 
 
 def test_preserves_innocuous_env_vars():

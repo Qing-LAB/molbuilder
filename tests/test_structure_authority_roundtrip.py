@@ -191,7 +191,7 @@ def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
 
 
 def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
-        tmp_path, monkeypatch):
+        isolated_projects_root):
     """The SAVER half of the gate (§ 6.1 clause 2): a browser blob whose typed
     cell does not wrap its atoms passes the gate on its way to disk, and the
     written sidecar states NO offset -- the rule's placement is a view, never
@@ -202,15 +202,9 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
     import numpy as np
     import pytest as _pytest
     _pytest.importorskip("flask")
-    from molbuilder.diagnostics import Capabilities, set_capabilities
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
-    monkeypatch.chdir(tmp_path)
-    # The tree is THIS tmp one: `projects_root` resolves from the molbuilder
-    # root, not the cwd, so the door is told directly.
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
-    sdir = tmp_path / "projects" / "P" / "structure"
+    sdir = isolated_projects_root / "P" / "structure"
     sdir.mkdir(parents=True)
     s = Structure(elements=["H", "H"],
                   positions=np.array([[10.0, 10.0, 10.0],
@@ -220,22 +214,17 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
     s.__post_init__()
     # The save door takes the STRUCTURE, not a document the caller wrote
     # (molview.md § 11.7) -- `to_dict` is the shape every door speaks.
-    set_capabilities(Capabilities(runtime_config={},
-                                  conda_binary="/usr/bin/conda"))
-    try:
-        from molbuilder.web.app import create_app
-        client = create_app(config={}).test_client()
-        r = client.post("/api/structure/save", json={
-            "path": str(sdir / "m.xyz"), "structure": s.to_dict()})
-        assert r.status_code == 200, r.get_json()
-        side = _json.loads((sdir / "m.molstruct.json").read_text())
-        assert "cell_origin" not in side
-        assert side["engine_offset"] is None
-        back = StructureCodec().load(sdir / "m.xyz")
-        assert np.allclose(back.to_wire()["periodicity"]["box_corner"],
-                           [7.5, 6.5, 6.5])
-    finally:
-        set_capabilities(None)
+    from molbuilder.web.app import create_app
+    client = create_app(config={}).test_client()
+    r = client.post("/api/structure/save", json={
+        "path": str(sdir / "m.xyz"), "structure": s.to_dict()})
+    assert r.status_code == 200, r.get_json()
+    side = _json.loads((sdir / "m.molstruct.json").read_text())
+    assert "cell_origin" not in side
+    assert side["engine_offset"] is None
+    back = StructureCodec().load(sdir / "m.xyz")
+    assert np.allclose(back.to_wire()["periodicity"]["box_corner"],
+                       [7.5, 6.5, 6.5])
 
 
 class TestAnAppendKeepsTheCanvasFacts:

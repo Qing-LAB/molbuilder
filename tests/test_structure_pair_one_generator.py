@@ -193,7 +193,7 @@ def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
 @pytest.mark.parametrize("stated", [None, [1.0, 1.0, 1.0]],
                          ids=["automatic", "assigned-origin"])
 def test_channels_survive_the_pipeline_through_the_real_translators(
-        tmp_path, monkeypatch, stated):
+        isolated_projects_root, stated):
     """The 2026-08-20 widening, proven disk -> disk: a pair whose sidecar
     carries per-atom annotation CHANNELS -- and mixed axis kinds, a vacuum,
     and a stated offset or none -- goes ``/api/build/load`` -> the browser's
@@ -211,22 +211,13 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
     """
     import json
 
-    from molbuilder import diagnostics
     from molbuilder.structure import Structure
     from molbuilder.web.app import create_app
     from molbuilder.workingcopy_structure import StructureCodec
 
     from tests._node_esm import run_node
 
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-
+    tree = isolated_projects_root
     struct = Structure.from_dict({
         "elements": ["O", "H", "H"],
         "positions": [[0, 0, 0], [0.96, 0, 0], [0, 0.96, 0]],
@@ -245,14 +236,14 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
             },
         },
     })
-    StructureCodec().write(struct, tmp_path / "wet.xyz")
-    side_in = json.loads((tmp_path / "wet.molstruct.json").read_text())
+    StructureCodec().write(struct, tree / "wet.xyz")
+    side_in = json.loads((tree / "wet.molstruct.json").read_text())
     assert set(side_in["annotations"]) == {"spin_up", "charge"}, (
         "precondition: the sidecar holds the channels")
 
     client = create_app(config={}).test_client()
     wire = client.post("/api/build/load",
-                       json={"path": str(tmp_path / "wet.xyz")}).get_json()
+                       json={"path": str(tree / "wet.xyz")}).get_json()
     assert wire.get("ok"), wire
 
     jobs = (Path(__file__).resolve().parents[1]

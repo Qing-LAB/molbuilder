@@ -82,34 +82,35 @@ class TestSpectraFieldMetadata:
     the catalogue with the vibration items."""
 
 
-    def test_choices_are_enforced_where_a_user_supplies_one(self, tmp_path):
+    def test_choices_are_enforced_where_a_user_supplies_one(
+            self, tmp_path, monkeypatch):
         """A value outside a field's declared ``choices`` is refused --
         checked at the DESCRIPTION layer, which is where a user actually
-        supplies one.
+        supplies one: a stage's override, written through Task setup's Save
+        on a PySCF vibration `molbuilder describe` made.
 
         The guard that protects a real user reads `task.json`'s
         stage overrides against the catalogue
-        (`validation/task.py::preflight`), and it refuses at ERROR.
+        (`validation/task.py::preflight`), and it refuses at ERROR --
+        the Save answering 400 with its finding.
         """
-        import json
-        from molbuilder.identity import run_id
         from molbuilder.task import of as task_of
-        from molbuilder.validation.task import preflight
+        from support.road import (WATER, described,
+                                  description_with_overrides, read_request,
+                                  road_tree, save_both)
 
-        (tmp_path / "task.json").write_text(json.dumps({
-            "schema": "molbuilder/task@2", "engine": {"name": "pyscf"},
-            "shape": "hierarchical", "calculation": "vibration",
-            "run": {"name": "v", "id": run_id("v", "H2O"),
-                    "created": "2026-08-22T00:00:00-07:00"},
-            "structure": {"source": "w.xyz", "formula": "H2O", "atoms": 3},
-            "varies": ["dispersion"],
-            "stages": [{"name": "coarse",
-                        "overrides": {"dispersion": "d5"}}]}))
-        issues = preflight(task_of(tmp_path))
-        bad = [i for i in issues
-               if i.severity == "error" and "dispersion" in (i.message or "")]
-        assert bad, [i.message for i in issues]
-        assert "not one of" in bad[0].message
+        bundle = described(road_tree(tmp_path, monkeypatch, WATER,
+                                     engine="pyscf"),
+                           name="W", calculation="vibration", engine="pyscf")
+        stage = task_of(bundle).stages[0].name
+        r = save_both(bundle, description_with_overrides(
+            bundle, {stage: {"dispersion": "d5"}}), read_request(bundle))
+        assert r.status_code == 400, r.get_json()
+        bad = [f for f in r.get_json()["findings"]
+               if f["severity"] == "error"
+               and "dispersion" in (f["message"] or "")]
+        assert bad, r.get_json()["findings"]
+        assert "not one of" in bad[0]["message"]
         # All declared choices remain accepted.
         for v in ("skip", "all", "explicit"):
             _spectra_cfg(es_mode_selection=v)

@@ -9,9 +9,6 @@ order record is what puts the answer back in the user order.
 """
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -21,16 +18,6 @@ from molbuilder.parse.fdf import (deck_atoms, fdf_key, parse_fdf_params,
 from molbuilder.siesta.vibration_deck import FC_PART
 from molbuilder.structure import Structure
 from molbuilder.runfiles import RunNames
-
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-
-
-@pytest.fixture
-def in_tree_psml(isolated_projects_root):
-    """The fixture pseudopotential library, copied inside the projects tree
-    the way the validator requires."""
-    shutil.copytree(FIXTURES / "psml", isolated_projects_root / "psml")
-    return "psml"
 
 
 def _three_h(held):
@@ -54,9 +41,9 @@ def test_the_force_constant_deck_nudges_the_free_range_only(tmp_path,
     deck prep writes for the `fc` phase names the free atoms as the trailing
     range, and nothing in that deck relaxes.  Read as the engine reads it,
     its coordinates block inlined from the file beside it (`read_deck`)."""
-    from support.road import CO2, describe_calculation, group_words, jobset
-    bundle = describe_calculation(tmp_path, monkeypatch, name="CO2",
-                                  calculation="vibration", structure=CO2)
+    from support.road import CO2, described, group_words, jobset, road_tree
+    bundle = described(road_tree(tmp_path, monkeypatch, CO2), name="CO2",
+                       calculation="vibration")
     r = jobset("prep", "task", *group_words(bundle, "freq"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
@@ -94,9 +81,9 @@ def test_a_deck_with_its_coordinates_beside_it_reads_as_one_deck(tmp_path,
     reader of the deck sees no atoms and no later setting.  The text alone
     cannot give the rows, so `read_fdf` refuses it naming the file and the
     reader; a file no longer beside the deck is refused by name."""
-    from support.road import CO2, describe_calculation, group_words, jobset
-    bundle = describe_calculation(tmp_path, monkeypatch, name="CO2",
-                                  calculation="vibration", structure=CO2)
+    from support.road import CO2, described, group_words, jobset, road_tree
+    bundle = described(road_tree(tmp_path, monkeypatch, CO2), name="CO2",
+                       calculation="vibration")
     r = jobset("prep", "task", *group_words(bundle, "freq"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
@@ -132,9 +119,9 @@ def test_each_phase_s_record_lists_what_its_role_reads(tmp_path,
     fence lists at launch is `test_effective_parameters_record.py`'s, by
     its role (the phase rows)."""
     from molbuilder.runs import folder_answer
-    from support.road import CO2, describe_calculation, group_words, jobset
-    bundle = describe_calculation(tmp_path, monkeypatch, name="CO2",
-                                  calculation="vibration", structure=CO2)
+    from support.road import CO2, described, group_words, jobset, road_tree
+    bundle = described(road_tree(tmp_path, monkeypatch, CO2), name="CO2",
+                       calculation="vibration")
     r = jobset("prep", "task", *group_words(bundle, "freq"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
@@ -167,15 +154,11 @@ def test_compute_ir_and_compute_raman_reach_the_decks(
     written whatever Compute IR says (the run computes a population nobody
     asked for, and its result claims an infrared); the optical phase
     switched by anything but Compute Raman."""
-    from molbuilder.template import with_values_set
-    from molbuilder.template_file import template_path
-    from support.road import CO2, describe_calculation, group_words, jobset
-    bundle = describe_calculation(tmp_path, monkeypatch, name="CO2",
-                                  calculation="vibration", structure=CO2)
-    path = template_path(bundle, "CO2")
-    path.write_text(with_values_set(path.read_text(), SiestaConfig,
-                                    calculation="vibration", values=values,
-                                    source="person"))
+    from support.road import (CO2, described, group_words, jobset,
+                              road_tree, set_by_the_person)
+    bundle = described(road_tree(tmp_path, monkeypatch, CO2), name="CO2",
+                       calculation="vibration")
+    set_by_the_person(bundle, values)
     r = jobset("prep", "task", *group_words(bundle, "freq"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output

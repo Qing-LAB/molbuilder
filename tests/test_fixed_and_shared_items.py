@@ -23,7 +23,7 @@ import dataclasses
 
 import pytest
 
-from test_electronic_state import WATER
+from support.road import water_in_vacuum
 
 
 def _template_says(name, value):
@@ -67,7 +67,7 @@ def test_a_template_states_the_fixed_answer_or_is_refused(
     prepping); the walk skipping a fixed item (the deck's line, or its
     note, goes).  (The answer not being laid on is the transport device
     test's to catch: here the class default is already the answer.)"""
-    _d, _s, said = prepared(WATER(), "siesta",
+    _d, _s, said = prepared(water_in_vacuum(), "siesta",
                             hand_edit=_template_says("write_forces", stated),
                             refused=refused)
     if refused:
@@ -88,7 +88,7 @@ def test_no_rung_turns_the_forces_or_coordinates_off(
 
     MUTATION THIS MUST FAIL AGAINST: the kind missing from the item's
     `role` list (the override is honoured and the deck says ``.false.``)."""
-    _d, _s, said = prepared(WATER(), "siesta", calculation=kind,
+    _d, _s, said = prepared(water_in_vacuum(), "siesta", calculation=kind,
                             overrides={"write_coor_step": False},
                             refused=True)
     assert "'write_coor_step'" in said and "the rung fixes" in said, said
@@ -110,7 +110,7 @@ def test_no_rung_renames_or_renumbers_the_calculation(
 
     MUTATION THIS MUST FAIL AGAINST: the kind missing from the item's
     `shared` list (the override is honoured)."""
-    _d, _s, said = prepared(WATER(), "siesta", overrides={name: value},
+    _d, _s, said = prepared(water_in_vacuum(), "siesta", overrides={name: value},
                             refused=True)
     assert f"'{name}'" in said and "shared by every stage" in said, said
     assert "one species table" in said, said

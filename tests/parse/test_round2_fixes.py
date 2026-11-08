@@ -1,10 +1,7 @@
-"""Regression tests for the parse module.
+"""A regression test for the parse module.
 
-Pins:
-  * AmbiguousFormatError — exercised when two parsers claim the
-    same path (`model/parse.md` § 3 states the rule).
-  * Spectra sidecars produce JSON-serialisable
-    payloads (no numpy ndarrays leaked).
+Pins: AmbiguousFormatError — exercised when two parsers claim the same path
+(`model/parse.md` § 3 states the rule).
 """
 
 from __future__ import annotations
@@ -64,27 +61,3 @@ def test_registry_ambiguous_raises(tmp_path):
         # Cleanup so subsequent tests see the canonical registry.
         if _GreedyParser in _FILE_PARSERS:
             _FILE_PARSERS.remove(_GreedyParser)
-
-
-# ---- Frozen invariant on multiple Result types ------------------ #
-
-
-def test_frozen_dataclass_invariant_on_each_result_kind():
-    """`model/parse.md` § 2: every parser returns a FROZEN dataclass -- no
-    defensive copies at API boundaries, and hashable.  Checked on every
-    registered output type."""
-    from dataclasses import FrozenInstanceError
-    from molbuilder.parse.types import ParseResult
-
-    # DISCOVERED, not listed.  The docstring says "every registered output
-    # type", and a hardcoded tuple cannot keep that promise: a kind added
-    # tomorrow would simply not be checked, and nothing would say so.
-    kinds = ParseResult.__subclasses__()
-    assert len(kinds) >= 4, (
-        f"only {len(kinds)} ParseResult subclasses found -- the scan is "
-        "blind, so the assertion below would pass vacuously")
-
-    for cls in kinds:
-        instance = cls(schema_version=1, parsed_at="", parser_name="x", source="x")
-        with pytest.raises(FrozenInstanceError):
-            instance.parser_name = "tampered"   # noqa

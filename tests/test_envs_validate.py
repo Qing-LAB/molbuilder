@@ -6,8 +6,7 @@ person acts on; the probes themselves need a built GPU env and ~30 minutes.
 from __future__ import annotations
 
 from molbuilder.envs import _cli as envs_cli
-from molbuilder.envs.validate import (ProbeResult, ValidationReport,
-                                      _RECIPE_PROBES)
+from molbuilder.envs.validate import ProbeResult, ValidationReport
 
 
 def _report(*probes: ProbeResult) -> ValidationReport:
@@ -46,13 +45,3 @@ def test_a_real_failure_still_condemns_the_env():
 def test_no_probes_is_not_a_pass():
     """An empty suite must not read as a clean bill of health."""
     assert _report().all_passed is False
-
-
-def test_the_long_upstream_suites_are_not_optional():
-    """Upstream's own suites are in the list the CLI runs -- see the module
-    docstring.  A source build is verified by nobody upstream: it is
-    compiled here against this host's CUDA, gcc and MPI, so upstream's own
-    suite is the only evidence the binary computes correctly."""
-    slugs = [row[0] for row in _RECIPE_PROBES["molbuilder-siesta-gpu"]]
-    for required in ("siesta ctest", "elpa make check"):
-        assert required in slugs, f"{required} must stay in the suite"

@@ -35,13 +35,11 @@ import json
 import pytest
 
 
-pytestmark = pytest.mark.e2e
-
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
-from support.road import (_description_with_overrides, describe_calculation,
-                          read_request, save_both)
+from support.road import (described, description_with_overrides, read_request,
+                          road_tree, save_both)
 from support.sidebar import committed
 from support.task_setup_page import edited_by_hand, file_text, task_setup_on
 
@@ -52,10 +50,10 @@ def _described_h2(root, name, *, calculation="optimization"):
     `coarse` for an optimization, `freq` for a vibration.  The tree is the
     module's, so describing moves nothing for the test."""
     with pytest.MonkeyPatch.context() as local:
-        return describe_calculation(root.parents[1], local, name=name,
-                                    calculation=calculation,
-                                    stage_strategy="",
-                                    bundle=f"{root.name}/{calculation}/{name}")
+        return described(road_tree(root.parents[1], local),
+                         f"{root.name}/{calculation}/{name}",
+                         name=name, calculation=calculation,
+                         stage_strategy="")
 
 
 def _saved(d, task):
@@ -220,7 +218,7 @@ def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
     MUTATION THIS MUST FAIL AGAINST: the viewer without the branch (the
     cell shows nothing selected)."""
     task_setup_on(page, flask_server, vibration_dir)
-    edited_by_hand(page, "task", json.dumps(_description_with_overrides(
+    edited_by_hand(page, "task", json.dumps(description_with_overrides(
         vibration_dir, {"freq": {"relax_type": "none"}}), indent=2))
     # THE CELL THE HAND EDIT DRAWS, once the page has read it back.
     cell = page.locator('[aria-label="freq relax_type"]').evaluate(

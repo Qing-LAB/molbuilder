@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 
-from test_electronic_state import WATER
+from support.road import water_in_vacuum
 
 
 # ------------------------------------------------- refused by name at prep
@@ -40,7 +40,7 @@ def test_a_vibration_relaxes_with_a_relaxer(prepared, door):
     relaxation's deck is written with no relaxation)."""
     said_by = ({"template": {"relax_type": "none"}} if door == "template"
                else {"overrides": {"relax_type": "none"}})
-    _d, _s, said = prepared(WATER(), "siesta", calculation="vibration",
+    _d, _s, said = prepared(water_in_vacuum(), "siesta", calculation="vibration",
                             refused=True, **said_by)
     assert "a vibration does not offer" in said, said
     assert "none relaxes nothing" in said, said
@@ -53,7 +53,7 @@ def test_an_optimization_offers_no_transport_solver(prepared):
     """SO-C13.  MUTATION THIS MUST FAIL AGAINST: the optimization's set
     undeclared (the deck says `SolutionMethod transiesta` and the run dies
     after the queue wait)."""
-    _d, _s, said = prepared(WATER(), "siesta",
+    _d, _s, said = prepared(water_in_vacuum(), "siesta",
                             template={"solution_method": "transiesta"},
                             refused=True)
     assert "solution_method = 'transiesta'" in said, said
@@ -65,7 +65,7 @@ def test_a_pyscf_vibration_is_restricted(prepared):
     """PS-C2's refusal half: the spectrum record carries one spin channel.
     MUTATION THIS MUST FAIL AGAINST: the PySCF vibration's spin set
     undeclared (the deck renders a UKS vibration)."""
-    _d, _s, said = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, spin_treatment="unrestricted", unpaired_electrons=0), refused=True)
+    _d, _s, said = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, spin_treatment="unrestricted", unpaired_electrons=0), refused=True)
     assert "spin_treatment = unrestricted (stated)" in said, said
     assert "one spin channel" in said and "offers restricted" in said, said
 
@@ -79,11 +79,11 @@ def test_pcm_reaches_one_route(prepared):
     MUTATION THIS MUST FAIL AGAINST: the route rule removed (the dipole
     route runs without the solvent's response, under an info saying it has
     it)."""
-    _d, _s, said = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water"), refused=True)
+    _d, _s, said = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water"), refused=True)
     assert "PCM solvation (water) reaches one route" in said, said
     assert "IR -- its dipole-derivative route" in said, said
     assert "Turn IR off" in said, said
-    _d, _s, deck = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water", compute_raman=False, compute_ir=False))
+    _d, _s, deck = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water", compute_raman=False, compute_ir=False))
     assert "78.3553" in deck and ("mf = mf.PCM()" in deck
                                   or "_mb_apply_solvent" in deck), (
         "the frequencies-only route with a solvent preps, solvated")
@@ -94,7 +94,7 @@ def test_an_unknown_solvent_is_one_refusal(prepared):
     is the engine's refusal alone -- the route rule speaks of the solvents
     PCM can apply (the K2 review).  MUTATION THIS MUST FAIL AGAINST: the
     route rule asked of any name (two refusals on one field)."""
-    _d, _s, said = prepared(WATER(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="xylol"), refused=True)
+    _d, _s, said = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="xylol"), refused=True)
     assert "unknown solvent 'xylol'" in said, said
     assert "reaches one route" not in said, said
 

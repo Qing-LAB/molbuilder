@@ -147,7 +147,8 @@ def test_read_returns_text_and_h1_title(client, tmp_path, monkeypatch):
 
 
 def test_read_returns_root_readme_and_license(client):
-    """The two whitelisted root-document entries are readable in the tab."""
+    """The two whitelisted root-document entries are readable in the tab.
+    THE FAILURE: either answering an error when the tab opens it."""
     readme = client.get("/api/docs/read?path=../README.md").get_json()
     assert readme["ok"] is True
     assert readme["path"] == "../README.md"

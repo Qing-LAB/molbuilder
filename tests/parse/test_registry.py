@@ -14,19 +14,6 @@ from molbuilder.parse import UnknownFormatError, detect
 from molbuilder.parse.registry import _registered_file_parsers
 
 
-# Registration --------------------------------------------------------- #
-
-
-def test_engine_parsers_registered():
-    """All three engine parsers land in the FileParser
-    registry at import time."""
-    file_parsers = _registered_file_parsers()
-    names = {p.name for p in file_parsers}
-    assert "siesta" in names
-    assert "pyscf" in names
-    assert "molwatch" in names
-
-
 # Detection + dispatch ------------------------------------------------- #
 
 

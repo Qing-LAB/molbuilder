@@ -29,8 +29,10 @@ MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 MODEL = MODULE_DIR / "model.js"
 UICTX = MODULE_DIR / "ui-context.js"
 
-# The same stand-in server test_molview_model.py boots the model against.
-from tests.test_molview_model import SERVER  # noqa: E402
+#: The stand-in server the model's own tests boot it against
+#: (`support/molview_server_standin.js`).
+SERVER = (Path(__file__).resolve().parent / "support"
+          / "molview_server_standin.js").read_text()
 
 PRELUDE = f"""
 const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});

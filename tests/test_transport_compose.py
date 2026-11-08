@@ -14,48 +14,41 @@ import pytest
 
 from molbuilder.transport.sort import (REGION_BRIDGE, REGION_LEFT_ELECTRODE,
                                        REGION_RIGHT_ELECTRODE)
-from support.junction import _BRIDGE, _LAYERS_L, _LAYERS_R
+from support.junction import BRIDGE, LAYERS_L, LAYERS_R
 
 
-
-def _junction(*, frozen: bool = True) -> dict:
-    """The junction as `describe_calculation` takes it: the structure a
-    person built on the Molbuilder tab, its leads labelled and -- unless a
-    case says otherwise -- held still for the relaxation, in a box whose c
-    closes the leads' boundary to one layer spacing (§ 6.1c)."""
+def _junction_with_free_leads():
+    """The junction a person built on the Molbuilder tab, its leads
+    labelled but left free -- never held for a relaxation -- in a box whose
+    c closes the leads' boundary to one layer spacing (§ 6.1c), as a
+    ``Structure`` (`support.road.road_structure`)."""
+    from support.road import road_structure
     elements, zs, labels = [], [], []
-    for z in _LAYERS_L:
+    for z in LAYERS_L:
         elements.append("Au"); zs.append(z); labels.append(REGION_LEFT_ELECTRODE)
-    for el, z in _BRIDGE:
+    for el, z in BRIDGE:
         elements.append(el); zs.append(z); labels.append(REGION_BRIDGE)
-    for z in _LAYERS_R:
+    for z in LAYERS_R:
         elements.append("Au"); zs.append(z); labels.append(REGION_RIGHT_ELECTRODE)
     regions: dict = {}
     for i, lab in enumerate(labels):
         regions.setdefault(lab, []).append(i)
-    if frozen:
-        regions["frozen_atoms"] = [i for i, lab in enumerate(labels)
-                                   if lab != REGION_BRIDGE]
-    return {"elements": elements,
-            "positions": [[1.0, 1.0, z] for z in zs],
-            "regions": regions,
-            "cell": [8.0, 8.0, 37.0],
-            "axis_kind": ["periodic", "periodic", "transport"]}
+    return road_structure({"elements": elements,
+                           "positions": [[1.0, 1.0, z] for z in zs],
+                           "regions": regions,
+                           "cell": [8.0, 8.0, 37.0],
+                           "axis_kind": ["periodic", "periodic",
+                                         "transport"]})
 
 
 def test_a_lead_that_was_not_held_is_refused_by_name():
     """§ 3's lead gate, the one compose asks: a lead must have come through
     the relaxation as frozen bulk.  A junction whose leads were left free is
     refused naming what to do."""
-    from molbuilder.structure import Structure
     from molbuilder.transport.wizard import extract_electrode_model
-    j = _junction(frozen=False)
-    device = Structure(elements=j["elements"],
-                       positions=np.asarray(j["positions"], dtype=float),
-                       regions=j["regions"], cell=np.diag(j["cell"]),
-                       axis_kind=tuple(j["axis_kind"]))
     with pytest.raises(ValueError) as e:
-        extract_electrode_model(device, REGION_LEFT_ELECTRODE)
+        extract_electrode_model(_junction_with_free_leads(),
+                                REGION_LEFT_ELECTRODE)
     msg = str(e.value)
     assert "NOT FROZEN" in msg and "freeze them" in msg, msg
 

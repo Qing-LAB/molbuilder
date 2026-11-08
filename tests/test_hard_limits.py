@@ -23,9 +23,8 @@ from __future__ import annotations
 
 import pytest
 
-from support.road import (_description_with_overrides, describe_calculation,
-                          read_request, save_both, stage_file)
-from test_electronic_state import WATER
+from support.road import (described, description_with_overrides, read_request,
+                          road_tree, save_both, stage_file, water_in_vacuum)
 
 pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
@@ -47,7 +46,7 @@ def test_a_value_the_engine_cannot_take_is_refused_with_its_reason(
     MUTATION THIS MUST FAIL AGAINST: the item's `above` removed (the deck is
     written, and the run writes inf or divides by zero)."""
     _d, _s, said = prepared(
-        WATER(), engine, calculation="vibration",
+        water_in_vacuum(), engine, calculation="vibration",
         template={name: 0.0, **({"already_relaxed": True}
                                 if engine == "pyscf" else {})},
         refused=True)
@@ -66,8 +65,8 @@ def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
     MUTATIONS THIS MUST FAIL AGAINST: the stage branch back at "error" (the
     save refuses what the template would only warn about); the save checking
     scalars alone (the triple says nothing, the K3 review)."""
-    d = describe_calculation(tmp_path, monkeypatch)
-    r = save_both(d, _description_with_overrides(
+    d = described(road_tree(tmp_path, monkeypatch))
+    r = save_both(d, description_with_overrides(
         d, {"coarse": {"mesh_cutoff": 2000.0, "kgrid": [100, 1, 1]}}),
         read_request(d), web_client)
     assert r.status_code == 200, r.get_json()
@@ -100,14 +99,14 @@ def test_what_the_save_refuses_it_refuses_once(web_client, tmp_path,
     number); the door asked about the raw value (``0.0`` for a count
     saves); a run card judged without the setting door (it saves -- the
     2.27.0 review)."""
-    d = describe_calculation(tmp_path, monkeypatch)
+    d = described(road_tree(tmp_path, monkeypatch))
     was = (d / "task.json").read_text()
 
     def save(**change):
         request = read_request(d)
         overrides = change.pop("overrides", {})
         request.update(change)
-        r = save_both(d, _description_with_overrides(d, {"coarse": overrides}),
+        r = save_both(d, description_with_overrides(d, {"coarse": overrides}),
                       request, web_client)
         assert r.status_code == 400, r.get_json()
         return r.get_json()
@@ -140,7 +139,7 @@ def test_a_triples_range_is_warned_at_prep_too(prepared):
 
     MUTATION THIS MUST FAIL AGAINST: the metadata pass standing aside for a
     field with a `validate` callable (the report says nothing)."""
-    dest, stage, _deck = prepared(WATER(), "siesta",
+    dest, stage, _deck = prepared(water_in_vacuum(), "siesta",
                                   overrides={"kgrid": [100, 1, 1]})
     report = stage_file(dest, stage, ".validation.txt").read_text()
     assert "[0] = 100 is outside the recommended range [1, 64]" in report, \

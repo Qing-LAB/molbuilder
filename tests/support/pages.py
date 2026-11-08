@@ -1,5 +1,6 @@
 """The pages the app serves, as the browser receives them -- for a test that
-reads what was served rather than the templates it was rendered from."""
+reads what was served rather than the templates it was rendered from -- and
+what a page's request is served of a result (:func:`spectra_served`)."""
 from __future__ import annotations
 
 
@@ -85,3 +86,17 @@ def ids_of(html: str) -> list:
     parser.feed(html)
     parser.close()
     return parser.ids
+
+
+def spectra_served(web_client, monkeypatch, path, **ask) -> dict:
+    """What the load door serves of the result at ``path``, asked as the page
+    asks (`POST /api/spectra/load`, ``ask`` beside the path), inside the tree
+    it lies in, the one door pointed at it (the fence, `web-api.md` § 2.1;
+    `conftest.point_the_one_door_at`): the answer's ``results``."""
+    from conftest import point_the_one_door_at
+    from molbuilder.projects import find_projects_root
+    point_the_one_door_at(find_projects_root(path).parent, monkeypatch.setenv)
+    r = web_client.post("/api/spectra/load", json={"path": str(path), **ask})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["ok"] is True
+    return r.get_json()["results"]

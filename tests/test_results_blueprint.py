@@ -154,9 +154,9 @@ def relaxation_and_its_bench(tmp_path, monkeypatch):
     """An H2 relaxation through the road, no engine run: `molbuilder
     describe`, `prep task` of its first group, and `prep bench` of its first
     stage's benchmark -- every folder prep makes for it."""
-    from support.road import (declare_bench, describe_calculation, jobset,
-                              prep_groups)
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    from support.road import (declare_bench, described, jobset, prep_groups,
+                              road_tree)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     prep_groups(bundle, "1")
     declare_bench(bundle, {"mpi_np": [1, 2], "omp_threads": [1]})
     got = jobset("prep", "bench", "coarse", "--bundle", bundle,

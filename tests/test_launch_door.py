@@ -22,34 +22,17 @@ import json
 import pytest
 from molbuilder.calculation import open as open_calculation
 
-from support.road import (read_request, write_request,
-                          a_machine_with_queues, calls_made, describe_calculation,
-                          group_words, jobset, stage_file)
+from support.road import (a_machine_with_queues, calls_made, described,
+                          group_words, jobset, read_request, road_tree,
+                          stage_file)
 
 
-def _queues(gpu: bool = False):
+def _queues():
     from molbuilder.scheduler import Domain
-    rows = [Domain(name="debug", partition="htc", qos="debug",
+    return [Domain(name="debug", partition="htc", qos="debug",
                    max_time="0-00:15:00"),
             Domain(name="htc", partition="htc", qos="public",
                    max_time="0-04:00:00")]
-    if gpu:
-        rows.append(Domain(name="gpu", partition="gpu", qos="public",
-                           max_time="0-04:00:00",
-                           gpu={"a100": 4}))
-    return rows
-
-
-def _states_its_wall_and_memory(bundle, **more):
-    """The calculation states its wall and its memory -- its job request's
-    `allocation` -- as a run on a scheduler does, or prep refuses
-    (`architecture.md` § 5.2).  Its QUEUE each prep names for its own stage
-    (`--domain`), which is what this file is about -- or, given here, the
-    job request names it for every stage."""
-    request = read_request(bundle)
-    request["allocation"] = {"time": "0-01:00:00", "mem": "8G", **more}
-    write_request(bundle, request)
-    return bundle
 
 
 @pytest.fixture
@@ -57,10 +40,14 @@ def cluster(tmp_path, monkeypatch):
     """A machine whose record names two queues -- `debug` (15 minutes) and
     `htc` (4 hours) -- an `sbatch` that writes down each call and refuses
     it (no scheduler text in the basic tests), and the H2 ladder described
-    on it, stating its wall and memory: ``(bundle, calls)``."""
+    on it: ``(bundle, calls)``.  The calculation states its wall and its
+    memory -- its job request's `allocation` -- as a run on a scheduler
+    does, or prep refuses (`architecture.md` § 5.2); its QUEUE each prep
+    names for its own stage (`--domain`), which is what this file is
+    about."""
     calls = a_machine_with_queues(tmp_path, monkeypatch, _queues())
-    return _states_its_wall_and_memory(describe_calculation(tmp_path, monkeypatch)), \
-        calls
+    return described(road_tree(tmp_path, monkeypatch),
+                     allocation={"time": "0-01:00:00", "mem": "8G"}), calls
 
 
 def _prep(bundle, stage="coarse", *more):
@@ -158,11 +145,9 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     and sends it in one command, and the folder changes in between only
     while the person reads the question.  The plan and the send are the
     entry's own two calls (`submit.plan_launch`, `submit.send_launch`); the
-    change between them is a person's.
+    change between them is a person's: a line added to the deck by hand.
 
     MUTATION THIS MUST FAIL AGAINST: the send comparing nothing."""
-    import os
-
     from molbuilder.jobset.submit import SubmitError, plan_launch, send_launch
     from molbuilder.jobset.ask import Said
     bundle, calls = cluster
@@ -180,8 +165,7 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     # run is filled from at the send (`_Member.read_from`).
     deck = next((bundle / "01_coarse").glob("*.fdf"))
     assert any(deck.name in r for r in shown.reads), shown.reads
-    st = deck.stat()
-    os.utime(deck, ns=(st.st_atime_ns, st.st_mtime_ns + 10 ** 9))
+    deck.write_text(deck.read_text() + "# looked over before the send\n")
     with pytest.raises(SubmitError) as e:
         send_launch(shown, said=Said(True, "yes (--yes)"))
     said = str(e.value)
@@ -233,8 +217,8 @@ def test_a_groups_run_in_phases_is_walked_by_its_own_walk(tmp_path,
     (`_walk_of([m], base)` for a run of points too)."""
     from molbuilder.jobset.submit import plan_launch
     from support.road import save_both, set_by_the_person
-    bundle = describe_calculation(tmp_path, monkeypatch,
-                                  calculation="vibration")
+    bundle = described(road_tree(tmp_path, monkeypatch),
+                       calculation="vibration")
     set_by_the_person(bundle, {"already_relaxed": True})
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)

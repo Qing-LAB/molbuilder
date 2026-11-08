@@ -19,29 +19,16 @@ from molbuilder.web.app import create_app
 BIG = b"\x01" * 5000
 
 
-@pytest.fixture(autouse=True)
-def _allowed_root(tmp_path, monkeypatch):
-    """Say where this test's tree IS.
-
-    Since web-api.md § 2.1 every route fences a browser-supplied path to the
-    allowed roots BEFORE calling the module behind it, so a test driving those
-    routes at its own ``tmp_path`` has to declare that path the way a
-    deployment declares its projects root.  Without this the routes correctly
-    refuse — which is the point of the fence, not a test-harness quirk.
-    """
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
-                                    conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
-
-
 @pytest.fixture()
-def calc(tmp_path, checkpoint_config):
-    """The classification is server-wide (S1c); the folder carries none."""
+def calc(isolated_projects_root, checkpoint_config):
+    """The classification is server-wide (S1c); the folder carries none.
+
+    The folder lies in the test's own projects tree, the one door pointed at
+    it (`isolated_projects_root`): since web-api.md § 2.1 every route fences a
+    browser-supplied path to that tree BEFORE calling the module behind it,
+    and a path outside it is refused -- the point of the fence."""
     checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
-    root = tmp_path / "BDT_Au_relax"
+    root = isolated_projects_root / "BDT_Au_relax"
     root.mkdir()
     (root / "job.fdf").write_text("SystemLabel job\n")
     return root
@@ -137,8 +124,10 @@ def test_state_on_a_plain_folder_says_it_is_not_initialised(client, calc):
     assert body["ok"] and body["initialized"] is False
 
 
-def test_state_refuses_a_path_that_is_not_a_directory(client, tmp_path):
-    assert _get(client, "state", tmp_path / "nope").status_code == 400
+def test_state_refuses_a_path_that_is_not_a_directory(
+        client, isolated_projects_root):
+    assert _get(client, "state",
+                isolated_projects_root / "nope").status_code == 400
 
 
 # ------------------------------------------------------------------ #
@@ -285,8 +274,9 @@ def test_init_is_idempotent_and_says_so(client, calc):
     assert second["ok"] and second["already"] is True
 
 
-def test_init_refuses_a_calculation_name_needing_repair(client, tmp_path):
-    root = tmp_path / "has spaces!"
+def test_init_refuses_a_calculation_name_needing_repair(
+        client, isolated_projects_root):
+    root = isolated_projects_root / "has spaces!"
     root.mkdir()
     (root / "job.fdf").write_text("x\n")
     body = _post(client, "init", root, note="set up").get_json()
@@ -294,7 +284,7 @@ def test_init_refuses_a_calculation_name_needing_repair(client, tmp_path):
 
 
 def test_save_refuses_a_bad_calculation_name_as_an_advisory_not_a_fault(
-        client, tmp_path, checkpoint_config):
+        client, isolated_projects_root, checkpoint_config):
     """§ 15's rule, on the route where it was most recently broken.
 
     A save validates the calculation's name too (L3), because a folder somebody
@@ -310,7 +300,7 @@ def test_save_refuses_a_bad_calculation_name_as_an_advisory_not_a_fault(
     """
     import subprocess
     checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
-    root = tmp_path / "has spaces!"
+    root = isolated_projects_root / "has spaces!"
     root.mkdir()
     (root / "job.fdf").write_text("x\n")
     subprocess.run(["git", "init", "-q", "."], cwd=root, check=True)
@@ -325,7 +315,7 @@ def test_save_refuses_a_bad_calculation_name_as_an_advisory_not_a_fault(
 
 
 def test_init_can_name_a_folder_that_is_already_a_git_repository(
-        client, tmp_path, checkpoint_config):
+        client, isolated_projects_root, checkpoint_config):
     """The panel's only way out of a refused save, and it was closed.
 
     A folder somebody `git init`-ed by hand cannot be saved until it has a
@@ -339,7 +329,7 @@ def test_init_can_name_a_folder_that_is_already_a_git_repository(
     """
     import subprocess
     checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
-    root = tmp_path / "has spaces!"
+    root = isolated_projects_root / "has spaces!"
     root.mkdir()
     (root / "job.fdf").write_text("x\n")
     subprocess.run(["git", "init", "-q", "."], cwd=root, check=True)
@@ -386,7 +376,7 @@ def test_a_bad_limit_is_the_callers_mistake_not_the_servers(client, started):
 
 
 def test_init_refuses_a_folder_of_independent_calculations_as_an_advisory(
-        client, tmp_path):
+        client, isolated_projects_root):
     """L1 over the wire, and the **bucket** is the point (§ 15).
 
     Two refusals reach this route and they are not the same kind of thing.
@@ -395,7 +385,7 @@ def test_init_refuses_a_folder_of_independent_calculations_as_an_advisory(
     the panel can render and act on.  Everything else is a fault.  *"A surface
     that cannot tell them apart reports 'fix your input' for a broken disk"*.
     """
-    root = tmp_path / "topic"
+    root = isolated_projects_root / "topic"
     (root / "run_a").mkdir(parents=True)
     (root / "run_b").mkdir()
     (root / "run_a" / "job.fdf").write_text("x\n")

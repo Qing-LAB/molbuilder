@@ -188,10 +188,10 @@ def _prepped_deck(pair, tmp_path, monkeypatch, rung, groups) -> str:
     """The deck `jobset prep` wrote for ``rung`` of a transport calculation
     citing the real ``pair``, with a k-point grid of its own so a grid's block
     is written."""
-    from support.road import (describe_calculation, prep_groups,
+    from support.road import (described, prep_groups, road_tree,
                               set_by_the_person, stage_file)
-    bundle = describe_calculation(tmp_path, monkeypatch, name="kwcheck",
-                                  calculation="transport", structure=pair)
+    bundle = described(road_tree(tmp_path, monkeypatch, pair), name="kwcheck",
+                       calculation="transport")
     set_by_the_person(bundle, {"kgrid": (2, 2, 1)})
     prep_groups(bundle, *groups)
     return stage_file(bundle, rung, ".fdf").read_text()

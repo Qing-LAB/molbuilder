@@ -43,15 +43,14 @@ _SYNTHETIC_PDB = (
 
 
 @pytest.fixture
-def pdb_under_root(tmp_path, monkeypatch):
-    """A PDB inside a projects tree of this test's own, which the selection
-    endpoints accept.  Returns ``(pdb_path, n_atoms, n_residues)``."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+def pdb_under_root(isolated_projects_root):
+    """A PDB inside a projects tree of this test's own, the one door pointed
+    at it (`isolated_projects_root`), which the selection endpoints accept.
+    Returns ``(pdb_path, n_atoms, n_residues)``."""
     pdb_text = _SYNTHETIC_PDB
-    dest = tmp_path / "projects" / "P" / "structure" / "test_workflow.pdb"
+    dest = isolated_projects_root / "P" / "structure" / "test_workflow.pdb"
     dest.parent.mkdir(parents=True)
     dest.write_text(pdb_text)
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
 
     # Parse via the actual Python API so the test knows the truth
     # without re-parsing the file via the HTTP layer.  This is the

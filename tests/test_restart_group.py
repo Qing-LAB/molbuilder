@@ -16,19 +16,6 @@ from __future__ import annotations
 from molbuilder.config.siesta import SiestaConfig
 
 
-def test_a_missing_restart_field_reads_as_the_catalogue_s_default():
-    """`run-identity.md` § 4 rule 3: `continue` is the default, and nothing
-    computes it -- a template-shaped object that states no `restart` reads
-    as the catalogue's default, never as a second default spelled in code
-    (`clean` stood in `identity.continues` until 2026-10-18)."""
-    class Bare:
-        pass
-    from molbuilder.identity import continues
-    from molbuilder.template import catalogue, one
-    assert one(catalogue(), "restart").default == "continue"
-    assert continues(Bare()) is True
-
-
 def test_prep_carries_state_only_into_a_stage_that_will_read_it():
     """The other face of *present but not honoured*: state placed beside a
     run that was told not to look at it.

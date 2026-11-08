@@ -33,13 +33,11 @@ import itertools
 
 import pytest
 
-from support.road import (WATER, describe_calculation, group_words, jobset,
-                          read_request, set_by_the_person, stage_file,
+from support.road import (WATER, described, group_words, jobset, read_request,
+                          road_tree, set_by_the_person, stage_file,
                           write_request)
 from molbuilder.calculation import open as open_calculation
 
-#: The road's water, closed shell and free: an even count an open-shell axis
-#: can hold two unpaired electrons on.
 #: The axes that change WHICH CODE is emitted — not which values it carries.
 #: A value axis (``mesh_cutoff``) cannot affect a namespace; an axis that turns
 #: a callback, a solvent wrapper or a GPU shim on and off can.
@@ -72,9 +70,11 @@ def _decks(tmp_path, monkeypatch, calculation, stage, axes):
     a combination skipped here is a deck the rule no longer asks about, which
     is how half this sweep once went unasked, every GPU deck refused for a
     count it did not state."""
-    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf",
-                                  calculation=calculation, stage_strategy="",
-                                  structure=WATER)
+    # THE ROAD'S WATER, closed shell and free: an even count an open-shell
+    # axis can hold two unpaired electrons on.
+    bundle = described(road_tree(tmp_path, monkeypatch, WATER, engine="pyscf"),
+                       calculation=calculation, engine="pyscf",
+                       stage_strategy="")
     template = open_calculation(bundle).template.path
     as_described, request = template.read_text(), read_request(bundle)
     for combo in itertools.product(*axes.values()):

@@ -850,7 +850,7 @@ def test_configured_but_not_live_is_a_state_the_page_can_report(client):
 # --------------------------------------------------------------------- #
 
 def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
-        client):
+        client, tmp_path, monkeypatch):
     """`stages.md` § 6.9: a report field is offered for a calculation only
     when its runs can state it, and a description naming one they cannot is
     refused at save.  The Task-setup card's offer (this route) and the save
@@ -862,39 +862,56 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
 
     Not vacuous: seconds per iteration is not offered for a PySCF run (the
     timing instrument is the SIESTA wrapper's), nor a step for a transport
-    one (its rungs are single points)."""
+    one (its rungs are single points).
+
+    Each kind of a structure is `molbuilder describe`'s, of the road's H2
+    (`support.road.described`).  A transport description is stated as the
+    save takes it: `describe` cites only a relaxation that finished, which
+    an engine run makes, and this file starts none."""
     from molbuilder import job_request
     from molbuilder.report_fields import NAMES
     from molbuilder.task import SCHEMA, Task
+    from molbuilder.task import of as task_of
+    from support.road import described as describe
+    from support.road import read_request, road_tree
 
     c, _ = client
+    tree = road_tree(tmp_path, monkeypatch)
+    calcs = {(engine, calculation): describe(
+                 tree, f"P/{engine}-{calculation}/H2", engine=engine,
+                 calculation=calculation)
+             for engine, calculation in (("siesta", "optimization"),
+                                         ("siesta", "vibration"),
+                                         ("pyscf", "optimization"),
+                                         ("pyscf", "vibration"))}
 
     def described(engine, calculation, report):
         """A description of ``engine`` and ``calculation``, and the job
         request reporting ``report`` -- read as the save reads both."""
-        d = {"schema": SCHEMA, "engine": {"name": engine},
-             "shape": "hierarchical", "run": {"name": "J", "id": "J_H2"},
-             "varies": [], "calculation": calculation,
-             "stages": [{"name": "s", "overrides": {}}]}
         if calculation == "transport":
             # its identity is the junction it cites (run-identity.md 2.0a),
             # and its stages are its rungs (engines/transport.md § 3.8.2a)
-            d["slots"] = {"junction": "p/optimization/relax"}
-            d["run"]["id"] = "J_p_optimization_relax"
-            # THE SINGLE BIAS, STATED (`engines/transport.md` § 2a.10).
-            d["bias"] = {"voltages_v": [0.0]}
-            d["stages"] = [{"name": n, "overrides": {}}
-                           for n in ("seed", "electrode_L", "electrode_R",
-                                     "device", "transmission")]
+            d = {"schema": SCHEMA, "engine": {"name": engine},
+                 "shape": "hierarchical",
+                 "run": {"name": "J", "id": "J_p_optimization_relax"},
+                 "varies": [], "calculation": calculation,
+                 "slots": {"junction": "p/optimization/relax"},
+                 # THE SINGLE BIAS, STATED (`engines/transport.md` § 2a.10).
+                 "bias": {"voltages_v": [0.0]},
+                 "stages": [{"name": n, "overrides": {}}
+                            for n in ("seed", "electrode_L", "electrode_R",
+                                      "device", "transmission")]}
+            task = Task.from_dict(d)
+            request = {"schema": job_request.SCHEMA,
+                       "stages": {st.name: {"group": i + 1}
+                                  for i, st in enumerate(task.stages)}}
         else:
-            d["structure"] = {"source": "h2.xyz", "formula": "H2", "atoms": 2}
-        task = Task.from_dict(d)
+            bundle = calcs[(engine, calculation)]
+            task, request = task_of(bundle), read_request(bundle)
         return job_request.from_dict(
-            {"schema": job_request.SCHEMA,
-             "stages": {st.name: {"group": i + 1}
-                        for i, st in enumerate(task.stages)},
-             "notify": {"on_scf_converged": False, "every_hours": None,
-                        "channels": ["*"], "report": report}}, task)
+            {**request, "notify": {"on_scf_converged": False,
+                                   "every_hours": None, "channels": ["*"],
+                                   "report": report}}, task)
 
     offered_somewhere = {}
     for engine, calculation in (("siesta", "optimization"),

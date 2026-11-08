@@ -31,25 +31,18 @@ import pytest
 pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
 
-def _described(engine, stages, calculation="optimization"):
-    """A description as a person's editor leaves it, and its job request:
-    ``stages`` the rows, ``varies`` what they override -- each row its own
-    group, as the page numbers a stage it adds."""
-    from molbuilder.identity import run_id
-    from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
-    from molbuilder.task import SCHEMA as TASK_SCHEMA
-    task = {"schema": TASK_SCHEMA, "engine": {"name": engine},
-            "calculation": calculation,
-            "shape": "hierarchical",
-            "run": {"name": "x", "id": run_id("x", "H2"),
-                    "created": "2026-09-30T00:00:00-07:00"},
-            "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
-            "varies": sorted({k for s in stages for k in s["overrides"]}),
-            "stages": stages}
-    request = {"schema": REQUEST_SCHEMA,
-               "stages": {s["name"]: {"group": i + 1}
-                          for i, s in enumerate(stages)}}
-    return task, request
+def _overridden(bundle, overrides):
+    """``bundle`` -- a calculation `molbuilder describe` made -- with
+    ``overrides``, ``{stage: {name: value}}``, written through Task setup's
+    Save as the page writes a stage's value (`support.road`): what Save
+    answered, and whether its two records are as they were."""
+    from support.road import (description_with_overrides, read_request,
+                              save_both)
+    records = [bundle / "task.json", bundle / "job-request.json"]
+    was = [f.read_bytes() for f in records]
+    r = save_both(bundle, description_with_overrides(bundle, overrides),
+                  read_request(bundle))
+    return r, [f.read_bytes() for f in records] == was
 
 
 def _save(web_client, dest, described):
@@ -62,9 +55,12 @@ def _save(web_client, dest, described):
 #: A transport calculation's five rungs, in their default groups, and the
 #: relaxation it cites, which no run made: Task setup's Save holds a citation
 #: as a string and opens no run (`api_task_setup_save`, the description's own
-#: checks), so what these tests read stands on none.  What a rung reads once
-#: it is prepared, on a junction a real SIESTA relaxed:
-#: `tests/data/the_transport_deck.toml`.
+#: checks), so what these tests read stands on none.  STATED AS SAVE TAKES IT,
+#: not described: `molbuilder describe` cites only a relaxation that finished
+#: -- a structure pair recording none is refused -- and only an engine run
+#: makes one (`support.real_runs.bridged_chain_relaxed`), which this file,
+#: no engine in it, does not start.  What a rung reads once it is prepared,
+#: on a junction a real SIESTA relaxed: `tests/data/the_transport_deck.toml`.
 _RUNGS = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 _GROUPS = (1, 1, 1, 2, 3)
 _CITE = "J/optimization/relax/01_coarse/run-0"
@@ -93,17 +89,8 @@ def _transport(*, on=None, rung_execution=None):
     return task, request
 
 
-def _template_beside(dest, engine, calculation, cfg):
-    """The template the hand-over leaves beside the description, which the
-    save reads for the checks that compare RESOLVED rungs."""
-    from molbuilder.template import template_with_values
-    from molbuilder.template_file import template_path
-    template_path(dest, "x").write_text(template_with_values(
-        cfg, engine=engine, calculation=calculation), encoding="utf-8")
-
-
 def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
-        web_client, isolated_projects_root):
+        web_client, isolated_projects_root, tmp_path, monkeypatch):
     """A transport ladder's transmission rung reads the transmission's
     settings, whatever the rungs are called: one on the seed is refused by
     name, naming the rung that reads it -- as an item the kind does not
@@ -113,7 +100,7 @@ def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
     MUTATIONS THIS MUST FAIL AGAINST: the description's check not asking
     which rung reads an override (it saves); the group check asked of a
     ladder that does not resolve (the save crashes, 500)."""
-    from test_task_setup_tab import _fresh_calc_dir
+    from support.road import described, road_tree
     d = isolated_projects_root / "J" / "transport" / "t"
     d.mkdir(parents=True)
     task, request = _transport()
@@ -127,25 +114,20 @@ def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
             "not 'seed'") in refused["seed"], refused
     assert not (d / "task.json").exists()
 
-    d = _fresh_calc_dir(isolated_projects_root)
-    r = _save(web_client, d, _described("siesta", [
-        {"name": "coarse", "overrides": {"fc_displacement": 0.02}}]))
+    # AN OPTIMIZATION `molbuilder describe` made, on its shipped ladder.
+    h2 = described(road_tree(tmp_path, monkeypatch))
+    r, kept = _overridden(h2, {"coarse": {"fc_displacement": 0.02}})
     assert r.status_code == 400, r.get_json()
     assert "which an optimization does not carry" in r.get_json()["error"]
-    assert not (d / "task.json").exists()
+    assert kept, "a refused Save wrote a record"
 
     # A NAME NO FIELD HAS, on a ladder whose groups the save checks against
     # the template beside it: the stages' links are read of a ladder that
     # resolves, so the answer is this refusal, never a crash.
-    from molbuilder.config.siesta import SiestaConfig
-    _template_beside(d, "siesta", "optimization",
-                     SiestaConfig(system_label="x"))
-    r = _save(web_client, d, _described("siesta", [
-        {"name": "coarse", "overrides": {"no_such_item": 1}},
-        {"name": "medium", "overrides": {}}]))
+    r, kept = _overridden(h2, {"coarse": {"no_such_item": 1}})
     assert r.status_code == 400, r.get_json()
     assert "no_such_item" in r.get_json()["error"], r.get_json()["error"]
-    assert not (d / "task.json").exists()
+    assert kept, "a refused Save wrote a record"
 
 
 def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(
@@ -179,8 +161,7 @@ def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(
     assert r.status_code == 200, r.get_json()
 
 
-def test_a_relaxation_that_takes_no_step_is_refused(web_client,
-                                                    isolated_projects_root):
+def test_a_relaxation_that_takes_no_step_is_refused(tmp_path, monkeypatch):
     """``relax_steps = 0`` on a rung that relaxes is a single point -- the
     rung relaxes nothing, and a vibration's force constants would be taken
     at a geometry nobody relaxed -- so the description is refused where it
@@ -190,14 +171,12 @@ def test_a_relaxation_that_takes_no_step_is_refused(web_client,
 
     MUTATIONS THIS MUST FAIL AGAINST: the step rule not asked (it saves);
     the range check not told of the refusal (a warning beside it)."""
-    from molbuilder.config.siesta import SiestaConfig
-    from test_task_setup_tab import _fresh_calc_dir
-    d = _fresh_calc_dir(isolated_projects_root)
-    _template_beside(d, "siesta", "vibration", SiestaConfig(system_label="x"))
-    r = _save(web_client, d, _described("siesta", [
-        {"name": "freq", "overrides": {"relax_steps": 0}}],
-        calculation="vibration"))
+    from support.road import described, road_tree
+    vibration = described(road_tree(tmp_path, monkeypatch),
+                          calculation="vibration")
+    r, kept = _overridden(vibration, {"freq": {"relax_steps": 0}})
     assert r.status_code == 400, r.get_json()
+    assert kept, "a refused Save wrote a record"
     assert "stage 'freq' relaxes" in r.get_json()["error"], \
         r.get_json()["error"]
     assert "relaxes nothing" in r.get_json()["error"]

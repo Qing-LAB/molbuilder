@@ -29,9 +29,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available, live_siesta
-from support.road import H2, road_structure
-from support.road import molbuilder, one_rank, set_by_the_person
+from _road import conda_hook, env_available
+from support.road import H2
+from support.road import molbuilder, set_by_the_person
 
 pytestmark = [
     pytest.mark.engine,
@@ -48,28 +48,22 @@ _H2 = H2["positions"]
 
 
 @pytest.fixture(scope="module")
-def capped(isolated_projects_root_module, tmp_path_factory):
+def capped(tmp_path_factory):
     """The capped calculation's coarse stage, in a projects tree of its own:
-    ONE MOVE ALLOWED -- its first run, ``run-0``, ends out of moves -- and
-    the stage launched again, which opens ``run-1`` warm from it
-    (`running-a-job.md` § 3.5): ``(run-0, run-1)``."""
+    the road's H2 described as the one stage its template alone describes,
+    one rank, ONE MOVE ALLOWED -- its first run, ``run-0``, ends out of
+    moves -- and the stage launched again, which opens ``run-1`` warm from
+    it (`running-a-job.md` § 3.5): ``(run-0, run-1)``."""
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
-    from molbuilder.workingcopy_structure import StructureCodec
-    from support.road import group_words, jobset
-    tree = isolated_projects_root_module
-    with live_siesta(tree, tmp_path_factory):
-        (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-        StructureCodec().write(road_structure(H2),
-                               tree / "P" / "structure" / "h2.xyz")
-        bundle = tree / "P" / "opt" / "H2cap"
-        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
-                   "--bundle", "P/opt/H2cap", "--engine", "siesta",
-                   "--calculation", "optimization",
-                   "--name", "H2", "--psml-lib", "pseudopotential")
-        assert r.exit_code == 0, r.output
-        one_rank(bundle)
+    from support.real_runs import on_the_road
+    from support.road import described, group_words, jobset, structure_saved
+    with on_the_road(tmp_path_factory, "capped") as tree:
+        bundle = described(tree, "P/opt/H2cap",
+                           structure=structure_saved(tree, H2), name="H2",
+                           calculation="optimization", stage_strategy="",
+                           execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, {"relax_steps": 1})
         r = jobset("prep", "task", *group_words(bundle, "coarse"),
                    "--bundle", bundle, "--target", "this")
@@ -162,12 +156,12 @@ def test_the_run_reads_its_own_deck(opt, real_h2_layered, monkeypatch):
     sure that it does make each run sees its own .fdf"*); and SIESTA's own
     ``H2.xyz``, opened as a structure, carries the same box at the engine's
     origin (`model/structure-periodicity.md` § 6.0)."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from molbuilder.web.app import create_app
     from molbuilder.workingcopy_structure import StructureCodec
     bundle = real_h2_layered.bundle
     # THE PROJECTS TREE THE RUN WAS MADE IN, the one door pointed at it.
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_h2_layered.tree))
+    point_the_one_door_at(real_h2_layered.tree.parent, monkeypatch.setenv)
     d = create_app(config={}).test_client().post(
         "/api/watch/load", json={"path": str(opt)}).get_json()
     assert d["ok"] is True, d
@@ -563,12 +557,12 @@ def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, monkeypatch)
     exported file's every step is what `read_steps` hands back of each run, in
     the ladder's order, the stress as the run printed it.  The silent
     failure: a row of one run read as another's, or an atom's as another's."""
+    from conftest import point_the_one_door_at
     from molbuilder.parse.engines.siesta_grammar import STRESS_VOIGT
     from molbuilder.postprocess import read_optimization_data, read_steps
-    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.runs import RunStepsError, run_of
     bundle = real_h2_layered.bundle
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_h2_layered.tree))
+    point_the_one_door_at(real_h2_layered.tree.parent, monkeypatch.setenv)
     to = bundle.parent / "exported"
     said = molbuilder("jobset", "export", "--format", "netcdf", "--to", to,
                       "--bundle", bundle)

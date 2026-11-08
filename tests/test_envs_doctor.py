@@ -1,8 +1,8 @@
 """L1 tests for ``molbuilder.envs.doctor``.
 
-Pins the present/missing logic without running real conda subprocesses, the
-accept rule, what `repair` dispatches, and what the audit reads of a package's
-source.
+Pins the accept rule, what `repair` dispatches, and what the audit reads of a
+package's source.  The present/missing column is read on what this machine's
+own manager lists, a field test (`tests/field/test_the_manager_answers.py`).
 """
 from __future__ import annotations
 
@@ -17,42 +17,12 @@ from molbuilder.envs import doctor, install as _install
 from molbuilder.envs.recipes import PipPackage, Recipe, recipe_by_name
 
 
-def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda",
-          envs_override=None):
-    cfg = {"envs": envs_override} if envs_override is not None else {}
+def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
     set_capabilities(Capabilities(
-        runtime_config=cfg,
+        runtime_config={},
         conda_binary=conda_binary,
         conda_envs=frozenset(conda_envs),
     ))
-
-
-# --------------------------------------------------------------------- #
-#  report_all: present/missing                                           #
-# --------------------------------------------------------------------- #
-
-
-def test_report_all_marks_envs_present_when_in_caps():
-    _bind(conda_envs=("molbuilder", "molbuilder-siesta"))
-    reports = doctor.report_all(run_verify=False)
-    by_name = {r.effective_name: r for r in reports}
-    assert by_name["molbuilder"].present is True
-    assert by_name["molbuilder-siesta"].present is True
-    assert by_name["molbuilder-pySCF"].present is False
-
-
-def test_report_all_honours_envs_override():
-    """When molbuilder.json renames siesta -> my-siesta, the
-    doctor's effective_name picks up the override."""
-    _bind(
-        conda_envs=("my-siesta",),
-        envs_override={"siesta": "my-siesta"},
-    )
-    reports = doctor.report_all(run_verify=False)
-    siesta = next(r for r in reports
-                  if r.recipe.category == "siesta")
-    assert siesta.effective_name == "my-siesta"
-    assert siesta.present is True
 
 
 # --------------------------------------------------------------------- #

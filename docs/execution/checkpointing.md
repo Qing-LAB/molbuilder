@@ -1627,7 +1627,7 @@ are § 13.4's.
 | **A1** | build, verify, publish | ✅ | ✅ |
 | **A2** | verify before changing anything | ✅ | ✅ |
 | **A3** | the save precedes the change | ✅ | prep ✅ — a group's first launch and Save owed |
-| **A4** | a restore is whole or does not happen | ✅ | CLI ✅, route ✅ — the Python surface owed |
+| **A4** | a restore is whole or does not happen | ✅ | route ✅ — the CLI and the Python surface owed |
 | **A5** | the folder equals the target; warn, then obey | ✅ | ✅ |
 | **A6** | every state stays listed and restorable | ✅ | ✅ |
 | **I3** | only `restore` changes a file you made | ✅ | ✅ |
@@ -1649,8 +1649,9 @@ Where each owed test stands:
   Save write nothing before it is held by the code — `save_before` is called
   before `plan.writes.carry_out()` in `submit.send_launch`, and before
   `write_task` in the Save route — with no test.
-- **A4, the Python surface** — `Repo.restore(state, force=False)` takes nothing
-  else; no test asserts that, as the CLI's and the route's tests do theirs.
+- **A4, the CLI and the Python surface** — `checkpoint restore` has no
+  partial-restore flag and `Repo.restore(state, force=False)` takes nothing
+  else; no test asserts either, as the route's test does its own.
 - **S1, the untracking** — the save's `_untrack` of what no copy carries, before
   anything is added, exists; no test.
 - **S2, S3, S4, L8** — their surfaces exist (the run folders, `runrecord`'s
@@ -1821,9 +1822,8 @@ take. A test file in no entry is a file nobody maintains against this document.
   send, named though the scheduler then refuses it; `test_prep_from_the_browser.py`:
   Task setup's Prep and Save save first; `test_prep_bench_fold.py`: `prep
   bench`'s save is the ledger's first line.
-- **A4** — `cli`: `restore` has the options `state`, `--force` and `-p` and no
-  other; `routes`: `include_binaries` is refused, not dropped. The Python surface
-  is owed (§ 12).
+- **A4** — `routes`: `include_binaries` is refused, not dropped. The CLI and
+  the Python surface are owed (§ 12).
 - **A5** — `states`: an edit, a new file and a deleted one, all named, nothing
   changed by the refusal; `--force` completes; the folder then equals the
   target, no leftovers, no rescue copies.

@@ -1,7 +1,7 @@
 """`molbuilder checkpoint` — the verbs a person actually types (§ 5).
 
 **Contract:** [`checkpointing.md`](?doc=execution/checkpointing.md) § 5 (the
-commands and the two labels) · § 5.1 (what `list` must show) · § 7.1 · A4 · A5.
+commands and the two labels) · § 5.1 (what `list` must show) · § 7.1 · A5.
 
 These test the CLI as its own surface, not as a thin wrapper: a `Repo` that
 behaves and a CLI that hides it are the same failure to a user. So the
@@ -47,24 +47,6 @@ def _ids(output):
         if parts and len(parts[0]) == 7 and parts[0].isalnum():
             ids.append(parts[0])
     return ids
-
-
-# ------------------------------------------------------------------ #
-#  A4 — no surface offers a partial restore                           #
-# ------------------------------------------------------------------ #
-
-
-def test_restore_returns_the_whole_folder(mb):
-    """A4: a restore returns the whole folder or it does not happen.
-
-    Stated as the options `restore` HAS. `--no-binaries` rewound the text and
-    left every big file -- a folder no save ever produced, reached on purpose
-    rather than by accident -- and naming the set is what keeps any future
-    partial-restore flag from landing without a contract change.
-    """
-    from molbuilder.cli import cli as _cli
-    restore = _cli.commands["checkpoint"].commands["restore"]
-    assert {q.name for q in restore.params} == {"state", "path", "force"}
 
 
 # ------------------------------------------------------------------ #

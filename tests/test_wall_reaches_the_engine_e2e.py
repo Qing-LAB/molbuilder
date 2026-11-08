@@ -17,13 +17,11 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available, live_siesta
-from support.road import H2, group_words, jobset, road_structure
-from support.road import molbuilder, one_rank
+from _road import conda_hook, env_available
+from support.road import group_words, jobset
 
 pytestmark = [
     pytest.mark.engine,
@@ -33,15 +31,8 @@ pytestmark = [
 ]
 
 
-def _write_h2(tree: Path) -> None:
-    from molbuilder.workingcopy_structure import StructureCodec
-    (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-    StructureCodec().write(road_structure(H2),
-                           tree / "P" / "structure" / "h2.xyz")
-
-
 @pytest.fixture(scope="module")
-def walled(isolated_projects_root_module, tmp_path_factory):
+def walled(tmp_path_factory):
     """An H2 optimization whose coarse stage ran here under the 20 s wall
     its run card states -- its run folder and what that launch said -- and
     what the launch of the stage again said over its restart file, the
@@ -50,20 +41,14 @@ def walled(isolated_projects_root_module, tmp_path_factory):
     from molbuilder.jobset.naming import stage_home
     from molbuilder.runs import run_of
     from molbuilder.task import of as task_of
-    tree = isolated_projects_root_module
-    with live_siesta(tree, tmp_path_factory):
-        _write_h2(tree)
-        bundle = tree / "P" / "opt" / "H2wall"
-        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
-                   "--bundle", "P/opt/H2wall", "--engine", "siesta",
-                   "--calculation", "optimization",
-                   "--name", "H2", "--psml-lib", "pseudopotential",
-                   "--stage-strategy", "publishable")
-        assert r.exit_code == 0, r.output
+    from support.real_runs import h2_optimization, on_the_road
+    with on_the_road(tmp_path_factory, "walled") as tree:
         # THE WALL ITS RUN CARD STATES (`architecture.md` § 5.2's
-        # ladder), 20 s, so the engine, told what is left and the 600 s
-        # slack, stops at its first check.
-        one_rank(bundle, time="00:00:20")
+        # ladder), 20 s, one rank, so the engine, told what is left and the
+        # 600 s slack, stops at its first check.
+        bundle = h2_optimization(tree, "P/opt/H2wall",
+                                 execution={"mpi_np": 1, "omp_threads": 1,
+                                            "time": "00:00:20"})
         r = jobset("prep", "task", *group_words(bundle, "coarse"),
                    "--bundle", bundle, "--target", "this")
         assert r.exit_code == 0, r.output
@@ -73,7 +58,10 @@ def walled(isolated_projects_root_module, tmp_path_factory):
                                            "coarse").dir)
         run = run_of(ran_in)
         # THE GEOMETRY SIESTA SAVED, RE-DATED TO THE JOB'S END SECOND, as a kill mid-write
-        # leaves it; the next launch of the stage reads the two times.
+        # leaves it; the next launch of the stage reads the two times.  ITS
+        # WRITE TIME IS THE ONE THING SET BY HAND: a kill mid-write is a
+        # scheduler's, and no run here is killed by one -- the file, the run
+        # and the launch that reads them are the road's own.
         from molbuilder.parse.registry import parse as _parse
         ended_at = _parse(run.file(".monitor.log")).metrics["ended_at"]
         from datetime import datetime

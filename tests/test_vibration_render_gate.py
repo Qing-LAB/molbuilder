@@ -16,10 +16,10 @@ import pytest
 def _deck_tree(tmp_path, monkeypatch, **template):
     """The deck `jobset prep` wrote for a PySCF vibration of the road's H2,
     with ``template``'s values set in its template, parsed."""
-    from support.road import (describe_calculation, jobset, group_words,
+    from support.road import (described, group_words, jobset, road_tree,
                               set_by_the_person, stage_file)
-    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf",
-                                  calculation="vibration")
+    bundle = described(road_tree(tmp_path, monkeypatch, engine="pyscf"),
+                       calculation="vibration", engine="pyscf")
     set_by_the_person(bundle, template)
     r = jobset("prep", "task", *group_words(bundle, "freq"),
                "--bundle", bundle, "--target", "this")

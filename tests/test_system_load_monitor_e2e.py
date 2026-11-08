@@ -22,9 +22,12 @@ the interesting one is easy to get wrong:
     default, and collapsing stops polling).  A fault that is only
     visible inside a folded-away card is a fault nobody sees.
 
-The rule is `web/results.md` § 6.3.  The server runs in-process here, and
-the fixture fakes the GPU sampler's one door (see ``_set_gpu_error``).
-Nothing about the front-end path is stubbed.
+The rule is `web/results.md` § 6.3.  The server runs in-process here: the
+broken driver is an ``nvidia-smi`` first on PATH that fails as the measured
+one did (`support.machines.a_gpu_tool`, ``DRIVER_MISMATCH``), and a CPU-only
+box one with none on its PATH (`support.machines.no_gpu_tool`) -- the real
+sampler asks, composes its answer and hands it to the page.  Nothing about
+the front-end path is stubbed.
 """
 from __future__ import annotations
 
@@ -32,14 +35,13 @@ from __future__ import annotations
 import pytest
 
 
-pytestmark = pytest.mark.e2e
-
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
 #: The reason the sampler composes for the driver/library mismatch measured
 #: on the development host (2026-09-18: `nvidia-smi` exits 18 and says why on
-#: stdout; `web/blueprints/system_load._gpu_snapshot`).
+#: stdout, `support.machines.DRIVER_MISMATCH`;
+#: `web/blueprints/system_load._gpu_snapshot`).
 _REASON = ("nvidia-smi exited 18: "
            "Failed to initialize NVML: Driver/library version mismatch")
 
@@ -52,43 +54,37 @@ def flask_server(isolated_projects_root_module):
 
 
 def _open_results(page, base_url):
-    """Load /results and wait until the load reading has come back.
+    """Load /results and wait until the load reading has come back;
+    return the reading the server sent.
 
     Waiting on the response (rather than a timeout) is what makes the
     negative test below deterministic: by the time it returns, the
     widget has been told what the GPU situation is.
     """
-    with page.expect_response(lambda r: "/api/system/load" in r.url):
+    with page.expect_response(lambda r: "/api/system/load" in r.url) as sent:
         page.goto(f"{base_url}/results")
     page.wait_for_selector("#system-load-monitor", timeout=5000)
+    return sent.value.json()["data"]
 
 
-def _set_gpu_error(monkeypatch, value):
-    """Put the server in the broken-driver state -- the WHOLE state.
-
-    The GPU sampler is one function returning
-    ``(gpus, error)`` -- a subprocess-with-timeout behind a cache
-    (the in-process NVML call froze the whole server once) -- so
-    faking the state is faking that one door: error set means the
-    rows are empty, exactly as a real failed/timed-out query leaves
-    them, and ``None`` means a healthy no-fault answer whose rows the
-    real box supplies.
-    """
-    from molbuilder.web.blueprints import system_load
-    if value is not None:
-        monkeypatch.setattr(system_load, "_gpu_snapshot",
-                            lambda: ([], value))
+def _a_broken_driver(tmp_path, monkeypatch):
+    """The server's host in the broken-driver state: an ``nvidia-smi``
+    first on PATH that fails as the measured one did -- the reason on
+    stdout, exit 18 (`support.machines.a_gpu_tool`) -- which the server's
+    own sampler asks."""
+    from support.machines import DRIVER_MISMATCH, a_gpu_tool
+    a_gpu_tool(tmp_path, monkeypatch, DRIVER_MISMATCH)
 
 
 class TestABrokenDriverIsVisible:
 
     def test_the_pill_is_marked_while_the_card_is_still_collapsed(
-            self, page, flask_server, monkeypatch):
+            self, page, flask_server, tmp_path, monkeypatch):
         """The first visit shows a collapsed card, so the pill is the
         only thing on screen -- and it has to carry the news: marked, its
         hover giving the reason (`web/results.md` § 6.3, *You do not have to
         open the card to find out*)."""
-        _set_gpu_error(monkeypatch, _REASON)
+        _a_broken_driver(tmp_path, monkeypatch)
         _open_results(page, flask_server)
 
         # Precondition: this really is the collapsed, non-polling state.
@@ -107,7 +103,7 @@ class TestABrokenDriverIsVisible:
         assert page.locator(".system-load-notice").is_visible() is False
 
     def test_opening_the_card_gives_the_reason_in_full(
-            self, page, flask_server, monkeypatch):
+            self, page, flask_server, tmp_path, monkeypatch):
         """Open the card and the notice states the failure, and that it
         clears by itself once the host is fixed: the server asks the driver
         again every few seconds, nothing needs restarting
@@ -115,7 +111,7 @@ class TestABrokenDriverIsVisible:
 
         THE SILENT FAILURE: the notice telling the person to restart a
         server that asks again within seconds (corrected 2026-11-02)."""
-        _set_gpu_error(monkeypatch, _REASON)
+        _a_broken_driver(tmp_path, monkeypatch)
         _open_results(page, flask_server)
         page.wait_for_selector(".system-load-toggle.has-gpu-fault",
                                timeout=5000)
@@ -142,9 +138,18 @@ class TestAHealthyHostSaysNothing:
         """A CPU-only box is not a fault.  Nothing is marked, nothing is
         printed -- otherwise the warning becomes background noise and
         stops meaning anything (`web/results.md` § 6.3: *Only the second
-        case prints anything*)."""
-        _set_gpu_error(monkeypatch, None)
-        _open_results(page, flask_server)
+        case prints anything*): the server's host with no GPU tool on its
+        PATH (`support.machines.no_gpu_tool`), so what it sends is no GPU
+        and no reason.
+
+        THE SILENT FAILURE: the page taking an empty list for a fault --
+        every CPU-only box marked."""
+        from support.machines import no_gpu_tool
+        no_gpu_tool(monkeypatch)
+        sent = _open_results(page, flask_server)
+        # Precondition: the server sent the CPU-only answer -- a host GPU
+        # tool still found would leave this test reading another case.
+        assert (sent["gpus"], sent["gpu_error"]) == ([], None), sent
 
         # Expand and wait for a rendered sample, so the assertions below
         # are made against a widget that has demonstrably processed a

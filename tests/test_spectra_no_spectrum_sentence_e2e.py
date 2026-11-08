@@ -43,7 +43,7 @@ from pathlib import Path
 
 import pytest
 
-from test_spectrum_results_e2e import _load
+from support.pages import spectra_served
 from tests._node_esm import lifted, run_node
 
 from _road import conda_hook, env_available
@@ -65,11 +65,11 @@ def _h2_with_compute_ir_off(tmp_path_factory, name: str, **settings):
     with Compute IR off -- one force-constant call of seven single points, the
     smallest a SIESTA result is -- ``settings`` the person's beside: its result
     on the label."""
-    from support.real_runs import (CO2_SETTINGS, RealRun, described,
-                                   on_the_road, taken)
-    from support.road import H2, set_by_the_person
+    from support.real_runs import CO2_SETTINGS, RealRun, on_the_road, taken
+    from support.road import H2, described, set_by_the_person, structure_saved
     with on_the_road(tmp_path_factory, name) as tree:
-        bundle = described(tree, f"P/freq/{name}", structure=H2, name="H2",
+        bundle = described(tree, f"P/freq/{name}",
+                           structure=structure_saved(tree, H2), name="H2",
                            calculation="vibration",
                            execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, {**CO2_SETTINGS, "already_relaxed": True,
@@ -130,7 +130,7 @@ def test_the_sentence_names_the_case_and_the_viewer_waits_for_infrared(
         lambda d: d["phase_ir"] == "running")
     before_sweep = real_water_held.version_where(
         lambda d: d["phase_relaxation"] == "running")
-    files = [_load(web_client, monkeypatch, path) for path in (
+    files = [spectra_served(web_client, monkeypatch, path) for path in (
         siesta_asked_nothing, off, mid_sweep, before_sweep,
         siesta_range_kept_no_mode)]
     # THE ONE READING, as the door answers it: whether the run asked, and

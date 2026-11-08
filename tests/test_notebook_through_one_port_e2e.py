@@ -110,7 +110,7 @@ def _stack(root: Path, scheme: str):
     where this machine's browser may control the notebook (`jupyter.md`
     § 6).  Yields its address and its environment; `serve stop` takes both
     down after, and says so."""
-    from test_jupyter_contract import _free_serve_port
+    from support.live_server import free_serve_port
     cfg, run = root / "cfg", root / "run"
     for d in (cfg, run):
         d.mkdir(mode=0o700)
@@ -134,7 +134,7 @@ def _stack(root: Path, scheme: str):
                         "-keyout", str(key), "-out", str(cert)],
                        check=True, capture_output=True)
         tls = ["--cert", str(cert), "--key", str(key)]
-    port = _free_serve_port()
+    port = free_serve_port()
     base = f"{scheme}://127.0.0.1:{port}"
     log = root / "verbs.log"
     try:

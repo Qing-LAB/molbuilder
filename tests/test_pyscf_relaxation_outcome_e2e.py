@@ -16,14 +16,11 @@ one or two geometry steps cannot relax it.
 """
 from __future__ import annotations
 
-import dataclasses
-
 import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
-from support.road import group_words
-from support.road import molbuilder
+from support.road import group_words, jobset
 
 CONDA_SH = conda_hook()
 
@@ -35,86 +32,61 @@ pytestmark = [
 ]
 
 
-def _jobset(*args):
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args])
-
-
 #: H2 at 0.95 Å, far from its minimum -- the relaxation's subject.
 _H2 = (["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])
 
 
-def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
-         molecule=_H2, execution=None):
-    """``molecule``, its one stage carrying ``overrides``, its run card
-    ``execution`` (`job-request.md` § 2: a run setting lives in the job
-    request alone) and
-    its template ``template``'s values -- written by the hand-over's own writer
-    (`template_with_values`), since the electronic state binds every rung
-    and is the template's -- prepared and launched directly: the stage's run
+def _run(tmp_path_factory, name: str, *, calculation, overrides,
+         template=None, molecule=_H2, execution=None):
+    """``molecule``, described on the road in a tree of its own, ``name``,
+    with the real PySCF (`support.real_runs.on_the_road`, asked from a
+    module's fixture: a test's own PATH holds the suite's stand-in conda,
+    where no engine is found; `support.road.described`), its template
+    ``template``'s values set as a person sets them
+    (`support.road.set_by_the_person`), since the electronic state binds
+    every rung and is the template's, and its one stage carrying
+    ``overrides`` and its own run card ``execution`` (`job-request.md` § 2:
+    a run setting lives in the job request alone), saved through Task
+    setup's Save -- prepared and launched directly: the stage's run
     (`runs.run_of`), the stage's state as the ladder reads it, and what the
     run itself printed."""
-    from conftest import write_machine_record
     from molbuilder.calculation import open as open_calculation
-    from molbuilder.jobset.runstatus import jobset_status
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.structure import Structure
-    from molbuilder.task import of as task_of, write_task
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    write_machine_record()
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    struct = Structure(elements=list(molecule[0]),
-                       positions=np.array(molecule[1], dtype=float))
-    StructureCodec().write(struct, tree / "P" / "structure" / "h2.xyz")
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tree.parent)
-    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
-                "--bundle", f"P/{calculation}/H2", "--engine", "pyscf",
-                "--name", "H2",
-                "--calculation", calculation)
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / calculation / "H2"
-    if template:
-        from molbuilder.config.pyscf import PySCFConfig
-        from molbuilder.template import (config_from_template,
-                                         template_with_values)
-        from molbuilder.template_file import template_path
-        path = template_path(bundle, "H2")
-        cfg = dataclasses.replace(
-            config_from_template(path.read_text(), PySCFConfig), **template)
-        path.write_text(template_with_values(cfg, engine="pyscf",
-                                             calculation=calculation))
-    task = task_of(bundle)
-    # The run states its threads (`architecture.md` § 5.2); a case's own
-    # run card goes over it.
-    stage = dataclasses.replace(task.stages[0], overrides=dict(overrides))
-    write_task(bundle, dataclasses.replace(
-        task, stages=(stage,),
-        varies=tuple(dict.fromkeys((*task.varies, *overrides)))))
-    from support.road import read_request, write_request
-    request = read_request(bundle)
-    request["stages"][stage.name]["execution"] = {"threads": 1,
-                                                  **(execution or {})}
-    write_request(bundle, request)
-    # How a shell enters conda HERE is this machine's record's to say.
-    from conftest import write_machine_record
-    write_machine_record(env_init={
-        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    r = _jobset("prep", "task", *group_words(bundle, stage.name),
-                "--bundle", bundle,
-                "--target", "this")
-    assert r.exit_code == 0, r.output
-    _jobset("launch", "task", "--stage", stage.name, "--bundle", bundle,
-            "--mode", "direct", "--foreground", "--yes")
-    row = next(iter(jobset_status(open_calculation(bundle)).stages))
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
+    from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.runs import run_of
-    ran_in = latest_attempt(stage_home(bundle, task, stage.name).dir)
+    from molbuilder.structure import Structure
+    from molbuilder.task import of as task_of
+    from support.real_runs import on_the_road
+    from support.road import (described, description_with_overrides,
+                              read_request, save_both, set_by_the_person,
+                              structure_saved)
+    struct = Structure(elements=list(molecule[0]),
+                       positions=np.array(molecule[1], dtype=float))
+    with on_the_road(tmp_path_factory, name, engine="pyscf") as tree:
+        bundle = described(tree, structure=structure_saved(tree, struct),
+                           name="H2", calculation=calculation, engine="pyscf")
+        if template:
+            set_by_the_person(bundle, template)
+        task = task_of(bundle)
+        stage = task.stages[0].name
+        # A CASE'S OWN RUN CARD, its stage's, laid over the calculation's
+        # field by field (`job-request.md` § 3.2) -- the road's, one thread,
+        # which `described` wrote (`support.road.RUN_CARD`).
+        request = read_request(bundle)
+        if execution:
+            request["stages"][stage]["execution"] = dict(execution)
+        saved = save_both(bundle, description_with_overrides(
+            bundle, {stage: overrides}), request)
+        assert saved.status_code == 200, saved.get_json()
+        r = jobset("prep", "task", *group_words(bundle, stage),
+                   "--bundle", bundle,
+                   "--target", "this")
+        assert r.exit_code == 0, r.output
+        jobset("launch", "task", "--stage", stage, "--bundle", bundle,
+               "--mode", "direct", "--foreground", "--yes")
+        row = next(iter(jobset_status(open_calculation(bundle)).stages))
+        ran_in = latest_attempt(stage_home(bundle, task, stage).dir)
     assert ran_in is not None, sorted(p.name for p in bundle.rglob("*"))
     run = run_of(ran_in)
     log = run.file(".pyscf.log")
@@ -162,8 +134,14 @@ def _the_engines_words_kept(run, words: str) -> str:
     return session
 
 
-def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
-                                                               monkeypatch):
+@pytest.fixture(scope="module")
+def halted(tmp_path_factory):
+    """H2 from 0.95 Å, one step allowed under ``halt`` (:func:`_run`)."""
+    return _run(tmp_path_factory, "halted", calculation="optimization",
+                overrides={"geom_max_steps": 1, "on_nonconvergence": "halt"})
+
+
+def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(halted):
     """One step cannot relax H2 from 0.95 Å: ``halt`` stops the job, an
     error -- so no later rung builds on it -- saying the budget and the
     policy, and the geometry it reached is kept in ``_optimized.xyz``, as
@@ -183,9 +161,7 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
     """
     from molbuilder.parse.registry import parse
 
-    run, state, said = _run(
-        tmp_path, monkeypatch, calculation="optimization",
-        overrides={"geom_max_steps": 1, "on_nonconvergence": "halt"})
+    run, state, said = halted
     assert state == "failed", said[-3000:]
     assert ("did not meet geomeTRIC's criteria in 1 steps "
             "(on_nonconvergence = halt)") in said, said[-3000:]
@@ -196,8 +172,10 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
     log = parse(run.file(".molwatch.log"))
     assert log.run_state == "stopped", log.run_state
     # WHAT A PAGE SAYS OF THE GEOMETRY IT REACHED (`engines/vibration.md`
-    # § 2.2): the target it had, and that it did not reach it.  THE SILENT
-    # FAILURE: *relaxed to* of a run that ran out of steps.
+    # § 2.2): the target it had, and that it did not reach it -- "relaxed on
+    # PySCF against a target of …, not reaching it", where a reached one
+    # reads "relaxed on PySCF to …".  THE SILENT FAILURE: *relaxed to* of a
+    # run that ran out of steps.
     from molbuilder.parse.contract import relaxation_of_output
     from molbuilder.validation.sidecar import check_relaxation_record
     rec = relaxation_of_output(run.file(".molwatch.log"), log, engine="pyscf")
@@ -207,7 +185,8 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
     words = " ".join(i.message for i in check_relaxation_record(
         reached, calculation="vibration", engine="pyscf",
         already_relaxed=False, force_tolerance_ev_ang=None))
-    assert "not reaching it" in words and "relaxed on" not in words, words
+    assert "against a target of" in words and "not reaching it" in words, (
+        words)
     # ITS OWN WORDS on every surface (:func:`_the_engines_words_kept`) --
     # and what a launch again will do, said by the run script: this stage
     # continues (`running-a-job.md` § 3.5, 3: *"a stage that continues |
@@ -220,7 +199,18 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
             "run saved") in session, session[-3000:]
 
 
-def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
+@pytest.fixture(scope="module")
+def continued(tmp_path_factory):
+    """H2 from 1.6 Å, one step a batch and two batches more under
+    ``continue`` (:func:`_run`)."""
+    return _run(tmp_path_factory, "continued", calculation="optimization",
+                molecule=(["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.6]]),
+                overrides={"geom_max_steps": 1,
+                           "on_nonconvergence": "continue",
+                           "geom_continue_retries": 2})
+
+
+def test_continue_reenters_from_the_geometry_reached(continued):
     """One step a batch and two batches more, from 1.6 Å: CERTAIN not to relax
     H2, by geomeTRIC's own rule -- its trust radius starts at 0.1 Å
     (``params.py``) and every re-entry starts it afresh, so no step moves the
@@ -237,11 +227,7 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
     """
     from molbuilder.parse.registry import parse
 
-    run, state, said = _run(
-        tmp_path, monkeypatch, calculation="optimization",
-        molecule=(["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.6]]),
-        overrides={"geom_max_steps": 1, "on_nonconvergence": "continue",
-                   "geom_continue_retries": 2})
+    run, state, said = continued
     assert state == "failed", said[-3000:]
     assert said.count("continuing from the geometry it reached") == 2, (
         said[-3000:])
@@ -270,8 +256,16 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
         f"a batch started again at the input geometry: {bonds}")
 
 
-def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
-                                                          monkeypatch):
+@pytest.fixture(scope="module")
+def proceeded(tmp_path_factory):
+    """H2's vibration from 0.95 Å, its relaxation one step allowed under
+    ``proceed`` (:func:`_run`)."""
+    return _run(tmp_path_factory, "proceeded", calculation="vibration",
+                overrides={"geom_max_steps": 1,
+                           "on_nonconvergence": "proceed"})
+
+
+def test_proceed_keeps_the_geometry_and_the_result_says_so(proceeded):
     """A vibration whose relaxation runs out of steps under ``proceed`` goes
     on to the Hessian at the geometry it reached, and its result says so: the
     warning names what happened, and ``relaxation.converged`` is the judged
@@ -283,9 +277,7 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
     """
     from molbuilder.parse.registry import parse
 
-    run, state, said = _run(
-        tmp_path, monkeypatch, calculation="vibration",
-        overrides={"geom_max_steps": 1, "on_nonconvergence": "proceed"})
+    run, state, said = proceeded
     assert state == "finished", said[-3000:]
     rx = parse(run.on_label(".spectra.json")).payload["relaxation"]
     assert "did not meet geomeTRIC's criteria in 1 steps" in (
@@ -295,7 +287,11 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
     # A FINISHED RUN'S FILE IS WHOLE (`running-a-job.md` § 3.6): its engine
     # ended on its own, so one dated at or after the monitor closed is not named
     # as a file a kill may have caught.  THE SILENT FAILURE: every warm start
-    # from a finished PySCF run warned of a `.chk` that is whole.
+    # from a finished PySCF run warned of a `.chk` that is whole.  ITS WRITE
+    # TIME IS THE ONE THING SET BY HAND, to now, after the monitor closed: a
+    # run's last write falls in its monitor's closing second only as the
+    # clock happens to fall, which no run reaches on demand -- the file and
+    # its run are the road's own.
     import os
     from molbuilder.jobset.materialize import written_as_ended
     chk = run.on_label(".chk")
@@ -303,8 +299,25 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
     assert written_as_ended(run.folder, run.label, [chk.name]) == {}
 
 
+@pytest.fixture(scope="module")
+def open_shell_on_the_gpu(tmp_path_factory):
+    """Triplet O2, UHF/STO-3G, on the GPU (:func:`_run`) -- where an NVIDIA
+    GPU is visible."""
+    from _road import gpu_visible
+    if not gpu_visible():
+        pytest.skip("no NVIDIA GPU visible here")
+    return _run(
+        tmp_path_factory, "open-shell-gpu", calculation="optimization",
+        molecule=(["O", "O"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.21]]),
+        template={"method": "HF", "basis": "sto-3g",
+                  "spin_treatment": "unrestricted", "unpaired_electrons": 2},
+        overrides={"geom_max_steps": 1, "on_nonconvergence": "proceed"},
+        # A GPU run states how many (`execution/gpu.md` G5: no default).
+        execution={"use_gpu": True, "gpu_count": 1})
+
+
 def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
-        tmp_path, monkeypatch):
+        open_shell_on_the_gpu):
     """gpu4pyscf's GPU classes DECLARE no stability analysis (``stability =
     NotImplemented``), and the open-shell check runs after the GPU promotion:
     the deck asks the mean field, says NOT CHECKED and why, and the run goes
@@ -315,25 +328,22 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
     raised a TypeError and every open-shell GPU run died before its first
     step.
     """
-    from _road import gpu_visible
-    if not gpu_visible():
-        pytest.skip("no NVIDIA GPU visible here")
-    run, state, said = _run(
-        tmp_path, monkeypatch, calculation="optimization",
-        molecule=(["O", "O"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.21]]),
-        template={"method": "HF", "basis": "sto-3g",
-                  "spin_treatment": "unrestricted", "unpaired_electrons": 2},
-        overrides={"geom_max_steps": 1, "on_nonconvergence": "proceed"},
-        # A GPU run states how many (`execution/gpu.md` G5: no default).
-        execution={"use_gpu": True, "gpu_count": 1})
+    run, state, said = open_shell_on_the_gpu
     assert "GPU acceleration ON" in said, said[-3000:]
     assert ("stability: NOT CHECKED -- this mean field declares no stability "
             "analysis") in said, said[-3000:]
     assert state == "finished", said[-3000:]
 
 
-def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
-                                                           monkeypatch):
+@pytest.fixture(scope="module")
+def stated_relaxed(tmp_path_factory):
+    """H2's vibration at 0.95 Å, its structure stated relaxed
+    (:func:`_run`)."""
+    return _run(tmp_path_factory, "stated-relaxed", calculation="vibration",
+                template={"already_relaxed": True}, overrides={})
+
+
+def test_a_structure_stated_relaxed_is_measured_not_relaxed(stated_relaxed):
     """A PySCF vibration whose structure is stated relaxed runs no relaxation
     -- the phase is `not requested` from the first write, on both engines
     (`engines/vibration.md` § 4.9), no step is taken -- and the gradient
@@ -350,9 +360,7 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
     from molbuilder.spectra.results import PHASE_NOT_REQUESTED
     from molbuilder.spectra.vibrational_analysis import nonstationary_remedy
 
-    run, state, said = _run(
-        tmp_path, monkeypatch, calculation="vibration",
-        template={"already_relaxed": True}, overrides={})
+    run, state, said = stated_relaxed
     assert state == "finished", said[-3000:]
     doc = parse(run.on_label(".spectra.json")).payload
     rx = doc["relaxation"]
@@ -363,8 +371,19 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
     assert nonstationary_remedy(None) in (rx.get("warning") or ""), rx
 
 
-def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,
-                                                             monkeypatch):
+@pytest.fixture(scope="module")
+def relaxation_past_its_wall(tmp_path_factory):
+    """H2 from 0.95 Å under ``proceed``, its run card's wall 1 s
+    (:func:`_run`)."""
+    return _run(tmp_path_factory, "relaxation-walled",
+                calculation="optimization",
+                overrides={"geom_max_steps": 50,
+                           "on_nonconvergence": "proceed"},
+                execution={"time": "00:00:01"})
+
+
+def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(
+        relaxation_past_its_wall):
     """`engines/pyscf.md` § 3.9, `running-a-job.md` § 3.6: the deck keeps the
     deadline its environment states -- the job's wall, its start and the
     slack, as the run script exports them -- and the first step past it
@@ -381,10 +400,7 @@ def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,
     relaxation running to its step budget (H2 from 0.95 Å converges in a few
     steps, and the run would read converged)."""
     from molbuilder.parse.engines._run_ending import ending_of
-    run, state, said = _run(
-        tmp_path, monkeypatch, calculation="optimization",
-        overrides={"geom_max_steps": 50, "on_nonconvergence": "proceed"},
-        execution={"time": "00:00:01"})
+    run, state, said = relaxation_past_its_wall
     assert state == "finished", said[-3000:]
     assert "stopped before the wall" in said, said[-3000:]
     assert run.on_label("_optimized.xyz") is not None, sorted(
@@ -402,8 +418,19 @@ def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,
     assert "Final energy" not in said, said[-3000:]
 
 
-def test_the_wall_stops_a_vibration_before_its_spectrum(tmp_path,
-                                                        monkeypatch):
+@pytest.fixture(scope="module")
+def vibration_past_its_wall(tmp_path_factory):
+    """H2's vibration, frequencies alone, under ``halt``, its run card's
+    wall 1 s (:func:`_run`)."""
+    return _run(tmp_path_factory, "vibration-walled",
+                calculation="vibration",
+                overrides={"geom_max_steps": 50, "on_nonconvergence": "halt"},
+                template={"compute_raman": False, "compute_ir": False},
+                execution={"time": "00:00:01"})
+
+
+def test_the_wall_stops_a_vibration_before_its_spectrum(
+        vibration_past_its_wall):
     """`engines/pyscf.md` § 3.9: a vibration past its wall computes no
     spectrum -- the run ends failed, saying it stopped before the wall
     before the spectrum was written, and a launch runs it again.  The
@@ -418,11 +445,7 @@ def test_the_wall_stops_a_vibration_before_its_spectrum(tmp_path,
 
     MUTATION THIS MUST FAIL AGAINST: the vibration deck asking the wall
     nowhere (`stop_if_past_wall` answering nothing)."""
-    run, state, said = _run(
-        tmp_path, monkeypatch, calculation="vibration",
-        overrides={"geom_max_steps": 50, "on_nonconvergence": "halt"},
-        template={"compute_raman": False, "compute_ir": False},
-        execution={"time": "00:00:01"})
+    run, state, said = vibration_past_its_wall
     assert state == "failed", said[-3000:]
     assert ("stopped before the wall (the job's wall less its slack) "
             "before the spectrum was written") in said, said[-3000:]

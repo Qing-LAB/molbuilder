@@ -16,24 +16,19 @@ from pathlib import Path
 import pytest
 
 from support.machines import SLURM, WORKSTATION
-from molbuilder.jobset._cli import describe_cmd
 
 
-#: A record as `jobset probe --write` writes one.  It carries `env_init`,
-#: the probe's copy of how a shell enters an environment on that machine
-#: (`configuration.md` § 4), which the generator reads.  Without it
-#: `prep --target <name>` refuses rather than bake THIS machine's
-#: activation into a wrapper bound for another one.
-#:
-#: It lists one queue, so a prep for it can name the queue its header asks
-#: for (`architecture.md` § 5.2: a job sent to a scheduler states its queue,
-#: and the record lists what it may name).
-_REC = {"schema": "molbuilder/environment@3",
-        "domains": [{"name": "q", "partition": "q", "qos": "normal",
-                     "max_time": "1-00:00:00"}],
-        "topology": {}, "site": {}, "source": {},
-        "env_init": {"preamble": "module load mamba",
-                              "activation": "source activate"}}
+#: The one queue every record here lists, so a prep for it can name the
+#: queue its header asks for (`architecture.md` § 5.2: a job sent to a
+#: scheduler states its queue, and the record lists what it may name).
+_QUEUE = {"name": "q", "partition": "q", "qos": "normal",
+          "max_time": "1-00:00:00"}
+
+#: How a shell enters an environment on the machine a record describes --
+#: the probe's copy of it (`configuration.md` § 4), which the generator
+#: reads.  Without it `prep --target <name>` refuses rather than bake THIS
+#: machine's activation into a wrapper bound for another one.
+_ENTERS = {"preamble": "module load mamba", "activation": "source activate"}
 
 
 @pytest.fixture
@@ -41,30 +36,38 @@ def machines(tmp_path, monkeypatch):
     """A home with named target records, and a bundle to prep -- and NO
     record of this machine until a test writes one (`this_machine`): the
     conftest's probed record is removed, as its own docstring says a test
-    wanting that refusal does."""
+    wanting that refusal does.  Each record is written by the record's own
+    writer (`scheduler.write_environment`; this machine's,
+    `conftest.write_machine_record`); a record given as TEXT is one no
+    writer of ours makes -- one the reader refuses, which is what the test
+    handing it is about.  The projects tree is the road's
+    (`support.road.road_tree`)."""
     # THE DOORS -- never the path spelled here (`configuration.md` § 3.1;
     # W54 T28).
+    from conftest import write_machine_record
     from molbuilder.config_dir import ensure_private_dir
-    from molbuilder.scheduler import (environments_dir, machine_scope_path,
-                                      named_environment_path)
+    from molbuilder.scheduler import (Domain, Environment, environments_dir,
+                                      machine_scope_path,
+                                      named_environment_path,
+                                      write_environment)
+    from support.road import road_tree
     machine_scope_path().unlink(missing_ok=True)
     ensure_private_dir(environments_dir())
+    tree = road_tree(tmp_path, monkeypatch)
 
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "h2.xyz").write_text(
-        "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
-    monkeypatch.setenv("MOLBUILDER_PROJECTS", str(tree))
-
-    def _write(name: str, body=None, *, scheduler=SLURM):
+    def _write(name: str, body=None, *, scheduler=SLURM, env_init=_ENTERS):
         p = named_environment_path(name)
-        p.write_text(body if body is not None
-                     else json.dumps({**_REC, "scheduler": scheduler.to_dict()}))
-        return p
+        if body is not None:
+            p.write_text(body)
+            return p
+        return write_environment(Environment(
+            scheduler=scheduler, domains=[Domain.from_row(_QUEUE)],
+            env_init=dict(env_init)), p)
 
     def _this_machine(scheduler=WORKSTATION):
-        machine_scope_path().write_text(
-            json.dumps({**_REC, "scheduler": scheduler.to_dict()}))
+        write_machine_record(scheduler=scheduler,
+                             domains=[Domain.from_row(_QUEUE)],
+                             env_init=dict(_ENTERS))
 
     return type("M", (), {"write": staticmethod(_write),
                           "this_machine": staticmethod(_this_machine),
@@ -72,47 +75,36 @@ def machines(tmp_path, monkeypatch):
 
 
 def _prep(bundle: str, *extra):
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner()
-    init = r.invoke(describe_cmd, [
-        "--structure", "P/structure/h2.xyz", "--bundle", bundle,
-        "--engine", "pyscf",
-        "--calculation", "optimization",
-        "--stage-strategy", "publishable"])
-    assert init.exit_code == 0, init.output
-    # EVERY LAUNCH VALUE IS STATED (`architecture.md` § 5.2): the run card's
-    # threads, and the queue, wall and memory a cluster's header carries --
-    # in the job request, so every prep of this bundle states them.
+    """`molbuilder describe` of a PySCF optimization at ``bundle`` -- the
+    one maker, `support.road.described`, on the publishable ladder -- then
+    `prep task --group 1` with ``extra``."""
     from molbuilder.projects import projects_root
-    from support.road import read_request, write_request
-    where = projects_root() / bundle
-    req = read_request(where)
-    req["execution"] = {"threads": 1}
-    req["allocation"] = {"domain": "q", "time": "01:00:00", "mem": "1G"}
-    write_request(where, req)
+    from support.road import (description_with_overrides, described, jobset,
+                              read_request, save_both)
+    # EVERY LAUNCH VALUE IS STATED (`architecture.md` § 5.2): the run card's
+    # threads (the road's), and the queue, wall and memory a cluster's
+    # header carries -- in the job request, so every prep of this bundle
+    # states them.
+    where = described(projects_root(), bundle, engine="pyscf",
+                      stage_strategy="publishable",
+                      allocation={"domain": "q", "time": "01:00:00",
+                                  "mem": "1G"})
     # THE NEXT STAGE STARTS CLEAN, so a test can prep it without a run of
     # `coarse` to continue from -- a prepared stage is not prepared again
     # (`job-system.md` § 5.0), so what these tests ask of a calculation that
-    # is already prepared, they ask of its next stage (`_prep_next`).
-    tj = where / "task.json"
-    d = json.loads(tj.read_text())
-    d["varies"] = sorted(set(d["varies"]) | {"restart"})
-    for st in d["stages"]:
-        if st["name"] == "medium":
-            st["overrides"]["restart"] = "clean"
-    tj.write_text(json.dumps(d, indent=2))
-    return r.invoke(jobset_group,
-                    ["prep", "task", "--group", "1", "--bundle", bundle, *extra])
+    # is already prepared, they ask of its next stage (`_prep_next`) --
+    # set through Task setup's Save, as the page sets a stage's start.
+    saved = save_both(where, description_with_overrides(
+        where, {"medium": {"restart": "clean"}}), read_request(where))
+    assert saved.status_code == 200, saved.get_json()
+    return jobset("prep", "task", "--group", "1", "--bundle", bundle, *extra)
 
 
 def _prep_next(bundle: str, *extra):
     """The calculation's NEXT stage, `medium`, prepared after `coarse` was --
     starting clean (`_prep` set its restart)."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [
-        "prep", "task", "--group", "2", "--bundle", bundle, *extra])
+    from support.road import jobset
+    return jobset("prep", "task", "--group", "2", "--bundle", bundle, *extra)
 
 
 class TestTheUserChoosesTheMachine:
@@ -147,33 +139,17 @@ class TestTheUserChoosesTheMachine:
         the reason, never a stack trace; found live 2026-08-28)."""
         machines.write("sol")
         machines.this_machine()
-        from click.testing import CliRunner
-        from molbuilder.jobset._cli import jobset_group
-        r = CliRunner()
+        from support.road import described, jobset
         # SIESTA, the engine the bench lane speaks: a PySCF description is
         # refused before any machine is asked (`prep_inputs.bench_refusal`),
         # so it cannot reach the question this test is about.
-        # ...and a SIESTA describe covers its pseudopotentials
-        # (job-system.md § 5.1).
-        from conftest import write_pseudos
-        (machines.tree / "pseudopotential").mkdir()
-        write_pseudos(machines.tree / "pseudopotential", ["H"])
-        init = r.invoke(describe_cmd, [
-            "--structure", "P/structure/h2.xyz",
-            "--bundle", "P/optimization/wb",
-            "--engine", "siesta",
-            "--calculation", "optimization",
-            "--psml-lib", "pseudopotential"])
-        assert init.exit_code == 0, init.output
-        # a bench needs an axis to measure; declare one the way the tab does
-        from support.road import read_request, write_request
-        where = machines.tree / "P" / "optimization" / "wb"
-        req = read_request(where)
-        req["bench"] = {"omp_threads": [1, 2]}
-        write_request(where, req)
-        res = r.invoke(jobset_group,
-                       ["prep", "bench", "coarse",
-                        "--bundle", "P/optimization/wb"])
+        # ...and a SIESTA describe covers its pseudopotentials from the
+        # tree's library (job-system.md § 5.1; `support.road.road_tree`).
+        # A bench needs an axis to measure: its job request states one.
+        described(machines.tree, "P/optimization/wb", stage_strategy="",
+                  execution=None, bench={"omp_threads": [1, 2]})
+        res = jobset("prep", "bench", "coarse",
+                     "--bundle", "P/optimization/wb")
         assert res.exit_code != 0, res.output
         assert "several machines could be meant" in res.output
         assert "--target sol" in res.output
@@ -359,9 +335,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
 
         MUTATION THIS MUST FAIL AGAINST: the snapshot written before the
         check."""
-        machines.write("sol", json.dumps({
-            **{k: v for k, v in _REC.items() if k != "env_init"},
-            "scheduler": SLURM.to_dict()}))
+        machines.write("sol", env_init={})
         machines.this_machine()
         res = _prep("P/optimization/w", "--target", "sol")
         assert res.exit_code != 0, res.output

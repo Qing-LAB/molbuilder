@@ -6,7 +6,6 @@ from __future__ import annotations
 
 
 from molbuilder import template
-from molbuilder.jobset._cli import describe_cmd
 
 
 # --------------------------------------------------------------------- #
@@ -47,7 +46,7 @@ def test_block_size_is_a_plain_int():
 # --------------------------------------------------------------------- #
 
 def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
-        web_client, isolated_projects_root, monkeypatch):
+        web_client, tmp_path, monkeypatch):
     """**A calculation folder with a second template: the Task-setup tab
     refuses and names both** -- it never picks one.
 
@@ -66,21 +65,11 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     MUTATION THIS MUST FAIL AGAINST: the tab's lookup going back to
     ``sorted(folder.glob("*.template.toml"))[0]``.
     """
-    from click.testing import CliRunner
-
     from molbuilder.template_file import template_path
+    from support.road import described, road_tree
 
-    tree = isolated_projects_root
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "h2.xyz").write_text(
-        "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
-    monkeypatch.chdir(tree.parent)
-    r = CliRunner().invoke(describe_cmd, [
-        "--structure", "P/structure/h2.xyz",
-        "--bundle", "P/optimization/H2", "--engine", "pyscf",
-        "--calculation", "optimization", "--name", "H2"])
-    assert r.exit_code == 0, r.output
-    calc = tree / "P" / "optimization" / "H2"
+    calc = described(road_tree(tmp_path, monkeypatch, engine="pyscf"),
+                     engine="pyscf")
     own = template_path(calc, "H2")
     assert own.is_file(), sorted(p.name for p in calc.iterdir())
     (calc / "x.template.toml").write_text(own.read_text())

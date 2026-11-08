@@ -21,7 +21,7 @@ from molbuilder.scheduler import (Domain, Environment, Topology,
                                   write_environment)
 from molbuilder.scheduler.quantities import parse_walltime
 from support.machines import SLURM
-from support.road import describe_calculation, jobset
+from support.road import described, jobset, road_tree
 
 pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
@@ -47,7 +47,7 @@ def carried(tmp_path, monkeypatch):
     the machine's own record then lists `elsewhere` -- the folder as it reads
     when carried to another machine, or after a new probe."""
     _this_machine_lists(_DOMAINS)
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this", "--no-sbatch")
     assert r.exit_code == 0, r.output

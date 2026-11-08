@@ -18,8 +18,9 @@ from molbuilder.jobset.model import JobSet
 from molbuilder.jobset.summarize import sweep_view
 from molbuilder.scheduler import Domain, Topology
 from support.machines import SLURM
-from support.road import (declare_bench, describe_calculation, group_words,
-                          jobset, read_request, shelf_headers, write_request)
+from support.road import (RUN_CARD, declare_bench, described, group_words,
+                          jobset, read_request, road_tree, shelf_headers,
+                          write_request)
 
 import pytest
 
@@ -40,13 +41,21 @@ def _artifacts(calc, point, stage="01_coarse"):
     return latest_attempt(c)
 
 
-def _state_the_run(dest, **card):
-    """The job request's run card states the run's launch shape, as a
-    person's does: a run whose shape is stated nowhere is refused at prep
-    (`architecture.md` § 5.2)."""
-    req = read_request(dest)
-    req["execution"] = {"mpi_np": 2, "omp_threads": 1, **card}
-    write_request(dest, req)
+def _described(tmp_path, monkeypatch, **card):
+    """A calculation, described, on a machine whose probe found one a100.
+    A RUN STATES ITS LAUNCH SHAPE (`architecture.md` § 5.2): the road's run
+    card (`support.road.RUN_CARD`), ``card`` over it -- the calculation's,
+    for every rung that does not say otherwise.  And the wall and memory a
+    job handed to a scheduler states, which the benchmark's trials share:
+    these tests launch them in submit mode.  WHAT TO MEASURE IS STATED
+    (`generator.md` § 4.3a): three shapes the machine's one GPU node
+    holds."""
+    write_machine_record(topology=_NODE)
+    return described(road_tree(tmp_path, monkeypatch), name="JOB",
+                     execution={**RUN_CARD["siesta"], **card},
+                     allocation={"time": "0-01:00:00", "mem": "8G"},
+                     bench={"mpi_np": [1, 2, 4], "omp_threads": [1],
+                            "gpu_count": [1]})
 
 
 @pytest.fixture
@@ -58,24 +67,20 @@ def calc(tmp_path, monkeypatch):
     `web/task-setup.md` § 6.2, *"use GPU or not is set up only at the Job
     Prep UI"*.  Every test below is about the G × K × C grid.
     """
-    write_machine_record(topology=_NODE)
-    dest = describe_calculation(tmp_path, monkeypatch, name="JOB")
-    # A RUN STATES ITS LAUNCH SHAPE (`architecture.md` § 5.2), and a GPU run
-    # how many GPUs (`execution/gpu.md` G5): the calculation's run card says
-    # it once, for every rung that does not say otherwise -- the GPU and
+    # A GPU run states how many GPUs (`execution/gpu.md` G5) -- the GPU and
     # the solver with it.  The bench takes the GPU from it; its shapes and
     # GPU counts are its own grid's.
-    _state_the_run(dest, use_gpu=True, diag_algorithm="ELPA-1STAGE",
-                   gpu_count=1)
-    # ...and the wall and memory a job handed to a scheduler states, which
-    # the benchmark's trials share: these tests launch them in submit mode.
-    # WHAT TO MEASURE IS STATED (`generator.md` § 4.3a): three shapes the
-    # machine's one GPU node holds.
-    req = read_request(dest)
-    req["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
-    req["bench"] = {"mpi_np": [1, 2, 4], "omp_threads": [1], "gpu_count": [1]}
-    write_request(dest, req)
-    return dest
+    return _described(tmp_path, monkeypatch, use_gpu=True,
+                      diag_algorithm="ELPA-1STAGE", gpu_count=1)
+
+
+@pytest.fixture
+def cpu_calc(tmp_path, monkeypatch):
+    """The same calculation, its run card on the CPU, for the tests of a
+    declared grid.  A CPU run states no GPU count: one stated for a run that
+    does not use the GPU is refused at prep (`execution/gpu.md` G5)."""
+    return _described(tmp_path, monkeypatch, use_gpu=False,
+                      diag_algorithm="ELPA-1STAGE")
 
 
 #: `prep bench coarse`, as typed: this prep's ask bounding the cells.
@@ -232,14 +237,6 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
     assert r.exit_code == 0, r.output
     plans = [ln for ln in r.output.splitlines() if "WOULD run" in ln]
     assert len(plans) == 1 and trial in plans[0], plans
-
-
-def _describe_cpu(calc):
-    """Turn this calculation's run card back to CPU, the `calc` fixture asking
-    for the GPU because the grid tests are about the G × K × C grid.  A CPU run
-    states no GPU count: one stated for a run that does not use the GPU is
-    refused at prep (`execution/gpu.md` G5)."""
-    _state_the_run(calc, use_gpu=False, diag_algorithm="ELPA-1STAGE")
 
 
 def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
@@ -616,8 +613,8 @@ def test_a_one_stage_calculation_is_one_named_stage(tmp_path, monkeypatch):
     and status all reach it, one rung deep, its run holding real files.
     What a launch writes as its run starts -- its launch
     record -- is read off a real run (plan § 5y)."""
-    dest = describe_calculation(tmp_path, monkeypatch, name="JOB",
-                                stage_strategy="")
+    dest = described(road_tree(tmp_path, monkeypatch), name="JOB",
+                     stage_strategy="")
     # § 6.5: the bare verb does NOT guess the lone stage.  A rule that held
     # only at length one would stop holding the moment a second stage was
     # added -- so one rung refuses exactly as three do, listing the ladder.
@@ -656,11 +653,9 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path, monkeypatch):
     """A4 (redo 2026-08-12): a one-stage calculation can be benchmarked,
     and it is benchmarked the way every rung is -- ``prep bench <stage>``,
     trials in THAT stage's container."""
-    dest = describe_calculation(tmp_path, monkeypatch, name="JOB",
-                                stage_strategy="")
-    req = read_request(dest)
-    req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
-    write_request(dest, req)
+    dest = described(road_tree(tmp_path, monkeypatch), name="JOB",
+                     stage_strategy="",
+                     bench={"mpi_np": [1, 2], "omp_threads": [1]})
     res = jobset("prep", "bench", "coarse", "--bundle", dest, "--no-sbatch")
     assert res.exit_code == 0, res.output
     assert "None" not in res.output, res.output
@@ -705,31 +700,30 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path, monkeypatch):
 # portable points, resolved here.
 
 
-def test_the_declared_grid_is_the_sweep(calc):
+def test_the_declared_grid_is_the_sweep(cpu_calc):
     """Declared axes produce exactly those points — nothing enumerated."""
-    _describe_cpu(calc)
-    declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
-    assert [j["point"] for j in _prep_bench(calc)["jobs"]] == [
+    declare_bench(cpu_calc, {"mpi_np": [1, 2], "omp_threads": [1]})
+    assert [j["point"] for j in _prep_bench(cpu_calc)["jobs"]] == [
         {"G": 0, "N": 1, "C": 1}, {"G": 0, "N": 2, "C": 1}]
 
 
-def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
+def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(cpu_calc):
     """The override lane's ONE-point half (user rule, 2026-08-20): a CPU
     description with `bench: {use_gpu: [true]}` enumerates the GPU grid
     -- the declaration overrides the template's answer -- and the value
     rides every trial as a pin, under the measurement pins: executed, not
     assumed, the pinned eigensolver lands in the rendered trial deck,
     replacing the run card's (`ELPA-1STAGE`)."""
-    _describe_cpu(calc)                       # template says use_gpu=false
-    declare_bench(calc, {"use_gpu": [True],
-                          "diag_algorithm": ["ELPA-2STAGE"],
-                          "mpi_np": [4], "omp_threads": [1],
-                          "gpu_count": [1]})
-    jobs = _prep_bench(calc)["jobs"]
+    declare_bench(cpu_calc, {"use_gpu": [True],
+                              "diag_algorithm": ["ELPA-2STAGE"],
+                              "mpi_np": [4], "omp_threads": [1],
+                              "gpu_count": [1]})
+    jobs = _prep_bench(cpu_calc)["jobs"]
     assert [j["point"] for j in jobs] == [{"G": 1, "N": 4, "C": 1}], (
         "a declared use_gpu=true must enumerate the GPU grid")
     name = jobs[0]["name"]
-    deck = (_artifacts(calc, name) / f"JOB-{name}_01_coarse.fdf").read_text()
+    deck = (_artifacts(cpu_calc, name)
+            / f"JOB-{name}_01_coarse.fdf").read_text()
     # The VALUE lines, not the catalogue help comments -- those name every
     # choice, so a substring match passes with the pin broken.
     assert re.search(r"^Diag\.ELPA\.GPU\s+\.true\.\s*$", deck, re.M)
@@ -756,18 +750,17 @@ def test_a_verdictless_summarize_prints_no_report(calc):
     assert "bench recommendation" not in r.output
 
 
-def test_a_bench_row_never_reaches_the_run_deck(calc):
+def test_a_bench_row_never_reaches_the_run_deck(cpu_calc):
     """A one-point NON-machine `bench` declaration is what the TRIALS run
     with, and only them (user, 2026-09-30, narrowing the 2026-08-20 rule;
     `generator.md` § 4.3a, `stages.md` § 6.8d): the run's values are its own
     run card's.  Until 2026-09-30 `prep task` rendered the row into the run's
     deck -- a second home for a value the card states.
     """
-    _describe_cpu(calc)
-    declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"]})
-    r = jobset("prep", "task", "--group", "1", "--bundle", calc)
+    declare_bench(cpu_calc, {"diag_algorithm": ["ELPA-2STAGE"]})
+    r = jobset("prep", "task", "--group", "1", "--bundle", cpu_calc)
     assert r.exit_code == 0, r.output
-    deck = next((calc / "01_coarse").glob("run-*/JOB*.fdf"))
+    deck = next((cpu_calc / "01_coarse").glob("run-*/JOB*.fdf"))
     assert not re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE",
                          deck.read_text(), re.M), (
         "the bench row reached the run deck (the value line, not the "

@@ -53,8 +53,9 @@ def test_an_export_before_any_run_has_finished_a_step_is_refused(tmp_path,
     """`engines/optimization-postprocessing.md` § 6: nothing to export is said,
     and nothing written.  The silent failure: an empty data file a person
     takes for a result."""
-    from support.road import describe_calculation, molbuilder, prep_groups
-    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf")
+    from support.road import described, molbuilder, prep_groups, road_tree
+    bundle = described(road_tree(tmp_path, monkeypatch, engine="pyscf"),
+                       engine="pyscf")
     prep_groups(bundle, "1")
     to = bundle.parent / "too_soon"
     refused = molbuilder("jobset", "export", "--format", "netcdf", "--to", to,

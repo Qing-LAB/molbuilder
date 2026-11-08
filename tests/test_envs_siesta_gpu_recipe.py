@@ -125,16 +125,6 @@ def test_siesta_is_built_with_its_features_against_the_envs_mpi(recipe):
         assert flag in argv, flag
 
 
-def test_siesta_clones_with_recurse_submodules(recipe):
-    """SIESTA must be cloned with --recurse-submodules so the four
-    required ESL libraries (libfdf, libpsml, xmlf90, libgridxc) +
-    ELSI come along as External/ submodules.  None of those four
-    are on conda-forge; SIESTA cmake's source-step in
-    FIND_METHOD=source picks them up from External/<package>."""
-    siesta = _comp(recipe, "siesta")
-    assert siesta.clone_recurse_submodules is True
-
-
 # --------------------------------------------------------------------- #
 #  Argv-template gate -- catches the class of bug shipped in f46a9a3:    #
 #                                                                        #

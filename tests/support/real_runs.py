@@ -38,8 +38,9 @@ Each is the session fixture of its name in `tests/conftest.py`:
   T-CO2): its `relax` call, its `fc` call and the two stretches' five
   optical calls (`engines/vibration.md` § 5.11), waited on;
 * :func:`sweep` (``real_h2_sweep``) -- a SIESTA vibration's displacement
-  sweep on the road's H2: two force-constant stages, each launched and
-  waited on, and the calculation summarized (measured 2026-11-07: 33 s);
+  sweep (:func:`swept`) on the road's H2 stated relaxed: two force-constant
+  stages, each launched and waited on, the calculation summarized
+  (measured 2026-11-07: 33 s);
 * :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
   one rank: its run script's dry runs, then the run, waited on;
 * :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF,
@@ -65,9 +66,11 @@ A run with one thing changed is a copy of it beside it (:func:`copy_of`).
 A module that types a command on such a copy, or makes a run of its own,
 takes the doors these runs are made by: the tree with the engine on the
 road (:func:`on_the_road`, or :func:`road_at` for the tree a run was made
-in), the calculation (:func:`described`), each command written down
-(:func:`typed`; :func:`taken`, which must succeed), and a run a launch left
-in the background, waited for (:func:`left_to_end`) or stopped as its
+in), its structure (`support.road.structure_saved`) and the calculation
+(`support.road.described`, the one maker, each run's card stated here; the
+road's H2 optimization, :func:`h2_optimization`), each command written
+down (:func:`typed`; :func:`taken`, which must succeed), and a run a launch
+left in the background, waited for (:func:`left_to_end`) or stopped as its
 launch said (:func:`stopped_by_its_line`).
 """
 from __future__ import annotations
@@ -81,7 +84,8 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
-from support.road import _all_written, molbuilder, until
+from support.road import (all_written, described, molbuilder,
+                          structure_saved, until)
 
 
 @dataclass
@@ -112,6 +116,10 @@ class RealRun:
     #: Every version of a vibration's result as the run wrote it, oldest
     #: first (:func:`_result_kept_as_it_grows`).
     versions: "list[Path]" = field(default_factory=list)
+    #: A displacement sweep's record as `summarize task` wrote it
+    #: (:func:`swept`): before its second stage ran (``early``), after it
+    #: (``record``), and under a tolerance (``flagged``).
+    sweep: Dict[str, dict] = field(default_factory=dict)
     #: The run a launch left in the background, as the launch returned
     #: (:func:`left_to_end`): its ``pid``, its session (``sid``), and whether
     #: it was still this process's to wait for (``waited_here``) -- a launch
@@ -186,7 +194,8 @@ def _engine_here(engine: str = "siesta") -> bool:
 def on_the_road(tmp_path_factory, name: str, *, engine: str = "siesta"):
     """A projects tree of its own, the one door pointed at it, and the real
     ``engine`` on the road -- while the runs are made; the process
-    environment as it was, after."""
+    environment as it was, after.  From a module's or the session's fixture
+    alone (:func:`road_at`)."""
     with road_at(tmp_path_factory.mktemp(name), tmp_path_factory,
                  engine=engine) as tree:
         yield tree
@@ -197,7 +206,12 @@ def road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
     """The projects tree under ``where`` -- a new one, or the one a run was
     made in, for a command typed on a copy of it -- the one door pointed at
     it, and the real ``engine`` on the road (`_road.live_siesta`,
-    `_road.live_pyscf`); the process environment as it was, after."""
+    `_road.live_pyscf`); the process environment as it was, after.
+
+    CALLED FROM A MODULE'S OR THE SESSION'S FIXTURE, never from a test's
+    body: there the suite's own stand-in conda stands first on PATH
+    (`conftest.product_toolchain_is_the_suites_own`), the engine's conda
+    hook is not found beside it, and the run is skipped."""
     from _pytest.monkeypatch import MonkeyPatch
 
     from _road import live_pyscf, live_siesta
@@ -340,40 +354,6 @@ def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
     return said
 
 
-def described(tree: Path, where: str, *, structure: dict, name: str,
-              calculation: str, stage_strategy: str = "",
-              engine: str = "siesta", **blocks) -> Path:
-    """`molbuilder describe` of the road's ``structure`` (`support.road`,
-    written where `describe` takes it), on ``engine``, the
-    ``calculation``'s own ladder or ``stage_strategy``; then the job
-    request's blocks as given -- its run card, its allocation, its
-    benchmark: each stated, or left out.  THE ONE MAKER of a calculation on
-    the road with the engine."""
-    from molbuilder.workingcopy_structure import StructureCodec
-    from support.road import road_structure
-    (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-    source = f"P/structure/{name.lower()}.xyz"
-    StructureCodec().write(road_structure(structure), tree / source)
-    r = molbuilder("describe", "--structure", source, "--bundle", where,
-               "--engine", engine, "--calculation", calculation,
-               "--name", name,
-               *(("--psml-lib", "pseudopotential") if engine == "siesta"
-                 else ()),
-               *(("--stage-strategy", stage_strategy) if stage_strategy
-                 else ()))
-    assert r.exit_code == 0, r.output
-    bundle = tree / where
-    from support.road import read_request, write_request
-    request = read_request(bundle)
-    for block, value in blocks.items():
-        if value is None:
-            request.pop(block, None)
-        else:
-            request[block] = value
-    write_request(bundle, request)
-    return bundle
-
-
 def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path,
                      **given: str) -> None:
     """The run script's own dry run (`running-a-job.md` § 3.4), on a copy of
@@ -440,7 +420,7 @@ def _header_under_a_slurm_grant(run: RealRun, tree: Path,
             "max_time": "1-00:00:00", "max_cores": 64,
             "node_types": [{"cores": 64, "nodes": 1}]})]), sol)
     try:
-        bundle = _h2_optimization(
+        bundle = h2_optimization(
             tree, "P/opt/H2-on-sol",
             execution={"mpi_np": 1, "omp_threads": 1},
             allocation={"domain": "cpu", "time": "01:00:00", "mem": "1G"})
@@ -481,8 +461,9 @@ def _relaxed_pair(tmp_path_factory, name: str, structure, **settings) -> RealRun
     with on_the_road(tmp_path_factory, name) as tree:
         s = road_structure(structure)
         write_pseudos(tree / "pseudopotential", sorted(set(s.elements)))
-        bundle = described(tree, "P/opt/J", structure=s, name="J",
-                           calculation="optimization",
+        bundle = described(tree, "P/opt/J",
+                           structure=structure_saved(tree, s), name="J",
+                           calculation="optimization", stage_strategy="",
                            execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, {**QUICK, **settings})
         run = RealRun(tree=tree, bundle=bundle)
@@ -534,7 +515,8 @@ def held_water_pyscf(tmp_path_factory) -> RealRun:
              "regions": {"frozen_atoms": [0]},
              "cell": [10.0, 10.0, 10.0]}
     with on_the_road(tmp_path_factory, "held-water", engine="pyscf") as tree:
-        bundle = described(tree, "P/opt/W", structure=water, name="W",
+        bundle = described(tree, "P/opt/W",
+                           structure=structure_saved(tree, water), name="W",
                            calculation="optimization", engine="pyscf",
                            stage_strategy="publishable",
                            execution={"threads": 1})
@@ -548,20 +530,23 @@ def held_water_pyscf(tmp_path_factory) -> RealRun:
     return run
 
 
-def _h2_optimization(tree: Path, where: str, **blocks) -> Path:
-    """The road's H2, a SIESTA optimization on the `publishable` ladder
-    (:func:`described`)."""
+def h2_optimization(tree: Path, where: str, **blocks) -> Path:
+    """The road's H2 described in ``tree`` at ``where`` as a SIESTA
+    optimization on the `publishable` ladder -- `coarse`, then `medium`, each
+    its own group, as `describe` writes it (`support.road.described`) -- the
+    job request's ``blocks`` as given: THE ONE MAKER of it, for the shared
+    runs and for a module's own calculation alike."""
     from support.road import H2
-    return described(tree, where, structure=H2, name="H2",
-                     calculation="optimization",
+    return described(tree, where, structure=structure_saved(tree, H2),
+                     name="H2", calculation="optimization",
                      stage_strategy="publishable", **blocks)
 
 
 def layered(tmp_path_factory) -> RealRun:
     """Run A of plan § 5y -- see the module's note."""
     with on_the_road(tmp_path_factory, "layered") as tree:
-        bundle = _h2_optimization(tree, "P/opt/H2",
-                                  execution={"mpi_np": 1, "omp_threads": 1})
+        bundle = h2_optimization(tree, "P/opt/H2",
+                                 execution={"mpi_np": 1, "omp_threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task", "--group", "1",
               "--target", "this")
@@ -571,16 +556,16 @@ def layered(tmp_path_factory) -> RealRun:
                                     tmp_path_factory.mktemp("header-dry-run"))
         taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
               "--mode", "direct", "--foreground", "--yes")
-        run.files_before = _all_written(bundle)
+        run.files_before = all_written(bundle)
         taken(run, "dry run of launching coarse again", "launch", "task",
               "--stage", "coarse", "--mode", "direct", "--dry-run", "--yes")
-        run.files_after = _all_written(bundle)
+        run.files_after = all_written(bundle)
         taken(run, "launch coarse again", "launch", "task", "--stage",
               "coarse", "--mode", "direct", "--foreground", "--yes")
         # ASKED AT A TERMINAL, AND ANSWERED THE OTHER WAY: the foreground.
         _answered(run, "launch coarse again cold", "f", "launch", "task",
                   "--stage", "coarse", "--mode", "direct", "--cold")
-        run.relaunched = _all_written(bundle)
+        run.relaunched = all_written(bundle)
         taken(run, "prep medium", "prep", "task", "--group", "2",
               "--target", "this")
         # A RUN HERE, LEFT IN THE BACKGROUND -- a launch's default
@@ -601,15 +586,15 @@ def one_group(tmp_path_factory) -> RealRun:
     -- `medium` starting clean, a stage building on one in its own job being
     refused -- on :data:`QUICK`, prepared and launched by the group: one job,
     each stage's run-0, waited on."""
-    from support.road import (_description_with_overrides, read_request,
+    from support.road import (description_with_overrides, read_request,
                               save_both, set_by_the_person)
     with on_the_road(tmp_path_factory, "one-group") as tree:
-        bundle = _h2_optimization(tree, "P/opt/H2",
-                                  execution={"mpi_np": 1, "omp_threads": 1})
+        bundle = h2_optimization(tree, "P/opt/H2",
+                                 execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, QUICK)
         request = read_request(bundle)
         request["stages"]["medium"]["group"] = 1
-        saved = save_both(bundle, _description_with_overrides(
+        saved = save_both(bundle, description_with_overrides(
             bundle, {"medium": {"restart": "clean"}}), request)
         assert saved.status_code == 200, saved.get_json()
         run = RealRun(tree=tree, bundle=bundle)
@@ -639,8 +624,8 @@ def stopped(tmp_path_factory) -> RealRun:
     (``launch medium``), and `status` (``status``)."""
     from support.road import group_words, set_by_the_person
     with on_the_road(tmp_path_factory, "stopped") as tree:
-        bundle = _h2_optimization(tree, "P/opt/H2",
-                                  execution={"mpi_np": 1, "omp_threads": 1})
+        bundle = h2_optimization(tree, "P/opt/H2",
+                                 execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, CANNOT_CONVERGE)
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task",
@@ -672,7 +657,7 @@ def gpu(tmp_path_factory) -> RealRun:
             topology=Topology(sockets=2, cores_per_socket=8, gpus_per_node=1),
             env_init={"activation": "conda activate",
                       "preamble": f"source {conda_hook()}"})
-        bundle = _h2_optimization(tree, "P/opt/H2gpu", execution={
+        bundle = h2_optimization(tree, "P/opt/H2gpu", execution={
             "mpi_np": 1, "omp_threads": 1, "use_gpu": True, "gpu_count": 1})
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task", "--group", "1",
@@ -688,9 +673,9 @@ def gpu(tmp_path_factory) -> RealRun:
 def bench(tmp_path_factory) -> RealRun:
     """The benchmark of plan § 5y -- see the module's note."""
     with on_the_road(tmp_path_factory, "bench") as tree:
-        bundle = _h2_optimization(tree, "P/opt/H2bench", execution=None,
-                                  bench={"mpi_np": [1, 2],
-                                         "omp_threads": [1]})
+        bundle = h2_optimization(tree, "P/opt/H2bench", execution=None,
+                                 bench={"mpi_np": [1, 2],
+                                        "omp_threads": [1]})
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep bench", "prep", "bench", "coarse",
               "--target", "this")
@@ -724,13 +709,13 @@ def co2_vibration(tree: Path, where: str = "P/freq/CO2", *,
                   optical: bool = False) -> Path:
     """The road's CO2 (`support.road.CO2`) described as a SIESTA vibration
     in ``tree`` at ``where``: the kind's one stage, `freq`, one rank, one
-    thread (:func:`described`), its template carrying :data:`CO2_SETTINGS`
-    as the person's (`support.road.set_by_the_person`) -- and, ``optical``,
-    :data:`CO2_OPTICAL` -- THE ONE MAKER of it, for the shared run and for
-    a test's own calculation alike."""
+    thread (`support.road.described`), its template carrying
+    :data:`CO2_SETTINGS` as the person's (`support.road.set_by_the_person`)
+    -- and, ``optical``, :data:`CO2_OPTICAL` -- THE ONE MAKER of it, for the
+    shared run and for a test's own calculation alike."""
     from support.road import CO2, set_by_the_person
-    bundle = described(tree, where, structure=CO2, name="CO2",
-                       calculation="vibration",
+    bundle = described(tree, where, structure=structure_saved(tree, CO2),
+                       name="CO2", calculation="vibration",
                        execution={"mpi_np": 1, "omp_threads": 1})
     set_by_the_person(bundle, {**CO2_SETTINGS,
                                **(CO2_OPTICAL if optical else {})})
@@ -803,32 +788,65 @@ def vibration(tmp_path_factory) -> RealRun:
     return run
 
 
+def swept(run: RealRun) -> RealRun:
+    """A DISPLACEMENT SWEEP (`engines/vibration.md` § 5.9) on ``run``, a
+    SIESTA vibration whose `freq` has run, typed on the road ``run`` was
+    made on (:func:`on_the_road`, :func:`road_at`): `freq_half` at 0.02
+    Bohr added beside `freq` in a group of its own -- a later stage builds
+    on the first, so it never shares that stage's job -- prepared, the sweep
+    summarized (``run.sweep["early"]``), `freq_half` launched -- taking
+    `freq`'s relaxation over, where `freq` relaxed -- and summarized
+    (``record``), and summarized again under a tolerance (``flagged``):
+    `summarize task` writes the record, ``<label>.fc-sweep.json``, at the
+    calculation's root.  Each step is written down by its name.
+
+    THE ONE MAKER OF A SWEEP, made on two runs, each for its reader:
+    :func:`sweep`, the road's H2 stated relaxed, a sweep's record in
+    seconds; and a copy of the shared CO2 vibration
+    (`test_siesta_vibration_e2e.py`), whose test reads what only CO2 has --
+    four modes, the held-first numbering -- and the relaxation the second
+    stage takes over, which a structure stated relaxed never makes."""
+    import json
+    from molbuilder.task import of as task_of
+    from support.road import group_words, ladder_edited
+    record = run.bundle / f"{task_of(run.bundle).label}.fc-sweep.json"
+    assert ladder_edited({"added": [{"name": "freq_half", "overrides":
+                                     {"fc_displacement": 0.02}}]}, run.bundle)
+    taken(run, "prep freq_half", "prep", "task",
+          *group_words(run.bundle, "freq_half"), "--target", "this")
+    taken(run, "summarize early", "summarize", "task")
+    run.sweep["early"] = json.loads(record.read_text())
+    taken(run, "launch freq_half", "launch", "task", "--stage", "freq_half",
+          "--mode", "direct", "--foreground", "--yes")
+    taken(run, "summarize the sweep", "summarize", "task")
+    run.sweep["record"] = json.loads(record.read_text())
+    taken(run, "summarize with a tolerance", "summarize", "task",
+          "--tolerance-cm1", "1e-6")
+    run.sweep["flagged"] = json.loads(record.read_text())
+    return run
+
+
 def sweep(tmp_path_factory) -> RealRun:
-    """A SIESTA vibration's displacement sweep (`engines/vibration.md`
-    § 5.9) on the road's H2, its one free atom displaced: stated relaxed,
-    so each stage is its force-constant call alone, on :data:`QUICK`'s mesh
-    and basis; `freq_half` at 0.02 Bohr added beside `freq` in a group of
-    its own, each prepared and launched in turn, waited on, and the
-    calculation summarized -- `summarize task` writes the sweep's record,
-    ``<label>.fc-sweep.json``, at its root."""
-    from support.road import H2, group_words, ladder_edited, set_by_the_person
+    """A SIESTA vibration's displacement sweep (:func:`swept`) on the road's
+    H2, its one free atom displaced: stated relaxed, so each stage is its
+    force-constant call alone, on :data:`QUICK`'s mesh and basis, one rank,
+    one thread; `freq` prepared and launched, waited on, then the sweep."""
+    from support.road import H2, set_by_the_person
     with on_the_road(tmp_path_factory, "sweep") as tree:
-        bundle = described(tree, "P/freq/H2", structure=H2, name="H2",
+        bundle = described(tree, "P/freq/H2",
+                           structure=structure_saved(tree, H2), name="H2",
                            calculation="vibration",
                            execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, {
             "already_relaxed": True,
             **{k: QUICK[k] for k in ("mesh_cutoff", "basis_size",
                                      "pao_energy_shift", "max_scf_iter")}})
-        assert ladder_edited({"added": [{"name": "freq_half", "overrides":
-                                         {"fc_displacement": 0.02}}]}, bundle)
         run = RealRun(tree=tree, bundle=bundle)
-        for stage in ("freq", "freq_half"):
-            taken(run, f"prep {stage}", "prep", "task",
-                  *group_words(bundle, stage), "--target", "this")
-            taken(run, f"launch {stage}", "launch", "task", "--stage", stage,
-                  "--mode", "direct", "--foreground", "--yes")
-        taken(run, "summarize", "summarize", "task")
+        taken(run, "prep freq", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch freq", "launch", "task", "--stage", "freq",
+              "--mode", "direct", "--foreground", "--yes")
+        swept(run)
     return run
 
 
@@ -865,7 +883,8 @@ def pyscf(tmp_path_factory, label: str = "H2") -> RealRun:
     stretched = {**H2, "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 5.80]]}
     with on_the_road(tmp_path_factory, f"pyscf-{label}",
                      engine="pyscf") as tree:
-        bundle = described(tree, f"P/opt/{label}", structure=stretched,
+        bundle = described(tree, f"P/opt/{label}",
+                           structure=structure_saved(tree, stretched),
                            name=label, calculation="optimization",
                            engine="pyscf", execution={"threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
@@ -882,11 +901,12 @@ def water_vibration(tmp_path_factory, name: str, *, structure=None,
     given, described in a tree of its own under the label ``W``, one thread,
     ``settings`` the person's in its template and the job request's ``blocks``
     as given, `freq` prepared and launched, waited on, its result kept as it
-    grew -- THE ONE MAKER of a shared water vibration."""
+    grew -- THE ONE MAKER of a shared water vibration.  From a module's or
+    the session's fixture alone (:func:`road_at`)."""
     from support.road import WATER, set_by_the_person
     with on_the_road(tmp_path_factory, name, engine="pyscf") as tree:
-        bundle = described(tree, f"P/frequency/{name}",
-                           structure=WATER if structure is None else structure,
+        saved = structure_saved(tree, WATER if structure is None else structure)
+        bundle = described(tree, f"P/frequency/{name}", structure=saved,
                            name="W", calculation="vibration", engine="pyscf",
                            execution={"threads": 1}, **blocks)
         if settings:

@@ -2,11 +2,11 @@
 `molbuilder describe`, the Task-setup save, `prep`, `status`, the Results tab.
 
 PINS: ``docs/execution/job-system.md`` § 5.3 (the table is the description's
-ladder: every stage with its number from the moment `init` writes it, the ones
-not prepared yet as `ready` or `waiting`, a disabled one never the stage to resume from;
-`status <stage>` is a stage in full -- its deck, what it declares, its
-resources) and ``docs/web/results.md`` § 2.4
-(the Results tab's ladder is `jobset_status`'s answer).
+ladder: every stage with its number from the moment `molbuilder describe`
+writes it, the ones not prepared yet as `ready` or `waiting`, a disabled
+one never the stage to resume from; `status <stage>` is a stage in full --
+its deck, what it declares, its resources) and ``docs/web/results.md``
+§ 2.4 (the Results tab's ladder is `jobset_status`'s answer).
 
 PREVENTS, each read in the code before 2026-10-01:
 
@@ -48,10 +48,10 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
 
     MUTATIONS THIS MUST FAIL AGAINST: the continuation door raising (a
     traceback); stages joined to jobs by exact name; a stage folder told to
-    run `init`."""
-    from support.road import (describe_calculation, jobset, read_request,
+    run `molbuilder describe`."""
+    from support.road import (described, jobset, read_request, road_tree,
                               save_both)
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
 
     template = next(bundle.glob("*.template.toml"))
     kept = template.read_text()
@@ -98,8 +98,8 @@ def test_status_ends_with_each_groups_next_step(tmp_path, monkeypatch,
 
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.materialize import job_folder, latest_attempt
-    from support.road import describe_calculation, jobset
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    from support.road import described, jobset, road_tree
+    bundle = described(road_tree(tmp_path, monkeypatch))
     r = jobset("status", "--bundle", bundle)
     assert r.exit_code == 0, r.output
     first, *rest = steps = _steps(r.output)
@@ -156,9 +156,9 @@ def test_a_benchmark_trial_whose_run_is_gone_is_said_before_any_launch(
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.naming import job_dir_names, stage_home
     from molbuilder.paths import bench_container
-    from support.road import (describe_calculation, jobset, read_request,
+    from support.road import (described, jobset, read_request, road_tree,
                               save_both)
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     calc = open_calculation(bundle)
     first = calc.task.stages[0].name
     request = read_request(bundle)

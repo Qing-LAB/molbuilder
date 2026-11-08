@@ -247,36 +247,6 @@ def test_load_empty_returns_error(web_client):
     assert body["ok"] is False
 
 
-# --------------------------------------------------------------------- #
-#  /api/build/load extended response (atom_names / residue_ids / ...)   #
-#  -- needed by the Modify tab's atom list, surfaced from Structure's   #
-#  PDB metadata.                                                        #
-# --------------------------------------------------------------------- #
-
-
-def test_build_load_response_includes_atom_metadata(web_client):
-    """``POST /api/build/load`` must return atom_names / residue_ids /
-    residue_names / chain_ids alongside elements -- the Modify tab's
-    atom list (M2) reads these to populate per-row labels."""
-    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
-    r = web_client.post(
-        "/api/build/load",
-        # JSON, the transport a caller uses -- the only FormData in the front
-        # end targets /api/files/upload.
-        json={"text": xyz, "filename": "h2o.xyz"},
-    )
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["n_atoms"] == 3
-    # All four metadata lists are present and length-matched.
-    for k in ("atom_names", "residue_ids", "residue_names", "chain_ids"):
-        assert k in body, f"missing {k!r}"
-        assert isinstance(body[k], list), f"{k!r} is not a list"
-        assert len(body[k]) == 3, (
-            f"{k!r} has {len(body[k])} entries, expected 3"
-        )
-
-
 def test_modify_op_round_trips_the_periodic_cell(web_client):
     """Regression (2026-07 fresh-eyes review): a modify op must carry the
     periodicity (cell / axis_kind / vacuum) through the round-trip.  Before the

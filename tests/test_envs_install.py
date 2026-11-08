@@ -1307,7 +1307,7 @@ def test_a_registry_entry_whose_directory_is_gone_is_still_GHOST(
 
 
 def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
-        monkeypatch, tmp_path):
+        monkeypatch, tmp_path, machine_config):
     """The self-destruct `--clean` opened up, and nothing stood in its way.
 
     Opening `--clean` to conda-only recipes put the HOST recipe in scope -- it
@@ -1324,19 +1324,36 @@ def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
     is the whole claim -- a refusal is a refusal only if nothing was
     dispatched -- and the door is where every dispatch goes, so an empty record
     is the proof.
+
+    BEHIND RECORDING DOORS, BOTH OF THEM, so the env this suite runs from is
+    out of reach whatever the code does: the dispatch door records
+    (`_dispatch_log`), and the env manager is a recorder too, recorded as
+    this machine's `envs.manager` -- so a re-detection after a removal finds
+    it, never the real one (the 2026-09-13 lesson, the env canary in
+    `conftest.py`) -- whose registry lists the host env at this interpreter's
+    own prefix, the real condition.  The env's state is the real probe's,
+    asked of that recorder and of the prefix's directory.
     """
     import sys as _sys
 
     # The real condition: the host env's prefix IS this interpreter's prefix.
-    _bind(conda_envs={"molbuilder": _sys.prefix}, conda_binary="/fake/conda")
+    calls = tmp_path / "manager-calls"
+    manager = tmp_path / "manager" / "conda"
+    manager.parent.mkdir()
+    registry = json.dumps({"envs": [_sys.prefix], "envs_details": {
+        _sys.prefix: {"name": "molbuilder", "base": False}}})
+    manager.write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> "{calls}"\n'
+        'case "$1 $2" in\n'
+        f"  'env list') echo '{registry}' ;;\n"
+        "  'info --json') echo '{\"envs_dirs\": []}' ;;\n"
+        "esac\n")
+    manager.chmod(0o755)
+    machine_config({"envs": {"manager": str(manager)}})
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     from molbuilder.envs import _cli
     seen = _dispatch_log(monkeypatch)
-    monkeypatch.setattr(
-        _cli._install, "probe_env_state",
-        lambda name, binary: install.EnvState(
-            name=name, listed_in_registry=True, dir_exists=True,
-            has_conda_meta=True, prefix=_sys.prefix, manager=binary))
 
     result = _make_runner().invoke(
         _cli.envs_group, ["install", "molbuilder", "--clean", "--yes"])
@@ -1344,12 +1361,16 @@ def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
     assert seen == [], (
         f"`--clean --yes` on the env molbuilder runs from dispatched "
         f"something:\n{seen}\n{result.output}")
+    asked = calls.read_text().splitlines() if calls.is_file() else []
+    assert asked and all(c in ("env list --json", "info --json")
+                         for c in asked), (
+        f"the manager was told more than to say what it holds: {asked}")
     assert result.exit_code == 2, (
         f"refusal must be an error, not a warning it then ignores "
         f"(exit {result.exit_code})\n{result.output}")
     assert "RUNNING FROM" in result.output, result.output
     # M3: the manual route names the DETECTED manager, not a literal `conda`.
-    assert f"/fake/conda env remove --prefix {_sys.prefix} -y" in result.output, \
+    assert f"{manager} env remove --prefix {_sys.prefix} -y" in result.output, \
         result.output
 
 

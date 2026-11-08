@@ -8,6 +8,16 @@ and a hand-built ``envs`` dict, so format invariants (header lines,
 preview-block shape, opt-step block shape, scf_history table) are
 pinned at unit-test time without needing PySCF.
 
+WHY ITS INPUT IS TYPED, NOT RUN: the writer's inputs are what PySCF hands
+it -- a ``mol`` and geomeTRIC's callback values -- and PySCF lives only in
+the ``molbuilder-pySCF`` env, never in the suite's.  The values here are
+chosen so each converted number is known by hand: a gradient of -0.05
+Ha/Bohr is a force of +0.05 x 51.42 eV/Ang, the sign and the unit the
+science rule pins (`process/testing.md` § 3b, the scientific exception).
+No run makes a number whose conversion a test knows in advance; the log a
+real PySCF run writes through this class is read end to end by
+`test_pyscf_relaxation_outcome_e2e.py` (the run, `support.real_runs`).
+
 This file focuses on the writer's output bytes."""
 
 from __future__ import annotations
@@ -172,16 +182,13 @@ def test_opt_step_hook_writes_block_with_forces_and_scf_history(tmp_path,
 def test_opt_step_hook_missing_envs_is_noop(tmp_path, h2_mol):
     """A geomeTRIC callback that fires before mol/energy/gradients are
     populated is a no-op -- the emitter must not crash and must not
-    write a stale block."""
+    write a stale block.  One example, as the emitter has one rule for
+    it: the gradients not yet there."""
     p = tmp_path / "test.molwatch.log"
     em = MolwatchEmitter(str(p), "h2", h2_mol)
 
     before = p.read_text()
-    # Each variant should early-return without writing.
-    em.opt_step_hook({})
-    em.opt_step_hook({"mol": h2_mol})
     em.opt_step_hook({"mol": h2_mol, "energy": -1.0})
-    em.opt_step_hook({"mol": h2_mol, "gradients": np.zeros((2, 3))})
     after = p.read_text()
     assert before == after, "no-op envs must not write to the log"
     # Step counter must NOT have advanced.

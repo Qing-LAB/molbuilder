@@ -18,9 +18,9 @@ from pathlib import Path
 import pytest
 
 from _road import conda_hook, env_available
-from support.road import (describe_calculation, jobset, one_rank, prep_groups,
-                          road_structure, run_road_case, set_by_the_person,
-                          stage_file)
+from support.road import (described, jobset, one_rank, prep_groups,
+                          road_structure, road_tree, run_road_case,
+                          set_by_the_person, stage_file)
 
 pytestmark = [
     pytest.mark.engine,
@@ -40,9 +40,9 @@ def _prepared(tmp_path, monkeypatch, pair, *, groups=("1", "2"), where="here",
     """A transport calculation citing the real ``pair``, at ``bias`` in
     ``frames`` frames, ``template``'s values and the run ``card``'s set, and
     ``groups`` prepared: the calculation's folder."""
-    bundle = describe_calculation(tmp_path / where, monkeypatch, name=_LABEL,
-                                  calculation="transport", bias=bias,
-                                  frames=frames, structure=pair)
+    bundle = described(road_tree(tmp_path / where, monkeypatch, pair,
+                                 frames=frames),
+                       name=_LABEL, calculation="transport", bias=bias)
     one_rank(bundle, **(card or {}))
     if template:
         set_by_the_person(bundle, template)
@@ -87,9 +87,9 @@ def test_a_labelled_junction_prepares_clean(real_bridged_chain, tmp_path,
     spin: an even count of electrons resolves restricted
     (`science/chemistry-correctness.md` § 2a.1b)."""
     from molbuilder.parse.fdf import fdf_key, read_fdf
-    bundle = describe_calculation(tmp_path, monkeypatch, name=_LABEL,
-                                  calculation="transport",
-                                  structure=real_bridged_chain.pair)
+    bundle = described(road_tree(tmp_path, monkeypatch,
+                                 real_bridged_chain.pair),
+                       name=_LABEL, calculation="transport")
     r = jobset("prep", "task", "--group", "1", "--group", "2", "--group", "3",
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
@@ -287,9 +287,8 @@ def _declared(pair, tmp_path, monkeypatch, calculation, stage, groups,
     """The species a deck `jobset prep` wrote declares, in the order of its
     ``%block ChemicalSpeciesLabel`` -- read as SIESTA reads them."""
     from molbuilder.parse.fdf import fdf_key, read_fdf
-    bundle = describe_calculation(tmp_path, monkeypatch,
-                                  calculation=calculation, stage_strategy="",
-                                  structure=pair)
+    bundle = described(road_tree(tmp_path, monkeypatch, pair),
+                       calculation=calculation, stage_strategy="")
     if template:
         set_by_the_person(bundle, template)
     prep_groups(bundle, *groups)
@@ -332,10 +331,10 @@ def test_a_tbtrans_step_s_record_lists_no_scf_setting(real_bridged_chain, tmp_pa
                                                       monkeypatch):
     """What `test_effective_parameters_record.py` asks of every step, of the
     step whose program reads none of SIESTA's SCF settings."""
-    from test_effective_parameters_record import the_fence_holds
-    bundle = describe_calculation(tmp_path, monkeypatch, stage_strategy="",
-                                  calculation="transport",
-                                  structure=real_bridged_chain.pair)
+    from support.road import the_fence_holds
+    bundle = described(road_tree(tmp_path, monkeypatch,
+                                 real_bridged_chain.pair),
+                       calculation="transport", stage_strategy="")
     prep_groups(bundle, "1", "2", "3")
     the_fence_holds(bundle, "05_transmission", "tbt_k_grid", "write_forces")
 
@@ -347,9 +346,9 @@ def test_a_tbtrans_step_s_run_script_starts_tbtrans_its_banner_lined_up(
     run script starts TBtrans and names it in its banner -- whose labels
     line up on the longest one it prints, ``TBtrans version``
     (`running-a-job.md` § 1)."""
-    bundle = describe_calculation(tmp_path, monkeypatch, name="T",
-                                  calculation="transport",
-                                  structure=real_bridged_chain.pair)
+    bundle = described(road_tree(tmp_path, monkeypatch,
+                                 real_bridged_chain.pair),
+                       name="T", calculation="transport")
     prep_groups(bundle, "1", "2", "3")
     text = stage_file(bundle, "transmission", ".run.sh").read_text()
     assert '_program_bin="$(command -v tbtrans ' in text, \
@@ -379,10 +378,11 @@ def test_a_run_of_points_is_told_from_its_citation_before_any_prep(
     THE SILENT FAILURE: the count read from the record prep writes -- *its 2
     points* said of a run of 4, and of a frame set with one voltage nothing, so
     its wall is typed for one run rather than each point's."""
-    from support.road import _road_points_before_prep
-    _road_points_before_prep({"device": walk}, describe_calculation(
-        tmp_path, monkeypatch, name="T", calculation="transport",
-        structure=real_bridged_chain.pair, frames=frames, bias=bias))
+    from support.road import points_before_prep
+    tree = road_tree(tmp_path, monkeypatch, real_bridged_chain.pair,
+                     frames=frames)
+    points_before_prep({"device": walk}, described(
+        tree, name="T", calculation="transport", bias=bias))
 
 
 def test_a_citation_answers_what_its_relaxation_ran_at(real_uneven_chain,
@@ -421,9 +421,10 @@ def test_a_voltage_outside_its_recommended_range_is_warned_where_it_is_saved(
     import json
 
     from support.road import read_request, save_both
-    bundle = describe_calculation(tmp_path, monkeypatch, name="T",
-                                  calculation="transport",
-                                  structure=real_bridged_chain.pair, bias="0,0.2")
+    bundle = described(road_tree(tmp_path, monkeypatch,
+                                 real_bridged_chain.pair),
+                       name="T", calculation="transport",
+                       bias="0,0.2")
     set_by_the_person(bundle, {"transmission_emin_ev": -5.0,
                                "transmission_emax_ev": 5.0})
     task = json.loads((bundle / "task.json").read_text())
@@ -442,10 +443,10 @@ def test_a_relaxation_at_another_charge_cannot_be_cited(real_charged_formate,
     """§ 3.1 and ES7: the leads set a junction's electron number, so a geometry
     relaxed charged is not this junction's -- said at describe, naming the
     charge and the way out."""
-    said = describe_calculation(tmp_path, monkeypatch, name="T",
-                                calculation="transport",
-                                structure=real_charged_formate.pair,
-                                refused=True)
+    said = described(road_tree(tmp_path, monkeypatch,
+                               real_charged_formate.pair),
+                     name="T", calculation="transport",
+                     refused=True)
     assert "states a net charge of -1" in said, said
     assert "Relax the junction neutral" in " ".join(said.split()), said
 
@@ -458,9 +459,10 @@ def test_the_device_s_scratch_folder_is_said_on_every_page(
 
     THE SILENT FAILURE: the person choosing a queue on Task setup is not told a
     run will want tens of GiB of scratch, which only the terminal said."""
-    bundle = describe_calculation(
-        tmp_path, monkeypatch, name="T", calculation="transport",
-        structure=real_bridged_chain.pair, bias="0,0.2")
+    bundle = described(road_tree(tmp_path, monkeypatch,
+                                 real_bridged_chain.pair),
+                       name="T", calculation="transport",
+                       bias="0,0.2")
     r = jobset("prep", "task", "--group", "1", "--group", "2", "--group", "3",
                "--bundle", bundle, "--target", "this", "--np", "2",
                "--cpus-per-task", "1")
@@ -512,9 +514,9 @@ def test_a_lead_s_seam_is_said_by_prep_as_on_the_card(real_bridged_chain, tmp_pa
     (seam,) = [n for n in extract_electrode_model(
         road_structure(real_bridged_chain.pair), "L-electrode").notes
         if n.where == "lead.seam"]
-    bundle = describe_calculation(tmp_path, monkeypatch, name="j",
-                                  calculation="transport",
-                                  structure=real_bridged_chain.pair)
+    bundle = described(road_tree(tmp_path, monkeypatch,
+                                 real_bridged_chain.pair),
+                       name="j", calculation="transport")
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output

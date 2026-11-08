@@ -34,8 +34,6 @@ from __future__ import annotations
 import pytest
 
 
-pytestmark = pytest.mark.e2e
-
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
@@ -826,8 +824,8 @@ class TestSendToTaskSetup:
         a second calculation's files over the first's.  MUTATION THIS MUST
         FAIL AGAINST: the hand-over naming the folder by the full path the
         page sent, where the command line names it by its address."""
-        from support.road import describe_calculation
-        calc = describe_calculation(tmp_path, monkeypatch).resolve()
+        from support.road import described, road_tree
+        calc = described(road_tree(tmp_path, monkeypatch)).resolve()
         before = {f.name: f.read_bytes() for f in calc.iterdir()
                   if f.is_file()}
         xyz = next(calc.glob("*.source.xyz"))

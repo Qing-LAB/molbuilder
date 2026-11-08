@@ -33,46 +33,11 @@ MODEL = MODULE_DIR / "model.js"
 # would draw and compare it with what the Cell page reports (§ 5.2).
 ENGINE = MODULE_DIR / "render-engine.js"
 
-# A stand-in server. It answers the routes of § 11.1 and records what it
-# was sent, so a test can assert what actually left the browser.
-SERVER = """
-globalThis.__requests = [];
-globalThis.__serverFails = false;
-globalThis.__nextPayload = null;
-
-function atomRow(i, element, x, opts) {
-    /* The labels the atom carries, and nothing beside them: a reserved label
-     * is IN `regions` (§ 6.6). The row used to carry an `is_frozen` flag too,
-     * which is what the server sent while it kept a second store. */
-    return Object.assign({ index: i, element, x, y: 0, z: 0, regions: [] },
-                         opts || {});
-}
-globalThis.__atomRow = atomRow;
-
-globalThis.__payload = function (atoms, extra) {
-    return Object.assign({ atoms }, extra || {});
-};
-
-/* THE STAND-IN SPEAKS THE SERVER'S NAMES, not the module's (§ 13.1: a stand-in
- * "must obey THAT LEVEL's rules"). Its periodicity block is `{cell, engine_offset,
- * axis_kind, vacuum}` and, beside them, what the server resolved (`resolved_cell`,
- * `box_corner`, `resolved_vacuum`) — what /api/build/load actually sends. It used to carry
- * `{lattice, origin}`, which is what the MODULE calls them, so the module's
- * inbound translation was tested against its own output and the cell was silently
- * null against the real server for every structure ever loaded. */
-
-globalThis.fetch = async function (route, init) {
-    const body = JSON.parse(init.body);
-    globalThis.__requests.push({ route, body });
-    if (globalThis.__serverFails) {
-        return { ok: false, status: 500, json: async () => ({}) };
-    }
-    const payload = globalThis.__nextPayload || globalThis.__payload([
-        atomRow(0, "C", 0), atomRow(1, "O", 1),
-    ]);
-    return { ok: true, status: 200, json: async () => payload };
-};
-"""
+#: A stand-in server (`support/molview_server_standin.js`): it answers the
+#: routes of § 11.1 and records what it was sent, so a test can assert what
+#: actually left the browser.
+SERVER = (Path(__file__).resolve().parent / "support"
+          / "molview_server_standin.js").read_text()
 
 PRELUDE = f"""
 const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
@@ -2472,10 +2437,9 @@ def test_a_cell_edit_flags_the_structure_and_not_the_labels():
     the flag and the answer carries it, so this test pins the BROWSER's
     half only: that the adopted answer is what the store ends up holding.
     The decision itself is pinned where it is made --
-    `test_structure_authority_roundtrip.py`
-    ::TestAnEditOutdatesTheContractWithoutErasingIt
-    ::test_a_box_edit_marks_the_contract_outdated, over all five ops of
-    the door.  Both halves are mutation-checked; neither alone is the
+    `test_an_edit_on_a_recorded_structure_e2e.py`
+    ::test_a_box_edit_marks_the_record_outdated, over all five ops of the
+    door.  Both halves are mutation-checked; neither alone is the
     behaviour.
     """
     out = _run(_with_a_recorded_contract("""

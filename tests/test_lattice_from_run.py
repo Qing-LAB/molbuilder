@@ -31,17 +31,6 @@ def _au_supercell(nx=3, ny=3, nz=2, a=A, element="Au"):
 
 
 @pytest.fixture()
-def picker_root(tmp_path, monkeypatch):
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
-    return tmp_path
-
-
-@pytest.fixture()
 def client():
     from molbuilder.web.app import create_app
     return create_app(config={}).test_client()
@@ -62,11 +51,11 @@ def _ask(client, path, **extra):
 class TestItAnswersFromTheAtoms:
 
     def test_a_relaxed_supercell_gives_the_lattice_constant(
-            self, client, picker_root):
+            self, client, isolated_projects_root):
         """The whole point: a 72-atom 3×3×2 supercell — the shape a real lead
         relax has — answers with the CONVENTIONAL cubic edge, which is not any
         of its three cell edges."""
-        path = _write(picker_root, _au_supercell())
+        path = _write(isolated_projects_root, _au_supercell())
         d = _ask(client, path)
         assert d["ok"] is True, d
         assert abs(d["a"] - A) < 1e-6, d["a"]
@@ -76,12 +65,13 @@ class TestItAnswersFromTheAtoms:
         assert d["n_atoms"] == 72
         assert d["element"] == "Au"
 
-    def test_the_cell_edges_are_not_the_answer(self, client, picker_root):
+    def test_the_cell_edges_are_not_the_answer(
+            self, client, isolated_projects_root):
         """Stated as its own test because it is the design decision: the box is
         3a × 3a × 2a, so every naive reading of the cell — a row, the smallest
         row, the cube root of the volume — gives a different wrong number."""
         struct = _au_supercell(3, 3, 2)
-        d = _ask(client, _write(picker_root, struct))
+        d = _ask(client, _write(isolated_projects_root, struct))
         edges = [float(np.linalg.norm(row)) for row in struct.cell]
         assert all(abs(d["a"] - e) > 1.0 for e in edges), (
             f"a={d['a']} coincides with a cell edge {edges}")
@@ -90,14 +80,16 @@ class TestItAnswersFromTheAtoms:
 
 class TestTheNotesTheUserReads:
 
-    def test_a_slab_is_flagged_by_its_coordination(self, client, picker_root):
+    def test_a_slab_is_flagged_by_its_coordination(
+            self, client, isolated_projects_root):
         """§ 3.3's first check.  A thin slab still yields the right `a`, so the
         answer is given — with a note saying the file is probably not the bulk
         crystal that was meant."""
         struct = _au_supercell(3, 3, 1)
         struct = type(struct)(elements=struct.elements, positions=struct.positions,
                               cell=np.diag([3 * A, 3 * A, 3 * A + 20.0]))
-        d = _ask(client, _write(picker_root, struct, "Au-slab.xyz"))
+        d = _ask(client, _write(isolated_projects_root, struct,
+                                "Au-slab.xyz"))
         assert d["ok"] is True, d
         assert d["coordination"] != 12
         warned = [n for n in d["notes"] if "neighbours" in n["message"]]
@@ -105,14 +97,15 @@ class TestTheNotesTheUserReads:
         assert "slab" in warned[0]["message"]
 
     def test_a_file_too_big_to_measure_exactly_is_refused_not_sampled(
-            self, client, picker_root):
+            self, client, isolated_projects_root):
         """The measurement is exact and O(n²), so the route caps it — and it
         REFUSES rather than sampling, because a silently truncated answer to
         "what is this crystal's lattice constant" is worse than being asked
         for a smaller cell."""
         big = _au_supercell(7, 7, 7)          # 1372 atoms
         r = client.post("/api/modify/lattice-from-run",
-                        json={"path": str(_write(picker_root, big, "huge.xyz"))})
+                        json={"path": str(_write(isolated_projects_root,
+                                                 big, "huge.xyz"))})
         assert r.status_code == 400
         said = r.get_json()["error"]
         assert "1372" in said and "smaller" in said, said
@@ -120,23 +113,25 @@ class TestTheNotesTheUserReads:
 
 class TestTheTwoRefusals:
 
-    def test_a_file_with_no_cell(self, client, picker_root):
+    def test_a_file_with_no_cell(self, client, isolated_projects_root):
         """No cell means no periodic images, and on a small cell the measured
         minimum is then simply wrong rather than absent — so this stops."""
         from molbuilder.structure import Structure
         struct = _au_supercell()
         bare = Structure(elements=struct.elements, positions=struct.positions)
         r = client.post("/api/modify/lattice-from-run",
-                        json={"path": str(_write(picker_root, bare, "nocell.xyz"))})
+                        json={"path": str(_write(isolated_projects_root,
+                                                 bare, "nocell.xyz"))})
         assert r.status_code == 400
         assert "no unit cell" in r.get_json()["error"]
 
-    def test_more_than_one_element_with_none_named(self, client, picker_root):
+    def test_more_than_one_element_with_none_named(
+            self, client, isolated_projects_root):
         from molbuilder.structure import Structure
         struct = _au_supercell()
         mixed = Structure(elements=["Ag"] + list(struct.elements[1:]),
                           positions=struct.positions, cell=struct.cell)
-        path = _write(picker_root, mixed, "alloy.xyz")
+        path = _write(isolated_projects_root, mixed, "alloy.xyz")
         r = client.post("/api/modify/lattice-from-run", json={"path": str(path)})
         assert r.status_code == 400
         assert "name which one" in r.get_json()["error"]
@@ -144,6 +139,8 @@ class TestTheTwoRefusals:
         d = _ask(client, path, element="Au")
         assert d["ok"] is True and abs(d["a"] - A) < 1e-6
 
-    def test_an_element_the_file_does_not_hold(self, client, picker_root):
-        d = _ask(client, _write(picker_root, _au_supercell()), element="Cu")
+    def test_an_element_the_file_does_not_hold(
+            self, client, isolated_projects_root):
+        d = _ask(client, _write(isolated_projects_root, _au_supercell()),
+                 element="Cu")
         assert d["ok"] is False and "holds no Cu" in d["error"]

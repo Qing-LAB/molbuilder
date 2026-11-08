@@ -17,13 +17,13 @@ from molbuilder import calculation as C
 from molbuilder import task as T
 from molbuilder import template_file as TP
 from molbuilder.jobset.model import JobSet
-from support.road import describe_calculation
+from support.road import described, road_tree
 
 
 def test_a_described_calculation_opens_once_with_its_records(
         tmp_path, monkeypatch):
     from molbuilder import job_request as JR
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     calc = C.open(bundle)
     assert calc.base == bundle.resolve()
     assert calc.label == calc.task.label
@@ -43,7 +43,7 @@ def test_a_described_calculation_opens_once_with_its_records(
 def test_a_folder_that_is_not_a_calculation_is_refused_as_one_thing(
         tmp_path, monkeypatch, state, words, way):
     from molbuilder import job_request as JR
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     folder = bundle
     if state == "empty":
         folder = tmp_path / "bare"
@@ -71,7 +71,7 @@ def test_a_record_a_person_broke_is_refused_naming_it(
     column 12`, with no word of which file to open; a file an editor saved in
     its own code page was called *not JSON*, sending the person to look for a
     comma, with no word of the way out."""
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     broken = bundle / record
     kept = broken.read_text(encoding="utf-8").rstrip().rstrip("}")
     broken.write_bytes((kept + ending).encode(encoding))

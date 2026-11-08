@@ -137,7 +137,7 @@ hits a magic width. Three mechanisms carry most of it:
   *because* it sits in a card in a column beside a sidebar. At a 1024 px
   viewport the three-column layout stayed in force where it did not fit and the
   row overflowed its container by 10 px. No test measures it now: the layout
-test opens each tab empty, where that card is hidden (owed, F9-6: Task setup
+test opens each tab empty, where that card is hidden (owed, 2.67.13: Task setup
 measured with a folder open).
   **If a block's width is set by its container rather than the window, a media
   query is the wrong instrument**, and a `minmax(0, 1fr)` floor does not save it

@@ -26,8 +26,6 @@ from support.road import ladder_edited
 from support.sidebar import WAIT_MS
 from support.task_setup_page import file_text, task_setup_on, wait_for_file
 
-pytestmark = pytest.mark.e2e
-
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
@@ -37,9 +35,9 @@ def calc_dir(tmp_path, monkeypatch):
     """A described calculation, as `molbuilder describe` leaves one
     (`support.road`), its one stage `coarse`; the test puts it under checkpoint
     control through the page."""
-    from support.road import describe_calculation
-    return describe_calculation(tmp_path, monkeypatch, name="probe",
-                                stage_strategy="")
+    from support.road import described, road_tree
+    return described(road_tree(tmp_path, monkeypatch), name="probe",
+                     stage_strategy="")
 
 
 @pytest.fixture

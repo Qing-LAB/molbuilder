@@ -15,62 +15,47 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
 from molbuilder.job_request import Allocation, from_dict
-from molbuilder.task import SCHEMA, Task
-
-_BASE = {
-    "schema": SCHEMA,
-    "engine": {"name": "siesta"},
-    "calculation": "optimization",
-    "shape": "hierarchical",
-    "run": {"name": "JOB", "id": "JOB_H2"},
-    "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
-    "varies": [],
-    "stages": [{"name": "coarse", "overrides": {}}],
-}
-#: The description the job request is read beside (`job-request.md` § 3).
-_DESCRIPTION = Task.from_dict(_BASE)
+from support.road import one_stage_h2, request_with
 
 
-def _task(**extra):
-    """A job request for the one-stage description above, ``extra`` its
-    blocks."""
-    return from_dict({"schema": REQUEST_SCHEMA,
-                      "stages": {"coarse": {"group": 1}}, **extra},
-                     _DESCRIPTION)
+@pytest.fixture
+def h2(tmp_path, monkeypatch):
+    """`support.road.one_stage_h2`: ``h2.task``, ``h2.request``."""
+    return one_stage_h2(tmp_path, monkeypatch)
 
 
 # --------------------------------------------------------------------- #
 #  the shape on disk                                                     #
 # --------------------------------------------------------------------- #
 
-def test_the_three_asks_round_trip():
-    t = _task(allocation={"domain": "htc", "time": "4h", "mem": "128G"})
+def test_the_three_asks_round_trip(h2):
+    t = request_with(h2, allocation={"domain": "htc", "time": "4h",
+                                     "mem": "128G"})
     # "4h" is what a person types; the record holds SLURM's spelling,
     # normalised on the way in (job_request.Allocation, 2026-08-24).
     assert t.allocation == Allocation(
         domain="htc", time="0-04:00:00", mem="128G")
-    assert from_dict(t.to_dict(), _DESCRIPTION).allocation == t.allocation
+    assert from_dict(t.to_dict(), h2.task).allocation == t.allocation
 
 
-def test_absent_is_a_state_and_writes_no_key():
+def test_absent_is_a_state_and_writes_no_key(h2):
     """A description that asks for nothing must round-trip BYTE-identical --
     otherwise a file that asks for nothing changes on first save, and
     "unstated" acquires a second spelling on disk (submission.md S1)."""
-    t = _task()
+    t = request_with(h2)
     assert not t.allocation
     assert "allocation" not in t.to_dict()
 
 
-def test_a_partial_ask_writes_only_what_was_said():
+def test_a_partial_ask_writes_only_what_was_said(h2):
     """Stating the queue is not stating the memory.  Each field is absent on
     its own, so an unstated one cannot be read back as a chosen empty."""
-    t = _task(allocation={"domain": "htc"})
+    t = request_with(h2, allocation={"domain": "htc"})
     assert t.to_dict()["allocation"] == {"domain": "htc"}
 
 
-def test_the_record_holds_ONE_SPELLING_AND_IT_IS_SLURMS():
+def test_the_record_holds_ONE_SPELLING_AND_IT_IS_SLURMS(h2):
     """User, 2026-08-24: *"your record should set unified time format while
     it is the UI that can do some translation for human readability/input"*.
 
@@ -78,18 +63,18 @@ def test_the_record_holds_ONE_SPELLING_AND_IT_IS_SLURMS():
     and four and a half hours to a person -- so the file holds one.
 
     A person still types `"0.5T"`; it is normalised at the door."""
-    t = _task(allocation={"time": "7-00:00:00", "mem": "0.5T"})
+    t = request_with(h2, allocation={"time": "7-00:00:00", "mem": "0.5T"})
     assert t.to_dict()["allocation"] == {"time": "7-00:00:00", "mem": "512G"}
 
 
-def test_a_human_spelling_is_accepted_at_the_door_and_normalised():
+def test_a_human_spelling_is_accepted_at_the_door_and_normalised(h2):
     """A hand-edited file is a human edge too, so the reader takes what a
     person would type -- and returns the record's spelling."""
-    t = _task(allocation={"time": "4h", "mem": "80GB"})
+    t = request_with(h2, allocation={"time": "4h", "mem": "80GB"})
     assert t.to_dict()["allocation"] == {"time": "0-04:00:00", "mem": "80G"}
 
 
-def test_a_launch_shape_here_is_sent_to_the_block_that_owns_it():
+def test_a_launch_shape_here_is_sent_to_the_block_that_owns_it(h2):
     """`stages.md` § 6.8d: ranks, threads and GPUs are the run card's
     (`execution`, one value) and a benchmark's axes (`bench`, several).  This
     block is the SCHEDULER's ask.
@@ -99,13 +84,13 @@ def test_a_launch_shape_here_is_sent_to_the_block_that_owns_it():
     looking for a spelling mistake they did not make."""
     for value in ([4, 8], 8):
         with pytest.raises(Exception) as e:
-            _task(allocation={"mpi_np": value})
+            request_with(h2, allocation={"mpi_np": value})
         said = str(e.value)
         assert "run card" in said and "`execution`" in said, said
 
     # and a real typo still gets the near-miss, not the lecture
     with pytest.raises(Exception) as e:
-        _task(allocation={"tyme": "4h"})
+        request_with(h2, allocation={"tyme": "4h"})
     assert "did you mean 'time'" in str(e.value) and "bench" not in str(e.value)
 
 
@@ -115,40 +100,41 @@ class TestTheRunsConditionIsOneValueEach:
     one has to say which block it belongs in, because "invalid" would send a
     person hunting for a typo instead of to the other lane."""
 
-    def test_a_list_is_refused_and_names_the_block_it_belongs_in(self):
+    def test_a_list_is_refused_and_names_the_block_it_belongs_in(self, h2):
         with pytest.raises(Exception) as e:
-            _task(execution={"mpi_np": [4, 8]})
+            request_with(h2, execution={"mpi_np": [4, 8]})
         assert "ONE value" in str(e.value) and "bench" in str(e.value), e.value
 
-    def test_a_single_point_list_is_refused_too(self):
+    def test_a_single_point_list_is_refused_too(self, h2):
         """A one-item list is still `bench`'s shape.  Accepting it would make
         two spellings of one thing, and the next reader would have to check
         both."""
         with pytest.raises(Exception) as e:
-            _task(execution={"mpi_np": [8]})
+            request_with(h2, execution={"mpi_np": [8]})
         assert "ONE value" in str(e.value)
 
-    def test_a_scalar_is_what_it_takes(self):
-        t = _task(execution={"mpi_np": 8, "diag_algorithm": "ELPA-2STAGE"})
+    def test_a_scalar_is_what_it_takes(self, h2):
+        t = request_with(h2, execution={"mpi_np": 8,
+                                        "diag_algorithm": "ELPA-2STAGE"})
         assert t.execution == {"mpi_np": 8, "diag_algorithm": "ELPA-2STAGE"}
         assert t.to_dict()["execution"] == t.execution
 
-    def test_a_name_that_is_not_an_execution_setting_is_refused(self):
+    def test_a_name_that_is_not_an_execution_setting_is_refused(self, h2):
         """Membership is the catalogue's, checked where the vocabulary is
         (`validation/task.py`) -- the same split `bench` makes.  A physics
         value here would otherwise ride to prep and land in a deck as
         something nobody can read back."""
         from molbuilder.validation.task import preflight
         found = [i for i in preflight(
-                     _DESCRIPTION,
-                     request=_task(execution={"mesh_cutoff": 400}))
+                     h2.task,
+                     request=request_with(h2, execution={"mesh_cutoff": 400}))
                  if "execution" in (i.where or "")]
         assert found, "a physics value passed as a run condition"
         assert "not an execution setting" in found[0].message
         # and it says where it DOES belong, rather than only that it is wrong
         assert "template" in found[0].message
 
-    def test_the_two_LANE_ASKS_are_admitted_and_mem_is_not(self):
+    def test_the_two_LANE_ASKS_are_admitted_and_mem_is_not(self, h2):
         """`stages.md` § 6.8e -- the membership door, both directions.
 
         `time` and `domain` are not catalogue items (no engine has an opinion
@@ -164,8 +150,8 @@ class TestTheRunsConditionIsOneValueEach:
         from molbuilder.validation.task import preflight
 
         def _bad(block):
-            return [i for i in preflight(_DESCRIPTION,
-                                         request=_task(execution=block))
+            return [i for i in preflight(
+                        h2.task, request=request_with(h2, execution=block))
                     if "execution" in (i.where or "")]
 
         assert not _bad({"time": "2-00:00:00"}), "a run may state its wall"
@@ -175,40 +161,40 @@ class TestTheRunsConditionIsOneValueEach:
         assert found, "`mem` was admitted to `execution` -- it has one home"
         assert "not an execution setting" in found[0].message
 
-    def test_absent_writes_no_key(self):
+    def test_absent_writes_no_key(self, h2):
         """Absent-is-a-state: a description that runs at the wrapper's own
         policy round-trips without gaining a block."""
-        assert "execution" not in _task().to_dict()
+        assert "execution" not in request_with(h2).to_dict()
 
 
-def test_a_number_is_refused_with_the_spelling_it_wants():
+def test_a_number_is_refused_with_the_spelling_it_wants(h2):
     """`{"mem": 128}` is ambiguous -- 128 what? -- so it is refused rather
     than guessed at."""
     with pytest.raises(Exception) as e:
-        _task(allocation={"mem": 128})
+        request_with(h2, allocation={"mem": 128})
     assert "mem" in str(e.value)
 
 
-def test_an_unreadable_ask_names_its_field():
+def test_an_unreadable_ask_names_its_field(h2):
     """A wall no spelling reads is refused at the door, naming the field --
     never baked into a job for launch to refuse later (Sol, 2026-08-24)."""
     with pytest.raises(Exception) as e:
-        _task(allocation={"time": "banana"})
+        request_with(h2, allocation={"time": "banana"})
     assert "allocation.time" in str(e.value)
 
 
-def test_an_empty_object_is_refused_as_a_second_spelling_of_absent():
+def test_an_empty_object_is_refused_as_a_second_spelling_of_absent(h2):
     with pytest.raises(Exception) as e:
-        _task(allocation={})
+        request_with(h2, allocation={})
     assert "allocation" in str(e.value)
 
 
-def test_a_queue_this_machine_never_heard_of_is_ACCEPTED():
+def test_a_queue_this_machine_never_heard_of_is_ACCEPTED(h2):
     """Shape only.  A description written for Sol is opened on a laptop, and
     refusing it there for naming `htc` would refuse a file that is perfectly
     correct where it is going."""
-    assert _task(allocation={"domain": "no-such-queue"}).allocation.domain \
-        == "no-such-queue"
+    asked = request_with(h2, allocation={"domain": "no-such-queue"})
+    assert asked.allocation.domain == "no-such-queue"
 
 
 # What prep does with it -- a flag wins FIELD by field, an unstated one

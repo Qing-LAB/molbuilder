@@ -25,8 +25,8 @@ from molbuilder.scheduler import (Domain, Environment, Topology,
                                   environments_dir, named_environment_path,
                                   write_environment)
 from support.machines import SLURM
-from support.road import (declare_bench, describe_calculation, jobset, read_request,
-                          shelf_headers, write_request)
+from support.road import (declare_bench, described, jobset, road_tree,
+                          shelf_headers)
 
 
 #: The user's declared matrix, with the catalogue's canonical enum casing.
@@ -63,17 +63,15 @@ def sol_calc(tmp_path, monkeypatch):
             # how a shell enters an environment there -- the record's fact
             env_init={"activation": "conda activate", "preamble": "true"}),
         named_environment_path("sol"))
-    dest = describe_calculation(tmp_path, monkeypatch, name="JOB")
     # The queue, wall and memory every job sent to this scheduler states --
     # the trials share the calculation's (`architecture.md` § 5.2); a
     # benchmark measures on the one queue it names (`generator.md` § 4.3a).
     # ...and the solver its run card states, on the CPU.
-    req = read_request(dest)
-    req["allocation"] = {"domain": "general", "time": "0-01:00:00",
-                         "mem": "8G"}
-    req["execution"] = {"use_gpu": False, "diag_algorithm": "ELPA-1STAGE"}
-    write_request(dest, req)
-    return dest
+    return described(road_tree(tmp_path, monkeypatch), name="JOB",
+                     allocation={"domain": "general", "time": "0-01:00:00",
+                                 "mem": "8G"},
+                     execution={"use_gpu": False,
+                                "diag_algorithm": "ELPA-1STAGE"})
 
 
 def _prep_on(calc, queue="general"):

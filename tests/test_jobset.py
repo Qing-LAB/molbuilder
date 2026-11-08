@@ -17,8 +17,8 @@ import pytest
 from molbuilder.identity import StageRef, resolve_stage_ref
 from molbuilder.jobset.model import Job, JobSet, WarmFile
 from support.machines import SLURM, WORKSTATION
-from support.road import (describe_calculation, group_words, jobset,
-                          read_request, stage_file, write_request)
+from support.road import (described, group_words, jobset, read_request,
+                          road_tree, stage_file, write_request)
 
 
 # --------------------------------------------------------------------- #
@@ -58,8 +58,8 @@ def test_what_a_job_declares_survives_its_plan(tmp_path, monkeypatch):
     the tiers really do change optimizer between rung one and rung two, which
     is what makes `.CG` a live question (`job-contracts.md` § 4.2a)."""
     from molbuilder.persist import read_json
-    bundle = describe_calculation(tmp_path, monkeypatch,
-                                  stage_strategy="vib-quality")
+    bundle = described(road_tree(tmp_path, monkeypatch),
+                       stage_strategy="vib-quality")
     r = jobset("prep", "task", *group_words(bundle, "coarse", "medium", "tight"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
@@ -180,7 +180,7 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
             "max_time": "1-00:00:00", "max_cores": 128,
             "node_types": [{"cores": 128, "nodes": 4}]})],
         env_init=enters), named_environment_path("sol"))
-    ws = describe_calculation(tmp_path, monkeypatch)
+    ws = described(road_tree(tmp_path, monkeypatch))
     hpc = ws.parent / "H2-on-sol"
     shutil.copytree(ws, hpc)
     # A RUN ON A CLUSTER STATES ITS QUEUE, WALL AND MEMORY

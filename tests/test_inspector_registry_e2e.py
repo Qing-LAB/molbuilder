@@ -24,7 +24,6 @@ from support.sidebar import WAIT_MS
 #: THE ROWS ARE ASKED OF REAL RUNS (`support/real_runs.py`): SIESTA's and
 #: PySCF's.
 pytestmark = [
-    pytest.mark.e2e,
     pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")
@@ -62,11 +61,11 @@ def described_transport(real_bridged_chain, tmp_path_factory):
     fixture, so its record (`.transport.json`, a finished ladder's) is not
     here."""
     from support.real_runs import RealRun
-    from support.road import describe_calculation
+    from support.road import described, road_tree
     with pytest.MonkeyPatch.context() as local:
-        bundle = describe_calculation(tmp_path_factory.mktemp("transport"),
-                                      local, calculation="transport",
-                                      structure=real_bridged_chain.pair)
+        bundle = described(road_tree(tmp_path_factory.mktemp("transport"),
+                                     local, real_bridged_chain.pair),
+                           calculation="transport")
     return RealRun(tree=bundle.parents[2], bundle=bundle)
 
 
@@ -98,9 +97,9 @@ def _answers(page, tree, folders):
     composed by the page's own picker as the dropdown composes it
     (`filterToResultFiles`, `metaOf`): ``[[folder, file, meta]]``, the page
     on `/results`."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     with pytest.MonkeyPatch.context() as local:
-        local.setenv(PROJECTS_ROOT_ENV, str(tree))
+        point_the_one_door_at(tree.parent, local.setenv)
         got = page.evaluate("""async (folders) => {
             const fp = window.molbuilder.resultsFilePicker;
             const out = [], refused = [];
@@ -358,10 +357,10 @@ def _again_and_again(page, base, tree, folder, files, viewer, drawn=None):
     outside the viewers' shared scope; a drawing window made for every
     mount; the tab mounting the next viewer without putting the last one
     away."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from support.leftovers import what_grew
     with pytest.MonkeyPatch.context() as local:
-        local.setenv(PROJECTS_ROOT_ENV, str(tree))
+        point_the_one_door_at(tree.parent, local.setenv)
         _bound(page, base, folder)
         if drawn:
             page.wait_for_selector(drawn, state="attached", timeout=WAIT_MS)
@@ -466,14 +465,15 @@ def test_a_spectrum_put_away_while_its_mode_box_is_built_leaves_nothing(
     MUTATION THIS MUST FAIL AGAINST: `_showMode` keeping a box that arrives
     once its panel is put away (`spectra/core.js`, the release at
     ``IDLE``)."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from molbuilder.runfiles import ROLE_MOLWATCH, ROLE_SPECTRA
     from molbuilder.runs import on_label_at, run_of
     from support.leftovers import what_grew
     folder = real_water_vibration.attempt("freq")
     spectrum = str(on_label_at(folder, ROLE_SPECTRA))
     log = str(run_of(folder).file(ROLE_MOLWATCH))
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_water_vibration.tree))
+    point_the_one_door_at(real_water_vibration.tree.parent,
+                          monkeypatch.setenv)
     held = []
     page.route(_BOX_SHEET, lambda route: held.append(route))
     _bound(page, flask_server, folder)
@@ -521,7 +521,7 @@ def test_a_viewer_whose_file_cannot_load_says_why_and_lets_go(
     busy line not lifting on a signal that carries an error."""
     from playwright.sync_api import expect
 
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     from molbuilder.runfiles import ROLE_MOLWATCH, ROLE_SPECTRA
     from molbuilder.runs import on_label_at, run_of
     from support.real_runs import copy_of
@@ -529,7 +529,7 @@ def test_a_viewer_whose_file_cannot_load_says_why_and_lets_go(
     folder = gone.attempt("freq")
     files = {"trajectory": run_of(folder).file(ROLE_MOLWATCH),
              "spectra": on_label_at(folder, ROLE_SPECTRA)}
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(gone.tree))
+    point_the_one_door_at(gone.tree.parent, monkeypatch.setenv)
     _bound(page, flask_server, folder)
     assert {str(f) for f in files.values()} <= set(_listed(page)), (
         files, _listed(page))

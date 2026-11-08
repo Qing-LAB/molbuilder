@@ -47,7 +47,10 @@ def test_each_metal_answers_its_two_literature_references():
 
 
 def test_meta_endpoint_exposes_lattice_table(web_client):
-    """The /api/modify/meta endpoint returns lattice_table for the UI."""
+    """The /api/modify/meta endpoint returns lattice_table for the UI.  THE
+    SILENT FAILURE: the table gone from the answer, so a lattice reference a
+    person picks on the Slab panel leaves its lattice box unchanged
+    (`slab-panel.js` reads it), and no other test goes red."""
     r = web_client.get("/api/modify/meta")
     assert r.status_code == 200
     j = r.get_json()

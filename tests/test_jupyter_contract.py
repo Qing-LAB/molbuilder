@@ -28,6 +28,7 @@ import json
 import pytest
 
 from molbuilder import jupyter as J
+from support.live_server import free_serve_port
 
 
 @pytest.fixture
@@ -137,22 +138,6 @@ def test_the_notebook_token_never_reaches_the_command_line():
 #  4. A notebook saved leaves no checkpoint beside it                    #
 # --------------------------------------------------------------------- #
 
-def _free_serve_port() -> int:
-    """A serve port whose notebook port (`jupyter_port`) is free here."""
-    import socket
-    for _ in range(50):
-        with socket.socket() as s:
-            s.bind(("127.0.0.1", 0))
-            port = s.getsockname()[1]
-        with socket.socket() as s:
-            try:
-                s.bind(("127.0.0.1", J.jupyter_port(port)))
-            except OSError:
-                continue
-        return port
-    raise RuntimeError("no free port pair")
-
-
 @pytest.mark.slow
 def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
         isolated_projects_root, tmp_path):
@@ -185,7 +170,7 @@ def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
     from _road import env_available
     if not env_available("molbuilder-jupyternb"):
         pytest.skip("needs the molbuilder-jupyternb env")
-    serve_port = _free_serve_port()
+    serve_port = free_serve_port()
     folder = isolated_projects_root / "P" / "notes"
     folder.mkdir(parents=True)
     env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"))
@@ -316,7 +301,7 @@ def test_with_no_sign_in_this_machine_passes_by_a_loopback_name_only(
     from molbuilder.web.blueprints import jupyter as bp
     monkeypatch.setattr(bp, "_supervised", lambda: True)
     app = create_app(config={})
-    app.config["MOLBUILDER_SERVE_PORT"] = _free_serve_port()
+    app.config["MOLBUILDER_SERVE_PORT"] = free_serve_port()
     r = app.test_client().get("/jupyter/lab", headers={"Host": asked_by},
                               environ_base={"REMOTE_ADDR": "127.0.0.1"})
     assert r.status_code == (502 if passes else 403), (asked_by, r.status_code)
@@ -341,7 +326,7 @@ def test_the_gate_refuses_another_pages_request(origin, passes,
     from molbuilder.web.blueprints import jupyter as bp
     monkeypatch.setattr(bp, "_supervised", lambda: True)
     app = create_app(config={})
-    app.config["MOLBUILDER_SERVE_PORT"] = _free_serve_port()
+    app.config["MOLBUILDER_SERVE_PORT"] = free_serve_port()
     headers = {"Host": "127.0.0.1:5050"}
     if origin:
         headers["Origin"] = origin

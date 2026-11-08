@@ -12,7 +12,8 @@ rather than a fixture: a module writes
             yield base_url
 
 -- a per-test server asks ``isolated_projects_root`` -- and the server
-itself is here, once.
+itself is here, once; and the port a server started as a person starts it
+is given (:func:`free_serve_port`).
 """
 from __future__ import annotations
 
@@ -82,3 +83,23 @@ def serve():
         thread.join(timeout=5)
         docs_blueprint._docs_root = the_docs
         shutil.rmtree(own_docs, ignore_errors=True)
+
+
+def free_serve_port() -> int:
+    """A port for `serve start` whose notebook port (`jupyter.jupyter_port`)
+    is free here too -- each found free on loopback, the pair asked again
+    when the notebook's is taken."""
+    import socket
+
+    from molbuilder.jupyter import jupyter_port
+    for _ in range(50):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        with socket.socket() as s:
+            try:
+                s.bind(("127.0.0.1", jupyter_port(port)))
+            except OSError:
+                continue
+        return port
+    raise RuntimeError("no free port pair")

@@ -30,12 +30,6 @@ def test_smiles_benzene_planarity():
     assert z_spread < 0.1, z_spread
 
 
-def test_smiles_bdt_has_two_sulphurs():
-    s2 = _smiles_or_skip("Sc1ccc(S)cc1", title="bdt")
-    assert "S" in s2.elements
-    assert s2.elements.count("S") == 2
-
-
 # --------------------------------------------------------------------- #
 #  the SIESTA deck's block size                                         #
 # --------------------------------------------------------------------- #

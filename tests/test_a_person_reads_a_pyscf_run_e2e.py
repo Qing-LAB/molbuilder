@@ -80,13 +80,13 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     calculation -- and a run with no step stands on the axis at its fill, saying
     why, never read as a rung that was not asked.  Refused inside the
     calculation's folder."""
+    from conftest import point_the_one_door_at
     from molbuilder.postprocess import (list_runs, read_optimization_data,
                                         read_steps)
-    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.runs import run_of
     run = real_held_water_pyscf
     bundle = run.bundle
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
     inside = molbuilder("jobset", "export", "--format", "netcdf", "--to",
                         bundle / "exported", "--bundle", bundle)
     assert inside.exit_code != 0 and "is inside the calculation" in inside.output

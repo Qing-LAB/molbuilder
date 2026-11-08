@@ -32,7 +32,6 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
-from molbuilder.projects import PROJECTS_ROOT_ENV, find_projects_root
 from molbuilder.runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA, compose,
                                  stem_before)
 from molbuilder.runs import on_label_at
@@ -42,6 +41,7 @@ from molbuilder.sidecars.spectra import (SpectraJsonSchemaError,
 from molbuilder.spectra.datafile import read_spectra_data
 from molbuilder.spectra.results import SCHEMA_VERSION
 from molbuilder.structure import Structure
+from support.pages import spectra_served
 
 pytestmark = [
     pytest.mark.engine,
@@ -339,7 +339,7 @@ class _EveryState:
         from molbuilder.spectra.mode_frames import at_temperature
         path, _states = state
         d = _read(path)
-        served = _load(web_client, monkeypatch, path)
+        served = spectra_served(web_client, monkeypatch, path)
         for key in d:
             if key not in ("modes", "methods_text"):
                 assert served[key] == d[key], key
@@ -357,16 +357,6 @@ class _EveryState:
                 assert "frameset" not in mode
             else:
                 assert mode["frameset"] == at_temperature(row, kelvin)
-
-
-def _load(web_client, monkeypatch, path, **ask) -> dict:
-    """What the load door serves of the result at ``path``, asked as the page
-    asks, inside the tree it lies in (the fence, `web-api.md` § 2.1)."""
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(find_projects_root(path)))
-    r = web_client.post("/api/spectra/load", json={"path": str(path), **ask})
-    assert r.status_code == 200, r.get_json()
-    assert r.get_json()["ok"] is True
-    return r.get_json()["results"]
 
 
 @pytest.fixture(scope="module", params=list(_PYSCF))
@@ -421,7 +411,7 @@ def test_each_elements_share_is_its_part_of_the_mass_weighted_motion(
     d = _read(path)
     elements = d["structure"]["elements"]
     masses = d["equilibrium"]["masses_amu"]
-    served = _load(web_client, monkeypatch, path)
+    served = spectra_served(web_client, monkeypatch, path)
     for row, mode in zip(d["modes"], served["modes"]):
         weight = {}
         for atom, moved in zip(d["free_atom_idxs"], row["eigenvector_canonical"]):
@@ -486,7 +476,7 @@ def test_an_imaginary_mode_stays_negative_and_has_no_amplitude(
     path = _final(real_water_linear)
     d = _read(path)
     got = parse_spectra_json(path)
-    served = _load(web_client, monkeypatch, path, temperature_k=298.15)
+    served = spectra_served(web_client, monkeypatch, path, temperature_k=298.15)
     freqs = [m["frequency_cm1"] for m in d["modes"]]
     assert freqs == sorted(freqs)
     assert freqs[0] < 0 and freqs[1] < 0 and 0 < freqs[2] < freqs[3], freqs
@@ -641,14 +631,14 @@ def test_the_thermal_spread_is_served_at_the_temperature_asked(
     path = _final(real_water_probed)
     d = _read(path)
     kelvin = 1500.0
-    served = _load(web_client, monkeypatch, path, temperature_k=kelvin)
+    served = spectra_served(web_client, monkeypatch, path, temperature_k=kelvin)
     assert served["temperature_k"] == kelvin
     for row, mode in zip(d["modes"], served["modes"]):
         x = row["frequency_cm1"] * CM1_KELVIN / (2.0 * kelvin)
         assert mode["thermal_spread_amu12_ang"] / \
             row["zero_point_amplitude_amu12_ang"] == pytest.approx(
                 math.sqrt(1.0 / math.tanh(x)), rel=1e-12)
-    served = _load(web_client, monkeypatch, path)
+    served = spectra_served(web_client, monkeypatch, path)
     assert "temperature_k" not in served
     assert all("thermal_spread_amu12_ang" not in m for m in served["modes"])
 
@@ -665,7 +655,7 @@ def test_what_a_frame_sets_temperature_means_is_served_as_the_script_says_it(
     from molbuilder.spectra.mode_frames import NODES
     path = _final(real_water_probed)
     kelvin = 1000.0
-    served = _load(web_client, monkeypatch, path,
+    served = spectra_served(web_client, monkeypatch, path,
                    frameset_temperature_k=kelvin)
     assert served["frameset_temperature_k"] == kelvin
     for mode in served["modes"]:

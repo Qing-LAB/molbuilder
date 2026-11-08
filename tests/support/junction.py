@@ -43,6 +43,6 @@ def uneven_chain() -> dict:
 
 #: Six 2.5 Å gold layers a side (12.5 Å span -- over the wizard's 12 Å lead
 #: floor), a four-atom bridge between.
-_LAYERS_L = [0.0, 2.5, 5.0, 7.5, 10.0, 12.5]
-_BRIDGE = [("S", 15.0), ("C", 16.4), ("C", 17.8), ("S", 19.2)]
-_LAYERS_R = [22.0, 24.5, 27.0, 29.5, 32.0, 34.5]
+LAYERS_L = [0.0, 2.5, 5.0, 7.5, 10.0, 12.5]
+BRIDGE = [("S", 15.0), ("C", 16.4), ("C", 17.8), ("S", 19.2)]
+LAYERS_R = [22.0, 24.5, 27.0, 29.5, 32.0, 34.5]

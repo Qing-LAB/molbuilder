@@ -26,23 +26,32 @@ as they stood.
 
 ---
 
-## ▶ HANDOVER — where we are, and where to start *(2026-11-07)*
+## ▶ HANDOVER — where we are, and where to start *(2026-11-08)*
 
-**Where we are: 2.67.10.** F0–F8 and F7a are closed; F9, the tests through
-the road, has seven releases out (2.67.4–2.67.10) and three steps left (its
+**Where we are: 2.67.11.** F0–F8 and F7a are closed; F9, the tests through
+the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Each release is its changelog row and its ledger section
 ([`archive/2026-10-31-finish-line-review.md`](?doc=archive/2026-10-31-finish-line-review.md),
 *Found by …*); the handover's history and the closed rows as they stood are
 in [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md).
 
-**Last checked** (2.67.10): the fast batch, 5,881 passed, none failed; the
-164 browser and real-run tests the release touches, on real SIESTA and
-PySCF runs and a real junction, headless; every changed test seen failing
-on the old behaviour; two discipline readers over every touched module,
-each finding read again in the code.
+**Last checked** (2.67.11): the fast batch, 5,829 passed, none failed; the
+27 browser and real-run files the release edited, 538 passed, none failed, on
+real SIESTA and PySCF runs and a real junction, headless — the other 20 run at
+the next full pass *(the user, 2026-11-08: "Only the 27 edited files")*; every
+changed test seen red when its guarded line was broken; two discipline rounds
+over every touched file, each finding read again in the code.
 
-**What runs next**: F9-6, then the dead-code release, then F9's closing
-review rounds; then F10, F11, F12. **Waiting on the user**: nothing now. The
+**What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
+2.67.11")* — every tab walked in Chrome on the dev server through an
+optimization, a vibration (SIESTA and PySCF) and a transport calculation on
+small real runs, in a scratch project; each element's text, layout and
+organization, and each control mapped to what it sends and where it lands in
+the generated script; the findings to the user before any fix, the fixes
+releases of their own (the ledger's I1-112, I1-115). Then 2.67.12, the
+page-side test doors; then 2.67.13, the
+tests owed; then the dead-code release, then F9's closing review rounds; then
+F10, F11, F12. **Waiting on the user**: nothing now. The
 first full e2e pass (from F10) and F12's walk of the three roads in the
 browser start only on the user's word, said to them first.
 
@@ -113,7 +122,7 @@ topic's test is confirmed present before the release ships *(the user,
 | **F7** | **§ 1am step 7 — the floors and the objects** | **Closed** — 2.65.14–2.65.17: what gave a wrong answer; floor 1 loading nothing above it; one read per answer, objects taken whole; dead code by role and history (`archive/audits/2026-11-05-2.65.17-removals.md`; the ledger's *Found by 2.65.14…2.65.17*). | 26 + 10 (F0a's review) + 6 (from F4) | — |
 | **F7a** | **A person reads a run's atoms by their own index** *(the user, 2026-11-05)* | **Closed** — 2.66.0–2.67.0: the atom map stated on every answer holding atoms; the steps a run finished in the person's order; an optimization's data file written by the export alone (`archive/audits/2026-11-05-postprocessing-api.md`; K2660-1…14). |
 | **F8** | **The pages — words and residue** | **Closed** — 2.67.1–2.67.3: what the pages got wrong; every word a person reads plain, no document cited in a message, frames from 1 (decided 7); one prep answer, the terminal's lines drawn on the page (the ledger's *Found by 2.67.1…2.67.3*). | 103 + 3 (F0a's review) | — |
-| **F9** | **Tests through the road** (§ 1ak S4) | **Seven releases out, 2.67.4–2.67.10** (the ledger's *Found by 2.67.4…2.67.10*): the audit's retire list judged test by test; a test validates what is correct *(the user, 2026-11-06; [`process/testing.md`](?doc=process/testing.md) § 3b)*; the tools' real output; one door per test helper; the prep-side tests through the real commands; runs that never happened made on the road; the page tests fed what the server answers; the four product defects those tests found, fixed (2.67.10). **Left, in order**: **F9-6** — the end-to-end text and the tests owed, and the same discipline over the test files 2.67.9 did not touch (K2679-9); **the dead-code release** — K2677-4, K2678-5, K2679-5, K27610-6, its removal list shown first; **F9's closing review rounds**. The ledger's rows still marked F9: I2-087, B1-31, B4-14…B4-16, E2E-OWED, E2E-Q, TA-RETIRE's rest, TA-REWRITE, TA-ISOLATE; B4-2, the sent-run pair, kept with its reason stated (decided 10). | 62 + 8 (F0a's review) + 4 (the test audit) | — |
+| **F9** | **Tests through the road** (§ 1ak S4) | **Eight releases out, 2.67.4–2.67.11** (the ledger's *Found by 2.67.4…2.67.11*): the audit's retire list judged test by test; a test validates what is correct *(the user, 2026-11-06; [`process/testing.md`](?doc=process/testing.md) § 3b)*; the tools' real output; one door per test helper; the prep-side tests through the real commands; runs that never happened made on the road; the page tests fed what the server answers; the four product defects those tests found, fixed (2.67.10); the server-side test doors (2.67.11) — one way to point a test at a projects tree (`conftest.point_the_one_door_at`), one maker of a described calculation, the support helpers public and none borrowed from a test file, one maker per real run, the audit's retire list finished (K2679-9's server half, TA-REWRITE, TA-ISOLATE, TA-RETIRE's rest). **Left, in order** *(the user, 2026-11-07: "continue", on the inventory of F9-6 split three ways)*: **2.67.12, the page-side test doors** — the page tests under node on the one runner and fed the server's answers, no browser in the fast tier, an order held where a time was waited, one collector of a page's errors, the pages asked of the app, the page's clock for its timers (K2679-9's page half); **2.67.13, the tests owed**, each on a real run (E2E-OWED, I2-087, B4-14's walk half, B4-15, B4-16); **the dead-code release** — K2677-4, K2678-5, K2679-5, K27610-6, and the three states no road makes (E2E-Q, and E2E-OWED's monitor that dies loading and viewer that throws), its removal list shown first; **F9's closing review rounds**. Left as they are, said why in the ledger: each module's own server fixture (`testing.md` § 8 lets a module choose its scope), the e2e marker a file repeats (dropped when the file is touched), B1-31 (the form id prefix stated by the server and the page, the browser tests catching a drift). The ledger's rows still marked F9: I2-087, B4-14…B4-16, E2E-OWED, TA-REWRITE's page files, K2679-9's page half; B4-2, the sent-run pair, kept with its reason stated (decided 10). | 62 + 8 (F0a's review) + 4 (the test audit) | — |
 | **F10** | **The documents true** | Each chapter rewritten against the code once — the untrue and stale sentences corrected, every link resolved, history inside a contract removed and each reason it carried kept as a rule; a chapter a release F0–F9 touches is brought true in that release; README R5 says why `--bundle` keeps its name (decided 8). ~300 items over 70 chapters. | 305 + 1 (F0a's review) | — |
 | **F11** | **The documents findable** (§ 7) | § 7's four indexes; `docs/README.md` the one index naming every live chapter (nine have no row today) and each domain overview listing its own; one place for each thing now stated in several. | 2 + § 7 | — |
 | **F12** | **Proven** (§ 1am step 8) | Each road — an optimization, a vibration on SIESTA and on PySCF, a transport calculation — driven start to finish in the browser on real runs; the full batch; two review rounds over F0–F11. | 8 | — |

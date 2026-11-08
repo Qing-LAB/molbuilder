@@ -30,7 +30,6 @@ import pytest
 from _road import conda_hook, env_available
 
 pytestmark = [
-    pytest.mark.e2e,
     pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
@@ -87,8 +86,8 @@ def project_with_trajectory(real_co2_vibration, live_output, monkeypatch):
     """The run's output, its projects tree the server's (the one door,
     `projects_root`, read as each request comes): the absolute path
     string."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(real_co2_vibration.tree))
+    from conftest import point_the_one_door_at
+    point_the_one_door_at(real_co2_vibration.tree.parent, monkeypatch.setenv)
     return str(live_output)
 
 

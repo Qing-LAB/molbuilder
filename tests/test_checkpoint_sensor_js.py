@@ -229,8 +229,8 @@ def app_at(isolated_projects_root_module):
 @pytest.fixture
 def described(tmp_path, monkeypatch):
     """A calculation `molbuilder describe` made, in this test's tree."""
-    from support.road import describe_calculation
-    return describe_calculation(tmp_path, monkeypatch)
+    from support.road import described, road_tree
+    return described(road_tree(tmp_path, monkeypatch))
 
 
 def _set_up(folder):
@@ -525,9 +525,9 @@ def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing(
     the right key -- and the folder is set up under it.
     """
     from molbuilder.checkpoint import Repo
-    from support.road import describe_calculation
-    folder = describe_calculation(tmp_path, monkeypatch,
-                                  bundle="P/optimization/H2.v2")
+    from support.road import described, road_tree
+    folder = described(road_tree(tmp_path, monkeypatch),
+                       "P/optimization/H2.v2")
     out = _set_up_by_the_panel(app_at, folder, [{"name": "H2_v2"}])
     inits = out["inits"]
     assert len(inits) == 2, "the panel did not retry after the refusal"

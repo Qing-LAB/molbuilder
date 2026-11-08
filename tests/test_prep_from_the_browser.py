@@ -29,78 +29,34 @@ import pytest
 
 from molbuilder.scheduler.record import LOCAL_TARGET
 from support.machines import SLURM
-from support.road import read_request, write_request
+from support.road import declare_bench, jobset, read_request, write_request
 
 
 @pytest.fixture
-def described(isolated_projects_root, web_client):
-    """A described calculation inside the projects tree the app serves, plus
-    one NAMED record so the machine question is genuinely ambiguous.
+def described(tmp_path, monkeypatch):
+    """A calculation `molbuilder describe` made inside the projects tree the
+    app serves -- the road's H2, the one stage its template alone describes,
+    its run card the road's (`support.road.described`) -- plus one NAMED
+    record, written by the record's writer, so the machine question is
+    genuinely ambiguous.
 
-    Built in an ISOLATED tree: these tests write, and the app's default root
-    is the developer's real `projects/`.
+    Built in an ISOLATED tree (`support.road.road_tree`): these tests write,
+    and the app's default root is the developer's real `projects/`.
     """
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.job_request import FILENAME as REQUEST_FILENAME
-    from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
-    from molbuilder.task import SCHEMA as TASK_SCHEMA
-    calc = isolated_projects_root / "calc"
-    calc.mkdir(parents=True, exist_ok=True)
-    (calc / TASK_FILENAME).write_text(json.dumps({
-        "schema": TASK_SCHEMA,
-        "engine": {"name": "siesta"},
-                   "calculation": "optimization", "shape": "hierarchical",
-        "run": {"name": "JOB", "id": "JOB_H2"},
-        "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
-        "varies": [],
-        "stages": [{"name": "coarse", "overrides": {}}],
-    }))
-    (calc / REQUEST_FILENAME).write_text(json.dumps({
-        "schema": REQUEST_SCHEMA,
-        "stages": {"coarse": {"group": 1}},
-        # THE RUN CARD STATES THE LAUNCH SHAPE (`architecture.md` § 5.2) --
-        # a run whose shape is stated nowhere is refused at prep.
-        "execution": {"mpi_np": 2, "omp_threads": 1},
-    }))
-    from molbuilder.scheduler import environments_dir
-    d = environments_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "faraway.json").write_text(json.dumps({
-        "schema": "molbuilder/environment@3",
-        "detected_at": "2026-08-01T00:00:00+00:00", "scheduler": SLURM.to_dict(),
-        "topology": {"sockets": 2, "cores_per_socket": 24,
-                     "threads_per_core": 1, "numa_per_socket": None,
-                     "gpus_per_node": 0, "gpu_type": None,
-                     "mem_total_gb": 500.0},
-        "site": {"partition": "htc", "qos": "public"},
-        "domains": [],
-    }))
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import (Environment, Topology,
+                                      environments_dir,
+                                      named_environment_path,
+                                      write_environment)
+    from support.road import described as describe, road_tree
+    calc = describe(road_tree(tmp_path, monkeypatch), stage_strategy="")
+    ensure_private_dir(environments_dir())
+    write_environment(Environment(
+        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=24,
+                                           gpus_per_node=0,
+                                           mem_total_gb=500.0)),
+        named_environment_path("faraway"))
     return str(calc)
-
-
-def _make_preppable(calc):
-    """Finish *calc* into a folder `prep` will actually act on.
-
-    The `described` fixture stops at `task.json`, which is all its refusal
-    tests need.  A portable folder is a template PLUS a description
-    (`project-layout.md` § 2.1), and the structure the description names has
-    to be there, so `prep` has something to render from.  Written through
-    the product's own doors rather than spelled, so the fixture cannot drift
-    away from what `molbuilder describe` leaves.
-    """
-    from molbuilder import template as _T
-    from molbuilder.config.siesta import SiestaConfig
-    (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
-    # The pseudopotential the description's species needs, in the folder --
-    # `prep` refuses without one (`project-layout.md` § 2.6) and then runs
-    # the screening over it (`science/pseudopotentials.md` § 1), so a
-    # touch-file will not do.  `write_pseudos` is the suite's one home for
-    # a PSML that parses.
-    from conftest import write_pseudos
-    write_pseudos(calc, ["H"])
-    cfg = SiestaConfig(system_label="JOB")
-    (calc / "JOB.template.toml").write_text(
-        _T.template_with_values(cfg, engine="siesta", calculation="optimization"))
 
 
 def _post(client, *, stage=None, group=None, **body):
@@ -135,9 +91,8 @@ def _prep(client, **body):
     return _post(client, plan_id=pv["plan_id"], **body)
 
 
-def test_it_refuses_a_folder_with_no_description(web_client, described,
-                                                 isolated_projects_root):
-    bare = isolated_projects_root / "bare"
+def test_it_refuses_a_folder_with_no_description(web_client, described):
+    bare = Path(described).parents[2] / "bare"
     bare.mkdir()
     st, j = _post(web_client, dest=str(bare), kind="task", group=1,
                   target=LOCAL_TARGET, plan=True)
@@ -148,7 +103,6 @@ def test_silence_about_the_machine_is_still_refused(web_client, described):
     """C1 unchanged: the browser cannot offer a default the CLI rejects --
     asked of a calculation prep would otherwise take, so the refusal is the
     machine's."""
-    _make_preppable(Path(described))
     st, j = _post(web_client, dest=described, kind="task", group=1,
                   plan=True)
     assert st == 400 and "none was named" in j["error"], j
@@ -182,7 +136,6 @@ def test_a_prep_from_here_is_recorded_in_the_bundle(web_client, described):
     """
     from molbuilder.jobset import ledger
 
-    _make_preppable(Path(described))
     st, j = _prep(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200, j
@@ -205,17 +158,12 @@ def test_the_refusal_names_a_spelling_that_WORKS(web_client, described):
 def test_the_reserved_name_cannot_be_taken_by_a_record():
     """A record called `this` could never be prepared for, so writing one is
     refused rather than allowed and then shadowed."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner().invoke(jobset_group,
-                           ["probe", "--write", "--yes", "--name",
-                            LOCAL_TARGET])
+    r = jobset("probe", "--write", "--yes", "--name", LOCAL_TARGET)
     assert r.exit_code != 0
     assert "reserved" in r.output
 
 
 def test_an_unknown_machine_is_refused_by_name(web_client, described):
-    _make_preppable(Path(described))
     st, j = _post(web_client, dest=described, kind="task", group=1,
                   target="no-such-box", plan=True)
     assert st == 400 and "no-such-box" in j["error"], j
@@ -269,7 +217,6 @@ def test_two_preps_at_once_leave_the_servers_stderr_as_they_found_it(
     import threading
     from molbuilder.jobset import prep as P
     first = Path(described)
-    _make_preppable(first)
     second = _twin(first, "calc-second")
     inside = {n: threading.Event() for n in ("first", "second")}
     go = {n: threading.Event() for n in ("first", "second")}
@@ -311,25 +258,14 @@ def _ledger_decisions(calc):
     return [(e["verb"], e["decision"]) for e in ledger.read(calc)]
 
 
-def _cli(*args, input=None):
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, list(args), input=input)
-
-
 def _a_ladder_the_preflight_warns_about(calc):
     """`tight` resolving to `coarse`'s settings and starting clean -- the
-    description's own preflight warns (`engines/stages.md` § 6.6a)."""
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    desc = Path(calc) / TASK_FILENAME
-    d = json.loads(desc.read_text())
-    d["varies"] = ["restart"]
-    d["stages"] = [{"name": "coarse", "overrides": {}},
-                   {"name": "tight", "overrides": {"restart": "clean"}}]
-    desc.write_text(json.dumps(d))
-    req = read_request(Path(calc))
-    req["stages"] = {"coarse": {"group": 1}, "tight": {"group": 2}}
-    write_request(Path(calc), req)
+    description's own preflight warns (`engines/stages.md` § 6.6a): added
+    below `coarse`, in a group of its own, through Task setup's Save as the
+    page adds a stage (`support.road.ladder_edited`)."""
+    from support.road import ladder_edited
+    assert ladder_edited({"added": [{"name": "tight", "overrides": {
+        "restart": "clean"}}]}, Path(calc))
 
 
 def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
@@ -343,7 +279,6 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
     API-LEVEL: the browser's door, which no `jobset` verb reaches; what the
     plan holds is the entry's, and the prep protocol's table."""
     calc = Path(described)
-    _make_preppable(calc)
     before = sorted(p.relative_to(calc) for p in calc.rglob("*"))
     st, pv = _post(web_client, dest=described, kind="task", group=1,
                    target=LOCAL_TARGET, plan=True)
@@ -388,7 +323,6 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
     preflight's note, the attempt -- and the two
     calculations' ledgers hold the same decisions."""
     calc = Path(described)
-    _make_preppable(calc)
     _a_ladder_the_preflight_warns_about(calc)
     twin = _twin(calc, "calc-cli")
 
@@ -396,8 +330,8 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
     st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200, j
-    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
-             "--target", LOCAL_TARGET)
+    r = jobset("prep", "task", "--group", "1", "--bundle", str(twin),
+               "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
 
     notes = [f["message"] for f in j["findings"]]
@@ -437,15 +371,14 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
     from molbuilder.checkpoint import Repo
     stamped = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · before "
     calc = Path(described)
-    _make_preppable(calc)
     twin, kept = _twin(calc, "calc-cli"), _twin(calc, "calc-save")
 
     st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200 and j["dirs"], j
     assert _saved(j).startswith("the folder's state was saved first:"), j
-    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
-             "--target", LOCAL_TARGET)
+    r = jobset("prep", "task", "--group", "1", "--bundle", str(twin),
+               "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
     assert "the folder's state was saved first:" in r.output, r.output
     for d in (calc, twin):
@@ -499,25 +432,22 @@ def test_a_benchmark_is_answered_alike_on_both_doors(web_client, described):
     THE SILENT FAILURE: one door refusing what the other prepares -- the tab
     once refused what the command line took."""
     calc = Path(described)
-    _make_preppable(calc)
     twin = _twin(calc, "calc-cli")
     st, j = _prep(web_client, dest=str(calc), kind="bench", stage="coarse",
                   target=LOCAL_TARGET)
-    r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
-             "--target", LOCAL_TARGET)
+    r = jobset("prep", "bench", "coarse", "--bundle", str(twin),
+               "--target", LOCAL_TARGET)
     assert st == 400 and "(mpi_np)" in j["error"], j
     assert r.exit_code != 0, r.output
     assert " ".join(j["error"].split()) in " ".join(r.output.split()), r.output
 
     for folder in (calc, twin):
-        req = read_request(folder)
-        req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
-        write_request(folder, req)
+        declare_bench(folder, {"mpi_np": [1, 2], "omp_threads": [1]})
     st, j = _prep(web_client, dest=str(calc), kind="bench", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 200, j
-    r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
-             "--target", LOCAL_TARGET)
+    r = jobset("prep", "bench", "coarse", "--bundle", str(twin),
+               "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
     assert j["dirs"] and f"prepared {len(j['dirs'])} trial dir(s)" in r.output
     assert any("combination(s) enumerated" in n for n in j["lines"]), j["lines"]
@@ -532,7 +462,6 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
     Preview, which records nothing (`job-system.md` § 5.0), and Prep is not
     offered."""
     calc = Path(described)
-    _make_preppable(calc)
     _a_ladder_the_preflight_warns_about(calc)
     req = read_request(calc)
     req["execution"] = {"basis_size": "SZ"}
@@ -543,8 +472,8 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
                   target=LOCAL_TARGET)
     assert st == 400 and "fails its own preflight" in j["error"], j
     assert any("starts clean" in f["message"] for f in j["findings"]), j
-    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
-             "--target", LOCAL_TARGET)
+    r = jobset("prep", "task", "--group", "1", "--bundle", str(twin),
+               "--target", LOCAL_TARGET)
     assert r.exit_code != 0, r.output
     assert r.output.index("starts clean") < r.output.index(
         "fails its own preflight"), r.output
@@ -559,57 +488,32 @@ def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
     """`template_file.of` refuses a folder with two templates -- a leftover the
     person removes -- and the entry says so on both doors: a 400 with the
     sentence, and the terminal's `Error:`, never a 500 or a traceback."""
+    from molbuilder.calculation import open as open_calculation
     calc = Path(described)
-    _make_preppable(calc)
-    shutil.copy(calc / "JOB.template.toml", calc / "OLD.template.toml")
+    own = open_calculation(calc).template.path
+    shutil.copy(own, own.with_name("OLD.template.toml"))
     twin = _twin(calc, "calc-cli")
     st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 400 and "holds 2 templates" in j["error"], j
-    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
-             "--target", LOCAL_TARGET)
+    r = jobset("prep", "task", "--group", "1", "--bundle", str(twin),
+               "--target", LOCAL_TARGET)
     assert isinstance(r.exception, SystemExit), r.exception
     assert r.exit_code == 1 and "holds 2 templates" in r.output, r.output
 
 
-def _pyscf_calc(root, name):
-    """A described PySCF optimization, its run card stating its threads."""
-    from molbuilder import template as _T
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.job_request import FILENAME as REQUEST_FILENAME
-    from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import SCHEMA as TASK_SCHEMA
-    calc = Path(root) / name
-    calc.mkdir(parents=True)
-    (calc / TASK_FILENAME).write_text(json.dumps({
-        "schema": TASK_SCHEMA,
-        "engine": {"name": "pyscf"},
-                   "calculation": "optimization", "shape": "hierarchical",
-        "run": {"name": "JOB", "id": "JOB_H2"},
-        "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
-        "varies": [],
-        "stages": [{"name": "coarse", "overrides": {}}],
-    }))
-    (calc / REQUEST_FILENAME).write_text(json.dumps({
-        "schema": REQUEST_SCHEMA, "stages": {"coarse": {"group": 1}},
-        "execution": {"threads": 1}}))
-    (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
-    (calc / "JOB.template.toml").write_text(
-        _T.template_with_values(PySCFConfig(), engine="pyscf", calculation="optimization"))
-    return calc
-
-
 def test_the_page_is_offered_a_bench_only_where_prep_takes_one(
-        web_client, described, isolated_projects_root):
+        web_client, described):
     """The folder answer carries the entry's own reason a description takes
     no bench (`bench_refusal`), so the tab offers the Measure step exactly
     where `prep bench` would take it -- and a bench preview is refused in
     the same words as the write (found by review, 2026-09-29: the page
     offered a bench on every PySCF and transport calculation)."""
+    from support.road import described as describe
     calc = Path(described)
-    _make_preppable(calc)
-    py = _pyscf_calc(isolated_projects_root, "py")
+    # A PySCF optimization beside it, `molbuilder describe`'s, of the same
+    # structure in the same tree.
+    py = describe(calc.parents[2], "P/optimization/py", engine="pyscf")
 
     def _folder(d):
         return web_client.get("/api/task-setup/folder",

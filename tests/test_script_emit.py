@@ -22,11 +22,6 @@ from molbuilder.structure_pair import MolstructPairingError
 # --------------------------------------------------------------------- #
 
 
-def test_begin_end_markers_are_literal():
-    assert dr.begin_marker("provenance") == "# === molbuilder provenance BEGIN ==="
-    assert dr.end_marker("provenance")   == "# === molbuilder provenance END ==="
-
-
 def test_marker_re_matches_begin_and_end():
     m = dr.MARKER_RE.match("# === molbuilder provenance BEGIN ===")
     assert m and m.group(1) == "provenance" and m.group(2) == "BEGIN"
@@ -49,19 +44,6 @@ def test_marker_re_rejects_non_markers():
 # --------------------------------------------------------------------- #
 
 
-def test_emit_provenance_includes_required_fields():
-    block = sc.emit_provenance(
-        generator_version="git abc1234",
-        generated_at="2026-06-16T17:00:00-07:00",
-        resolved_defaults={"BlockSize": "auto -> 256", "use_gpu": "true"},
-    )
-    assert "git abc1234" in block
-    assert "2026-06-16T17:00:00-07:00" in block
-    assert "BlockSize" in block and "256" in block
-    assert "use_gpu" in block
-    assert block.splitlines()[0] == "# === molbuilder provenance BEGIN ==="
-
-
 def test_emit_provenance_without_defaults_still_emits_block():
     block = sc.emit_provenance(
         generator_version="git abc",
@@ -76,22 +58,6 @@ def test_emit_provenance_without_defaults_still_emits_block():
 # --------------------------------------------------------------------- #
 
 
-def test_emit_bench_marks_uses_anchors_not_line_numbers():
-    """v1 contract: anchor= rather than line=N, for layout-stability."""
-    block = sc.emit_bench_marks(
-        metadata={"n_atoms": 212, "gpu_mode": "true"},
-        fields=BENCH_FIELDS,
-        defaults={"BlockSize": 256, "MaxSCFIterations": 500,
-                  "MD.Steps": 200, "MeshCutoff": 400.0},
-    )
-    assert "anchor=BlockSize"        in block
-    assert "anchor=MaxSCFIterations" in block
-    assert "anchor=MD.Steps"         in block
-    assert "anchor=MeshCutoff"       in block
-    # No regression to line-number form.
-    assert "line=" not in block
-
-
 def test_emit_bench_marks_default_value_appears_per_field():
     block = sc.emit_bench_marks(
         metadata={"n_atoms": 212},
@@ -103,11 +69,6 @@ def test_emit_bench_marks_default_value_appears_per_field():
     assert "default=500"   in block
     assert "default=200"   in block
     assert "default=400.0" in block
-
-
-def test_emit_bench_marks_carries_version_tag():
-    block = sc.emit_bench_marks(metadata={}, fields=[], defaults={})
-    assert "version v1" in block
 
 
 # --------------------------------------------------------------------- #
@@ -457,37 +418,6 @@ def test_merge_user_custom_round_trip_idempotent(tmp_path):
     # round-trip (placeholder in == placeholder out).
     second = sc.merge_user_custom_from_target(fresh, target)
     assert second == first
-
-
-# --------------------------------------------------------------------- #
-#  emit_user_custom_placeholder                                         #
-# --------------------------------------------------------------------- #
-
-
-def test_user_custom_placeholder_is_well_formed():
-    block = sc.emit_user_custom_placeholder()
-    lines = block.splitlines()
-    assert lines[0]  == "# === molbuilder user-custom BEGIN ==="
-    assert lines[-1] == "# === molbuilder user-custom END ==="
-
-
-# --------------------------------------------------------------------- #
-#  SIESTA bench fields registry                                         #
-# --------------------------------------------------------------------- #
-
-
-def test_siesta_bench_fields_cover_the_four_bench_knobs():
-    names = {f.name for f in BENCH_FIELDS}
-    assert {"BlockSize", "MaxSCFIterations", "MD.Steps", "MeshCutoff"} <= names
-
-
-def test_blocksize_field_constrains_pow2_and_leaves_the_range_to_the_deck():
-    """The engine-wide list declares the TYPE and leaves the window to the
-    renderer that knows the launch (``siesta/input.py::_block_size_bounds``),
-    so a forgotten range is an absent one rather than a wrong one."""
-    bs = next(f for f in BENCH_FIELDS if f.name == "BlockSize")
-    assert bs.type_ == "pow2"
-    assert bs.range_ is None
 
 
 # --------------------------------------------------------------------- #

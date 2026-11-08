@@ -195,10 +195,14 @@ somewhere temporary and builds inside it:
   fixture a whole file shares. It exists because a module-scoped fixture
   cannot ask for `tmp_path`; it uses `MonkeyPatch()` and `tmp_path_factory`
   directly.
+- **The road's tree, `support.road.road_tree`** — the tree a test
+  describes in (§ 6): the door pointed at `tmp_path`'s tree, the structure
+  saved there, its pseudopotentials beside it, and the test working from the
+  tree's parent.
 - **A real run's tree** (`support.real_runs`, § 6) — the run was made under a
   tree pointed the same way; a test that reads it points the door at it again
   with the same call, `conftest.point_the_one_door_at(run.tree.parent,
-  monkeypatch.setenv)`. Both fixtures are that call too.
+  monkeypatch.setenv)`. Both fixtures and `road_tree` are that call too.
 
 Nothing is cached: `file_picker_roots()` calls `projects_root()` at CALL
 time, so pointing the door is enough and the live server serves the tmp tree.
@@ -719,7 +723,7 @@ unit conversion, a layout rule) needs no server and is tested as it is.
 > `projects_state_busy_guard`, `structure_page`, `structure_save`,
 > `tab_strip`, `task_setup_save_bar`), and **2** drive a browser under a
 > fast-tier name (`form_schema_diff`, `form_schema_setvalues`). Converting
-> them is plan F9-6's sweep. Reach for `run_node` in anything new.
+> them is 2.67.12's sweep (plan F9). Reach for `run_node` in anything new.
 
 The clever part is that it spans the ESM migration: a classic IIFE file publishes
 its `window.molbuilder.*` global as a side effect, and a converted ES module
@@ -1079,14 +1083,39 @@ deliberately not installed there.
   developer's real `projects/` tree (§ 2a), by any spelling.
 - `test_no_test_is_shadowed.py` — no test is silently replaced by a namesake
   defined later in its module or class, so never run (§ 3a).
-- `tests/support/` — the shared roads: `pages.py` (the pages the app serves,
-  signed out and in), `findings.py` (a page's findings, drawn row for row),
-  `leftovers.py` (what opening again leaves on the page), `road.py` (the
-  contract tables' one runner), `live_server.py` (the app on a live server,
-  on the test's tree), `real_runs.py` (the real runs a pass makes once),
-  `sidebar.py` (a folder or a file reached as a person reaches it, the
-  Results tab bound, a field committed), `task_setup_page.py` (the Task
-  setup page's editor and its file).
+- `tests/support/` — the shared doors, each in one place: `road.py` (the
+  road a test drives — the verbs as typed, `jobset`; the tree a test
+  describes in, `road_tree`; the one maker of a calculation, `described`,
+  and the run card it states unless told another, `RUN_CARD`; the
+  contract tables' one runner, `run_road_case`),
+  `real_runs.py` (the real runs a pass makes once, each made by one maker
+  and asked for through its session fixture in `conftest.py`; a run's tree
+  with the engine on the road, `road_at`; the one maker of the road's H2
+  optimization, `h2_optimization`; the one maker of a displacement sweep,
+  `swept`), `machines.py` (a machine record's scheduler of each kind,
+  `SLURM` and `WORKSTATION`, the GPU tool the load monitor asks,
+  `a_gpu_tool`, and a machine with none, `no_gpu_tool`; the record itself
+  is written by
+  `conftest.write_machine_record`), `junction.py` (the junctions the
+  real relaxations start from, and a chain sandwich's layers),
+  `envelope.py` (a request body carrying a structure), `form_fields.py` (a
+  value a person sets on a form, and where its effect is), `replay.py` (a
+  real run's output, shown as it grew), `pages.py` (the pages the app
+  serves, signed out and in; what the load door serves of a result,
+  `spectra_served`), `live_server.py` (the app on a live server, on the
+  test's tree, `serve`; a port for `serve start` whose notebook port is
+  free too, `free_serve_port`), `sidebar.py` (a folder or a file reached
+  as a person reaches it, the Results tab bound, a field committed),
+  `task_setup_page.py` (the Task setup page's editor and its file),
+  `results_export.py` (the structure on screen saved out of the Results
+  tab), `chemistry_card.py` (the chemistry card, read as a person reads
+  it), `findings.py` (a page's findings, drawn row for row),
+  `leftovers.py` (what opening again leaves on the page); and for
+  MolView's tests under node, the stand-ins for 3Dmol and the DOM
+  (`molview_3dmol_standin.js`, `molview_dom_standin.js`), the shim that
+  seeds its selection store (`seed_selection_store.js`), and a stand-in
+  server, `molview_server_standin.js`, which 2.67.12 replaces with the
+  server's own answers (§ 4).
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `molbuilder describe → prep`, because the pair is one file. Written

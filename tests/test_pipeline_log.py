@@ -22,16 +22,16 @@ import pytest
 
 from molbuilder.jobset.engines import EngineSeam
 from molbuilder.script_emit import Block, DeckSpec
-from support.road import (describe_calculation, group_words, jobset,
-                          read_request, set_by_the_person, stage_file,
+from support.road import (described, group_words, jobset, read_request,
+                          road_tree, set_by_the_person, stage_file,
                           write_request)
 
 
 def _calculation(tmp_path, monkeypatch, engine: str):
     """A described calculation, as `molbuilder describe` leaves one: the
     engine's shipped ladder."""
-    return describe_calculation(tmp_path, monkeypatch, engine=engine,
-                                stage_strategy="publishable")
+    return described(road_tree(tmp_path, monkeypatch, engine=engine),
+                     engine=engine, stage_strategy="publishable")
 
 
 def _prep(bundle, stage="coarse"):

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from support.road import describe_calculation, group_words, jobset
+from support.road import described, group_words, jobset, road_tree
 
 
 def _prep(bundle, stage, *more):
@@ -29,7 +29,7 @@ def test_a_mistyped_amount_is_refused_by_its_flag(tmp_path, monkeypatch):
 
     MUTATION THIS MUST FAIL AGAINST: the allocation built from the raw
     flags (the record's own refusal escapes as an exception)."""
-    bundle = describe_calculation(tmp_path, monkeypatch)
+    bundle = described(road_tree(tmp_path, monkeypatch))
     for flag, said in (("--time", "4x"), ("--mem", "12Q"),
                        ("--gpus", "a100x2")):
         r = _prep(bundle, "coarse", flag, said)
@@ -53,8 +53,8 @@ def test_a_label_longer_than_its_engine_keeps_is_refused_at_prep(
 
     MUTATION THIS MUST FAIL AGAINST: the limit read as a constant for every
     engine (the PySCF row is refused)."""
-    bundle = describe_calculation(tmp_path, monkeypatch, name=LONG_LABEL,
-                                  engine=engine)
+    bundle = described(road_tree(tmp_path, monkeypatch, engine=engine),
+                       name=LONG_LABEL, engine=engine)
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this")
     if refused:

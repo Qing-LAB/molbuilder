@@ -9,10 +9,10 @@ without code changes.  Precedence:
 The resolver lives at ``molbuilder.cli._resolve_tls``; ``serve`` passes
 the resolved pair to ``app.run(ssl_context=...)``.
 
-Tests cover (a) the resolver under every combination, (b) the serve
-command wires the resolved pair into Flask, and (c) the ``--help``
-surface advertises the flags.  The resolver reads the config directory's
-``molbuilder.json`` alone, which the fixture below points at ``tmp_path``.
+Tests cover the pair the serve command hands Flask, under the flags and
+the config as a person gives them, and the readability gate before it.
+The resolver reads the config directory's ``molbuilder.json`` alone, which
+the fixture below points at ``tmp_path``.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import pytest
 from click.testing import CliRunner
 
 from molbuilder import cli
-from molbuilder.cli import _check_tls_readable, _resolve_tls
+from molbuilder.cli import _check_tls_readable
 
 
 @pytest.fixture(autouse=True)
@@ -41,26 +41,8 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  _resolve_tls -- the precedence + parsing kernel                      #
+#  the machine config, read where it is read                            #
 # --------------------------------------------------------------------- #
-
-
-def test_resolve_cli_flag_overrides_json(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"tls": {"cert": "/from/json.pem", "key": "/from/json.key"}}))
-    # CLI cert wins, JSON key fills the gap.
-    assert _resolve_tls("/from/cli.pem", None) == ("/from/cli.pem", "/from/json.key")
-    # Both flags win outright.
-    assert _resolve_tls("/cli.pem", "/cli.key") == ("/cli.pem", "/cli.key")
-
-
-def test_resolve_json_with_only_key_falls_back_to_http(
-        monkeypatch, tmp_path, capsys):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps({"tls": {"key": "/k.pem"}}))
-    assert _resolve_tls(None, None) == (None, None)
-    assert "incomplete" in capsys.readouterr().err
 
 
 def test_a_malformed_molbuilder_json_is_refused_where_it_is_read(
@@ -222,52 +204,54 @@ def _touch(path):
     return str(path)
 
 
-def test_serve_no_tls_passes_none_ssl_context(
-        monkeypatch, tmp_path, capture_flask_run):
+#: Each row: what the machine config's ``tls`` names -- ``None``, no
+#: ``molbuilder.json`` at all -- the flags typed, the pair `serve` hands
+#: Flask -- ``None`` for plain HTTP -- and what it says.
+_SERVE_ROWS = [
+    dict(name="no config and no flag: plain HTTP",
+         config=None, flags={}, served=None, said=[]),
+    dict(name="the config's pair alone: HTTPS on it",
+         config={"cert": "json.pem", "key": "json.key"}, flags={},
+         served=("json.pem", "json.key"), said=[]),
+    dict(name="both flags, no config: HTTPS on the flags' pair",
+         config=None, flags={"--cert": "cli.pem", "--key": "cli.key"},
+         served=("cli.pem", "cli.key"), said=[]),
+    dict(name="a cert flag alone, no config: plain HTTP, said incomplete",
+         config=None, flags={"--cert": "cli.pem"}, served=None,
+         said=["incomplete"]),
+    dict(name="a flag over the config: the flag's cert, the config's key",
+         config={"cert": "json.pem", "key": "json.key"},
+         flags={"--cert": "cli.pem"}, served=("cli.pem", "json.key"),
+         said=[]),
+    dict(name="a key with no cert in the config: plain HTTP, said incomplete",
+         config={"key": "json.key"}, flags={}, served=None,
+         said=["incomplete"]),
+]
+
+
+@pytest.mark.parametrize("row", _SERVE_ROWS,
+                         ids=[r["name"] for r in _SERVE_ROWS])
+def test_serve_takes_the_pair_the_precedence_gives(
+        row, monkeypatch, tmp_path, capture_flask_run):
+    """`serve` hands Flask the pair the precedence above gives: a flag over
+    the machine config, the half it does not name filled from the config;
+    a pair still incomplete, plain HTTP, and said; neither naming one,
+    plain HTTP -- and its log line names the scheme it serves, and only
+    that one.  THE SILENT FAILURE: the server up on the wrong cert and key,
+    or on plain HTTP with no word."""
     monkeypatch.chdir(tmp_path)
-    res = CliRunner().invoke(
-        cli.cli, ["serve", "foreground", "--port", "0", "--no-supervise"])
+    at = {n: _touch(tmp_path / n)
+          for n in ("json.pem", "json.key", "cli.pem", "cli.key")}
+    if row["config"] is not None:
+        (tmp_path / "molbuilder.json").write_text(json.dumps(
+            {"tls": {k: at[v] for k, v in row["config"].items()}}))
+    flags = [w for flag, name in row["flags"].items() for w in (flag, at[name])]
+    res = CliRunner().invoke(cli.cli, ["serve", "foreground", "--port", "0",
+                                       "--no-supervise", *flags])
     assert res.exit_code == 0, res.output
-    assert capture_flask_run, "Flask.run was not called"
-    assert capture_flask_run[-1]["kwargs"]["ssl_context"] is None
-    assert "http://" in res.stderr  # log line scheme
-    assert "https://" not in res.stderr
-
-
-def test_serve_json_only_engages_https(
-        monkeypatch, tmp_path, capture_flask_run):
-    monkeypatch.chdir(tmp_path)
-    cert = _touch(tmp_path / "c.pem")
-    key  = _touch(tmp_path / "k.pem")
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"tls": {"cert": cert, "key": key}}))
-    res = CliRunner().invoke(
-        cli.cli, ["serve", "foreground", "--port", "0", "--no-supervise"])
-    assert res.exit_code == 0, res.output
-    assert capture_flask_run[-1]["kwargs"]["ssl_context"] == (cert, key)
-    assert "https://" in res.stderr
-
-
-def test_serve_cli_flags_engage_https(
-        monkeypatch, tmp_path, capture_flask_run):
-    monkeypatch.chdir(tmp_path)
-    cert = _touch(tmp_path / "c.pem")
-    key  = _touch(tmp_path / "k.pem")
-    res = CliRunner().invoke(cli.cli, [
-        "serve", "foreground", "--port", "0", "--cert", cert, "--key", key,
-        "--no-supervise"])
-    assert res.exit_code == 0, res.output
-    assert capture_flask_run[-1]["kwargs"]["ssl_context"] == (cert, key)
-    assert "https://" in res.stderr
-
-
-def test_serve_cli_cert_only_warns_and_falls_back(
-        monkeypatch, tmp_path, capture_flask_run):
-    monkeypatch.chdir(tmp_path)
-    cert = _touch(tmp_path / "c.pem")
-    res = CliRunner().invoke(cli.cli, [
-        "serve", "foreground", "--port", "0", "--cert", cert, "--no-supervise"])
-    assert res.exit_code == 0, res.output
-    assert capture_flask_run[-1]["kwargs"]["ssl_context"] is None
-    assert "incomplete" in res.stderr
-    assert "http://" in res.stderr
+    want = tuple(at[n] for n in row["served"]) if row["served"] else None
+    assert capture_flask_run[-1]["kwargs"]["ssl_context"] == want
+    for words in row["said"]:
+        assert words in res.stderr, res.stderr
+    assert ("https://" if want else "http://") in res.stderr
+    assert ("http://" if want else "https://") not in res.stderr

@@ -26,20 +26,18 @@ nothing.  Nothing here launches an engine.
 """
 from __future__ import annotations
 
-from support.road import (describe_calculation, each_is_taken, jobset,
-                          printed_commands, read_request, write_request)
+from support.road import (described, each_is_taken, jobset, printed_commands,
+                          road_tree)
 
 
-def _described(tmp_path, monkeypatch):
-    """`describe_calculation`'s calculation, its job request stating the wall
+def _described(tmp_path, monkeypatch, **blocks):
+    """`support.road.described`'s calculation, its job request stating the wall
     and the memory too -- the two values a job handed to a scheduler states
     (`architecture.md` § 5.2) -- so the `--mode submit` line a next step
-    prints is one that is taken, as it is for a person who stated them."""
-    bundle = describe_calculation(tmp_path, monkeypatch)
-    request = read_request(bundle)
-    request["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
-    write_request(bundle, request)
-    return bundle
+    prints is one that is taken, as it is for a person who stated them; and
+    ``blocks``, the request's other blocks, as `described` takes them."""
+    return described(road_tree(tmp_path, monkeypatch),
+                     allocation={"time": "0-01:00:00", "mem": "8G"}, **blocks)
 
 
 def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
@@ -99,10 +97,8 @@ def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch):
     every stage (coarse, never benched, first); the note on the command's
     line; a sweep's status read from its bench folder, or worded as a
     ladder's."""
-    bundle = _described(tmp_path, monkeypatch)
-    request = read_request(bundle)
-    request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
-    write_request(bundle, request)
+    bundle = _described(tmp_path, monkeypatch,
+                        bench={"mpi_np": [1, 2], "omp_threads": [1]})
     r = jobset("prep", "bench", "medium", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output
@@ -133,7 +129,8 @@ def test_a_calculation_with_no_benchmark_says_so_first(tmp_path,
 
     MUTATION THIS MUST FAIL AGAINST: the stage-less refusal asked before
     the calculation's own (it offered `prep bench coarse`)."""
-    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf")
+    bundle = described(road_tree(tmp_path, monkeypatch, engine="pyscf"),
+                       engine="pyscf")
     for verb in (("prep", "bench", "--target", "this"),
                  ("launch", "bench", "--mode", "direct")):
         r = jobset(*verb, "--bundle", bundle)

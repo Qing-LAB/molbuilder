@@ -21,33 +21,27 @@ What the tool prints when it answers is read from the tool, where it runs:
 """
 from __future__ import annotations
 
-import os
 import time
 
 import pytest
 
 from molbuilder.web.blueprints import system_load as sl
+from support.machines import (DRIVER_MISMATCH, a_gpu_tool,
+                              gpu_reading_asked_anew)
 
 
 @pytest.fixture(autouse=True)
 def _fresh_cache(monkeypatch):
     """Every test starts with an expired cache and no residue."""
-    monkeypatch.setattr(sl, "_smi_cache",
-                        {"t": 0.0, "gpus": [], "error": None})
-
-
-def _a_tool(tmp_path, monkeypatch, body):
-    """``nvidia-smi`` on this test's PATH, doing ``body``."""
-    tool = tmp_path / "nvidia-smi"
-    tool.write_text(f"#!/bin/sh\n{body}\n")
-    tool.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    gpu_reading_asked_anew(monkeypatch)
 
 
 # ------------------------------------------------------------ the snapshot
 
 def test_snapshot_returns_documented_shape():
-    """Public ``snapshot()`` returns the dict the widget consumes."""
+    """Public ``snapshot()`` returns the dict the widget consumes.  THE
+    SILENT FAILURE: a key renamed -- the load card skips what it cannot find,
+    so it drops the line (the load average's) without a word."""
     snap = sl.snapshot()
     for key in ("cpu_pct",
                 "cpu_count_physical", "cpu_count_logical",
@@ -79,7 +73,7 @@ def test_a_query_that_hangs_is_abandoned_and_said(tmp_path, monkeypatch):
     and every request thread is gone again.  A temporary failure of the
     inquiry, never of the system: the snapshot completes, and the reason rides
     ``gpu_error`` where the cells would have been."""
-    _a_tool(tmp_path, monkeypatch, "exec sleep 60")
+    a_gpu_tool(tmp_path, monkeypatch, "exec sleep 60")
     monkeypatch.setattr(sl, "_SMI_TIMEOUT_S", 0.2)
     started = time.monotonic()
     gpus, err = sl._gpu_snapshot()
@@ -89,9 +83,14 @@ def test_a_query_that_hangs_is_abandoned_and_said(tmp_path, monkeypatch):
     assert sl.snapshot()["gpu_error"] == err
 
 
-@pytest.mark.parametrize("to_stream", ["", " >&2"], ids=["stdout", "stderr"])
+#: The tool on a host whose driver and library diverged, as measured (its
+#: reason on stdout), and the same with its reason on stderr.
+_EITHER_STREAM = [DRIVER_MISMATCH, DRIVER_MISMATCH.replace("\n", " >&2\n", 1)]
+
+
+@pytest.mark.parametrize("tool", _EITHER_STREAM, ids=["stdout", "stderr"])
 def test_the_reason_is_read_off_whichever_stream_carried_it(tmp_path, monkeypatch,
-                                                            to_stream):
+                                                            tool):
     """nvidia-smi puts its failure on STDOUT, and the reason must survive.
 
     Measured 2026-09-18 on a host whose driver and library had diverged:
@@ -102,9 +101,7 @@ def test_the_reason_is_read_off_whichever_stream_carried_it(tmp_path, monkeypatc
     and the reason was being dropped one line short of the widget.  An empty
     list with no reason cannot be told from a CPU-only box.
     """
-    _a_tool(tmp_path, monkeypatch,
-            "echo 'Failed to initialize NVML: Driver/library version mismatch'"
-            f"{to_stream}\nexit 18")
+    a_gpu_tool(tmp_path, monkeypatch, tool)
     gpus, err = sl._gpu_snapshot()
     assert gpus == []
     assert "Driver/library version mismatch" in err and "18" in err, (
@@ -126,7 +123,7 @@ def test_open_pages_share_one_query_per_ttl(tmp_path, monkeypatch):
     """Several widgets polling must not become several subprocesses --
     the second call inside the TTL serves the cached answer."""
     asked = tmp_path / "asked"
-    _a_tool(tmp_path, monkeypatch, f'echo once >> "{asked}"')
+    a_gpu_tool(tmp_path, monkeypatch, f'echo once >> "{asked}"')
     first, _ = sl._gpu_snapshot()
     second, _ = sl._gpu_snapshot()
     assert asked.read_text().count("once") == 1, (
@@ -152,14 +149,17 @@ def test_snapshot_endpoint_handles_psutil_failure(monkeypatch):
     assert "simulated psutil crash" in body["error"]
 
 
-def test_the_endpoint_carries_the_reason_through_json(monkeypatch):
+def test_the_endpoint_carries_the_reason_through_json(tmp_path, monkeypatch):
     """The widget reads ``gpu_error`` off the response, not off a global
-    -- so the field has to survive the jsonify layer."""
+    -- so the field has to survive the jsonify layer: the reason the tool
+    gave, as the sampler composed it, on a host whose driver and library
+    diverged (`support.machines.DRIVER_MISMATCH`)."""
     from molbuilder.web.app import create_app
 
-    monkeypatch.setattr(sl, "_gpu_snapshot",
-                        lambda: ([], "GPU query timed out after 2s"))
+    a_gpu_tool(tmp_path, monkeypatch, DRIVER_MISMATCH)
     client = create_app(config={}).test_client()
     body = client.get("/api/system/load").get_json()
     assert body["ok"] is True
-    assert body["data"]["gpu_error"] == "GPU query timed out after 2s"
+    assert body["data"]["gpu_error"] == (
+        "nvidia-smi exited 18: "
+        "Failed to initialize NVML: Driver/library version mismatch")

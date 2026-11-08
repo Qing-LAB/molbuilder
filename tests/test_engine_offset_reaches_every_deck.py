@@ -13,7 +13,7 @@ prep task`, then the deck on disk.  Per engine:
 """
 from __future__ import annotations
 
-from support.road import stage_file
+from support.road import stage_file, water_with_an_assigned_origin
 
 import ast
 import re
@@ -153,16 +153,6 @@ def _written(engine, text):
     return np.array([row[1:4] for row in ast.literal_eval(block)], dtype=float)
 
 
-def _assigned(corner):
-    """Water in a typed 10 Å box, its origin assigned at ``corner`` through the
-    Cell page's own op (`periodicity_gate.apply_edit`, ``box_corner``)."""
-    from molbuilder.periodicity_gate import apply_edit
-    typed = Structure(elements=["O", "H", "H"], positions=_water().positions,
-                      cell=np.eye(3) * 10.0, axis_kind=("isolated",) * 3)
-    out, _ = apply_edit(typed, "box_corner", list(corner))
-    return typed, out
-
-
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_an_assigned_origin_places_the_deck_at_design_minus_it(
         prepared, engine):
@@ -173,7 +163,7 @@ def test_an_assigned_origin_places_the_deck_at_design_minus_it(
     CONTRACT: `model/structure-periodicity.md` § 6.0, *A stated offset* (D1).
     """
     P = np.array([-3.0, -3.0, -3.0])
-    typed, assigned = _assigned(P)
+    typed, assigned = water_with_an_assigned_origin(P)
     assert not np.allclose(-P, cellmod.engine_offset(typed)), (
         "the fixture must be one the rule would place elsewhere")
     dest, _stage, text = prepared(assigned, engine)
@@ -209,7 +199,7 @@ def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
     leaves an atom outside is refused naming it); `workflow.md` § 9
     (a gate refuses with the reason, never a stack trace).
     """
-    _typed, assigned = _assigned([-0.5, -1.0, -1.0])
+    _typed, assigned = water_with_an_assigned_origin([-0.5, -1.0, -1.0])
     _dest, _stage, said = prepared(assigned, engine,
                                                   refused=True)
     assert "outside the cell" in said, said

@@ -11,9 +11,9 @@ from molbuilder.parse.contract import contract_of
 def _prepared_deck(tmp_path, monkeypatch, **template):
     """The deck prep wrote for the road's H2, ``template``'s values the
     person's."""
-    from support.road import (describe_calculation, jobset, set_by_the_person,
+    from support.road import (described, jobset, road_tree, set_by_the_person,
                               stage_file)
-    bundle = describe_calculation(tmp_path, monkeypatch, stage_strategy="")
+    bundle = described(road_tree(tmp_path, monkeypatch), stage_strategy="")
     if template:
         set_by_the_person(bundle, template)
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,

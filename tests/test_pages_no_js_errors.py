@@ -112,6 +112,10 @@ def test_page_boots_without_js_errors(page, flask_server, path, ready_selector):
     extra 250 ms gives ``<script type="module">`` bundles time to
     parse + execute their top-level code (which is where a SyntaxError
     surfaces).
+
+    `/molbuilder` that lost its selection bootstrap errors here as it boots
+    -- the silent failure behind it: picking an `.xyz` in the sidebar stops
+    loading it into the viewer, the click doing nothing (measured 2.67.11).
     """
     errors = _collect_js_errors(page)
     page.goto(f"{flask_server}{path}")

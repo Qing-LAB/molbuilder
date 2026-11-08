@@ -23,39 +23,15 @@ from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available, live_siesta
-from support.road import (H2, jobset, molbuilder, read_request,
-                          road_structure, write_request)
+from _road import conda_hook, env_available
+from support.road import jobset, molbuilder
 
 pytestmark = [
-    pytest.mark.e2e,
     pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
-
-
-def _calculation(tree: Path, name: str) -> Path:
-    """The `publishable` H2 relaxation ladder -- `coarse`, then `medium`,
-    each its own group -- one rank a run (an H2 needs no more), described
-    as `molbuilder describe` describes it."""
-    from molbuilder.workingcopy_structure import StructureCodec
-    (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-    pair = tree / "P" / "structure" / "h2.xyz"
-    if not pair.is_file():
-        StructureCodec().write(road_structure(H2), pair)
-    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
-               "--bundle", f"P/opt/{name}", "--engine", "siesta",
-               "--calculation", "optimization", "--name", "H2", "--psml-lib", "pseudopotential",
-               "--stage-strategy", "publishable")
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "opt" / name
-    request = read_request(bundle)
-    request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
-                            "omp_threads": 1}
-    write_request(bundle, request)
-    return bundle
 
 
 def _groups(bundle: Path):
@@ -72,14 +48,16 @@ def _ledger(bundle: Path):
 
 
 @pytest.fixture(scope="module")
-def road(isolated_projects_root_module, tmp_path_factory):
+def road(tmp_path_factory):
     """Two calculations: one sent as a sequence run here and waited on;
     one sent in the background, looked at while it runs, its group launched
     alone refused, and then stopped."""
-    tree = isolated_projects_root_module
+    from support.real_runs import h2_optimization, on_the_road
     said = {}
-    with live_siesta(tree, tmp_path_factory):
-        whole = _calculation(tree, "H2seq")
+    # One rank a run: an H2 needs no more.
+    one_rank = {"mpi_np": 1, "omp_threads": 1}
+    with on_the_road(tmp_path_factory, "sequence") as tree:
+        whole = h2_optimization(tree, "P/opt/H2seq", execution=one_rank)
         groups = _groups(whole)
         words = [w for n, _ in groups for w in ("--group", str(n))]
         said["prep"] = jobset("prep", "task", *words, "--one-job",
@@ -89,7 +67,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
                                 "--mode", "direct", "--foreground", "--yes")
         said["status"] = jobset("status", "--bundle", whole)
 
-        left = _calculation(tree, "H2stop")
+        left = h2_optimization(tree, "P/opt/H2stop", execution=one_rank)
         r = jobset("prep", "task", *words, "--one-job", "--bundle", left,
                    "--target", "this")
         assert r.exit_code == 0, r.output

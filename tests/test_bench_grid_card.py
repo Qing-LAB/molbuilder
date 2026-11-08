@@ -23,7 +23,7 @@ from molbuilder.scheduler import (Domain, Environment, Topology,
                                   environments_dir, named_environment_path,
                                   write_environment)
 from support.machines import SLURM
-from support.road import (describe_calculation, jobset, one_rank, read_request,
+from support.road import (described, jobset, read_request, road_tree,
                           write_request)
 
 
@@ -79,12 +79,14 @@ def bundle(tmp_path, monkeypatch):
     """
     write_machine_record(scheduler=SLURM, topology=_NODE,
                          domains=[Domain.from_row(r) for r in _DOMAINS])
-    dest = describe_calculation(tmp_path, monkeypatch, name="JOB")
     # THE RUN ON THE GPU, and how many (`execution/gpu.md` G5), on the
     # calculation's run card; the bench takes its GPU from it, never its
     # count.
-    one_rank(dest, use_gpu=True, diag_algorithm="ELPA-1STAGE", gpu_count=1)
-    return dest
+    return described(road_tree(tmp_path, monkeypatch), name="JOB",
+                     execution={"mpi_np": 1, "omp_threads": 1,
+                                "use_gpu": True,
+                                "diag_algorithm": "ELPA-1STAGE",
+                                "gpu_count": 1})
 
 
 @pytest.fixture()

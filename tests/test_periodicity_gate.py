@@ -814,7 +814,7 @@ class TestLoaderGate:
             "the box is not drawn round the atoms")
 
     def test_the_load_door_serves_the_rules_box_corner(
-            self, tmp_path, monkeypatch):
+            self, isolated_projects_root):
         """The same state, one layer out: `/api/build/load` serves the corner the rule
         places the box at, in `box_corner`, so the browser draws the box where the
         file means -- and states no offset, because the file states none.
@@ -828,30 +828,19 @@ class TestLoaderGate:
         `box_corner`) + § 8.1 (where the gate runs).
         """
         pytest.importorskip("flask")
-        from molbuilder.diagnostics import Capabilities, set_capabilities
-        monkeypatch.chdir(tmp_path)
-        # The tree is THIS tmp one.  `projects_root` resolves from the
-        # molbuilder root, so the door is told directly.
-        from molbuilder.projects import PROJECTS_ROOT_ENV
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
-        sdir = tmp_path / "projects" / "P" / "structure"
+        sdir = isolated_projects_root / "P" / "structure"
         sdir.mkdir(parents=True)
         xyz = self._write_pair_stating_no_offset(sdir)
-        set_capabilities(Capabilities(runtime_config={},
-                                      conda_binary="/usr/bin/conda"))
-        try:
-            from molbuilder.web.app import create_app
-            client = create_app(config={}).test_client()
-            r = client.post("/api/build/load", json={"path": str(xyz)})
-            assert r.status_code == 200, r.get_json()
-            per = r.get_json()["periodicity"]
-            assert per["engine_offset"] is None
-            # Centred on the atoms (x 10..12, y and z at 10), stated as the
-            # atoms' own middle rather than as a literal corner.
-            np.testing.assert_allclose(
-                np.asarray(per["box_corner"]) + 3.5, [11.0, 10.0, 10.0])
-        finally:
-            set_capabilities(None)
+        from molbuilder.web.app import create_app
+        client = create_app(config={}).test_client()
+        r = client.post("/api/build/load", json={"path": str(xyz)})
+        assert r.status_code == 200, r.get_json()
+        per = r.get_json()["periodicity"]
+        assert per["engine_offset"] is None
+        # Centred on the atoms (x 10..12, y and z at 10), stated as the
+        # atoms' own middle rather than as a literal corner.
+        np.testing.assert_allclose(
+            np.asarray(per["box_corner"]) + 3.5, [11.0, 10.0, 10.0])
 
 
 # ------------------------------------------------------------------ #
@@ -1034,7 +1023,8 @@ class TestTheLoadAnswerIsNotSilent:
     Nothing rewrites stored state, so there is no correction marker: the answer
     reports, and the pair on disk is still what the user saved."""
 
-    def test_the_load_answer_carries_what_the_gate_found(self, tmp_path, monkeypatch):
+    def test_the_load_answer_carries_what_the_gate_found(
+            self, isolated_projects_root):
         """A load of a pair whose assigned origin leaves the atoms outside the box
         reports it (`cell.atoms_outside`), with `about: cell` -- serves the origin
         as stored -- and carries NO key claiming anything was corrected.
@@ -1050,46 +1040,35 @@ class TestTheLoadAnswerIsNotSilent:
         report has to arrive"); `web/molview.md` § 6.8 for the notice shape.
         """
         pytest.importorskip("flask")
-        from molbuilder.diagnostics import Capabilities, set_capabilities
         from molbuilder.workingcopy_structure import StructureCodec
-        monkeypatch.chdir(tmp_path)
-        # The tree is THIS tmp one.  `projects_root` resolves from the
-        # molbuilder root, so the door is told directly.
-        from molbuilder.projects import PROJECTS_ROOT_ENV
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
-        sdir = tmp_path / "projects" / "P" / "structure"
+        sdir = isolated_projects_root / "P" / "structure"
         sdir.mkdir(parents=True)
         s = _mol()
         s.cell = np.eye(3) * 7.0
         s.engine_offset = np.array([-50.0, -50.0, -50.0])   # the corner at 50 Å
         s.__post_init__()
         StructureCodec().write(s, sdir / "m.xyz")
-        set_capabilities(Capabilities(runtime_config={},
-                                      conda_binary="/usr/bin/conda"))
-        try:
-            from molbuilder.web.app import create_app
-            client = create_app(config={}).test_client()
-            r = client.post("/api/build/load",
-                            json={"path": str(sdir / "m.xyz")})
-            assert r.status_code == 200
-            j = r.get_json()
-            notices = j.get("notices") or []
-            # The load REPORTS what is wrong and changes nothing -- and the
-            # shape says so: no key claiming a correction, hence no phantom
-            # dirty state.
-            assert _said(notices, "cell.atoms_outside"), _wheres(notices)
-            assert all(set(n) == {"severity", "message", "where", "about"}
-                       for n in notices), notices
-            # ...and `about` is the SUBJECT, which is what puts the sentence on
-            # the Cell page rather than above the atom list (molview.md § 6.8).
-            assert all(n["about"] == "cell" for n in notices), notices
-            # The served model: the origin as stored through the v10 pair,
-            # nothing corrected.
-            per = j["periodicity"]
-            assert per["engine_offset"] == [-50.0] * 3, per["engine_offset"]
-            assert per["box_corner"] == [50.0] * 3, per["box_corner"]
-        finally:
-            set_capabilities(None)
+        from molbuilder.web.app import create_app
+        client = create_app(config={}).test_client()
+        r = client.post("/api/build/load",
+                        json={"path": str(sdir / "m.xyz")})
+        assert r.status_code == 200
+        j = r.get_json()
+        notices = j.get("notices") or []
+        # The load REPORTS what is wrong and changes nothing -- and the
+        # shape says so: no key claiming a correction, hence no phantom
+        # dirty state.
+        assert _said(notices, "cell.atoms_outside"), _wheres(notices)
+        assert all(set(n) == {"severity", "message", "where", "about"}
+                   for n in notices), notices
+        # ...and `about` is the SUBJECT, which is what puts the sentence on
+        # the Cell page rather than above the atom list (molview.md § 6.8).
+        assert all(n["about"] == "cell" for n in notices), notices
+        # The served model: the origin as stored through the v10 pair,
+        # nothing corrected.
+        per = j["periodicity"]
+        assert per["engine_offset"] == [-50.0] * 3, per["engine_offset"]
+        assert per["box_corner"] == [50.0] * 3, per["box_corner"]
 
 
 class TestDoorHygieneAndRemainingOps:
@@ -1652,20 +1631,6 @@ class TestARefusedCellIsA400:
         pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
-
-    @pytest.fixture
-    def client_with_root(self, monkeypatch, tmp_path):
-        """A client whose picker allowlist contains ``tmp_path`` -- the transport
-        door takes a PATH, not an envelope, so it needs a file it may read."""
-        pytest.importorskip("flask")
-        from molbuilder.web.app import create_app
-        from molbuilder import diagnostics
-        caps = diagnostics.Capabilities(
-            runtime_config={}, conda_binary=None, conda_envs=frozenset())
-        monkeypatch.setattr(type(caps), "file_picker_roots",
-                            lambda self: ((tmp_path.resolve(), "projects"),))
-        diagnostics.set_capabilities(caps)
-        return create_app(config={}).test_client(), tmp_path
 
     def _assert_refused(self, response, door):
         assert response.status_code == 400, (

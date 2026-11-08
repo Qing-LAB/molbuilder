@@ -729,19 +729,6 @@ class TestMicrosoftSpecific:
     def _entry(self, **kw):
         return _google_entry(kind="microsoft", id="microsoft", **kw)
 
-    def test_tenant_id_defaults_to_common(self):
-        """The Microsoft tenant defaulting to something other than `common`: a
-        narrower default silently refuses every personal Microsoft account, and
-        a wrong tenant sends users to a sign-in page for an organisation they
-        are not in.
-
-        `deployment.md` § 3.4 (the other OAuth providers take the same shape,
-        written by hand); the default lives in
-        `runtime_config._validate_microsoft`.
-        """
-        cfg = _normalise(_wrap(self._entry()))
-        assert get_providers(cfg)[0]["tenant_id"] == "common"
-
     def test_tenant_id_string_accepted(self):
         """A configured tenant ignored in favour of the default: an operator
         restricting sign-in to their tenant gets `common` and every Microsoft

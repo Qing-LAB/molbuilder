@@ -479,9 +479,9 @@ def test_a_relative_lib_resolves_through_the_calculations_own_tree(
     # Outside any projects tree there is no tree to walk up to, so the
     # server's own declared root answers -- NOT the working directory, and
     # not the lone folder: in-folder pseudos are used without the field.
-    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from conftest import point_the_one_door_at
     lone = tmp_path / "lone-calc"
     lone.mkdir()
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "server" / "projects"))
+    server = point_the_one_door_at(tmp_path / "server", monkeypatch.setenv)
     assert resolve_psml_lib("pseudopotential", dest_dir=lone) == \
-        tmp_path / "server" / "projects" / "pseudopotential"
+        server / "pseudopotential"
