@@ -37,6 +37,17 @@ stage = "device"
 before = [["prep", "task", "--group", "1"]]
 deck_says = { SystemLabel = "H2", SolutionMethod = "transiesta", "TS.SolutionMethod" = "BTD" }
 
+# THE DEVICE'S CHARGE CORRECTION is TranSIESTA's `TS.dQ`, written as chosen:
+# `none`, TranSIESTA's own default, where nobody chose (`engines/transport.md`
+# § 2a.12, § 2a.13).  A value the person chose reaching the device deck is the
+# generated row of `test_every_value_a_rungs_tab_offers_reaches_its_deck`.
+[[case]]
+name = "the device deck states its charge correction -- TranSIESTA's own none where nobody chose one"
+calculation = "transport"
+stage = "device"
+before = [["prep", "task", "--group", "1"]]
+deck_says = { "TS.dQ" = "none" }
+
 # THE BIAS WINDOW'S FLOOR is ours -- TranSIESTA stops at none (`engines/
 # transport.md` § 2a.11, *The levers*).  0.001 V at 10 K is a 0.0096 eV
 # window: a spacing of 0.1 eV leaves it no point.

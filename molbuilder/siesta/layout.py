@@ -214,7 +214,7 @@ _PAD = {
     "tbt_t_all": 23, "tbt_verbosity": 23, "tbt_progress": 23,
     "negf_neq_fermi_cutoff_kt": 30,
     "ts_solution_method": 23, "ts_hartree_fix": 23, "tbt_solution_method": 23,
-    "ts_scf_dq_converge": 23, "ts_scf_dq_tolerance": 23,
+    "ts_scf_dq_converge": 23, "ts_scf_dq_tolerance": 23, "ts_dq": 23,
 }
 
 #: Items SIESTA wants in scientific notation.  Formatting is spelling, so it

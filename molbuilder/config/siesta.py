@@ -482,6 +482,10 @@ class SiestaConfig:
     # electrons on the atoms that are not buffer atoms (the catalogue's help).
     ts_scf_dq_tolerance: Optional[float] = None
 
+    # WHAT CORRECTS THE DEVICE'S CHARGE -- TranSIESTA's own `none` by
+    # default (the catalogue's help).
+    ts_dq: str = "none"
+
     # BLANK IS NOT 0 (2.1.0): unset leaves TranSIESTA's own rule, a tenth of
     # the leads' broadening; 0 is no device broadening (the catalogue's help).
     negf_neq_eta_ev: Optional[float] = None

@@ -114,7 +114,7 @@ TS_DEVICE_SECTION = _sc.Section(
     "TranSIESTA -- how the device's open-boundary run is solved",
     ("bias_voltage_v", "electrodes_bulk", "ts_elecs_eta_ev",
      "negf_eq_pole_ev", "negf_neq_eta_ev", "negf_neq_fermi_cutoff_kt",
-     "ts_scf_dq_converge", "ts_scf_dq_tolerance",
+     "ts_scf_dq_converge", "ts_scf_dq_tolerance", "ts_dq",
      "ts_solution_method", "ts_hartree_fix", "ts_elecs_out_of_core"),
     note=(
         "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",

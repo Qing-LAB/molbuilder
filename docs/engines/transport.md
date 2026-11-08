@@ -3404,6 +3404,89 @@ neutral count ($150 \times 19 + 40$).
   why every voltage is measured against the frame's 0 V point, never its own
   start.
 
+**The device's charge, its reference energy, and `TS.dQ`** *(the user,
+2026-11-08: "expose the option … because it is a valid parameter that the
+user should be able to setup")*. What TranSIESTA does, and what was measured:
+
+- **A charge excess, in the manual's words**: the non-neutral charge in
+  TranSIESTA cycles is *"an incorrect screening towards the electrodes"*,
+  *"an incorrect reference energy level"*, or *"a combination of the above,
+  this is the typical case"* (`TS.dQ`, [`SiestaManual542`]). The charge check
+  (`ts_scf_dq_converge`, § 2a.13) counts the device converged only when its
+  `dQ` is within the tolerance; one that never is runs to its cycle cap
+  (`MaxSCFIterations`) and ends `SCF_NOT_CONV`.
+- **Where the device's reference energy comes from.** The device's run begins
+  with an ordinary periodic SIESTA SCF of its own cell — `TS.SCF.Initialize`
+  `diagon`, TranSIESTA's default — and *"in TranSIESTA the Fermi level is
+  calculated from the SIESTA SCF"*, which *"corresponds to a periodic
+  calculation and not an open system calculation such as NEGF"* (manual,
+  `TS.dQ`). That start samples one k-point along z (§ 0.2), whatever density
+  it begins from: a seed sampled with 40 k-points along z gave the device the
+  same E_F and the same `dQ` (scratch runs, 2026-11-08). Each lead sits at its
+  own chemical shift from this reference (0 at 0 V, ±V/2 under bias), its own
+  E_F read from its `.TSHS`. With `TS.SCF.Initialize transiesta` the device
+  starts without the periodic SCF, its reference the leads' average
+  (`TS.Fermi.Initial`) — in the manual's words, *"highly experimental"*.
+- **Measured at 0 V**, beside the manual's *"typically less than 0.1 %"*:
+
+  | junction | `dQ` | of its electrons |
+  |---|---|---|
+  | Au–BDT–Au (above) | −0.031 of 5740 | 0.0005 % |
+  | the 22-atom hydrogen chain, single-ζ | −0.013 of 22 | 0.06 % |
+  | the same chain, DZP | +0.040 of 22 | 0.18 % — its periodic start at E_F −3.910 eV, the leads at −4.216 eV (the two frames agree here to 0.6 meV, the start's `ts-Vha`); its density stopped changing, and its 1000 cycles ended `SCF_NOT_CONV`. With the charge check's tolerance raised to 0.05, the same device converged and its transmission read T(E) = 1 across ±2 eV |
+  | the same, `TS.dQ fermi` | +0.0078 of 22 | 0.035 % — E_F moved to −4.158 eV, converged in 150 cycles under the default tolerance |
+
+- **What each `TS.dQ` choice does** (SIESTA 5.4.2 `ts_dq.F90:75–86`):
+  **`none`**, TranSIESTA's default (`TS.ChargeCorrection`, then `TS.dQ`,
+  `'none'` when neither is given, `ts_dq.F90:75–76`), corrects nothing;
+  **`fermi`**, once `dDmax` and `dHmax` are within 50 times their
+  tolerances (`TS.dQ.Fermi.Scale`, `ts_dq.F90:99`;
+  `siesta_forces.F90:432–445`), moves the device's E_F inside each NEGF
+  cycle — a first estimate $\mathrm dE_F = -0.8\,\mathrm dQ / Q|_{E_F}$
+  (`TS.dQ.Factor`, `ts_dq.F90:421`), then a cubic spline through that
+  cycle's trial levels, each a full open-boundary solve, the shift capped
+  at 1.5 eV (`TS.dQ.Fermi.Max`) — until the charge is within 0.01 electrons
+  (`TS.dQ.Fermi.Tolerance`, `ts_dq.F90:30`; `m_transiesta.F90:240–373`),
+  and while it is not, holds the cycle unconverged whatever
+  `TS.SCF.dQ.Converge` and its tolerance say (*"SCF cycle continued due to
+  TranSiesta charge deviation"*, `siesta_forces.F90:446–452`);
+  **`buffer`** places 0.8 of the excess on the buffer atoms after each
+  cycle (`ts_dq.F90:177–182`) — the junction's `buffer` label (§ 4) — and
+  TranSIESTA stops when there are none (*"Charge correction can not happen
+  in buffer as no buffer atoms exist"*, `m_ts_options.F90:1038–1043`).
+- **What the manual says of the correction**: *"recommended to only use
+  charge corrections for 0 V calculations"*; *"the SCF cycle typically gets
+  corrupted resulting in many more SCF cycles"*; of the tolerance, *"a too
+  high tolerance may heavily influence the electrostatics of the
+  simulation"* (`TS.SCF.dQ.Tolerance`); and of the screening cause, more
+  electrode layers, checked by starting the device with `TS.Elecs.DM.Init`
+  `diagon` and with `bulk` and comparing the charges.
+- **A later voltage carries its reference over**: it starts from the closest
+  point's `.TSDE` with no periodic SCF (§ 1.3), and the file carries that
+  run's E_F. Measured: a 0.2 V point started from the `fermi`-corrected 0 V
+  point's `.TSDE`, itself run with `none`, began and ended at E_F
+  −4.1573 eV, `dQ` 0.0078, converged in 10 cycles.
+
+**The setting, `ts_dq` — `TS.dQ`, on the device.** The three choices above,
+`none` by default — TranSIESTA's own — written as chosen at every voltage the
+device runs (§ 2a.13).
+
+**Three settings move an energy, and they answer different questions.** The
+one that could be mistaken for this is the planned correction to a junction's
+levels ([`plans/plan.md`](?doc=plans/plan.md) § 1ag, `TBT.dH`):
+
+| | `TS.dQ fermi` | δH — `TBT.dH` (planned, § 1ag) | `TS.Elec.<>.delta-Ef` (not offered) |
+|---|---|---|---|
+| program, rung | TranSIESTA, the device | TBtrans, the transmission only | TranSIESTA, the device |
+| what it moves | the device's reference energy, E_F | a term added to the converged device Hamiltonian, $\mathbf H \leftarrow \mathbf H + \delta\mathbf H$ (`tbtrans.tex`), e.g. the molecule's levels alone | one lead's E_F, by a stated amount: $\mu' = \mu + \delta E_F$ |
+| self-consistent | yes — inside the NEGF cycle | no — the device is not run again | yes — a lead's chemical potential |
+| where its source places it | the manual (`TS.dQ`): a non-neutral charge from *"an incorrect reference energy level"* | plan § 1ag: semi-local DFT places frontier levels too close to E_F (DFT+Σ, a rigid shift, a gate scan) | the manual: *"only makes sense for semi-conducting electrodes"* |
+
+They meet at one place: T(E)'s energies are measured from the device's E_F,
+which TBtrans subtracts (above, *the Fermi levels*), so a δH's targets are
+taken against the E_F the device converged with — corrected, when `TS.dQ
+fermi` ran.
+
 **The current is the junction's total, and says so** *(user, 2026-10-03, Q5:
 "make sure the result presentation, data record and the summary/comments
 clearly explain what is what")*. TBtrans prints one spin channel's current —
@@ -3503,7 +3586,8 @@ naming one there is refused where it is written (§ 3.8.9).
 | *the equilibrium contour* | `TS.Contours.Eq.Pole`; no `contour.eq` in `%block TS.ChemPot.<name>` | **Stated by its pole energy, never left to the engine**: the device's `TS.ChemPot` blocks write no `contour.eq`, so TranSIESTA takes its continued-fraction branch and counts the poles from `TS.Contours.Eq.Pole`, the row above (§ 6.1c). Unwritten, that energy is TranSIESTA's own $\pi \cdot 60 \cdot kT \cdot 0.7$ — about 42 poles (`m_ts_chem_pot.F90:313–319`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses an energy that gives fewer than 20 poles at the run's temperature (§ 6.1c) | 2 |
 | `ts_elecs_eta_ev` | `TS.Elecs.Eta` | The leads' self-energy broadening in the device's NEGF loop. 1 meV, TranSIESTA's own default, written | 3 |
 | `negf_neq_spacing_ev` | `delta` in `%block TS.Contour.nEq.line` | **The bias window's energy spacing**, 0.01 eV — TranSIESTA's own default, written at every device point with the window the cutoff gives (§ 2a.11, *What a run's points share*: a lever on the leads' files); the block is unread at zero bias | 3 |
-| `ts_scf_dq_converge` · `ts_scf_dq_tolerance` | `TS.SCF.dQ.Converge` · `TS.SCF.dQ.Tolerance` | **The device's charge check.** On (TranSIESTA's default), the NEGF cycle counts as converged only when the device's electrons are off by less than the tolerance — blank is not set, TranSIESTA's thousandth of the electrons on the atoms that are not buffer atoms (`m_ts_options.F90`, `scfconvergence_test.F`). Off lets a run whose density has stopped changing finish with its charge off; SIESTA writes the Hamiltonian the transmission reads only on convergence (`final_H_f_stress.F`) *(2.3.0)* | 3 |
+| `ts_scf_dq_converge` · `ts_scf_dq_tolerance` | `TS.SCF.dQ.Converge` · `TS.SCF.dQ.Tolerance` | **The device's charge check.** On (TranSIESTA's default), the NEGF cycle counts as converged only when the device's electrons are off by less than the tolerance — blank is not set, TranSIESTA's thousandth of the electrons on the atoms that are not buffer atoms (`m_ts_options.F90`, `scfconvergence_test.F`). Off lets a run whose density has stopped changing finish with its charge off; SIESTA writes the Hamiltonian the transmission reads only on convergence (`final_H_f_stress.F`) *(2.3.0)*. With `ts_dq` `fermi`, TranSIESTA holds the cycle unconverged while `dQ` exceeds 0.01 electrons, whatever these say (`siesta_forces.F90:446–452`) | 3 |
+| `ts_dq` | `TS.dQ` | **What corrects the device's charge** — `none` (TranSIESTA's default, `ts_dq.F90:75–76`), `fermi` (the device's E_F moved inside each NEGF cycle until the charge is within 0.01 electrons, the cycle held unconverged until it is) or `buffer` (the excess placed on the `buffer` atoms; TranSIESTA stops without any). Written as chosen at every voltage the device runs. What each does, and what was measured: § 2a.12, *The device's charge, its reference energy, and `TS.dQ`* *(2.68.0)* | 3 |
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening of the device. **Inert at zero bias** — there is no non-equilibrium window to integrate. **Blank is not set** — the line is not written and TranSIESTA takes a tenth of the smallest lead broadening; **0 is written as 0** — no broadening on the device, a value of its own (below) | 3 |
 | `negf_neq_fermi_cutoff_kt` | `TS.Contours.nEq.Fermi.Cutoff` | How far past each lead's Fermi level the bias window reaches, in kT. 5, TranSIESTA's own default, written; **refused below 2.5**, where TranSIESTA stops the run (`at_least`, `m_ts_contour_neq.f90:141-144`) *(2.1.0)* | 3 |
 

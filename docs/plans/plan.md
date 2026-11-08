@@ -42,6 +42,12 @@ the next full pass *(the user, 2026-11-08: "Only the 27 edited files")*; every
 changed test seen red when its guarded line was broken; two discipline rounds
 over every touched file, each finding read again in the code.
 
+**2.68.0** *(2026-11-08, during the UI review)*: TranSIESTA's charge
+correction, `TS.dQ`, a device setting written as chosen (the ledger's *Found
+by 2.68.0*; `engines/transport.md` § 2a.12) — found on the walk's transport
+road. Two of its findings wait on the user: the word *recommended* beside a
+catalogue default on every form, and Task setup's raw choice values.
+
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an
 optimization, a vibration (SIESTA and PySCF) and a transport calculation on
@@ -319,7 +325,13 @@ literature all act on a converged device Hamiltonian, and TBtrans takes any
 of them as a correction to it — `TBT.dH`, a NetCDF file sisl writes
 (`deltancSileTBtrans`, eV in, Ry stored; SIESTA 5.4.2
 `Util/TS/TBtrans/m_tbt_delta.F90`, manual `tbtrans.tex` § δH) — so only the
-transmission re-runs, never the device SCF.
+transmission re-runs, never the device SCF. **It is not `TS.dQ fermi`** *(2026-11-08)*: that moves the
+device's reference energy inside its own SCF — the manual's correction for
+*"an incorrect reference energy level"* — where a δH changes the converged
+Hamiltonian afterwards — the comparison is
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *The device's
+charge, its reference energy, and `TS.dQ`*. A δH's level targets are taken
+against the E_F the device converged with, corrected when `TS.dQ fermi` ran.
 
 **Why a framework, not a parameter.** Several corrections share one road and
 differ in what they move and why:
