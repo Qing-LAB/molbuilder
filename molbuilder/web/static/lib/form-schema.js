@@ -24,10 +24,11 @@
  *     optional third argument names the fields to read, and only those.
  *
  *   * diffFromDefaults(container, schema) -- which fields hold a value
- *     that is not the kind's recommended one, as
- *     ``[{name, label, current, recommended, unit, help}]``.  A blank
- *     field is skipped (the recommendation already applies), and so is a
- *     field with no default; there is nothing to reset either to.
+ *     that is not the kind's default, as
+ *     ``[{name, label, current, recommended, unit, help}]`` (the key
+ *     ``recommended`` holds that default).  A blank field is skipped (the
+ *     default already applies), and so is a field with no default; there
+ *     is nothing to reset either to.
  *
  *   * fetchSchema(engine, {calculation}) -- thin wrapper around
  *     GET /api/build/schema/<engine> that throws on error and
@@ -195,7 +196,9 @@
                 ? show(st.hint, f) + " " + said(ctx, f.source)
             : st.hintKind === "optional" ? (f.null_label || "")
             : st.hintKind === "default" && show(st.hint, f)
-                ? "recommended " + show(st.hint, f)
+                // ...said by where it comes from, the server's words
+                // (`default_words`, `form-schema.md` § 1.1).
+                ? (f.default_words || "default") + ": " + show(st.hint, f)
             : "";
         return [said(ctx, "default"), then].filter(Boolean).join(" \u00b7 ");
     }
@@ -1079,8 +1082,8 @@
 
 
     /* ---- diffFromDefaults(container, schema) ------------------------
-     * Which fields are NOT at the catalogue's recommended value, and
-     * what each would go back to.
+     * Which fields are NOT at the kind's default, and what each would
+     * go back to.
      *
      * This belongs beside collectForm/setValues rather than in a tab,
      * because it is the same pair of facts those two already own: what
@@ -1088,10 +1091,10 @@
      * compared them itself would need its own reader for every kind
      * this module already handles.
      *
-     * A field with no `default` is SKIPPED -- there is nothing to
-     * recommend, so offering to reset it would mean blanking a value
+     * A field with no `default` is SKIPPED -- there is nothing to go
+     * back to, so offering to reset it would mean blanking a value
      * on the user's behalf.  So is a BLANK field: not chosen, so the
-     * recommendation is already what applies (form-schema.md § 1.1).
+     * default is already what applies (form-schema.md § 1.1).
      */
     function diffFromDefaults(container, schema) {
         const current = collectForm(container, schema);

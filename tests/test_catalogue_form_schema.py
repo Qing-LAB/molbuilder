@@ -159,3 +159,37 @@ def test_every_select_has_something_to_select_from(engine):
         for f in s["fields"]:
             if f["kind"] in ("select", "tri-select"):
                 assert f.get("choices"), f"{f['name']}: {f['kind']} with no choices"
+
+
+#: WHERE A BLANK FIELD'S DEFAULT COMES FROM, said in the words its caption
+#: leads it with (`form-schema.md` § 1.1, 2.68.1): a kind's recommendation,
+#: the engine's own value, or molbuilder's plain default -- one row each.
+_DEFAULT_SAID = [
+    ("siesta", "vibration", None, None, "relax_type",
+     "recommended for a vibration"),
+    ("siesta", "transport", "rung", "device", "ts_dq", "SIESTA's own default"),
+    ("siesta", "transport", "rung", "electrode_L", "electrode_kz", "default"),
+    # molbuilder's own choice where the engine records ANOTHER value of its
+    # own: GGA/PBE, where SIESTA's own functional is LDA -- never called
+    # SIESTA's.
+    ("siesta", "optimization", None, None, "xc_functional", "default"),
+]
+
+
+@pytest.mark.parametrize("engine, kind, surface, rung, name, said",
+                         _DEFAULT_SAID,
+                         ids=[r[4] for r in _DEFAULT_SAID])
+def test_a_default_is_said_by_where_it_comes_from(engine, kind, surface, rung,
+                                                  name, said):
+    """A default the engine applies is not molbuilder's advice (the user,
+    2026-11-08): *"not chosen · recommended No correction"* called
+    TranSIESTA's own `none` a recommendation.  The field carries the words,
+    the server's (`default_words`), and the page leads the value with them.
+
+    MUTATION THIS MUST FAIL AGAINST: every default called *recommended*;
+    the engine's own value not told from molbuilder's."""
+    schema = catalogue_to_form_schema(engine, "t", kind, surface=surface,
+                                      rung=rung)
+    field = next(f for s in schema["sections"] for f in s["fields"]
+                 if f["name"] == name)
+    assert field.get("default_words") == said, field

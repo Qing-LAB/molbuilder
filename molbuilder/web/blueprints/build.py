@@ -1743,8 +1743,13 @@ def api_task_setup_sweepable():
             "choices":         (list(_T.offered(it, engine, kind))
                                 if it.choices else None),
             # THE ONE DEFAULT (`template.default_of`): the kind's own, never
-            # the general one -- what the hover calls *Recommended*.
+            # the general one -- led in the hover by where it comes from,
+            # and each value in its words, as on the columns route
+            # (`template.default_words`, `template.value_labels`).
             "default":         _T.default_of(it, kind),
+            "default_words":   _T.default_words(it, engine=engine,
+                                                calculation=kind),
+            "choice_labels":   _T.value_labels(it),
             # The unit rides too: the machine card's default/help text
             # reads m.unit, and max_memory_mb rendered unitless without
             # it (allocation items never pass through the columns door,
@@ -1816,8 +1821,15 @@ def api_task_setup_columns():
             "label":   it.label or it.name,
             "help":    it.help or "",
             "unit":    it.unit or "",
-            # THE KIND'S OWN DEFAULT (`template.recommended_for`).
+            # THE KIND'S OWN DEFAULT (`template.recommended_for`), and where
+            # it comes from in the words every form uses
+            # (`template.default_words`, `form-schema.md` § 1.1).
             "default": _T.default_of(it, _calc_kind),
+            "default_words": _T.default_words(it, engine=engine,
+                                              calculation=_calc_kind),
+            # ...EACH VALUE IN ITS WORDS, as the forms show them
+            # (`template.value_labels`, `task-setup.md` § 5.2).
+            "choice_labels": _T.value_labels(it),
             "group":   it.group or "",
             # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
             # editor renders a dropdown for an enum or a bool, and it can

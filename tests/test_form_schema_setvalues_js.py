@@ -400,9 +400,12 @@ def test_a_field_nobody_chose_is_blank_and_reads_as_not_chosen(
         };
     }""")
     assert got == {"box": True,
-                   "menu": "(not chosen \u00b7 recommended A)",
+                   # ...led by where it comes from: a field whose schema
+                   # names no source reads "default" (form-schema.md § 1.1,
+                   # 2.68.1 -- "recommended" only for a kind's own).
+                   "menu": "(not chosen \u00b7 default: A)",
                    "hints": ["1", "1", "1"]}, got
-    assert _said(page, "f-kgrid") == "not chosen \u00b7 recommended 1, 1, 1"
+    assert _said(page, "f-kgrid") == "not chosen \u00b7 default: 1, 1, 1"
     # The first click answers the box, and its caption follows.
     page.click("#f-flag")
     assert _collect(page)["flag"] is True

@@ -666,7 +666,7 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"
-        field = _item_to_field(it, id_prefix, calculation)
+        field = _item_to_field(it, id_prefix, calculation, engine=engine)
         # WHAT THE CITATION ASKS OF THE PERSON is drawn required, as the
         # kinds that declare an item are: shown and required by one answer
         # (`citation_defaults.asked_of_the_person`; `engines/transport.md`
@@ -781,11 +781,12 @@ def engine_key_for(item) -> str:
     return getattr(item, "anchor", "") or ""
 
 
-def _item_to_field(item, id_prefix: str,
-                   calculation: str) -> Dict[str, Any]:
+def _item_to_field(item, id_prefix: str, calculation: str, *,
+                   engine: Optional[str] = None) -> Dict[str, Any]:
     """One catalogue item as one form field (`form-schema.md` § 1.1), for a
     ``calculation`` of that kind -- which components of a triple the kind
-    fixes is a fact about the kind (`engines/siesta.md` § 6.1)."""
+    fixes is a fact about the kind (`engines/siesta.md` § 6.1); ``engine``
+    the form's, whose own default a default may be (``default_words``)."""
     out: Dict[str, Any] = {
         "name":     item.name,
         "id":       f"{id_prefix}-{item.name.replace('_', '-')}",
@@ -797,6 +798,13 @@ def _item_to_field(item, id_prefix: str,
         "tier":     item.tier or "basic",
         "kind":     _control_for(item),
     }
+    # WHERE THE DEFAULT COMES FROM, in the words a blank field leads it
+    # with -- the kind's recommendation, the engine's own value, or a plain
+    # default (`form-schema.md` § 1.1, `template.default_words`).
+    from molbuilder.template import default_words
+    said = default_words(item, engine=engine, calculation=calculation)
+    if said:
+        out["default_words"] = said
     if item.unit:
         out["unit"] = item.unit
     if item.pattern:

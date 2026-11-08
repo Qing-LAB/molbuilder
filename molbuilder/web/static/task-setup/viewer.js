@@ -219,7 +219,10 @@ function renderStages(task) {
             disabled: kept ? "disabled" : null,
         }, "\u00d7");
         x.addEventListener("click", () => removeColumn(col));
-        const th = el("th", { title: helpText(col) }, col, x);
+        // ...NAMED BY ITS LABEL, as every form names it (`task-setup.md`
+        // § 5); the catalogue's name is in the hover.
+        const th = el("th", { title: helpText(col) },
+                      (_meta[col] && _meta[col].label) || col, x);
         hrow.appendChild(th);
     }
     thead.appendChild(hrow);
@@ -351,8 +354,8 @@ function renderStages(task) {
                 const foreign = el("input", {
                     class: "ts-cell", value: "", disabled: "yes",
                     placeholder: "\u2014",
-                    title: col + " is read by the " + owners.join(" / ")
-                           + " rung \u2014 not this one",
+                    title: labelOf(col) + " is read by the "
+                           + owners.join(" / ") + " rung \u2014 not this one",
                     "aria-label": name + " " + col + " (not this rung's)",
                     "data-foreign": "yes",
                 });
@@ -365,7 +368,7 @@ function renderStages(task) {
                 tr.appendChild(el("td", { "data-template": has ? null : "yes" },
                     el("input", {
                         class: "ts-cell", disabled: "yes",
-                        value: has ? String(ov[col]) : "",
+                        value: has ? valueWords(col, ov[col]) : "",
                         placeholder: defaultText(col) || "template",
                         title: extensionSays(name),
                         "aria-label": name + " " + col + " (fixed)" })));
@@ -395,7 +398,7 @@ function renderStages(task) {
                     "(" + (fallback || "template") + ")"));
                 for (const v of legal) {
                     cell.appendChild(el("option", { value: String(v) },
-                                        String(v)));
+                                        valueWords(col, v)));
                 }
                 // A STORED VALUE THIS KIND DOES NOT OFFER is shown as itself,
                 // marked -- a select with no option for it would show a blank
@@ -1021,7 +1024,9 @@ function runRow(task, name, members, opts) {
         ? "\u2014 " + String(from) + " (every stage)"
         : queued !== undefined
         ? "\u2014 " + String(queued) + " (the queue card)"
-        : (fallback ? "\u2014 " + fallback + " (default)" : "");
+        : (fallback ? "\u2014 " + fallback + " ("
+                      + ((_meta[name] && _meta[name].default_words)
+                         || "default") + ")" : "");
     const legal = legalValues(name);
     let input;
     if (legal) {
@@ -1030,7 +1035,7 @@ function runRow(task, name, members, opts) {
         input.appendChild(el("option", { value: "" },
                              behind || "\u2014 not stated"));
         for (const v of legal) {
-            const opt = el("option", { value: String(v) }, String(v));
+            const opt = el("option", { value: String(v) }, valueWords(name, v));
             if (value !== undefined && String(value) === String(v)) {
                 opt.selected = true;
             }
@@ -2027,7 +2032,7 @@ function addStage() {
 function setCell(i, col, raw) {
     if (!_task || !_task.stages || !_task.stages[i]) return;
     const stage = _task.stages[i];
-    return editTyped("Writing " + col + "\u2026", col, raw, "override",
+    return editTyped("Writing " + labelOf(col) + "\u2026", col, raw, "override",
                      stage.name, (read) => {
         const ov = stage.overrides || (stage.overrides = {});
         // Empty means "this stage uses the template's value" -- a real
@@ -2330,7 +2335,8 @@ function _fillSweepMeta(items) {
             _meta[i.name] = { name: i.name, label: i.label, help: i.help,
                               type: i.type, choices: i.choices,
                               default: i.default, stages: i.stages,
-                              unit: i.unit };
+                              unit: i.unit, default_words: i.default_words,
+                              choice_labels: i.choice_labels };
         }
     }
 }
@@ -2388,9 +2394,8 @@ function fillPicker(sel, items, taken, empty) {
         sel.appendChild(el("option", {
             value: i.name,
             title: helpText(i.name) || i.help || "",
-        }, i.name
-           + (i.label && i.label !== i.name ? "  \u2014  " + i.label : "")
-           + (d ? "  [" + d + "]" : "")
+        }, (i.label || i.name)
+           + (d ? "  \u2014  now: " + d : "")
            + (readers.length ? "  \u00b7 read by " + readers.join(", ") : "")));
     }
 }
@@ -2502,13 +2507,28 @@ function renderValue(v, unit) {
     return t + (unit ? " " + unit : "");
 }
 
+/** A setting as a person reads it -- its label, as every form names it
+ *  (`task-setup.md` § 5); the catalogue's name only where it has none. */
+function labelOf(name) {
+    return (_meta[name] && _meta[name].label) || name;
+}
+
+/** A value of ``name`` in the words a person reads it: a choice's words,
+ *  as every form shows them (the columns payload's ``choice_labels``,
+ *  `task-setup.md` § 5.2), else the value with its unit. */
+function valueWords(name, v) {
+    const m = _meta[name];
+    if (v === undefined || v === null) return "";
+    const words = m && m.choice_labels && m.choice_labels[String(v)];
+    return words !== undefined ? words : renderValue(v, m && m.unit);
+}
+
 /** What a stage that sets nothing will actually use: the template first. */
 function defaultText(name) {
     const m = _meta[name];
-    const unit = m && m.unit;
-    if (name in _tmpl.values) return renderValue(_tmpl.values[name], unit);
+    if (name in _tmpl.values) return valueWords(name, _tmpl.values[name]);
     if (!m) return "";
-    return renderValue(m.default, unit);
+    return valueWords(name, m.default);
 }
 
 /** The parameter's own note, for a hover. */
@@ -2518,18 +2538,24 @@ function helpText(name) {
     const bits = [m.label && m.label !== name ? m.label : "", m.help || ""];
     /* When the template answers, BOTH numbers are worth reading: one is what
      * this job runs -- and whose it is, in the template's own words
-     * (`template.md` § 6.6 obligation 2) -- the other what this KIND
-     * recommends (the routes serve `recommended_for`), and a person checking
+     * (`template.md` § 6.6 obligation 2) -- the other this KIND's default
+     * (the routes serve `default_of`, with `default_words`), and a person checking
      * a description before a week of compute wants to see that they differ. */
     if (name in _tmpl.values) {
         const whose = _tmpl.said[name];
         bits.push("This job (" + (_tmpl.name || "template") + "): "
-                  + renderValue(_tmpl.values[name], m.unit)
+                  + valueWords(name, _tmpl.values[name])
                   + (whose ? " \u2014 " + whose : ""));
     }
-    const d = renderValue(m.default, m.unit);
-    if (d) bits.push("Recommended: " + d);
-    if (m.engine_key) bits.push("Writes: " + m.engine_key);
+    // THIS KIND'S DEFAULT, said by where it comes from -- the server's
+    // words (`default_words`, `form-schema.md` § 1.1).
+    const d = valueWords(name, m.default);
+    const from = m.default_words || "default";
+    if (d) bits.push(from.charAt(0).toUpperCase() + from.slice(1) + ": " + d);
+    // ...and the catalogue's name, here only, beside what it writes: what a
+    // reader of task.json meets (`task-setup.md` § 5).
+    if (m.engine_key) bits.push("Writes: " + m.engine_key
+                                + " \u00b7 in task.json: " + name);
     return bits.filter(Boolean).join("\n\n");
 }
 
@@ -2600,7 +2626,7 @@ function setRowValues(i, values, what) {
     if (added.length) {
         setState(_mode === "handover" ? "handover" : "loaded",
                  "Applied " + what,
-                 "Added " + added.join(", ") + " as column"
+                 "Added " + added.map(labelOf).join(", ") + " as column"
                  + (added.length === 1 ? "" : "s") + ", because " + what
                  + " sets them.");
     }
@@ -2630,7 +2656,7 @@ function addColumn(name) {
     const v = variesOf(); if (!v) return;
     if (v.indexOf(name) !== -1) return;
     v.push(name);
-    return commitEdit("Adding the column " + name + "\u2026");
+    return commitEdit("Adding the column " + labelOf(name) + "\u2026");
 }
 
 /* Removing a column destroys values, so it is a TWO-CLICK act: the first says
@@ -2645,14 +2671,14 @@ function removeColumn(name) {
     // click drops.
     const held = stages.filter((st) => st && st.overrides
                                        && name in st.overrides)
-        .map((st) => st.name + " " + JSON.stringify(st.overrides[name]));
+        .map((st) => st.name + " " + valueWords(name, st.overrides[name]));
 
     if (_fs.pendingDrop !== name) {
         _fs.pendingDrop = name;
         // EVERY STAGE'S VALUE GOES: this page edits task.json, not the
         // template, so it names each value for the person to set there, and
         // says so before the click rather than implying one survives.
-        setState("refuse", "Remove the column " + name + "?",
+        setState("refuse", "Remove the column " + labelOf(name) + "?",
                  (!held.length
                     ? "No stage overrides it, so nothing is lost. "
                     : "Every stage's value for it is dropped (" + held.join(", ")
@@ -2669,7 +2695,7 @@ function removeColumn(name) {
         if (st && st.overrides) delete st.overrides[name];
     }
     sayLoaded(_task);           // the question is answered
-    return commitEdit("Removing the column " + name + "\u2026");
+    return commitEdit("Removing the column " + labelOf(name) + "\u2026");
 }
 
 /* ---------- what a prep will write, per stage (§ 7.1) ---------- */

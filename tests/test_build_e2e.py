@@ -916,7 +916,9 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
         f"or names extras nobody touched -- sends the reset to the wrong box")
 
     count = page.locator(f"#{engine}-recommend .rec-diff-count").inner_text()
-    assert "recommended value" in count, count
+    # ...in the word every caption uses for it (`form-schema.md` § 3.1,
+    # 2.68.1): a default, not molbuilder's recommendation.
+    assert count == "1 setting is not at its default", count
 
     # And its Reset puts the field back to BLANK -- not chosen, the
     # recommendation what applies, never the recommended number typed in,
@@ -964,8 +966,10 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
     recommended = f"{mesh['default']:g}"
     assert state() == {
         "mesh": "", "hint": recommended, "box": True,
-        "said": f"{words['default']} \u00b7 recommended {recommended} "
-                f"{mesh['unit']}"}, (state(), mesh)
+        # ...led by where the default comes from, the served words
+        # (`form-schema.md` § 1.1, 2.68.1).
+        "said": f"{words['default']} \u00b7 {mesh['default_words']}: "
+                f"{recommended} {mesh['unit']}"}, (state(), mesh)
     page.fill("#p-mesh-cutoff", "450")
     assert state()["said"] == words["person"]
     # A half-typed mesh beside it does not cost the form its save: the field

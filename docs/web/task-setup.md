@@ -311,7 +311,11 @@ thirteen shared values, `mesh_cutoff` and `basis_size` among them.)* **A column
 a rung does not read (`stages`, by the rung's ROLE) shows on that rung's row as
 a disabled cell naming the rungs that read it**, never as an editor — a
 transmission window on the seed's row — and the picker names those rungs beside the item (*read by
-transmission*, 2026-10-11). The payload carries each item's roles and, beside the columns, how the
+transmission*, 2026-10-11). **Each item is named by its label, as every form names it** —
+the picker's entry *Correct the device's charge — now: No correction · read by
+device*, the value now in force in the words its cells use, and the column's
+header *Correct the device's charge* — its catalogue name only in the hover,
+beside the keyword it writes, for a reader of `task.json` *(2.68.1)*. The payload carries each item's roles and, beside the columns, how the
 kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
 maps each row to its role — the name matched in any case, as `stage_role`
 matches it (`stages.md` § 2) — and keeps no rule of its own; the description's own
@@ -358,7 +362,7 @@ cell shows the number it was already at.
 **The value is read from `<label>.template.toml`, not from the catalogue.** The
 distinction is the whole point of the hand-over: a person who chose a 4×4×1
 k-grid in the parameter tab has that grid in the template, and a cell naming the
-catalogue's recommendation would be naming a number the job will not run. Order,
+catalogue's default would be naming a number the job will not run. Order,
 and it is one way round:
 
 | | shown when |
@@ -372,10 +376,13 @@ server. It parses with `read_template` — the same reader `prep` opens the file
 with — so the browser cannot become a second reader that disagrees.
 
 **A hover shows both numbers when they differ**: *"This job (probe.template.toml):
-450.0 Ry — you set this"* above *"Recommended: 300.0 Ry"* — the value's source
-from the template (`template.md` § 6.6 obligation 2), and the default **this
-kind** recommends (`template.recommended_for`; a vibration's relaxation is
-held tighter than an optimization's), never the general one. Somebody checking a description
+450.0 Ry — you set this"* above *"SIESTA's own default: 300.0 Ry"* — the value's source
+from the template (`template.md` § 6.6 obligation 2), and **this kind's**
+default (`template.default_of`; a vibration's relaxation is held tighter than
+an optimization's), never the general one, said by where it comes from as
+every form says it (`default_words`, [`form-schema.md`](?doc=web/form-schema.md)
+§ 1.1): *Recommended for a vibration*, *SIESTA's own default*, *Default*
+*(2.68.1)*. Somebody checking a description
 before a week of compute should be able to see that the two are not the same.
 
 ### 5.2 The declared type decides the cell — both the widget and the value
@@ -385,7 +392,7 @@ neither may be answered by looking at the value instead:
 
 | | asked by | answered by |
 |---|---|---|
-| which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers); everything else a text box |
+| which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers), each **in the words every form uses** — the columns payload's `choice_labels`, the catalogue's own (*No correction*, *Correct the Fermi level*), a switch *on* or *off* — the value written the choice itself *(2.68.1)*; everything else a text box |
 | what the typed text **means** | the setting door, on the server — `POST /api/task-setup/value` (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) | one reader per member of `template.TYPES`, the one every home reads with; the page keeps none *(2.28.0, plan § 1w: the page's own readers took `"0x10"` for a number and any text but `"true"` for `false`)* |
 
 **A stored value this kind does not offer is shown as itself, marked** —

@@ -45,8 +45,9 @@ over every touched file, each finding read again in the code.
 **2.68.0** *(2026-11-08, during the UI review)*: TranSIESTA's charge
 correction, `TS.dQ`, a device setting written as chosen (the ledger's *Found
 by 2.68.0*; `engines/transport.md` § 2a.12) — found on the walk's transport
-road. Two of its findings wait on the user: the word *recommended* beside a
-catalogue default on every form, and Task setup's raw choice values.
+road. **2.68.1**: a blank setting's default said by where it comes from —
+*recommended for a vibration*, *SIESTA's own default*, *default* — and Task
+setup in the forms' words (the ledger's *Found by 2.68.1*).
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

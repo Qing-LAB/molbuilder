@@ -66,6 +66,7 @@ is where the *data* comes from.
 | `name` | the item's own name |
 | `label` · `help` · `unit` | the keys of the same name |
 | `default` | the item's default **for this kind** (`template.recommended_for`) — or, on a surface drawn from a calculation's template, the value it holds for an item nobody chose (the row below) — a HINT beside a field with no value, never a value |
+| `default_words` | where that default comes from, in the words a blank field's caption leads it with — *recommended for a vibration*, *SIESTA's own default*, *default* (`template.default_words`, *(2.68.1)*); absent where the item has no default |
 | `value` · `source` | **the calculation's template**, when the surface is drawn from one (`catalogue_to_form_schema(template=)`): the item's value and where it came from (`engines/template.md` § 6.6 obligation 2). A value nobody chose (`default`) is not carried — that field is blank, its `default` the value the template holds, which is what runs. With no template, no field has a value. The words a source is said in ride once, as the schema's `source_words` (`template.SOURCE_WORDS`: *from the junction you cited* · *you set this* · *not chosen* · *not recorded*), and every surface says them from there |
 | `locked` | derived from the kind: an item the RUNG fixes (`role`, `engines/template.md` § 6.4), echoed read-only — `{value, why}`, the rung's answer (`template.role_answers`; on a form for the whole calculation, the answers every rung gives alike, `fixed_on_every_rung`) and the reason (`why_role`). Drawn disabled at its value with the reason beside it, never collected (§ 6.6 obligation 3: shown, never a control). The bias carries no value — each point of the description's list is its own (the item's `per_point_from`, `template.per_point_items`) *(2026-09-30, K7)* — and says so: `{value: null, why, per_point: true}`, and the page that holds the points shows them in the locked box (`showPoints`; the Transport tab's bias list, *0, 0.1, 0.2 V — one run per point*, kept current with it) *(2026-10-13)* |
 | `scope` | on the shared panel only, an item that is `shared` **and** names `stages`: which rungs its one value is for, in the template's words (`template.shared_scope_words` — *read by the device and transmission rungs only*; [`engines/template.md`](?doc=engines/template.md) § 5, TD11). Drawn as a hint line beside the field. An item every rung reads carries none — the panel's heading says it *(2026-10-11)* |
@@ -97,7 +98,14 @@ value is, and follows each edit: the source, *you set this*, or —
 * **blank is not chosen**, for every field, and the caption and the box's own
   hint say what then applies: on a surface of overrides the template's value
   and whose it is; an optional item's own blank (its `null_label`); else the
-  kind's `default`, *recommended*. Never the first choice of a list, never a
+  kind's `default`, **said by where it comes from** *(2.68.1; the user,
+  2026-11-08: a default the engine applies is not molbuilder's advice)* —
+  *recommended for a vibration* where the catalogue states a recommendation
+  for the kind (`recommended`, [`template.md`](?doc=engines/template.md)
+  § 6.3a); *SIESTA's own default* where it is the engine's own value
+  (`engine_default`, § 5 there); else *default* — the field's `default_words`,
+  one sentence the server composes (`template.default_words`), never typed
+  on a page. Never the first choice of a list, never a
   zero in a triple, never an unticked box — a checkbox nobody answered is
   drawn **indeterminate**, the box's own blank. A value the person did not
   choose is never presented as if they had.
@@ -105,7 +113,7 @@ value is, and follows each edit: the source, *you set this*, or —
 `collectForm` reads what the form holds, **a blank as `null`**, and every
 door that takes a form reads a `null` as not chosen: the template is written
 with what then applies and records it as nobody's choice — the kind's
-recommendation (`_shared.config_from_params`; on a rung's tab, the template's
+default (`_shared.config_from_params`; on a rung's tab, the template's
 own value, since the rung sets nothing), or on transport's shared panel no
 value at all for a cited row the person emptied, which `prep` fills with the
 documented default ([`engines/transport.md`](?doc=engines/transport.md)
@@ -436,7 +444,7 @@ register with the runtime):
 | `collectForm(host, schema, names?)` | Read what the form holds back into a plain values object (the schema tells it how to read each kind): **every field, a blank as `null`** — not chosen — each value read as its type. A value that will not read is refused: it throws an `Error` naming the field (`err.field`) (§ 1.1). A `locked` field is never read. `names` reads those fields alone. |
 | `heldValues(host, schema, kept)` | What the form holds, **for saving**: `collectForm` field by field, a field that will not read keeping its value in `kept` (the previous save) — one half-typed field never costs the rest of the form its save. The Send reads through `collectForm`, which refuses. |
 | `setValues(host, schema, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
-| `diffFromDefaults(host, schema)` | Which fields hold a value that is **not** the kind's recommended one, as `[{name, label, current, recommended, unit, help}]`. A blank field is not listed: the recommendation already applies, and resetting a listed one blanks it (§ 1.1). |
+| `diffFromDefaults(host, schema)` | Which fields hold a value that is **not** the kind's default (its `default`, § 1.1), as `[{name, label, current, recommended, unit, help}]`. A blank field is not listed: the default already applies, and resetting a listed one blanks it (§ 1.1). |
 
 ### 3.0a What `setValues` guarantees, and the two ways it can fail quietly
 
@@ -467,11 +475,11 @@ is *push these*, not *reset to these*. A `locked` field is never written.
 `diffFromDefaults` needs both halves this module already owns — what the DOM
 holds and what the schema says — so a page that compared them itself would need
 its own reader for every kind in § 4. It skips a field with **no `default`**:
-there is nothing to recommend, so offering to reset it would mean blanking a
+there is nothing to go back to, so offering to reset it would mean blanking a
 value on the user's behalf. It skips a **blank** field too: not chosen, so the
-recommendation is already what applies — and resetting a listed field blanks
-it, back to not chosen, rather than typing the recommended value in, which the
-template would record as the person's (§ 1.1).
+default is already what applies — and resetting a listed field blanks it,
+back to not chosen, rather than typing the default in, which the template
+would record as the person's (§ 1.1).
 
 Two comparison rules, each earned by a way the naive version misleads:
 
@@ -481,8 +489,9 @@ Two comparison rules, each earned by a way the naive version misleads:
 * **Composite kinds compare whole.** A k-grid is one decision, not three —
   element-wise it would be reported three times and reset a third at a time.
 
-**The consumer is the recommended-value panel** on the structure-optimization
-forms: it lists what differs and resets only what is ticked. One "reset
+**The consumer is the defaults panel** on the structure-optimization
+forms — *"2 settings are not at their defaults"*: it lists
+what differs and resets only what is ticked. One "reset
 everything" button cannot tell a deliberate 4×4×1 k-grid from a value that
 arrived with an older session, and both live in the same form.
 

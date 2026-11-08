@@ -2480,6 +2480,19 @@ def choice_words(item: "Item", value: Any) -> str:
     return f'"{words}"' if words else shown(value)
 
 
+def value_labels(item: "Item") -> Dict[str, str]:
+    """Each value of a choice setting in the words a person reads it
+    (§ 5, ``choice_labels``) -- a switch *on* / *off* -- keyed as a page
+    spells the value (``true`` / ``false``, a choice as written): what a
+    surface that lists the values shows instead of the raw ones (Task
+    setup's stage table, `web/task-setup.md` § 5.2).  Empty for a setting
+    whose values have no words of their own."""
+    if item.type == "bool":
+        return {"true": choice_words(item, True),
+                "false": choice_words(item, False)}
+    return {str(c): w for c, w in item.choice_labels}
+
+
 def active_words(item: "Item", *, names: bool = False) -> Optional[str]:
     """What ``item`` waits on (§ 5, ``active_when``), as a person reads it
     -- *"it takes effect only while Compute Raman intensities is on"* --
@@ -2852,6 +2865,29 @@ def _read_typed(item: "Item", text: str) -> Tuple[Any, Optional[str]]:
             or (kind in ("int3", "float3") and len(numbers) != 3)):
         return t, f", which is not {_TYPE_WORDS[kind]}"
     return spell(item, numbers if kind == "intlist" else tuple(numbers)), None
+
+
+def default_words(item: "Item", *, engine: Optional[str],
+                  calculation: str) -> Optional[str]:
+    """Where ``item``'s default for ``calculation`` comes from, in the words
+    a blank field leads it with (`web/form-schema.md` § 1.1, 2.68.1): the
+    catalogue's recommendation for the kind (``recommended``, § 6.3a) --
+    *recommended for a vibration*; the engine's own value, where the
+    default is it (``engine_default``, § 5, stated for an engine that reads
+    its deck as keywords) -- *SIESTA's own default*; else *default*.
+    ``None`` for an item with no default.  A default the engine applies is
+    never called molbuilder's advice (the user, 2026-11-08)."""
+    if recommended_for(item, calculation) is not None:
+        return f"recommended for {_kinds.kind(calculation).with_article}"
+    if item.default is None:
+        return None
+    if engine and item.engine_default and \
+            item.engine_default[0] == item.default:
+        from .engine_table import engine as _engine
+        record = _engine(engine)
+        if record.keyword_reader:
+            return f"{record.words}'s own default"
+    return "default"
 
 
 def default_of(item: "Item", kind: str) -> Any:

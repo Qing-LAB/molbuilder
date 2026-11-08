@@ -349,7 +349,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     });
 
 
-    /* ---------- what is not at the recommended value ----------------
+    /* ---------- what is not at its default ---------------------------
      *
      * A single "reset everything" button cannot tell a deliberate 4x4x1
      * k-grid from a value that arrived with an older session, and both
@@ -395,8 +395,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             }
             panel.hidden = false;
             countEl.textContent = diffs.length === 1
-                ? "1 parameter is not at its recommended value"
-                : diffs.length + " parameters are not at their recommended values";
+                ? "1 setting is not at its default"
+                : diffs.length + " settings are not at their defaults";
             listEl.textContent = "";
             for (const d of diffs) {
                 const li = document.createElement("li");
@@ -437,8 +437,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             let diffs = [];
             try { diffs = fs.diffFromDefaults(container, schema); }
             catch (_) { return; }
-            // BACK TO NOT CHOSEN, not to a copy of the recommendation: a
-            // blank field runs the kind's recommended value and the
+            // BACK TO NOT CHOSEN, not to a copy of the default: a
+            // blank field runs the kind's default and the
             // template records it as nobody's choice (form-schema.md § 1.1);
             // typing the recommended value in would record it as yours.
             const values = {};

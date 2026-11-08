@@ -1029,8 +1029,8 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     assert citems["relax_type"]["choices"] == list(
         one(catalogue(), "relax_type", engine="siesta").choices)
 
-    # THE KIND'S OWN DEFAULT, never the general one -- what the hover calls
-    # *Recommended* (the M11 review's PS-C12: a vibration folder was told
+    # THE KIND'S OWN DEFAULT, never the general one -- what the hover leads
+    # with its words (the M11 review's PS-C12: a vibration folder was told
     # an optimization's 0.02).
     vib = web_client.get("/api/task-setup/columns?engine=siesta"
                          "&calculation=vibration").get_json()
@@ -1352,3 +1352,34 @@ def test_the_folder_answer_states_its_kind_s_entry(tmp_path, monkeypatch,
                        calculation=calculation)
     client = create_app(config={}).test_client()
     assert _folder(client, bundle)["kind"] == entry
+
+
+def test_the_stage_table_speaks_the_forms_words(web_client):
+    """Task setup's stage table names a setting and its values as every form
+    does (`task-setup.md` § 5, § 5.2; 2.68.1): the columns payload carries
+    the catalogue's words for each value -- a switch *on* / *off* -- and
+    where the default comes from, so the table types none of its own.
+    Measured before: the picker read *"ts_dq -- Correct the device's charge
+    [none]"* and the cells *none / fermi / buffer*, where the device tab
+    reads *No correction / Correct the Fermi level*.
+
+    MUTATION THIS MUST FAIL AGAINST: the payload without the words, which
+    leaves the table only the raw values."""
+    t = web_client.get("/api/task-setup/columns?engine=siesta"
+                       "&calculation=transport").get_json()
+    by = {i["name"]: i for i in t["items"]}
+    dq = by["ts_dq"]
+    assert dq["label"] == "Correct the device's charge", dq
+    assert dq["choice_labels"] == {
+        "none": "No correction", "fermi": "Correct the Fermi level",
+        "buffer": "Put the excess on the buffer atoms"}, dq
+    assert dq["default_words"] == "SIESTA's own default", dq
+    assert by["ts_scf_dq_converge"]["choice_labels"] == {
+        "true": "on", "false": "off"}, by["ts_scf_dq_converge"]
+    # ...and a kind's own recommendation is said as one, before any engine
+    # value it may also equal: a vibration's relaxer.
+    vib = {i["name"]: i for i in web_client.get(
+        "/api/task-setup/columns?engine=siesta&calculation=vibration"
+    ).get_json()["items"]}
+    assert vib["relax_type"]["default_words"] == \
+        "recommended for a vibration", vib["relax_type"]
