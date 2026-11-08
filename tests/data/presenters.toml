@@ -61,14 +61,36 @@ name = "a plain .xyz opens as a structure"
 file = "/tmp/water_demo/water.xyz"
 opens = "structure"
 
-# ...with the directory's answer too: the trajectory parser reads any .xyz,
-# and no catalogue row names this one (2.16.3 opened it as a trajectory) --
-# the structure a calculation was described from, in a folder no
-# calculation claims, its engine `unknown`.
+# ...with the directory's answer too: a saved structure is read by `xyz`,
+# the reader of any XYZ no other reader is for (`model/parse.md` § 4) -- the
+# structure a calculation was described from, in a folder no calculation
+# claims, its engine `unknown` (2.16.3 opened it as a trajectory).
 [[pick]]
 name = "...and with the answer the directory gives it, no role, still"
-answer = { run = "pyscf", folder = "P/structure", parser = "pyscf" }
+answer = { run = "pyscf", folder = "P/structure", parser = "xyz" }
 opens = "structure"
+
+# A run's own XYZ files that hold no run's steps: SIESTA's geometry file and
+# the calculation's structure, each read by `xyz` (`presenters.md` § 2).
+# THE SILENT FAILURE: both read by geomeTRIC's reader, so the trajectory
+# viewer claimed them -- SIESTA's folded into its run's progress log and
+# never listed, and its box never saved from the structure preview.
+[[pick]]
+name = "SIESTA's own <label>.xyz opens as a structure"
+answer = { run = "siesta", role = ".xyz" }
+opens = "structure"
+
+[[pick]]
+name = "...and so does a calculation's <label>.source.xyz"
+answer = { run = "siesta", role = ".source.xyz" }
+opens = "structure"
+
+# SIESTA's own trajectory, `.ANI`, is read by `xyz` too, and no viewer takes
+# it: its steps are the run's, which the trajectory viewer shows from the
+# run's log (`presenters.md` § 1).
+[[pick]]
+name = "SIESTA's .ANI opens in no viewer"
+answer = { run = "siesta", role = ".ANI" }
 
 [[pick]]
 name = "a .molwatch.log opens as a trajectory"

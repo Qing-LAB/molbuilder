@@ -4710,7 +4710,9 @@ def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
         reused):
     """`engines/transport.md` § 2a.16, *Describing it*: refused before
     anything is written -- a folder that is not a transport calculation's, a
-    new folder inside the finished calculation, named by its address from
+    new folder inside the finished calculation, as a folder inside any
+    calculation's is (`execution/project-layout.md` § 7, invariant 2a),
+    each named by its address from
     the projects root (`execution/job-system.md` § 5.1: *"Every path is an
     address from the projects root"*; 2.65.3) -- a flag naming what the
     finished calculation fixes, its label -- another engine than the one it
@@ -4723,7 +4725,7 @@ def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
     finished calculation, which every later prep then writes into."""
     for step, words in (("not transport", "is not a transport calculation"),
                         ("inside", "P/transport/T/inner is inside the "
-                                   "finished calculation T"),
+                                   "calculation P/transport/T"),
                         ("its label", "the label is the finished "
                                       "calculation's"),
                         ("another junction", "P/structure/moved.xyz: its "

@@ -702,7 +702,7 @@ decide.
 | how is it doing — how did it end? | `parse.dirs.job.run_status` | § 4.2 |
 | which engine ran? | for a run of a calculation, its description (the run door, `runs.run_of`); `parse.contract.engine_of` for a folder read on its own | § 4.2, *Which engine ran* |
 | what ran, with what, and how did it go? | the run record, `runs.folder_answer(dir)["record"]` | [`model/parse.md`](?doc=model/parse.md) § 5d |
-| which file should a viewer open? | the run door, `runs.openable` — `parse.dirs.rundir.openable_in` for a folder no calculation claims | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
+| which file should a viewer open? | the run door, `runs.openable` — none in a folder no calculation claims | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
 
 ### 4.1 The run script's own instruments
 

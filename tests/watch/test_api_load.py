@@ -101,15 +101,16 @@ def test_load_by_multipart_unrecognised_format(client):
 
 
 def test_load_directory_empty_returns_chain_error(client, tmp_path):
-    """An empty directory returns a 404 whose error message names the
-    discovery chain so the user can see what was tried."""
+    """A directory no calculation claims returns a 404 whose error message
+    says why nothing opens: it holds no run of ours, so none of its files is
+    opened on its own (`model/parse.md` § 5.0)."""
+    from molbuilder.runs import NOT_MARKED
     r = client.post("/api/watch/load", json={"path": str(tmp_path)})
     body = r.get_json()
     assert r.status_code == 404
     assert body["ok"] is False
-    # The trail says what it found: a folder no calculation claims, holding no
-    # file a run of ours writes.
-    assert "no file here is one a run of ours writes" in body["error"]
+    # The trail says what it found: a folder no calculation claims.
+    assert NOT_MARKED in body["error"]
 
 
 # --------------------------------------------------------------------- #

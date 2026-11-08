@@ -256,7 +256,7 @@ def api_checkpoint_init():
                           calculation=body.get("calculation"))
     # TWO advisories, named by class rather than caught as a group.  These are
     # the only two failures here a person resolves -- the folder holds several
-    # calculations, or the name needs repair.  Git missing from PATH or a
+    # calculations or lies inside one, or the name needs repair.  Git missing from PATH or a
     # corrupt archive is a server fault.
     except NestedRepoRefusedError as exc:
         return _advisory(str(exc), where="path")

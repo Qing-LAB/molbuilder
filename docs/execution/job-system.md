@@ -1320,6 +1320,13 @@ molbuilder describe --structure BDT-Au/structure/bdt.xyz \
   the pseudopotential library too; `describe` takes no positionals.
 - **The engine and the kind are stated, every time** (`--engine`,
   `--calculation`): nothing is guessed from a folder's name.
+- **The folder is a calculation's own**: one that already holds a
+  description, one inside another calculation's folder and one holding a
+  calculation below it are refused before anything is written, naming the
+  other calculation by its address — describe it in a folder of its own
+  beside it; a calculation that builds on another's result cites it
+  ([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a;
+  `describe.refuse_described`, which every door that describes asks).
 - **The description is checked here**: the whole preflight, on the template
   and the job request it writes, refused with the field named before anything
   is written ([`engines/stages.md`](?doc=engines/stages.md) § 6.6).

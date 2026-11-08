@@ -1224,6 +1224,10 @@ def _opens_the_report(place: Place) -> bool:
     return kind(place.task.calculation).opens_report(stage_name(at.stage))
 
 
+#: What a folder no calculation claims is said to be (:func:`openable`).
+NOT_MARKED = ("this folder is not marked as part of a calculation, so only "
+              "what is in it is shown")
+
 #: What a folder stamped a run that lies in no stage's ``run-<n>/`` is
 #: said to be (:func:`openable`).
 NOT_IN_A_RUN = ("this folder says it is a run, but it lies in no run-<n>/ of "
@@ -1254,9 +1258,8 @@ def openable(directory) -> Tuple[Optional[str], List[str]]:
     (:func:`_opens_the_report`, `web/results.md` § 2) -- the calculation's
     product at a container's root, nothing in the engine's scratch, what
     the point it lies in opens for a transmission point's ``shared/``
-    (`model/parse.md` § 5.2: read with the point it lies in), and in a
-    folder no calculation claims the newest file of a role a run writes
-    that a parser claims (`parse.dirs.openable_in`)."""
+    (`model/parse.md` § 5.2: read with the point it lies in), and nothing
+    in a folder no calculation claims (`model/parse.md` § 5.0)."""
     d = Path(directory)
     place = place_of(d)
     if place.ours and place.role == calcdirs.SHARED:
@@ -1269,7 +1272,11 @@ def _opens(d: Path, place: Place) -> Tuple[Optional[str], List[str]]:
     -- the folder answer reads it once."""
     from molbuilder.parse.dirs.rundir import openable_in
     if not place.ours:
-        return openable_in(str(d))
+        # A FOLDER NO CALCULATION CLAIMS holds no run of ours, so nothing
+        # in it is claimed: none of its files is opened for the person, who
+        # picks one (`model/parse.md` § 5.0) -- said in its description's
+        # reader's words where it has one that does not read.
+        return None, [place.problem or NOT_MARKED]
     attempts: List[str] = [f"calculation: {place.task.calculation}"]
     if place.role == calcdirs.SCRATCH:
         attempts.append(SCRATCH_OPENS)
@@ -1378,27 +1385,21 @@ def folder_answer(directory) -> Dict[str, Any]:
     no state and no record, though its calculation's product opens at its
     root.  A folder no calculation claims holds no run of ours: its files
     are listed, the registry says what it can open, and none of them is
-    claimed -- no label read off a deck, no state asked.
+    claimed -- none opened, no label read off a deck, no state asked.
     """
     from molbuilder.parse.contract import engine_of
-    from molbuilder.parse.dirs.rundir import openable_in
 
     d = Path(directory)
     place = place_of(d)
     attempts: List[str] = []
-    if place.problem:
-        attempts.append(place.problem)
     status = record = None
     if not place.ours:
+        # NOTHING CLAIMED, NOTHING OPENED (:func:`openable`) -- a
+        # calculation's folder whose description does not read in its
+        # reader's words, never *not marked*.
         engine = engine_of(str(d))
-        chosen, trail = openable_in(str(d))
+        chosen, trail = _opens(d, place)
         attempts += trail
-        if place.root is None:
-            # A CALCULATION'S FOLDER WHOSE DESCRIPTION DOES NOT READ is read
-            # alone too, its reader's words said above -- never *not marked*.
-            attempts.append(
-                "this folder is not marked as part of a calculation, so only "
-                "what is in it is shown")
     else:
         engine = place.task.engine
         # THE ONE RULE for what a folder opens (:func:`openable`), with the

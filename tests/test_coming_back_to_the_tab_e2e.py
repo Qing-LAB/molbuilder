@@ -1,12 +1,16 @@
 """Coming back to the tab asks once: a page shown again from the browser's
 cache, or a tab made visible again, sends one `GET /api/watch/data` at once,
 live run or not (`web/trajectory.md` § 5, *Coming back to the tab asks
-once*).
+once*), and the Results tab's picker re-reads its folder once
+(`web/results.md` § 2.1, *Come back to the browser tab*) -- coming back being
+the page turning visible, the one event each listens to.
 
-THE SILENT FAILURE (2026-06-02, #192): the trajectory viewer's 15 s poll is a
-timer, and timers are paused while a page sits in the back/forward cache --
-a restored page kept the frames it held when the person left, and a frame
-written while they were away showed only at the next tick.
+THE SILENT FAILURES: the trajectory viewer's 15 s poll is a timer, and timers
+are paused while a page sits in the back/forward cache -- a restored page kept
+the frames it held when the person left, and a frame written while they were
+away showed only at the next tick (2026-06-02, #192); and a restore, which
+fires `visibilitychange` (visible) and then `pageshow` (`persisted`), heard by
+a listener on each, scanned the folder twice, the first scan thrown away.
 
 The run is a real one, made once in this pass on the road
 (`support/real_runs.py`), and the Results tab opened on it as a person opens
@@ -108,7 +112,7 @@ def _open_results_and_select(page, base_url, file_path):
 
 
 # --------------------------------------------------------------------- #
-#  The trajectory viewer: a tab return asks once                        #
+#  Coming back to the tab: one scan, one ask                            #
 # --------------------------------------------------------------------- #
 
 
@@ -142,33 +146,50 @@ def _asks_at_once(page, came_back, how):
             f"within 10 s") from exc
 
 
-def test_a_page_restored_from_the_cache_asks_the_server_at_once(
+def test_a_page_restored_from_the_cache_asks_the_server_once(
         caching_browser, flask_server, project_with_trajectory):
-    """A page shown again from the browser's back/forward cache asks
-    `/api/watch/data` at once, live run or not (`web/trajectory.md` § 5) --
-    this run finished, so no poll is left to ask in its place.  The person
-    leaves for the Molbuilder tab by the tab bar and comes back by Back; the
-    page that comes back is the one left, not a new load -- its navigation
-    is still the first one, not a back/forward load (a new load asks as it
-    opens its file, whatever the listener does).
+    """A page shown again from the browser's back/forward cache makes ONE
+    scan of the bound folder (`/api/results/dir`, `web/results.md` § 2.1-
+    § 2.2) and ONE `/api/watch/data`, at once, live run or not
+    (`web/trajectory.md` § 5) -- this run finished, so no poll is left to ask
+    in its place.  The person leaves for the Molbuilder tab by the tab bar
+    and comes back by Back; the page that comes back is the one left, not a
+    new load -- its navigation is still the first one, not a back/forward
+    load (a new load asks as it opens its file, whatever the listener does).
 
     A RESTORE TURNS THE PAGE VISIBLE BEFORE IT SHOWS IT: the page hears
     `visibilitychange` (visible), then `pageshow` (`persisted`) -- measured
-    2026-11-07, Chromium 153 -- so either of the viewer's two listeners asks.
+    2026-11-07, Chromium 153 -- so the picker, listening to each, scanned the
+    folder twice.  The viewer listened to each too, but its own guard stopped
+    the second ask (a poll already in flight), so its count of one holds
+    either way: what it pins is that the viewer asks at all.  Every request
+    the restore makes is recorded, a scan the page aborted too, and counted
+    once both answers have landed.
 
-    MUTATION THIS MUST FAIL AGAINST: the viewer's `pageshow` and
-    `visibilitychange` listeners both left out, or asking only while the run
-    is live."""
+    MUTATION THIS MUST FAIL AGAINST: the viewer's `visibilitychange`
+    listener left out, or asking only while the run is live; the picker
+    scanning on the restore's `pageshow` as well."""
     page = caching_browser.new_page()
     try:
         _loaded(page, flask_server, project_with_trajectory)
         page.locator('.app-tabs a[href="/molbuilder"]').click()
         page.wait_for_url("**/molbuilder")
-        _asks_at_once(page, lambda: page.go_back(wait_until="commit"),
-                      "back to a page the browser kept")
+        asked = []
+        page.on("request", lambda req: asked.append(req.url))
+        with page.expect_response(
+                lambda res: "/api/results/dir" in res.url, timeout=10_000), \
+             page.expect_response(
+                lambda res: "/api/watch/data" in res.url, timeout=10_000):
+            page.go_back(wait_until="commit")
         assert page.evaluate("() => performance.getEntriesByType("
                              "'navigation')[0].type") == "navigate", (
             "Back loaded the page anew: the browser did not keep it")
+        scans = [u for u in asked if "/api/results/dir" in u]
+        polls = [u for u in asked if "/api/watch/data" in u]
+        assert (len(scans), len(polls)) == (1, 1), (
+            f"coming back by Back made {len(scans)} scan(s) of the folder "
+            f"and {len(polls)} ask(s) of /api/watch/data, not one of each: "
+            f"{scans + polls}")
     finally:
         page.close()
 

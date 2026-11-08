@@ -209,21 +209,36 @@ def _check(desc: Description, *, generators=None) -> List[Any]:
 #  ... -> write                                                         #
 # --------------------------------------------------------------------- #
 
-def refuse_described(dest, *, shown: Optional[str] = None) -> None:
+def refuse_described(dest) -> None:
     """ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse): a folder that
     already holds a description is changed in Task setup or its
-    ``task.json``, never described again.  Asked by every door that
+    ``task.json``, never described again.  NEVER ONE INSIDE ANOTHER (user,
+    2026-11-07: *"calculations can continue from another, not within
+    another"*; `project-layout.md` § 7, invariant 2a): a folder inside a
+    calculation's folder, or one holding a calculation below it, is
+    refused, naming that calculation.  Asked by every door that
     describes -- `molbuilder describe`, the hand-over and a kind's own
     describe (`transport.describe`, `engines/transport.md` § 3.8.2a) --
-    before anything is written.  ``shown`` is the folder as the door's reader names it (the
-    browser's, from the projects root); the path otherwise."""
-    from .calcdirs import described
+    before anything is written.  Each folder is named by its address from
+    the projects root (`projects.address`)."""
+    from .calcdirs import calculation_above, calculation_below, described
+    from .projects import address
     if described(dest):
         raise DescribeError(
-            f"{shown or dest} already holds a calculation ({TASK_FILENAME}) -- one "
+            f"{address(dest)} already holds a calculation ({TASK_FILENAME}) -- one "
             f"calculation per folder.  Change it in Task setup or its "
             f"{TASK_FILENAME}, or describe the new one in a folder of its "
             f"own.")
+    above = calculation_above(dest)
+    other = above or calculation_below(dest)
+    if other is None:
+        return
+    raise DescribeError(
+        f"{address(dest)} {'is inside' if above else 'holds'} the "
+        f"calculation {address(other)} -- a calculation is never inside another "
+        f"calculation's folder.  Describe it in a folder of its own beside "
+        f"{other.name}; a calculation that builds on another's result cites "
+        f"it.")
 
 
 def write_description(desc: Description, dest, *,

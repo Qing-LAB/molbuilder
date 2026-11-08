@@ -86,7 +86,9 @@ make or pick the one you want there first.
 group jobs below that, is yours — nest as many folders as suits the work. The
 projects root, a project, and a bare topic are not destinations
 ([`job-contracts.md § 2.5`](?doc=execution/job-contracts.md) names the
-topics).
+topics), and neither is a folder inside another calculation's, nor one that
+holds a calculation: a calculation that builds on another's result cites it
+([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a).
 
 **Only `task.json` is read to decide what the folder is.** It names the
 calculation and its structure, so nothing else in the folder needs inspecting.

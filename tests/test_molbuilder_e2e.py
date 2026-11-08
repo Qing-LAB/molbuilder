@@ -1361,9 +1361,20 @@ def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
     measured; and a value typed into the box takes the notes away, since
     they describe the file the value came from.
 
+    The picker is asked for while the page does not yet know its projects
+    root: the sidebar's one request for it (`GET /api/files/roots`) is held
+    at the browser until *From a bulk run…* is clicked, then let go, the
+    server's own answer -- and the picker opens once the root lands
+    (`web/projects.md` § 5).
+
     MUTATION THIS MUST FAIL AGAINST: the notes joined into the status line
-    in the worst one's tone (`modify/slab-panel.js` before 2026-09-27).
+    in the worst one's tone (`modify/slab-panel.js` before 2026-09-27); the
+    picker answering null, as a cancel, when it is asked before the root is
+    known (`lib/tree-picker.js`'s `pickPath` returning while
+    `getProjectsRoot()` is empty).
     """
+    held = []
+    page.route("**/api/files/roots", lambda route: held.append(route))
     _open(page, flask_server)
     page.locator("#optab-btn-slab").click()
     page.wait_for_selector("#optab-panel-slab", state="visible",
@@ -1374,6 +1385,14 @@ def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
         timeout=WAIT_MS)
 
     page.locator("#slab-pick-run").click()
+    # THE ORDER IS HELD, not timed: the click loads the picker's module and
+    # then asks it, so the root is let through only once that module has
+    # loaded here too -- by then the click, first to ask for the module, has
+    # asked the picker.
+    page.evaluate("() => import('/static/lib/tree-picker.js')")
+    assert len(held) == 1, f"the sidebar asked for its root {len(held)} times"
+    held.pop().continue_()
+    page.unroute("**/api/files/roots")
     row = page.locator(
         f"dialog li.tp-node[data-path$='/{stretched_gold.name}'] > .tp-row")
     row.wait_for(state="visible", timeout=WAIT_MS)

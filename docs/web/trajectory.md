@@ -268,6 +268,9 @@ live run or not — so a frame written while you were away shows within one
 round trip rather than at the next 15-second tick, and a page restored from
 the cache never keeps the frames it held when you left (2026-06-02, #194). It
 is one ask, not a restart of polling: a run no longer live is still not polled.
+Coming back is the page turning visible, the one event the viewer listens to,
+as the Results tab's picker does ([`results.md`](?doc=web/results.md) § 2.1,
+*Come back to the browser tab*).
 
 **Refresh is a clean reload**, not a nudge: it re-runs the whole load, so the
 movie opens again at its newest frame, as a load opens it, and the camera
@@ -335,9 +338,10 @@ header. The header's source-path line has the username redacted.
   element the viewer draws into, looked up on the panel the server sends,
   answers — one element, at the moment it is asked, as the run opens and as
   § 1's three force controls are used.
-- `test_inspector_pageshow_refresh_e2e.py` — § 5's one ask on a tab return:
-  a page shown again from the cache, and a tab made visible, each send
-  `/api/watch/data` once.
+- `test_coming_back_to_the_tab_e2e.py` — § 5's one ask on coming back: a
+  page restored from the back/forward cache makes one scan and one
+  `/api/watch/data`, and a tab made visible again sends `/api/watch/data`
+  at once.
 - § 4's badge and § 5's follow read the run the server sends:
   `test_the_viewers_follow_a_real_run_e2e.py` (the settle and a quiet poll's answer, on what the server said of
   real runs) —

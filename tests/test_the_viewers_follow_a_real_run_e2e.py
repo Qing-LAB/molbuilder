@@ -1042,6 +1042,31 @@ def _a_pyscf_log_uploaded(shaped, monkeypatch) -> dict:
     return _uploaded(log.name, log.read_bytes())
 
 
+def test_an_uploaded_trajectory_is_read_as_the_file_it_is(stage_shaped,
+                                                          monkeypatch):
+    """An upload is read by the reader that is for it, by its name, as it
+    would be in its run's folder (`model/parse.md` § 4; `web/web-api.md`,
+    `/api/watch/load`): geomeTRIC's `<label>_<stage>_geom_optim.xyz`,
+    uploaded, is read by `pyscf`, every step's energy with it.
+
+    THE SILENT FAILURE: the upload saved under a name that kept only the
+    file's extension, so a reader that tells the file by its name read
+    geomeTRIC's trajectory as a plain geometry, every energy gone and the
+    energy plot empty, with nothing said.
+
+    MUTATION THIS MUST FAIL AGAINST: the saved upload's name keeping only
+    the extension."""
+    from molbuilder.runfiles import ROLE_GEOM_TRAJ
+    listing = _listing(stage_shaped.attempt("coarse"), monkeypatch)
+    traj = Path(next(f["path"] for f in listing["files"]
+                     if f["role"] == ROLE_GEOM_TRAJ))
+    answer = _uploaded(traj.name, traj.read_bytes())
+    energies = answer["data"]["energies"]
+    assert energies and all(isinstance(e, float) for e in energies), (
+        f"{traj.name}, uploaded, was read by {answer['label']!r} with "
+        f"energies {energies}")
+
+
 #: (case, how the answer is found -- of the followed run, the stopped one,
 #: the PySCF run labelled `au_2_bdt`, with the test's monkeypatch -- and what
 #: the case's answer states, so the rule asks something of it: a run that

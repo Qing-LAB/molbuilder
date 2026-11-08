@@ -166,6 +166,39 @@ def described(directory) -> bool:
     return description_path(directory).is_file()
 
 
+def calculation_above(folder) -> Optional[Path]:
+    """THE CALCULATION ``folder`` LIES INSIDE -- the nearest folder above it
+    that is :func:`described` -- or ``None`` (`project-layout.md` § 1.4a,
+    § 7 invariant 2a).  The walk stops at the projects tree's root when
+    ``folder`` is under it, so a stray `task.json` above the tree never
+    counts -- the tree it lives in (`projects.find_projects_root`), wherever
+    it is asked.  It places nothing: asked only by describe and a history's
+    first state, each to refuse -- inside molbuilder, never beside a job."""
+    from .projects import find_projects_root
+    tree = find_projects_root(folder)
+    for up in Path(folder).resolve().parents:
+        if up == tree:
+            return None
+        if described(up):
+            return up
+    return None
+
+
+def calculation_below(folder) -> Optional[Path]:
+    """A CALCULATION ``folder`` HOLDS -- the first folder below it, by name,
+    that is :func:`described` -- or ``None`` (`project-layout.md` § 7
+    invariant 2a).  Asked only by describe, to refuse.  Dot-folders are not
+    walked, as a history's walk skips them (`checkpoint._scan_subtree`): a
+    history, a describe's staging folder, a `.venv/` -- none is a
+    calculation's folder."""
+    top = Path(folder)
+    for here, below, _files in os.walk(top):
+        below[:] = sorted(b for b in below if not b.startswith("."))
+        if Path(here) != top and described(here):
+            return Path(here)
+    return None
+
+
 def plan_path(folder) -> Path:
     """``<folder>/job-set.json`` -- THE ONE PLACE the plan's name, the
     catalogue's (`runfiles.JOBSET_FILE`), is joined to a folder: a

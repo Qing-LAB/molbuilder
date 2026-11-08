@@ -78,8 +78,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
      *   dispose() -- stops the polling timer, cancels any in-flight
      *                HTTP request, disposes the embed handle (which
      *                stops its own animation loop + tears down its
-     *                3Dmol viewer), and removes window-level
-     *                listeners (pageshow).  After dispose()
+     *                3Dmol viewer), and removes the document-level
+     *                listener (visibilitychange).  After dispose()
      *                the rootEl's contents are no longer owned by
      *                the inspector; caller may clear/replace freely.
      *   load(path) -- swap the displayed trajectory to ``path``
@@ -148,7 +148,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // dispose() in one call, then the per-resource teardowns (polling
     // timer, in-flight HTTP request, embed handle).
     //
-    // The window-level listener (``pageshow``) MUST be tracked here -- it survives
+    // The document-level listener (``visibilitychange``) MUST be tracked here -- it survives
     // the host's innerHTML clear, so without explicit removal
     // every /results mount→dispose→mount cycle would accumulate
     // them.  Element listeners on partial-declared ids are GC'd
@@ -2466,34 +2466,25 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // resizes (clamp(360px, 52vh, 500px)).  No window-resize wiring
     // needed here.
 
-    // ---- pageshow / visibilitychange: force-refresh on tab re-entry  //
+    // ---- coming back to the tab: one ask, at once ------------------ //
     //
-    // The inspector polls every POLL_MS (~15 s) for mtime drift, but
-    // setInterval timers are PAUSED while the page sits in the
-    // browser's bfcache (Chromium + Firefox default).  After a back/
-    // forward restore the next interval fires up to POLL_MS LATER --
-    // so a user who generated more frames in another tab can be
-    // staring at the old trajectory for up to 15 s before the poll
-    // catches up.
-    //
-    // Like the file picker: hook pageshow (covers
-    // bfcache restore + initial load) and visibilitychange ->
-    // visible (covers backgrounded-tab re-focus) and call
-    // ``pollOnce()`` immediately so an mtime drift surfaces within
-    // one network round-trip of the user being back on the tab.
-    // ``pollOnce`` is a no-op when no trajectory is loaded
-    // (``state.mtime === null``), so wiring these handlers at mount
-    // time is safe even before opts.file resolves.
-    function _onPageShow(_evt) {
-        if (state.mtime !== null) pollOnce();
-    }
+    // The inspector polls every POLL_MS (~15 s) while the run is live, and
+    // setInterval timers are PAUSED while the page sits in the browser's
+    // back/forward cache: a restored page would show the frames it held
+    // when you left until the next tick, and a finished run has no tick.
+    // So coming back asks once, at once, live run or not (trajectory.md
+    // § 5).  Coming back is the page turning visible, ``visibilitychange``
+    // to ``visible`` -- a tab brought to the front, or a restore, which
+    // turns the page visible just before its ``pageshow`` -- the one event
+    // the file picker listens to too (results.md § 2.1).  Nothing is asked
+    // while no trajectory is loaded (``state.mtime === null``), so wiring
+    // the handler at mount time is safe even before opts.file resolves.
     function _onVisibilityChange(_evt) {
         if (document.visibilityState === "visible"
             && state.mtime !== null) {
             pollOnce();
         }
     }
-    _on(window,   "pageshow",          _onPageShow);
     _on(document, "visibilitychange",  _onVisibilityChange);
 
     // ---- Auto-load + handle assembly --------------------------- //

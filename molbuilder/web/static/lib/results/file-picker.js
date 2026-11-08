@@ -41,9 +41,10 @@
  *   ``mount(root)``    -- one-shot init: attaches the <select>
  *                         handler + Reload-button click handler,
  *                         subscribes to ``molbuilder:inspector:ready``
- *                         + pageshow / visibilitychange (for tab
- *                         re-entry auto-refresh), and triggers the
- *                         first scan.  Returns a disposer that
+ *                         + visibilitychange (coming back to the tab
+ *                         re-reads the bound folder) + pageshow (a
+ *                         fresh load's bind when the mount found no
+ *                         folder), and triggers the first scan.  Returns a disposer that
  *                         aborts any in-flight fetch and detaches
  *                         subscriptions.  Subscribes to the sidebar's
  *                         onChange to re-word the header only -- nothing
@@ -1054,33 +1055,21 @@
 
         selEl.addEventListener("change", _onSelectChange);
 
-        // -- pageshow / visibilitychange: force-rescan on tab re-entry -- //
+        // -- coming back to the tab: re-read the bound folder, once ---- //
         //
-        // Two real-world re-entry scenarios where the directory is the same:
+        // Coming back is the page turning visible (`results.md` § 2.1,
+        // *Come back to the browser tab*): ``visibilitychange`` to
+        // ``visible``.  A tab brought to the front fires it, and so does a
+        // page restored from the back/forward cache, which turns visible
+        // just before its ``pageshow`` (HTML, *reactivate a Document*).  A
+        // restored page holds the listing it had when you left -- no module
+        // re-run, no sidebar event -- and a tab left behind holds one as
+        // old, so files written while you were away would never appear.
+        // One event, one listener, one scan: a second listener on the
+        // restore's ``pageshow`` would scan again and throw the first away.
         //
-        //   1. bfcache restore.  Browsers (Chromium + Firefox by
-        //      default) cache the whole page when the user navigates
-        //      away.  Hitting the Results tab via back/forward, or
-        //      via the in-app tab link on some routes, restores the
-        //      cached DOM + JS state -- no DCL, no module re-init,
-        //      no fresh onChange fire.  ``cachedResults`` from the
-        //      previous visit stay stale, so a new .out file
-        //      generated while the user was on /modify never appears.
-        //
-        //   2. Same-dir refresh after an external change.  The user
-        //      generates a new result file from another tab.  Returning to
-        //      /results, the directory is unchanged, so nothing would
-        //      re-scope the menu.  Result: a stale dropdown.
-        //
-        // Hooking ``pageshow`` covers both (the event fires on every
-        // page show -- initial load AND bfcache restore -- with
-        // ``event.persisted`` distinguishing them).  We also re-trigger
-        // on ``visibilitychange``->visible so a backgrounded tab
-        // refreshes when the user re-focuses it; same defense.
-        //
-        // Force-rescan policy: re-read the bound folder unconditionally --
-        // the whole point is that an unchanged dir should still get a fresh
-        // listing.
+        // The re-read is unconditional: the folder is the same, its
+        // listing may not be.
 
         /** Is the sidebar somewhere else than this panel? */
         function _divergedFromSidebar() {
@@ -1151,22 +1140,16 @@
         }
 
         function _onPageShow(evt) {
-            /* A FRESH LOAD IS NOT A RE-ENTRY.  ``pageshow`` fires on every
-             * load (``persisted`` false) as well as on a restore from the
-             * back/forward cache (``persisted`` true), and only the restore
-             * comes back holding an old listing.  On a fresh load the mount
-             * has already scanned -- the initial bind below -- so scanning
-             * again here would empty the menu it had just filled and ask the
-             * server for the same answer twice on every visit (`results.md`
-             * § 2.2: one scan).  A fresh
-             * load whose mount found no folder still gets its initial bind
-             * here.
-             *
-             * RE-READ, NOT RE-POINT (2026-09-19): coming back to the tab
-             * shows what was written while you were away; it does not adopt
-             * wherever the sidebar has since gone. */
-            if (evt && evt.persisted) _rescanBound();
-            else if (boundDir === null) _alignToSidebar();
+            /* A FRESH LOAD'S BIND, AND NOTHING ELSE.  ``pageshow`` fires on
+             * every load (``persisted`` false) and on a restore from the
+             * back/forward cache (``persisted`` true).  A restore is a coming
+             * back, already re-read by `_onVisibilityChange`: the page turned
+             * visible just before this event.  A fresh load was scanned by
+             * the mount's initial bind below; only a mount that found no
+             * folder yet binds here (`results.md` § 2.1, *Open the tab*). */
+            if (!(evt && evt.persisted) && boundDir === null) {
+                _alignToSidebar();
+            }
         }
 
         function _onVisibilityChange(_evt) {
@@ -1184,10 +1167,9 @@
                 "visibilitychange", _onVisibilityChange);
         }
 
-        // Initial bootstrap: with the sidebar onChange subscription
-        // pageshow also fires once on fresh navigation but only
-        // AFTER mount returns; this call covers the early window so
-        // the dropdown is visible by the time the user looks.
+        // Initial bootstrap: the bind, made as the mount runs.  A fresh
+        // load's ``pageshow`` comes only AFTER mount returns, and binds only
+        // a panel this call found no folder for (`_onPageShow`).
         //
         // This one DOES read the sidebar -- it is the initial bind, and
         // `projects` already keeps a per-page folder slot (`projects.md`

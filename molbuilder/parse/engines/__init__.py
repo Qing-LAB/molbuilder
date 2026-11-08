@@ -4,7 +4,8 @@ Each PARSER module here defines exactly one :class:`FileParser` subclass: an
 engine's trajectory (a :class:`TrajectoryResult`), or -- ``siesta_fdflog`` --
 the engine's own record of the settings it used (an
 :class:`EngineParamsResult`, `model/parse.md` § 5d.3), or -- ``siesta_epsimg``
--- an optical calculation's spectrum (a :class:`DielectricResult`, § 5f).  Adding a new engine is
+-- an optical calculation's spectrum (a :class:`DielectricResult`, § 5f), or
+-- ``xyz`` -- any XYZ no other reader is for, read alone (§ 4).  Adding a new engine is
 two steps: new module here, import + ``register`` below.  The rest define no
 parser and are imported by the ones that read with them: ``siesta_grammar``,
 the SIESTA family's one table of output lines (§ 5d.5); ``tbtrans``, the
@@ -12,10 +13,8 @@ transmission rung's loop and its k-averaged text files (§ 5e);
 ``siesta_epsimg_reader``, the ``.EPSIMG``'s one reader, which travels (§ 5f);
 ``_run_ending`` and ``_helpers``.
 
-Order matters: the registry tries parsers in insertion order, so
-more-specific parsers go first.  MolwatchLogFileParser leads because
-its header marker is unambiguous and never false-matches an
-engine-native format.
+Order confers nothing: ``registry.detect`` asks every parser and refuses
+a file two of them claim, so each parser claims only what it is for.
 """
 
 from molbuilder.parse.registry import register
@@ -23,6 +22,7 @@ from .molwatch import MolwatchLogFileParser
 from .siesta_mdnc import SiestaMdNcFileParser
 from .siesta import SiestaOutFileParser
 from .pyscf import PySCFOutFileParser
+from .xyz import XyzFileParser
 from .siesta_fdflog import SiestaFdfLogParser
 from .tbtrans_nc import TBTransNcFileParser
 from .siesta_epsimg import SiestaEpsimgFileParser
@@ -42,6 +42,9 @@ register(TBTransNcFileParser)
 register(SiestaEpsimgFileParser)
 register(SiestaOutFileParser)
 register(PySCFOutFileParser)
+# EACH XYZ BY THE READER THAT IS FOR IT, by its name (`model/parse.md` § 4):
+# geomeTRIC's trajectory `pyscf`'s, every other XYZ this one's.
+register(XyzFileParser)
 register(SiestaFdfLogParser)
 
 __all__ = [
@@ -51,5 +54,6 @@ __all__ = [
     "SiestaEpsimgFileParser",
     "SiestaOutFileParser",
     "PySCFOutFileParser",
+    "XyzFileParser",
     "SiestaFdfLogParser",
 ]

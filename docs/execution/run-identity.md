@@ -475,10 +475,12 @@ every file a run takes handed over and recorded:
 | prior state that matches: the run continues | nothing is wrong; you should still know | **said twice** — see below |
 | a changed cell | the cell is derived, and derived values are not in the id | **nothing says it** — see below |
 
-- **One folder, one calculation.** `molbuilder describe` and the Transport
-  tab's describe door refuse a folder that already holds a description
-  (`describe.refuse_described`), and Task setup's Save refuses a description
-  whose run id differs from the folder's.
+- **One folder, one calculation.** Every door that describes refuses a
+  folder that already holds a description, one inside another calculation's
+  folder and one holding a calculation (`describe.refuse_described`;
+  [`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a),
+  and Task setup's Save refuses a description whose run id differs from the
+  folder's.
 - **A label edit.** The label is half of the run id, so Save refuses the
   change in a described folder, and a `task.json` edited by hand whose name
   and id disagree is refused on every read (`Task._check_id`, § 3 rule 1).

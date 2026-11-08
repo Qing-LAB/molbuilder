@@ -812,8 +812,9 @@ class TestSendToTaskSetup:
     def test_send_refuses_a_folder_that_is_already_described(
             self, page, flask_server, tmp_path, monkeypatch):
         """A Send into a folder that already holds a calculation is refused,
-        and nothing in the folder changes (one calculation per folder,
-        `describe.refuse_described`).
+        naming the folder by its address from the projects root, as every
+        door that describes names it, and nothing in the folder changes (one
+        calculation per folder, `describe.refuse_described`).
 
         The folder is described on the road -- `molbuilder describe`
         (`support.road`) -- and its own structure is the one loaded: the
@@ -822,7 +823,9 @@ class TestSendToTaskSetup:
         from.
 
         THE SILENT FAILURE: a Send overwriting the description in place --
-        a second calculation's files over the first's."""
+        a second calculation's files over the first's.  MUTATION THIS MUST
+        FAIL AGAINST: the hand-over naming the folder by the full path the
+        page sent, where the command line names it by its address."""
         from support.road import describe_calculation
         calc = describe_calculation(tmp_path, monkeypatch).resolve()
         before = {f.name: f.read_bytes() for f in calc.iterdir()
@@ -831,7 +834,12 @@ class TestSendToTaskSetup:
         self._open_on(page, flask_server, calc)
         _use(page, xyz, 2)
         page.fill("#p-psml-lib", "pseudopotential")
-        self._send(page, says="one calculation per folder")
+        # The address the road described it at (`support.road`), and not
+        # the full path the page sent, which ends in the same words.
+        self._send(page, says=f"P/optimization/{calc.name} already holds a "
+                              f"calculation")
+        said = page.locator("#handover-status").text_content()
+        assert str(calc) not in said, said
         after = {f.name: f.read_bytes() for f in calc.iterdir()
                  if f.is_file()}
         assert after == before, (

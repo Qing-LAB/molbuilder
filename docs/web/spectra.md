@@ -929,6 +929,12 @@ stopped between phases says so on the status line, in the run's own words.
 *(It stopped once every asked-for phase reported complete until 2026-10-03, so
 a run killed mid-phase was followed until the page closed.)*
 
+**Coming back to the tab loads the file on screen once more**, live run or
+not, so a phase written while you were away is drawn; coming back is the page
+turning visible, the one event the viewer listens to, as the Results tab's
+picker does ([`results.md`](?doc=web/results.md) § 2.1, *Come back to the
+browser tab*).
+
 Like every Results-tab viewer, the spectra viewer is a small **state machine**
 (idle → loading → loaded / watching → error), and **Refresh is a clean reload**
 of the same file — the same reset a file-switch does. The full "which state

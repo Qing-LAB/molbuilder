@@ -375,7 +375,17 @@ a uniform `{ ok, … }` result — they never throw.
 | `showPreview(path?)` | open the preview pop-up on `path`, or on the current pick when it is omitted. A tab binding this to `onCommit` **passes `sel.file`**: `setShared` publishes its payload even when the sessionStorage write throws, so the pick can be empty while the payload is right |
 | `handOffSelection(route, dir, file)` | write ANOTHER tab's per-tab slots (§ 2), so "Open in Molbuilder"-style links land the target where they point |
 | `navigateTo(path)` / `refresh()` | list a folder + move there / re-list the current folder |
-| `onProjectsRootResolved(cb)` | the projects root, once it is resolved (a subscriber after that is called at once) |
+| `whenProjectsRoot()` | the projects root's answer, once the sidebar's start has one: `{ok: true, root}`, or `{ok: false, error}` in the words the sidebar's list shows (asked after, answered at once) |
+
+**Whoever needs the root before it is known waits for it.** The root is
+known once the sidebar's start has asked the server (`GET /api/files/roots`,
+once per page); until then `getProjectsRoot()` is empty. `whenProjectsRoot()`
+is the one way to wait: a folder picker (`lib/tree-picker.js`, and through it
+the Move/Copy destination and `chooseSavePath`'s *where*) asked in that moment
+opens when the root lands; when the start cannot resolve it, the picker opens
+and says why in its tree, and the notebook tab opens at the projects root
+([`jupyter.md`](?doc=web/jupyter.md) § 4.0, state 3). Every page that asks
+carries the sidebar, so the wait always ends.
 
 **Taking a state — `projects.checkpoint`** (added 2026-08-16)
 
@@ -389,7 +399,7 @@ the panel's DOM.
 | Call | What it does |
 |---|---|
 | `checkpoint.status(dir)` | `{ok, initialized, clean, ...}` — does this folder have a history, and does it differ from where it stands? Read-only. *(Served by `GET /api/checkpoint/state`; until 2026-08-19 this called a route that never existed and answered `ok:false` forever)* |
-| `checkpoint.init(dir, {engine})` | start a history here. Refuses with a reason a caller can show (a nested repository, a folder that declares nothing) |
+| `checkpoint.init(dir, {engine})` | start a history here. Refuses with a reason a caller can show (a nested repository, a folder that declares nothing, a folder inside a calculation's folder — `checkpointing.md` **L1**) |
 | `checkpoint.saveState(dir, note)` | save the folder's current state. **A note is required** — `checkpointing.md` **L3**: the note is yours, required and never generated, so nothing writes one on your behalf. Returns `{ok, changed}`; **`changed: false` is honest, not a failure** — nothing differed from the state the folder already stands at |
 
 **What it deliberately does not expose:** restore and tag. Restoring rewinds a
@@ -467,11 +477,11 @@ the vibration result ([`web/spectra.md`](?doc=web/spectra.md) § 3.3).
 **The unified save-where question — `projects.chooseSavePath(opts)`**
 *(2026-08-19, user)*: the move-to dialog composed with the name dialog, from
 the project root, on any tab — `{title?, nameTitle?, initial?, hint?, ext?}`
-→ `"<dir>/<name>"` or `null` on cancel (throws, never a silent nothing, when
-the page has no project root yet). **The extension is added, never asked**:
-with `ext` the name is asked without it, the dialog says *The extension is
-added for you.*, and it is added once — a name typed with it, in any case,
-is taken as typed: `x.xyz` is saved as `x.xyz`, never `x.xyz.xyz`. One rule
+→ `"<dir>/<name>"` or `null` on cancel; its *where* is the folder picker, so
+asked before the page knows the root it waits for it (above). **The
+extension is added, never asked**: with `ext` the name is asked without it,
+the dialog says *The extension is added for you.*, and it is added once — a
+name typed with it, in any case, is taken as typed: `x.xyz` is saved as `x.xyz`, never `x.xyz.xyz`. One rule
 in the question, so every door that asks it names a file the same way: the
 MolView exports, and the spectrum viewer's *Write frame set…*
 ([`spectra.md`](?doc=web/spectra.md) § 4.3) *(the user, 2026-10-27: "make the
@@ -505,7 +515,14 @@ into the Documents tab). These are tracked as known gaps.
   files routes: a change that landed refreshes where it landed, a refused one
   refreshes nothing, a commit names the whole path and moves the selection,
   a read and a write answer the uniform result, a subscription taken twice is
-  refused by name.
+  refused by name, and the root asked for before the start has answered is
+  answered once it does, and asked after, at once — with the words the start
+  gives when it cannot resolve it (§ 5). That the sidebar gives its words and
+  the picker shows them is not tested: the server fails the root only on an
+  error a test cannot make without breaking the page.
+- `test_molbuilder_e2e.py` — a folder picker clicked open while the root is
+  still on its way opens once it lands (§ 5; the slab panel's *From a bulk
+  run…*).
 - `test_projects_render_sidebar_js.py` — the sidebar render + wiring.
 - `test_projects_api_envelope_js.py` — the uniform `{ ok, … }` result shape.
 - `test_web_files.py` — the `/api/files/*` server routes.

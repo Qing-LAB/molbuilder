@@ -171,7 +171,7 @@ class TestTheContractEndpoint:
     a tmp projects root -- tests never touch the real tree."""
 
     def test_a_directory_with_no_run_reports_no_run_state(
-            self, isolated_projects_root, web_client):
+            self, isolated_projects_root, web_client, relaxation_and_its_bench):
         """`run_status` cannot say *there is no run here*.
 
         Asked without a launch record, an absence of evidence comes back
@@ -185,21 +185,37 @@ class TestTheContractEndpoint:
         The container half of this was closed in 6ddc551a; this is the
         other door, an UNMARKED directory (`project-layout.md` § 1.4a:
         absence narrows the answer).  Such a directory is still read alone
-        — its files listed, one of them opened — but a run state has to be
-        grounded on something: the record saying RUN, or the door finding
-        this directory's product.
+        — its files listed, each as the registry reads it — but nothing in
+        it is claimed as a run's (`model/parse.md` § 5.0): no run state,
+        and no file opened for the person, who picks one.  Its file is one
+        a run of ours writes, the progress log prep seeds, copied out of a
+        prepared run (:func:`relaxation_and_its_bench`) as a person copies
+        one.
+
+        THE SILENT FAILURE: the door offering the copy as the folder's
+        result by its role while the copy's own row carries none, so no
+        viewer claimed it and the picker dropped the door's pick without a
+        word.
         """
+        import shutil
+        from molbuilder.runs import run_of
+        run = run_of(relaxation_and_its_bench / "01_coarse" / "run-0")
         bare = isolated_projects_root / "topic"   # a folder nobody described
         bare.mkdir()
-        (bare / "README.md").write_text("notes\n")
+        copy = Path(shutil.copy2(run.file(".molwatch.log"), bare))
         body = web_client.get("/api/results/dir?path=" + str(bare)).get_json()
         assert body["ok"] is True
         assert body["place"]["role"] is None, "nothing marks this directory"
         assert body["status"] is None, (
             "an unmarked directory with no run must not report one; got "
             + repr(body["status"]))
-        # ...and it is still READ: the listing is the part absence keeps.
-        assert [f["name"] for f in body["files"]] == ["README.md"]
+        # ...and it is still READ: the listing is the part absence keeps,
+        # each file as the registry reads it, none claimed as a run's.
+        assert [(f["name"], f["parser"], f["role"])
+                for f in body["files"]] == [(copy.name, "molwatch", None)]
+        assert body["openable"] is None, (
+            "a folder no calculation claims opens nothing on its own; got "
+            + repr(body["openable"]))
 
 
     def test_a_saved_pair_in_a_folder_nobody_described_is_molbuilders(

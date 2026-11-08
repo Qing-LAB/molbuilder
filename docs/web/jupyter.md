@@ -226,7 +226,7 @@ is the contract.
 |---|---|---|---|---|
 | 1 | **env-missing** | the env is not installed | the install command — the env is **opt-in**, so this is ordinary and not an error | 60 s |
 | 2 | **not-yours** | running and answering, and this viewer may not control it | that using a kernel is an admin action (§ 6). Nothing is framed: every `/jupyter/` request would be refused | 30 s |
-| 3 | **opening** | answering, **nothing to restore**, and the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4 at the projects root |
+| 3 | **opening** | answering, **nothing to restore**, and the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's answer (`projects.md` § 5) → 4; when the sidebar cannot resolve the root, 4 at the projects root |
 | 4 | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button *if this viewer may control it* | 30 s heartbeat |
 | 5 | **starting** | the process is up but not serving | *"…up but not answering yet"* | 1.5 s, **30 s** → wedged, with **Check again** and Stop |
 | 6 | **asked** | Start was clicked and nothing is up yet | *"Starting…"* | 1.2 s, **15 s** → the port clash if there is one (§ 2.1), else *"none started"* naming **both** logs, with **Check again** |
@@ -259,11 +259,12 @@ it in time lets each state keep the wake-up that suits it.
 State 3 is the one to understand: it exists because Lab's Launcher creates a
 notebook **in the folder the frame is showing**, so framing before the root is
 known put every new notebook in `projects/` however carefully a folder had
-been picked. It waits on the sidebar's own event rather than polling — each
-poll costs the server two blocking round-trips to Jupyter — and it has a
-budget because that event **can never fire**: the sidebar publishes nothing
-when `/api/files/roots` fails. When there is no such door on the page at all,
-state 3 simply does not match and state 4 takes it.
+been picked. It waits on the sidebar's answer rather than polling — each
+poll costs the server two blocking round-trips to Jupyter — and needs no
+budget, because that answer always comes: the root, or why the sidebar's
+start could not resolve it ([`projects.md`](?doc=web/projects.md) § 5), and
+then the tab opens at the projects root. When there is no such door on the
+page at all, state 3 simply does not match and state 4 takes it.
 
 Once it is running, Jupyter's own settings shrink the idle window rather than
 molbuilder hand-rolling one: `MappingKernelManager.cull_idle_timeout` reaps

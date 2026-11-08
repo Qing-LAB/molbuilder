@@ -683,27 +683,6 @@ def _refuse_outside(struct: Structure) -> None:
         f"from it again.")
 
 
-def refuse_inside_citation(dest, cited, *, what: str = "the cited junction",
-                           shown: Optional[str] = None) -> None:
-    """THE CALCULATION NEVER LIVES IN ITS CITATION (`engines/transport.md`
-    § 3.1): describing into the cited run's folder, or below it, would put
-    ``task.json`` -- and later every prep attempt -- inside the finished
-    relaxation it cites; or inside the finished transport calculation it
-    reuses (§ 2a.16), ``what`` naming it.  ``cited`` is the cited folder.
-    Asked by the kind's one describe (`transport.describe`) and the writer
-    of an extension (`reuse.write_reusing`); ``shown`` is the folder as the
-    road's reader names it, as `describe.refuse_described` takes it."""
-    home = Path(cited).resolve()
-    there = Path(dest).resolve()
-    if there == home or home in there.parents:
-        raise ComposeError(
-            f"{shown or there} {'is' if there == home else 'is inside'} "
-            f"{what} {home.name} -- the calculation never lives inside its "
-            f"citation.  Make a folder for this transport calculation (under "
-            f"the project's transport topic) and describe it there"
-            f".")
-
-
 def _held_by_its_relaxation(relaxed: Structure):
     """The atoms the cited junction's relaxation held, in the user order, as its
     record says (`parse.contract.held_atoms_of`) -- read from the junction

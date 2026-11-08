@@ -57,7 +57,6 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from ..calcdirs import RunPlace
 from ..parse.fdf import read_deck
 from ..runrecord import LaunchRecordError
-from .compose import ComposeError
 from .window import window_rung
 
 
@@ -240,26 +239,17 @@ def write_reusing(desc, dest, finished, *, tree_root
     citation, as for any calculation -- a warning; the frame set cited in
     its place, information.
 
-    Refused before anything is written: ``dest`` inside the finished
-    calculation, or inside a junction's citation, as every describe
-    refuses it (`compose.refuse_inside_citation`); a cited pair edited since
-    the finished calculation was composed from it, by name; a frame set
-    whose frame 0 is not the finished junction, or compared with a finished
-    junction whose record does not read, by name."""
+    Refused before anything is written: a cited pair edited since the
+    finished calculation was composed from it, by name; a frame set whose
+    frame 0 is not the finished junction, or compared with a finished
+    junction whose record does not read, by name.  The folder is the
+    describe's to refuse, as every describe refuses it -- one inside the
+    finished calculation among them (`describe.refuse_described`)."""
     from ..describe import write_description
     from ..issues import Issue
     from ..jobset.rung import citation_of
-    from .compose import refuse_inside_citation
     citation = citation_of(desc.task)
     ran = citation_of(finished.task)
-    try:
-        for cited, what in (
-                (finished.base, "the finished calculation"),
-                *((Path(tree_root) / c, "the cited junction")
-                  for c in dict.fromkeys((ran, citation)))):
-            refuse_inside_citation(dest, cited, what=what)
-    except ComposeError as exc:
-        raise ReuseError(str(exc)) from exc
     why: List[str] = []
     notes: list = []
     composed = finished_junction(finished, citation, tree_root=tree_root,

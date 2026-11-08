@@ -305,6 +305,17 @@ def find_projects_root(start: Path) -> Optional[Path]:
     return None
 
 
+def address(folder) -> str:
+    """``folder``'s address from the projects root -- what ``--bundle``
+    takes, and what a line or a refusal names it by -- or its full path
+    when it lies outside the tree."""
+    here = Path(folder).resolve()
+    try:
+        return str(here.relative_to(Path(projects_root()).resolve()))
+    except (ValueError, OSError):
+        return str(here)
+
+
 def project_dir(project: str, *, base: Optional[Path] = None) -> Path:
     """The folder of ``project``, under :func:`projects_root`; the name is
     checked (:func:`validate_name`).  Says nothing of whether it exists."""

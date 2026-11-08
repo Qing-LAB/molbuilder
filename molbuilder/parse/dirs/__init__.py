@@ -1,7 +1,7 @@
 """Directory-level readers — what a run folder's files say, read on floor 1
 (`execution/architecture.md` § 2.1): how a run is doing (``job.run_status``,
 asked with its launch record by ``rundir.run_state_of``), what a viewer opens
-in a folder no calculation claims (``rundir.openable_in``) and a run's record
+in a folder read without its run (``rundir.openable_in``) and a run's record
 (``record.run_record``).  What a run's deck declared about its atoms is the
 run door's, `runs.declared`.
 

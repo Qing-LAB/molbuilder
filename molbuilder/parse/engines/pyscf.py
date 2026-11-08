@@ -30,16 +30,12 @@ from ..errors import ParseError
 from ...runfiles import compose as _rf_compose, stem_before as _rf_stem_before
 from ...runfiles import named_beside as _rf_named_beside
 from ...runfiles import role_of as _rf_role_of
-from ...runfiles import (PYSCF_OPTIMIZED as _PYSCF_OPTIMIZED,
-                         ROLE_GEOM_TRAJ as _ROLE_GEOM_TRAJ,
-                         ROLE_INITIAL as _ROLE_INITIAL,
+from ...runfiles import (ROLE_GEOM_TRAJ as _ROLE_GEOM_TRAJ,
                          ROLE_MOLWATCH as _ROLE_MOLWATCH,
                          ROLE_PYSCF_LOG as _ROLE_PYSCF_LOG)
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import numpy as np
 
 from molbuilder.frame import Frame, Trajectory
 from molbuilder.parse.base import FileParser
@@ -47,6 +43,7 @@ from molbuilder.parse.types import TrajectoryResult
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
+from .xyz import is_xyz, read_frames
 
 
 # Hartree -> eV
@@ -74,55 +71,6 @@ _SCF_CONVERGED_RE = re.compile(
     r"converged SCF energy\s*=\s*(-?[\d.eE+-]+)"
 )
 
-
-
-# Bounded sanity-check on line-0 atom count when detecting an XYZ.
-_MAX_PLAUSIBLE_ATOMS = 1_000_000
-
-
-def _can_parse_xyz(path: str) -> bool:
-    """Structural XYZ check, not banner-matching.  Verifies the
-    canonical XYZ invariant: positive integer N on line 0, a free-text
-    comment on line 1, and N atom lines of ``element x y z`` form.
-    Samples at most the first 3 atom lines."""
-    try:
-        with open(path, "r", errors="replace") as fh:
-            line0 = fh.readline().strip()
-            if not line0.isdigit():
-                return False
-            n_atoms = int(line0)
-            if n_atoms <= 0 or n_atoms > _MAX_PLAUSIBLE_ATOMS:
-                return False
-            fh.readline()  # comment line; any content accepted
-            for _ in range(min(n_atoms, 3)):
-                parts = fh.readline().split()
-                if len(parts) < 4:
-                    return False
-                # COLUMN 0 IS AN ELEMENT: SIESTA's `.FA` is `N` then
-                # `index fx fy fz` -- same count, same three floats, an
-                # integer where the symbol goes.
-                #
-                # "NOT A NUMBER" rather than a periodic-table lookup, and
-                # that is deliberate: a dummy atom (`X`), a ghost (`Bq`) or
-                # an isotope label is a legal XYZ column 0 and belongs to
-                # whoever writes it, while an integer index never is.
-                # Measured over all 114 real `.xyz` in the tree: 114 carry a
-                # symbol, 0 carry a number.
-                try:
-                    float(parts[0])
-                except ValueError:
-                    pass          # a symbol -- which is what an XYZ has
-                else:
-                    return False  # a number -- this is somebody's data file
-                try:
-                    float(parts[1])
-                    float(parts[2])
-                    float(parts[3])
-                except ValueError:
-                    return False
-            return True
-    except OSError:
-        return False
 
 
 def _run_stem_of(traj_path: str) -> Optional[str]:
@@ -299,74 +247,25 @@ def _read_scf_history(
 
 
 def _parse_pyscf_xyz(path: str) -> Trajectory:
-    """Parse a PySCF/geomeTRIC ``*_optim.xyz`` (or any XYZ) into a
-    Trajectory.  See module docstring for the format and the qdata
-    + .log sibling-file conventions."""
-    frames_raw: List[List[List[Any]]] = []
+    """Parse geomeTRIC's ``<stem>_geom_optim.xyz`` into a Trajectory: its
+    frames, read as every XYZ is (`xyz.read_frames`), each comment line's
+    iteration and energy, and its run's files beside it.  See module
+    docstring for the format."""
+    frames_raw = read_frames(path)
     energies: List[Optional[float]] = []
     iterations: List[int] = []
-
-    with open(path, "r", errors="replace") as fh:
-        while True:
-            header = fh.readline()
-            if not header:
-                break                     # clean EOF
-            header = header.strip()
-            if not header.isdigit():
-                # Probably a torn write at EOF; bail out cleanly.
-                break
-            n_atoms = int(header)
-            comment = fh.readline()
-            if not comment:
-                break                     # torn frame
-            m = _COMMENT_RE.search(comment)
-            if m:
-                step_idx = int(m.group(1))
-                energy_ha = float(m.group(2))
-                energy_eV: Optional[float] = energy_ha * _HARTREE_TO_EV
-            else:
-                step_idx = len(frames_raw)
-                energy_eV = None
-
-            atoms: List[List[Any]] = []
-            torn = False
-            for _ in range(n_atoms):
-                line = fh.readline()
-                if not line:
-                    torn = True
-                    break
-                parts = line.split()
-                if len(parts) < 4:
-                    torn = True
-                    break
-                try:
-                    atoms.append([
-                        parts[0],
-                        float(parts[1]),
-                        float(parts[2]),
-                        float(parts[3]),
-                    ])
-                except ValueError:
-                    torn = True
-                    break
-            if torn or len(atoms) != n_atoms:
-                # Last frame is mid-write; drop it.
-                break
-            frames_raw.append(atoms)
-            energies.append(energy_eV)
-            iterations.append(step_idx)
+    for comment, _symbols, _positions in frames_raw:
+        m = _COMMENT_RE.search(comment)
+        iterations.append(int(m.group(1)) if m else len(iterations))
+        energies.append(float(m.group(2)) * _HARTREE_TO_EV if m else None)
 
     # THE RUN'S OWN PROGRESS LOG, read once: its targets and ending enrich
     # the frames.
     mw_meta = _read_molwatch_metadata(path)
     scf_history = _read_scf_history(path)
 
-    if not iterations:
-        iterations = list(range(len(frames_raw)))
     frames: List[Frame] = []
-    for i, atoms in enumerate(frames_raw):
-        elements  = [row[0] for row in atoms]
-        positions = np.array([row[1:4] for row in atoms], dtype=float)
+    for i, (_comment, elements, positions) in enumerate(frames_raw):
         struct = Structure(elements=elements, positions=positions)
         scf_for_step = (scf_history[i]
                         if i < len(scf_history) and scf_history[i]
@@ -495,31 +394,20 @@ class PySCFOutFileParser(FileParser):
             + (f", {traj}, beside it" if traj else "")
             + ". Point molbuilder at that instead."
         )
-    label  = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
-    hint   = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "
-              "<job>[_<NN>_<stage>]_geom_optim.xyz (NOT the PySCF .log).  "
-              "Generic XYZ "
-              "with any comment-line format is also accepted; energies "
-              "are extracted only when the comment matches the geomeTRIC "
-              "`Iteration K Energy E` pattern.")
+    label  = "geomeTRIC trajectory (a PySCF relaxation's steps)"
+    hint   = ("geomeTRIC's <job>[_<NN>_<stage>]_geom_optim.xyz, one frame "
+              "per accepted step (NOT the PySCF .log); energies from its "
+              "`Iteration K Energy E` comment lines")
     output = TrajectoryResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        # `<job>_optimized.xyz` and `<job>_initial.xyz` ARE valid XYZ, and
-        # both belong to `pyscf-geom`; were both parsers to claim one,
-        # `detect()` -- which is exactly-one-or-raise -- would refuse it.
-        #
-        # The split is right the way it is documented: each is ONE
-        # geometry -- the converged one (`pyscf/warm-files.toml`: *"latest
-        # converged geometry"*), the input echoed back -- so a
-        # `StructureResult` is what it is; this parser answers
-        # `TrajectoryResult` and has nothing to say about a single frame
-        # that the sibling does not say better.
-        if any(_rf_stem_before(path.name, role) is not None
-               for role in (_PYSCF_OPTIMIZED, _ROLE_INITIAL)):
-            return False
-        return _can_parse_xyz(str(path))
+        # GEOMETRIC'S TRAJECTORY, by its name: the one XYZ this reader is
+        # for, read with its run's files beside it.  Every other XYZ is
+        # `xyz`'s -- a PySCF deck's two geometries `pyscf-geom`'s -- so
+        # `detect()`, exactly-one-or-raise, opens each (`model/parse.md`
+        # § 4).
+        return _run_stem_of(str(path)) is not None and is_xyz(str(path))
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:

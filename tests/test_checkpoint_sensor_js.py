@@ -539,25 +539,25 @@ def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing(
 
 
 def test_setup_does_not_ask_for_a_name_when_a_name_would_not_help(
-        tmp_path, monkeypatch, app_at, described):
+        app_at, described):
     """The other advisory on the same route, and the reason `where` exists.
 
-    A second calculation is described inside this one's folder and its
-    first group prepped, and prep saves a state first (`checkpointing.md`
-    § 9), so that inner folder holds a history.  Set-up on the outer
+    A person ran `git init` by hand in a folder of this calculation's,
+    `notes/`, so that inner folder holds a history.  Set-up on the
     calculation is then refused -- a history inside a history -- and a name
     does not fix that.  Prompting for one would be asking a question whose
     answer cannot help, which is how a surface teaches people that its
     questions are noise.
 
-    The way this test reaches the refusal moves with the user's decision of
-    2026-11-07: a calculation may not be described inside another's folder,
-    and the next product release refuses that describe.
+    WHAT GOES UNSEEN: this advisory reached through molbuilder's own acts.
+    Molbuilder begins no history inside a calculation's folder
+    (`checkpointing.md` L1) and describes no calculation inside another's
+    (`project-layout.md` § 7, invariant 2a), so git run by hand is the one
+    road left to it.
     """
-    from support.road import describe_calculation, prep_groups
-    inner = describe_calculation(tmp_path, monkeypatch, name="inner",
-                                 bundle="P/optimization/H2/inner")
-    prep_groups(inner, "1")
+    notes = described / "notes"
+    notes.mkdir()
+    subprocess.run(["git", "init", "-q", "."], cwd=notes, check=True)
     out = _set_up_by_the_panel(app_at, described, [{"name": "anything"}])
     assert out["asked"] == 0, "it asked for a name that cannot help"
     assert len(out["inits"]) == 1, "and it must not retry blindly"

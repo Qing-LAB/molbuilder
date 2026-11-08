@@ -51,7 +51,7 @@ from pathlib import Path
 from molbuilder.runfiles import find_by_role as _rf_find_by_role
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from .calcdirs import described
+from .calcdirs import calculation_above, described
 from .persist import sha256_of
 from .task import FILENAME as _TASK_FILENAME
 from .runfiles import GITIGNORE_FILE, HISTORY_DIR, SNAPSHOT_DIR
@@ -243,8 +243,10 @@ class NoSuchRefError(CheckpointError):
 
 
 class NestedRepoRefusedError(CheckpointError):
-    """Init refused: this folder holds several independent calculations, and
-    one history over them would rewind all of them together (L1)."""
+    """Init refused (L1): this folder holds several independent
+    calculations, which one history would rewind together, or a history
+    below it; or it lies inside a calculation's folder, whose history
+    covers it."""
 
 
 class CalculationNameError(CheckpointError):
@@ -1203,11 +1205,26 @@ class Repo:
              calculation: Optional[str] = None) -> Optional["State"]:
         """Make this folder a checkpoint folder and save its first state.
 
-        One repository per calculation (L1).  A folder whose subdirectories are
+        One repository per calculation (L1).  A folder inside a calculation's
+        folder is refused, naming it: that calculation's history covers it.
+        A folder whose subdirectories are
         working dirs is accepted only when this folder declares them one
         calculation by carrying its description; without one, several
         independent calculations would share a history and rewind together.
         """
+        # A FOLDER INSIDE A CALCULATION'S FOLDER is covered by that
+        # calculation's history: a history of its own is refused, naming it
+        # (L1; `project-layout.md` § 7, invariant 2a) -- before the repair
+        # below, so a folder in it that someone ran `git init` in by hand
+        # is not adopted as one.
+        outer = calculation_above(self.root)
+        if outer is not None:
+            raise NestedRepoRefusedError(
+                f"{self.path}: cannot init -- it lies inside the calculation "
+                f"{outer}, whose history covers it: one history per "
+                f"calculation.  Save its state with that calculation's, at "
+                f"{outer}; a calculation of its own goes in a folder of its "
+                f"own beside it.")
         if self.initialized:
             # Idempotent, and honestly typed: a folder somebody ran `git init`
             # in by hand is "initialised" with no state to stand at, so this is

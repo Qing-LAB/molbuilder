@@ -1,23 +1,20 @@
 /* Trajectory inspector -- registry-side adapter that wires the
  * shared partial-inspector factory to ``lib/trajectory/core.js``.
  *
- * Match rule:
- *   * ``*.molwatch.log`` — the canonical molbuilder format
- *     (single self-contained file with frames + SCF + forces)
- *   * ``*.out`` — SIESTA's redirected stdout, content-sniffed by
- *     SiestaParser
- *   * ``*_optim.xyz`` — PySCF / geomeTRIC's multi-frame
- *     trajectory XYZ (the geom-opt wrapper writes
- *     ``<job>_geom_optim.xyz``; older PySCF runs may use
- *     ``<job>_optim.xyz``).  `PySCFOutFileParser` handles both shapes via
- *     ``can_parse`` content-sniff in ``parse/engines/pyscf.py``.
+ * Match rule -- a file the server's answer names a run's (its role) and
+ * reads with one of three parsers (its parser), never a suffix:
+ *   * ``<label>_<stage>.molwatch.log`` — the run's progress log,
+ *     molbuilder's own format (frames + SCF + forces), parser ``molwatch``;
+ *   * ``<label>_<stage>.out`` — SIESTA's stdout, parser ``siesta``;
+ *   * ``<label>[_<stage>]_geom_optim.xyz`` — geomeTRIC's trajectory, parser
+ *     ``pyscf``: the one XYZ that reader is for, by its name (`parse.md`
+ *     § 4).  Every other XYZ -- a saved structure, SIESTA's own
+ *     ``<label>.xyz``, a calculation's ``<label>.source.xyz`` -- is read by
+ *     ``xyz`` and left to the structure inspector.
  *
  * Registration order in results.html puts this BEFORE the
- * structure inspector (which matches all ``.xyz`` / ``.pdb``), so
- * the ``*_optim.xyz`` claim here wins over structure's generic
- * ``.xyz`` match.  Plain user-named single-frame ``.xyz`` files
- * still flow to the structure inspector — only the conventional
- * geomeTRIC / PySCF trajectory naming is intercepted.
+ * structure inspector (which matches every ``.xyz`` / ``.pdb``), so
+ * geomeTRIC's trajectory opens here, not as frame 0 of a structure.
  *
  * Intentional non-matches:
  *   * ``.pyscf.log`` — plain PySCF wrapper stdout, not a
@@ -56,9 +53,11 @@
      * role spelled here (`parse.md` R-RO1).  The three parsers whose files
      * this inspector presents are the run's progress log, SIESTA's output
      * and geomeTRIC's trajectory, by the registry's own names -- each for a
-     * file the catalogue NAMES (its role): the trajectory parser reads any
-     * `.xyz`, so a geometry file no catalogue row names stays the structure
-     * preview's (`presenters.md` § 2). */
+     * file the catalogue NAMES (its role): the role says the file is a
+     * run's of ours, the parser that it holds a run's steps.  geomeTRIC's
+     * trajectory is the one XYZ its parser is for (`parse.md` § 4); every
+     * other XYZ is `xyz`'s and stays the structure preview's
+     * (`presenters.md` § 2). */
     const TRAJECTORY_PARSERS = ["molwatch", "siesta", "pyscf"];
     /* A run's structure parts -- the input echoed back and the geometry
      * reached (the PySCF geometry parser's files), and geomeTRIC's stream

@@ -1454,7 +1454,14 @@ holds its own plan, and its history is its calculation's — so a topic folder
 of independent calculations is refused, since they
 would share a history and rewind together. A subfolder that is already a
 repository is refused: a history inside a history cannot be restored
-consistently.
+consistently. **A folder inside a calculation's folder is refused a history of
+its own, naming that calculation**: the calculation's history already covers it,
+and a calculation is never inside another
+([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a).
+The folder above is the nearest one holding `task.json`, looked for up to the
+projects tree's root (`calcdirs.calculation_above`). An act whose save would
+begin that history — a prep, a group's first launch, Task setup's Save — stops
+on the refusal, as on any save that fails (§ 9).
 
 **L3 — every state carries a note, and names its calculation.** Two parts, both
 required.
@@ -1838,7 +1845,9 @@ take. A test file in no entry is a file nobody maintains against this document.
 - **L4** — `states`: the tag list stays empty across a **staged** calculation
   until somebody types `checkpoint tag`.
 - **L1** — `states`: independent calculations refused, one declared
-  calculation accepted, a repository inside a repository refused.
+  calculation accepted, a repository inside a repository refused, a folder
+  inside a calculation's folder refused a history of its own, naming that
+  calculation.
 - **L3** — `states`: no note refused; the calculation named without polluting
   the note; a name needing repair refused, a bare `git init` included; the round
   trip through the one parser; a note that looks like a trailer stays a note.

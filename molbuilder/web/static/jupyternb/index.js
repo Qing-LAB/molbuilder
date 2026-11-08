@@ -75,10 +75,10 @@ let framedKey = null;
  *  button: click, nothing, click, nothing. */
 let startAsked = false;
 
-/** Set when the projects root could not be resolved in time.  Once true,
- *  `opening` never matches again and `framed` opens at the projects root --
- *  a worse default than the selected folder and a far better one than a tab
- *  that waits forever. */
+/** Set when the sidebar's start could not resolve the projects root.  Once
+ *  true, `opening` never matches again and `framed` opens at the projects
+ *  root -- a worse default than the selected folder and a far better one
+ *  than a tab that waits forever. */
 let rootIsLost = false;
 
 /** Is there a projects-root door on this page at all?  In `opening`'s `when`
@@ -87,7 +87,7 @@ let rootIsLost = false;
  *  and opens at the root. */
 function hasRootDoor() {
   const p = (window.molbuilder && window.molbuilder.projects) || null;
-  return !!(p && typeof p.onProjectsRootResolved === "function");
+  return !!(p && typeof p.whenProjectsRoot === "function");
 }
 
 /** The selected folder, relative to the projects root -- Lab's own path shape.
@@ -157,16 +157,17 @@ async function post(path) {
   return { ok: r.ok && body.ok !== false, status: r.status, body };
 }
 
-/** Run `fn` once the projects root is known.  Idempotent: a second call
- *  before the root lands replaces nothing and subscribes nothing twice --
- *  `onChange`-style subscribers throw if registered twice. */
-let rootWaiter = null;
+/** Run `fn` once the sidebar's start has answered: the projects root, or
+ *  why it could not resolve it (`projects.md` § 5) -- then the root is lost.
+ *  Asked once: a second call waits on nothing more. */
+let rootAsked = false;
 function whenRootKnown(fn) {
   // NO DOOR CHECK HERE.  `hasRootDoor()` is that question's one home and
   // `opening.when` already asks it.
-  if (rootWaiter) return;
-  rootWaiter = window.molbuilder.projects.onProjectsRootResolved(() => {
-    if (rootWaiter) { rootWaiter(); rootWaiter = null; }
+  if (rootAsked) return;
+  rootAsked = true;
+  window.molbuilder.projects.whenProjectsRoot().then((answer) => {
+    if (!answer.ok) rootIsLost = true;
     fn();
   });
 }
@@ -175,8 +176,7 @@ function whenRootKnown(fn) {
  *
  * A state may declare `budgetMs`, and when the tab has been in it for that
  * long without leaving, it renders `expired` instead.  MILLISECONDS, not a
- * poll count, so each state keeps the wake-up that suits it -- a poll where
- * there is nothing to subscribe to, the projects-root door where there is.
+ * poll count, so each state keeps the wake-up that suits it.
  *
  * ENTERING resets the clock, and that is the ONLY reset. */
 let currentState = null;
@@ -239,14 +239,11 @@ const STATES = [
   {
     // (3) Answering, but the sidebar has not resolved its root yet.
     //
-    // WAIT ON THE DOOR, NOT A TIMER.  `onProjectsRootResolved` fires the
-    // moment the root lands (and immediately if it already has), so there is
-    // nothing to poll for.
-    //
-    // THE DOOR CAN NEVER FIRE, which is why this state has a budget at all:
-    // a failed bootstrap leaves it silent.  Opening at the projects root is a
-    // worse default than the selected folder and a far better one than a
-    // dead tab.
+    // WAIT ON THE DOOR, NOT A TIMER.  The sidebar's start answers the
+    // moment it has the root (and at once if it already has), so there is
+    // nothing to poll for -- and no budget: a start that cannot resolve the
+    // root answers too, and the tab opens at the projects root
+    // (`rootIsLost`).
     name: "opening",
     // `!st.workspace_saved` BECAUSE THE FOLDER IS ONLY USED WHEN THERE IS
     // NOTHING TO RESTORE (`labUrl`), so a notebook left open is never hidden
@@ -258,11 +255,6 @@ const STATES = [
       say("Opening JupyterLab…");
       whenRootKnown(refresh);
     },
-    budgetMs: 8000,
-    // Re-render with the payload in hand rather than re-ask the server: the
-    // only thing that changed is a flag of ours, and `opening` cannot match
-    // now that it is set.
-    expired: (st) => { rootIsLost = true; render(st); },
   },
   {
     // (4) Up and answering -- frame it.

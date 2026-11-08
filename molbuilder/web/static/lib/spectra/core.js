@@ -4562,29 +4562,26 @@
         loadByPath(opts.file);
     }
 
-    // ---- pageshow / visibilitychange: force-refresh on tab re-entry //
+    // ---- coming back to the tab: the file on screen loaded again --- //
     //
-    // Same shape as the /results file-picker + trajectory
-    // inspector: a bfcache restore or tab re-focus must
-    // re-fetch the currently-loaded spectra file so a fresh result
-    // generated in another tab actually appears, rather than the
-    // cached snapshot from the previous visit.
+    // Coming back is the page turning visible, ``visibilitychange`` to
+    // ``visible`` -- a tab brought to the front, or a page restored from
+    // the back/forward cache, which turns visible just before its
+    // ``pageshow`` -- the one event the /results file picker and the
+    // trajectory inspector listen to (results.md § 2.1).  The file on
+    // screen is loaded again so a result written while you were away
+    // appears, rather than the snapshot from the previous visit
+    // (spectra.md § 7).
     //
     // Guard on ``state.results !== null`` so a never-loaded inspector
     // doesn't fire spurious /api/spectra/load on every visibility
     // event; the file is the one on screen, `fileState.path`.
-    function _onPageShow(_evt) {
-        if (state.results !== null && state.fileState.path) {
-            loadByPath(state.fileState.path);
-        }
-    }
     function _onVisibilityChange(_evt) {
         if (document.visibilityState === "visible"
             && state.results !== null && state.fileState.path) {
             loadByPath(state.fileState.path);
         }
     }
-    _on(window,   "pageshow",          _onPageShow);
     _on(document, "visibilitychange",  _onVisibilityChange);
 
     // The handle the caller uses to dispose the mounted inspector.

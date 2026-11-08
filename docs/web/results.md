@@ -45,7 +45,7 @@ flowchart LR
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
 | **a transport calculation** | its **`task.json`** — the description is the report's handle, as a benchmark's `job-set.json` is (the registry's `transport-task` parser claims only a transport calculation's); `<label>.transport.json` is `summarize task`'s copy for the command line, opened as a file. A **transmission run's** result is this report at its point, as its kind's record declares ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3): its ladder row opens the report with that bias selected (§ 2.4), and so does the run's own folder — the run door answers it with the calculation's `task.json`, the run of points' view with the point (§ 2) | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
 | **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize task` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
-| **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
+| **a folder not marked as part of a calculation** | nothing: no file in it is claimed as a run's, so none opens on its own — the files a viewer shows read alone are listed, and you pick one ([`model/parse.md`](?doc=model/parse.md) § 5.0) | as above, for the file picked | as above |
 | **a device run's `tsgf/`** (role `scratch`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | nothing: the page says *the engine's scratch of the run above*, and the sidebar lists what it holds; no file in it opens | — | — |
 | **a transmission point's `shared/`** (role `shared`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | the point's report, as the point above it opens: the sidebar says *the energies this point shares with* the point its `.copied-from` names | — | — |
 
@@ -185,8 +185,8 @@ tab has had, so the division is written out in full:
 | **Double-click a file** in the sidebar | opens it in the sidebar's own **file viewer** (the same modal the View button opens). It does **not** reach this panel |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
 | **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and opens the file on screen again (§ 2.3). This is the sidebar's whole authority over this tab |
-| **Come back to the browser tab** | re-reads the folder already bound, so files written while you were away appear. It does **not** re-point |
-| **Open the tab** | binds the panel to the folder this tab was last pointed at and scans it **once**. The browser's `pageshow` fires on every load, but only a page restored from the back/forward cache comes back holding an old listing, so only that restore re-reads (`file-picker.js::_onPageShow`). Until 2026-09-27 every load scanned twice, and the second scan emptied the menu the first had filled, at the moment the load completed |
+| **Come back to the browser tab** | re-reads the folder already bound, **once**, so files written while you were away appear; it does **not** re-point. Coming back is the page turning visible, the browser's `visibilitychange` to `visible` — a tab brought to the front, or a page restored from the back/forward cache, which turns visible just before its `pageshow`. The picker and each viewer that asks on coming back listen to that one event |
+| **Open the tab** | binds the panel to the folder this tab was last pointed at and scans it **once**. `pageshow` fires on every load; on a fresh load it only binds a panel the mount found no folder for; a restore is a coming back (the row above) |
 
 **A double-click shows a file; it never mounts one here.** The interaction
 model (2026-06-07) says a double-click runs the active tab's *"use this file"*
@@ -308,6 +308,14 @@ a presenter asks *same run?* as an equality:
 That second column is why a stage matters here at all: a ladder is *N* results,
 one per rung (`stages.md` § 1.1a), so `03_tight`'s master must leave
 `01_coarse`'s stream to `01_coarse`'s own master.
+
+**A run's parts are told by their readers** — `pyscf-geom` (the input echoed
+back, the geometry reached) and `pyscf` (geomeTRIC's trajectory) — which
+claim only them, each by its name ([`model/parse.md`](?doc=model/parse.md)
+§ 4). SIESTA's own `<label>.xyz` is no part: `xyz` reads it, and it lists
+under *Structure*, opened in the structure preview with the box its run had
+([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
+§ 6.0).
 
 > The presenter used to cut the label itself, with a regular expression over
 > the master's stem. It matches leftmost, so a chemistry-shaped job name —
@@ -1401,9 +1409,10 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
 
 - `test_results_blueprint.py` — the page + the registered presenter set + script
   order.
-- `test_inspector_pageshow_refresh_e2e.py` — the trajectory viewer's one ask
-  on a tab return (`trajectory.md` § 5), by `pageshow` and by
-  `visibilitychange`.
+- `test_coming_back_to_the_tab_e2e.py` — coming back to the tab (§ 2.1,
+  *Come back to the browser tab*; `trajectory.md` § 5) on a real run: a page
+  restored from the back/forward cache makes one scan and one
+  `/api/watch/data`; a tab made visible again asks `/api/watch/data` at once.
 - § 2, a transmission run's folder:
   `test_transport_on_a_real_junction_e2e.py::test_a_transmission_runs_folder_opens_its_report_at_its_point`
   (the run door's answer, every point of the road's two calculations) and

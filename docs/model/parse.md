@@ -610,6 +610,7 @@ molbuilder/parse/
 │
 ├── engines/       # engine output → FileParsers, over the reading layer (§ 4a)
 │   ├── siesta.py · pyscf.py · molwatch.py   # registered → TrajectoryResult
+│   ├── xyz.py                 # registered: any other XYZ, read alone → TrajectoryResult (below)
 │   ├── siesta_fdflog.py       # registered: fdf.<stamp>.log → EngineParamsResult (§ 5d.3)
 │   ├── siesta_mdnc.py         # registered: a run's .MD.nc — sibling upgrade (§ 5a)
 │   ├── siesta_grammar.py      # the SIESTA family's output lines (§ 5d.5)   ─┐
@@ -652,12 +653,18 @@ molbuilder/parse/
     └── run_info.py            # run_info → the `info` block (composer)
 ```
 
-**A plain `.xyz` opens through the PySCF trajectory reader** —
-`parse/engines/pyscf.py`'s `_can_parse_xyz` claims any XYZ-shaped file, one
-frame or many, as a `TrajectoryResult` (so a relaxation's `<label>.xyz` and a
-SIESTA `.ANI` list with that parser); `Structure.from_xyz` reads it for
-building ([`structure.md`](?doc=model/structure.md)) *(this said "no leaf
-FileParser, by design" until 2026-10-18; the reader had one)*. **A deck's initial coordinates
+**Each XYZ file is read by the reader that is for it, by its name**:
+geomeTRIC's `<stem>_geom_optim.xyz` by `pyscf`, with its run's progress log
+and the engine's own log, named on the stem its name begins with (§ 5.3); a
+PySCF deck's `<label>_initial.xyz` and `<label>_optimized.xyz` by
+`pyscf-geom`; any other XYZ — a saved structure, a calculation's
+`<label>.source.xyz`, SIESTA's `<label>.xyz` and `.ANI` — by `xyz`
+(`parse/engines/xyz.py`), one frame or many, read alone: each frame's atoms
+and positions, as a `TrajectoryResult`, and nothing from its comment line,
+which is free text. What makes a file an XYZ — a positive atom count, a
+comment line, atom lines of a symbol and three numbers — is `xyz`'s one
+check, which `pyscf` reads with too. `Structure.from_xyz` reads an XYZ for
+building ([`structure.md`](?doc=model/structure.md)). **A deck's initial coordinates
 are not read at all**: a viewer's starting structure is the trajectory's frame 0,
 from the same file every later frame comes from.
 
@@ -867,7 +874,8 @@ as a reader sees it — is floor 6's, served beside this answer by the route
 product may still be `openable`. A run of ours is asked everything, even before
 it has written a byte. A folder no calculation claims holds no run of ours:
 its files are listed, the registry says what it can open, and nothing is
-claimed or asked of it.
+claimed or asked of it — none of its files is opened for the person
+(`openable` is `null`); they pick one.
 
 **`status["active_source"]` is a bare filename and `openable` is a path,
 deliberately.** The status names which of the folder's outputs spoke — a name
@@ -918,8 +926,10 @@ The run door's `openable` asks **five** questions of five owners, of the one
 folder it is handed, and the first one decides whether the others apply at
 all — a folder of ours is opened at its run's own result, read back with the
 run's label, or at what its kind declares a folder of that rung opens
-(`runs.folder_answer`); `parse/dirs/rundir.py::openable_in` answers a folder
-read without its run, by dotted role alone:
+(`runs.folder_answer`); a folder stamped a run that lies in no stage's
+`run-<n>/` is no run of ours, and is read without its run, by dotted role
+alone (`parse/dirs/rundir.py::openable_in`); a folder no calculation claims
+opens nothing:
 
 | question | owner | reader |
 |---|---|---|
@@ -943,7 +953,7 @@ is read with beside it are floor 6's (`views_of`,
 | **any other container** — a stage's folder, a trial holding its attempts | no state, no record: its runs are the folders below it | — | a result in it, where one is |
 | **the engine's scratch** — a device run's `tsgf/` | nothing | — | nothing |
 | **a transmission point's `shared/`** | read with the point it lies in | the point it lies in (`point_of`) | what that point opens |
-| **a folder no calculation claims** | nothing claimed: read alone | — | the newest file of a role a run writes that a parser claims (`openable_in`) |
+| **a folder no calculation claims** | nothing claimed: read alone | — | nothing: its files are listed, each as the registry reads it, and the person picks one (`openable` is `null`) |
 
 > **THE FIRST QUESTION IS NEW, AND THE OTHERS WERE ASKED WITHOUT IT**
 > *(2026-09-19)*. This table had three rows and the first read *"what
@@ -965,13 +975,13 @@ is read with beside it are floor 6's (`views_of`,
 **"I don't know" is one of its answers, and it narrows the others rather
 than refusing them** (`project-layout.md` § 1.4a). A directory with no record —
 one written before this rule, or an attempt copied out of its calculation — is
-read ALONE: its files, which of them a parser claims, which one to open, and
-how its run ended if one did. What it cannot answer is everything relational —
-which calculation, which rung, which siblings, what its kind declares — and
-**the door says which of the two answers it is giving**, so a partial answer is
-never mistaken for a complete one. The questions that remain — which files a
-run writes, and which a parser claims — are directory-local and were always
-answerable without help.
+read ALONE: its files, and which of them a parser claims — none of them
+opened for the person and no run state asked (§ 5.0). What it cannot answer is
+everything relational — which calculation, which rung, which siblings, what
+its kind declares — and **the door says which of the two answers it is
+giving**, so a partial answer is never mistaken for a complete one. The
+question that remains — which of its files a parser claims — is
+directory-local and was always answerable without help.
 
 **There is no preference order to tune.** A vibration run is *for* its
 `.spectra.json` (on SIESTA written at the run's root by the force-constant
@@ -993,8 +1003,8 @@ the caller's next step was `detect()`, which refused it.
 **A directory that does not say what it is holds no run of ours** — no
 `calcdir.json` in it and no `task.json` at it (`execution/project-layout.md`
 § 1.4a). Its files are listed and the registry says which it can open; the door
-claims none of them as molbuilder's, reads no label off a deck and asks it no
-run state. *(Until 2026-10-04 the deck was read for a label and the label's
+claims none of them as molbuilder's, opens none, reads no label off a deck and
+asks it no run state. *(Until 2026-10-04 the deck was read for a label and the label's
 files searched, then generic names — a search for a run molbuilder's wrapper
 did not run, input molbuilder does not take: user, 2026-10-03; plan B11.)*
 Within a run of ours the run's label comes from its description through the

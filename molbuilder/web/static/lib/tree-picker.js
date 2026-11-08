@@ -2,12 +2,18 @@
  *
  * One lazy-expanding tree over the projects root, used by:
  *
- *   * the sidebar's Move/Copy destination question (dirs only);
- *   * the Modify tab's slab panel, picking the relaxed file a lattice is
- *     measured from;
- *   * the Transport tab's junction citation: a run's folder or a pair's
- *     `.xyz` (mode "any"), with the meta line from the caller's
- *     `describe`.
+ *   * the sidebar's Move/Copy destination question (dirs only), and through
+ *     it the save-where question's *where* (`projects.chooseSavePath`: the
+ *     MolView exports, the spectrum viewer's frame set);
+ *   * the Modify tab's slab panel, picking the relaxed run or pair a
+ *     lattice is measured from;
+ *   * the Transport tab's junction citation, and a frame set of a finished
+ *     junction cited in its place: a run's folder or a pair's `.xyz` (mode
+ *     "any"), with the meta line from the caller's `describe`.
+ *
+ * Asked before the page knows the projects root, it waits for the root and
+ * opens when it lands; when the sidebar's start cannot resolve it, it opens
+ * and says why in its tree (docs/web/projects.md § 5).
  *
  * The metadata seam is `describe(path, entry)`: the caller supplies
  * what a selection MEANS (an fdf summary, a file size, nothing) and
@@ -23,7 +29,7 @@ import {
   dialogActions, dialogHint, dialogTitle, newDialog, openDialog, settleDialog,
 } from "./dialog.js";
 import { apiList } from "./projects/api.js";
-import { getProjectsRoot } from "./projects/state.js";
+import { whenProjectsRoot } from "./projects/state.js";
 
 function _el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -47,8 +53,8 @@ function _el(tag, cls, text) {
  *   pickable      optional (entry, path) => bool over SELECTABLE
  *                 entries: rows failing it still list (and expand),
  *                 but cannot be chosen — the slab panel's lattice
- *                 picker walks the whole tree yet lets only `.xyz` /
- *                 `.XV` files be the answer
+ *                 picker walks the whole tree yet lets only a folder
+ *                 or an `.xyz` be the answer
  *   describe      optional async (path, entry) => string; shown in the
  *                 meta line when a selection lands
  *   confirmLabel  the primary button's label (default "Choose")
@@ -57,8 +63,7 @@ function _el(tag, cls, text) {
 export async function pickPath(opts) {
   opts = opts || {};
   const mode = opts.mode || "dir";
-  const root = getProjectsRoot();
-  if (!root) return null;
+  const known = await whenProjectsRoot();
 
   const dialog = newDialog("molbuilder-tree-picker-dialog");
   dialog.appendChild(dialogTitle(opts.title || "Choose"));
@@ -258,9 +263,13 @@ export async function pickPath(opts) {
 
   const rootUl = _el("ul", "tp-root");
   tree.appendChild(rootUl);
-  const rootNode = _buildNode("projects", root, "directory", true);
-  rootUl.appendChild(rootNode);
-  await _expand(rootNode);
+  if (known.ok) {
+    const rootNode = _buildNode("projects", known.root, "directory", true);
+    rootUl.appendChild(rootNode);
+    await _expand(rootNode);
+  } else {
+    rootUl.appendChild(_el("li", "tp-error", known.error));
+  }
 
   const actions = dialogActions([
     { label: "Cancel", action: "cancel", onClick: () => settleDialog(null) },

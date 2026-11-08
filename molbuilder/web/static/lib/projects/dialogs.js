@@ -12,7 +12,6 @@
  */
 
 import { askFields } from "../dialog.js";
-import { getProjectsRoot } from "./state.js";
 
 // ─── Filename / dirname validation ───────────────────────────────── //
 
@@ -193,14 +192,9 @@ export function confirmDestructive(opts) {
  *
  * @param opts {title?, nameTitle?, initial?, hint?, ext?}
  * @returns "<dir>/<name>" -- `ext` added where given -- or null on cancel.
- * @throws when the project root is not available on this page yet — said,
- *         never a silent nothing.
  */
 export async function chooseSavePath(opts) {
   opts = opts || {};
-  if (!getProjectsRoot()) {
-    throw new Error("the project tree is not available on this page yet");
-  }
   const dir = await chooseDestinationDir({
     title: opts.title || "Save where?",
   });

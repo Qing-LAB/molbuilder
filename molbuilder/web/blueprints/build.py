@@ -1001,7 +1001,7 @@ def api_task_setup_handover():
         if too_high:
             return jsonify({"ok": False, "error": too_high}), 400
         try:
-            refuse_described(dest_dir, shown=str(body["dest"]))
+            refuse_described(dest_dir)
         except DescribeError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
     from molbuilder.issues import calling

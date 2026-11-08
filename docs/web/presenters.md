@@ -51,7 +51,9 @@ viewer for one kind of file. Today there are eight:
 *The first column is the `name` each presenter registers under. Which of
 them each kind of file opens in, is listed by and is headed under is asked of
 the live Results page, in the order the page registered them — rows of
-`tests/data/presenters.toml`; this table is kept true by review.*
+`tests/data/presenters.toml`; this table is kept true by review.* A file in
+no row opens in no viewer — SIESTA's `.ANI` among them: its steps are the
+run's, which `trajectory` shows from the run's log.
 
 The six that say "yes" mark themselves as *results*, so they show up in the
 Results tab's file dropdown. The two that say "no" (markdown, plain text) are
@@ -97,7 +99,8 @@ that declares four things (and three optional ones), and calls `register` once:
 - *(optional)* `resultCategory(file, meta)` — the group heading the dropdown
   files sit under. Defaults to `displayName`. A presenter matching more than one
   workflow's outputs discriminates per file here — `trajectory` claims `.out`,
-  `.molwatch.log` and `*_optim.xyz`, and names the engine that ran them.
+  `.molwatch.log` and geomeTRIC's `_geom_optim.xyz`, and names the engine that
+  ran them.
 - *(optional)* `absorbs(master, other, masterMeta, otherMeta)` — **"`master`
   subsumes `other`"**: both are result-class files in the SAME directory and
   `other` is a working part of the run `master` reports, so only the master
@@ -128,13 +131,16 @@ filename answer at all:
 **A run's viewer claims nothing without it** (2026-10-18): `trajectory`
 claims a file the catalogue names — its `role` — that one of its three parsers
 reads, the registry's `parser` (the progress log's, SIESTA's output's,
-geomeTRIC's trajectory's: the last reads any `.xyz`, so the role is what tells
-a run's trajectory from a geometry file); the sidecar viewers (`spectra`,
-`fc-sweep`, `bench-summary`, `transport`) the registry's `parser`; a file the
-catalogue does not name is left to what its FORMAT says — a `.xyz` or
-`.pdb` is a geometry, the structure preview's, which no catalogue row names;
-a `.json` or `.log` the text pane's. No suffix read off a name stands in for
-the answer. `engine: "unknown"` is the directory declining to name one, which
+geomeTRIC's trajectory's): the role says the file is a run's of ours and not a
+copy, the parser that it holds a run's steps. geomeTRIC's trajectory is the one
+XYZ its reader is for, by its name ([`parse.md`](?doc=model/parse.md) § 4);
+SIESTA's own `<label>.xyz` and a calculation's `<label>.source.xyz` are read
+by `xyz`, and are no run's steps. The sidecar viewers (`spectra`, `fc-sweep`,
+`bench-summary`, `transport`) claim on the registry's `parser`; a file no
+viewer claims so is left to what its FORMAT says — a `.xyz` or `.pdb` no run
+viewer claims is a geometry, the structure preview's, whether a catalogue row
+names it or not; a `.json` or `.log` the text pane's. No suffix read off a
+name stands in for the answer. `engine: "unknown"` is the directory declining to name one, which
 reads the same as an answer without an engine: `trajectory`'s heading reads
 the engine's words and the calculation's noun, both served with the folder
 answer from the two tables (`engine_words`, `noun`) — *SIESTA optimization*,

@@ -23,7 +23,8 @@
 
 import { apiRoots } from "./api.js";
 import {
-  projects, setProjectsRoot, SS_DIR, setNavigateToImpl, readSelectionSlot,
+  projects, setProjectsRoot, projectsRootUnavailable, SS_DIR,
+  setNavigateToImpl, readSelectionSlot,
 } from "./state.js";
 import {
   initList, openDir, restoreSelection,
@@ -357,13 +358,16 @@ async function init() {
   const rootsResp = await apiRoots();
   const roots = rootsResp.roots || [];
   if (!rootsResp.ok || roots.length === 0) {
+    const reason = rootsResp.ok
+      ? "The projects folder cannot be read on this machine."
+      : ("File-picker roots unavailable: "
+         + (rootsResp.error || "unknown error"));
+    // A folder picker asked on this page says why in these same words
+    // (docs/web/projects.md § 5).
+    projectsRootUnavailable(reason);
     const list = document.getElementById("ps-list");
     if (list) {
       list.classList.add("is-empty");
-      const reason = rootsResp.ok
-        ? "The projects folder cannot be read on this machine."
-        : ("File-picker roots unavailable: "
-           + (rootsResp.error || "unknown error"));
       // The same row list.js draws when a listing fails: the envelope's
       // error is text, and the colour is the palette's (ui-contract.md
       // §§ 2, 7).
@@ -379,12 +383,9 @@ async function init() {
   // the documented {ok, path, entries} envelope (or {ok:false,
   // error} on failure).
   // ORDER: setNavigateToImpl BEFORE setProjectsRoot because the
-  // latter synchronously fires onProjectsRootResolved subscribers.
-  // A pre-init subscriber that immediately calls projects.navigateTo
-  // from inside its onRootResolved callback would otherwise hit the
-  // "unavailable: sidebar not initialised" fallback.  Same reasoning
-  // applies to initList() below (its onChange subscribers run synchronously
-  // on register).
+  // latter answers whoever waits on `whenProjectsRoot`, and one that
+  // calls projects.navigateTo with the root in hand would otherwise hit
+  // the "unavailable: sidebar not initialised" fallback.
   setNavigateToImpl(openDir);
   setProjectsRoot(roots[0].path);
 

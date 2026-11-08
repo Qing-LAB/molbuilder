@@ -405,10 +405,12 @@ directly.
 ### 2.5 The projects tree and the canonical topics
 
 A calculation is a folder at the third level of the projects tree:
-`projects/<project>/<topic>/<calculation>/`. The three upper levels are
-organisational only; what is inside a calculation, and who creates each
-level, is [`project-layout.md`](?doc=execution/project-layout.md) § 1.1 and
-§ 1.4a.
+`projects/<project>/<topic>/<calculation>/`, or below it in folders of your
+own — never inside another calculation's folder
+([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a).
+The three upper levels are organisational only; what is inside a calculation,
+and who creates each level, is
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.1 and § 1.4a.
 
 **Each path segment is one token of `[A-Za-z0-9_-]`.** `<project>` and
 `<calculation>` are what you type; `<topic>` is one of the canonical topics.

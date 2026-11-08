@@ -281,31 +281,26 @@ export function setShared(dir, file) {
   return { ok: true };
 }
 
-// Projects-root subscribers.
-// Tabs that depend on the projects-root being resolved (e.g. Build's
-// psml_lib live-resolution caption) need a one-shot notification so
-// they don't have to poll ``getProjectsRoot()``.  Single-fire-ish:
-// the publish happens AT MOST ONCE per page lifetime (the sidebar
-// only resolves the root once at init).  Subscribers registered
-// AFTER resolution receive the fire-once-immediately call from
-// onProjectsRootResolved itself with the already-resolved root.
-const rootSubscribers = new Set();
-let rootResolved = false;
-
-function _publishRootResolved() {
-  _publishToSet(rootSubscribers, { root: projectsRoot || "" });
-}
+/* THE PROJECTS ROOT'S ANSWER, settled once (docs/web/projects.md § 5):
+ * `{ok: true, root}` when the sidebar's start resolves the root, `{ok:
+ * false, error}` when it cannot -- `error` in the words the sidebar's list
+ * shows.  Whoever needs the root before the start has answered -- a folder
+ * picker, the notebook tab -- waits on it; asked after, it is answered at
+ * once. */
+let _answerRoot = null;
+const _rootAnswer = new Promise((resolve) => { _answerRoot = resolve; });
 
 export function setProjectsRoot(root) {
   projectsRoot = root;
-  // Only publish on the FIRST resolution.  Subsequent setProjectsRoot
-  // calls (theoretical; sidebar only calls once) shouldn't fan out as
-  // re-resolutions -- tabs would over-react.
-  if (!rootResolved && projectsRoot) {
-    rootResolved = true;
-    _publishRootResolved();
-  }
+  // A promise settles once: the first root the start resolves answers.
+  if (projectsRoot) _answerRoot({ ok: true, root: projectsRoot });
 }
+/** The sidebar's start could not resolve the root: ``error`` says why. */
+export function projectsRootUnavailable(error) {
+  _answerRoot({ ok: false, error: String(error) });
+}
+/** The root's answer, once the sidebar's start has one. */
+export function whenProjectsRoot()    { return _rootAnswer; }
 export function getProjectsRoot()     { return projectsRoot; }
 
 export function setRefreshHandler(handler) { refreshHandler = handler; }
@@ -811,18 +806,6 @@ export const projects = {
   upload,
   setShared,
   navigateTo,
-  // Projects-root resolution subscriber.
-  // Fires AT MOST ONCE per page lifetime when the sidebar's init
-  // resolves the root from apiRoots().  Subscribers that register
-  // BEFORE resolution receive the call when resolution lands; those
-  // that register AFTER resolution receive an immediate call with
-  // the resolved root (the fire-once-immediately contract).
-  onProjectsRootResolved: (cb) => {
-    _registerSubscriber(rootSubscribers, cb, "onProjectsRootResolved");
-    if (rootResolved) {
-      try { cb({ root: projectsRoot || "" }); }
-      catch (_) { /* per-subscriber isolation */ }
-    }
-    return () => rootSubscribers.delete(cb);
-  },
+  // The projects root's answer, once the sidebar's start has one (§ 5).
+  whenProjectsRoot,
 };

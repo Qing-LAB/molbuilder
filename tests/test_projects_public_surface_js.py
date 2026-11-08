@@ -724,14 +724,11 @@ class TestSubscribeDedupThrows:
     own set.  It catches a forgotten unsubscribe or a double init at the
     call site."""
 
-    @pytest.mark.parametrize("call", ["onChange", "onCommit",
-                                      "onProjectsRootResolved"])
+    @pytest.mark.parametrize("call", ["onChange", "onCommit"])
     def test_the_same_callback_twice_throws_naming_the_call(self, call):
         """Without it the callback fires twice per event and the tab does
         its work twice -- for a save pipeline or a schema reload a real
-        double execution, not a cosmetic one; `onProjectsRootResolved` is
-        the one most likely missed, a one-shot callers assume cannot
-        leak."""
+        double execution, not a cosmetic one."""
         out = _run(f'''
             const cb = (p) => {{}};
             state.projects.{call}(cb);
@@ -859,65 +856,50 @@ class TestPublishSnapshotSemantics:
         assert out == ["cb1", "cb2", "cb3"]
 
 
-# ----- onProjectsRootResolved ------------------------------------ #
+# ----- whenProjectsRoot ------------------------------------------ #
 
 
-class TestOnProjectsRootResolved:
-    """`onProjectsRootResolved(cb)`: the projects root, once it is resolved;
-    a subscriber after that is called at once (`web/projects.md` § 5)."""
+class TestWhenProjectsRoot:
+    """`whenProjectsRoot()`: the projects root's answer, once the sidebar's
+    start has one -- the root, or the words it gives when it cannot resolve
+    it -- and the one way to wait for it (`web/projects.md` § 5).  The start
+    is driven through the two calls the sidebar makes; what the sidebar
+    passes and what a picker draws are not this module's."""
 
-    def test_subscriber_fires_when_setProjectsRoot_lands(self):
-        """A subscriber registered BEFORE the root resolves is called when it does, and
-        not before.
+    @pytest.mark.parametrize("start, answer", [
+        ('state.setProjectsRoot("/home/u/projects")',
+         {"ok": True, "root": "/home/u/projects"}),
+        ('state.projectsRootUnavailable("the start\'s words")',
+         {"ok": False, "error": "the start's words"}),
+    ], ids=["resolved", "not resolved"])
+    def test_asked_before_the_start_answers_it_is_answered_when_it_does(
+            self, start, answer):
+        """Asked first, answered after: nothing before the start says, then
+        its answer.
 
-        `web/projects.md` § 5 -- `onProjectsRootResolved` is the one-shot for
-        tabs that load before the sidebar's init has answered. Firing early hands a
-        tab an empty root that it then joins paths onto; not firing at all leaves the
-        tab waiting forever for a resolution that already happened.
-        """
-        out = _run('''
-            const calls = [];
-            state.projects.onProjectsRootResolved(p => calls.push(p));
-            // Initially no fire (root not resolved).
-            const before = calls.slice();
-            state.setProjectsRoot("/home/u/projects");
-            console.log(JSON.stringify({
-                before: before,
-                after:  calls,
-            }));
+        MUTATION THIS MUST FAIL AGAINST: an answer given early (a folder
+        picker opening on an empty root and joining paths onto it), or never
+        -- a start that cannot resolve the root settling nothing, so a picker
+        asked meanwhile waits for ever."""
+        out = _run(f'''
+            const asked = state.whenProjectsRoot();
+            let early = null;
+            asked.then(a => {{ early = a; }});
+            await new Promise(r => setTimeout(r, 0));
+            const before = early;
+            {start};
+            console.log(JSON.stringify({{ before, answer: await asked }}));
         ''')
-        assert out["before"] == []
-        assert out["after"] == [{"root": "/home/u/projects"}]
+        assert out == {"before": None, "answer": answer}
 
-    def test_subscriber_registered_after_resolution_fires_immediately(self):
-        """A tab that loads after the sidebar's init has resolved the root
-        still receives it, at once (`web/projects.md` § 5)."""
+    def test_asked_after_the_start_has_answered_it_is_answered_at_once(self):
+        """A tab that asks after the sidebar's start has resolved the root
+        still gets it -- the answer already given, nothing waited for.
+
+        MUTATION THIS MUST FAIL AGAINST: an answer only for whoever asked
+        before the start, so a late asker waits for ever."""
         out = _run('''
             state.setProjectsRoot("/p");
-            const calls = [];
-            state.projects.onProjectsRootResolved(p => calls.push(p));
-            console.log(JSON.stringify(calls));
+            console.log(JSON.stringify(await state.projects.whenProjectsRoot()));
         ''')
-        assert out == [{"root": "/p"}]
-
-    def test_unsubscribe_works(self):
-        """Unsubscribing from `onProjectsRootResolved` before the root lands
-        means no call at all.
-
-        The one-shot's own teardown, and the one place it matters: a tab that
-        unmounts while the sidebar is still resolving must not be called back
-        into afterwards. That callback runs against a DOM that no longer
-        exists, and the publisher isolates per-subscriber exceptions, so the
-        failure is silent -- a tab that half-initialises something it has
-        already thrown away.
-        """
-        out = _run('''
-            const calls = [];
-            const unsub = state.projects.onProjectsRootResolved(
-                p => calls.push(p)
-            );
-            unsub();
-            state.setProjectsRoot("/p");
-            console.log(JSON.stringify(calls));
-        ''')
-        assert out == []
+        assert out == {"ok": True, "root": "/p"}

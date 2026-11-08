@@ -1,5 +1,5 @@
 """A run folder's floor-1 questions that need the whole folder: what a viewer
-should open in a folder no calculation claims (:func:`openable_in`), and how a
+should open in a folder read without its run (:func:`openable_in`), and how a
 run is doing, asked with its launch record (:func:`run_state_of`).
 
 Contract: `model/parse.md` § 5.  Floor 1 (`execution/architecture.md` § 2.1):

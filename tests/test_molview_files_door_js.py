@@ -152,16 +152,13 @@ def test_the_gates_verdicts_ride_the_doors_result(app_at):
 
 
 #: The save-where question's own dialogs, answered: the folder picker picks
-#: ``P``, the name dialog answers ``globalThis.__typed``, the page has a
-#: project root.
+#: ``P``, the name dialog answers ``globalThis.__typed``.
 _QUESTION_ANSWERED = r"""
 const { registerHooks } = await import("node:module");
 const __stub = (src) => "data:text/javascript," + encodeURIComponent(src);
 const __answers = {
     "../dialog.js": __stub("export async function askFields() "
                            + "{ return { name: globalThis.__typed }; }"),
-    "./state.js": __stub("export function getProjectsRoot() "
-                         + "{ return '/root'; }"),
     "../tree-picker.js": __stub("export async function pickPath() "
                                 + "{ return 'P'; }"),
 };

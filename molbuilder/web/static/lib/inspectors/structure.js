@@ -40,10 +40,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
         name:        "structure",
         displayName: "Structure preview",
         // A geometry FORMAT -- an .xyz or a .pdb, the two the structure
-        // codec writes (`model/structure.md` § 2.4) -- which no catalogue
-        // row names: a saved pair has no role, and the server's parse answer
-        // reads any .xyz as a trajectory of one or more frames.  A result a
-        // person wants to see, so the file picker on /results surfaces it.
+        // codec writes (`model/structure.md` § 2.4) -- that no run viewer
+        // claims, whether a catalogue row names it or not: a saved pair, a
+        // calculation's `<label>.source.xyz`, SIESTA's own `<label>.xyz`
+        // (`presenters.md` § 2).  A result a person wants to see, so the
+        // file picker on /results surfaces it.
         isResult:    true,
         match:       (file) => {
             const lower = file.toLowerCase();

@@ -554,17 +554,17 @@ def _api_load_multipart(uploaded_file):
     if not uploaded_file or not uploaded_file.filename:
         return jsonify({"ok": False, "error": "Empty filename."}), 400
 
-    # Keep the original suffix (.xyz / .out / .log) so the parser-
-    # detection layer's content sniff isn't fooled by extension-less
-    # names.  Sanitise the basename to dodge path-traversal in the
-    # temp filename itself.
+    # KEPT UNDER ITS OWN NAME, a unique prefix before it: a reader is
+    # chosen by the file's name (`model/parse.md` § 4 -- geomeTRIC's
+    # `_geom_optim.xyz` is `pyscf`'s, any other XYZ `xyz`'s), so the upload
+    # is read as it would be in its run's folder (`web-api.md`,
+    # `/api/watch/load`).  The basename alone, so no path reaches the
+    # temp name.
     #
     # mkstemp (R6) reserves a unique filename atomically, so two uploads
     # in the same second cannot overwrite each other while a parser is
     # reading the file.
     safe_name = os.path.basename(uploaded_file.filename) or "upload"
-    safe_stem = os.path.splitext(safe_name)[0]
-    safe_suffix = os.path.splitext(safe_name)[1] or ""
     try:
         # mkstemp returns (fd, path) with an atomically-reserved
         # unique filename.  Close the fd immediately and let
@@ -572,7 +572,7 @@ def _api_load_multipart(uploaded_file):
         # FileStorage.save expects either a path string or a
         # writable binary stream.
         tmp_fd, tmp_path = tempfile.mkstemp(
-            prefix=f"molwatch_{safe_stem}_", suffix=safe_suffix,
+            prefix="molwatch_", suffix=f"_{safe_name}",
         )
         os.close(tmp_fd)
         uploaded_file.save(tmp_path)

@@ -3289,7 +3289,9 @@ _PATH_OPT = click.option("-p", "--path", default=None, type=click.Path(),
 def cmd_checkpoint_init(engine, note, calculation, path):
     """Make this folder a checkpoint folder and save its first state.
 
-    One repository per calculation.  A folder whose subdirectories are working
+    One repository per calculation.  A folder inside a calculation's folder
+    is refused: that calculation's history covers it.  A folder whose
+    subdirectories are working
     dirs is accepted only when this folder carries its description --
     task.json -- because without one,
     several independent calculations would share a history and rewind together.
@@ -3307,8 +3309,8 @@ def cmd_checkpoint_init(engine, note, calculation, path):
         state = repo.init(engine=engine, note=note,
                           calculation=calculation)
     # Exit 2 for both of these: they are the two things the person running the
-    # command fixes -- the folder holds several calculations, or the name needs
-    # repair.  Exit 1 is kept for a fault, so a script can tell "my input was
+    # command fixes -- the folder holds several calculations or lies inside
+    # one, or the name needs repair.  Exit 1 is kept for a fault, so a script can tell "my input was
     # wrong" from "the machine is broken".
     except (NestedRepoRefusedError, CalculationNameError) as e:
         click.echo(f"Error: {e}", err=True)

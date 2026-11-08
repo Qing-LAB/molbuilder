@@ -51,13 +51,8 @@ def bundle_flag(base) -> str:
     named by its full path, which `--bundle` refuses by name -- never a line
     with no calculation in it.  The address is quoted as the shell needs
     it: a folder name may hold a space."""
-    from ..projects import projects_root
-    here = Path(base).resolve()
-    try:
-        rel = here.relative_to(Path(projects_root()).resolve())
-    except (ValueError, OSError):
-        rel = here
-    return f" --bundle {shlex.quote(str(rel))}"
+    from ..projects import address
+    return f" --bundle {shlex.quote(address(base))}"
 
 
 def command(verb: str, *words, base, flags=()) -> str:

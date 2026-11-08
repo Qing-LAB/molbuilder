@@ -100,20 +100,37 @@ def test_nothing_shipped_beside_a_job_is_claimed_as_its_output(tmp_path):
     assert not claimed, claimed
 
 
-@pytest.mark.parametrize("role", ["_initial.xyz", "_optimized.xyz"],
-                         ids=["the-input-echoed-back", "the-geometry-reached"])
-def test_a_pyscf_decks_geometry_pair_is_one_parsers(tmp_path, role):
-    """Each single-geometry pair a PySCF deck writes -- the input echoed
-    back, ``<job>_initial.xyz``, and the geometry reached,
-    ``<job>_optimized.xyz`` -- is the geometry reader's alone (`pyscf-geom`),
-    never also the trajectory reader's, so `detect`, which is
-    exactly-one-or-raise, opens it.  The file is the structure's own
-    writer's.  THE SILENT FAILURE: the Results folder row naming no parser
-    for the pair, which then cannot be opened on its own."""
+#: EACH XYZ FILE AND THE READER THAT IS FOR IT, by its name
+#: (`model/parse.md` § 4): ``(name, reader)``.
+_XYZ_READERS = [
+    ("H2_initial.xyz", "pyscf-geom"),            # a PySCF deck's input, echoed back
+    ("H2_optimized.xyz", "pyscf-geom"),          # ...and the geometry it reached
+    ("H2_01_coarse_geom_optim.xyz", "pyscf"),    # geomeTRIC's trajectory
+    ("H2.xyz", "xyz"),                           # SIESTA's own geometry file
+    ("H2_01_coarse.ANI", "xyz"),                 # SIESTA's steps, as an animation
+    ("H2.source.xyz", "xyz"),                    # the structure a calculation is of
+    ("water.xyz", "xyz"),                        # a saved structure
+]
+
+
+@pytest.mark.parametrize("name,reader", _XYZ_READERS,
+                         ids=[n for n, _r in _XYZ_READERS])
+def test_each_xyz_is_read_by_the_reader_that_is_for_it(tmp_path, name, reader):
+    """Each XYZ file is read by the reader that is for it, by its name, and
+    by that one alone, so `detect`, which is exactly-one-or-raise, opens it:
+    a PySCF deck's two geometries by `pyscf-geom`, geomeTRIC's trajectory by
+    `pyscf`, any other XYZ by `xyz`.  The file is the structure's own
+    writer's.
+
+    THE SILENT FAILURES: the Results folder row naming no parser for a PySCF
+    deck's pair, which then cannot be opened on its own; SIESTA's own
+    geometry file and a calculation's structure read by geomeTRIC's reader,
+    so the trajectory viewer claimed them as a run's steps -- SIESTA's
+    folded into its run's progress log and never listed."""
     from molbuilder.structure import Structure
     water = Structure(elements=["O", "H", "H"],
                       positions=[[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
                                  [0.0, -0.757, -0.477]])
-    path = tmp_path / f"H2{role}"
+    path = tmp_path / name
     path.write_text(water.to_xyz())
-    assert detect(str(path)).name == "pyscf-geom"
+    assert detect(str(path)).name == reader

@@ -306,8 +306,15 @@ gives each level's door.
 
 **A folder states its place, or it has none.** It is placed when it says so —
 the root by its description, any other folder by its record — and nothing above
-a folder is searched for. One with neither, such as a folder a person made
-inside a run, answers an empty `Where` and is read alone.
+a folder is searched for to place it. One with neither, such as a folder a
+person made inside a run, answers an empty `Where` and is read alone.
+
+**One question looks above a folder and below it, and places nothing**: does it
+lie inside a calculation's folder — the nearest folder above it holding
+`task.json`, the walk stopping at the projects tree's root — or does a folder
+below it hold one (`calcdirs.calculation_above`, `calcdirs.calculation_below`)?
+Only describe and a history's first state ask it, each to refuse (§ 7,
+invariant 2a).
 
 **What a folder is decides everything asked of it** — its place, its role and
 its calculation kind's record
@@ -330,7 +337,7 @@ siblings are.
 | what the directory says | what a reader may answer |
 |---|---|
 | `calcdir.json`, or `task.json` at a root | everything: its role, its calculation, its stage, its siblings, the ladder it sits in |
-| nothing, but a run left evidence — a deck, an output, a conclusion marker | what is here: the files, which have parsers, which one to open, how the run ended. **Nothing above it**, and the reader says so |
+| nothing, but a run left evidence — a deck, an output, a conclusion marker | what is here: the files and which have parsers — none of them claimed as a run's, none opened for the person, no run state asked. **Nothing above it**, and the reader says so |
 | nothing, and no evidence a run happened | the files, and no run state at all |
 
 **The third row is a rule of its own**: *running* rests on evidence that a run
@@ -1412,6 +1419,19 @@ repeated.
    calculation and which one**
    ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3). Files are
    named on the label, never on the id.
+2a. **A calculation is never inside another calculation's folder, nor holds
+   one** *(the user, 2026-11-07: "calculations can continue from another, not
+   within another")*. Every door that describes — `molbuilder describe`, the
+   hand-over, the Transport tab's describe — refuses such a folder before
+   writing anything (`describe.refuse_described`), naming the other
+   calculation and the way out: a folder of its own beside it; a calculation
+   that builds on another's result cites it. Nor does a history begin inside a
+   calculation's folder ([`checkpointing.md`](?doc=execution/checkpointing.md)
+   § 11, L1).
+   *Test:* a describe two folders below a described calculation, and one into
+   the folder that holds it, each refused naming it, nothing written
+   (`tests/test_describe.py`); a history begun in a folder inside a described
+   calculation refused naming it (`tests/test_checkpoint_states.py`).
 3. **Who names a file decides whether it carries the stage**
    ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3): the engine's
    files (`<label>.XV`, `.DM`, `.CG`) are bare, so a restart file copied into

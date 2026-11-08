@@ -11,7 +11,7 @@ composed and written is decided here, once.
 In order, every refusal before anything is written: the engine (an
 extension's is the finished calculation's); the citation, resolved and
 classified once, a run that ended with an error refused; the folder -- one
-calculation per folder, never inside what it cites; the voltages and their
+calculation per folder, never inside another's nor holding one; the voltages and their
 treatment; each rung's values and the shared ones, by name; the task, by its
 codec; an extension's limits, where the road holds them (the tab's; the
 command line says what it reuses, never refusing); the pseudopotentials'
@@ -38,7 +38,7 @@ class NotDescribed(ValueError):
     """A describe refused, nothing written: its words, the findings beside
     the controls they name (a road that draws them), the task when one was
     built, and whether the folder is what is refused (one calculation per
-    folder; never inside what it cites)."""
+    folder; never inside another's nor holding one)."""
 
     def __init__(self, message: str, *, findings: Sequence = (),
                  task=None, folder: bool = False):
@@ -192,7 +192,7 @@ def describe(*, calculation: str, engine: Optional[str],
                                     citation_answers,
                                     transport_template_text)
     from .compose import (CitedPair, ComposeError, refuse_failed_citation,
-                          refuse_inside_citation, resolve_citation)
+                          resolve_citation)
     from .deck import describe_findings
     from .reuse import Extension, ReuseError, citing, reused, write_reusing
     from .stages import resolvable_override_names, stages_for_transport
@@ -245,20 +245,13 @@ def describe(*, calculation: str, engine: Optional[str],
             raise NotDescribed(str(exc)) from None
         junction = str(Path(resolved).relative_to(root))
 
-    # THE FOLDER: one calculation per folder, never inside what it cites
-    # (§ 3.1, *A calculation's folder is its own*).
+    # THE FOLDER: one calculation per folder, never inside another --
+    # what it cites or extends among them (`project-layout.md` § 7,
+    # invariant 2a; § 3.1, *A calculation's folder is its own*).
     if dest is not None:
         try:
-            here = Path(dest).resolve()
-            shown = (str(here.relative_to(root)) if here.is_relative_to(root)
-                     else str(dest))
-            refuse_described(dest, shown=shown)
-            refuse_inside_citation(
-                dest, finished.base if finished is not None else cited.path,
-                shown=shown, what=("the finished calculation"
-                                   if finished is not None
-                                   else "the cited junction"))
-        except (DescribeError, ComposeError) as exc:
+            refuse_described(dest)
+        except DescribeError as exc:
             raise NotDescribed(str(exc), folder=True) from None
 
     # THE VOLTAGES, STATED -- `[0.0]`, the single bias, where none is given

@@ -1319,6 +1319,35 @@ def test_a_repository_inside_a_repository_is_refused(tmp_path):
         Repo(str(root)).init(note="outer")
 
 
+@pytest.mark.parametrize("by_hand", [False, True],
+                         ids=["a folder made in it",
+                              "one a person ran git init in"])
+def test_a_folder_inside_a_calculation_is_refused_a_history_of_its_own(
+        tmp_path, monkeypatch, by_hand):
+    """L1: a folder inside a calculation's folder is refused a history of its
+    own, naming that calculation, and nothing in it changes -- the
+    calculation's history covers it, and a calculation is never inside
+    another (`project-layout.md` § 7, invariant 2a).  H2 as `molbuilder
+    describe` writes it, and a folder a person made in it -- or then ran
+    `git init` in by hand, which `init` repairs everywhere else.  THE SILENT
+    FAILURE: a second history inside H2's, which H2's restores cannot keep in
+    step -- begun, or adopted as molbuilder's and named."""
+    from molbuilder.checkpoint import NestedRepoRefusedError
+    from support.road import describe_calculation
+    h2 = describe_calculation(tmp_path, monkeypatch)
+    notes = h2 / "notes"
+    notes.mkdir()
+    if by_hand:
+        subprocess.run(["git", "init", "-q", "."], cwd=notes, check=True)
+    was = {f: f.read_bytes() for f in notes.rglob("*") if f.is_file()}
+    with pytest.raises(NestedRepoRefusedError) as refused:
+        Repo(str(notes)).init(note="set up")
+    said = str(refused.value)
+    assert f"inside the calculation {h2.resolve()}" in said, said
+    assert {f: f.read_bytes() for f in notes.rglob("*")
+            if f.is_file()} == was
+
+
 # ------------------------------------------------------------------ #
 #  I2a — a restore replays the save and consults nothing              #
 # ------------------------------------------------------------------ #

@@ -171,6 +171,19 @@ _REFUSED = [
     ("a folder that already holds a calculation",
      {"bundle": "P/optimization/H2", "name": "H3"},
      "already holds a calculation"),
+    # A calculation is never inside another's folder, nor holds one (the
+    # user, 2026-11-07: "calculations can continue from another, not within
+    # another"; `project-layout.md` § 7, invariant 2a), each named by its
+    # address from the projects root.  PREVENTS: a calculation written two
+    # folders down inside H2, whose history then holds it and whose every
+    # later act walks over it -- or one written around H2.
+    ("a folder inside another calculation's folder",
+     {"bundle": "P/optimization/H2/variants/JOB"},
+     "P/optimization/H2/variants/JOB is inside the calculation "
+     "P/optimization/H2"),
+    ("a folder that holds a calculation below it",
+     {"bundle": "P/optimization"},
+     "P/optimization holds the calculation P/optimization/H2"),
 ]
 
 

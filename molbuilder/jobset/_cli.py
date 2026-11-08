@@ -557,9 +557,10 @@ def describe_cmd(structure, bundle: str,
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
-    # ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse), the one check
-    # every door that describes asks (`describe.refuse_described`) --
-    # before anything is read or written.
+    # ONE CALCULATION PER FOLDER, NEVER ONE INSIDE ANOTHER (user,
+    # 2026-10-01, 2026-11-07: refuse), the one check every door that
+    # describes asks (`describe.refuse_described`) -- before anything is
+    # read or written (`job-system.md` § 5.1).
     from ..describe import refuse_described
     try:
         refuse_described(out_dir)

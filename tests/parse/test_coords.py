@@ -152,7 +152,7 @@ def test_pyscf_geom_claims_optimized_xyz(tmp_path: Path):
 
 def test_pyscf_geom_doesnt_claim_plain_xyz(tmp_path: Path):
     """Plain ``.xyz`` files (without ``_optimized``) are not claimed
-    here — the trajectory parser at engines/ handles those."""
+    here — `xyz`, the reader of any XYZ no other reader is for, reads those."""
     p = tmp_path / "structure.xyz"
     p.write_text("0\n\n")
     assert not PySCFGeomFileParser.can_parse(p)

@@ -192,7 +192,7 @@ assumed is that reach.
 
 - **Floor 1 — names & plain facts.**
   - `identity` — the stage token and the run id: `StageRef`, `resolve_stage_ref`, `stage_token`, `parse_token`, `run_id`, `stage_key`.
-  - `paths` · `calcdirs` — is a folder a calculation's root (`described`), where a folder is (`where` → `Where`).
+  - `paths` · `calcdirs` — is a folder a calculation's root (`described`), does it lie inside one or hold one (`calculation_above`, `calculation_below`), where a folder is (`where` → `Where`).
   - `runfiles` — every file molbuilder writes and its name (`WRITTEN`, `compose`, `parse`, `tail`, `manifest`).
   - `runrecord` — a run's own records: `launch_record`, `write_launch`, `ending`, `read_continued_from`, `carried_gather`, `copied_of`, `read_notified`.
   - `runpoints` — a run of points' index and its rules ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3).
@@ -460,7 +460,7 @@ One line per fact; the detail is in the linked chapter.
 | the fact | its door | floor | detail |
 |---|---|---|---|
 | a described calculation | `calculation.open(base)` → `Calculation` — read once per verb and passed whole; a path below it, `calculation.at(path)`; the refusal, `calculation.refusal` | 3 | A16 |
-| the description | `task.of(base)`; a text not yet a file, `task.from_text`; whether one is there, `calcdirs.described(base)` (floor 1) | 2 | [`engines/stages.md`](?doc=engines/stages.md) § 6 |
+| the description | `task.of(base)`; a text not yet a file, `task.from_text`; whether one is there, `calcdirs.described(base)` (floor 1); whether a folder lies inside a calculation's or holds one, `calcdirs.calculation_above(folder)`, `calcdirs.calculation_below(folder)` (floor 1; [`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a) | 2 | [`engines/stages.md`](?doc=engines/stages.md) § 6 |
 | the job request | `job_request.of(base, description)` | 2 | [`job-request.md`](?doc=execution/job-request.md) |
 | the template | `template_file.of(base, label)` → `TemplateFile` | 2 | [`engines/template.md`](?doc=engines/template.md) |
 | the plan | `JobSet.of(folder, plan=)` — the root's ladder, or a sweep's in its bench container (`materialize.sweep_set_dirs`); its path, `calcdirs.plan_path(folder)` (floor 1) | 3 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1 |
@@ -1321,7 +1321,8 @@ label.
 - **A11 is A1 widened from names to roots.** The roots have one owner each —
   the install root `molbuilder.repo_root`, the package's data folder
   `molbuilder.data_dir`, the user's tree `projects.py`
-  (`projects_root`, `find_projects_root`), the per-user config root
+  (`projects_root`, `find_projects_root`; a folder named by its address
+  from it, `address`), the per-user config root
   `config_dir.config_dir()`. Taking `.parent` off a file's resolver
   (`record.machine_scope_path().parent`) is the climb A11 forbids. A11 is about
   molbuilder's own roots: `envs/builds.py` climbing to the nvcc toolchain's root

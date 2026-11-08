@@ -336,8 +336,10 @@ as its five parts, below):
    holds a description is refused — a described calculation is changed on
    Task setup: its rung values and run settings on the cards, its electrode
    rename and its bias in its `task.json`; a different junction is a new description
-   in a new folder — and so is the
-   cited run's own folder (`engines/transport.md` § 3.1, § 3.8.2a). Task setup
+   in a new folder — and so is a folder inside another calculation's, the
+   cited run's among them, or one holding a calculation
+   ([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a;
+   `engines/transport.md` § 3.1, § 3.8.2a). Task setup
    then opens it as an ordinary description, its editor from then on, and
    echoes the junction — a frame set's card included — the bias list, the
    treatment and the rename.
