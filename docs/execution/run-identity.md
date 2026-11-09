@@ -489,7 +489,7 @@ every file a run takes handed over and recorded:
   (`.continued-from`, `run.json`'s `continued_from`;
   [`job-system.md`](?doc=execution/job-system.md) § 5.4) — before anything is
   sent, while the choice is open. The run script's MODE line says what lies
-  in the run as it starts — `CONTINUES (engine will load <files>)`
+  in the run as it starts — `continues (engine will load <files>)`
   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.4). Neither
   replaces the other, and neither may contradict the other. molbuilder
   informs; you decide to continue.

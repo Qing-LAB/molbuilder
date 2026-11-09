@@ -1173,26 +1173,20 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".fdf", "the SIESTA deck — every keyword this stage runs with",
              engine="siesta",
              when="prep", level="stage", kind="derived",
-             writer="prep (`script_emit.prepare_deck`), in the stage's "
-                    "folder; a copy in each run",
+             writer="prep, in the stage's folder; a copy in each run",
              door="runfiles.find_by_role",
              listed_by="engine_index", counted_by=("siesta",),
              reads=(("contract", "molbuilder.parse.engines.siesta_contract:"
                                  "contract_fields"),)),
     Artifact(".py", "the PySCF script this stage runs", engine="pyscf",
              when="prep", level="stage", kind="derived",
-             writer="prep (`script_emit.prepare_deck`), in the stage's "
-                    "folder; a copy in each run",
+             writer="prep, in the stage's folder; a copy in each run",
              door="runfiles.find_by_role",
              listed_by="engine_index", counted_by=("pyscf", "geometric")),
     Artifact(ROLE_TEMPLATE, "every parameter, with the value it was given",
              staged=False,
              when="setup", level="calculation", kind="source",
-             writer="`molbuilder describe` and the Transport tab's describe "
-                    "door (`describe.write_description`); the hand-over, "
-                    "which the browser writes -- each naming it with "
-                    "`template_file.template_filename`; `jobset migrate`, "
-                    "over the file `template_file.of` found",
+             writer="`molbuilder describe` and the Transport tab's Describe; the hand-over, which the browser writes; `jobset migrate`, over the template it found",
              door="template_file.of"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).
@@ -1204,15 +1198,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(ROLE_SOURCE, "the structure the calculation is of",
              staged=False,
              when="setup", level="calculation", kind="input",
-             writer="the hand-over and `molbuilder describe` "
-                    "(`StructureCodec.source_files`)",
+             writer='the hand-over and `molbuilder describe`',
              door="jobset.rung.structure_for",
              listed_by="user_index"),
     Artifact(ROLE_SOURCE_SIDECAR, "its cell and its region labels",
              staged=False,
              when="setup", level="calculation", kind="input",
-             writer="the hand-over and `molbuilder describe` "
-                    "(`StructureCodec.source_files`)",
+             writer='the hand-over and `molbuilder describe`',
              door="jobset.rung.structure_for",
              listed_by="user_index"),
     # THE DECK'S COMPANION REPORT: a file molbuilder writes and does not
@@ -1220,8 +1212,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(ROLE_VALIDATION, "what the generator checked before it wrote "
                                 "the deck",
              when="prep", level="stage", kind="record",
-             writer="prep (`script_emit.write_validation_report`), beside "
-                    "the deck",
+             writer='prep, beside the deck',
              door="runs.Run.report"),
     # ---- what the DECK writes for itself ------------------------------
     # A file the generated script writes is molbuilder's too -- it is our
@@ -1258,10 +1249,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              calculation=("vibration", "transport"), kind="record",
              only="a run of points: a SIESTA vibration, a device or "
                   "transmission stage over several frames or voltages",
-             writer="launch, for the points it opens (`submit._points_walk`); "
-                    "each point's report steps (`mb_monitor.pyz point`); a "
-                    "planner's own step for the points it plans "
-                    "(`spectra.siesta_vibration`)",
+             writer="launch, for the points it opens; each point's report steps (`mb_monitor.pyz point`); a planner's own step for the points it plans",
              door="runpoints.read_index"),
     # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
     # finish after the force-constant run (`engines/vibration.md` § 5.5).
@@ -1269,9 +1257,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                               "the strengths the engine computes, "
                               "thermochemistry",
              staged=False, calculation="vibration", kind="result",
-             writer="the run itself: the PySCF deck, or a SIESTA "
-                    "vibration's job, after the force constants and at its "
-                    "end (`mb_vibration.pyz`)",
+             writer="the run itself: the PySCF deck, or a SIESTA vibration's job (`mb_vibration.pyz`), after the force constants and at its end",
              door="parse.sidecars.spectra.SpectraSidecarFileParser",
              listed_by="user_index"),
     # THE SAME RESULT AS STRUCTURED DATA, written beside the JSON at every
@@ -1281,8 +1267,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                             "every variable stating itself (NetCDF-4); "
                             "the JSON's sha256 beside",
              staged=False, calculation="vibration", kind="result",
-             writer="the run itself, with the JSON "
-                    "(`sidecars.spectra.write_spectra_payload`)",
+             writer='the run itself, with the JSON',
              door="spectra.datafile.read_spectra_data",
              listed_by="user_index"),
     # A SIESTA VIBRATION'S OPTICAL CALLS AS DATA, rewritten by the run's own
@@ -1295,10 +1280,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                            "settings the calls read (NetCDF-4)",
              staged=False, engine="siesta", calculation="vibration",
              kind="result",
-             writer="the run's own record steps -- the force constants', "
-                    "every frame pending, then each optical call's -- and "
-                    "its finish (`spectra.siesta_vibration`, "
-                    "`spectra.optical_data.write_optical_data`)",
+             writer="the run's own record steps -- the force constants', every frame pending, then each optical call's -- and its finish",
              door="spectra.optical_data.read_optical_data",
              only="Raman asked, and a mode picked for it",
              listed_by="user_index"),
@@ -1306,15 +1288,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(ROLE_RUN_SCRIPT, "the run script — activates the environment, "
                               "tees the output, catches a kill",
              when="prep", level="stage", kind="derived", travels=True,
-             writer="prep (`runwrap.write_run_wrapper`), beside its deck; "
-                    "a copy in each run"),
+             writer='prep, beside its deck; a copy in each run'),
     # ON A MACHINE WITH A QUEUE, whether the run is then submitted or not --
     # unless prep is told `--no-sbatch`, and never for a run of points, which
     # its walk's header sends (`jobset.prep`).
     Artifact(ROLE_HEADER, "the queue header — `sbatch` reads it",
              when="prep", level="stage", kind="derived", travels=True,
-             writer="prep (`runwrap.write_run_wrapper`), beside the run "
-                    "script; a copy in each run",
+             writer='prep, beside the run script; a copy in each run',
              only="a machine with a queue, no `--no-sbatch`, and a stage run "
                   "once -- a run of points is sent by its walk's header"),
     # ---- the canonical trajectory -------------------------------------
@@ -1429,15 +1409,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # gives `<base>.parse.log` (`parse/_log.py`).  Off unless asked.
     Artifact(ROLE_PARSE_LOG, "molbuilder's log of reading the run's output",
              kind="record",
-             writer="molbuilder's parser, reading the output "
-                    "(`parse._log.ParseLogger`)",
+             writer="molbuilder's parser, reading the output",
              only="`MOLBUILDER_PARSE_LOG` set, beside a file whose name the "
                   "catalogue reads back"),
     Artifact(ROLE_MOLWATCH_PARSE_LOG,
              "the same, for the trajectory log",
              kind="record",
-             writer="molbuilder's parser, reading the trajectory log "
-                    "(`parse._log.ParseLogger`)",
+             writer="molbuilder's parser, reading the trajectory log",
              only="`MOLBUILDER_PARSE_LOG` set"),
     # The summary `jobset summarize task` writes.  It is the deliverable of the ladder
     # (`engines/transport.md` § 2a.12: "the transmission stage's output ...
@@ -1448,7 +1426,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                                 "points that ran",
              staged=False, calculation="transport", when="summarize",
              level="calculation", kind="result",
-             writer="`jobset summarize task` (`transport.record.write_record`)",
+             writer='`jobset summarize task`',
              door="parse.sidecars.transport.TransportRecordFileParser"),
     # THE SAME RESULTS AS DATA (`engines/transport.md` § 2a.12, *the data
     # file*): frame x voltage x energy, raw beside derived, every variable
@@ -1459,8 +1437,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                               "beside every frame's values (NetCDF-4)",
              staged=False, calculation="transport", when="summarize",
              level="calculation", kind="result",
-             writer="`jobset summarize task` "
-                    "(`transport.datafile.write_data_file`)",
+             writer='`jobset summarize task`',
              door="transport.datafile.read_data_file",
              listed_by="user_index"),
     # A TRANSMISSION POINT'S DATA FILE, READ (`model/parse.md` § 5e): its
@@ -1474,9 +1451,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              "quantities -- every variable with its units (NetCDF-4)",
              fields=("tbt",), staged=False, calculation="transport",
              when="summarize", level="run", kind="derived",
-             writer="the SIESTA family's parser "
-                    "(`parse.engines.tbtrans_nc`), on the person's word: "
-                    "the Results tab's DOS tab, `jobset summarize task`",
+             writer="molbuilder's TBtrans reader, when asked: the Results tab's DOS tab, `jobset summarize task`",
              door="parse.engines.tbtrans_nc.kept",
              only="a transmission point, its data file read",
              listed_by="engine_index"),
@@ -1500,8 +1475,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                                "where each stage's files are",
              staged=False, engine="siesta", calculation="vibration",
              when="summarize", level="calculation", kind="result",
-             writer="`jobset summarize task` "
-                    "(`spectra.displacement_sweep.write_sweep`)",
+             writer='`jobset summarize task`',
              door="parse.sidecars.fc_sweep.FcSweepRecordFileParser",
              only="two or more force-constant stages"),
     # THE CONCLUSION MARKER -- the wrapper's last act on its main line, or
@@ -1528,26 +1502,21 @@ WRITTEN: "tuple[Artifact, ...]" = (
              "what each step of a prep received, decided and produced",
              fields=("engine",), when="prep", level="calculation",
              kind="record",
-             writer="every prep, from either door, beside its "
-                    "`STAGE-PLAN.md` (`pipeline_log.PipelineLog`)"),
+             writer='every prep, from either door, beside its `STAGE-PLAN.md`'),
     # ---- NOT named on the label: fixed names, and families of them --------
     # A FIXED NAME'S OWNER TAKES IT FROM HERE (`job-contracts.md` § 2.2): the
     # constants above are the one spelling.
     Artifact(name=TASK_FILE, what="the description: what varies, the stages, "
                                   "the layout, the structure",
              when="setup", level="calculation", kind="source",
-             writer="`molbuilder describe` and the Transport tab's describe "
-                    "door (`describe.write_description`); Task setup's Save; "
-                    "`jobset migrate`",
+             writer="`molbuilder describe` and the Transport tab's Describe; Task setup's Save; `jobset migrate`",
              door="task.of"),
     Artifact(name=JOB_REQUEST_FILE,
              what="the job request: the queue, time limit and memory asked, the "
                   "run cards, each stage's group, a benchmark's plan, the "
                   "reports",
              when="setup", level="calculation", kind="source",
-             writer="`molbuilder describe` and the Transport tab's describe "
-                    "door (`describe.write_description`); Task setup's Save; "
-                    "`jobset migrate`",
+             writer="`molbuilder describe` and the Transport tab's Describe; Task setup's Save; `jobset migrate`",
              door="job_request.of"),
     Artifact(name=KEPT_FILE,
              what="a record as it was before `jobset migrate` rewrote it",
@@ -1568,65 +1537,52 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="the machine record this calculation is set to — its "
                   "first prep's",
              when="prep", level="calculation", kind="record",
-             writer="the first prep (`jobset.machine.set_machine`)",
+             writer='the first prep',
              door="scheduler.record.machine_for"),
     Artifact(name=JOBSET_FILE,
              what="the plan: one job per prepared stage, merged per stage — "
                   "and a benchmark's own, in its container",
              when="prep", level="calculation", kind="derived",
-             writer="prep (`jobset.model.JobSet.write`)",
+             writer='prep',
              door="jobset.model.JobSet.of"),
     Artifact(name=PREPARED_WITH_FILE,
              what="what each prepared stage was prepared with — its "
                   "settings, points and run card, merged per stage — which "
                   "`status` compares with its records now",
              when="prep", level="calculation", kind="record",
-             writer="prep (`jobset.prepared_with.record`)",
+             writer='prep',
              door="jobset.prepared_with.changes"),
     Artifact(name=PLAN_FILE, what="the plan in reading order",
              when="prep", level="calculation", kind="derived",
-             writer="prep (`jobset.prep.prep_jobset`), whole at each prep"),
+             writer='prep, whole at each prep'),
     Artifact(name=LEDGER_FILE, what="one line per decision of every verb",
              when="prep", level="calculation", kind="record",
-             writer="every verb (`jobset.ledger.record`)"),
+             writer='prep, launch and `jobset migrate`, each decision as it is made, and a stop of a job'),
     Artifact(name=PSEUDO_FILE,
              what="a pseudopotential: the calculation's one copy in "
                   "`pseudos/`, and a real copy beside every deck — SIESTA "
                   "opens only its working directory",
              engine="siesta", when="prep", level="calculation", kind="input",
-             writer="`molbuilder describe --psml-lib`, loose at the "
-                    "calculation root; the first prep moves them into "
-                    "`pseudos/` (`siesta.seam.pseudo_dir`) -- a transport "
-                    "calculation's first prep copies those of the run it "
-                    "cites, or of the calculation it extends "
-                    "(`transport.rung.provide_pseudos`, "
-                    "`transport.reuse.carry_pseudos`) -- and `materialize` "
-                    "copies one beside each deck",
+             writer="`molbuilder describe --psml-lib`, loose at the calculation root; the first prep moves them into `pseudos/` -- a transport calculation's first prep copies those of the run it cites, or of the calculation it extends -- and prep copies one beside each deck",
              door="pseudos.psml_sources"),
     Artifact(name=JUNCTION_FILE, what="the composed junction",
              calculation="transport", when="prep", level="calculation",
              kind="derived",
-             writer="the prep that composes the junction, or records an "
-                    "older one's order "
-                    "(`transport.compose.write_compose_record`)",
+             writer="the prep that composes the junction, or records an older one's order",
              door="transport.compose.recorded_junction",
              listed_by="engine_index"),
     Artifact(name=JUNCTION_SIDECAR_FILE,
              what="its cell, its region labels and the citation's record",
              calculation="transport", when="prep", level="calculation",
              kind="derived",
-             writer="the prep that composes the junction, or records an "
-                    "older one's order "
-                    "(`transport.compose.write_compose_record`)",
+             writer="the prep that composes the junction, or records an older one's order",
              door="transport.compose.recorded_junction",
              listed_by="engine_index"),
     Artifact(name=JUNCTION_CITED_FILE,
              what="the deck the junction was cited from, as it was",
              calculation="transport", when="prep", level="calculation",
              kind="derived",
-             writer="the prep that composes the junction, or records an "
-                    "older one's order "
-                    "(`transport.compose.write_compose_record`)",
+             writer="the prep that composes the junction, or records an older one's order",
              door="transport.compose.load_compose_record",
              only="a run is cited",
              listed_by="engine_index", counted_by=("siesta",)),
@@ -1634,9 +1590,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="where each part of the junction came from, with hashes",
              calculation="transport", when="prep", level="calculation",
              kind="record",
-             writer="the prep that composes the junction, or records an "
-                    "older one's order "
-                    "(`transport.compose.write_compose_record`)",
+             writer="the prep that composes the junction, or records an older one's order",
              door="transport.compose.read_provenance"),
     Artifact(name=GITIGNORE_FILE,
              what="which files the saved states keep by content in "
@@ -1670,10 +1624,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "call's own in its folder",
              when="prep", level="stage", kind="derived", engine="siesta",
              calculation="vibration", travels=True,
-             writer="prep, beside each phase's deck "
-                    "(`siesta.deck_lines.coordinates_text`); the run's own "
-                    "python for each call (`spectra.siesta_vibration`, "
-                    "the plan verb)",
+             writer="prep, beside each phase's deck; the run's own Python for each call",
              door="parse.fdf.read_deck"),
     # A RUN'S OWN RECORDS, in its folder: the launch record -- written at
     # launch -- the notification record, and the run it continues from.
@@ -1681,7 +1632,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="the launch record: how, where and when the run was sent, "
                   "and what it continued from",
              when="launch", level="run", kind="record",
-             writer="launch (`runrecord.write_launch`)",
+             writer='launch',
              door="runrecord.launch_record"),
     # THE RUN'S NOTIFICATION RECORD -- every event sent for the run, when
     # (`run-reports.md` § 2.5, § 2.9; `engines/vibration.md` § 5.11 § 7a):
@@ -1694,20 +1645,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "a milestone, a failed part and its reason, finish -- and "
                   "when",
              when="run", level="run", kind="record",
-             writer="`mb_monitor.pyz notify` (a run of points' start, "
-                    "milestones, failed parts and finish, sent by its "
-                    "points' report steps, `runrecord.note_notified`); a "
-                    "member monitor, for every event it sends (`monitor`)",
+             writer="`mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps); a member's monitor, for every event it sends",
              door="runrecord.read_notified"),
     Artifact(name=CONTINUED_FROM_FILE,
              what="the run this one continues from -- a stage's run, a run "
                   "of points, a point's start (a walked point's, a planned "
                   "point's), a taken-over point's computing run (one hop)",
              when="launch", level="run", kind="record",
-             writer="launch, by its one hand-over (`materialize.hand_over`, "
-                    "through `runrecord.write_continued_from`) -- with the "
-                    "files it takes; a planner's own step for each point it "
-                    "plans",
+             writer="launch, as it hands the run the files it takes; a planner's own step for each point it plans",
              door="runrecord.read_continued_from",
              only="it continues from an earlier run"),
     Artifact(name=CALCDIR_FILE,
@@ -1715,20 +1660,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "a run, a run's scratch folder, or a transmission point's "
                   "shared energies — and where the calculation is",
              when="prep", level="stage", kind="record",
-             writer="the code that makes the folder: prep and launch "
-                    "(`materialize.open_run` -- a stage's run, a bias "
-                    "point's, a benchmark trial's, and the containers above "
-                    "each -- `naming.open_container`, a "
-                    "submission's `launch/`, `pseudos/` and a point's "
-                    "folder below its stage, and "
-                    "`materialize.open_scratch`, a device run's `tsgf/`; "
-                    "and `transport.reuse`, a transmission point's `shared/`)",
+             writer="prep and launch, as they make the folder: a stage's run, a bias point's, a benchmark trial's and the folders above each; a submission's `launch/`, `pseudos/` and a point's folder below its stage; a device run's folder of the electrodes' Green's functions, `tsgf/`; a transmission point's shared energies, `shared/`",
              door="calcdirs.where"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",
              when="prep", level="stage", kind="derived", travels=True,
-             writer="prep, beside each run script "
-                    "(`runwrap.write_run_wrapper`); a copy in each run"),
+             writer='prep, beside each run script; a copy in each run'),
     Artifact(name=VIBRATION_BUNDLE,
              what="the SIESTA vibration's own steps -- each call's `plan` "
                   "and `record` and the run's `finish-run`: the coordinates, "
@@ -1736,8 +1673,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "optical calls' data file",
              engine="siesta", calculation="vibration",
              when="prep", level="stage", kind="derived",
-             writer="prep, in each phase's folder beside its run script "
-                    "(`runwrap.write_run_wrapper`); a copy in each call"),
+             writer="prep, in each phase's folder beside its run script; a copy in each call"),
     Artifact(name=PYSCF_BUNDLE,
              what="molbuilder's own code the PySCF script runs, which it "
                   "imports from here -- the core count, the progress-log "
@@ -1745,50 +1681,37 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "vibration's rules",
              engine="pyscf",
              when="prep", level="stage", kind="derived", travels=True,
-             writer="prep, beside the PySCF script "
-                    "(`runwrap.write_run_wrapper`); a copy in each run"),
+             writer='prep, beside the PySCF script; a copy in each run'),
     Artifact(name=MAKOV_PAYNE_SCRIPT,
              what="the energy correction a charged, isolated deck asks a "
                   "person to run afterwards",
              engine="siesta", when="prep", level="stage", kind="derived",
              travels=True,
-             writer="prep (`siesta.makov_payne.emit_correction_script`); a "
-                    "copy in each run",
+             writer='prep; a copy in each run',
              only="a charged, isolated deck"),
     Artifact(name=GATHERED_FROM_FILE,
              what="what a stage took, from which upstream run",
              calculation="transport", when="launch", level="run",
              kind="record",
-             writer="launch, by its one hand-over (`materialize.hand_over`, "
-                    "through `runrecord.write_gathered_from`) -- a stage's "
-                    "first launch or a `--gather` "
-                    "(`transport.gather.transport_inputs`), or a launch again "
-                    "keeping what its last run was given",
+             writer="launch, as it hands the run what it takes -- a stage's first launch or a `--gather`, or a launch again keeping what its last run was given",
              door="runrecord.read_gathered_from"),
     Artifact(name=COPIED_FROM_FILE,
              what="the finished calculation's run, or point, this one is a "
                   "copy of, tree-relative",
              calculation="transport", when="prep", level="run",
              kind="record",
-             writer="prep, copying a group in from the finished calculation "
-                    "it reuses (`transport.reuse.copy_in`), before the run's "
-                    "launch record; a stage of points' first launch, in each "
-                    "point it takes over (`transport.reuse.take_into`) and each "
-                    "point's `shared/`, written last (`transport.reuse."
-                    "shared_into`) -- through `runrecord.write_copied_from`",
+             writer="prep, copying a group in from the finished calculation it reuses, before the run's launch record; a stage of points' first launch, in each point it takes over and each point's `shared/`, written last",
              door="runrecord.read_copied_from",
              only="a transport calculation that reuses a finished one"),
     Artifact(name=SCHEDULER_STDOUT,
              what="the scheduler's own stdout for the job",
              level="run", kind="record",
-             writer="the scheduler, as the run's header asks (its kind's "
-                    "`stdout`, `scheduler/kinds.toml`)",
+             writer="the scheduler, as the run's header asks",
              only="launched to a queue"),
     Artifact(name=SCHEDULER_STDERR,
              what="the scheduler's own stderr for the job",
              level="run", kind="record",
-             writer="the scheduler, as the run's header asks (its kind's "
-                    "`stderr`, `scheduler/kinds.toml`)",
+             writer="the scheduler, as the run's header asks",
              only="launched to a queue"),
     Artifact(name=RANK_LAUNCHER,
              what="the per-rank GPU launcher",
@@ -1799,7 +1722,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="every trial's timing and the winner — the benchmark's "
                   "archival trace",
              when="summarize", level="bench", kind="record",
-             writer="`jobset summarize` (`run_summarize_jobset`)"),
+             writer='`jobset summarize`'),
     Artifact(name=GROUP_RUN_SCRIPT,
              what="a launch group's sequencer: a benchmark's trials, a "
                   "run of points' walk (a vibration's calls, a bias "
@@ -1807,14 +1730,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "task's groups launched one after another in one job, "
                   "in order",
              when="launch", level="launch", kind="derived",
-             writer="launch (`jobset/submit.py`), written again at each "
-                    "launch"),
+             writer='launch, written again at each launch'),
     Artifact(name=GROUP_HEADER,
              what="its queue header — a task's group's, a run of points' "
                   "walk's, a benchmark's shelf's, a sequence of groups'",
              when="prep", level="launch", kind="derived",
-             writer="prep (`prep.walk_header_of`), written again at each "
-                    "prep; launch sends it",
+             writer='prep, written again at each prep; launch sends it',
              only="a machine whose scheduler has a queue, no "
                   "`--no-sbatch`"),
     # THE SCHEDULER'S OWN OUTPUT for a job sent from `launch/`: the header
@@ -1823,14 +1744,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=SCHEDULER_STDOUT,
              what="the scheduler's own stdout for the job",
              level="launch", kind="record",
-             writer="the scheduler, as the group's header asks (its kind's "
-                    "`stdout`, `scheduler/kinds.toml`)",
+             writer="the scheduler, as the group's header asks",
              only="launched to a queue"),
     Artifact(name=SCHEDULER_STDERR,
              what="the scheduler's own stderr for the job",
              level="launch", kind="record",
-             writer="the scheduler, as the group's header asks (its kind's "
-                    "`stderr`, `scheduler/kinds.toml`)",
+             writer="the scheduler, as the group's header asks",
              only="launched to a queue"),
     Artifact(name=GROUP_LOG, what="every member's output, in order",
              when="run", level="launch", kind="record",
@@ -1840,8 +1759,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "their stages, how its one job was sent, its id -- what "
                   "each run it sends records of that job",
              when="launch", level="launch", kind="record",
-             writer="launch (`jobset/sequence.py`), before the job goes; "
-                    "its id once the scheduler gives it",
+             writer='launch, before the job goes; its id once the scheduler gives it',
              door="jobset.sequence.read_record"),
     Artifact(name="{target}.{random}.tmp",
              what="a file being written; it replaces its target when the "

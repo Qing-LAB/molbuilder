@@ -1149,8 +1149,10 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     said = page.evaluate(
         "() => document.getElementById('ts-machine-fit').textContent")
     assert "Cannot say whether this fits" in said, said
-    # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own.
-    assert answer["error"] in said, (
+    # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own --
+    # drawn as a page draws the server's words.
+    from support.pages import drawn
+    assert drawn(answer["error"]) in said, (
         "the panel said it could not answer but not why: " + said)
 
 

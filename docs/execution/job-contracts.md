@@ -1324,16 +1324,16 @@ restart files of the list in effect (§ 4.2a) that lie in the run, each named
 
 | MODE line | means |
 |---|---|
-| `CLEAN START (no restart file here)` | the run holds none — a first launch with nothing to take, or a cold one |
-| `CONTINUES (engine will load <files>)` | launch copied restart files in, and the deck reads them; the run it continued from is its `.continued-from` |
-| `CLEAN (this deck reads no prior state; the files here are not read)` | restart files lie here, but the deck's `restart` is `clean` ([`run-identity.md`](?doc=execution/run-identity.md) § 4) |
-| `FROM THE FIRST STEP (this kind of run does not resume)` | restart files lie here, on a kind that does not resume (`resumes = false`): it runs from its first step, reading back only what that step saved |
+| `a clean start (no restart file here)` | the run holds none — a first launch with nothing to take, or a cold one |
+| `continues (engine will load <files>)` | launch copied restart files in, and the deck reads them; the run it continued from is its `.continued-from` |
+| `clean (this deck reads no prior state; the files here are not read)` | restart files lie here, but the deck's `restart` is `clean` ([`run-identity.md`](?doc=execution/run-identity.md) § 4) |
+| `from the first step (this kind of run does not resume)` | restart files lie here, on a kind that does not resume (`resumes = false`): it runs from its first step, reading back only what that step saved |
 
 From a real run's session log (a 2.63.0 run; since 2.64.0 the banner's labels are padded to its longest):
 
 ```
   Launch mode   : pure MPI (1 ranks; OMP setting irrelevant to this binary)
-  Mode          : CLEAN START (no restart file here)
+  Mode          : a clean start (no restart file here)
 ```
 
 #### What a run holds before the engine starts

@@ -4,8 +4,6 @@
    survives a monochrome screen.  The tone only says how it should read. */
 .state-chip {
     font-size: var(--text-2xs);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     padding: 1px var(--space-xs);
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-soft);

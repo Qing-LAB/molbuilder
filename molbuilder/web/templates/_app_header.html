@@ -65,6 +65,10 @@
      {% if active_tab == tab.key %}aria-current="page"{% endif %}>{{ tab.label }}</a>
   {% endfor -%}
 </nav>
+{#- THE SERVER'S WORDS, DRAWN (`lib/dom.js`, § 12.1): a command as code, the
+    terminal's dash as a dash -- and the one element builder; loaded once
+    here, where every page includes it. -#}
+<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
 {#- THE ONE TAB STRIP every page's strips are mounted with (`lib/tab-strip.js`,
     § 4.1), loaded once here, where every page includes it. -#}
 <script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>

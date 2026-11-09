@@ -363,7 +363,7 @@ async function saveEdit() {
     const resp = await projects.writeFile(body.path, body.text,
                                           { expected_mtime: body.expected_mtime });
     if (!resp.ok) {
-        elError.textContent = resp.error || "Save failed.";
+        elError.replaceChildren(window.molbuilder.dom.codeWords(resp.error || "Save failed."));
         _setStatus("", null);
         elSaveBtn.disabled = !_isDirty();
         return;
@@ -478,7 +478,7 @@ export async function showPreview(wanted) {
         // Envelope folds HTTP error + network drop into one ``error`` string.
         const msg = statBody.error || "Could not stat file.";
         console.error("[preview] stat failed:", msg);
-        elError.textContent = msg;
+        elError.replaceChildren(window.molbuilder.dom.codeWords(msg));
         _renderUiFromState();
         return;
     }
@@ -628,7 +628,7 @@ async function _fetchNextRangeChunk(path) {
         // error banner.
         if (body.aborted) return;
         if (!body.ok) {
-            elError.textContent = body.error || "Range read failed.";
+            elError.replaceChildren(window.molbuilder.dom.codeWords(body.error || "Range read failed."));
             _renderUiFromState();
             return;
         }

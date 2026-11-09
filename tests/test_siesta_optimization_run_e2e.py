@@ -641,12 +641,12 @@ def test_a_relaxation_out_of_moves_launched_again_continues_warm(capped):
         assert run.session_log is not None and run.file(".concluded"), (
             sorted(p.name for p in folder.iterdir()))
     started = _run(first).session_log.read_text(errors="replace")
-    assert "CLEAN START (no restart file here)" in started, started
+    assert "a clean start (no restart file here)" in started, started
     assert read_continued_from(again) == RunRef.read("01_coarse/run-0")
     assert launch_record(again)["continued_from"] == "01_coarse/run-0"
     assert (again / "H2.XV").is_file(), sorted(
         p.name for p in again.iterdir())
     mode = next((ln for ln in _run(again).session_log.read_text(
-        errors="replace").splitlines() if "CONTINUES (engine will load" in ln),
+        errors="replace").splitlines() if "continues (engine will load" in ln),
         None)
     assert mode is not None and "H2.XV" in mode, mode

@@ -29,9 +29,8 @@
                       && root.molbuilder.path.basename)
                    || ((p) => String(p || "").split(/[\\/]/).pop());
 
-    /* The one element builder, `lib/dom.js`, loaded before this file on
-     * /results.  Looked up when called, so a page that has not loaded it
-     * still registers this viewer and fails only where it draws. */
+    /* The one element builder, `lib/dom.js`, which the shared header loads
+     * for every page; looked up when called. */
     const el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
 
     /** s/iter as the number the server measured, or an em-dash.  No
@@ -623,7 +622,7 @@
                 if (state.disposed) return;
                 if (!answer.ok) {
                     if (ctx && ctx.showError) ctx.showError(answer.error);
-                    else host.textContent = answer.error;
+                    else host.replaceChildren(root.molbuilder.dom.codeWords(answer.error));
                     return;                       // and stop polling a refusal
                 }
                 render(host, answer.body);

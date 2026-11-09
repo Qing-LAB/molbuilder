@@ -1866,6 +1866,20 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group D, the server's words on a page, and 2.69.4's review round (2026-11-09), by the release that owns each
+
+*(Group D's items about how the server's sentences reach a page, mapped to where each is drawn before any fix; one review round over every changed file, every finding read again in the code)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2694-1 | **closed 2.69.4** | every page showed the terminal's dash as two hyphens (` -- `), and many places painted a server sentence as plain text, its backtick-quoted command shown with its backticks | one renderer for the server's words, `codeWords` (`lib/dom.js`), loaded once for every page by the shared header: a command as code, the terminal's dash as a dash; every place a page shows a server sentence draws it so (`ui-contract.md` § 12.1) |
+| K2694-2 | **closed 2.69.4** | capitals as emphasis or state in the server's sentences and the chips: *CONCLUDED*, *NOT CONCLUDED*, *ENDED WITH EXIT CODE*, *a STRUCTURE PAIR*, *TRANSPORT CALCULATION*, *FRAME 0 IS THE JUNCTION … RAN*, *DERIVED*, *CONTINUES*, the seam's *ECLIPSED* and *TWIN*, the run log's *CLEAN START* and kin, the state chips set in capitals by style | plain case; the first frame said as *its first frame* |
+| K2694-3 | **closed 2.69.4** | the file card's *written by* named code functions (*describe door (`describe.write_description`)*, *`materialize.open_scratch`*) — the field is *one line a person reads* (`job-contracts.md`) — and the page stripped the parenthesised ones by a rule of its own, which also took away folder names | every writer line in a person's words at the source; the page's rule removed |
+| K2694-4 | **closed 2.69.4** | *24 domain(s)*; *the v0.2 pair, 2 files*; the saved state's sentence leading with its history id | *24 queues*; *the electrodes' Green's functions at 0.2 V*; the note first, which leads with its time, and the id last |
+| K2694-5 | **later** | still drawn as plain text: the folder picker's refusals, the source viewer's, a restore's finding in its dialog, a file option's label; MolView's and VibrationView's few server sentences (sealed, by their contracts) | through the renderer, when each is next touched |
+| K2694-6 | **later** | the notification bar and two inspectors draw a sentence that carries a path or a name through the renderer, where a backtick in a file's name would turn to code | the sentence and the name drawn apart |
+| K2694-7 | **later** | the findings renderer keeps a plain-text path for a page without the renderer, which its test harness relies on | removed with the harness loading the renderer |
+
 ## Found by the UI review's group D, the server's two words, and 2.69.3's review round (2026-11-09), by the release that owns each
 
 *(The user's word of 2026-11-09 — one word, *stage*, for one calculation's step on every page — carried to every sentence the server writes, since its sentences are what pages show; and *time limit*, 2.69.2's one word for the scheduler's limit, likewise; every person-facing string read first, a review round over every changed line, every finding read again in the code)*

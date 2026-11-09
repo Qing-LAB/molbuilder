@@ -255,7 +255,7 @@ state's note, and only then writes
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0):
 
 ```text
-the folder's state was saved first: 7b3c9f1 -- 2026-11-03 09:02:10 · before prep task group 1 (coarse), group 2 (tight)
+the folder's state was saved first: 2026-11-03 09:02:10 · before prep task group 1 (coarse), group 2 (tight) (7b3c9f1)
 ```
 
 It prints what it resolved — where the configuration came from, each stage's

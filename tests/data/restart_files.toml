@@ -89,14 +89,14 @@ deck_lacks = ["MD.UseSaveCG"]
 [[case]]
 name = "a clean stage's run script says its deck reads no prior state"
 template = { restart = "clean" }
-run_sh = ['_mode="CLEAN (this deck reads no prior state']
-run_sh_lacks = ['_mode="CONTINUES (engine will load']
+run_sh = ['_mode="clean (this deck reads no prior state']
+run_sh_lacks = ['_mode="continues (engine will load']
 
 [[case]]
 name = "...and a continuing stage's says what the engine will load"
 template = { restart = "continue" }
-run_sh = ['_mode="CONTINUES (engine will load']
-run_sh_lacks = ['_mode="CLEAN (']
+run_sh = ['_mode="continues (engine will load']
+run_sh_lacks = ['_mode="clean (']
 
 
 # A failed run says what a launch again will do (`running-a-job.md` § 3.5),

@@ -33,7 +33,9 @@
 
         var body = doc.createElement("span");
         body.className = "app-notification__msg";
-        body.textContent = item.message + (item.count > 1 ? "  (×" + item.count + ")" : "");
+        // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
+        body.appendChild(root.molbuilder.dom.codeWords(
+            item.message + (item.count > 1 ? "  (×" + item.count + ")" : "")));
         li.appendChild(body);
 
         // ONE LINK, where the message names what to do (notifications.md § 1).

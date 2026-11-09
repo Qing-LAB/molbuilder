@@ -162,6 +162,12 @@ function _mk(id) {
     setAttribute(k, v) { this.dataset["attr_" + k] = String(v); },
     getAttribute(k) { return this.dataset["attr_" + k]; },
     appendChild(c) { this.children.push(c); return c; },
+    // ...AS A BROWSER'S: the nodes put in, and their text the element's.
+    replaceChildren(...nodes) {
+      const flat = nodes.flatMap((n) => (n && n.isFragment ? n.children : [n]));
+      this.children = flat;
+      this.textContent = flat.map((n) => n.textContent).join("");
+    },
     classList: { toggle() {}, add() {}, remove() {} },
     closest() { return null; },
     click() { for (const fn of (this._events.click || [])) fn({}); },
@@ -172,6 +178,11 @@ globalThis.document = {
   getElementById: (id) => (_els[id] ||= _mk(id)),
   createElement: (t) => _mk("new:" + t),
   createElementNS: (ns, t) => _mk("ns:" + t),
+  createTextNode: (t) => ({ textContent: String(t) }),
+  createDocumentFragment: () => ({
+    isFragment: true, children: [],
+    appendChild(c) { this.children.push(c); return c; },
+  }),
   documentElement: _mk("html"),
   head: _mk("head"),
 };
@@ -214,6 +225,9 @@ globalThis.molbuilder = {
 
 _PANEL = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
           / "static" / "lib" / "projects" / "checkpoint.js")
+#: THE SERVER'S WORDS, DRAWN -- the renderer every page's header loads
+#: (`lib/dom.js`, `ui-contract.md` § 12.1).
+_WORDS = _PANEL.parent.parent / "dom.js"
 
 
 @pytest.fixture(scope="module")
@@ -243,7 +257,7 @@ def _set_up(folder):
 
 def _drive(app_at, script):
     """``script`` run against the panel, its requests answered by the app."""
-    return run_node([_PANEL], script, globals_js=(
+    return run_node([_WORDS, _PANEL], script, globals_js=(
         _DOM + served(app_at)
         + f"\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};"))
 

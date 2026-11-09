@@ -6,12 +6,16 @@
  * cannot become markup.  The benchmark-sweep, transport and displacement-
  * sweep viewers and the Run panel use this one copy.
  *
- * `codeWords(text)`: the server's words, a command in them kept in backticks
- * (`jobset init`), with that command shown as code and not as a backtick.
+ * `codeWords(text)`: the server's words, drawn for a page
+ * (`ui-contract.md` § 12.1) -- written once for the terminal and the page
+ * alike, so a command in them kept in backticks (`jobset init`) is shown as
+ * code and not as a backtick, and the terminal's dash, ` -- `, as a dash.
+ * Loaded once for every page, by the shared header.
  *
  * Exports (on window.molbuilder.dom):
  *   el(tag, cls, text) -> Element
  *   codeWords(text)    -> DocumentFragment
+ *   wordsText(text)    -> string   the text `codeWords` draws
  *   wordsEl(tag, cls, text) -> Element  `el`, its text through `codeWords`
  */
 (function (root) {
@@ -30,18 +34,34 @@
         return e;
     }
 
+    /* THE SERVER'S WORDS, CUT INTO WHAT IS SAID AND WHAT IS CODE: the
+     * parts at odd places are commands, kept as typed; the others are
+     * sentences, the terminal's dash drawn as a dash. */
+    function _parts(text) {
+        // ``a`` as the catalogue's help writes it is `a`.
+        return String(text == null ? "" : text).replace(/``/g, "`").split("`")
+            .map((part, i) => (i % 2 ? { code: part }
+                                     : { said: part.replace(/ -- /g, " \u2014 ") }))
+            .filter((p) => p.code || p.said);
+    }
+
     function codeWords(text) {
         const out = root.document.createDocumentFragment();
-        // ``a`` as the catalogue's help writes it is `a`.
-        String(text == null ? "" : text).replace(/``/g, "`").split("`").forEach((part, i) => {
-            if (!part) return;
-            out.appendChild(i % 2 ? el("code", "", part)
-                                  : root.document.createTextNode(part));
-        });
+        for (const p of _parts(text)) {
+            out.appendChild(p.code !== undefined ? el("code", "", p.code)
+                                                 : root.document.createTextNode(p.said));
+        }
         return out;
+    }
+
+    /** The text `codeWords(text)` draws -- what a reader of the page, or
+     *  one comparing what is drawn, reads. */
+    function wordsText(text) {
+        return _parts(text).map((p) => (p.code !== undefined ? p.code : p.said)).join("");
     }
 
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.dom = Object.assign(root.molbuilder.dom || {},
-                                        { el: el, codeWords: codeWords, wordsEl: wordsEl });
+                                        { el: el, codeWords: codeWords,
+                                          wordsText: wordsText, wordsEl: wordsEl });
 })(typeof window !== "undefined" ? window : this);

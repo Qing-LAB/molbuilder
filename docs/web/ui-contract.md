@@ -789,6 +789,19 @@ its own refusal beside the control that asked, as it says any other. A request
 the browser makes itself — a download link, an image — is no question the
 reader can read.
 
+### 12.1 Its words, drawn — one renderer *(2.69.4)*
+
+**The server's sentences are written once, for the terminal and the page
+alike**, and drawn on a page by one renderer, `codeWords` in `lib/dom.js` —
+loaded once for every page by the shared header: a command kept in backticks
+(`` `jobset init` ``) is drawn as code, never as a backtick, and the terminal's
+dash, ` -- `, as a dash (—). **Every place a page shows a sentence of the
+server's draws it so** — a status line (`lib/status.js`), a finding
+(`lib/validation-findings.js`), a notice in the notification bar, a refusal
+beside the control that asked. The page's own sentences are written as a page
+writes them. *(MolView and VibrationView reach no module of the app by name,
+§ 4 of their contracts; the few server sentences they show are drawn as text.)*
+
 **Why one reader.** A page that reads its answers its own way parses a body
 without asking whether the server said yes, calls an error page *"a network
 error"*, paints a refusal as data — *"No channels are set up … They live in

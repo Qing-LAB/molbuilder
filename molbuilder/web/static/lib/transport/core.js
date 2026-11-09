@@ -1276,7 +1276,7 @@ const WORKSPACE_TAG = "transport";
         var meta = _$("transport-junction-meta");
         if (meta) {
             meta.hidden = false;
-            meta.textContent = described.summary || "";
+            meta.replaceChildren(window.molbuilder.dom.codeWords(described.summary || ""));
         }
         /* WHAT ITS FRAMES ARE (transport.md § 3.8.1), by the one card. */
         var fsHost = _$("transport-junction-frameset");
@@ -1487,7 +1487,7 @@ const WORKSPACE_TAG = "transport";
                 showManifest: function (lines) {
                     if (!manifestBox) return;
                     manifestBox.hidden = !(lines && lines.length);
-                    manifestBox.textContent = lines ? lines.join("\n") : "";
+                    manifestBox.replaceChildren(window.molbuilder.dom.codeWords(lines ? lines.join("\n") : ""));
                 },
                 // THE DESCRIPTION CHECK'S FINDINGS, through the one
                 // renderer, in card 5's panel -- every send redraws it, so
@@ -1631,13 +1631,13 @@ const WORKSPACE_TAG = "transport";
                 if (!a.ok) {
                     box.hidden = true;
                     box.textContent = "";
-                    status.textContent = "The plan could not be worked "
-                        + "out: " + a.error;
+                    status.replaceChildren(window.molbuilder.dom.codeWords("The plan could not "
+                        + "be worked out: " + a.error));
                     return;
                 }
                 var lines = a.body.manifest || [];
                 box.hidden = !lines.length;
-                box.textContent = lines.join("\n");
+                box.replaceChildren(window.molbuilder.dom.codeWords(lines.join("\n")));
                 status.textContent = "The plan \u2014 what is copied from "
                     + name + ", and what is computed.  Nothing is copied "
                     + "until prep; Describe writes the description.";

@@ -549,9 +549,11 @@ function _showStateDetail(state) {
     // Click on a node = an inline line with what the list cannot fit.
     const tags = (state.tags || []).join(", ");
     const from = state.parent ? `from ${state.parent.slice(0, 7)}` : "the first state";
-    _showAdvisory(
+    // THE PERSON'S OWN NOTE AND TAGS, as typed: text, never the server's
+    // words drawn (a backtick in a note stays a backtick).
+    _showAdvisory(document.createTextNode(
         `${state.short} — ${state.note} · ${from}` +
-        (tags ? ` · tagged ${tags}` : ""));
+        (tags ? ` · tagged ${tags}` : "")));
 }
 
 /* ---------- List view extraction (so View toggle can call it) ---------- */
@@ -901,9 +903,12 @@ async function _restore(dir, sha, label, force) {
 
 /* ---------- Advisory surface ---------- */
 
+/** ``message``: a server sentence, drawn (`lib/dom.js`, ui-contract.md
+ *  § 12.1) -- or a node the caller built, shown as it is. */
 function _showAdvisory(message) {
     if (!elAdvisory) return;
-    elAdvisory.textContent = message;
+    elAdvisory.replaceChildren(typeof message === "string"
+        ? window.molbuilder.dom.codeWords(message) : message);
     elAdvisory.hidden      = false;
 }
 

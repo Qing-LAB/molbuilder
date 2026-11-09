@@ -713,8 +713,8 @@ function sayUnknownFit(host, why) {
     host.appendChild(el("div", { class: "ts-fit-head" },
                         "Cannot say whether this fits"));
     host.appendChild(el("p", { class: "status warn" },
-        why || "the check could not run \u2014 no answer either way, "
-             + "not a pass."));
+        codeWords(why || "the check could not run \u2014 no answer either "
+                         + "way, not a pass.")));
 }
 
 
@@ -3547,7 +3547,7 @@ function prepButton(kind, picks) {
 
     function refuse(msg) {
         retire();
-        say.textContent = msg;
+        say.replaceChildren(codeWords(msg));
         say.setAttribute("data-state", "warn");
         btnWrite.disabled = true;
     }
@@ -4898,7 +4898,8 @@ function paintHeads() {
 function saidSave(text, state) {
     const n = $("ts-save-said");
     if (!n) return;
-    n.textContent = text || "";
+    // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
+    n.replaceChildren(codeWords(text || ""));
     n.hidden = !text;
     if (text) n.setAttribute("data-state", state || "ok");
 }
@@ -5306,11 +5307,11 @@ function paintReportNote() {
     // THE NAME IS NAMED, every time, because it is the part that is not a
     // choice and the part a person most needs to know is there.
     if (_reportFields === null && sel !== null) {
-        note.textContent = "The fields a report of this calculation can "
-            + "carry could not be read"
+        note.replaceChildren(codeWords("The fields a report of this "
+            + "calculation can carry could not be read"
             + (_reportFieldsWhy ? ": " + _reportFieldsWhy : "")
             + "; the description's own list ("
-            + (sel.join(", ") || "none") + ") is kept as it is.";
+            + (sel.join(", ") || "none") + ") is kept as it is."));
     } else if (sel === null) {
         note.textContent = "Each message: this calculation's name and job id,"
             + " the state, and every field the monitor can work out.";
@@ -5438,8 +5439,8 @@ async function loadChannelNames() {
         _machineChannels = [];
         _channelsWhy = answer.error;
         if (note) {
-            note.textContent = "This machine's channels could not be read: "
-                + answer.error;
+            note.replaceChildren(codeWords("This machine's channels could "
+                + "not be read: " + answer.error));
             note.setAttribute("data-state", "bad");
         }
     }

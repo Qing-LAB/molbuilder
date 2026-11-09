@@ -319,10 +319,9 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
                     if g.next)
         shown = page.locator(
             ".results-ladder-steps-list li.is-next").inner_text()
-        # ...ITS WORDS AS THE PAGE SETS THEM: a `quoted` command drawn as
-        # code, its quotes the marks that say so (`dom.codeWords`, 2.67.2).
-        assert step.words.replace("`", "") in shown and step.lines, (
-            step, shown)
+        # ...ITS WORDS AS THE PAGE DRAWS THEM (`ui-contract.md` § 12.1).
+        from support.pages import drawn
+        assert drawn(step.words) in shown and step.lines, (step, shown)
         assert all(line in shown for line in step.lines), (step, shown)
         assert "read at" in page.locator(
             ".results-ladder-steps-head").inner_text()

@@ -572,7 +572,6 @@
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
 {% include "_molview_scripts.html" %}
-<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/chemistry.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 {#- the rung strip of card 4 (engines/transport.md 3.8.2a) -- the same

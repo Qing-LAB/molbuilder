@@ -230,7 +230,7 @@ def _reset_to_derived(s: Structure, what: str,
     if had_manual:
         notices.append(_notice(
             "warn",
-            f"{what} changed → the box returned to the DERIVED regime: the "
+            f"{what} changed → the box is derived again: the "
             "explicit cell and any stated origin were reset, and the box is "
             "now the structure's size plus the per-direction vacuum, with "
             "the atoms centred in it."))

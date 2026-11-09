@@ -130,7 +130,7 @@ import { ask } from "../server.js";
                 } catch (_) { /* see core.js for context */ }
             };
             const fail = (msg) => {
-                status.textContent = msg;
+                status.replaceChildren(root.molbuilder.dom.codeWords(msg));
                 status.classList.add("inspector-inline-error");
                 signalReady({ error: msg });
             };

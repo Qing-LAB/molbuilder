@@ -215,7 +215,7 @@ class TestApplyEditV3:
         out, notes = apply_edit(s, "vacuum", [3.0, 3.0, 3.0])
         assert out.cell is None and out.engine_offset is None
         assert out.vacuum == (3.0, 3.0, 3.0)
-        assert any("DERIVED regime" in n["message"] for n in notes)
+        assert any("is derived again" in n["message"] for n in notes)
 
     def test_vacuum_edit_refused_on_a_periodic_axis(self):
         """SCIENCE. Vacuum cannot be set on a `periodic` axis; the edit is refused,
@@ -254,7 +254,7 @@ class TestApplyEditV3:
         out, notes = apply_edit(
             s, "axis_kind", ["isolated", "isolated", "isolated"])
         assert out.cell is None and out.engine_offset is None
-        assert any("DERIVED regime" in n["message"] for n in notes)
+        assert any("is derived again" in n["message"] for n in notes)
         # A transport axis with zero structure extent would be a
         # degenerate derived box -> refused (its own pin below).
 

@@ -2853,7 +2853,7 @@ first. The lines, as the door prints them:
 |---|---|
 | prepared, its leads not yet run | `tsgf/: one pair at a time; the size is known once the leads have run` |
 | prepared, its leads run | `tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 115.6 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 123 and 292 energies, with the lead's H and S)`. The orbital count is read from each lead's newest run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: `L 49.2 GiB, R 31.0 GiB a lead at 0 V` and `(L 1425, R 1100 orbitals × …)`. A lead's output that does not give its orbital count: `tsgf/: one pair at a time; the size cannot be said -- L: <its output's name> states no orbital count` (or `does not read: <why>`). With the file switched off: `tsgf/: none -- the self-energies are kept in memory` |
-| launched, a run going or done | `tsgf/: the v0.2 pair, 2 files, 231.3 GiB` · one file: `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- the round's pair being written` while the run is queued or running, `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- a walk that did not reach its end; yours to remove` once it has ended — the newest run's by its state as `status` reads it (`gf_files.status_line`'s `going`), an older run's, which has ended, always the second · `tsgf/: 4 files, 478.3 GiB -- AuBDT.v0.2.TSGFL, AuBDT.v0.2.TSGFR, AuBDT.v0.4.TSGFL, AuBDT.v0.4.TSGFR; the walk leaves one pair at most, so these are an edit's` · `tsgf/: empty` · `tsgf/: none -- the self-energies are kept in memory` · `tsgf/: not there (a run made before 2.22.0, whose pair lies in the run's folder)`. A file counts when the one answer names it an engine's scratch (`warmfiles.is_scratch`: `*.TSGFL`, `*.TSGFR`). A stage with several runs says each run's, newest first, each after its run's name: `run-1: tsgf/: the v0.2 pair, 2 files, 231.3 GiB; run-0: tsgf/: empty` |
+| launched, a run going or done | `tsgf/: the electrodes' Green's functions at 0.2 V, 2 files, 231.3 GiB` · one file: `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- the round's pair being written` while the run is queued or running, `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- a walk that did not reach its end; yours to remove` once it has ended — the newest run's by its state as `status` reads it (`gf_files.status_line`'s `going`), an older run's, which has ended, always the second · `tsgf/: 4 files, 478.3 GiB -- AuBDT.v0.2.TSGFL, AuBDT.v0.2.TSGFR, AuBDT.v0.4.TSGFL, AuBDT.v0.4.TSGFR; the walk leaves one pair at most, so these are an edit's` · `tsgf/: empty` · `tsgf/: none -- the self-energies are kept in memory` · `tsgf/: not there (a run made before 2.22.0, whose pair lies in the run's folder)`. A file counts when the one answer names it an engine's scratch (`warmfiles.is_scratch`: `*.TSGFL`, `*.TSGFR`). A stage with several runs says each run's, newest first, each after its run's name: `run-1: tsgf/: the electrodes' Green's functions at 0.2 V, 2 files, 231.3 GiB; run-0: tsgf/: empty` |
 
 **The levers** — two on the device's tab, one on the device's run card
 (Task setup, `task-setup.md` § 6.2b: a run setting, the catalogue's
@@ -4251,8 +4251,8 @@ the set and writes it here (*Describing it*, above):
   each citation you select — a frame set's `.xyz`, or any other whose first
   frame is that junction, a relaxation run's folder among them — and shows
   the answer before you confirm (`describe_attempt` with `reuses`): one
-  whose first frame is the finished junction reads *FRAME 0 IS THE JUNCTION
-  &lt;name&gt; RAN*, followed by what it is; one whose first frame is another
+  whose first frame is the finished junction reads *its first frame is the
+  junction &lt;name&gt; ran*, followed by what it is; one whose first frame is another
   junction, or that does not compose, shows why it is refused, and the
   junction you had stays. Once a set is cited, the panel names it, says the
   device and the transmission run once per frame and that the plan
@@ -4664,7 +4664,7 @@ the size of what it copies.
 
 - **The Transport tab** — the junction card's picker takes, beside a finished
   relaxation run and a structure pair, **a transport calculation's folder**.
-  The describe door answers its meta line — *TRANSPORT CALCULATION ·
+  The describe door answers its meta line — *a transport calculation ·
   lowbias_local · its junction, cited from …/run-2 · low-bias-approximation ·
   0.0, 0.2 V · −2…2 eV at 401 points · every group finished* — its window
   the one its transmission computed, the rung's own values over the
@@ -5544,11 +5544,11 @@ what its deck answered; a pair: its frames and the deck its record names, then
 what that record states:
 
 ```
-CONCLUDED (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
-CONCLUDED (rc=0 at …) · geometry NO -- its last geometry is the last one SIESTA wrote, not a converged minimum · …
-NOT CONCLUDED -- still running, or force-stopped (the two look identical on disk)
-ENDED WITH EXIT CODE 1 (…) -- not citable until the relaxation runs to its end
-STRUCTURE PAIR · 3 frames · optimized with J_01_coarse.fdf · SZ · 150 Ry · … · 22 atoms
+concluded (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
+concluded (rc=0 at …) · geometry NO -- its last geometry is the last one SIESTA wrote, not a converged minimum · …
+not concluded -- still running, or force-stopped (the two look identical on disk)
+ended with exit code 1 (…) -- not citable until the relaxation runs to its end
+a structure pair · 3 frames · optimized with J_01_coarse.fdf · SZ · 150 Ry · … · 22 atoms
 ```
 
 **A frame set says what each frame is** *(Q17-f2)* — under the meta line,
@@ -7171,8 +7171,8 @@ something worse — an eclipsed, head-on contact), so Σ then describes a faulte
 crystal rather than bulk gold. Six layers in the electrode region satisfies it;
 four does not. **This is measured and reported, never enforced** (the rule the
 electrode orientation follows): one rule classifies the lead's periodic seam
-and words it (`wizard.seam_finding`) — `CONTINUES` as information; `ECLIPSED`,
-`TWIN`, or undetermined (a block thinner than one period) as a warning, naming
+and words it (`wizard.seam_finding`) — *continues* as information; *eclipsed*,
+*twin*, or undetermined (a block thinner than one period) as a warning, naming
 the layer count as the cause — said on the Transport card and by the lead rung's
 settings gate at every prep, printed and written into the lead deck's
 `.validation.txt`. A faulted seam composes — you may mean it — but it is

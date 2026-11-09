@@ -80,7 +80,7 @@ def _au_lead_junction(n_layers: int):
         cell=cell, axis_kind=("periodic", "periodic", "transport"))
 
 
-@pytest.mark.parametrize("n_layers,verdict", [(4, "ECLIPSED"), (6, "CONTINUES")])
+@pytest.mark.parametrize("n_layers,verdict", [(4, "eclipsed"), (6, "continues")])
 def test_a_leads_periodic_seam_is_measured(n_layers, verdict):
     """The lead gate measures where a lead meets its own image one cell up
     into the lead's notes (`junction-cell.md` § 3.1): on fcc(111) a

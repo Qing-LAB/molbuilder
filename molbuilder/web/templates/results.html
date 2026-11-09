@@ -231,9 +231,6 @@
    (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js). #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/inspectors/lifecycle.js') }}"></script>
-{#- The one element builder the record viewers below share (bench-summary,
-    transport, fc-sweep); before them, since they are deferred. -#}
-<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
 <!-- The charts' box and colours, and the one SCF plot -- the trajectory
      viewer's and the transport report's (web/results.md 2.5). -->
 <script src="{{ url_for('static', filename='lib/plot-box.js') }}"></script>

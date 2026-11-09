@@ -39,8 +39,9 @@ const frame   = $("nb-frame");
  *  `<img onerror=...>` would run through innerHTML. */
 function say(...parts) {
   state.className = "status nb-msg";
+  // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
   state.replaceChildren(...parts.map((p) =>
-    typeof p === "string" ? document.createTextNode(p) : p));
+    typeof p === "string" ? window.molbuilder.dom.codeWords(p) : p));
 }
 
 /** The same message, in the shell's `status error` colour -- the ONE home for

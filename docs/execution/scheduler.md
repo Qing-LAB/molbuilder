@@ -178,7 +178,7 @@ be indistinguishable from a deliberate extra (`max_tme` lands in `extra`, and
 *(user, 2026-09-06)*:
 
 ```
-sol   slurm · 48 cores · 1 domain(s) · ?? not understood: gpu_parition
+sol   slurm · 48 cores · 1 queue · ?? not understood: gpu_parition
 ```
 
 Nothing is refused and nothing is dropped; a typo stops being invisible. The

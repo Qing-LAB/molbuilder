@@ -58,12 +58,15 @@
 
     /* ---- rendering helpers -------------------------------------- */
 
-    function _setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
+    // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
+    function _setStatus(msg) {
+        if (statusEl) statusEl.replaceChildren(window.molbuilder.dom.codeWords(msg));
+    }
 
     function _showMessage(cls, msg) {
         renderEl.textContent = "";
         var p = document.createElement("p");
-        p.className = cls;  p.textContent = msg;
+        p.className = cls;  p.appendChild(window.molbuilder.dom.codeWords(msg));
         renderEl.appendChild(p);
     }
 

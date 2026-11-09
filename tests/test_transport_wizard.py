@@ -213,8 +213,8 @@ def _lead_model(n_layers):
 
 
 @pytest.mark.parametrize("n_layers,verdict,severity", [
-    (3, "CONTINUES", "info"), (4, "ECLIPSED", "warn"), (5, "TWIN", "warn"),
-    (6, "CONTINUES", "info"),
+    (3, "continues", "info"), (4, "eclipsed", "warn"), (5, "twin", "warn"),
+    (6, "continues", "info"),
 ])
 def test_the_seam_verdict_is_measured(n_layers, verdict, severity):
     """The whole table, because the interesting half is the failures and

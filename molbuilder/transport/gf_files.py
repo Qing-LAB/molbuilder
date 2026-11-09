@@ -50,8 +50,8 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
     size = sum(p.stat().st_size for p in files)
     volts = sorted({_voltage_of(p.name, label) for p in files})
     if len(files) == 2 and len(volts) == 1:
-        return (f"{scratch_dir}/: the {volts[0]} pair, 2 files, "
-                f"{size_words(size)}")
+        return (f"{scratch_dir}/: the electrodes' Green's functions at "
+                f"{_volts_words(volts[0])}, 2 files, {size_words(size)}")
     if len(files) == 1:
         # ONE FILE OF THE PAIR: the round's first point writing the second
         # while its run is going; a walk that stopped between the two
@@ -71,6 +71,15 @@ def _kept_in_memory(first, scratch_dir: str) -> Optional[str]:
     if first.out_of_core:
         return None
     return f"{scratch_dir}/: none -- the self-energies are kept in memory"
+
+
+def _volts_words(token: str) -> str:
+    """A bias token as a voltage a person reads -- ``v0.2`` is *0.2 V* -- or
+    the token as it is, where it is not one."""
+    try:
+        return f"{float(token[1:]):g} V" if token.startswith("v") else token
+    except ValueError:
+        return token
 
 
 def _voltage_of(name: str, label: str) -> str:

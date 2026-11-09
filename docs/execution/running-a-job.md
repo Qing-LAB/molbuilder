@@ -118,7 +118,7 @@ molbuilder: detected phys_cores=20, n_sockets=2, cores_per_socket=10
   Launch mode    : pure MPI (1 ranks; OMP setting irrelevant to this binary)
   Ranks          : 1 (from -np flag)
   Threading      : OMP_NUM_THREADS=1 (from -omp flag), OPENBLAS=1, MKL=1
-  Mode           : CLEAN START (no restart file here)
+  Mode           : a clean start (no restart file here)
   Held atoms     : none held -- every atom free
   Command        :  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
   Time limit     : 1800s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
@@ -135,7 +135,7 @@ road (shortened) — one process, a script deck on its environment's python:
 ===== molbuilder run script: PySCF =====
   Launch mode : a script deck on the job's python (2 OpenMP threads)
   Threading   : OMP_NUM_THREADS=2 (from -omp flag)
-  Mode        : CLEAN START (no restart file here)
+  Mode        : a clean start (no restart file here)
   Held atoms  : none held -- every atom free
   Command     : /home/qqing/miniconda3/envs/molbuilder-pySCF/bin/python3 H2_01_coarse.py > H2_01_coarse.pyscf.log 2>&1
   Time limit  : 1800s from the job's start; PySCF stops 600s before it (running-a-job.md 3.6)

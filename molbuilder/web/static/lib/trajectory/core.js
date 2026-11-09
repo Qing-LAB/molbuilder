@@ -1822,7 +1822,7 @@ import { ask } from "../server.js";
                 + " · [" + (w.category || "—") + "]";
             const err = document.createElement("span");
             err.className = "parse-warning-error";
-            err.textContent = w.error || "(no message)";
+            err.replaceChildren(window.molbuilder.dom.codeWords(w.error || "(no message)"));
             const snip = document.createElement("pre");
             snip.className = "parse-warning-snippet";
             snip.textContent = w.snippet || "";

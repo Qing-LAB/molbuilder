@@ -1095,7 +1095,8 @@ def known_machines() -> List[Dict[str, object]]:
             bits += [f"{spread} cores"] if spread else []
             bits += [mem] if mem else []
             bits += [", ".join(cards)] if cards else []
-            bits.append(f"{len(env.domains)} domain(s)")
+            n = len(env.domains)
+            bits.append(f"{n} queue{'' if n == 1 else 's'}")
         else:
             cores = getattr(env.topology, "cores_per_socket", None)
             sockets = getattr(env.topology, "sockets", None)

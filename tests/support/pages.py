@@ -1,7 +1,16 @@
 """The pages the app serves, as the browser receives them -- for a test that
-reads what was served rather than the templates it was rendered from -- and
-what a page's request is served of a result (:func:`spectra_served`)."""
+reads what was served rather than the templates it was rendered from --
+what a page's request is served of a result (:func:`spectra_served`), and
+a server sentence as a page draws it (:func:`drawn`)."""
 from __future__ import annotations
+
+
+def drawn(said: str) -> str:
+    """``said`` -- a sentence the server writes for the terminal and the page
+    alike -- as a page draws it (`web/ui-contract.md` § 12.1): a command in
+    backticks shown as code, its backticks gone; the terminal's dash, ` -- `,
+    a dash."""
+    return said.replace("``", "`").replace("`", "").replace(" -- ", " \u2014 ")
 
 
 def served_pages(app, *, user=None):

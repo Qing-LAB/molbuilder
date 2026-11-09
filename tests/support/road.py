@@ -1078,8 +1078,8 @@ def _road_both_doors(case, kind, named, target, twin, bundle, printed) -> None:
     assert done["ok"], done
 
     def plain(line):
-        return re.sub(r"(saved first: )\S+ -- \S+ \S+", r"\1",
-                      line.replace(str(twin), str(bundle)))
+        return re.sub(r"(saved first: )\S+ \S+ (.*) \([0-9a-f]+\)$",
+                      r"\1\2", line.replace(str(twin), str(bundle)))
 
     served = [plain(line) for line in lines_of(done)]
     terminal = [plain(line) for line in printed.splitlines()]

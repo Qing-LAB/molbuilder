@@ -69,7 +69,9 @@ the MolView demo's calls in true words (the ledger's *Found by … 2.69.1*);
 through one door, *time limit* and *stage* as the one words (the ledger's
 *Found by … 2.69.2*); **2.69.3**: the server's sentences — *stage* and
 *time limit* wherever molbuilder speaks (the ledger's *Found by … 2.69.3*);
-next, group D's dashes and capitals in server text on pages, the other
+**2.69.4**: the server's words drawn as words on every page — one
+renderer, the terminal's dash a dash, no capitals as emphasis, the file card
+in a person's words (the ledger's *Found by … 2.69.4*); next, group D's other
 pages and the help texts, then C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after

@@ -94,7 +94,7 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                     f"TranSIESTA needs at least {MIN_EQ_POLES}.  It stops "
                     f"with \"the continued fraction method requires at least "
                     f"20 poles\", after the queue wait.  The count is "
-                    f"DERIVED, N = int(E / (pi kT)), so it moves with the "
+                    f"derived, N = int(E / (pi kT)), so it moves with the "
                     f"temperature: at {float(temp):g} K the least energy is "
                     f"{need:.2f} eV.  The default is 10 eV"
                     f".",

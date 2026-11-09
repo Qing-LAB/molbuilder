@@ -1053,7 +1053,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 # default -- and a launch again, warm, those of its own latest
                 # run.
                 out.append(
-                    f"# This stage CONTINUES: SIESTA reads any {SIESTA_XV} / "
+                    f"# This stage continues: SIESTA reads any {SIESTA_XV} / "
                     f"{SIESTA_DM} under the same SystemLabel in the")
                 out.append(
                     "# folder it runs in -- its first launch copies in "

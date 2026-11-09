@@ -212,7 +212,7 @@ def api_transport_describe_attempt() -> Any:
     if isinstance(cited, CitedPair):
         record = cited.calculation
         n_atoms = cited.structure.n_atoms
-        state = (f"STRUCTURE PAIR · {cited.n_frames} frame"
+        state = (f"a structure pair · {cited.n_frames} frame"
                  f"{'' if cited.n_frames == 1 else 's'} · optimized with "
                  f"{record.get('source') or 'a deck its record does not name'}")
         concluded = True
@@ -226,14 +226,14 @@ def api_transport_describe_attempt() -> Any:
         # is cited knowingly -- what it hands over is then the last geometry
         # SIESTA wrote.
         if cited.concluded is None:
-            state = ("NOT CONCLUDED -- still running, or force-stopped "
+            state = ("not concluded -- still running, or force-stopped "
                      "(the two look identical on disk)")
         elif cited.exit_code != 0:
-            state = (f"ENDED WITH EXIT CODE {cited.exit_code} "
+            state = (f"ended with exit code {cited.exit_code} "
                      f"({cited.concluded.strip()}) -- not citable until the "
                      f"relaxation runs to its end")
         else:
-            state = f"CONCLUDED ({cited.concluded.strip()})"
+            state = f"concluded ({cited.concluded.strip()})"
             if cited.converged:
                 state += " · " + cited.converged
                 if cited.verdict == ("geometry", False):
@@ -359,8 +359,8 @@ def api_transport_describe_attempt() -> Any:
         except ReuseError as exc:
             return jsonify({"ok": True, "citation": None,
                             "summary": str(exc), "findings": []}), 200
-        status = (f"FRAME 0 IS THE JUNCTION {finished.base.name} RAN · "
-                  + status)
+        status = (f"its first frame is the junction {finished.base.name} "
+                  f"ran · " + status)
         fix = None
     return jsonify({
         "ok": True,
@@ -425,7 +425,7 @@ def _describe_reused(folder: str, root) -> Any:
               "; ".join(f"group {s.group} {s.words.rstrip('.')}"
                         for s in steps))
     summary = " · ".join([
-        "TRANSPORT CALCULATION", Extension(rel, task).name,
+        "a transport calculation", Extension(rel, task).name,
         f"its junction, cited from {citation_of(task)}",
         str(task.treatment),
         ", ".join(str(float(v)) for v in task.bias) + " V", window,

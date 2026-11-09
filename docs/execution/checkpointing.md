@@ -395,8 +395,10 @@ and `1` means the machine.
 
 **When an act saved for you**, it says so where you are: prep, a group's first
 launch and Task setup's Save print *the folder's state was saved first:
-`<id>` -- `<note>`*, or *the folder's state was already saved: `<id>` --
-`<note>` (nothing changed since)* (§ 9).
+`<note>` (`<id>`)*, or *the folder's state was already saved: `<note>`
+(`<id>`; nothing changed since)* (§ 9) — the note first, which leads with
+its time and is how the history finds it; the id last, which `restore`
+takes.
 
 **A state's id is permanent and never reused.** It is git's own commit hash, so
 `restore 4f9ca71` means the same next month as today. Nothing assigns it,

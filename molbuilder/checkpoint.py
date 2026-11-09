@@ -2039,10 +2039,13 @@ class Kept:
 
     def said(self) -> str:
         """The line both doors show and the ledger records."""
-        return (f"the folder's state was saved first: {self.state.short} "
-                f"-- {self.state.note}" if self.new else
-                f"the folder's state was already saved: {self.state.short} "
-                f"-- {self.state.note} (nothing changed since)")
+        # THE NOTE FIRST, which leads with its time: a person finds the
+        # state by it in the history; its id last, which `checkpoint
+        # restore` takes.
+        return (f"the folder's state was saved first: {self.state.note} "
+                f"({self.state.short})" if self.new else
+                f"the folder's state was already saved: {self.state.note} "
+                f"({self.state.short}; nothing changed since)")
 
 
 def save_before(path, what: str, *, engine: Optional[str] = None,

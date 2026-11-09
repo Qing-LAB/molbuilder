@@ -65,12 +65,13 @@
         if (classes.indexOf("status") === -1) classes.unshift("status");
         if (kind) classes.push(kind);
         var cls = classes.join(" ");
-        // A command in the words is drawn as code, its backticks gone.
-        var plain = text.replace(/`/g, "");
-        if (el.textContent === plain && el.className === cls) return true;
-        var dom = (root.molbuilder || {}).dom;
-        if (dom && plain !== text) el.replaceChildren(dom.codeWords(text));
-        else el.textContent = text;
+        // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1):
+        // a command as code, the terminal's dash as a dash.
+        var dom = root.molbuilder.dom;
+        if (el.textContent === dom.wordsText(text) && el.className === cls) {
+            return true;
+        }
+        el.replaceChildren(dom.codeWords(text));
         el.className = cls;
         return true;
     }

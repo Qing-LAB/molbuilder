@@ -726,7 +726,7 @@ export async function openDir(absPath) {
     elList.classList.add("is-empty");
     const li = document.createElement("li");
     li.className = "ps-list-error";   // token-styled in projects-sidebar.css (no inline hex)
-    li.textContent = resp.error || "Failed to list directory.";
+    li.appendChild(window.molbuilder.dom.codeWords(resp.error || "Failed to list directory."));
     elList.appendChild(li);
     // Listing failed -- we don't know the new state of resp.path's
     // children, so we can't decide whether to keep prevFile.  Blank

@@ -5344,7 +5344,7 @@ def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
     import json
     attempt, code, answer, page = reused["page"]
     assert attempt["reuses"] == "P/transport/T"
-    assert attempt["summary"].startswith("TRANSPORT CALCULATION · T · ")
+    assert attempt["summary"].startswith("a transport calculation · T · ")
     assert code == 200 and answer["ok"], answer
     task = json.loads((page / "task.json").read_text())
     assert task["reuses"] == "P/transport/T"
@@ -5467,7 +5467,7 @@ def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
                                          timeout=120000)
         assert _copied_in(plan.inner_text()) == [1, 2, 3], plan.inner_text()
         said = pick(junction.frame_set)
-        assert "FRAME 0 IS THE JUNCTION O RAN" in said, said
+        assert "its first frame is the junction O ran" in said, said
         expect(readout).to_have_text(junction.frame_set, timeout=30000)
         assert "a frame set whose first frame is the junction O ran" in line(), \
             line()

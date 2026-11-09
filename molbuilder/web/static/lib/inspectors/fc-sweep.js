@@ -19,9 +19,8 @@
 (function (root) {
     "use strict";
 
-    /* The one element builder, `lib/dom.js`, loaded before this file on
-     * /results.  Looked up when called, so a page that has not loaded it
-     * still registers this viewer and fails only where it draws. */
+    /* The one element builder, `lib/dom.js`, which the shared header loads
+     * for every page; looked up when called. */
     const _el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
 
     function _num(x, digits) {

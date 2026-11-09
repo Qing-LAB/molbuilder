@@ -668,7 +668,7 @@ def _runtime_status_block(
         f'_warm_label="{label}"\n'
         + '# WARM STATE IS CONTENT, not mere existence: a zero-byte\n'
         + '# restart file is nothing to resume from, and a launch that\n'
-        + '# announced "CONTINUES (engine will load ...)" over one\n'
+        + '# announced "continues (engine will load ...)" over one\n'
         + '# would be telling the person something false.\n'
         + '_mb_has_state() { [ -s "$1" ]; }\n'
         + '_warm_found=""\n'
@@ -1286,11 +1286,11 @@ def _wrapped(text: str, prefix: str, width: int = 62) -> str:
 #: engine loads (``$_warm_found`` names them); restart files the deck reads
 #: none of -- its restart answer is ``clean`` (`run-identity.md` § 4); and
 #: restart files on a kind that does not resume (`Job.resumes`).
-_CLEAN_START_MODE = "CLEAN START (no restart file here)"
-_CONTINUES_MODE = "CONTINUES (engine will load $_warm_found)"
-_CLEAN_DECK_MODE = ("CLEAN (this deck reads no prior state; the files here "
+_CLEAN_START_MODE = "a clean start (no restart file here)"
+_CONTINUES_MODE = "continues (engine will load $_warm_found)"
+_CLEAN_DECK_MODE = ("clean (this deck reads no prior state; the files here "
                     "are not read)")
-_FIRST_STEP_MODE = ("FROM THE FIRST STEP (this kind of run does not "
+_FIRST_STEP_MODE = ("from the first step (this kind of run does not "
                     "resume)")
 
 

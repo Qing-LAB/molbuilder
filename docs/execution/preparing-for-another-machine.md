@@ -97,10 +97,10 @@ molbuilder jobset machines
 `jobset machines` prints every record, its path and when it was measured:
 
 ```
-  sol                      slurm · 48-152 cores · 251.4-1511.2 GB · a100, a100.20gb, … · 24 domain(s)
+  sol                      slurm · 48-152 cores · 251.4-1511.2 GB · a100, a100.20gb, … · 24 queues
     /home/you/.config/molbuilder/environments/sol.json
     measured 2026-10-19T16:34:25+00:00
-  (this machine)  [local]  slurm · 48-64 cores · a100 · 2 domain(s)
+  (this machine)  [local]  slurm · 48-64 cores · a100 · 2 queues
     /home/you/.config/molbuilder/environment.json
 ```
 

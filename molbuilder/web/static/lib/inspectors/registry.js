@@ -228,7 +228,7 @@
                 host.innerHTML = "";
                 const div = document.createElement("div");
                 div.className = "inspector-error";
-                div.textContent = message;
+                div.appendChild(root.molbuilder.dom.codeWords(message));
                 host.appendChild(div);
                 // The load has ended, in this error: say so, as a render
                 // does, so neither the tab's cover nor the picker's

@@ -224,11 +224,11 @@ def seam_finding(pos, cell) -> Issue:
     if v.verdict == "continues":
         per = (f" (stacking period {v.period} "
                f"layer{'' if v.period == 1 else 's'})" if v.period else "")
-        return Issue("info", f"the periodic seam CONTINUES the crystal{per}: "
+        return Issue("info", f"the periodic seam continues the crystal{per}: "
                              f"the layer one cell up sits where the stacking "
                              f"says it should, {v.gap:.3f} Å from the top "
                              f"layer.", where=SEAM_WHERE)
-    return Issue("warn", f"the periodic seam is {v.verdict.upper()} — "
+    return Issue("warn", f"the periodic seam is {v.verdict} — "
                          f"{v.message}.  This lead is what TranSIESTA turns "
                          f"into the self-energy, so a faulted seam is a "
                          f"faulted bulk Hamiltonian.  Not refused: you may "
@@ -393,8 +393,9 @@ def extract_electrode_model(
     zper, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
     z_span = float(layer_z[-1] - layer_z[0])
     notes.append(Issue(
-        "info", f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
-                f"({d_inter:.3f}) = {zper:.3f} Å, from {n_layers} layers.",
+        "info", f"z-period derived from {n_layers} layers: their span "
+                f"({z_span:.3f} Å) + the layer spacing ({d_inter:.3f} Å) "
+                f"= {zper:.3f} Å.",
         where="lead.period"))
     notes.append(seam_finding(pos, [lat_a, lat_b, [0.0, 0.0, float(zper)]]))
 

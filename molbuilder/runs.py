@@ -1147,15 +1147,6 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
 #  A folder, as a viewer asks about it -- the directory door            #
 # --------------------------------------------------------------------- #
 
-def _in_words(writer: str) -> str:
-    """A row's ``writer`` as a person reads it: the parenthesised function
-    names the contract's manifest carries (`` (`runwrap.write_run_wrapper`)``)
-    left out -- they are the contract's, for whoever changes the writer; the
-    verb and the moment are the person's."""
-    import re
-    return re.sub(r"\s*\([^()]*`[^()]*\)", "", writer).strip()
-
-
 def _row_about(path: Path, label: Optional[str], *,
                unread: Optional[str] = None) -> Dict[str, Any]:
     """:func:`about`'s answer for a file whose folder's label is known -- or,
@@ -1172,9 +1163,9 @@ def _row_about(path: Path, label: Optional[str], *,
         saved = None if label else saved_pair_row(path)
         if saved is None:
             return {"ours": False}
-        return {"ours": True, "what": saved[0], "writer": _in_words(saved[1]),
+        return {"ours": True, "what": saved[0], "writer": saved[1],
                 "when": "saved", "kind": "structure"}
-    return {"ours": True, "what": row.what, "writer": _in_words(row.writer),
+    return {"ours": True, "what": row.what, "writer": row.writer,
             "when": row.when, "kind": row.kind}
 
 

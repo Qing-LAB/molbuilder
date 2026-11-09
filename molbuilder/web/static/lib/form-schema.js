@@ -381,9 +381,8 @@
         // a bit nicer + lets us style border/background).
         const body = document.createElement("div");
         body.className = "schema-help-body";
-        const dom = (window.molbuilder || {}).dom;
-        if (dom) body.appendChild(dom.codeWords(help));
-        else body.textContent = help;
+        // THE CATALOGUE'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
+        body.appendChild(window.molbuilder.dom.codeWords(help));
         det.appendChild(body);
         // References -- resolved server-side from the one bibliography
         // (docs/science/references.bib); each renders as title + a DOI
