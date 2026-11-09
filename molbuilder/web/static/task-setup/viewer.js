@@ -2814,9 +2814,15 @@ async function refreshPlan(task) {
      * the list hides rather than showing a stale plan for a document that
      * no longer says what it did.  The cards above are the substance. */
     if (!answer.ok) {
-        box.hidden = true;
         hideWritten();
         dropPlan();
+        // ...SAID, never a list left out (`ui-contract.md` § 12): a
+        // description mid-edit often does not read, and the reason is the
+        // reader's.
+        box.hidden = false;
+        host.replaceChildren(el("li", { class: "ts-planrow" },
+            codeWords("What prep would write cannot be worked out: "
+                      + answer.error)));
         return;
     }
     const body = answer.body;
@@ -3631,7 +3637,10 @@ function prepButton(kind, picks) {
                         const launch = a.launch || {};
                         endPoint(several ? a.stage : "this run",
                                  (launch.header || []).length
-                                     ? launch.header : (launch.run_script || []));
+                                     ? launch.header
+                                     : (launch.run_script || []).map((c) =>
+                                         labelOf(c.name) + " "
+                                         + valueWords(c.name, c.value)));
                     }
                     writesFold(several ? a.stage : "", a.writes || []);
                     if (g && a.stage === g.members[g.members.length - 1]) {
@@ -4200,10 +4209,12 @@ function _fmtGB(gb) {
  *  beside the wall and memory fields (`paintAskNotes`), and an empty field
  *  stays empty until it is stated (`submission.md` S5). */
 function setQueue(name) {
-    _fs.queue = name;
+    // THE CHOSEN QUEUE, CHOSEN AGAIN, IS UNCHOSEN: the field is optional
+    // (`task-setup.md` § 7), and the person's to clear.
+    _fs.queue = (name === _fs.queue) ? "" : name;
     for (const b of document.querySelectorAll("#ts-queue-choice .opt")) {
         b.setAttribute("aria-pressed",
-                       b.getAttribute("data-queue") === name ? "true" : "false");
+                       b.getAttribute("data-queue") === _fs.queue ? "true" : "false");
     }
     paintAskNotes();
     applyAsksToDoc();
@@ -4877,7 +4888,7 @@ function paintHeads() {
     const here = rows.filter((li) =>
         li.querySelector('[data-exists="yes"]')).length;
     _sum("ts-files-card", !_dir ? "no folder selected"
-        : here + " of " + rows.length + " in the folder");
+        : here + " of the " + rows.length + " listed in the folder");
     const n = req.notify && typeof req.notify === "object" ? req.notify : null;
     _sum("ts-notify-card", !n ? "no reports"
         : [n.on_scf_converged ? "each SCF converged" : "",

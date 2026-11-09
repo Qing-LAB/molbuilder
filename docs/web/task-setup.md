@@ -592,7 +592,7 @@ each other.
 > request's**: choosing a machine — or one whose record lists no queues —
 > changes what the card offers, never what the job request says; a stated
 > queue that machine does not list is shown as stated, with that said, and
-> stays until the person changes it *(the 2.27.0 review: a machine chosen after
+> stays until the person changes it — choosing the chosen queue again unchooses it, the field being optional *(2.69.7)* *(the 2.27.0 review: a machine chosen after
 > the folder opened cleared the stated queue, and the next edit wrote the
 > allocation without it)*. A field stays empty until it is stated
 > (`submission.md` S5) — and those are **not**
@@ -1003,6 +1003,8 @@ the card states no ranks
   transmission   05_transmission/   MPI ranks (np) 64 · OMP threads per rank 1 · public · 0-12:00:00 · 48G
                  memory need: at most 49.3G at 64 ranks -- held 12.31G at 16 ranks × 1 thread, 05_transmission/run-0 on sg013 (the kernel's counter, the job's; finished)
 ```
+
+**When it cannot be worked out — a description mid-edit often does not read — the list says why, in the reader's words, in its place** *(2.69.7; `ui-contract.md` § 12: never a list left out)*.
 
 **It is a confirmation, not a second answer.** The names and the numbers come
 from the same producer `prep` runs, and a page that composed them would be
@@ -1651,7 +1653,7 @@ one per mode the calculation's machine takes where it sets none.
 what the rung builds on, with the run's verdict and the files it carries; what
 the job will be launched with, line for line as the plan holds it — the header
 where a scheduler runs it (a group of several, its one header, once for the
-group: its first launch sends that, not a member's own), else the run script's stated counts (A13,
+group: its first launch sends that, not a member's own), else the run script's stated counts, each named as the cards name it (A13,
 [`architecture.md`](?doc=execution/architecture.md) § 5.2); every file it would write, folded under their count — all of it the
 answer a Prep gives, through the same renderer, said as what it would do: what
 the description's checks and each deck's own found, the run it would open

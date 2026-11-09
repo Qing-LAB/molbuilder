@@ -1866,6 +1866,18 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group C, Task setup's flow (2026-11-09), by the release that owns each
+
+*(Group C's items, each checked against the code and its contract before any fix; those a contract or the user has decided are kept: the cards' order, a launch value refused at Preview, Results neither following the sidebar nor re-reading on a timer, This machine's scope)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2697-1 | **closed 2.69.7** | *What gets written* said *3 of 3 in the folder* after prep had written twenty files — it counts the files it lists | *3 of the 3 listed in the folder* |
+| K2697-2 | **closed 2.69.7** | a plan that could not be worked out (a description mid-edit) hid the plan and the written files without a word | the list says why, in the reader's words, in its place (`ui-contract.md` § 12) |
+| K2697-3 | **closed 2.69.7** | a queue once chosen could not be unchosen, though the field is optional | choosing the chosen queue again unchooses it |
+| K2697-4 | **closed 2.69.7** | the Preview's *what this run will be launched with* gave the run script's variables (`_mpi_np_default=2`) | each count as data — its setting and value — named as the cards name it (*MPI ranks (np) 2*) |
+| K2697-5 | **kept** | prep's provenance lines mark where a value came from with `<-` | the terminal's and the page's one notation for *from*, the same in every provenance table |
+
 ## Found by the UI review's group D, the settings' help (2026-11-09), by the release that owns each
 
 *(Group D's items on the settings' own words in the catalogue, each read before any fix)*

@@ -1521,18 +1521,26 @@ def _preamble_source_targets(chunks) -> List[str]:
 
 
 #: The run script's stated launch counts, baked at prep -- the ranks and the
-#: threads per rank (`running-a-job.md` § 3.1-3.2) -- by these names, which
-#: :func:`stated_counts` reads back.
-_STATED_COUNTS = ("_mpi_np_default", "_omp_threads_default")
+#: threads per rank (`running-a-job.md` § 3.1-3.2) -- by these variables,
+#: which :func:`stated_counts` reads back, each the catalogue item it states.
+_STATED_COUNTS = (("_mpi_np_default", "mpi_np"),
+                  ("_omp_threads_default", "omp_threads"))
 
 
-def stated_counts(run_script_text: str) -> List[str]:
-    """A rendered run script's stated counts, ``name=value`` as it carries
-    them -- what a surface shows for what a job will be launched with on a
-    machine with no scheduler (A13, `execution/architecture.md` § 5.2), read
-    back by the writer's side and never worked out again."""
-    return [ln.strip() for ln in run_script_text.splitlines()
-            if ln.split("=", 1)[0].strip() in _STATED_COUNTS]
+def stated_counts(run_script_text: str) -> List[dict]:
+    """A rendered run script's stated counts -- ``{name, value}``, the
+    catalogue item and the value the script carries, in its order -- what a
+    surface shows for what a job will be launched with on a machine with no
+    scheduler (A13, `execution/architecture.md` § 5.2), read back by the
+    writer's side and never worked out again; a page names each by its
+    label."""
+    out = []
+    for ln in run_script_text.splitlines():
+        var, eq, value = ln.strip().partition("=")
+        item = dict(_STATED_COUNTS).get(var) if eq else None
+        if item:
+            out.append({"name": item, "value": value})
+    return out
 
 
 def _thread_chain(default: str) -> str:
@@ -2396,8 +2404,8 @@ def render_run_wrapper(script_path: Path, *,
 
     # ---- THE ARGUMENTS: one parser; the ranks where the engine runs them ----
     stated = ("# The stated counts, baked at prep (running-a-job.md § 3.1-3.2).\n"
-              + (f"{_STATED_COUNTS[0]}={int(mpi_np)}\n" if ranks else "")
-              + f"{_STATED_COUNTS[1]}={int(omp_threads)}\n")
+              + (f"{_STATED_COUNTS[0][0]}={int(mpi_np)}\n" if ranks else "")
+              + f"{_STATED_COUNTS[1][0]}={int(omp_threads)}\n")
     args_parse = _args_parse(
         stated=stated,
         omp_aliases="-omp|--omp|-t|--threads",

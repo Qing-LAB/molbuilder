@@ -517,7 +517,8 @@ class TestTheRunsOwnCondition:
                   "plan": True})
         assert answer.status_code == 200, answer.get_data(as_text=True)
         said = answer.get_json()["answers"][0]["launch"]["run_script"]
-        assert {"_mpi_np_default=2", "_omp_threads_default=2"} <= set(said), said
+        assert said == [{"name": "mpi_np", "value": "2"},
+                        {"name": "omp_threads", "value": "2"}], said
 
     def test_the_RUN_owns_its_wall_and_queue(
             self, calc):

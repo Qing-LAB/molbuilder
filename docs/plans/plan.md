@@ -76,6 +76,9 @@ page in its own plain words, the notebook tab *JupyterLab* (the ledger's
 *Found by … 2.69.5*); **2.69.6**: the settings' own words — group D done
 (the ledger's *Found by … 2.69.6*); next, group C (organization and flow,
 with design questions for the user), then the launch-from-the-page design.
+**2.69.7**: group C's Task setup items — a count that says what it counts, a
+plan's refusal said, a queue unchosen, the run's counts named (the ledger's
+*Found by … 2.69.7*).
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an
