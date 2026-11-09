@@ -1094,6 +1094,11 @@
             showFindings: (issues) => showFindings(engine, issues, true),
             door:        mb.taskHandover.HANDOVER,
             fields:      { structure: _structure, params: params },
+            // WHICH FRAME IS SENT, of a structure with several: the one on
+            // screen (`exportFile()`).
+            frame:       (_viewer && _viewer.data.frameCount() > 1)
+                ? "frame " + (_viewer.data.currentFrame() + 1) + " of "
+                  + _viewer.data.frameCount() + ", the one on screen" : null,
             engine:      engine,
             calculation: "vibration",
         });

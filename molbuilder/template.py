@@ -216,7 +216,8 @@ SETUP_WORDS = {
         f"named for it -- for example pseudopotential/, with "
         f"{fixed_name(PSEUDO_FILE, species='O')} and "
         f"{fixed_name(PSEUDO_FILE, species='H')} for water.  "
-        f"Nothing can be built until the folder is filled in.",
+        f"The .psml files already in the calculation's folder are taken "
+        f"first; this folder supplies the species they lack.",
     frozenset({"job_name"}):
         f"Give the run a name.  It begins every file the run writes -- for "
         f"example water, so its script is water_01_<stage>"

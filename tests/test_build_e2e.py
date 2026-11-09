@@ -600,6 +600,15 @@ class TestSendToTaskSetup:
             f"the assertions below are about the other; it answered {notices}")
         assert (calc / "task.1st.json").is_file(), (
             "the hand-over never landed")
+        # THE PSEUDOPOTENTIAL FIELD, LEFT BLANK, IS NOT DRAWN AS MISSING: the
+        # .psml files beside the calculation answer it, as at prep
+        # (`handover-procedure.md` § 2.2) -- through 2.69.7 it was drawn red
+        # as a field still to fill while the Send wrote.
+        assert not page.evaluate(
+            "() => document.querySelector('#p-psml-lib')"
+            "  .closest('.schema-field').classList.contains('is-empty')"), (
+            "the pseudopotential field is drawn as missing although the "
+            "calculation's folder holds every species' file")
 
         # AND IT STAYS PUT (user, 2026-09-19).
         assert page.evaluate("() => window.location.pathname") == (
@@ -659,15 +668,15 @@ class TestSendToTaskSetup:
         written (`web/handover-procedure.md` § 2.2, plan § 5w K20; user,
         2026-09-30: *"it seems user easily misses this in the first setup and
         only finds out after the script is generated"*).  On the SIESTA form
-        the field is drawn required and red while empty, and the live check
-        names the tree's `pseudopotential` folder, which covers the
-        structure; a Send with no folder and no files beside the calculation
-        is refused -- the finding beside the field, brought into view,
-        nothing written; set to the folder, the Send writes.
+        the live check says it beside the field before any Send, and names
+        the tree's `pseudopotential` folder, which covers the structure; a
+        Send with no folder and no files beside the calculation is refused
+        -- the finding beside the field, brought into view, nothing written;
+        set to the folder, the Send writes.
 
         MUTATIONS THIS MUST FAIL AGAINST: the Send not asking the check (the
-        files are written); the field not drawn required; the suggestion not
-        made; the refusal not brought into view."""
+        files are written); the suggestion not made; the refusal not brought
+        into view."""
         calc, xyz = self._calc_dir(pseudos=False)
         from conftest import write_pseudos
         library = isolated_projects_root / "pseudopotential"
@@ -679,12 +688,9 @@ class TestSendToTaskSetup:
         self._open_on(page, flask_server, calc)
         _use(page, xyz, 3)
         page.wait_for_function(
-            f"() => {{ const w = {field};"
-            "  return w.classList.contains('is-required')"
-            "    && w.classList.contains('is-empty')"
-            "    && [...w.querySelectorAll('.field-issues .issue-item')]"
+            f"() => [...{field}.querySelectorAll('.field-issues .issue-item')]"
             "       .some(r => r.textContent.includes("
-            "           'folder covers all 2 species')); }",
+            "           'folder covers all 2 species'))",
             timeout=WAIT_MS)
         self._send(page, says="pseudopotentials are not settled")
         assert not (calc / "task.1st.json").exists(), (
@@ -703,8 +709,6 @@ class TestSendToTaskSetup:
         assert 0 <= seen["top"] and seen["bottom"] <= seen["height"], seen
 
         page.fill("#p-psml-lib", "pseudopotential")
-        assert not page.evaluate(
-            f"() => {field}.classList.contains('is-empty')")
         self._send(page)
         assert (calc / "task.1st.json").is_file()
 

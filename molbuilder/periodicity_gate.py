@@ -64,7 +64,7 @@ user decides.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -155,7 +155,8 @@ def _wire(i: "Issue") -> Dict[str, str]:
             "where": i.where, "about": i.where.split(".")[0]}
 
 
-def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
+def validate_periodicity(struct: Structure, engine: Optional[str] = None
+                         ) -> Tuple[Structure, List[dict]]:
     """Check STORED periodicity against the § 6.1 table and REPORT.  Returns
     ``(struct, notices)``.
 
@@ -190,6 +191,12 @@ def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
     fatal = [i for i in issues if i.severity == "error"]
     if fatal:
         raise ValueError(fatal[0].message)
+    # ...AND WHAT THE ENGINE HEARS, where one is named -- a calculation's
+    # structure: an engine in free space is told only what binds every
+    # engine (`cell.box_findings_for`, structure-periodicity.md § 2.1).
+    if engine is not None:
+        from .cell import box_findings_for
+        issues = box_findings_for(engine, issues)
     return struct, [_notice(i.severity, i.message, i.where) for i in issues]
 
 

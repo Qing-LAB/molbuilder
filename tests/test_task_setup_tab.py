@@ -316,6 +316,26 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
 
 
 
+@pytest.mark.parametrize("typed, named", [("siesta", "siesta"),
+                                          (None, "probe")],
+                         ids=["the-default-typed", "left-blank"])
+def test_the_calculation_is_named_as_typed_else_after_its_folder(
+        web_client, isolated_projects_root, typed, named):
+    """`run-identity.md` § 4: the calculation's name is the one the person
+    types into its identity field -- the schema's default too, typed -- and
+    the folder's name only when the field is left blank, which the page
+    sends as nothing.  THE SILENT FAILURE: through 2.69.7 a name typed as the
+    default (`siesta`) was replaced by the folder's, the page having shown
+    it as the name that applies."""
+    fresh_calc_dir(isolated_projects_root)
+    r = web_client.post("/api/task-setup/handover", json=dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name="probe", params={} if typed is None else {"system_label": typed}))
+    out = r.get_json()
+    assert r.status_code == 200 and out["ok"], out
+    assert _json.loads(out["handover_text"])["run"]["name"] == named, out
+
+
 @pytest.mark.parametrize("length, taken", [(1, True), (100, False)],
                          ids=["inside-the-ladders-cap", "past-it"])
 def test_the_handover_names_its_calculation_as_its_save_reads_it(

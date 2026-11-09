@@ -53,6 +53,15 @@ import { ask } from "../lib/server.js";
      * at the frame on screen, and the facts beside them, in the one envelope
      * every structure door reads (molview.md § 9.3 — the facts that leave
      * together were read together). */
+    /* WHICH FRAME IS SENT, of a structure with several: the one on screen
+     * (`exportFile()`), said with the confirmation; null for one frame. */
+    function _frameSent() {
+        const d = _data();
+        const n = d && typeof d.frameCount === "function" ? d.frameCount() : 1;
+        return n > 1 ? "frame " + (d.currentFrame() + 1) + " of " + n
+                       + ", the one on screen" : null;
+    }
+
     function _structureForRequest() {
         const d = _data();
         const out = d ? d.exportFile() : null;
@@ -884,7 +893,7 @@ import { ask } from "../lib/server.js";
         function render() {
             const v = (input.value || "").trim();
             if (!v) {
-                cap.textContent = "not set \u2014 SIESTA cannot start without its pseudopotentials";
+                cap.textContent = "not set \u2014 the .psml files in the calculation's folder are taken";
                 return;
             }
             // Absolute or ~/ -> echo (no anchor applied).
@@ -1092,6 +1101,7 @@ import { ask } from "../lib/server.js";
             showFindings: (issues) => _showFindings(engine, issues, true),
             door:      mb.taskHandover.HANDOVER,
             fields:    { structure: _structureForRequest(), params: params },
+            frame:     _frameSent(),
             engine:    engine,
             calculation: "optimization",
         });

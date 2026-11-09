@@ -276,7 +276,8 @@ def _charge(struct: Structure, cfg: Any, kind: str,
         n = abs(q)
         return Resolved(q, "detected",
                         f"{n} deprotonated phosphate group{'s' if n != 1 else ''}")
-    return Resolved(0, "detected", "no deprotonated phosphate groups")
+    return Resolved(0, "detected", "none of the charged groups molbuilder "
+                                   "counts (deprotonated phosphates)")
 
 
 def _method(cfg: Any, engine: str,
@@ -437,8 +438,8 @@ def recommend(struct: Structure, facts: ChemistryAnalysis, *,
                 f"delocalises and no moment forms")
         return Recommended(
             "restricted", 0,
-            "a repeating cell with no open-d metal: the count per cell is not "
-            "a spin")
+            "a repeating cell with no metal with an open d shell: the count "
+            "per cell is not a spin")
 
     if nobles:
         n_noble = sum(count_element(struct, m) for m in nobles)
@@ -460,5 +461,5 @@ def recommend(struct: Structure, facts: ChemistryAnalysis, *,
                            f"an odd electron count ({n_electrons}): one "
                            f"unpaired electron")
     return Recommended("restricted", 0,
-                       f"an even electron count ({n_electrons}) and no open-d "
-                       f"metal")
+                       f"an even electron count ({n_electrons}) and no metal "
+                       f"with an open d shell")

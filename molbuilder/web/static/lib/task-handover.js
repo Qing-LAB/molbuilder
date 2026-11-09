@@ -43,6 +43,9 @@
  *                   //   ...], a field it must be given, said in its words
  *                   //   when it is not
  *     fields,       // what the kind's description carries, sent as given
+ *     frame,        // which frame of a structure with several is sent --
+ *                   //   "frame 3 of 8, the one on screen" -- said with the
+ *                   //   confirmation; null for one frame
  *     showManifest, // (lines|null) -> void -- a writing door's manifest
  *   })
  */
@@ -295,6 +298,7 @@
          * hazard wearing a URL. */
         say("ok", "Wrote " + written.join(" and ")
             + " into " + (rel || "the selected folder")
+            + (o.frame ? " \u2014 the structure at " + o.frame : "")
             + (out.handover_here
                ? " — replacing the hand-over that was there" : "")
             + ".  " + next);

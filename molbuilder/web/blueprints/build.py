@@ -1034,16 +1034,13 @@ def api_task_setup_handover():
     # There is no second name."*
     #
     # Which field carries the identity is the ENGINE's to say, and its record
-    # says so (the engine table's ``identity_field``).  The folder name is
-    # still the answer when the field is untouched, because the schema default
-    # is a placeholder (`siesta`, `pyscf_relax`) and naming a calculation after
-    # a placeholder is worse than naming it after the folder somebody chose.
+    # says so (the engine table's ``identity_field``).  WHAT THE PERSON TYPED
+    # into it names the calculation -- the schema default too, typed; the
+    # folder's name only when the field was left blank (the page sends a
+    # blank field as nothing).
     _field = _engine(engine).identity_field
-    _identity = str(getattr(cfg, _field, "") or "")
-    from molbuilder.template import catalogue, default_of, one
-    _placeholder = str(
-        default_of(one(catalogue(), _field, engine=engine), calculation) or "")
-    typed = (_identity if _identity and _identity != _placeholder
+    _sent = params.get(_field)
+    typed = (str(_sent).strip() if isinstance(_sent, str) and _sent.strip()
              else str(body.get("name") or ""))
     if not typed:
         # REFUSED BY NAME, never defaulted (a hand-over was called
@@ -1105,7 +1102,8 @@ def api_task_setup_handover():
     # origin's record with it.
     from molbuilder.cell import entering
     struct, struct_notices = for_writing(struct, judged_as=lambda s: entering(
-        s, keep_engine_frame=bool(getattr(cfg, "already_relaxed", False))))
+        s, keep_engine_frame=bool(getattr(cfg, "already_relaxed", False))),
+        engine=engine)
     try:
         # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated

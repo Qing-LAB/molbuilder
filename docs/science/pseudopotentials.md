@@ -107,9 +107,10 @@ says per species label whether that file comes from the folder or from `psml_lib
 **Settled before the folder exists — at the Send** *(plan § 5w K20; user,
 2026-09-30: "it seems user easily misses this in the first setup and only finds
 out after the script is generated")*. On the Build and Spectrum tabs' SIESTA
-form the directory is marked required (the item's `required` kinds,
-[`engines/template.md`](?doc=engines/template.md) § 5) and drawn red while it is
-empty. The live check (the web preflight) warns while it is unset — naming the
+form the directory is not drawn required: the `.psml` files already in the
+calculation's folder answer it too, so a blank one is no fault in itself
+*(2.69.8; it was drawn red while empty, and the Send then wrote,
+[`engines/template.md`](?doc=engines/template.md) § 5 `required`)*. The live check (the web preflight) warns while it is unset — naming the
 tree's `pseudopotential` folder when that folder covers every species of the
 structure, a suggestion and never a fill — and checks each species' file and its
 XC family once it is set. The Send asks the same check of the folder it writes

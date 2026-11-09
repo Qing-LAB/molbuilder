@@ -1325,6 +1325,21 @@ class TestTheDefaultVacuumGap:
         # vacuum is per side, so the gap between images is TWICE it.
         assert "6 Å" in msg, f"the image gap is not named: {msg}"
 
+    def test_a_calculation_in_free_space_hears_no_box_advice(self):
+        """A calculation's structure is judged for its engine
+        (`structure-periodicity.md` § 2.1, `cell.box_findings_for`): SIESTA
+        computes in the box and is told the vacuum was defaulted; PySCF on a
+        molecule computes in free space and hears only what binds every
+        engine -- the box's advice is about a calculation it does not run.
+
+        THE SILENT FAILURE: through 2.69.7 the hand-over of a PySCF molecule
+        said the vacuum was too thin for an accurate result."""
+        heard = {engine: [n["where"] for n in
+                          validate_periodicity(self._planar(), engine=engine)[1]]
+                 for engine in ("siesta", "pyscf")}
+        assert "cell.vacuum_defaulted" in heard["siesta"], heard
+        assert "cell.vacuum_defaulted" not in heard["pyscf"], heard
+
     def test_a_set_vacuum_is_not_announced(self):
         """Nothing was defaulted, so there is nothing to disclose.
 

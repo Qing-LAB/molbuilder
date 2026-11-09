@@ -130,7 +130,7 @@ def test_a_blank_charge_is_written_with_its_reason(prepared):
     nothing reaches the engine by omission), with why."""
     _d, _s, fdf = prepared(water_in_vacuum(), "siesta")
     assert re.search(r"^NetCharge\s+\+0$", fdf, re.M), fdf
-    assert ("# NetCharge: +0 (detected: no deprotonated phosphate groups)."
+    assert ("# NetCharge: +0 (detected: none of the charged groups molbuilder counts (deprotonated phosphates))."
             in fdf)
 
 

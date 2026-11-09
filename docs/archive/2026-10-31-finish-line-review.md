@@ -1866,6 +1866,22 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group C, sending a structure (2026-11-09), by the release that owns each
+
+*(Group C's items on the road from a structure tab to Task setup — the optimization and Spectrum tabs' Send — each checked against its contract before the fix)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2698-1 | **closed 2.69.8** | a calculation's name typed as the field's default (`siesta`) was replaced by the folder's, the page having shown it as the name that applies | what the person typed names it, the default too; the folder's name only for a field left blank (`run-identity.md` § 4) |
+| K2698-2 | **closed 2.69.8** | the hand-over of a PySCF molecule said its vacuum was too thin for an accurate result — box advice about a calculation PySCF does not run | the hand-over's structure judged for its engine, `cell.box_findings_for`, as the describe door judges it (`structure-periodicity.md` § 2.1) |
+| K2698-3 | **closed 2.69.8** | the SIESTA pseudopotential folder was drawn red as a field still to fill while the `.psml` files beside the calculation answered it and the Send wrote | the field not drawn required; the live check and the Send's refusal say what is missing ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1) — the catalogue's `required` marker now has no item |
+| K2698-4 | **closed 2.69.8** | the folder's caption said *nothing can be built until the folder is filled in*, which the files beside the calculation make untrue | the caption and the card's line say the calculation's own files are taken first |
+| K2698-5 | **closed 2.69.8** | a file of several frames sent one of them without saying which | the Send sends the frame on screen and its line says so (*the structure at frame 3 of 12, the one on screen*); the tabs' hint says it before the click |
+| K2698-6 | **closed 2.69.8** | the charge's reason read as a chemistry verdict (*no deprotonated phosphate groups*) and *open-d metal* as shorthand | *none of the charged groups molbuilder counts (deprotonated phosphates)*; *no metal with an open d shell* |
+| K2698-7 | 2.69.9 | the live check on the optimization and Spectrum tabs asks about the pseudopotentials with no folder, so it warns *no pseudopotential folder is set* while the folder the Send writes into holds every file | the tabs know where the Send writes (the sidebar's folder, C14) and the live check asks of it |
+| K2698-8 | left | the blank name field's caption reads *SIESTA's own default: siesta* although a blank field takes the folder's name | the field's caption by the name rule (`run-identity.md` § 4) |
+| K2698-9 | the dead-code release | the catalogue's `required` key reads, validates and serves a list no item declares | delete the key and its reader, or keep it for the next item that needs one — the dead-code release decides |
+
 ## Found by the UI review's group C, Task setup's flow (2026-11-09), by the release that owns each
 
 *(Group C's items, each checked against the code and its contract before any fix; those a contract or the user has decided are kept: the cards' order, a launch value refused at Preview, Results neither following the sidebar nor re-reading on a timer, This machine's scope)*

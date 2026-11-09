@@ -940,7 +940,7 @@ class PeriodicityRefused(Exception):
     """
 
 
-def for_writing(struct: Structure, *, judged_as=None):
+def for_writing(struct: Structure, *, judged_as=None, engine=None):
     """``(struct, notices)``: a structure the browser sent, as a web door
     writes it for a person -- IN THE USER ORDER (``model/overview.md`` § 2.2a,
     I1): one in an engine's order is put back (``Structure.in_user_order``)
@@ -951,18 +951,19 @@ def for_writing(struct: Structure, *, judged_as=None):
     calculation's structure cannot disagree about what is written or
     refused.  ``judged_as`` -- the hand-over's -- is what the gate judges in
     the structure's place: the box as prep will place it (`cell.entering`);
-    what is written stays as given."""
+    what is written stays as given.  ``engine`` -- the hand-over's too --
+    the engine its findings are said to (`cell.box_findings_for`)."""
     struct, said = struct.in_user_order("the structure")
     restored = []
     if said is not None:
         from molbuilder.workingcopy_structure import RESTORED, read_notice
         restored = notices_for_report([read_notice(RESTORED, said)])
     _judged, notices = checked_periodicity(
-        judged_as(struct) if judged_as is not None else struct)
+        judged_as(struct) if judged_as is not None else struct, engine=engine)
     return struct, restored + notices
 
 
-def checked_periodicity(struct):
+def checked_periodicity(struct, engine=None):
     """Run the gate and let a refusal become the door's 400.
 
     The one wrapper every entry path uses -- ``periodicity_checked_for_emit``
@@ -970,7 +971,7 @@ def checked_periodicity(struct):
     Returns the gate's ``(struct, notices)`` unchanged.
     """
     try:
-        return validate_periodicity(struct)
+        return validate_periodicity(struct, engine=engine)
     except ValueError as exc:
         raise PeriodicityRefused(str(exc)) from exc
 
