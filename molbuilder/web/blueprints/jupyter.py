@@ -39,6 +39,7 @@ from __future__ import annotations
 import os
 
 from flask import Blueprint, Response, jsonify, request
+from ._shared import err
 
 from ...jupyter import BASE_PATH
 from ..app import serve_port
@@ -249,28 +250,25 @@ def _refuse():
     same gate and the same condition give the same answer.
     """
     if not _supervised():
-        return jsonify({
-            "ok": False,
-            "error": ("this molbuilder has no supervisor to hold a notebook: "
-                      "it was started with `serve foreground` or "
-                      "`--no-supervise`.  `molbuilder serve start` gives it "
-                      "one."),
-        }), 404
+        return err(
+            "this molbuilder has no supervisor to hold a notebook: "
+            "it was started with `serve foreground` or "
+            "`--no-supervise`.  `molbuilder serve start` gives it "
+            "one.",
+            404)
     if not _may_control():
-        return jsonify({
-            "ok": False,
-            "error": ("admin auth required: a live kernel runs code as the "
-                      "account serving this page.  Sign in -- or, if an "
-                      "`admin` section in molbuilder.json names addresses, "
-                      "sign in as one of them."),
-        }), 403
+        return err(
+            "admin auth required: a live kernel runs code as the "
+            "account serving this page.  Sign in -- or, if an "
+            "`admin` section in molbuilder.json names addresses, "
+            "sign in as one of them.",
+            403)
     if not _from_this_page():
-        return jsonify({
-            "ok": False,
-            "error": ("refused: this request comes from another page "
-                      "(its Origin), and only this one may drive the "
-                      "notebook."),
-        }), 403
+        return err(
+            "refused: this request comes from another page "
+            "(its Origin), and only this one may drive the "
+            "notebook.",
+            403)
     return None
 
 
@@ -293,7 +291,7 @@ def _signalled(ok: bool, said: str):
     § 1), which the page's reader says (`ui-contract.md` § 12)."""
     if ok:
         return jsonify({"ok": True, "message": said}), 202
-    return jsonify({"ok": False, "error": said}), 409
+    return err(said, 409)
 
 
 @bp.post("/api/jupyter/start")
@@ -313,7 +311,7 @@ def api_jupyter_start():
     try:
         read_config()
     except RuntimeConfigError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 409
+        return err(str(exc), 409)
     return _signalled(*signal_supervisor(serve_port(), signal.SIGUSR1))
 
 
@@ -426,11 +424,10 @@ def _headers_for_jupyter():
 
 
 def _not_answering():
-    return jsonify({
-        "ok": False,
-        "error": ("no notebook is answering on this machine -- start it "
-                  "from the JupyterLab tab, or `molbuilder jupyter start`."),
-    }), 502
+    return err(
+        "no notebook is answering on this machine -- start it "
+        "from the JupyterLab tab, or `molbuilder jupyter start`.",
+        502)
 
 
 def _framed(headers) -> None:

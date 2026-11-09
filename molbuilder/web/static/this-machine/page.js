@@ -193,12 +193,9 @@
             var d = answer.body || {};
             if (d.channels) paintChannels(d);
             if (answer.ok) { say("tm-form-note", "It arrived.", "ok"); return; }
-            /* A TEST THAT REACHED IT says what the channel answered.  The
-             * listener refuses every way identically, so the hint names
-             * all of the possibilities rather than guessing between them. */
-            say("tm-form-note", d.reached
-                ? (d.hint || ("it answered " + d.status)) : answer.error,
-                "error");
+            /* WHAT WENT WRONG, in the server's words: not reached, or
+             * what the channel answered (`web-api.md` § 1). */
+            say("tm-form-note", answer.error, "error");
         } finally { if (button) button.disabled = false; }
     }
 

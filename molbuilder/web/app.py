@@ -385,6 +385,8 @@ def create_app(*, config=None) -> Flask:
     # (handlers, helpers, validation).  Every blueprint uses full route
     # paths in its decorators (no url_prefix) -- the paths read clearly
     # at the call site.
+    # THE ONE FAILURE ANSWER (`web-api.md` § 1), for the app's own handlers.
+    from .blueprints._shared   import err
     from .blueprints.build     import bp as build_bp
     from .blueprints.watch     import bp as watch_bp
     from .blueprints.modify    import bp as modify_bp
@@ -465,12 +467,11 @@ def create_app(*, config=None) -> Flask:
 
     @app.errorhandler(RequestEntityTooLarge)
     def _too_large(_exc):
-        return jsonify({
-            "ok":    False,
-            "error": (f"Upload exceeds the {_MAX_UPLOAD_MB} MB cap "
-                      f"(MAX_CONTENT_LENGTH).  Shrink the file or "
-                      f"point the loader at the path on disk."),
-        }), 413
+        return err(
+            f"Upload exceeds the {_MAX_UPLOAD_MB} MB cap "
+            f"(MAX_CONTENT_LENGTH).  Shrink the file or "
+            f"point the loader at the path on disk.",
+            413)
 
     # A REFUSED CELL IS THE USER'S TO FIX, so it leaves as a 400 with the gate's
     # own sentence.  Handled HERE, once, for the same reason as the 413 above: a door that forgets
@@ -480,7 +481,7 @@ def create_app(*, config=None) -> Flask:
 
     @app.errorhandler(PeriodicityRefused)
     def _periodicity_refused(exc):
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     # A PATH REFUSED, by the file picker's fence (`files._resolve_within_roots`)
     # or a file route, in its words and with its status, once -- a route that
@@ -489,7 +490,7 @@ def create_app(*, config=None) -> Flask:
 
     @app.errorhandler(_PickerError)
     def _outside_the_fence(exc):
-        return jsonify({"ok": False, "error": exc.message}), exc.status
+        return err(exc.message, exc.status)
 
     # A RUN'S DECK WHOSE MOLBUILDER BLOCK CANNOT BE READ is refused by the run
     # door (`runs.declared`), naming the deck and the way out; it leaves every
@@ -500,7 +501,7 @@ def create_app(*, config=None) -> Flask:
 
     @app.errorhandler(DeckRecordUnreadable)
     def _deck_record_unreadable(exc):
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     # --- Security headers ----------------------------------------- #
     #
@@ -694,11 +695,10 @@ def create_app(*, config=None) -> Flask:
             try:
                 read_config()
             except RuntimeConfigError as exc:
-                return jsonify({
-                    "ok": False,
-                    "error": (f"{exc} -- the server keeps running; fix the "
-                              f"file, then reload"),
-                }), 409
+                return err(
+                    f"{exc} -- the server keeps running; fix the "
+                    f"file, then reload",
+                    409)
 
             def _exit_after_response():
                 # os._exit, not sys.exit: this runs on a request-handler

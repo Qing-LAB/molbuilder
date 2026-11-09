@@ -37,6 +37,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from flask import current_app, session
+from .blueprints._shared import err
 
 
 #: Where the resolved set hangs on the app.  Per-app, not module-global: tests
@@ -77,8 +78,7 @@ NOT_AN_ADMIN = ("admin auth required: sign in first -- or, if an `admin` "
 
 def not_an_admin():
     """The 403 every operator-only route answers a non-admin with."""
-    from flask import jsonify
-    return jsonify({"ok": False, "error": NOT_AN_ADMIN}), 403
+    return err(NOT_AN_ADMIN, 403)
 
 
 def is_admin_request() -> bool:

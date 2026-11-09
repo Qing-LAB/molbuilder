@@ -76,6 +76,7 @@ from typing import Any, Dict, NoReturn, Optional
 from ...report_fields import NAMES
 
 from flask import Blueprint, abort, jsonify, request
+from ._shared import err
 
 bp = Blueprint("notify", __name__)
 
@@ -353,7 +354,7 @@ def api_notify(route: str):
         # The log is the point, so a failure to write is worth an honest
         # 500 rather than an "ok" for a message nobody kept.  This one is
         # NOT a 404: it is our fault, not a claim about what exists.
-        return jsonify({"ok": False, "error": "could not record"}), 500
+        return err("could not record", 500)
 
     # Nothing about the payload comes back, and nothing stored is readable
     # through this route.  Reading is a logged-in browser's job.

@@ -60,6 +60,7 @@ import urllib.request
 from typing import Any, Dict, List, Optional, Set
 
 from flask import Blueprint, current_app, jsonify, request
+from ._shared import err
 
 from ...monitor import default_notify_path
 
@@ -330,27 +331,29 @@ def save_channel(name: str):
     """
     from ...config_dir import CHANNEL_NAME_RULE, is_channel_name
     if not is_channel_name(name):
-        return jsonify({"ok": False,
-                        "error": f"a channel name is {CHANNEL_NAME_RULE} — "
-                                 "it gets written into a description and read "
-                                 "back out"}), 400
+        return err(
+            f"a channel name is {CHANNEL_NAME_RULE} — "
+            "it gets written into a description and read "
+            "back out",
+            400)
     body = request.get_json(silent=True) or {}
     url = str(body.get("url") or "").strip()
     key = str(body.get("key") or "").strip()
     kind = str(body.get("kind") or "").strip().lower()
     if not url:
-        return jsonify({"ok": False, "error": "a url is required"}), 400
+        return err("a url is required", 400)
     from ...monitor import _KINDS, address_refusal
     if kind and kind not in _KINDS:
-        return jsonify({"ok": False,
-                        "error": f"kind must be one of "
-                                 f"{', '.join(sorted(_KINDS))}"}), 400
+        return err(
+            f"kind must be one of "
+            f"{', '.join(sorted(_KINDS))}",
+            400)
     # THE MONITOR'S RULE FOR AN ADDRESS (`run-reports.md` § 3), so a channel
     # this saves is one the monitor sends to -- refused by its fault, the
     # address never quoted back.
     why = address_refusal(url, kind or None)
     if why:
-        return jsonify({"ok": False, "error": why}), 400
+        return err(why, 400)
     doc = _document()
     chans = doc.get("channels")
     if not isinstance(chans, dict):
@@ -394,8 +397,7 @@ def save_channel(name: str):
     try:
         _write(doc)
     except OSError as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not write {default_notify_path()}: {exc}"}), 500
+        return err(f"could not write {default_notify_path()}: {exc}", 500)
     return jsonify({"ok": True, "channel": _row(name, spec), **_state()})
 
 
@@ -417,7 +419,7 @@ def remove_channel(name: str):
         try:
             _write(doc)
         except OSError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 500
+            return err(str(exc), 500)
     return jsonify({"ok": True, **_state()})
 
 
@@ -447,13 +449,15 @@ def test_channel(name: str):
         if stored is not None:
             # STORED, AND SKIPPED BY THE MONITOR: said by its fault, which a
             # save of the channel puts right.
-            return jsonify({"ok": False,
-                            "error": f"{name!r} is not sent to: "
-                                     f"{_why_skipped(name, stored)}",
-                            **_state()}), 400
-        return jsonify({"ok": False,
-                        "error": f"no channel called {name!r} is set up "
-                                 f"here"}), 404
+            return err(
+                f"{name!r} is not sent to: "
+                f"{_why_skipped(name, stored)}",
+                400,
+                **_state())
+        return err(
+            f"no channel called {name!r} is set up "
+            f"here",
+            404)
     # THE MONITOR'S OWN PRODUCER, not a second one: the button that exists
     # to prove the path must not be a DIFFERENT path (`run-reports.md`
     # § 4.1b).  The card is laid out by this server's layout file; one
@@ -466,7 +470,7 @@ def test_channel(name: str):
             "run": "notify-setup-test",
         })
     except LayoutError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return err(str(exc), 500)
     req = urllib.request.Request(dest["url"], data=body, method="POST",
                                  headers=headers)
     try:
@@ -486,26 +490,29 @@ def test_channel(name: str):
         _record(name, False)
         # WHAT FAILED, NEVER THE EXCEPTION'S TEXT, which quotes the address
         # -- for Slack and Discord the credential (`monitor.delivery_failure`).
-        return jsonify({"ok": False, "reached": False,
-                        "error": f"could not reach it: "
-                                 f"{delivery_failure(exc)}",
-                        **_state()}), 200
+        return err(
+            f"could not reach it: "
+            f"{delivery_failure(exc)}",
+            200,
+            reached=False,
+            **_state())
     good = bool(code and 200 <= code < 300)
     _record(name, good)
     # A 404 IS THE LISTENER'S REFUSAL.  Every gate answers with one so a
     # stranger cannot tell them apart (`run-reports.md` § 4.1) -- which
     # means it cannot tell YOU apart either, and the honest thing is to
     # name all of the possibilities rather than guess between them.
-    hint = ""
-    if code == 404:
-        hint = ("404 — the listener refuses everything the same way, so "
-                "this is a wrong route segment, a wrong or missing key, or "
-                "a server with no listener configured. Re-check the address "
-                "and key against what issued them.")
-    elif good:
-        hint = "it arrived."
-    return jsonify({"ok": good, "reached": True, "status": code,
-                    "hint": hint, **_state()}), 200
+    if good:
+        return jsonify({"ok": True, "reached": True, "status": code,
+                        **_state()}), 200
+    # REACHED, AND REFUSED: the advisory bucket again (above), its sentence
+    # the server's -- the page composes none.
+    said = (("404 — the listener refuses everything the same way, so this "
+             "is a wrong route segment, a wrong or missing key, or a server "
+             "with no listener configured. Re-check the address and key "
+             "against what issued them.") if code == 404
+            else f"it answered {code}")
+    return err(said, 200, reached=True, status=code, **_state())
 
 
 def _record(name: str, ok: bool) -> None:
@@ -594,8 +601,7 @@ def reports():
         since = request.args.get("since")
         since_f = float(since) if since not in (None, "") else None
     except ValueError:
-        return jsonify({"ok": False, "error": "limit is a count and since "
-                        "an epoch second"}), 400
+        return err("limit is a count and since an epoch second", 400)
     path = reports_path(user)
     got = read_reports(path, since=since_f, limit=limit)
     # THE LAYOUT ONCE for the page, the server's own (`run-reports.md`
@@ -603,7 +609,7 @@ def reports():
     try:
         layout = load_layout()
     except LayoutError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return err(str(exc), 500)
     for r in got["reports"]:
         r["card"] = card(r, receiver="web", layout=layout)
     return jsonify({"ok": True, "user": user, "file": str(path),
@@ -631,9 +637,9 @@ def issue_key(user: str):
     try:
         key, seg, previous = issue_notify_key(user, replace=replace)
     except NotifyKeyError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     except OSError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return err(str(exc), 500)
     host = request.host_url.rstrip("/")
     return jsonify({"ok": True, "user": user, "key": key, "route": seg,
                     "url": f"{host}/api/{seg}",

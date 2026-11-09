@@ -44,6 +44,7 @@ import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify
+from ._shared import err
 
 import psutil
 
@@ -342,10 +343,7 @@ def api_system_load():
         data = snapshot()
     except Exception as exc:  # noqa: BLE001 -- defensive top-level
         _log.exception("system load snapshot failed")
-        return jsonify({
-            "ok":    False,
-            "error": f"{type(exc).__name__}: {exc}",
-        }), 500
+        return err(f"{type(exc).__name__}: {exc}", 500)
     return jsonify({"ok": True, "data": data})
 
 

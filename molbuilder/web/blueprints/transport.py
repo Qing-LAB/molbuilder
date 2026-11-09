@@ -51,8 +51,8 @@ import json
 from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
-
 from ._shared import (
+    err,
     catalogue_to_form_schema,
     issues_to_json as _issues_to_json,
     sent_export,
@@ -78,11 +78,9 @@ def _fence(raw: str):
     try:
         cited = contain(root / raw, root)
     except OutsideRoot as exc:
-        return None, None, root, (
-            jsonify({"ok": False, "error": str(exc)}), 400)
+        return None, None, root, err(str(exc), 400)
     if not cited.exists():
-        return None, None, root, (
-            jsonify({"ok": False, "error": f"{raw} does not exist"}), 404)
+        return None, None, root, err(f"{raw} does not exist", 404)
     return str(cited.relative_to(root)), cited, root, None
 
 
@@ -98,13 +96,14 @@ def _engine_refused(engine: str, what: str):
     or ``None``, the engine stands.  ``what`` says what the engine is."""
     from molbuilder.kind_table import kind
     if not engine:
-        return jsonify({"ok": False,
-                        "error": f"engine must name the engine {what} -- "
-                                 f"the transport tab's engine strip names "
-                                 f"it"}), 400
+        return err(
+            f"engine must name the engine {what} -- "
+            f"the transport tab's engine strip names "
+            f"it",
+            400)
     no = kind("transport").why_not_on(engine)
     if no:
-        return jsonify({"ok": False, "error": f"engine {engine!r}: {no}"}), 400
+        return err(f"engine {engine!r}: {no}", 400)
     return None
 
 
@@ -155,7 +154,7 @@ def api_transport_describe_attempt() -> Any:
 
     raw = str(request.args.get("path") or "")
     if not raw:
-        return jsonify({"ok": False, "error": "no path given"}), 400
+        return err("no path given", 400)
     # THE RENAME THE TAB HOLDS (`engines/transport.md` § 4): described WITH
     # it, so the viewer and the meta line show the junction as this
     # calculation will compose it; the cited run is read, never written.
@@ -481,7 +480,7 @@ def api_transport_fit() -> Any:
         fit = _fit(str(request.args.get("reuses") or ""), lo, hi, finer,
                    tree_root=Path(projects_root()).resolve())
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     return jsonify({"ok": True, "words": fit.words(),
                     "values": fit.values()})
 
@@ -507,7 +506,7 @@ def api_transport_record() -> Any:
     try:
         record = collect_record(calc, partial=True)
     except (RecordError, OSError, ValueError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     return jsonify({"ok": True, "record": record})
 
 
@@ -523,15 +522,13 @@ def _transport_calc(raw: str):
     try:
         calc = at(path)
     except FileNotFoundError:
-        return None, (jsonify({"ok": False, "error": f"nothing at {raw}"}),
-                      404)
+        return None, err(f"nothing at {raw}", 404)
     except (NotACalculation, OSError, ValueError) as exc:
-        return None, (jsonify({"ok": False, "error": str(exc)}), 400)
+        return None, err(str(exc), 400)
     from molbuilder.transport.record import not_transport
     other = not_transport(calc)
     if other:
-        return None, (jsonify({"ok": False,
-                               "error": f"{path.name}: {other}"}), 400)
+        return None, err(f"{path.name}: {other}", 400)
     return calc, None
 
 
@@ -600,7 +597,7 @@ def api_transport_export() -> Any:
     try:
         got = export(calc, str(request.args.get("format") or ""))
     except ExportError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     return sent_export(got)
 
 
@@ -627,14 +624,13 @@ def api_transport_pdos() -> Any:
         atoms = [int(a) for a in
                  str(request.args.get("atoms") or "").split(",") if a]
     except Exception as exc:                                  # noqa: BLE001
-        return jsonify({"ok": False, "error": (
-            f"the request does not read: {exc}")}), 400
+        return err(f"the request does not read: {exc}", 400)
     try:
         got = selection_pdos(calc, point, atoms,
                              str(request.args.get("orbitals") or "all"),
                              frame=frame)
     except RecordError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     return jsonify({"ok": True, **got})
 
 
@@ -689,35 +685,33 @@ def api_transport_describe() -> Any:
     # (`engines/transport.md` § 2a.10).
     approx = body.get("low_bias_approximation")
     if approx is not None and not isinstance(approx, bool):
-        return jsonify({"ok": False,
-                        "error": "low_bias_approximation is true or false"}), 400
+        return err("low_bias_approximation is true or false", 400)
     # THE ELECTRODE RENAME, as the person chose it on the tab -- this
     # calculation's own (`engines/transport.md` § 4): the description
     # records it and compose applies it to the calculation's copy.
     swap = body.get("swap_electrodes")
     if swap is not None and not isinstance(swap, bool):
-        return jsonify({"ok": False,
-                        "error": "swap_electrodes is true or false"}), 400
+        return err("swap_electrodes is true or false", 400)
     # PER-RUNG BAGS, the shape `task.stages` carries (`engines/transport.md`
     # § 3.8.2a): a rung's tab writes that rung's bag, so the rung is the
     # person's answer and nothing here routes.
     bags = body.get("stages") or {}
     if (not isinstance(bags, dict)
             or not all(isinstance(v, dict) for v in bags.values())):
-        return jsonify({"ok": False,
-                        "error": "stages must be an object of "
-                                 "stage -> {parameter: value}"}), 400
+        return err(
+            "stages must be an object of "
+            "stage -> {parameter: value}",
+            400)
     shared_chosen = body.get("shared") or {}
     if not isinstance(shared_chosen, dict):
-        return jsonify({"ok": False,
-                        "error": "shared must be an object"}), 400
+        return err("shared must be an object", 400)
     typed = str(body.get("name") or "")
     # THE PLAN ALONE (`engines/transport.md` § 2a.16, *On the page*): the
     # same checks, then what the description would copy and run, written
     # nowhere the person sees -- no folder needed.
     plan_only = body.get("plan", False)
     if not isinstance(plan_only, bool):
-        return jsonify({"ok": False, "error": "plan is true or false"}), 400
+        return err("plan is true or false", 400)
 
     # THE FOLDER, fenced before anything else (`web/web-api.md` § 2.1).
     from molbuilder.projects import OutsideRoot, contain
@@ -727,19 +721,20 @@ def api_transport_describe() -> Any:
     dest = None
     if not plan_only:
         if not dest_raw:
-            return jsonify({"ok": False,
-                            "error": "no folder to describe into -- select "
-                                     "the calculation's folder in the "
-                                     "projects sidebar"}), 400
+            return err(
+                "no folder to describe into -- select "
+                "the calculation's folder in the "
+                "projects sidebar",
+                400)
         try:
             dest = contain(Path(dest_raw), root)
         except OutsideRoot as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         # A CALCULATION LIVES UNDER A TOPIC, as Build's door refuses it.
         from .files import calculation_folder_refusal
         too_high = calculation_folder_refusal(dest)
         if too_high:
-            return jsonify({"ok": False, "error": too_high}), 400
+            return err(too_high, 400)
 
     # EVERYTHING ELSE IS THE KIND'S ONE DESCRIBE (`transport.describe`), the
     # one `molbuilder describe` takes too: the citation or the calculation
@@ -753,12 +748,12 @@ def api_transport_describe() -> Any:
         try:
             bias = tuple(float(v) for v in bias_raw)
         except (TypeError, ValueError):
-            return jsonify({"ok": False,
-                            "error": f"bias must be a list of volts, "
-                                     f"got {bias_raw!r}"}), 400
+            return err(
+                f"bias must be a list of volts, "
+                f"got {bias_raw!r}",
+                400)
     if dest is not None and not dest.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"{dest_raw} is not a folder"}), 400
+        return err(f"{dest_raw} is not a folder", 400)
     from molbuilder.describe import DescribeError
     from molbuilder.transport.describe import NotDescribed, describe
     from molbuilder.validation.task import config_class_for as _cfg_cls_for
@@ -770,20 +765,19 @@ def api_transport_describe() -> Any:
             swap_electrodes=swap, stages=bags, shared=shared_chosen,
             refuse_limits=True, tree_root=root)
     except NotDescribed as exc:
-        answer: Dict[str, Any] = {"ok": False, "error": str(exc)}
-        if exc.findings:
-            answer["findings"] = _issues_to_json(
+        return err(str(exc), 409 if exc.folder else 400, **({
+            "findings": _issues_to_json(
                 exc.findings,
                 cfg=_cfg_cls_for(exc.task) if exc.task is not None else None,
-                calculation="transport")
-        return jsonify(answer), 409 if exc.folder else 400
+                calculation="transport")} if exc.findings else {}))
     except (DescribeError, OSError) as exc:
         # THE PLAN'S HIDDEN FOLDER REFUSED by the tree, said as the plan;
         # a write that failed, as nothing written.
-        return jsonify({"ok": False,
-                        "error": (f"the plan could not be worked out: {exc}"
-                                  if plan_only
-                                  else f"nothing was written: {exc}")}), 500
+        return err(
+            f"the plan could not be worked out: {exc}"
+            if plan_only
+            else f"nothing was written: {exc}",
+            500)
     notices = _issues_to_json(list(made.notes), cfg=_cfg_cls_for(made.task),
                               calculation="transport")
     manifest = list(made.manifest) if made.manifest is not None else None
@@ -844,9 +838,10 @@ def api_transport_schema() -> Any:
 
     surface = str(request.args.get("surface") or "rung")
     if surface not in ("rung", "shared"):
-        return jsonify({"ok": False,
-                        "error": f"surface must be 'rung' or 'shared', "
-                                 f"not {surface!r}"}), 400
+        return err(
+            f"surface must be 'rung' or 'shared', "
+            f"not {surface!r}",
+            400)
     # ONE ANSWER PER ENGINE (`engines/transport.md` § 3.8.8): the engine is
     # the panel the form is drawn on, named by the page, never defaulted --
     # and one that runs no transport is refused, saying why.
@@ -861,10 +856,11 @@ def api_transport_schema() -> Any:
     rung = str(request.args.get("rung") or "") or None
     if rung is not None and (surface != "rung"
                              or rung not in TRANSPORT_STAGES):
-        return jsonify({"ok": False,
-                        "error": f"rung must name one of "
-                                 f"{', '.join(TRANSPORT_STAGES)} on the "
-                                 f"rung surface, not {rung!r}"}), 400
+        return err(
+            f"rung must name one of "
+            f"{', '.join(TRANSPORT_STAGES)} on the "
+            f"rung surface, not {rung!r}",
+            400)
     citation = str(request.args.get("junction") or "")
     reuses = str(request.args.get("reuses") or "")
     source: Dict[str, Any] = {"kind": "none", "name": ""}
@@ -879,10 +875,11 @@ def api_transport_schema() -> Any:
     except ValueError:
         shared = None
     if not isinstance(shared, dict) or surface != "rung" and shared:
-        return jsonify({"ok": False,
-                        "error": "shared must be a JSON object of what "
-                                 "the shared panel holds, asked by a "
-                                 "stage's tab"}), 400
+        return err(
+            "shared must be a JSON object of what "
+            "the shared panel holds, asked by a "
+            "stage's tab",
+            400)
     if reuses:
         # A CALCULATION THAT REUSES A FINISHED ONE (`engines/transport.md`
         # § 2a.16): both surfaces drawn from that calculation's template,
@@ -893,7 +890,7 @@ def api_transport_schema() -> Any:
             finished, rel = reused(reuses, tree_root=projects_root())
             template = _T.read_template(finished.template_text)
         except (ReuseError, ValueError) as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         from molbuilder.transport.reuse import Extension
         extension = Extension(rel, finished.task)
         source = {"kind": "reuses", "name": extension.name}
@@ -914,20 +911,20 @@ def api_transport_schema() -> Any:
         try:
             _, cited = resolve_citation(citation, projects_root())
         except ComposeError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         try:
             # THE CITATION READ ONCE, for the template and its source.
             answers = citation_answers(cited)
         except ValueError as exc:
             # A CITED VALUE THIS BUILD CANNOT READ, refused by name
             # (`citation_defaults`; a 500 until 2026-10-19).
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         try:
             template = _T.read_template(
                 _panel_template(answers, shared, label="transport",
                                 engine=engine))
         except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         source = {"kind": answers.source, "name": answers.source_name}
         asks = asked_of_the_person(cited)
     # ONE ID PER CONTROL ON THE PAGE: the five rung tabs render the same

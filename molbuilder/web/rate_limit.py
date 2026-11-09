@@ -94,6 +94,7 @@ from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Mapping, Optional, Tuple
 
 from flask import Flask, Response, g, jsonify, request, session
+from .blueprints._shared import err
 
 logger = logging.getLogger(__name__)
 
@@ -572,16 +573,12 @@ def _register_admin_routes(app: Flask, rl: RateLimiter) -> None:
             return _refuse_non_admin()
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
-            return jsonify({
-                "ok": False, "error": "body must be a JSON object",
-            }), 400
+            return err("body must be a JSON object", 400)
         if body.get("all") is True:
             n = rl.clear_all()
             return jsonify({"ok": True, "cleared": n})
         ip = body.get("ip")
         if not isinstance(ip, str) or not ip.strip():
-            return jsonify({
-                "ok": False, "error": "missing 'ip' (or 'all': true)",
-            }), 400
+            return err("missing 'ip' (or 'all': true)", 400)
         ok = rl.clear(ip.strip())
         return jsonify({"ok": True, "cleared": 1 if ok else 0})

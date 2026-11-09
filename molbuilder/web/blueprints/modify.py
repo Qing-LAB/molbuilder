@@ -170,16 +170,16 @@ def api_modify_spacings():
     plane = (request.args.get("plane") or "").strip()
     reference = (request.args.get("reference") or "").strip()
     if not element or not plane or not reference:
-        return jsonify({
-            "ok": False,
-            "error": "element, plane and reference are all required; "
-                     "reference is 'experimental', 'pbe', or a number in "
-                     "Angstrom"}), 400
+        return _err(
+            "element, plane and reference are all required; "
+            "reference is 'experimental', 'pbe', or a number in "
+            "Angstrom",
+            400)
 
     try:
         table = load_fcc_lattice_full()
     except Exception as exc:                       # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return _err(str(exc), 500)
 
     # THE SAME SURFACES THE BUILDER OFFERS.  `interplanar_spacing` is general
     # crystallography and will happily answer (999) -- correctly.  But this
@@ -187,10 +187,10 @@ def api_modify_spacings():
     # builder cannot make, so quoting a spacing for one would hand back a
     # number with nothing to use it on.  One list, asked here too.
     if plane not in SUPPORTED_FCC_PLANES:
-        return jsonify({
-            "ok": False,
-            "error": f"unsupported surface {plane!r}; this builder makes "
-                     f"{', '.join(SUPPORTED_FCC_PLANES)}"}), 400
+        return _err(
+            f"unsupported surface {plane!r}; this builder makes "
+            f"{', '.join(SUPPORTED_FCC_PLANES)}",
+            400)
 
     # AND THE SAME METALS.  The element list is CLOSED (code) and the lattice
     # table is data, so the two are not the same question: a metal the table
@@ -198,45 +198,45 @@ def api_modify_spacings():
     # that cannot be built -- a plausible number with nothing to use it on,
     # which is worse than a refusal.
     if element not in SUPPORTED_FCC_ELEMENTS:
-        return jsonify({
-            "ok": False,
-            "error": f"unsupported electrode element {element!r}; this "
-                     f"builder makes slabs of "
-                     f"{', '.join(SUPPORTED_FCC_ELEMENTS)}"}), 400
+        return _err(
+            f"unsupported electrode element {element!r}; this "
+            f"builder makes slabs of "
+            f"{', '.join(SUPPORTED_FCC_ELEMENTS)}",
+            400)
 
     entry = table.get(element)
     if entry is None:
         # The table IS the list of what we know, so a name it does not carry
         # is answered here by name rather than as a KeyError two layers down.
-        return jsonify({
-            "ok": False,
-            "error": f"no lattice data for {element!r}; the table carries "
-                     f"{', '.join(sorted(table))}"}), 400
+        return _err(
+            f"no lattice data for {element!r}; the table carries "
+            f"{', '.join(sorted(table))}",
+            400)
 
     _NAMED = {"experimental": "a_experimental", "pbe": "a_pbe"}
     key = _NAMED.get(reference.lower())
     if key is not None:
         a = entry.get(key)
         if not isinstance(a, (int, float)):
-            return jsonify({
-                "ok": False,
-                "error": f"{element} carries no {reference} lattice "
-                         f"constant"}), 400
+            return _err(
+                f"{element} carries no {reference} lattice "
+                f"constant",
+                400)
     else:
         try:
             a = float(reference)
         except ValueError:
-            return jsonify({
-                "ok": False,
-                "error": f"reference {reference!r} is neither "
-                         f"'experimental', 'pbe', nor a number"}), 400
+            return _err(
+                f"reference {reference!r} is neither "
+                f"'experimental', 'pbe', nor a number",
+                400)
 
     system = entry.get("system", "fcc")
     try:
         d = interplanar_spacing(system, plane, a)
         nn = nearest_neighbour_distance(system, a)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return _err(str(exc), 400)
 
     return jsonify({
         "ok": True,

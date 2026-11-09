@@ -440,9 +440,12 @@ def ok_structure_response(
     return jsonify({"ok": True, **structure_to_dict(struct, extra=merged or None)})
 
 
-def err(msg: str, code: int = 400):
-    """Standard error response shape for the modify routes."""
-    return jsonify({"ok": False, "error": msg}), code
+def err(msg: str, code: int = 400, **fields):
+    """THE ONE FAILURE ANSWER every route gives (`web-api.md` § 1):
+    ``{ok: false, error: msg, ...fields}`` at ``code`` -- the sentence is the
+    refusal, ``fields`` what a page acts on beside it (``findings``,
+    ``needsOverwrite`` and ``replaces``, ``actual_mtime`` ...)."""
+    return jsonify({"ok": False, "error": msg, **fields}), code
 
 
 def sent_export(got):
@@ -1037,10 +1040,9 @@ def write_structure(struct: Structure, path, *, overwrite: bool, said=()):
     try:
         StructureCodec().write(struct, path)
     except ValueError as exc:          # a frame set to a .pdb
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
-        return jsonify({"ok": False,
-                        "error": f"could not write {path.name}: {exc}"}), 500
+        return err(f"could not write {path.name}: {exc}", 500)
     return jsonify({"ok": True, "path": str(path),
                     "notices": list(said) + list(notices)})
 

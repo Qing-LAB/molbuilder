@@ -51,6 +51,8 @@ import logging
 import secrets
 from typing import List, Mapping
 
+from .blueprints._shared import err
+
 
 # --------------------------------------------------------------------- #
 #  Public endpoint allowlist                                            #
@@ -291,7 +293,7 @@ def _register_logout_route(app) -> None:
 
 def _register_auth_gate(app) -> None:
     """Install the before-request hook that gates non-public endpoints."""
-    from flask import g, jsonify, redirect, request, session, url_for
+    from flask import g, redirect, request, session, url_for
 
     @app.before_request
     def _require_login():
@@ -324,11 +326,10 @@ def _register_auth_gate(app) -> None:
         # API requests get a clean 401 so JS clients can render a
         # "please log in" prompt instead of trying to parse HTML.
         if request.path.startswith("/api/"):
-            return jsonify({
-                "ok":        False,
-                "error":     "not authenticated",
-                "login_url": url_for("auth_login", next=request.path),
-            }), 401
+            return err(
+                "not authenticated",
+                401,
+                login_url=url_for("auth_login", next=request.path))
 
         # Stash the path the user was trying to reach so we can
         # return there after login.  ``request.path`` is always a

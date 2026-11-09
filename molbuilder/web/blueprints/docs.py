@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+from ._shared import err
 
 from ... import repo_root
 
@@ -374,7 +375,7 @@ def api_docs_toc():
     """
     root = _docs_root()
     if root is None:
-        return jsonify({"ok": False, "error": "docs/ not available"}), 404
+        return err("docs/ not available", 404)
 
     toc_path = root / "toc.json"
     if not toc_path.is_file():
@@ -418,7 +419,7 @@ def api_docs_img(img_path: str):
     from flask import send_file
     root = _docs_root()
     if root is None:
-        return jsonify({"ok": False, "error": "docs/ not available"}), 404
+        return err("docs/ not available", 404)
     # Containment is to docs/img/ itself, NOT docs/ -- this route's
     # contract is "serve an image", and containing only to docs/ would let
     # ``../<any-doc>`` fetch arbitrary docs files with a guessed MIME
@@ -430,11 +431,11 @@ def api_docs_img(img_path: str):
     try:
         resolved = contain(img_root / img_path, img_root)
     except (OutsideRoot, ValueError, OSError):
-        return jsonify({"ok": False, "error": "invalid path"}), 400
+        return err("invalid path", 400)
     if resolved.suffix.lower() not in _IMG_EXTS:
-        return jsonify({"ok": False, "error": "not an image"}), 400
+        return err("not an image", 400)
     if not resolved.is_file():
-        return jsonify({"ok": False, "error": "not found"}), 404
+        return err("not found", 404)
     return send_file(str(resolved))
 
 
@@ -449,7 +450,7 @@ def api_docs_read():
     """
     root = _docs_root()
     if root is None:
-        return jsonify({"ok": False, "error": "docs/ not available"}), 404
+        return err("docs/ not available", 404)
     raw_path = (request.args.get("path") or "").strip()
 
     # Only these root files may bypass the docs/ path gate.
@@ -462,11 +463,11 @@ def api_docs_read():
         filename, title = root_document
         resolved = repo_root() / filename
         if not resolved.is_file():
-            return jsonify({"ok": False, "error": f"{filename} not found"}), 404
+            return err(f"{filename} not found", 404)
         try:
             text = resolved.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
-            return jsonify({"ok": False, "error": f"read failed: {exc}"}), 404
+            return err(f"read failed: {exc}", 404)
         return jsonify({
             "ok":    True,
             "path":  raw_path,
@@ -477,11 +478,11 @@ def api_docs_read():
     try:
         resolved = _resolve_doc(raw_path, root)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     try:
         text = resolved.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        return jsonify({"ok": False, "error": f"read failed: {exc}"}), 404
+        return err(f"read failed: {exc}", 404)
     return jsonify({
         "ok":    True,
         "path":  raw_path,

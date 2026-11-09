@@ -54,8 +54,8 @@ from typing import Any, Dict, Optional
 from ...chemistry import BackendUnavailable as _BackendUnavailable
 from ...issues import Issue
 from flask import Blueprint, jsonify, request
-
 from ._shared import (
+    err,
     config_from_params as _config_from_params,
     stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
@@ -105,16 +105,16 @@ def api_structure_analyze():
     """
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("structure"), dict):
-        return jsonify({"ok": False,
-                        "error": "no structure given: send the one the page "
-                                 "holds, in the envelope -- {\"structure\": "
-                                 "{elements, positions, metadata}}"}), 400
+        return err(
+            "no structure given: send the one the page "
+            "holds, in the envelope -- {\"structure\": "
+            "{elements, positions, metadata}}",
+            400)
     from ._shared import struct_from_body
     try:
         struct = struct_from_body(body)
     except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not restore structure: {exc}"}), 400
+        return err(f"could not restore structure: {exc}", 400)
     return _analyze_response(struct, body)
 
 
@@ -133,9 +133,10 @@ def _analyze_response(struct, body):
         return refused
     forms = body.get("forms")
     if forms is not None and not isinstance(forms, dict):
-        return jsonify({"ok": False,
-                        "error": "`forms` maps an engine to its form's "
-                                 "items"}), 400
+        return err(
+            "`forms` maps an engine to its form's "
+            "items",
+            400)
     runs = kind_table.kind(kind).engines
     if not forms:
         forms = {engine: {} for engine in runs}
@@ -145,17 +146,18 @@ def _analyze_response(struct, body):
     try:
         facts = analyze_structure(struct)
     except KeyError as exc:
-        return jsonify({"ok": False, "error": str(exc).strip("'")}), 400
+        return err(str(exc).strip("'"), 400)
     states = {}
     for engine, items in forms.items():
         # WHO RUNS WHICH KIND is the kind table's (its parts, § 2a.3):
         # a form for an engine that does not run this kind has no state to
         # ask for.
         if engine not in runs:
-            return jsonify({"ok": False,
-                            "error": f"no {engine!r} form for a {kind} "
-                                     f"calculation: {kind} runs on "
-                                     f"{', '.join(runs)}"}), 400
+            return err(
+                f"no {engine!r} form for a {kind} "
+                f"calculation: {kind} runs on "
+                f"{', '.join(runs)}",
+                400)
         # The form's items become the engine's config through the ONE
         # params door -- the same coercion the preflight and the hand-over
         # use -- so a blank means exactly what it means there.
@@ -166,7 +168,7 @@ def _analyze_response(struct, body):
             # said so (`web/form-schema.md` § 1.1).
             chosen = _stated_params(config_class(engine), items or {})
         except (TypeError, ValueError) as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         states[engine] = electronic_state(struct, cfg, kind=kind,
                                           chosen=chosen).as_dict()
     return jsonify({
@@ -188,11 +190,12 @@ def api_build_molecule():
     kind = (body.get("kind") or "").strip().lower()
     text = (body.get("input") or "").strip()
     if kind not in GENERATORS:
-        return jsonify({"ok": False,
-                        "error": f"Unknown kind {kind!r}; "
-                                 f"valid: {sorted(GENERATORS)}"}), 400
+        return err(
+            f"Unknown kind {kind!r}; "
+            f"valid: {sorted(GENERATORS)}",
+            400)
     if not text:
-        return jsonify({"ok": False, "error": "empty input"}), 400
+        return err("empty input", 400)
     takes = GENERATORS[kind].asks
     h_mode_used: str | None = None
     # WHAT THE PERSON ASKED, each a value the kind takes (`builders.
@@ -209,7 +212,7 @@ def api_build_molecule():
         try:
             h_mode_used = normalise_h_mode(body.get("add_hydrogens", "auto"))
         except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         asked["add_hydrogens"] = h_mode_used
     # THE BACKEND ASKED FOR, when a kind lets a person choose one -- which
     # the missing-backend answer below names.
@@ -233,24 +236,25 @@ def api_build_molecule():
         # message itself is unchanged: `design.md` requires it to name the
         # preconditions checked, the download URL, the licence terms and
         # the fallbacks, and it does.
-        return jsonify({"ok": False, "reason": "backend_unavailable",
-                        # WHAT IS MISSING, when one engine is the answer -- a
-                        # backend, or the hydrogen engines -- else the
-                        # request (`chemistry.BackendUnavailable.missing`).
-                        "backend": exc.missing or requested or "auto",
-                        "error": str(exc)}), 200
+        return err(
+            str(exc),
+            200,
+            reason="backend_unavailable",
+            # WHAT IS MISSING, when one engine is the answer -- a backend,
+            # or the hydrogen engines -- else the request
+            # (`chemistry.BackendUnavailable.missing`).
+            backend=exc.missing or requested or "auto")
     except ImportError as exc:
-        return jsonify({"ok": False,
-                        "error": f"missing dependency: {exc}"}), 500
+        return err(f"missing dependency: {exc}", 500)
     except ValueError as exc:
         # Every builder says what it cannot read this way (a one-sided strand
         # label, a letter its alphabet does not hold): the request's, in the
         # builder's words.
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     except Exception as exc:
         # web-api.md § 1, *Status codes* (server fault -> 5xx): anything else
         # a builder raises is a server fault, not protocol error.
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return err(str(exc), 500)
     struct, backend_used = made.structure, made.backend
 
     # THE GENERATOR SIGNS ITS WORK, AND THE SIGNATURE IS SELECTABLE.
@@ -347,19 +351,20 @@ def api_periodicity():
     body = request.get_json(silent=True) or {}
     op = body.get("op")
     if op not in OPS:
-        return jsonify({"ok": False,
-                        "error": f"'op' must be one of {list(OPS)}"}), 400
+        return err(f"'op' must be one of {list(OPS)}", 400)
     if not isinstance(body.get("structure"), dict):
-        return jsonify({"ok": False,
-                        "error": "missing or invalid 'structure' envelope "
-                                 "(need {elements, positions, metadata})"}), 400
+        return err(
+            "missing or invalid 'structure' envelope "
+            "(need {elements, positions, metadata})",
+            400)
     if op in ("cell", "box_corner") and "payload" not in body:
         # For these ops a null payload is a DESTRUCTIVE action (clear /
         # reset) -- a dropped key must not be indistinguishable from an
         # explicit clear.
-        return jsonify({"ok": False,
-                        "error": f"op '{op}' requires an explicit "
-                                 f"'payload' (use null to clear/reset)"}), 400
+        return err(
+            f"op '{op}' requires an explicit "
+            f"'payload' (use null to clear/reset)",
+            400)
     try:
         struct = _struct_from_body(body)
         # NOT GATED ON THE INCOMING STATE.  This is the page a bad box is
@@ -379,9 +384,9 @@ def api_periodicity():
         notices = (list(receipts) + list(conditions)
                    + box_seam_notices(new_struct))
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     except Exception as exc:  # noqa: BLE001 -- malformed envelope -> 400
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     # The block the structure itself assembles -- raw values and the resolved
     # views together -- so a field added to it reaches this door with no edit
     # here, and the client cannot be handed a block missing the resolved half.
@@ -416,14 +421,14 @@ def api_structure_save():
     path = body.get("path")
     overwrite = bool(body.get("overwrite"))
     if not isinstance(path, str) or not path:
-        return jsonify({"ok": False, "error": "missing or invalid 'path'"}), 400
+        return err("missing or invalid 'path'", 400)
     # THE STRUCTURE, not a document the browser wrote: the one-path rule
     # (molview.md § 11.7) cannot be true while a door accepts bytes.  The structure arrives as the envelope every other door
     # takes (web-api.md § 1), and the SERVER writes both files from it.
     try:
         struct = _struct_from_body(body)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     # THE ONE WRITER a web door puts a structure on disk through
     # (`_shared.write_structure`): written as the export writes it -- a save
     # and a download cannot produce different bytes, nor disagree about a
@@ -468,13 +473,14 @@ def api_structure_export():
     from molbuilder.workingcopy_structure import StructureCodec
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("structure"), dict):
-        return jsonify({"ok": False,
-                        "error": "missing or invalid 'structure' envelope "
-                                 "(need {geometry: {elements, positions}, metadata})"}), 400
+        return err(
+            "missing or invalid 'structure' envelope "
+            "(need {geometry: {elements, positions}, metadata})",
+            400)
     try:
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     # WRITTEN AS THE SAVE WRITES IT (`_shared.for_writing`): in the user order,
     # its box judged -- a cell it refuses leaves as a 400 carrying the gate's
     # sentence, not as a 500.
@@ -556,7 +562,7 @@ def api_build_load():
     if path:
         resolved = _resolve_within_roots(path)
         if not resolved.exists():
-            return jsonify({"ok": False, "error": f"no such file: {path}"}), 404
+            return err(f"no such file: {path}", 404)
         retired: Dict[str, Any] = {}
         read_said: list = []
         # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
@@ -576,12 +582,11 @@ def api_build_load():
                         else (GEOMETRY_CHANGED, ORDER_UNSTATED)),
                 in_user_order=restore)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
-            return jsonify(
-                {"ok": False, "error": f"could not load {path}: {exc}"}), 400
+            return err(f"could not load {path}: {exc}", 400)
         try:
             struct = _chosen_frame(whole, body)
         except (TypeError, ValueError) as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         # The conditions for THIS structure are produced on the way out by
         # `ok_structure_response`, which validates every structure it sends.
         # What only the read knows is a retired corner it did not apply: said
@@ -622,8 +627,7 @@ def api_build_load():
         try:
             whole = struct = struct_from_body(body)
         except (ValueError, TypeError) as exc:
-            return jsonify({"ok": False,
-                            "error": f"could not restore structure: {exc}"}), 400
+            return err(f"could not restore structure: {exc}", 400)
         # THE BOX CAME IN THE ENVELOPE, like everything else about these atoms,
         # and `from_dict` applied it.  Nothing more to apply.  A load APPLIES
         # rather than refuses -- a bad box is reported with the answer
@@ -641,7 +645,7 @@ def api_build_load():
     filename = body.get("filename") or ""
 
     if not text.strip():
-        return jsonify({"ok": False, "error": "empty input"}), 400
+        return err("empty input", 400)
 
     # THE ONE READER of a structure's text (`_shared.structure_from_text`),
     # the upload's too: the name's format, else the text's own; an XYZ text a
@@ -650,11 +654,11 @@ def api_build_load():
     try:
         whole, said, fmt = structure_from_text(text, filename)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     try:
         struct = _chosen_frame(whole, body)
     except (TypeError, ValueError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     return ok_structure_response(struct, extra={
         # The title shown defaults to the filename (or format name) when the
@@ -687,11 +691,10 @@ def api_build_schema(engine: str):
     # Each form's id prefix -- the ids of one page's parts never collide.
     prefixes = {"siesta": "p", "pyscf": "py", "common": "common"}
     if engine not in prefixes:
-        return jsonify({
-            "ok": False,
-            "error": (f"unknown form {engine!r}; expected one of "
-                      f"{sorted(prefixes)}"),
-        }), 404
+        return err(
+            f"unknown form {engine!r}; expected one of "
+            f"{sorted(prefixes)}",
+            404)
     calculation = str(request.args.get("calculation") or "")
     if not calculation:
         return _unstated(calculation=calculation)
@@ -701,15 +704,17 @@ def api_build_schema(engine: str):
     surface = request.args.get("surface") or None
     if engine == "common":
         if surface not in (None, "state"):
-            return jsonify({"ok": False,
-                            "error": f"surface {surface!r}: the common form "
-                                     f"is its electronic state (state), or "
-                                     f"the rest of it"}), 400
+            return err(
+                f"surface {surface!r}: the common form "
+                f"is its electronic state (state), or "
+                f"the rest of it",
+                400)
         engine_arg, surface = None, surface or "common"
     elif surface not in (None, "own"):
-        return jsonify({"ok": False,
-                        "error": f"surface {surface!r}: an engine's form is "
-                                 f"whole, or its own settings (own)"}), 400
+        return err(
+            f"surface {surface!r}: an engine's form is "
+            f"whole, or its own settings (own)",
+            400)
     else:
         engine_arg = engine
     return jsonify({
@@ -733,10 +738,11 @@ def _unstated(**said):
     kind are stated by every caller -- the page states both -- and never
     supplied here."""
     missing = [k for k, v in said.items() if not v]
-    return jsonify({"ok": False,
-                    "error": (f"the request states no "
-                              f"{' and no '.join(missing)} -- every caller "
-                              f"states it; nothing is assumed")}), 400
+    return err(
+        f"the request states no "
+        f"{' and no '.join(missing)} -- every caller "
+        f"states it; nothing is assumed",
+        400)
 
 
 def _not_in_tables(*, calculation: str, engine: Optional[str] = None):
@@ -752,7 +758,7 @@ def _not_in_tables(*, calculation: str, engine: Optional[str] = None):
             _engine(engine)
             asked.on(engine)
     except (KindTableError, EngineTableError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     return None
 
 
@@ -796,7 +802,7 @@ def api_build_preflight():
     try:
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     # Preflight must see the labels + the model's periodicity truth.
     from ._shared import periodicity_checked_for_emit
     struct = periodicity_checked_for_emit(struct)
@@ -808,12 +814,11 @@ def api_build_preflight():
         # web-api.md envelope contract; the UI's ``!body.ok`` gate then
         # renders the issue + the user sees the parse error in the
         # issues panel.
-        return jsonify({
-            "ok":     False,
-            "error":  f"bad parameters: {exc}",
-            "issues": [Issue("error", f"bad parameters: {exc}",
-                             "config").to_json()],
-        }), 400
+        return err(
+            f"bad parameters: {exc}",
+            400,
+            issues=[Issue("error", f"bad parameters: {exc}",
+                          "config").to_json()])
 
     return jsonify({
         "ok": True,
@@ -929,23 +934,24 @@ def api_task_setup_handover():
         # table's ``handover``, absent; user ruling 2026-08-29 for the
         # composite): nothing is awaiting -- its stages and identity are
         # fixed by design -- so this door refuses by name.
-        return jsonify({"ok": False,
-                        "error": f"{_kind(calculation).with_article} "
-                                 f"describes on its own tab -- nothing is "
-                                 f"awaiting"}), 400
+        return err(
+            f"{_kind(calculation).with_article} "
+            f"describes on its own tab -- nothing is "
+            f"awaiting",
+            400)
     from molbuilder.web.tabs import TABS
     _sender = next(t["label"] for t in TABS if t["key"] == _sender)
 
     try:
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     params: Dict[str, Any] = body.get("params") or {}
     try:
         cfg = _config_from_params(config_class(engine), params, calculation)
     except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     # THE ENGINE'S DATA FILES, SETTLED BEFORE ITS CALCULATION IS WRITTEN
     # (`handover-procedure.md` § 2.2, plan § 5w K20): the findings its seam
@@ -961,18 +967,18 @@ def api_task_setup_handover():
     # (`describe.refuse_described`, the rule `molbuilder describe` asks).
     # THE FOLDER IS WHERE IT WRITES, so one is named or nothing is done.
     if not body.get("dest"):
-        return jsonify({"ok": False, "error": "dest: a hand-over is written "
-                        "into a calculation's folder -- name it"}), 400
+        return err("dest: a hand-over is written into a calculation's "
+                   "folder -- name it", 400)
     from molbuilder.describe import DescribeError, refuse_described
     from .files import calculation_folder_refusal
     dest_dir = _resolve_within_roots(str(body["dest"]))
     too_high = calculation_folder_refusal(dest_dir)
     if too_high:
-        return jsonify({"ok": False, "error": too_high}), 400
+        return err(too_high, 400)
     try:
         refuse_described(dest_dir)
     except DescribeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     from molbuilder.issues import calling
     from molbuilder.jobset.engines import engine_seam
     describe_findings = engine_seam(engine).describe_findings
@@ -983,12 +989,11 @@ def api_task_setup_handover():
                                                calculation=calculation,
                                                dest_dir=dest_dir)
         if refusal:
-            return jsonify({
-                "ok": False,
-                "error": refusal,
-                "findings": _issues_to_json(found, cfg=cfg,
-                                            calculation=calculation),
-            }), 400
+            return err(
+                refusal,
+                400,
+                findings=_issues_to_json(found, cfg=cfg,
+                                         calculation=calculation))
 
     from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import label_of
@@ -1012,9 +1017,10 @@ def api_task_setup_handover():
     if not typed:
         # REFUSED BY NAME, never defaulted (a hand-over was called
         # "calculation" until 2026-10-19).
-        return jsonify({"ok": False,
-                        "error": "name: the calculation has no name -- the "
-                                 "parameter tab's identity field states it"}), 400
+        return err(
+            "name: the calculation has no name -- the "
+            "parameter tab's identity field states it",
+            400)
     # THE LADDER IT PROPOSES first -- the fresh ladder's one owner
     # (`ladder.fresh_stages`) -- and the label by the one rule the
     # description reads it by (`task.label_of`: its cap counts the ladder's
@@ -1024,7 +1030,7 @@ def api_task_setup_handover():
         label = label_of(typed, calculation=calculation,
                          stage_names=tuple(st.name for st in proposed))
     except ValueError as exc:
-        return jsonify({"ok": False, "error": f"name: {exc}"}), 400
+        return err(f"name: {exc}", 400)
     formula = str(getattr(struct, "formula", "") or "")
 
     # AND THE TEMPLATE CARRIES THE SAME ONE.  Choosing the label above is only
@@ -1047,7 +1053,7 @@ def api_task_setup_handover():
                                              calculation=calculation,
                                              sources=sources)
     except Exception as exc:                      # a bad value, named
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     # THE STRUCTURE ITSELF, from the one generator.  `molview.md` § 11.7: the
     # server writes every file, because a browser-authored pair drifts from the
@@ -1080,7 +1086,7 @@ def api_task_setup_handover():
         # writers make -- `molbuilder describe` too (`StructureCodec.source_files`).
         made = StructureCodec().source_files(struct, label)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     # `source` names the COORDINATE document only -- the pair's first half,
     # as the codec answers it (`StructureCodec.source_files`), and as
     # `molbuilder describe` records it.  The sidecar beside it is found by
@@ -1189,9 +1195,10 @@ def api_task_setup_handover():
     try:
         written = publish(dest_dir, _fill)
     except OSError as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not write into {dest_dir.name}: "
-                                 f"{exc}"}), 500
+        return err(
+            f"could not write into {dest_dir.name}: "
+            f"{exc}",
+            500)
     return jsonify({
         "ok":            True,
         "label":         label,
@@ -1241,49 +1248,48 @@ def api_task_setup_prep():
     """
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
-        return jsonify({"ok": False, "error": "the body is a JSON object"}), 400
+        return err("the body is a JSON object", 400)
     # WORDS, as the page sends them: a field of another type is refused in
     # words, never a 500.
     for key in ("dest", "kind", "target", "plan_id"):
         if body.get(key) is not None and not isinstance(body.get(key), str):
-            return jsonify({"ok": False,
-                            "error": f"`{key}` is a string"}), 400
+            return err(f"`{key}` is a string", 400)
     dest_raw = body.get("dest")
     kind = str(body.get("kind") or "").strip()
     target = (body.get("target") or "").strip() or None
     if kind not in ("task", "bench"):
-        return jsonify({"ok": False,
-                        "error": "kind must be 'task' or 'bench'"}), 400
+        return err("kind must be 'task' or 'bench'", 400)
     groups, stages = body.get("groups"), body.get("stages")
     if kind == "task" and (
             not isinstance(groups, list) or not groups
             or not all(isinstance(g, int) and not isinstance(g, bool)
                        for g in groups)):
-        return jsonify({"ok": False,
-                        "error": "`groups` is a list of the group numbers "
-                                 "picked"}), 400
+        return err(
+            "`groups` is a list of the group numbers "
+            "picked",
+            400)
     if kind == "bench" and (
             not isinstance(stages, list) or len(stages) != 1
             or not isinstance(stages[0], str) or not stages[0].strip()):
-        return jsonify({"ok": False,
-                        "error": "`stages` is the one stage a benchmark "
-                                 "measures"}), 400
+        return err(
+            "`stages` is the one stage a benchmark "
+            "measures",
+            400)
     preview = bool(body.get("plan"))
     plan_id = (str(body.get("plan_id") or "").strip() or None)
     # NOTHING IS PREPARED UNSEEN (`job-system.md` § 5.0): a Prep names the
     # plan its preview showed, and the entry refuses one that differs.
     if not preview and not plan_id:
-        return jsonify({"ok": False,
-                        "error": "a Prep names the plan its preview showed "
-                                 "(plan_id) -- preview first"
-                                 "."}), 400
+        return err(
+            "a Prep names the plan its preview showed "
+            "(plan_id) -- preview first"
+            ".",
+            400)
     if not dest_raw:
-        return jsonify({"ok": False,
-                        "error": "no calculation folder given"}), 400
+        return err("no calculation folder given", 400)
     dest = _resolve_within_roots(dest_raw)
     if not dest.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"not a directory: {dest_raw}"}), 400
+        return err(f"not a directory: {dest_raw}", 400)
 
     target = _machine_named(target)
 
@@ -1301,7 +1307,7 @@ def api_task_setup_prep():
     try:
         calc = open_calc(dest)
     except (NotACalculation, OSError, ValueError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     try:
         answers = prep_task(calc, kind, groups=(groups or ()),
                             stage=(stages[0].strip() if kind == "bench"
@@ -1313,14 +1319,13 @@ def api_task_setup_prep():
         # gives them -- WITH what the entry had found by then: the preflight's
         # notes and what the inputs said (a bench's cells left out, which
         # a refusal may point at).  A refused prep wrote nothing.
-        return jsonify({
-            "ok": False, "error": str(exc),
-            "findings": [i.to_json() for i in exc.findings],
-            "notes": list(exc.notes),
-        }), 400
+        return err(
+            str(exc),
+            400,
+            findings=[i.to_json() for i in exc.findings],
+            notes=list(exc.notes))
     except Exception as exc:                      # pragma: no cover
-        return jsonify({"ok": False,
-                        "error": f"{type(exc).__name__}: {exc}"}), 500
+        return err(f"{type(exc).__name__}: {exc}", 500)
     # THE MACHINE IT IS FOR, in the tab's word: the entry's answer -- the
     # one named, else the one the calculation's copy of its record names.
     from molbuilder.scheduler.record import LOCAL_LABEL, LOCAL_TARGET
@@ -1366,39 +1371,40 @@ def api_task_setup_save():
     text     = body.get("text")
     request_text = body.get("request_text")
     if not dest_raw:
-        return jsonify({"ok": False, "error": "no destination folder given"}), 400
+        return err("no destination folder given", 400)
     if not isinstance(text, str) or not text.strip():
-        return jsonify({"ok": False, "error": "nothing to save"}), 400
+        return err("nothing to save", 400)
     if not isinstance(request_text, str) or not request_text.strip():
-        return jsonify({"ok": False, "error":
-                        "no job request to save beside the description -- "
-                        "the two are written together"}), 400
+        return err(
+            "no job request to save beside the description -- "
+            "the two are written together",
+            400)
 
     dest = _resolve_within_roots(dest_raw)
     if not dest.is_dir():
-        return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
+        return err(f"not a directory: {dest_raw}", 400)
     # A FILE CHANGED ON DISK SINCE THE PAGE READ IT IS NEVER WRITTEN OVER
     # (`web/task-setup.md` § 8): the page sends what each record was when
     # the folder answer served it, compared before anything else.
     read_as = body.get("read_as")
     if not (isinstance(read_as, dict) and {"task", "request"} <= set(read_as)):
-        return jsonify({"ok": False, "error":
-                        "the save names no read_as -- what each record was "
-                        "when the page read it; a write that cannot say "
-                        "what it writes over is refused"
-                        }), 400
+        return err(
+            "the save names no read_as -- what each record was "
+            "when the page read it; a write that cannot say "
+            "what it writes over is refused",
+            400)
     on_disk = _read_as(dest)
     stale = [path_of(dest).name for which, path_of in _RECORDS
              if read_as.get(which) != on_disk[which]]
     if stale:
-        return jsonify({"ok": False, "error":
-                        f"{' and '.join(stale)} changed on disk since this "
-                        f"page read it -- another tab's Save, a `jobset "
-                        f"migrate`, a hand edit.  Nothing was saved or "
-                        f"written.  Reload the page to read it as it is now; "
-                        f"the edits here are not kept, so copy any you want "
-                        f"from the editor first."
-                        }), 409
+        return err(
+            f"{' and '.join(stale)} changed on disk since this "
+            f"page read it -- another tab's Save, a `jobset "
+            f"migrate`, a hand edit.  Nothing was saved or "
+            f"written.  Reload the page to read it as it is now; "
+            f"the edits here are not kept, so copy any you want "
+            f"from the editor first.",
+            409)
 
     # The description's NAME is `task.py`'s to spell, like its bytes
     # (`task-description.md` § 6.4 -- one reader, so the two surfaces cannot
@@ -1415,7 +1421,7 @@ def api_task_setup_save():
         task = from_text(text)
         job_req = _job_request.from_text(request_text, task)
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     # GATE ③ FIRES HERE TOO (G-1b): a description naming an unknown field,
     # a value outside its bounds, or a bench point that fits no item is
@@ -1428,7 +1434,7 @@ def api_task_setup_save():
     try:
         _tpl_file = template_of(dest, task.label)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     _pf = _task_preflight(
         task,
         template_text=(_tpl_file.text
@@ -1440,14 +1446,13 @@ def api_task_setup_save():
     _pf_cfg = _cfg_cls_for(task)
     _pf_errs = [i for i in _pf if i.severity == "error"]
     if _pf_errs:
-        return jsonify({
-            "ok": False,
-            "error": "the description or its job request fails its own "
-                     "preflight:\n  - "
-                     + "\n  - ".join(i.message for i in _pf_errs),
-            "findings": _issues_to_json(_pf, cfg=_pf_cfg,
-                                        calculation=task.calculation),
-        }), 400
+        return err(
+            "the description or its job request fails its own "
+            "preflight:\n  - "
+            + "\n  - ".join(i.message for i in _pf_errs),
+            400,
+            findings=_issues_to_json(_pf, cfg=_pf_cfg,
+                                     calculation=task.calculation))
 
     # ONE CALCULATION PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  A folder already
     # describing a DIFFERENT calculation is not a folder this save may land in:
@@ -1470,15 +1475,14 @@ def api_task_setup_save():
     except (OSError, ValueError) as exc:
         # A CALCULATION ITS READERS REFUSE is not written over: their words,
         # as the folder answer gives them (`refused`).
-        return jsonify({"ok": False, "error": str(exc)}), 409
+        return err(str(exc), 409)
     if prior is not None and prior.run.id != task.run.id:
-        return jsonify({
-            "ok": False,
-            "error": f"this folder already describes a different "
-                     f"calculation ({prior.run.id!r}); saving {task.run.id!r} "
-                     f"here would orphan its results. One calculation per folder — "
-                     f"pick or make another.",
-        }), 409
+        return err(
+            f"this folder already describes a different "
+            f"calculation ({prior.run.id!r}); saving {task.run.id!r} "
+            f"here would orphan its results. One calculation per folder — "
+            f"pick or make another.",
+            409)
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED (`web/task-setup.md` § 5): a
     # stage put into one, or a member launched with it given another group,
     # is refused in the one rule's words (`ready.launched_without`,
@@ -1493,11 +1497,10 @@ def api_task_setup_save():
             try:
                 hit = launched_without(after, n)
             except LaunchRecordError as exc:
-                return jsonify({"ok": False, "error": str(exc)}), 409
+                return err(str(exc), 409)
             if hit and (hit[1] or any(job_req.group_of(x) is not None
                                       for x in hit[2])):
-                return jsonify({"ok": False, "error": joined_launched(
-                    after, n, *hit)}), 409
+                return err(joined_launched(after, n, *hit), 409)
 
     # AN EXTENSION'S LIMITS, AT THIS DOOR TOO (`engines/transport.md`
     # § 2a.16, *Extending it*; `task-setup.md` § 3): the rungs it keeps,
@@ -1521,10 +1524,8 @@ def api_task_setup_save():
             ext = None
         no = ext.refusal(task, against=prior) if ext is not None else None
         if no is not None:
-            return jsonify({"ok": False, "error": no.message,
-                            "findings": _issues_to_json([Issue(
-                                "error", no.message,
-                                )])}), 400
+            return err(no.message, 400, findings=_issues_to_json(
+                [Issue("error", no.message)]))
 
     # WHAT A STAGE THAT HAS RUN COMPUTES IS NOT CHANGED (`web/task-setup.md`
     # § 8; the user, 2026-10-27): its settings, its points, or the stage
@@ -1540,9 +1541,9 @@ def api_task_setup_save():
                 prior_calc, _dc.replace(prior_calc, task=task,
                                         request=job_req))
         except (LaunchRecordError, ValueError) as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 409
+            return err(str(exc), 409)
         if no_run is not None:
-            return jsonify({"ok": False, "error": no_run}), 409
+            return err(no_run, 409)
 
     # NOTHING TO SAVE (`task-setup.md` § 8; the user, 2026-10-23): the
     # records sent, each read by its reader, are the calculation's own as
@@ -1573,15 +1574,16 @@ def api_task_setup_save():
         kept = save_before(dest, "saving the description",
                            engine=task.engine)
     except (CheckpointError, RuntimeConfigError) as exc:
-        return jsonify({"ok": False,
-                        "error": f"No state was saved, so nothing was "
-                                 f"written: {exc}"}), 409
+        return err(
+            f"No state was saved, so nothing was "
+            f"written: {exc}",
+            409)
 
     try:
         write_task(dest, task)                   # atomic (persist.write_json)
         _job_request.write(dest, job_req)        # each file whole
     except OSError as exc:
-        return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
+        return err(f"could not write: {exc}", 500)
 
     # The hand-over's REMOVAL is the browser's, through
     # `projects.deleteEntry` -- moving bytes is the content-blind layer's job
@@ -1631,8 +1633,7 @@ def api_task_setup_value():
     if refused:
         return refused
     if home not in _T.HOMES:
-        return jsonify({"ok": False, "error": (
-            f"home {home!r} is not one of {', '.join(_T.HOMES)}")}), 400
+        return err(f"home {home!r} is not one of {', '.join(_T.HOMES)}", 400)
     stage = body.get("stage") or None
     text = body.get("text")
     if isinstance(text, str) and not text.strip():
@@ -1652,8 +1653,7 @@ def api_task_setup_value():
     except (KeyError, ValueError):
         item = None
     if item is None:
-        return jsonify({"ok": False, "error": (
-            f"{name!r} is not a setting of {engine}")}), 400
+        return err(f"{name!r} is not a setting of {engine}", 400)
     value, why = _T.read_text(item, text)
     why = why or _T.accepts(item, value, home, engine=engine, kind=kind,
                             stage=stage)
@@ -1974,29 +1974,28 @@ def api_task_setup_bench_grid():
     body = request.get_json(silent=True) or {}
     dest_raw = str(body.get("dest") or "")
     if not dest_raw:
-        return jsonify({"ok": False, "error": "no folder given"}), 400
+        return err("no folder given", 400)
     dest = _resolve_within_roots(dest_raw)
     if not dest.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"not a directory: {dest_raw}"}), 400
+        return err(f"not a directory: {dest_raw}", 400)
     bench = body.get("bench")
     if bench is not None and not isinstance(bench, dict):
-        return jsonify({"ok": False,
-                        "error": "bench: must be an object of "
-                                 "axis -> points"}), 400
+        return err(
+            "bench: must be an object of "
+            "axis -> points",
+            400)
     target = _machine_named(body.get("target") or None)
 
     from molbuilder.jobset.prep_inputs import bench_inputs
     domain = body.get("domain")
     if domain is not None and not isinstance(domain, str):
-        return jsonify({"ok": False,
-                        "error": "domain: must be a queue's name"}), 400
+        return err("domain: must be a queue's name", 400)
     rows: list = []
     from molbuilder.calculation import NotACalculation, open as open_calc
     try:
         calc = open_calc(dest)
     except (NotACalculation, OSError, ValueError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     try:
         # THE SAME REPORT the prep's notes print, as data: the card refreshes
         # it on every keystroke, so it asks for the rows and not the notes.
@@ -2007,8 +2006,7 @@ def api_task_setup_bench_grid():
     except Exception as exc:                      # noqa: BLE001
         # A grid not stated yet is the usual case here, mid-edit: its rows
         # are still classed.
-        return jsonify({"ok": False, "error": str(exc),
-                        "rows": _row_kinds(calc.request, bench)}), 400
+        return err(str(exc), 400, rows=_row_kinds(calc.request, bench))
     # EACH ROW'S CLASS, by the one rule prep splits the lane with
     # (`prep_inputs._declared_execution_pins`, `generator.md` § 4.3a): a
     # one-point non-machine entry is CHOSEN (the trials' value), a
@@ -2043,12 +2041,9 @@ def api_task_setup_prep_plan():
     raw = body.get("task")
     raw_request = body.get("request")
     if not isinstance(raw, dict):
-        return jsonify({"ok": False,
-                        "error": "must be the description object"}), 400
+        return err("must be the description object", 400)
     if not isinstance(raw_request, dict):
-        return jsonify({"ok": False,
-                        "error": "request: must be the job request object"
-                        }), 400
+        return err("request: must be the job request object", 400)
     from molbuilder import job_request as _job_request
     from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import manifest
@@ -2059,7 +2054,7 @@ def api_task_setup_prep_plan():
     except Exception as exc:                      # noqa: BLE001
         # A description mid-edit is often unreadable, and that is ordinary.
         # Its own words, so the card can say why rather than going blank.
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     # ONE allocation for the calculation (`job-request.md` § 3.1), and the
     # run card each rung runs at (§ 3.2).  Two reads because they are two
@@ -2341,11 +2336,10 @@ def api_task_setup_folder():
 
     dir_raw = str(request.args.get("dir") or "")
     if not dir_raw:
-        return jsonify({"ok": False, "error": "no folder given"}), 400
+        return err("no folder given", 400)
     folder = _resolve_within_roots(dir_raw)
     if not folder.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"not a directory: {dir_raw}"}), 400
+        return err(f"not a directory: {dir_raw}", 400)
 
     def _read_handover():
         """The hand-over file through its one reader: `persist.read_json`,
@@ -2791,10 +2785,11 @@ def api_task_setup_commands():
     if (not dest_raw or kind not in ("task", "bench")
             or not (picked or one_stage)
             or (kind == "bench" and not one_stage)):
-        return jsonify({"ok": False,
-                        "error": "dest, kind (task|bench) and groups (group "
-                                 "numbers) or stages (one name) are "
-                                 "required"}), 400
+        return err(
+            "dest, kind (task|bench) and groups (group "
+            "numbers) or stages (one name) are "
+            "required",
+            400)
     dest = _resolve_within_roots(dest_raw)
     target = _machine_named(body.get("target") or None)
     prepared = False
@@ -2805,7 +2800,7 @@ def api_task_setup_commands():
             calc = open_calc(dest)
             state = task_state(calc)
         except (OSError, ValueError) as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         # PREPARED AS DESCRIBED, the ready door's answer (`GroupAnswer`):
         # its prepared jobs hold its members.
         gs = [g for g in state.groups if g.number in groups]
@@ -2828,7 +2823,7 @@ def api_task_setup_commands():
         try:
             calc = open_calc(dest)
         except (OSError, ValueError) as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return err(str(exc), 400)
         prepared = stages[0] in _folder_prepared(calc).get(kind, {})
     return jsonify({"ok": True, "lines": stage_lines(
         kind, base=dest, groups=(groups if picked else ()),

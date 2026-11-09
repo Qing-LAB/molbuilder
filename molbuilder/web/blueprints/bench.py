@@ -22,6 +22,7 @@ directly.
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
+from ._shared import err
 
 bp = Blueprint("bench", __name__)
 
@@ -55,7 +56,7 @@ def api_bench_summary():
     path = _resolve_within_roots(raw)
 
     if not path.is_file():
-        return jsonify({"ok": False, "error": f"no such file: {raw}"}), 404
+        return err(f"no such file: {raw}", 404)
 
     try:
         jobset = (JobSet.of(path.parent)
@@ -66,17 +67,13 @@ def api_bench_summary():
         # The picker lists what is on disk and a person may click any of
         # it, so "you picked something that is not a job-set" is a 400 the
         # UI can show -- never a 500.
-        return jsonify({
-            "ok": False,
-            "error": f"not a readable job-set: {type(exc).__name__}: {exc}",
-        }), 400
+        return err(f"not a readable job-set: {type(exc).__name__}: {exc}", 400)
 
     if getattr(jobset, "kind", "") != "sweep":
-        return jsonify({
-            "ok": False,
-            "error": (f"{path.name} is a {jobset.kind or 'plain'} job-set, "
-                      f"not a sweep -- there is no comparison to draw"),
-        }), 400
+        return err(
+            f"{path.name} is a {jobset.kind or 'plain'} job-set, "
+            f"not a sweep -- there is no comparison to draw",
+            400)
 
     try:
         from molbuilder.calculation import open as open_calculation
@@ -86,7 +83,7 @@ def api_bench_summary():
                              f"of a calculation molbuilder described")
         view = sweep_view(open_calculation(owner[0]), jobset)
     except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     view["ok"] = True
     return jsonify(view)

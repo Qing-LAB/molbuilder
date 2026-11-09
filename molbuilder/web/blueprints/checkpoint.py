@@ -31,6 +31,7 @@ from typing import Any, Dict, Optional
 
 from ...issues import Issue
 from flask import Blueprint, jsonify, request
+from ._shared import err
 
 from molbuilder import calcdirs
 
@@ -90,23 +91,7 @@ def _advisory(message: str, where: str = "") -> tuple:
     so a generic envelope reader has something to show.
     """
     issue = Issue("error", message, where).to_json()
-    body = {
-        "ok":          False,
-        "error":       message,
-        "issues":      [issue],
-        "errors_only": [issue],
-    }
-    return jsonify(body), 200
-
-
-def _protocol_error(message: str, code: int = 400) -> tuple:
-    """Bucket-C response: protocol error (bad input shape)."""
-    return jsonify({"ok": False, "error": message}), code
-
-
-def _server_fault(message: str, code: int = 500) -> tuple:
-    """Bucket-D response: server-side failure (crash, IO, integrity)."""
-    return jsonify({"ok": False, "error": message}), code
+    return err(message, 200, issues=[issue], errors_only=[issue])
 
 
 def _get_body() -> Dict[str, Any]:
@@ -147,7 +132,7 @@ def api_checkpoint_state():
     try:
         path = _resolve_path(request.args.get("path"))
     except ValueError as exc:
-        return _protocol_error(str(exc))
+        return err(str(exc))
     # ``deep=1`` is what the panel's Refresh control asks for: compare content
     # rather than size and timestamp.  The default is the cheap read, because
     # this runs on every directory-enter and hashing gigabytes to draw a badge
@@ -184,10 +169,10 @@ def api_checkpoint_state():
             "checked":       "content" if deep else "size+timestamp",
         })
     except CheckpointError as exc:
-        return _server_fault(str(exc))
+        return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint state failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
+        return err(f"{type(exc).__name__}: {exc}", 500)
 
 
 @bp.get("/api/checkpoint/list")
@@ -200,22 +185,22 @@ def api_checkpoint_list():
     try:
         path = _resolve_path(request.args.get("path"))
     except ValueError as exc:
-        return _protocol_error(str(exc))
+        return err(str(exc))
     limit_raw = request.args.get("limit")
     limit = None
     if limit_raw is not None:
         try:
             limit = int(limit_raw)
         except (TypeError, ValueError):
-            return _protocol_error(f"invalid limit: {limit_raw!r}")
+            return err(f"invalid limit: {limit_raw!r}")
         if limit < 0:
             # It would reach git as `-n-5` and fail there as a 500 -- the
             # server reporting its own fault for the caller's typo.
-            return _protocol_error(
+            return err(
                 f"invalid limit: {limit} (a count cannot be negative)")
     repo = Repo(str(path))
     if not repo.initialized:
-        return _protocol_error(
+        return err(
             "not a checkpoint folder; run init first", code=409)
     try:
         here = repo.standing_at()
@@ -230,10 +215,10 @@ def api_checkpoint_list():
                             for t in repo.tags()],
         })
     except CheckpointError as exc:
-        return _server_fault(str(exc))
+        return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint list failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
+        return err(f"{type(exc).__name__}: {exc}", 500)
 
 
 @bp.post("/api/checkpoint/init")
@@ -243,7 +228,7 @@ def api_checkpoint_init():
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
-        return _protocol_error(str(exc))
+        return err(str(exc))
     repo = Repo(str(path))
     # `init` IS THE REPAIR VERB, so this does not answer before calling it: a
     # folder somebody `git init`-ed by hand is named by the `calculation` the
@@ -263,10 +248,10 @@ def api_checkpoint_init():
     except CalculationNameError as exc:
         return _advisory(str(exc), where="calculation")
     except CheckpointError as exc:
-        return _server_fault(str(exc))
+        return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint init failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
+        return err(f"{type(exc).__name__}: {exc}", 500)
     if already:
         # An existing folder: `state` is where it stands, not something made.
         return jsonify({"ok": True, "path": str(path), "already": True,
@@ -289,15 +274,15 @@ def api_checkpoint_save():
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
-        return _protocol_error(str(exc))
+        return err(str(exc))
     note = (body.get("note") or "").strip()
     if not note:
-        return _protocol_error(
+        return err(
             "a state needs a note saying what happened and what you were "
             "about to do")
     repo = Repo(str(path))
     if not repo.initialized:
-        return _protocol_error(
+        return err(
             "not a checkpoint folder; run init first", code=409)
     try:
         state = repo.save(note)
@@ -310,10 +295,10 @@ def api_checkpoint_save():
         # Everything else here is the machine: git gone, a corrupt copy, an
         # unreadable archive.  Reporting those as HTTP 200 "ok:false" would put
         # integrity failures in the bucket meant for questions.
-        return _server_fault(str(exc))
+        return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint save failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
+        return err(f"{type(exc).__name__}: {exc}", 500)
     return jsonify({"ok": True, "path": str(path),
                     "changed": state is not None,
                     "state": _state_json(state) if state else None})
@@ -326,31 +311,31 @@ def api_checkpoint_tag():
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
-        return _protocol_error(str(exc))
+        return err(str(exc))
     name = (body.get("name") or "").strip()
     note = (body.get("note") or "").strip()
     if not name:
-        return _protocol_error("missing required parameter: name")
+        return err("missing required parameter: name")
     if not note:
-        return _protocol_error(
+        return err(
             "a tag needs a note saying why this state is worth returning to")
     repo = Repo(str(path))
     if not repo.initialized:
-        return _protocol_error(
+        return err(
             "not a checkpoint folder; run init first", code=409)
     try:
         tag = repo.tag(name, note, at=body.get("at"))
     except NoSuchRefError as exc:
-        return _protocol_error(str(exc), code=404)
+        return err(str(exc), code=404)
     except GitNotInstalledError as exc:
         # A machine with no git is a server fault.  The advisory below is for
         # the failure a person fixes -- a tag name already in use.
-        return _server_fault(str(exc))
+        return err(str(exc), 500)
     except CheckpointError as exc:
         return _advisory(str(exc), where="tag")
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint tag failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
+        return err(f"{type(exc).__name__}: {exc}", 500)
     return jsonify({"ok": True, "tag": {"name": tag.name, "state": tag.state,
                                         "note": tag.note}})
 
@@ -371,29 +356,29 @@ def api_checkpoint_restore():
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
-        return _protocol_error(str(exc))
+        return err(str(exc))
     # `state`, and only `state`.
     state = (body.get("state") or "").strip()
     if not state:
-        return _protocol_error("missing required parameter: state")
+        return err("missing required parameter: state")
     if "include_binaries" in body:
-        return _protocol_error(
+        return err(
             "include_binaries is not accepted: a restore returns the whole "
             "folder or it does not happen")
     repo = Repo(str(path))
     if not repo.initialized:
-        return _protocol_error(
+        return err(
             "not a checkpoint folder; run init first", code=409)
     try:
         target = repo.restore(state, force=bool(body.get("force")))
     except DirtyWorkingTreeError as exc:
         return _advisory(str(exc), where="unsaved")
     except NoSuchRefError as exc:
-        return _protocol_error(str(exc), code=404)
+        return err(str(exc), code=404)
     except CheckpointError as exc:
-        return _server_fault(str(exc))
+        return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint restore failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
+        return err(f"{type(exc).__name__}: {exc}", 500)
     return jsonify({"ok": True, "path": str(path),
                     "state": _state_json(target)})

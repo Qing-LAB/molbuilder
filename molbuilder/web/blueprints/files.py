@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
+from ._shared import err
 
 from molbuilder import diagnostics
 from molbuilder.sidecars.molstruct import sidecar_path_for
@@ -338,10 +339,12 @@ def exists_answer(path, overwrite: bool):
     if overwrite or not path.exists():
         return None
     sidecar = _existing_paired_sidecar(path)
-    return jsonify({"ok": False, "needsOverwrite": True,
-                    "replaces": [path.name] + ([sidecar.name] if sidecar
-                                               else []),
-                    "error": f"a file named {path.name} is already here"}), 409
+    return err(
+        f"a file named {path.name} is already here",
+        409,
+        needsOverwrite=True,
+        replaces=[path.name] + ([sidecar.name] if sidecar
+                                else []))
 
 
 def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
@@ -459,10 +462,7 @@ def api_files_list():
 
     _must_exist(resolved)
     if not resolved.is_dir():
-        return jsonify({
-            "ok": False,
-            "error": f"path is not a directory: {str(resolved)!r}",
-        }), 400
+        return err(f"path is not a directory: {str(resolved)!r}", 400)
 
     ext_filter: Optional[List[str]] = None
     if raw_ext:
@@ -479,10 +479,7 @@ def api_files_list():
     try:
         entries = _list_entries(resolved, ext_filter)
     except PermissionError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"permission denied reading directory: {exc}",
-        }), 403
+        return err(f"permission denied reading directory: {exc}", 403)
 
     # WHICH ENTRIES ARE TOPIC FOLDERS is said here, by the test rename and
     # delete refuse on (`job-contracts.md` § 2.5): the sidebar offers a
@@ -530,38 +527,32 @@ def api_files_read():
 
     _must_exist(resolved)
     if not resolved.is_file():
-        return jsonify({
-            "ok": False,
-            "error": f"path is not a regular file: {str(resolved)!r}",
-        }), 400
+        return err(f"path is not a regular file: {str(resolved)!r}", 400)
 
     try:
         max_bytes = int(request.args.get("max_bytes", _DEFAULT_READ_BYTES))
     except ValueError:
-        return jsonify({"ok": False,
-                        "error": "max_bytes must be an integer"}), 400
+        return err("max_bytes must be an integer", 400)
     if max_bytes <= 0 or max_bytes > _MAX_READ_BYTES:
-        return jsonify({
-            "ok": False,
-            "error": f"max_bytes must be in (0, {_MAX_READ_BYTES}]; "
-                     f"got {max_bytes}",
-        }), 400
+        return err(
+            f"max_bytes must be in (0, {_MAX_READ_BYTES}]; "
+            f"got {max_bytes}",
+            400)
 
     try:
         st = resolved.stat()
     except OSError as exc:
-        return jsonify({"ok": False, "error": f"stat failed: {exc}"}), 500
+        return err(f"stat failed: {exc}", 500)
 
     if st.st_size > max_bytes:
         # Honest 413 -- the caller can re-request with a larger
         # max_bytes (up to _MAX_READ_BYTES) if they really want it.
-        return jsonify({
-            "ok":   False,
-            "error": f"file is {st.st_size} bytes; exceeds max_bytes "
-                     f"= {max_bytes}.  Re-request with larger max_bytes "
-                     f"(up to {_MAX_READ_BYTES}) if you need more.",
-            "size": st.st_size,
-        }), 413
+        return err(
+            f"file is {st.st_size} bytes; exceeds max_bytes "
+            f"= {max_bytes}.  Re-request with larger max_bytes "
+            f"(up to {_MAX_READ_BYTES}) if you need more.",
+            413,
+            size=st.st_size)
 
     try:
         # ``utf-8-sig`` accepts an optional BOM (some Windows editors
@@ -570,16 +561,12 @@ def api_files_read():
         # file at parse time.
         text = resolved.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
-        return jsonify({
-            "ok":   False,
-            "error": f"file is not valid UTF-8: {str(resolved)!r}.  "
-                     f"The picker only previews text files in v1.",
-        }), 400
+        return err(
+            f"file is not valid UTF-8: {str(resolved)!r}.  "
+            f"The picker only previews text files in v1.",
+            400)
     except PermissionError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"permission denied: {exc}",
-        }), 403
+        return err(f"permission denied: {exc}", 403)
 
     read_only = structure_door_refusal(resolved)
     return jsonify({
@@ -617,10 +604,7 @@ def api_files_download():
     resolved = _resolve_within_roots(raw_path)
     _must_exist(resolved)
     if not resolved.is_file():
-        return jsonify({
-            "ok": False,
-            "error": f"path is not a regular file: {str(resolved)!r}",
-        }), 400
+        return err(f"path is not a regular file: {str(resolved)!r}", 400)
     # ``as_attachment=True`` -> ``Content-Disposition: attachment;
     # filename="<basename>"``.  ``etag=False`` so a re-download
     # always hits the fresh bytes (the file may have changed
@@ -824,10 +808,7 @@ def api_files_zip_prepare():
     try:
         plan = _archive_plan(resolved)
     except OSError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"could not read the folder: {exc}",
-        }), 500
+        return err(f"could not read the folder: {exc}", 500)
 
     token = uuid.uuid4().hex
     name = f"{resolved.name}.zip"
@@ -871,12 +852,11 @@ def api_files_download_zip():
     token = request.args.get("token", "")
     entry = _PREPARED_ZIPS.pop(token, None)
     if entry is None:
-        return jsonify({
-            "ok": False,
-            "error": "no prepared archive for this token -- it was "
-                     "already downloaded, or it expired.  Press "
-                     "Download again.",
-        }), 404
+        return err(
+            "no prepared archive for this token -- it was "
+            "already downloaded, or it expired.  Press "
+            "Download again.",
+            404)
     entries, download_name, _made = entry
     resp = Response(stream_with_context(stream(entries)),
                     mimetype="application/zip")
@@ -949,34 +929,28 @@ def api_files_read_range():
 
     _must_exist(resolved)
     if not resolved.is_file():
-        return jsonify({
-            "ok": False,
-            "error": f"path is not a regular file: {str(resolved)!r}",
-        }), 400
+        return err(f"path is not a regular file: {str(resolved)!r}", 400)
 
     try:
         max_bytes = int(request.args.get(
             "max_bytes", _DEFAULT_RANGE_BYTES))
     except ValueError:
-        return jsonify({"ok": False,
-                        "error": "max_bytes must be an integer"}), 400
+        return err("max_bytes must be an integer", 400)
     if max_bytes <= 0 or max_bytes > _MAX_READ_BYTES:
-        return jsonify({
-            "ok": False,
-            "error": f"max_bytes must be in (0, {_MAX_READ_BYTES}]; "
-                     f"got {max_bytes}",
-        }), 400
+        return err(
+            f"max_bytes must be in (0, {_MAX_READ_BYTES}]; "
+            f"got {max_bytes}",
+            400)
 
     try:
         offset = int(request.args.get("offset", 0))
     except ValueError:
-        return jsonify({"ok": False,
-                        "error": "offset must be an integer"}), 400
+        return err("offset must be an integer", 400)
 
     try:
         st = resolved.stat()
     except OSError as exc:
-        return jsonify({"ok": False, "error": f"stat failed: {exc}"}), 500
+        return err(f"stat failed: {exc}", 500)
 
     file_size = st.st_size
 
@@ -987,21 +961,16 @@ def api_files_read_range():
         offset = max(0, file_size + offset)
 
     if offset > file_size:
-        return jsonify({
-            "ok": False,
-            "error": f"offset {offset} exceeds file size {file_size}",
-        }), 400
+        return err(f"offset {offset} exceeds file size {file_size}", 400)
 
     try:
         with open(resolved, "rb") as fh:
             fh.seek(offset)
             raw = fh.read(max_bytes)
     except PermissionError as exc:
-        return jsonify({"ok": False,
-                        "error": f"permission denied: {exc}"}), 403
+        return err(f"permission denied: {exc}", 403)
     except OSError as exc:
-        return jsonify({"ok": False,
-                        "error": f"read failed: {exc}"}), 500
+        return err(f"read failed: {exc}", 500)
 
     # Trim incomplete UTF-8 codepoints at the END so the response is
     # always valid UTF-8.  Walk back at most 3 bytes (max codepoint
@@ -1021,11 +990,10 @@ def api_files_read_range():
                 break
             trimmed = trimmed[:-1]
     else:
-        return jsonify({
-            "ok":   False,
-            "error": f"file region is not valid UTF-8 at offset "
-                     f"{offset}.  read_range only previews text files.",
-        }), 400
+        return err(
+            f"file region is not valid UTF-8 at offset "
+            f"{offset}.  read_range only previews text files.",
+            400)
 
     length = len(trimmed)
     eof    = (offset + length) >= file_size
@@ -1108,47 +1076,29 @@ def api_files_mkdir():
 
     parent = _resolve_within_roots(parent_raw)
     if not parent.is_dir():
-        return jsonify({
-            "ok": False,
-            "error": f"parent path is not a directory: {str(parent)!r}",
-        }), 400
+        return err(f"parent path is not a directory: {str(parent)!r}", 400)
 
     if not isinstance(name, str) or not name:
-        return jsonify({
-            "ok": False,
-            "error": "missing 'name' in request body",
-        }), 400
+        return err("missing 'name' in request body", 400)
 
     try:
         _validate_subdir_name(parent, name)
     except InvalidName as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     new_path = parent / name
     if new_path.exists():
-        return jsonify({
-            "ok":   False,
-            "error": f"path already exists: {str(new_path)!r}",
-        }), 409
+        return err(f"path already exists: {str(new_path)!r}", 409)
 
     try:
         new_path.mkdir(parents=False, exist_ok=False)
     except FileExistsError:
         # Race condition with another writer; mirrors the 409 above.
-        return jsonify({
-            "ok":   False,
-            "error": f"path already exists: {str(new_path)!r}",
-        }), 409
+        return err(f"path already exists: {str(new_path)!r}", 409)
     except PermissionError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"permission denied: {exc}",
-        }), 403
+        return err(f"permission denied: {exc}", 403)
     except OSError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"mkdir failed: {exc}",
-        }), 500
+        return err(f"mkdir failed: {exc}", 500)
 
     return jsonify({
         "ok":   True,
@@ -1189,10 +1139,7 @@ def api_projects_create():
     body = request.get_json(silent=True) or {}
     name = body.get("name", "")
     if not isinstance(name, str) or not name:
-        return jsonify({
-            "ok": False,
-            "error": "missing 'name' in request body",
-        }), 400
+        return err("missing 'name' in request body", 400)
 
     # Where the new project should live.  The picker's single root
     # IS projects_root() at runtime; tests can swap it via a monkey-
@@ -1201,11 +1148,10 @@ def api_projects_create():
     # advertising so server + frontend stay consistent.
     roots = _allowed_roots()
     if not roots:
-        return jsonify({
-            "ok":   False,
-            "error": ("the projects folder cannot be read on this machine, so "
-                      "no project can be created."),
-        }), 500
+        return err(
+            "the projects folder cannot be read on this machine, so "
+            "no project can be created.",
+            500)
     root_path = roots[0][0]   # we ship single-root in v1
 
     try:
@@ -1213,17 +1159,16 @@ def api_projects_create():
         # before we touch disk.
         validate_name(name, kind="project")
     except InvalidName as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     project_path = root_path / name
     if project_path.exists():
-        return jsonify({
-            "ok":   False,
-            "error": (f"project {name!r} already exists at "
-                      f"{str(project_path)!r}.  Pick a different name; "
-                      f"use '+ New subdir' from inside the existing "
-                      f"project to add to it."),
-        }), 409
+        return err(
+            f"project {name!r} already exists at "
+            f"{str(project_path)!r}.  Pick a different name; "
+            f"use '+ New subdir' from inside the existing "
+            f"project to add to it.",
+            409)
 
     # Create the empty project root inside the picker's root, then
     # delegate to populate_project_skeleton to bootstrap the canonical
@@ -1232,31 +1177,21 @@ def api_projects_create():
         project_path.mkdir(parents=False, exist_ok=False)
     except FileExistsError:
         # Race with the existence check above.
-        return jsonify({
-            "ok":   False,
-            "error": f"project {name!r} already exists.",
-        }), 409
+        return err(f"project {name!r} already exists.", 409)
     except PermissionError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"permission denied: {exc}",
-        }), 403
+        return err(f"permission denied: {exc}", 403)
     except OSError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"mkdir failed: {exc}",
-        }), 500
+        return err(f"mkdir failed: {exc}", 500)
 
     try:
         populate_project_skeleton(project_path, project_name=name)
     except OSError as exc:
         # Rollback on partial failure so the user can retry cleanly.
         shutil.rmtree(project_path, ignore_errors=True)
-        return jsonify({
-            "ok": False,
-            "error": (f"failed to populate project {name!r} ({exc}); "
-                      f"the partial project tree has been rolled back."),
-        }), 500
+        return err(
+            f"failed to populate project {name!r} ({exc}); "
+            f"the partial project tree has been rolled back.",
+            500)
 
     return jsonify({
         "ok":      True,
@@ -1344,47 +1279,39 @@ def api_files_upload():
     """
     target_dir_raw = (request.form.get("target_dir") or "").strip()
     if not target_dir_raw:
-        return jsonify({
-            "ok": False,
-            "error": "missing 'target_dir' form field",
-        }), 400
+        return err("missing 'target_dir' form field", 400)
 
     upload = request.files.get("file")
     if upload is None or not upload.filename:
-        return jsonify({
-            "ok": False,
-            "error": "missing 'file' multipart part",
-        }), 400
+        return err("missing 'file' multipart part", 400)
 
     # Validate the destination directory.
     target_dir = _resolve_within_roots(target_dir_raw)
 
     if not target_dir.is_dir():
-        return jsonify({
-            "ok": False,
-            "error": (f"target_dir does not exist or is not a directory: "
-                      f"{str(target_dir)!r}.  Use /api/files/mkdir to "
-                      f"create it first."),
-        }), 400
+        return err(
+            f"target_dir does not exist or is not a directory: "
+            f"{str(target_dir)!r}.  Use /api/files/mkdir to "
+            f"create it first.",
+            400)
 
     # Depth check: target_dir must be at depth >= 1 inside an
     # allowed picker root (matches the /api/files/write rule -- no
     # writes directly into projects/ itself).  Shared helper.
     depth = _depth_inside_root(target_dir)
     if depth is None or depth < 1:
-        return jsonify({
-            "ok": False,
-            "error": (f"cannot upload directly into the picker root; "
-                      f"create or pick a subdirectory first.  Got: "
-                      f"{str(target_dir)!r}"),
-        }), 400
+        return err(
+            f"cannot upload directly into the picker root; "
+            f"create or pick a subdirectory first.  Got: "
+            f"{str(target_dir)!r}",
+            400)
 
     # Validate the filename.  We use the basename of upload.filename
     # to defang any client-supplied path prefix.
     filename = os.path.basename(upload.filename)
-    err = _validate_upload_filename(filename)
-    if err is not None:
-        return jsonify({"ok": False, "error": err}), 400
+    refused = _validate_upload_filename(filename)
+    if refused is not None:
+        return err(refused, 400)
 
     dest = target_dir / filename
     overwrite_raw = (request.form.get("overwrite") or "").strip().lower()
@@ -1395,19 +1322,17 @@ def api_files_upload():
     # (`model/structure.md` § 2.4).
     from molbuilder.sidecars.molstruct import is_geometry, is_sidecar
     if is_sidecar(dest):
-        return jsonify({"ok": False,
-                        "error": structure_door_refusal(dest)}), 400
+        return err(structure_door_refusal(dest), 400)
     if dest.exists() and not overwrite and auto_rename:
         # Used by the embed's export-params dialog so a re-save of the
         # same default name doesn't silently clobber the previous one.
         dest = _next_free_name(dest)
         if dest is None:
-            return jsonify({
-                "ok": False,
-                "error": (f"could not find an unused auto-rename "
-                          f"candidate for {filename!r} after 998 "
-                          f"tries; directory may be malfunctioning"),
-            }), 500
+            return err(
+                f"could not find an unused auto-rename "
+                f"candidate for {filename!r} after 998 "
+                f"tries; directory may be malfunctioning",
+                500)
 
     # Phase 6e second-review LANDMINE #18: refuse to follow a
     # symlink at the destination.  Without this, an attacker (or
@@ -1418,14 +1343,12 @@ def api_files_upload():
     # the destination is a symlink AT ALL.
     try:
         if dest.is_symlink():
-            return jsonify({
-                "ok": False,
-                "error": (f"refusing to write through a symlink at "
-                          f"{str(dest)!r}; delete the link and retry."),
-            }), 400
+            return err(
+                f"refusing to write through a symlink at "
+                f"{str(dest)!r}; delete the link and retry.",
+                400)
     except OSError as exc:
-        return jsonify({"ok": False,
-                        "error": f"is_symlink check failed: {exc}"}), 500
+        return err(f"is_symlink check failed: {exc}", 500)
     if is_geometry(dest):
         # A STRUCTURE FILE THROUGH THE ONE WRITER (`model/structure.md`
         # § 2.4): read as an import reads it, written as a pair by the save's
@@ -1435,15 +1358,17 @@ def api_files_upload():
         try:
             text = upload.read().decode("utf-8-sig")
         except UnicodeDecodeError:
-            return jsonify({"ok": False,
-                            "error": f"{dest.name} is not a text file, so it "
-                                     f"does not read as a structure"}), 400
+            return err(
+                f"{dest.name} is not a text file, so it "
+                f"does not read as a structure",
+                400)
         try:
             whole, said, _fmt = structure_from_text(text, dest.name)
         except ValueError as exc:
-            return jsonify({"ok": False,
-                            "error": f"{dest.name} does not read as a "
-                                     f"structure: {exc}"}), 400
+            return err(
+                f"{dest.name} does not read as a "
+                f"structure: {exc}",
+                400)
         return write_structure(whole, dest, overwrite=overwrite, said=said)
     taken = exists_answer(dest, overwrite)
     if taken is not None:
@@ -1452,21 +1377,14 @@ def api_files_upload():
     try:
         write_bytes(dest, upload.read())
     except PermissionError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"permission denied: {exc}",
-        }), 403
+        return err(f"permission denied: {exc}", 403)
     except OSError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"upload write failed: {exc}",
-        }), 500
+        return err(f"upload write failed: {exc}", 500)
 
     try:
         st = dest.stat()
     except OSError as exc:
-        return jsonify({"ok": False,
-                        "error": f"stat after upload failed: {exc}"}), 500
+        return err(f"stat after upload failed: {exc}", 500)
 
     return jsonify({
         "ok":    True,
@@ -1528,15 +1446,12 @@ def api_files_write():
     expected_mtime = body.get("expected_mtime", None)
 
     if not isinstance(text, str):
-        return jsonify({
-            "ok": False,
-            "error": "'text' must be a string",
-        }), 400
+        return err("'text' must be a string", 400)
 
     resolved = _resolve_within_roots(raw_path)
     refused = structure_door_refusal(resolved)
     if refused:
-        return jsonify({"ok": False, "error": refused}), 400
+        return err(refused, 400)
 
     # Depth check: the file's PARENT must be at depth >= 1 inside
     # the picker's root.  i.e., write to projects/<proj>/<...>/file
@@ -1544,37 +1459,34 @@ def api_files_write():
     # via the _depth_inside_root helper.
     parent_depth = _depth_inside_root(resolved.parent)
     if parent_depth is None or parent_depth < 1:
-        return jsonify({
-            "ok":   False,
-            "error": (f"cannot write directly into the picker root; "
-                      f"create or pick a subdirectory first.  Got: "
-                      f"{str(resolved)!r}"),
-        }), 400
+        return err(
+            f"cannot write directly into the picker root; "
+            f"create or pick a subdirectory first.  Got: "
+            f"{str(resolved)!r}",
+            400)
 
     # Validate the leaf name with the same regex /upload uses, so the
     # two endpoints don't drift apart.
     leaf_err = _validate_upload_filename(resolved.name)
     if leaf_err is not None:
-        return jsonify({"ok": False, "error": leaf_err}), 400
+        return err(leaf_err, 400)
 
     parent = resolved.parent
     if not parent.is_dir():
-        return jsonify({
-            "ok":   False,
-            "error": (f"parent directory does not exist: {str(parent)!r}.  "
-                      f"Use /api/files/mkdir to create it first."),
-        }), 400
+        return err(
+            f"parent directory does not exist: {str(parent)!r}.  "
+            f"Use /api/files/mkdir to create it first.",
+            400)
 
     # Reject directory targets explicitly, else the write fails with a
     # noisy IsADirectoryError (caught as 500) and ``auto_rename``
     # produces ``<dirname>-2`` files next to the directory.
     if resolved.is_dir():
-        return jsonify({
-            "ok":   False,
-            "error": (f"path is a directory, not a file: "
-                      f"{str(resolved)!r}.  Pick a filename inside "
-                      f"the directory."),
-        }), 400
+        return err(
+            f"path is a directory, not a file: "
+            f"{str(resolved)!r}.  Pick a filename inside "
+            f"the directory.",
+            400)
 
     # Conflict checks (both apply when relevant).
     if resolved.exists():
@@ -1582,20 +1494,18 @@ def api_files_write():
             try:
                 actual_mtime = resolved.stat().st_mtime
             except OSError as exc:
-                return jsonify({"ok": False,
-                                "error": f"stat failed: {exc}"}), 500
+                return err(f"stat failed: {exc}", 500)
             # Float comparison with a tolerance; mtime resolutions vary
             # across filesystems but ~ms is a safe threshold for
             # "no concurrent edit".
             if abs(actual_mtime - float(expected_mtime)) > 0.001:
-                return jsonify({
-                    "ok":   False,
-                    "error": (f"file was modified since you opened it "
-                              f"(expected mtime {expected_mtime}, "
-                              f"found {actual_mtime}).  Re-open the "
-                              f"file to see the latest content."),
-                    "actual_mtime": actual_mtime,
-                }), 409
+                return err(
+                    f"file was modified since you opened it "
+                    f"(expected mtime {expected_mtime}, "
+                    f"found {actual_mtime}).  Re-open the "
+                    f"file to see the latest content.",
+                    409,
+                    actual_mtime=actual_mtime)
             # mtime matches: this is a valid edit-save; overwrite OK.
         elif overwrite:
             pass  # explicit overwrite
@@ -1604,12 +1514,11 @@ def api_files_write():
             # the /upload picker here.
             chosen = _next_free_name(resolved)
             if chosen is None:
-                return jsonify({
-                    "ok": False,
-                    "error": (f"could not find an unused "
-                              f"auto-rename candidate for "
-                              f"{resolved.name!r} after 998 tries"),
-                }), 500
+                return err(
+                    f"could not find an unused "
+                    f"auto-rename candidate for "
+                    f"{resolved.name!r} after 998 tries",
+                    500)
             resolved = chosen
         else:
             return exists_answer(resolved, False)
@@ -1619,14 +1528,12 @@ def api_files_write():
     # links; refusing here keeps the write inside the picker root.
     try:
         if resolved.is_symlink():
-            return jsonify({
-                "ok": False,
-                "error": (f"refusing to write through a symlink at "
-                          f"{str(resolved)!r}"),
-            }), 400
+            return err(
+                f"refusing to write through a symlink at "
+                f"{str(resolved)!r}",
+                400)
     except OSError as exc:
-        return jsonify({"ok": False,
-                        "error": f"is_symlink check failed: {exc}"}), 500
+        return err(f"is_symlink check failed: {exc}", 500)
     # Step 2b USER-CUSTOM round-trip preservation -- when this write
     # is a fresh regenerate (expected_mtime is None), splice any
     # USER-CUSTOM block content from the existing target into the
@@ -1649,20 +1556,14 @@ def api_files_write():
     try:
         write_bytes(resolved, text.encode("utf-8"))
     except PermissionError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"permission denied: {exc}",
-        }), 403
+        return err(f"permission denied: {exc}", 403)
     except OSError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"write failed: {exc}",
-        }), 500
+        return err(f"write failed: {exc}", 500)
 
     try:
         st = resolved.stat()
     except OSError as exc:
-        return jsonify({"ok": False, "error": f"stat after write failed: {exc}"}), 500
+        return err(f"stat after write failed: {exc}", 500)
 
     return jsonify({
         "ok":    True,
@@ -1710,28 +1611,19 @@ def api_files_rename():
     new_name  = body.get("new_name", "")
 
     if not isinstance(raw_path, str) or not raw_path.strip():
-        return jsonify({
-            "ok": False,
-            "error": "missing 'path' in request body",
-        }), 400
+        return err("missing 'path' in request body", 400)
 
     if not isinstance(new_name, str) or not new_name.strip():
-        return jsonify({
-            "ok": False,
-            "error": "missing 'new_name' in request body",
-        }), 400
+        return err("missing 'new_name' in request body", 400)
 
     # Reject path-traversal / separator attempts on new_name.  A
     # legitimate rename only changes the basename; anything that
     # tries to move the entry into another dir is rejected.
     if not _is_basename(new_name):
-        return jsonify({
-            "ok": False,
-            "error": (
-                "invalid 'new_name': must be a basename only "
-                "(no '/', no '..', no '.')"
-            ),
-        }), 400
+        return err(
+            "invalid 'new_name': must be a basename only "
+            "(no '/', no '..', no '.')",
+            400)
 
     resolved = _resolve_within_roots(raw_path)
 
@@ -1743,19 +1635,15 @@ def api_files_rename():
     depth = len(rel_parts)
 
     if depth == 0:
-        return jsonify({
-            "ok":   False,
-            "error": ("refusing to rename the picker root itself"),
-        }), 400
+        return err("refusing to rename the picker root itself", 400)
 
     if _is_canonical_topic_dir(resolved, rel_parts):
-        return jsonify({
-            "ok":   False,
-            "error": (f"refusing to rename canonical-topic directory "
-                      f"{rel_parts[1]!r} via the UI (would orphan the "
-                      f"project layout).  Use your shell if you really "
-                      f"need to."),
-        }), 400
+        return err(
+            f"refusing to rename canonical-topic directory "
+            f"{rel_parts[1]!r} via the UI (would orphan the "
+            f"project layout).  Use your shell if you really "
+            f"need to.",
+            400)
 
     # Compute the destination.  resolved.parent is guaranteed to be
     # inside the picker root because resolved is.
@@ -1779,11 +1667,10 @@ def api_files_rename():
     # didn't mean that.  An explicit overwrite=true flag could be
     # added later if a real use case shows up.
     if dst.exists():
-        return jsonify({
-            "ok":    False,
-            "error": (f"destination already exists: {new_name!r}.  Pick a "
-                      f"different name or delete the existing entry first."),
-        }), 409
+        return err(
+            f"destination already exists: {new_name!r}.  Pick a "
+            f"different name or delete the existing entry first.",
+            409)
 
     # Sidecar pairing.  If the source is a structure file
     # with a paired .molstruct.json sidecar, the rename MUST take both
@@ -1794,14 +1681,11 @@ def api_files_rename():
     src_sidecar = _existing_paired_sidecar(resolved)
     dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
     if dst_sidecar is not None and dst_sidecar.exists():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                f"destination sidecar already exists: "
-                f"{dst_sidecar.name!r}.  Delete it or pick a different "
-                f"name before renaming the structure file."
-            ),
-        }), 409
+        return err(
+            f"destination sidecar already exists: "
+            f"{dst_sidecar.name!r}.  Delete it or pick a different "
+            f"name before renaming the structure file.",
+            409)
 
     _replace_pair(resolved, dst, src_sidecar, dst_sidecar,
                   verb="rename", past="renamed")
@@ -1905,23 +1789,17 @@ def api_files_move():
     raw_new_name = body.get("new_name")
 
     if not isinstance(raw_path, str) or not raw_path.strip():
-        return jsonify({
-            "ok":    False,
-            "error": "missing 'path' in request body",
-        }), 400
+        return err("missing 'path' in request body", 400)
 
     src = _resolve_within_roots(raw_path)
 
     _must_exist(src)
 
     if src.is_dir():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                "moving directories is not supported in v1; move files "
-                "individually."
-            ),
-        }), 400
+        return err(
+            "moving directories is not supported in v1; move files "
+            "individually.",
+            400)
 
 
     dst = _dest_dir(raw_dest_dir) / _new_name(raw_new_name, src.name)
@@ -1931,26 +1809,20 @@ def api_files_move():
         return jsonify({"ok": True, "path": str(src)})
 
     if dst.exists():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                f"destination already exists: {str(dst)!r}.  Pick a "
-                f"different name or delete the existing entry first."
-            ),
-        }), 409
+        return err(
+            f"destination already exists: {str(dst)!r}.  Pick a "
+            f"different name or delete the existing entry first.",
+            409)
 
     # Sidecar pairing (see rename).
     src_sidecar = _existing_paired_sidecar(src)
     dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
     if dst_sidecar is not None and dst_sidecar.exists():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                f"destination sidecar already exists: "
-                f"{dst_sidecar.name!r}.  Delete it or pick a different "
-                f"destination before moving the structure file."
-            ),
-        }), 409
+        return err(
+            f"destination sidecar already exists: "
+            f"{dst_sidecar.name!r}.  Delete it or pick a different "
+            f"destination before moving the structure file.",
+            409)
 
     _replace_pair(src, dst, src_sidecar, dst_sidecar,
                   verb="move", past="moved")
@@ -1983,23 +1855,17 @@ def api_files_copy():
     raw_new_name = body.get("new_name")
 
     if not isinstance(raw_path, str) or not raw_path.strip():
-        return jsonify({
-            "ok":    False,
-            "error": "missing 'path' in request body",
-        }), 400
+        return err("missing 'path' in request body", 400)
 
     src = _resolve_within_roots(raw_path)
 
     _must_exist(src)
 
     if src.is_dir():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                "copying directories is not supported in v1; copy files "
-                "individually."
-            ),
-        }), 400
+        return err(
+            "copying directories is not supported in v1; copy files "
+            "individually.",
+            400)
 
     # No canonical-topic protection on COPY of files: copying a file
     # out of canonical-topic dirs doesn't orphan anything (the
@@ -2010,43 +1876,31 @@ def api_files_copy():
     dst = _dest_dir(raw_dest_dir) / _new_name(raw_new_name, src.name)
 
     if dst.resolve() == src.resolve():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                "source and destination resolve to the same path; "
-                "use 'new_name' to choose a different filename or "
-                "pick a different 'dest_dir'."
-            ),
-        }), 400
+        return err(
+            "source and destination resolve to the same path; "
+            "use 'new_name' to choose a different filename or "
+            "pick a different 'dest_dir'.",
+            400)
 
     if dst.exists():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                f"destination already exists: {str(dst)!r}.  Pick a "
-                f"different name or delete the existing entry first."
-            ),
-        }), 409
+        return err(
+            f"destination already exists: {str(dst)!r}.  Pick a "
+            f"different name or delete the existing entry first.",
+            409)
 
     src_sidecar = _existing_paired_sidecar(src)
     dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
     if dst_sidecar is not None and dst_sidecar.exists():
-        return jsonify({
-            "ok":    False,
-            "error": (
-                f"destination sidecar already exists: "
-                f"{dst_sidecar.name!r}.  Delete it or pick a different "
-                f"destination before copying the structure file."
-            ),
-        }), 409
+        return err(
+            f"destination sidecar already exists: "
+            f"{dst_sidecar.name!r}.  Delete it or pick a different "
+            f"destination before copying the structure file.",
+            409)
 
     try:
         shutil.copy2(str(src), str(dst))
     except OSError as exc:
-        return jsonify({
-            "ok":    False,
-            "error": f"copy failed: {exc.strerror or str(exc)}",
-        }), 500
+        return err(f"copy failed: {exc.strerror or str(exc)}", 500)
 
     if src_sidecar is not None and dst_sidecar is not None:
         try:
@@ -2058,14 +1912,11 @@ def api_files_copy():
                 dst.unlink()
             except OSError:
                 pass
-            return jsonify({
-                "ok":    False,
-                "error": (
-                    f"copy failed: sidecar copy failed "
-                    f"({exc.strerror or str(exc)}); structure copy "
-                    f"removed to avoid a half-paired result."
-                ),
-            }), 500
+            return err(
+                f"copy failed: sidecar copy failed "
+                f"({exc.strerror or str(exc)}); structure copy "
+                f"removed to avoid a half-paired result.",
+                500)
 
     return jsonify({"ok": True, "path": str(dst)})
 
@@ -2109,10 +1960,7 @@ def api_files_delete():
     force = bool(body.get("force", False))
 
     if not isinstance(raw_path, str) or not raw_path.strip():
-        return jsonify({
-            "ok": False,
-            "error": "missing 'path' in request body",
-        }), 400
+        return err("missing 'path' in request body", 400)
 
     resolved = _resolve_within_roots(raw_path)
 
@@ -2126,11 +1974,10 @@ def api_files_delete():
     depth = len(rel_parts)
 
     if depth == 0:
-        return jsonify({
-            "ok":   False,
-            "error": ("refusing to delete the picker root itself; "
-                      "this would wipe every project at once"),
-        }), 400
+        return err(
+            "refusing to delete the picker root itself; "
+            "this would wipe every project at once",
+            400)
 
     # Depth 2 = directly under a project.  If the leaf name is a
     # canonical topic AND it's a directory, refuse by default:
@@ -2142,14 +1989,13 @@ def api_files_delete():
     # The CONDITION is shared with `rename`; the `force` escape is this route's
     # own policy (see `_is_canonical_topic_dir`).
     if _is_canonical_topic_dir(resolved, rel_parts) and not force:
-        return jsonify({
-            "ok":   False,
-            "error": (f"refusing to delete canonical-topic directory "
-                      f"{rel_parts[1]!r} via the UI (would orphan the "
-                      f"project layout).  Pass force=true to override "
-                      f"after warning the user; the sidebar topic-dir "
-                      f"kebab takes this path."),
-        }), 400
+        return err(
+            f"refusing to delete canonical-topic directory "
+            f"{rel_parts[1]!r} via the UI (would orphan the "
+            f"project layout).  Pass force=true to override "
+            f"after warning the user; the sidebar topic-dir "
+            f"kebab takes this path.",
+            400)
 
     # Non-empty dir requires explicit recursive flag.  Empty dirs
     # and plain files can be deleted without it.
@@ -2159,17 +2005,13 @@ def api_files_delete():
         try:
             non_empty = any(resolved.iterdir())
         except OSError as exc:
-            return jsonify({
-                "ok": False,
-                "error": f"could not enumerate directory: {exc}",
-            }), 500
+            return err(f"could not enumerate directory: {exc}", 500)
         if non_empty and not recursive:
-            return jsonify({
-                "ok":   False,
-                "error": (f"directory is not empty: {str(resolved)!r}.  "
-                          f"Pass recursive=true to delete it and "
-                          f"everything inside."),
-            }), 409
+            return err(
+                f"directory is not empty: {str(resolved)!r}.  "
+                f"Pass recursive=true to delete it and "
+                f"everything inside.",
+                409)
 
     # Sidecar pairing: deleting a structure FILE (.xyz/.pdb) must also remove
     # its paired .molstruct.json -- the mirror of the rename/move/copy pairing -- else the
@@ -2189,15 +2031,9 @@ def api_files_delete():
         else:
             resolved.unlink()
     except PermissionError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"permission denied: {exc}",
-        }), 403
+        return err(f"permission denied: {exc}", 403)
     except OSError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"delete failed: {exc}",
-        }), 500
+        return err(f"delete failed: {exc}", 500)
 
     # Remove the paired sidecar in lockstep.  The structure file is already gone, so a
     # sidecar-removal failure is surfaced (the user can clean it up) but does not resurrect
@@ -2208,12 +2044,11 @@ def api_files_delete():
             paired_sidecar.unlink()
             sidecar_removed = str(paired_sidecar)
         except OSError as exc:
-            return jsonify({
-                "ok": False,
-                "error": (f"deleted {resolved.name!r} but its paired sidecar "
-                          f"{paired_sidecar.name!r} could not be removed: {exc}.  "
-                          f"Remove it manually to avoid an orphaned sidecar."),
-            }), 500
+            return err(
+                f"deleted {resolved.name!r} but its paired sidecar "
+                f"{paired_sidecar.name!r} could not be removed: {exc}.  "
+                f"Remove it manually to avoid an orphaned sidecar.",
+                500)
 
     return jsonify({
         "ok":   True,

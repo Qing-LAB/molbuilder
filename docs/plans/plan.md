@@ -90,8 +90,8 @@ is one release per owning door, the contract first, the copies deleted, a
 discipline reader before each commit (the ledger's *Found by the overlap
 audit*). **2.69.10**: structure files through the one writer. **2.69.11**:
 reading answers (the browser half; the files layer keeps its results, the
-user's word). Next, in order: 2.69.12 the server's one error builder (330
-failure answers built by hand, measured), 2.69.13 status lines and words
+user's word). **2.69.12**: every failure answer through the one builder
+(298 written by hand beside it, measured). Next, in order: 2.69.13 status lines and words
 drawn, 2.69.14 findings and notices, 2.69.15 page state, 2.69.16 words for
 values, 2.69.17 paths and keys, 2.69.18 tests; then the tabs following the sidebar's folder
 (where the Send writes, the live check of it — the user's yes, 2026-11-09),

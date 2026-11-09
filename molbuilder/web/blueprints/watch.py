@@ -39,6 +39,7 @@ from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
+from ._shared import err
 
 from molbuilder.parse import (
     ParseError,
@@ -118,7 +119,8 @@ def _remove_temp_quietly(path: str) -> None:
 
 
 def _refuse_if_not_a_trajectory(parser_cls):
-    """``None`` if this parser answers a trajectory, else a 400 body.
+    """``None`` if this parser answers a trajectory, else the refusal's
+    sentence, which the route answers through the one builder (`err`, 400).
 
     `/api/watch/*` is the TRAJECTORY route: everything after detection
     reads ``.frames``, so a single-geometry file -- one the app itself
@@ -143,15 +145,11 @@ def _refuse_if_not_a_trajectory(parser_cls):
         return None
     kind = getattr(getattr(parser_cls, "output", None), "__name__",
                    "an unknown result")
-    return {
-        "ok": False,
-        "error": (
-            f"{parser_cls.label} is read by the {parser_cls.name!r} parser, "
+    return (f"{parser_cls.label} is read by the {parser_cls.name!r} parser, "
             f"which answers a {kind} -- not a trajectory. This viewer shows "
             f"a run's frames over time. Open the run's {ROLE_MOLWATCH} (or a "
             f"*{ROLE_GEOM_TRAJ}) to see the trajectory this geometry came "
-            f"from."),
-    }
+            f"from.")
 
 
 def _engine_of(search_dir, payload, parser_cls) -> str:
@@ -421,7 +419,7 @@ def api_load():
     body = request.get_json(silent=True) or {}
     raw_path = (body.get("path") or "").strip()
     if not raw_path:
-        return jsonify({"ok": False, "error": "Empty path."}), 400
+        return err("Empty path.", 400)
     # The JSON-path mode routes through the canonical
     # ``_resolve_within_roots`` helper like every other path-taking
     # endpoint, per web-api.md § 2.1: it constrains to the picker roots
@@ -443,25 +441,19 @@ def api_load():
         path, attempts = openable(raw_path)
         if path is None:
             tried = "\n  ".join(attempts) if attempts else "(no candidates)"
-            return jsonify({
-                "ok": False,
-                "error": (
-                    f"Nothing here a viewer can open:\n"
-                    f"  {raw_path}\n"
-                    f"What was tried:\n"
-                    f"  {tried}\n"
-                    f"Point the viewer at a run's folder -- one prep "
-                    f"opened -- or at one of its files."
-                ),
-            }), 404
+            return err(
+                f"Nothing here a viewer can open:\n"
+                f"  {raw_path}\n"
+                f"What was tried:\n"
+                f"  {tried}\n"
+                f"Point the viewer at a run's folder -- one prep "
+                f"opened -- or at one of its files.",
+                404)
         resolved_from_dir = raw_path
     else:
         path = raw_path
         if not os.path.isfile(path):
-            return jsonify({
-                "ok": False,
-                "error": f"File or directory not found: {path}",
-            }), 404
+            return err(f"File or directory not found: {path}", 404)
 
     # Auto-detect parser before committing to the new path so an
     # unsupported file doesn't blank out a working one.
@@ -473,19 +465,18 @@ def api_load():
         # file, and that is its SIBLING, not its subclass
         # (`parse/errors.py`).  The message names the clashing
         # parsers, so a 400 carrying it is useful.
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     refusal = _refuse_if_not_a_trajectory(parser_cls)
     if refusal is not None and resolved_from_dir is not None:
         # A FOLDER WHOSE RESULT IS NO TRAJECTORY -- a transmission run's, its
         # calculation's report at its point (`runs.openable`) -- is said so,
         # with where it opens, never sent to a log the run does not write.
-        refusal = {"ok": False, "error": (
-            f"{raw_path} opens {path} -- {parser_cls.label}, which the "
-            f"Results tab shows; this viewer shows a run's frames over "
-            f"time.")}
+        refusal = (f"{raw_path} opens {path} -- {parser_cls.label}, which "
+                   f"the Results tab shows; this viewer shows a run's frames "
+                   f"over time.")
     if refusal is not None:
-        return jsonify(refusal), 400
+        return err(refusal, 400)
 
     with _lock:
         _state["path"]     = path
@@ -494,12 +485,12 @@ def api_load():
         _state["parser"]   = parser_cls
         _state["uploaded"] = False
 
-    state, err = _refresh_if_changed()
-    if err:
-        return jsonify({"ok": False, "error": err}), 500
-    run, state, err = _with_the_run(state)
-    if err:
-        return jsonify({"ok": False, "error": err}), 500
+    state, fault = _refresh_if_changed()
+    if fault:
+        return err(fault, 500)
+    run, state, fault = _with_the_run(state)
+    if fault:
+        return err(fault, 500)
     # The run's metadata, ONCE per load, for the structure envelope and the
     # answer alike, with the file this load opened and its parse handed on:
     # the relaxation record is of the file on screen.  The parse rides only when it is of that file -- a load racing this
@@ -512,9 +503,10 @@ def api_load():
     try:
         frame0 = _frame0_structure(state["data"], view)
     except ValueError as exc:
-        return jsonify({"ok": False,
-                        "error": f"{path}: the run's structure could not be "
-                                 f"read from what its deck states -- {exc}"}), 400
+        return err(
+            f"{path}: the run's structure could not be "
+            f"read from what its deck states -- {exc}",
+            400)
     return jsonify({
         "ok":               True,
         "path":             state["path"],
@@ -552,7 +544,7 @@ def _api_load_multipart(uploaded_file):
     global _last_temp_upload
 
     if not uploaded_file or not uploaded_file.filename:
-        return jsonify({"ok": False, "error": "Empty filename."}), 400
+        return err("Empty filename.", 400)
 
     # KEPT UNDER ITS OWN NAME, a unique prefix before it: a reader is
     # chosen by the file's name (`model/parse.md` § 4 -- geomeTRIC's
@@ -577,8 +569,7 @@ def _api_load_multipart(uploaded_file):
         os.close(tmp_fd)
         uploaded_file.save(tmp_path)
     except OSError as exc:
-        return jsonify({"ok": False,
-                        "error": f"Failed to write upload: {exc}"}), 500
+        return err(f"Failed to write upload: {exc}", 500)
 
     try:
         parser_cls = detect_parser(tmp_path)
@@ -587,12 +578,12 @@ def _api_load_multipart(uploaded_file):
         # AmbiguousFormatError as well -- see the note at the JSON-path
         # branch above.
         _remove_temp_quietly(tmp_path)
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
 
     refusal = _refuse_if_not_a_trajectory(parser_cls)
     if refusal is not None:
         _remove_temp_quietly(tmp_path)
-        return jsonify(refusal), 400
+        return err(refusal, 400)
 
     with _lock:
         # Clean up any previous upload's temp file.
@@ -605,9 +596,9 @@ def _api_load_multipart(uploaded_file):
         _state["parser"]   = parser_cls
         _state["uploaded"] = True
 
-    state, err = _refresh_if_changed()
-    if err:
-        return jsonify({"ok": False, "error": err}), 500
+    state, fault = _refresh_if_changed()
+    if fault:
+        return err(fault, 500)
     view = _load_view(state["data"])
     meta = _run_metadata(view)
     return jsonify({
@@ -642,14 +633,14 @@ def _api_load_multipart(uploaded_file):
 def api_data():
     """Return the parsed payload, or just an mtime if nothing changed."""
     client_mtime = request.args.get("mtime", type=float)
-    state, err = _refresh_if_changed()
-    if err:
+    state, fault = _refresh_if_changed()
+    if fault:
         # web-api.md § 1, *Status codes* -- server fault: parse / IO error on a
         # user-selected trajectory file, the same 500 the sibling
         # /api/watch/load returns.  The JS poll-loop reads body.ok; external
         # consumers (curl / CI / monitoring) gating on HTTP status see the
         # actual failure.
-        return jsonify({"ok": False, "error": err}), 500
+        return err(fault, 500)
     if client_mtime is not None and client_mtime == state["mtime"]:
         # NOTHING NEW FOR THIS VIEWER: how the run is doing is the news
         # (`web/results.md` § 4.1) -- and when it is over, the file's last
@@ -658,9 +649,9 @@ def api_data():
         if state.get("uploaded"):
             return jsonify({"ok": True, "changed": False,
                             "mtime": state["mtime"], "run": None})
-        run, state, err = _with_the_run(state)
-        if err:
-            return jsonify({"ok": False, "error": err}), 500
+        run, state, fault = _with_the_run(state)
+        if fault:
+            return err(fault, 500)
         if client_mtime == state["mtime"]:
             return jsonify({"ok": True, "changed": False,
                             "mtime": state["mtime"], "run": run})
@@ -681,12 +672,12 @@ def _with_the_run(state: Dict[str, Any]
     run = run_answer(state["path"])
     if run is not None and run["live"]:
         return run, state, None
-    again, err = _refresh_if_changed()
-    if err or again is None or again["mtime"] == state["mtime"]:
+    again, fault = _refresh_if_changed()
+    if fault or again is None or again["mtime"] == state["mtime"]:
         # Nothing new: the state in hand, with the parse it carries -- the
         # load hands that parse on (`_run_metadata`), and a refresh that
         # found nothing has none to hand.
-        return run, state, err
+        return run, state, fault
     return run, again, None
 
 

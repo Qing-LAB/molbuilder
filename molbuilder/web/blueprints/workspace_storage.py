@@ -35,6 +35,7 @@ import logging
 import re
 
 from flask import Blueprint, jsonify, request
+from ._shared import err
 
 from molbuilder import persist
 from molbuilder.projects import projects_root
@@ -76,10 +77,6 @@ _residue_warned = False
 #: Top-level workspace home under the projects root (gitignore-able; created
 #: lazily): ``<projects_root>/.molbuilder_workspace/states/``.
 SCRATCH_DIR = ".molbuilder_workspace"
-
-
-def _bad(msg, status=400):
-    return jsonify({"ok": False, "error": msg}), status
 
 
 def _body():
@@ -135,11 +132,11 @@ def ws_write_state():
     b = _body()
     ws_id, idx, data = b.get("workspace_id"), _state_index(b.get("state_index")), b.get("data")
     if not _valid_ws_id(ws_id):
-        return _bad("missing or invalid 'workspace_id'")
+        return err("missing or invalid 'workspace_id'")
     if idx is None:
-        return _bad("missing or invalid 'state_index' (non-negative int)")
+        return err("missing or invalid 'state_index' (non-negative int)")
     if data is None:
-        return _bad("missing 'data'")
+        return err("missing 'data'")
     d = _state_dir()
     d.mkdir(parents=True, exist_ok=True)
     persist.write_json(_state_path(ws_id, idx), data)
@@ -193,16 +190,16 @@ def ws_read_state():
     b = _body()
     ws_id, idx = b.get("workspace_id"), _state_index(b.get("state_index"))
     if not _valid_ws_id(ws_id):
-        return _bad("missing or invalid 'workspace_id'")
+        return err("missing or invalid 'workspace_id'")
     if idx is None:
-        return _bad("missing or invalid 'state_index' (non-negative int)")
+        return err("missing or invalid 'state_index' (non-negative int)")
     p = _state_path(ws_id, idx)
     if not p.exists():
         return jsonify({"ok": True, "data": None})
     try:
         return jsonify({"ok": True, "data": persist.read_json(p)})
     except Exception as e:  # noqa: BLE001 -- corrupt file -> 500
-        return _bad(f"could not read state {ws_id}.{idx}: {e}", 500)
+        return err(f"could not read state {ws_id}.{idx}: {e}", 500)
 
 
 @bp.route("/api/workspace-storage/prune", methods=["POST"])
@@ -212,9 +209,9 @@ def ws_prune_states():
     b = _body()
     ws_id, above = b.get("workspace_id"), b.get("above_index")
     if not _valid_ws_id(ws_id):
-        return _bad("missing or invalid 'workspace_id'")
+        return err("missing or invalid 'workspace_id'")
     if isinstance(above, bool) or not isinstance(above, int) or above < -1:
-        return _bad("missing or invalid 'above_index' (int >= -1)")
+        return err("missing or invalid 'above_index' (int >= -1)")
     removed = 0
     for i in _state_indices(ws_id):
         if i > above:

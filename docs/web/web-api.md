@@ -22,12 +22,23 @@ round-trip (§ 6) and a list of removed routes (§ 7).
 Every JSON route returns a top-level `ok`:
 
 - **Success** — `{ "ok": true, …payload }`, HTTP 200.
-- **Failure** — `{ "ok": false, "error": "<a human message>" }`, a non-200 status.
+- **Failure** — `{ "ok": false, "error": "<a human message>" }`, a non-200
+  status — or 200 for an advisory, a valid question answered no (§ Status
+  codes).
 
 There is exactly one error builder and one structure-success builder, both in
 `blueprints/_shared.py`:
 
-- `err(msg, code=400)` → `{ "ok": false, "error": msg }` at the given status.
+- `err(msg, code=400, **fields)` → `{ "ok": false, "error": msg, …fields }` at
+  the given status — **every** failure answer is built by it *(2.69.12; until
+  then about 300 were written by hand beside it)*. The sentence is the
+  refusal; `fields` are what a page acts on beside it — `findings` (rows
+  beside the fields that caused them), `issues`, `notes`, `needsOverwrite`
+  and `replaces` (the overwrite question,
+  [`projects.md`](?doc=web/projects.md) § 3), `actual_mtime` (an edit another
+  writer overtook), `kind`, `login_url`, a channel probe's `reached` and
+  `status`, a sidecar's `expected_version` and `actual_version`, a file's
+  `size` past the cap.
 - `ok_structure_response(struct, extra)` → the success envelope for any route
   that returns a molecule (`/api/build/load`, `/api/build/molecule`, all
   `/api/modify/*`). **It validates what it is about to send** — being the only
@@ -566,7 +577,7 @@ a trap for the next painter.
 | GET `/api/notify/report-fields` | `{"ok": true, "fields": [{"name", "offered_as"}]}` — the fields a report of this calculation can carry, in the declaration's order, with the words the card offers each by; `?engine=&calculation=` narrow it, and either absent narrows nothing. From the one declaration (`report_fields`) a job request's `notify` is checked against at save. The other route the Task-setup tab calls ([`task-setup.md`](?doc=web/task-setup.md) § 9b) |
 | PUT `/api/notify/channels/<name>` | Add or update one, `0600`, at `<config dir>/secrets/notify` — the path from the monitor's own function, so the two cannot disagree. An address the monitor would not send to is refused, `400`, by the monitor's own rule (`monitor.address_refusal`), naming the fault and never the address (run-reports § 3). **Merges** across channels and within one, so a blank key box means *unchanged*; it clears only the previous single-destination shape's top-level `url`/`key`/`headers` (run-reports § 3.1) |
 | DELETE `/api/notify/channels/<name>` | Remove one. **Absent is off**, and off is a state you can reach without a shell |
-| POST `/api/notify/channels/<name>/test` | Send one report to that channel through the monitor's own request builder and say what happened — the only check that exercises the file, the URL, the segment, the signature, egress and TLS together. A failure says what failed (`monitor.delivery_failure`), never the address; a stored channel the monitor skips is `400`, naming its fault; one not stored is `404` |
+| POST `/api/notify/channels/<name>/test` | Send one report to that channel through the monitor's own request builder and say what happened — the only check that exercises the file, the URL, the segment, the signature, egress and TLS together. A failure says what failed (`monitor.delivery_failure`), never the address — an advisory, 200: not reached (`reached: false`), or reached and refused (`reached: true`, the channel's `status`, its sentence the server's: a 404 names every way a listener refuses; since 2.69.12, when it rode a `hint` the page finished); the answer carries the channels as they now stand; a stored channel the monitor skips is `400`, naming its fault; one not stored is `404` |
 | GET `/api/notify/listener` | Whether **this server** receives reports: the route segment, who holds a key, and whether the route is `live` or only `configured` (a restart pending). Never a key |
 | GET `/api/notify/reports` | **What this server's listener received** — the reports in `<state dir>/reports/<user>.jsonl` for `?user=<name>` (the signed-in user by default), newest first, read through the reports reader (`parse/instruments/reports.py`): `{ok, user, file, total, skipped, reports: [{run, job, host, sent_at, event, text, <fields>, card: {title, text, color, fields}}]}` — `card` the chat card's picture (`monitor.card`), so the tab draws what Slack and Discord got; `skipped` the lines that did not read. `?limit=N` (default 200) and `?since=<epoch>` narrow it. Three states, never an error: a name the listener holds a key for and no file yet answers `total: 0` with no `note`; no user to read for (`user: null`), or a name the listener holds no key and no file for, answers `total: 0` with a `note` saying which ([`this-machine.md`](?doc=web/this-machine.md) § 4.1) |
 | POST `/api/notify/listener/keys/<user>` | Issue or rotate one, through the same door as `notify-token` — the route is read from the key file. **Returns the key once**, the only time it is ever readable |

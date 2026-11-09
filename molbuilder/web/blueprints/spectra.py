@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, render_template, request
+from ._shared import err
 
 
 from molbuilder.sidecars.spectra import (
@@ -341,12 +342,13 @@ def api_spectra_load():
         infrared = _view_asked(body, "infrared", _ir.read_ask)
         raman = _view_asked(body, "raman", _raman.read_ask)
     except ValueError as exc:
-        return jsonify({"ok": False, "kind": "field", "error": str(exc)}), 400
+        return err(str(exc), 400, kind="field")
     path = body.get("path")
     if not path:
-        return jsonify({"ok": False,
-                        "error": "no path -- the result is the file the "
-                                 "Results tab's dropdown picked"}), 400
+        return err(
+            "no path -- the result is the file the "
+            "Results tab's dropdown picked",
+            400)
     # THE FENCE (web-api.md § 2.1).  The parser -- correctly, being a
     # generic reader -- does a bare open(), so without it any path the
     # server process could read would have its EXISTENCE readable from
@@ -411,8 +413,10 @@ def api_spectra_frameset():
         rule = ({} if body.get("nodes") is None
                 else {"nodes": int(body["nodes"])})
     except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "mode and nodes are whole "
-                                              "numbers"}), 400
+        return err(
+            "mode and nodes are whole "
+            "numbers",
+            400)
     root = projects_root()
     try:
         got = frameset_from_mode(
@@ -420,7 +424,7 @@ def api_spectra_frameset():
             temperature_k=body.get("temperature_k"),
             out=out, root=root, **rule)
     except FrameSetError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     try:
         wire = got.to_wire(root)
     except ValueError:
@@ -452,9 +456,9 @@ def api_spectra_export():
         got = export(calc, str(request.args.get("format") or ""),
                      folder=path if path.is_dir() else path.parent, **asked)
     except FileNotFoundError:
-        return jsonify({"ok": False, "error": f"nothing at {raw_path}"}), 404
+        return err(f"nothing at {raw_path}", 404)
     except (NotACalculation, ExportError, ValueError, OSError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     return sent_export(got)
 
 
@@ -468,37 +472,20 @@ def _err_load(exc: SpectraJsonError):
     molbuilder" hint directly.
     """
     if isinstance(exc, SpectraJsonNotFoundError):
-        return jsonify({
-            "ok":    False,
-            "error": str(exc),
-            "kind":  "not_found",
-        }), 404
+        return err(str(exc), 404, kind="not_found")
     if isinstance(exc, SpectraJsonSchemaError):
-        return jsonify({
-            "ok":               False,
-            "error":            str(exc),
-            "kind":             "schema_mismatch",
-            "expected_version": exc.expected,
-            "actual_version":   exc.actual,
-        }), 422
+        return err(
+            str(exc),
+            422,
+            kind="schema_mismatch",
+            expected_version=exc.expected,
+            actual_version=exc.actual)
     if isinstance(exc, SpectraJsonMalformedError):
-        return jsonify({
-            "ok":    False,
-            "error": str(exc),
-            "kind":  "malformed",
-        }), 400
+        return err(str(exc), 400, kind="malformed")
     if isinstance(exc, SpectraJsonFieldError):
-        return jsonify({
-            "ok":    False,
-            "error": str(exc),
-            "kind":  "field",
-        }), 400
+        return err(str(exc), 400, kind="field")
     # Generic SpectraJsonError catch-all.
-    return jsonify({
-        "ok":    False,
-        "error": str(exc),
-        "kind":  "parse_error",
-    }), 400
+    return err(str(exc), 400, kind="parse_error")
 
 
 __all__ = ["bp"]

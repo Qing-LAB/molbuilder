@@ -23,6 +23,7 @@ Spec: ``docs/web/results.md``.
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, make_response, render_template, request
+from ._shared import err
 
 bp = Blueprint("results", __name__)
 
@@ -113,7 +114,7 @@ def api_results_contract():
 
     raw = str(request.args.get("path") or "")
     if not raw:
-        return jsonify({"ok": False, "error": "no path given"}), 400
+        return err("no path given", 400)
     p = _resolve_within_roots(raw)
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
     # THE RUN THAT FOLDER SPEAKS FOR: its contract from its own deck, its
@@ -127,7 +128,7 @@ def api_results_contract():
         info = view_of(run_of(directory), output=output).info or {}
     except DeckRecordUnreadable as exc:
         # A DECK WHOSE RECORD DOES NOT READ is said, never a crash.
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return err(str(exc), 400)
     return jsonify({"ok": True, "calculation": info.get("calculation"),
                     "relaxation": info.get("relaxation")})
 
@@ -156,12 +157,11 @@ def api_results_dir():
 
     raw = str(request.args.get("path") or "")
     if not raw:
-        return jsonify({"ok": False, "error": "no path given"}), 400
+        return err("no path given", 400)
     p = _resolve_within_roots(raw)
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
     if not directory.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"{raw}: not a directory"}), 404
+        return err(f"{raw}: not a directory", 404)
     # `run_dir`: the folder answered, as the server resolves it -- the
     # picker's spelling of the folder bound (`web-api.md`).
     return jsonify({"ok": True, "run_dir": str(directory),

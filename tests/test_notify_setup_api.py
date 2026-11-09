@@ -597,7 +597,7 @@ def test_a_404_is_explained_rather_than_reported_bare(client, monkeypatch):
     got = c.post(CH + "/lab/test").get_json()
     assert got["ok"] is False and got["status"] == 404
     for phrase in ("route segment", "key"):
-        assert phrase in got["hint"], f"the hint does not mention {phrase}"
+        assert phrase in got["error"], f"the refusal does not mention {phrase}"
 
 
 def test_unreachable_is_distinguished_from_refused(client, monkeypatch):
