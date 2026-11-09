@@ -391,6 +391,17 @@ Everything below is on `window.molbuilder.projects`. The read/subscribe calls
 are instant (no network); the file calls each make one server request and return
 a uniform `{ ok, … }` result — they never throw.
 
+**The files layer's result** *(the user, 2026-11-09: the layer keeps its
+results)*: every file call answers `{ok: true, …the route's fields}` — `text`,
+`entries`, `path` — or `{ok: false, error, …the refusal's fields}`
+(`actual_mtime`, `needsOverwrite`, `replaces`), with `aborted` for a request
+cancelled; `upload`, asked and told no, answers `{ok: false, cancelled: true}`.
+The server's answer is read in one place, `projects/api.js` — the only place
+the files routes are asked from — and the calls below add what is theirs: a
+written file's `relPath`, and `readCurrentFile`'s `{ok, path, text}` (`null`
+with nothing selected). The rule beside it is [`ui-contract.md`](?doc=web/ui-contract.md)
+§ 12's: a module answers in its own documented shape.
+
 **Where you are + following it**
 
 | Call | What it does |
@@ -447,6 +458,7 @@ does not decide for the user.
 | `readFile(path, opts)` / `readCurrentFile(opts)` | read a file / the selected file |
 | `readRange(path, offset, maxBytes)` | read a byte window (for large files) |
 | `listDir(path)` | list a folder for a consumer (e.g. the Results file picker) |
+| `zipPrepare(dir)` | what the folder's archive would hold, its size and what it leaves out — `POST /api/files/zip_prepare`, nothing built (§ 4) |
 | `writeFile(path, text\|Blob)` | write a file (string → write, Blob → upload); the folder announced |
 
 **Organizing files** (each announces, on success, the folders it changed — and

@@ -414,13 +414,11 @@ const WORKSPACE_TAG = "results:transport";
             }, 2000);
             // THE ANSWER, handed to the one who asked: the outcomes, or why
             // there are none.
+            // THE READER'S ANSWER AS IT IS (ui-contract.md § 12).
             let answer;
             try {
-                const a = await askServer("/api/transport/digest", {
+                answer = await askServer("/api/transport/digest", {
                     method: "POST", body: { path: file, ...body } });
-                answer = a.ok
-                    ? { ok: true, outcomes: a.body.outcomes || [] }
-                    : { ok: false, error: a.error };
                 /* THE DIGEST IS WRITTEN BESIDE THE DATA FILE: its folder
                  * announced (web/projects.md § 2). */
                 const projects = root.molbuilder && root.molbuilder.projects;
@@ -436,10 +434,12 @@ const WORKSPACE_TAG = "results:transport";
                 busy = false;
                 reading = false;            // the record is fetched below
             }
-            msg.textContent = answer.ok
-                ? answer.outcomes.filter((o) => o.state !== "kept")
+            // THE SERVER'S WORDS, DRAWN (ui-contract.md § 12.1).
+            msg.replaceChildren(root.molbuilder.dom.codeWords(answer.ok
+                ? (answer.body.outcomes || [])
+                    .filter((o) => o.state !== "kept")
                     .map((o) => o.said).join("; ")
-                : answer.error;
+                : answer.error));
             if (state.disposed) return answer;
             await ask();
             if (state.reload) state.reload();

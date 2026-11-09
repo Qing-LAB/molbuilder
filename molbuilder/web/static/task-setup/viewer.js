@@ -1282,9 +1282,10 @@ function renderMachine(task) {
                              id: "ts-machine-labels-note" }, "");
             card.insertBefore(note, $("ts-machine-rows"));
         }
-        note.textContent =
-            "Showing raw setting names — the label list did not load "
-            + "(reload the page once the server is back).";
+        // THE READER'S WORDS FOR WHY, through the one status writer.
+        window.molbuilder.status.set(
+            note, "Showing raw setting names — " + _vocabFailed + ".",
+            "warn");
         note.hidden = false;
     } else if (note) {
         note.hidden = true;
@@ -2199,28 +2200,21 @@ const _colsInflight = {};   // key -> the pending fetch (see loadColumnChoices)
  * exists to prevent, so this is a lookup into what the schema returned. */
 const _meta = Object.create(null);
 let _sweep = null;      // the ones a benchmark may sweep
-//: Whether ANY server-side vocabulary failed to load this page-load.
-//: One fact, one flag: the card's note says the names are raw, and it
-//: does not matter which lookup was the one that failed.
+//: Why a list carrying the settings' labels failed to load this page-load
+//: -- the reader's words for the first that failed (`_labelsFailed`) -- or
+//: false.  The machine card's note says the names are raw, and why.
 let _vocabFailed = false;
 let _sweepKey = null;
 const _sweepInflight = {};  // key -> the pending fetch
 
-/** ONE guarded read of a server-side vocabulary -- columns, sweepable
- * settings and tier presets.
- *
- * Returns `{ok, body}`.  A failure is the CALLER'S to degrade around -- these
- * are vocabularies, and a page that has the substance can show it with the
- * raw names.
- */
-async function fetchVocabulary(url, what) {
-    const answer = await ask(url);
-    if (answer.ok) return { ok: true, body: answer.body };
-    _vocabFailed = true;
-    if (window.console) {
-        console.warn("[task-setup] " + what + " unavailable:", answer.error);
+/** A LIST THAT CARRIES THE SETTINGS' LABELS did not load: the first such
+ * reason kept, for the machine card to say why its names are raw.  A list
+ * of labels is a vocabulary, and a page that has the substance shows it with
+ * the raw names. */
+function _labelsFailed(answer, what) {
+    if (!answer.ok && !_vocabFailed) {
+        _vocabFailed = "the " + what + " did not load: " + answer.error;
     }
-    return { ok: false, body: null };
 }
 
 
@@ -2257,10 +2251,11 @@ async function loadColumnChoices(engine) {
     if (_colsInflight[key]) return _colsInflight[key];
     _colsKey = key;
     const p = (async () => {
-        const got = await fetchVocabulary(
+        const got = await ask(
             "/api/task-setup/columns?engine="
             + encodeURIComponent(engine)
-            + "&calculation=" + encodeURIComponent(kind), "column list");
+            + "&calculation=" + encodeURIComponent(kind));
+        _labelsFailed(got, "column list");
         const items = (got.ok && got.body && got.body.items) || [];
         if (_colsKey !== key) return items;      // a newer load owns the slot
         _cols = items;
@@ -2326,11 +2321,11 @@ async function loadSweepChoices(engine) {
      * labels are missing.  A surface that cannot get its nicety shows what it
      * has; only a surface that cannot get its SUBSTANCE may refuse. */
     const p = (async () => {
-        const got = await fetchVocabulary(
+        const got = await ask(
             "/api/task-setup/sweepable?engine="
             + encodeURIComponent(engine)
-            + "&calculation=" + encodeURIComponent(kind),
-            "sweepable settings");
+            + "&calculation=" + encodeURIComponent(kind));
+        _labelsFailed(got, "list of sweepable settings");
         const items = (got.ok && got.body && got.body.items) || [];
         if (got.ok && got.body && Array.isArray(got.body.lane_asks)) {
             _laneAsks = got.body.lane_asks;
@@ -2595,11 +2590,11 @@ async function loadPresets(engine) {
     if (_presetsInflight[key]) return _presetsInflight[key];   // one fetch per key
     _presetsKey = key;
     const p = (async () => {
-        const got = await fetchVocabulary(
+        // NO PRESETS offers no tier; the settings' names do not hang on it.
+        const got = await ask(
             "/api/task-setup/presets?engine="
             + encodeURIComponent(engine)
-            + "&calculation=" + encodeURIComponent(kind),
-            "tier presets");
+            + "&calculation=" + encodeURIComponent(kind));
         const presets = (got.ok && got.body && got.body.presets) || [];
         if (_presetsKey !== key) return presets;   // a newer load owns the slot
         _presets = presets;
@@ -3588,8 +3583,8 @@ function prepButton(kind, picks) {
                 const r = await _prepCall(kind, picks, true);
                 _showPrepAnswers(wrap, say, r);
                 if (!r.ok) return;
-                planned = r.plan_id || null;
-                const several = r.answers.length > 1;
+                planned = r.body.plan_id || null;
+                const several = r.body.answers.length > 1;
                 /* A13 -- THE END POINT, as the plan holds it, line for line:
                  * the header where a scheduler runs the job -- the run script
                  * takes its counts from the allocation there -- else the run
@@ -3630,7 +3625,7 @@ function prepButton(kind, picks) {
                  * job: where its header is written, a first launch sends
                  * that header, not a member's own, so it alone is shown
                  * (`job-system.md` § 5.0, checkpoint 6). */
-                for (const a of r.answers) {
+                for (const a of r.body.answers) {
                     const g = a.group;
                     const job = g && g.launch.header.length ? g : null;
                     if (!job) {
@@ -3792,11 +3787,10 @@ async function _prepCall(kind, picks, plan, planId) {
     // its own copy of the record answers (`configuration.md` M-3), as the
     // terminal's prep with no --target.
     if (_machine && !_fs.setTo) body.target = _machine;
-    // A REFUSAL KEEPS WHAT IT POINTED AT -- its findings and notes -- with
+    // THE READER'S ANSWER AS IT IS (ui-contract.md § 12): a refusal keeps
+    // what it pointed at -- its findings and notes -- in its body, beside
     // the reader's words for why.
-    const answer = await ask("/api/task-setup/prep", { method: "POST", body });
-    return answer.ok ? answer.body
-        : Object.assign({}, answer.body, { ok: false, error: answer.error });
+    return await ask("/api/task-setup/prep", { method: "POST", body });
 }
 
 /** One box of the entry's answer: its findings through the one renderer
@@ -3823,11 +3817,12 @@ function _prepAnswerBox(wrap, { head, findings, lines }) {
  *  at -- the preflight's notes and what the inputs said -- beside its own
  *  sentence (a refused prep wrote nothing, `job-system.md` § 5.0), or what the
  *  prep says once, then each picked stage's own answer in order. */
-function _showPrepAnswers(wrap, say, r) {
+function _showPrepAnswers(wrap, say, answer) {
     for (const old of wrap.querySelectorAll(".ts-prep-answer")) old.remove();
-    if (!r.ok) {
+    const r = answer.body || {};
+    if (!answer.ok) {
         say.textContent = "";
-        say.append(codeWords(r.error));
+        say.append(codeWords(answer.error));
         say.setAttribute("data-state", "bad");
         _prepAnswerBox(wrap, { findings: [r.findings], lines: r.notes });
         return;

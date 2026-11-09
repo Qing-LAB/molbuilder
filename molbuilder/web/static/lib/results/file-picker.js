@@ -63,6 +63,8 @@
  *                         folder's answer -- what the menu lists, what it
  *                         opens, the point, the run of points' view -- the
  *                         scan's and a run picked off the ladder's.
+ *   ``askFolder(dir, opts)`` -- the one question about a folder
+ *                         (`/api/results/dir`), the reader's answer as it is.
  *   ``metaOf(rec)``    -- pure: a listed file's ``meta`` for presenters.
  *
  * Idempotency note: the picker reacts to onChange events; calling
@@ -282,6 +284,15 @@
         });
         // Strip the private sort key before returning.
         return groups.map(g => ({ label: g.label, entries: g.entries }));
+    }
+
+    /** THE ONE QUESTION ABOUT A FOLDER -- `/api/results/dir`, the HTTP
+     *  surface over `parse.dirs` (results.md § 0.2) -- through the one
+     *  reader (ui-contract.md § 12): the picker's scan and the ladder's
+     *  run pick ask it here, and read its answer with `readAnswer`. */
+    function askFolder(dir, opts) {
+        return root.molbuilder.server.ask(
+            "/api/results/dir?path=" + encodeURIComponent(dir), opts || {});
     }
 
     /**
@@ -665,9 +676,7 @@
             // (ui-contract.md § 12), whose ``cache: "no-store"`` keeps an
             // identical URL from serving a cached prior scan; ``signal``
             // aborts a superseded scan.
-            root.molbuilder.server.ask(
-                "/api/results/dir?path=" + encodeURIComponent(dir),
-                { signal: signal })
+            askFolder(dir, { signal: signal })
                 .then(answer => {
                     if (disposed || signal.aborted) return;
                     /* AND THE ANSWER HAS TO BE ABOUT THE FOLDER WE ASKED
@@ -1283,6 +1292,7 @@
         groupResultFiles:    groupResultFiles,
         absorbSatellites:    absorbSatellites,
         readAnswer:          readAnswer,
+        askFolder:           askFolder,
         metaOf:              metaOf,
         _labelForResult:     labelForResult,
     };

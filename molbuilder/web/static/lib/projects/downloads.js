@@ -10,8 +10,8 @@
  *           trajectory viewers' CSVs, and every report's Export.
  *
  * NEVER: name a file the server did not name; throw — an export answers
- *        `{ok, ...}` like every public method of the module (projects.md,
- *        Principle 6).
+ *        `{ok, ...}` like every public method of the module (projects.md
+ *        § 5, the files layer's result).
  */
 "use strict";
 

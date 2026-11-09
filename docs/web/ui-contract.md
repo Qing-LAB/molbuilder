@@ -778,6 +778,14 @@ const a = await ask(url, { method, body, signal, as });
 | cancelled (the caller's `signal`) | `{ok: false, aborted: true}` | — the caller says nothing: a newer question replaced it |
 | **signed out** — a `401` carrying `login_url`, or an answer the gate sent to the sign-in page | `{ok: false, signedOut: true}` | *"you are signed out"* |
 
+**A module built on the reader answers in its own documented shape** — the
+files layer's `{ok, …fields}` ([`projects.md`](?doc=web/projects.md) § 5), a
+door's result such as the structure save's `{ok, path, notices}` — and asks
+its routes from one place; **a page that asks a route itself reads the
+reader's `{ok, body}` and reshapes nothing** *(2.69.11: Task setup flattened
+its prep answer by hand, and the sidebar asked a files route past the files
+layer)*.
+
 **Being signed out is said once, for the whole page**, by the reader: one
 notification ([`notifications.md`](?doc=web/notifications.md)), *"You are
 signed out. What this page holds is kept: sign in in the new tab, then carry

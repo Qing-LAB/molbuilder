@@ -7,11 +7,11 @@
  * back as ``{ok: false, error: "..."}`` so callers don't need a
  * try/catch around every call.
  *
- * The backend contract is in ``docs/web/projects.md`` § and
- * ``docs/web/web-api.md`` § ``/api/files/*``.  The uniform-
- * envelope contract is in ``docs/web/projects.md``
- * Principle 6 ("every public method returns {ok, ...} or {ok:false,
- * error}; NEVER throws").
+ * The backend contract is in ``docs/web/web-api.md`` § ``/api/files/*``;
+ * THE FILES LAYER'S RESULT is ``docs/web/projects.md`` § 5: every call
+ * answers ``{ok: true, ...the route's fields}`` or ``{ok: false, error,
+ * status, ...the refusal's fields}``, and never throws.  This module is the
+ * only place the files routes are asked from.
  */
 
 import { ask } from "../server.js";
@@ -130,6 +130,17 @@ export async function apiUpload(targetDir, file, opts) {
   return await _fetchEnvelope("/api/files/upload", {
     method: "POST",
     body:   fd,
+    signal: opts.signal,
+  });
+}
+
+/** What a folder's archive would hold -- names and sizes, nothing built
+ *  (`POST /api/files/zip_prepare`, `projects.md` § 4). */
+export async function apiZipPrepare(path, opts) {
+  opts = opts || {};
+  return await _fetchEnvelope("/api/files/zip_prepare", {
+    method: "POST",
+    body:   { path: path },
     signal: opts.signal,
   });
 }

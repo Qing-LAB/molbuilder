@@ -27,6 +27,7 @@ import {
   apiRename,
   apiUpload,
   apiWrite,
+  apiZipPrepare,
 } from "./api.js";
 import { pageBusy } from "../page-busy.js";
 import { confirmOverwrite } from "./dialogs.js";
@@ -290,8 +291,9 @@ export function setShared(dir, file) {
     };
   }
   // sessionStorage may throw on quota / private-mode SecurityError /
-  // explicit storage-denied.  Per design § 11.4 + Principle 6 we MUST
-  // NOT propagate the throw -- publish the new state regardless so
+  // explicit storage-denied.  Per design § 11.4, and as every file call
+  // never throws (`projects.md` § 5), we MUST NOT propagate the throw --
+  // publish the new state regardless so
   // subscribers still update; the cursor just won't survive a reload.
   const payload = { dir: dir || "", file: file || "" };
   try {
@@ -370,9 +372,8 @@ async function readCurrentFile(opts) {
 }
 
 async function refresh(opts) {
-  // Per design § C6: returns {ok:true} | {ok:false, error}
-  // (Principle 6: every async public method returns an envelope or
-  // null).
+  // Returns {ok:true} | {ok:false, error} -- the files layer's result,
+  // never a throw (`projects.md` § 5).
   const dir = readSelectionSlot(SS_DIR) || projectsRoot;
   if (!dir) {
     return { ok: false, error: "no current directory to refresh" };
@@ -762,6 +763,8 @@ export const projects = {
   move,
   copy,
   upload,
+  // What a folder's archive would hold, before any byte is sent.
+  zipPrepare: apiZipPrepare,
   setShared,
   navigateTo,
   // The projects root's answer, once the sidebar's start has one (§ 5).

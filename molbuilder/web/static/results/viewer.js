@@ -119,8 +119,8 @@
             if (rescan) _backToRoot();
             _sayOnLadder(words, kind);
         };
-        // THE ONE READER (ui-contract.md § 12).
-        mb.server.ask("/api/results/dir?path=" + encodeURIComponent(r.dir))
+        // THE FOLDER'S ONE QUESTION, the picker's (`askFolder`).
+        mb.resultsFilePicker.askFolder(r.dir)
             .then((answer) => {
                 if (mine !== pickSeq) return;
                 if (!answer.ok) {
