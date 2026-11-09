@@ -70,7 +70,7 @@ def test_an_unsaved_edit_is_kept_and_the_change_said(page, flask_server,
     task_setup_on(page, flask_server, calc_dir)
     field = page.locator(
         '.ts-next-step:not([hidden]) .ts-runcard input[aria-label="value for '
-        'omp_threads"]').first
+        'OMP threads per rank"]').first
     field.wait_for(state="visible", timeout=WAIT_MS)
     field.fill("3")
     field.press("Tab")
@@ -85,6 +85,6 @@ def test_an_unsaved_edit_is_kept_and_the_change_said(page, flask_server,
     assert page.is_visible("#ts-dirty"), "the unsaved edit was dropped"
     assert page.locator(
         '.ts-next-step:not([hidden]) .ts-runcard input[aria-label="value for '
-        'omp_threads"]').first.input_value() == "3"
+        'OMP threads per rank"]').first.input_value() == "3"
     # ...and the page was not read again: it still names the record it read.
     assert page.get_attribute("#ts-f-req", "data-exists") == "yes"

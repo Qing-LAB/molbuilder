@@ -288,7 +288,6 @@
     --ts-cmd-rule:      3px;     /* the command block's accent rule */
     --ts-pick-max:      22rem;   /* an add-a-parameter picker */
     --ts-tick-w:        1em;     /* the chosen option's tick gutter */
-    --ts-label-track:   0.07em;  /* uppercase label tracking */
 
     /* The destination path + folder-state rows. */
     --ts-here-bg:       var(--accent-bg);

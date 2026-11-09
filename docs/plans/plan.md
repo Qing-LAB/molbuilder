@@ -65,7 +65,10 @@ for the page with a way back, MolView handed the reader at mount with the
 app's other doors as one bundle (the ledger's *Found by … 2.69.0*);
 **2.69.1**: group B's last two items — the Spectrum card's frozen atoms and
 the MolView demo's calls in true words (the ledger's *Found by … 2.69.1*);
-next, group D (the words), then C.
+**2.69.2**: group D's Task setup words — every setting named by its label
+through one door, *time limit* and *stage* as the one words (the ledger's
+*Found by … 2.69.2*); next, group D's server sentences, the other pages and
+the help texts, then C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

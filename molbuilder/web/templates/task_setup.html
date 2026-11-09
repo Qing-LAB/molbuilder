@@ -135,7 +135,7 @@
         <summary><h2>Where it runs, and what it may use</h2><span class="fold-sum" id="ts-queue-card-sum"></span></summary>
         <p class="hint">Pick a queue; under each field, <strong>the most it
           allows</strong>. On a machine with a scheduler, prep refuses a blank
-          wall or memory.</p>
+          time limit or memory.</p>
 
         <div class="ts-choice" id="ts-queue-choice"></div>
         <p class="ts-needs" id="ts-queue-needs">Pick a machine first</p>
@@ -199,14 +199,14 @@
           &mdash; a real state, not a blank.</p>
         {#- A KIND THAT FIXES ITS RUNGS (task-setup.md § 5.3): a transport
             folder's rows are its ladder, and each rung's values its own. -#}
-        <p class="hint" id="ts-stages-rungs" hidden>Rows are the ladder's
-          rungs, in its order, numbered as the Transport tab numbers them;
-          columns are each rung's own values over the template &mdash; set
-          first on the Transport tab, changed here once the description is
-          written. A muted cell is <em>this rung uses the template's
-          value</em>; a column's cells on rungs that do not read it are
-          disabled. Every rung stays: the leads and the device start from
-          the seed's density.</p>
+        <p class="hint" id="ts-stages-rungs" hidden>Rows are the
+          calculation's five stages, in their order, numbered as the
+          Transport tab numbers them; columns are each stage's own values
+          over the template &mdash; set first on the Transport tab, changed
+          here once the description is written. A muted cell is <em>this
+          stage uses the template's value</em>; a column's cells on stages
+          that do not read it are disabled. Every stage stays: the
+          electrodes and the device start from the seed's density.</p>
         <div class="ts-tablewrap">
           <table class="ts-table" id="ts-stage-table">
             <thead><tr><th>Stage</th></tr></thead>
@@ -434,8 +434,8 @@
           worth a message and it is written into this calculation's
           job request. Nothing ticked is no reports at all; <strong>once
           anything is, the run's start and end report too</strong>, and so
-          do its wall coming near and, for a run of many engine runs &mdash; a
-          vibration's calls, a transport rung's points &mdash; each phase's or
+          do its time limit coming near and, for a run of many engine runs
+          &mdash; a vibration's calls, a transport stage's points &mdash; each phase's or
           voltage's end and each kind of failure.</p>
 
         <div class="ts-notify-opts">

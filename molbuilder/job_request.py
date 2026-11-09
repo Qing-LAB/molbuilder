@@ -74,10 +74,11 @@ LANE_ASKS = ("time", "domain")
 #: `lane_asks`), which keeps no table of its own (`web/task-setup.md`
 #: § 6.2b).  One home for the two rows' words and the two names above.
 LANE_ASK_ROWS = (
-    {"name": "time", "label": "wall clock for this run",
-     "help": ("D-HH:MM:SS -- what the scheduler is asked for; in a group "
-              "of stages each row is one stage's own, and the job asks for "
-              "their sum (the bench keeps the calculation's short one)"),
+    {"name": "time", "label": "time limit for this run",
+     "help": ("D-HH:MM:SS \u2014 what the scheduler is asked for; in a "
+              "group of stages each row is one stage's own, and the job "
+              "asks for their sum (the bench keeps the calculation's short "
+              "one)"),
      "placeholder": "2-00:00:00"},
     {"name": "domain", "label": "queue for this run",
      "help": "the bench can stay on a short-turnaround queue",

@@ -98,9 +98,7 @@ function machineAnswers(name) {
 function rowNote(name) {
     const it = (_sweep || []).find(i => i.name === name);
     if (!it) return "";
-    return it.machine_answers
-        ? `${it.label || name} — a shape to try`
-        : `${it.label || name} — yours to choose`;
+    return it.machine_answers ? "a shape to try" : "yours to choose";
 }
 
 let _cm = null;
@@ -218,14 +216,13 @@ function renderStages(task) {
             class: "ts-rowbtn ts-rowbtn-drop"
                    + (_fs.pendingDrop === col ? " is-pending" : ""),
             title: kept ? extensionSays(kept.name) : "Remove this column",
-            "aria-label": "Remove column " + col,
+            "aria-label": "Remove the column " + labelOf(col),
             disabled: kept ? "disabled" : null,
         }, "\u00d7");
         x.addEventListener("click", () => removeColumn(col));
         // ...NAMED BY ITS LABEL, as every form names it (`task-setup.md`
         // § 5); the catalogue's name is in the hover.
-        const th = el("th", { title: helpText(col) },
-                      (_meta[col] && _meta[col].label) || col, x);
+        const th = el("th", { title: helpText(col) }, labelOf(col), x);
         hrow.appendChild(th);
     }
     thead.appendChild(hrow);
@@ -358,8 +355,9 @@ function renderStages(task) {
                     class: "ts-cell", value: "", disabled: "yes",
                     placeholder: "\u2014",
                     title: labelOf(col) + " is read by the "
-                           + owners.join(" / ") + " rung \u2014 not this one",
-                    "aria-label": name + " " + col + " (not this rung's)",
+                           + owners.join(" / ") + " stage \u2014 not this one",
+                    "aria-label": labelOf(col) + " on " + name
+                        + " \u2014 read by " + owners.join(" / ") + " only",
                     "data-foreign": "yes",
                 });
                 tr.appendChild(el("td", { "data-foreign": "yes" }, foreign));
@@ -374,7 +372,7 @@ function renderStages(task) {
                         value: has ? valueWords(col, ov[col]) : "",
                         placeholder: defaultText(col) || "template",
                         title: extensionSays(name),
-                        "aria-label": name + " " + col + " (fixed)" })));
+                        "aria-label": name + " " + labelOf(col) + " (fixed)" })));
                 continue;
             }
             // An empty cell is not blank: it says what the stage will USE,
@@ -395,7 +393,7 @@ function renderStages(task) {
                     class: "ts-cell",
                     title: helpText(col),
                     id: _rowId(i, col),
-                    "aria-label": name + " " + col,
+                    "aria-label": name + " " + labelOf(col),
                     "data-template": has ? null : "yes",
                 });
                 cell.appendChild(el("option", { value: "" },
@@ -419,7 +417,7 @@ function renderStages(task) {
                     placeholder: fallback || "template",
                     title: helpText(col),
                     id: _rowId(i, col),
-                    "aria-label": name + " " + col,
+                    "aria-label": name + " " + labelOf(col),
                     "data-template": has ? null : "yes",
                 });
             }
@@ -729,7 +727,7 @@ function paintFit(host, body) {
      * TARGET's, and preparing for another machine is an ordinary thing to do
      * here. */
     host.appendChild(el("div", { class: "ts-fit-head" },
-        cells.length + " combination(s)"));
+        _count(cells.length, "combination")));
 
     for (const c of cells) {
         // EACH CELL'S FIT on its queue -- the server's lines, one per queue
@@ -865,7 +863,7 @@ function dropRunRow(name, members) {
         delete box[name];
         dropEmptyCard(stage);
     }
-    return commitEdit("Removing " + name + "\u2026");
+    return commitEdit("Removing " + labelOf(name) + "\u2026");
 }
 
 /** THE ORDER EVERY RUN CARD LISTS ITS ROWS IN -- the same on every card
@@ -915,8 +913,8 @@ function runCard(task, members, every) {
           + "refused at prep."
         : group
         ? "One job runs " + members.join(", ") + " one after another. One "
-          + "value each, written into every stage that reads it; the wall is "
-          + "each stage's own, the job asking their sum. A blank row uses "
+          + "value each, written into every stage that reads it; the time "
+          + "limit is each stage's own, the job asking their sum. A blank row uses "
           + "the value shown in it; a launch value stated nowhere is "
           + "refused at prep." + walkSaid(members)
         : "One value each \u2014 not a grid. A blank row uses the value "
@@ -963,11 +961,11 @@ function runCard(task, members, every) {
     // 2026-10-18).
     if (walls) {
         for (const m of members) rows.appendChild(runRow(task, "time", [m],
-            { label: "wall clock \u00b7 " + m, remove: removal("time") }));
+            { label: "time limit \u00b7 " + m, remove: removal("time") }));
         rows.appendChild(el("p", { class: "hint" },
-            "One job, one wall: the stages of this group run one after "
-            + "another in a single job, so the scheduler is asked for the "
-            + "SUM of the rows above, not the longest \u2014 a day on each "
+            "One job, one time limit: the stages of this group run one "
+            + "after another in a single job, so the scheduler is asked for "
+            + "the sum of the rows above, not the longest \u2014 a day on each "
             + "of three stages is a three-day job. Preview shows the "
             + "--time line it sends."));
     }
@@ -1039,10 +1037,10 @@ function runRow(task, name, members, opts) {
                       + ((_meta[name] && _meta[name].default_words)
                          || "default") + ")" : "");
     const legal = legalValues(name);
-    // THE FIELD'S NAME, the row's own where it has one (a member's wall):
-    // the name it is told apart by, and found again by after a write
-    // redraws the card (ui-contract.md § 10).
-    const fieldName = "value for " + (o.label || name);
+    // THE FIELD'S NAME, the row's own where it has one (a member's time
+    // limit), else the setting's label: the name it is told apart by, and
+    // found again by after a write redraws the card (ui-contract.md § 10).
+    const fieldName = "value for " + (o.label || labelOf(name));
     let input;
     if (legal) {
         input = el("select", { class: "ts-runval", "aria-label": fieldName });
@@ -1075,7 +1073,9 @@ function runRow(task, name, members, opts) {
     // nothing -- what is being measured, while you type what you want.
     const pts = Array.isArray(bench[name]) ? bench[name] : [];
     const notes = [];
-    if (pts.length) notes.push("measuring: " + pts.join(", "));
+    if (pts.length) {
+        notes.push("measuring: " + pts.map((v) => valueWords(name, v)).join(", "));
+    }
     if (differ.length) notes.push("stated apart \u2014 " + differ.join(", "));
     // A STAGE NAMED ONCE: one that states the value is said below, with
     // its way out; the rest that do not read it, here.
@@ -1087,8 +1087,8 @@ function runRow(task, name, members, opts) {
     const strays = stray.map((m) => {
         const x = el("button", { type: "button",
                                  class: "ts-rowbtn ts-rowbtn-drop",
-                                 title: "Stop stating " + name + " on " + m,
-                                 "aria-label": "Stop stating " + name
+                                 title: "Stop stating " + labelOf(name) + " on " + m,
+                                 "aria-label": "Stop stating " + labelOf(name)
                                                + " on " + m }, "\u00d7");
         x.addEventListener("click", () => dropRunRow(name, [m]));
         return el("small", { class: "ts-row-note" },
@@ -1101,14 +1101,13 @@ function runRow(task, name, members, opts) {
     if (o.remove) {
         drop = el("button", { type: "button",
                               class: "ts-rowbtn ts-rowbtn-drop",
-                              title: "Remove the row " + name,
-                              "aria-label": "Remove the row " + name }, "\u00d7");
+                              title: "Remove the row " + labelOf(name),
+                              "aria-label": "Remove the row " + labelOf(name) }, "\u00d7");
         drop.addEventListener("click", o.remove);
     }
-    // THE SETTING BY ITS LABEL, the catalogue's (or the run's own ask's,
-    // `lane_asks`); its name, which the files spell, in the hover.
-    const shown = o.label || (_meta[name] || {}).label
-        || (lane && lane.label) || name;
+    // THE SETTING BY ITS LABEL (`labelOf`); its name, which the files
+    // spell, in the hover.
+    const shown = o.label || labelOf(name);
     return el("div", { class: "ts-row", "data-setting": name,
                        "data-kind": value !== undefined ? "chosen"
                            : (members.length && behind ? "inherited"
@@ -1199,9 +1198,11 @@ function renderMachine(task) {
         const chips = pts.map((p, i) => {
             const drop = el("button", { type: "button", class: "ts-pt-x",
                                         title: "Remove this point",
-                                        "aria-label": "Remove point " + String(p) }, "\u00d7");
+                                        "aria-label": "Remove the point "
+                                            + valueWords(name, p) + " of "
+                                            + labelOf(name) }, "\u00d7");
             drop.addEventListener("click", () => removePoint(name, i));
-            return el("span", { class: "ts-pt" }, String(p), drop);
+            return el("span", { class: "ts-pt" }, valueWords(name, p), drop);
         });
 
         // The adder follows the value SHAPE (user, 2026-08-20): a bool or
@@ -1214,12 +1215,12 @@ function renderMachine(task) {
             const left = legal.filter(
                 (v) => !pts.some((p) => String(p) === String(v)));
             add = el("select", { class: "ts-pt-add",
-                                 "aria-label": "add a point to " + name });
+                                 "aria-label": "add a point to " + labelOf(name) });
             add.appendChild(el("option", { value: "" },
                                left.length ? "+ add" : "all values listed"));
             for (const v of left) {
                 add.appendChild(el("option", { value: String(v) },
-                                   String(v)));
+                                   valueWords(name, v)));
             }
             add.disabled = !left.length;
             add.addEventListener("change", () => {
@@ -1227,14 +1228,14 @@ function renderMachine(task) {
             });
         } else {
             add = el("input", { class: "ts-pt-add", placeholder: "+ add",
-                                "aria-label": "add a point to " + name });
+                                "aria-label": "add a point to " + labelOf(name) });
             add.addEventListener("change",
                 () => { addPoint(name, add.value); add.value = ""; });
         }
 
         const dropRow = el("button", { type: "button", class: "ts-rowbtn ts-rowbtn-drop",
-                                       title: "Stop measuring " + name,
-                                       "aria-label": "Stop measuring " + name }, "\u00d7");
+                                       title: "Stop measuring " + labelOf(name),
+                                       "aria-label": "Stop measuring " + labelOf(name) }, "\u00d7");
         dropRow.addEventListener("click", () => removeSetting(name));
 
         // A VALUE axis with several points SWEEPS (generator.md § 4.3a): the
@@ -1253,14 +1254,14 @@ function renderMachine(task) {
                       + "CPU trials never hold a GPU.")
                    : (pts.length + " points sweep as a value axis \u2014 "
                       + "the machine grid multiplies per value; the "
-                      + "winning combination is REPORTED, for you to "
+                      + "winning combination is reported, for you to "
                       + "write into the run card, in the group's tab."))
             : null;
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind,
                                      "data-bench-row": name,
                                      "data-bench-points": String(pts.length) },
-            el("div", { class: "ts-row-name", title: helpText(name) }, name,
-                el("small", null, rowNote(name)), _tooMany),
+            el("div", { class: "ts-row-name", title: helpText(name) },
+                labelOf(name), el("small", null, rowNote(name)), _tooMany),
             el("div", { class: "ts-points" }, ...chips, add),
             el("div", { class: "ts-verdict" },
                el("span", { "data-bench-verdict": "" }, verdict), dropRow)));
@@ -1854,7 +1855,7 @@ async function readFolder(projects, dir, opts) {
      * (§ 3; the folder answer's `extension`). */
     _fs.extension = said.extension || null;
     _fs.kind = said.kind || null;
-    renderCameOver(task, said.treatment, said.frame_set,
+    renderCameOver(task, said.treatment_note, said.frame_set,
                    said.template && said.template.shared);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
      * `_fs`, which `loadFolder` replaces wholesale.  A separate variable
@@ -2076,8 +2077,8 @@ function setCell(i, col, raw) {
  * entry in the folder answer (`kind`: the slot it cites, the fields it
  * carries, its leads) -- a structure's file, formula and atom count, or
  * the citation, the fields it carries and how it treats a bias list
- * (`treatment`, the folder answer's word from the one rule the record
- * names it by); and every value shared by every stage, with whose it is
+ * (`treatment_note`, the folder answer's: the record's one wording of the
+ * treatment); and every value shared by every stage, with whose it is
  * (`renderShared`, `template.md` § 6.6 obligation 3). */
 function renderCameOver(obj, treatment, frameSet, shared) {
     const host = $("ts-facts");
@@ -2128,7 +2129,7 @@ function renderCameOver(obj, treatment, frameSet, shared) {
         // named as the kind table names them.
         rows.push(["Electrodes", obj.swap_electrodes
             ? (kind.leads || []).join(" and ") + " traded in this "
-              + "calculation's copy (swap_electrodes: true)"
+              + "calculation's copy"
             : "as labelled on the cited " + (kind.cites || "structure")]);
     }
     if (carries("reuses") && obj.reuses) {
@@ -2411,7 +2412,7 @@ function fillPicker(sel, items, taken, empty) {
         sel.appendChild(el("option", {
             value: i.name,
             title: helpText(i.name) || i.help || "",
-        }, (i.label || i.name)
+        }, labelOf(i.name)
            + (d ? "  \u2014  now: " + d : "")
            + (readers.length ? "  \u00b7 read by " + readers.join(", ") : "")));
     }
@@ -2520,9 +2521,14 @@ function renderValue(v, unit) {
 }
 
 /** A setting as a person reads it -- its label, as every form names it
- *  (`task-setup.md` § 5); the catalogue's name only where it has none. */
+ *  (`task-setup.md` § 5): the catalogue's, else the run's own ask's (the
+ *  sweepable door's `lane_asks`); its name only where neither has one.
+ *  EVERY PLACE THE PAGE NAMES A SETTING asks here, so no line says a
+ *  name the form beside it does not. */
 function labelOf(name) {
-    return (_meta[name] && _meta[name].label) || name;
+    if (_meta[name] && _meta[name].label) return _meta[name].label;
+    const lane = _laneAsks.find((a) => a.name === name);
+    return (lane && lane.label) || name;
 }
 
 /** A value of ``name`` in the words a person reads it: a choice's words,
@@ -2939,7 +2945,7 @@ function askLine(a, chosen) {
     // THE CHOSEN SHAPE FIRST -- the one-point axes (`generator.md` § 4.3a),
     // which is what a person wants to check before spending a queue slot.
     for (const k of Object.keys(chosen || {})) {
-        bits.push(k + "=" + chosen[k]);
+        bits.push(labelOf(k) + " " + valueWords(k, chosen[k]));
     }
     if (a.domain) bits.push(a.domain);
     if (a.time) bits.push(a.time);
@@ -2969,7 +2975,9 @@ function paintPlan(box, host, body) {
     }
     if (body.bench) {
         const axes = Object.keys(body.bench.axes || {})
-            .map((k) => k + " " + (body.bench.axes[k] || []).join(","))
+            .map((k) => labelOf(k) + " "
+                 + (body.bench.axes[k] || []).map((v) => valueWords(k, v))
+                       .join(", "))
             .join(" \u00d7 ");
         // WHERE IT LANDS IS ASKED FOR, NOT SPELLED HERE: `prep-plan` sends
         // the rungs, each directory from `paths.bench_container` -- the one
@@ -3094,7 +3102,7 @@ function renderNext(task) {
             block.appendChild(el("p", { class: "hint" },
                 "Measure a stage \u2014 "
                 + (benchVarying.length
-                    ? "varying " + benchVarying.join(", ") + ". "
+                    ? "varying " + benchVarying.map(labelOf).join(", ") + ". "
                     : "what it tries is stated in What to measure: the "
                       + "ranks, the cores per rank and, on the GPU, the GPU "
                       + "counts. ")
@@ -3748,7 +3756,8 @@ function _syncPrepButtons() {
         const ready = !!_machine;
         w.btn.disabled = !ready;
         w.btn.title = ready
-            ? "Runs prep for " + _machine
+            ? "Shows what prep would write for " + _machine
+              + " \u2014 writes nothing"
             : "Pick a machine first";
         if (!ready && !w.say.textContent) {
             w.say.textContent = "pick a machine above";
@@ -3878,11 +3887,11 @@ async function readByDoor(item, raw, home, stage) {
                   stage: stage || null },
     });
     if (!answer.ok) {
-        setState("refuse", item + " was not written", answer.error);
+        setState("refuse", labelOf(item) + " was not written", answer.error);
         return null;
     }
     const j = answer.body;
-    const refused = item + " is kept as typed and refused";
+    const refused = labelOf(item) + " is kept as typed and refused";
     if (j.refusal) {
         setState("refuse", refused,
                  j.refusal + " Save refuses it until it is changed.");
@@ -3914,7 +3923,7 @@ function benchOf() {
 }
 
 function addPoint(name, raw) {
-    return editTyped("Adding a point to " + name + "\u2026", name, raw,
+    return editTyped("Adding a point to " + labelOf(name) + "\u2026", name, raw,
                      "bench", null, (read) => {
         const b = benchOf();
         if (!b || read.blank) return;
@@ -3935,14 +3944,14 @@ function removePoint(name, idx) {
     // setting with zero points -- it is a setting that is not being measured.
     if (!b[name].length) delete b[name];
     if (!Object.keys(b).length) delete _request.bench;
-    return commitEdit("Removing a point of " + name + "\u2026");
+    return commitEdit("Removing a point of " + labelOf(name) + "\u2026");
 }
 
 function removeSetting(name) {
     const b = benchOf(); if (!b) return;
     delete b[name];
     if (!Object.keys(b).length) delete _request.bench;
-    return commitEdit("Removing " + name + " from the benchmark\u2026");
+    return commitEdit("Removing " + labelOf(name) + " from the benchmark\u2026");
 }
 
 /* ---------- what a hand-over becomes ---------- */
@@ -4218,8 +4227,8 @@ function paintAskNotes() {
         : "no queue chosen";
     const said = {
         "ts-ask-time": d ? (d.max_time
-                              ? d.name + "'s wall: " + d.max_time
-                              : "this queue states no wall")
+                              ? d.name + "'s time limit: " + d.max_time
+                              : "this queue states no time limit")
                          : none,
         "ts-ask-mem": d ? (d.memory && d.memory !== "-"
                              ? d.name + "'s machines: " + d.memory
@@ -4384,8 +4393,8 @@ function commitEdit(reason) {
  * Returns whether anything actually changed, so `patchDoc` does not move
  * the page's cursor for a keystroke that wrote the same text back.
  */
-function applyBlockToDoc(key, read) {
-    return pageBusy.run("Writing " + key + "\u2026", [], async () => {
+function applyBlockToDoc(key, read, what) {
+    return pageBusy.run("Writing " + what + "\u2026", [], async () => {
         const changed = patchDoc((request) => {
             const want = read();
             const next = Object.keys(want).length ? want : null;
@@ -4412,7 +4421,9 @@ function applyBlockToDoc(key, read) {
     });
 }
 
-function applyAsksToDoc() { applyBlockToDoc("allocation", askValues); }
+function applyAsksToDoc() {
+    applyBlockToDoc("allocation", askValues, "where it runs and what it may use");
+}
 
 /** Fill the card FROM the open job request, so reopening a folder shows
  *  what it already asks for rather than an empty card. */
@@ -4496,7 +4507,9 @@ function _everyOrThese(list) {
  * NO BLOCK IS NO NOTIFICATION, matching `job_request.py` (`run-reports.md` § 2):
  * nothing set up writes NO `notify` key, and a block is written whole.
  */
-function applyNotifyToDoc() { applyBlockToDoc("notify", notifyValues); }
+function applyNotifyToDoc() {
+    applyBlockToDoc("notify", notifyValues, "what to tell you");
+}
 
 /** Fill the card FROM the open job request, so reopening a folder shows
  *  what it already asks for rather than an empty card -- the fields it
@@ -4929,7 +4942,7 @@ async function _save() {
     });
     if (!answer.ok) {
         // Refused, not repaired — show the reader's own words.
-        saidSave("NOT written — " + answer.error, "bad");
+        saidSave("Not written — " + answer.error, "bad");
         setState("refuse", "Not written", answer.error);
         // EVERY FINDING THE REFUSAL CARRIES, its warnings too: nothing
         // is dropped (`ui-contract.md` § 5.1).
@@ -5102,7 +5115,7 @@ function start(projects) {
         const box = $("ts-add-setting-value");
         const first = String((box && box.value) || "").trim();
         if (!first) {
-            setState("refuse", sel.value + " has no value in force",
+            setState("refuse", labelOf(sel.value) + " has no value in force",
                      "Type its first point in the box beside the setting, "
                      + "then add it.");
             return;

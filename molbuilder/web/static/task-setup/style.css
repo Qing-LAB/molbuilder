@@ -487,12 +487,8 @@
 }
 .ts-facts dt {
     font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: var(--ts-label-track);
     color: var(--text-muted);
 }
-/* A setting's key, as its file spells it -- not a label to set in caps. */
-.ts-facts dt code { text-transform: none; letter-spacing: normal; }
 .ts-facts dd {
     margin: 0;
     font-family: var(--font-mono);
@@ -845,8 +841,6 @@
 .ts-emitted-head {
     color: var(--text-secondary);
     font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     margin-bottom: var(--space-xs);
 }
 .ts-emitted-line {
@@ -911,8 +905,6 @@
 .ts-fit-head {
     font-size: var(--text-xs);
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 .ts-fit-row {
     display: grid;

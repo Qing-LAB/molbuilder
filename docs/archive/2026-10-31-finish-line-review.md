@@ -1866,6 +1866,20 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group D, Task setup's words, and 2.69.2's review round (2026-11-09), by the release that owns each
+
+*(Group D's Task setup items, mapped to where each word is made before any fix; the user, 2026-11-09: "continue", and on the two names asked: one word *stage* on every page, the notebook tab *JupyterLab*; one review round over the whole touched files, every finding read again in the code)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2692-1 | **closed 2.69.2** | Task setup named a setting by its file key in status lines (*Removing mpi_np…*, *Adding a point to mpi_np…*), refusals (*mpi_np has no value in force*, *… was not written*), the plan's lines (*mpi_np=2 · omp_threads=1*), the benchmark's rows and hint, and every control's spoken name (*value for omp_threads*, *coarse mesh_cutoff*) — while the form beside it said its label | one label door, `labelOf`, the catalogue's label or the run's own ask's (`lane_asks`); every place the page names a setting asks it (`task-setup.md` § 5) |
+| K2692-2 | **closed 2.69.2** | one setting, two words: the queue card's *Time limit* and the run card's *wall clock for this run* | *time limit* on the page and in the run's own ask (`job_request.LANE_ASK_ROWS`) |
+| K2692-3 | **closed 2.69.2** | *rung* beside *stage* for the same thing on the page | *stage* (the user, 2026-11-09) |
+| K2692-4 | **closed 2.69.2** | the transport card showed the treatment's token (*low-bias-approximation*) and the rename's key (*swap_electrodes: true*) | the record's one wording of the treatment (`treatment_note`, now in present tense, read before anything runs as after); the rename said in words |
+| K2692-5 | **closed 2.69.2** | capitals as emphasis: three headings set in capitals by style, *NOT written*, *REPORTED*; *combination(s)*; the Preview's hover saying it *runs* prep | plain case; a count said as a count; the Preview's hover says it writes nothing |
+| K2692-6 | **to 2.69.3** | the server's own sentences on the page still say *wall* (a run of points' *one wall for the whole run*, a Preview's *walls summed*, the launch words) | the server's sentences, in the next release with every other server word on a page |
+| K2692-7 | **later** | a disabled cell names the catalogue's roles as stages, where the picker names the calculation's stages; the transport hint spells *five stages* where the folder answer holds the list | one rule for both, when the stage table is next touched |
+
 ## Found by the UI review's group B, its last two items (2026-11-09), by the release that owns each
 
 *(B6 and B13 of the UI review's findings, read against `web/spectra.md` § 8, `web/molview.md` § 9.3 and § 9.4 before any fix; the user, 2026-11-09: "continue")*

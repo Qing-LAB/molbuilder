@@ -2543,8 +2543,11 @@ def api_task_setup_folder():
         "extension": _folder_extension(task, folder),
         # HOW A TRANSPORT DESCRIPTION TREATS ITS BIAS LIST, by the one rule
         # the record names it with (`Task.treatment`); null for every other
-        # kind.  The "What came over" card echoes it (`task-setup.md` § 3).
+        # kind.  The "What came over" card says it in the record's one
+        # wording of it, `treatment_note`, as the run's record carries it
+        # (`transport/record.py` TREATMENT_NOTE; `task-setup.md` § 3).
         "treatment": task.treatment if task is not None else None,
+        "treatment_note": _treatment_note(task),
         # WHAT THE CITED JUNCTION'S FRAMES ARE -- the count and, for a mode's
         # set, its definition -- by the describe door's own helper
         # (`frame_average.answer`; `engines/transport.md` § 3.8.1); null
@@ -2614,6 +2617,16 @@ def _folder_fixed(task) -> Optional[dict]:
     fixed = pair(task.calculation, task.engine) if task is not None else None
     return (None if fixed is None or not fixed.stages
             else {"stages": list(fixed.stages)})
+
+
+def _treatment_note(task):
+    """How a transport description treats its bias list, in the record's
+    one wording of it (`transport/record.py` ``TREATMENT_NOTE``); None for a
+    kind without a bias."""
+    if task is None or task.treatment is None:
+        return None
+    from ...transport.record import TREATMENT_NOTE
+    return TREATMENT_NOTE[task.treatment]
 
 
 def _folder_extension(task, folder) -> Optional[dict]:

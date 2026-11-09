@@ -1521,12 +1521,12 @@ TREATMENT_NOTE = {
                     "voltage: T(E) there, with no approximation beyond the "
                     "method."),
     "low-bias-approximation": (
-        "The low-bias approximation: the device SCF converged once, at 0 V, "
-        "and each voltage's current is the zero-bias transmission T(E, 0) "
-        "integrated over that voltage's window -- the transmission's "
-        "dependence on bias neglected; a resonance entering the window is "
-        "not re-converged, nor moved by the field."),
-    "self-consistent": ("The device SCF was converged at every voltage, so "
+        "The low-bias approximation: the device SCF is converged once, at "
+        "0 V, and each voltage's current is the zero-bias transmission "
+        "T(E, 0) integrated over that voltage's window \u2014 the "
+        "transmission's dependence on bias neglected; a resonance entering "
+        "the window is not re-converged, nor moved by the field."),
+    "self-consistent": ("The device SCF is converged at every voltage, so "
                         "each slice is its own solution and the I-V carries "
                         "no approximation beyond the method."),
 }

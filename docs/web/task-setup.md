@@ -209,10 +209,11 @@ names no kind (2.65.0).
 The identity facts, read-only, from the parameter tab that wrote them: the
 calculation's name, the engine, and what it is OF — a structure's file, formula
 and atom count; for a transport calculation the junction it cites, the bias
-list it walks, how it treats that list (`single-bias`,
-`low-bias-approximation` or `self-consistent` — the folder answer's
-`treatment`, the one rule the record names it by) and whether it trades the
-two electrode labels in its own copy of the junction (`swap_electrodes`,
+list it walks, how it treats that list — said in the record's one wording of
+it (the folder answer's `treatment_note` beside its `treatment`, `single-bias`,
+`low-bias-approximation` or `self-consistent`, the one rule the record names it
+by) — and whether it trades the two electrode labels in its own copy of the
+junction (`swap_electrodes`, said in words, never as the key;
 [`engines/transport.md`](?doc=engines/transport.md) § 4), and the finished
 calculation it reuses (`reuses`), whose groups its prep copies in — what is
 copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — and the
@@ -326,7 +327,13 @@ transmission*, 2026-10-11). **Each item is named by its label, as every form nam
 the picker's entry *Correct the device's charge — now: No correction · read by
 device*, the value now in force in the words its cells use, and the column's
 header *Correct the device's charge* — its catalogue name only in the hover,
-beside the keyword it writes, for a reader of `task.json` *(2.68.1)*. The payload carries each item's roles and, beside the columns, how the
+beside the keyword it writes, for a reader of `task.json` *(2.68.1)*. **And
+everywhere else the page names a setting** — a run card's row, a benchmark's
+row, a status line (*Writing MPI ranks (np)…*), a refusal, the plan's lines
+(§ 7.1), and every control's spoken name (*value for MPI ranks (np)*) — **by
+the same label**, the catalogue's or, for the run's own two
+asks, the sweepable door's (`lane_asks`); its name only where neither has one
+*(2.69.2)*. The payload carries each item's roles and, beside the columns, how the
 kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
 maps each row to its role — the name matched in any case, as `stage_role`
 matches it (`stages.md` § 2) — and keeps no rule of its own; the description's own
@@ -489,7 +496,7 @@ the Stages card has:
 |---|---|
 | **rows** | the rungs, numbered as the Transport tab numbers them (*1 · seed* … *5 · transmission*); none is renamed, moved, removed or added, and no preset is offered; each with its group — the defaults 1 1 1 2 3, the device and the transmission never sharing the group above, since each builds on it |
 | **columns** | the items a rung may own (the column rule above); the picker names, beside each item, the rung or rungs that read it (*read by transmission*), and a column's cells on the other rungs are disabled, as on every kind |
-| **words** | *each rung's own values over the template — set first on the Transport tab, changed here after Describe*, in place of the refinement sentence of § 9's *add a stage* |
+| **words** | *each stage's own values over the template — set first on the Transport tab, changed here once the description is written*, in place of the refinement sentence of § 9's *add a stage* |
 | **the window, fitted** | a calculation that reuses a finished one: under the table, the transmission's window **fitted to the finished grid** — the range asked and how many times finer, the fitted ends and count, and *use these*, which writes them on the transmission's row, adding their columns first as a preset does (`setRowValues`; `lib/transport/fit.js`, the one builder the Transport tab draws too; [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 
 What a kind fixes — its stages — is one answer, the kind's part on the engine in the kind table ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), which the reader's check asks and
@@ -654,7 +661,7 @@ would actually **run**, and it updates as the points are edited *(user,
 2026-08-30: "can't this list be just updated in the same card where the
 parameters are set… this does not need to be a message with a window")*.
 
-The heading counts them — *"6 combination(s)"* — and
+The heading counts them — *"6 combinations"* — and
 each cell shows its label (the same token its trial directory will
 carry), its shape, and its fit on the benchmark's queue — the one picked
 on the page, as the description will name it
@@ -767,7 +774,7 @@ door; `validation.task`). A member whose value
 differs is shown beside the field (*electrode_L: 8*), never overwritten unasked,
 and for a value the job shares prep refuses the disagreement by name until it
 is settled. **The wall is the members' own, and the job asks for their SUM** — a row
-per member, *wall clock · &lt;stage&gt;*, each that stage's own time, and beneath the
+per member, *time limit · &lt;stage&gt;*, each that stage's own time, and beneath the
 rows the rule said in words: the group's stages run one after another in a
 single job, so the scheduler is asked for the sum of the rows, not the longest
 *(the user, 2026-10-18, on Sol: a day typed on each of three stages was a
@@ -977,10 +984,14 @@ wrapper will carry; and a line per stage a benchmark measures, with the
 directory its trials land in.
 
 ```
-  coarse           01_coarse/         mpi_np=8 · omp_threads=6 · htc · 1-00:00:00 · 128G
-  tight            02_tight/          mpi_np=16 · omp_threads=6 · htc · 2-00:00:00 · 128G
-  bench · coarse   01_coarse/bench/   mpi_np 4,8,16 × omp_threads 1,2 · general · 0-00:30:00
+  coarse           01_coarse/         MPI ranks (np) 8 · OMP threads per rank 6 · htc · 1-00:00:00 · 128G
+  tight            02_tight/          MPI ranks (np) 16 · OMP threads per rank 6 · htc · 2-00:00:00 · 128G
+  bench · coarse   01_coarse/bench/   MPI ranks (np) 4, 8, 16 × OMP threads per rank 1, 2 · general · 0-00:30:00
 ```
+
+Each setting is named by its label and each value said in its words, as the
+cards above name them (§ 5); the queue, the time limit and the memory are the
+allocation's own values.
 
 **Each stage's memory need stands under its ask** — the memory door's line
 for the stage: at most so much at the ranks its card states now, and the run
@@ -989,7 +1000,7 @@ the card states no ranks
 ([`job-request.md`](?doc=execution/job-request.md) § 3.1a):
 
 ```
-  transmission   05_transmission/   mpi_np=64 · omp_threads=1 · public · 0-12:00:00 · 48G
+  transmission   05_transmission/   MPI ranks (np) 64 · OMP threads per rank 1 · public · 0-12:00:00 · 48G
                  memory need: at most 49.3G at 64 ranks -- held 12.31G at 16 ranks × 1 thread, 05_transmission/run-0 on sg013 (the kernel's counter, the job's; finished)
 ```
 
@@ -1168,7 +1179,7 @@ prepared.
 | step | reads | must say, when it fails |
 |---|---|---|
 | **1 checkpoint** | — the server's, always, for a Save that writes (§ 8) | *"No state was saved, so nothing was written"* — and it **stops**: the state is the one a redo restores |
-| **2 write** | the **buffer**, not the model | *"NOT written — ⟨the server's words⟩"* |
+| **2 write** | the **buffer**, not the model | *"Not written — ⟨the server's words⟩"* |
 | **3 confirm** | — | **always**, in the bar beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
 | **4 re-open** | the folder, again | its own message. The file **is** written; a reload that throws must not swallow step 3 |
 | **preview** | the two files **on disk** | the server's refusal, verbatim |

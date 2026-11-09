@@ -173,7 +173,7 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     # rows stand on the card all the same, "blank until stated"
     # (`task-setup.md` § 6.2b) -- the rank count is stated nowhere, so its
     # row is there, unstated, before anything is typed.
-    sel = '.ts-runcard input[aria-label="value for mpi_np"]'
+    sel = '.ts-runcard input[aria-label="value for MPI ranks (np)"]'
     page.wait_for_selector(sel, timeout=20000)
     row = _rows(page).get("mpi_np") or {}
     assert row.get("kind") == "unstated" and row.get("value") == "", (
@@ -665,7 +665,7 @@ def test_the_every_stage_card_writes_the_calculations_own_card(
     task_setup_on(page, flask_server, calc)
     page.click("#ts-groups .ts-steptab[data-tab='every']")
     field = (".ts-next-step:not([hidden]) .ts-runcard "
-             "[aria-label='value for omp_threads']")
+             "[aria-label='value for OMP threads per rank']")
     page.wait_for_selector(field, timeout=20000)
     committed(page, field, "3")
     wait_for_file(page, "request", '"omp_threads": 3')
@@ -697,7 +697,7 @@ def test_what_you_typed_is_still_there_when_you_come_back(
     """
     filled_dir = filled_dir_put_back
     task_setup_on(page, flask_server, filled_dir)
-    sel = '.ts-runcard input[aria-label="value for omp_threads"]'
+    sel = '.ts-runcard input[aria-label="value for OMP threads per rank"]'
     page.wait_for_selector(sel, timeout=20000)
 
     committed(page, sel, "6")
@@ -762,11 +762,11 @@ def test_a_row_has_a_remove_button_only_where_its_blank_cannot_remove_it(
         "a standing row carries a × that can only clear it: " + repr(rows))
 
     _add_a_run_setting(page, "domain")
-    field = '.ts-runcard [aria-label="value for domain"]'
+    field = '.ts-runcard [aria-label="value for queue for this run"]'
     page.wait_for_selector(field, timeout=10000)
     assert _rows(page)["domain"]["drop"], "the added row has no ×"
     page.click(".ts-runcard .ts-row:has([aria-label=\"value for "
-               "domain\"]) > .ts-rowbtn-drop")
+               "queue for this run\"]) > .ts-rowbtn-drop")
     page.wait_for_selector(field, state="detached", timeout=10000)
 
 
@@ -786,7 +786,7 @@ def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
     _add_a_run_setting(page, "domain")
     page.wait_for_function(
         "() => !!document.querySelector("
-        "  '.ts-runcard [aria-label=\"value for domain\"]')",
+        "  '.ts-runcard [aria-label=\"value for queue for this run\"]')",
         timeout=10000)
 
     # ...now switch folders BY THE SIDEBAR'S ROWS, without a reload -- a
@@ -851,7 +851,7 @@ def _pick_first(page, select_id):
 
 
 def _edit_a_stage_cell(page):
-    sel = '.ts-cell[aria-label="coarse mesh_cutoff"]'
+    sel = '.ts-cell[aria-label="coarse Real-space grid cutoff"]'
     page.wait_for_selector(sel, timeout=20000)
     committed(page, sel, "250")
 
@@ -920,7 +920,7 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
     """
     filled_dir = filled_dir_put_back
     task_setup_on(page, flask_server, filled_dir)
-    sel = '.ts-runcard input[aria-label="value for omp_threads"]'
+    sel = '.ts-runcard input[aria-label="value for OMP threads per rank"]'
     page.wait_for_selector(sel, timeout=20000)
 
     # Record every claim/release without changing what they do.
@@ -989,8 +989,8 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
 _TABBED_FIELDS = (
     ("a run-card value",
      '.ts-next-step:not([hidden]) .ts-runcard input[aria-label="value for '
-     'omp_threads"]', "3"),
-    ("a stage cell", '.ts-cell[aria-label="coarse mesh_cutoff"]', "250"),
+     'OMP threads per rank"]', "3"),
+    ("a stage cell", '.ts-cell[aria-label="coarse Real-space grid cutoff"]', "250"),
     # A WRITE THAT WAITS ON NOTHING: the table drawn again inside the change
     # would take out the control Tab is going to.
     ("a stage's name", '.ts-cell[aria-label="stage 1 name"]', "renamed"),
@@ -1015,10 +1015,10 @@ _CLICKED_AWAY = (
     ("the queue card's wall time, then a run card's field",
      "#ts-ask-time", "0-05:00:00",
      '.ts-next-step:not([hidden]) .ts-runcard input[aria-label="value for '
-     'omp_threads"]'),
+     'OMP threads per rank"]'),
     ("a stage's name, then its own row's cell",
      '.ts-cell[aria-label="stage 1 name"]', "renamed",
-     '.ts-cell[aria-label="coarse mesh_cutoff"]'),
+     '.ts-cell[aria-label="coarse Real-space grid cutoff"]'),
 )
 
 
@@ -1413,7 +1413,7 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
     second's has painted.
     """
     task_setup_on(page, flask_server, two_stage_dir)
-    adder = '[aria-label="add a point to mpi_np"]'
+    adder = '[aria-label="add a point to MPI ranks (np)"]'
     page.wait_for_selector(adder, timeout=20000)
     held = []
 

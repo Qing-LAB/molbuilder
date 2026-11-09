@@ -232,7 +232,7 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     # opened as a person opens it.
     unfold(page, "ts-groups-card")
     field = (".ts-next-step:not([hidden]) .ts-runcard "
-             "[aria-label='value for threads']")
+             "[aria-label='value for CPU threads']")
     page.wait_for_selector(field, timeout=WAIT_MS)
     committed(page, field, "2")
     wait_for_file(page, "request", '"threads": 2')

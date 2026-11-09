@@ -92,7 +92,7 @@ def flask_server(isolated_projects_root_module):
 
 
 #: The one stage's k-grid cell, the column that broke.
-_KGRID = 'input[aria-label="coarse kgrid"]'
+_KGRID = 'input[aria-label="coarse k-point grid"]'
 
 
 def _overrides(page):
@@ -171,7 +171,7 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
     person to spell one.
     """
     task_setup_on(page, flask_server, bool_column_dir)
-    cell = page.locator('[aria-label="coarse write_coor_xmol"]').evaluate(
+    cell = page.locator('[aria-label="coarse Write XMOL .xyz"]').evaluate(
         "n => ({tag: n.tagName,"
         "       options: [...(n.options || [])].map(o => o.value)})")
     assert cell["tag"] == "SELECT", (
@@ -221,7 +221,7 @@ def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
     edited_by_hand(page, "task", json.dumps(description_with_overrides(
         vibration_dir, {"freq": {"relax_type": "none"}}), indent=2))
     # THE CELL THE HAND EDIT DRAWS, once the page has read it back.
-    cell = page.locator('[aria-label="freq relax_type"]').evaluate(
+    cell = page.locator('[aria-label="freq Relaxation algorithm"]').evaluate(
         "n => ({value: n.value, text: n.selectedIndex < 0 ? null"
         "       : n.options[n.selectedIndex].text,"
         "       options: [...n.options].map(o => o.value)})")
